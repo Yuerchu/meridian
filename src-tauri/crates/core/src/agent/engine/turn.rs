@@ -52,6 +52,16 @@ use super::ports::{Steered, SteeredOrigin, Steering, SubAgentReport, SubAgentSpe
 /// turn into a chat session. Past it the messages stay in the inbox and the
 /// caller accounts for them.
 const MAX_TAIL_CONTINUATIONS: usize = 3;
+
+/// What the model is told when an approval question ended with no answer.
+///
+/// Not "denied by user", because nobody did that: `Ok(None)` from the
+/// `Approvals` port is a card that expired, a turn that outlived its question,
+/// or a reviewer that fell back to drawing a card nobody saw. `crate::approval`
+/// promises that timing out is never a denial — and until this constant, the
+/// promise held everywhere except in the one sentence the model actually reads.
+const UNANSWERED_APPROVAL: &str = "No one answered the approval request before it expired. The tool was not run — this was not \
+     a refusal, so you may ask again later or continue without it.";
 use super::{
     ApprovalDecision, append_steering, append_tool_result, begin_assistant, complete_assistant, consume_stream,
     in_phase, transitions,
@@ -766,26 +776,32 @@ async fn run(
             } else if let Some(surface) = surface {
                 // Read-only query tools are scope-locked and go straight
                 // through; the ones that change a group ask first.
-                let approved = !surface.requires_approval(&tc.name)
-                    || matches!(
-                        ports.approvals.ask(&assistant_msg_id, tc, None).await?,
-                        Some(ApprovalDecision::Approved)
-                    );
-                if approved {
-                    let ran = in_phase(
-                        pool,
-                        &turn_id,
-                        TurnPhase::RunningTool,
-                        Some(&tc.name),
-                        surface.execute(&tc.name, &tc.arguments),
-                    )
-                    .await;
-                    match ran {
-                        Ok(o) => (o, "success"),
-                        Err(e) => (format!("Error: {e}"), "error"),
-                    }
+                let decision = if surface.requires_approval(&tc.name) {
+                    ports.approvals.ask(&assistant_msg_id, tc, None).await?
                 } else {
-                    ("Tool call denied by user.".to_string(), "denied")
+                    Some(ApprovalDecision::Approved)
+                };
+                match decision {
+                    Some(ApprovalDecision::Approved) => {
+                        let ran = in_phase(
+                            pool,
+                            &turn_id,
+                            TurnPhase::RunningTool,
+                            Some(&tc.name),
+                            surface.execute(&tc.name, &tc.arguments),
+                        )
+                        .await;
+                        match ran {
+                            Ok(o) => (o, "success"),
+                            Err(e) => (format!("Error: {e}"), "error"),
+                        }
+                    }
+                    Some(ApprovalDecision::Denied(Some(reason))) => {
+                        (format!("Tool call denied by user. Reason: {reason}"), "denied")
+                    }
+                    Some(ApprovalDecision::Denied(None)) => ("Tool call denied by user.".to_string(), "denied"),
+                    // Nobody answered — not a denial. See `UNANSWERED_APPROVAL`.
+                    _ => (UNANSWERED_APPROVAL.to_string(), "denied"),
                 }
             } else if tc.name == "ask_user" {
                 match ports.approvals.ask(&assistant_msg_id, tc, None).await? {
@@ -881,7 +897,10 @@ async fn run(
                     Some(ApprovalDecision::Denied(Some(reason))) => {
                         (format!("Tool call denied by user. Reason: {reason}"), "denied")
                     }
-                    _ => ("Tool call denied by user.".to_string(), "denied"),
+                    Some(ApprovalDecision::Denied(None)) => ("Tool call denied by user.".to_string(), "denied"),
+                    // Nobody answered, which the port's contract says is not a
+                    // denial — see `UNANSWERED_APPROVAL`.
+                    _ => (UNANSWERED_APPROVAL.to_string(), "denied"),
                 }
             } else if let Some(tool) = tool {
                 let args: serde_json::Value =
@@ -896,72 +915,86 @@ async fn run(
                     }
                     ApprovalRule::ByPermission => permission == tools::Permission::Ask,
                 };
-                let (approved, deny_reason): (bool, Option<String>) = if permission == tools::Permission::Never {
-                    (false, None)
+                // Three answers, not two. `None` is nobody answering — a card
+                // that expired, or a turn that outlived its question — and the
+                // `Approvals` contract says that is never a denial. Telling the
+                // model "denied by user" there attributes a decision to a
+                // person who made none, and the model acts on it: apologising
+                // for something nobody objected to, or not asking again when
+                // asking again is exactly what the user would want.
+                enum Authorised {
+                    Yes,
+                    Refused(Option<String>),
+                    Unanswered,
+                }
+                let authorised = if permission == tools::Permission::Never {
+                    Authorised::Refused(None)
                 } else if !must_ask {
-                    (true, None)
+                    Authorised::Yes
                 } else {
                     match ports.approvals.ask(&assistant_msg_id, tc, None).await? {
-                        Some(ApprovalDecision::Approved) => (true, None),
-                        Some(ApprovalDecision::Denied(reason)) => (false, reason),
+                        Some(ApprovalDecision::Approved) => Authorised::Yes,
+                        Some(ApprovalDecision::Denied(reason)) => Authorised::Refused(reason),
                         // Typed words are an answer to a question, and
                         // only `ask_user` asked one. Reaching here with
                         // some means the card was answered by something
                         // that had no permission to grant, so it is not
-                        // one. Nothing said at all reads the same way.
-                        Some(ApprovalDecision::Response(_)) | None => (false, None),
+                        // one — and it is not a user's refusal either.
+                        Some(ApprovalDecision::Response(_)) | None => Authorised::Unanswered,
                     }
                 };
-                if !approved {
-                    match deny_reason {
-                        Some(reason) => (format!("Tool call denied by user. Reason: {reason}"), "denied"),
-                        None => ("Tool call denied by user.".to_string(), "denied"),
+                match authorised {
+                    Authorised::Refused(Some(reason)) => {
+                        (format!("Tool call denied by user. Reason: {reason}"), "denied")
                     }
-                } else {
-                    // The one phase that describes something outside the
-                    // database. A turn found dead here may already have
-                    // written the file or run the command.
-                    let executed = in_phase(
-                        pool,
-                        &turn_id,
-                        TurnPhase::RunningTool,
-                        Some(&tc.name),
-                        tool.execute(args.clone(), &tool_context),
-                    )
-                    .await;
-                    match executed {
-                        Ok(o) => (o, "success"),
-                        Err(e) => match tools::decode_sandbox_denied(&e) {
-                            None => (format!("Error: {e}"), "error"),
-                            Some(blocked) => {
-                                // The same call under the same id: it is the
-                                // approval that is new, and that has an
-                                // identity of its own.
-                                let retry = ports.approvals.ask(&assistant_msg_id, tc, Some(blocked)).await?;
-                                if matches!(retry, Some(ApprovalDecision::Approved)) {
-                                    let escalated = tool_context.without_sandbox();
-                                    let retried = in_phase(
-                                        pool,
-                                        &turn_id,
-                                        TurnPhase::RunningTool,
-                                        Some(&tc.name),
-                                        tool.execute(args, &escalated),
-                                    )
-                                    .await;
-                                    match retried {
-                                        Ok(o) => (o, "success"),
-                                        Err(e2) => (format!("Error: {e2}"), "error"),
+                    Authorised::Refused(None) => ("Tool call denied by user.".to_string(), "denied"),
+                    Authorised::Unanswered => (UNANSWERED_APPROVAL.to_string(), "denied"),
+                    Authorised::Yes => {
+                        // The one phase that describes something outside the
+                        // database. A turn found dead here may already have
+                        // written the file or run the command.
+                        let executed = in_phase(
+                            pool,
+                            &turn_id,
+                            TurnPhase::RunningTool,
+                            Some(&tc.name),
+                            tool.execute(args.clone(), &tool_context),
+                        )
+                        .await;
+                        match executed {
+                            Ok(o) => (o, "success"),
+                            Err(e) => match tools::decode_sandbox_denied(&e) {
+                                None => (format!("Error: {e}"), "error"),
+                                Some(blocked) => {
+                                    // The same call under the same id: it is the
+                                    // approval that is new, and that has an
+                                    // identity of its own.
+                                    let retry = ports.approvals.ask(&assistant_msg_id, tc, Some(blocked)).await?;
+                                    if matches!(retry, Some(ApprovalDecision::Approved)) {
+                                        let escalated = tool_context.without_sandbox();
+                                        let retried = in_phase(
+                                            pool,
+                                            &turn_id,
+                                            TurnPhase::RunningTool,
+                                            Some(&tc.name),
+                                            tool.execute(args, &escalated),
+                                        )
+                                        .await;
+                                        match retried {
+                                            Ok(o) => (o, "success"),
+                                            Err(e2) => (format!("Error: {e2}"), "error"),
+                                        }
+                                    } else {
+                                        (
+                                            format!(
+                                                "{blocked}\n[blocked by sandbox; user declined to retry without sandbox]"
+                                            ),
+                                            "denied",
+                                        )
                                     }
-                                } else {
-                                    (
-                                        format!(
-                                            "{blocked}\n[blocked by sandbox; user declined to retry without sandbox]"
-                                        ),
-                                        "denied",
-                                    )
                                 }
-                            }
-                        },
+                            },
+                        }
                     }
                 }
             } else {
@@ -1225,6 +1258,10 @@ mod tests {
 
     #[async_trait::async_trait]
     impl ChatProvider for Scripted {
+        fn adapter_name(&self) -> &'static str {
+            "Scripted"
+        }
+
         async fn stream_chat_with_tools(
             &self,
             messages: Vec<ChatMessage>,
@@ -2857,14 +2894,12 @@ mod tests {
             fixture.ran.lock().unwrap().is_empty(),
             "a surface tool is not authorised"
         );
-        assert_eq!(said(1), "Tool call denied by user.");
+        // Not authorised — and not reported as a user's refusal either, since
+        // a stray `Response` is no more a denial than silence is.
+        assert_eq!(said(1), UNANSWERED_APPROVAL);
         // Never reached the registry, so the refusal is the approval's and not
         // an "unknown MCP server" from further down.
-        assert_eq!(
-            said(2),
-            "Tool call denied by user.",
-            "an MCP tool is not authorised either"
-        );
+        assert_eq!(said(2), UNANSWERED_APPROVAL, "an MCP tool is not authorised either");
         assert_eq!(said(3), "go on then", "but the question that was asked gets its answer");
     }
 
@@ -2891,9 +2926,46 @@ mod tests {
 
         assert_eq!(*approvals.asked.lock().unwrap(), [("fixture".to_string(), None)]);
         assert!(fixture.ran.lock().unwrap().is_empty());
-        assert_eq!(
-            provider.requests()[1].0.last().unwrap().content,
-            "Tool call denied by user.",
+        // The tool did not run, and the model is told *why it did not run*
+        // truthfully: nobody answered. "Denied by user" here was an expiry
+        // being attributed to a person who made no decision — with a TTL on
+        // every card, that misattribution would fire on every timeout.
+        let told = provider.requests()[1].0.last().unwrap().content.clone();
+        assert_eq!(told, UNANSWERED_APPROVAL);
+        assert!(
+            !told.contains("denied by user"),
+            "an unanswered question must not be reported as a user's decision"
         );
+    }
+
+    /// The same truth on the ordinary registry path, which is the one that
+    /// runs commands. The surface test above cannot stand in for it: the two
+    /// branches carry separate wording, and a fix to one leaves the other
+    /// still telling the model a person refused.
+    #[tokio::test]
+    async fn an_unanswered_registry_tool_is_not_reported_as_a_users_refusal() {
+        let pool = test_db();
+        conversation(&pool);
+        let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
+        let provider = Scripted::of(vec![
+            calls("call-1", "run_command", r#"{"command":"echo hi"}"#),
+            says("fine"),
+        ]);
+        let approvals = Answers::nobody();
+
+        run_turn(
+            &services(&pool, &tools, &mcp),
+            setup(&provider, &pool, &cancel, &["run_command"]),
+            ports(&approvals, None),
+        )
+        .await;
+
+        assert_eq!(
+            *approvals.asked.lock().unwrap(),
+            [("run_command".to_string(), None)],
+            "the question was asked, once, with no retry framing"
+        );
+        let told = provider.requests()[1].0.last().unwrap().content.clone();
+        assert_eq!(told, UNANSWERED_APPROVAL);
     }
 }

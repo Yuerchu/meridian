@@ -76,6 +76,9 @@ mod tests {
                 created_at: 0,
                 updated_at: 0,
                 api_format: "responses",
+                catalog_id: None,
+                credential_kind: "api_key",
+                transport_profile: "standard",
             })
             .execute(conn)
             .unwrap();

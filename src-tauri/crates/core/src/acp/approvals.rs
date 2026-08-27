@@ -107,6 +107,11 @@ pub async fn ask(
     let tool_name = mapping::tool_name_of(&params.tool_call);
     let arguments = mapping::arguments_of(&params.tool_call);
 
+    // Worked out once, here, rather than by the waiter. The two would be the
+    // same number, but only one of them can be the answer to "when does this
+    // stop standing" — and the listing paths read the stored one.
+    let ttl = crate::approval::ttl(services);
+
     // Registered before the event goes out, so an answer cannot arrive before
     // there is somewhere to put it.
     services.approvals.lock().insert(
@@ -123,6 +128,7 @@ pub async fn ask(
             // Nothing delegated here: an ACP session is watched in its own
             // conversation, so the question is asked where it happens.
             bubble: None,
+            expires_at: ttl.map(|ttl| std::time::Instant::now() + ttl),
             sender: tx,
         },
     );
@@ -138,7 +144,7 @@ pub async fn ask(
     });
     if let Err(e) = services.events.emit("chat-stream", payload) {
         // Nobody can answer a card that was never drawn.
-        services.approvals.lock().remove(&approval_id);
+        services.approvals.claim(&approval_id);
         tracing::warn!(error = %e, "could not draw an ACP approval card");
         return protocol::permission_cancelled();
     }
@@ -149,18 +155,7 @@ pub async fn ask(
         &turn.turn_id,
         TurnPhase::AwaitingApproval,
         Some(&tool_name),
-        async {
-            let decision = tokio::select! {
-                _ = turn.cancel.cancelled() => None,
-                r = rx => r.ok(),
-            };
-            if decision.is_none() {
-                // Cancelled, or the sender was dropped. Take the entry out so a
-                // late answer cannot land on a turn that has moved on.
-                services.approvals.lock().remove(&approval_id);
-            }
-            decision
-        },
+        crate::approval::wait(services, &approval_id, rx, &turn.cancel, ttl),
     )
     .await;
 

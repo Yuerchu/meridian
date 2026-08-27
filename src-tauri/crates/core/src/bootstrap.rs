@@ -125,6 +125,14 @@ pub fn bootstrap(data_dir: PathBuf, events: EventBus) -> Services {
                     created_at: now,
                     updated_at: now,
                     api_format: "chat_completions",
+                    // Both of these came out of environment variables, so this
+                    // is as likely to be a relay as the vendor itself.
+                    // `identify` answers only when it is certain.
+                    catalog_id: crate::provider::catalog::identify(&provider_type, &base_url),
+                    // The variables this row is migrated from only ever carried
+                    // an API key against an ordinary endpoint.
+                    credential_kind: "api_key",
+                    transport_profile: "standard",
                 },
             ) {
                 let key_name = provider_secret_name(&provider.id);
@@ -335,6 +343,8 @@ pub fn bootstrap(data_dir: PathBuf, events: EventBus) -> Services {
         paths: Paths { data_dir, skills_root },
         #[cfg(not(target_os = "android"))]
         acp: crate::acp::AcpRegistry::new(),
+        #[cfg(not(target_os = "android"))]
+        containers: crate::container::DockerConnector::new(Default::default()),
         // Filled by the shell, which is the only half that knows how to run a
         // turn. Left empty a follow-up is never delivered, which is the right
         // way for this to be missing.

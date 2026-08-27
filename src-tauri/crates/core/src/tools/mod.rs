@@ -19,6 +19,7 @@ pub mod skill;
 pub mod sticker;
 pub mod sub_agent;
 pub mod todo;
+pub mod usage;
 pub mod verified;
 pub mod web_search;
 pub mod write_file;

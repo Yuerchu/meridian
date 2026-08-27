@@ -277,6 +277,13 @@ pub async fn delete_conversation(app: tauri::AppHandle, id: String) -> Result<()
         let mut all = doomed.clone();
         all.push(id.clone());
         services.acp.close_each(&all).await;
+        // The command container is keyed by conversation id the same way, and
+        // deleting the row is the last moment anything can still name it —
+        // after this, the only thing that ever finds it again is the startup
+        // reconcile noticing its conversation is gone.
+        for c in &all {
+            services.containers.close(c).await;
+        }
     }
 
     tokio::task::spawn_blocking(move || {
@@ -513,6 +520,7 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
                 provider_type,
                 model,
                 api_format,
+                transport_profile,
                 ..
             } = resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())?;
             let turn = resolve_turn_params(
@@ -522,6 +530,8 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
                     provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
                     provider_type: &provider_type,
                     api_format: &api_format,
+
+                    transport_profile: &transport_profile,
                     model: &model,
                     thinking_level: None,
                     fast: false,

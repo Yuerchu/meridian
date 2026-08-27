@@ -820,6 +820,14 @@ export interface ConversationStore {
    *  Also right for an ordinary approval, where the result *will* arrive: it
    *  can be minutes away — `run_command` — and none of that time is time
    *  anybody is being asked for anything. */
+  /** Nobody answered inside the deadline, so the question is over.
+   *
+   *  Distinct from `retireAnsweredApproval`, which only clears the queue: that
+   *  one leaves an ordinary card holding its `approval_id` because the question
+   *  is still owed. Here it is not, so the card is settled too — left `pending`
+   *  with no id it would draw as `requires-action`, demanding an answer that
+   *  can no longer reach anybody. */
+  handleApprovalExpired: (convId: string, approvalId: string) => void
   retireAnsweredApproval: (approvalId: string) => void
   /** Not now — move it to the end of the queue and offer the next one.
    *
@@ -1578,6 +1586,38 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             }
           }
           return
+        }
+      }),
+    )
+  },
+
+  handleApprovalExpired: (convId, approvalId) => {
+    set(
+      produce((state: ConversationStore) => {
+        // Ahead of the session check, like every other path that retires a
+        // question: the ones that go unanswered are mostly in conversations
+        // nobody has opened, so there is no session to find.
+        retireAttention(state, approvalId)
+        dropNested(state, approvalId)
+
+        const session = state.sessions[convId]
+        if (!session) return
+        // Unlike `retireAnsweredApproval`, this *does* settle the card. That
+        // one deliberately leaves an ordinary card holding its `approval_id`,
+        // because the question is still owed and only the toast is going away.
+        // Here the question is over: leaving the id behind would keep the card
+        // at `pending`, which draws as `requires-action` — a demand for an
+        // answer with no way left to give one.
+        const entry = session.pendingApprovals[approvalId] ?? session.pendingAsks[approvalId]
+        delete session.pendingApprovals[approvalId]
+        delete session.pendingAsks[approvalId]
+        const target = entry ? session.messages.find((m) => m.id === entry.messageId) : undefined
+        for (const block of target?._blocks ?? []) {
+          if (block.type !== 'tool_call') continue
+          if (block.data.approval_id === approvalId) {
+            block.data.status = 'orphaned'
+            block.data.approval_id = undefined
+          }
         }
       }),
     )

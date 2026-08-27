@@ -336,6 +336,8 @@ impl DesktopSubAgents {
                     provider_id: provider_id.as_deref(),
                     provider_type: &resolved.provider_type,
                     api_format: &resolved.api_format,
+
+                    transport_profile: &resolved.transport_profile,
                     model: &resolved.model,
                     thinking_level: None,
                     fast: false,
@@ -650,8 +652,9 @@ impl DesktopSubAgents {
         let provider = meridian_core::provider::registry::create_provider(
             &resolved.provider_type,
             &resolved.base_url,
-            &resolved.api_key,
+            &resolved.credential,
             Some(&resolved.api_format),
+            Some(&resolved.transport_profile),
         );
         // The whole resolution travels back, not just the type: the rows this run
         // writes record which upstream answered, and a sub-agent can be pointed

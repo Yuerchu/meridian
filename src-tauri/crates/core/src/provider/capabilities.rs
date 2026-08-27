@@ -252,6 +252,37 @@ fn google_default() -> ProviderCapabilities {
 // ---------------------------------------------------------------------------
 
 pub fn resolve(provider_type: &str, api_format: Option<&str>, model: &str) -> ProviderCapabilities {
+    resolve_on(provider_type, api_format, None, model)
+}
+
+/// The same, told which wire the request will actually go out on.
+///
+/// A separate entry point rather than a fourth argument everywhere, because
+/// almost every caller is asking about a model in the abstract — what a picker
+/// should offer, whether images are possible — and only the turn needs to know
+/// what *this* row will really send.
+pub fn resolve_on(
+    provider_type: &str,
+    api_format: Option<&str>,
+    transport_profile: Option<&str>,
+    model: &str,
+) -> ProviderCapabilities {
+    let mut caps = resolve_inner(provider_type, api_format, model);
+
+    // The Codex backend ignores sampling parameters and has no priority tier to
+    // sell — a subscription is not an API account. Saying so here rather than
+    // only in the adapter is what keeps the UI honest: a temperature slider that
+    // renders and then changes nothing is worse than one that is absent, and
+    // `filter_params` reads these to decide what may be sent at all.
+    if transport_profile == Some("chatgpt_codex") {
+        caps.supports_temperature = false;
+        caps.supports_top_p = false;
+        caps.supports_fast = false;
+    }
+    caps
+}
+
+fn resolve_inner(provider_type: &str, api_format: Option<&str>, model: &str) -> ProviderCapabilities {
     // `catalog_provider` scopes the prefix search. gemma_tool deliberately maps
     // to a namespace with no entries so it only ever gets its default.
     let (mut caps, catalog_provider) = match provider_type {
@@ -531,6 +562,49 @@ mod tests {
     #[test]
     fn catalog_parses() {
         assert!(!CATALOG.models.is_empty());
+    }
+
+    /// The Codex backend ignores sampling parameters and sells no priority
+    /// tier. Saying so here is what keeps the UI honest — a temperature slider
+    /// that renders and changes nothing is worse than one that is absent.
+    #[test]
+    fn the_codex_transport_drops_what_a_subscription_cannot_use() {
+        let api = resolve_on("openai", Some("responses"), Some("standard"), "gpt-5.6");
+        let codex = resolve_on("openai", Some("responses"), Some("chatgpt_codex"), "gpt-5.6");
+
+        assert!(api.supports_temperature && !codex.supports_temperature);
+        assert!(api.supports_top_p && !codex.supports_top_p);
+        assert!(api.supports_fast && !codex.supports_fast);
+    }
+
+    /// Everything else is the model's own, inherited from the same catalog
+    /// entry: the transport changes how a request is sent, not what the model
+    /// can do.
+    #[test]
+    fn the_codex_transport_keeps_the_models_own_abilities() {
+        let api = resolve_on("openai", Some("responses"), Some("standard"), "gpt-5.6");
+        let codex = resolve_on("openai", Some("responses"), Some("chatgpt_codex"), "gpt-5.6");
+
+        assert_eq!(api.supported_efforts, codex.supported_efforts);
+        assert_eq!(api.supports_tools, codex.supports_tools);
+        assert_eq!(api.supports_images, codex.supports_images);
+        assert_eq!(api.max_context_tokens, codex.max_context_tokens);
+    }
+
+    /// The three-argument form is the whole-family answer, and it must not
+    /// change for anybody.
+    #[test]
+    fn asking_without_a_transport_answers_as_before() {
+        for (provider_type, api_format, model) in [
+            ("openai", Some("responses"), "gpt-5.6"),
+            ("anthropic", None, "claude-opus-4"),
+            ("xai", Some("responses"), "grok-4.6"),
+        ] {
+            let plain = resolve(provider_type, api_format, model);
+            let standard = resolve_on(provider_type, api_format, Some("standard"), model);
+            assert_eq!(plain.supports_temperature, standard.supports_temperature);
+            assert_eq!(plain.supports_fast, standard.supports_fast);
+        }
     }
 
     #[test]

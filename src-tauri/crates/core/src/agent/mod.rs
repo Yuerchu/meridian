@@ -1,7 +1,9 @@
 pub mod auto_review;
 mod base_prompt;
+pub mod call_identity;
 mod compact;
 mod context;
+pub mod denied;
 pub(crate) mod diagnostics;
 pub mod engine;
 pub mod file_access;

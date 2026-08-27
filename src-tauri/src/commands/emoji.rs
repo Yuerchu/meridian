@@ -178,8 +178,12 @@ pub async fn suggest_sticker_semantics(app: tauri::AppHandle, id: String) -> Res
         return Err("This sticker has no cached image to inspect".into());
     }
     let resolved = agent::resolve_provider_config(&secrets, &pool, assistant.as_ref())?;
-    let caps =
-        provider::registry::get_capabilities(&resolved.provider_type, Some(&resolved.api_format), &resolved.model);
+    let caps = provider::registry::get_capabilities(
+        &resolved.provider_type,
+        Some(&resolved.api_format),
+        Some(&resolved.transport_profile),
+        &resolved.model,
+    );
     if !caps.supports_images {
         return Err("The default assistant's model does not support image input".into());
     }
@@ -196,8 +200,9 @@ pub async fn suggest_sticker_semantics(app: tauri::AppHandle, id: String) -> Res
     let provider = provider::registry::create_provider(
         &resolved.provider_type,
         &resolved.base_url,
-        &resolved.api_key,
+        &resolved.credential,
         Some(&resolved.api_format),
+        Some(&resolved.transport_profile),
     );
     let response = provider
         .chat(

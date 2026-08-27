@@ -12,6 +12,7 @@ import type {
   AppInfo,
   Assistant,
   ChatMode,
+  CodexAuthStatus,
   ContextInfo,
   Conversation,
   ConversationSnapshot,
@@ -41,6 +42,7 @@ import type {
   Provider,
   ProviderBalance,
   ProviderCapabilities,
+  ProviderCatalogEntry,
   QueueDelivery,
   QueuedPrompt,
   SafRootEntry,
@@ -302,8 +304,35 @@ export const api = {
   // Providers
   listProviders: () => invoke<Provider[]>('list_providers'),
 
-  createProvider: (name: string, providerType: string, baseUrl: string, apiFormat?: string) =>
-    invoke<Provider>('create_provider', { name, providerType, baseUrl, apiFormat: apiFormat ?? null }),
+  /** The shipped vendor catalog. Compiled into the binary, so it never changes
+   *  within a run — callers may cache it for the lifetime of the process. */
+  listProviderCatalog: () => invoke<ProviderCatalogEntry[]>('list_provider_catalog'),
+
+  /** Which ChatGPT account a Codex-backed provider is signed in as. Never
+   *  refreshes the session: opening a settings page must not spend a token. */
+  codexAuthStatus: () => invoke<CodexAuthStatus>('codex_auth_status'),
+
+  createProvider: (
+    name: string,
+    providerType: string,
+    baseUrl: string,
+    apiFormat?: string,
+    catalogId?: string,
+    authOption?: string,
+  ) =>
+    invoke<Provider>('create_provider', {
+      name,
+      providerType,
+      baseUrl,
+      apiFormat: apiFormat ?? null,
+      // Which vendor the user picked, when they picked one. It outranks
+      // anything the backend could infer from the address: choosing OpenAI and
+      // then pointing it at a relay is still OpenAI.
+      catalogId: catalogId ?? null,
+      // Which of that vendor's sign-in options the row starts under. Absent
+      // means the entry's default, which is the API key everywhere today.
+      authOption: authOption ?? null,
+    }),
 
   updateProvider: (
     id: string,
@@ -313,6 +342,8 @@ export const api = {
       baseUrl?: string
       isEnabled?: number
       apiFormat?: string
+      credentialKind?: string
+      transportProfile?: string
     },
   ) =>
     invoke<Provider>('update_provider', {
@@ -322,6 +353,8 @@ export const api = {
       baseUrl: updates.baseUrl ?? null,
       isEnabled: updates.isEnabled ?? null,
       apiFormat: updates.apiFormat ?? null,
+      credentialKind: updates.credentialKind ?? null,
+      transportProfile: updates.transportProfile ?? null,
     }),
 
   deleteProvider: (id: string) => invoke<void>('delete_provider', { id }),

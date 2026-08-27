@@ -393,6 +393,52 @@ describe('live approval events', () => {
     expect(Object.keys(store().sessions[CONV]!.pendingApprovals)).toEqual(['appr-2'])
   })
 
+  // A card whose deadline passed. The turn is still running — this is not a
+  // stop — so nothing else would ever take it down, and its buttons already
+  // reach a receiver that has gone.
+  it('settles the card when a question expires, rather than only the queue', () => {
+    store().handleToolCall(CONV, 'a1', 'c1', 'run_command', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}')
+    expect(cards()[0]).toMatchObject({ status: 'pending', approval_id: 'appr-1' })
+
+    store().handleApprovalExpired(CONV, 'appr-1')
+
+    // Both halves. Clearing the id and leaving `pending` would draw as
+    // `requires-action`: a demand for an answer with nowhere to send one.
+    expect(cards()[0]!.status).toBe('orphaned')
+    expect(cards()[0]!.approval_id).toBeUndefined()
+    expect(store().sessions[CONV]!.pendingApprovals).toEqual({})
+    expect(store().attention['appr-1']).toBeUndefined()
+    expect(store().attentionOrder).not.toContain('appr-1')
+  })
+
+  // Only the one that went. A conversation can have several cards up, and the
+  // others are still owed an answer.
+  it('leaves the other outstanding questions alone', () => {
+    store().handleToolCall(CONV, 'a1', 'c1', 'run_command', '{}')
+    store().handleToolCall(CONV, 'a1', 'c2', 'read_file', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-2', 'c2', 'read_file', '{}')
+
+    store().handleApprovalExpired(CONV, 'appr-1')
+
+    expect(cards().map((c) => c.status)).toEqual(['orphaned', 'pending'])
+    expect(Object.keys(store().sessions[CONV]!.pendingApprovals)).toEqual(['appr-2'])
+    expect(store().attention['appr-2']).toBeDefined()
+  })
+
+  // The queue is written for conversations nobody has opened, which is most of
+  // the ones that reach a deadline — so the retirement cannot sit behind a
+  // session lookup.
+  it('clears the queue for a conversation with no session', () => {
+    store().handleToolApproval('never-opened', 'x1', 'appr-9', 'c1', 'run_command', '{}')
+    expect(store().attention['appr-9']).toBeDefined()
+
+    store().handleApprovalExpired('never-opened', 'appr-9')
+    expect(store().attention['appr-9']).toBeUndefined()
+    expect(store().attentionOrder).not.toContain('appr-9')
+  })
+
   it('carries the escalation details onto the card', () => {
     store().handleToolCall(CONV, 'a1', 'c1', 'run_command', '{}')
     store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}', 'sandbox denied', 'c1')

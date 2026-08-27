@@ -238,6 +238,10 @@ mod tests {
 
     #[async_trait::async_trait]
     impl ChatProvider for NeverAsked {
+        fn adapter_name(&self) -> &'static str {
+            "NeverAsked"
+        }
+
         async fn stream_chat_with_tools(
             &self,
             _messages: Vec<ChatMessage>,

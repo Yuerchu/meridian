@@ -56,6 +56,12 @@ pub struct AuditMessage {
     /// cost per thousand — snapshotted for the same reason the token rates are.
     pub server_tool_calls: Option<i32>,
     pub server_tool_price: Option<f64>,
+    /// Whether a per-request price is owed at all — see `agent::pricing::BillingMode`.
+    ///
+    /// Distinguishes "nobody has priced this model" from "this request draws on
+    /// a subscription". Without it both are unpriced, and the second gets
+    /// reported as cost we failed to account for.
+    pub billing_mode: String,
 }
 
 #[derive(Debug, Insertable)]
@@ -90,4 +96,7 @@ pub struct NewAuditMessage<'a> {
     /// cost per thousand — snapshotted for the same reason the token rates are.
     pub server_tool_calls: Option<i32>,
     pub server_tool_price: Option<f64>,
+    /// Defaults to `metered` at the database level, so a caller that says
+    /// nothing gets exactly today's behaviour.
+    pub billing_mode: &'a str,
 }

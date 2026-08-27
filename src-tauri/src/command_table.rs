@@ -111,12 +111,20 @@ macro_rules! with_all_commands {
             ),
             async commands::assistant => delete_assistant(id: String),
 
+            // Compiled-in data, no lock and no disk — hence sync. Not `local`:
+            // a phone building the same "add a provider" list needs it too.
+            sync commands::provider => list_provider_catalog(),
+            // Not `local`: a phone showing provider settings needs the same
+            // answer, and the reply carries no credential material.
+            async commands::provider => codex_auth_status(),
             async commands::provider => list_providers(),
             async commands::provider => create_provider(
                 name: String,
                 provider_type: String,
                 base_url: String,
                 api_format: Option<String>,
+                catalog_id: Option<String>,
+                auth_option: Option<String>,
             ),
             async commands::provider => update_provider(
                 id: String,
@@ -125,6 +133,8 @@ macro_rules! with_all_commands {
                 base_url: Option<String>,
                 is_enabled: Option<i32>,
                 api_format: Option<String>,
+                credential_kind: Option<String>,
+                transport_profile: Option<String>,
             ),
             async commands::provider => delete_provider(id: String),
             async commands::provider => set_provider_key(provider_id: String, api_key: String),

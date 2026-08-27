@@ -121,6 +121,13 @@ fn views_for(
 ) -> Vec<PendingApprovalInfo> {
     let mut out = Vec::new();
     for (id, p) in map.iter() {
+        // Belt and braces. The waiter's own timer is what ends a question and
+        // it removes the entry; this only closes the window between the
+        // deadline and that timer's next tick, in which a list would otherwise
+        // hand back a card whose buttons are about to stop meaning anything.
+        if meridian_core::approval::is_expired(p) {
+            continue;
+        }
         // Where the call is happening. Ordinary approvals only ever match here.
         if p.conversation_id == conversation_id {
             out.push(PendingApprovalInfo {
@@ -200,7 +207,14 @@ fn answerable_view(id: &str, p: &meridian_core::state::PendingApproval) -> Pendi
 pub fn all_pending_approvals(app: tauri::AppHandle) -> Result<Vec<PendingApprovalInfo>, String> {
     let services = app.services();
     let map = services.approvals.lock();
-    Ok(map.iter().map(|(id, p)| answerable_view(id, p)).collect())
+    Ok(map
+        .iter()
+        // Same guard as `views_for`, and it matters more here: this is what a
+        // reconnecting client rebuilds its whole queue from, so one expired
+        // entry becomes a row that cannot be cleared by answering it.
+        .filter(|(_, p)| !meridian_core::approval::is_expired(p))
+        .map(|(id, p)| answerable_view(id, p))
+        .collect())
 }
 
 #[cfg(test)]
@@ -231,6 +245,9 @@ mod tests {
                 arguments: r#"{"command":"cargo test --all"}"#.into(),
                 retry_reason: None,
                 bubble,
+                // These views are about what a card says, not about when it
+                // stops standing; the expiry filter has its own tests.
+                expires_at: None,
                 sender: tx,
             },
         );

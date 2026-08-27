@@ -552,6 +552,84 @@ export interface Provider {
   created_at: number
   updated_at: number
   api_format: string
+  /**
+   * Which entry in the shipped vendor catalog this row is an instance of, or
+   * null for one the catalog does not describe.
+   *
+   * Display and prefill only — it never decides how a request is sent, which is
+   * `provider_type` plus `api_format`. Null is ordinary: hand-made providers and
+   * anything pointing at a relay have it.
+   */
+  catalog_id: string | null
+  /**
+   * Where the credential comes from: `api_key`, or one of the ChatGPT logins.
+   *
+   * Not an input to which adapter runs — two ways of signing in to ChatGPT
+   * produce the same token on the same wire.
+   */
+  credential_kind: string
+  /**
+   * How requests are shaped, and the third input to picking an adapter beside
+   * `provider_type` and `api_format`. It exists because the format alone cannot
+   * separate OpenAI's API from ChatGPT's Codex backend — both are `responses`.
+   */
+  transport_profile: string
+}
+
+/**
+ * One vendor in the shipped catalog — the data behind "which service is this?".
+ *
+ * Mirrors `provider::catalog::CatalogEntry`. It describes and prefills; nothing
+ * here decides how a request is sent.
+ */
+export interface ProviderCatalogEntry {
+  id: string
+  provider_type: string
+  name: string
+  icon: string
+  balance: boolean
+  websites: {
+    official?: string | null
+    api_key?: string | null
+    docs?: string | null
+    models?: string | null
+  }
+  auth: ProviderAuthOption[]
+  models: { family: string; ids: string[] }[]
+}
+
+/**
+ * A way of signing in, carrying the endpoint and dialect that come with it.
+ *
+ * Those live here rather than on the entry because they belong to the login:
+ * OpenAI's API and ChatGPT's Codex backend are both `responses` and differ in
+ * base URL, so one address per dialect cannot describe both.
+ */
+/**
+ * Which ChatGPT account a Codex-backed provider is signed in as.
+ *
+ * Carries no token material. `codex_home` is shown because a GUI process need
+ * not inherit a terminal's environment, which is the usual reason for "I am
+ * logged in but the app says I am not".
+ */
+export interface CodexAuthStatus {
+  logged_in: boolean
+  email: string | null
+  plan: string | null
+  /** `file` or `keyring` — where the login actually lives. */
+  storage: string | null
+  codex_home: string | null
+  /** Present when something is wrong, phrased as what to do about it. */
+  problem: string | null
+}
+
+export interface ProviderAuthOption {
+  id: string
+  credential_kind: string
+  transport_profile: string
+  /** A single entry means the dialect is not a choice, so no selector is drawn. */
+  api_formats: string[]
+  default_base_url: Record<string, string>
 }
 
 export interface ModelInfo {
@@ -1077,7 +1155,8 @@ export interface StreamChunk {
   outcome?: string
   /** Only on `server_tool`: a tool the provider ran on its own side. */
   call?: ServerToolCall
-  /** Only on `tool_approval_req`. What the answer must be addressed to. */
+  /** On `tool_approval_req`, what the answer must be addressed to. On
+   *  `tool_approval_expired`, which question stopped standing. */
   approval_id?: string
   /** Set only when this approval is a sandbox-blocked call asking to run
    *  again without the sandbox. Its presence is what marks the escalation. */

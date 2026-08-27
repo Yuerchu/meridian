@@ -1,5 +1,5 @@
 use super::{Permission, ShellType, Tool, ToolContext};
-use crate::sandbox::ExecResult;
+use crate::sandbox::{ExecResult, SandboxBackend};
 use async_trait::async_trait;
 use std::time::Duration;
 
@@ -40,18 +40,32 @@ impl Tool for RunCommandTool {
 
         let cwd = context.working_dir_or_current();
 
-        let shell_argv: Vec<String> = match context.shell {
-            ShellType::Cmd => vec!["cmd".into(), "/C".into(), command.into()],
-            ShellType::PowerShell => {
-                vec![
-                    find_powershell().into(),
-                    "-NoProfile".into(),
-                    "-Command".into(),
-                    command.into(),
-                ]
-            }
-            ShellType::Bash => {
-                vec![find_bash().into(), "-c".into(), command.into()]
+        // `context.shell` describes this machine, and a container is not this
+        // machine: its argv resolves *inside*, where neither `C:\Program
+        // Files\Git\bin\bash.exe` nor necessarily `/bin/bash` exists — the
+        // default image is Alpine, which ships `sh` alone. So a containered
+        // command gets the one shell the POSIX image contract promises, and the
+        // host shell selection applies only where the command actually runs.
+        let containered = context
+            .sandbox_policy
+            .as_ref()
+            .is_some_and(|p| p.backend == SandboxBackend::Container);
+        let shell_argv: Vec<String> = if containered {
+            vec!["sh".into(), "-c".into(), command.into()]
+        } else {
+            match context.shell {
+                ShellType::Cmd => vec!["cmd".into(), "/C".into(), command.into()],
+                ShellType::PowerShell => {
+                    vec![
+                        find_powershell().into(),
+                        "-NoProfile".into(),
+                        "-Command".into(),
+                        command.into(),
+                    ]
+                }
+                ShellType::Bash => {
+                    vec![find_bash().into(), "-c".into(), command.into()]
+                }
             }
         };
 
@@ -84,7 +98,12 @@ impl Tool for RunCommandTool {
             e.to_string()
         })?;
 
-        if is_sandbox_denied(&res) {
+        // Two conditions, and the second is not redundant. The heuristic
+        // already only fires for the one backend whose escalation is safe;
+        // asking the backend as well means a new backend cannot be added to
+        // that heuristic and silently inherit the host-retry card. See
+        // `SandboxBackend::may_retry_on_host`.
+        if is_sandbox_denied(&res) && res.ran_under.may_retry_on_host() {
             // The user is about to get an "allow this without the sandbox?"
             // prompt. Without this line there is nothing recording what was
             // blocked or why they were asked.
@@ -124,8 +143,15 @@ impl Tool for RunCommandTool {
 /// Heuristic ported from codex-rs/sandboxing/src/denial.rs, adjusted for
 /// Windows: a non-zero exit alone is not a denial — the output must show an
 /// access failure the restricted token would produce.
+///
+/// **Matched against the backend that ran the command, not against "a sandbox
+/// ran it".** These strings are what a Windows restricted token produces;
+/// another confinement refuses in its own words, and running its output past
+/// this list would either miss every refusal or, worse, match one of these by
+/// coincidence and offer to rerun the command outside a sandbox it was never
+/// in.
 fn is_sandbox_denied(res: &ExecResult) -> bool {
-    if !res.sandboxed || res.timed_out || res.exit_code == 0 {
+    if res.ran_under != SandboxBackend::WindowsRestrictedToken || res.timed_out || res.exit_code == 0 {
         return false;
     }
     let hay = format!(
@@ -213,6 +239,77 @@ pub(crate) fn find_bash() -> &'static str {
 mod tests {
     use super::*;
 
+    /// A connector that records the argv it was handed and answers success.
+    #[derive(Debug, Default)]
+    struct ArgvRecorder {
+        argv: std::sync::Mutex<Option<Vec<String>>>,
+    }
+
+    #[async_trait]
+    impl crate::container::CommandConnector for ArgvRecorder {
+        fn backend(&self) -> SandboxBackend {
+            SandboxBackend::Container
+        }
+        async fn execute(
+            &self,
+            argv: &[String],
+            _: &std::path::Path,
+            _: &std::path::Path,
+            _: &str,
+            _: Duration,
+            _: &tokio_util::sync::CancellationToken,
+        ) -> Result<ExecResult, crate::sandbox::ExecError> {
+            *self.argv.lock().unwrap() = Some(argv.to_vec());
+            Ok(ExecResult {
+                exit_code: 0,
+                stdout: b"ok".to_vec(),
+                stderr: Vec::new(),
+                timed_out: false,
+                truncated: false,
+                ran_under: SandboxBackend::Container,
+            })
+        }
+    }
+
+    /// **The shell is the container's, not this machine's.** `context.shell`
+    /// selected the argv unconditionally, so a Windows host sent `C:\Program
+    /// Files\Git\bin\bash.exe` — or PowerShell — into `docker exec`, where the
+    /// default image ships `sh` alone, and every command failed before running.
+    #[tokio::test]
+    async fn a_containered_command_gets_the_containers_shell_not_this_machines() {
+        let recorder = std::sync::Arc::new(ArgvRecorder::default());
+        let context = ToolContext {
+            working_directory: Some("/the/project".into()),
+            // The most host-bound choice there is: proof the selection is
+            // ignored where the command does not run on the host.
+            shell: ShellType::PowerShell,
+            file_access: crate::tools::FileAccess::Unrestricted,
+            project_id: None,
+            conversation_id: Some("c-1".into()),
+            turn_id: None,
+            assistant_id: None,
+            db_pool: None,
+            sandbox_policy: Some(crate::sandbox::SandboxPolicy {
+                project_dir: Some(std::path::PathBuf::from("/the/project")),
+                backend: SandboxBackend::Container,
+                connector: Some(recorder.clone()),
+                conversation_id: Some("c-1".into()),
+                ..Default::default()
+            }),
+            tool_secrets: Default::default(),
+            cancel: tokio_util::sync::CancellationToken::new(),
+        };
+
+        RunCommandTool
+            .execute(serde_json::json!({"command": "echo hi"}), &context)
+            .await
+            .unwrap();
+
+        let argv = recorder.argv.lock().unwrap().clone().expect("the connector ran");
+        assert_eq!(&argv[..2], &["sh".to_string(), "-c".to_string()], "{argv:?}");
+        assert_eq!(argv[2], "echo hi");
+    }
+
     fn exec_res(exit_code: i32, stderr: &str, sandboxed: bool, timed_out: bool) -> ExecResult {
         ExecResult {
             exit_code,
@@ -220,7 +317,11 @@ mod tests {
             stderr: stderr.as_bytes().to_vec(),
             timed_out,
             truncated: false,
-            sandboxed,
+            ran_under: if sandboxed {
+                SandboxBackend::WindowsRestrictedToken
+            } else {
+                SandboxBackend::Host
+            },
         }
     }
 
@@ -255,6 +356,47 @@ mod tests {
         assert!(!is_sandbox_denied(&exec_res(1, "Access is denied.", false, false)));
         assert!(!is_sandbox_denied(&exec_res(1, "Access is denied.", true, true)));
         assert!(!is_sandbox_denied(&exec_res(1, "some other failure", true, false)));
+    }
+
+    /// **The escalation gate.** The card this produces says "retry without the
+    /// sandbox", and what that means is decided entirely by which backend
+    /// refused: for a restricted token it is the same command on the same
+    /// machine with the token removed, and for anything that confines a command
+    /// *elsewhere* it is a different and much larger action than the one the
+    /// user is being asked about.
+    ///
+    /// Two things stand between a backend and that card and both are asserted
+    /// here, because either alone is one edit away from being bypassed: the
+    /// denial heuristic only recognises the backend whose words these are, and
+    /// `may_retry_on_host` only answers for the backend whose escalation is
+    /// safe.
+    #[test]
+    fn only_the_restricted_token_can_reach_the_host_retry_card() {
+        // The words of a Windows refusal, produced by something else. Both
+        // gates say no, so no card is offered.
+        let elsewhere = ExecResult {
+            exit_code: 1,
+            stdout: Vec::new(),
+            stderr: b"mkdir: cannot create directory: Permission denied".to_vec(),
+            timed_out: false,
+            truncated: false,
+            ran_under: SandboxBackend::Host,
+        };
+        assert!(!is_sandbox_denied(&elsewhere));
+        assert!(!elsewhere.ran_under.may_retry_on_host());
+
+        // And the one that may.
+        assert!(SandboxBackend::WindowsRestrictedToken.may_retry_on_host());
+        assert!(is_sandbox_denied(&exec_res(1, "Access is denied.", true, false)));
+    }
+
+    /// `ran_under` is what happened, not what was asked for. A caller reading
+    /// the *request* would call an unconfined command sandboxed on any platform
+    /// where the backend it named does not exist.
+    #[test]
+    fn a_result_reports_what_confined_it() {
+        assert!(!exec_res(0, "", false, false).was_sandboxed());
+        assert!(exec_res(0, "", true, false).was_sandboxed());
     }
 
     #[test]

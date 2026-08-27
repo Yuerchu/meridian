@@ -50,6 +50,14 @@ pub struct PendingApproval {
     pub retry_reason: Option<String>,
     /// Set when this call belongs to a delegated run.
     pub bubble: Option<Bubble>,
+    /// When this stops standing, if it ever does.
+    ///
+    /// **Not what ends the wait** — the waiter's own timer is, and it removes
+    /// the entry. This is here so a listing can decline to hand back a card in
+    /// the moment between the deadline and that timer's next tick; see
+    /// `crate::approval::is_expired`. `None` is a question with no deadline,
+    /// which is a real setting.
+    pub expires_at: Option<std::time::Instant>,
     pub sender: oneshot::Sender<ApprovalDecision>,
 }
 
@@ -91,6 +99,22 @@ impl ApprovalWaiters {
     /// in the app down with it.
     pub fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, PendingApproval>> {
         self.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Take a question out, if it is still there.
+    ///
+    /// **The `Some` is the right to act on it, not merely the entry.** Removing
+    /// a `PendingApproval` drops its sender and so ends the wait, which means
+    /// "who removes it" and "who ends it" are one question — and approve, deny
+    /// and expiry all race for it. A caller that gets `None` lost the race and
+    /// must do nothing at all, because whoever holds the `Some` is already
+    /// accounting for it.
+    ///
+    /// Named for that rather than left as `remove`: the previous name invited
+    /// `let _ = ...remove(id)`, which is exactly the call that produces two
+    /// accounts of one question.
+    pub fn claim(&self, approval_id: &str) -> Option<PendingApproval> {
+        self.lock().remove(approval_id)
     }
 }
 
@@ -256,6 +280,7 @@ mod tests {
             arguments: "{}".into(),
             retry_reason: None,
             bubble: None,
+            expires_at: None,
             sender: tx,
         };
         (entry, rx)

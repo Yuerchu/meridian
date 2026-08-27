@@ -149,10 +149,15 @@ impl Drop for TurnGuard<'_> {
         // Nobody is left to answer these. Left behind, they would show the user
         // a card whose buttons reach a receiver that has already gone, and the
         // registry would grow one entry per abandoned turn.
-        self.services
-            .approvals
-            .lock()
-            .retain(|_, pending| pending.turn_id != self.turn_id);
+        //
+        // Through `approval::retire_turn` rather than a bare `retain`: a card
+        // expiring as its turn dies is claimed by whichever of the two gets
+        // there first, and the loser does nothing.
+        meridian_core::approval::retire_turn(
+            self.services,
+            &self.turn_id,
+            meridian_core::approval::RetireCause::TurnGone,
+        );
         // Before the event, not after: a user who sends again the instant the
         // stream ends must not be told the conversation is busy.
         self.lease.take();
@@ -562,8 +567,9 @@ async fn chat_inner(
     let provider = provider::registry::create_provider(
         &resolved.provider_type,
         &resolved.base_url,
-        &resolved.api_key,
+        &resolved.credential,
         Some(&resolved.api_format),
+        Some(&resolved.transport_profile),
     );
 
     // Needed before the tool set is assembled, unlike the other two prefs which
@@ -691,6 +697,7 @@ async fn chat_inner(
         let pid = effective_provider_id.clone();
         let pt = resolved.provider_type.clone();
         let af = resolved.api_format.clone();
+        let tp = resolved.transport_profile.clone();
         let mid = model.clone();
         let level = effective_level.map(|s| s.to_string());
         let fast = fast.unwrap_or(conv_fast_mode);
@@ -702,6 +709,8 @@ async fn chat_inner(
                     provider_id: pid.as_deref(),
                     provider_type: &pt,
                     api_format: &af,
+
+                    transport_profile: &tp,
                     model: &mid,
                     thinking_level: level.as_deref(),
                     fast,
@@ -1073,8 +1082,10 @@ async fn chat_inner(
             Some((shell, sandbox, sleep))
         }).await.ok().flatten().unwrap_or((None, None, None))
         };
-    // Missing preference means enabled: sandbox-by-default on Windows.
-    let sandbox_enabled = sandbox_pref.as_deref() != Some("false");
+    // The same preference key, with more values in it. A second key would be
+    // one that could disagree with the first, and there is no reading of
+    // "enabled = false, mode = container" that is not a bug.
+    // Missing still means enabled: sandbox-by-default on Windows.
     // Keep the machine awake for the rest of the turn (RAII; missing pref = enabled).
     let _sleep_guard = (sleep_pref.as_deref() != Some("false")).then(|| services.sleep.begin_turn());
     let tool_secrets = {
@@ -1084,10 +1095,21 @@ async fn chat_inner(
             .await
             .map_err(|e| e.to_string())?
     };
+    // **The error is returned rather than swallowed into `None`.** A
+    // conversation set to run commands in a container and handed no policy
+    // would run them on the host, silently — which is the failure the setting
+    // exists to prevent, and the user would never learn of it. Failing the turn
+    // costs them a message and tells them what is wrong.
     #[cfg(not(target_os = "android"))]
-    let sandbox_policy = meridian_core::sandbox::default_policy_if_enabled(sandbox_enabled, project_path.as_deref());
+    let sandbox_policy = meridian_core::sandbox::resolve_sandbox_policy(
+        meridian_core::sandbox::ExecutionMode::parse(sandbox_pref.as_deref()),
+        project_path.as_deref(),
+        &conversation_id,
+        Some(services.containers.clone()),
+    )
+    .map_err(|e| e.to_string())?;
     #[cfg(target_os = "android")]
-    let _ = sandbox_enabled;
+    let _ = sandbox_pref;
     let tool_context = tools::ToolContext {
         working_directory: project_path,
         shell: shell_type
@@ -1173,6 +1195,10 @@ async fn chat_inner(
             unattended: false,
         },
     );
+    // Outermost, so it sees the reviewer's own refusals as well as the ones the
+    // user gave. Underneath it, the denials cheapest to repeat — the ones
+    // nothing stopped to ask about — would be exactly the ones it missed.
+    let approvals = meridian_core::agent::denied::DeniedMemory::wrap(&approvals);
     // Per turn, because a row it writes belongs to the turn it interrupted —
     // which is where the model reads it.
     let interjections =

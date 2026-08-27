@@ -324,6 +324,8 @@ async fn resolve_params(state: &SharedState, assistant: &Assistant) -> Result<cr
                 provider_id: provider_id.as_deref(),
                 provider_type: &resolved.provider_type,
                 api_format: &resolved.api_format,
+
+                transport_profile: &resolved.transport_profile,
                 model: &resolved.model,
                 thinking_level: None,
                 fast: false,
@@ -773,8 +775,9 @@ async fn build_provider(
     let provider = crate::provider::registry::create_provider(
         &resolved.provider_type,
         &resolved.base_url,
-        &resolved.api_key,
+        &resolved.credential,
         Some(&resolved.api_format),
+        Some(&resolved.transport_profile),
     );
     Ok((provider, resolved))
 }

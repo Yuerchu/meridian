@@ -140,6 +140,34 @@ pub fn run() {
                 tauri::async_runtime::spawn(bootstrap::reconnect_mcp(services));
             }
 
+            // Settle the containers an earlier run left: remove the ones whose
+            // conversation no longer exists, stop the ones still counting on
+            // their writable layer. This is the path that covers a crash, which
+            // the exit hook below never sees.
+            #[cfg(not(target_os = "android"))]
+            {
+                let services = services.clone();
+                tauri::async_runtime::spawn(async move {
+                    let pool = services.db.clone();
+                    let live = tokio::task::spawn_blocking(move || {
+                        let mut conn = pool.get().map_err(|e| e.to_string())?;
+                        meridian_core::db::ops::conversation::all_ids(&mut conn).map_err(|e| e.to_string())
+                    })
+                    .await
+                    .unwrap_or_else(|e| Err(e.to_string()));
+                    match live {
+                        Ok(live) => {
+                            services.containers.reconcile(&live).await;
+                        }
+                        // Reconciling against an unknown set would read as "no
+                        // conversations exist" and remove every container.
+                        Err(e) => {
+                            tracing::warn!(error = %e, "skipped container reconcile; could not list conversations")
+                        }
+                    }
+                });
+            }
+
             // Last thing in setup, so the deadline starts counting from the
             // moment the app could conceivably be shown.
             splash::arm(app.handle());
@@ -251,6 +279,19 @@ pub fn run() {
                             tracing::warn!("gave up waiting for the ACP adapters to stop");
                         }
                     }
+                    // Stopped, not removed: the writable layer is what the next
+                    // launch resumes. Bounded like the rest, because a daemon
+                    // that stopped answering must not hold the window open.
+                    #[cfg(not(target_os = "android"))]
+                    {
+                        let containers = services.containers.clone();
+                        if tokio::time::timeout(CONTAINER_SHUTDOWN_BUDGET, containers.stop_owned())
+                            .await
+                            .is_err()
+                        {
+                            tracing::warn!("gave up waiting for the command containers to stop");
+                        }
+                    }
                     handle.exit(code);
                 });
             }
@@ -271,6 +312,14 @@ const MCP_SHUTDOWN_BUDGET: std::time::Duration = std::time::Duration::from_secs(
 /// for it to actually be gone.
 #[cfg(not(target_os = "android"))]
 const ACP_SHUTDOWN_BUDGET: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// And for stopping command containers on the way out. Each `docker stop` gets
+/// one second of grace inside (`-t 1`, the only thing between commands is
+/// `sleep`), so this covers a few containers plus a slow daemon — and a daemon
+/// that answers nothing at all is the startup reconcile's problem, not the
+/// closing window's.
+#[cfg(not(target_os = "android"))]
+const CONTAINER_SHUTDOWN_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Stop the hosted adapters from a caller that cannot await.
 ///

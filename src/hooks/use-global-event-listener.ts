@@ -209,6 +209,14 @@ export function useGlobalEventListener() {
         return
       }
 
+      // The deadline passed with nobody answering. The turn is still running —
+      // this is not a stop — so nothing else would ever take the card down, and
+      // its buttons already reach a receiver that has gone.
+      if (p.type === 'tool_approval_expired' && p.approval_id) {
+        store.handleApprovalExpired(convId, p.approval_id)
+        return
+      }
+
       if (p.type === 'sub_agent_started' && p.call_id && p.sub_conversation_id && p.spawned_turn_id) {
         store.handleSubAgentStarted(convId, p.message_id!, p.call_id, {
           conversationId: p.sub_conversation_id,

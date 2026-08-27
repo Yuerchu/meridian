@@ -490,6 +490,65 @@ that from answering the user, because a total nobody can decompose is one nobody
   by its *value* — pointing `autoreview.model` at something permissive, or appending a line
   to `autoreview.allow_rules`, turns a settings write into permission to run anything.
 
+## How long a question stands, and who may end it
+
+`crate::approval` owns the wait every asker does — the desktop's cards, ACP permissions,
+ACP elicitation forms. All three had written the same `select!` by hand; a deadline arm
+added to two of three copies is a card that expires in some conversations and hangs in
+others, with nothing in the code saying which.
+
+- **Removing an entry is what ends a wait**, because dropping the sender wakes the
+  receiver. So "who removes it" and "who ends it" are one question, and approve, deny,
+  cancel and expiry all race for it. `ApprovalWaiters::claim` is the answer: an atomic
+  take whose `Some` is the *right to act*. The name carries that — `remove` invited
+  `let _ = …`, which is the call that produces two accounts of one question.
+- **There is no sweeper.** A timer, a filter over the list and a background pass would be
+  three competing removers for one entry, and the removal already wakes the waiter. The
+  waiter is by definition present, so it owns its own deadline; the filter in
+  `views_for` / `all_pending_approvals` survives as belt and braces and hides rather
+  than removes.
+- **Only expiry is announced.** Cancel and turn-gone happen as a turn ends, and its own
+  `stop` already tells every client its questions are over. Expiry has nothing else — the
+  turn is still running — so `tool_approval_expired` exists, and its handler settles the
+  *card* as well as the queue. That is the opposite of `retireAnsweredApproval`, which
+  deliberately leaves an ordinary card holding its `approval_id` because the question is
+  still owed; here it is not, and a card left `pending` with no id draws as
+  `requires-action` — a demand with nowhere to send an answer.
+- **Timing out is `Ok(None)`, never a denial.** The tool does not run and the turn says
+  so, rather than the model being told the user refused, which nobody did.
+- **OneBot is not on this**, and that is a fact about its register rather than an
+  omission: its approvals are keyed by chat session, answered with typed text, and its
+  sixty-second timeout is already the sole owner of that wait. Moving it here is a rewrite
+  of that model, not a timeout.
+
+`agent::denied` is the other half — a turn-scoped set of what has already been refused, so
+a model that retries an identical call is answered from memory instead of putting a second
+card in front of somebody who has already said no.
+
+- **Different arguments ask again**, which is the line between this and
+  `agent::loop_guard`. That one watches for a model *stuck* and holds a single
+  fingerprint, so anything in between resets it. This holds a set and never forgets — but
+  a model that reads a refusal and proposes something narrower is doing what was asked,
+  and must reach the user.
+- **A `None` is not remembered.** Nobody answering is not a refusal, and remembering it
+  would let a deadline quietly become a policy.
+- **The wrapping order is `DeniedMemory(AutoReviewed(asker))`.** The reviewer answers some
+  calls without the asker underneath it being reached; those are the denials cheapest to
+  repeat — nothing stopped to ask a person — and a memory placed *inside* would be exactly
+  the one that never saw them. Demonstrated by a test that wraps it both ways.
+- **A hosted ACP session is not covered.** `session/request_permission` is answered
+  directly and never touches a `dyn Approvals`, so there is no decorator position; giving
+  it the same memory means lifting the set somewhere both paths reach.
+- **`agent::call_identity` is what "the same call" means**, shared by both guards so they
+  cannot disagree. It replaced a `DefaultHasher` into a `u64`, neither half of which
+  survives being a protocol. `1` and `1.0`, `0` and `-0.0`, and the two spellings of `é`
+  are all deliberately *different* calls: being too fine costs one extra question, being
+  too coarse costs an unasked one. Object keys sort, array order does not. **An escalation
+  is its own `Aspect`** — refusing to run something outside the sandbox is not refusing to
+  run it, and the sandboxed attempt afterwards is the safer of the two. The golden vector
+  is what detects a change to any of it; the field framing is unambiguous by construction
+  and, measured, no single prefix in it is individually load-bearing today.
+
 ## Hosting Claude Code (ACP)
 
 `src-tauri/crates/core/src/acp/` runs another coding agent *inside* Meridian. This app is
@@ -878,6 +937,97 @@ the machines that want this already have node and a signed-in `claude`.
   `fs/read_text_file` and `fs/write_text_file`, after which every file it touches goes
   through this app — which is what a changes panel and a `FileAccess` policy would need.
 
+## The tool bridge
+
+`acp/bridge.rs` is a loopback MCP server, one per hosted session, lending the agent
+inside the things only Meridian knows — this conversation's memories, the app's own log,
+what the conversation has cost. Not what it already has: duplicating Claude Code's files
+and shell would be two routes to one effect with only one of them going through this
+app's approvals. The endpoint is a port the OS picked, a path nobody can guess and a
+bearer token, all three travelling together in `mcpServers` and none of them written to
+disk. `tests/mcp_bridge_probe.rs` is where the protocol facts below were measured; it is
+`#[ignore]`d, spends quota, and should be re-run before any of them is trusted again,
+since the adapter is deliberately unpinned.
+
+- **The server may be as small as the spec permits, and that is measured rather than
+  assumed.** POST only, one route, pure JSON: no SSE, no `Mcp-Session-Id`, no GET stream,
+  no DELETE. The client asks for the notification stream once, takes `405`, and carries
+  on. Two details a server written from the guess alone gets wrong — every request
+  *except the opening `initialize`* carries `MCP-Protocol-Version`, so requiring it
+  unconditionally rejects the handshake; and `tools/call` arrives with `_meta` carrying
+  `claudecode/toolUseId` and a `progressToken`, so refusing unknown members refuses every
+  call. `mcp/protocol.rs` grew `Incoming`/`Outgoing` for this direction rather than
+  widening `JsonRpcRequest`, which would let what a peer might send decide the type of an
+  id we choose ourselves.
+- **The server lives as long as the session; what it may *do* lives as long as the turn.**
+  A session outlives many turns and sits idle between them with no turn id, and a
+  `ToolContext` with `turn_id: None` breaks four things at once — per-turn limits stop
+  counting, the cancel token belongs to no prompt, a call arriving after its turn ended
+  still runs, and rows are filed under nothing. So a turn installs a snapshot, taken
+  **once** per call rather than read field by field, and re-checked at each of the three
+  points an await can end a turn underneath it. `tools/list` answers regardless: it
+  describes capability and executes nothing, and an idle session reporting no tools would
+  teach the model they do not exist.
+
+  The window is keyed on the **turn id**, not on a generation `begin_turn` hands back. A
+  counter works as an identity and fails as an API: it is a token the caller carries to
+  wherever the turn ends, and `finish` has a path where the turn's own state is already
+  gone — which would leave a window open with nothing able to name it. The id is known
+  everywhere, so `end_turn` sits above that early return.
+
+  **What it cannot do is reject a delayed call from an earlier turn**, and that is the
+  protocol rather than a gap. Nothing on the wire carries the issuing turn, so "issued in
+  A, arrived in B" and "issued in B, arrived in B" are the same bytes. Telling them apart
+  needs a per-turn URL; measured, a `session/load` *can* replace the descriptor, so the
+  price is a full reload per turn, which recites the whole history. Not worth it — and it
+  is the other reason the first tools here are read-only, bounded and idempotent. A test
+  pins the limitation so nobody later reads it as a guarantee.
+- **Scope is the wrapper's job, not the whitelist's.** A list of names says which tools
+  and nothing about how much each sees, and all three defaulted outward: memory falls back
+  to the *client-global* scope when a conversation has no project, `read_app_logs` has
+  `this_conversation` defaulting to **false**, and usage had no scope field at all until
+  `tools::usage` was written for this. So the bridge *builds* its tools rather than
+  filtering names, each already carrying the scope it may not leave, and `tools/call`
+  resolves against the same list `tools/list` renders — the "check what was actually
+  offered, not what a constant says" rule with the two made structurally identical.
+
+  The wrappers **overwrite** the scope on the context rather than asserting on it, so a
+  mistake in how the context is built cannot widen them. The log one closes two holes and
+  either alone leaves the other open: the argument, and the context — the tool resolves
+  "this conversation" from `context.conversation_id`, and `None` there means no filter at
+  all, which is the same unrestricted read reached from the other side. Memory is hidden
+  entirely when there is no project rather than offered and refused: project membership
+  cannot change under a session, so the list is stable, and a model that cannot see a tool
+  will not keep trying it or tell the user about a capability it lacks. None of this
+  changes what these tools do on the desktop.
+- **Permission is not the boundary, even though the adapter does ask.** Measured: a
+  `session/request_permission` arrives before an MCP tool call, offering
+  `reject_once`/`allow_once`/`allow_always`, and lands on `acp::approvals::ask` with no
+  code in the bridge at all. That is a bonus. The same probe found the session's `mode`
+  option offers `bypassPermissions`, `dontAsk` and `auto` — the user's to set, invisible
+  from here, and the first removes the ask entirely. So every tool on this bridge has to
+  be one that needs no permission. A writing tool waits for the bridge to ask on its own
+  behalf, which is also the point at which `auto_review` not covering hosted sessions
+  stops being a known trade-off and becomes a blocker.
+- **A missing bridge degrades visibly, which is the inverse of the `hooks/` rule.** That
+  gate fails open because a missed review costs one missed review. This is a set of
+  capabilities already promised to an agent: absent silently, it works around them or says
+  it saved a memory using a tool that was never there. The notice rides `Owed` under the
+  same "reading it is not saying it" rule, and goes *behind* the memory-loss one, which
+  says the agent cannot see the conversation at all. A session that asked for no tools is
+  not missing any — an import opens a session only to read its recital — so the flag is
+  the conjunction, never `bridge.is_none()`.
+- **Both openers advertise it.** `session/new` and `session/load` alike, because a resumed
+  session builds its query through the second: advertised at only the first, a conversation
+  has tools until the app is next restarted and none afterwards. They go through
+  `new_session_params` / `load_session_params` rather than being built inline, and that is
+  a test seam rather than tidiness — a version asserting on `advertised()` alone stayed
+  green while `session/load` was mutated back to `Vec::new()`.
+- **The user's own MCP servers are still not forwarded**, and `NewSessionParams`'s comment
+  now says which of the two it means. Those are wired to this app's tool loop and its
+  approvals; handing them over gives another agent a second, unowned route to the same
+  side effects. The distinction is ownership, not the field.
+
 ## The prompt queue
 
 `queued_prompts` (migration 34) is what a person stacks up while an agent is working.
@@ -1032,6 +1182,152 @@ rather than in core because what it dispatches to are the Tauri commands.
   and `networkSecurityConfig` matches hostnames, not the CIDR a router hands out. The
   boundary is the token, which `listen_guard` refuses to let be shorter than 16 characters
   off loopback. Tailscale is the answer for anyone wanting the transport encrypted.
+
+## Running commands in a container
+
+`crate::container` places a conversation's commands in a Docker container instead of
+on this machine. Turned on per install with `sandbox.enabled = container`; `auto` is
+the old behaviour (a Windows restricted token, nothing elsewhere) and remains the
+default. Every claim below was measured —
+`src-tauri/crates/core/tests/docker_probe.rs` is the measurement, it is `#[ignore]`d,
+and it should be re-run before any of it is relied on, against Docker Desktop 28.4.0
+with linux containers on Windows.
+
+- **One container per *conversation*, entered per command.** That is what makes the
+  filesystem continuous — something `pip install`ed is still there next command,
+  measured — and it is why there is a lifecycle owner, an ownership label, and
+  reclaim of what a crash left behind. `docker exec` needs a container that already
+  exists, which is the gap in "just wrap the argv".
+- **Killing the exec client does not kill the process inside.** Measured: it was
+  still running afterwards. So a container backend owes its own cancellation and
+  cannot reuse `execute_unsandboxed`'s process-tree kill — otherwise "cancelled"
+  means "we stopped watching", with the command still writing to the workspace and
+  the next command entering a container with a predecessor loose in it.
+- **And the obvious way to reach it is wrong.** `pkill -f <pattern>` from a second
+  exec exits 143: its own argv contains the pattern, so it kills its own shell, and
+  whether the target died first is a race. What works is a marker the target
+  *carries* and the killer only *names* — `docker exec -e MERIDIAN_EXEC_ID=…`, found
+  through `/proc/*/environ`. A pid is not available; the client is never told one.
+  So every command needs an id, and cancelling is a second exec.
+- **The writable layer carries between execs; the working directory does not.**
+  `cd /tmp` in one exec leaves the next at `/`. So each exec starts at the
+  conversation's project root, exactly as `working_dir_or_current()` already resolves
+  per call — and a logical cwd maintained by parsing `cd` out of shell commands is an
+  approximation that can never be made to agree with what the shell did. If a
+  persistent cwd is wanted it has to be an explicit operation.
+- **`ran_under` is an enum and `without_sandbox()` was the danger.** The escalation
+  path removes the whole policy and runs on the host. For a container that turns "the
+  container refused this" into a card offering a retry that actually means "run it on
+  your machine instead" — the worst kind of mis-authorisation, because the wording
+  hides the size of it. `SandboxBackend::may_retry_on_host` answers for exactly one
+  backend, and `run_command` checks it *as well as* the denial heuristic: the
+  heuristic's keywords are a restricted token's own words, so asking the backend too
+  is what stops a new backend inheriting the card by being added to the list.
+- **Nothing falls back to the host, at either of two gates.** `resolve_sandbox_policy`
+  refuses to *build* a container policy it cannot satisfy — a missing connector is
+  `Infrastructure`, a conversation with no project to mount is `Unsupported` — and
+  `execute` refuses to *honour* one that arrives without a connector anyway. The old
+  `default_policy_if_enabled` could only answer `None`, and `None` runs on the host
+  without anybody being told, which is the failure the whole feature exists to
+  prevent. It survives for `ExecutionMode::Auto`, where `None` is honest.
+- **The mode has three values, not two, and `Auto` is why.** The preference was
+  on/off and had to mean "the best this platform has". Read as a request for a
+  *particular* backend it would fail on Linux for everybody, so "whatever you have"
+  stays its own value. One key, more values: a second key would be one that could
+  disagree, and there is no reading of "enabled=false, mode=container" that is not a
+  bug. An unparseable value is `Auto`, never `Off`.
+- **Secrets do not travel in `-e`.** Measured: an environment variable is in
+  `docker inspect` for the life of the container, readable by anything that can reach
+  the daemon. Nothing is passed yet, which is correct and incomplete.
+- **A label is enough to find every container this app owns**, which is what reclaim
+  after a crash needs, and `docker stop` returns with `.State.Running` already false —
+  the same invariant `acp::peer` holds for the adapter. Reclaim is `reconcile`, judged
+  against `conversation::all_ids` — the *unfiltered* list, since an orphan judged
+  against the sidebar's filtered one is an archived conversation's container. A live
+  conversation's container is stopped, never removed: its writable layer is the
+  continuity `ensure`'s restart branch resumes, and the old remove-everything reclaim
+  contradicted that branch. Wired at startup (which is what covers a crash), at exit
+  (`stop_owned`, bounded), and into `delete_conversation` beside the ACP close.
+- **`custom.rs` goes in too.** It used to pass `None` and always run on the host,
+  which was defensible while the only sandbox narrowed a command on this machine
+  anyway. `run_command` inside a container and a user's own command tool outside it,
+  in the same turn, is not a session sandbox — it is a sandbox with a documented way
+  round it. The cost is real and belongs to the user: a custom tool written against
+  the host's toolchain will not find it inside, and the setting says so.
+- **OneBot stays on the platform default, and that is a boundary rather than an
+  oversight.** A container mounts the conversation's project and a QQ session has
+  none, so routing it through the resolver would fail every QQ turn the moment
+  somebody set container mode for their desktop work. What confines a headless
+  session is already stricter where it matters — its `FileAccess` is an empty root
+  set, so paths fail validation before a command is reached.
+
+### Putting the hosted agent in one
+
+`acp.command` has always been free-form, so `docker run -i --rm … claude-agent-acp`
+already launches a hosted session inside a container without any support from this
+app. That is not the same as the feature being built, and one part of it was
+silently broken.
+
+- **`MERIDIAN_ACP_HOSTED` did not survive.** `AdapterProcess::spawn` sets it with
+  `.env`, which reaches the child — and measured, `docker run` does not forward the
+  client's environment past itself. So the agent inside could not see it, the
+  `meridian-plan-gate` plugin did not stand down, and every hosted turn ended by
+  asking this app to review a transcript it already had: a second model for minutes
+  and another conversation in the sidebar. Nothing failed. It just cost twice.
+  `forward_marker_into_container` injects `-e MERIDIAN_ACP_HOSTED` — the bare form,
+  so the value stays decided in one place — immediately after the `run`, because
+  anywhere past the image name it is an argument to the agent instead.
+
+  Rewriting somebody's configured command is intrusive, and it is done only where
+  the meaning is unambiguous: a known launcher, a `run`, nothing forwarding it
+  already. Everything else is left exactly as written.
+
+- **The working directory is translated, and the mount table is the command the user
+  already wrote.** `session/new` refuses a directory that does not exist, and
+  `C:\work\repo` does not exist inside the container — so an adapter launched that
+  way never opened a session at all, with an error saying the path was wrong rather
+  than that it was in the wrong coordinate system. `acp::mounts` reads the `-v`,
+  `--volume` and `--mount` flags off `acp.command` and translates both ways. A second
+  setting listing the mounts would be a second thing that can disagree with the
+  command, and the disagreement looks exactly like this failure.
+
+  **The colon is the part that fails silently.** `-v C:\work\repo:/repo` has three
+  colons and only the second separates. Split on the first and the host path becomes
+  `C`, which Docker does not refuse — it creates a named volume — so the agent gets an
+  empty directory instead of the project and nothing anywhere says why. The container
+  half is always absolute and POSIX, so the split is decidable from the right; the
+  tests exist because the failure is invisible.
+
+  A path that maps nowhere is passed through unchanged rather than guessed at: the
+  adapter's own "no such directory" names the path it really looked for.
+
+- **The rest of containerising the agent is not built**, and the reasons are worth
+  keeping. Paths coming *back* — the ones in `session/update` — are still shown in the
+  container's terms, so a tool card names `/repo/src/lib.rs` rather than something the
+  reader can open. `kill_on_drop` kills the `docker` client and not the container, the
+  same finding `crate::container` is built around. `~/.claude` would need mounting
+  read-only to reuse the login. And the tool bridge only reaches the host on Docker
+  Desktop — measured — so a Linux daemon needs it to bind wider or not at all.
+- **The bridge conflict is real but not where it was expected.** `acp::bridge` binds
+  `127.0.0.1`, and loopback inside a container is the container. Measured on Docker
+  Desktop, a host server on `127.0.0.1` *is* reachable through
+  `--add-host=host.docker.internal:host-gateway`, because that name resolves to a proxy
+  (`192.168.65.254`) which connects from the host side. **This does not generalise**: a
+  native Linux daemon resolves it to the bridge address, the connection arrives on a
+  real interface, and a loopback-only server is not listening there. So until a
+  boundary-crossing endpoint is built, a containerised launch (a `run` on a known
+  launcher — `process::launches_in_container`, the same reading the marker rewrite and
+  the mount map use) is not offered the bridge at all: the descriptor would advertise
+  tools every call to which dials the container's own loopback, and the model would
+  keep trying them or claim to have used them. Withholding rides the existing
+  `tools_lost` conjunction, so the agent is told by the `NO_TOOLS` notice instead of
+  discovering it one dead call at a time. Binding wider stays refused by default —
+  widening makes the bearer token the only boundary instead of the second one.
+- **Two containers per conversation is the thing to rule out.** A hosted ACP agent runs
+  its own tools and never goes through `run_command`, so giving it both an agent
+  container and a command container produces two independent writable views of one
+  workspace. Native conversations use the command container; `agent_kind =
+  'claude_code'` uses the agent container as its only execution environment.
 
 ## Logging
 

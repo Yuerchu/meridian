@@ -288,7 +288,7 @@ pub(super) async fn oneshot_completion(
     // The turn parameters are resolved like any other turn: an extraction
     // request that invents its own temperature is rejected by models the chat
     // path already talks to.
-    let (provider_type, base_url, api_key, api_format, turn, provider_id, provider_name, model) = {
+    let (provider_type, base_url, credential, api_format, transport_profile, turn, provider_id, provider_name, model) = {
         let pool2 = state.services.db.clone();
         let secrets2 = state.services.secrets.clone();
         let assistant2 = assistant.clone();
@@ -298,9 +298,10 @@ pub(super) async fn oneshot_completion(
                 provider_name,
                 provider_type,
                 base_url,
-                api_key,
+                credential,
                 model,
                 api_format,
+                transport_profile,
             } = resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())?;
             let effective_model = assistant2.as_ref().and_then(|a| a.model_id.clone()).unwrap_or(model);
             let turn = crate::agent::resolve_turn_params(
@@ -310,6 +311,8 @@ pub(super) async fn oneshot_completion(
                     provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
                     provider_type: &provider_type,
                     api_format: &api_format,
+
+                    transport_profile: &transport_profile,
                     model: &effective_model,
                     thinking_level: None,
                     fast: false,
@@ -318,8 +321,9 @@ pub(super) async fn oneshot_completion(
             Ok::<_, String>((
                 provider_type,
                 base_url,
-                api_key,
+                credential,
                 api_format,
+                transport_profile,
                 turn,
                 provider_id,
                 provider_name,
@@ -329,7 +333,13 @@ pub(super) async fn oneshot_completion(
         .await
         .map_err(|e| e.to_string())??
     };
-    let provider = provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
+    let provider = provider::registry::create_provider(
+        &provider_type,
+        &base_url,
+        &credential,
+        Some(&api_format),
+        Some(&transport_profile),
+    );
 
     let messages = vec![
         ChatMessage {
@@ -535,9 +545,10 @@ async fn headless_chat_inner(
     let crate::agent::ResolvedProvider {
         provider_type,
         base_url,
-        api_key,
+        credential,
         model,
         api_format,
+        transport_profile,
         provider_id,
         provider_name,
     } = {
@@ -548,7 +559,13 @@ async fn headless_chat_inner(
             .await
             .map_err(|e| e.to_string())??
     };
-    let provider = provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
+    let provider = provider::registry::create_provider(
+        &provider_type,
+        &base_url,
+        &credential,
+        Some(&api_format),
+        Some(&transport_profile),
+    );
 
     // The same resolver the desktop loop uses. Sharing it is what keeps a QQ
     // assistant's tool set honest: this path used to read `enabled_tools` only,
@@ -600,6 +617,7 @@ async fn headless_chat_inner(
         let assistant2 = assistant.clone();
         let pt = provider_type.clone();
         let af = api_format.clone();
+        let tp = transport_profile.clone();
         let em = effective_model.clone();
         // The provider this turn actually resolved to, not the assistant's
         // stored field. They differ whenever the assistant names none and the
@@ -617,6 +635,8 @@ async fn headless_chat_inner(
                     provider_id: Some(pid.as_str()),
                     provider_type: &pt,
                     api_format: &af,
+
+                    transport_profile: &tp,
                     model: &em,
                     thinking_level: None,
                     fast: false,
@@ -947,6 +967,18 @@ async fn headless_chat_inner(
         turn_id: Some(turn_id.to_string()),
         assistant_id: assistant_id.map(|s| s.to_string()),
         db_pool: Some(pool.clone()),
+        // **Still the platform default, and deliberately not the container
+        // resolver.** A container mounts the conversation's project, and a QQ
+        // session has none — so `ExecutionMode::Container` has nothing to
+        // mount, and routing this through the resolver would fail every QQ turn
+        // the moment somebody set that mode for their desktop work.
+        //
+        // Saying so rather than letting it read as an oversight: what confines
+        // a headless session is already stricter in the direction that matters,
+        // since its `FileAccess` is an empty root set and every path fails
+        // validation before a command is reached. Giving QQ its own execution
+        // environment is a separate feature, and it starts by deciding what a
+        // session with no project would even mount.
         #[cfg(not(target_os = "android"))]
         sandbox_policy: crate::sandbox::default_policy_if_enabled(sandbox_enabled, None),
         tool_secrets: {
@@ -1001,6 +1033,10 @@ async fn headless_chat_inner(
         ),
         None => crate::agent::auto_review::AutoReviewed::inert(&asker),
     };
+    // Outermost, so it sees the reviewer's own refusals as well as the ones a
+    // person gave. Underneath it, the denials cheapest to repeat — the ones
+    // nothing stopped to ask about — would be exactly the ones it missed.
+    let approvals = crate::agent::denied::DeniedMemory::wrap(&approvals);
     let commentary = interim_text_fn.map(ChatCommentary);
     let surface = qq_tools.map(QqSurface);
     let steering = session_inbox.map(|inbox| InboxSteering {

@@ -155,6 +155,16 @@ pub(crate) async fn enter(
                 "denied",
             ));
         }
+        // Nobody answered — the card expired or the turn outlived it. Saying
+        // "the user declined" attributes a decision nobody made; the port's
+        // contract is that an unanswered question is never a refusal.
+        None => {
+            return Ok(TransitionEffect::said(
+                "No one answered the request to enter plan mode before it expired. \
+                 Carry on as you were; you may offer it again later.",
+                "denied",
+            ));
+        }
         _ => {
             return Ok(TransitionEffect::said(
                 "The user declined to switch to plan mode. Carry on as you were.",
@@ -253,6 +263,13 @@ where
                     "The user sent the plan back: {reason}\n\nYou are still in \
                      plan mode. Revise the plan and call exit_plan again."
                 ),
+                "denied",
+            ),
+            // Same rule as `enter`: an unanswered card is not a verdict on the
+            // plan, and the model should offer it again rather than revise.
+            None => TransitionEffect::said(
+                "No one answered before the plan approval expired. You are still in \
+                 plan mode; you may present the plan again.",
                 "denied",
             ),
             _ => TransitionEffect::said(

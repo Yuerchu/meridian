@@ -58,8 +58,7 @@ pub fn resolve_provider_config(
         let mut conn = get_conn(pool)?;
         let provider =
             db::ops::provider::get_provider(&mut conn, provider_id).map_err(|e| format!("Provider not found: {e}"))?;
-        let api_key = get_provider_api_key(secrets, provider_id)
-            .ok_or_else(|| format!("API Key not set for provider '{}'", provider.name))?;
+        let credential = resolve_credential(secrets, &provider)?;
         let model = assistant
             .and_then(|a| a.model_id.clone())
             .ok_or("No model configured. Go to Settings → Assistant to set a model.")?;
@@ -69,17 +68,23 @@ pub fn resolve_provider_config(
             provider_name: provider.name,
             provider_type: provider.provider_type,
             base_url,
-            api_key,
+            credential,
             model,
             api_format: provider.api_format,
+            transport_profile: provider.transport_profile,
         });
     }
 
     // Fallback: first enabled provider
     let mut conn = get_conn(pool)?;
+    // Still only the first enabled provider, and still all-or-nothing on it: if
+    // its credential cannot be resolved this falls through to "no provider
+    // configured" rather than moving on to the next row. A login that needs no
+    // key resolves here on its own terms instead of being rejected for lacking
+    // something it never had.
     if let Ok(providers) = db::ops::provider::list_providers(&mut conn)
         && let Some(p) = providers.into_iter().find(|p| p.is_enabled != 0)
-        && let Some(api_key) = get_provider_api_key(secrets, &p.id)
+        && let Ok(credential) = resolve_credential(secrets, &p)
     {
         let model = assistant
             .and_then(|a| a.model_id.clone())
@@ -90,9 +95,10 @@ pub fn resolve_provider_config(
             provider_name: p.name,
             provider_type: p.provider_type,
             base_url,
-            api_key,
+            credential,
             model,
             api_format: p.api_format,
+            transport_profile: p.transport_profile,
         });
     }
 
@@ -117,9 +123,51 @@ pub struct ResolvedProvider {
     pub provider_name: String,
     pub provider_type: String,
     pub base_url: String,
-    pub api_key: String,
+    pub credential: provider::Credential,
     pub model: String,
     pub api_format: String,
+    /// Which wire this row speaks. Travels beside `api_format` because the two
+    /// together pick the adapter — the format alone cannot separate OpenAI's
+    /// Responses API from ChatGPT's Codex backend, which are both `responses`.
+    pub transport_profile: String,
+}
+
+/// The credential for a provider row, by whatever route its login uses.
+///
+/// One place rather than three, because the "API Key not set" message it can
+/// produce has to keep appearing for every provider that does need one. Folding
+/// the bypass into each call site is how a login that needs no key ends up
+/// letting a misconfigured API-key provider through as an anonymous request.
+fn resolve_credential(
+    secrets: &SecretsManager,
+    provider: &db::models::provider::Provider,
+) -> Result<provider::Credential, String> {
+    match provider.credential_kind.as_str() {
+        "codex_cli" => {
+            let home = crate::codex_auth::storage::find_codex_home()
+                .ok_or("Could not work out where the Codex CLI keeps its login (no home directory).")?;
+            // Resolved, not validated: whether the login is present, usable, or
+            // needs renewing is decided when a request actually needs a token.
+            // Reading the file here would put a disk hit on every turn setup and
+            // would report "not logged in" for a session that a refresh could
+            // have saved.
+            Ok(provider::Credential::ChatGpt(
+                crate::codex_auth::registry().get(crate::codex_auth::StoreId::CodexCli { home }),
+            ))
+        }
+        // Reserved: the in-app login writes to a store this app owns. Nothing
+        // creates such a row yet, and the manager refuses it with a message
+        // rather than pretending.
+        "chatgpt_oauth" => Ok(provider::Credential::ChatGpt(crate::codex_auth::registry().get(
+            crate::codex_auth::StoreId::MeridianOwned {
+                provider_id: provider.id.clone(),
+                slot: "default".into(),
+            },
+        ))),
+        _ => get_provider_api_key(secrets, &provider.id)
+            .map(provider::Credential::ApiKey)
+            .ok_or_else(|| format!("API Key not set for provider '{}'", provider.name)),
+    }
 }
 
 /// The assistant's provider and model, with a caller's choices layered on top.
@@ -176,16 +224,16 @@ fn resolve_named(
 ) -> Result<ResolvedProvider, String> {
     let mut conn = get_conn(pool)?;
     let p = db::ops::provider::get_provider(&mut conn, provider_id).map_err(|e| e.to_string())?;
-    let api_key = get_provider_api_key(secrets, provider_id)
-        .ok_or_else(|| format!("API Key not set for provider '{}'", p.name))?;
+    let credential = resolve_credential(secrets, &p)?;
     Ok(ResolvedProvider {
         provider_id: p.id,
         provider_name: p.name,
         provider_type: p.provider_type,
         base_url: p.base_url.trim_end_matches('/').to_string(),
-        api_key,
+        credential,
         model,
         api_format: p.api_format,
+        transport_profile: p.transport_profile,
     })
 }
 
@@ -245,6 +293,9 @@ pub struct TurnParamsInput<'a> {
     pub provider_id: Option<&'a str>,
     pub provider_type: &'a str,
     pub api_format: &'a str,
+    /// Which wire this turn will really go out on, so the capabilities reflect
+    /// what can actually be sent rather than what the family supports in general.
+    pub transport_profile: &'a str,
     pub model: &'a str,
     pub thinking_level: Option<&'a str>,
     pub fast: bool,
@@ -293,6 +344,7 @@ pub fn resolve_turn_params(pool: &DbPool, input: TurnParamsInput<'_>) -> Result<
         provider_id,
         provider_type,
         api_format,
+        transport_profile,
         model,
         thinking_level,
         fast,
@@ -312,7 +364,7 @@ pub fn resolve_turn_params(pool: &DbPool, input: TurnParamsInput<'_>) -> Result<
         None => None,
     };
 
-    let mut caps = provider::capabilities::resolve(provider_type, Some(api_format), model);
+    let mut caps = provider::capabilities::resolve_on(provider_type, Some(api_format), Some(transport_profile), model);
     provider::capabilities::apply_overrides(
         &mut caps,
         model_config.as_ref().and_then(|mc| mc.capability_overrides.as_deref()),
@@ -411,6 +463,7 @@ mod tests {
                 provider_id: None,
                 provider_type: "openai",
                 api_format: "responses",
+                transport_profile: "standard",
                 model,
                 thinking_level: None,
                 fast: false,
@@ -467,6 +520,9 @@ mod tests {
                     created_at: 0,
                     updated_at: 0,
                     api_format: "chat",
+                    catalog_id: None,
+                    credential_kind: "api_key",
+                    transport_profile: "standard",
                 },
             )
             .unwrap();
@@ -503,6 +559,7 @@ mod tests {
                 provider_id: Some("p1"),
                 provider_type: "openai",
                 api_format: "chat",
+                transport_profile: "standard",
                 model: "gpt-4o",
                 thinking_level: None,
                 fast: false,
@@ -566,6 +623,9 @@ mod tests {
                     created_at: 0,
                     updated_at: 0,
                     api_format: "responses",
+                    catalog_id: None,
+                    credential_kind: "api_key",
+                    transport_profile: "standard",
                 },
             )
             .unwrap();
@@ -602,6 +662,7 @@ mod tests {
                 provider_id: Some("p1"),
                 provider_type: "xai",
                 api_format: "responses",
+                transport_profile: "standard",
                 model: "grok-4.6",
                 thinking_level: None,
                 fast: false,
@@ -618,6 +679,7 @@ mod tests {
                 provider_id: Some("p1"),
                 provider_type: "xai",
                 api_format: "chat_completions",
+                transport_profile: "standard",
                 model: "grok-4.6",
                 thinking_level: None,
                 fast: false,
@@ -659,6 +721,9 @@ mod tests {
                 created_at: 0,
                 updated_at: 0,
                 api_format: "chat",
+                catalog_id: None,
+                credential_kind: "api_key",
+                transport_profile: "standard",
             },
         )
         .unwrap();
@@ -700,7 +765,7 @@ mod tests {
             resolved.base_url, "https://api.deepseek.com/v1",
             "trailing slash trimmed"
         );
-        assert_eq!(resolved.api_key, "sk-test");
+        assert_eq!(resolved.credential.api_key(), "sk-test");
         assert_eq!(resolved.api_format, "chat");
     }
 
@@ -756,6 +821,7 @@ mod tests {
                 provider_id: None,
                 provider_type: "openai",
                 api_format: "chat",
+                transport_profile: "standard",
                 model: "some-model-nobody-catalogued",
                 thinking_level: None,
                 fast: false,

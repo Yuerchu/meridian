@@ -356,6 +356,11 @@ fn merge_stop_usage(prompt_side: Option<&TokenUsage>, delta: Option<&AnthropicUs
 
 #[async_trait]
 impl ChatProvider for AnthropicProvider {
+    #[cfg(test)]
+    fn adapter_name(&self) -> &'static str {
+        "AnthropicProvider"
+    }
+
     async fn stream_chat_with_tools(
         &self,
         messages: Vec<ChatMessage>,

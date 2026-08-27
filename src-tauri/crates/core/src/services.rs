@@ -77,6 +77,16 @@ pub struct ServicesInner {
     /// child process — cannot exist.
     #[cfg(not(target_os = "android"))]
     pub acp: Arc<crate::acp::AcpRegistry>,
+    /// Where a conversation's commands run, when that is not this machine.
+    ///
+    /// Held here because a container outlives every command that enters it and
+    /// has to be findable again — `sandbox::execute` is a function taking
+    /// parameters and has nowhere to keep one. Built at startup whether or not
+    /// anybody has turned it on: constructing it costs nothing and reaches no
+    /// daemon, and having it absent until first use would make "is Docker
+    /// available" a question asked in the middle of a turn.
+    #[cfg(not(target_os = "android"))]
+    pub containers: Arc<crate::container::DockerConnector>,
     /// How to start an ordinary turn, once the shell has said.
     ///
     /// The one direction that has to cross the line the other way. Running a
@@ -124,4 +134,41 @@ impl std::ops::Deref for Services {
     fn deref(&self) -> &ServicesInner {
         &self.0
     }
+}
+
+/// A `Services` with nothing running behind it.
+///
+/// Every part of it is lazy — the secrets manager does not reach the keyring
+/// until asked, the MCP registry has no servers, the sleep inhibitor nothing to
+/// inhibit — so this costs an in-memory database and whatever `dir` is.
+///
+/// It lived in `acp::session`'s tests while that was the only module driving
+/// these directly, with a note saying the second caller should move it here.
+/// `acp::bridge` is the second caller.
+#[cfg(test)]
+pub fn bare_services(dir: &std::path::Path) -> Services {
+    Services::new(ServicesInner {
+        db: crate::db::test_db(),
+        secrets: Arc::new(crate::secrets::SecretsManager::new(dir.to_path_buf())),
+        tools: Arc::new(tools::ToolRegistry::new(dir.join("skills"), dir.join("logs"))),
+        mcp: mcp::McpRegistry::new(),
+        turns: Arc::new(TurnCoordinator::new()),
+        approvals: ApprovalWaiters::new(),
+        sub_agent_inboxes: AppSubAgentInboxes::default(),
+        compact_breakers: Mutex::new(HashMap::new()),
+        voice: VoiceState::new(),
+        corpus: Arc::new(crate::voice_corpus::CorpusCoordinator::new(dir)),
+        voice_limiter: Arc::new(crate::tts::limiter::VoiceLimiter::default()),
+        sleep: AppSleepInhibitor::new(),
+        events: EventBus::new(),
+        paths: Paths {
+            data_dir: dir.to_path_buf(),
+            skills_root: dir.join("skills"),
+        },
+        #[cfg(not(target_os = "android"))]
+        acp: crate::acp::AcpRegistry::new(),
+        #[cfg(not(target_os = "android"))]
+        containers: crate::container::DockerConnector::new(Default::default()),
+        turn_starter: std::sync::OnceLock::new(),
+    })
 }

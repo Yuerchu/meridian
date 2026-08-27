@@ -17,6 +17,26 @@ pub async fn fetch_models(
     base_url: &str,
     api_key: &str,
 ) -> Result<Vec<ModelInfo>, ProviderError> {
+    fetch_models_on(provider_type, api_format, None, base_url, api_key).await
+}
+
+/// The same, told which wire the provider is configured for.
+///
+/// Split out because the ChatGPT backend has no `/models` at all: asking it
+/// yields a 404, and the set of models a subscription may reach is both
+/// narrower than the API's and different per account. Measured — `gpt-5.4`
+/// answers *"not supported when using Codex with a ChatGPT account"* while the
+/// model in the CLI's own config succeeds.
+pub async fn fetch_models_on(
+    provider_type: &str,
+    api_format: Option<&str>,
+    transport_profile: Option<&str>,
+    base_url: &str,
+    api_key: &str,
+) -> Result<Vec<ModelInfo>, ProviderError> {
+    if transport_profile == Some("chatgpt_codex") {
+        return Ok(codex_models());
+    }
     match provider_type {
         "anthropic" => fetch_anthropic_models(base_url, api_key).await,
         "xai" => {
@@ -39,6 +59,46 @@ pub async fn fetch_models(
         }
         _ => fetch_openai_models(base_url, api_key).await,
     }
+}
+
+/// What a ChatGPT subscription can reach, best-effort.
+///
+/// **The CLI's own configured model comes first**, and that is the important
+/// part rather than a nicety: the accepted set moves, differs by plan, and is
+/// published nowhere. Whatever `codex` is set to is a model this account has
+/// been able to use, which is a better guess than anything shipped in a binary.
+///
+/// The rest is a short list of families that have been available on this
+/// backend. It is a starting point for the picker, not an authority — a model
+/// typed by hand works just as well, and one listed here may still be refused.
+fn codex_models() -> Vec<ModelInfo> {
+    let mut ids: Vec<String> = Vec::new();
+    if let Some(configured) = crate::codex_auth::storage::find_codex_home().and_then(|home| configured_model(&home)) {
+        ids.push(configured);
+    }
+    for fallback in ["gpt-5.6", "gpt-5.6-terra", "gpt-5.5", "gpt-5.1-codex"] {
+        if !ids.iter().any(|id| id == fallback) {
+            ids.push(fallback.to_string());
+        }
+    }
+    ids.into_iter().map(|id| ModelInfo { name: id.clone(), id }).collect()
+}
+
+/// The `model` line from the CLI's `config.toml`.
+///
+/// Parsed by hand rather than with a TOML crate: one scalar at the top level is
+/// not worth a dependency, and a file this cannot understand simply yields
+/// nothing — the fallback list still applies.
+fn configured_model(codex_home: &std::path::Path) -> Option<String> {
+    let text = std::fs::read_to_string(codex_home.join("config.toml")).ok()?;
+    text.lines()
+        .map(str::trim)
+        // Only before the first table header: `model` under `[profiles.x]` is
+        // that profile's, not the active one.
+        .take_while(|line| !line.starts_with('['))
+        .filter_map(|line| line.strip_prefix("model")?.trim().strip_prefix('='))
+        .map(|value| value.trim().trim_matches('"').to_string())
+        .find(|value| !value.is_empty())
 }
 
 fn is_google_agent_model(id: &str) -> bool {
@@ -70,7 +130,45 @@ fn is_xai_text_model(id: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_google_agent_model, is_xai_text_model};
+    use super::{configured_model, is_google_agent_model, is_xai_text_model};
+
+    fn config_with(body: &str) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("config.toml"), body).unwrap();
+        dir
+    }
+
+    /// The CLI's own model is the best evidence available of what this account
+    /// can reach — the accepted set moves, differs by plan and is published
+    /// nowhere.
+    #[test]
+    fn the_configured_model_is_read_from_the_cli_config() {
+        let dir = config_with("model = \"gpt-5.6-terra\"\nmodel_reasoning_effort = \"xhigh\"\n");
+        assert_eq!(configured_model(dir.path()).as_deref(), Some("gpt-5.6-terra"));
+    }
+
+    /// A `model` under a profile table belongs to that profile, not to the
+    /// active configuration — reading it would offer a model the user is not
+    /// actually set up to use.
+    #[test]
+    fn a_profiles_model_is_not_mistaken_for_the_active_one() {
+        let dir = config_with("model = \"top-level\"\n\n[profiles.other]\nmodel = \"not-this-one\"\n");
+        assert_eq!(configured_model(dir.path()).as_deref(), Some("top-level"));
+
+        let only_profile = config_with("[profiles.other]\nmodel = \"not-this-one\"\n");
+        assert_eq!(configured_model(only_profile.path()), None);
+    }
+
+    /// A file we cannot understand costs the hint, not the feature: the
+    /// fallback list still applies.
+    #[test]
+    fn an_unreadable_config_yields_nothing_rather_than_failing() {
+        assert_eq!(configured_model(std::path::Path::new("/nonexistent")), None);
+        let empty = config_with("# just a comment\n");
+        assert_eq!(configured_model(empty.path()), None);
+        let blank = config_with("model = \"\"\n");
+        assert_eq!(configured_model(blank.path()), None);
+    }
 
     #[test]
     fn xai_filter_keeps_grok_and_drops_the_other_modalities() {

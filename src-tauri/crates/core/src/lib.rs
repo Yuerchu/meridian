@@ -8,8 +8,14 @@ pub mod agent;
 /// declares them.
 #[cfg(target_os = "android")]
 pub mod android_bridge;
+pub mod approval;
 pub mod bootstrap;
 pub mod client;
+pub mod codex_auth;
+/// Running a command in a container rather than on this machine. Desktop only:
+/// Android has no `run_command` to place, and no Docker to place it in.
+#[cfg(not(target_os = "android"))]
+pub mod container;
 pub mod db;
 pub mod emoji;
 pub mod events;

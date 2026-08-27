@@ -38,7 +38,7 @@ use super::mapping::{self, Effect};
 use super::peer::{Handler, Peer, PeerError};
 use super::process::AdapterProcess;
 use super::protocol::{self, SessionNotification};
-use super::{AcpConfig, approvals, elicitation};
+use super::{AcpConfig, approvals, bridge, elicitation};
 
 /// What this app calls itself when it introduces itself to the adapter.
 const CLIENT_NAME: &str = "meridian";
@@ -233,6 +233,12 @@ struct Shared {
     /// been delivered — the same rule the interrupted-turn report follows, for
     /// the same reason.
     memory_lost: Mutex<bool>,
+    /// Whether this session was opened without its tool bridge.
+    ///
+    /// Same lifecycle as `memory_lost`: set at the open, read when a turn
+    /// assembles its prompt, cleared only once that prompt came back. See
+    /// [`NO_TOOLS`] for why the failure is visible rather than silent.
+    tools_lost: Mutex<bool>,
 }
 
 impl Shared {
@@ -978,6 +984,11 @@ struct Owed {
     /// same evidence and forgetting to clear it would repeat the notice on
     /// every turn for the life of the session.
     memory_lost: bool,
+    /// The tool bridge was promised and is not there.
+    ///
+    /// Same shape as `memory_lost` and for the same reason: something to say
+    /// exactly once, cleared only once a prompt carrying it came back.
+    tools_lost: bool,
 }
 
 /// Whether the prompt carrying an [`Owed`] ever reached the adapter.
@@ -1029,6 +1040,25 @@ Do not answer as though you remember. Say plainly that this session lost its \
 memory of the conversation, and ask them to restate whatever matters.\n\
 </no_session_memory>";
 
+/// What the agent is told when the tool bridge did not come up.
+///
+/// **The bridge fails visibly rather than open**, which is the opposite of
+/// `hooks/`. That gate is an external review, and a review that does not run
+/// costs one missed review. This is a set of capabilities already promised to
+/// an agent: missing silently, it works around their absence, or — worse —
+/// tells the user it saved a memory using a tool that was never there.
+///
+/// It rides `Owed` rather than getting a UI of its own for the same reason the
+/// memory notice does: the agent's own first sentence lands exactly where the
+/// confusion would have been.
+const NO_TOOLS: &str = "<meridian_tools_unavailable>\n\
+Meridian could not start the local tool bridge for this session, so its \
+tools — reading this conversation's memories, its application log and its \
+usage — are not available to you this time. Nothing else is affected.\n\
+Mention this once, briefly, if the user asks for something that would have \
+needed them. Do not claim to have used them.\n\
+</meridian_tools_unavailable>";
+
 impl Owed {
     /// The message with whatever has to be explained in front of it.
     ///
@@ -1042,6 +1072,12 @@ impl Owed {
         // this one says it is not following any of it.
         if self.memory_lost {
             parts.push(NO_MEMORY);
+        }
+        // After the memory notice and before the two ledgers. It is about this
+        // session's own capabilities rather than about anything that happened
+        // in the conversation, which is what the ledgers are.
+        if self.tools_lost {
+            parts.push(NO_TOOLS);
         }
         if let Some(report) = &self.turns {
             parts.push(report.text());
@@ -1057,7 +1093,7 @@ impl Owed {
     }
 
     fn is_empty(&self) -> bool {
-        self.turns.is_none() && self.queued.is_none() && !self.memory_lost
+        self.turns.is_none() && self.queued.is_none() && !self.memory_lost && !self.tools_lost
     }
 
     /// Write the ledgers down, now that the agent has had them.
@@ -1070,6 +1106,11 @@ impl Owed {
         }
         if self.memory_lost
             && let Ok(mut slot) = shared.memory_lost.lock()
+        {
+            *slot = false;
+        }
+        if self.tools_lost
+            && let Ok(mut slot) = shared.tools_lost.lock()
         {
             *slot = false;
         }
@@ -1095,6 +1136,12 @@ pub struct AcpSession {
     /// whichever session the SDK actually recovered, which need not be the one
     /// asked for.
     pub resumed: bool,
+    /// This session's tool bridge, when it came up.
+    ///
+    /// Held so a turn can open and shut its window, and so [`Self::close`] can
+    /// take the port down with the process — a bridge outliving its session
+    /// would be an open endpoint onto a conversation nothing is answering.
+    bridge: Option<Arc<bridge::Bridge>>,
 }
 
 /// What the handshake settled.
@@ -1128,6 +1175,14 @@ struct Opening<'a> {
     /// "the adapter cannot load sessions" want three different responses and
     /// the fallback turns all three into the same one.
     fall_back_to_new: bool,
+    /// Whether this session should be lent Meridian's own tools.
+    ///
+    /// False for an import, which opens a session only to read its recital: no
+    /// turn ever runs on it, so the bridge would have no window to open and
+    /// the conversation it would be scoped to does not exist in the database
+    /// yet. A port bound for the length of a recital is a port bound for
+    /// nothing.
+    wants_tools: bool,
 }
 
 impl AcpSession {
@@ -1143,7 +1198,66 @@ impl AcpSession {
         conversation_id: String,
         opening: Opening<'_>,
     ) -> Result<Arc<Self>, String> {
-        let process = AdapterProcess::spawn(&config.command, &config.args).await?;
+        // Before the adapter, because its descriptor has to go in the very
+        // first thing said to it. A failure here is *not* a failure to open —
+        // see [`NO_TOOLS`] — but it does have to be visible, which is what
+        // `tools_lost` is for.
+        //
+        // **A containerised adapter is not offered the bridge at all.** The
+        // endpoint binds this host's loopback, and `127.0.0.1` inside the
+        // container is the container — so a descriptor sent in would advertise
+        // tools every call to which dials nowhere, and the model would keep
+        // trying them or claim to have used them. Reaching through the
+        // boundary (`host.docker.internal`, wider binds) is measured to work
+        // only on Docker Desktop and weakens the loopback boundary elsewhere,
+        // so until that is built the honest answer is the one `NO_TOOLS`
+        // already says: the tools are missing, and the agent is told so.
+        let containerised = super::process::launches_in_container(&config.command, &config.args);
+        let bridge = if opening.wants_tools && !containerised {
+            match Self::start_bridge(&services, &conversation_id).await {
+                Ok(bridge) => Some(bridge),
+                Err(e) => {
+                    tracing::error!(
+                        error = %e,
+                        conversation_id = %conversation_id,
+                        "the tool bridge did not start; this session will have no Meridian tools"
+                    );
+                    None
+                }
+            }
+        } else {
+            if opening.wants_tools {
+                tracing::warn!(
+                    conversation_id = %conversation_id,
+                    "the adapter runs in a container the bridge's loopback endpoint cannot reach; \
+                     this session will have no Meridian tools"
+                );
+            }
+            None
+        };
+        // Asked for and not got. An import asks for none, so its `None` is not
+        // a loss and must not produce a notice — which is why this is the
+        // conjunction rather than `bridge.is_none()`.
+        let tools_lost = opening.wants_tools && bridge.is_none();
+
+        // From the command the user configured, which is the only place the
+        // mapping exists — see `cwd_for_agent`. Empty for every adapter that
+        // is not containerised, which makes the translation the identity.
+        let mounts = super::mounts::MountMap::from_command(&config.command, &config.args);
+
+        let process = match AdapterProcess::spawn(&config.command, &config.args).await {
+            Ok(process) => process,
+            Err(e) => {
+                // The bridge is already listening on a port with a task behind
+                // it. Returning without this leaks both for every failed
+                // launch, and failing to launch is the ordinary case on a
+                // machine without node.
+                if let Some(bridge) = &bridge {
+                    bridge.stop();
+                }
+                return Err(e);
+            }
+        };
 
         let shared = Arc::new(Shared {
             services,
@@ -1155,6 +1269,7 @@ impl AcpSession {
             announced: Mutex::new(HashSet::new()),
             unwritten_rows: std::sync::atomic::AtomicUsize::new(0),
             memory_lost: Mutex::new(false),
+            tools_lost: Mutex::new(tools_lost),
         });
         let peer = Peer::start(process, shared.clone() as Arc<dyn Handler>);
 
@@ -1163,7 +1278,7 @@ impl AcpSession {
         // live child nobody has a handle to any more — an orphaned node process
         // per failed attempt, and the usual reason to fail (not signed in) is
         // one the user retries.
-        match Self::handshake(&peer, &shared, &opening).await {
+        match Self::handshake(&peer, &shared, &opening, bridge.as_ref(), &mounts).await {
             Ok(Handshook {
                 acp_session_id,
                 steering,
@@ -1192,13 +1307,44 @@ impl AcpSession {
                     cwd: opening.cwd.to_string(),
                     steering,
                     resumed,
+                    bridge,
                 }))
             }
             Err(e) => {
                 peer.stop().await;
+                if let Some(bridge) = &bridge {
+                    bridge.stop();
+                }
                 Err(e)
             }
         }
+    }
+
+    /// Bind this session's tool bridge, scoped to the conversation it serves.
+    ///
+    /// The project is read once, here, because it is what decides whether the
+    /// memory tools are offered at all and it cannot change under a session.
+    /// A conversation that has none is not an error — it gets the two tools
+    /// that need no project.
+    async fn start_bridge(services: &Services, conversation_id: &str) -> Result<Arc<bridge::Bridge>, String> {
+        let pool = services.db.clone();
+        let id = conversation_id.to_string();
+        let project_id = tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool)?;
+            crate::db::ops::conversation::get_conversation(&mut conn, &id)
+                .map(|c| c.project_id)
+                .map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+
+        bridge::Bridge::start(
+            services.clone(),
+            conversation_id,
+            project_id.as_deref(),
+            services.paths.data_dir.join("logs"),
+        )
+        .await
     }
 
     /// A session for a conversation being created. Nothing to resume, and
@@ -1219,6 +1365,7 @@ impl AcpSession {
                 transcript_above: false,
                 keep_recital: false,
                 fall_back_to_new: true,
+                wants_tools: true,
             },
         )
         .await
@@ -1244,6 +1391,7 @@ impl AcpSession {
                 transcript_above,
                 keep_recital: false,
                 fall_back_to_new: true,
+                wants_tools: true,
             },
         )
         .await
@@ -1280,6 +1428,7 @@ impl AcpSession {
                 transcript_above: false,
                 keep_recital: true,
                 fall_back_to_new: false,
+                wants_tools: false,
             },
         )
         .await
@@ -1321,7 +1470,13 @@ impl AcpSession {
     ///
     /// Split out so [`open_with`](Self::open_with) has exactly one failure path
     /// to clean up after, rather than four `?`s that each need remembering.
-    async fn handshake(peer: &Arc<Peer>, shared: &Shared, opening: &Opening<'_>) -> Result<Handshook, String> {
+    async fn handshake(
+        peer: &Arc<Peer>,
+        shared: &Shared,
+        opening: &Opening<'_>,
+        bridge: Option<&Arc<bridge::Bridge>>,
+        mounts: &super::mounts::MountMap,
+    ) -> Result<Handshook, String> {
         let cwd = opening.cwd;
         let init = peer
             .request(
@@ -1376,7 +1531,7 @@ impl AcpSession {
                 .then(|| "this adapter cannot load existing sessions".to_string());
             let outcome = match refused {
                 Some(why) => Err(why),
-                None => Self::load(peer, shared, cwd, resume, opening.keep_recital).await,
+                None => Self::load(peer, shared, cwd, resume, opening.keep_recital, bridge, mounts).await,
             };
             match outcome {
                 Ok(session) => {
@@ -1417,11 +1572,7 @@ impl AcpSession {
         // `AsyncFn` closure that captures `&peer` and `&shared` produces a
         // future whose `Send` bound Tauri's `#[tauri::command]` macro cannot
         // satisfy for arbitrary lifetimes.
-        let new = |meta| protocol::NewSessionParams {
-            cwd: cwd.to_string(),
-            mcp_servers: Vec::new(),
-            meta,
-        };
+        let new = |meta| new_session_params(cwd, bridge, meta, mounts);
         let session = match peer
             .request(
                 "session/new",
@@ -1475,7 +1626,15 @@ impl AcpSession {
     /// The gate is also still up while the options are merged, because that is
     /// what keeps an import from announcing knobs for a conversation whose row
     /// has not been written yet.
-    async fn load(peer: &Arc<Peer>, shared: &Shared, cwd: &str, resume: &str, keep: bool) -> Result<String, String> {
+    async fn load(
+        peer: &Arc<Peer>,
+        shared: &Shared,
+        cwd: &str,
+        resume: &str,
+        keep: bool,
+        bridge: Option<&Arc<bridge::Bridge>>,
+        mounts: &super::mounts::MountMap,
+    ) -> Result<String, String> {
         // One attempt, gate and all. Raised *inside* rather than around the two,
         // because a refused attempt can have recited before it failed and
         // `Replay::Collect` starts each one with an empty recital — a retry
@@ -1490,12 +1649,7 @@ impl AcpSession {
         // `null` reaches here as `Value::Null`, which deserialises to the
         // default rather than an error.
         // Same retry shape as `handshake`, inlined for the same `Send` reason.
-        let load_params = |meta| protocol::LoadSessionParams {
-            session_id: resume.to_string(),
-            cwd: cwd.to_string(),
-            mcp_servers: Vec::new(),
-            meta,
-        };
+        let load_params = |meta| load_session_params(resume, cwd, bridge, meta, mounts);
         let load_once = async |meta| {
             let params = serde_json::to_value(load_params(meta)).map_err(|e| e.to_string())?;
             shared.set_replay(if keep {
@@ -1750,6 +1904,12 @@ impl AcpSession {
         )
         .await?;
 
+        // The bridge's window, opened here and shut in `finish`. Before the
+        // prompt goes out, because the agent may call a tool as its first act.
+        if let Some(bridge) = &self.bridge {
+            bridge.begin_turn(&turn_id, Some(&assistant_message_id), cancel.clone());
+        }
+
         if let Ok(mut slot) = self.shared.turn.lock() {
             *slot = Some(TurnState {
                 turn_id: turn_id.clone(),
@@ -1878,6 +2038,7 @@ impl AcpSession {
             // byte leaves; clearing it here would spend the one chance to say
             // it on a prompt nobody received.
             memory_lost: self.shared.memory_lost.lock().is_ok_and(|slot| *slot),
+            tools_lost: self.shared.tools_lost.lock().is_ok_and(|slot| *slot),
         }
     }
 
@@ -2001,6 +2162,15 @@ impl AcpSession {
         // outcome alone was a real defect: see [`PromptDelivery`].
         if sent.read_by(&outcome) && !owed.is_empty() {
             owed.settle(services, &self.shared).await;
+        }
+
+        // Above the early return below, because the window has to shut on every
+        // path out of a turn and the one where the state is already gone is the
+        // one most likely to leave something running. Keyed on the turn id, so
+        // this cannot shut the *next* turn's window if it lands late — and
+        // cheap for a session that has no bridge.
+        if let Some(bridge) = &self.bridge {
+            bridge.end_turn(turn_id);
         }
 
         let state = self.shared.turn.lock().ok().and_then(|mut slot| slot.take());
@@ -2142,10 +2312,10 @@ impl AcpSession {
     /// conversation may already have questions of its own outstanding, and
     /// clearing those would strand *it* instead.
     fn retire_approvals(&self, services: &Services, turn_id: &str) {
-        let mut register = services.approvals.lock();
-        let before = register.len();
-        register.retain(|_, pending| pending.turn_id != turn_id);
-        let retired = before - register.len();
+        // Through `approval::retire_turn` rather than a bare `retain`, so a
+        // question already claimed by its own deadline is not accounted for a
+        // second time here.
+        let retired = crate::approval::retire_turn(services, turn_id, crate::approval::RetireCause::TurnGone);
         if retired > 0 {
             tracing::debug!(
                 retired,
@@ -2176,6 +2346,99 @@ impl AcpSession {
     pub async fn close(&self) {
         self.cancel().await;
         self.peer.stop().await;
+        // With it, not after it. The bridge is a listening port and a task, and
+        // both are meaningless once the agent that was given the address is
+        // gone — what would be left is an open endpoint onto a conversation
+        // nothing is answering.
+        if let Some(bridge) = &self.bridge {
+            bridge.stop();
+        }
+    }
+}
+
+/// What goes in `mcpServers`, for whichever way a session is being opened.
+///
+/// Empty when there is no bridge, which the field requires anyway: the spec
+/// makes it mandatory even when there is nothing in it.
+fn advertised(bridge: Option<&Arc<bridge::Bridge>>) -> Vec<serde_json::Value> {
+    bridge.map(|b| vec![b.descriptor()]).unwrap_or_default()
+}
+
+/// The directory to tell the agent about, which is not always the one this app
+/// holds.
+///
+/// An adapter launched with `docker run -v C:\work\repo:/repo …` is on the far
+/// side of a wall: `C:\work\repo` names nothing it can reach. Sending it
+/// anyway is not a subtle failure — `session/new` refuses a directory that does
+/// not exist, so a containerised adapter simply never opens a session, and the
+/// message says the path is wrong rather than that it is in the wrong
+/// coordinate system.
+///
+/// **The mounts come from the command the user already wrote.** A mount list
+/// configured beside it is one that can disagree with it, and the disagreement
+/// looks exactly like this failure. See [`bridge::mounts`].
+///
+/// A path that maps nowhere is left alone rather than guessed at: the adapter's
+/// own error about a directory it cannot find is more use than one this app
+/// invented, and an empty map — every non-container adapter — is the identity.
+///
+/// [`bridge::mounts`]: super::mounts
+fn cwd_for_agent(cwd: &str, mounts: &super::mounts::MountMap) -> String {
+    if mounts.is_empty() {
+        return cwd.to_string();
+    }
+    match mounts.to_container(std::path::Path::new(cwd)) {
+        Some(inside) => {
+            tracing::debug!(inside = %inside, "translated the working directory for a containerised adapter");
+            inside
+        }
+        None => {
+            tracing::warn!(
+                "this conversation's directory is not inside any of the adapter's mounts; \
+                 sending it unchanged, which the agent will probably refuse"
+            );
+            cwd.to_string()
+        }
+    }
+}
+
+/// The two openers' parameters, built where a test can reach them.
+///
+/// **There are two ways into a session and they are easy to get out of step.**
+/// A resumed session builds its query through `session/load`, so a bridge
+/// advertised only at `session/new` gives a conversation its tools until the
+/// app is next restarted and none afterwards — a feature that appears to break
+/// itself overnight, on a path nothing else exercises.
+///
+/// These are free functions rather than the closures they replaced because a
+/// test asserting on `advertised` alone proves nothing about either caller:
+/// mutating `session/load` back to `Vec::new()` left such a test green. The
+/// seam has to be where the parameters are actually assembled.
+fn new_session_params(
+    cwd: &str,
+    bridge: Option<&Arc<bridge::Bridge>>,
+    meta: Option<protocol::SessionMeta>,
+    mounts: &super::mounts::MountMap,
+) -> protocol::NewSessionParams {
+    protocol::NewSessionParams {
+        cwd: cwd_for_agent(cwd, mounts),
+        mcp_servers: advertised(bridge),
+        meta,
+    }
+}
+
+fn load_session_params(
+    resume: &str,
+    cwd: &str,
+    bridge: Option<&Arc<bridge::Bridge>>,
+    meta: Option<protocol::SessionMeta>,
+    mounts: &super::mounts::MountMap,
+) -> protocol::LoadSessionParams {
+    protocol::LoadSessionParams {
+        session_id: resume.to_string(),
+        cwd: cwd_for_agent(cwd, mounts),
+        mcp_servers: advertised(bridge),
+        meta,
     }
 }
 
@@ -2395,6 +2658,7 @@ mod tests {
             ),
             queued: None,
             memory_lost: false,
+            tools_lost: false,
         };
         assert!(!owed.is_empty(), "a turn killed inside a tool is owed an explanation");
 
@@ -2419,6 +2683,7 @@ mod tests {
             ),
             queued: None,
             memory_lost: true,
+            tools_lost: false,
         };
         let sent = blind.in_front_of("carry on");
         assert!(sent.starts_with("<no_session_memory>"), "{sent}");
@@ -2436,6 +2701,162 @@ mod tests {
         };
         assert!(!alone.is_empty());
         assert!(alone.in_front_of("hello").ends_with("\n\nhello"));
+    }
+
+    /// A capability that was promised and is missing has to be *said*, not
+    /// logged. The inverse of the `hooks/` rule and for a stated reason: a
+    /// missed review costs one review, while an agent that cannot see its tools
+    /// works around them or claims to have used them.
+    #[test]
+    fn a_missing_tool_bridge_is_something_the_agent_is_told() {
+        let lost = Owed {
+            tools_lost: true,
+            ..Owed::default()
+        };
+        assert!(!lost.is_empty(), "a session with no tools has something to say");
+
+        let sent = lost.in_front_of("what do you remember?");
+        assert!(sent.contains("<meridian_tools_unavailable>"), "{sent}");
+        assert!(sent.ends_with("what do you remember?"), "{sent}");
+        // Explicit, because a model told only that something failed tends to
+        // apologise for the app rather than get on with the question.
+        assert!(sent.contains("Do not claim to have used them"), "{sent}");
+    }
+
+    /// And it goes behind the memory notice: that one says the agent cannot see
+    /// the conversation at all, which changes how everything after it reads.
+    #[test]
+    fn the_blindness_notice_still_comes_before_the_tools_one() {
+        let both = Owed {
+            memory_lost: true,
+            tools_lost: true,
+            ..Owed::default()
+        };
+        let sent = both.in_front_of("hello");
+        assert!(
+            sent.find("<no_session_memory>") < sent.find("<meridian_tools_unavailable>"),
+            "{sent}"
+        );
+    }
+
+    /// A session that never asked for tools is not missing any. An import opens
+    /// a session only to read its recital, and a notice there would be an
+    /// apology for a capability nobody wanted.
+    #[test]
+    fn a_session_that_wanted_no_tools_says_nothing_about_them() {
+        let quiet = Owed::default();
+        assert!(quiet.is_empty());
+        assert_eq!(quiet.in_front_of("hello"), "hello");
+    }
+
+    /// Both ways of opening a session advertise the same thing.
+    ///
+    /// The failure this is about does not look like a bug at first: a bridge
+    /// advertised at `session/new` and forgotten at `session/load` gives a
+    /// conversation its tools until the app restarts and none afterwards.
+    #[tokio::test]
+    async fn a_resumed_session_advertises_the_same_bridge_as_a_new_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let services = bare_services(dir.path());
+        let bridge = bridge::Bridge::start(services, "c-1", None, dir.path().join("logs"))
+            .await
+            .expect("the bridge binds");
+
+        // Through the constructors the openers actually use. Asserting on
+        // `advertised` instead left this green while `session/load` was mutated
+        // back to `Vec::new()` — the assertion was beside the defect.
+        let opened = new_session_params("/repo", Some(&bridge), None, &mounts::MountMap::default());
+        let resumed = load_session_params("s-1", "/repo", Some(&bridge), None, &mounts::MountMap::default());
+
+        assert_eq!(opened.mcp_servers.len(), 1, "a new session was given no tools");
+        assert_eq!(
+            opened.mcp_servers, resumed.mcp_servers,
+            "a resumed session would have lost its tools"
+        );
+        assert_eq!(opened.mcp_servers[0]["name"], serde_json::json!("meridian"));
+
+        bridge.stop();
+    }
+
+    /// And a session opened without one advertises nothing rather than a
+    /// half-filled descriptor. The field is mandatory even when empty.
+    /// **What a containerised adapter is told the directory is.**
+    ///
+    /// Not a display nicety: `session/new` refuses a directory that does not
+    /// exist, and `C:\work\repo` does not exist inside the container. Sent
+    /// unchanged, the session never opens and the message says the path is
+    /// wrong rather than that it is in the wrong coordinate system.
+    ///
+    /// Through the constructors both openers use, for the reason the bridge
+    /// test above records: asserting on the translation helper alone stayed
+    /// green while one of the two call sites was mutated away.
+    #[test]
+    fn a_containerised_adapter_is_told_the_path_it_can_reach() {
+        let mounts = mounts::MountMap::from_command(
+            "docker",
+            &["run", "-v", "C:\\work\\repo:/repo", "img"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        );
+
+        let opened = new_session_params("C:\\work\\repo", None, None, &mounts);
+        assert_eq!(opened.cwd, "/repo");
+        let resumed = load_session_params("s-1", "C:\\work\\repo", None, None, &mounts);
+        assert_eq!(
+            resumed.cwd, "/repo",
+            "a resumed session was sent a path the container cannot reach"
+        );
+    }
+
+    /// The ordinary adapter shares this filesystem, so the translation is the
+    /// identity and the host path goes through untouched.
+    #[test]
+    fn an_ordinary_adapter_is_told_the_host_path() {
+        let none = mounts::MountMap::default();
+        assert_eq!(
+            new_session_params("C:\\work\\repo", None, None, &none).cwd,
+            "C:\\work\\repo"
+        );
+        assert_eq!(
+            load_session_params("s-1", "/home/me/repo", None, None, &none).cwd,
+            "/home/me/repo"
+        );
+    }
+
+    /// A directory outside every mount is sent as it stands rather than
+    /// guessed at. The adapter's own "no such directory" names the path it
+    /// actually looked for, which is more use than one this app invented.
+    #[test]
+    fn a_directory_outside_the_mounts_is_not_invented() {
+        let mounts = mounts::MountMap::from_command(
+            "docker",
+            &["run", "-v", "/home/me/repo:/repo", "img"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        );
+        assert_eq!(
+            new_session_params("/somewhere/else", None, None, &mounts).cwd,
+            "/somewhere/else"
+        );
+    }
+
+    #[test]
+    fn a_session_with_no_bridge_advertises_an_empty_list() {
+        assert!(
+            new_session_params("/repo", None, None, &mounts::MountMap::default())
+                .mcp_servers
+                .is_empty()
+        );
+        assert!(
+            load_session_params("s-1", "/repo", None, None, &mounts::MountMap::default())
+                .mcp_servers
+                .is_empty()
+        );
+        let encoded =
+            serde_json::to_value(new_session_params("/repo", None, None, &mounts::MountMap::default())).unwrap();
+        assert_eq!(encoded["mcpServers"], serde_json::json!([]), "{encoded}");
     }
 
     /// Only what the update mentions is touched, and a knob it has never
@@ -2483,38 +2904,8 @@ mod tests {
         assert!(!PromptDelivery::NeverSent.read_by(&died()));
     }
 
-    /// A `Services` with nothing running behind it.
-    ///
-    /// Every part of it is lazy — the secrets manager does not reach the
-    /// keyring until asked, the MCP registry has no servers, the sleep
-    /// inhibitor nothing to inhibit — so this costs an in-memory database and a
-    /// temp directory. Local to this module because it is the only one that
-    /// drives [`Shared`] directly; the second caller should move it to
-    /// `services.rs`.
-    fn bare_services(dir: &std::path::Path) -> Services {
-        crate::services::Services::new(crate::services::ServicesInner {
-            db: crate::db::test_db(),
-            secrets: Arc::new(crate::secrets::SecretsManager::new(dir.to_path_buf())),
-            tools: Arc::new(crate::tools::ToolRegistry::new(dir.join("skills"), dir.join("logs"))),
-            mcp: crate::mcp::McpRegistry::new(),
-            turns: Arc::new(crate::turn::TurnCoordinator::new()),
-            approvals: crate::state::ApprovalWaiters::new(),
-            sub_agent_inboxes: crate::state::AppSubAgentInboxes::default(),
-            compact_breakers: tokio::sync::Mutex::new(std::collections::HashMap::new()),
-            voice: crate::state::VoiceState::new(),
-            corpus: Arc::new(crate::voice_corpus::CorpusCoordinator::new(dir)),
-            voice_limiter: Arc::new(crate::tts::limiter::VoiceLimiter::default()),
-            sleep: crate::sleep_inhibitor::AppSleepInhibitor::new(),
-            events: crate::events::EventBus::new(),
-            paths: crate::services::Paths {
-                data_dir: dir.to_path_buf(),
-                skills_root: dir.join("skills"),
-            },
-            #[cfg(not(target_os = "android"))]
-            acp: crate::acp::AcpRegistry::new(),
-            turn_starter: std::sync::OnceLock::new(),
-        })
-    }
+    use super::super::mounts;
+    use crate::services::bare_services;
 
     fn update(json: serde_json::Value) -> SessionNotification {
         serde_json::from_value(serde_json::json!({ "sessionId": "s", "update": json })).expect("a session update")
@@ -2581,6 +2972,7 @@ mod tests {
             announced: Mutex::new(HashSet::new()),
             unwritten_rows: std::sync::atomic::AtomicUsize::new(0),
             memory_lost: Mutex::new(false),
+            tools_lost: Mutex::new(false),
         };
 
         // The first announcement is the placeholder one: the adapter knows a
@@ -2688,6 +3080,7 @@ mod tests {
             announced: Mutex::new(HashSet::new()),
             unwritten_rows: std::sync::atomic::AtomicUsize::new(0),
             memory_lost: Mutex::new(false),
+            tools_lost: Mutex::new(false),
         };
 
         shared.absorb(update(call("A", "Bash", serde_json::json!({})))).await;

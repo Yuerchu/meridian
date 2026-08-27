@@ -515,6 +515,11 @@ fn extract_tool_calls_from_text(text: &str) -> (String, Vec<ToolCall>) {
 
 #[async_trait]
 impl ChatProvider for GemmaToolProvider {
+    #[cfg(test)]
+    fn adapter_name(&self) -> &'static str {
+        "GemmaToolProvider"
+    }
+
     async fn stream_chat_with_tools(
         &self,
         messages: Vec<ChatMessage>,

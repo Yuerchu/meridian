@@ -164,7 +164,7 @@ pub async fn do_compact(
     // The turn parameters use the same resolution as a normal turn: a
     // summarisation request that invents its own temperature or output ceiling
     // is rejected by models the chat path already knows how to talk to.
-    let (provider_type, base_url, api_key, model, api_format, turn, provider_id, provider_name) = {
+    let (provider_type, base_url, credential, model, api_format, transport_profile, turn, provider_id, provider_name) = {
         let pool2 = pool.clone();
         let secrets2 = secrets.clone();
         let assistant2 = assistant.cloned();
@@ -172,9 +172,10 @@ pub async fn do_compact(
             let crate::agent::ResolvedProvider {
                 provider_type,
                 base_url,
-                api_key,
+                credential,
                 model,
                 api_format,
+                transport_profile,
                 provider_id,
                 provider_name,
             } = resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())?;
@@ -185,6 +186,8 @@ pub async fn do_compact(
                     provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
                     provider_type: &provider_type,
                     api_format: &api_format,
+
+                    transport_profile: &transport_profile,
                     model: &model,
                     thinking_level: None,
                     // Summarising is background work; it does not take the priority tier.
@@ -194,9 +197,10 @@ pub async fn do_compact(
             Ok::<_, String>((
                 provider_type,
                 base_url,
-                api_key,
+                credential,
                 model,
                 api_format,
+                transport_profile,
                 turn,
                 provider_id,
                 provider_name,
@@ -205,7 +209,13 @@ pub async fn do_compact(
         .await
         .map_err(|e| e.to_string())??
     };
-    let prov = provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
+    let prov = provider::registry::create_provider(
+        &provider_type,
+        &base_url,
+        &credential,
+        Some(&api_format),
+        Some(&transport_profile),
+    );
     let params = without_thinking(turn.params);
     // The same window and the same tokenizer the turn would use. A summariser
     // sized against a different one is sized against nothing.
@@ -741,6 +751,10 @@ mod tests {
 
     #[async_trait::async_trait]
     impl ChatProvider for Summariser {
+        fn adapter_name(&self) -> &'static str {
+            "Summariser"
+        }
+
         async fn stream_chat_with_tools(
             &self,
             _messages: Vec<ChatMessage>,

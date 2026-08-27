@@ -215,6 +215,24 @@ describe('api', () => {
         providerType: 'openai',
         baseUrl: 'https://api.openai.com',
         apiFormat: null,
+        catalogId: null,
+        authOption: null,
+      })
+    })
+
+    // Naming a vendor is a statement by the user, and it has to reach the
+    // backend as one: inference from the address cannot survive them pointing
+    // the row at a relay afterwards.
+    it('createProvider passes the chosen vendor through', async () => {
+      mockInvoke.mockResolvedValueOnce({ id: 'p1' })
+      await api.createProvider('OpenAI', 'openai', 'https://relay.example', 'responses', 'openai')
+      expect(mockInvoke).toHaveBeenCalledWith('create_provider', {
+        name: 'OpenAI',
+        providerType: 'openai',
+        baseUrl: 'https://relay.example',
+        apiFormat: 'responses',
+        catalogId: 'openai',
+        authOption: null,
       })
     })
 
@@ -228,6 +246,8 @@ describe('api', () => {
         baseUrl: null,
         isEnabled: null,
         apiFormat: null,
+        credentialKind: null,
+        transportProfile: null,
       })
     })
 
