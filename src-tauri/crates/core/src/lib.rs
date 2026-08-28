@@ -24,6 +24,7 @@ pub mod files;
 /// listening socket, and Android has nothing to point at it.
 #[cfg(not(target_os = "android"))]
 pub mod hooks;
+pub mod journal;
 pub mod keyring;
 pub mod listen_guard;
 pub mod logging;
