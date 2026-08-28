@@ -565,10 +565,11 @@ diesel::table! {
         source -> Text,
         conversation_id -> Nullable<Text>,
         turn_id -> Nullable<Text>,
+        project_id -> Nullable<Text>,
         origin -> Nullable<Text>,
         model_id -> Nullable<Text>,
         tool_name -> Nullable<Text>,
-        moved_from_file_id -> Nullable<Text>,
+        moved_from_version_id -> Nullable<Text>,
         created_at -> BigInt,
     }
 }

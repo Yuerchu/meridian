@@ -52,13 +52,17 @@ pub fn find_project_by_path(conn: &mut SqliteConnection, path: &str) -> QueryRes
 /// `pub(crate)` because the file journal keys `journal_files.norm_path` on the
 /// same rules — two definitions of "the same path" would disagree exactly when
 /// it matters.
+///
+/// The backslash is a separator only on Windows. On Unix it is an ordinary
+/// filename character, and folding it into `/` there would make `a\b` and a
+/// real `a/b` the same key — for the journal that is two files sharing one
+/// chain, which is misattribution by construction.
 pub(crate) fn normalize_path(path: &str) -> String {
-    let unified = path.trim().replace('\\', "/");
-    let trimmed = unified.trim_end_matches('/');
+    let trimmed = path.trim();
     if cfg!(windows) {
-        trimmed.to_lowercase()
+        trimmed.replace('\\', "/").trim_end_matches('/').to_lowercase()
     } else {
-        trimmed.to_string()
+        trimmed.trim_end_matches('/').to_string()
     }
 }
 

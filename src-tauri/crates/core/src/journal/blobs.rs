@@ -84,23 +84,47 @@ pub fn store(journal_root: &Path, content: &str) -> io::Result<StoredBlob> {
     std::fs::create_dir_all(staging_dir(journal_root))?;
     std::fs::create_dir_all(target.parent().expect("blob path has a parent"))?;
 
-    let staging = Staging {
+    let mut staging = Staging {
         path: staging_dir(journal_root).join(format!("{}.part", uuid::Uuid::new_v4())),
         published: false,
     };
-    std::fs::write(&staging.path, content)?;
+    {
+        // Written and synced before the rename: the database row this receipt
+        // becomes is committed durably, and a power cut between that commit
+        // and these bytes reaching the platter would leave a version pointing
+        // at a blob that never existed — the inverse of bytes-before-rows.
+        use std::io::Write;
+        let mut f = std::fs::File::create(&staging.path)?;
+        f.write_all(content.as_bytes())?;
+        f.sync_all()?;
+    }
 
-    let mut staging = staging;
-    match std::fs::rename(&staging.path, &target) {
+    let outcome = match std::fs::rename(&staging.path, &target) {
         Ok(()) => {
             staging.published = true;
             Ok(stored)
         }
-        // A concurrent writer of the same sha can win the rename on Windows,
-        // where replacing an existing file errors. Same bytes, so they won.
+        // Belt and braces for a lost race: `rename` replaces an existing file
+        // on every platform this ships on (Windows included — the corruption
+        // test above passes on Windows because it does), but a target held
+        // open by another process can still fail the rename. If what is there
+        // is already these bytes, whoever put them there won and that is fine.
         Err(_) if matches!(std::fs::read_to_string(&target), Ok(t) if sha256_of(&t) == sha) => Ok(stored),
         Err(e) => Err(e),
+    };
+
+    // The directory entry needs its own sync for the rename to be durable.
+    // Unix only: std has no way to open a directory for fsync on Windows, and
+    // NTFS metadata journaling covers most of the distance anyway.
+    #[cfg(unix)]
+    if outcome.is_ok()
+        && let Some(parent) = target.parent()
+        && let Ok(dir) = std::fs::File::open(parent)
+    {
+        let _ = dir.sync_all();
     }
+
+    outcome
 }
 
 /// Read a blob back, verifying the bytes still hash to their name.

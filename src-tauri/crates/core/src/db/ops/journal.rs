@@ -26,6 +26,9 @@ pub struct Attribution<'a> {
     pub source: &'a str,
     pub conversation_id: Option<&'a str>,
     pub turn_id: Option<&'a str>,
+    /// The project at write time — a snapshot, since the conversation can
+    /// move projects or be deleted, and per-project cleanup selects on this.
+    pub project_id: Option<&'a str>,
     pub origin: Option<&'a str>,
     pub model_id: Option<&'a str>,
     pub tool_name: Option<&'a str>,
@@ -43,8 +46,8 @@ pub struct AppendVersion<'a> {
     /// What it left behind; `None` = deleted.
     pub new: Option<&'a StoredBlob>,
     pub attribution: Attribution<'a>,
-    /// For `rename_to`: the chain the content came from.
-    pub moved_from_file_id: Option<&'a str>,
+    /// For `rename_to`: the exact `rename_from` version the content came from.
+    pub moved_from_version_id: Option<&'a str>,
     pub now: i64,
 }
 
@@ -88,10 +91,11 @@ pub fn append_version(conn: &mut SqliteConnection, norm_path: &str, v: &AppendVe
                 source: crate::db::models::journal::version_source::EXTERNAL,
                 conversation_id: None,
                 turn_id: None,
+                project_id: None,
                 origin: None,
                 model_id: None,
                 tool_name: None,
-                moved_from_file_id: None,
+                moved_from_version_id: None,
                 created_at: v.now,
             };
             diesel::insert_into(journal_versions::table)
@@ -111,10 +115,11 @@ pub fn append_version(conn: &mut SqliteConnection, norm_path: &str, v: &AppendVe
             source: v.attribution.source,
             conversation_id: v.attribution.conversation_id,
             turn_id: v.attribution.turn_id,
+            project_id: v.attribution.project_id,
             origin: v.attribution.origin,
             model_id: v.attribution.model_id,
             tool_name: v.attribution.tool_name,
-            moved_from_file_id: v.moved_from_file_id,
+            moved_from_version_id: v.moved_from_version_id,
             created_at: v.now,
         };
         diesel::insert_into(journal_versions::table)
@@ -191,16 +196,37 @@ pub fn chain(conn: &mut SqliteConnection, file_id: &str) -> QueryResult<Vec<Jour
 /// the file still exists, capped. This is the run_command bracket's scan set:
 /// files the journal already tracks, and only those — a file it has never seen
 /// is left to the external-labelling path rather than guessed at.
-pub fn tracked_files(conn: &mut SqliteConnection, prefix: &str, limit: i64) -> QueryResult<Vec<(JournalFile, String)>> {
-    let files: Vec<JournalFile> = journal_files::table
-        .filter(journal_files::norm_path.like(format!("{}%", like_escape(prefix))))
+///
+/// Two things a shorter version got wrong. SQLite's `LIKE` is not a path
+/// prefix test — it is ASCII-case-insensitive and its `\` does nothing
+/// without an `ESCAPE` clause — so the pattern (with `.escape()`) only
+/// pre-narrows, and the real test is `starts_with` on the exact key. And the
+/// cap is applied to *live* files, after the head check: applied before it, a
+/// window full of recently deleted chains would evict the tracked files the
+/// scan exists to watch.
+pub fn tracked_files(
+    conn: &mut SqliteConnection,
+    prefix: &str,
+    limit: usize,
+) -> QueryResult<Vec<(JournalFile, String)>> {
+    let candidates: Vec<JournalFile> = journal_files::table
+        .filter(
+            journal_files::norm_path
+                .like(format!("{}%", like_escape(prefix)))
+                .escape('\\'),
+        )
         .order(journal_files::updated_at.desc())
-        .limit(limit)
         .select(JournalFile::as_select())
         .load(conn)?;
 
     let mut out = Vec::new();
-    for file in files {
+    for file in candidates {
+        if out.len() >= limit {
+            break;
+        }
+        if !file.norm_path.starts_with(prefix) {
+            continue;
+        }
         if let Some(head) = head_version(conn, &file.id)?
             && let Some(sha) = head.new_sha
         {
@@ -284,11 +310,12 @@ mod tests {
                     source: "native",
                     conversation_id: conversation,
                     turn_id: conversation.map(|_| "t1"),
+                    project_id: conversation.map(|_| "proj"),
                     origin: Some("desktop"),
                     model_id: None,
                     tool_name: Some("edit_file"),
                 },
-                moved_from_file_id: None,
+                moved_from_version_id: None,
                 now,
             },
         )
@@ -358,10 +385,11 @@ mod tests {
             source: "external",
             conversation_id: Some("conv"),
             turn_id: None,
+            project_id: None,
             origin: None,
             model_id: None,
             tool_name: None,
-            moved_from_file_id: None,
+            moved_from_version_id: None,
             created_at: 9,
         };
         assert!(
@@ -438,6 +466,53 @@ mod tests {
         append(&mut conn, "c:/elsewhere/other.rs", None, Some(&a), Some("conv"), 4);
 
         let got = tracked_files(&mut conn, "c:/p/", 100).unwrap();
+        let paths: Vec<&str> = got.iter().map(|(f, _)| f.norm_path.as_str()).collect();
+        assert_eq!(paths, vec!["c:/p/alive.rs"]);
+    }
+
+    /// SQLite's LIKE is not a path prefix test: `_` is a wildcard without an
+    /// ESCAPE clause, and matching is ASCII-case-insensitive. Both would make
+    /// the run_command bracket scan the wrong files.
+    #[test]
+    fn tracked_files_prefix_is_literal_and_case_exact() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        let a = blob("v1");
+
+        // `p_x` as a LIKE pattern would match `pyx`; as a literal it must not.
+        append(&mut conn, "c:/p_x/one.rs", None, Some(&a), Some("conv"), 1);
+        append(&mut conn, "c:/pyx/two.rs", None, Some(&a), Some("conv"), 2);
+        let got = tracked_files(&mut conn, "c:/p_x/", 100).unwrap();
+        let paths: Vec<&str> = got.iter().map(|(f, _)| f.norm_path.as_str()).collect();
+        assert_eq!(paths, vec!["c:/p_x/one.rs"]);
+
+        // LIKE is case-insensitive; the journal's keys are case-exact (they
+        // are already case-folded per platform before they get here).
+        append(&mut conn, "c:/repo/lower.rs", None, Some(&a), Some("conv"), 3);
+        append(&mut conn, "c:/Repo/upper.rs", None, Some(&a), Some("conv"), 4);
+        let got = tracked_files(&mut conn, "c:/repo/", 100).unwrap();
+        let paths: Vec<&str> = got.iter().map(|(f, _)| f.norm_path.as_str()).collect();
+        assert_eq!(paths, vec!["c:/repo/lower.rs"]);
+    }
+
+    /// The cap counts live files: a window's worth of recently deleted chains
+    /// must not evict the tracked file the scan exists to watch.
+    #[test]
+    fn tracked_files_cap_is_applied_after_the_liveness_filter() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        let a = blob("v1");
+
+        // Oldest: one live file.
+        append(&mut conn, "c:/p/alive.rs", None, Some(&a), Some("conv"), 1);
+        // Newer: three deleted chains that would fill a cap of 3 on their own.
+        for i in 0..3 {
+            let path = format!("c:/p/dead{i}.rs");
+            append(&mut conn, &path, None, Some(&a), Some("conv"), 10 + i);
+            append(&mut conn, &path, Some(&a), None, Some("conv"), 20 + i);
+        }
+
+        let got = tracked_files(&mut conn, "c:/p/", 3).unwrap();
         let paths: Vec<&str> = got.iter().map(|(f, _)| f.norm_path.as_str()).collect();
         assert_eq!(paths, vec!["c:/p/alive.rs"]);
     }

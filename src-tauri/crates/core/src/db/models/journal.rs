@@ -89,10 +89,17 @@ pub struct JournalVersion {
     pub source: String,
     pub conversation_id: Option<String>,
     pub turn_id: Option<String>,
+    /// Which project the file belonged to at write time — a snapshot, so a
+    /// conversation moving projects or being deleted cannot rewrite history.
+    pub project_id: Option<String>,
     pub origin: Option<String>,
     pub model_id: Option<String>,
     pub tool_name: Option<String>,
-    pub moved_from_file_id: Option<String>,
+    /// For `rename_to`: the exact `rename_from` *version* the content came
+    /// from — a version rather than a file, because the old path can be
+    /// recreated later and a chain-level pointer would let blame wander into
+    /// an unrelated incarnation.
+    pub moved_from_version_id: Option<String>,
     pub created_at: i64,
 }
 
@@ -108,9 +115,10 @@ pub struct NewJournalVersion<'a> {
     pub source: &'a str,
     pub conversation_id: Option<&'a str>,
     pub turn_id: Option<&'a str>,
+    pub project_id: Option<&'a str>,
     pub origin: Option<&'a str>,
     pub model_id: Option<&'a str>,
     pub tool_name: Option<&'a str>,
-    pub moved_from_file_id: Option<&'a str>,
+    pub moved_from_version_id: Option<&'a str>,
     pub created_at: i64,
 }

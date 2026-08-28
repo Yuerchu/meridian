@@ -76,16 +76,23 @@ CREATE TABLE journal_versions (
     -- "a deleted conversation", which is the true answer.
     conversation_id TEXT,
     turn_id TEXT,
+    -- Which project the file belonged to when this change happened. A
+    -- per-version snapshot, not a fact about the file: conversations move
+    -- between projects and get deleted, and joining through them would let
+    -- either rewrite history. Also what per-project cleanup selects on.
+    project_id TEXT,
     -- turns.origin at write time ('desktop' / 'claude_code' / ...), copied
     -- rather than joined for the migration-30 reason: this row records what
     -- happened, and later changes must not rewrite it.
     origin TEXT,
     model_id TEXT,
     tool_name TEXT,
-    -- For op='rename_to': the file this content arrived from, so blame can
-    -- follow a move into the old chain. No FK: if the old chain is cleaned
-    -- away, blame simply stops there.
-    moved_from_file_id TEXT,
+    -- For op='rename_to': the exact version the content arrived from — the
+    -- rename_from row in the old path's chain. A *version*, not a file: the
+    -- old path can be recreated and renamed again later, and a pointer to
+    -- the whole chain would let blame wander into an unrelated incarnation.
+    -- No FK: if the old chain is cleaned away, blame simply stops there.
+    moved_from_version_id TEXT,
     created_at BIGINT NOT NULL,
     CHECK (
         op IN (

@@ -25,8 +25,14 @@ use std::path::Path;
 
 /// The journal's spelling of a path, shared with `find_project_by_path` so
 /// "the same file" means the same thing everywhere.
-pub fn norm_path(path: &Path) -> String {
-    crate::db::ops::project::normalize_path(&path.to_string_lossy())
+///
+/// `None` for a path that is not valid UTF-8: a lossy conversion can map two
+/// *distinct* non-UTF-8 names onto one string, which would merge their chains
+/// and attribute one file's lines to the other's editors. Such a file is not
+/// journalled at all — the same treatment non-UTF-8 *content* gets, and the
+/// same direction every journal failure takes: attribute less, never wrong.
+pub fn norm_path(path: &Path) -> Option<String> {
+    Some(crate::db::ops::project::normalize_path(path.to_str()?))
 }
 
 /// Where the journal keeps its blobs, under the app's data directory.
