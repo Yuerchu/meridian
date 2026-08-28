@@ -298,6 +298,7 @@ mod tests {
             }),
             tool_secrets: Default::default(),
             cancel: tokio_util::sync::CancellationToken::new(),
+            journal: None,
         };
 
         RunCommandTool

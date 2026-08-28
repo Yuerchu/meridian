@@ -113,7 +113,17 @@ pub async fn read_capped_opened(target: super::OpenedTarget, max_bytes: usize) -
 ///
 /// `transform` returning `Err` leaves the file untouched — nothing is truncated
 /// until it has produced the replacement.
-pub async fn edit_opened<F>(target: super::OpenedTarget, transform: F) -> Result<(), String>
+///
+/// `journal` is captured *here* and not in the caller because here is the only
+/// place the old text, the new text and the canonical path coexist on the one
+/// handle that was checked; the per-path lock is taken before the read and held
+/// until the entry has landed, which is the ordering guarantee the journal's
+/// append cannot provide on its own.
+pub async fn edit_opened<F>(
+    target: super::OpenedTarget,
+    transform: F,
+    journal: Option<crate::journal::capture::JournalRecord<'_>>,
+) -> Result<(), String>
 where
     F: FnOnce(&str) -> Result<String, String>,
 {
@@ -121,6 +131,10 @@ where
         super::OpenedTarget::Real(vf) => {
             use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
             let (std_file, real) = vf.into_parts();
+            let _guard = match &journal {
+                Some(j) => Some(j.ctx.lock_path(&real).await),
+                None => None,
+            };
             let mut f = tokio::fs::File::from_std(std_file);
             let mut content = String::new();
             f.read_to_string(&mut content)
@@ -140,10 +154,20 @@ where
                 .map_err(|e| format!("failed to write '{}': {}", real.display(), e))?;
             f.flush()
                 .await
-                .map_err(|e| format!("failed to flush '{}': {}", real.display(), e))
+                .map_err(|e| format!("failed to flush '{}': {}", real.display(), e))?;
+
+            if let Some(j) = journal {
+                j.ctx
+                    .record(&real, Some(&content), Some(&updated), j.op, j.tool_name, None)
+                    .await;
+            }
+            Ok(())
         }
         #[cfg(target_os = "android")]
         super::OpenedTarget::Saf { tree_uri, rel, display } => {
+            // SAF targets have no canonical OS path to key a chain on; they
+            // are deliberately not journalled.
+            let _ = journal;
             let r = crate::android_bridge::saf_read(&tree_uri, &rel, -1)
                 .await
                 .map_err(|e| format!("'{display}': {e}"))?;
@@ -159,27 +183,61 @@ where
 
 /// Write through an already-verified handle. Truncation happens here, after the
 /// check, so a refused write leaves the previous contents alone.
-pub async fn write_opened(target: super::OpenedTarget, content: &str) -> Result<(), String> {
+///
+/// When a journal is attached and the file already existed, the old contents
+/// are read back through this same handle before the truncate — the one moment
+/// they can still be observed without a second resolution. `pre_existed` is
+/// what tells an overwritten empty file apart from a created one; after a
+/// `create(true)` open the two are indistinguishable.
+pub async fn write_opened(
+    target: super::OpenedTarget,
+    content: &str,
+    journal: Option<crate::journal::capture::JournalRecord<'_>>,
+) -> Result<(), String> {
     match target {
         super::OpenedTarget::Real(vf) => {
+            let pre_existed = vf.pre_existed();
             let (mut file, real) = vf.into_parts();
-            let content = content.to_string();
-            tokio::task::spawn_blocking(move || {
-                use std::io::{Seek, SeekFrom, Write};
+            let _guard = match &journal {
+                Some(j) => Some(j.ctx.lock_path(&real).await),
+                None => None,
+            };
+            let content_in = content.to_string();
+            let read_old = journal.is_some() && pre_existed;
+            let real_for_task = real.clone();
+            let old = tokio::task::spawn_blocking(move || {
+                use std::io::{Read, Seek, SeekFrom, Write};
+                let real = real_for_task;
+                let mut old = None;
+                if read_old {
+                    let mut buf = String::new();
+                    file.read_to_string(&mut buf)
+                        .map_err(|e| format!("failed to read '{}': {}", real.display(), e))?;
+                    old = Some(buf);
+                }
                 file.set_len(0)
                     .map_err(|e| format!("failed to truncate '{}': {}", real.display(), e))?;
                 file.seek(SeekFrom::Start(0))
                     .map_err(|e| format!("failed to rewind '{}': {}", real.display(), e))?;
-                file.write_all(content.as_bytes())
+                file.write_all(content_in.as_bytes())
                     .map_err(|e| format!("failed to write '{}': {}", real.display(), e))?;
                 file.flush()
-                    .map_err(|e| format!("failed to flush '{}': {}", real.display(), e))
+                    .map_err(|e| format!("failed to flush '{}': {}", real.display(), e))?;
+                Ok::<_, String>(old)
             })
             .await
-            .map_err(|e| format!("task failed: {e}"))?
+            .map_err(|e| format!("task failed: {e}"))??;
+
+            if let Some(j) = journal {
+                j.ctx
+                    .record(&real, old.as_deref(), Some(content), j.op, j.tool_name, None)
+                    .await;
+            }
+            Ok(())
         }
         #[cfg(target_os = "android")]
         super::OpenedTarget::Saf { tree_uri, rel, display } => {
+            let _ = journal;
             crate::android_bridge::saf_write(&tree_uri, &rel, content)
                 .await
                 .map_err(|e| format!("'{display}': {e}"))

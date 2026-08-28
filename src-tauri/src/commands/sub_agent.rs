@@ -515,6 +515,17 @@ impl DesktopSubAgents {
             conversation_id: Some(sub_conversation_id.to_string()),
             turn_id: Some(turn_id.to_string()),
             cancel: cancel.clone(),
+            // Re-identified, never inherited as is: the parent's journal would
+            // file this run's writes under the parent's conversation. Storage
+            // and the per-path locks stay shared through `for_turn`.
+            journal: self.tool_context.journal.as_ref().map(|j| {
+                j.for_turn(
+                    sub_conversation_id.to_string(),
+                    turn_id.to_string(),
+                    meridian_core::turn::TurnOrigin::SubAgent.as_str().to_string(),
+                    Some(turn_params.params.model.clone()),
+                )
+            }),
             ..self.tool_context.clone()
         };
 

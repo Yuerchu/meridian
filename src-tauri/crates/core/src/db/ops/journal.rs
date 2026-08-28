@@ -54,6 +54,9 @@ pub struct AppendVersion<'a> {
 #[derive(Debug, PartialEq)]
 pub struct AppendOutcome {
     pub file_id: String,
+    /// The id of the *caller's* row (never the interposed external one) — a
+    /// rename's `rename_to` half links back to this.
+    pub version_id: String,
     pub seq: i64,
     /// Whether an `external` version was interposed because the observation
     /// disagreed with the chain head.
@@ -105,8 +108,9 @@ pub fn append_version(conn: &mut SqliteConnection, norm_path: &str, v: &AppendVe
             external_inserted = true;
         }
 
+        let version_id = uuid::Uuid::new_v4().to_string();
         let row = NewJournalVersion {
-            id: &uuid::Uuid::new_v4().to_string(),
+            id: &version_id,
             file_id: &file.id,
             seq,
             op: v.op,
@@ -132,6 +136,7 @@ pub fn append_version(conn: &mut SqliteConnection, norm_path: &str, v: &AppendVe
 
         Ok(AppendOutcome {
             file_id: file.id,
+            version_id,
             seq,
             external_inserted,
         })

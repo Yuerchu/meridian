@@ -639,6 +639,7 @@ async fn run_turn(
         sandbox_policy: None,
         tool_secrets,
         cancel: cancel.clone(),
+        journal: None,
     };
 
     let approvals = NoApprovals;

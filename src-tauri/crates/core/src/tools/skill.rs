@@ -191,6 +191,7 @@ mod tests {
             sandbox_policy: None,
             tool_secrets: std::collections::HashMap::new(),
             cancel: tokio_util::sync::CancellationToken::new(),
+            journal: None,
         }
     }
 

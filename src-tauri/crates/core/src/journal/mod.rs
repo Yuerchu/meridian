@@ -20,6 +20,7 @@
 //! content addressing makes fencing unnecessary here.
 
 pub mod blobs;
+pub mod capture;
 
 use std::path::Path;
 

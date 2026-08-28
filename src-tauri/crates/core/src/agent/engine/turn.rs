@@ -1510,6 +1510,7 @@ mod tests {
             sandbox_policy: None,
             tool_secrets: Default::default(),
             cancel: cancel.clone(),
+            journal: None,
         }
     }
 
