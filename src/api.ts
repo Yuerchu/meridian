@@ -19,6 +19,8 @@ import type {
   CustomTool,
   Emoji,
   EmojiPack,
+  GitDiffResult,
+  GitStatusResult,
   HooksConfig,
   HooksStatus,
   ListenConfig,
@@ -53,11 +55,15 @@ import type {
   ToolCategory,
   ToolInfo,
   ToolPreset,
+  TranscriptHit,
   UsageBucket,
   UsageDimension,
   UsageFilter,
   VoiceModelStatus,
   VoiceTranscript,
+  WorkspaceFileContent,
+  WorkspaceRoot,
+  WorkspaceTreeEntry,
 } from './types'
 
 export const api = {
@@ -85,6 +91,16 @@ export const api = {
     invoke<void>('set_conversation_accept_edits', { id, acceptEdits }),
 
   togglePinConversation: (id: string) => invoke<Conversation>('toggle_pin_conversation', { id }),
+
+  /** Refile a conversation under another project, or under none (`null`). For
+   *  a native conversation this also moves what the next turn resolves its
+   *  working directory and file access against. */
+  setConversationProject: (id: string, projectId: string | null) =>
+    invoke<void>('set_conversation_project', { id, projectId }),
+
+  /** Conversations whose transcript says the query, newest mention first. */
+  searchConversations: (query: string, limit?: number) =>
+    invoke<TranscriptHit[]>('search_conversations', { query, limit: limit ?? null }),
 
   deleteConversation: (id: string) => invoke<void>('delete_conversation', { id }),
 
@@ -428,6 +444,24 @@ export const api = {
 
   listConversationsByProject: (projectId: string, archived = false) =>
     invoke<Conversation[]>('list_conversations_by_project', { projectId, archived }),
+
+  // ---- The file panel. Read-only; `openInEditor` is local-only (it runs the
+  // user's configured editor command on the host).
+  workspaceRoot: (conversationId: string) => invoke<WorkspaceRoot>('workspace_root', { conversationId }),
+
+  workspaceTree: (conversationId: string, dir?: string) =>
+    invoke<WorkspaceTreeEntry[]>('workspace_tree', { conversationId, dir: dir ?? null }),
+
+  workspaceReadFile: (conversationId: string, relPath: string) =>
+    invoke<WorkspaceFileContent>('workspace_read_file', { conversationId, relPath }),
+
+  workspaceGitStatus: (conversationId: string) => invoke<GitStatusResult>('workspace_git_status', { conversationId }),
+
+  workspaceGitDiff: (conversationId: string, relPath?: string) =>
+    invoke<GitDiffResult>('workspace_git_diff', { conversationId, relPath: relPath ?? null }),
+
+  openInEditor: (conversationId: string, relPath: string, line?: number) =>
+    invoke<void>('open_in_editor', { conversationId, relPath, line: line ?? null }),
 
   // Memories
   listMemories: (projectId: string) => invoke<Memory[]>('list_memories', { projectId }),

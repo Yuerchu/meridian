@@ -502,6 +502,10 @@ mod tests {
             // cannot see.
             "splash_animation_done",
             "splash_app_ready",
+            // Runs the user's configured editor command template — a program
+            // launch on this machine, which a socket must not be able to ask
+            // for.
+            "open_in_editor",
         ];
         expected.sort_unstable();
         expected.retain(|name| COMMAND_NAMES.contains(name));
