@@ -53,7 +53,17 @@ pub fn list_dir(root: &Path, rel_dir: &str) -> Result<Vec<TreeEntry>, String> {
         if name == ".git" {
             continue;
         }
-        let is_dir = item.file_type().is_some_and(|t| t.is_dir());
+        // Through `metadata()` rather than the entry's own file type: the
+        // entry reports a symlink as a symlink, and a link to a directory
+        // would be drawn as a file with no way to expand it. Following the
+        // link here only decides the icon and the affordance — expanding it
+        // still goes through `verify_path`, which refuses targets outside
+        // the root.
+        let is_dir = item
+            .path()
+            .metadata()
+            .map(|m| m.is_dir())
+            .unwrap_or_else(|_| item.file_type().is_some_and(|t| t.is_dir()));
         let rel_path = if rel_dir.is_empty() {
             name.clone()
         } else {

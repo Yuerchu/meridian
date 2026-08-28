@@ -51,8 +51,25 @@ pub fn read_file(root: &Path, rel_path: &str) -> Result<FileContent, String> {
         });
     }
 
+    // `total_lines` is presented as the whole file's count, so for a
+    // byte-truncated file the remainder is scanned — counted, never kept —
+    // rather than the prefix's count being passed off as the total.
+    let mut newlines = raw.iter().filter(|&&b| b == b'\n').count() as u64;
+    let mut last_byte = raw.last().copied();
+    if truncated {
+        let mut buf = [0u8; 64 * 1024];
+        loop {
+            let n = std::io::Read::read(&mut file, &mut buf).map_err(|e| e.to_string())?;
+            if n == 0 {
+                break;
+            }
+            newlines += buf[..n].iter().filter(|&&b| b == b'\n').count() as u64;
+            last_byte = Some(buf[n - 1]);
+        }
+    }
+    let total_lines = newlines + u64::from(last_byte.is_some_and(|b| b != b'\n'));
+
     let text = String::from_utf8_lossy(&raw);
-    let total_lines = text.lines().count() as u64;
     let content = if total_lines as usize > MAX_LINES {
         truncated = true;
         text.lines().take(MAX_LINES).collect::<Vec<_>>().join("\n")

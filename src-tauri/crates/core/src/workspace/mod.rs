@@ -10,6 +10,12 @@
 //! cwd: `working_dir_or_current()` answers "where should a command run" and its
 //! fallback is wrong for a browser, which must say "no project" rather than
 //! quietly showing whatever directory the app was started from.
+//!
+//! Android/SAF workspaces are out of scope for now, deliberately: a SAF root is
+//! a `content://` grant resolved through the storage bridge, not an OS path,
+//! and every reader here is handle-based. Such a project reports `MissingDir`,
+//! which is an honest degradation rather than a hole — the panel says there is
+//! nothing to browse instead of browsing the wrong thing.
 
 pub mod git;
 pub mod read;
@@ -98,12 +104,16 @@ pub fn resolve_workspace_root(conn: &mut SqliteConnection, conversation_id: &str
     };
 
     match crate::tools::verified::resolve_root(&configured) {
-        Ok(real) => Ok(WorkspaceRoot::Ok {
+        // `resolve_root` opens any filesystem object; a project whose path
+        // names a regular file would otherwise report `Ok` and then fail
+        // strangely on every listing. Not-a-directory is the same answer as
+        // not-there: nothing to browse, and here is the path that was tried.
+        Ok(real) if real.is_dir() => Ok(WorkspaceRoot::Ok {
             root: real.to_string_lossy().into_owned(),
             git_available: false,
             is_repo: false,
         }),
-        Err(_) => Ok(WorkspaceRoot::MissingDir {
+        _ => Ok(WorkspaceRoot::MissingDir {
             path: configured.to_string_lossy().into_owned(),
         }),
     }
