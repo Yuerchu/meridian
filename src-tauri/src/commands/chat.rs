@@ -1110,6 +1110,24 @@ async fn chat_inner(
     .map_err(|e| e.to_string())?;
     #[cfg(target_os = "android")]
     let _ = sandbox_pref;
+    // The shadow file journal for this turn: what the file primitives append
+    // their observed transitions to. Desktop-only wiring for now — SAF paths
+    // have no canonical key, so Android runs without one and its writes
+    // surface as `external` on the next desktop observation.
+    #[cfg(not(target_os = "android"))]
+    let journal = Some(meridian_core::journal::capture::JournalCtx::new(
+        pool.clone(),
+        meridian_core::journal::journal_root(&services.paths.data_dir),
+        conversation_id.clone(),
+        turn_id.clone(),
+        meridian_core::turn::TurnOrigin::Desktop.as_str().to_string(),
+        Some(model.clone()),
+        project_id.clone(),
+        project_path.as_deref().map(std::path::PathBuf::from),
+        services.journal_shared.clone(),
+    ));
+    #[cfg(target_os = "android")]
+    let journal = None;
     let tool_context = tools::ToolContext {
         working_directory: project_path,
         shell: shell_type
@@ -1127,6 +1145,7 @@ async fn chat_inner(
         sandbox_policy,
         tool_secrets,
         cancel: cancel.clone(),
+        journal,
     };
 
     let transitions = PlanTransitions {

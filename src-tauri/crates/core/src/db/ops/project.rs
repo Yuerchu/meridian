@@ -49,14 +49,14 @@ pub fn find_project_by_path(conn: &mut SqliteConnection, path: &str) -> QueryRes
 /// and fails outright on a directory that has been moved or unmounted, which
 /// would turn "cannot check right now" into "not this project".
 ///
-/// `pub(crate)` because the file journal keys `journal_files.norm_path` on the
-/// same rules — two definitions of "the same path" would disagree exactly when
-/// it matters.
+/// Not the journal's file key. Journal identity lives in
+/// `journal::normalize_file_key`: a trailing space on Unix is a different
+/// file, and folding it here is what a directory picker needs and what a
+/// chain key must not do.
 ///
 /// The backslash is a separator only on Windows. On Unix it is an ordinary
 /// filename character, and folding it into `/` there would make `a\b` and a
-/// real `a/b` the same key — for the journal that is two files sharing one
-/// chain, which is misattribution by construction.
+/// real `a/b` the same directory.
 pub(crate) fn normalize_path(path: &str) -> String {
     let trimmed = path.trim();
     if cfg!(windows) {
@@ -148,5 +148,13 @@ mod tests {
 
         assert!(find_project_by_path(&mut conn, "C:/Code/repo").unwrap().is_none());
         assert!(find_project_by_path(&mut conn, "").unwrap().is_none());
+    }
+
+    /// Project comparison still trims: a picker or another program's cwd
+    /// grows spaces. The journal's file key deliberately does not — see
+    /// `journal::normalize_file_key`.
+    #[test]
+    fn project_comparison_still_trims_surrounding_whitespace() {
+        assert_eq!(normalize_path("/tmp/file"), normalize_path(" /tmp/file "));
     }
 }

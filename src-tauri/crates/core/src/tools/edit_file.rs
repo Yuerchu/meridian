@@ -67,23 +67,28 @@ impl Tool for EditFileTool {
         // `old_string` is the text being replaced. `open_edit` also refuses
         // to create the file: a failed match must not leave an empty one.
         let target = context.open_edit(file_path)?;
+        let journal = context.journal_record("edit_file", crate::journal::capture::Op::Edit);
         let mut replaced = 0usize;
-        super::backend::edit_opened(target, |content| {
-            let count = content.matches(old_string).count();
-            if count == 0 {
-                return Err(format!(
-                    "old_string not found in '{}'. File has {} bytes.",
-                    file_path,
-                    content.len()
-                ));
-            }
-            replaced = if replace_all { count } else { 1 };
-            Ok(if replace_all {
-                content.replace(old_string, new_string)
-            } else {
-                content.replacen(old_string, new_string, 1)
-            })
-        })
+        super::backend::edit_opened(
+            target,
+            |content| {
+                let count = content.matches(old_string).count();
+                if count == 0 {
+                    return Err(format!(
+                        "old_string not found in '{}'. File has {} bytes.",
+                        file_path,
+                        content.len()
+                    ));
+                }
+                replaced = if replace_all { count } else { 1 };
+                Ok(if replace_all {
+                    content.replace(old_string, new_string)
+                } else {
+                    content.replacen(old_string, new_string, 1)
+                })
+            },
+            journal,
+        )
         .await?;
         Ok(format!("Replaced {} occurrence(s) in {}", replaced, file_path))
     }
@@ -108,7 +113,96 @@ mod tests {
             sandbox_policy: None,
             tool_secrets: std::collections::HashMap::new(),
             cancel: tokio_util::sync::CancellationToken::new(),
+            journal: None,
         }
+    }
+
+    /// The whole native capture path: a tool edit lands in the journal as one
+    /// version whose old and new snapshots are the bytes that were actually
+    /// read and written — through the same handle, under the same lock.
+    #[tokio::test]
+    async fn an_edit_is_journalled_with_the_observed_contents() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.txt");
+        std::fs::write(&file, "one two").unwrap();
+
+        let blob_root = tempfile::tempdir().unwrap().keep();
+        let journal = crate::journal::capture::JournalCtx::new(
+            crate::db::test_db(),
+            blob_root,
+            "conv".into(),
+            "turn".into(),
+            "desktop".into(),
+            Some("test-model".into()),
+            None,
+            Some(dir.path().to_path_buf()),
+            crate::journal::capture::JournalShared::new(),
+        );
+        let mut context = ctx(dir.path());
+        context.journal = Some(journal.clone());
+
+        EditFileTool
+            .execute(
+                serde_json::json!({"file_path": "a.txt", "old_string": "two", "new_string": "2"}),
+                &context,
+            )
+            .await
+            .unwrap();
+
+        let real = crate::tools::verified::resolve_root(&file).unwrap();
+        let mut conn = journal.pool.get().unwrap();
+        let row = crate::db::ops::journal::file_by_path(&mut conn, &crate::journal::norm_path(&real).unwrap())
+            .unwrap()
+            .expect("the edit should be journalled");
+        let chain = crate::db::ops::journal::chain(&mut conn, &row.id).unwrap();
+        assert_eq!(chain.len(), 1);
+        let v = &chain[0];
+        assert_eq!((v.op.as_str(), v.source.as_str()), ("edit", "native"));
+        assert_eq!(v.conversation_id.as_deref(), Some("conv"));
+        assert_eq!(v.tool_name.as_deref(), Some("edit_file"));
+        assert_eq!(
+            crate::journal::blobs::load(&journal.blob_root, v.observed_old_sha.as_deref().unwrap()).unwrap(),
+            "one two"
+        );
+        assert_eq!(
+            crate::journal::blobs::load(&journal.blob_root, v.new_sha.as_deref().unwrap()).unwrap(),
+            "one 2"
+        );
+    }
+
+    /// And a journal that cannot write must not fail the edit: the file still
+    /// changes, the chain just misses an entry — under-attribution, on purpose.
+    #[tokio::test]
+    async fn a_broken_journal_does_not_fail_the_edit() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.txt");
+        std::fs::write(&file, "one two").unwrap();
+
+        // A blob root that is a *file* makes every snapshot store fail.
+        let bad_root = dir.path().join("not-a-dir");
+        std::fs::write(&bad_root, "x").unwrap();
+        let journal = crate::journal::capture::JournalCtx::new(
+            crate::db::test_db(),
+            bad_root,
+            "conv".into(),
+            "turn".into(),
+            "desktop".into(),
+            None,
+            None,
+            None,
+            crate::journal::capture::JournalShared::new(),
+        );
+        let mut context = ctx(dir.path());
+        context.journal = Some(journal);
+
+        EditFileTool
+            .execute(
+                serde_json::json!({"file_path": "a.txt", "old_string": "two", "new_string": "2"}),
+                &context,
+            )
+            .await
+            .expect("the edit must succeed regardless of the journal");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "one 2");
     }
 
     #[tokio::test]

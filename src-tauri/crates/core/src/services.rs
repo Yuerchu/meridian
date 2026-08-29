@@ -87,6 +87,15 @@ pub struct ServicesInner {
     /// available" a question asked in the middle of a turn.
     #[cfg(not(target_os = "android"))]
     pub containers: Arc<crate::container::DockerConnector>,
+    /// Per-path locks for the shadow file journal.
+    ///
+    /// Lives here rather than on a `JournalCtx` because two independent
+    /// desktop turns writing the same file must serialise. A table per turn
+    /// made that guarantee only hold between a parent and its sub-agent.
+    /// Gitignore matchers stay on the `JournalCtx`: a process-wide cache
+    /// cannot see an external `.gitignore` rewrite and would keep
+    /// snapshotting secrets until restart.
+    pub journal_shared: Arc<crate::journal::capture::JournalShared>,
     /// How to start an ordinary turn, once the shell has said.
     ///
     /// The one direction that has to cross the line the other way. Running a
@@ -170,5 +179,6 @@ pub fn bare_services(dir: &std::path::Path) -> Services {
         #[cfg(not(target_os = "android"))]
         containers: crate::container::DockerConnector::new(Default::default()),
         turn_starter: std::sync::OnceLock::new(),
+        journal_shared: crate::journal::capture::JournalShared::new(),
     })
 }

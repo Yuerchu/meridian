@@ -143,6 +143,7 @@ fn build_context(
         // description of that rather than an oversight.
         tool_secrets: HashMap::new(),
         cancel: cancel.clone(),
+        journal: None,
     }
 }
 

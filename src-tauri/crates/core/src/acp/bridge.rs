@@ -552,6 +552,7 @@ impl Bridge {
             sandbox_policy: None,
             tool_secrets,
             cancel: turn.cancel.clone(),
+            journal: None,
         }
     }
 }
@@ -922,6 +923,7 @@ mod tests {
             sandbox_policy: None,
             tool_secrets: Default::default(),
             cancel: CancellationToken::new(),
+            journal: None,
         }
     }
 

@@ -77,7 +77,36 @@ impl Tool for DeleteFileTool {
             }
         }
 
+        // What the journal can still observe, gathered before the bytes go.
+        // A single file is one observation; a recursive directory delete
+        // tombstones only the files the journal already tracks — an untracked
+        // file's disappearance is the external-labelling path's to notice,
+        // never something to guess at.
+        let journal = context.journal_record("delete_file", crate::journal::capture::Op::Delete);
+        let mut observations = Vec::new();
+        if let (Some(j), ResolvedTarget::Real(p)) = (&journal, &target) {
+            let is_dir = tokio::fs::symlink_metadata(p)
+                .await
+                .map(|m| m.is_dir())
+                .unwrap_or(false);
+            if is_dir {
+                if recursive {
+                    for tracked in j.ctx.tracked_under(p).await {
+                        observations.push(j.observe(&tracked).await);
+                    }
+                }
+            } else {
+                observations.push(j.observe(p).await);
+            }
+        }
+
         super::backend::delete(&target, recursive).await?;
+
+        if let Some(j) = &journal {
+            for obs in &observations {
+                j.commit(obs, None).await;
+            }
+        }
 
         Ok(format!("Deleted {path_str}"))
     }
@@ -102,6 +131,7 @@ mod tests {
             sandbox_policy: None,
             tool_secrets: std::collections::HashMap::new(),
             cancel: tokio_util::sync::CancellationToken::new(),
+            journal: None,
         }
     }
 
@@ -177,6 +207,7 @@ mod tests {
             sandbox_policy: None,
             tool_secrets: std::collections::HashMap::new(),
             cancel: tokio_util::sync::CancellationToken::new(),
+            journal: None,
         };
         let result = DeleteFileTool
             .execute(serde_json::json!({"path": "/sdcard", "recursive": true}), &c)

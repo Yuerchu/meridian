@@ -109,6 +109,12 @@ pub fn lexical_normalize(path: &Path) -> Option<PathBuf> {
 pub struct VerifiedFile {
     file: File,
     real: PathBuf,
+    /// Whether the file already existed when the handle was opened. Carried
+    /// from `verified_anchor`'s missing-components walk, because it cannot be
+    /// recovered afterwards: a `create(true)` open looks identical over a file
+    /// it just made and an empty file that was already there — and the journal
+    /// records those as different histories (no old state vs an empty one).
+    pre_existed: bool,
 }
 
 impl VerifiedFile {
@@ -117,6 +123,11 @@ impl VerifiedFile {
     /// back to the model; the string that was requested is not what was opened.
     pub fn into_parts(self) -> (File, PathBuf) {
         (self.file, self.real)
+    }
+
+    /// Whether the open found the file already there. See the field note.
+    pub fn pre_existed(&self) -> bool {
+        self.pre_existed
     }
 }
 
@@ -142,7 +153,11 @@ pub fn open_read(requested: &Path, within: Option<&Path>) -> Result<VerifiedFile
         source: e,
     })?;
     confirm_within(requested, &real, within)?;
-    Ok(VerifiedFile { file, real })
+    Ok(VerifiedFile {
+        file,
+        real,
+        pre_existed: true,
+    })
 }
 
 /// Open a file for writing, creating it if absent, confirming it lands inside
@@ -184,7 +199,13 @@ pub fn open_write(requested: &Path, within: Option<&Path>) -> Result<VerifiedFil
     // name may have been a link to somewhere else entirely, and between the two
     // opens the parent could have been replaced.
     confirm_within(requested, &real, within)?;
-    Ok(VerifiedFile { file, real })
+    Ok(VerifiedFile {
+        file,
+        real,
+        // The anchor walk found every component present exactly when the file
+        // was already there; `create(true)` then erases the distinction.
+        pre_existed: missing.is_empty(),
+    })
 }
 
 /// Walk up to the deepest ancestor that exists, confirm *that* is inside the
@@ -279,7 +300,13 @@ pub fn open_create_new(requested: &Path, within: Option<&Path>) -> Result<Verifi
         source: e,
     })?;
     confirm_within(requested, &real, within)?;
-    Ok(VerifiedFile { file, real })
+    Ok(VerifiedFile {
+        file,
+        real,
+        // An exclusive create that succeeded made the file; anything already
+        // there would have refused the open.
+        pre_existed: false,
+    })
 }
 
 /// Open an existing file for reading and writing, refusing to create it.
@@ -301,7 +328,11 @@ pub fn open_edit(requested: &Path, within: Option<&Path>) -> Result<VerifiedFile
         source: e,
     })?;
     confirm_within(requested, &real, within)?;
-    Ok(VerifiedFile { file, real })
+    Ok(VerifiedFile {
+        file,
+        real,
+        pre_existed: true,
+    })
 }
 
 /// Verify a path and return what the OS says it really is, without keeping the

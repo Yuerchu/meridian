@@ -967,6 +967,10 @@ async fn headless_chat_inner(
         turn_id: Some(turn_id.to_string()),
         assistant_id: assistant_id.map(|s| s.to_string()),
         db_pool: Some(pool.clone()),
+        // No journal: the empty root set above refuses every file write at the
+        // validation layer, so there is nothing a journal here could ever
+        // record — wiring one would be dead code asserting otherwise.
+        journal: None,
         // **Still the platform default, and deliberately not the container
         // resolver.** A container mounts the conversation's project, and a QQ
         // session has none — so `ExecutionMode::Container` has nothing to

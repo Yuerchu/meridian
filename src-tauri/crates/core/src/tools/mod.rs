@@ -73,6 +73,12 @@ pub struct ToolContext {
     /// Cancelled when the owning chat turn is stopped; long-running tools must
     /// observe it and terminate their work.
     pub cancel: tokio_util::sync::CancellationToken,
+    /// The shadow file journal, when this turn records one. `None` for every
+    /// context that only reads (reviewers, the bridge) and for runners not yet
+    /// wired in; a missing journal costs attribution, never correctness — the
+    /// unrecorded change surfaces as `external` the next time the file is
+    /// observed.
+    pub journal: Option<std::sync::Arc<crate::journal::capture::JournalCtx>>,
 }
 
 impl ToolContext {
@@ -86,6 +92,17 @@ impl ToolContext {
             ctx.sandbox_policy = None;
         }
         ctx
+    }
+
+    /// This call's licence to journal, or `None` when the turn keeps none.
+    pub fn journal_record<'a>(
+        &'a self,
+        tool_name: &'a str,
+        op: crate::journal::capture::Op,
+    ) -> Option<crate::journal::capture::JournalRecord<'a>> {
+        self.journal
+            .as_deref()
+            .map(|ctx| crate::journal::capture::JournalRecord { ctx, tool_name, op })
     }
 }
 
@@ -554,6 +571,7 @@ mod tests {
             sandbox_policy: None,
             tool_secrets: HashMap::new(),
             cancel: tokio_util::sync::CancellationToken::new(),
+            journal: None,
         }
     }
 
@@ -589,6 +607,7 @@ mod tests {
             sandbox_policy: None,
             tool_secrets: HashMap::new(),
             cancel: tokio_util::sync::CancellationToken::new(),
+            journal: None,
         };
         assert!(ctx.resolve_and_validate("inside.txt").is_ok());
         assert!(ctx.resolve_and_validate("../outside.txt").is_err());

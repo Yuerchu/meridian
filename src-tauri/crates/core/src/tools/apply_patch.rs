@@ -115,7 +115,8 @@ impl Tool for ApplyPatchTool {
                             e
                         }
                     })?;
-                    super::backend::write_opened(target, content).await?;
+                    let journal = context.journal_record("apply_patch", crate::journal::capture::Op::Patch);
+                    super::backend::write_opened(target, content, journal).await?;
                     added.push(path.clone());
                 }
                 FileOp::Delete { path } => {
@@ -123,7 +124,15 @@ impl Tool for ApplyPatchTool {
                         return Err(format!("refusing to delete '{path}': it is an authorized access root"));
                     }
                     let target = resolve(path)?;
+                    let journal = context.journal_record("apply_patch", crate::journal::capture::Op::Delete);
+                    let observed = match (&journal, &target) {
+                        (Some(j), ResolvedTarget::Real(p)) => Some(j.observe(p).await),
+                        _ => None,
+                    };
                     super::backend::delete(&target, false).await?;
+                    if let (Some(j), Some(obs)) = (&journal, &observed) {
+                        j.commit(obs, None).await;
+                    }
                     deleted.push(path.clone());
                 }
                 FileOp::Update(update) => {
@@ -141,7 +150,8 @@ impl Tool for ApplyPatchTool {
                     // resolve by path instead.
                     if update.move_to.is_none() && !update.is_new_file {
                         let target = context.open_edit(&join(&update.path))?;
-                        super::backend::edit_opened(target, apply).await?;
+                        let journal = context.journal_record("apply_patch", crate::journal::capture::Op::Patch);
+                        super::backend::edit_opened(target, apply, journal).await?;
                         updated.push(update.path.clone());
                         continue;
                     }
@@ -155,7 +165,15 @@ impl Tool for ApplyPatchTool {
                     let result = apply(&original)?;
                     match &update.move_to {
                         None => {
+                            let journal = context.journal_record("apply_patch", crate::journal::capture::Op::Patch);
+                            let observed = match (&journal, &target) {
+                                (Some(j), ResolvedTarget::Real(p)) => Some(j.observe(p).await),
+                                _ => None,
+                            };
                             super::backend::write_string(&target, &result).await?;
+                            if let (Some(j), Some(obs)) = (&journal, &observed) {
+                                j.commit(obs, Some(&result)).await;
+                            }
                             updated.push(update.path.clone());
                         }
                         Some(dst) => {
@@ -165,10 +183,22 @@ impl Tool for ApplyPatchTool {
                             {
                                 return Err(format!("Move to: '{dst}' already exists"));
                             }
+                            let journal = context.journal_record("apply_patch", crate::journal::capture::Op::Patch);
+                            let observed = match (&journal, &target, &dst_target) {
+                                (Some(j), ResolvedTarget::Real(src), ResolvedTarget::Real(dstp)) => {
+                                    Some(j.observe_pair(src, dstp).await)
+                                }
+                                _ => None,
+                            };
                             super::backend::rename(&target, &dst_target).await?;
                             super::backend::write_string(&dst_target, &result).await.map_err(|e| {
                                 format!("file was moved to '{dst}' but updating its content failed: {e}")
                             })?;
+                            if let (Some(j), Some((src_obs, dst_obs))) = (&journal, &observed) {
+                                use crate::journal::capture::Op;
+                                let from = j.commit_as(Op::RenameFrom, src_obs, None, None).await;
+                                j.commit_as(Op::RenameTo, dst_obs, Some(&result), from).await;
+                            }
                             updated.push(format!("{} -> {}", update.path, dst));
                             moved_count += 1;
                         }
@@ -1172,6 +1202,7 @@ mod tests {
             sandbox_policy: None,
             tool_secrets: std::collections::HashMap::new(),
             cancel: tokio_util::sync::CancellationToken::new(),
+            journal: None,
         }
     }
 
