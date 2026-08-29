@@ -1124,6 +1124,7 @@ async fn chat_inner(
         Some(model.clone()),
         project_id.clone(),
         project_path.as_deref().map(std::path::PathBuf::from),
+        services.journal_shared.clone(),
     ));
     #[cfg(target_os = "android")]
     let journal = None;

@@ -24,8 +24,15 @@ pub mod capture;
 
 use std::path::Path;
 
-/// The journal's spelling of a path, shared with `find_project_by_path` so
-/// "the same file" means the same thing everywhere.
+/// The journal's spelling of a path.
+///
+/// This is not `project::normalize_path`. That one compares working
+/// directories people typed, so it trims whitespace a picker or another
+/// program's cwd might have grown. A journal key is a filename: on Unix,
+/// `file` and `file ` (trailing space) are two files, and folding them
+/// merges two chains — misattribution. Windows still folds case and
+/// separators because the filesystem does, and a trailing slash is stripped
+/// so a directory is one key whether or not it was written with one.
 ///
 /// `None` for a path that is not valid UTF-8: a lossy conversion can map two
 /// *distinct* non-UTF-8 names onto one string, which would merge their chains
@@ -33,7 +40,15 @@ use std::path::Path;
 /// journalled at all — the same treatment non-UTF-8 *content* gets, and the
 /// same direction every journal failure takes: attribute less, never wrong.
 pub fn norm_path(path: &Path) -> Option<String> {
-    Some(crate::db::ops::project::normalize_path(path.to_str()?))
+    Some(normalize_file_key(path.to_str()?))
+}
+
+pub(crate) fn normalize_file_key(path: &str) -> String {
+    if cfg!(windows) {
+        path.replace('\\', "/").trim_end_matches('/').to_lowercase()
+    } else {
+        path.trim_end_matches('/').to_string()
+    }
 }
 
 /// Where the journal keeps its blobs, under the app's data directory.
@@ -43,4 +58,31 @@ pub fn norm_path(path: &Path) -> Option<String> {
 /// must survive it.
 pub fn journal_root(app_data_dir: &Path) -> std::path::PathBuf {
     app_data_dir.join("file-journal")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn a_trailing_space_is_a_distinct_unix_key() {
+        use std::path::Path;
+        assert_ne!(normalize_file_key("/tmp/file"), normalize_file_key("/tmp/file "));
+        assert_ne!(
+            norm_path(Path::new("/tmp/file")).unwrap(),
+            norm_path(Path::new("/tmp/file ")).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_trailing_slash_is_the_same_key() {
+        assert_eq!(normalize_file_key("/tmp/dir"), normalize_file_key("/tmp/dir/"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_keys_fold_case_and_separators() {
+        assert_eq!(normalize_file_key(r"C:\Repo\A.rs"), normalize_file_key("c:/repo/a.rs"));
+    }
 }

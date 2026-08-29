@@ -146,4 +146,56 @@ mod tests {
             .unwrap_err();
         assert!(err.contains("Access denied"), "got {err}");
     }
+
+    fn ctx_with_journal(wd: &std::path::Path) -> (ToolContext, std::sync::Arc<crate::journal::capture::JournalCtx>) {
+        let journal = crate::journal::capture::JournalCtx::new(
+            crate::db::test_db(),
+            tempfile::tempdir().unwrap().keep(),
+            "conv".into(),
+            "turn".into(),
+            "desktop".into(),
+            None,
+            None,
+            Some(wd.to_path_buf()),
+            crate::journal::capture::JournalShared::new(),
+        );
+        let mut context = ctx(wd);
+        context.journal = Some(journal.clone());
+        (context, journal)
+    }
+
+    /// Journaling an existing non-UTF-8 file used to `read_to_string` and fail
+    /// the write. The file must still be overwritten; the journal just skips.
+    #[tokio::test]
+    async fn overwriting_non_utf8_succeeds_even_with_a_journal() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.bin");
+        std::fs::write(&file, [0xff, 0xfe, 0xfd]).unwrap();
+        let (context, journal) = ctx_with_journal(dir.path());
+
+        WriteFileTool
+            .execute(serde_json::json!({"path": "a.bin", "content": "ok"}), &context)
+            .await
+            .expect("write must succeed; journal failure is skip, not abort");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "ok");
+
+        let real = crate::tools::verified::resolve_root(&file).unwrap();
+        let mut conn = journal.pool.get().unwrap();
+        let row = crate::db::ops::journal::file_by_path(&mut conn, &crate::journal::norm_path(&real).unwrap()).unwrap();
+        assert!(row.is_none(), "unreadable old bytes are not journalled");
+    }
+
+    #[tokio::test]
+    async fn overwriting_an_oversized_file_does_not_fail_the_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("big.txt");
+        std::fs::write(&file, vec![b'x'; crate::journal::capture::MAX_SNAPSHOT_BYTES + 1]).unwrap();
+        let (context, _) = ctx_with_journal(dir.path());
+
+        WriteFileTool
+            .execute(serde_json::json!({"path": "big.txt", "content": "tiny"}), &context)
+            .await
+            .expect("a large existing file must still be overwritable");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "tiny");
+    }
 }

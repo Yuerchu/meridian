@@ -349,6 +349,7 @@ pub fn bootstrap(data_dir: PathBuf, events: EventBus) -> Services {
         // turn. Left empty a follow-up is never delivered, which is the right
         // way for this to be missing.
         turn_starter: std::sync::OnceLock::new(),
+        journal_shared: crate::journal::capture::JournalShared::new(),
     })
 }
 

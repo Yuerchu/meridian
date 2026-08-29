@@ -135,6 +135,7 @@ mod tests {
             None,
             None,
             Some(dir.path().to_path_buf()),
+            crate::journal::capture::JournalShared::new(),
         );
         let mut context = ctx(dir.path());
         context.journal = Some(journal.clone());

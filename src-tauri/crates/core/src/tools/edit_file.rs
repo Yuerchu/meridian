@@ -136,6 +136,7 @@ mod tests {
             Some("test-model".into()),
             None,
             Some(dir.path().to_path_buf()),
+            crate::journal::capture::JournalShared::new(),
         );
         let mut context = ctx(dir.path());
         context.journal = Some(journal.clone());
@@ -189,6 +190,7 @@ mod tests {
             None,
             None,
             None,
+            crate::journal::capture::JournalShared::new(),
         );
         let mut context = ctx(dir.path());
         context.journal = Some(journal);

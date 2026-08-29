@@ -205,16 +205,19 @@ pub async fn write_opened(
             let content_in = content.to_string();
             let read_old = journal.is_some() && pre_existed;
             let real_for_task = real.clone();
-            let old = tokio::task::spawn_blocking(move || {
-                use std::io::{Read, Seek, SeekFrom, Write};
+            let (old, skip_journal) = tokio::task::spawn_blocking(move || {
+                use std::io::{Seek, SeekFrom, Write};
                 let real = real_for_task;
-                let mut old = None;
-                if read_old {
-                    let mut buf = String::new();
-                    file.read_to_string(&mut buf)
-                        .map_err(|e| format!("failed to read '{}': {}", real.display(), e))?;
-                    old = Some(buf);
-                }
+                // Snapshot failure (non-UTF-8, oversized, unreadable) skips
+                // the journal entry. It must not fail the write — recording
+                // never fails the write, and this used to make write_file
+                // refuse a binary file the moment a journal was attached.
+                let old = if read_old {
+                    crate::journal::capture::snapshot_open_file(&mut file)
+                } else {
+                    None
+                };
+                let skip_journal = read_old && old.is_none();
                 file.set_len(0)
                     .map_err(|e| format!("failed to truncate '{}': {}", real.display(), e))?;
                 file.seek(SeekFrom::Start(0))
@@ -223,12 +226,14 @@ pub async fn write_opened(
                     .map_err(|e| format!("failed to write '{}': {}", real.display(), e))?;
                 file.flush()
                     .map_err(|e| format!("failed to flush '{}': {}", real.display(), e))?;
-                Ok::<_, String>(old)
+                Ok::<_, String>((old, skip_journal))
             })
             .await
             .map_err(|e| format!("task failed: {e}"))??;
 
-            if let Some(j) = journal {
+            if let Some(j) = journal
+                && !skip_journal
+            {
                 j.ctx
                     .record(&real, old.as_deref(), Some(content), j.op, j.tool_name, None)
                     .await;
