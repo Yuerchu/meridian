@@ -78,14 +78,6 @@ macro_rules! with_all_commands {
                 fast_mode: bool,
             ),
             async commands::conversation => toggle_pin_conversation(id: String),
-            async commands::conversation => set_conversation_project(
-                id: String,
-                project_id: Option<String>,
-            ),
-            async commands::conversation => search_conversations(
-                query: String,
-                limit: Option<u32>,
-            ),
             async commands::conversation => delete_conversation(id: String),
             async commands::conversation => compact(
                 conversation_id: String,
