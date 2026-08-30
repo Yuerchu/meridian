@@ -24,8 +24,8 @@ pub enum BillingMode {
     Subscription,
     /// The cost lands in someone else's ledger and never enters our totals.
     ///
-    /// Reserved: nothing writes it yet. ACP's `usage_update` is reported but
-    /// produces no audit row, and giving it one is a separate feature.
+    /// Live ACP transcripts use the ordinary audit path so their token counts
+    /// remain visible, but the hosted process pays for those requests itself.
     External,
 }
 
@@ -132,13 +132,20 @@ pub struct TurnPricing {
 }
 
 impl TurnPricing {
-    /// `None` for a model nobody has priced — the same test the reports use, so
-    /// a turn showing no cost and a report counting it as unpriced agree.
+    /// `None` when no part of a model's cost is known. A provider-tool rate is
+    /// useful on its own: live progress can still show that known lower bound
+    /// while the usage report flags the missing token rates.
     pub fn of(config: &ModelConfig) -> Option<Self> {
         let base = Prices::of(config);
-        base.known().then(|| Self {
+        (base.known() || base.server_tool.is_some()).then(|| Self {
             base,
-            tiers: parse_tiers(config.price_tiers.as_deref()),
+            // A tier cannot turn blank base token rates into known ones. Keep
+            // tool-only pricing tool-only at every prompt size.
+            tiers: if base.known() {
+                parse_tiers(config.price_tiers.as_deref())
+            } else {
+                Vec::new()
+            },
         })
     }
 
@@ -784,6 +791,34 @@ mod tests {
     fn an_unpriced_model_has_no_turn_pricing() {
         assert!(TurnPricing::of(&mock_config(0.0, 0.0, None)).is_none());
         assert!(TurnPricing::of(&mock_config(2.0, 0.0, None)).is_some());
+    }
+
+    #[test]
+    fn a_tool_rate_alone_keeps_the_known_live_cost() {
+        let mut config = mock_config(0.0, 0.0, None);
+        config.server_tool_price = Some(15.0);
+        config.price_tiers = Some(r#"[{"min_prompt_tokens":1,"input":99.0,"output":99.0}]"#.into());
+
+        let pricing = TurnPricing::of(&config).expect("the provider-tool rate is known");
+        let prices = pricing.for_prompt(1_000_000);
+        assert_eq!(
+            (prices.input, prices.output),
+            (0.0, 0.0),
+            "a tier must not invent token pricing"
+        );
+        assert_eq!(prices.server_tool, Some(15.0));
+
+        let usage = TokenUsage {
+            prompt_tokens: Some(100),
+            completion_tokens: Some(50),
+            billable_tool_calls: Some(2),
+            ..Default::default()
+        };
+        let cost = compute_cost(&usage, &prices);
+        assert_eq!(cost.input_cost, 0.0);
+        assert_eq!(cost.output_cost, 0.0);
+        assert!((cost.tool_cost - 0.03).abs() < 1e-9);
+        assert!((cost.total_cost - 0.03).abs() < 1e-9);
     }
 
     /// Filling in only the long-context row is an easy mistake — it is the row

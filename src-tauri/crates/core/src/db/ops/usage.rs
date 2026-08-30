@@ -126,16 +126,49 @@ pub struct UsageBucket {
     /// Replies, not messages. Only assistant rows carry tokens, and a count that
     /// included the questions would not divide into anything beside it.
     pub messages: i64,
+    /// How many replies contribute to Meridian's local metered amount versus a
+    /// subscription or an external ledger. Without these, an all-external
+    /// bucket is indistinguishable from an exact local zero.
+    pub metered_messages: i64,
+    pub subscription_messages: i64,
+    pub external_messages: i64,
+    /// Replies for which the provider supplied none of the four token usage
+    /// fields. This is independent of billing mode: external traffic can have
+    /// unknown usage without representing a missing price.
+    pub missing_token_usage_messages: i64,
+    /// Replies missing either required side of the usage report. Cache fields
+    /// are optional — a NULL cache count means no cache activity — but a NULL
+    /// input or output count leaves that side of the bill unknown.
+    pub incomplete_token_usage_messages: i64,
     pub input_tokens: i64,
     pub output_tokens: i64,
     pub cache_read_tokens: i64,
     pub cache_write_tokens: i64,
+    pub input_cost: f64,
+    pub output_cost: f64,
+    pub cache_cost: f64,
+    pub tool_cost: f64,
     pub cost: f64,
-    /// How many of `messages` were produced by a model nobody has priced.
+    /// Replies whose token usage or token rates are incomplete. This is a
+    /// component counter: unlike `unpriced_messages`, a reply can also appear
+    /// in `unpriced_tool_messages`.
+    pub unpriced_token_messages: i64,
+    /// Replies with provider tool calls but no rate for those calls.
+    pub unpriced_tool_messages: i64,
+    /// Replies whose known amount used today's exact provider/model price
+    /// because the historical audit row predates that price snapshot.
+    pub estimated_token_messages: i64,
+    pub estimated_tool_messages: i64,
+    /// Union of the two component estimate counters above.
+    pub estimated_messages: i64,
+    /// How many of `messages` contain at least one metered component with no
+    /// configured rate, or no provider-reported usage at all.
     ///
-    /// Not an error and not zero-cost: it is traffic whose cost is unknown, and
-    /// a total that absorbs it silently is a smaller number than the truth with
-    /// nothing to say so. Every caller is expected to surface this.
+    /// Known components remain in the four cost fields and `cost`. With no
+    /// current-price fallback that amount is a lower bound; with one it is a
+    /// partial estimate that may be higher or lower than the historical bill.
+    /// The estimate and gap counters let callers say which instead of calling
+    /// either case free.
     pub unpriced_messages: i64,
 }
 
@@ -145,11 +178,25 @@ impl UsageBucket {
             key,
             label: None,
             messages: 0,
+            metered_messages: 0,
+            subscription_messages: 0,
+            external_messages: 0,
+            missing_token_usage_messages: 0,
+            incomplete_token_usage_messages: 0,
             input_tokens: 0,
             output_tokens: 0,
             cache_read_tokens: 0,
             cache_write_tokens: 0,
+            input_cost: 0.0,
+            output_cost: 0.0,
+            cache_cost: 0.0,
+            tool_cost: 0.0,
             cost: 0.0,
+            unpriced_token_messages: 0,
+            unpriced_tool_messages: 0,
+            estimated_token_messages: 0,
+            estimated_tool_messages: 0,
+            estimated_messages: 0,
             unpriced_messages: 0,
         }
     }
@@ -186,6 +233,12 @@ struct GroupRow {
     messages: i64,
     #[diesel(sql_type = BigInt)]
     input_tokens: i64,
+    /// Uncached prompt tokens summed per reply. This cannot be derived from the
+    /// group totals when one reply omitted its prompt count but still reported
+    /// cache usage: subtracting that cache from another reply's prompt would
+    /// erase a known cost.
+    #[diesel(sql_type = BigInt)]
+    uncached_input_tokens: i64,
     #[diesel(sql_type = BigInt)]
     output_tokens: i64,
     #[diesel(sql_type = BigInt)]
@@ -195,6 +248,341 @@ struct GroupRow {
     /// Provider-side invocations, which bill per call rather than per token.
     #[diesel(sql_type = BigInt)]
     server_tool_calls: i64,
+    /// Replies in this group that actually made at least one billable provider
+    /// tool call. A group can contain replies with and without calls, so using
+    /// `messages` when the tool rate is missing would overstate the gap.
+    #[diesel(sql_type = BigInt)]
+    server_tool_messages: i64,
+    /// Replies whose provider supplied none of the four token usage fields.
+    /// Tool calls are independent: a provider can report them while leaving
+    /// token usage unknown.
+    #[diesel(sql_type = BigInt)]
+    missing_token_usage_messages: i64,
+    /// Replies missing either input or output usage. These are the two required
+    /// sides for an exact token bill; cache fields remain optional.
+    #[diesel(sql_type = BigInt)]
+    incomplete_token_usage_messages: i64,
+    #[diesel(sql_type = BigInt)]
+    missing_input_messages: i64,
+    #[diesel(sql_type = BigInt)]
+    missing_output_messages: i64,
+    /// Replies with at least one positive token count. Kept apart from missing
+    /// usage so explicit zeroes remain exact even without configured rates.
+    #[diesel(sql_type = BigInt)]
+    positive_token_messages: i64,
+    /// Union of incomplete token usage and positive tool calls.
+    #[diesel(sql_type = BigInt)]
+    incomplete_token_or_tool_messages: i64,
+    /// Union of incomplete and positive token usage. The two overlap when a
+    /// provider reports only one side, so adding their counts would overstate
+    /// the number of affected replies.
+    #[diesel(sql_type = BigInt)]
+    incomplete_or_positive_token_messages: i64,
+    /// Component-specific pricing gaps. These let the turn hover card keep a
+    /// reported output cost exact when only the input side is absent, while the
+    /// overall turn remains a lower bound.
+    #[diesel(sql_type = BigInt)]
+    unpriced_input_usage_messages: i64,
+    #[diesel(sql_type = BigInt)]
+    unpriced_output_usage_messages: i64,
+    #[diesel(sql_type = BigInt)]
+    unpriced_cache_usage_messages: i64,
+    /// Union of incomplete/positive token usage and positive tool calls.
+    #[diesel(sql_type = BigInt)]
+    unpriced_usage_messages: i64,
+    /// Union of positive token usage and positive tool calls. This is used to
+    /// count current-price fallbacks without marking explicit zeroes as
+    /// estimates: any rate multiplied by zero is still an exact zero.
+    #[diesel(sql_type = BigInt)]
+    positive_token_or_tool_messages: i64,
+    /// Replies whose input/output were explicitly zero, with no positive cache
+    /// or tool usage. Every possible rate yields the same exact local zero.
+    #[diesel(sql_type = BigInt)]
+    explicit_zero_messages: i64,
+}
+
+/// Rates resolved under the historical-snapshot rules, plus which part of the
+/// result is actually known. Token and provider-tool prices are independent: a
+/// missing tool rate must not erase known token spend, and a known tool rate is
+/// still a useful lower bound when the token rates are blank.
+struct ResolvedPrices {
+    prices: Prices,
+    token_prices_known: bool,
+    token_prices_from_current: bool,
+    tool_price_from_current: bool,
+    used_current_fallback: bool,
+}
+
+/// Pricing state for one durable turn. Cost fields are present only when a
+/// local metered amount is known. The status distinguishes an exact historical
+/// snapshot, a current-price estimate, a true lower bound, and traffic paid
+/// outside Meridian from an exactly-zero local bill.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TurnPricingStatus {
+    Exact,
+    Estimated,
+    LowerBound,
+    Subscription,
+    External,
+    Unavailable,
+}
+
+/// Persisted usage and cost for one `turn_id`, derived from `audit_messages`.
+/// Historical assistant rows without a turn id cannot be attached exactly and
+/// are deliberately absent rather than guessed onto a neighbouring turn.
+#[derive(Debug, Clone, Serialize)]
+pub struct TurnUsageSummary {
+    pub messages: i64,
+    /// Replies for which the provider supplied none of the four token usage
+    /// fields. This includes subscription and external traffic, which may omit
+    /// usage without representing a price the user failed to configure.
+    pub missing_token_usage_messages: i64,
+    /// Replies missing either input or output usage. This is a pricing gap even
+    /// when the other side is known and retained as a lower bound.
+    pub incomplete_token_usage_messages: i64,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cache_read_tokens: i64,
+    pub cache_write_tokens: i64,
+    pub server_tool_calls: i64,
+    pub input_cost: Option<f64>,
+    pub output_cost: Option<f64>,
+    pub cache_cost: Option<f64>,
+    pub tool_cost: Option<f64>,
+    pub total_cost: Option<f64>,
+    pub unpriced_token_messages: i64,
+    pub unpriced_input_messages: i64,
+    pub unpriced_output_messages: i64,
+    pub unpriced_cache_messages: i64,
+    pub unpriced_tool_messages: i64,
+    pub estimated_token_messages: i64,
+    pub estimated_tool_messages: i64,
+    pub estimated_messages: i64,
+    pub unpriced_messages: i64,
+    pub metered_messages: i64,
+    pub subscription_messages: i64,
+    pub external_messages: i64,
+    pub pricing_status: TurnPricingStatus,
+}
+
+struct UsageAccumulator {
+    bucket: UsageBucket,
+    server_tool_calls: i64,
+    metered_server_tool_calls: i64,
+    metered_messages: i64,
+    subscription_messages: i64,
+    external_messages: i64,
+    has_known_input_amount: bool,
+    has_known_output_amount: bool,
+    has_known_cache_amount: bool,
+    has_priced_tool_calls: bool,
+    unpriced_input_messages: i64,
+    unpriced_output_messages: i64,
+    unpriced_cache_messages: i64,
+}
+
+impl UsageAccumulator {
+    fn empty(key: String) -> Self {
+        Self {
+            bucket: UsageBucket::empty(key),
+            server_tool_calls: 0,
+            metered_server_tool_calls: 0,
+            metered_messages: 0,
+            subscription_messages: 0,
+            external_messages: 0,
+            has_known_input_amount: false,
+            has_known_output_amount: false,
+            has_known_cache_amount: false,
+            has_priced_tool_calls: false,
+            unpriced_input_messages: 0,
+            unpriced_output_messages: 0,
+            unpriced_cache_messages: 0,
+        }
+    }
+
+    fn add(&mut self, group: &GroupRow, resolved: Option<ResolvedPrices>) {
+        self.bucket.messages += group.messages;
+        self.bucket.input_tokens += group.input_tokens;
+        self.bucket.output_tokens += group.output_tokens;
+        self.bucket.cache_read_tokens += group.cache_read_tokens;
+        self.bucket.cache_write_tokens += group.cache_write_tokens;
+        self.server_tool_calls += group.server_tool_calls;
+        self.bucket.missing_token_usage_messages += group.missing_token_usage_messages;
+        self.bucket.incomplete_token_usage_messages += group.incomplete_token_usage_messages;
+
+        match billing_mode_of(group) {
+            BillingMode::Metered => {
+                self.metered_messages += group.messages;
+                self.bucket.metered_messages += group.messages;
+                self.metered_server_tool_calls += group.server_tool_calls;
+            }
+            BillingMode::Subscription => {
+                self.subscription_messages += group.messages;
+                self.bucket.subscription_messages += group.messages;
+            }
+            BillingMode::External => {
+                self.external_messages += group.messages;
+                self.bucket.external_messages += group.messages;
+            }
+        }
+
+        let Some(resolved) = resolved else {
+            // Subscription and external requests have no per-request rate to
+            // find, so neither is an actionable pricing gap.
+            return;
+        };
+        let tokens = BilledTokens {
+            uncached_input: group.uncached_input_tokens,
+            output: group.output_tokens,
+            cache_read: group.cache_read_tokens,
+            cache_write: group.cache_write_tokens,
+            server_tool_calls: group.server_tool_calls,
+        };
+        let cost = cost_of(&tokens, &resolved.prices);
+        self.bucket.input_cost += cost.input_cost;
+        self.bucket.output_cost += cost.output_cost;
+        self.bucket.cache_cost += cost.cache_cost;
+        self.bucket.tool_cost += cost.tool_cost;
+        self.bucket.cost += cost.total_cost;
+
+        if resolved.token_prices_known {
+            // Preserve each reported side independently. A provider is allowed
+            // to send output without input (and vice versa); the known side is
+            // still a useful lower bound, but the absent side is not zero.
+            self.has_known_input_amount |= group.messages > group.missing_input_messages;
+            self.has_known_output_amount |= group.messages > group.missing_output_messages;
+            self.has_known_cache_amount |= group.messages > group.missing_token_usage_messages;
+        } else if group.explicit_zero_messages > 0 {
+            // Unknown rates still cannot change an explicitly reported all-zero
+            // request. Keep that exact zero without treating a partial zero as
+            // evidence that another missing component was free.
+            self.has_known_input_amount = true;
+            self.has_known_output_amount = true;
+            self.has_known_cache_amount = true;
+        }
+        self.has_priced_tool_calls |= group.server_tool_messages > 0 && resolved.prices.server_tool.is_some();
+
+        let token_incomplete = if resolved.token_prices_known {
+            group.incomplete_token_usage_messages
+        } else {
+            group.incomplete_or_positive_token_messages
+        };
+        if resolved.token_prices_known {
+            self.unpriced_input_messages += group.missing_input_messages;
+            self.unpriced_output_messages += group.missing_output_messages;
+            self.unpriced_cache_messages += group.missing_token_usage_messages;
+        } else {
+            self.unpriced_input_messages += group.unpriced_input_usage_messages;
+            self.unpriced_output_messages += group.unpriced_output_usage_messages;
+            self.unpriced_cache_messages += group.unpriced_cache_usage_messages;
+        }
+        let tool_incomplete = if resolved.prices.server_tool.is_some() {
+            0
+        } else {
+            group.server_tool_messages
+        };
+        self.bucket.unpriced_token_messages += token_incomplete;
+        self.bucket.unpriced_tool_messages += tool_incomplete;
+
+        // Keep the known half as a lower bound, while making the missing half
+        // visible. When neither half is known the whole group counts once,
+        // never once for tokens and again for tools.
+        self.bucket.unpriced_messages += match (resolved.token_prices_known, resolved.prices.server_tool.is_some()) {
+            (true, true) => group.incomplete_token_usage_messages,
+            (true, false) => group.incomplete_token_or_tool_messages,
+            (false, true) => group.incomplete_or_positive_token_messages,
+            (false, false) => group.unpriced_usage_messages,
+        };
+
+        if resolved.used_current_fallback {
+            self.bucket.estimated_token_messages += resolved
+                .token_prices_from_current
+                .then_some(group.positive_token_messages)
+                .unwrap_or_default();
+            self.bucket.estimated_tool_messages += resolved
+                .tool_price_from_current
+                .then_some(group.server_tool_messages)
+                .unwrap_or_default();
+            self.bucket.estimated_messages +=
+                match (resolved.token_prices_from_current, resolved.tool_price_from_current) {
+                    (true, true) => group.positive_token_or_tool_messages,
+                    (true, false) => group.positive_token_messages,
+                    (false, true) => group.server_tool_messages,
+                    (false, false) => 0,
+                };
+        }
+    }
+
+    fn turn_summary(self) -> TurnUsageSummary {
+        let has_metered = self.metered_messages > 0;
+        let has_subscription = self.subscription_messages > 0;
+        let has_external = self.external_messages > 0;
+        let has_known_token_amount =
+            self.has_known_input_amount || self.has_known_output_amount || self.has_known_cache_amount;
+        let pricing_status = if has_metered {
+            // A current-price fallback is an estimate, not a lower bound: the
+            // historical rate may have been either higher or lower. Component
+            // gap counters remain populated when this estimate is also partial.
+            if self.bucket.estimated_messages > 0 {
+                TurnPricingStatus::Estimated
+            } else if self.bucket.unpriced_messages > 0 || has_subscription || has_external {
+                if has_known_token_amount || self.has_priced_tool_calls {
+                    TurnPricingStatus::LowerBound
+                } else {
+                    TurnPricingStatus::Unavailable
+                }
+            } else if has_known_token_amount || self.has_priced_tool_calls {
+                TurnPricingStatus::Exact
+            } else {
+                // A metered row with neither usage nor a known component is
+                // not evidence of a zero bill.
+                TurnPricingStatus::Unavailable
+            }
+        } else {
+            match (has_subscription, has_external) {
+                (true, false) => TurnPricingStatus::Subscription,
+                (false, true) => TurnPricingStatus::External,
+                _ => TurnPricingStatus::Unavailable,
+            }
+        };
+        let has_local_amount = matches!(
+            pricing_status,
+            TurnPricingStatus::Exact | TurnPricingStatus::Estimated | TurnPricingStatus::LowerBound
+        );
+        let token_cost = |known, value| (has_local_amount && known).then_some(value);
+        let tool_cost = (has_local_amount && (self.metered_server_tool_calls == 0 || self.has_priced_tool_calls))
+            .then_some(self.bucket.tool_cost);
+
+        TurnUsageSummary {
+            messages: self.bucket.messages,
+            missing_token_usage_messages: self.bucket.missing_token_usage_messages,
+            incomplete_token_usage_messages: self.bucket.incomplete_token_usage_messages,
+            input_tokens: self.bucket.input_tokens,
+            output_tokens: self.bucket.output_tokens,
+            cache_read_tokens: self.bucket.cache_read_tokens,
+            cache_write_tokens: self.bucket.cache_write_tokens,
+            server_tool_calls: self.server_tool_calls,
+            input_cost: token_cost(self.has_known_input_amount, self.bucket.input_cost),
+            output_cost: token_cost(self.has_known_output_amount, self.bucket.output_cost),
+            cache_cost: token_cost(self.has_known_cache_amount, self.bucket.cache_cost),
+            tool_cost,
+            total_cost: has_local_amount.then_some(self.bucket.cost),
+            unpriced_token_messages: self.bucket.unpriced_token_messages,
+            unpriced_input_messages: self.unpriced_input_messages,
+            unpriced_output_messages: self.unpriced_output_messages,
+            unpriced_cache_messages: self.unpriced_cache_messages,
+            unpriced_tool_messages: self.bucket.unpriced_tool_messages,
+            estimated_token_messages: self.bucket.estimated_token_messages,
+            estimated_tool_messages: self.bucket.estimated_tool_messages,
+            estimated_messages: self.bucket.estimated_messages,
+            unpriced_messages: self.bucket.unpriced_messages,
+            metered_messages: self.metered_messages,
+            subscription_messages: self.subscription_messages,
+            external_messages: self.external_messages,
+            pricing_status,
+        }
+    }
 }
 
 /// Group the log, price each group, and add the groups up.
@@ -205,40 +593,10 @@ pub fn report(
 ) -> QueryResult<Vec<UsageBucket>> {
     let groups = grouped(conn, dimension, filter)?;
     let current = current_prices(conn)?;
-
-    let mut buckets: HashMap<String, UsageBucket> = HashMap::new();
-    for group in groups {
-        let prices = resolve(&group, &current);
-        let entry = buckets
-            .entry(group.bucket_key.clone())
-            .or_insert_with(|| UsageBucket::empty(group.bucket_key.clone()));
-
-        entry.messages += group.messages;
-        entry.input_tokens += group.input_tokens;
-        entry.output_tokens += group.output_tokens;
-        entry.cache_read_tokens += group.cache_read_tokens;
-        entry.cache_write_tokens += group.cache_write_tokens;
-
-        match prices {
-            Some(prices) => {
-                let tokens = BilledTokens::from_totals(
-                    group.input_tokens,
-                    group.output_tokens,
-                    group.cache_read_tokens,
-                    group.cache_write_tokens,
-                    group.server_tool_calls,
-                );
-                entry.cost += cost_of(&tokens, &prices).total_cost;
-            }
-            // Only the modes that expect a rate can be missing one. Counting a
-            // subscription's requests here would report a shortfall that can
-            // never be closed — there is no price to go and fill in.
-            None if billing_mode_of(&group).expects_a_price() => entry.unpriced_messages += group.messages,
-            None => {}
-        }
-    }
-
-    let mut out: Vec<UsageBucket> = buckets.into_values().collect();
+    let mut out: Vec<UsageBucket> = accumulate(groups, &current)
+        .into_values()
+        .map(|accumulator| accumulator.bucket)
+        .collect();
     if dimension.is_series() {
         out.sort_by(|a, b| a.key.cmp(&b.key));
     } else {
@@ -255,8 +613,40 @@ pub fn report(
     Ok(out)
 }
 
+/// One audit query for every turn in a conversation, then one current-price
+/// query for the legacy fallback. The cost work is the same accumulator used by
+/// [`report`], not a snapshot-specific formula and not one query per turn.
+pub fn turn_summaries(
+    conn: &mut SqliteConnection,
+    conversation_id: &str,
+) -> QueryResult<HashMap<String, TurnUsageSummary>> {
+    let filter = UsageFilter {
+        conversation_id: Some(conversation_id.to_string()),
+        ..Default::default()
+    };
+    let groups = grouped_for_key(conn, "turn_id", "AND turn_id IS NOT NULL", &filter, true)?;
+    let current = current_prices(conn)?;
+    Ok(accumulate(groups, &current)
+        .into_iter()
+        .map(|(turn_id, accumulator)| (turn_id, accumulator.turn_summary()))
+        .collect())
+}
+
+fn accumulate(groups: Vec<GroupRow>, current: &HashMap<(String, String), Prices>) -> HashMap<String, UsageAccumulator> {
+    let mut buckets = HashMap::new();
+    for group in groups {
+        let resolved = resolve(&group, current);
+        buckets
+            .entry(group.bucket_key.clone())
+            .or_insert_with(|| UsageAccumulator::empty(group.bucket_key.clone()))
+            .add(&group, resolved);
+    }
+    buckets
+}
+
 /// The snapshot if there is one, today's configuration if there is not, and
-/// `None` when nobody has ever said what this model costs.
+/// zeroes for any part nobody has priced. `None` is reserved for billing modes
+/// where no per-request price is owed.
 ///
 /// The middle case is the retroactive pricing migration 30 exists to end, and it
 /// only applies to rows written before it. Reporting those at today's rate is
@@ -268,7 +658,7 @@ pub fn report(
 /// request through a provider that happens to have rates on file would be priced
 /// at them. "No rate was stored" and "no rate exists" are the same shape in the
 /// row and opposite in meaning, and only `billing_mode` tells them apart.
-fn resolve(group: &GroupRow, current: &HashMap<(String, String), Prices>) -> Option<Prices> {
+fn resolve(group: &GroupRow, current: &HashMap<(String, String), Prices>) -> Option<ResolvedPrices> {
     if !billing_mode_of(group).is_priced() {
         return None;
     }
@@ -281,13 +671,41 @@ fn resolve(group: &GroupRow, current: &HashMap<(String, String), Prices>) -> Opt
             server_tool: group.server_tool_price,
         }),
         _ => None,
-    };
-    let prices = snapshot.or_else(|| {
-        let provider = group.provider_id.as_ref()?;
+    }
+    // Rows written while a model config still held the editor's 0/0 defaults
+    // predate the write-side guard in `audit::prices_for`. Zero was never a
+    // known price (`Prices::known` is the contract), so it must behave like a
+    // missing snapshot and remain eligible for the same current-price fallback
+    // as older NULL rows. A real historical rate still wins unchanged.
+    .filter(Prices::known);
+    let current_prices = group.provider_id.as_ref().and_then(|provider| {
         let model = group.model_id.as_ref()?;
         current.get(&(provider.clone(), model.clone())).copied()
-    })?;
-    prices.known().then_some(prices)
+    });
+    let token_prices_from_current = snapshot.is_none() && current_prices.is_some_and(|prices| prices.known());
+    let tool_price_from_current =
+        group.server_tool_price.is_none() && current_prices.is_some_and(|prices| prices.server_tool.is_some());
+    let mut prices = snapshot.or(current_prices).unwrap_or_default();
+
+    // A tool rate is independent of the token rates. Preserve an explicit
+    // historical value even on a legacy/zero token snapshot; otherwise a
+    // deleted model would lose the one part of its cost the row did know.
+    prices.server_tool = group
+        .server_tool_price
+        .or(prices.server_tool)
+        // Migration 37 added the tool-rate snapshot after token snapshots
+        // already existed. Its legacy NULL has the same best-available answer
+        // as migration 30's NULL token rates: today's exact provider/model
+        // config, never a same-named model under a different provider.
+        .or_else(|| current_prices.and_then(|current| current.server_tool));
+
+    Some(ResolvedPrices {
+        token_prices_known: prices.known(),
+        prices,
+        token_prices_from_current,
+        tool_price_from_current,
+        used_current_fallback: token_prices_from_current || tool_price_from_current,
+    })
 }
 
 /// An unreadable mode reads as `Metered`, which keeps the request in the ledger
@@ -329,6 +747,19 @@ fn current_prices(conn: &mut SqliteConnection) -> QueryResult<HashMap<(String, S
 }
 
 fn grouped(conn: &mut SqliteConnection, dimension: UsageDimension, filter: &UsageFilter) -> QueryResult<Vec<GroupRow>> {
+    grouped_for_key(conn, dimension.key_expr(), "", filter, false)
+}
+
+/// `key` and `extra_filter` are internal static SQL fragments, never caller
+/// input. The turn reader uses the same statement shape with `turn_id` as its
+/// key and excludes legacy NULL ids that cannot be attached exactly.
+fn grouped_for_key(
+    conn: &mut SqliteConnection,
+    key: &'static str,
+    extra_filter: &'static str,
+    filter: &UsageFilter,
+    direct_conversation: bool,
+) -> QueryResult<Vec<GroupRow>> {
     // The two roles that carry tokens. A question carries none and has no
     // model, so every user row would land in a single group keyed on nothing
     // and inflate the reply count the other figures are read against.
@@ -341,27 +772,107 @@ fn grouped(conn: &mut SqliteConnection, dimension: UsageDimension, filter: &Usag
     // Each filter is bound twice against the same `?`-pair rather than being
     // appended conditionally: one statement, one shape, and no arm of a builder
     // that can be reached only by a combination nobody tested.
+    // Snapshot reads always name one conversation. Keep that equality direct
+    // rather than hiding it behind the generic nullable-filter OR, so SQLite
+    // can seek the `(conversation_id, turn_id)` index instead of scanning the
+    // whole durable ledger whenever the conversation opens.
+    let conversation_filter = if direct_conversation {
+        "AND conversation_id = ?"
+    } else {
+        "AND (? IS NULL OR conversation_id = ?)"
+    };
     let sql = format!(
         "SELECT {key} AS bucket_key,
                 provider_id, model_id,
                 input_price, output_price, cache_read_price, cache_write_price,
                 server_tool_price, billing_mode,
                 COUNT(*) AS messages,
-                COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                COALESCE(SUM(CASE WHEN input_tokens IS NOT NULL
+                                  THEN input_tokens
+                                  ELSE COALESCE(cache_read_tokens, 0)
+                                     + COALESCE(cache_write_tokens, 0)
+                             END), 0) AS input_tokens,
+                COALESCE(SUM(MAX(COALESCE(input_tokens, 0)
+                                 - COALESCE(cache_read_tokens, 0)
+                                 - COALESCE(cache_write_tokens, 0), 0)), 0)
+                    AS uncached_input_tokens,
                 COALESCE(SUM(output_tokens), 0) AS output_tokens,
                 COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
                 COALESCE(SUM(cache_write_tokens), 0) AS cache_write_tokens,
-                COALESCE(SUM(server_tool_calls), 0) AS server_tool_calls
+                COALESCE(SUM(server_tool_calls), 0) AS server_tool_calls,
+                SUM(CASE WHEN COALESCE(server_tool_calls, 0) > 0 THEN 1 ELSE 0 END)
+                    AS server_tool_messages,
+                SUM(CASE WHEN input_tokens IS NULL
+                               AND output_tokens IS NULL
+                               AND cache_read_tokens IS NULL
+                               AND cache_write_tokens IS NULL
+                         THEN 1 ELSE 0 END) AS missing_token_usage_messages,
+                SUM(CASE WHEN input_tokens IS NULL OR output_tokens IS NULL
+                         THEN 1 ELSE 0 END) AS incomplete_token_usage_messages,
+                SUM(CASE WHEN input_tokens IS NULL THEN 1 ELSE 0 END)
+                    AS missing_input_messages,
+                SUM(CASE WHEN output_tokens IS NULL THEN 1 ELSE 0 END)
+                    AS missing_output_messages,
+                SUM(CASE WHEN COALESCE(input_tokens, 0) > 0
+                               OR COALESCE(output_tokens, 0) > 0
+                               OR COALESCE(cache_read_tokens, 0) > 0
+                               OR COALESCE(cache_write_tokens, 0) > 0
+                         THEN 1 ELSE 0 END) AS positive_token_messages,
+                SUM(CASE WHEN (input_tokens IS NULL OR output_tokens IS NULL)
+                               OR COALESCE(server_tool_calls, 0) > 0
+                         THEN 1 ELSE 0 END) AS incomplete_token_or_tool_messages,
+                SUM(CASE WHEN input_tokens IS NULL
+                               OR output_tokens IS NULL
+                               OR COALESCE(input_tokens, 0) > 0
+                               OR COALESCE(output_tokens, 0) > 0
+                               OR COALESCE(cache_read_tokens, 0) > 0
+                               OR COALESCE(cache_write_tokens, 0) > 0
+                         THEN 1 ELSE 0 END) AS incomplete_or_positive_token_messages,
+                SUM(CASE WHEN input_tokens IS NULL
+                               OR MAX(COALESCE(input_tokens, 0)
+                                      - COALESCE(cache_read_tokens, 0)
+                                      - COALESCE(cache_write_tokens, 0), 0) > 0
+                         THEN 1 ELSE 0 END) AS unpriced_input_usage_messages,
+                SUM(CASE WHEN output_tokens IS NULL
+                               OR COALESCE(output_tokens, 0) > 0
+                         THEN 1 ELSE 0 END) AS unpriced_output_usage_messages,
+                SUM(CASE WHEN (input_tokens IS NULL
+                                AND output_tokens IS NULL
+                                AND cache_read_tokens IS NULL
+                                AND cache_write_tokens IS NULL)
+                               OR COALESCE(cache_read_tokens, 0) > 0
+                               OR COALESCE(cache_write_tokens, 0) > 0
+                         THEN 1 ELSE 0 END) AS unpriced_cache_usage_messages,
+                SUM(CASE WHEN input_tokens IS NULL
+                               OR output_tokens IS NULL
+                               OR COALESCE(input_tokens, 0) > 0
+                               OR COALESCE(output_tokens, 0) > 0
+                               OR COALESCE(cache_read_tokens, 0) > 0
+                               OR COALESCE(cache_write_tokens, 0) > 0
+                               OR COALESCE(server_tool_calls, 0) > 0
+                         THEN 1 ELSE 0 END) AS unpriced_usage_messages,
+                SUM(CASE WHEN COALESCE(input_tokens, 0) > 0
+                               OR COALESCE(output_tokens, 0) > 0
+                               OR COALESCE(cache_read_tokens, 0) > 0
+                               OR COALESCE(cache_write_tokens, 0) > 0
+                               OR COALESCE(server_tool_calls, 0) > 0
+                         THEN 1 ELSE 0 END) AS positive_token_or_tool_messages,
+                SUM(CASE WHEN input_tokens = 0
+                               AND output_tokens = 0
+                               AND COALESCE(cache_read_tokens, 0) = 0
+                               AND COALESCE(cache_write_tokens, 0) = 0
+                               AND COALESCE(server_tool_calls, 0) = 0
+                         THEN 1 ELSE 0 END) AS explicit_zero_messages
            FROM audit_messages
           WHERE role IN ({roles})
             AND (? IS NULL OR created_at >= ?)
             AND (? IS NULL OR created_at < ?)
             AND (? IS NULL OR turn_origin = ?)
-            AND (? IS NULL OR conversation_id = ?)
+            {conversation_filter}
+            {extra_filter}
        GROUP BY bucket_key, provider_id, model_id,
                 input_price, output_price, cache_read_price, cache_write_price,
                 server_tool_price, billing_mode",
-        key = dimension.key_expr(),
         // A `&'static str` built from a constant, never a caller's string — the
         // same rule the key expression follows.
         roles = crate::db::ops::audit::BILLED_ROLES
@@ -371,16 +882,28 @@ fn grouped(conn: &mut SqliteConnection, dimension: UsageDimension, filter: &Usag
             .join(", "),
     );
 
-    diesel::sql_query(sql)
+    let query = diesel::sql_query(sql)
         .bind::<Nullable<BigInt>, _>(filter.since_ms)
         .bind::<Nullable<BigInt>, _>(filter.since_ms)
         .bind::<Nullable<BigInt>, _>(filter.until_ms)
         .bind::<Nullable<BigInt>, _>(filter.until_ms)
         .bind::<Nullable<Text>, _>(filter.origin.clone())
-        .bind::<Nullable<Text>, _>(filter.origin.clone())
-        .bind::<Nullable<Text>, _>(filter.conversation_id.clone())
-        .bind::<Nullable<Text>, _>(filter.conversation_id.clone())
-        .load::<GroupRow>(conn)
+        .bind::<Nullable<Text>, _>(filter.origin.clone());
+    if direct_conversation {
+        query
+            .bind::<Text, _>(
+                filter
+                    .conversation_id
+                    .as_deref()
+                    .expect("turn grouping names a conversation"),
+            )
+            .load::<GroupRow>(conn)
+    } else {
+        query
+            .bind::<Nullable<Text>, _>(filter.conversation_id.clone())
+            .bind::<Nullable<Text>, _>(filter.conversation_id.clone())
+            .load::<GroupRow>(conn)
+    }
 }
 
 /// Put a name to the keys that are ids.
@@ -400,7 +923,11 @@ fn label(conn: &mut SqliteConnection, dimension: UsageDimension, buckets: &mut [
                 .into_iter()
                 .collect();
             for bucket in buckets.iter_mut() {
-                bucket.label = titles.get(&bucket.key).cloned().flatten();
+                // `Some("")` means the conversation exists and is navigable
+                // but has never been titled. `None` alone means its row is
+                // gone. Flattening the nullable title collapsed those two and
+                // made a real untitled conversation look deleted to the UI.
+                bucket.label = titles.get(&bucket.key).map(|title| title.clone().unwrap_or_default());
             }
         }
         UsageDimension::Source => {
@@ -563,6 +1090,13 @@ mod tests {
             .unwrap();
     }
 
+    fn attach_to_turn(conn: &mut SqliteConnection, audit_id: &str, turn_id: &str) {
+        diesel::update(audit_messages::table.find(audit_id))
+            .set(audit_messages::turn_id.eq(Some(turn_id)))
+            .execute(conn)
+            .unwrap();
+    }
+
     /// The same shape as [`reply_billed`], in a conversation of its own.
     ///
     /// Separate because every other fixture here writes `c1`, and a scope test
@@ -708,7 +1242,368 @@ mod tests {
 
         let out = report(&mut conn, UsageDimension::Total, &UsageFilter::default()).unwrap();
         assert_eq!(out[0].messages, 3, "all three are still counted as replies");
+        assert_eq!(
+            (
+                out[0].metered_messages,
+                out[0].subscription_messages,
+                out[0].external_messages
+            ),
+            (1, 1, 1),
+            "the UI must be able to distinguish a local zero from non-local billing"
+        );
         assert_eq!(out[0].unpriced_messages, 1, "only the metered one is a missing price");
+    }
+
+    /// One batched turn query must preserve the distinction between an exact
+    /// zero/local bill and traffic paid elsewhere. Mixed modes are not exact,
+    /// and legacy rows without `turn_id` are not guessed onto a turn.
+    #[test]
+    fn turn_summaries_carry_persisted_cost_and_pricing_status() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+
+        reply(
+            &mut conn,
+            "exact-row",
+            "m",
+            1,
+            (1_000_000, 100_000, 0, 0),
+            Some((10.0, 20.0)),
+            "desktop",
+        );
+        attach_to_turn(&mut conn, "exact-row", "exact");
+
+        reply_billed(&mut conn, "external-row", "hosted", "external", (50, 25));
+        attach_to_turn(&mut conn, "external-row", "external");
+        diesel::update(audit_messages::table.find("external-row"))
+            .set((
+                audit_messages::input_tokens.eq(None::<i32>),
+                audit_messages::output_tokens.eq(None::<i32>),
+                audit_messages::cache_read_tokens.eq(None::<i32>),
+                audit_messages::cache_write_tokens.eq(None::<i32>),
+            ))
+            .execute(&mut conn)
+            .unwrap();
+        reply_billed(&mut conn, "subscription-row", "plan", "subscription", (50, 25));
+        attach_to_turn(&mut conn, "subscription-row", "subscription");
+
+        reply(&mut conn, "unknown-row", "unknown", 2, (50, 25, 0, 0), None, "desktop");
+        attach_to_turn(&mut conn, "unknown-row", "unavailable");
+
+        reply(
+            &mut conn,
+            "mixed-local",
+            "m",
+            3,
+            (1_000_000, 0, 0, 0),
+            Some((10.0, 20.0)),
+            "desktop",
+        );
+        attach_to_turn(&mut conn, "mixed-local", "mixed");
+        reply_billed(&mut conn, "mixed-external", "hosted", "external", (50, 25));
+        attach_to_turn(&mut conn, "mixed-external", "mixed");
+
+        // Not attachable, by design.
+        reply(
+            &mut conn,
+            "legacy",
+            "m",
+            4,
+            (10, 0, 0, 0),
+            Some((10.0, 20.0)),
+            "desktop",
+        );
+
+        let summaries = turn_summaries(&mut conn, "c1").unwrap();
+        assert_eq!(summaries.len(), 5);
+        assert!(!summaries.contains_key(""));
+
+        let exact = &summaries["exact"];
+        assert_eq!(exact.pricing_status, TurnPricingStatus::Exact);
+        assert_eq!(exact.missing_token_usage_messages, 0);
+        assert_eq!(exact.input_tokens, 1_000_000);
+        assert!((exact.total_cost.unwrap() - 12.0).abs() < 1e-9);
+
+        let external = &summaries["external"];
+        assert_eq!(external.pricing_status, TurnPricingStatus::External);
+        assert_eq!(external.missing_token_usage_messages, 1);
+        assert_eq!((external.input_tokens, external.output_tokens), (0, 0));
+        assert_eq!(external.external_messages, 1);
+        assert_eq!(external.tool_cost, None);
+        assert_eq!(external.total_cost, None, "paid elsewhere is not a free local request");
+
+        let subscription = &summaries["subscription"];
+        assert_eq!(subscription.pricing_status, TurnPricingStatus::Subscription);
+        assert_eq!(subscription.subscription_messages, 1);
+        assert_eq!(subscription.tool_cost, None);
+        assert_eq!(subscription.total_cost, None);
+
+        let unavailable = &summaries["unavailable"];
+        assert_eq!(unavailable.pricing_status, TurnPricingStatus::Unavailable);
+        assert_eq!(unavailable.unpriced_messages, 1);
+        assert_eq!(unavailable.total_cost, None);
+
+        let mixed = &summaries["mixed"];
+        assert_eq!(mixed.pricing_status, TurnPricingStatus::LowerBound);
+        assert_eq!((mixed.total_cost.unwrap() - 10.0).abs(), 0.0);
+        assert_eq!((mixed.metered_messages, mixed.external_messages), (1, 1));
+
+        let all = total(&mut conn, &UsageFilter::default());
+        assert_eq!(
+            all.missing_token_usage_messages, 1,
+            "global usage keeps missing external token reports distinct from zero"
+        );
+    }
+
+    /// Conversation snapshots are opened far more often than global reports.
+    /// The durable ledger is append-only, so a scan here grows forever; keep
+    /// the real direct conversation predicate on the composite turn index.
+    #[test]
+    fn turn_summary_query_seeks_the_conversation_turn_index() {
+        #[derive(QueryableByName)]
+        struct QueryPlanDetail {
+            #[diesel(sql_type = Text)]
+            detail: String,
+        }
+
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        let plan = diesel::sql_query(
+            "EXPLAIN QUERY PLAN
+             SELECT turn_id, provider_id, model_id, COUNT(*)
+               FROM audit_messages
+              WHERE role IN ('assistant', 'auto_review')
+                AND (NULL IS NULL OR created_at >= NULL)
+                AND (NULL IS NULL OR created_at < NULL)
+                AND (NULL IS NULL OR turn_origin = NULL)
+                AND conversation_id = 'c1'
+                AND turn_id IS NOT NULL
+           GROUP BY turn_id, provider_id, model_id",
+        )
+        .load::<QueryPlanDetail>(&mut conn)
+        .unwrap();
+
+        assert!(
+            plan.iter()
+                .any(|row| row.detail.contains("idx_audit_conversation_turn")),
+            "snapshot query stopped using the ledger index: {:?}",
+            plan.iter().map(|row| row.detail.as_str()).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn missing_usage_is_not_conflated_with_an_explicit_zero() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        for (id, turn_id) in [("missing-row", "missing"), ("zero-row", "zero")] {
+            reply(&mut conn, id, "m", 1, (0, 0, 0, 0), Some((10.0, 20.0)), "desktop");
+            attach_to_turn(&mut conn, id, turn_id);
+        }
+        diesel::update(audit_messages::table.find("missing-row"))
+            .set((
+                audit_messages::input_tokens.eq(None::<i32>),
+                audit_messages::output_tokens.eq(None::<i32>),
+                audit_messages::cache_read_tokens.eq(None::<i32>),
+                audit_messages::cache_write_tokens.eq(None::<i32>),
+                audit_messages::server_tool_calls.eq(None::<i32>),
+            ))
+            .execute(&mut conn)
+            .unwrap();
+
+        reply(
+            &mut conn,
+            "unknown-zero-row",
+            "unpriced",
+            2,
+            (0, 0, 0, 0),
+            Some((0.0, 0.0)),
+            "desktop",
+        );
+        attach_to_turn(&mut conn, "unknown-zero-row", "unknown-zero");
+
+        reply(
+            &mut conn,
+            "tool-only-row",
+            "m",
+            3,
+            (0, 0, 0, 0),
+            Some((10.0, 20.0)),
+            "desktop",
+        );
+        attach_to_turn(&mut conn, "tool-only-row", "tool-only");
+        diesel::update(audit_messages::table.find("tool-only-row"))
+            .set((
+                audit_messages::input_tokens.eq(None::<i32>),
+                audit_messages::output_tokens.eq(None::<i32>),
+                audit_messages::cache_read_tokens.eq(None::<i32>),
+                audit_messages::cache_write_tokens.eq(None::<i32>),
+                audit_messages::server_tool_calls.eq(Some(2)),
+                audit_messages::server_tool_price.eq(Some(15.0)),
+            ))
+            .execute(&mut conn)
+            .unwrap();
+
+        reply(
+            &mut conn,
+            "overlap-row",
+            "m",
+            4,
+            (0, 0, 0, 0),
+            Some((10.0, 20.0)),
+            "desktop",
+        );
+        attach_to_turn(&mut conn, "overlap-row", "overlap");
+        diesel::update(audit_messages::table.find("overlap-row"))
+            .set((
+                audit_messages::input_tokens.eq(None::<i32>),
+                audit_messages::output_tokens.eq(None::<i32>),
+                audit_messages::cache_read_tokens.eq(None::<i32>),
+                audit_messages::cache_write_tokens.eq(None::<i32>),
+                audit_messages::server_tool_calls.eq(Some(2)),
+                audit_messages::server_tool_price.eq(None::<f64>),
+            ))
+            .execute(&mut conn)
+            .unwrap();
+
+        let summaries = turn_summaries(&mut conn, "c1").unwrap();
+        let missing = &summaries["missing"];
+        assert_eq!(missing.pricing_status, TurnPricingStatus::Unavailable);
+        assert_eq!(missing.missing_token_usage_messages, 1);
+        assert_eq!(missing.unpriced_token_messages, 1);
+        assert_eq!(missing.unpriced_tool_messages, 0);
+        assert_eq!(missing.unpriced_messages, 1);
+        assert_eq!(missing.input_cost, None, "no usage means no known token amount");
+        assert_eq!(missing.total_cost, None, "a missing usage report is not an exact zero");
+
+        let zero = &summaries["zero"];
+        assert_eq!(zero.pricing_status, TurnPricingStatus::Exact);
+        assert_eq!(zero.missing_token_usage_messages, 0);
+        assert_eq!(zero.unpriced_messages, 0);
+        assert_eq!(zero.input_cost, Some(0.0));
+        assert_eq!(
+            zero.total_cost,
+            Some(0.0),
+            "the provider explicitly reported zero usage"
+        );
+
+        let unknown_zero = &summaries["unknown-zero"];
+        assert_eq!(unknown_zero.pricing_status, TurnPricingStatus::Exact);
+        assert_eq!(
+            unknown_zero.unpriced_messages, 0,
+            "no price is needed when every unit is explicitly zero"
+        );
+        assert_eq!(unknown_zero.total_cost, Some(0.0));
+        assert_eq!(unknown_zero.input_cost, Some(0.0));
+
+        let tool_only = &summaries["tool-only"];
+        assert_eq!(tool_only.pricing_status, TurnPricingStatus::LowerBound);
+        assert_eq!(tool_only.missing_token_usage_messages, 1);
+        assert_eq!(
+            tool_only.unpriced_messages, 1,
+            "known tool usage does not make missing token usage exact"
+        );
+        assert_eq!(tool_only.unpriced_token_messages, 1);
+        assert_eq!(tool_only.unpriced_tool_messages, 0);
+        assert_eq!(tool_only.input_cost, None);
+        assert!((tool_only.tool_cost.unwrap() - 0.03).abs() < 1e-9);
+        assert!((tool_only.total_cost.unwrap() - 0.03).abs() < 1e-9);
+
+        let overlap = &summaries["overlap"];
+        assert_eq!(overlap.pricing_status, TurnPricingStatus::Unavailable);
+        assert_eq!(overlap.unpriced_token_messages, 1);
+        assert_eq!(overlap.unpriced_tool_messages, 1);
+        assert_eq!(
+            overlap.unpriced_messages, 1,
+            "one row missing token usage and tool price is still one incomplete reply"
+        );
+        assert_eq!(overlap.tool_cost, None);
+        assert_eq!(overlap.total_cost, None);
+
+        let all = total(&mut conn, &UsageFilter::default());
+        assert_eq!(all.messages, 5);
+        assert_eq!(
+            all.unpriced_messages, 3,
+            "the global ledger preserves the same distinctions and unions overlap"
+        );
+        assert_eq!(all.unpriced_token_messages, 3);
+        assert_eq!(all.unpriced_tool_messages, 1);
+    }
+
+    /// Input and output arrive on different stream events for some providers,
+    /// and either side can be absent after a truncated response. The reported
+    /// side remains billable, but the absent side is not an exact zero.
+    #[test]
+    fn partial_token_reports_keep_the_known_component_as_a_lower_bound() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+
+        reply(
+            &mut conn,
+            "input-missing-row",
+            "m",
+            1,
+            (0, 100_000, 900_000, 0),
+            Some((10.0, 20.0)),
+            "desktop",
+        );
+        attach_to_turn(&mut conn, "input-missing-row", "input-missing");
+        diesel::update(audit_messages::table.find("input-missing-row"))
+            .set(audit_messages::input_tokens.eq(None::<i32>))
+            .execute(&mut conn)
+            .unwrap();
+
+        reply(
+            &mut conn,
+            "output-missing-row",
+            "m",
+            2,
+            (1_000_000, 0, 0, 0),
+            Some((10.0, 20.0)),
+            "desktop",
+        );
+        attach_to_turn(&mut conn, "output-missing-row", "output-missing");
+        diesel::update(audit_messages::table.find("output-missing-row"))
+            .set(audit_messages::output_tokens.eq(None::<i32>))
+            .execute(&mut conn)
+            .unwrap();
+
+        let summaries = turn_summaries(&mut conn, "c1").unwrap();
+        let input_missing = &summaries["input-missing"];
+        assert_eq!(input_missing.missing_token_usage_messages, 0);
+        assert_eq!(input_missing.incomplete_token_usage_messages, 1);
+        assert_eq!(
+            (input_missing.input_tokens, input_missing.output_tokens),
+            (900_000, 100_000)
+        );
+        assert_eq!(input_missing.pricing_status, TurnPricingStatus::LowerBound);
+        assert_eq!(input_missing.unpriced_token_messages, 1);
+        assert_eq!(input_missing.unpriced_input_messages, 1);
+        assert_eq!(input_missing.unpriced_output_messages, 0);
+        assert_eq!(input_missing.unpriced_cache_messages, 0);
+        assert_eq!(input_missing.input_cost, None);
+        assert!((input_missing.cache_cost.unwrap() - 9.0).abs() < 1e-9);
+        assert!((input_missing.output_cost.unwrap() - 2.0).abs() < 1e-9);
+        assert!((input_missing.total_cost.unwrap() - 11.0).abs() < 1e-9);
+
+        let output_missing = &summaries["output-missing"];
+        assert_eq!(output_missing.missing_token_usage_messages, 0);
+        assert_eq!(output_missing.incomplete_token_usage_messages, 1);
+        assert_eq!(output_missing.pricing_status, TurnPricingStatus::LowerBound);
+        assert_eq!(output_missing.unpriced_input_messages, 0);
+        assert_eq!(output_missing.unpriced_output_messages, 1);
+        assert_eq!(output_missing.unpriced_cache_messages, 0);
+        assert!((output_missing.input_cost.unwrap() - 10.0).abs() < 1e-9);
+        assert_eq!(output_missing.output_cost, None);
+        assert_eq!(output_missing.cache_cost, Some(0.0));
+        assert!((output_missing.total_cost.unwrap() - 10.0).abs() < 1e-9);
+
+        let all = total(&mut conn, &UsageFilter::default());
+        assert_eq!(all.missing_token_usage_messages, 0);
+        assert_eq!(all.incomplete_token_usage_messages, 2);
+        assert_eq!((all.input_tokens, all.output_tokens), (1_900_000, 100_000));
+        assert_eq!(all.unpriced_token_messages, 2);
+        assert_eq!(all.unpriced_messages, 2);
+        assert!((all.cost - 21.0).abs() < 1e-9);
     }
 
     /// Junk in the column reads as `metered`, which keeps the request in the
@@ -929,6 +1824,152 @@ mod tests {
         assert_eq!(all.cache_read_tokens, 900_000);
     }
 
+    /// The public breakdown is accumulated from the same `cost_of` result as
+    /// the total, including cache replacement and per-thousand tool pricing.
+    #[test]
+    fn cost_components_add_up_to_the_reported_total() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        reply(
+            &mut conn,
+            "a",
+            "m",
+            1_000,
+            (1_000_000, 2_000_000, 200_000, 100_000),
+            Some((10.0, 30.0)),
+            "desktop",
+        );
+        diesel::update(audit_messages::table.find("a"))
+            .set((
+                audit_messages::cache_read_price.eq(Some(1.0)),
+                audit_messages::cache_write_price.eq(Some(12.5)),
+                audit_messages::server_tool_calls.eq(Some(2)),
+                audit_messages::server_tool_price.eq(Some(15.0)),
+            ))
+            .execute(&mut conn)
+            .unwrap();
+
+        let all = total(&mut conn, &UsageFilter::default());
+        assert!((all.input_cost - 7.0).abs() < 1e-9);
+        assert!((all.output_cost - 60.0).abs() < 1e-9);
+        assert!((all.cache_cost - 1.45).abs() < 1e-9);
+        assert!((all.tool_cost - 0.03).abs() < 1e-9);
+        assert!((all.cost - 68.48).abs() < 1e-9);
+        assert!((all.cost - (all.input_cost + all.output_cost + all.cache_cost + all.tool_cost)).abs() < 1e-9);
+    }
+
+    /// A missing provider-tool rate is not permission to call the tool free.
+    /// The known token half remains in the lower-bound total, and only the reply
+    /// that actually used the tool is marked as containing unpriced usage.
+    #[test]
+    fn a_missing_tool_rate_keeps_token_cost_and_marks_only_calling_replies() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        for (id, created_at) in [("with-tool", 1_000), ("tokens-only", 2_000)] {
+            reply(
+                &mut conn,
+                id,
+                "m",
+                created_at,
+                (1_000_000, 0, 0, 0),
+                Some((10.0, 20.0)),
+                "desktop",
+            );
+        }
+        diesel::update(audit_messages::table.find("with-tool"))
+            .set(audit_messages::server_tool_calls.eq(Some(2)))
+            .execute(&mut conn)
+            .unwrap();
+        attach_to_turn(&mut conn, "with-tool", "with-tool");
+
+        let all = total(&mut conn, &UsageFilter::default());
+        assert_eq!(all.messages, 2);
+        assert!((all.input_cost - 20.0).abs() < 1e-9, "the known token spend remains");
+        assert_eq!(all.tool_cost, 0.0, "an absent rate is not guessed");
+        assert_eq!(all.cost, 20.0, "the total is the known lower bound");
+        assert_eq!(all.unpriced_token_messages, 0);
+        assert_eq!(all.unpriced_tool_messages, 1);
+        assert_eq!(all.unpriced_messages, 1, "the token-only reply is fully priced");
+
+        let summary = turn_summaries(&mut conn, "c1").unwrap().remove("with-tool").unwrap();
+        assert_eq!(summary.pricing_status, TurnPricingStatus::LowerBound);
+        assert_eq!(summary.input_cost, Some(10.0));
+        assert_eq!(summary.tool_cost, None, "a missing tool rate is not an exact zero");
+        assert_eq!(summary.total_cost, Some(10.0));
+    }
+
+    /// The inverse partial-price case: a configured per-call rate remains a
+    /// known lower bound even while the model's token rates are still blank.
+    /// The reply is unpriced once, not once per missing component.
+    #[test]
+    fn a_known_tool_rate_survives_unknown_token_rates() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        reply(&mut conn, "a", "m", 1_000, (100, 50, 0, 0), None, "desktop");
+        diesel::update(audit_messages::table.find("a"))
+            .set((
+                audit_messages::server_tool_calls.eq(Some(2)),
+                audit_messages::server_tool_price.eq(Some(15.0)),
+            ))
+            .execute(&mut conn)
+            .unwrap();
+        attach_to_turn(&mut conn, "a", "tool-known");
+
+        let all = total(&mut conn, &UsageFilter::default());
+        assert_eq!(all.input_cost, 0.0);
+        assert_eq!(all.output_cost, 0.0);
+        assert!((all.tool_cost - 0.03).abs() < 1e-9);
+        assert!((all.cost - 0.03).abs() < 1e-9, "known tool spend is retained");
+        assert_eq!(all.unpriced_token_messages, 1);
+        assert_eq!(all.unpriced_tool_messages, 0);
+        assert_eq!(all.unpriced_messages, 1, "one reply, despite two unknown token rates");
+
+        let summary = turn_summaries(&mut conn, "c1").unwrap().remove("tool-known").unwrap();
+        assert_eq!(summary.pricing_status, TurnPricingStatus::LowerBound);
+        assert_eq!(summary.input_cost, None);
+        assert_eq!(summary.tool_cost, Some(0.03));
+        assert_eq!(summary.total_cost, Some(0.03));
+    }
+
+    /// Rows between migrations 30 and 37 can carry historical token rates but
+    /// no tool-rate snapshot. A later exact provider/model config is the same
+    /// best-available fallback used for legacy token NULLs; an explicit
+    /// historical tool rate would still win above it.
+    #[test]
+    fn a_legacy_null_tool_rate_falls_back_to_the_current_exact_model() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        seed_model(&mut conn, "m", 99.0, 99.0);
+        diesel::update(model_configs::table.filter(model_configs::model_id.eq("m")))
+            .set(model_configs::server_tool_price.eq(Some(15.0)))
+            .execute(&mut conn)
+            .unwrap();
+        reply(
+            &mut conn,
+            "a",
+            "m",
+            1_000,
+            (1_000_000, 0, 0, 0),
+            Some((10.0, 20.0)),
+            "desktop",
+        );
+        diesel::update(audit_messages::table.find("a"))
+            .set(audit_messages::server_tool_calls.eq(Some(2)))
+            .execute(&mut conn)
+            .unwrap();
+
+        let all = total(&mut conn, &UsageFilter::default());
+        assert!((all.input_cost - 10.0).abs() < 1e-9, "historical token rate still wins");
+        assert!(
+            (all.tool_cost - 0.03).abs() < 1e-9,
+            "legacy tool NULL uses today's exact model"
+        );
+        assert_eq!(all.estimated_token_messages, 0);
+        assert_eq!(all.estimated_tool_messages, 1);
+        assert_eq!(all.estimated_messages, 1);
+        assert_eq!(all.unpriced_messages, 0);
+    }
+
     /// Traffic on an unpriced model is counted and reported as unpriced. It must
     /// not be dropped — that loses the tokens — and must not be billed at zero
     /// without saying so.
@@ -1006,10 +2047,44 @@ mod tests {
         .unwrap();
 
         reply(&mut conn, "a", "m", 1_000, (1_000_000, 0, 0, 0), None, "desktop");
+        attach_to_turn(&mut conn, "a", "legacy-price");
 
         let all = total(&mut conn, &UsageFilter::default());
         assert_eq!(all.unpriced_messages, 0, "there is a price, just not on the row");
+        assert_eq!(all.estimated_token_messages, 1);
+        assert_eq!(all.estimated_messages, 1);
         assert!((all.cost - 10.0).abs() < 0.001);
+
+        let summary = turn_summaries(&mut conn, "c1").unwrap().remove("legacy-price").unwrap();
+        assert_eq!(summary.pricing_status, TurnPricingStatus::Estimated);
+        assert_eq!(summary.estimated_token_messages, 1);
+        assert_eq!(summary.unpriced_messages, 0);
+        assert_eq!(summary.total_cost, Some(10.0));
+    }
+
+    /// Older builds wrote the model editor's 0/0 defaults onto the audit row.
+    /// Those are not known prices by the same definition used everywhere else,
+    /// so they must not outrank a real rate configured later.
+    #[test]
+    fn a_zero_default_snapshot_falls_back_to_a_current_known_price() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        seed_model(&mut conn, "m", 10.0, 20.0);
+        reply(
+            &mut conn,
+            "a",
+            "m",
+            1_000,
+            (1_000_000, 100_000, 0, 0),
+            Some((0.0, 0.0)),
+            "desktop",
+        );
+
+        let all = total(&mut conn, &UsageFilter::default());
+        assert_eq!(all.unpriced_messages, 0, "today's known price closes the old gap");
+        assert_eq!(all.estimated_token_messages, 1);
+        assert_eq!(all.estimated_messages, 1);
+        assert!((all.cost - 12.0).abs() < 0.001, "10 input + 2 output, got {}", all.cost);
     }
 
     /// A model priced at 0/0 is one nobody has filled in — the editor opens that
@@ -1130,6 +2205,25 @@ mod tests {
         assert_eq!(orphaned.len(), 1, "the cost outlives the transcript");
         assert_eq!(orphaned[0].key, "c1");
         assert_eq!(orphaned[0].label, None);
+    }
+
+    #[test]
+    fn an_untitled_conversation_stays_distinct_from_a_deleted_one() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        crate::db::ops::conversation::create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        reply(&mut conn, "a", "m", 1_000, (100, 0, 0, 0), Some((10.0, 0.0)), "desktop");
+
+        let existing = report(&mut conn, UsageDimension::Conversation, &UsageFilter::default()).unwrap();
+        assert_eq!(
+            existing[0].label.as_deref(),
+            Some(""),
+            "empty title still means the row exists"
+        );
+
+        crate::db::ops::conversation::delete_conversation(&mut conn, "c1").unwrap();
+        let deleted = report(&mut conn, UsageDimension::Conversation, &UsageFilter::default()).unwrap();
+        assert_eq!(deleted[0].label, None, "only a missing row is non-navigable");
     }
 
     /// A private chat and a group can carry the same number. Keying on the id

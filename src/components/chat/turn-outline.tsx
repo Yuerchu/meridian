@@ -14,6 +14,41 @@ const MIN_TURNS = 4
  *  popover into the transcript. The item itself is `white-space: nowrap`. */
 const LABEL_CHARS = 60
 
+/** The stored user body may be a multimodal parts array. Outline labels name
+ * the visible question, never the JSON envelope or a local asset URL. */
+function visibleQuestion(content: string): string {
+  if (!content.startsWith('[')) return content
+  try {
+    const parsed: unknown = JSON.parse(content)
+    if (
+      !Array.isArray(parsed) ||
+      parsed.length === 0 ||
+      !parsed.every(
+        (part) => typeof part === 'object' && part !== null && typeof (part as { type?: unknown }).type === 'string',
+      )
+    ) {
+      return content
+    }
+    return parsed
+      .flatMap((part) => {
+        const item = part as {
+          type: string
+          text?: string
+          name?: string
+          file?: { name?: string }
+        }
+        if (item.type === 'text') return item.text ?? ''
+        if (item.type === 'file') return item.file?.name ?? ''
+        if (item.type === 'sticker') return item.name ?? ''
+        return ''
+      })
+      .filter(Boolean)
+      .join(' ')
+  } catch {
+    return content
+  }
+}
+
 /**
  * What a turn is called in the outline: the question that opened it.
  *
@@ -64,7 +99,7 @@ export function TurnOutline({ turns }: { turns: Turn[] }) {
         .filter((turn) => turn.userMessage !== null)
         .map((turn) => ({
           id: turn.id,
-          text: label(turn.userMessage?.content ?? ''),
+          text: label(visibleQuestion(turn.userMessage?.content ?? '')),
         })),
     [turns],
   )

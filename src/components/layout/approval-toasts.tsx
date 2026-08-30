@@ -168,15 +168,19 @@ function ApprovalToast({
       <Toast.Content data-slot="approval-toast-content">
         <Toast.Title data-slot="approval-toast-title">{title ?? t('chat.newChat')}</Toast.Title>
         <Toast.Description data-slot="approval-toast-description">
-          <span className="flex min-w-0 items-center gap-1.5">
-            <span className="shrink-0 font-medium">{toolLabel(t, item.toolName)}</span>
+          <span className="flex min-w-0 items-start gap-1.5">
+            <span className="shrink-0 font-medium leading-5">{toolLabel(t, item.toolName)}</span>
             <ToolArgsSummary toolName={item.toolName} args={args} />
           </span>
           {/* Under the name, exactly as the card draws it. The row this replaces
               is a decision, so what the call *is* keeps the first line and what
               it is *for* gets the second — the reverse hid the path a
               `write_file` was being approved for. */}
-          {description !== null && <span className="mt-0.5 block truncate text-xs">{description}</span>}
+          {description !== null && (
+            <span className="mt-0.5 line-clamp-2 break-words text-xs" title={description}>
+              {description}
+            </span>
+          )}
           {/* The sandbox asked once already and was refused by the sandbox, not
               by a person. Without this the second question looks identical to
               the first. */}

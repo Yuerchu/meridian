@@ -20,6 +20,7 @@ import {
 } from '@gravity-ui/icons'
 import { ModelIcon } from '@/components/ui/model-icon'
 import { Button, Drawer } from '@heroui/react'
+import { CellSwitch } from '@heroui-pro/react/cell-switch'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { allowedEfforts } from '@/lib/thinking'
@@ -189,7 +190,10 @@ export function MobileOptionsMenu({
         if (!o) setTimeout(() => setPanel('main'), 200)
       }}
     >
-      <Drawer.Trigger className="inline-flex items-center justify-center rounded-md p-1 text-muted hover:text-foreground hover:bg-default transition-colors touch-hitbox">
+      <Drawer.Trigger
+        aria-label={t('composer.menu')}
+        className="inline-flex items-center justify-center rounded-md p-1 text-muted hover:text-foreground hover:bg-default transition-colors touch-hitbox"
+      >
         <Plus className="w-4 h-4" />
       </Drawer.Trigger>
       <Drawer.Backdrop>
@@ -294,42 +298,48 @@ export function MobileOptionsMenu({
                     </Button>
                   )}
                   {mode !== 'plan' && (
-                    <Button
+                    <CellSwitch
                       data-slot="mobile-accept-edits-row"
-                      variant="ghost"
-                      aria-pressed={acceptEdits}
-                      className={cn(itemCls, 'justify-between')}
-                      onClick={() => onToggleAcceptEdits(!acceptEdits)}
+                      aria-label={t('toolbar.acceptEdits')}
+                      isSelected={acceptEdits}
+                      onChange={onToggleAcceptEdits}
+                      className="w-full [--switch-control-bg-checked:var(--warning)]"
                     >
-                      <span className="flex items-center gap-3">
+                      <CellSwitch.Trigger className="h-auto min-h-10 w-full gap-3 rounded-none border-0 bg-transparent px-4 py-2.5 text-foreground shadow-none transition-colors active:bg-default pointer-coarse:min-h-11">
                         <ChevronsRight
                           className={cn('w-4 h-4', acceptEdits ? 'text-warning-soft-foreground' : 'text-muted')}
                         />
-                        <span>{t('toolbar.acceptEdits')}</span>
-                      </span>
-                      <span className="text-xs text-muted">
-                        {acceptEdits ? t('toolbar.acceptEdits.on') : t('toolbar.acceptEdits.off')}
-                      </span>
-                    </Button>
+                        <CellSwitch.Label className="flex items-center justify-between gap-2 font-normal">
+                          <span>{t('toolbar.acceptEdits')}</span>
+                          <span className="text-xs font-normal text-muted">
+                            {acceptEdits ? t('toolbar.acceptEdits.on') : t('toolbar.acceptEdits.off')}
+                          </span>
+                        </CellSwitch.Label>
+                        <CellSwitch.Control />
+                      </CellSwitch.Trigger>
+                    </CellSwitch>
                   )}
                   {supportsFast && (
-                    <Button
+                    <CellSwitch
                       data-slot="mobile-fast-row"
-                      variant="ghost"
-                      aria-pressed={fastMode}
-                      className={cn(itemCls, 'justify-between')}
-                      onClick={() => onToggleFast(!fastMode)}
+                      aria-label={t('toolbar.fast')}
+                      isSelected={fastMode}
+                      onChange={onToggleFast}
+                      className="w-full [--switch-control-bg-checked:var(--warning)]"
                     >
-                      <span className="flex items-center gap-3">
+                      <CellSwitch.Trigger className="h-auto min-h-10 w-full gap-3 rounded-none border-0 bg-transparent px-4 py-2.5 text-foreground shadow-none transition-colors active:bg-default pointer-coarse:min-h-11">
                         <Thunderbolt
                           className={cn('w-4 h-4', fastMode ? 'text-warning-soft-foreground' : 'text-muted')}
                         />
-                        <span>{t('toolbar.fast')}</span>
-                      </span>
-                      <span className="text-xs text-muted">
-                        {fastMode ? t('toolbar.fast.on') : t('toolbar.fast.off')}
-                      </span>
-                    </Button>
+                        <CellSwitch.Label className="flex items-center justify-between gap-2 font-normal">
+                          <span>{t('toolbar.fast')}</span>
+                          <span className="text-xs font-normal text-muted">
+                            {fastMode ? t('toolbar.fast.on') : t('toolbar.fast.off')}
+                          </span>
+                        </CellSwitch.Label>
+                        <CellSwitch.Control />
+                      </CellSwitch.Trigger>
+                    </CellSwitch>
                   )}
                 </div>
               )}
@@ -339,6 +349,7 @@ export function MobileOptionsMenu({
                   <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
                     <Button
                       isIconOnly
+                      aria-label={t('common.back')}
                       variant="ghost"
                       className="size-auto p-1 rounded-md hover:bg-default"
                       onClick={() => setPanel('main')}
@@ -377,6 +388,7 @@ export function MobileOptionsMenu({
                   <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
                     <Button
                       isIconOnly
+                      aria-label={t('common.back')}
                       variant="ghost"
                       className="size-auto p-1 rounded-md hover:bg-default"
                       onClick={() => setPanel('main')}
@@ -386,6 +398,7 @@ export function MobileOptionsMenu({
                     <span className="text-sm font-medium flex-1">{t('toolbar.models')}</span>
                     <Button
                       isIconOnly
+                      aria-label={`${t('settings.about.logs.refresh')} ${t('toolbar.models')}`}
                       variant="ghost"
                       className="h-6 w-6"
                       onClick={() => {
@@ -452,6 +465,7 @@ export function MobileOptionsMenu({
                   <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
                     <Button
                       isIconOnly
+                      aria-label={t('common.back')}
                       variant="ghost"
                       className="size-auto p-1 rounded-md hover:bg-default"
                       onClick={() => setPanel('main')}
@@ -488,6 +502,7 @@ export function MobileOptionsMenu({
                   <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
                     <Button
                       isIconOnly
+                      aria-label={t('common.back')}
                       variant="ghost"
                       className="size-auto p-1 rounded-md hover:bg-default"
                       onClick={() => setPanel('main')}

@@ -1186,7 +1186,11 @@ function identifyingArg(toolName: string, args: Record<string, unknown>): string
 export function ToolArgsSummary({ toolName, args }: { toolName: string; args: Record<string, unknown> }) {
   const arg = identifyingArg(toolName, args)
   return arg === null ? null : (
-    <span data-slot="tool-arg" className="text-foreground font-mono text-xs truncate">
+    <span
+      data-slot="tool-arg"
+      className="line-clamp-2 min-w-0 break-words whitespace-normal font-mono text-xs text-foreground [overflow-wrap:anywhere]"
+      title={arg}
+    >
       {arg}
     </span>
   )

@@ -1,12 +1,12 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { TurnItem } from './turn-item'
 import { expectCollapsed, expectExpanded } from '@/test/disclosure'
 import { buildTurns } from '@/lib/turns'
 import { useConversationStore } from '@/stores/conversation-store'
 import i18n from '@/i18n'
-import type { ContentBlock, Message, ToolCallDisplay } from '@/types'
+import type { ContentBlock, Message, ToolCallDisplay, TurnUsageSummary } from '@/types'
 
 // Resolved rather than bare: the cards attach a `.catch` to turn a rejected
 // decision into an orphaned card, and `undefined.catch` would throw.
@@ -57,6 +57,38 @@ const toolBlock = (name: string, status: ToolCallDisplay['status'] = 'completed'
     ...(status === 'pending' ? { approval_id: `${name}-appr-1` } : {}),
   },
 })
+
+function usage(over: Partial<TurnUsageSummary> = {}): TurnUsageSummary {
+  return {
+    messages: 1,
+    missing_token_usage_messages: 0,
+    incomplete_token_usage_messages: 0,
+    input_tokens: 100,
+    output_tokens: 20,
+    cache_read_tokens: 40,
+    cache_write_tokens: 0,
+    server_tool_calls: 1,
+    input_cost: 0.2,
+    output_cost: 0.3,
+    cache_cost: 0.04,
+    tool_cost: 0.005,
+    total_cost: 0.545,
+    unpriced_token_messages: 0,
+    unpriced_input_messages: 0,
+    unpriced_output_messages: 0,
+    unpriced_cache_messages: 0,
+    unpriced_tool_messages: 0,
+    estimated_token_messages: 0,
+    estimated_tool_messages: 0,
+    estimated_messages: 0,
+    unpriced_messages: 0,
+    metered_messages: 1,
+    subscription_messages: 0,
+    external_messages: 0,
+    pricing_status: 'exact',
+    ...over,
+  }
+}
 
 /** A turn with tool calls, which is what gets the collapse treatment. */
 function toolTurn(over: { status?: ToolCallDisplay['status']; conclusion?: boolean } = {}) {
@@ -162,6 +194,325 @@ describe('TurnItem', () => {
     expect(turn.tokens).toEqual({ input: 400, output: 70 })
     render(<TurnItem turn={turn} conversationId={CONV} />)
     expect(screen.getByText(/tokens/)).toBeInTheDocument()
+  })
+
+  it('shows the backend-priced turn total and reveals its components by press as well as hover', async () => {
+    const u = msg('user', { content: 'q' })
+    const a = msg('assistant', {
+      turn_id: 'turn-priced',
+      _blocks: [text('done')],
+      content: 'done',
+      input_tokens: 100,
+      output_tokens: 20,
+    })
+    const turn = buildTurns([u, a], {
+      // Persisted usage also contains billed side requests that do not have a
+      // transcript row. The footer must use the same population as its cost.
+      usageByTurnId: new Map([['turn-priced', usage({ input_tokens: 130, output_tokens: 30 })]]),
+    })[0]
+
+    render(<TurnItem turn={turn} conversationId={CONV} />)
+    const trigger = screen.getByRole('button', { name: 'Turn usage: 130 + 30 tokens · 0.545' })
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    await userEvent.click(trigger)
+
+    const details = await screen.findByRole('dialog', { name: 'Turn usage' })
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    const controlled = document.getElementById(trigger.getAttribute('aria-controls') ?? '')
+    expect(controlled).toContainElement(details)
+    expect(within(details).getByText('0.20')).toBeInTheDocument()
+    expect(within(details).getByText('0.04')).toBeInTheDocument()
+    expect(within(details).getByText('0.30')).toBeInTheDocument()
+    expect(within(details).getByText('0.005')).toBeInTheDocument()
+    expect(within(details).getByText('0.545')).toBeInTheDocument()
+  })
+
+  it('marks only a partial total as a lower bound, not its known components', async () => {
+    const u = msg('user', { content: 'q' })
+    const a = msg('assistant', {
+      turn_id: 'turn-partial',
+      _blocks: [text('done')],
+      content: 'done',
+      input_tokens: 100,
+      output_tokens: 20,
+    })
+    const turn = buildTurns([u, a], {
+      usageByTurnId: new Map([
+        [
+          'turn-partial',
+          usage({
+            pricing_status: 'lower_bound',
+            tool_cost: null,
+            total_cost: 0.54,
+            unpriced_tool_messages: 1,
+            unpriced_messages: 1,
+          }),
+        ],
+      ]),
+    })[0]
+
+    render(<TurnItem turn={turn} conversationId={CONV} />)
+    const trigger = screen.getByRole('button', { name: 'Turn usage: 100 + 20 tokens · ≥ 0.54' })
+    await userEvent.hover(trigger)
+
+    const details = await screen.findByRole('dialog', { name: 'Turn usage' })
+    expect(within(details).getByText('0.20')).toBeInTheDocument()
+    expect(within(details).queryByText('≥ 0.20')).not.toBeInTheDocument()
+    expect(within(details).getByText('Unknown')).toBeInTheDocument()
+    expect(within(details).getByText('≥ 0.54')).toBeInTheDocument()
+    expect(within(details).getByText('Only the priced portion is included; the total is a lower bound.')).toBeVisible()
+  })
+
+  it('uses current-price markers for estimates and never calls a partial estimate a lower bound', async () => {
+    const u = msg('user', { content: 'q' })
+    const a = msg('assistant', {
+      turn_id: 'turn-estimated-partial',
+      _blocks: [text('done')],
+      content: 'done',
+      input_tokens: 100,
+      output_tokens: 20,
+    })
+    const turn = buildTurns([u, a], {
+      usageByTurnId: new Map([
+        [
+          'turn-estimated-partial',
+          usage({
+            pricing_status: 'estimated',
+            tool_cost: null,
+            total_cost: 0.54,
+            estimated_token_messages: 1,
+            estimated_messages: 1,
+            unpriced_tool_messages: 1,
+            unpriced_messages: 1,
+          }),
+        ],
+      ]),
+    })[0]
+
+    render(<TurnItem turn={turn} conversationId={CONV} />)
+    const trigger = screen.getByRole('button', {
+      name: 'Turn usage: 100 + 20 tokens · ≈ 0.54 (incomplete)',
+    })
+    expect(trigger).not.toHaveAccessibleName(/\u2265/)
+    await userEvent.hover(trigger)
+
+    const details = await screen.findByRole('dialog', { name: 'Turn usage' })
+    expect(within(details).getByText('≈ 0.20')).toBeInTheDocument()
+    expect(within(details).getByText('Unknown')).toBeInTheDocument()
+    expect(within(details).getByText('≈ 0.54 (incomplete)')).toBeInTheDocument()
+    expect(
+      within(details).getByText(
+        'Historical price snapshots were missing and some costs still cannot be determined. This is an incomplete estimate.',
+      ),
+    ).toBeVisible()
+    expect(within(details).queryByText(/≥/)).not.toBeInTheDocument()
+  })
+
+  it('explains a complete historical-price fallback as an estimate', async () => {
+    const u = msg('user', { content: 'q' })
+    const a = msg('assistant', {
+      turn_id: 'turn-estimated',
+      _blocks: [text('done')],
+      content: 'done',
+      input_tokens: 100,
+      output_tokens: 20,
+    })
+    const turn = buildTurns([u, a], {
+      usageByTurnId: new Map([
+        ['turn-estimated', usage({ pricing_status: 'estimated', estimated_token_messages: 1, estimated_messages: 1 })],
+      ]),
+    })[0]
+
+    render(<TurnItem turn={turn} conversationId={CONV} />)
+    const trigger = screen.getByRole('button', { name: 'Turn usage: 100 + 20 tokens · ≈ 0.545' })
+    await userEvent.hover(trigger)
+
+    const details = await screen.findByRole('dialog', { name: 'Turn usage' })
+    expect(
+      within(details).getByText(
+        'Historical price snapshots were missing; this turn is estimated from current prices for the same provider and model.',
+      ),
+    ).toBeVisible()
+  })
+
+  it('distinguishes explicit zero usage from missing usage and external billing', () => {
+    const u1 = msg('user', { content: 'first' })
+    const a1 = msg('assistant', {
+      turn_id: 'turn-free',
+      _blocks: [text('free')],
+      content: 'free',
+      input_tokens: 1,
+      output_tokens: 1,
+    })
+    const u2 = msg('user', { content: 'second' })
+    const a2 = msg('assistant', {
+      turn_id: 'turn-external',
+      _blocks: [text('external')],
+      content: 'external',
+      input_tokens: 2,
+      output_tokens: 1,
+    })
+    const u3 = msg('user', { content: 'third' })
+    const a3 = msg('assistant', {
+      turn_id: 'turn-missing',
+      _blocks: [text('missing')],
+      content: 'missing',
+      input_tokens: null,
+      output_tokens: null,
+    })
+    const turns = buildTurns([u1, a1, u2, a2, u3, a3], {
+      usageByTurnId: new Map([
+        [
+          'turn-free',
+          usage({
+            input_tokens: 0,
+            output_tokens: 0,
+            input_cost: 0,
+            output_cost: 0,
+            cache_cost: 0,
+            tool_cost: 0,
+            total_cost: 0,
+          }),
+        ],
+        [
+          'turn-external',
+          usage({
+            input_tokens: 0,
+            output_tokens: 0,
+            missing_token_usage_messages: 1,
+            incomplete_token_usage_messages: 1,
+            input_cost: null,
+            output_cost: null,
+            cache_cost: null,
+            tool_cost: null,
+            total_cost: null,
+            metered_messages: 0,
+            external_messages: 1,
+            pricing_status: 'external',
+          }),
+        ],
+        [
+          'turn-missing',
+          usage({
+            input_tokens: 0,
+            output_tokens: 0,
+            missing_token_usage_messages: 1,
+            incomplete_token_usage_messages: 1,
+            input_cost: null,
+            output_cost: null,
+            cache_cost: null,
+            tool_cost: null,
+            total_cost: null,
+            unpriced_token_messages: 1,
+            unpriced_messages: 1,
+            pricing_status: 'unavailable',
+          }),
+        ],
+      ]),
+    })
+
+    render(
+      <>
+        <TurnItem turn={turns[0]} conversationId={CONV} />
+        <TurnItem turn={turns[1]} conversationId={CONV} />
+        <TurnItem turn={turns[2]} conversationId={CONV} />
+      </>,
+    )
+    expect(screen.getByRole('button', { name: 'Turn usage: 0 + 0 tokens · 0.00' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Turn usage: Token usage unavailable · External billing' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Turn usage: Token usage unavailable · Cost unavailable' }),
+    ).toBeInTheDocument()
+  })
+
+  it('marks a partially reported token total as a lower bound', async () => {
+    const u = msg('user', { content: 'q' })
+    const a = msg('assistant', {
+      turn_id: 'turn-partial-tokens',
+      _blocks: [text('done')],
+      content: 'done',
+      input_tokens: 100,
+      output_tokens: 20,
+    })
+    const turn = buildTurns([u, a], {
+      usageByTurnId: new Map([
+        [
+          'turn-partial-tokens',
+          usage({
+            messages: 2,
+            missing_token_usage_messages: 1,
+            incomplete_token_usage_messages: 1,
+            pricing_status: 'lower_bound',
+            unpriced_token_messages: 1,
+            unpriced_messages: 1,
+          }),
+        ],
+      ]),
+    })[0]
+
+    render(<TurnItem turn={turn} conversationId={CONV} />)
+    const trigger = screen.getByRole('button', {
+      name: 'Turn usage: ≥ 100 + 20 tokens · ≥ 0.545',
+    })
+    await userEvent.hover(trigger)
+
+    expect(
+      await screen.findByText(
+        'Some requests did not report complete input/output usage; the displayed token total is a lower bound.',
+      ),
+    ).toBeVisible()
+  })
+
+  it('keeps a reported cost component exact when the other token side is missing', async () => {
+    const u = msg('user', { content: 'q' })
+    const a = msg('assistant', {
+      turn_id: 'turn-input-missing',
+      _blocks: [text('done')],
+      content: 'done',
+      input_tokens: null,
+      output_tokens: 20,
+    })
+    const turn = buildTurns([u, a], {
+      usageByTurnId: new Map([
+        [
+          'turn-input-missing',
+          usage({
+            input_tokens: 900,
+            output_tokens: 20,
+            cache_read_tokens: 900,
+            missing_token_usage_messages: 0,
+            incomplete_token_usage_messages: 1,
+            input_cost: null,
+            cache_cost: 9,
+            output_cost: 2,
+            tool_cost: 0,
+            total_cost: 11,
+            unpriced_token_messages: 1,
+            unpriced_input_messages: 1,
+            unpriced_output_messages: 0,
+            unpriced_cache_messages: 0,
+            unpriced_messages: 1,
+            pricing_status: 'lower_bound',
+          }),
+        ],
+      ]),
+    })[0]
+
+    render(<TurnItem turn={turn} conversationId={CONV} />)
+    const trigger = screen.getByRole('button', {
+      name: 'Turn usage: ≥ 900 + 20 tokens · ≥ 11.00',
+    })
+    await userEvent.hover(trigger)
+
+    const details = await screen.findByRole('dialog', { name: 'Turn usage' })
+    const inputRow = within(details).getByText('Input').closest('div') as HTMLElement
+    const outputRow = within(details).getByText('Output').closest('div') as HTMLElement
+    expect(within(inputRow).getByText('Unknown')).toBeInTheDocument()
+    expect(within(outputRow).getByText('2.00')).toBeInTheDocument()
+    expect(within(outputRow).queryByText('≥ 2.00')).not.toBeInTheDocument()
+    expect(within(details).getByText('≥ 11.00')).toBeInTheDocument()
   })
 
   describe('activity marker', () => {

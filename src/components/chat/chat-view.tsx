@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { EmptyState as ProEmptyState } from '@heroui-pro/react/empty-state'
 import { api } from '@/api'
 import { ChatTranscript } from './chat-transcript'
 import { CompactedRegion } from './compacted-region'
@@ -16,6 +17,8 @@ import { useSendMessage } from '@/hooks/use-send-message'
 import { useContextInfo } from '@/hooks/use-context-info'
 import { useConversationStore } from '@/stores/conversation-store'
 import type { Message, QueueDelivery } from '@/types'
+import { StarterPrompts } from './empty-state'
+import type { InitialTurnDraft } from './conversation-draft'
 
 // Stable identity for the empty case: `?? []` would hand useTurns a new array on
 // every render of a conversation whose session has not been created yet.
@@ -23,12 +26,12 @@ const NO_MESSAGES: Message[] = []
 
 function ChatViewInner({
   conversationId,
-  initialMessage,
-  onInitialMessageConsumed,
+  initialDraft,
+  onInitialDraftConsumed,
 }: {
   conversationId: string
-  initialMessage?: string | null
-  onInitialMessageConsumed?: () => void
+  initialDraft?: InitialTurnDraft | null
+  onInitialDraftConsumed?: () => void
 }) {
   const session = useConversationStore((s) => s.sessions[conversationId])
   const storeEnsureSession = useConversationStore((s) => s.ensureSession)
@@ -57,7 +60,7 @@ function ChatViewInner({
   // to the mode that waits: an interjection cuts into work that is already
   // going, which is not a thing to do by accident.
   const [queueDelivery, setQueueDelivery] = useState<QueueDelivery>('follow_up')
-  const settings = useTurnSettings(conversationId)
+  const settings = useTurnSettings(conversationId, initialDraft?.settings)
   const emojiMap = useEmojiMap(settings.selectedAssistantId)
   // Only a OneBot conversation has more than one speaker; a desktop row has no
   // sender id to look up. Keyed on who is actually in the transcript so a
@@ -139,14 +142,33 @@ function ChatViewInner({
     [conversationId, storeSetError, storeSetCompacting],
   )
 
-  const initialMessageSent = useRef<string | null>(null)
+  const initialDraftSent = useRef<string | null>(null)
   useEffect(() => {
-    if (initialMessage && initialMessageSent.current !== conversationId) {
-      initialMessageSent.current = conversationId
-      onInitialMessageConsumed?.()
-      sendMessage(initialMessage, true)
+    if (initialDraft && initialDraftSent.current !== conversationId) {
+      initialDraftSent.current = conversationId
+      if (initialDraft.remainingComposer) {
+        setInput(initialDraft.remainingComposer.text)
+        setAttachedFiles(initialDraft.remainingComposer.attachedFiles)
+        setPendingSticker(initialDraft.remainingComposer.pendingSticker)
+      }
+      onInitialDraftConsumed?.()
+      const sticker = initialDraft.pendingSticker
+        ? {
+            type: 'sticker' as const,
+            sticker_id: initialDraft.pendingSticker.emoji.id,
+            name: initialDraft.pendingSticker.emoji.name,
+          }
+        : undefined
+      void sendMessage(
+        initialDraft.text,
+        true,
+        initialDraft.attachedFiles.length > 0 ? initialDraft.attachedFiles : undefined,
+        undefined,
+        initialDraft.voice || undefined,
+        sticker,
+      )
     }
-  }, [conversationId, initialMessage, onInitialMessageConsumed, sendMessage])
+  }, [conversationId, initialDraft, onInitialDraftConsumed, sendMessage])
 
   // Memoised because useTurns keys its work on this array's identity; a fresh
   // filter() on every render would rebuild every turn on every stream chunk.
@@ -303,7 +325,15 @@ function ChatViewInner({
         trailing={<TranscriptStatus compacting={compacting} error={error} />}
         emptyState={
           messages.length === 0 ? (
-            <div className="flex flex-1 items-center justify-center text-muted text-sm">{t('chat.startHint')}</div>
+            <ProEmptyState size="md" className="flex-1 justify-center px-4 py-10">
+              <ProEmptyState.Header>
+                <ProEmptyState.Title>{t('chat.empty.subtitle')}</ProEmptyState.Title>
+                <ProEmptyState.Description>{t('chat.startHint')}</ProEmptyState.Description>
+              </ProEmptyState.Header>
+              <ProEmptyState.Content className="w-full max-w-2xl">
+                <StarterPrompts disabled={streaming} onSelect={setInput} />
+              </ProEmptyState.Content>
+            </ProEmptyState>
           ) : null
         }
         scrollToBottomLabel={t('chat.scrollToBottom')}
@@ -367,16 +397,16 @@ function ChatViewInner({
 
 interface ChatViewProps {
   conversationId: string
-  initialMessage?: string | null
-  onInitialMessageConsumed?: () => void
+  initialDraft?: InitialTurnDraft | null
+  onInitialDraftConsumed?: () => void
 }
 
-export function ChatView({ conversationId, initialMessage, onInitialMessageConsumed }: ChatViewProps) {
+export function ChatView({ conversationId, initialDraft, onInitialDraftConsumed }: ChatViewProps) {
   return (
     <ChatViewInner
       conversationId={conversationId}
-      initialMessage={initialMessage}
-      onInitialMessageConsumed={onInitialMessageConsumed}
+      initialDraft={initialDraft}
+      onInitialDraftConsumed={onInitialDraftConsumed}
     />
   )
 }

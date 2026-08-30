@@ -24,26 +24,9 @@ const ChatToolStateContext = React.createContext<ChatToolState>('input-available
 const ChatToolNestedContext = React.createContext(false)
 
 /**
- * A HeroUI card by value, not by class.
- *
- * `cardVariants({ variant }).base()` would be the documented escape hatch, but
- * it drags `p-4 gap-3 overflow-visible` along and all three are wrong here: the
- * trigger is a full-width hit target, so its padding has to sit inside it or the
- * hover wash stops short of the edges, and the corners have to clip that wash.
- * Overriding three properties off a class costs more than naming the three that
- * actually carry the look, so these are the card's own values —
- * `--radius-3xl` (24px, what `min(32px, var(--radius-3xl))` resolves to at our
- * `--radius: 0.5rem`), `bg-surface`, `shadow-surface`.
- *
- * `bg-surface` is opaque now. The old `bg-surface/30` was compensation from when
- * `--surface` and `--background` were both white and a solid fill would have
- * been invisible; the token ladder puts panels above the page, so the fill is
- * the whole point.
- */
-/**
- * 16px, not the 24px a HeroUI `Card` uses. A collapsed tool row is 48px tall,
- * and a 24px radius on a 48px box makes both ends exact semicircles — a column
- * of them reads as loose capsules rather than one run of steps.
+ * The Pro ChatTool's 12px corner and compact row, with Meridian's surface and
+ * inset ring. A generic HeroUI Card is deliberately not used: its padding sits
+ * outside the full-width trigger and stops the hover wash before the edge.
  *
  * **The edge is not decoration here, and dropping it made these cards vanish.**
  * A HeroUI card carries none because it is told apart by being lighter than the
@@ -59,17 +42,17 @@ const ChatToolNestedContext = React.createContext(false)
  * it takes no space, so recolouring it for `output-error` costs no reflow and
  * needs no second mechanism.
  */
-const CHAT_TOOL_CARD = 'overflow-hidden rounded-2xl bg-surface shadow-surface ring-1 ring-border ring-inset'
+const CHAT_TOOL_CARD = 'overflow-hidden rounded-xl bg-surface shadow-surface ring-1 ring-border ring-inset'
 
 const chatToolVariants = tv({
   slots: {
-    base: 'flex w-full flex-col text-sm',
-    // `p-4` matches `.accordion__trigger` (`px-4 py-4`), and the hover fill is
-    // the full-strength `bg-default` that `.accordion--surface` uses — at /30
-    // over an opaque panel it barely moved.
+    base: 'flex w-full flex-col text-xs',
+    // Mirrors Pro's chat-tool rhythm. The inset focus ring remains visible
+    // inside the clipped card and does not add another layout edge.
     trigger: [
-      'flex w-full items-center gap-2 p-4 text-left transition-colors outline-none',
-      'hover:bg-default focus-visible:bg-default',
+      'flex min-h-11 w-full items-center gap-2 px-3 py-2.5 text-left transition-colors outline-none',
+      'hover:bg-default data-[pressed]:bg-default focus-visible:bg-default',
+      'focus-visible:ring-2 focus-visible:ring-focus/50 focus-visible:ring-inset',
     ],
   },
   variants: {
@@ -110,11 +93,15 @@ interface ChatToolProps
 
 function ChatTool({ state, className, ...props }: ChatToolProps) {
   const nested = React.useContext(ChatToolNestedContext)
+  const resolvedState = state ?? 'input-available'
+  const active = resolvedState === 'input-streaming' || resolvedState === 'input-available'
   return (
-    <ChatToolStateContext.Provider value={state ?? 'input-available'}>
+    <ChatToolStateContext.Provider value={resolvedState}>
       <Disclosure
         data-slot="chat-tool"
-        className={cn(chatToolVariants({ state, nested }).base(), className)}
+        data-state={resolvedState}
+        data-active={active || undefined}
+        className={cn(chatToolVariants({ state: resolvedState, nested }).base(), className)}
         {...props}
       />
     </ChatToolStateContext.Provider>
@@ -146,6 +133,8 @@ interface ChatToolTriggerProps extends Omit<React.ComponentProps<typeof Disclosu
 }
 
 function ChatToolTrigger({ className, children, endContent, subtitle, ...props }: ChatToolTriggerProps) {
+  const state = React.useContext(ChatToolStateContext)
+  const requiresAction = state === 'requires-action'
   return (
     <Disclosure.Heading>
       {/* `flex` is not optional: HeroUI styles the indicator with `ms-auto` and
@@ -155,18 +144,36 @@ function ChatToolTrigger({ className, children, endContent, subtitle, ...props }
         className={cn(chatToolVariants().trigger(), className)}
         {...props}
       >
-        <div data-slot="chat-tool-trigger-lines" className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <div data-slot="chat-tool-trigger-label" className="flex min-w-0 items-center gap-2">
+        <div data-slot="chat-tool-trigger-lines" className="flex min-w-0 flex-1 flex-col gap-1">
+          <div
+            data-slot="chat-tool-trigger-label"
+            className={cn(
+              'flex min-w-0 items-center gap-2',
+              // The identifying value is supplied by `ToolArgsSummary`. Two
+              // lines make paths and commands legible on touch devices where a
+              // title tooltip is unavailable; an approval shows the full value.
+              '[&_[data-slot=tool-arg]]:min-w-0 [&_[data-slot=tool-arg]]:flex-1',
+              '[&_[data-slot=tool-arg]]:break-words [&_[data-slot=tool-arg]]:[overflow-wrap:anywhere]',
+              requiresAction
+                ? '[&_[data-slot=tool-arg]]:line-clamp-none [&_[data-slot=tool-arg]]:whitespace-pre-wrap'
+                : '[&_[data-slot=tool-arg]]:line-clamp-2 [&_[data-slot=tool-arg]]:whitespace-pre-wrap',
+            )}
+          >
             {children}
           </div>
           {subtitle != null && subtitle !== '' && (
-            <span data-slot="chat-tool-subtitle" className="truncate text-left text-xs text-muted">
+            <span
+              data-slot="chat-tool-subtitle"
+              className="line-clamp-2 break-words text-left text-xs leading-snug text-muted [overflow-wrap:anywhere]"
+            >
               {subtitle}
             </span>
           )}
         </div>
-        {endContent}
-        <Disclosure.Indicator className="size-3.5 shrink-0 text-muted" />
+        <span data-slot="chat-tool-trigger-end" className="flex shrink-0 items-center gap-2 text-xs">
+          {endContent}
+          <Disclosure.Indicator className="size-3.5 shrink-0 text-muted" />
+        </span>
       </Disclosure.Trigger>
     </Disclosure.Heading>
   )
@@ -177,19 +184,47 @@ function ChatToolStatusIcon({ className }: { className?: string }) {
   switch (state) {
     case 'input-streaming':
     case 'input-available':
-      return <CircleDashed aria-hidden className={cn('size-3.5 shrink-0 animate-spin text-muted', className)} />
+      return (
+        <CircleDashed
+          aria-hidden
+          data-slot="chat-tool-status-icon"
+          className={cn('size-3.5 shrink-0 animate-spin text-muted motion-reduce:animate-none', className)}
+        />
+      )
     // The same mark, standing still. Spinning is the claim that something is
     // happening, and for a call that has not started it is the only thing on
     // screen making that claim.
     case 'queued':
-      return <Clock aria-hidden className={cn('size-3.5 shrink-0 text-muted', className)} />
+      return (
+        <Clock
+          aria-hidden
+          data-slot="chat-tool-status-icon"
+          className={cn('size-3.5 shrink-0 text-muted', className)}
+        />
+      )
     case 'output-available':
-      return <CircleCheck aria-hidden className={cn('size-3.5 shrink-0 text-success-soft-foreground', className)} />
+      return (
+        <CircleCheck
+          aria-hidden
+          data-slot="chat-tool-status-icon"
+          className={cn('size-3.5 shrink-0 text-success-soft-foreground', className)}
+        />
+      )
     case 'output-error':
-      return <CircleXmark aria-hidden className={cn('size-3.5 shrink-0 text-danger', className)} />
+      return (
+        <CircleXmark
+          aria-hidden
+          data-slot="chat-tool-status-icon"
+          className={cn('size-3.5 shrink-0 text-danger', className)}
+        />
+      )
     case 'requires-action':
       return (
-        <CircleExclamation aria-hidden className={cn('size-3.5 shrink-0 text-warning-soft-foreground', className)} />
+        <CircleExclamation
+          aria-hidden
+          data-slot="chat-tool-status-icon"
+          className={cn('size-3.5 shrink-0 text-warning-soft-foreground', className)}
+        />
       )
   }
 }
@@ -203,8 +238,9 @@ function ChatToolContent({ className, children, ...props }: React.ComponentProps
       {/* Body, not a plain div: it is what keeps the panel measurable, so
           without it the content never collapses — it just loses its
           `aria-expanded`.
-          `px-4 pt-0 pb-4` is `.accordion__body-inner`; `gap-3` is the card's. */}
-      <Disclosure.Body className={cn('flex flex-col gap-3 px-4 pb-4', className)}>{children}</Disclosure.Body>
+          Pro uses a very tight `p-1`; this keeps that density while leaving
+          enough edge around Meridian's diffs and approval controls. */}
+      <Disclosure.Body className={cn('flex flex-col gap-2.5 px-3 pb-3 pt-0.5', className)}>{children}</Disclosure.Body>
     </Disclosure.Content>
   )
 }
@@ -227,16 +263,16 @@ interface ChatToolPayloadProps extends React.ComponentProps<'div'> {
 }
 
 function ChatToolArgs({ value, text, className, children, ...props }: ChatToolPayloadProps) {
-  const code = text ?? (value !== undefined ? JSON.stringify(value) : undefined)
+  const code = text ?? (value !== undefined ? JSON.stringify(value, null, 2) : undefined)
   return (
     <div
       data-slot="chat-tool-args"
-      className={cn('max-h-40 overflow-auto rounded-lg bg-default/40 px-3 py-2', className)}
+      className={cn('scrollbar-gutter-stable max-h-48 overflow-auto rounded-lg bg-default/50 px-3 py-2', className)}
       {...props}
     >
       {children ??
         (code !== undefined && (
-          <pre className="font-mono text-xs leading-relaxed break-all whitespace-pre-wrap text-foreground/90">
+          <pre className="font-mono text-xs leading-relaxed whitespace-pre-wrap text-foreground/90 [overflow-wrap:anywhere]">
             <JsonCode code={code} />
           </pre>
         ))}
@@ -249,12 +285,12 @@ function ChatToolResult({ value, text, className, children, ...props }: ChatTool
   return (
     <div
       data-slot="chat-tool-result"
-      className={cn('max-h-60 overflow-auto rounded-lg bg-default/40 px-3 py-2', className)}
+      className={cn('scrollbar-gutter-stable max-h-72 overflow-auto rounded-lg bg-default/50 px-3 py-2', className)}
       {...props}
     >
       {children ??
         (code !== undefined && (
-          <pre className="font-mono text-xs leading-relaxed break-all whitespace-pre-wrap text-foreground/90">
+          <pre className="font-mono text-xs leading-relaxed whitespace-pre-wrap text-foreground/90 [overflow-wrap:anywhere]">
             <JsonCode code={code} />
           </pre>
         ))}
@@ -264,17 +300,27 @@ function ChatToolResult({ value, text, className, children, ...props }: ChatTool
 
 function ChatToolError({ className, ...props }: React.ComponentProps<'div'>) {
   return (
-    <div data-slot="chat-tool-error" className={cn('px-0.5 whitespace-pre-wrap text-danger', className)} {...props} />
+    <div
+      data-slot="chat-tool-error"
+      className={cn(
+        'rounded-lg bg-danger/5 px-2.5 py-2 leading-relaxed whitespace-pre-wrap text-danger [overflow-wrap:anywhere]',
+        className,
+      )}
+      {...props}
+    />
   )
 }
 
-function ChatToolApproval({ className, ...props }: React.ComponentProps<'div'>) {
+function ChatToolApproval({ className, children, ...props }: React.ComponentProps<'div'>) {
   return (
-    <div
-      data-slot="chat-tool-approval"
-      className={cn('flex items-center justify-end gap-2 pt-1', className)}
-      {...props}
-    />
+    <div data-slot="chat-tool-approval" className={cn('flex min-w-0 flex-col gap-2 pt-2.5', className)} {...props}>
+      <div
+        data-slot="chat-tool-approval-actions"
+        className="flex min-w-0 flex-wrap items-center justify-end gap-2 [&>button]:min-h-8 [&>button]:max-w-full [&>button]:min-w-0 [&>button]:whitespace-normal"
+      >
+        {children}
+      </div>
+    </div>
   )
 }
 
@@ -282,7 +328,7 @@ function ChatToolGroup({ className, ...props }: React.ComponentProps<typeof Disc
   return (
     <Disclosure
       data-slot="chat-tool-group"
-      className={cn('flex w-full flex-col text-sm', CHAT_TOOL_CARD, className)}
+      className={cn('flex w-full flex-col text-xs', CHAT_TOOL_CARD, className)}
       {...props}
     />
   )
@@ -302,7 +348,9 @@ function ChatToolGroupTrigger({
         className={cn(chatToolVariants().trigger(), 'font-medium text-foreground', className)}
         {...props}
       >
-        {children}
+        <span data-slot="chat-tool-group-trigger-label" className="min-w-0 flex-1 truncate">
+          {children}
+        </span>
         {/* The indicator carries `ms-auto` of its own, which is what the hand-
             written chevron used `ml-auto` for. */}
         <Disclosure.Indicator className="size-3.5 shrink-0 text-muted" />
@@ -315,9 +363,8 @@ function ChatToolGroupContent({ className, children, ...props }: React.Component
   return (
     <Disclosure.Content data-slot="chat-tool-group-content" className="min-h-0 w-full" {...props}>
       {/* Flush, not inset: the group is the card, so its children are rows in it
-          rather than cards inside a card. A 24px card nested in a 24px card is
-          exactly the rounding a container is not allowed to have, and the gutter
-          it would need would only make the double frame more obvious. */}
+          rather than cards inside a card. Repeating rounded cards inside a
+          rounded card adds a second frame and a gutter with no information. */}
       <Disclosure.Body className={cn('flex flex-col', className)}>
         <ChatToolNestedContext.Provider value={true}>{children}</ChatToolNestedContext.Provider>
       </Disclosure.Body>

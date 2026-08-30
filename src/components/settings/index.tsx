@@ -22,7 +22,13 @@ import { About } from './about'
 export type { SettingsTab } from './tabs'
 import type { SettingsTab } from './tabs'
 
-export default function SettingsPage({ activeTab }: { activeTab: SettingsTab }) {
+export default function SettingsPage({
+  activeTab,
+  onOpenConversation,
+}: {
+  activeTab: SettingsTab
+  onOpenConversation: (conversationId: string) => void
+}) {
   // The inset sits on the scroller itself, and the spacing stays inside it.
   // Padding here lets the last control come to rest above the navigation bar
   // while the list still scrolls the full height of the screen; taking the room
@@ -41,7 +47,7 @@ export default function SettingsPage({ activeTab }: { activeTab: SettingsTab }) 
           an element carrying both would look past its own. */}
       <div className="p-4 @2xl/settings:p-6">
         {activeTab === 'provider' && <ProviderSettings />}
-        {activeTab === 'usage' && <UsageSettings />}
+        {activeTab === 'usage' && <UsageSettings onOpenConversation={onOpenConversation} />}
         {activeTab === 'assistants' && <AssistantSettings />}
         {activeTab === 'emoji' && <EmojiSettings />}
         {activeTab === 'tools' && <ToolMarketplace />}

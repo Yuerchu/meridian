@@ -13,6 +13,10 @@ function crashedIds(turns: TurnRecord[]): ReadonlySet<string> {
   return new Set(turns.filter((t) => t.status === 'interrupted').map((t) => t.id))
 }
 
+function usageByTurnId(turns: TurnRecord[]) {
+  return new Map(turns.flatMap((turn) => (turn.usage ? [[turn.id, turn.usage] as const] : [])))
+}
+
 /** One shared empty array, because a default parameter would mint a new one on
  *  every render and take the whole memo chain below it with it. */
 const NO_TURNS: TurnRecord[] = []
@@ -28,9 +32,10 @@ const NO_TURNS: TurnRecord[] = []
  */
 export function useTurns(messages: Message[], streaming: boolean, turns: TurnRecord[] = NO_TURNS): Turn[] {
   const crashed = useMemo(() => crashedIds(turns), [turns])
+  const usage = useMemo(() => usageByTurnId(turns), [turns])
   const built = useMemo(
-    () => buildTurns(messages, { streaming, crashedTurnIds: crashed }),
-    [messages, streaming, crashed],
+    () => buildTurns(messages, { streaming, crashedTurnIds: crashed, usageByTurnId: usage }),
+    [messages, streaming, crashed, usage],
   )
   const prevRef = useRef<Turn[]>(built)
   const stable = reconcileTurns(prevRef.current, built)
@@ -45,6 +50,7 @@ export function useTurns(messages: Message[], streaming: boolean, turns: TurnRec
 function sameInputs(a: Turn, b: Turn): boolean {
   if (a.userMessage !== b.userMessage) return false
   if (a.status !== b.status) return false
+  if (a.usage !== b.usage) return false
   if (a.assistantMessages.length !== b.assistantMessages.length) return false
   for (let i = 0; i < a.assistantMessages.length; i++) {
     if (a.assistantMessages[i] !== b.assistantMessages[i]) return false

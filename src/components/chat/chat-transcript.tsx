@@ -25,10 +25,13 @@ const MotionMessageScrollerItem = m.create(MessageScrollerItem)
 
 function ImeScrollSync() {
   const ime = useImeBottom()
-  const { scrollToEnd } = useMessageScroller()
+  const { isFollowing, scrollToEnd } = useMessageScroller()
   useEffect(() => {
-    if (ime > 0) scrollToEnd()
-  }, [ime, scrollToEnd])
+    // Resizing the viewport for the keyboard should keep a live transcript at
+    // its edge, but opening a form or the composer while reading history is not
+    // permission to discard the reader's position.
+    if (ime > 0 && isFollowing()) scrollToEnd()
+  }, [ime, isFollowing, scrollToEnd])
   return null
 }
 
@@ -114,7 +117,15 @@ export function ChatTranscript({
 
   return (
     <LazyMotion features={domAnimation}>
-      <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor" scrollPreviousItemPeek={48}>
+      <MessageScrollerProvider
+        autoScroll
+        defaultScrollPosition="last-anchor"
+        // Count changes identify a genuinely new live turn, including queued
+        // turns, while surviving the optimistic row's persisted-id re-key.
+        // A non-streaming branch/history update must not re-arm follow.
+        followKey={streaming ? turns.length : null}
+        scrollPreviousItemPeek={48}
+      >
         <ImeScrollSync />
         <AnswerSettle streaming={streaming} anchorId={lastTurn ? answerAnchorId(lastTurn.id) : null} />
         <MessageScroller className="flex-1 min-h-0">

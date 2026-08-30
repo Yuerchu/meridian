@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
-import { ChevronDown } from '@gravity-ui/icons'
-import { ListBox, Select } from '@heroui/react'
+import { ListBox } from '@heroui/react'
+import { InlineSelect } from '@heroui-pro/react/inline-select'
 
 import { cn } from '@/lib/utils'
 
@@ -51,7 +51,7 @@ export function ToolbarSelect({
   const current = choices.find((c) => c.value === value)
 
   return (
-    <Select
+    <InlineSelect
       aria-label={ariaLabel}
       data-slot="toolbar-select"
       value={value ?? ''}
@@ -61,10 +61,10 @@ export function ToolbarSelect({
       }}
       className={cn('w-auto min-w-0', className)}
     >
-      {/* `h-*`/`px-*` and `rounded-*` overridden together: HeroUI's own radius
-          is much rounder than the composer it sits in, and changing the height
-          without the radius is how a hover fill gets clipped at the corners. */}
-      <Select.Trigger
+      {/* Pro supplies the inline-select interaction and density; the composer
+          gives it a fixed 32px target. Height and radius move together so the
+          toolbar's hover fill follows the surrounding shell. */}
+      <InlineSelect.Trigger
         data-slot="toolbar-select-trigger"
         className={cn(
           'h-8 max-w-[180px] min-w-0 items-center gap-1 rounded-lg border-0 bg-transparent px-2',
@@ -72,17 +72,15 @@ export function ToolbarSelect({
           'text-foreground hover:bg-default data-hovered:bg-default transition-colors',
         )}
       >
-        <Select.Value className="min-w-0 flex-1 overflow-hidden">
+        <InlineSelect.Value className="min-w-0 flex-1 overflow-hidden">
           <span data-slot="toolbar-select-current" className="flex min-w-0 items-center gap-1.5">
             {current?.icon}
             <span className={cn('truncate', !current && 'text-muted')}>{current?.label ?? placeholder}</span>
           </span>
-        </Select.Value>
-        <Select.Indicator className="static my-0 size-4 shrink-0 text-muted">
-          <ChevronDown />
-        </Select.Indicator>
-      </Select.Trigger>
-      <Select.Popover
+        </InlineSelect.Value>
+        <InlineSelect.Indicator className="size-3.5 shrink-0" />
+      </InlineSelect.Trigger>
+      <InlineSelect.Popover
         data-slot="toolbar-select-popover"
         className="max-h-[min(420px,calc(100vh-6rem))] max-w-[calc(100vw-2rem)] overflow-y-auto"
         containerPadding={16}
@@ -100,7 +98,7 @@ export function ToolbarSelect({
             </ListBox.Item>
           ))}
         </ListBox>
-      </Select.Popover>
-    </Select>
+      </InlineSelect.Popover>
+    </InlineSelect>
   )
 }
