@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from 'react'
+import { useState, useCallback, useMemo, useRef, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { diffLines } from 'diff'
@@ -9,7 +9,6 @@ import {
   ArrowUturnCcwLeft,
   Ban,
   Check,
-  Circle,
   CircleCheck,
   CircleDashed,
   CircleQuestion,
@@ -19,13 +18,11 @@ import {
   Globe,
   ListCheck,
   PaperPlane,
-  Square,
-  SquareCheck,
   SquareListUl,
   TriangleExclamation,
   Xmark,
 } from '@gravity-ui/icons'
-import { Button, Input } from '@heroui/react'
+import { Button, Checkbox, CheckboxGroup, Input, Radio, RadioGroup, Spinner } from '@heroui/react'
 import {
   ChatTool,
   ChatToolApproval,
@@ -152,6 +149,8 @@ function QuestionBlock({
   q,
   value,
   skipped,
+  invalid,
+  registerField,
   onChange,
   onSkip,
   onUnskip,
@@ -159,29 +158,24 @@ function QuestionBlock({
   q: AskQuestion
   value: QuestionAnswer
   skipped: boolean
+  invalid: boolean
+  registerField: (id: string, element: HTMLDivElement | null) => void
   onChange: (id: string, val: QuestionAnswer) => void
   onSkip: (id: string) => void
   onUnskip: (id: string) => void
 }) {
   const { t } = useTranslation()
+  const fieldId = useId()
+  const questionId = `${fieldId}-label`
+  const errorId = `${fieldId}-error`
   const hasOptions = q.options && q.options.length > 0
   const isMulti = q.multi_select === true
-
-  const toggleMulti = (label: string) => {
-    const arr = Array.isArray(value.selected) ? value.selected : []
-    const next = arr.includes(label) ? arr.filter((v) => v !== label) : [...arr, label]
-    onChange(q.id, { ...value, selected: next })
-  }
-
-  const selectSingle = (label: string) => {
-    onChange(q.id, { ...value, selected: value.selected === label ? null : label })
-  }
 
   if (skipped) {
     return (
       <div className="flex items-center justify-between py-1">
         <span className="text-sm text-muted line-through">{q.question}</span>
-        <Button variant="ghost" onClick={() => onUnskip(q.id)} className="text-xs text-muted shrink-0 ml-2">
+        <Button variant="ghost" onPress={() => onUnskip(q.id)} className="text-xs text-muted shrink-0 ml-2">
           <ArrowUturnCcwLeft className="w-3.5 h-3.5" />
           {t('chat.tool.undo')}
         </Button>
@@ -190,9 +184,9 @@ function QuestionBlock({
   }
 
   return (
-    <div className="space-y-1.5">
+    <div ref={(element) => registerField(q.id, element)} className="space-y-1.5">
       <div className="flex items-start justify-between gap-2">
-        <div className="text-sm text-foreground font-medium">
+        <div id={questionId} className="text-sm text-foreground font-medium">
           {q.question}
           {/* The mark and the withheld skip button are one decision: an asker
               that will not take an answer without this one leaves nothing to
@@ -204,57 +198,65 @@ function QuestionBlock({
           )}
         </div>
         {!q.required && (
-          <Button variant="ghost" onClick={() => onSkip(q.id)} className="text-xs text-muted shrink-0 mt-0.5">
+          <Button variant="ghost" onPress={() => onSkip(q.id)} className="text-xs text-muted shrink-0 mt-0.5">
             <ForwardStep className="w-3.5 h-3.5" />
             {t('chat.tool.skipQuestion')}
           </Button>
         )}
       </div>
 
-      {hasOptions && (
-        <div className="space-y-1">
-          {q.options!.map((opt) => {
-            const checked = isMulti
-              ? Array.isArray(value.selected) && value.selected.includes(opt.label)
-              : value.selected === opt.label
-
-            return (
-              <Button
-                key={opt.label}
-                variant="ghost"
-                onClick={() => (isMulti ? toggleMulti(opt.label) : selectSingle(opt.label))}
-                className={cn(
-                  // `whitespace-normal` overrides the Button base class, which is
-                  // `whitespace-nowrap`. These labels are written by a model and
-                  // are routinely whole sentences, so on a narrow card the option
-                  // ran under the clipped edge with no way to read the rest of
-                  // it — and an option you cannot read is one you cannot pick.
-                  'w-full justify-start gap-2 h-auto rounded-lg px-2.5 py-1.5 text-left whitespace-normal',
-                  checked ? 'bg-default/80 text-default-foreground' : 'text-muted',
-                )}
-              >
-                <span className="mt-0.5 shrink-0">
-                  {isMulti ? (
-                    checked ? (
-                      <SquareCheck className="w-3.5 h-3.5 text-foreground" />
-                    ) : (
-                      <Square className="w-3.5 h-3.5" />
-                    )
-                  ) : checked ? (
-                    <CircleCheck className="w-3.5 h-3.5 text-foreground" />
-                  ) : (
-                    <Circle className="w-3.5 h-3.5" />
-                  )}
-                </span>
-                <span className="flex-1 min-w-0">
-                  <span className="text-xs font-medium text-foreground">{opt.label}</span>
-                  {opt.description && <span className="block text-xs text-muted">{opt.description}</span>}
-                </span>
-              </Button>
-            )
-          })}
-        </div>
-      )}
+      {hasOptions &&
+        (isMulti ? (
+          <CheckboxGroup
+            data-slot="question-answer"
+            aria-labelledby={questionId}
+            aria-describedby={invalid ? errorId : undefined}
+            isInvalid={invalid}
+            name={q.id}
+            value={Array.isArray(value.selected) ? value.selected : []}
+            onChange={(selected) => onChange(q.id, { ...value, selected })}
+            className="gap-1"
+          >
+            {q.options!.map((opt) => (
+              <Checkbox key={opt.label} value={opt.label} variant="secondary" className="w-full gap-0">
+                <Checkbox.Content className="w-full items-start gap-2 rounded-lg px-2.5 py-1.5 whitespace-normal hover:bg-default/50 data-[selected=true]:bg-default/80">
+                  <Checkbox.Control className="mt-0.5 shrink-0">
+                    <Checkbox.Indicator />
+                  </Checkbox.Control>
+                  <span className="min-w-0 flex-1 text-left">
+                    <span className="text-xs font-medium text-foreground">{opt.label}</span>
+                    {opt.description && <span className="block text-xs text-muted">{opt.description}</span>}
+                  </span>
+                </Checkbox.Content>
+              </Checkbox>
+            ))}
+          </CheckboxGroup>
+        ) : (
+          <RadioGroup
+            data-slot="question-answer"
+            aria-labelledby={questionId}
+            aria-describedby={invalid ? errorId : undefined}
+            isInvalid={invalid}
+            name={q.id}
+            value={typeof value.selected === 'string' ? value.selected : ''}
+            onChange={(selected) => onChange(q.id, { ...value, selected })}
+            className="gap-1"
+          >
+            {q.options!.map((opt) => (
+              <Radio key={opt.label} value={opt.label} className="w-full gap-0">
+                <Radio.Content className="w-full items-start gap-2 rounded-lg px-2.5 py-1.5 whitespace-normal hover:bg-default/50 data-[selected=true]:bg-default/80">
+                  <Radio.Control className="mt-0.5 shrink-0">
+                    <Radio.Indicator />
+                  </Radio.Control>
+                  <span className="min-w-0 flex-1 text-left">
+                    <span className="text-xs font-medium text-foreground">{opt.label}</span>
+                    {opt.description && <span className="block text-xs text-muted">{opt.description}</span>}
+                  </span>
+                </Radio.Content>
+              </Radio>
+            ))}
+          </RadioGroup>
+        ))}
 
       {/* Withheld where nothing could carry what was typed. A box that discards
           what is put in it is worse than no box, and this one would take the
@@ -262,14 +264,24 @@ function QuestionBlock({
           note beside a valid choice is what makes the pair unplaceable. */}
       {acceptsText(q) && (
         <Input
+          data-slot="question-answer"
           fullWidth
           type="text"
+          name={`${q.id}-notes`}
+          autoComplete="off"
+          aria-labelledby={questionId}
+          aria-describedby={invalid ? errorId : undefined}
+          aria-invalid={invalid || undefined}
           value={value.notes}
           onChange={(e) => onChange(q.id, { ...value, notes: e.target.value })}
           placeholder={hasOptions ? t('chat.tool.notesPlaceholder') : t('chat.tool.askUserPlaceholder')}
           className="text-xs"
-          autoFocus={!hasOptions}
         />
+      )}
+      {invalid && (
+        <p id={errorId} role="alert" className="text-xs text-danger">
+          {t('chat.tool.answerRequired')}
+        </p>
       )}
     </div>
   )
@@ -280,6 +292,9 @@ function AskUserBlock({ data, onAnswered }: { data: ToolCallDisplay; onAnswered?
   const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>({})
   const [skippedSet, setSkippedSet] = useState<Set<string>>(new Set())
   const [sending, setSending] = useState(false)
+  const [submitAttempted, setSubmitAttempted] = useState(false)
+  const [emptyFormError, setEmptyFormError] = useState(false)
+  const fieldRefs = useRef(new Map<string, HTMLDivElement>())
   const markOrphaned = useConversationStore((s) => s.markApprovalOrphaned)
   const retireAnswered = useConversationStore((s) => s.retireAnsweredApproval)
 
@@ -299,6 +314,7 @@ function AskUserBlock({ data, onAnswered }: { data: ToolCallDisplay; onAnswered?
 
   const handleChange = useCallback((id: string, val: QuestionAnswer) => {
     setAnswers((prev) => ({ ...prev, [id]: val }))
+    setEmptyFormError(false)
     setSkippedSet((prev) => {
       if (!prev.has(id)) return prev
       const next = new Set(prev)
@@ -309,9 +325,11 @@ function AskUserBlock({ data, onAnswered }: { data: ToolCallDisplay; onAnswered?
 
   const handleSkip = useCallback((id: string) => {
     setSkippedSet((prev) => new Set(prev).add(id))
+    setEmptyFormError(false)
   }, [])
 
   const handleUnskip = useCallback((id: string) => {
+    setEmptyFormError(false)
     setSkippedSet((prev) => {
       const next = new Set(prev)
       next.delete(id)
@@ -319,31 +337,60 @@ function AskUserBlock({ data, onAnswered }: { data: ToolCallDisplay; onAnswered?
     })
   }, [])
 
-  const handleSubmit = useCallback(() => {
-    const approvalId = data.approval_id
-    if (!approvalId) return
-    const result: Record<string, string> = {}
-    for (const q of questions) {
-      result[q.id] = formatAnswer(answers[q.id], skippedSet.has(q.id))
-    }
-    setSending(true)
-    api.respondToAsk(approvalId, JSON.stringify(result)).then(
-      // Same reason as `PendingApproval`: the queue is a separate ledger and
-      // learns nothing from an answer given here. A question answered on this
-      // form and left in it is offered again as a toast — "go and answer this"
-      // for something already answered — the moment the reader moves on.
-      () => {
-        retireAnswered(approvalId)
-        onAnswered?.()
-      },
-      // Nobody is listening any more: say so instead of leaving a form that
-      // silently discards what the user typed.
-      () => {
-        setSending(false)
-        markOrphaned(approvalId)
-      },
-    )
-  }, [answers, skippedSet, questions, data.approval_id, markOrphaned, retireAnswered, onAnswered])
+  const registerField = useCallback((id: string, element: HTMLDivElement | null) => {
+    if (element) fieldRefs.current.set(id, element)
+    else fieldRefs.current.delete(id)
+  }, [])
+
+  const focusQuestion = useCallback((id: string | undefined) => {
+    if (!id) return
+    requestAnimationFrame(() => {
+      const field = fieldRefs.current.get(id)
+      field
+        ?.querySelector<HTMLElement>(
+          '[data-slot="question-answer"] input, [data-slot="question-answer"] [role="radio"], [data-slot="question-answer"] [role="checkbox"], [data-slot="question-answer"]',
+        )
+        ?.focus()
+    })
+  }, [])
+
+  const handleSubmit = useCallback(
+    (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      const approvalId = data.approval_id
+      if (!approvalId) return
+      setSubmitAttempted(true)
+      const missing = questions.filter((q) => q.required && !hasRequiredAnswer(q, answers[q.id]))
+      const hasAnyAnswer = questions.some((q) => skippedSet.has(q.id) || hasContent(q, answers[q.id]))
+      setEmptyFormError(!hasAnyAnswer)
+      if (missing.length > 0 || !hasAnyAnswer) {
+        focusQuestion(missing[0]?.id ?? questions[0]?.id)
+        return
+      }
+      const result: Record<string, string> = {}
+      for (const q of questions) {
+        result[q.id] = formatAnswer(answers[q.id], skippedSet.has(q.id))
+      }
+      setSending(true)
+      api.respondToAsk(approvalId, JSON.stringify(result)).then(
+        // Same reason as `PendingApproval`: the queue is a separate ledger and
+        // learns nothing from an answer given here. A question answered on this
+        // form and left in it is offered again as a toast — "go and answer this"
+        // for something already answered — the moment the reader moves on.
+        () => {
+          retireAnswered(approvalId)
+          onAnswered?.()
+        },
+        // Nobody is listening any more: say so instead of leaving a form that
+        // silently discards what the user typed.
+        () => {
+          setSending(false)
+          markOrphaned(approvalId)
+        },
+      )
+    },
+    [answers, skippedSet, questions, data.approval_id, markOrphaned, retireAnswered, onAnswered, focusQuestion],
+  )
 
   // A question the asker will not do without has to be answered before this
   // form can go, and the check belongs here rather than only on the way out:
@@ -351,9 +398,6 @@ function AskUserBlock({ data, onAnswered }: { data: ToolCallDisplay; onAnswered?
   // and by then the card has already reported success and retired the queue
   // entry, so every other answer is lost without a word.
   const unanswered = questions.filter((q) => q.required && !hasRequiredAnswer(q, answers[q.id]))
-  const canSubmit =
-    unanswered.length === 0 && questions.some((q) => skippedSet.has(q.id) || hasContent(q, answers[q.id]))
-
   return (
     <div className="my-3 overflow-hidden rounded-2xl bg-surface text-sm shadow-surface ring-1 ring-border ring-inset">
       <div className="flex items-center gap-2 bg-default px-4 py-3">
@@ -365,21 +409,28 @@ function AskUserBlock({ data, onAnswered }: { data: ToolCallDisplay; onAnswered?
       </div>
 
       {data.status === 'pending' && (
-        <div className="space-y-3 px-4 py-3">
+        <form className="space-y-3 px-4 py-3" aria-busy={sending} noValidate onSubmit={handleSubmit}>
           {questions.map((q) => (
             <QuestionBlock
               key={q.id}
               q={q}
               value={getAnswer(q.id, q)}
               skipped={skippedSet.has(q.id)}
+              invalid={submitAttempted && q.required === true && !hasRequiredAnswer(q, answers[q.id])}
+              registerField={registerField}
               onChange={handleChange}
               onSkip={handleSkip}
               onUnskip={handleUnskip}
             />
           ))}
+          {emptyFormError && (
+            <p role="alert" className="text-xs text-danger">
+              {t('chat.tool.answerOrSkip')}
+            </p>
+          )}
           <div className="flex items-center gap-2 pt-1">
-            <Button onClick={handleSubmit} isDisabled={!canSubmit || sending}>
-              <PaperPlane className="w-3.5 h-3.5" />
+            <Button type="submit" isPending={sending}>
+              {sending ? <Spinner color="current" size="sm" /> : <PaperPlane className="w-3.5 h-3.5" />}
               {t('chat.tool.askUserSubmit')}
             </Button>
             {/* A disabled button with no reason beside it reads as broken. Only
@@ -391,7 +442,7 @@ function AskUserBlock({ data, onAnswered }: { data: ToolCallDisplay; onAnswered?
               </span>
             )}
           </div>
-        </div>
+        </form>
       )}
 
       {/* The questions are left on screen — they are still worth reading — but
@@ -478,6 +529,17 @@ function toolFileDiffs(toolName: string, args: Record<string, unknown>): FileDif
   }
 }
 
+function ResultToggle({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <div className="border-t border-border/50 px-3 py-1.5">
+      <Button variant="ghost" size="sm" className="h-auto px-1 py-0.5 text-xs" onPress={onToggle}>
+        {t(expanded ? 'chat.tool.showLess' : 'chat.tool.showFullResult')}
+      </Button>
+    </div>
+  )
+}
+
 function ReadFileResult({ result, path }: { result: string; path: string }) {
   // Same reason as `FileDiffCard`: this header has no `title` at all, so the
   // bare filename was the only thing identifying which file was read.
@@ -485,7 +547,9 @@ function ReadFileResult({ result, path }: { result: string; path: string }) {
   // Previously this only *claimed* to be highlighted: it put `language-x hljs`
   // on the element and never ran a highlighter, so the class bought a
   // background colour and nothing else.
-  const body = result.length > 2000 ? `${result.slice(0, 2000)}...` : result
+  const [expanded, setExpanded] = useState(false)
+  const truncated = result.length > 2000
+  const body = truncated && !expanded ? `${result.slice(0, 2000)}…` : result
 
   return (
     <div className="rounded-lg bg-default/40 overflow-hidden">
@@ -496,6 +560,7 @@ function ReadFileResult({ result, path }: { result: string; path: string }) {
       <div className="max-h-60 overflow-auto">
         <ShikiCode code={body} language={pathExtension(path)} />
       </div>
+      {truncated && <ResultToggle expanded={expanded} onToggle={() => setExpanded((current) => !current)} />}
     </div>
   )
 }
@@ -552,9 +617,9 @@ function SearchResult({ result }: { result: string }) {
             <span className="text-muted ml-auto shrink-0">{items.length}</span>
           </div>
           {items.map((item, i) => (
-            <div key={i} className="flex gap-2 px-3 py-0.5 text-xs hover:bg-default/20">
+            <div key={i} className="flex w-max min-w-full gap-2 px-3 py-0.5 text-xs hover:bg-default/20">
               <span className="text-muted font-mono w-8 text-right shrink-0">{item.line}</span>
-              <span className="text-foreground font-mono truncate">{item.text}</span>
+              <span className="text-foreground font-mono whitespace-pre">{item.text}</span>
             </div>
           ))}
         </div>
@@ -564,18 +629,22 @@ function SearchResult({ result }: { result: string }) {
 }
 
 function CommandResult({ result }: { result: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const truncated = result.length > 2000
   return (
     <div className="rounded-lg bg-default/40">
       <div className="max-h-60 overflow-auto">
         <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-xs font-mono leading-relaxed">
-          {result.length > 2000 ? `${result.slice(0, 2000)}...` : result}
+          {truncated && !expanded ? `${result.slice(0, 2000)}…` : result}
         </pre>
       </div>
+      {truncated && <ResultToggle expanded={expanded} onToggle={() => setExpanded((current) => !current)} />}
     </div>
   )
 }
 
 function GenericResult({ result }: { result: string }) {
+  const [expanded, setExpanded] = useState(false)
   // JSON results get pretty-printed and syntax-highlighted like HeroUI's preset.
   const pretty = useMemo(() => {
     try {
@@ -589,13 +658,28 @@ function GenericResult({ result }: { result: string }) {
     return <ChatToolResult text={pretty} />
   }
 
+  const display = pretty ?? result
+  const truncated = display.length > 1000
+
   return (
     <div className="rounded-lg bg-default/40">
       <div className="max-h-40 overflow-y-auto">
         <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-xs">
-          {result.length > 1000 ? `${result.slice(0, 1000)}...` : result}
+          {truncated && !expanded ? `${display.slice(0, 1000)}…` : display}
         </pre>
       </div>
+      {truncated && <ResultToggle expanded={expanded} onToggle={() => setExpanded((current) => !current)} />}
+    </div>
+  )
+}
+
+function ToolErrorResult({ result }: { result: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const truncated = result.length > 1000
+  return (
+    <div>
+      <ChatToolError>{truncated && !expanded ? `${result.slice(0, 1000)}…` : result}</ChatToolError>
+      {truncated && <ResultToggle expanded={expanded} onToggle={() => setExpanded((current) => !current)} />}
     </div>
   )
 }
@@ -661,7 +745,7 @@ function PendingApproval({
   if (ui === 'sent') {
     return (
       <div className="flex items-center gap-2 px-0.5 text-muted">
-        <CircleDashed className="w-3.5 h-3.5 animate-spin" />
+        <CircleDashed className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" />
         <span className="text-xs">{t('chat.tool.running')}</span>
       </div>
     )
@@ -677,11 +761,11 @@ function PendingApproval({
           </div>
         )}
         <ChatToolApproval>
-          <Button variant="outline" className="text-danger hover:text-danger" onClick={() => setUi('feedback')}>
+          <Button variant="outline" className="text-danger hover:text-danger" onPress={() => setUi('feedback')}>
             <Xmark className="w-3.5 h-3.5" />
             {t('chat.tool.deny')}
           </Button>
-          <Button onClick={() => decide(() => api.approveToolCall(approvalId))}>
+          <Button onPress={() => decide(() => api.approveToolCall(approvalId))}>
             <Check className="w-3.5 h-3.5" />
             {isEscalation ? t('chat.tool.retryWithoutSandbox') : t('chat.tool.allow')}
           </Button>
@@ -697,6 +781,9 @@ function PendingApproval({
       <Input
         fullWidth
         type="text"
+        name="tool-denial-reason"
+        autoComplete="off"
+        aria-label={t('chat.tool.denyReason')}
         value={feedback}
         onChange={(e) => setFeedback(e.target.value)}
         onKeyDown={(e) => {
@@ -708,10 +795,10 @@ function PendingApproval({
         autoFocus
       />
       <ChatToolApproval className="pt-0">
-        <Button variant="ghost" onClick={() => setUi('idle')}>
+        <Button variant="ghost" onPress={() => setUi('idle')}>
           {t('chat.tool.cancel')}
         </Button>
-        <Button variant="outline" className="text-danger hover:text-danger" onClick={deny}>
+        <Button variant="outline" className="text-danger hover:text-danger" onPress={deny}>
           <Xmark className="w-3.5 h-3.5" />
           {feedback.trim() ? t('chat.tool.denyWithReason') : t('chat.tool.deny')}
         </Button>
@@ -817,14 +904,12 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
 
   if (data.status === 'error' || sources === null) {
     return (
-      <div className="my-2 flex items-center gap-2 text-xs">
-        <Globe className="w-3.5 h-3.5 text-danger shrink-0" />
-        <span className="text-danger">{t('chat.tool.webSearch.failed')}</span>
-        {data.result && (
-          <span className="text-muted truncate max-w-80" title={data.result}>
-            {data.result.length > 200 ? `${data.result.slice(0, 200)}...` : data.result}
-          </span>
-        )}
+      <div className="my-2 space-y-2 text-xs">
+        <div className="flex items-center gap-2">
+          <Globe className="w-3.5 h-3.5 text-danger shrink-0" />
+          <span className="text-danger">{t('chat.tool.webSearch.failed')}</span>
+        </div>
+        {data.result && <ToolErrorResult result={data.result} />}
       </div>
     )
   }
@@ -924,11 +1009,11 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
       {data.status === 'pending' && approvalId && !sent && (
         <div data-slot="enter-plan-actions" className="border-t border-separator px-4 py-3">
           <ChatToolApproval>
-            <Button variant="outline" onClick={() => decide(() => api.denyToolCall(approvalId))}>
+            <Button variant="outline" onPress={() => decide(() => api.denyToolCall(approvalId))}>
               <Xmark className="w-3.5 h-3.5" />
               {t('chat.plan.keepBuilding')}
             </Button>
-            <Button onClick={() => decide(() => api.approveToolCall(approvalId))}>
+            <Button onPress={() => decide(() => api.approveToolCall(approvalId))}>
               <Compass className="w-3.5 h-3.5" />
               {t('chat.plan.startPlanning')}
             </Button>
@@ -1015,6 +1100,9 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
               <Input
                 fullWidth
                 type="text"
+                name="plan-feedback"
+                autoComplete="off"
+                aria-label={t('chat.plan.feedbackLabel')}
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
                 onKeyDown={(e) => {
@@ -1026,10 +1114,10 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
                 autoFocus
               />
               <ChatToolApproval className="pt-0">
-                <Button variant="ghost" onClick={() => setUi('idle')}>
+                <Button variant="ghost" onPress={() => setUi('idle')}>
                   {t('chat.tool.cancel')}
                 </Button>
-                <Button variant="outline" onClick={sendBack}>
+                <Button variant="outline" onPress={sendBack}>
                   <ArrowUturnCcwLeft className="w-3.5 h-3.5" />
                   {t('chat.plan.sendBack')}
                 </Button>
@@ -1037,11 +1125,11 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
             </div>
           ) : (
             <ChatToolApproval>
-              <Button variant="outline" onClick={() => setUi('feedback')}>
+              <Button variant="outline" onPress={() => setUi('feedback')}>
                 <ArrowUturnCcwLeft className="w-3.5 h-3.5" />
                 {t('chat.plan.revise')}
               </Button>
-              <Button onClick={() => decide(() => api.approveToolCall(approvalId))}>
+              <Button onPress={() => decide(() => api.approveToolCall(approvalId))}>
                 <Check className="w-3.5 h-3.5" />
                 {t('chat.plan.approve')}
               </Button>
@@ -1302,7 +1390,7 @@ function SubAgentBlock({
             Two truths for one back gesture; only the system back key on mobile
             can tell, which is why it can wait. */}
         {data.sub_agent && (
-          <Button variant="ghost" className="text-xs" onClick={() => openConversation(data.sub_agent!.conversation_id)}>
+          <Button variant="ghost" className="text-xs" onPress={() => openConversation(data.sub_agent!.conversation_id)}>
             {t('chat.subAgent.viewProcess')}
           </Button>
         )}
@@ -1619,9 +1707,7 @@ export function ToolCallBlock({
 
         {data.result &&
           (data.status === 'error' ? (
-            <ChatToolError>
-              {data.result.length > 1000 ? `${data.result.slice(0, 1000)}...` : data.result}
-            </ChatToolError>
+            <ToolErrorResult result={data.result} />
           ) : (
             <ToolResult toolName={data.tool_name} result={data.result} args={parsedArgs} />
           ))}

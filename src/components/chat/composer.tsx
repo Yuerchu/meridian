@@ -14,6 +14,8 @@ interface ComposerProps {
   onChange: (value: string) => void
   onSubmit: () => void
   disabled?: boolean
+  /** A submitted message awaiting handoff; keeps Send labelled while showing progress. */
+  pending?: boolean
   /** Swaps Send for Stop, and is what `onStop` answers. */
   streaming?: boolean
   onStop?: () => void
@@ -76,6 +78,7 @@ export function Composer({
   onChange,
   onSubmit,
   disabled,
+  pending,
   streaming,
   onStop,
   steerable,
@@ -135,7 +138,7 @@ export function Composer({
         onValueChange={onChange}
         onSubmit={handleSubmit}
         onStop={onStop}
-        status={streaming ? 'streaming' : 'ready'}
+        status={pending ? 'submitted' : streaming ? 'streaming' : 'ready'}
         isDisabled={disabled}
         // Default `true` would grey out the whole toolbar while a reply
         // streams — including the context gauge, which is when it is most worth

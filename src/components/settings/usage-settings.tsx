@@ -145,12 +145,17 @@ function componentQualifier(bucket: UsageBucket, key: CostSeriesKey): CostQualif
     : costQualifier(bucket.unpriced_token_messages + nonLocal, bucket.estimated_token_messages)
 }
 
-function qualifiedCost(value: number, qualifier: CostQualifier, t: ReturnType<typeof useTranslation>['t']): string {
-  const amount = formatCostAmount(value, qualifier)
+function qualifiedCost(
+  value: number,
+  qualifier: CostQualifier,
+  t: ReturnType<typeof useTranslation>['t'],
+  locale: string,
+): string {
+  const amount = formatCostAmount(value, qualifier, locale)
   return qualifier === 'partial_estimate' ? t('settings.usage.partialAmount', { amount }) : amount
 }
 
-function displayedCost(bucket: UsageBucket, t: ReturnType<typeof useTranslation>['t']): string {
+function displayedCost(bucket: UsageBucket, t: ReturnType<typeof useTranslation>['t'], locale: string): string {
   if (bucket.metered_messages === 0) {
     if (bucket.external_messages > 0 && bucket.subscription_messages === 0) {
       return t('settings.usage.billing.external')
@@ -160,7 +165,7 @@ function displayedCost(bucket: UsageBucket, t: ReturnType<typeof useTranslation>
     }
     if (nonLocalMessages(bucket) > 0) return t('settings.usage.billing.unavailable')
   }
-  return qualifiedCost(bucket.cost, bucketCostQualifier(bucket), t)
+  return qualifiedCost(bucket.cost, bucketCostQualifier(bucket), t, locale)
 }
 
 function billingCoverage(bucket: UsageBucket, t: ReturnType<typeof useTranslation>['t']): string | null {
@@ -172,9 +177,12 @@ function billingCoverage(bucket: UsageBucket, t: ReturnType<typeof useTranslatio
     : null
 }
 
-const compact = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 })
-
-function tokenTotal(value: number, bucket: UsageBucket, t: ReturnType<typeof useTranslation>['t']): string {
+function tokenTotal(
+  value: number,
+  bucket: UsageBucket,
+  t: ReturnType<typeof useTranslation>['t'],
+  compact: Intl.NumberFormat,
+): string {
   if (bucket.messages > 0 && bucket.missing_token_usage_messages >= bucket.messages) {
     return t('settings.usage.kpi.tokensUnavailable')
   }
@@ -218,16 +226,28 @@ const EMPTY_TOTAL: UsageBucket = {
 }
 
 export function UsageSettings({ onOpenConversation }: { onOpenConversation: (conversationId: string) => void }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? i18n.language
+  const compact = useMemo(
+    () => new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 }),
+    [locale],
+  )
+  const percent = useMemo(
+    () => new Intl.NumberFormat(locale, { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+    [locale],
+  )
   const [range, setRange] = useState<Range>(30)
   const [origin, setOrigin] = useState<Origin>(null)
   const [breakdown, setBreakdown] = useState<Breakdown>('conversation')
   const [report, setReport] = useState<Report | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [reload, setReload] = useState(0)
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
+    setError(null)
     // Read here rather than in a memo over `range`: "the last 30 days" is
     // relative to the moment the query runs, and a clock read during render is
     // both impure and stale by the time anything uses it.
@@ -250,8 +270,8 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
         if (cancelled) return
         setReport({ total: total[0] ?? EMPTY_TOTAL, days, providers, models, rows, rowsDimension: breakdown })
       })
-      .catch(() => {
-        if (!cancelled) setReport(null)
+      .catch((reason) => {
+        if (!cancelled) setError(String(reason))
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -259,7 +279,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
     return () => {
       cancelled = true
     }
-  }, [range, origin, breakdown])
+  }, [range, origin, breakdown, reload])
 
   const rangeLabel = useCallback(
     (value: Range) =>
@@ -310,9 +330,23 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
         {loading && report && <Spinner size="sm" className="self-end" aria-label={t('common.loading')} />}
       </div>
 
-      {!report ? (
+      {error && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger"
+        >
+          <span className="min-w-0 flex-1 break-words" title={error}>
+            {t('settings.usage.loadError')}
+          </span>
+          <Button size="sm" variant="outline" onPress={() => setReload((value) => value + 1)}>
+            {t('settings.usage.retry')}
+          </Button>
+        </div>
+      )}
+
+      {!report && loading ? (
         <UsageSkeleton />
-      ) : total.messages === 0 ? (
+      ) : !report ? null : total.messages === 0 ? (
         <EmptyState size="sm">
           <EmptyState.Header>
             <EmptyState.Title>{t('settings.usage.empty')}</EmptyState.Title>
@@ -327,7 +361,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
                 data-slot="cost-total"
                 className="block truncate text-2xl font-semibold tracking-tight tabular-nums"
               >
-                {displayedCost(total, t)}
+                {displayedCost(total, t, locale)}
               </span>
             </Kpi>
             {/* The count is formatted before it goes in, not by i18next: passing
@@ -335,12 +369,12 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
                 "1514.9万" reads as two different quantities. */}
             <Kpi title={t('settings.usage.kpi.input')} note={tokenNote}>
               <span className="block truncate text-2xl font-semibold tracking-tight">
-                {tokenTotal(total.input_tokens, total, t)}
+                {tokenTotal(total.input_tokens, total, t, compact)}
               </span>
             </Kpi>
             <Kpi title={t('settings.usage.kpi.output')}>
               <span className="block truncate text-2xl font-semibold tracking-tight">
-                {tokenTotal(total.output_tokens, total, t)}
+                {tokenTotal(total.output_tokens, total, t, compact)}
               </span>
             </Kpi>
             <Kpi
@@ -348,7 +382,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
               note={t('settings.usage.kpi.replies', { count: total.messages })}
             >
               <span className="block truncate text-2xl font-semibold tracking-tight">
-                {hitRate === null ? '—' : `${(hitRate * 100).toFixed(1)}%`}
+                {hitRate === null ? '—' : percent.format(hitRate)}
               </span>
             </Kpi>
           </div>
@@ -440,13 +474,8 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
 const TAB = 'whitespace-nowrap'
 
 /**
- * One filter, as a labelled row of tabs.
- *
- * No `Tabs.Panel`: these two do not switch what is shown, they narrow what
- * every panel below is *about*. React Aria is fine with a tab list that
- * controls nothing — what it will not tolerate is a `Tab` whose `id` names a
- * panel that does not exist, which is why the ids here are never reused as
- * panel ids anywhere on the page.
+ * One filter, as a labelled segmented control. These choices narrow the page;
+ * they do not switch a tab panel, so they should not expose tab semantics.
  *
  * `w-fit` on the container because the pill is `bg-default` and stretches to
  * whatever it is given; in a flex row that is the whole remaining width.
@@ -465,18 +494,20 @@ function Filter({
   return (
     <div className="space-y-1.5">
       <Label className="text-xs text-muted">{label}</Label>
-      <Tabs selectedKey={selectedKey} onSelectionChange={(key) => onChange(String(key))}>
-        <Tabs.ListContainer className="w-fit">
-          <Tabs.List aria-label={label}>
-            {items.map(([id, text]) => (
-              <Tabs.Tab key={id} id={id} className={TAB}>
-                {text}
-                <Tabs.Indicator />
-              </Tabs.Tab>
-            ))}
-          </Tabs.List>
-        </Tabs.ListContainer>
-      </Tabs>
+      <div role="group" aria-label={label} className="flex w-fit rounded-xl bg-default p-1">
+        {items.map(([id, text]) => (
+          <Button
+            key={id}
+            size="sm"
+            variant={selectedKey === id ? 'secondary' : 'ghost'}
+            aria-pressed={selectedKey === id}
+            className={TAB}
+            onPress={() => onChange(id)}
+          >
+            {text}
+          </Button>
+        ))}
+      </div>
     </div>
   )
 }
@@ -549,7 +580,8 @@ function Kpi({ title, note, children }: { title: string; note?: string; children
  * the UI never has to infer them from the aggregate total.
  */
 function CostBreakdown({ bucket }: { bucket: UsageBucket }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? i18n.language
   const qualifier = bucketCostQualifier(bucket)
   const note =
     qualifier === 'partial_estimate'
@@ -578,7 +610,7 @@ function CostBreakdown({ bucket }: { bucket: UsageBucket }) {
                 <span className="truncate">{t(part.labelKey)}</span>
               </dt>
               <dd className="mt-0.5 truncate text-sm font-medium tabular-nums">
-                {qualifiedCost(bucket[part.key], componentQualifier(bucket, part.key), t)}
+                {qualifiedCost(bucket[part.key], componentQualifier(bucket, part.key), t, locale)}
               </dd>
             </div>
           ))}
@@ -605,8 +637,22 @@ function Section({ title, children }: { title: string; children: React.ReactNode
  * the feature being broken rather than as prices being unset.
  */
 function TokenTrend({ days }: { days: UsageBucket[] }) {
-  const { t } = useTranslation()
-  const data = useMemo(() => days.map((d) => ({ day: d.key.slice(5), ...split(d) })), [days])
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? i18n.language
+  const compact = useMemo(
+    () => new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 }),
+    [locale],
+  )
+  const day = useMemo(() => new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric' }), [locale])
+  const data = useMemo(
+    () =>
+      days.map((d) => {
+        const parsed = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d.key)
+        const label = parsed ? day.format(new Date(Number(parsed[1]), Number(parsed[2]) - 1, Number(parsed[3]))) : d.key
+        return { day: label, ...split(d) }
+      }),
+    [day, days],
+  )
   const bands = present(data)
   if (data.length === 0) return null
   return (
@@ -653,7 +699,8 @@ function TokenTrend({ days }: { days: UsageBucket[] }) {
  * rather than as a stack.
  */
 function CostBars({ buckets }: { buckets: UsageBucket[] }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? i18n.language
   const shownBuckets = useMemo(() => buckets.slice(0, 6), [buckets])
   const data = useMemo(
     () =>
@@ -705,7 +752,12 @@ function CostBars({ buckets }: { buckets: UsageBucket[] }) {
           />
         ))}
         <BarChart.Tooltip
-          content={<BarChart.TooltipContent indicator="line" valueFormatter={(v) => formatCostAmount(Number(v))} />}
+          content={
+            <BarChart.TooltipContent
+              indicator="line"
+              valueFormatter={(v) => formatCostAmount(Number(v), 'exact', locale)}
+            />
+          }
         />
       </BarChart>
     </>
@@ -860,7 +912,12 @@ function BucketTable({
   isLoading: boolean
   onOpenConversation: (conversationId: string) => void
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? i18n.language
+  const compact = useMemo(
+    () => new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 }),
+    [locale],
+  )
   const rows = useMemo<UsageGridRow[]>(() => {
     if (dimension === 'conversation') {
       return conversationRows(buckets, t('settings.usage.deleted'), (id) =>
@@ -934,7 +991,7 @@ function BucketTable({
         minWidth: 120,
         headerClassName: 'whitespace-nowrap',
         cellClassName: 'whitespace-nowrap text-xs text-muted tabular-nums',
-        cell: (row) => tokenTotal(row.input_tokens + row.output_tokens, row, t),
+        cell: (row) => tokenTotal(row.input_tokens + row.output_tokens, row, t, compact),
       },
       {
         id: 'cost',
@@ -962,7 +1019,7 @@ function BucketTable({
           const title = [pricingTitle, billingCoverage(row, t)].filter(Boolean).join(' ') || undefined
           return (
             <span className={cn(qualifier !== 'exact' && 'text-muted')} title={title}>
-              {displayedCost(row, t)}
+              {displayedCost(row, t, locale)}
             </span>
           )
         },
@@ -998,7 +1055,7 @@ function BucketTable({
       })
     }
     return result
-  }, [dimension, dimensionLabel, onOpenConversation, t])
+  }, [compact, dimension, dimensionLabel, locale, onOpenConversation, t])
 
   return (
     <DataGrid<UsageGridRow>

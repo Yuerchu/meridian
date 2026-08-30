@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { Button } from '@heroui/react'
 import { FileTree } from '@heroui-pro/react/file-tree'
 import { File, Folder, FolderOpen, Xmark } from '@gravity-ui/icons'
@@ -27,6 +28,12 @@ const OP_CLASS: Record<TouchedOp, string> = {
 
 /** A, M, D — the letters every diff viewer uses, so nothing has to explain them. */
 const OP_LETTER: Record<TouchedOp, string> = { create: 'A', modify: 'M', delete: 'D' }
+
+const OP_LABEL: Record<TouchedOp, string> = {
+  create: 'chat.changes.status.created',
+  modify: 'chat.changes.status.modified',
+  delete: 'chat.changes.status.deleted',
+}
 
 /**
  * What this conversation changed on disk, as a tree.
@@ -87,7 +94,7 @@ export function ChangesPanelView({ files, onClose }: { files: TouchedFile[]; onC
         renderEmptyState={() => t('chat.changes.empty')}
         className="min-h-0 flex-1"
       >
-        {tree.map((node) => renderNode(node))}
+        {tree.map((node) => renderNode(node, t))}
       </FileTree>
 
       {/* Not a disclaimer for its own sake: a list of edited files that silently
@@ -106,13 +113,15 @@ function FileGlyph({ name }: { name: string }) {
   return <img src={url} alt="" className="size-4 shrink-0" />
 }
 
-function renderNode(node: FileNode) {
+function renderNode(node: FileNode, t: TFunction) {
   const op = node.file?.op
+  const accessibleName = op ? `${node.name}, ${t(OP_LABEL[op])}` : node.name
   return (
     <FileTree.Item
       key={node.id}
       id={node.id}
-      textValue={node.name}
+      aria-label={accessibleName}
+      textValue={accessibleName}
       icon={
         node.children ? ({ isExpanded }) => (isExpanded ? <FolderOpen /> : <Folder />) : <FileGlyph name={node.name} />
       }
@@ -132,7 +141,7 @@ function renderNode(node: FileNode) {
         </span>
       }
     >
-      {node.children?.map((child) => renderNode(child))}
+      {node.children?.map((child) => renderNode(child, t))}
     </FileTree.Item>
   )
 }

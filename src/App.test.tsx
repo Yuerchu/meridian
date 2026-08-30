@@ -4,9 +4,12 @@ import App from './App'
 import { useConversationStore } from '@/stores/conversation-store'
 import type { InitialTurnDraft } from '@/components/chat/conversation-draft'
 import type { ShellProps } from '@/components/layout/shell-props'
+import type { Project } from '@/types'
 
 const apiMocks = vi.hoisted(() => ({
   createConversation: vi.fn(),
+  createProject: vi.fn(),
+  acpOpenSession: vi.fn(),
   deleteConversation: vi.fn(),
   listConversations: vi.fn(),
   listProjects: vi.fn(),
@@ -55,6 +58,18 @@ const draft: InitialTurnDraft = {
   },
 }
 
+const createdProject: Project = {
+  id: 'project-new',
+  name: 'New project',
+  path: 'C:\\code\\new-project',
+  source_type: 'local',
+  source_id: null,
+  assistant_id: null,
+  description: null,
+  created_at: 1,
+  updated_at: 1,
+}
+
 async function renderApp() {
   render(<App />)
   await waitFor(() => {
@@ -72,6 +87,8 @@ describe('creating a conversation from the welcome composer', () => {
     apiMocks.listConversations.mockResolvedValue([])
     apiMocks.listProjects.mockResolvedValue([])
     apiMocks.createConversation.mockResolvedValue({ id: 'conversation-new' })
+    apiMocks.createProject.mockResolvedValue(createdProject)
+    apiMocks.acpOpenSession.mockResolvedValue('conversation-hosted')
     apiMocks.deleteConversation.mockResolvedValue(undefined)
     apiMocks.setConversationAssistant.mockResolvedValue(undefined)
     apiMocks.setConversationReasoningPrefs.mockResolvedValue(undefined)
@@ -134,11 +151,69 @@ describe('creating a conversation from the welcome composer', () => {
     })
     expect(apiMocks.createConversation).toHaveBeenCalledTimes(1)
     expect(useConversationStore.getState().activeId).toBe('conversation-new')
+    expect(useConversationStore.getState().conversations).toContainEqual(
+      expect.objectContaining({ id: 'conversation-new', assistant_id: 'assistant-1' }),
+    )
     expect(shellCapture.props?.pendingDraft).toBe(draft)
     expect(screen.getByTestId('app-shell')).toHaveAttribute('data-page', 'chat')
     expect(screen.getByTestId('app-shell')).toHaveAttribute('data-active-id', 'conversation-new')
     expect(screen.getByTestId('app-shell')).toHaveAttribute('data-pending-draft', 'yes')
 
     consoleError.mockRestore()
+  })
+
+  it('treats an ordinary create as successful when only the conversation refresh fails', async () => {
+    apiMocks.listConversations.mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('refresh failed'))
+    await renderApp()
+
+    await act(async () => {
+      await expect(Promise.resolve(shellCapture.props!.onCreate())).resolves.toBeUndefined()
+    })
+
+    expect(apiMocks.createConversation).toHaveBeenCalledTimes(1)
+    expect(apiMocks.listConversations).toHaveBeenCalledTimes(2)
+    expect(useConversationStore.getState().activeId).toBe('conversation-new')
+    expect(useConversationStore.getState().conversations).toContainEqual(
+      expect.objectContaining({ id: 'conversation-new' }),
+    )
+    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-page', 'chat')
+    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-active-id', 'conversation-new')
+  })
+
+  it('keeps a created project locally and resolves the form mutation when its refresh fails', async () => {
+    apiMocks.listProjects.mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('refresh failed'))
+    await renderApp()
+
+    await act(async () => {
+      await expect(
+        Promise.resolve(shellCapture.props!.onCreateProject(createdProject.name, createdProject.path!)),
+      ).resolves.toBeUndefined()
+    })
+
+    expect(apiMocks.createProject).toHaveBeenCalledTimes(1)
+    expect(apiMocks.listProjects).toHaveBeenCalledTimes(2)
+    expect(useConversationStore.getState().projects).toContainEqual(createdProject)
+  })
+
+  it('navigates to a hosted session and reports success when only its refresh fails', async () => {
+    apiMocks.listConversations.mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('refresh failed'))
+    await renderApp()
+
+    let result: string | null = 'not-called'
+    await act(async () => {
+      result = await shellCapture.props!.onCreateHostedSession('C:\\code\\hosted')
+    })
+
+    expect(result).toBeNull()
+    expect(apiMocks.acpOpenSession).toHaveBeenCalledTimes(1)
+    expect(apiMocks.listConversations).toHaveBeenCalledTimes(2)
+    expect(useConversationStore.getState().activeId).toBe('conversation-hosted')
+    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-page', 'chat')
+    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-active-id', 'conversation-hosted')
+  })
+
+  it('keeps the document title in sync with the shell title', async () => {
+    await renderApp()
+    expect(document.title).toBe('app.name')
   })
 })

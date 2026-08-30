@@ -47,20 +47,20 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
   return (
     <div data-slot="log-viewer" className="flex h-full flex-col gap-4">
       <div data-slot="log-viewer-header" className="flex flex-wrap items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={onBack}>
+        <Button variant="ghost" size="sm" onPress={onBack}>
           <ChevronLeft className="size-4" />
           {t('settings.about.logs.back')}
         </Button>
         <h2 className="text-lg font-medium">{t('settings.about.logs.title')}</h2>
         <div className="ml-auto flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={logs.refresh} isDisabled={logs.loading}>
+          <Button variant="ghost" size="sm" onPress={logs.refresh} isDisabled={logs.loading}>
             <ArrowsRotateRight className="size-4" />
             {t('settings.about.logs.refresh')}
           </Button>
           {/* The picker names a path on this device and the file is written by
               whichever machine the logs belong to. Reading them here still
               works — that is what the rows below are. */}
-          <Button variant="secondary" size="sm" onClick={onExport} isDisabled={!can.exportToDisk}>
+          <Button variant="secondary" size="sm" onPress={onExport} isDisabled={!can.exportToDisk}>
             <ArrowDownToLine className="size-4" />
             {exported ? t('settings.about.logs.exported') : t('settings.about.logs.export')}
           </Button>
@@ -85,6 +85,8 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
             <Magnifier className="size-4" />
           </InputGroup.Prefix>
           <InputGroup.Input
+            aria-label={t('settings.about.logs.searchPlaceholder')}
+            name="logSearch"
             value={logs.search}
             onChange={(e) => logs.setSearch(e.target.value)}
             placeholder={t('settings.about.logs.searchPlaceholder')}
@@ -122,9 +124,11 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
             </EmptyState.Header>
           </EmptyState>
         ) : logs.error ? (
-          <p className="p-6 text-sm text-danger">{t('settings.about.logs.loadError')}</p>
+          <p role="alert" className="p-6 text-sm text-danger">
+            {t('settings.about.logs.loadError')}
+          </p>
         ) : logs.loading ? (
-          <div className="space-y-3 p-3">
+          <div role="status" aria-busy="true" aria-label={t('common.loading')} className="space-y-3 p-3">
             {Array.from({ length: 5 }, (_, i) => (
               <Skeleton key={i} className="h-12 w-full" />
             ))}
@@ -149,7 +153,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
               {logs.capped ? (
                 <p className="text-xs text-muted">{t('settings.about.logs.capped', { max: MAX_RENDERED })}</p>
               ) : logs.canLoadOlder ? (
-                <Button variant="ghost" size="sm" onClick={logs.loadOlder} isDisabled={logs.loadingMore}>
+                <Button variant="ghost" size="sm" onPress={logs.loadOlder} isDisabled={logs.loadingMore}>
                   {logs.loadingMore && <Spinner className="size-4" />}
                   {t('settings.about.logs.loadOlder')}
                 </Button>

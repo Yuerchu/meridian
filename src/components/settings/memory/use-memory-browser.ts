@@ -25,7 +25,8 @@ export function useMemoryBrowser() {
   const [search, setSearch] = useState('')
   const [originFilter, setOriginFilter] = useState<string>('all')
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   // Enum values come from Rust so the front end never keeps its own copy to
   // drift out of sync.
@@ -38,6 +39,7 @@ export function useMemoryBrowser() {
 
   const refresh = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       // One query covering every scope. Fanning out per project cost an IPC
       // round trip each and, worse, could only ever return project rows — the
@@ -50,6 +52,8 @@ export function useMemoryBrowser() {
       setProjects(projectList)
       setSubjects(subjectList)
       setMemories(allMemories)
+    } catch (reason) {
+      setError(String(reason))
     } finally {
       setLoading(false)
     }
@@ -136,6 +140,7 @@ export function useMemoryBrowser() {
     clearSelection,
     selectAllVisible,
     loading,
+    error,
     refresh,
   }
 }

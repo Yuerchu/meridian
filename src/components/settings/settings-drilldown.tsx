@@ -65,13 +65,13 @@ export function SettingsDrilldown({
               <div className="flex shrink-0 items-center gap-2 border-b border-border px-1 pt-[var(--safe-top)]">
                 <Button
                   variant="ghost"
-                  onClick={() => setOpen(false)}
+                  onPress={() => setOpen(false)}
                   className="h-10 gap-1 rounded-xl px-2 text-sm font-normal text-muted hover:text-foreground"
                 >
                   <ArrowLeft className="size-4" />
                   {t('common.back')}
                 </Button>
-                <span className="min-w-0 flex-1 truncate text-sm font-medium">{title}</span>
+                <Modal.Heading className="min-w-0 flex-1 truncate text-sm font-medium">{title}</Modal.Heading>
               </div>
               <div className="@container/pane flex-1 min-h-0 space-y-4 overflow-y-auto overscroll-contain p-4 pb-[max(1rem,var(--safe-bottom))]">
                 {children}

@@ -357,7 +357,9 @@ describe('ProviderSettings list/detail navigation', () => {
         name: i18n.t('settings.provider.editModelConfig', { model: 'gpt-5.6-mini' }),
       }),
     )
-    expect(screen.getByRole('textbox', { name: i18n.t('settings.model.contextWindow') })).toHaveValue('128000')
+    const discard = screen.getByRole('alertdialog', { name: i18n.t('confirm.title') })
+    await user.click(within(discard).getByRole('button', { name: i18n.t('common.confirm') }))
+    expect(await screen.findByRole('textbox', { name: i18n.t('settings.model.contextWindow') })).toHaveValue('128000')
   })
 
   /** An API-key provider keeps the field it has always had. */

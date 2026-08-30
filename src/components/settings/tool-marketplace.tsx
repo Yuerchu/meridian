@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, TrashBin, Wrench, Terminal } from '@gravity-ui/icons'
 import { Button, Card, Chip, Description, Disclosure, DisclosureGroup, Input, Label, TextField } from '@heroui/react'
@@ -9,6 +9,7 @@ import { useConfirm } from '@/hooks/use-confirm'
 import type { CustomTool, ToolInfo, ToolPreset } from '@/types'
 import { SavedHint, SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
 import { SettingsDrilldown } from './settings-drilldown'
+import { useSettingsDirtyRegistration } from './dirty-guard'
 
 function CustomToolEditor({
   tool,
@@ -27,30 +28,69 @@ function CustomToolEditor({
   const [permission, setPermission] = useState(tool?.permission ?? 'ask')
   const [timeoutMs, setTimeoutMs] = useState(tool?.timeout_ms?.toString() ?? '30000')
   const [saved, markSaved] = useTemporaryFlag()
+  const [savedDraft, setSavedDraft] = useState(() =>
+    JSON.stringify({
+      name: tool?.name ?? '',
+      description: tool?.description ?? '',
+      command: tool?.command ?? '',
+      argsTemplate: tool?.args_template ?? '',
+      permission: tool?.permission ?? 'ask',
+      timeoutMs: tool?.timeout_ms?.toString() ?? '30000',
+    }),
+  )
+  const [invalid, setInvalid] = useState<Set<'name' | 'description' | 'command' | 'timeout'>>(new Set())
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const nameRef = useRef<HTMLInputElement>(null)
+  const descriptionRef = useRef<HTMLInputElement>(null)
+  const commandRef = useRef<HTMLInputElement>(null)
+  const timeoutRef = useRef<HTMLInputElement>(null)
+  const draft = JSON.stringify({ name, description, command, argsTemplate, permission, timeoutMs })
+  useSettingsDirtyRegistration('tools', tool ? `custom-tool-${tool.id}` : 'custom-tool-new', draft !== savedDraft)
 
   async function handleSave() {
-    if (!name.trim() || !description.trim() || !command.trim()) return
-    if (tool) {
-      await api.updateCustomTool(tool.id, {
-        name: name.trim(),
-        description: description.trim(),
-        command: command.trim(),
-        argsTemplate: argsTemplate.trim() || null,
-        permission,
-        timeoutMs: timeoutMs ? parseInt(timeoutMs) : null,
-      })
-    } else {
-      await api.createCustomTool({
-        name: name.trim(),
-        description: description.trim(),
-        command: command.trim(),
-        argsTemplate: argsTemplate.trim() || undefined,
-        permission,
-        timeoutMs: timeoutMs ? parseInt(timeoutMs) : undefined,
-      })
+    const nextInvalid = new Set<'name' | 'description' | 'command' | 'timeout'>()
+    if (!name.trim()) nextInvalid.add('name')
+    if (!description.trim()) nextInvalid.add('description')
+    if (!command.trim()) nextInvalid.add('command')
+    if (timeoutMs.trim() && (!Number.isInteger(Number(timeoutMs)) || Number(timeoutMs) <= 0)) {
+      nextInvalid.add('timeout')
     }
-    markSaved()
-    onSave()
+    setInvalid(nextInvalid)
+    if (nextInvalid.size > 0) {
+      const first = [...nextInvalid][0]
+      ;({ name: nameRef, description: descriptionRef, command: commandRef, timeout: timeoutRef })[
+        first
+      ].current?.focus()
+      return
+    }
+
+    setSaveError(null)
+    try {
+      if (tool) {
+        await api.updateCustomTool(tool.id, {
+          name: name.trim(),
+          description: description.trim(),
+          command: command.trim(),
+          argsTemplate: argsTemplate.trim() || null,
+          permission,
+          timeoutMs: timeoutMs ? Number(timeoutMs) : null,
+        })
+      } else {
+        await api.createCustomTool({
+          name: name.trim(),
+          description: description.trim(),
+          command: command.trim(),
+          argsTemplate: argsTemplate.trim() || undefined,
+          permission,
+          timeoutMs: timeoutMs ? Number(timeoutMs) : undefined,
+        })
+      }
+      setSavedDraft(draft)
+      markSaved()
+      onSave()
+    } catch (reason) {
+      setSaveError(String(reason))
+    }
   }
 
   const permissionOptions = [
@@ -62,11 +102,20 @@ function CustomToolEditor({
   // No chrome of its own: the caller decides whether this is a card floating on
   // the page or the body of an already-bounded disclosure row.
   return (
-    <div data-slot="custom-tool-editor" className="space-y-3">
+    <form
+      data-slot="custom-tool-editor"
+      className="space-y-3"
+      onSubmit={(event) => {
+        event.preventDefault()
+        void handleSave()
+      }}
+    >
       <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
-        <TextField fullWidth>
+        <TextField fullWidth isInvalid={invalid.has('name')}>
           <Label>{t('settings.tools.name')}</Label>
           <Input
+            ref={nameRef}
+            name="customToolName"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="my_tool"
@@ -80,13 +129,20 @@ function CustomToolEditor({
           onChange={setPermission}
         />
       </div>
-      <TextField fullWidth>
+      <TextField fullWidth isInvalid={invalid.has('description')}>
         <Label>{t('settings.tools.description')}</Label>
-        <Input value={description} onChange={(e) => setDescription(e.target.value)} />
+        <Input
+          ref={descriptionRef}
+          name="customToolDescription"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
       </TextField>
-      <TextField fullWidth>
+      <TextField fullWidth isInvalid={invalid.has('command')}>
         <Label>{t('settings.tools.command')}</Label>
         <Input
+          ref={commandRef}
+          name="customToolCommand"
           value={command}
           onChange={(e) => setCommand(e.target.value)}
           placeholder="python script.py"
@@ -96,6 +152,7 @@ function CustomToolEditor({
       <TextField fullWidth>
         <Label>{t('settings.tools.argsTemplate')}</Label>
         <Input
+          name="customToolArgs"
           value={argsTemplate}
           onChange={(e) => setArgsTemplate(e.target.value)}
           placeholder="--input {{input}} --output {{output}}"
@@ -103,22 +160,44 @@ function CustomToolEditor({
         />
         <Description>{t('settings.tools.argsTemplateHint')}</Description>
       </TextField>
-      <TextField type="number">
+      <TextField type="number" isInvalid={invalid.has('timeout')}>
         <Label>{t('settings.tools.timeout')}</Label>
-        <Input value={timeoutMs} onChange={(e) => setTimeoutMs(e.target.value)} className="w-32" />
+        <Input
+          ref={timeoutRef}
+          name="customToolTimeout"
+          inputMode="numeric"
+          min={1}
+          value={timeoutMs}
+          onChange={(e) => setTimeoutMs(e.target.value)}
+          className="w-32"
+        />
       </TextField>
+      {invalid.size > 0 && (
+        <p role="alert" className="text-xs text-danger">
+          {invalid.has('timeout') ? t('settings.tools.invalidTimeout') : t('settings.tools.requiredFields')}
+        </p>
+      )}
+      {saveError && (
+        <p role="alert" className="text-xs text-danger break-all">
+          {saveError}
+        </p>
+      )}
       <div className="flex items-center gap-2">
-        <Button onClick={handleSave} isDisabled={!name.trim() || !command.trim()}>
-          {t('common.save')}
-        </Button>
+        <Button type="submit">{t('common.save')}</Button>
         {saved && <SavedHint />}
         {onDelete && (
-          <Button variant="ghost" className="ml-auto text-danger hover:text-danger" onClick={onDelete}>
+          <Button
+            type="button"
+            variant="ghost"
+            aria-label={t('settings.tools.delete')}
+            className="ml-auto text-danger hover:text-danger"
+            onPress={onDelete}
+          >
             <TrashBin className="w-3.5 h-3.5" />
           </Button>
         )}
       </div>
-    </div>
+    </form>
   )
 }
 
@@ -130,23 +209,29 @@ export function ToolMarketplace() {
   const [showCreate, setShowCreate] = useState(false)
   const [expandedToolId, setExpandedToolId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const { confirm, confirmDialog } = useConfirm()
 
   const refresh = useCallback(async () => {
-    const [tools, custom, cats, pres] = await Promise.all([
-      api.listAllToolNames(),
-      api.listCustomTools(),
-      api.listToolCategories(),
-      api.listToolPresets(),
-    ])
-    setBuiltinTools(tools)
-    setCustomTools(custom)
-    void cats
-    setPresets(pres)
+    setLoadError(null)
+    try {
+      const [tools, custom, cats, pres] = await Promise.all([
+        api.listAllToolNames(),
+        api.listCustomTools(),
+        api.listToolCategories(),
+        api.listToolPresets(),
+      ])
+      setBuiltinTools(tools)
+      setCustomTools(custom)
+      void cats
+      setPresets(pres)
+    } catch (reason) {
+      setLoadError(String(reason))
+    }
   }, [])
 
   useEffect(() => {
-    refresh().then(() => setLoading(false))
+    void refresh().finally(() => setLoading(false))
   }, [refresh])
 
   if (loading) {
@@ -156,6 +241,18 @@ export function ToolMarketplace() {
   return (
     <SettingsPane>
       <SettingsHeader title={t('settings.tools.title')} subtitle={t('settings.tools.subtitle')} />
+
+      {loadError && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger"
+        >
+          <span>{t('settings.tools.loadError')}</span>
+          <Button size="sm" variant="outline" onPress={() => void refresh()}>
+            {t('settings.tools.retry')}
+          </Button>
+        </div>
+      )}
 
       <SettingsDrilldown
         title={t('settings.tools.builtinSection')}
@@ -207,7 +304,7 @@ export function ToolMarketplace() {
       <div>
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-medium">{t('settings.tools.customSection')}</h3>
-          <Button variant="outline" onClick={() => setShowCreate(!showCreate)}>
+          <Button variant="outline" onPress={() => setShowCreate(!showCreate)}>
             <Plus className="w-3.5 h-3.5" />
             {t('settings.tools.new')}
           </Button>

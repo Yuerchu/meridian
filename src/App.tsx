@@ -10,11 +10,20 @@ import { usePlatform } from '@/hooks/use-platform'
 import { useGlobalEventListener } from '@/hooks/use-global-event-listener'
 import { useConversationStore } from '@/stores/conversation-store'
 import type { InitialTurnDraft } from '@/components/chat/conversation-draft'
+import type { Conversation } from '@/types'
 
 /** How long to wait for a stopped turn to let go of its conversation before
  *  giving up and surfacing the refusal. */
 const RELEASE_POLL_MS = 100
 const RELEASE_ATTEMPTS = 20
+
+function keepConversationLocally(conversation: Conversation) {
+  useConversationStore.setState((state) => ({
+    conversations: state.conversations.some((entry) => entry.id === conversation.id)
+      ? state.conversations
+      : [conversation, ...state.conversations],
+  }))
+}
 
 async function deleteWhenFree(id: string) {
   for (let attempt = 0; ; attempt++) {
@@ -68,7 +77,13 @@ function App() {
 
   const handleCreate = useCallback(async () => {
     const conv = await api.createConversation(undefined, activeProjectId ?? undefined)
-    await refreshConversations()
+    try {
+      await refreshConversations()
+    } catch {
+      // The row already exists. Treat a list refresh as cache repair rather
+      // than creation failure, otherwise retrying from the shell duplicates it.
+      keepConversationLocally(conv)
+    }
     storeSetActiveId(conv.id)
     setPage('chat')
   }, [refreshConversations, activeProjectId, storeSetActiveId])
@@ -122,6 +137,14 @@ function App() {
       try {
         await refreshConversations()
       } catch (err) {
+        keepConversationLocally({
+          ...conv,
+          assistant_id: settings.selectedAssistantId ?? conv.assistant_id,
+          thinking_level: settings.thinkingLevel === 'default' ? null : settings.thinkingLevel,
+          fast_mode: Number(settings.fastMode),
+          mode: settings.mode === 'work' ? null : settings.mode,
+          accept_edits: Number(settings.acceptEdits),
+        })
         console.error('Failed to refresh conversations', err)
       }
       setPendingTurn({ conversationId: conv.id, draft })
@@ -172,8 +195,18 @@ function App() {
 
   const handleCreateProject = useCallback(
     async (name: string, path: string) => {
-      await api.createProject(name, path)
-      await refreshProjects()
+      const project = await api.createProject(name, path)
+      try {
+        await refreshProjects()
+      } catch {
+        // Creation is already committed. Keep the new row visible and resolve
+        // successfully so retrying the form cannot create a duplicate project.
+        useConversationStore.setState((state) => ({
+          projects: state.projects.some((entry) => entry.id === project.id)
+            ? state.projects
+            : [...state.projects, project],
+        }))
+      }
     },
     [refreshProjects],
   )
@@ -189,15 +222,21 @@ function App() {
    */
   const handleCreateHostedSession = useCallback(
     async (cwd: string): Promise<string | null> => {
+      let conversationId: string
       try {
-        const conversationId = await api.acpOpenSession(cwd)
-        await refreshConversations()
-        storeSetActiveId(conversationId)
-        setPage('chat')
-        return null
+        conversationId = await api.acpOpenSession(cwd)
       } catch (err) {
         return String(err)
       }
+      try {
+        await refreshConversations()
+      } catch {
+        // The hosted process and its conversation already exist. Navigation by
+        // id still works; a later refresh repairs the sidebar cache.
+      }
+      storeSetActiveId(conversationId)
+      setPage('chat')
+      return null
     },
     [refreshConversations, storeSetActiveId],
   )
@@ -239,6 +278,13 @@ function App() {
 
   const activeConversation = conversations.find((c) => c.id === activeId)
   const activeProject = projects.find((p) => p.id === activeProjectId)
+  const appName = t('app.name')
+  const headerTitle =
+    page === 'settings' ? t('settings.title') : (activeConversation?.title ?? activeProject?.name ?? appName)
+
+  useEffect(() => {
+    document.title = headerTitle === appName ? appName : `${headerTitle} — ${appName}`
+  }, [appName, headerTitle])
 
   const shellProps: ShellProps = {
     conversations,
@@ -248,8 +294,7 @@ function App() {
     page,
     settingsTab,
     pendingDraft: pendingTurn?.conversationId === activeId ? pendingTurn.draft : null,
-    headerTitle:
-      page === 'settings' ? t('settings.title') : (activeConversation?.title ?? activeProject?.name ?? t('app.name')),
+    headerTitle,
     canDragWindow,
     onSelect: handleSelect,
     onCreate: handleCreate,

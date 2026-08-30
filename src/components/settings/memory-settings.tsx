@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { Plus, TrashBin, Xmark, Check } from '@gravity-ui/icons'
 import { api } from '@/api'
-import { Button, Card, DisclosureGroup, Input, TextArea } from '@heroui/react'
+import { Button, Card, DisclosureGroup, Input, Label, TextArea, TextField } from '@heroui/react'
 import { EmptyState } from '@heroui-pro/react/empty-state'
 import { ActionBar } from '@heroui-pro/react/action-bar'
 import { useConfirm } from '@/hooks/use-confirm'
@@ -11,7 +11,7 @@ import { MemoryRow } from './memory/memory-row'
 import { MemoryTrash } from './memory/memory-trash'
 import { ScopeNav } from './memory/scope-nav'
 import { useMemoryBrowser } from './memory/use-memory-browser'
-import { SettingsHeader, SettingsSelect } from './primitives'
+import { SettingsHeader, SettingsSelect, SettingsSkeleton } from './primitives'
 
 export function MemorySettings() {
   const { t } = useTranslation()
@@ -66,11 +66,11 @@ export function MemorySettings() {
         subtitle={t('settings.memory.subtitle')}
         actions={
           <>
-            <Button variant="ghost" onClick={() => setTrashOpen(true)} data-slot="memory-trash-open">
+            <Button variant="ghost" onPress={() => setTrashOpen(true)} data-slot="memory-trash-open">
               <TrashBin />
               {t('settings.memory.trash.title')}
             </Button>
-            <Button variant="secondary" onClick={() => setShowAdd(true)} isDisabled={!canAdd}>
+            <Button variant="secondary" onPress={() => setShowAdd(true)} isDisabled={!canAdd}>
               <Plus />
               {t('settings.memory.new')}
             </Button>
@@ -98,6 +98,8 @@ export function MemorySettings() {
             <Input
               fullWidth
               type="text"
+              aria-label={t('settings.memory.search')}
+              name="memorySearch"
               value={browser.search}
               onChange={(e) => browser.setSearch(e.target.value)}
               placeholder={t('settings.memory.search')}
@@ -114,22 +116,33 @@ export function MemorySettings() {
 
           {showAdd && (
             <Card data-slot="memory-add-form">
-              <Input
-                fullWidth
-                type="text"
-                value={newKey}
-                onChange={(e) => setNewKey(e.target.value)}
-                placeholder={t('settings.memory.key')}
-                autoFocus
-              />
-              <TextArea
-                fullWidth
-                value={newContent}
-                onChange={(e) => setNewContent(e.target.value)}
-                placeholder={t('settings.memory.content')}
-                rows={3}
-                className="resize-y"
-              />
+              <TextField fullWidth>
+                <Label>{t('settings.memory.key')}</Label>
+                <Input
+                  type="text"
+                  name="memoryKey"
+                  value={newKey}
+                  onChange={(e) => setNewKey(e.target.value)}
+                  autoFocus
+                />
+              </TextField>
+              <TextField fullWidth>
+                <Label>{t('settings.memory.content')}</Label>
+                <TextArea
+                  name="memoryContent"
+                  value={newContent}
+                  onChange={(e) => setNewContent(e.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.nativeEvent.isComposing) return
+                    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                      event.preventDefault()
+                      void handleAdd()
+                    }
+                  }}
+                  rows={3}
+                  className="resize-y"
+                />
+              </TextField>
               <div className="flex items-center gap-2">
                 <SettingsSelect
                   ariaLabel={t('settings.memory.type')}
@@ -139,13 +152,14 @@ export function MemorySettings() {
                   triggerClassName="w-auto"
                 />
                 <div className="flex-1" />
-                <Button variant="ghost" isIconOnly onClick={() => setShowAdd(false)}>
+                <Button variant="ghost" isIconOnly aria-label={t('common.cancel')} onPress={() => setShowAdd(false)}>
                   <Xmark />
                 </Button>
                 <Button
                   variant="secondary"
                   isIconOnly
-                  onClick={handleAdd}
+                  aria-label={t('settings.memory.add')}
+                  onPress={handleAdd}
                   isDisabled={!newKey.trim() || !newContent.trim()}
                 >
                   <Check />
@@ -154,13 +168,25 @@ export function MemorySettings() {
             </Card>
           )}
 
-          {browser.visible.length === 0 && !showAdd && (
+          {browser.loading ? (
+            <SettingsSkeleton rows={3} />
+          ) : browser.error ? (
+            <div
+              role="alert"
+              className="flex flex-wrap items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger"
+            >
+              <span className="min-w-0 flex-1 break-words">{t('settings.memory.loadError')}</span>
+              <Button size="sm" variant="outline" onPress={() => void browser.refresh()}>
+                {t('settings.memory.retry')}
+              </Button>
+            </div>
+          ) : browser.visible.length === 0 && !showAdd ? (
             <EmptyState size="sm">
               <EmptyState.Header>
                 <EmptyState.Title>{t('settings.memory.empty')}</EmptyState.Title>
               </EmptyState.Header>
             </EmptyState>
-          )}
+          ) : null}
 
           {/* One open at a time is the group's own default
               (`allowsMultipleExpanded` is off), so the single-open rule lives
@@ -170,7 +196,7 @@ export function MemorySettings() {
               which row was open every time a search matched nothing. Empty, it
               renders a bare `w-full` div with no children for `gap-2` to space —
               nothing shows. */}
-          <DisclosureGroup data-slot="memory-rows" className="flex flex-col gap-2">
+          <DisclosureGroup data-slot="memory-rows" className="flex flex-col gap-2" aria-busy={browser.loading}>
             {browser.visible.map((m) => (
               <MemoryRow
                 key={m.id}
@@ -204,14 +230,14 @@ export function MemorySettings() {
               <ActionBar.Content>
                 <Button
                   variant="ghost"
-                  onClick={browser.selectAllVisible}
+                  onPress={browser.selectAllVisible}
                   isDisabled={browser.selected.size === browser.visible.length}
                 >
                   {t('settings.memory.selectAll')}
                 </Button>
                 <Button
                   variant="ghost"
-                  onClick={async () => {
+                  onPress={async () => {
                     const ok = await confirm({
                       title: t('settings.memory.deleteConfirmTitle'),
                       body: t('settings.memory.deleteConfirmBody'),
@@ -231,7 +257,7 @@ export function MemorySettings() {
                   isIconOnly
                   variant="ghost"
                   aria-label={t('settings.memory.clearSelection')}
-                  onClick={browser.clearSelection}
+                  onPress={browser.clearSelection}
                 >
                   <Xmark />
                 </Button>

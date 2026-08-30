@@ -46,6 +46,13 @@ const EPSILON = 0.5
 const AUTOSCROLL_TIMEOUT_MS = 1000
 const SCROLL_AWAY_KEYS = new Set(['ArrowUp', 'Home', 'PageUp'])
 
+export function resolveScrollBehavior(behavior: ScrollBehavior): ScrollBehavior {
+  if (behavior !== 'smooth' || typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return behavior
+  }
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : behavior
+}
+
 export type ScrollAlign = 'start' | 'center' | 'end' | 'nearest'
 export type DefaultScrollPosition = 'start' | 'end' | 'last-anchor'
 
@@ -490,7 +497,7 @@ function useScrollerState({
       }
       programmaticTargetRef.current = next
       markAutoscrolling(true)
-      viewport.scrollTo({ top: next, behavior })
+      viewport.scrollTo({ top: next, behavior: resolveScrollBehavior(behavior) })
       // `lastScrollTop` is deliberately left to the scroll event. Writing the
       // target here would make a smooth scroll look like it was travelling
       // backwards on its way there, and reading the transcript as the reader
@@ -1097,7 +1104,7 @@ function Viewport({
     <div
       ref={setRef}
       role={role ?? 'region'}
-      aria-label={ariaLabel ?? 'Messages'}
+      aria-label={ariaLabel}
       tabIndex={tabIndex ?? 0}
       onKeyDown={(event) => {
         onKeyDown?.(event)
@@ -1275,7 +1282,7 @@ function Button({
   type = 'button',
   ...props
 }: MessageScrollerButtonProps) {
-  const { scrollToEnd, scrollToStart, stateStore } = useScrollerContext()
+  const { scrollToEnd, scrollToStart, stateStore, viewportRef } = useScrollerContext()
   const onClickRef = React.useRef(onClick)
   React.useLayoutEffect(() => {
     onClickRef.current = onClick
@@ -1306,9 +1313,9 @@ function Button({
         if (!active) return
         onClickRef.current?.(event)
         if (event.defaultPrevented) return
-        event.currentTarget.blur()
         if (direction === 'start') scrollToStart({ behavior })
         else scrollToEnd({ behavior })
+        viewportRef.current?.focus({ preventScroll: true })
       }}
       render={render}
       {...props}

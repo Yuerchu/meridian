@@ -454,3 +454,14 @@ img.emoji-sticker {
     }
   }
 }
+
+/* MotionConfig only reaches motion/react. Loading and attention indicators use
+   Tailwind's CSS animations, so honour the same system preference here as the
+   final backstop. The icon or status text remains visible; only movement stops. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin,
+  .animate-pulse,
+  .animate-bounce {
+    animation: none !important;
+  }
+}

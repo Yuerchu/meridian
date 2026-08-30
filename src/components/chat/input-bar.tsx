@@ -75,6 +75,8 @@ interface InputBarProps {
   onVoiceSend?: (text: string) => void
   onStop?: () => void
   disabled?: boolean
+  /** The initial conversation is being created from this composer. */
+  pending?: boolean
   streaming?: boolean
   /**
    * This conversation is a delegated run that can be talked to mid-flight.
@@ -303,6 +305,7 @@ export function InputBar({
   onVoiceSend: onVoiceSendProp,
   onStop,
   disabled,
+  pending,
   streaming,
   steerable,
   queueing,
@@ -611,6 +614,7 @@ export function InputBar({
             // exception — steering a run on a machine that is not answering
             // fails exactly as starting one does.
             disabled={offline || (disabled && !streaming)}
+            pending={pending}
             streaming={streaming}
             onStop={onStop}
             // Both mean "Enter works while a reply is coming, and Stop moves

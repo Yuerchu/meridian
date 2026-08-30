@@ -1,5 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { FileText } from '@gravity-ui/icons'
+import { Button } from '@heroui/react'
+import { useState } from 'react'
 import type { DiffLineKind, FileDiff } from '@/lib/patch-parse'
 import { useShikiLanguage } from '@/hooks/use-shiki-language'
 import { highlightInline } from '@/lib/shiki'
@@ -76,6 +78,7 @@ export function FileIcon({ path }: { path: string }) {
 
 export function FileDiffCard({ diff }: { diff: FileDiff }) {
   const { t } = useTranslation()
+  const [expanded, setExpanded] = useState(false)
   const added = diff.lines.filter((l) => l.kind === 'add').length
   const removed = diff.lines.filter((l) => l.kind === 'remove').length
   // The file plus the folder holding it, not the file alone. The full path was
@@ -84,7 +87,7 @@ export function FileDiffCard({ diff }: { diff: FileDiff }) {
   // parent is what separates them in practice and still fits a narrow card;
   // the `title` below keeps the whole path for a pointer.
   const fileName = fileNameOf(diff.path)
-  const shown = diff.lines.slice(0, MAX_DIFF_LINES)
+  const shown = expanded ? diff.lines : diff.lines.slice(0, MAX_DIFF_LINES)
   const hidden = diff.lines.length - shown.length
   // One grammar for the whole card, then every line colours from it. A diff is
   // not a program — its lines come from two versions with the context between
@@ -139,7 +142,19 @@ export function FileDiffCard({ diff }: { diff: FileDiff }) {
               )}
             </div>
           ))}
-          {hidden > 0 && <div className="px-3 text-muted">{t('chat.tool.diff.moreLines', { count: hidden })}</div>}
+          {diff.lines.length > MAX_DIFF_LINES && (
+            <div className="sticky left-0 flex items-center gap-2 px-3 py-1 text-muted">
+              {!expanded && <span>{t('chat.tool.diff.moreLines', { count: hidden })}</span>}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-auto px-1 py-0.5 text-xs"
+                onPress={() => setExpanded((current) => !current)}
+              >
+                {t(expanded ? 'chat.tool.diff.showLess' : 'chat.tool.diff.showAll')}
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </div>

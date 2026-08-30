@@ -4,7 +4,7 @@ import { UsageSettings } from './usage-settings'
 // Imported for the side effect of initialising i18next. Without it every `t()`
 // returns its key, and the two range buttons — one key, two counts — become
 // indistinguishable to a query by name.
-import '@/i18n'
+import i18n from '@/i18n'
 import { api } from '@/api'
 import type { UsageBucket, UsageDimension, UsageFilter } from '@/types'
 
@@ -47,8 +47,21 @@ function serve(by: Partial<Record<UsageDimension, UsageBucket[]>>) {
   mockApi.usageReport.mockImplementation((dimension: UsageDimension) => Promise.resolve(by[dimension] ?? []))
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks()
+  await i18n.changeLanguage('en')
+})
+
+it('shows a recoverable error when the initial report fails', async () => {
+  mockApi.usageReport.mockRejectedValue(new Error('offline'))
+  const user = userEvent.setup()
+  render(<UsageSettings onOpenConversation={onOpenConversation} />)
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Usage could not be loaded.')
+  serve({ total: [bucket()] })
+  await user.click(screen.getByRole('button', { name: 'Try again' }))
+
+  expect(await screen.findByText('1.50', { selector: '[data-slot="cost-total"]' })).toBeInTheDocument()
 })
 
 /**
@@ -281,10 +294,32 @@ it('distinguishes unavailable, partial, and explicit-zero token totals', async (
   const partialRow = within(grid)
     .getByRole('rowheader', { name: 'Partial usage' })
     .closest('[role="row"]') as HTMLElement
-  const compact = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 })
-  expect(within(partialRow).getByText(`≥ ${compact.format(1_500)}`)).toBeInTheDocument()
+  expect(within(partialRow).getByText('≥ 1.5K')).toBeInTheDocument()
   const zeroRow = within(grid).getByRole('rowheader', { name: 'Explicit zero' }).closest('[role="row"]') as HTMLElement
   expect(within(zeroRow).getByText('0')).toBeInTheDocument()
+})
+
+it('formats compact token totals with the selected app language instead of the OS locale', async () => {
+  await i18n.changeLanguage('zh-CN')
+  serve({
+    total: [bucket()],
+    conversation: [
+      bucket({
+        key: 'partial',
+        label: 'Partial usage',
+        messages: 2,
+        missing_token_usage_messages: 1,
+        incomplete_token_usage_messages: 1,
+        input_tokens: 1_000,
+        output_tokens: 500,
+      }),
+    ],
+  })
+  render(<UsageSettings onOpenConversation={onOpenConversation} />)
+
+  const grid = await screen.findByRole('treegrid', { name: '明细: 对话' })
+  const row = within(grid).getByRole('rowheader', { name: 'Partial usage' }).closest('[role="row"]') as HTMLElement
+  expect(within(row).getByText('≥ 1500')).toBeInTheDocument()
 })
 
 /**
@@ -387,7 +422,7 @@ it('aggregates duplicate conversation titles and keeps each real conversation as
   const parentHeader = within(grid).getByRole('rowheader', { name: /Repeated title/ })
   const parentRow = parentHeader.closest('[role="row"]') as HTMLElement
   expect(within(parentRow).getByText('2 conversations · 5 replies')).toBeInTheDocument()
-  expect(within(parentRow).getByText('4000')).toBeInTheDocument()
+  expect(within(parentRow).getByText('4K')).toBeInTheDocument()
   expect(within(parentRow).getByText('≥ 3.00')).toHaveAttribute(
     'title',
     '3 replies have incomplete usage or pricing. Amounts marked ≥ include only the priced portion.',
@@ -498,7 +533,7 @@ it('narrows the window without reloading the whole page', async () => {
   const sent = (): UsageFilter | null => (mockApi.usageReport.mock.calls.at(-1)?.[1] as UsageFilter | undefined) ?? null
   const thirtyDays = sent()?.since_ms ?? 0
 
-  await userEvent.click(screen.getByRole('tab', { name: 'Last 7 days' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Last 7 days' }))
 
   await waitFor(() => expect(sent()?.since_ms ?? 0).toBeGreaterThan(thirtyDays))
 })
@@ -508,7 +543,7 @@ it('asks for the whole log when the range is cleared', async () => {
   render(<UsageSettings onOpenConversation={onOpenConversation} />)
   await screen.findByText('Cost', { selector: '[data-slot="kpi-title"]' })
 
-  await userEvent.click(screen.getByRole('tab', { name: 'All time' }))
+  await userEvent.click(screen.getByRole('button', { name: 'All time' }))
 
   await waitFor(() => {
     const filter = mockApi.usageReport.mock.calls.at(-1)?.[1] as UsageFilter

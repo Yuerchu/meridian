@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   MessageScroller as MessageScrollerPrimitive,
   useMessageScroller,
@@ -27,11 +28,14 @@ function MessageScroller({ className, ...props }: React.ComponentProps<typeof Me
 
 function MessageScrollerViewport({
   className,
+  'aria-label': ariaLabel,
   ...props
 }: React.ComponentProps<typeof MessageScrollerPrimitive.Viewport>) {
+  const { t } = useTranslation()
   return (
     <MessageScrollerPrimitive.Viewport
       data-slot="message-scroller-viewport"
+      aria-label={ariaLabel ?? t('chat.messages')}
       // scroll-fade-b（滚动驱动 mask 动画）与 contain-content 在 WebView2
       // 滚动时产生内容错位残影，与 content-visibility 崩溃同源，一并移除
       className={cn(
@@ -100,6 +104,7 @@ function MessageScrollerButton({
   ...props
 }: React.ComponentProps<typeof MessageScrollerPrimitive.Button> &
   Pick<React.ComponentProps<typeof Button>, 'variant' | 'size'>) {
+  const { t } = useTranslation()
   return (
     <MessageScrollerPrimitive.Button
       data-slot="message-scroller-button"
@@ -108,7 +113,7 @@ function MessageScrollerButton({
       data-size={size}
       direction={direction}
       className={cn(
-        'absolute inset-s-1/2 -translate-x-1/2 border-border bg-background text-foreground transition-[translate,scale,opacity] duration-200 hover:bg-default hover:text-foreground data-[active=false]:pointer-events-none data-[active=false]:scale-95 data-[active=false]:opacity-0 data-[active=false]:duration-400 data-[active=false]:ease-[cubic-bezier(0.7,0,0.84,0)] data-[active=true]:translate-y-0 data-[active=true]:scale-100 data-[active=true]:opacity-100 data-[active=true]:ease-[cubic-bezier(0.23,1,0.32,1)] data-[direction=end]:bottom-4 data-[direction=end]:data-[active=false]:translate-y-full data-[direction=start]:top-4 data-[direction=start]:data-[active=false]:-translate-y-full rtl:translate-x-1/2 data-[direction=start]:[&_svg]:rotate-180',
+        'absolute inset-s-1/2 -translate-x-1/2 border-border bg-background text-foreground transition-[translate,scale,opacity] duration-200 motion-reduce:transition-none hover:bg-default hover:text-foreground data-[active=false]:pointer-events-none data-[active=false]:scale-95 data-[active=false]:opacity-0 data-[active=false]:duration-400 data-[active=false]:ease-[cubic-bezier(0.7,0,0.84,0)] data-[active=true]:translate-y-0 data-[active=true]:scale-100 data-[active=true]:opacity-100 data-[active=true]:ease-[cubic-bezier(0.23,1,0.32,1)] data-[direction=end]:bottom-4 data-[direction=end]:data-[active=false]:translate-y-full data-[direction=start]:top-4 data-[direction=start]:data-[active=false]:-translate-y-full rtl:translate-x-1/2 data-[direction=start]:[&_svg]:rotate-180',
         className,
       )}
       render={
@@ -125,7 +130,7 @@ function MessageScrollerButton({
       {children ?? (
         <>
           <ArrowDown />
-          <span className="sr-only">{direction === 'end' ? 'Scroll to end' : 'Scroll to start'}</span>
+          <span className="sr-only">{t(direction === 'end' ? 'chat.scrollToBottom' : 'chat.scrollToTop')}</span>
         </>
       )}
     </MessageScrollerPrimitive.Button>

@@ -37,6 +37,13 @@ export function VoiceOverlay({ state, elapsed, peak }: VoiceOverlayProps) {
 
   const seconds = Math.floor(elapsed)
   const remaining = 60 - seconds
+  const statusText = starting
+    ? t('chat.voice.preparing')
+    : transcribing
+      ? t('chat.voice.transcribing')
+      : cancelling
+        ? t('chat.voice.releaseToCancel')
+        : t('chat.voice.releaseToSend')
 
   return (
     <div
@@ -68,18 +75,16 @@ export function VoiceOverlay({ state, elapsed, peak }: VoiceOverlayProps) {
           ? 'from-danger via-danger/80 to-transparent text-white'
           : 'from-overlay via-overlay/85 to-transparent text-overlay-foreground',
       )}
-      aria-live="polite"
     >
+      {/* Only state transitions are announced. The timer and level meter update
+          continuously and would otherwise restart polite announcements. */}
+      <span className="sr-only" role="status" aria-live="polite">
+        {statusText}
+      </span>
       <div className="flex flex-col items-center gap-3">
         {cancelling ? <TrashBin className="size-8" /> : <Microphone className="size-8" />}
-        <span className="text-base font-medium">
-          {starting
-            ? t('chat.voice.preparing')
-            : transcribing
-              ? t('chat.voice.transcribing')
-              : cancelling
-                ? t('chat.voice.releaseToCancel')
-                : t('chat.voice.releaseToSend')}
+        <span aria-hidden="true" className="text-base font-medium">
+          {statusText}
         </span>
       </div>
 
@@ -87,20 +92,20 @@ export function VoiceOverlay({ state, elapsed, peak }: VoiceOverlayProps) {
           way to tell a dead microphone from a bad recogniser. */}
       {(state === 'recording-hold' || cancelling) && (
         <>
-          <div className="flex h-10 items-center gap-1">
+          <div aria-hidden="true" className="flex h-10 items-center gap-1">
             {Array.from({ length: 21 }, (_, i) => {
               const distance = Math.abs(i - 10) / 10
               const height = Math.max(0.1, Math.min(1, peak * 2.4 * (1 - distance * 0.6)))
               return (
                 <span
                   key={i}
-                  className="w-1 rounded-full bg-current transition-[height] duration-75"
-                  style={{ height: `${height * 100}%`, opacity: cancelling ? 0.5 : 0.9 }}
+                  className="h-full w-1 origin-center rounded-full bg-current transition-transform duration-75 motion-reduce:transition-none"
+                  style={{ transform: `scaleY(${height})`, opacity: cancelling ? 0.5 : 0.9 }}
                 />
               )
             })}
           </div>
-          <span className="text-sm tabular-nums opacity-80">
+          <span aria-hidden="true" className="text-sm tabular-nums opacity-80">
             {remaining <= 10
               ? t('chat.voice.secondsLeft', { count: remaining })
               : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`}

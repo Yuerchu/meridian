@@ -22,6 +22,14 @@ i18n
     },
   })
 
+function syncDocumentLanguage(language: string | undefined) {
+  if (typeof document === 'undefined') return
+  document.documentElement.lang = language?.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en'
+}
+
+i18n.on('languageChanged', syncDocumentLanguage)
+syncDocumentLanguage(i18n.resolvedLanguage ?? i18n.language)
+
 export function setLocale(locale: string) {
   i18n.changeLanguage(locale)
 }

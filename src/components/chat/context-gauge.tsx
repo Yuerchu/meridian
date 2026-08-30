@@ -123,7 +123,7 @@ export function ContextGauge({
         </ProgressCircle>
       </Popover.Trigger>
       <Popover.Content placement="top" className="max-w-64">
-        <Popover.Dialog className="flex flex-col gap-1 text-xs tabular-nums">
+        <Popover.Dialog aria-label={t('chat.context.title')} className="flex flex-col gap-1 text-xs tabular-nums">
           {compacting && !hosted ? (
             <span>{t('chat.compact.inProgress')}</span>
           ) : (

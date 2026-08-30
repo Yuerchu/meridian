@@ -495,6 +495,8 @@ export const MessageItem = React.memo(function MessageItem({
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState('')
   const editRef = useRef<HTMLTextAreaElement>(null)
+  const editButtonRef = useRef<HTMLButtonElement>(null)
+  const restoreEditFocus = useRef(false)
   const [selectedText, setSelectedText] = useState('')
   const [showSelectText, setShowSelectText] = useState(false)
   // Evaluated once per render rather than stored: `matchMedia` is synchronous
@@ -519,6 +521,11 @@ export const MessageItem = React.memo(function MessageItem({
       ta.setSelectionRange(ta.value.length, ta.value.length)
       ta.style.height = 'auto'
       ta.style.height = ta.scrollHeight + 'px'
+      return
+    }
+    if (restoreEditFocus.current) {
+      restoreEditFocus.current = false
+      editButtonRef.current?.focus()
     }
   }, [editing])
 
@@ -532,10 +539,12 @@ export const MessageItem = React.memo(function MessageItem({
     if (trimmed && trimmed !== message.content && onEdit) {
       onEdit(message.id, trimmed)
     }
+    restoreEditFocus.current = true
     setEditing(false)
   }, [editText, message.content, message.id, onEdit])
 
   const handleCancelEdit = useCallback(() => {
+    restoreEditFocus.current = true
     setEditing(false)
   }, [])
 
@@ -597,6 +606,7 @@ export const MessageItem = React.memo(function MessageItem({
                   <TextArea
                     fullWidth
                     ref={editRef}
+                    aria-label={t('chat.editMessage')}
                     value={editText}
                     onChange={(e) => {
                       setEditText(e.target.value)
@@ -608,10 +618,10 @@ export const MessageItem = React.memo(function MessageItem({
                     rows={1}
                   />
                   <div className="flex justify-end gap-1 mt-1.5">
-                    <ActionButton label="Esc" onClick={handleCancelEdit} className="text-muted">
+                    <ActionButton label={t('chat.cancelEdit')} onClick={handleCancelEdit} className="text-muted">
                       <Xmark className="w-3.5 h-3.5" />
                     </ActionButton>
-                    <ActionButton label="Enter" onClick={handleSaveEdit} className="text-accent">
+                    <ActionButton label={t('chat.saveEdit')} onClick={handleSaveEdit} className="text-accent">
                       <Check className="w-3.5 h-3.5" />
                     </ActionButton>
                   </div>
@@ -647,6 +657,7 @@ export const MessageItem = React.memo(function MessageItem({
                 <MessageFooter className="gap-1 opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 pointer-coarse:opacity-100">
                   {canEdit && (
                     <ActionButton
+                      ref={editButtonRef}
                       label={t('chat.edit')}
                       onClick={handleStartEdit}
                       className="text-muted hover:text-foreground"
@@ -760,6 +771,7 @@ export const MessageItem = React.memo(function MessageItem({
                   <>
                     <ActionButton
                       label={t('chat.thumbsUp')}
+                      aria-pressed={message.rating === 1}
                       onClick={() => onRate(message.id, message.rating === 1 ? null : 1)}
                       className={cn(
                         message.rating === 1 ? 'text-success-soft-foreground' : 'text-muted hover:text-foreground',
@@ -769,6 +781,7 @@ export const MessageItem = React.memo(function MessageItem({
                     </ActionButton>
                     <ActionButton
                       label={t('chat.thumbsDown')}
+                      aria-pressed={message.rating === -1}
                       onClick={() => onRate(message.id, message.rating === -1 ? null : -1)}
                       className={cn(message.rating === -1 ? 'text-danger' : 'text-muted hover:text-foreground')}
                     >

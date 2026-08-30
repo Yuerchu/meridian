@@ -40,6 +40,19 @@ export function PromptQueue({ items, held, onRemove, onReorder, onSetDelivery, o
   const { t } = useTranslation()
   if (items.length === 0) return null
 
+  const movable = (item: QueuedPrompt) => {
+    const state = queueState(item)
+    return state !== 'in_doubt' && state !== 'settled' && state !== 'held'
+  }
+
+  const move = (index: number, offset: -1 | 1) => {
+    const target = index + offset
+    if (target < 0 || target >= items.length || !movable(items[index]) || !movable(items[target])) return
+    const next = [...items]
+    ;[next[index], next[target]] = [next[target], next[index]]
+    onReorder(next)
+  }
+
   return (
     <PromptInput.Queue>
       {held && (
@@ -54,7 +67,7 @@ export function PromptQueue({ items, held, onRemove, onReorder, onSetDelivery, o
         </div>
       )}
       <PromptInput.Queue.List values={items} onReorder={onReorder}>
-        {items.map((item) => {
+        {items.map((item, index) => {
           const state = queueState(item)
           const doubtful = state === 'in_doubt'
           // Taken by the agent, and still here because the transcript row it
@@ -111,6 +124,22 @@ export function PromptQueue({ items, held, onRemove, onReorder, onSetDelivery, o
                   longer the queue's. */}
               {!settled && (
                 <PromptInput.Queue.Item.Actions>
+                  {!pinned && (
+                    <>
+                      <PromptInput.Queue.Item.Action
+                        isDisabled={index === 0 || !movable(items[index - 1])}
+                        onPress={() => move(index, -1)}
+                      >
+                        {t('chat.queue.moveUp')}
+                      </PromptInput.Queue.Item.Action>
+                      <PromptInput.Queue.Item.Action
+                        isDisabled={index === items.length - 1 || !movable(items[index + 1])}
+                        onPress={() => move(index, 1)}
+                      >
+                        {t('chat.queue.moveDown')}
+                      </PromptInput.Queue.Item.Action>
+                    </>
+                  )}
                   {/* Pro's own word for it, and it does what it says: switching
                       a row to `interject` also delivers it, so this is "now"
                       rather than a setting that takes effect eventually. Its

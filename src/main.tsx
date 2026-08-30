@@ -2,10 +2,11 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { invoke } from '@tauri-apps/api/core'
 import { MotionConfig } from 'motion/react'
+import { Button } from '@heroui/react'
 import App from './App'
 import { ErrorBoundary } from './components/error-boundary'
 import { ThemeProvider } from './lib/theme'
-import './i18n'
+import i18n from './i18n'
 import './index.css'
 
 const root = createRoot(document.getElementById('root')!)
@@ -28,6 +29,19 @@ function announceReady() {
 
 const isDev = import.meta.env.DEV
 const isBrowserDev = isDev && !('__TAURI_INTERNALS__' in window)
+
+function renderAppCrashFallback(error: Error) {
+  return (
+    <main className="flex h-screen flex-col items-center justify-center gap-3 p-8 text-center">
+      <h1 className="text-sm font-medium">{i18n.t('errorBoundary.title')}</h1>
+      <p className="max-w-md text-xs text-muted">{i18n.t('errorBoundary.description')}</p>
+      <p className="max-w-md break-all text-xs text-muted">{String(error)}</p>
+      <Button variant="secondary" onPress={() => window.location.reload()}>
+        {i18n.t('errorBoundary.reload')}
+      </Button>
+    </main>
+  )
+}
 
 // A Tauri window has no address bar, so `VITE_PLAYGROUND=heroui pnpm tauri dev`
 // is the only way in. Written with replaceState rather than by assigning the
@@ -72,14 +86,7 @@ if (isDev && window.location.hash.startsWith('#playground')) {
     <StrictMode>
       <ThemeProvider>
         <MotionConfig reducedMotion="user">
-          <ErrorBoundary
-            fallback={(error) => (
-              <div className="flex h-screen flex-col items-center justify-center gap-2 p-8 text-center">
-                <p className="text-sm font-medium">Something went wrong</p>
-                <p className="text-xs text-muted break-all max-w-md">{String(error)}</p>
-              </div>
-            )}
-          >
+          <ErrorBoundary fallback={renderAppCrashFallback}>
             <App />
           </ErrorBoundary>
         </MotionConfig>

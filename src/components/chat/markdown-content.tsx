@@ -13,6 +13,8 @@ import { cn } from '@/lib/utils'
 import { ShikiCode } from './shiki-code'
 import type { EmojiMap } from './emoji-renderer'
 
+const MarkdownStreamingContext = React.createContext(false)
+
 export function CopyButton({ text, className }: { text: string; className?: string }) {
   const { t } = useTranslation()
   const [copied, markCopied] = useTemporaryFlag()
@@ -50,6 +52,7 @@ function fenceLanguage(className: string | undefined): string {
  * languages whose icon is generic.
  */
 const CodeBlock: Components['code'] = ({ className, children, node, ...props }) => {
+  const isStreaming = React.useContext(MarkdownStreamingContext)
   const start = node?.position?.start.line
   if (!start || start === node?.position?.end.line) {
     return (
@@ -82,7 +85,7 @@ const CodeBlock: Components['code'] = ({ className, children, node, ...props }) 
             without moving the button off the corner it belongs in. */}
         <CopyButton text={code} className="touch-hitbox ms-auto size-7 rounded-md" />
       </div>
-      <ShikiCode code={code} language={language} />
+      <ShikiCode code={code} language={language} defer={isStreaming} />
     </div>
   )
 }
@@ -133,6 +136,42 @@ function preprocessMentions(content: string): string {
   return content.replace(/\[@([^\]]*)\((\d+)\)\]/g, '**@$1**')
 }
 
+function MarkdownImage({ alt = '', className, onError, onLoad, ...props }: React.ComponentProps<'img'>) {
+  const [loaded, setLoaded] = React.useState(false)
+
+  return (
+    <span
+      data-slot="markdown-image-frame"
+      data-loaded={loaded || undefined}
+      className={cn(
+        'relative my-3 block w-fit max-w-full overflow-hidden rounded-lg bg-default/20',
+        !loaded && 'min-h-24 min-w-24',
+      )}
+    >
+      <img
+        {...props}
+        alt={alt}
+        loading="lazy"
+        decoding="async"
+        className={cn(
+          'block h-auto max-h-[70svh] max-w-full object-contain transition-opacity motion-reduce:transition-none',
+          !loaded && 'opacity-0',
+          className,
+        )}
+        onLoad={(event) => {
+          setLoaded(true)
+          onLoad?.(event)
+        }}
+        onError={(event) => {
+          setLoaded(true)
+          onError?.(event)
+        }}
+      />
+      {!loaded && <span aria-hidden="true" className="absolute inset-0 animate-pulse motion-reduce:animate-none" />}
+    </span>
+  )
+}
+
 export const MarkdownContent = React.memo(function MarkdownContent({
   content,
   isStreaming,
@@ -160,9 +199,20 @@ export const MarkdownContent = React.memo(function MarkdownContent({
       table: TableBlock,
       img: ({ alt, src, ...props }) => {
         if (alt?.startsWith('sticker:')) {
-          return <img src={src} alt={alt.slice(8)} title={alt.slice(8)} className="emoji-sticker rounded" {...props} />
+          return (
+            <img
+              {...props}
+              src={src}
+              alt={alt.slice(8)}
+              title={alt.slice(8)}
+              loading="lazy"
+              width={48}
+              height={48}
+              className="emoji-sticker rounded"
+            />
+          )
         }
-        return <img alt={alt} src={src} {...props} />
+        return <MarkdownImage {...props} alt={alt ?? ''} src={src} />
       },
       // A link in an answer is a link to the web, and this is a WebView: left
       // alone it would navigate the app itself to the page, with no way back.
@@ -180,10 +230,14 @@ export const MarkdownContent = React.memo(function MarkdownContent({
       {/* `id` seeds the keys of the memoised blocks, so it only has to be unique
           between renderers on screen — the key itself already hashes the block's
           own content. Falls back to a generated one. */}
-      <ProMarkdown components={components} id={blockId}>
-        {processed}
-      </ProMarkdown>
-      {isStreaming && <span className="inline-block w-2 h-4 ml-0.5 bg-muted animate-pulse" />}
+      <MarkdownStreamingContext value={isStreaming === true}>
+        <ProMarkdown components={components} id={blockId}>
+          {processed}
+        </ProMarkdown>
+      </MarkdownStreamingContext>
+      {isStreaming && (
+        <span className="ml-0.5 inline-block h-4 w-2 animate-pulse bg-muted motion-reduce:animate-none" />
+      )}
     </div>
   )
 })

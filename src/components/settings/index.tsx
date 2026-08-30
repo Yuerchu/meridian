@@ -29,6 +29,64 @@ export default function SettingsPage({
   activeTab: SettingsTab
   onOpenConversation: (conversationId: string) => void
 }) {
+  let panel: React.ReactNode
+  switch (activeTab) {
+    case 'provider':
+      panel = <ProviderSettings />
+      break
+    case 'usage':
+      panel = <UsageSettings onOpenConversation={onOpenConversation} />
+      break
+    case 'assistants':
+      panel = <AssistantSettings />
+      break
+    case 'emoji':
+      panel = <EmojiSettings />
+      break
+    case 'tools':
+      panel = <ToolMarketplace />
+      break
+    case 'autoreview':
+      panel = <AutoReviewSettings />
+      break
+    case 'skills':
+      panel = <SkillSettings />
+      break
+    case 'mcp':
+      panel = <McpSettings />
+      break
+    case 'memories':
+      panel = <MemorySettings />
+      break
+    case 'voice':
+      panel = <VoiceSettings />
+      break
+    case 'voiceCorpus':
+      panel = <VoiceCorpusSettings />
+      break
+    case 'onebot':
+      panel = <OneBotSettings />
+      break
+    case 'hooks':
+      panel = <HooksSettings />
+      break
+    case 'acp':
+      panel = <AcpSettings />
+      break
+    case 'remote':
+      panel = <RemoteAccessSettings />
+      break
+    case 'general':
+      panel = <GeneralSettings />
+      break
+    case 'developer':
+      panel = <DeveloperSettings />
+      break
+    case 'about':
+      panel = <About />
+      break
+  }
+
   // The inset sits on the scroller itself, and the spacing stays inside it.
   // Padding here lets the last control come to rest above the navigation bar
   // while the list still scrolls the full height of the screen; taking the room
@@ -45,26 +103,7 @@ export default function SettingsPage({
           was taking 9% of it. The container is declared on the scroller above
           rather than here — a query resolves against an ancestor container, so
           an element carrying both would look past its own. */}
-      <div className="p-4 @2xl/settings:p-6">
-        {activeTab === 'provider' && <ProviderSettings />}
-        {activeTab === 'usage' && <UsageSettings onOpenConversation={onOpenConversation} />}
-        {activeTab === 'assistants' && <AssistantSettings />}
-        {activeTab === 'emoji' && <EmojiSettings />}
-        {activeTab === 'tools' && <ToolMarketplace />}
-        {activeTab === 'autoreview' && <AutoReviewSettings />}
-        {activeTab === 'skills' && <SkillSettings />}
-        {activeTab === 'mcp' && <McpSettings />}
-        {activeTab === 'memories' && <MemorySettings />}
-        {activeTab === 'voice' && <VoiceSettings />}
-        {activeTab === 'voiceCorpus' && <VoiceCorpusSettings />}
-        {activeTab === 'onebot' && <OneBotSettings />}
-        {activeTab === 'hooks' && <HooksSettings />}
-        {activeTab === 'acp' && <AcpSettings />}
-        {activeTab === 'remote' && <RemoteAccessSettings />}
-        {activeTab === 'general' && <GeneralSettings />}
-        {activeTab === 'developer' && <DeveloperSettings />}
-        {activeTab === 'about' && <About />}
-      </div>
+      <div className="p-4 @2xl/settings:p-6">{panel}</div>
     </div>
   )
 }

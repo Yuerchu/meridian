@@ -6,7 +6,8 @@ import { Button, Checkbox, Description, Input, Label, TextField } from '@heroui/
 import { ItemCard } from '@heroui-pro/react/item-card'
 import { cn } from '@/lib/utils'
 import type { Assistant } from '@/types'
-import { SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
+import { SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
+import { useSettingsDirtyRegistration } from './dirty-guard'
 
 interface OneBotConfig {
   enabled: boolean
@@ -81,21 +82,64 @@ export function OneBotSettings() {
   const [saving, setSaving] = useState(false)
   const [saved, markSaved] = useTemporaryFlag()
   const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loaded, setLoaded] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [portInput, setPortInput] = useState('6700')
+  const [savedDraft, setSavedDraft] = useState<string | null>(null)
+  const draft = JSON.stringify({
+    ...config,
+    port: portInput,
+    adminInput,
+    balanceInput,
+    voiceCaptureInput,
+    voiceSendInput,
+    fishKey,
+  })
+  const dirty = loaded && draft !== savedDraft
+  useSettingsDirtyRegistration('onebot', 'onebot-config', dirty)
 
   const loadData = useCallback(async () => {
+    setLoadError(null)
     try {
-      const [cfg, sts, assts] = await Promise.all([api.getOneBotConfig(), api.getOneBotStatus(), api.listAssistants()])
+      const [cfg, sts, assts, hasFishKey, readiness] = await Promise.all([
+        api.getOneBotConfig(),
+        api.getOneBotStatus(),
+        api.listAssistants(),
+        api.getServiceKeyExists('FISH_AUDIO'),
+        api.getVoiceSendReadiness(),
+      ])
+      const nextPort = cfg.port.toString()
+      const nextAdmin = cfg.admin_users.join(', ')
+      const nextBalance = cfg.balance_alert_threshold?.toString() ?? ''
+      const nextCapture = (cfg.voice_capture_sessions ?? []).join(', ')
+      const nextSend = (cfg.voice_send_groups ?? []).join(', ')
       setConfig(cfg)
       setStatus(sts)
       setAssistants(assts)
-      setAdminInput(cfg.admin_users.join(', '))
-      setBalanceInput(cfg.balance_alert_threshold?.toString() ?? '')
-      setVoiceCaptureInput((cfg.voice_capture_sessions ?? []).join(', '))
-      setVoiceSendInput((cfg.voice_send_groups ?? []).join(', '))
-      setFishKeySet(await api.getServiceKeyExists('FISH_AUDIO'))
-      setVoiceReady(await api.getVoiceSendReadiness())
+      setPortInput(nextPort)
+      setAdminInput(nextAdmin)
+      setBalanceInput(nextBalance)
+      setVoiceCaptureInput(nextCapture)
+      setVoiceSendInput(nextSend)
+      setFishKeySet(hasFishKey)
+      setVoiceReady(readiness)
+      setSavedDraft(
+        JSON.stringify({
+          ...cfg,
+          port: nextPort,
+          adminInput: nextAdmin,
+          balanceInput: nextBalance,
+          voiceCaptureInput: nextCapture,
+          voiceSendInput: nextSend,
+          fishKey: '',
+        }),
+      )
+      setLoaded(true)
     } catch (err) {
-      setError(String(err))
+      setLoadError(String(err))
+    } finally {
+      setLoading(false)
     }
   }, [])
 
@@ -116,33 +160,45 @@ export function OneBotSettings() {
   }, [])
 
   const handleSave = async () => {
-    setSaving(true)
     setError(null)
+    const splitEntries = (value: string) =>
+      value.trim()
+        ? value
+            .split(/[,，\s]+/)
+            .map((entry) => entry.trim())
+            .filter(Boolean)
+        : []
+    const port = Number(portInput)
+    const adminEntries = splitEntries(adminInput)
+    const adminUsers = adminEntries.map(Number)
+    const balanceText = balanceInput.trim()
+    const threshold = balanceText === '' ? null : Number(balanceText)
+    const voiceCaptureSessions = splitEntries(voiceCaptureInput)
+    const voiceSendGroups = splitEntries(voiceSendInput)
+
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      setError(t('settings.validation.port'))
+      return false
+    }
+    if (adminUsers.some((value) => !Number.isSafeInteger(value) || value <= 0)) {
+      setError(t('settings.onebot.invalidAdmins'))
+      return false
+    }
+    if (threshold !== null && (!Number.isFinite(threshold) || threshold < 0)) {
+      setError(t('settings.onebot.invalidBalance'))
+      return false
+    }
+    if (voiceCaptureSessions.some((value) => !/^\d+@(group|private):\d+$/.test(value))) {
+      setError(t('settings.onebot.invalidVoiceCapture'))
+      return false
+    }
+    if (voiceSendGroups.some((value) => !/^\d+@group:\d+$/.test(value))) {
+      setError(t('settings.onebot.invalidVoiceSend'))
+      return false
+    }
+
+    setSaving(true)
     try {
-      const adminUsers = adminInput
-        .split(/[,，\s]+/)
-        .map((s) => parseInt(s.trim(), 10))
-        .filter((n) => !isNaN(n) && n > 0)
-
-      // Anything that is not a non-negative number switches the watcher off,
-      // and the field is rewritten from what was saved — so a typo shows up as
-      // an emptied box rather than as an alert that never arrives.
-      const typed = Number(balanceInput.trim())
-      const threshold = balanceInput.trim() !== '' && Number.isFinite(typed) && typed >= 0 ? typed : null
-
-      // `<bot>@<session>`, e.g. `10001@group:123`. Anything without both halves
-      // is dropped rather than guessed at — this is a permission list, and an
-      // entry nobody can read grants nothing.
-      const voiceCaptureSessions = voiceCaptureInput
-        .split(/[,，\s]+/)
-        .map((s) => s.trim())
-        .filter((s) => /^\d+@(group|private):\d+$/.test(s))
-
-      const voiceSendGroups = voiceSendInput
-        .split(/[,，\s]+/)
-        .map((s) => s.trim())
-        .filter((s) => /^\d+@group:\d+$/.test(s))
-
       // The key goes to the keychain, not into the config row. Saved first so
       // that the policy refresh below sees it — readiness counts the key as one
       // of its four parts, and watching preferences alone would miss it.
@@ -154,6 +210,7 @@ export function OneBotSettings() {
 
       const newConfig = {
         ...config,
+        port,
         admin_users: adminUsers,
         balance_alert_threshold: threshold,
         voice_capture_sessions: voiceCaptureSessions,
@@ -161,9 +218,27 @@ export function OneBotSettings() {
       }
       await api.saveOneBotConfig(newConfig)
       setConfig(newConfig)
-      setBalanceInput(threshold?.toString() ?? '')
-      setVoiceCaptureInput(voiceCaptureSessions.join(', '))
-      setVoiceSendInput(voiceSendGroups.join(', '))
+      const nextPort = port.toString()
+      const nextAdmin = adminUsers.join(', ')
+      const nextBalance = threshold?.toString() ?? ''
+      const nextCapture = voiceCaptureSessions.join(', ')
+      const nextSend = voiceSendGroups.join(', ')
+      setPortInput(nextPort)
+      setAdminInput(nextAdmin)
+      setBalanceInput(nextBalance)
+      setVoiceCaptureInput(nextCapture)
+      setVoiceSendInput(nextSend)
+      setSavedDraft(
+        JSON.stringify({
+          ...newConfig,
+          port: nextPort,
+          adminInput: nextAdmin,
+          balanceInput: nextBalance,
+          voiceCaptureInput: nextCapture,
+          voiceSendInput: nextSend,
+          fishKey: '',
+        }),
+      )
       // Re-asked rather than assumed: the save is also what applies the policy,
       // so this is the moment the answer can change — and the moment somebody
       // is looking for it.
@@ -206,6 +281,29 @@ export function OneBotSettings() {
     ...assistants.map((a) => ({ value: a.id, label: a.name })),
   ]
 
+  if (loading) return <SettingsSkeleton />
+  if (!loaded) {
+    return (
+      <SettingsPane>
+        <SettingsHeader title={t('settings.onebot.title')} />
+        <div role="alert" className="space-y-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+          <p>{t('settings.onebot.loadError')}</p>
+          {loadError && <p className="break-all">{loadError}</p>}
+          <Button
+            size="sm"
+            variant="outline"
+            onPress={() => {
+              setLoading(true)
+              void loadData()
+            }}
+          >
+            {t('settings.onebot.retry')}
+          </Button>
+        </div>
+      </SettingsPane>
+    )
+  }
+
   return (
     <SettingsPane>
       <SettingsHeader title={t('settings.onebot.title')} />
@@ -236,6 +334,7 @@ export function OneBotSettings() {
         <TextField fullWidth>
           <Label>{t('settings.onebot.host')}</Label>
           <Input
+            name="onebotHost"
             value={config.host}
             onChange={(e) => setConfig({ ...config, host: e.target.value })}
             placeholder="127.0.0.1"
@@ -244,12 +343,12 @@ export function OneBotSettings() {
         <TextField fullWidth type="number">
           <Label>{t('settings.onebot.port')}</Label>
           <Input
+            name="onebotPort"
+            inputMode="numeric"
             min={1}
             max={65535}
-            value={config.port}
-            onChange={(e) =>
-              setConfig({ ...config, port: Math.min(65535, Math.max(1, parseInt(e.target.value, 10) || 6700)) })
-            }
+            value={portInput}
+            onChange={(e) => setPortInput(e.target.value)}
             placeholder="6700"
           />
         </TextField>
@@ -258,6 +357,8 @@ export function OneBotSettings() {
       <TextField fullWidth type="password">
         <Label>{t('settings.onebot.accessToken')}</Label>
         <Input
+          name="onebotAccessToken"
+          autoComplete="off"
           value={config.access_token ?? ''}
           onChange={(e) => setConfig({ ...config, access_token: e.target.value || null })}
           placeholder={t('settings.onebot.accessTokenPlaceholder')}
@@ -275,13 +376,19 @@ export function OneBotSettings() {
 
       <TextField fullWidth>
         <Label>{t('settings.onebot.adminUsers')}</Label>
-        <Input value={adminInput} onChange={(e) => setAdminInput(e.target.value)} placeholder="12345, 67890" />
+        <Input
+          name="onebotAdminUsers"
+          value={adminInput}
+          onChange={(e) => setAdminInput(e.target.value)}
+          placeholder="12345, 67890"
+        />
         <Description>{t('settings.onebot.adminUsersHint')}</Description>
       </TextField>
 
       <TextField fullWidth>
         <Label>{t('settings.onebot.voiceCapture')}</Label>
         <Input
+          name="onebotVoiceCapture"
           value={voiceCaptureInput}
           onChange={(e) => setVoiceCaptureInput(e.target.value)}
           placeholder="10001@group:123, 10001@private:456"
@@ -314,6 +421,7 @@ export function OneBotSettings() {
           <TextField fullWidth>
             <Label>{t('settings.onebot.voiceSendGroups')}</Label>
             <Input
+              name="onebotVoiceSendGroups"
               value={voiceSendInput}
               onChange={(e) => setVoiceSendInput(e.target.value)}
               placeholder="10001@group:123"
@@ -325,6 +433,7 @@ export function OneBotSettings() {
             <TextField fullWidth>
               <Label>{t('settings.onebot.voiceTtsModel')}</Label>
               <Input
+                name="onebotVoiceModel"
                 value={config.voice_tts_model}
                 onChange={(e) => setConfig({ ...config, voice_tts_model: e.target.value })}
                 placeholder="s2.1-pro-free"
@@ -334,6 +443,7 @@ export function OneBotSettings() {
             <TextField fullWidth>
               <Label>{t('settings.onebot.voiceTtsVoice')}</Label>
               <Input
+                name="onebotVoiceReference"
                 value={config.voice_tts_reference_id}
                 onChange={(e) => setConfig({ ...config, voice_tts_reference_id: e.target.value })}
                 placeholder="9a9cf477…"
@@ -346,6 +456,8 @@ export function OneBotSettings() {
             <Label>{t('settings.onebot.fishKey')}</Label>
             <Input
               type="password"
+              name="onebotFishAudioKey"
+              autoComplete="off"
               value={fishKey}
               onChange={(e) => setFishKey(e.target.value)}
               placeholder={fishKeySet ? '••••••••' : ''}
@@ -363,7 +475,7 @@ export function OneBotSettings() {
               because one of the four is a keychain entry this page never
               sees. */}
           {voiceReady && !voiceReady.ready && (
-            <p className="text-xs text-warning">
+            <p role="status" className="text-xs text-warning">
               {t('settings.onebot.voiceNotReady', {
                 missing: [
                   !voiceReady.has_model && t('settings.onebot.voiceTtsModel'),
@@ -381,6 +493,7 @@ export function OneBotSettings() {
       <TextField fullWidth>
         <Label>{t('settings.onebot.ackEmoji')}</Label>
         <Input
+          name="onebotAckEmoji"
           value={config.ack_emoji_id}
           onChange={(e) => setConfig({ ...config, ack_emoji_id: e.target.value })}
           placeholder="76"
@@ -391,6 +504,8 @@ export function OneBotSettings() {
       <TextField fullWidth>
         <Label>{t('settings.onebot.balanceAlert')}</Label>
         <Input
+          name="onebotBalanceThreshold"
+          inputMode="decimal"
           value={balanceInput}
           onChange={(e) => setBalanceInput(e.target.value)}
           placeholder={t('settings.onebot.balanceAlertPlaceholder')}
@@ -398,18 +513,27 @@ export function OneBotSettings() {
         <Description>{t('settings.onebot.balanceAlertHint')}</Description>
       </TextField>
 
-      {error && <p className="text-xs text-danger break-all">{error}</p>}
+      {error && (
+        <p role="alert" className="text-xs text-danger break-all">
+          {error}
+        </p>
+      )}
 
       <div className="flex items-center gap-3 pt-2">
-        <Button variant="outline" onClick={handleSave} isDisabled={saving}>
+        <Button variant="outline" onPress={handleSave} isDisabled={saving}>
           {saved ? t('common.saved') : t('common.save')}
         </Button>
+        {saved && (
+          <span role="status" className="sr-only">
+            {t('common.saved')}
+          </span>
+        )}
         {running ? (
-          <Button variant="danger-soft" onClick={handleStop}>
+          <Button variant="danger-soft" onPress={handleStop}>
             {t('settings.onebot.stop')}
           </Button>
         ) : (
-          <Button onClick={handleStart}>{t('settings.onebot.start')}</Button>
+          <Button onPress={handleStart}>{t('settings.onebot.start')}</Button>
         )}
       </div>
 

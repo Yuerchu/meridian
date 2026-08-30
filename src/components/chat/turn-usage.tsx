@@ -103,7 +103,7 @@ export function TurnUsage({ tokens, usage }: { tokens: TokenTotals; usage?: Turn
           aria-expanded={open}
           aria-controls={detailsId}
           onPress={() => setOpen(true)}
-          className="h-auto min-w-0 cursor-[var(--cursor-interactive)] rounded-sm px-0 py-0 font-normal tabular-nums hover:text-foreground"
+          className="touch-hitbox h-auto min-w-0 cursor-[var(--cursor-interactive)] rounded-sm px-0 py-0 font-normal tabular-nums hover:text-foreground"
         >
           {summary}
         </Button>

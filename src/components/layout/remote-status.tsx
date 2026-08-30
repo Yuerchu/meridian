@@ -33,7 +33,13 @@ export function RemoteStatus() {
     >
       {/* The word beside it says the same thing, so announcing the dot too
           would only say it twice. */}
-      <span aria-hidden className={cn('size-1.5 rounded-full', offline ? 'bg-danger' : 'bg-warning animate-pulse')} />
+      <span
+        aria-hidden
+        className={cn(
+          'size-1.5 rounded-full',
+          offline ? 'bg-danger' : 'bg-warning animate-pulse motion-reduce:animate-none',
+        )}
+      />
       {t(`settings.client.state.${state}`)}
     </span>
   )
