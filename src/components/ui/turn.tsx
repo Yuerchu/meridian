@@ -86,7 +86,7 @@ function TurnStatusIcon({ className }: { className?: string }) {
   const shared = cn('size-3.5 shrink-0', className)
   switch (status) {
     case 'streaming':
-      return <CircleDashed aria-hidden className={cn(shared, 'animate-spin text-muted')} />
+      return <CircleDashed aria-hidden className={cn(shared, 'animate-spin text-muted motion-reduce:animate-none')} />
     case 'awaiting-input':
       return <CircleExclamation aria-hidden className={cn(shared, 'text-warning-soft-foreground')} />
     // Warning-coloured, unlike `interrupted`, which is grey. A turn the user

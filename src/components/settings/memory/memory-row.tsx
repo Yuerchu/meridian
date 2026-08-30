@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TrashBin, TriangleExclamation } from '@gravity-ui/icons'
 import { api } from '@/api'
@@ -12,10 +12,6 @@ import type { Memory } from '@/types'
  */
 export const INFO_CHIP = '[--chip-fg:var(--info-soft-foreground)]'
 
-function formatDate(ms: number): string {
-  return new Date(ms).toISOString().slice(0, 10)
-}
-
 interface MemoryRowProps {
   memory: Memory
   checked: boolean
@@ -24,9 +20,22 @@ interface MemoryRowProps {
 }
 
 export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryRowProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [draft, setDraft] = useState(memory.content)
   const [saving, setSaving] = useState(false)
+  const date = useMemo(
+    () => new Intl.DateTimeFormat(i18n.resolvedLanguage ?? i18n.language, { dateStyle: 'medium' }),
+    [i18n.language, i18n.resolvedLanguage],
+  )
+  const saveDraft = async () => {
+    setSaving(true)
+    try {
+      await api.updateMemory(memory.id, draft)
+      onChanged()
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const ownerOnly = memory.visibility === 'owner_only'
 
@@ -85,7 +94,7 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
           </Tooltip>
         )}
         <div className="flex-1" />
-        <span className="text-xs text-muted">{formatDate(memory.updated_at)}</span>
+        <span className="text-xs text-muted">{date.format(new Date(memory.updated_at))}</span>
       </div>
 
       {/* `min-h-0` is load-bearing: the card is a flex column, and a flex item's
@@ -101,10 +110,25 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
           className="space-y-2"
           render={(props) => <div {...props} className="border-t border-border p-3" />}
         >
-          <TextArea fullWidth value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} className="resize-y" />
+          <TextArea
+            fullWidth
+            aria-label={t('settings.memory.content')}
+            name={`memoryContent-${memory.id}`}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing) return
+              if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                event.preventDefault()
+                if (!saving && draft !== memory.content) void saveDraft()
+              }
+            }}
+            rows={3}
+            className="resize-y"
+          />
           <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
             <span>
-              {t('settings.memory.learnedAt')}: {formatDate(memory.created_at)}
+              {t('settings.memory.learnedAt')}: {date.format(new Date(memory.created_at))}
             </span>
             {memory.source_session_id && (
               <span>
@@ -116,15 +140,7 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
             <Button
               variant="secondary"
               isDisabled={saving || draft === memory.content}
-              onClick={async () => {
-                setSaving(true)
-                try {
-                  await api.updateMemory(memory.id, draft)
-                  onChanged()
-                } finally {
-                  setSaving(false)
-                }
-              }}
+              onPress={() => void saveDraft()}
             >
               {t('common.save')}
             </Button>
@@ -132,7 +148,8 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
             <Button
               variant="ghost"
               isIconOnly
-              onClick={async () => {
+              aria-label={t('settings.memory.delete')}
+              onPress={async () => {
                 await api.deleteMemories([memory.id])
                 onChanged()
               }}

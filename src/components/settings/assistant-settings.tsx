@@ -31,17 +31,20 @@ import type {
   ToolPreset,
 } from '@/types'
 import { SettingsDrilldown } from './settings-drilldown'
+import { useSettingsDirtyRegistration } from './dirty-guard'
 
 function AssistantEditor({
   assistant,
   providers,
   onSave,
   onDelete,
+  onDirtyChange,
 }: {
   assistant: Assistant
   providers: Provider[]
   onSave: (id: string, updates: Record<string, unknown>) => Promise<void>
   onDelete?: (id: string) => void
+  onDirtyChange?: (id: string, dirty: boolean) => void
 }) {
   const { t } = useTranslation()
   const [name, setName] = useState(assistant.name)
@@ -79,6 +82,47 @@ function AssistantEditor({
     }
     return new Set<string>()
   })
+  const initialToolMode = assistant.tool_preset_id ? 'preset' : assistant.enabled_tools ? 'custom' : 'all'
+  const [savedDraft, setSavedDraft] = useState(() =>
+    JSON.stringify({
+      name: assistant.name,
+      systemPrompt: assistant.system_prompt,
+      providerId: assistant.provider_id ?? '',
+      modelId: assistant.model_id ?? '',
+      temperature: assistant.temperature?.toString() ?? '',
+      contextLimit: assistant.context_limit.toString(),
+      autoCompactEnabled: assistant.auto_compact_enabled !== 0,
+      thinkingEnabled: assistant.thinking_enabled !== 0,
+      thinkingBudget: assistant.thinking_budget?.toString() ?? '',
+      selectedPresetId: assistant.tool_preset_id ?? '',
+      toolMode: initialToolMode,
+      selectedTools: (() => {
+        try {
+          return assistant.enabled_tools ? (JSON.parse(assistant.enabled_tools) as string[]).sort() : []
+        } catch {
+          return []
+        }
+      })(),
+    }),
+  )
+  const draft = JSON.stringify({
+    name,
+    systemPrompt,
+    providerId,
+    modelId,
+    temperature,
+    contextLimit,
+    autoCompactEnabled,
+    thinkingEnabled,
+    thinkingBudget,
+    selectedPresetId,
+    toolMode,
+    selectedTools: [...selectedTools].sort(),
+  })
+  const dirty = draft !== savedDraft
+
+  useEffect(() => onDirtyChange?.(assistant.id, dirty), [assistant.id, dirty, onDirtyChange])
+  useEffect(() => () => onDirtyChange?.(assistant.id, false), [assistant.id, onDirtyChange])
 
   useEffect(() => {
     if (providerId) {
@@ -118,6 +162,7 @@ function AssistantEditor({
       toolPresetId,
       autoCompactEnabled: autoCompactEnabled ? 1 : 0,
     })
+    setSavedDraft(draft)
     markSaved()
   }
 
@@ -130,7 +175,7 @@ function AssistantEditor({
     <div className="space-y-4 px-1 pb-4">
       <TextField fullWidth>
         <Label>{t('settings.assistant.name')}</Label>
-        <Input value={name} onChange={(e) => setName(e.target.value)} />
+        <Input name={`assistantName-${assistant.id}`} value={name} onChange={(e) => setName(e.target.value)} />
       </TextField>
 
       {/* The label shares its line with a button, so it is nested rather than a
@@ -138,7 +183,7 @@ function AssistantEditor({
       <TextField fullWidth>
         <div className="flex items-center justify-between">
           <Label>{t('settings.assistant.systemPrompt')}</Label>
-          <Button variant="ghost" className="text-xs gap-1" onClick={() => setShowTemplates(!showTemplates)}>
+          <Button variant="ghost" className="text-xs gap-1" onPress={() => setShowTemplates(!showTemplates)}>
             <SquareDashedText className="w-3.5 h-3.5" />
             {t('settings.assistant.browseTemplates')}
           </Button>
@@ -153,7 +198,7 @@ function AssistantEditor({
                 key={tpl.id}
                 variant="ghost"
                 className="w-full justify-start h-auto px-2 py-1.5 text-xs"
-                onClick={() => {
+                onPress={() => {
                   setSystemPrompt(tpl.template_text)
                   setShowTemplates(false)
                 }}
@@ -165,8 +210,16 @@ function AssistantEditor({
           </div>
         )}
         <TextArea
+          name={`assistantSystemPrompt-${assistant.id}`}
           value={systemPrompt}
           onChange={(e) => setSystemPrompt(e.target.value)}
+          onKeyDown={(event) => {
+            if (event.nativeEvent.isComposing) return
+            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault()
+              void handleSave()
+            }
+          }}
           rows={6}
           className="resize-none font-mono text-xs"
         />
@@ -177,7 +230,7 @@ function AssistantEditor({
                 <Button
                   variant="outline"
                   className="text-xs px-1.5 py-0.5 bg-default/50 text-muted hover:bg-default font-mono"
-                  onClick={() => setSystemPrompt((prev) => prev + `{{${v.name}}}`)}
+                  onPress={() => setSystemPrompt((prev) => prev + `{{${v.name}}}`)}
                 >
                   {`{{${v.name}}}`}
                 </Button>
@@ -204,6 +257,8 @@ function AssistantEditor({
         <TextField fullWidth type="number">
           <Label>{t('settings.assistant.temperature')}</Label>
           <Input
+            name={`assistantTemperature-${assistant.id}`}
+            inputMode="decimal"
             value={temperature}
             onChange={(e) => setTemperature(e.target.value)}
             placeholder={t('settings.assistant.providerDefault')}
@@ -214,7 +269,12 @@ function AssistantEditor({
         </TextField>
         <TextField fullWidth type="number">
           <Label>{t('settings.assistant.contextLimit')}</Label>
-          <Input value={contextLimit} onChange={(e) => setContextLimit(e.target.value)} />
+          <Input
+            name={`assistantContextLimit-${assistant.id}`}
+            inputMode="numeric"
+            value={contextLimit}
+            onChange={(e) => setContextLimit(e.target.value)}
+          />
         </TextField>
       </div>
 
@@ -247,6 +307,9 @@ function AssistantEditor({
             <Input
               fullWidth
               type="number"
+              name={`assistantThinkingBudget-${assistant.id}`}
+              aria-label={t('settings.assistant.thinkingBudget')}
+              inputMode="numeric"
               value={thinkingBudget}
               onChange={(e) => setThinkingBudget(e.target.value)}
               placeholder={t('settings.assistant.thinkingBudget')}
@@ -414,18 +477,22 @@ function AssistantEditor({
               ))}
             </div>
           </div>
-          {skillError && <p className="text-xs text-danger">{skillError}</p>}
+          {skillError && (
+            <p role="alert" className="text-xs text-danger">
+              {skillError}
+            </p>
+          )}
         </SettingsDrilldown>
       )}
 
       <div className="flex items-center gap-2 pt-1">
-        <Button onClick={handleSave}>{t('common.save')}</Button>
+        <Button onPress={handleSave}>{t('common.save')}</Button>
         {saved && <SavedHint />}
         {onDelete && (
           <Button
             variant="ghost"
             className="ml-auto text-danger hover:text-danger"
-            onClick={() => onDelete(assistant.id)}
+            onPress={() => onDelete(assistant.id)}
           >
             {t('common.delete')}
           </Button>
@@ -440,8 +507,28 @@ export function AssistantSettings() {
   const [assistants, setAssistants] = useState<Assistant[]>([])
   const [providers, setProviders] = useState<Provider[]>([])
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [dirtyAssistantId, setDirtyAssistantId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const { confirm, confirmDialog } = useConfirm()
+
+  const requestLeave = useCallback(async () => {
+    if (!dirtyAssistantId) return true
+    return confirm({ body: t('settings.unsavedChanges'), status: 'warning' })
+  }, [confirm, dirtyAssistantId, t])
+  useSettingsDirtyRegistration('assistants', 'assistant-editor', dirtyAssistantId !== null)
+
+  const handleDirtyChange = useCallback((id: string, dirty: boolean) => {
+    setDirtyAssistantId((current) => (dirty ? id : current === id ? null : current))
+  }, [])
+
+  const changeExpanded = useCallback(
+    async (next: string | null) => {
+      if (next === expandedId || !(await requestLeave())) return
+      setExpandedId(next)
+    },
+    [expandedId, requestLeave],
+  )
 
   const refresh = useCallback(async () => {
     const [aList, pList] = await Promise.all([api.listAssistants(), api.listProviders()])
@@ -450,14 +537,17 @@ export function AssistantSettings() {
   }, [])
 
   useEffect(() => {
-    refresh().then(() => setLoading(false))
+    void refresh()
+      .catch((reason) => setLoadError(String(reason)))
+      .finally(() => setLoading(false))
   }, [refresh])
 
   const handleCreate = useCallback(async () => {
+    if (!(await requestLeave())) return
     const a = await api.createAssistant('New Assistant', 'You are a helpful assistant.')
     await refresh()
     setExpandedId(a.id)
-  }, [refresh])
+  }, [refresh, requestLeave])
 
   const handleSave = useCallback(
     async (id: string, updates: Record<string, unknown>) => {
@@ -471,6 +561,7 @@ export function AssistantSettings() {
     async (id: string) => {
       if (!(await confirm({ body: t('settings.confirmDelete.assistant') }))) return
       await api.deleteAssistant(id)
+      setDirtyAssistantId(null)
       if (expandedId === id) setExpandedId(null)
       await refresh()
     },
@@ -481,13 +572,38 @@ export function AssistantSettings() {
     return <SettingsSkeleton />
   }
 
+  if (loadError && assistants.length === 0) {
+    return (
+      <SettingsPane>
+        <SettingsHeader title={t('settings.assistant.title')} subtitle={t('settings.assistant.subtitle')} />
+        <div role="alert" className="space-y-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+          <p>{t('settings.assistant.loadError')}</p>
+          <p className="break-all">{loadError}</p>
+          <Button
+            size="sm"
+            variant="outline"
+            onPress={() => {
+              setLoadError(null)
+              setLoading(true)
+              void refresh()
+                .catch((reason) => setLoadError(String(reason)))
+                .finally(() => setLoading(false))
+            }}
+          >
+            {t('settings.assistant.retry')}
+          </Button>
+        </div>
+      </SettingsPane>
+    )
+  }
+
   return (
     <SettingsPane>
       <SettingsHeader
         title={t('settings.assistant.title')}
         subtitle={t('settings.assistant.subtitle')}
         actions={
-          <Button variant="outline" onClick={handleCreate}>
+          <Button variant="outline" onPress={handleCreate}>
             <Plus className="w-3.5 h-3.5" />
             {t('settings.assistant.new')}
           </Button>
@@ -500,7 +616,7 @@ export function AssistantSettings() {
       <DisclosureGroup
         className="flex flex-col gap-1"
         expandedKeys={expandedId ? [expandedId] : []}
-        onExpandedChange={(keys) => setExpandedId(([...keys][0] as string | undefined) ?? null)}
+        onExpandedChange={(keys) => void changeExpanded(([...keys][0] as string | undefined) ?? null)}
       >
         {assistants.map((a) => {
           const isExpanded = expandedId === a.id
@@ -519,8 +635,12 @@ export function AssistantSettings() {
                     `text-start` undoes the button element's centred UA default. */}
                 <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30">
                   <span className="min-w-0 flex-1 truncate">{a.name}</span>
-                  {/* eslint-disable-next-line no-restricted-syntax -- gold-star semantics: default-assistant marker is intentionally amber (CLAUDE.md whitelist) */}
-                  {isDefault && <StarFill className="w-3.5 h-3.5 text-amber-500" />}
+                  {isDefault && (
+                    <span className="shrink-0 text-warning">
+                      <StarFill aria-hidden="true" className="w-3.5 h-3.5" />
+                      <span className="sr-only">{t('settings.assistant.defaultBadge')}</span>
+                    </span>
+                  )}
                   {/* Both truncate, and both need `min-w-0` to be allowed to.
                       A model id has no spaces in it, so its min-content width is
                       the whole string: on a narrow row these two took what they
@@ -548,6 +668,7 @@ export function AssistantSettings() {
                       providers={providers}
                       onSave={handleSave}
                       onDelete={isDefault ? undefined : handleDelete}
+                      onDirtyChange={handleDirtyChange}
                     />
                   )}
                 </Disclosure.Body>

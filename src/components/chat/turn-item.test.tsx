@@ -615,7 +615,22 @@ describe('TurnItem', () => {
     expect(edit).toHaveAttribute('data-slot', 'action-button')
 
     await userEvent.click(edit)
-    expect(screen.getByDisplayValue('q')).toBeVisible()
+    expect(screen.getByRole('textbox', { name: 'Edit message' })).toHaveValue('q')
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel editing' }))
+    expect(screen.getByRole('button', { name: 'Edit' })).toHaveFocus()
+  })
+
+  it('exposes the current rating as a pressed toggle state', async () => {
+    const u = msg('user', { content: 'q' })
+    const a = msg('assistant', { _blocks: [text('a')], content: 'a', rating: 1 })
+    const turn = buildTurns([u, a])[0]
+    const onRate = vi.fn()
+    render(<TurnItem turn={turn} conversationId={CONV} onRate={onRate} />)
+
+    expect(screen.getByRole('button', { name: 'Good response' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Bad response' })).toHaveAttribute('aria-pressed', 'false')
+    await userEvent.click(screen.getByRole('button', { name: 'Good response' }))
+    expect(onRate).toHaveBeenCalledWith(a.id, null)
   })
 
   describe('branch pager', () => {

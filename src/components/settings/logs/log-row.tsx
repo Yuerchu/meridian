@@ -17,18 +17,33 @@ function renderValue(value: unknown): string {
  * record is from another day — rotated files span several, and a bare clock
  * time there says nothing about which one.
  */
-function formatLocalTime(tsMs: number): string {
+const dateFormatters = new Map<string, { time: Intl.DateTimeFormat; dateTime: Intl.DateTimeFormat }>()
+
+function formatLocalTime(tsMs: number, locale: string): string {
   const d = new Date(tsMs)
-  const pad = (n: number, width = 2) => String(n).padStart(width, '0')
-  const clock = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`
+  let formatters = dateFormatters.get(locale)
+  if (!formatters) {
+    const clockOptions: Intl.DateTimeFormatOptions = {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      fractionalSecondDigits: 3,
+      hourCycle: 'h23',
+    }
+    formatters = {
+      time: new Intl.DateTimeFormat(locale, clockOptions),
+      dateTime: new Intl.DateTimeFormat(locale, { ...clockOptions, month: '2-digit', day: '2-digit' }),
+    }
+    dateFormatters.set(locale, formatters)
+  }
   const now = new Date()
   const sameDay =
     d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()
-  return sameDay ? clock : `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${clock}`
+  return sameDay ? formatters.time.format(d) : formatters.dateTime.format(d)
 }
 
 function LogRowImpl({ entry }: { entry: LogEntry }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [copied, markCopied] = useTemporaryFlag()
 
   const onCopy = useCallback(() => {
@@ -45,7 +60,7 @@ function LogRowImpl({ entry }: { entry: LogEntry }) {
   // but showing that verbatim puts an event the user caused at 00:44 under a
   // timestamp of 16:01, which makes the log look like it belongs to someone
   // else's session.
-  const time = formatLocalTime(entry.tsMs)
+  const time = formatLocalTime(entry.tsMs, i18n.resolvedLanguage ?? i18n.language)
 
   return (
     <div
@@ -90,7 +105,7 @@ function LogRowImpl({ entry }: { entry: LogEntry }) {
         variant="ghost"
         size="sm"
         aria-label={t('settings.about.logs.copyRecord')}
-        onClick={onCopy}
+        onPress={onCopy}
         // Focus-visible alone does not rescue this on a touch screen, where a
         // tap grants no focus ring — the only action on the row would be
         // permanently invisible.

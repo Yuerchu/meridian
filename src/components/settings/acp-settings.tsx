@@ -5,6 +5,7 @@ import { api } from '@/api'
 import { cn } from '@/lib/utils'
 import type { AcpCheck, AcpConfig } from '@/types'
 import { SavedHint, SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
+import { useSettingsDirtyRegistration } from './dirty-guard'
 
 /**
  * Mirrors `AcpConfig::default()`. Duplicated rather than fetched because the
@@ -40,6 +41,7 @@ export function AcpSettings() {
   const [saved, setSaved] = useState(false)
   const [checking, setChecking] = useState(false)
   const [check, setCheck] = useState<AcpCheck | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
   /**
    * What is on disk, as opposed to what is in the fields.
    *
@@ -72,10 +74,17 @@ export function AcpSettings() {
 
   const save = useCallback(async () => {
     if (!config) return
-    const next = await api.acpSaveConfig({ command: config.command.trim(), args: parseArgs(argsText) })
-    setConfig(next)
-    setOnDisk(next)
-    setArgsText(next.args.join('\n'))
+    setSaveError(null)
+    let next: AcpConfig
+    try {
+      next = await api.acpSaveConfig({ command: config.command.trim(), args: parseArgs(argsText) })
+      setConfig(next)
+      setOnDisk(next)
+      setArgsText(next.args.join('\n'))
+    } catch (reason) {
+      setSaveError(String(reason))
+      return
+    }
     // A stale verdict is worse than none: it was about the command that was
     // configured a moment ago, and it is the one thing on this page that looks
     // authoritative.
@@ -114,6 +123,7 @@ export function AcpSettings() {
     config !== null &&
     onDisk !== null &&
     (config.command.trim() !== onDisk.command || parseArgs(argsText).join('\n') !== onDisk.args.join('\n'))
+  useSettingsDirtyRegistration('acp', 'acp-config', dirty)
 
   // First load only. A refresh gets the spinner on the button that asked for it.
   if (!config) {
@@ -137,6 +147,7 @@ export function AcpSettings() {
         <Input
           id={commandId}
           fullWidth
+          name="acpCommand"
           value={config.command}
           onChange={(e) => setConfig({ ...config, command: e.target.value })}
           placeholder={DEFAULTS.command}
@@ -149,23 +160,34 @@ export function AcpSettings() {
         <TextArea
           id={argsId}
           fullWidth
+          name="acpArgs"
           rows={3}
           spellCheck={false}
           value={argsText}
           onChange={(e) => setArgsText(e.target.value)}
+          onKeyDown={(event) => {
+            if (event.nativeEvent.isComposing) return
+            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) void save()
+          }}
           className="font-mono text-xs"
         />
         <p className="text-xs text-muted">{t('settings.acp.argsHint')}</p>
       </div>
 
+      {saveError && (
+        <p role="alert" className="text-xs text-danger break-all">
+          {saveError}
+        </p>
+      )}
+
       <div className="flex items-center gap-2">
-        <Button variant="primary" onClick={() => void save()} isDisabled={!config.command.trim()}>
+        <Button variant="primary" onPress={() => void save()} isDisabled={!config.command.trim()}>
           {t('common.save')}
         </Button>
         {/* Refused while the fields are ahead of the file: the check starts
             the *saved* command, so a verdict now would be about the previous
             one and would read as being about what is on screen. */}
-        <Button variant="secondary" onClick={() => void runCheck()} isDisabled={checking || dirty}>
+        <Button variant="secondary" onPress={() => void runCheck()} isDisabled={checking || dirty}>
           {checking ? t('settings.acp.checking') : t('settings.acp.check')}
         </Button>
         {dirty && !checking && <p className="text-xs text-muted">{t('settings.acp.saveBeforeCheck')}</p>}

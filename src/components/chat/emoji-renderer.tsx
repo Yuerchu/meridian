@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
+import { ArrowsRotateRight, Picture } from '@gravity-ui/icons'
+import { Button } from '@heroui/react'
 import { api } from '@/api'
 import type { Emoji } from '@/types'
 
@@ -55,27 +58,66 @@ export function StickerImage({
   name?: string
   className?: string
 }) {
-  const [url, setUrl] = useState<string | null>(null)
+  const { t } = useTranslation()
+  const [attempt, setAttempt] = useState(0)
+  const [load, setLoad] = useState<{ status: 'loading' | 'loaded' | 'error'; url?: string }>({ status: 'loading' })
 
   useEffect(() => {
     let cancelled = false
+    setLoad({ status: 'loading' })
     void api
       .getEmojiFileUrl(stickerId)
       .then((next) => {
-        if (!cancelled) setUrl(next)
+        if (!cancelled) setLoad({ status: 'loaded', url: next })
       })
       .catch(() => {
-        if (!cancelled) setUrl(null)
+        if (!cancelled) setLoad({ status: 'error' })
       })
     return () => {
       cancelled = true
     }
-  }, [stickerId])
+  }, [stickerId, attempt])
 
-  if (!url) {
-    return <div className={`${className} rounded-xl bg-default/40 animate-pulse`} aria-label={name} />
+  if (load.status === 'loading') {
+    return (
+      <div
+        className={`${className} rounded-xl bg-default/40 animate-pulse motion-reduce:animate-none`}
+        role="status"
+        aria-label={t('chat.emoji.loading', { name: name ?? t('chat.emoji.sticker') })}
+      />
+    )
   }
-  return <img src={url} alt={name ?? 'sticker'} title={name} className={`${className} object-contain`} />
+  if (load.status === 'error') {
+    return (
+      <div
+        className={`${className} flex flex-col items-center justify-center gap-1 rounded-xl bg-default/40 text-muted`}
+        role="group"
+        aria-label={t('chat.emoji.loadFailed', { name: name ?? t('chat.emoji.sticker') })}
+      >
+        <Picture aria-hidden className="size-6" />
+        <Button
+          variant="ghost"
+          size="sm"
+          className="touch-hitbox h-auto px-1 py-0.5 text-xs"
+          onPress={() => setAttempt((current) => current + 1)}
+        >
+          <ArrowsRotateRight aria-hidden className="size-3.5" />
+          {t('chat.emoji.retry')}
+        </Button>
+      </div>
+    )
+  }
+  return (
+    <img
+      src={load.url}
+      alt={name ?? t('chat.emoji.sticker')}
+      title={name}
+      loading="lazy"
+      width={128}
+      height={128}
+      className={`${className} object-contain`}
+    />
+  )
 }
 
 const EMOJI_REGEX = /\[emoji:([^\]]+)\]/g
@@ -102,6 +144,9 @@ export function renderEmojisInText(text: string, emojiMap: EmojiMap): (string | 
           src={entry.url}
           alt={emojiName}
           title={emojiName}
+          loading="lazy"
+          width={48}
+          height={48}
           className="emoji-sticker rounded"
         />,
       )

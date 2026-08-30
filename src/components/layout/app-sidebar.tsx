@@ -18,7 +18,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { Button, Input } from '@heroui/react'
+import { Button, Input, Spinner } from '@heroui/react'
 import { Sidebar, useSidebar } from '@heroui-pro/react/sidebar'
 import {
   Archive,
@@ -30,6 +30,7 @@ import {
   Pin,
   Plus,
   Terminal,
+  Xmark,
 } from '@gravity-ui/icons'
 import { ConversationIcon } from '@/components/ui/agent-icon'
 import { ClaudeSessionPicker } from './claude-session-picker'
@@ -61,7 +62,7 @@ interface AppSidebarProps {
   conversations: Conversation[]
   activeId: string | null
   onSelect: (id: string) => void
-  onCreate: () => void
+  onCreate: () => void | Promise<void>
   onDelete: (id: string) => void
   onRename: (id: string, newTitle: string) => void
   onTogglePin: (id: string) => void
@@ -73,7 +74,7 @@ interface AppSidebarProps {
   projects: Project[]
   activeProjectId: string | null
   onSelectProject: (id: string | null) => void
-  onCreateProject: (name: string, path: string) => void
+  onCreateProject: (name: string, path: string) => void | Promise<void>
   onDeleteProject: (id: string) => void
   onRenameProject: (id: string, newName: string) => void
   /** Start a hosted Claude Code session in `cwd`. Resolves to the reason it
@@ -106,6 +107,22 @@ function useDraft(): {
   return { name, path, setName, setPath, reset }
 }
 
+function useProjectCreation(): {
+  saving: boolean
+  error: string | null
+  setSaving: (value: boolean) => void
+  setError: (value: string | null) => void
+  reset: () => void
+} {
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const reset = useCallback(() => {
+    setSaving(false)
+    setError(null)
+  }, [])
+  return { saving, error, setSaving, setError, reset }
+}
+
 /**
  * The hosted form's *request*, lifted for the same reason its fields are — and
  * for a worse consequence.
@@ -136,15 +153,18 @@ function useHostedLaunch(): {
 
 function NewProjectForm({
   draft,
+  creation,
   onSubmit,
   onCancel,
 }: {
   draft: ReturnType<typeof useDraft>
-  onSubmit: (name: string, path: string) => void
+  creation: ReturnType<typeof useProjectCreation>
+  onSubmit: (name: string, path: string) => void | Promise<void>
   onCancel: () => void
 }) {
   const { t } = useTranslation()
   const { name, path, setName, setPath } = draft
+  const { saving, error, setSaving, setError } = creation
 
   const handleBrowse = useCallback(async () => {
     // Cancelling the picker rejects on Android instead of resolving to null.
@@ -158,11 +178,27 @@ function NewProjectForm({
     }
   }, [name, setName, setPath])
 
+  const submit = async () => {
+    const nextName = name.trim()
+    const nextPath = path.trim()
+    if (!nextName || !nextPath || saving) return
+    setSaving(true)
+    setError(null)
+    try {
+      await onSubmit(nextName, nextPath)
+    } catch (submitError) {
+      setError(t('sidebar.createProjectFailed', { error: String(submitError) }))
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="px-2 py-1.5 space-y-1.5">
       <Input
         fullWidth
         type="text"
+        aria-label={t('sidebar.projectName')}
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder={t('sidebar.projectName')}
@@ -170,7 +206,7 @@ function NewProjectForm({
         autoFocus
         onKeyDown={(e) => {
           if (e.nativeEvent.isComposing) return
-          if (e.key === 'Enter' && name.trim() && path.trim()) onSubmit(name.trim(), path.trim())
+          if (e.key === 'Enter') void submit()
           else if (e.key === 'Escape') onCancel()
         }}
       />
@@ -180,7 +216,13 @@ function NewProjectForm({
           address book of the wrong computer's folders would be worse than no
           picker at all. */}
       {can.browseForDirectory ? (
-        <Button type="button" variant="outline" onClick={handleBrowse} className="w-full justify-start text-xs">
+        <Button
+          type="button"
+          variant="outline"
+          onPress={() => void handleBrowse()}
+          isDisabled={saving}
+          className="w-full justify-start text-xs"
+        >
           <FolderOpen className="text-muted" />
           <span className={path ? 'text-foreground truncate' : 'text-muted'}>{path || t('sidebar.browsePath')}</span>
         </Button>
@@ -195,23 +237,30 @@ function NewProjectForm({
           className="text-xs"
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return
-            if (e.key === 'Enter' && name.trim() && path.trim()) onSubmit(name.trim(), path.trim())
+            if (e.key === 'Enter') void submit()
             else if (e.key === 'Escape') onCancel()
           }}
         />
       )}
+      {error && (
+        <p role="alert" className="text-xs text-danger">
+          {error}
+        </p>
+      )}
       <div className="flex gap-1">
         <Button
           variant="secondary"
-          onClick={() => name.trim() && path.trim() && onSubmit(name.trim(), path.trim())}
-          isDisabled={!name.trim() || !path.trim()}
+          aria-busy={saving}
+          onPress={() => void submit()}
+          isDisabled={!name.trim() || !path.trim() || saving}
           className="flex-1"
         >
+          {saving && <Spinner size="sm" aria-hidden />}
           {t('common.save')}
         </Button>
         {/* The glyph is not a name: a screen reader reads U+2715 as nothing, or
             as "multiplication x". */}
-        <Button variant="ghost" aria-label={t('common.cancel')} onClick={onCancel}>
+        <Button variant="ghost" aria-label={t('common.cancel')} onPress={onCancel} isDisabled={saving}>
           ✕
         </Button>
       </div>
@@ -270,7 +319,12 @@ function NewHostedSessionForm({
           on the machine the backend is on, so a picker showing this device's
           folders would be pointing at the wrong filesystem. */}
       {can.browseForDirectory ? (
-        <Button type="button" variant="outline" onClick={handleBrowse} className="w-full justify-start text-xs">
+        <Button
+          type="button"
+          variant="outline"
+          onPress={() => void handleBrowse()}
+          className="w-full justify-start text-xs"
+        >
           <FolderOpen className="text-muted" />
           <span className={path ? 'text-foreground truncate' : 'text-muted'}>
             {path || t('sidebar.hostedSessionFolder')}
@@ -301,13 +355,15 @@ function NewHostedSessionForm({
       <div className="flex gap-1">
         <Button
           variant="secondary"
-          onClick={() => void submit()}
+          aria-busy={starting}
+          onPress={() => void submit()}
           isDisabled={!path.trim() || starting}
           className="flex-1"
         >
-          {starting ? t('sidebar.startingHostedSession') : t('sidebar.startHostedSession')}
+          {starting && <Spinner size="sm" aria-hidden />}
+          {t('sidebar.startHostedSession')}
         </Button>
-        <Button variant="ghost" aria-label={t('common.cancel')} onClick={onCancel} isDisabled={starting}>
+        <Button variant="ghost" aria-label={t('common.cancel')} onPress={onCancel} isDisabled={starting}>
           ✕
         </Button>
       </div>
@@ -416,12 +472,14 @@ export function AppSidebar({
   // Held here because `settingsSide`/`appSide` below are rendered twice under
   // 768px — once as the hidden panel, once as the sheet. See `useDraft`.
   const projectDraft = useDraft()
+  const projectCreation = useProjectCreation()
   const hostedDraft = useDraft()
   const hostedLaunch = useHostedLaunch()
   /** The session picker, and which of its two jobs it is doing. `attach`
    *  carries the conversation being repointed. */
   const [picker, setPicker] = useState<{ mode: 'import' | 'attach'; conversationId?: string } | null>(null)
   const [renameTarget, setRenameTarget] = useState<{ type: 'conversation' | 'project'; id: string } | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const { confirm, confirmDialog } = useConfirm()
 
   // The sheet is a level of its own, so the back key closes it before it
@@ -490,6 +548,7 @@ export function AppSidebar({
   const conversationActions = useConversationActions({
     onTogglePin,
     onRequestRename: (id) => setRenameTarget({ type: 'conversation', id }),
+    onExportError: (error) => setActionError(t('sidebar.exportFailed', { error: String(error) })),
     onRequestDelete: async (id) => {
       if (await confirm({ body: t('confirm.deleteConversation') })) onDelete(id)
     },
@@ -711,8 +770,8 @@ export function AppSidebar({
                 size="sm"
                 variant="ghost"
                 aria-label={t('sidebar.newProject')}
-                onClick={() => setShowNewProject(true)}
-                className="size-6 rounded-md text-muted"
+                onPress={() => setShowNewProject(true)}
+                className="touch-hitbox size-6 rounded-md text-muted"
               >
                 <FolderPlus />
               </Button>
@@ -780,14 +839,17 @@ export function AppSidebar({
           {showNewProject && (
             <NewProjectForm
               draft={projectDraft}
-              onSubmit={(name, path) => {
-                onCreateProject(name, path)
+              creation={projectCreation}
+              onSubmit={async (name, path) => {
+                await onCreateProject(name, path)
                 setShowNewProject(false)
                 projectDraft.reset()
+                projectCreation.reset()
               }}
               onCancel={() => {
                 setShowNewProject(false)
                 projectDraft.reset()
+                projectCreation.reset()
               }}
             />
           )}
@@ -812,6 +874,21 @@ export function AppSidebar({
       </Sidebar.Content>
 
       <Sidebar.Footer>
+        {actionError && (
+          <div role="alert" className="flex items-start gap-1.5 px-2 py-1.5 text-xs text-danger">
+            <span className="min-w-0 flex-1 break-words">{actionError}</span>
+            <Button
+              isIconOnly
+              size="sm"
+              variant="ghost"
+              aria-label={t('common.close')}
+              onPress={() => setActionError(null)}
+              className="touch-hitbox shrink-0"
+            >
+              <Xmark />
+            </Button>
+          </div>
+        )}
         <Sidebar.Menu aria-label={t('sidebar.settings')}>
           <Sidebar.MenuItem id={`${prefix}settings`} textValue={t('sidebar.settings')} onAction={openSettings}>
             <Sidebar.MenuIcon>

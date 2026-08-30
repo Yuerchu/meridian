@@ -133,6 +133,16 @@ describe('ToolCallBlock file-edit diff rendering', () => {
     expect(screen.getByText('+2')).toBeVisible()
   })
 
+  it('keeps a large file diff bounded until the user asks for every line', async () => {
+    const content = Array.from({ length: 320 }, (_, index) => `line-${index}`).join('\n')
+    const { container } = render(<ToolCallBlock data={toolCall('write_file', { path: 'notes/large.txt', content })} />)
+
+    expect(container.querySelectorAll('[data-slot="file-diff-line"]')).toHaveLength(300)
+    await userEvent.click(screen.getByRole('button', { name: 'Show all lines' }))
+    expect(container.querySelectorAll('[data-slot="file-diff-line"]')).toHaveLength(320)
+    expect(screen.getByRole('button', { name: 'Show fewer lines' })).toBeVisible()
+  })
+
   it('shows an unrecognized patch format as plain text with real newlines', () => {
     const { container } = render(
       <ToolCallBlock data={toolCall('apply_patch', { patch: 'not a real patch\nsecond line' })} />,
@@ -153,6 +163,24 @@ describe('ToolCallBlock file-edit diff rendering', () => {
     expect(args).not.toBeNull()
     expect(args!).toBeVisible()
     expect(args!.textContent).toContain(partial)
+  })
+})
+
+describe('large tool results', () => {
+  it('provides a keyboard-accessible route to the complete command output', async () => {
+    const tail = 'COMPLETE-OUTPUT-TAIL'
+    const data = {
+      ...toolCall('run_command', { command: 'long-command' }, 'completed'),
+      result: `start\n${'x'.repeat(2100)}\n${tail}`,
+    }
+    const { container } = render(<ToolCallBlock data={data} />)
+    const trigger = container.querySelector('[data-slot="chat-tool-trigger"]')!
+    await userEvent.click(trigger)
+
+    expect(container.textContent).not.toContain(tail)
+    await userEvent.click(screen.getByRole('button', { name: 'Show full result' }))
+    expect(container.textContent).toContain(tail)
+    expect(screen.getByRole('button', { name: 'Show less' })).toBeVisible()
   })
 })
 
@@ -542,10 +570,34 @@ describe('a hosted agent asks with the same cards', () => {
       />,
     )
 
-    await userEvent.click(screen.getByRole('button', { name: /^A/ }))
+    expect(screen.getByRole('radiogroup', { name: 'Which one?' })).toBeVisible()
+    expect(screen.getByRole('textbox', { name: 'Which one?' })).toBeVisible()
+    await userEvent.click(screen.getByRole('radio', { name: 'A' }))
     await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.tool.askUserSubmit') }))
 
     expect(api.respondToAsk).toHaveBeenCalledWith('appr-1', JSON.stringify({ scope: 'A' }))
+  })
+
+  it('keeps the submit name and exposes a busy state while an answer is sending', async () => {
+    let finish!: () => void
+    vi.mocked(api.respondToAsk).mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finish = resolve
+      }),
+    )
+    waiting('appr-1', {
+      questions: [{ id: 'scope', question: 'Which one?', options: [{ label: 'A' }, { label: 'B' }] }],
+    })
+    render(<ToolCallBlock data={toolCall('AskUserQuestion', { questions: [] })} />)
+
+    await userEvent.click(screen.getByRole('radio', { name: 'A' }))
+    const submit = screen.getByRole('button', { name: i18n.t('chat.tool.askUserSubmit') })
+    await userEvent.click(submit)
+
+    expect(submit).toHaveAttribute('aria-disabled', 'true')
+    expect(submit.closest('form')).toHaveAttribute('aria-busy', 'true')
+    expect(submit.querySelector('[data-slot="spinner"]')).not.toBeNull()
+    finish()
   })
 
   /**
@@ -576,7 +628,9 @@ describe('a hosted agent asks with the same cards', () => {
     // The questions render in order, so the boxes do too.
     const [branch, note] = screen.getAllByRole('textbox')
     await userEvent.type(note, 'be careful')
-    expect(submit()).toBeDisabled()
+    expect(submit()).toBeEnabled()
+    await userEvent.click(submit())
+    expect(await screen.findByText(i18n.t('chat.tool.answerRequired'))).toBeVisible()
     expect(api.respondToAsk).not.toHaveBeenCalled()
 
     // Answering it releases the form, and the optional answer goes with it
@@ -616,10 +670,12 @@ describe('a hosted agent asks with the same cards', () => {
     const submit = () => screen.getByRole('button', { name: i18n.t('chat.tool.askUserSubmit') })
 
     await userEvent.type(screen.getByRole('textbox'), 'something else entirely')
-    expect(submit()).toBeDisabled()
+    expect(submit()).toBeEnabled()
+    await userEvent.click(submit())
+    expect(await screen.findByText(i18n.t('chat.tool.answerRequired'))).toBeVisible()
     expect(api.respondToAsk).not.toHaveBeenCalled()
 
-    await userEvent.click(screen.getByRole('button', { name: /^A/ }))
+    await userEvent.click(screen.getByRole(multi ? 'checkbox' : 'radio', { name: 'A' }))
     await userEvent.click(submit())
     // One string for two actions, which is what `formatAnswer` sends. That it
     // is *accepted* rather than declined is the other half of this and cannot
@@ -646,7 +702,7 @@ describe('a hosted agent asks with the same cards', () => {
       ],
     })
     render(<ToolCallBlock data={toolCall('AskUserQuestion', { questions: [] })} />)
-    expect(screen.getByRole('button', { name: /^A/ })).toBeVisible()
+    expect(screen.getByRole('radio', { name: 'A' })).toBeVisible()
     expect(screen.queryByRole('textbox')).toBeNull()
   })
 
@@ -665,7 +721,7 @@ describe('a hosted agent asks with the same cards', () => {
     })
     const { rerender } = render(<ToolCallBlock data={data} />)
 
-    await userEvent.click(screen.getByRole('button', { name: /^A/ }))
+    await userEvent.click(screen.getByRole('radio', { name: 'A' }))
     await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.tool.askUserSubmit') }))
 
     useConversationStore.setState({ attention: {}, attentionOrder: [] })

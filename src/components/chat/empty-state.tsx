@@ -130,6 +130,7 @@ export function EmptyState({ onSubmit, disabled }: EmptyStateProps) {
             onSubmit={handleSubmit}
             onVoiceSend={handleVoiceSend}
             disabled={locked}
+            pending={submitting}
             assistants={settings.assistants}
             providers={settings.providers}
             currentAssistantId={settings.selectedAssistantId}

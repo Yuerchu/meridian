@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Input } from '@heroui/react'
 import { Check } from '@gravity-ui/icons'
@@ -10,6 +10,8 @@ import { usePlatform } from '@/hooks/use-platform'
 import { AndroidFileAccess } from './android-file-access'
 import { RemoteClientSettings } from './remote-client-settings'
 import { SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
+import { useSettingsDirtyRegistration } from './dirty-guard'
+import { useConfirm } from '@/hooks/use-confirm'
 
 const LANGUAGE_OPTIONS = LANGUAGES.map((lang) => ({ value: lang.code, label: lang.label }))
 
@@ -34,6 +36,10 @@ export function GeneralSettings() {
   const [searchApiKey, setSearchApiKey] = useState('')
   const [searchKeyExists, setSearchKeyExists] = useState(false)
   const [searchKeySaved, markSearchKeySaved, clearSearchKeySaved] = useTemporaryFlag()
+  const [searchKeyError, setSearchKeyError] = useState<string | null>(null)
+  const searchProviderTouched = useRef(false)
+  const { confirm, confirmDialog } = useConfirm()
+  useSettingsDirtyRegistration('general', 'search-api-key', searchApiKey.trim().length > 0)
 
   useEffect(() => {
     api.getPreference('shell').then((v) => {
@@ -49,7 +55,7 @@ export function GeneralSettings() {
       else setSandboxMode('auto')
     })
     api.getPreference('search_provider').then((v) => {
-      if (v) setSearchProvider(v)
+      if (v && !searchProviderTouched.current) setSearchProvider(v)
     })
   }, [])
 
@@ -90,19 +96,29 @@ export function GeneralSettings() {
     api.setPreference('sandbox.enabled', value)
   }
 
-  const handleSearchProviderChange = (value: string) => {
+  const handleSearchProviderChange = async (value: string) => {
+    if (value === searchProvider) return
+    if (searchApiKey.trim() && !(await confirm({ body: t('settings.unsavedChanges'), status: 'warning' }))) {
+      return
+    }
+    searchProviderTouched.current = true
     setSearchProvider(value)
-    api.setPreference('search_provider', value)
+    await api.setPreference('search_provider', value)
   }
 
   const handleSaveSearchKey = async () => {
     if (!searchApiKey.trim()) return
     const provider = SEARCH_PROVIDERS.find((p) => p.value === searchProvider)
     if (!provider) return
-    await api.setServiceKey(provider.keyService, searchApiKey.trim())
-    setSearchKeyExists(true)
-    setSearchApiKey('')
-    markSearchKeySaved()
+    setSearchKeyError(null)
+    try {
+      await api.setServiceKey(provider.keyService, searchApiKey.trim())
+      setSearchKeyExists(true)
+      setSearchApiKey('')
+      markSearchKeySaved()
+    } catch (reason) {
+      setSearchKeyError(String(reason))
+    }
   }
 
   return (
@@ -169,7 +185,7 @@ export function GeneralSettings() {
           ariaLabel={t('settings.general.webSearch')}
           value={searchProvider}
           options={SEARCH_PROVIDERS}
-          onChange={handleSearchProviderChange}
+          onChange={(value) => void handleSearchProviderChange(value)}
           fullWidth
           triggerClassName="max-w-xs"
         />
@@ -178,6 +194,8 @@ export function GeneralSettings() {
             fullWidth
             type="password"
             aria-label={t('settings.provider.apiKey')}
+            name="searchApiKey"
+            autoComplete="off"
             value={searchApiKey}
             onChange={(e) => setSearchApiKey(e.target.value)}
             onKeyDown={(e) => {
@@ -188,17 +206,25 @@ export function GeneralSettings() {
             className="max-w-xs"
           />
           <Button
+            aria-label={t('settings.general.save')}
             variant={searchKeySaved ? 'primary' : 'outline'}
-            onClick={handleSaveSearchKey}
+            onPress={handleSaveSearchKey}
             isDisabled={!searchApiKey.trim()}
           >
-            {searchKeySaved ? <Check className="w-4 h-4" /> : t('settings.general.save')}
+            {searchKeySaved && <Check aria-hidden="true" className="w-4 h-4" />}
+            {t('settings.general.save')}
           </Button>
         </div>
         <p className="text-xs text-muted">{t('settings.general.searchHint')}</p>
+        {searchKeyError && (
+          <p role="alert" className="text-xs text-danger break-all">
+            {searchKeyError}
+          </p>
+        )}
       </div>
 
       {platform === 'android' && <AndroidFileAccess />}
+      {confirmDialog}
     </SettingsPane>
   )
 }

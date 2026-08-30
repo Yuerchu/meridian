@@ -121,7 +121,14 @@ describe('EmptyState welcome composer', () => {
     ).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Options and attachments' }))
+    expect(await screen.findByRole('dialog', { name: 'Options and attachments' })).toBeVisible()
     expect(await screen.findByRole('button', { name: 'Attach File' })).toBeInTheDocument()
+
+    const mode = screen.getByRole('button', { name: /Mode.*Plan/i })
+    expect(mode).toHaveAttribute('aria-expanded', 'false')
+    await user.click(mode)
+    expect(mode).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: 'Plan' })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('fills the real composer from a suggestion without creating a conversation', async () => {
@@ -160,6 +167,32 @@ describe('EmptyState welcome composer', () => {
           acceptEdits: false,
         },
       }),
+    )
+  })
+
+  it('keeps a named pending state visible while the first conversation is being created', async () => {
+    let finish!: () => void
+    const onSubmit = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        }),
+    )
+    const user = userEvent.setup()
+    const { container } = render(<EmptyState onSubmit={onSubmit} />)
+
+    await user.type(screen.getByRole('textbox', { name: 'Send a message...' }), 'First question')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() =>
+      expect(container.querySelector('[data-slot="prompt-input"][data-status="submitted"]')).not.toBeNull(),
+    )
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
+    expect(container.querySelector('[data-slot="prompt-input-send"] [data-slot="spinner"]')).not.toBeNull()
+
+    finish()
+    await waitFor(() =>
+      expect(container.querySelector('[data-slot="prompt-input"][data-status="ready"]')).not.toBeNull(),
     )
   })
 

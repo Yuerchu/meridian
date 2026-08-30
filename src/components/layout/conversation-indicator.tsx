@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useConversationStore } from '@/stores/conversation-store'
 
 /**
@@ -22,6 +23,7 @@ export function ConversationIndicator({
   activeId: string | null
   transcriptInert?: boolean
 }) {
+  const { t } = useTranslation()
   const waiting = useConversationStore((s) =>
     Object.values(s.attention).some((a) => a.conversationId === conversationId),
   )
@@ -29,14 +31,29 @@ export function ConversationIndicator({
   if (conversationId === activeId && !transcriptInert) return null
 
   if (waiting) {
-    return <span className="size-2 shrink-0 rounded-full bg-warning animate-pulse" />
+    return (
+      <span className="shrink-0">
+        <span aria-hidden className="block size-2 rounded-full bg-warning animate-pulse motion-reduce:animate-none" />
+        <span className="sr-only">{t('sidebar.status.waiting')}</span>
+      </span>
+    )
   }
   if (!session) return null
   if (session.streaming) {
-    return <span className="size-2 shrink-0 rounded-full bg-info animate-pulse" />
+    return (
+      <span className="shrink-0">
+        <span aria-hidden className="block size-2 rounded-full bg-info animate-pulse motion-reduce:animate-none" />
+        <span className="sr-only">{t('sidebar.status.streaming')}</span>
+      </span>
+    )
   }
   if (session.fulfilledUnseen) {
-    return <span className="size-2 shrink-0 rounded-full bg-success" />
+    return (
+      <span className="shrink-0">
+        <span aria-hidden className="block size-2 rounded-full bg-success" />
+        <span className="sr-only">{t('sidebar.status.unseen')}</span>
+      </span>
+    )
   }
   return null
 }

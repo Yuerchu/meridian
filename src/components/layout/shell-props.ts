@@ -31,12 +31,12 @@ export interface ShellProps {
   canDragWindow: boolean
 
   onSelect: (id: string) => void
-  onCreate: () => void
+  onCreate: () => void | Promise<void>
   onDelete: (id: string) => void
   onRename: (id: string, newTitle: string) => void
   onTogglePin: (id: string) => void
   onSelectProject: (id: string | null) => void
-  onCreateProject: (name: string, path: string) => void
+  onCreateProject: (name: string, path: string) => void | Promise<void>
   /** Start a hosted Claude Code session. Resolves to why it failed, or `null`. */
   onCreateHostedSession: (cwd: string) => Promise<string | null>
   onDeleteProject: (id: string) => void
