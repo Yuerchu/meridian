@@ -3,12 +3,14 @@ import { useTranslation } from 'react-i18next'
 import { Plus, ArrowsRotateRight, TrashBin, Cloud, Key, Sliders, Xmark } from '@gravity-ui/icons'
 import { Button, Description, Disclosure, Input, Label, Spinner, TextField, Tooltip } from '@heroui/react'
 import { EmptyState } from '@heroui-pro/react/empty-state'
+import { ListView } from '@heroui-pro/react/list-view'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
+import { ModelIcon } from '@/components/ui/model-icon'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import { MasterDetail } from './master-detail'
-import { SavedHint, SettingsRow, SettingsSelect, SettingsSkeleton } from './primitives'
+import { SavedHint, SettingsSelect, SettingsSkeleton } from './primitives'
 import { useMasterDetail } from './use-master-detail'
 import { EFFORT_LADDER } from '@/lib/thinking'
 import type {
@@ -1376,19 +1378,15 @@ export function ProviderSettings() {
   const selected = providers.find((p) => p.id === selectedId)
 
   const providerList = (
-    <>
-      {providers.map((p) => (
-        <SettingsRow
-          key={p.id}
-          icon={<Cloud />}
-          label={p.name}
-          isActive={selectedId === p.id}
-          // A list of peers, not a row that opens something else.
-          trailing={null}
-          onClick={() => nav.openItem(p.id)}
-        />
-      ))}
-      {providers.length === 0 && (
+    <ListView
+      aria-label={t('settings.provider.title')}
+      className="flex flex-col gap-1"
+      selectedKeys={selectedId ? new Set([selectedId]) : new Set<string>()}
+      selectionBehavior="replace"
+      selectionMode="single"
+      shouldSelectOnPressUp
+      variant="secondary"
+      renderEmptyState={() => (
         // The text used to point at the "+" in the header, which is what an
         // empty state has an action slot for.
         <EmptyState size="sm">
@@ -1406,7 +1404,31 @@ export function ProviderSettings() {
           </EmptyState.Content>
         </EmptyState>
       )}
-    </>
+      onSelectionChange={(keys) => {
+        if (keys === 'all') return
+        const id = keys.values().next().value
+        if (typeof id === 'string' && id !== selectedId) nav.openItem(id)
+      }}
+    >
+      {providers.map((p) => {
+        const iconModel = p.catalog_id ?? p.provider_type
+        return (
+          <ListView.Item
+            key={p.id}
+            id={p.id}
+            textValue={p.name}
+            className="min-h-11 rounded-lg border-b-0 px-3 py-2 data-[selected=true]:bg-default data-[selected=true]:text-default-foreground"
+          >
+            <ListView.ItemContent>
+              <span className="flex size-4 shrink-0 items-center justify-center text-muted">
+                {iconModel ? <ModelIcon model={iconModel} size={16} /> : <Cloud className="size-4" />}
+              </span>
+              <ListView.Title className="font-normal">{p.name}</ListView.Title>
+            </ListView.ItemContent>
+          </ListView.Item>
+        )
+      })}
+    </ListView>
   )
 
   return (

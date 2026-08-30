@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FolderOpen, Xmark } from '@gravity-ui/icons'
-import { Button, Checkbox } from '@heroui/react'
+import { Button } from '@heroui/react'
+import { CellSwitch } from '@heroui-pro/react/cell-switch'
 import { EmptyState } from '@heroui-pro/react/empty-state'
 import { api } from '@/api'
 import type { SafRootEntry } from '@/types'
@@ -124,15 +125,18 @@ export function AndroidFileAccess() {
       </div>
 
       <div className="space-y-1.5">
-        <Checkbox className="text-sm" isSelected={manageEnabled} onChange={handleManageToggle}>
-          <Checkbox.Content>
-            <Checkbox.Control>
-              <Checkbox.Indicator />
-            </Checkbox.Control>
-            {t('settings.fileAccess.manageToggle')}
-          </Checkbox.Content>
-        </Checkbox>
-        <p className="text-xs text-muted">
+        <CellSwitch
+          aria-label={t('settings.fileAccess.manageToggle')}
+          aria-describedby="manage-storage-hint"
+          isSelected={manageEnabled}
+          onChange={handleManageToggle}
+        >
+          <CellSwitch.Trigger className="pointer-coarse:h-11">
+            <CellSwitch.Label>{t('settings.fileAccess.manageToggle')}</CellSwitch.Label>
+            <CellSwitch.Control />
+          </CellSwitch.Trigger>
+        </CellSwitch>
+        <p id="manage-storage-hint" className="text-xs text-muted">
           {manageEnabled && !manageGranted
             ? t('settings.fileAccess.manageNotGranted')
             : t('settings.fileAccess.manageHint')}

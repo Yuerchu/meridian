@@ -84,7 +84,7 @@ export function SettingsRow({
   label: React.ReactNode
   /** Current setting, shown at the end of the row. */
   value?: React.ReactNode
-  /** Defaults to a chevron when the row opens something. */
+  /** Defaults to a chevron when omitted. Pass `null` for no trailing content. */
   trailing?: React.ReactNode
   isActive?: boolean
 }) {
@@ -107,7 +107,7 @@ export function SettingsRow({
       {icon && <span className="flex size-4 shrink-0 items-center justify-center text-muted">{icon}</span>}
       <span className="min-w-0 flex-1 truncate text-start text-sm">{label}</span>
       {value && <span className="shrink-0 truncate text-xs text-muted">{value}</span>}
-      {trailing ?? <ChevronRight className="size-4 shrink-0 text-muted" />}
+      {trailing === undefined ? <ChevronRight className="size-4 shrink-0 text-muted" /> : trailing}
     </Button>
   )
 }

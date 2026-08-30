@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Description, Input, Label, TextField } from '@heroui/react'
+import { ItemCard } from '@heroui-pro/react/item-card'
 
 import { api } from '@/api'
 import { useConnectionState } from '@/hooks/use-connection-state'
@@ -75,22 +76,24 @@ export function RemoteClientSettings() {
     return (
       <div className="space-y-3">
         <p className="block text-xs font-medium text-muted">{t('settings.client.title')}</p>
-        <div className="rounded-lg border p-3 space-y-1">
-          <div className="flex items-center gap-2">
-            {/* Decoration: the state it stands for is spelled out beside it. */}
-            <span
-              aria-hidden
-              className={cn(
-                'inline-block size-2 rounded-full',
-                state === 'connected' ? 'bg-success' : offline ? 'bg-danger' : 'bg-warning',
-              )}
-            />
-            <span className="text-sm font-medium">{t(`settings.client.state.${state}`)}</span>
-          </div>
-          <p className="font-mono text-xs text-muted">
-            {config ? `${config.host}:${config.port}` : t('settings.client.unknownHost')}
-          </p>
-        </div>
+        <ItemCard variant="outline">
+          <ItemCard.Content className="min-w-0">
+            <ItemCard.Title className="flex w-full items-center gap-2">
+              {/* Decoration: the state it stands for is spelled out beside it. */}
+              <span
+                aria-hidden
+                className={cn(
+                  'inline-block size-2 shrink-0 rounded-full',
+                  state === 'connected' ? 'bg-success' : offline ? 'bg-danger' : 'bg-warning',
+                )}
+              />
+              {t(`settings.client.state.${state}`)}
+            </ItemCard.Title>
+            <ItemCard.Description className="w-full truncate font-mono">
+              {config ? `${config.host}:${config.port}` : t('settings.client.unknownHost')}
+            </ItemCard.Description>
+          </ItemCard.Content>
+        </ItemCard>
         <Button variant="outline" onClick={handleDisconnect}>
           {t('settings.client.disconnect')}
         </Button>

@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
 import { TrashBin } from '@gravity-ui/icons'
-import { Button, Card, Checkbox, Description, Input, Label, TextField } from '@heroui/react'
+import { Button, Checkbox, Description, Input, Label, Separator, TextField } from '@heroui/react'
+import { ItemCard } from '@heroui-pro/react/item-card'
+import { ItemCardGroup } from '@heroui-pro/react/item-card-group'
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
 import { SettingsHeader, SettingsPane } from './primitives'
@@ -116,33 +118,38 @@ export function VoiceCorpusSettings() {
       {sessions.length === 0 ? (
         <p className="text-muted text-sm">{t('settings.voiceCorpus.empty')}</p>
       ) : (
-        <div className="flex flex-col gap-2">
-          {sessions.map((session) => (
-            <Card key={session.handle} className="flex-row items-center gap-3 p-3">
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-mono text-sm">
-                  {t(`settings.voiceCorpus.kind.${session.kind}`)} · {session.handle}
-                </p>
-                <p className="text-muted text-xs">
-                  {t('settings.voiceCorpus.summary', {
-                    clips: session.clips,
-                    size: formatSize(session.bytes),
-                    untranscribed: session.untranscribed,
-                  })}
-                </p>
-              </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                isDisabled={busy}
-                onPress={() => deleteSession(session)}
-                aria-label={t('settings.voiceCorpus.deleteSession')}
-              >
-                <TrashBin />
-              </Button>
-            </Card>
+        <ItemCardGroup variant="outline">
+          {sessions.map((session, index) => (
+            <Fragment key={session.handle}>
+              {index > 0 && <Separator />}
+              <ItemCard>
+                <ItemCard.Content className="min-w-0">
+                  <ItemCard.Title className="w-full truncate font-mono">
+                    {t(`settings.voiceCorpus.kind.${session.kind}`)} · {session.handle}
+                  </ItemCard.Title>
+                  <ItemCard.Description className="w-full whitespace-normal">
+                    {t('settings.voiceCorpus.summary', {
+                      clips: session.clips,
+                      size: formatSize(session.bytes),
+                      untranscribed: session.untranscribed,
+                    })}
+                  </ItemCard.Description>
+                </ItemCard.Content>
+                <ItemCard.Action>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    isDisabled={busy}
+                    onPress={() => deleteSession(session)}
+                    aria-label={t('settings.voiceCorpus.deleteSession')}
+                  >
+                    <TrashBin />
+                  </Button>
+                </ItemCard.Action>
+              </ItemCard>
+            </Fragment>
           ))}
-        </div>
+        </ItemCardGroup>
       )}
 
       <TextField fullWidth>

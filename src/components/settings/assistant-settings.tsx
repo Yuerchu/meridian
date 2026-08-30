@@ -12,6 +12,7 @@ import {
   TextField,
   Tooltip,
 } from '@heroui/react'
+import { Segment } from '@heroui-pro/react/segment'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
@@ -265,19 +266,26 @@ function AssistantEditor({
               : t('settings.assistant.toolsCustom')
         }
       >
-        <div className="flex gap-2 mb-2">
-          <Button variant={toolMode === 'all' ? 'primary' : 'outline'} onClick={() => setToolMode('all')}>
+        <Segment
+          aria-label={t('settings.assistant.tools')}
+          className="mb-2 w-full"
+          selectedKey={toolMode}
+          onSelectionChange={(key) => {
+            if (key === 'all' || key === 'preset' || key === 'custom') setToolMode(key)
+          }}
+        >
+          <Segment.Item id="all" className="pointer-coarse:min-h-11">
             {t('settings.assistant.toolsAll')}
-          </Button>
+          </Segment.Item>
           {toolPresets.length > 0 && (
-            <Button variant={toolMode === 'preset' ? 'primary' : 'outline'} onClick={() => setToolMode('preset')}>
+            <Segment.Item id="preset" className="pointer-coarse:min-h-11">
               {t('settings.tools.preset')}
-            </Button>
+            </Segment.Item>
           )}
-          <Button variant={toolMode === 'custom' ? 'primary' : 'outline'} onClick={() => setToolMode('custom')}>
+          <Segment.Item id="custom" className="pointer-coarse:min-h-11">
             {t('settings.assistant.toolsCustom')}
-          </Button>
-        </div>
+          </Segment.Item>
+        </Segment>
         {toolMode === 'preset' && (
           <SettingsSelect
             ariaLabel={t('settings.tools.preset')}
