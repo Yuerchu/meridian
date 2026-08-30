@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ProviderSettings } from './provider-settings'
 import i18n from '@/i18n'
@@ -120,6 +120,15 @@ describe('ProviderSettings list/detail navigation', () => {
     expect(screen.queryByText(i18n.t('common.back'))).not.toBeInTheDocument()
   })
 
+  it('mobile: the first click can open the second provider', async () => {
+    mockViewport(true)
+    const user = userEvent.setup()
+    render(<ProviderSettings />)
+
+    await user.click(await screen.findByRole('row', { name: 'Provider Two' }))
+    expect(await screen.findByRole('heading', { name: 'Provider Two' })).toBeInTheDocument()
+  })
+
   it('mobile: back button returns from detail to the list', async () => {
     mockViewport(true)
     const user = userEvent.setup()
@@ -137,6 +146,30 @@ describe('ProviderSettings list/detail navigation', () => {
     mockViewport(false)
     render(<ProviderSettings />)
     expect(await screen.findByText(i18n.t('settings.provider.deleteProvider'))).toBeInTheDocument()
+  })
+
+  it('renders providers as a controlled single-select list with provider icons', async () => {
+    mockViewport(false)
+    mockApi.listProviders.mockResolvedValue([
+      makeProvider('p1', 'Provider One'),
+      { ...makeProvider('p2', 'Provider Two'), catalog_id: null, provider_type: 'google' },
+    ])
+    render(<ProviderSettings />)
+
+    const list = await screen.findByRole('grid', { name: i18n.t('settings.provider.title') })
+    const rows = within(list).getAllByRole('row')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toHaveAttribute('data-key', 'p1')
+    expect(rows[1]).toHaveAccessibleName('Provider Two')
+    expect(within(list).queryByRole('checkbox')).not.toBeInTheDocument()
+    await waitFor(() => expect(rows[0]).toHaveAttribute('aria-selected', 'true'))
+
+    await waitFor(() => {
+      const icons = list.querySelectorAll('[data-slot="model-icon"]')
+      expect(icons).toHaveLength(2)
+      expect(icons[0]).toHaveAttribute('data-model', 'openai')
+      expect(icons[1]).toHaveAttribute('data-model', 'google')
+    })
   })
 
   // Creating a provider names the vendor to the backend rather than leaving it

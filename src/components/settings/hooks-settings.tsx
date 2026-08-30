@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Checkbox, Input, Label, ListBox, Select } from '@heroui/react'
+import { ItemCard } from '@heroui-pro/react/item-card'
 import { api } from '@/api'
 import { cn } from '@/lib/utils'
 import type { Assistant, HooksConfig, HooksStatus, ModelInfo, Provider } from '@/types'
@@ -454,26 +455,29 @@ export function HooksSettings() {
       </div>
 
       {status && (
-        <div className="rounded-lg border p-3 space-y-1 text-sm">
-          <div className="flex items-center gap-2">
-            <span className={cn('inline-block w-2 h-2 rounded-full', running ? 'bg-success' : 'bg-muted')} />
-            <span className="font-medium">
+        <ItemCard variant="outline">
+          <ItemCard.Content className="min-w-0">
+            <ItemCard.Title className="flex w-full items-center gap-2">
+              <span
+                aria-hidden
+                className={cn('inline-block size-2 shrink-0 rounded-full', running ? 'bg-success' : 'bg-muted')}
+              />
               {running ? t('settings.hooks.statusRunning') : t('settings.hooks.statusStopped')}
-            </span>
-          </div>
-          {running && (
-            <p className="text-xs text-muted break-all">
-              http://{status.host}:{status.port}/hooks/exit-plan
-            </p>
-          )}
-          {/* The one thing worth showing when nothing works: the plugin reads
-              this file to find us, so its absence is the whole diagnosis. */}
-          {status.handshake_path && (
-            <p className="text-xs text-muted break-all">
-              {t('settings.hooks.handshake')}: {status.handshake_path}
-            </p>
-          )}
-        </div>
+            </ItemCard.Title>
+            {running && (
+              <ItemCard.Description className="w-full whitespace-normal break-all">
+                http://{status.host}:{status.port}/hooks/exit-plan
+              </ItemCard.Description>
+            )}
+            {/* The one thing worth showing when nothing works: the plugin reads
+                this file to find us, so its absence is the whole diagnosis. */}
+            {status.handshake_path && (
+              <ItemCard.Description className="w-full whitespace-normal break-all">
+                {t('settings.hooks.handshake')}: {status.handshake_path}
+              </ItemCard.Description>
+            )}
+          </ItemCard.Content>
+        </ItemCard>
       )}
     </SettingsPane>
   )

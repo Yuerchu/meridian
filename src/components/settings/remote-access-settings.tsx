@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Checkbox, Description, Input, Label, TextField } from '@heroui/react'
+import { Button, Checkbox, Description, Input, Label, Separator, TextField } from '@heroui/react'
+import { ItemCard } from '@heroui-pro/react/item-card'
+import { ItemCardGroup } from '@heroui-pro/react/item-card-group'
 import { Check, Copy, TriangleExclamation } from '@gravity-ui/icons'
 
 import { api } from '@/api'
@@ -246,26 +248,26 @@ export function RemoteAccessSettings() {
       </div>
 
       {status && (
-        <div className="rounded-lg border p-3 space-y-1 text-sm">
-          <div className="flex items-center gap-2">
-            {/* Decoration: the state it stands for is spelled out beside it,
+        <ItemCard variant="outline">
+          <ItemCard.Content className="min-w-0">
+            <ItemCard.Title className="flex w-full items-center gap-2">
+              {/* Decoration: the state it stands for is spelled out beside it,
                 so announcing the dot too would only say it twice. */}
-            <span
-              aria-hidden
-              className={cn('inline-block w-2 h-2 rounded-full', running ? 'bg-success' : 'bg-muted')}
-            />
-            <span className="font-medium">
+              <span
+                aria-hidden
+                className={cn('inline-block size-2 shrink-0 rounded-full', running ? 'bg-success' : 'bg-muted')}
+              />
               {running ? t('settings.remote.statusRunning') : t('settings.remote.statusStopped')}
-            </span>
-          </div>
-          {running && (
-            <p className="text-xs text-muted">
-              {t('settings.remote.connections', { count: status.connections })}
-              {' · '}
-              {status.host}:{status.port}
-            </p>
-          )}
-        </div>
+            </ItemCard.Title>
+            {running && (
+              <ItemCard.Description className="w-full whitespace-normal">
+                {t('settings.remote.connections', { count: status.connections })}
+                {' · '}
+                {status.host}:{status.port}
+              </ItemCard.Description>
+            )}
+          </ItemCard.Content>
+        </ItemCard>
       )}
 
       <div className="space-y-1.5">
@@ -273,29 +275,36 @@ export function RemoteAccessSettings() {
         {addresses.length === 0 ? (
           <p className="text-xs text-muted">{t('settings.remote.addressesEmpty')}</p>
         ) : (
-          <div className="rounded-lg border divide-y">
-            {addresses.map((address) => {
+          <ItemCardGroup variant="outline">
+            {addresses.map((address, index) => {
               const dialable = `${address}:${dialPort}`
               return (
-                <div key={address} className="flex items-center gap-2 p-2">
-                  <span className="min-w-0 flex-1 truncate font-mono text-sm">{dialable}</span>
-                  <Button
-                    isIconOnly
-                    size="sm"
-                    variant="ghost"
-                    aria-label={t('settings.remote.copyAddress')}
-                    onClick={() => copyAddress(dialable)}
-                  >
-                    {copied && copiedAddress === dialable ? (
-                      <Check className="size-3.5" />
-                    ) : (
-                      <Copy className="size-3.5" />
-                    )}
-                  </Button>
-                </div>
+                <Fragment key={address}>
+                  {index > 0 && <Separator />}
+                  <ItemCard>
+                    <ItemCard.Content className="min-w-0">
+                      <ItemCard.Title className="w-full truncate font-mono">{dialable}</ItemCard.Title>
+                    </ItemCard.Content>
+                    <ItemCard.Action>
+                      <Button
+                        isIconOnly
+                        size="sm"
+                        variant="ghost"
+                        aria-label={t('settings.remote.copyAddress')}
+                        onClick={() => copyAddress(dialable)}
+                      >
+                        {copied && copiedAddress === dialable ? (
+                          <Check className="size-3.5" />
+                        ) : (
+                          <Copy className="size-3.5" />
+                        )}
+                      </Button>
+                    </ItemCard.Action>
+                  </ItemCard>
+                </Fragment>
               )
             })}
-          </div>
+          </ItemCardGroup>
         )}
         <p className="text-xs text-muted">{t('settings.remote.addressesHint')}</p>
       </div>

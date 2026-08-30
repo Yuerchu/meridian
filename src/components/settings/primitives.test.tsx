@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-import { SettingsSelect } from './primitives'
+import { SettingsRow, SettingsSelect } from './primitives'
 
 type Level = 'all' | 'warn' | 'error'
 
@@ -10,6 +10,19 @@ const OPTIONS = [
   { value: 'warn', label: 'Warnings' },
   { value: 'error', label: 'Errors' },
 ] as const satisfies readonly { value: Level; label: string }[]
+
+describe('SettingsRow', () => {
+  it('uses the default chevron only when trailing content is omitted', () => {
+    const { container, rerender } = render(<SettingsRow label="Provider" />)
+    expect(container.querySelector('[data-slot="settings-row"] svg')).toBeInTheDocument()
+
+    // `null` is intentional absence, not a missing value. Provider and MCP peer
+    // rows used it to opt out of navigation chrome, but nullish coalescing put
+    // the chevron straight back.
+    rerender(<SettingsRow label="Provider" trailing={null} />)
+    expect(container.querySelector('[data-slot="settings-row"] svg')).not.toBeInTheDocument()
+  })
+})
 
 describe('SettingsSelect', () => {
   it('hands the caller its own value type back, never a key or null', async () => {

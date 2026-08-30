@@ -13,6 +13,9 @@
    silently. One line per component we actually use. */
 @import '@heroui-pro/react/css/components/command.css' layer(components);
 @import '@heroui-pro/react/css/components/file-tree.css' layer(components);
+@import '@heroui-pro/react/css/components/list-view.css' layer(components);
+@import '@heroui-pro/react/css/components/segment.css' layer(components);
+@import '@heroui-pro/react/css/components/cell-switch.css' layer(components);
 @import '@heroui-pro/react/css/components/floating-toc.css' layer(components);
 @import '@heroui-pro/react/css/components/resizable.css' layer(components);
 @import '@heroui-pro/react/css/components/kanban.css' layer(components);

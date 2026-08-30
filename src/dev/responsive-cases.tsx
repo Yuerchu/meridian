@@ -11,8 +11,8 @@ import { ComposerMenu } from '@/components/chat/composer-menu'
 import { MarkdownContent } from '@/components/chat/markdown-content'
 import { VoiceOverlay } from '@/components/chat/voice-overlay'
 import { MasterDetail } from '@/components/settings/master-detail'
-import { SettingsRow } from '@/components/settings/primitives'
 import { useMasterDetail } from '@/components/settings/use-master-detail'
+import { ListView } from '@heroui-pro/react/list-view'
 
 /**
  * The things worth putting in front of the detectors, and nothing else.
@@ -110,10 +110,36 @@ function SettingsCase() {
         nav={nav}
         title="Providers"
         list={
-          <>
-            <SettingsRow label="OpenAI" value="4 models" onClick={() => nav.openItem('openai')} />
-            <SettingsRow label="Anthropic" value="3 models" onClick={() => nav.openItem('anthropic')} />
-          </>
+          <ListView
+            aria-label="Providers"
+            className="flex flex-col gap-1"
+            selectedKeys={nav.selectedId ? new Set([nav.selectedId]) : new Set<string>()}
+            selectionBehavior="replace"
+            selectionMode="single"
+            shouldSelectOnPressUp
+            variant="secondary"
+            onSelectionChange={(keys) => {
+              if (keys === 'all') return
+              const id = keys.values().next().value
+              if (typeof id === 'string' && id !== nav.selectedId) nav.openItem(id)
+            }}
+          >
+            {[
+              ['openai', 'OpenAI'],
+              ['anthropic', 'Anthropic'],
+            ].map(([id, label]) => (
+              <ListView.Item
+                key={id}
+                id={id}
+                textValue={label}
+                className="min-h-11 rounded-lg border-b-0 px-3 py-2 data-[selected=true]:bg-default data-[selected=true]:text-default-foreground"
+              >
+                <ListView.ItemContent>
+                  <ListView.Title className="font-normal">{label}</ListView.Title>
+                </ListView.ItemContent>
+              </ListView.Item>
+            ))}
+          </ListView>
         }
         detailTitle="Anthropic"
         emptyDetail="Pick a provider"

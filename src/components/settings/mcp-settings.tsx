@@ -3,13 +3,13 @@ import { useTranslation } from 'react-i18next'
 import { Plus, PlugWire, PlugConnection, LogoMcp, TrashBin, ArrowDownToSquare } from '@gravity-ui/icons'
 import { Button, Input, Label, Switch, TextArea, TextField, Tooltip } from '@heroui/react'
 import { EmptyState } from '@heroui-pro/react/empty-state'
+import { ListView } from '@heroui-pro/react/list-view'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import type { McpServer, McpToolDef } from '@/types'
 import { MasterDetail } from './master-detail'
-import { SettingsRow } from './primitives'
 import { useMasterDetail } from './use-master-detail'
 
 interface McpServersJson {
@@ -396,20 +396,39 @@ export function McpSettings() {
   const selected = servers.find((s) => s.id === selectedId)
 
   const serverList = (
-    <div className="space-y-1">
+    <ListView
+      aria-label={t('settings.mcp.title')}
+      className="flex flex-col gap-1"
+      selectedKeys={selectedId ? new Set([selectedId]) : new Set<string>()}
+      selectionBehavior="replace"
+      selectionMode="single"
+      shouldSelectOnPressUp
+      variant="secondary"
+      onSelectionChange={(keys) => {
+        if (keys === 'all') return
+        const id = keys.values().next().value
+        if (typeof id === 'string' && id !== selectedId) openItem(id)
+      }}
+    >
       {servers.map((s) => (
-        <SettingsRow
+        <ListView.Item
           key={s.id}
-          icon={<LogoMcp />}
-          label={s.name}
-          // The transport was already sitting where the value slot puts it.
-          value={s.transport_type === 'streamablehttp' ? 'HTTP' : 'stdio'}
-          isActive={selectedId === s.id}
-          trailing={null}
-          onClick={() => nav.openItem(s.id)}
-        />
+          id={s.id}
+          textValue={s.name}
+          className="min-h-11 rounded-lg border-b-0 px-3 py-2 data-[selected=true]:bg-default data-[selected=true]:text-default-foreground"
+        >
+          <ListView.ItemContent>
+            <LogoMcp className="size-4" />
+            <ListView.Title className="font-normal">{s.name}</ListView.Title>
+          </ListView.ItemContent>
+          <ListView.ItemAction>
+            <span className="truncate text-xs text-muted">
+              {s.transport_type === 'streamablehttp' ? 'HTTP' : 'stdio'}
+            </span>
+          </ListView.ItemAction>
+        </ListView.Item>
       ))}
-    </div>
+    </ListView>
   )
 
   const headerActions = (

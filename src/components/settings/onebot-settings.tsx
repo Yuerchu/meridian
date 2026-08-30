@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { Button, Checkbox, Description, Input, Label, TextField } from '@heroui/react'
+import { ItemCard } from '@heroui-pro/react/item-card'
 import { cn } from '@/lib/utils'
 import type { Assistant } from '@/types'
 import { SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
@@ -413,26 +414,26 @@ export function OneBotSettings() {
       </div>
 
       {status && (
-        <div className="rounded-lg border p-3 space-y-1 text-sm">
-          <div className="flex items-center gap-2">
-            {/* Decoration: the state it stands for is spelled out beside it,
+        <ItemCard variant="outline">
+          <ItemCard.Content className="min-w-0">
+            <ItemCard.Title className="flex w-full items-center gap-2">
+              {/* Decoration: the state it stands for is spelled out beside it,
                 so announcing the dot too would only say it twice. */}
-            <span
-              aria-hidden
-              className={cn('inline-block w-2 h-2 rounded-full', running ? 'bg-success' : 'bg-muted')}
-            />
-            <span className="font-medium">
+              <span
+                aria-hidden
+                className={cn('inline-block size-2 shrink-0 rounded-full', running ? 'bg-success' : 'bg-muted')}
+              />
               {running ? t('settings.onebot.statusRunning') : t('settings.onebot.statusStopped')}
-            </span>
-          </div>
-          {running && (
-            <p className="text-muted text-xs">
-              {t('settings.onebot.clients', { count: status.connected_clients })}
-              {' · '}
-              {status.host}:{status.port}
-            </p>
-          )}
-        </div>
+            </ItemCard.Title>
+            {running && (
+              <ItemCard.Description className="w-full whitespace-normal">
+                {t('settings.onebot.clients', { count: status.connected_clients })}
+                {' · '}
+                {status.host}:{status.port}
+              </ItemCard.Description>
+            )}
+          </ItemCard.Content>
+        </ItemCard>
       )}
     </SettingsPane>
   )
