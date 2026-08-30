@@ -1,4 +1,4 @@
-import type { ContentBlock, Message, ToolCallDisplay } from '@/types'
+import type { ContentBlock, Message, ToolCallDisplay, TurnUsageSummary } from '@/types'
 
 /**
  * A turn is one user message plus everything the agent produced in response.
@@ -84,6 +84,10 @@ export interface Turn {
   /** Summed across every assistant row, since only one of them still shows a
    *  count once the intermediate footers are gone. */
   tokens: { input: number | null; output: number | null }
+  /** Backend-priced audit summary for the run on the active branch. Null for
+   *  rows written before turns were recorded, and while a live turn has not
+   *  reached its post-stop snapshot yet. */
+  usage: TurnUsageSummary | null
   lastMessageId: string
   firstSortOrder: number
 }
@@ -147,6 +151,9 @@ export interface BuildTurnsContext {
    *  difference — whether a file may be half-written — is only knowable from
    *  the backend's own record of what was running. */
   crashedTurnIds?: ReadonlySet<string>
+  /** Cost summaries keyed by the backend's run id. Kept as a map so this pure
+   *  transcript builder does not need to understand `TurnRecord` statuses. */
+  usageByTurnId?: ReadonlyMap<string, TurnUsageSummary>
 }
 
 /** Tools that block the turn while they wait for a response. `update_todos` is
@@ -247,9 +254,15 @@ export function buildTurns(messages: Message[], ctx: BuildTurnsContext = {}): Tu
   }
 
   const crashed = ctx.crashedTurnIds
+  const usage = ctx.usageByTurnId
   return groups.map((g, i) => {
-    const turnId = crashed === undefined ? null : pathTurnId(g)
-    return finalize(g, i === groups.length - 1 && ctx.streaming === true, turnId !== null && crashed!.has(turnId))
+    const turnId = crashed === undefined && usage === undefined ? null : pathTurnId(g)
+    return finalize(
+      g,
+      i === groups.length - 1 && ctx.streaming === true,
+      turnId !== null && crashed?.has(turnId) === true,
+      turnId === null ? null : (usage?.get(turnId) ?? null),
+    )
   })
 }
 
@@ -273,7 +286,7 @@ function pathTurnId(group: OpenTurn): string | null {
   return group.assistantMessages.length > 0 ? null : (group.userMessage?.turn_id ?? null)
 }
 
-function finalize(group: OpenTurn, isStreaming: boolean, didCrash: boolean): Turn {
+function finalize(group: OpenTurn, isStreaming: boolean, didCrash: boolean, usage: TurnUsageSummary | null): Turn {
   const { userMessage, assistantMessages } = group
 
   const flat: TurnStep[] = []
@@ -351,6 +364,7 @@ function finalize(group: OpenTurn, isStreaming: boolean, didCrash: boolean): Tur
     durationMs: elapsed(userMessage, last),
     summary,
     tokens: sumTokens(assistantMessages),
+    usage,
     lastMessageId: last?.id ?? '',
     firstSortOrder: userMessage?.sort_order ?? assistantMessages[0]?.sort_order ?? 0,
   }

@@ -1,13 +1,22 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FaceSmile, Magnifier } from '@gravity-ui/icons'
-import { Button, Input, Popover, Tooltip } from '@heroui/react'
+import { Button, ScrollShadow, SearchField } from '@heroui/react'
+import { ChatLoader, EmojiPicker as ProEmojiPicker } from '@heroui-pro/react'
+
 import { api } from '@/api'
 import type { Emoji, EmojiPack } from '@/types'
 
 interface PackWithEmojis {
   pack: EmojiPack
   emojis: Emoji[]
+}
+
+interface StickerItem {
+  emoji: Emoji
+  packId: string
+  packName: string
+  url?: string
 }
 
 export function EmojiPicker({
@@ -19,137 +28,201 @@ export function EmojiPicker({
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [packs, setPacks] = useState<PackWithEmojis[]>([])
+  const [activePackId, setActivePackId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [urls, setUrls] = useState<Record<string, string>>({})
+  const [loadedAssistantId, setLoadedAssistantId] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!open || !assistantId) return
+    if (!assistantId) return
     let cancelled = false
 
     async function load() {
-      const assignedPacks = await api.listAssistantEmojiPacks(assistantId!)
-      const result: PackWithEmojis[] = []
-      const urlMap: Record<string, string> = {}
-
-      for (const pack of assignedPacks) {
-        const emojis = (await api.listEmojis(pack.id)).filter(
-          (emoji) => emoji.semantic_status === 'confirmed' && emoji.file_format !== 'lottie',
+      setLoading(true)
+      try {
+        const assignedPacks = await api.listAssistantEmojiPacks(assistantId!)
+        const result = await Promise.all(
+          assignedPacks.map(async (pack) => ({
+            pack,
+            emojis: (await api.listEmojis(pack.id)).filter(
+              (emoji) => emoji.semantic_status === 'confirmed' && emoji.file_format !== 'lottie',
+            ),
+          })),
         )
-        result.push({ pack, emojis })
-        for (const e of emojis) {
-          const path = await api.getEmojiFileUrl(e.id).catch(() => null)
-          if (path) urlMap[e.id] = path
-        }
-      }
+        const resolvedUrls = await Promise.all(
+          result.flatMap(({ emojis }) =>
+            emojis.map(async (emoji) => [emoji.id, await api.getEmojiFileUrl(emoji.id).catch(() => null)] as const),
+          ),
+        )
 
-      if (!cancelled) {
-        setPacks(result)
-        setUrls(urlMap)
+        if (!cancelled) {
+          const urlMap = Object.fromEntries(
+            resolvedUrls.filter((entry): entry is readonly [string, string] => !!entry[1]),
+          )
+          const initialPack =
+            result.find(({ emojis }) => emojis.some((emoji) => urlMap[emoji.id])) ??
+            result.find(({ emojis }) => emojis.length > 0) ??
+            result[0]
+          setPacks(result)
+          setUrls(urlMap)
+          setActivePackId(initialPack?.pack.id ?? null)
+          setLoadedAssistantId(assistantId)
+        }
+      } catch {
+        if (!cancelled) {
+          setPacks([])
+          setUrls({})
+          setActivePackId(null)
+          setLoadedAssistantId(assistantId)
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
       }
     }
 
-    load()
+    void load()
     return () => {
       cancelled = true
     }
-  }, [open, assistantId])
+  }, [assistantId])
 
-  const searchResults = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase()
-    if (!query) return []
-    return packs
-      .flatMap(({ emojis }) => emojis)
-      .filter((emoji) => `${emoji.name} ${emoji.tags ?? ''}`.toLocaleLowerCase().includes(query))
-  }, [packs, search])
+  // InputBar stays mounted while its assistant changes. Gate the old payload
+  // during the new request so a still-open picker can never send a sticker
+  // that is not assigned to the current assistant.
+  const allItems = useMemo<StickerItem[]>(
+    () =>
+      loadedAssistantId === assistantId
+        ? packs.flatMap(({ pack, emojis }) =>
+            emojis.map((emoji) => ({ emoji, packId: pack.id, packName: pack.name, url: urls[emoji.id] })),
+          )
+        : [],
+    [assistantId, loadedAssistantId, packs, urls],
+  )
+  const displayPacks = loadedAssistantId === assistantId ? packs : []
+
+  // Searching spans every assigned pack. At rest the footer acts as category
+  // navigation, keeping the grid compact without losing the pack names that
+  // the previous hand-built picker showed above every row.
+  const visibleItems = useMemo(
+    () => (search.trim() ? allItems : allItems.filter((item) => activePackId === null || item.packId === activePackId)),
+    [activePackId, allItems, search],
+  )
 
   const handleSelect = useCallback(
-    (emoji: Emoji) => {
-      const url = urls[emoji.id]
-      if (!url) return
-      onSelect({ emoji, url })
+    (id: React.Key | null) => {
+      if (id === null) return
+      const item = allItems.find(({ emoji }) => emoji.id === String(id))
+      if (!item?.url) return
+      onSelect({ emoji: item.emoji, url: item.url })
       setOpen(false)
+      setSearch('')
     },
-    [onSelect, urls],
+    [allItems, onSelect],
   )
+
+  const handleOpenChange = useCallback((next: boolean) => {
+    setOpen(next)
+    if (!next) setSearch('')
+  }, [])
 
   if (!assistantId) return null
 
   return (
-    <Popover isOpen={open} onOpenChange={setOpen}>
-      <Tooltip delay={0}>
-        <Button isIconOnly aria-label={t('chat.emoji')} variant="ghost">
-          <FaceSmile className="w-4 h-4" />
-        </Button>
-        <Tooltip.Content placement="top">{t('chat.emoji')}</Tooltip.Content>
-      </Tooltip>
-      <Popover.Content placement="top end" className="w-72 overflow-hidden p-0">
-        <div className="p-2 border-b border-border">
-          <div className="relative">
-            <Magnifier className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted" />
-            <Input
-              fullWidth
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t('chat.emojiSearch')}
-              className="pl-7 text-xs"
-            />
-          </div>
-        </div>
+    <ProEmojiPicker
+      aria-label={t('chat.emoji')}
+      isOpen={open}
+      selectedKey={null}
+      size="md"
+      onOpenChange={handleOpenChange}
+      onSelectionChange={handleSelect}
+    >
+      <ProEmojiPicker.Trigger
+        aria-label={t('chat.emoji')}
+        className="touch-hitbox flex size-8 items-center justify-center rounded-lg text-muted hover:bg-default hover:text-foreground"
+        onPress={() => {
+          // RAC Select normally declines to open an empty collection. This
+          // picker still has useful content in that state: the assigned-pack
+          // explanation and search shell.
+          if (!open) setOpen(true)
+        }}
+      >
+        <FaceSmile className="size-4" />
+      </ProEmojiPicker.Trigger>
+      <ProEmojiPicker.Popover placement="top end">
+        <ProEmojiPicker.Content>
+          <SearchField
+            fullWidth
+            aria-label={t('chat.emojiSearch')}
+            value={search}
+            variant="secondary"
+            onChange={setSearch}
+          >
+            <SearchField.Group>
+              <SearchField.SearchIcon />
+              <SearchField.Input autoFocus placeholder={t('chat.emojiSearch')} />
+              <SearchField.ClearButton />
+            </SearchField.Group>
+          </SearchField>
 
-        <div data-slot="emoji-picker-list" className="max-h-56 overflow-y-auto overscroll-contain">
-          <div className="p-2">
-            {search.trim() ? (
-              <div className="grid grid-cols-6 gap-1">
-                {searchResults.map((e) => (
-                  <Button
-                    key={e.id}
-                    variant="ghost"
-                    isDisabled={!urls[e.id]}
-                    className="h-auto p-1 rounded hover:bg-default/50 transition-colors"
-                    onClick={() => handleSelect(e)}
-                  >
-                    {urls[e.id] ? (
-                      <img src={urls[e.id]} alt={e.name} className="w-7 h-7 object-contain" title={e.name} />
-                    ) : (
-                      <span className="size-7 text-xs leading-tight text-muted line-clamp-2">{e.name}</span>
-                    )}
-                  </Button>
-                ))}
-                {searchResults.length === 0 && (
-                  <p className="col-span-6 text-xs text-muted text-center py-3">{t('chat.emojiNotFound')}</p>
+          <ProEmojiPicker.Grid
+            aria-label={t('chat.emoji')}
+            items={visibleItems}
+            renderEmptyState={() =>
+              loading || loadedAssistantId !== assistantId ? (
+                <ChatLoader.Dots label={t('chat.emojiLoading')} />
+              ) : (
+                <span className="flex flex-col items-center gap-2">
+                  <Magnifier className="size-5" />
+                  {search.trim() ? t('chat.emojiNotFound') : t('chat.emojiNoPacks')}
+                </span>
+              )
+            }
+          >
+            {(item) => (
+              <ProEmojiPicker.Item
+                id={item.emoji.id}
+                isDisabled={!item.url}
+                textValue={`${item.emoji.name} ${item.emoji.tags ?? ''} ${item.packName}`}
+              >
+                {item.url ? (
+                  <img src={item.url} alt={item.emoji.name} className="size-7 object-contain" />
+                ) : (
+                  <span className="line-clamp-2 text-center text-xs leading-tight text-muted">{item.emoji.name}</span>
                 )}
-              </div>
-            ) : (
-              packs.map(({ pack, emojis }) => (
-                <div key={pack.id} className="mb-2">
-                  <p className="text-xs text-muted font-medium mb-1 px-1">{pack.name}</p>
-                  <div className="grid grid-cols-6 gap-1">
-                    {emojis.map((e) => (
-                      <Button
-                        key={e.id}
-                        variant="ghost"
-                        isDisabled={!urls[e.id]}
-                        className="h-auto rounded p-1 transition-colors hover:bg-default/50"
-                        onClick={() => handleSelect(e)}
-                      >
-                        {urls[e.id] ? (
-                          <img src={urls[e.id]} alt={e.name} className="w-7 h-7 object-contain" title={e.name} />
-                        ) : (
-                          <span className="size-7 text-xs leading-tight text-muted line-clamp-2">{e.name}</span>
-                        )}
-                      </Button>
-                    ))}
-                  </div>
+              </ProEmojiPicker.Item>
+            )}
+          </ProEmojiPicker.Grid>
+
+          {displayPacks.length > 0 && (
+            <ProEmojiPicker.Footer>
+              <ScrollShadow hideScrollBar orientation="horizontal" className="min-w-0 flex-1">
+                <div className="flex items-center gap-1 px-1">
+                  {displayPacks.map(({ pack }) => (
+                    <Button
+                      key={pack.id}
+                      size="sm"
+                      variant="ghost"
+                      className={
+                        pack.id === activePackId && !search.trim()
+                          ? 'h-7 shrink-0 bg-default px-2 text-xs text-foreground'
+                          : 'h-7 shrink-0 px-2 text-xs text-muted'
+                      }
+                      onPress={() => {
+                        setActivePackId(pack.id)
+                        setSearch('')
+                      }}
+                    >
+                      {pack.name}
+                    </Button>
+                  ))}
                 </div>
-              ))
-            )}
-            {packs.length === 0 && !search.trim() && (
-              <p className="text-xs text-muted text-center py-4">{t('chat.emojiNoPacks')}</p>
-            )}
-          </div>
-        </div>
-      </Popover.Content>
-    </Popover>
+              </ScrollShadow>
+            </ProEmojiPicker.Footer>
+          )}
+        </ProEmojiPicker.Content>
+      </ProEmojiPicker.Popover>
+    </ProEmojiPicker>
   )
 }

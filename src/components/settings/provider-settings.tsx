@@ -1,8 +1,9 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useId, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, ArrowsRotateRight, TrashBin, Cloud, Key, Sliders, Xmark } from '@gravity-ui/icons'
 import { Button, Description, Disclosure, Input, Label, Spinner, TextField, Tooltip } from '@heroui/react'
 import { EmptyState } from '@heroui-pro/react/empty-state'
+import { DataGrid, type DataGridColumn } from '@heroui-pro/react/data-grid'
 import { ListView } from '@heroui-pro/react/list-view'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { ModelIcon } from '@/components/ui/model-icon'
@@ -779,6 +780,7 @@ function ProviderEditor({
   onDelete: (id: string) => Promise<void>
 }) {
   const { t } = useTranslation()
+  const modelEditorId = useId()
   const catalog = useProviderCatalog()
   const [name, setName] = useState(provider.name)
   const [providerType, setProviderType] = useState(provider.provider_type)
@@ -1044,6 +1046,81 @@ function ProviderEditor({
         : t('settings.provider.apiFormatOpenAICompatibleHint')
       : undefined
 
+  const modelColumns = useMemo<DataGridColumn<ModelInfo>[]>(
+    () => [
+      {
+        id: 'model',
+        header: t('settings.provider.modelColumn'),
+        isRowHeader: true,
+        minWidth: 176,
+        cellClassName: 'text-xs',
+        cell: (model) => (
+          <span className={cn('block truncate', modelConfigs.has(model.id) ? 'text-foreground' : 'text-muted')}>
+            {model.name}
+          </span>
+        ),
+      },
+      {
+        id: 'status',
+        header: t('settings.provider.modelStatusColumn'),
+        width: 112,
+        minWidth: 112,
+        headerClassName: 'whitespace-nowrap',
+        cellClassName: 'text-xs',
+        cell: (model) => {
+          const config = modelConfigs.get(model.id)
+          if (!config) return <span className="text-muted">{t('settings.provider.modelNotConfigured')}</span>
+          return config.input_price > 0 || config.output_price > 0 ? (
+            <span className="inline-flex items-center gap-1.5 text-success-soft-foreground">
+              <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-success" />
+              {t('settings.provider.modelPriced')}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 text-warning">
+              <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-warning" />
+              {t('settings.provider.modelPriceMissing')}
+            </span>
+          )
+        },
+      },
+      {
+        id: 'actions',
+        header: t('settings.provider.modelActionsColumn'),
+        align: 'end',
+        width: 72,
+        minWidth: 72,
+        pinned: 'end',
+        headerClassName: 'whitespace-nowrap',
+        cell: (model) => {
+          const isEditing = editingModelId === model.id
+          const label = isEditing
+            ? t('settings.provider.closeModelConfig', { model: model.name })
+            : t('settings.provider.editModelConfig', { model: model.name })
+          return (
+            <Tooltip delay={0}>
+              <Button
+                isIconOnly
+                variant="ghost"
+                aria-label={label}
+                aria-controls={isEditing ? modelEditorId : undefined}
+                aria-expanded={isEditing}
+                className="touch-hitbox h-6 w-6"
+                onPress={() => setEditingModelId(isEditing ? null : model.id)}
+              >
+                {isEditing ? <Xmark className="size-3.5" /> : <Sliders className="size-3.5" />}
+              </Button>
+              <Tooltip.Content placement="top">{label}</Tooltip.Content>
+            </Tooltip>
+          )
+        },
+      },
+    ],
+    [editingModelId, modelConfigs, modelEditorId, t],
+  )
+
+  const editingModel = editingModelId == null ? undefined : models.find((model) => model.id === editingModelId)
+  const editingModelConfig = editingModel == null ? undefined : modelConfigs.get(editingModel.id)
+
   return (
     <div className="space-y-5">
       <TextField fullWidth>
@@ -1224,66 +1301,39 @@ function ProviderEditor({
         </div>
         {modelsError && <p className="text-xs text-danger break-all">{modelsError}</p>}
         {models.length > 0 && (
-          <div
-            data-slot="provider-model-list"
-            className="h-60 overflow-y-auto overscroll-contain border border-border rounded-lg"
-          >
-            {models.map((m) => {
-              const cfg = modelConfigs.get(m.id)
-              const isEditing = editingModelId === m.id
-              return (
-                <div key={m.id} className="border-b border-border last:border-0">
-                  <div className="flex items-center justify-between px-3 py-1.5">
-                    <span className={cn('text-xs', cfg ? 'text-foreground' : 'text-muted')}>
-                      {m.name}
-                      {/* The dot is decoration; the name it carries is the
-                          part a screen reader can use. On its own it was read
-                          out as "black circle". */}
-                      {cfg && (
-                        <>
-                          <span aria-hidden className="ml-1.5 text-xs text-success-soft-foreground">
-                            ●
-                          </span>
-                          <span className="sr-only">{t('settings.provider.modelConfigured')}</span>
-                        </>
-                      )}
-                    </span>
-                    {/* The only way into a model's settings, at 24px and with no
-                        accessible name — the icon swaps between two glyphs and
-                        neither says anything. `touch-hitbox` because the `h-6`
-                        overrides HeroUI's own mobile-first sizing, which would
-                        otherwise have made it 40px here. */}
-                    <Button
-                      isIconOnly
-                      variant="ghost"
-                      aria-label={
-                        isEditing
-                          ? t('settings.provider.closeModelConfig', { model: m.name })
-                          : t('settings.provider.editModelConfig', { model: m.name })
-                      }
-                      className="touch-hitbox h-6 w-6"
-                      onClick={() => setEditingModelId(isEditing ? null : m.id)}
-                    >
-                      {isEditing ? <Xmark className="w-3.5 h-3.5" /> : <Sliders className="w-3.5 h-3.5" />}
-                    </Button>
-                  </div>
-                  {isEditing && (
-                    <ModelConfigEditor
-                      providerId={provider.id}
-                      modelId={m.id}
-                      // Which provider-side tools exist depends on the dialect,
-                      // so the capability lookup has to be redone when it
-                      // changes — otherwise switching to Responses leaves the
-                      // panel insisting this model has none.
-                      apiFormat={apiFormat}
-                      existing={cfg}
-                      onSave={handleSaveModelConfig}
-                      onDelete={cfg ? () => handleDeleteModelConfig(cfg.id) : undefined}
-                    />
-                  )}
-                </div>
-              )
-            })}
+          <div data-slot="provider-model-list" className="space-y-2">
+            <DataGrid<ModelInfo>
+              aria-label={t('settings.provider.models')}
+              variant="secondary"
+              columns={modelColumns}
+              data={models}
+              getRowId={(model) => model.id}
+              contentClassName="min-w-96"
+              scrollContainerClassName="max-h-60 overflow-y-auto overscroll-contain"
+            />
+            {editingModel && (
+              <div
+                id={modelEditorId}
+                className="max-h-96 overflow-y-auto overscroll-contain rounded-lg border border-border pt-3"
+              >
+                <h4 className="px-3 pb-3 text-xs font-medium">
+                  {t('settings.provider.editModelConfig', { model: editingModel.name })}
+                </h4>
+                <ModelConfigEditor
+                  key={editingModel.id}
+                  providerId={provider.id}
+                  modelId={editingModel.id}
+                  // Which provider-side tools exist depends on the dialect,
+                  // so the capability lookup has to be redone when it
+                  // changes — otherwise switching to Responses leaves the
+                  // panel insisting this model has none.
+                  apiFormat={apiFormat}
+                  existing={editingModelConfig}
+                  onSave={handleSaveModelConfig}
+                  onDelete={editingModelConfig ? () => handleDeleteModelConfig(editingModelConfig.id) : undefined}
+                />
+              </div>
+            )}
           </div>
         )}
         {models.length === 0 && !fetchingModels && !modelsError && (

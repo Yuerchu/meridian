@@ -14,7 +14,8 @@ import {
 } from '@gravity-ui/icons'
 import { ModelIcon } from '@/components/ui/model-icon'
 
-import { Button, Popover, Spinner, Switch, Tooltip } from '@heroui/react'
+import { Button, Popover, Spinner, Tooltip } from '@heroui/react'
+import { CellSwitch } from '@heroui-pro/react/cell-switch'
 
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
@@ -333,28 +334,62 @@ export function ComposerMenu(props: ComposerMenuProps) {
               const isHovered = hovered === entry.key
               const expandable = Boolean(entry.options || entry.loading)
               const isToggle = entry.checked !== undefined
+
+              if (isToggle) {
+                return (
+                  <CellSwitch
+                    key={entry.key}
+                    data-slot="composer-menu-item"
+                    aria-label={entry.label}
+                    size="sm"
+                    isSelected={entry.checked}
+                    onChange={() => entry.onSelect?.()}
+                    onMouseEnter={() => setHovered(entry.key)}
+                    onFocus={() => setHovered(entry.key)}
+                    className="w-full [--switch-control-bg-checked:var(--warning)]"
+                  >
+                    <CellSwitch.Trigger
+                      className={cn(
+                        'h-auto min-h-8 gap-2 rounded-2xl border-0 bg-transparent px-1.5 py-1 shadow-none',
+                        isHovered
+                          ? 'bg-default text-default-foreground'
+                          : 'text-muted hover:bg-default/50 hover:text-foreground',
+                      )}
+                    >
+                      <Icon
+                        className={cn(
+                          'size-4 shrink-0',
+                          entry.tone === 'warning' && 'text-warning-soft-foreground',
+                          entry.tone === 'info' && 'text-info-soft-foreground',
+                        )}
+                      />
+                      <CellSwitch.Label
+                        data-slot="composer-menu-item-label"
+                        className="text-left text-sm font-normal text-inherit"
+                      >
+                        {entry.label}
+                      </CellSwitch.Label>
+                      <CellSwitch.Control />
+                    </CellSwitch.Trigger>
+                  </CellSwitch>
+                )
+              }
+
               return (
-                // A plain button rather than the component: these rows are
-                // menu items and say so with `role="switch"`, which React Aria's
-                // Button will not surrender — it owns `role` and fixes it to
-                // "button". The visual weight was coming from the className
-                // below in any case.
-                // eslint-disable-next-line no-restricted-syntax -- role="switch" is unreachable through a React Aria Button
+                // This is a plain button because these compact rows sit inside
+                // a two-column picker. Boolean rows above use Pro CellSwitch so
+                // the entire row has native switch semantics.
+                // eslint-disable-next-line no-restricted-syntax -- the compact picker row owns this deliberately flattened layout
                 <button
                   key={entry.key}
                   type="button"
                   data-slot="composer-menu-item"
                   onMouseEnter={() => setHovered(entry.key)}
                   onFocus={() => setHovered(entry.key)}
-                  role={isToggle ? 'switch' : undefined}
-                  aria-checked={isToggle ? entry.checked : undefined}
                   onClick={() => {
                     if (entry.onSelect) {
                       entry.onSelect()
-                      // A toggle stays put: flipping two switches in a row is a
-                      // normal thing to want, and closing after each one would
-                      // make the menu fight the user for it.
-                      if (!isToggle) close()
+                      close()
                       return
                     }
                     // A row with children toggles the column rather than
@@ -397,31 +432,6 @@ export function ComposerMenu(props: ComposerMenuProps) {
                     >
                       {entry.value}
                     </span>
-                  )}
-                  {isToggle && (
-                    // The row owns the interaction, so the switch is decoration
-                    // with a state: letting it take pointer events too would
-                    // fire the handler twice on the switch and once elsewhere.
-                    // `inert` says all of that at once — not focusable, not
-                    // clickable, not in the accessibility tree — which a switch
-                    // nested inside a button has to be anyway.
-                    // `data-selected` only ever lands on the Switch root, so the
-                    // track is coloured through the custom property the
-                    // component publishes for it rather than a class on the
-                    // control, which would match nothing.
-                    <Switch
-                      inert
-                      isReadOnly
-                      size="sm"
-                      isSelected={entry.checked}
-                      className="[--switch-control-bg-checked:var(--warning)]"
-                    >
-                      <Switch.Content>
-                        <Switch.Control>
-                          <Switch.Thumb />
-                        </Switch.Control>
-                      </Switch.Content>
-                    </Switch>
                   )}
                   {expandable && <ChevronRight className="size-4 shrink-0 text-muted" />}
                 </button>

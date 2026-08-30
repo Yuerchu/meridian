@@ -62,7 +62,10 @@ interface InputBarProps {
   /** Which conversation this composer belongs to. Needed because a hosted
    *  session's model and mode are the *agent's* to report, per session, rather
    *  than this app's settings. */
-  conversationId: string
+  conversationId: string | null
+  /** Removes the docked safe-area padding when the same composer is embedded
+   * in the centred welcome state. All controls and behaviour stay identical. */
+  embedded?: boolean
   /** A hosted Claude Code session, whose knobs come over ACP. */
   isHosted?: boolean
   value: string
@@ -292,6 +295,7 @@ function ComposerContextMenu({
 
 export function InputBar({
   conversationId,
+  embedded,
   isHosted,
   value,
   onChange,
@@ -337,7 +341,7 @@ export function InputBar({
   // One subscription for the whole composer. The knobs and the context gauge
   // both read the hosted session's state, and two calls would mean two fetches
   // and two listeners answering the same events.
-  const acp = useAcpConfig(conversationId, !!isHosted)
+  const acp = useAcpConfig(conversationId ?? '', !!isHosted && conversationId !== null)
   // Which model the *agent* says is answering, for the gauge to name. Not
   // `contextInfo.model`, which is this app's assistant and has nothing to do
   // with a hosted turn.
@@ -585,7 +589,13 @@ export function InputBar({
   return (
     // Sides as well as bottom: turned sideways the 3-button bar moves to one
     // edge, and the send button is in the corner it lands on.
-    <div className="px-4 pb-[max(1rem,var(--safe-bottom))] pt-2 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]">
+    <div
+      className={
+        embedded
+          ? 'w-full'
+          : 'px-4 pb-[max(1rem,var(--safe-bottom))] pt-2 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]'
+      }
+    >
       <div className="max-w-2xl mx-auto">
         {isAndroid && (
           <VoiceOverlay state={androidVoice.state} elapsed={androidVoice.elapsed} peak={androidVoice.peak} />
@@ -818,12 +828,13 @@ export function InputBar({
                       aria-label={voice.state === 'idle' ? t('chat.voice.tooltip') : t('chat.voice.cancelHint')}
                       state={voice.state}
                       elapsed={voice.elapsed}
-                      disabled={disabled || streaming}
+                      disabled={offline || disabled || streaming}
                       onPointerDown={voice.handlePointerDown}
                       onPointerUp={voice.handlePointerUp}
                       onPointerCancel={voice.handlePointerCancel}
                       onPointerEnter={voice.handlePointerEnter}
                       onPointerLeave={voice.handlePointerLeave}
+                      onKeyboardPress={voice.handleKeyboardPress}
                     />
                     <Tooltip.Content placement="top">
                       {voice.state === 'idle' ? t('chat.voice.tooltip') : t('chat.voice.cancelHint')}

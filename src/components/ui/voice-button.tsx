@@ -24,6 +24,8 @@ interface VoiceButtonProps {
   /** Approach and departure drive microphone prewarming. */
   onPointerEnter?: (e: React.PointerEvent) => void
   onPointerLeave?: (e: React.PointerEvent) => void
+  /** Enter/Space use toggle recording; pointer gestures keep hold-to-talk. */
+  onKeyboardPress?: () => void
 }
 
 /** Presentational only — all gesture logic lives in `useVoiceRecorder`, so
@@ -38,6 +40,7 @@ export function VoiceButton({
   onPointerCancel,
   onPointerEnter,
   onPointerLeave,
+  onKeyboardPress,
 }: VoiceButtonProps) {
   const recording = state === 'recording-hold' || state === 'recording-toggle'
 
@@ -51,6 +54,7 @@ export function VoiceButton({
       <Button
         isIconOnly
         aria-label={ariaLabel}
+        aria-pressed={recording}
         variant="ghost"
         isDisabled={disabled || state === 'transcribing'}
         className={cn(
@@ -64,6 +68,12 @@ export function VoiceButton({
         onPointerCancel={onPointerCancel}
         onPointerEnter={onPointerEnter}
         onPointerLeave={onPointerLeave}
+        onPress={(event) => {
+          // React Aria reports screen-reader and other programmatic activation
+          // as `virtual`; unlike mouse/touch/pen it has no pointer handler that
+          // could otherwise start recording.
+          if (event.pointerType === 'keyboard' || event.pointerType === 'virtual') onKeyboardPress?.()
+        }}
         // Keep focus in the textarea; the browser default would steal it.
         onMouseDown={(e) => e.preventDefault()}
       >

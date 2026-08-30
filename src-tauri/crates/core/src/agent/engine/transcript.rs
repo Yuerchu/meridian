@@ -429,7 +429,7 @@ mod tests {
                 output_tokens: Some(11),
                 cache_read_tokens: Some(41),
                 cache_write_tokens: Some(43),
-                server_tool_calls: None,
+                server_tool_calls: Some(47),
             },
         )
         .await
@@ -444,6 +444,7 @@ mod tests {
         // Distinct values, so a transposed pair cannot pass.
         assert_eq!(row.cache_read_tokens, Some(41));
         assert_eq!(row.cache_write_tokens, Some(43));
+        assert_eq!(row.server_tool_calls, Some(47));
         assert_eq!(row.turn_id.as_deref(), Some("t1"));
     }
 
@@ -481,7 +482,7 @@ mod tests {
                 output_tokens: Some(20),
                 cache_read_tokens: Some(180),
                 cache_write_tokens: None,
-                server_tool_calls: None,
+                server_tool_calls: Some(2),
             },
         )
         .await
@@ -495,6 +496,7 @@ mod tests {
         assert_eq!(logged[0].role, "assistant");
         assert_eq!(logged[0].input_tokens, Some(200));
         assert_eq!(logged[0].cache_read_tokens, Some(180));
+        assert_eq!(logged[0].server_tool_calls, Some(2));
         assert_eq!(
             logged[0].turn_origin.as_deref(),
             Some("desktop"),

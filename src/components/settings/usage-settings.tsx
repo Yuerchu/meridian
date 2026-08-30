@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Label, Skeleton, Spinner, Tabs } from '@heroui/react'
+import { Button, Label, Skeleton, Spinner, Tabs, Tooltip } from '@heroui/react'
 import { EmptyState } from '@heroui-pro/react/empty-state'
 import { KPI } from '@heroui-pro/react/kpi'
 import { AreaChart } from '@heroui-pro/react/area-chart'
 import { BarChart } from '@heroui-pro/react/bar-chart'
+import { DataGrid, type DataGridColumn } from '@heroui-pro/react/data-grid'
+import { ArrowRightFromSquare } from '@gravity-ui/icons'
 
 import { api } from '@/api'
+import { costQualifier, formatCostAmount, type CostQualifier } from '@/lib/cost-format'
 import { cn } from '@/lib/utils'
 import { SettingsHeader, SettingsPane } from './primitives'
 import type { UsageBucket, UsageFilter } from '@/types'
@@ -15,16 +18,18 @@ import type { UsageBucket, UsageFilter } from '@/types'
  * What the assistant has cost, out of the audit log.
  *
  * Every figure on this page is computed in Rust — see
- * `src-tauri/src/db/ops/usage.rs`. Nothing here adds up a cost, and it must stay
- * that way: a cached token bills at the cache rate *instead of* the input rate,
- * so the cost of a group is not the sum of the costs of its parts under any
- * arithmetic available to this file. What it does is ask for one grouping per
- * view and draw what comes back.
+ * `src-tauri/src/db/ops/usage.rs`. Nothing here derives a cost from token
+ * totals, and it must stay that way: a cached token bills at the cache rate
+ * *instead of* the input rate. The conversation table may add already-priced,
+ * disjoint buckets that share a visible title; it never applies a rate. Every
+ * other figure asks for one grouping per view and draws what comes back.
  *
  * The one number this page is responsible for not lying about is the total.
- * `unpriced_messages` counts replies from models nobody has priced; their tokens
- * are in the counts and their cost is in nobody's total, so the cost is shown
- * with that caveat attached rather than on its own.
+ * `unpriced_messages` counts replies whose metered usage or pricing is
+ * incomplete; `estimated_messages` records historical rows priced from today's
+ * provider/model configuration. Known pieces still contribute. The former is
+ * a lower bound, the latter an estimate, and a total containing both is an
+ * explicitly incomplete estimate rather than either false claim.
  */
 
 /** Windows, in days. `null` is the whole log. */
@@ -68,6 +73,31 @@ type SeriesKey = (typeof SERIES)[number]['key']
 type Split = Record<SeriesKey, number>
 
 /**
+ * Backend-priced parts of a bill. These are deliberately different from the
+ * token series above: the four numbers already include tier selection, cache
+ * replacement and per-call tool rates. The UI may group or draw them, but must
+ * never recreate them from token counts.
+ */
+const COST_SERIES = [
+  { key: 'input_cost', color: 'var(--chart-3)', labelKey: 'settings.usage.cost.input' },
+  { key: 'cache_cost', color: 'var(--chart-2)', labelKey: 'settings.usage.cost.cache' },
+  { key: 'output_cost', color: 'var(--chart-4)', labelKey: 'settings.usage.cost.output' },
+  { key: 'tool_cost', color: 'var(--chart-1)', labelKey: 'settings.usage.cost.tools' },
+] as const
+
+type CostSeriesKey = (typeof COST_SERIES)[number]['key']
+type CostSplit = Record<CostSeriesKey, number>
+
+function costSplit(bucket: UsageBucket): CostSplit {
+  return {
+    input_cost: bucket.input_cost,
+    cache_cost: bucket.cache_cost,
+    output_cost: bucket.output_cost,
+    tool_cost: bucket.tool_cost,
+  }
+}
+
+/**
  * A bucket's tokens, split into the four bands.
  *
  * Saturating, like `BilledTokens::from_totals` on the other side: a provider
@@ -96,18 +126,61 @@ function present(rows: Split[]): readonly (typeof SERIES)[number][] {
   return SERIES.filter((s) => rows.some((row) => row[s.key] > 0))
 }
 
+function presentCosts(rows: CostSplit[]): readonly (typeof COST_SERIES)[number][] {
+  return COST_SERIES.filter((s) => rows.some((row) => row[s.key] > 0))
+}
+
+function nonLocalMessages(bucket: UsageBucket): number {
+  return bucket.subscription_messages + bucket.external_messages
+}
+
+function bucketCostQualifier(bucket: UsageBucket): CostQualifier {
+  return costQualifier(bucket.unpriced_messages + nonLocalMessages(bucket), bucket.estimated_messages)
+}
+
+function componentQualifier(bucket: UsageBucket, key: CostSeriesKey): CostQualifier {
+  const nonLocal = nonLocalMessages(bucket)
+  return key === 'tool_cost'
+    ? costQualifier(bucket.unpriced_tool_messages + nonLocal, bucket.estimated_tool_messages)
+    : costQualifier(bucket.unpriced_token_messages + nonLocal, bucket.estimated_token_messages)
+}
+
+function qualifiedCost(value: number, qualifier: CostQualifier, t: ReturnType<typeof useTranslation>['t']): string {
+  const amount = formatCostAmount(value, qualifier)
+  return qualifier === 'partial_estimate' ? t('settings.usage.partialAmount', { amount }) : amount
+}
+
+function displayedCost(bucket: UsageBucket, t: ReturnType<typeof useTranslation>['t']): string {
+  if (bucket.metered_messages === 0) {
+    if (bucket.external_messages > 0 && bucket.subscription_messages === 0) {
+      return t('settings.usage.billing.external')
+    }
+    if (bucket.subscription_messages > 0 && bucket.external_messages === 0) {
+      return t('settings.usage.billing.subscription')
+    }
+    if (nonLocalMessages(bucket) > 0) return t('settings.usage.billing.unavailable')
+  }
+  return qualifiedCost(bucket.cost, bucketCostQualifier(bucket), t)
+}
+
+function billingCoverage(bucket: UsageBucket, t: ReturnType<typeof useTranslation>['t']): string | null {
+  return nonLocalMessages(bucket) > 0
+    ? t('settings.usage.billing.coverage', {
+        subscription: bucket.subscription_messages,
+        external: bucket.external_messages,
+      })
+    : null
+}
+
 const compact = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 })
 
-/**
- * Cost carries no currency symbol on purpose: the prices are whatever the user
- * typed into the provider editor, in whatever currency they were quoting, and
- * nothing records which. Four decimals because a single cheap reply rounds to
- * zero at two, and a column of zeroes reads as broken.
- */
-const money = new Intl.NumberFormat(undefined, {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 4,
-})
+function tokenTotal(value: number, bucket: UsageBucket, t: ReturnType<typeof useTranslation>['t']): string {
+  if (bucket.messages > 0 && bucket.missing_token_usage_messages >= bucket.messages) {
+    return t('settings.usage.kpi.tokensUnavailable')
+  }
+  const formatted = compact.format(value)
+  return bucket.incomplete_token_usage_messages > 0 ? `≥ ${formatted}` : formatted
+}
 
 interface Report {
   total: UsageBucket
@@ -115,21 +188,36 @@ interface Report {
   providers: UsageBucket[]
   models: UsageBucket[]
   rows: UsageBucket[]
+  rowsDimension: Breakdown
 }
 
 const EMPTY_TOTAL: UsageBucket = {
   key: '',
   label: null,
   messages: 0,
+  metered_messages: 0,
+  subscription_messages: 0,
+  external_messages: 0,
+  missing_token_usage_messages: 0,
+  incomplete_token_usage_messages: 0,
   input_tokens: 0,
   output_tokens: 0,
   cache_read_tokens: 0,
   cache_write_tokens: 0,
+  input_cost: 0,
+  output_cost: 0,
+  cache_cost: 0,
+  tool_cost: 0,
   cost: 0,
+  unpriced_token_messages: 0,
+  unpriced_tool_messages: 0,
+  estimated_token_messages: 0,
+  estimated_tool_messages: 0,
+  estimated_messages: 0,
   unpriced_messages: 0,
 }
 
-export function UsageSettings() {
+export function UsageSettings({ onOpenConversation }: { onOpenConversation: (conversationId: string) => void }) {
   const { t } = useTranslation()
   const [range, setRange] = useState<Range>(30)
   const [origin, setOrigin] = useState<Origin>(null)
@@ -160,7 +248,7 @@ export function UsageSettings() {
     ])
       .then(([total, days, providers, models, rows]) => {
         if (cancelled) return
-        setReport({ total: total[0] ?? EMPTY_TOTAL, days, providers, models, rows })
+        setReport({ total: total[0] ?? EMPTY_TOTAL, days, providers, models, rows, rowsDimension: breakdown })
       })
       .catch(() => {
         if (!cancelled) setReport(null)
@@ -180,10 +268,24 @@ export function UsageSettings() {
   )
 
   const total = report?.total ?? EMPTY_TOTAL
+  const localQualifier = costQualifier(total.unpriced_messages, total.estimated_messages)
+  const billingNote = billingCoverage(total, t)
+  const tokenNote =
+    total.incomplete_token_usage_messages > 0
+      ? total.missing_token_usage_messages >= total.messages
+        ? t('settings.usage.kpi.tokensUnavailableNote')
+        : t('settings.usage.kpi.tokensPartialNote', {
+            count: total.incomplete_token_usage_messages,
+            value: compact.format(total.cache_read_tokens),
+          })
+      : t('settings.usage.kpi.inputNote', { value: compact.format(total.cache_read_tokens) })
   // Of the prompt tokens that were sent, how many the upstream already had.
   // Zero prompt tokens is not a 0% hit rate — it is no data — so the card shows
   // a dash rather than a number nobody earned.
-  const hitRate = total.input_tokens > 0 ? total.cache_read_tokens / total.input_tokens : null
+  const hitRate =
+    total.incomplete_token_usage_messages === 0 && total.input_tokens > 0
+      ? total.cache_read_tokens / total.input_tokens
+      : null
 
   return (
     <SettingsPane className="max-w-4xl">
@@ -221,24 +323,24 @@ export function UsageSettings() {
         <>
           <div className="grid grid-cols-1 @sm/pane:grid-cols-2 @2xl/pane:grid-cols-4 gap-3">
             <Kpi title={t('settings.usage.kpi.cost')}>
-              <span className="block truncate text-2xl font-semibold tracking-tight">{money.format(total.cost)}</span>
+              <span
+                data-slot="cost-total"
+                className="block truncate text-2xl font-semibold tracking-tight tabular-nums"
+              >
+                {displayedCost(total, t)}
+              </span>
             </Kpi>
             {/* The count is formatted before it goes in, not by i18next: passing
                 the raw number leaves it ungrouped, and "13830144" sitting under
                 "1514.9万" reads as two different quantities. */}
-            <Kpi
-              title={t('settings.usage.kpi.input')}
-              note={t('settings.usage.kpi.inputNote', {
-                value: compact.format(total.cache_read_tokens),
-              })}
-            >
+            <Kpi title={t('settings.usage.kpi.input')} note={tokenNote}>
               <span className="block truncate text-2xl font-semibold tracking-tight">
-                {compact.format(total.input_tokens)}
+                {tokenTotal(total.input_tokens, total, t)}
               </span>
             </Kpi>
             <Kpi title={t('settings.usage.kpi.output')}>
               <span className="block truncate text-2xl font-semibold tracking-tight">
-                {compact.format(total.output_tokens)}
+                {tokenTotal(total.output_tokens, total, t)}
               </span>
             </Kpi>
             <Kpi
@@ -251,11 +353,28 @@ export function UsageSettings() {
             </Kpi>
           </div>
 
-          {total.unpriced_messages > 0 && (
-            <p data-slot="unpriced-warning" className="text-xs text-warning">
-              {t('settings.usage.unpriced', { count: total.unpriced_messages })}
+          {localQualifier !== 'exact' && (
+            <p
+              data-slot={total.unpriced_messages > 0 ? 'unpriced-warning' : 'estimated-warning'}
+              className={cn('text-xs', total.unpriced_messages > 0 ? 'text-warning' : 'text-muted')}
+            >
+              {localQualifier === 'partial_estimate'
+                ? t('settings.usage.partialEstimate', {
+                    estimated: total.estimated_messages,
+                    unpriced: total.unpriced_messages,
+                  })
+                : localQualifier === 'estimated'
+                  ? t('settings.usage.estimated', { count: total.estimated_messages })
+                  : t('settings.usage.unpriced', { count: total.unpriced_messages })}
             </p>
           )}
+          {billingNote && (
+            <p data-slot="billing-coverage-warning" className="text-xs text-muted">
+              {billingNote}
+            </p>
+          )}
+
+          <CostBreakdown bucket={total} />
 
           <Section title={t('settings.usage.trend')}>
             <TokenTrend days={report?.days ?? []} />
@@ -263,10 +382,10 @@ export function UsageSettings() {
 
           <div className="grid gap-6 @2xl/pane:grid-cols-2">
             <Section title={t('settings.usage.byProvider')}>
-              <TokenBars buckets={report?.providers ?? []} />
+              <CostBars buckets={report?.providers ?? []} />
             </Section>
             <Section title={t('settings.usage.byModel')}>
-              <TokenBars buckets={report?.models ?? []} />
+              <CostBars buckets={report?.models ?? []} />
             </Section>
           </div>
 
@@ -290,8 +409,15 @@ export function UsageSettings() {
               {BREAKDOWNS.map((value) => (
                 <Tabs.Panel key={value} id={value} className="p-0">
                   <BucketTable
-                    buckets={report?.rows ?? []}
-                    labelFor={value === 'kind' ? (key) => t(`settings.usage.kind.${key}`) : undefined}
+                    // Keep the old charts while the next dimension loads, but
+                    // never put those old rows under the newly selected table
+                    // header. The small page-level spinner already announces
+                    // the in-flight refresh.
+                    buckets={report?.rowsDimension === value ? report.rows : []}
+                    dimension={value}
+                    dimensionLabel={t(`settings.usage.by.${value}`)}
+                    isLoading={loading && report?.rowsDimension !== value}
+                    onOpenConversation={onOpenConversation}
                   />
                 </Tabs.Panel>
               ))}
@@ -402,7 +528,7 @@ function Kpi({ title, note, children }: { title: string; note?: string; children
         {/* `min-w-0` here and `block truncate` on each value: `.kpi__content` is
             a `1fr auto` grid, so without the floor this column never narrows,
             and `truncate` does nothing to an inline span. A cost carries up to
-            four decimals (see `money`), which is a long string at `text-2xl` —
+            six decimals, which is a long string at `text-2xl` —
             it used to be drawn straight out through the side of the card. */}
         <div className="min-w-0">
           {children}
@@ -410,6 +536,55 @@ function Kpi({ title, note, children }: { title: string; note?: string; children
         </div>
       </KPI.Content>
     </KPI>
+  )
+}
+
+/**
+ * The total decomposed into the independently-priced parts returned by Rust.
+ * This stays a plain definition list rather than four more cards: the KPI above
+ * is the headline, while these figures answer the follow-up question without
+ * competing with it. Token and tool completeness are independent: a missing
+ * provider-tool rate does not make the already-priced input and output
+ * components approximate. The backend supplies those component counters, so
+ * the UI never has to infer them from the aggregate total.
+ */
+function CostBreakdown({ bucket }: { bucket: UsageBucket }) {
+  const { t } = useTranslation()
+  const qualifier = bucketCostQualifier(bucket)
+  const note =
+    qualifier === 'partial_estimate'
+      ? t('settings.usage.partialEstimatedParts')
+      : qualifier === 'estimated'
+        ? t('settings.usage.estimatedParts')
+        : qualifier === 'lower_bound'
+          ? t('settings.usage.pricedPartsOnly')
+          : null
+  return (
+    <section data-slot="cost-breakdown" className="space-y-2" aria-labelledby="usage-cost-breakdown-title">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <h3 id="usage-cost-breakdown-title" className="text-sm font-medium">
+          {t('settings.usage.costBreakdown')}
+        </h3>
+        {note && <span className="text-xs text-muted">{note}</span>}
+      </div>
+      {bucket.metered_messages === 0 && nonLocalMessages(bucket) > 0 ? (
+        <p className="text-sm text-muted">{t('settings.usage.noLocalCostBreakdown')}</p>
+      ) : (
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 @sm/pane:grid-cols-4">
+          {COST_SERIES.map((part) => (
+            <div key={part.key} className="min-w-0">
+              <dt className="flex items-center gap-1.5 text-xs text-muted">
+                <span className="size-2 rounded-full" style={{ backgroundColor: part.color }} aria-hidden="true" />
+                <span className="truncate">{t(part.labelKey)}</span>
+              </dt>
+              <dd className="mt-0.5 truncate text-sm font-medium tabular-nums">
+                {qualifiedCost(bucket[part.key], componentQualifier(bucket, part.key), t)}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </section>
   )
 }
 
@@ -477,14 +652,39 @@ function TokenTrend({ days }: { days: UsageBucket[] }) {
  * breaks the bar into beads with gaps at every join, which reads as missing data
  * rather than as a stack.
  */
-function TokenBars({ buckets }: { buckets: UsageBucket[] }) {
+function CostBars({ buckets }: { buckets: UsageBucket[] }) {
   const { t } = useTranslation()
-  const data = useMemo(() => buckets.slice(0, 6).map((b) => ({ name: b.label ?? b.key, ...split(b) })), [buckets])
-  const bands = present(data)
-  if (data.length === 0) return null
+  const shownBuckets = useMemo(() => buckets.slice(0, 6), [buckets])
+  const data = useMemo(
+    () =>
+      shownBuckets.map((bucket) => ({
+        name: bucket.label ?? bucket.key,
+        ...costSplit(bucket),
+      })),
+    [shownBuckets],
+  )
+  const bands = presentCosts(data)
+  const qualifier = costQualifier(
+    shownBuckets.reduce((sum, bucket) => sum + bucket.unpriced_messages + nonLocalMessages(bucket), 0),
+    shownBuckets.reduce((sum, bucket) => sum + bucket.estimated_messages, 0),
+  )
+  if (data.length === 0 || bands.length === 0) {
+    return <p className="text-sm text-muted">{t('settings.usage.noPricedCost')}</p>
+  }
   return (
     <>
       <Legend bands={bands} />
+      {qualifier !== 'exact' && (
+        <p className="text-xs text-muted">
+          {t(
+            qualifier === 'partial_estimate'
+              ? 'settings.usage.costChartPartialEstimate'
+              : qualifier === 'estimated'
+                ? 'settings.usage.costChartEstimated'
+                : 'settings.usage.costChartLowerBound',
+          )}
+        </p>
+      )}
       <BarChart data={data} height={Math.max(120, data.length * 34)} layout="vertical">
         <BarChart.XAxis hide type="number" />
         {/* `auto` rather than a fixed 110px, which is a third of the chart on a
@@ -500,12 +700,12 @@ function TokenBars({ buckets }: { buckets: UsageBucket[] }) {
             dataKey={band.key}
             fill={band.color}
             name={t(band.labelKey)}
-            stackId="tokens"
+            stackId="cost"
             radius={i === 0 ? [4, 0, 0, 4] : i === bands.length - 1 ? [0, 4, 4, 0] : undefined}
           />
         ))}
         <BarChart.Tooltip
-          content={<BarChart.TooltipContent indicator="line" valueFormatter={(v) => compact.format(Number(v))} />}
+          content={<BarChart.TooltipContent indicator="line" valueFormatter={(v) => formatCostAmount(Number(v))} />}
         />
       </BarChart>
     </>
@@ -517,7 +717,7 @@ function TokenBars({ buckets }: { buckets: UsageBucket[] }) {
  * the shape its own examples use — and it has to be built from the same `bands`
  * the chart drew, or it starts naming a series that is not there.
  */
-function Legend({ bands }: { bands: readonly (typeof SERIES)[number][] }) {
+function Legend({ bands }: { bands: readonly { key: string; color: string; labelKey: string }[] }) {
   const { t } = useTranslation()
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -531,56 +731,293 @@ function Legend({ bands }: { bands: readonly (typeof SERIES)[number][] }) {
   )
 }
 
+interface UsageGridRow extends UsageBucket {
+  rowId: string
+  displayLabel: string
+  isDeleted: boolean
+  conversationId: string | null
+  conversationTitle: string | null
+  conversationCount: number
+  isConversationInstance: boolean
+  sourceIndex: number
+  children?: UsageGridRow[]
+}
+
+function shortConversationId(id: string): string {
+  return /^[0-9a-f]{8}-/i.test(id) ? id.slice(0, 8) : id
+}
+
 /**
- * The ranked list under the charts.
+ * Merge equal visible titles before the twelve-row limit is applied.
  *
- * A `grid` rather than a `table`: the rows carry no header semantics worth the
- * markup, and the same shape is already used for the log viewer. `tabular-nums`
- * on every figure, so the columns line up down the page.
+ * Each child is still the backend's already-priced conversation bucket. The
+ * parent only adds disjoint buckets; it never tries to price their token totals.
+ * Deleted conversations stay independent because "Deleted" is a state, not a
+ * title those conversations shared while they existed.
  */
-function BucketTable({ buckets, labelFor }: { buckets: UsageBucket[]; labelFor?: (key: string) => string }) {
+function conversationRows(
+  buckets: UsageBucket[],
+  deletedLabel: string,
+  instanceLabel: (id: string) => string,
+): UsageGridRow[] {
+  const rows: UsageGridRow[] = []
+  const groups = new Map<string, UsageGridRow[]>()
+
+  buckets.forEach((bucket, sourceIndex) => {
+    // `Some("")` still means the conversation row exists. It has no useful
+    // title, so its full id is both the visible fallback and the grouping key;
+    // only SQL NULL means the conversation has been deleted.
+    const visibleTitle = bucket.label || bucket.key
+    const row: UsageGridRow = {
+      ...bucket,
+      rowId: `conversation:${bucket.key}`,
+      displayLabel: bucket.label === null ? deletedLabel : visibleTitle,
+      isDeleted: bucket.label === null,
+      conversationId: bucket.label === null ? null : bucket.key,
+      conversationTitle: bucket.label === null ? null : visibleTitle,
+      conversationCount: 1,
+      isConversationInstance: false,
+      sourceIndex,
+    }
+    if (bucket.label === null) {
+      rows.push(row)
+      return
+    }
+    const group = groups.get(visibleTitle)
+    if (group) group.push(row)
+    else groups.set(visibleTitle, [row])
+  })
+
+  for (const [title, matches] of groups) {
+    if (matches.length === 1) {
+      rows.push(matches[0])
+      continue
+    }
+    const children = matches.map((row) => ({
+      ...row,
+      displayLabel: instanceLabel(row.key),
+      isConversationInstance: true,
+    }))
+    rows.push({
+      key: `group:${matches[0].key}`,
+      label: title,
+      messages: matches.reduce((sum, row) => sum + row.messages, 0),
+      metered_messages: matches.reduce((sum, row) => sum + row.metered_messages, 0),
+      subscription_messages: matches.reduce((sum, row) => sum + row.subscription_messages, 0),
+      external_messages: matches.reduce((sum, row) => sum + row.external_messages, 0),
+      missing_token_usage_messages: matches.reduce((sum, row) => sum + row.missing_token_usage_messages, 0),
+      incomplete_token_usage_messages: matches.reduce((sum, row) => sum + row.incomplete_token_usage_messages, 0),
+      input_tokens: matches.reduce((sum, row) => sum + row.input_tokens, 0),
+      output_tokens: matches.reduce((sum, row) => sum + row.output_tokens, 0),
+      cache_read_tokens: matches.reduce((sum, row) => sum + row.cache_read_tokens, 0),
+      cache_write_tokens: matches.reduce((sum, row) => sum + row.cache_write_tokens, 0),
+      input_cost: matches.reduce((sum, row) => sum + row.input_cost, 0),
+      output_cost: matches.reduce((sum, row) => sum + row.output_cost, 0),
+      cache_cost: matches.reduce((sum, row) => sum + row.cache_cost, 0),
+      tool_cost: matches.reduce((sum, row) => sum + row.tool_cost, 0),
+      cost: matches.reduce((sum, row) => sum + row.cost, 0),
+      unpriced_token_messages: matches.reduce((sum, row) => sum + row.unpriced_token_messages, 0),
+      unpriced_tool_messages: matches.reduce((sum, row) => sum + row.unpriced_tool_messages, 0),
+      estimated_token_messages: matches.reduce((sum, row) => sum + row.estimated_token_messages, 0),
+      estimated_tool_messages: matches.reduce((sum, row) => sum + row.estimated_tool_messages, 0),
+      estimated_messages: matches.reduce((sum, row) => sum + row.estimated_messages, 0),
+      unpriced_messages: matches.reduce((sum, row) => sum + row.unpriced_messages, 0),
+      rowId: `conversation-group:${matches[0].key}`,
+      displayLabel: title,
+      isDeleted: false,
+      conversationId: null,
+      conversationTitle: title,
+      conversationCount: matches.length,
+      isConversationInstance: false,
+      sourceIndex: matches[0].sourceIndex,
+      children,
+    })
+  }
+
+  // The backend ranks individual buckets by cost. Once several of those are
+  // one visible row, its combined cost is the value that must determine rank.
+  return rows
+    .sort(
+      (a, b) =>
+        b.cost - a.cost ||
+        b.input_tokens + b.output_tokens - (a.input_tokens + a.output_tokens) ||
+        a.sourceIndex - b.sourceIndex,
+    )
+    .slice(0, 12)
+}
+
+/** The ranked rows under the charts, with the selected dimension as the row header. */
+function BucketTable({
+  buckets,
+  dimension,
+  dimensionLabel,
+  isLoading,
+  onOpenConversation,
+}: {
+  buckets: UsageBucket[]
+  dimension: Breakdown
+  dimensionLabel: string
+  isLoading: boolean
+  onOpenConversation: (conversationId: string) => void
+}) {
   const { t } = useTranslation()
-  if (buckets.length === 0) return null
+  const rows = useMemo<UsageGridRow[]>(() => {
+    if (dimension === 'conversation') {
+      return conversationRows(buckets, t('settings.usage.deleted'), (id) =>
+        t('settings.usage.conversationInstance', { id: shortConversationId(id) }),
+      )
+    }
+    return buckets.slice(0, 12).map((bucket, sourceIndex) => {
+      // Only named OneBot sources can be deleted. Bot rows deliberately carry
+      // the account number as their key and no label, while an empty bot/source
+      // key is ordinary desktop traffic.
+      const isDeleted = !bucket.label && dimension === 'source' && bucket.key !== ''
+      const displayLabel =
+        bucket.label ??
+        (dimension === 'kind'
+          ? t(`settings.usage.kind.${bucket.key}`)
+          : dimension === 'bot' && bucket.key
+            ? bucket.key
+            : dimension === 'source' && bucket.key
+              ? t('settings.usage.deleted')
+              : t('settings.usage.origin.desktop'))
+      return {
+        ...bucket,
+        rowId: `${dimension}:${bucket.key}`,
+        displayLabel,
+        isDeleted,
+        conversationId: null,
+        conversationTitle: null,
+        conversationCount: 1,
+        isConversationInstance: false,
+        sourceIndex,
+      }
+    })
+  }, [buckets, dimension, t])
+
+  const columns = useMemo<DataGridColumn<UsageGridRow>[]>(() => {
+    const result: DataGridColumn<UsageGridRow>[] = [
+      {
+        id: 'label',
+        header: dimensionLabel,
+        isRowHeader: true,
+        minWidth: 240,
+        cell: (row) =>
+          row.conversationCount > 1 ? (
+            <span className="block min-w-0">
+              <span className="block truncate text-sm">{row.displayLabel}</span>
+              <span className="block truncate text-xs text-muted">
+                {t('settings.usage.conversationGroupSummary', {
+                  conversations: row.conversationCount,
+                  messages: row.messages,
+                })}
+              </span>
+            </span>
+          ) : (
+            <span
+              className={cn(
+                'block truncate text-sm',
+                row.isDeleted && 'text-muted italic',
+                row.isConversationInstance && 'text-muted',
+              )}
+              title={row.isConversationInstance ? (row.conversationId ?? undefined) : undefined}
+            >
+              {row.displayLabel}
+            </span>
+          ),
+      },
+      {
+        id: 'tokens',
+        header: t('settings.usage.tokenColumn'),
+        align: 'end',
+        width: 136,
+        minWidth: 120,
+        headerClassName: 'whitespace-nowrap',
+        cellClassName: 'whitespace-nowrap text-xs text-muted tabular-nums',
+        cell: (row) => tokenTotal(row.input_tokens + row.output_tokens, row, t),
+      },
+      {
+        id: 'cost',
+        header: t('settings.usage.kpi.cost'),
+        align: 'end',
+        width: 144,
+        minWidth: 112,
+        pinned: dimension === 'conversation' ? undefined : 'end',
+        headerClassName: 'whitespace-nowrap',
+        cellClassName: 'whitespace-nowrap text-sm tabular-nums',
+        cell: (row) => {
+          const qualifier = bucketCostQualifier(row)
+          const localQualifier = costQualifier(row.unpriced_messages, row.estimated_messages)
+          const pricingTitle =
+            localQualifier === 'partial_estimate'
+              ? t('settings.usage.partialEstimate', {
+                  estimated: row.estimated_messages,
+                  unpriced: row.unpriced_messages,
+                })
+              : localQualifier === 'estimated'
+                ? t('settings.usage.estimated', { count: row.estimated_messages })
+                : localQualifier === 'lower_bound'
+                  ? t('settings.usage.unpriced', { count: row.unpriced_messages })
+                  : undefined
+          const title = [pricingTitle, billingCoverage(row, t)].filter(Boolean).join(' ') || undefined
+          return (
+            <span className={cn(qualifier !== 'exact' && 'text-muted')} title={title}>
+              {displayedCost(row, t)}
+            </span>
+          )
+        },
+      },
+    ]
+    if (dimension === 'conversation') {
+      result.push({
+        id: 'actions',
+        header: t('settings.usage.actionColumn'),
+        align: 'end',
+        width: 88,
+        minWidth: 80,
+        pinned: 'end',
+        headerClassName: 'whitespace-nowrap',
+        cell: (row) => {
+          if (!row.conversationId) return null
+          const conversationId = row.conversationId
+          const label = t('settings.usage.openConversation', {
+            title: row.conversationTitle || conversationId,
+            // The visual child label is allowed to abbreviate a UUID. The
+            // accessible name is not: two conversations can share that prefix.
+            id: conversationId,
+          })
+          return (
+            <Tooltip>
+              <Button isIconOnly variant="ghost" aria-label={label} onPress={() => onOpenConversation(conversationId)}>
+                <ArrowRightFromSquare className="size-4" />
+              </Button>
+              <Tooltip.Content placement="left">{label}</Tooltip.Content>
+            </Tooltip>
+          )
+        },
+      })
+    }
+    return result
+  }, [dimension, dimensionLabel, onOpenConversation, t])
+
   return (
-    <div data-slot="usage-table" className="rounded-lg border border-border">
-      {buckets.slice(0, 12).map((bucket, i) => (
-        <div
-          key={bucket.key}
-          className={cn(
-            'grid grid-cols-[1fr_auto_auto] items-center gap-3 px-3 py-2',
-            i > 0 && 'border-t border-border',
-          )}
-        >
-          {/* `labelFor` is for dimensions whose keys are not ids and so carry
-              no backend label — `kind`, whose keys are roles. Without it a row
-              with no label reads as "deleted", which is right for a
-              conversation that is gone and nonsense for a role that is not a
-              thing that can be deleted. */}
-          <span className={cn('truncate text-sm', !bucket.label && !labelFor && 'text-muted italic')}>
-            {bucket.label ?? labelFor?.(bucket.key) ?? t('settings.usage.deleted')}
-          </span>
-          <span className="text-xs text-muted tabular-nums">
-            {t('settings.usage.tokens', {
-              value: compact.format(bucket.input_tokens + bucket.output_tokens),
-            })}
-          </span>
-          <span
-            className={cn('w-20 text-right text-sm tabular-nums', bucket.unpriced_messages > 0 && 'text-muted')}
-            // The cost of a row that is partly unpriced is a lower bound, and a
-            // number with no way to say so is the one thing this page must not
-            // print. The dimmed text is the visible half of that; this is the
-            // half a screen reader gets.
-            title={
-              bucket.unpriced_messages > 0
-                ? t('settings.usage.unpriced', { count: bucket.unpriced_messages })
-                : undefined
-            }
-          >
-            {money.format(bucket.cost)}
-          </span>
-        </div>
-      ))}
-    </div>
+    <DataGrid<UsageGridRow>
+      aria-label={`${t('settings.usage.breakdown')}: ${dimensionLabel}`}
+      variant="secondary"
+      columns={columns}
+      data={rows}
+      getRowId={(row) => row.rowId}
+      getChildren={dimension === 'conversation' ? (row) => row.children : undefined}
+      treeColumn={dimension === 'conversation' ? 'label' : undefined}
+      renderEmptyState={() =>
+        isLoading ? <Spinner size="sm" aria-label={t('common.loading')} /> : <span>{t('settings.usage.empty')}</span>
+      }
+      // The named column must keep room for long conversation and model ids.
+      // A conversation also has an action column; on a narrow pane the grid
+      // scrolls instead of crushing them or widening the settings page itself.
+      contentClassName={dimension === 'conversation' ? 'min-w-[38rem]' : 'min-w-[32rem]'}
+      scrollContainerClassName="overflow-x-auto overscroll-contain"
+    />
   )
 }
 

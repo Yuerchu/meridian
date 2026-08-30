@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '@/api'
+import type { DraftTurnSettings } from '@/components/chat/conversation-draft'
 import { useConversationStore } from '@/stores/conversation-store'
 import { coerceThinkingLevel } from '@/lib/thinking'
 import type { Assistant, ChatMode, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
@@ -33,7 +34,18 @@ export interface TurnSettings {
  * which thinking tiers exist, and the conversation decides the model. Splitting
  * them apart would mean re-deriving that chain in three places.
  */
-export function useTurnSettings(conversationId: string): TurnSettings {
+export function useTurnSettings(conversationId: string | null, initial?: DraftTurnSettings): TurnSettings {
+  // A new-conversation composer has no row to persist to yet. Keep its explicit
+  // choices alive locally, then hand the same seed to the first real ChatView so
+  // a per-turn model override is not replaced by the assistant's default while
+  // the assistant/provider lists are loading.
+  //
+  // Captured once. This hook's owner is keyed by conversation id; if an owner is
+  // ever reused for another id, an old draft must not leak into it.
+  const initialSelectionRef = useRef<{ conversationId: string | null; settings?: DraftTurnSettings }>({
+    conversationId,
+    settings: initial,
+  })
   // TODO: every read below goes to `s.conversations`, which is the sidebar's
   // list — and a sub-agent's conversation is filtered out of it on purpose
   // (`db::ops::conversation::list_conversations`). Opened from a `run_agent`
@@ -51,6 +63,9 @@ export function useTurnSettings(conversationId: string): TurnSettings {
   // lands, since it is the layer that will move.
   const conversationAssistantId = useConversationStore(
     (s) => s.conversations.find((c) => c.id === conversationId)?.assistant_id ?? null,
+  )
+  const conversationExists = useConversationStore(
+    (s) => conversationId !== null && s.conversations.some((c) => c.id === conversationId),
   )
   // Kept as two primitive selectors: returning an object here would allocate a
   // fresh reference on every store update and re-render on each one.
@@ -71,13 +86,13 @@ export function useTurnSettings(conversationId: string): TurnSettings {
 
   const [assistants, setAssistants] = useState<Assistant[]>([])
   const [providers, setProviders] = useState<Provider[]>([])
-  const [selectedAssistantId, setSelectedAssistantId] = useState<string | null>(null)
-  const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
-  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null)
-  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>('default')
-  const [fastMode, setFastMode] = useState(false)
-  const [mode, setMode] = useState<ChatMode>('work')
-  const [acceptEdits, setAcceptEdits] = useState(false)
+  const [selectedAssistantId, setSelectedAssistantId] = useState<string | null>(initial?.selectedAssistantId ?? null)
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(initial?.selectedModelId ?? null)
+  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(initial?.selectedProviderId ?? null)
+  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>(initial?.thinkingLevel ?? 'default')
+  const [fastMode, setFastMode] = useState(initial?.fastMode ?? false)
+  const [mode, setMode] = useState<ChatMode>(initial?.mode ?? 'work')
+  const [acceptEdits, setAcceptEdits] = useState(initial?.acceptEdits ?? false)
   const [capabilities, setCapabilities] = useState<ProviderCapabilities | null>(null)
 
   useEffect(() => {
@@ -91,21 +106,42 @@ export function useTurnSettings(conversationId: string): TurnSettings {
   // global default only when the conversation has no (or a dangling) binding.
   useEffect(() => {
     if (assistants.length === 0) return
+    const seeded =
+      initialSelectionRef.current.conversationId === conversationId ? initialSelectionRef.current.settings : undefined
     const bound = conversationAssistantId ? assistants.find((x) => x.id === conversationAssistantId) : undefined
-    const effective = bound ?? assistants.find((x) => x.is_default === 1) ?? assistants[0]
+    const seededAssistant = seeded?.selectedAssistantId
+      ? assistants.find((x) => x.id === seeded.selectedAssistantId)
+      : undefined
+    const effective = seededAssistant ?? bound ?? assistants.find((x) => x.is_default === 1) ?? assistants[0]
     if (effective) {
       setSelectedAssistantId(effective.id)
-      setSelectedModelId(effective.model_id ?? null)
-      setSelectedProviderId(effective.provider_id ?? null)
+      // Only preserve a model/provider override when its assistant survived
+      // validation. A dangling assistant seed falls back as one unit instead of
+      // applying its model to an unrelated default assistant.
+      const seedMatches = seeded && (!seeded.selectedAssistantId || seeded.selectedAssistantId === effective.id)
+      setSelectedModelId(
+        seedMatches ? (seeded.selectedModelId ?? effective.model_id ?? null) : (effective.model_id ?? null),
+      )
+      setSelectedProviderId(
+        seedMatches ? (seeded.selectedProviderId ?? effective.provider_id ?? null) : (effective.provider_id ?? null),
+      )
+      // The seed only bridges the initial catalog load. Keeping it afterwards
+      // would make a later conversation update lose to stale welcome-page
+      // choices instead of following the newly persisted assistant.
+      if (seeded && (conversationId === null || conversationExists)) {
+        initialSelectionRef.current.settings = undefined
+      }
     }
-  }, [conversationId, conversationAssistantId, assistants])
+  }, [conversationId, conversationExists, conversationAssistantId, assistants])
 
   const onSelectAssistant = useCallback(
     (id: string) => {
+      initialSelectionRef.current.settings = undefined
       setSelectedAssistantId(id)
       const a = assistants.find((x) => x.id === id)
       if (a?.model_id) setSelectedModelId(a.model_id)
       if (a?.provider_id) setSelectedProviderId(a.provider_id)
+      if (conversationId === null) return
       // Persist the explicit switch so the binding survives conversation changes
       api
         .setConversationAssistant(conversationId, id)
@@ -118,6 +154,7 @@ export function useTurnSettings(conversationId: string): TurnSettings {
   )
 
   const onSelectModel = useCallback((modelId: string, providerId: string) => {
+    initialSelectionRef.current.settings = undefined
     setSelectedModelId(modelId)
     setSelectedProviderId(providerId)
   }, [])
@@ -139,8 +176,10 @@ export function useTurnSettings(conversationId: string): TurnSettings {
   // conversationId alone so a background refreshConversations() can't clobber
   // an edit the user just made.
   useEffect(() => {
-    setThinkingLevel((conversationThinkingLevel as ThinkingLevel | null) ?? 'default')
-    setFastMode(conversationFastMode)
+    const seeded =
+      initialSelectionRef.current.conversationId === conversationId ? initialSelectionRef.current.settings : undefined
+    setThinkingLevel(seeded?.thinkingLevel ?? (conversationThinkingLevel as ThinkingLevel | null) ?? 'default')
+    setFastMode(seeded?.fastMode ?? conversationFastMode)
     // `mode` is deliberately absent: unlike the two above it tracks the stored
     // value continuously (see below), because the backend changes it on its own
     // when a plan is approved.
@@ -159,6 +198,7 @@ export function useTurnSettings(conversationId: string): TurnSettings {
   const onSelectThinkingLevel = useCallback(
     (level: ThinkingLevel) => {
       setThinkingLevel(level)
+      if (conversationId === null) return
       api
         .setConversationReasoningPrefs(conversationId, level === 'default' ? null : level, fastMode)
         .then(() => refreshConversations())
@@ -172,6 +212,7 @@ export function useTurnSettings(conversationId: string): TurnSettings {
   const onToggleFast = useCallback(
     (next: boolean) => {
       setFastMode(next)
+      if (conversationId === null) return
       api
         .setConversationReasoningPrefs(conversationId, thinkingLevel === 'default' ? null : thinkingLevel, next)
         .then(() => refreshConversations())
@@ -186,6 +227,7 @@ export function useTurnSettings(conversationId: string): TurnSettings {
     (next: ChatMode) => {
       const previous = mode
       setMode(next)
+      if (conversationId === null) return
       api
         .setConversationMode(conversationId, next === 'work' ? null : next)
         .then(() => refreshConversations())
@@ -205,6 +247,7 @@ export function useTurnSettings(conversationId: string): TurnSettings {
     (next: boolean) => {
       const previous = acceptEdits
       setAcceptEdits(next)
+      if (conversationId === null) return
       api
         .setConversationAcceptEdits(conversationId, next)
         .then(() => refreshConversations())
@@ -224,14 +267,28 @@ export function useTurnSettings(conversationId: string): TurnSettings {
   // the backend, which emits `conversation-updated`, and the toolbar has to
   // follow rather than keep claiming the conversation is still planning.
   useEffect(() => {
+    if (conversationId === null) return
+    if (
+      initialSelectionRef.current.conversationId === conversationId &&
+      initialSelectionRef.current.settings !== undefined
+    ) {
+      return
+    }
     setMode(conversationMode)
-  }, [conversationMode])
+  }, [conversationId, conversationMode])
 
   // Same reason, plus one of its own: switching conversations must not carry a
   // standing approval over from the one before it.
   useEffect(() => {
+    if (conversationId === null) return
+    if (
+      initialSelectionRef.current.conversationId === conversationId &&
+      initialSelectionRef.current.settings !== undefined
+    ) {
+      return
+    }
     setAcceptEdits(conversationAcceptEdits)
-  }, [conversationAcceptEdits])
+  }, [conversationId, conversationAcceptEdits])
 
   return {
     assistants,

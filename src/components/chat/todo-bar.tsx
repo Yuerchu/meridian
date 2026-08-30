@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Disclosure, ProgressCircle, ToggleButton, ToggleButtonGroup } from '@heroui/react'
+import { Disclosure, ProgressCircle } from '@heroui/react'
+import { Segment } from '@heroui-pro/react/segment'
 import { LayoutColumns3, LayoutList } from '@gravity-ui/icons'
 import { useTranslation } from 'react-i18next'
 
@@ -96,25 +97,21 @@ export function TodoBarView({ todos, className }: { todos: TodoArgs; className?:
                 so without it the list never collapses. */}
             <Disclosure.Body>
               <div className="flex justify-end px-4 pb-2">
-                <ToggleButtonGroup
+                <Segment
+                  aria-label={`${t('chat.todo.viewList')} / ${t('chat.todo.viewBoard')}`}
                   size="sm"
-                  selectionMode="single"
-                  // Without this the second press on the selected option
-                  // deselects it, and the panel would have no view at all.
-                  disallowEmptySelection
-                  selectedKeys={[view]}
-                  onSelectionChange={(keys) => {
-                    const next = [...keys][0]
+                  selectedKey={view}
+                  onSelectionChange={(next) => {
                     if (next === 'list' || next === 'board') setView(next)
                   }}
                 >
-                  <ToggleButton id="list" isIconOnly aria-label={t('chat.todo.viewList')}>
+                  <Segment.Item id="list" aria-label={t('chat.todo.viewList')} className="w-7 px-0">
                     <LayoutList />
-                  </ToggleButton>
-                  <ToggleButton id="board" isIconOnly aria-label={t('chat.todo.viewBoard')}>
+                  </Segment.Item>
+                  <Segment.Item id="board" aria-label={t('chat.todo.viewBoard')} className="w-7 px-0">
                     <LayoutColumns3 />
-                  </ToggleButton>
-                </ToggleButtonGroup>
+                  </Segment.Item>
+                </Segment>
               </div>
               {view === 'board' ? (
                 <TodoBoard todos={todos.todos} className="px-4 pb-4" />

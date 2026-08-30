@@ -37,11 +37,13 @@ export function useVoiceRecorder({ onSend, onNotice }: UseVoiceRecorderOptions) 
 
   const finish = useCallback(async () => {
     if (!LIVE_STATES.includes(stateRef.current)) return
+    stateRef.current = 'transcribing'
     setState('transcribing')
     try {
       await startPromiseRef.current
     } catch {
       // Start already failed and reported; nothing to stop.
+      stateRef.current = 'idle'
       setState('idle')
       return
     }
@@ -55,11 +57,13 @@ export function useVoiceRecorder({ onSend, onNotice }: UseVoiceRecorderOptions) 
     } catch (e) {
       onNotice('error', String(e))
     }
+    stateRef.current = 'idle'
     setState('idle')
   }, [onSend, onNotice])
 
   const cancel = useCallback(() => {
     if (!LIVE_STATES.includes(stateRef.current)) return
+    stateRef.current = 'idle'
     setState('idle')
     const started = startPromiseRef.current
     void (async () => {
@@ -90,6 +94,7 @@ export function useVoiceRecorder({ onSend, onNotice }: UseVoiceRecorderOptions) 
       // showing a live recording indicator during it invites the user to start
       // talking into a microphone that is not capturing. The opening words were
       // getting cut off that way.
+      stateRef.current = 'starting'
       setState('starting')
       startPromiseRef.current = api.voiceStartRecording()
       try {
@@ -97,8 +102,12 @@ export function useVoiceRecorder({ onSend, onNotice }: UseVoiceRecorderOptions) 
         captureAtRef.current = Date.now()
         // A release or cancel may have landed while the device was opening; only
         // promote to a live state if we are still waiting for one.
-        if (stateRef.current === 'starting') setState('recording-hold')
+        if (stateRef.current === 'starting') {
+          stateRef.current = 'recording-hold'
+          setState('recording-hold')
+        }
       } catch (err) {
+        stateRef.current = 'idle'
         setState('idle')
         const msg = String(err)
         onNotice(msg.includes('model_not_installed') ? 'model_missing' : 'error', msg)
@@ -113,6 +122,7 @@ export function useVoiceRecorder({ onSend, onNotice }: UseVoiceRecorderOptions) 
     if (stateRef.current !== 'recording-hold' && stateRef.current !== 'starting') return
     if (Date.now() - pressedAtRef.current < HOLD_THRESHOLD_MS) {
       // Short press: keep recording, wait for the closing click.
+      stateRef.current = 'recording-toggle'
       setState('recording-toggle')
     } else {
       finish()
@@ -122,6 +132,35 @@ export function useVoiceRecorder({ onSend, onNotice }: UseVoiceRecorderOptions) 
   const handlePointerCancel = useCallback(() => {
     cancel()
   }, [cancel])
+
+  // A focused button must be usable without fabricating a PointerEvent. A
+  // keyboard press is deliberately toggle-only: hold duration has no useful
+  // meaning for Enter/Space, so the first press starts and the next finishes.
+  const handleKeyboardPress = useCallback(async () => {
+    const before = stateRef.current
+    if (LIVE_STATES.includes(before)) {
+      void finish()
+      return
+    }
+    if (before !== 'idle') return
+
+    stateRef.current = 'starting'
+    setState('starting')
+    startPromiseRef.current = api.voiceStartRecording()
+    try {
+      await startPromiseRef.current
+      captureAtRef.current = Date.now()
+      if (stateRef.current === 'starting') {
+        stateRef.current = 'recording-toggle'
+        setState('recording-toggle')
+      }
+    } catch (err) {
+      stateRef.current = 'idle'
+      setState('idle')
+      const msg = String(err)
+      onNotice(msg.includes('model_not_installed') ? 'model_missing' : 'error', msg)
+    }
+  }, [finish, onNotice])
 
   // Opening an input device is slow enough to swallow the first word of someone
   // who clicks and talks straight away, so it happens on approach instead. Both
@@ -170,5 +209,6 @@ export function useVoiceRecorder({ onSend, onNotice }: UseVoiceRecorderOptions) 
     handlePointerCancel,
     handlePointerEnter,
     handlePointerLeave,
+    handleKeyboardPress,
   }
 }

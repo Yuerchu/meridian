@@ -399,6 +399,44 @@ export interface TurnRecord {
   error: string | null
   started_at: number
   ended_at: number | null
+  /** Aggregated from the immutable audit rows for this run. Optional so a
+   *  frontend can still open snapshots from an older remote host. */
+  usage?: TurnUsageSummary | null
+}
+
+export type TurnPricingStatus = 'exact' | 'estimated' | 'lower_bound' | 'subscription' | 'external' | 'unavailable'
+
+/** The backend-priced usage of one agent-loop run. Cost fields are outputs,
+ *  never rates for the frontend to apply to the token fields. */
+export interface TurnUsageSummary {
+  messages: number
+  /** Replies where the provider supplied none of the token usage fields. */
+  missing_token_usage_messages: number
+  /** Replies missing either input or output token usage. */
+  incomplete_token_usage_messages: number
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  cache_write_tokens: number
+  server_tool_calls: number
+  input_cost: number | null
+  output_cost: number | null
+  cache_cost: number | null
+  tool_cost: number | null
+  total_cost: number | null
+  unpriced_token_messages: number
+  unpriced_input_messages: number
+  unpriced_output_messages: number
+  unpriced_cache_messages: number
+  unpriced_tool_messages: number
+  estimated_token_messages: number
+  estimated_tool_messages: number
+  estimated_messages: number
+  unpriced_messages: number
+  metered_messages: number
+  subscription_messages: number
+  external_messages: number
+  pricing_status: TurnPricingStatus
 }
 
 /** A conversation as of one instant.
@@ -1078,15 +1116,43 @@ export interface UsageBucket {
   label: string | null
   /** Replies. Only assistant rows carry tokens, so questions are not counted. */
   messages: number
+  /** Replies included in Meridian's locally priced amount. */
+  metered_messages: number
+  /** Replies covered by a provider subscription rather than per-request pricing. */
+  subscription_messages: number
+  /** Replies whose cost is settled outside Meridian. */
+  external_messages: number
+  /** Replies where the provider supplied none of the token usage fields. */
+  missing_token_usage_messages: number
+  /** Replies missing either input or output token usage. */
+  incomplete_token_usage_messages: number
   input_tokens: number
   output_tokens: number
   cache_read_tokens: number
   cache_write_tokens: number
+  /** Already-priced uncached prompt cost, computed by the backend. */
+  input_cost: number
+  /** Already-priced completion cost, computed by the backend. */
+  output_cost: number
+  /** Already-priced cache read/write cost, computed by the backend. */
+  cache_cost: number
+  /** Already-priced provider-hosted tool cost, computed by the backend. */
+  tool_cost: number
   cost: number
+  /** Replies with an unknown token component (usage or price). */
+  unpriced_token_messages: number
+  /** Replies with provider-tool calls whose rate is unknown. */
+  unpriced_tool_messages: number
+  /** Replies priced from today's token rates because their historical snapshot is absent. */
+  estimated_token_messages: number
+  /** Replies priced from today's tool rate because their historical snapshot is absent. */
+  estimated_tool_messages: number
+  /** Union of the two component estimate counts above. */
+  estimated_messages: number
   /**
-   * Replies produced by a model nobody has priced. Their tokens are in the
-   * counts above but their cost is in nobody's total, so a view that shows
-   * `cost` without showing this is claiming a bill it cannot support.
+   * Replies with incomplete metered usage or pricing. Known counts and priced
+   * components remain above; unknown parts are absent, so a view that shows
+   * `cost` without this state is claiming a complete bill it cannot support.
    */
   unpriced_messages: number
 }

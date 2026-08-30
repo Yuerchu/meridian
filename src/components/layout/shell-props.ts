@@ -1,4 +1,5 @@
 import type { SettingsTab } from '@/components/settings/tabs'
+import type { InitialTurnDraft } from '@/components/chat/conversation-draft'
 import type { Conversation, Project } from '@/types'
 
 /**
@@ -24,7 +25,7 @@ export interface ShellProps {
   activeProjectId: string | null
   page: Page
   settingsTab: SettingsTab
-  pendingMessage: string | null
+  pendingDraft: InitialTurnDraft | null
   /** Title for the header, already resolved from the active conversation. */
   headerTitle: string
   canDragWindow: boolean
@@ -43,6 +44,6 @@ export interface ShellProps {
   onOpenSettings: () => void
   onCloseSettings: () => void
   onSettingsTabChange: (tab: SettingsTab) => void
-  onCreateWithMessage: (text: string) => void
-  onInitialMessageConsumed: () => void
+  onCreateWithDraft: (draft: InitialTurnDraft) => Promise<void>
+  onInitialDraftConsumed: () => void
 }

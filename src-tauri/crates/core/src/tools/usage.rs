@@ -130,6 +130,22 @@ impl Tool for ConversationUsageTool {
     }
 }
 
+/// Match the UI's cost precision without ever turning a real positive charge
+/// into a printed zero. Prices have no stored currency, so this formats only
+/// the amount.
+fn format_cost(value: f64) -> String {
+    if value != 0.0 && value.abs() < 0.000_001 {
+        return format!("{value:.2e}");
+    }
+
+    let mut formatted = format!("{value:.6}");
+    let decimal = formatted.find('.').unwrap_or(formatted.len());
+    while formatted.len().saturating_sub(decimal + 1) > 2 && formatted.ends_with('0') {
+        formatted.pop();
+    }
+    formatted
+}
+
 fn render(buckets: &[UsageBucket], dimension: UsageDimension, days: i64) -> String {
     if buckets.is_empty() {
         return format!("No recorded usage for this conversation in the last {days} days.");
@@ -143,17 +159,46 @@ fn render(buckets: &[UsageBucket], dimension: UsageDimension, days: i64) -> Stri
         } else {
             name.to_string()
         };
-        out.push_str(&format!(
-            "- {label}: {} replies, {} in / {} out tokens",
-            bucket.messages, bucket.input_tokens, bucket.output_tokens
-        ));
-        if bucket.cache_read_tokens > 0 || bucket.cache_write_tokens > 0 {
+        out.push_str(&format!("- {label}: {} replies, ", bucket.messages));
+        if bucket.messages > 0 && bucket.missing_token_usage_messages >= bucket.messages {
+            out.push_str("token usage unavailable");
+        } else {
+            if bucket.incomplete_token_usage_messages > 0 {
+                out.push_str("at least ");
+            }
             out.push_str(&format!(
-                " ({} cached read, {} cached write)",
-                bucket.cache_read_tokens, bucket.cache_write_tokens
+                "{} in / {} out tokens",
+                bucket.input_tokens, bucket.output_tokens
             ));
+            if bucket.cache_read_tokens > 0 || bucket.cache_write_tokens > 0 {
+                out.push_str(&format!(
+                    " ({} cached read, {} cached write)",
+                    bucket.cache_read_tokens, bucket.cache_write_tokens
+                ));
+            }
+            if bucket.incomplete_token_usage_messages > 0 {
+                let noun = if bucket.incomplete_token_usage_messages == 1 {
+                    "reply"
+                } else {
+                    "replies"
+                };
+                out.push_str(&format!(
+                    "; {} {noun} did not report complete token usage",
+                    bucket.incomplete_token_usage_messages
+                ));
+            }
         }
-        out.push_str(&format!(", ${:.4}\n", bucket.cost));
+        match (
+            bucket.metered_messages,
+            bucket.subscription_messages,
+            bucket.external_messages,
+        ) {
+            (0, subscription, 0) if subscription > 0 => out.push_str(", cost covered by subscription\n"),
+            (0, 0, external) if external > 0 => out.push_str(", cost settled externally\n"),
+            (0, _, _) => out.push_str(", local cost unavailable\n"),
+            (_, 0, 0) => out.push_str(&format!(", cost {}\n", format_cost(bucket.cost))),
+            _ => out.push_str(&format!(", locally metered cost {}\n", format_cost(bucket.cost))),
+        }
     }
 
     if buckets.len() > MAX_ROWS {
@@ -161,14 +206,33 @@ fn render(buckets: &[UsageBucket], dimension: UsageDimension, days: i64) -> Stri
     }
 
     // Never dropped, and said as a sentence rather than a number in a column.
-    // `UsageBucket` asks every caller to surface this: an unpriced reply is
-    // spend of an unknown size, and a total that swallows it is smaller than
-    // the truth with nothing to say so.
+    // A missing component makes a snapshotted amount a lower bound, while a
+    // legacy row priced at today's rate is an estimate that can move either
+    // way. Keep those two uncertainties distinct, including when both occur.
     let unpriced: i64 = buckets.iter().map(|b| b.unpriced_messages).sum();
-    if unpriced > 0 {
+    let estimated: i64 = buckets.iter().map(|b| b.estimated_messages).sum();
+    match (estimated, unpriced) {
+        (0, 0) => {}
+        (0, unpriced) => out.push_str(&format!(
+            "\nNote: {unpriced} of these replies have incomplete usage or pricing, so the cost \
+             above is a lower bound.\n"
+        )),
+        (estimated, 0) => out.push_str(&format!(
+            "\nNote: {estimated} of these replies use current provider/model prices because \
+             their historical rates were not recorded. The cost above is an estimate, not an \
+             exact historical total.\n"
+        )),
+        (estimated, unpriced) => out.push_str(&format!(
+            "\nNote: {estimated} of these replies use current provider/model prices because \
+             their historical rates were not recorded, and {unpriced} have incomplete usage or \
+             pricing. The cost above is a partial estimate, not an exact total.\n"
+        )),
+    }
+    let subscription: i64 = buckets.iter().map(|b| b.subscription_messages).sum();
+    let external: i64 = buckets.iter().map(|b| b.external_messages).sum();
+    if subscription > 0 || external > 0 {
         out.push_str(&format!(
-            "\nNote: {unpriced} of these replies came from a model nobody has priced, so the cost \
-             above is lower than what was actually spent.\n"
+            "\nNote: {subscription} replies were covered by subscriptions and {external} were settled externally; those costs are not included in Meridian's locally metered amount.\n"
         ));
     }
     out
@@ -183,11 +247,25 @@ mod tests {
             key: key.into(),
             label: None,
             messages,
+            metered_messages: messages,
+            subscription_messages: 0,
+            external_messages: 0,
+            missing_token_usage_messages: 0,
+            incomplete_token_usage_messages: 0,
             input_tokens: 100,
             output_tokens: 50,
             cache_read_tokens: 0,
             cache_write_tokens: 0,
+            input_cost: cost,
+            output_cost: 0.0,
+            cache_cost: 0.0,
+            tool_cost: 0.0,
             cost,
+            unpriced_token_messages: unpriced,
+            unpriced_tool_messages: 0,
+            estimated_token_messages: 0,
+            estimated_tool_messages: 0,
+            estimated_messages: 0,
             unpriced_messages: unpriced,
         }
     }
@@ -218,15 +296,82 @@ mod tests {
     #[test]
     fn unpriced_replies_are_reported_beside_the_total() {
         let out = render(&[bucket("total", 5, 1.25, 2)], UsageDimension::Total, 30);
-        assert!(out.contains("$1.2500"), "{out}");
+        assert!(out.contains("cost 1.25"), "{out}");
         assert!(out.contains("2 of these replies"), "{out}");
-        assert!(out.contains("lower than what was actually spent"), "{out}");
+        assert!(out.contains("is a lower bound"), "{out}");
     }
 
     #[test]
     fn a_fully_priced_report_carries_no_warning() {
         let out = render(&[bucket("total", 5, 1.25, 0)], UsageDimension::Total, 30);
-        assert!(!out.contains("nobody has priced"), "{out}");
+        assert!(!out.contains("incomplete usage or pricing"), "{out}");
+        assert!(!out.contains("estimate"), "{out}");
+    }
+
+    #[test]
+    fn a_current_price_fallback_is_called_an_estimate_not_a_lower_bound() {
+        let mut row = bucket("total", 5, 1.25, 0);
+        row.estimated_token_messages = 2;
+        row.estimated_messages = 2;
+        let out = render(&[row], UsageDimension::Total, 30);
+        assert!(
+            out.contains("2 of these replies use current provider/model prices"),
+            "{out}"
+        );
+        assert!(out.contains("is an estimate"), "{out}");
+        assert!(!out.contains("lower bound"), "{out}");
+    }
+
+    #[test]
+    fn estimated_and_unpriced_traffic_is_called_a_partial_estimate() {
+        let mut row = bucket("total", 5, 1.25, 1);
+        row.estimated_tool_messages = 2;
+        row.estimated_messages = 2;
+        let out = render(&[row], UsageDimension::Total, 30);
+        assert!(
+            out.contains("2 of these replies use current provider/model prices"),
+            "{out}"
+        );
+        assert!(out.contains("1 have incomplete usage or pricing"), "{out}");
+        assert!(out.contains("partial estimate"), "{out}");
+        assert!(!out.contains("lower bound"), "{out}");
+    }
+
+    #[test]
+    fn a_sub_micro_cost_is_never_rendered_as_zero() {
+        let out = render(&[bucket("total", 1, 0.000_000_4, 0)], UsageDimension::Total, 30);
+        assert!(out.contains("cost 4.00e-7"), "{out}");
+        assert!(!out.contains("cost 0.00"), "{out}");
+    }
+
+    #[test]
+    fn externally_settled_usage_is_not_rendered_as_a_free_local_request() {
+        let mut external = bucket("total", 2, 0.0, 0);
+        external.metered_messages = 0;
+        external.external_messages = 2;
+
+        let out = render(&[external], UsageDimension::Total, 30);
+        assert!(out.contains("cost settled externally"), "{out}");
+        assert!(!out.contains("cost 0.00"), "{out}");
+        assert!(out.contains("2 were settled externally"), "{out}");
+    }
+
+    #[test]
+    fn missing_token_usage_is_not_rendered_as_zero() {
+        let mut unknown = bucket("total", 2, 0.0, 0);
+        unknown.input_tokens = 0;
+        unknown.output_tokens = 0;
+        unknown.missing_token_usage_messages = 2;
+        let out = render(&[unknown], UsageDimension::Total, 30);
+        assert!(out.contains("token usage unavailable"), "{out}");
+        assert!(!out.contains("0 in / 0 out tokens"), "{out}");
+
+        let mut partial = bucket("total", 2, 0.1, 0);
+        partial.missing_token_usage_messages = 1;
+        partial.incomplete_token_usage_messages = 1;
+        let out = render(&[partial], UsageDimension::Total, 30);
+        assert!(out.contains("at least 100 in / 50 out tokens"), "{out}");
+        assert!(out.contains("1 reply did not report complete token usage"), "{out}");
     }
 
     #[test]

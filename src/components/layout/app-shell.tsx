@@ -47,7 +47,7 @@ export function AppShell(props: ShellProps) {
     activeProjectId,
     page,
     settingsTab,
-    pendingMessage,
+    pendingDraft,
     headerTitle,
     canDragWindow,
     onSelect,
@@ -63,8 +63,8 @@ export function AppShell(props: ShellProps) {
     onOpenSettings,
     onCloseSettings,
     onSettingsTabChange,
-    onCreateWithMessage,
-    onInitialMessageConsumed,
+    onCreateWithDraft,
+    onInitialDraftConsumed,
   } = props
 
   // Controlled on purpose. Left uncontrolled, Pro writes the state to a
@@ -219,11 +219,11 @@ export function AppShell(props: ShellProps) {
                     <ChatView
                       key={activeId}
                       conversationId={activeId}
-                      initialMessage={pendingMessage}
-                      onInitialMessageConsumed={onInitialMessageConsumed}
+                      initialDraft={pendingDraft}
+                      onInitialDraftConsumed={onInitialDraftConsumed}
                     />
                   ) : (
-                    <EmptyState onSubmit={onCreateWithMessage} />
+                    <EmptyState onSubmit={onCreateWithDraft} />
                   )}
                 </div>
               </Resizable.Panel>
@@ -259,7 +259,9 @@ export function AppShell(props: ShellProps) {
               {/* No spinner: the chunk is on local disk and resolves within a
                   frame or two, where a flash of "loading" would read as jank. */}
               <Suspense fallback={null}>
-                <SettingsPage activeTab={settingsTab} />
+                {/* `onSelect` is the existing navigation boundary: it changes
+                    the active conversation and closes settings in one action. */}
+                <SettingsPage activeTab={settingsTab} onOpenConversation={onSelect} />
               </Suspense>
             </div>
           )}

@@ -45,10 +45,11 @@ import { SelectTextModal } from './select-text-modal'
 import { markQueued } from '@/lib/turns'
 import { ToolCallBlock } from './tool-call-block'
 import { renderEmojisInText, StickerImage } from './emoji-renderer'
-import type { ContentBlock, Message as MessageData } from '@/types'
+import type { ContentBlock, Message as MessageData, TurnUsageSummary } from '@/types'
 import type { SenderNames } from '@/hooks/use-sender-names'
 import type { EmojiMap } from './emoji-renderer'
 import { useRelativeTime } from '@/hooks/use-relative-time'
+import { TurnUsage } from './turn-usage'
 
 /**
  * Who answered and when, sitting level with the avatar at the top of a message.
@@ -418,6 +419,10 @@ interface MessageItemProps {
   /** Totals for the whole turn. The row owning the footer is the only one left
    *  showing a count, so without this it would report just its own usage. */
   tokenTotals?: { input: number | null; output: number | null }
+  /** Backend-priced summary for the whole turn. It deliberately travels with
+   *  `tokenTotals`: the one row that owns the actions also owns the usage
+   *  disclosure, while intermediate rows stay quiet. */
+  turnUsage?: TurnUsageSummary | null
   /** Renders these instead of the message's own blocks. A collapsed turn shows
    *  its conclusion through this row, and the steps that led there are already
    *  drawn inside the collapsed region. */
@@ -440,6 +445,7 @@ export const MessageItem = React.memo(function MessageItem({
   showAvatar,
   showFooter = true,
   tokenTotals,
+  turnUsage,
   blocksOverride,
 }: MessageItemProps) {
   const { t } = useTranslation()
@@ -453,6 +459,7 @@ export const MessageItem = React.memo(function MessageItem({
   const parsedUser = useMemo(() => {
     let contentParts: UserContentPart[] | null = null
     let textContent = message.content
+    let copyText = message.content
     if (message.role === 'user' && message.content.startsWith('[')) {
       try {
         const parsed: unknown = JSON.parse(message.content)
@@ -466,12 +473,24 @@ export const MessageItem = React.memo(function MessageItem({
             .filter((p) => p.type === 'text')
             .map((p) => p.text ?? '')
             .join('\n')
+          // Copy what the row communicates, not the storage envelope. Raw
+          // multimodal JSON exposes local asset URLs and makes a sticker-only
+          // message copy as an implementation detail instead of its name.
+          copyText = contentParts
+            .flatMap((part) => {
+              if (part.type === 'text') return part.text ?? ''
+              if (part.type === 'file') return part.file?.name ?? ''
+              if (part.type === 'sticker') return part.name ?? ''
+              return ''
+            })
+            .filter(Boolean)
+            .join('\n')
         }
       } catch {
         /* not JSON, treat as plain text */
       }
     }
-    return { contentParts, textContent }
+    return { contentParts, copyText, textContent }
   }, [message.role, message.content])
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState('')
@@ -533,7 +552,7 @@ export const MessageItem = React.memo(function MessageItem({
   )
 
   if (isUser) {
-    const { contentParts, textContent } = parsedUser
+    const { contentParts, copyText, textContent } = parsedUser
     const canEdit = !!onEdit && !contentParts
     const { senderPrefix, quotedMessage, body } = isOneBot
       ? parseOneBotContent(textContent)
@@ -625,7 +644,7 @@ export const MessageItem = React.memo(function MessageItem({
                       <StickerImage stickerId={part.sticker_id!} name={part.name} />
                     </div>
                   ))}
-                <MessageFooter className="gap-1 opacity-0 group-hover/message:opacity-100 pointer-coarse:opacity-100 transition-opacity">
+                <MessageFooter className="gap-1 opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 pointer-coarse:opacity-100">
                   {canEdit && (
                     <ActionButton
                       label={t('chat.edit')}
@@ -635,7 +654,7 @@ export const MessageItem = React.memo(function MessageItem({
                       <Pencil className="w-3.5 h-3.5" />
                     </ActionButton>
                   )}
-                  <CopyButton text={message.content} />
+                  <CopyButton text={copyText} />
                   {onDelete && (
                     <ActionButton
                       label={t('chat.delete')}
@@ -666,7 +685,7 @@ export const MessageItem = React.memo(function MessageItem({
               {t('chat.edit')}
             </ContextMenuItem>
           )}
-          <ContextMenuItem onClick={() => navigator.clipboard.writeText(message.content)}>
+          <ContextMenuItem onClick={() => navigator.clipboard.writeText(copyText)}>
             <Copy />
             {t('chat.copy')}
           </ContextMenuItem>
@@ -690,7 +709,7 @@ export const MessageItem = React.memo(function MessageItem({
     return (
       <>
         {userContent}
-        {coarse && <SelectTextModal text={message.content} isOpen={showSelectText} onOpenChange={setShowSelectText} />}
+        {coarse && <SelectTextModal text={copyText} isOpen={showSelectText} onOpenChange={setShowSelectText} />}
         {confirmDialog}
       </>
     )
@@ -729,18 +748,12 @@ export const MessageItem = React.memo(function MessageItem({
           </Bubble>
 
           {showFooter && (
-            <MessageFooter className="gap-2 opacity-0 group-hover/message:opacity-100 pointer-coarse:opacity-100 transition-opacity">
+            <MessageFooter className="gap-2 opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 pointer-coarse:opacity-100">
               {/* Printed, not counted up to. The number is settled by the time the
                 footer exists, and the footer only appears on hover — so the
                 animation ran while the reader looked at a finished total, and
                 made it read as still being worked out. */}
-              {(footerTokens.input || footerTokens.output) && (
-                <span className="text-xs text-muted font-normal tabular-nums">
-                  {footerTokens.input && footerTokens.output
-                    ? `${footerTokens.input.toLocaleString()} + ${footerTokens.output.toLocaleString()} tokens`
-                    : `${(footerTokens.output ?? footerTokens.input)!.toLocaleString()} tokens`}
-                </span>
-              )}
+              <TurnUsage tokens={footerTokens} usage={turnUsage} />
               <div className="flex gap-1">
                 <CopyButton text={message.content} />
                 {onRate && !isStreaming && (

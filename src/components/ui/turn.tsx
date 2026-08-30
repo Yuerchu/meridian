@@ -160,7 +160,7 @@ function TurnActions({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-slot="turn-actions"
       className={cn(
-        'flex items-center gap-1 opacity-0 transition-opacity group-hover/turn:opacity-100 pointer-coarse:opacity-100',
+        'flex items-center gap-1 opacity-0 transition-opacity group-hover/turn:opacity-100 group-focus-within/turn:opacity-100 pointer-coarse:opacity-100',
         className,
       )}
       {...props}

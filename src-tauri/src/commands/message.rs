@@ -131,6 +131,10 @@ pub struct TurnView {
     pub error: Option<String>,
     pub started_at: i64,
     pub ended_at: Option<i64>,
+    /// Durable, audit-backed cost for this turn. `None` means no billed audit
+    /// row carried this turn id; pricing status inside distinguishes an exact
+    /// local zero from subscription/external/unavailable cost.
+    pub usage: Option<db::ops::usage::TurnUsageSummary>,
 }
 
 /// A delegated run as the card on the parent's turn needs it.
@@ -363,10 +367,12 @@ fn read_snapshot(conn: &mut db::PooledConn, conversation_id: &str, live: &OwnedL
     conn.transaction::<_, diesel::result::Error, _>(|conn| {
         let (conversation, tree) = read_tree_with_conversation(conn, conversation_id)
             .map_err(|e| diesel::result::Error::QueryBuilderError(e.into()))?;
+        let mut usage_by_turn = db::ops::usage::turn_summaries(conn, conversation_id)?;
         let turns = db::ops::turn::list_for_conversation(conn, conversation_id)?
             .into_iter()
             .map(|t| TurnView {
                 status: effective_status(&t, live),
+                usage: usage_by_turn.remove(&t.id),
                 id: t.id,
                 phase: t.phase,
                 phase_tool: t.phase_tool,
@@ -919,6 +925,8 @@ mod tests {
     /// with them, and the head names a row that is in it.
     #[test]
     fn the_tree_and_the_turns_describe_the_same_conversation() {
+        use diesel::RunQueryDsl;
+
         let pool = test_db();
         seed(&pool);
         {
@@ -957,6 +965,17 @@ mod tests {
                 None,
             )
             .unwrap();
+            diesel::sql_query(
+                "INSERT INTO audit_messages
+                    (id, recorded_at, message_id, conversation_id, turn_id, turn_origin,
+                     role, content, provider_id, model_id, input_tokens, output_tokens,
+                     created_at, input_price, output_price, billing_mode)
+                 VALUES
+                    ('a1', 2, 'reply-1', 'c1', 't1', 'desktop', 'assistant', '',
+                     'p1', 'm1', 1000000, 0, 2, 10.0, 20.0, 'metered')",
+            )
+            .execute(&mut conn)
+            .unwrap();
         }
 
         let mut conn = pool.get().unwrap();
@@ -968,6 +987,9 @@ mod tests {
         assert_eq!(tree.head_message_id.as_deref(), Some(tree.messages[0].id.as_str()));
         assert_eq!(turns.len(), 1);
         assert_eq!(turns[0].id, "t1");
+        let usage = turns[0].usage.as_ref().expect("the audit-backed turn cost is attached");
+        assert_eq!(usage.pricing_status, db::ops::usage::TurnPricingStatus::Exact);
+        assert_eq!(usage.total_cost, Some(10.0));
         assert!(runs.is_empty(), "a conversation that never delegated has no runs");
     }
 

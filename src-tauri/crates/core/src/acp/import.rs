@@ -832,11 +832,11 @@ impl Clock {
 ///
 /// **Not through `begin_assistant` / `complete_assistant`.** Those are a
 /// `spawn_blocking` round trip each, and the second one files an audit copy of
-/// every reply — a row with no tokens and no price, which `db::ops::usage`
-/// counts into `unpriced_messages`. An imported reply is spend on somebody
-/// else's meter, the same rule `usage_update` follows, so it is reported
-/// nowhere. (A user row still audit-copies, through `append_message`, and
-/// should: those are things a person said.)
+/// every reply. Live ACP replies belong there under `billing_mode = external`;
+/// an imported recital carries no trustworthy per-message usage, so writing
+/// zero-valued audit rows would add volume but no accounting fact. (A user row
+/// still audit-copies, through `append_message`, and should: those are things a
+/// person said.)
 fn write(conn: &mut SqliteConnection, w: &Written) -> Result<Counts, diesel::result::Error> {
     let now = now_ms();
     let project_id = crate::db::ops::project::find_project_by_path(conn, &w.cwd)?.map(|p| p.id);
@@ -1369,9 +1369,8 @@ mod tests {
     /// so `active_context` finds every row rather than stopping at the first
     /// gap. Every turn is `done`, so startup reconciliation does not report an
     /// imported conversation as cut off. And no assistant row reaches
-    /// `audit_messages` — those tokens were billed to whatever `claude` is
-    /// signed in as, and a row there with no price counts into
-    /// `unpriced_messages`.
+    /// `audit_messages` — the recital has no trustworthy per-message usage to
+    /// record, while live hosted replies are recorded separately as External.
     #[test]
     fn an_import_writes_one_readable_chain_and_bills_nobody() {
         use diesel::prelude::*;
