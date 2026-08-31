@@ -19,6 +19,7 @@
 //! rows, staging + atomic rename) minus the fencing — see `blobs.rs` for why
 //! content addressing makes fencing unnecessary here.
 
+pub mod blame;
 pub mod blobs;
 pub mod capture;
 

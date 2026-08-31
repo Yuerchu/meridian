@@ -172,8 +172,9 @@ fn split_template(template: &str) -> Vec<String> {
 }
 
 /// The root or an error naming why there is none, shared by every command that
-/// needs a directory to work in.
-async fn require_root(app: &tauri::AppHandle, conversation_id: String) -> Result<PathBuf, String> {
+/// needs a directory to work in — the journal commands included, so "which
+/// directory does this conversation mean" cannot fork between the two modules.
+pub(crate) async fn require_root(app: &tauri::AppHandle, conversation_id: String) -> Result<PathBuf, String> {
     match resolve_root(app, conversation_id).await? {
         WorkspaceRoot::Ok { root, .. } => Ok(PathBuf::from(root)),
         WorkspaceRoot::NoProject => Err("no_project".into()),

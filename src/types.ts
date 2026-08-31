@@ -50,6 +50,52 @@ export interface GitDiffResult {
   truncated: boolean
 }
 
+/** One contiguous run of lines with one origin. 1-based, inclusive. */
+export interface BlameSpan {
+  start_line: number
+  end_line: number
+  /** `conversation` came from a turn; `inferred` was observed across a
+   *  run_command bracket; `external` is a change nobody here made (or history
+   *  the journal lost); `preexisting` predates the journal. */
+  kind: 'conversation' | 'inferred' | 'external' | 'preexisting'
+  conversation_id: string | null
+  turn_id: string | null
+  origin: string | null
+  model_id: string | null
+  tool_name: string | null
+  timestamp: number | null
+}
+
+export interface BlameResult {
+  /** Sha of the disk content this answer was computed against — re-fetch and
+   *  compare to know the answer aged. */
+  current_sha: string
+  /** `null` = the journal has never seen this file. */
+  head_sha: string | null
+  /** The chain does not reach the file's beginning. */
+  truncated: boolean
+  spans: BlameSpan[]
+}
+
+/** One journalled version of a file, as stored. */
+export interface JournalVersion {
+  id: string
+  file_id: string
+  seq: number
+  op: string
+  observed_old_sha: string | null
+  new_sha: string | null
+  source: string
+  conversation_id: string | null
+  turn_id: string | null
+  project_id: string | null
+  origin: string | null
+  model_id: string | null
+  tool_name: string | null
+  moved_from_version_id: string | null
+  created_at: number
+}
+
 /** Scope/origin/visibility values come from the `memory_enums` command rather
  *  than literal unions here, so the front end cannot drift from the Rust enums. */
 export interface Memory {

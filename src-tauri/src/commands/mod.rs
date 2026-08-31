@@ -11,6 +11,7 @@ pub mod dev;
 pub mod emoji;
 #[cfg(not(target_os = "android"))]
 pub mod hooks;
+pub mod journal;
 pub mod logs;
 pub mod mcp;
 pub mod memory;

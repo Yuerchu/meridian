@@ -197,6 +197,16 @@ pub fn chain(conn: &mut SqliteConnection, file_id: &str) -> QueryResult<Vec<Jour
         .load(conn)
 }
 
+/// One version by id — how blame follows a `moved_from_version_id` into the
+/// chain a rename came from.
+pub fn version_by_id(conn: &mut SqliteConnection, id: &str) -> QueryResult<Option<JournalVersion>> {
+    journal_versions::table
+        .find(id)
+        .select(JournalVersion::as_select())
+        .first(conn)
+        .optional()
+}
+
 /// Files whose normalised path starts with `prefix` and whose chain head says
 /// the file still exists, capped. This is the run_command bracket's scan set:
 /// files the journal already tracks, and only those — a file it has never seen
