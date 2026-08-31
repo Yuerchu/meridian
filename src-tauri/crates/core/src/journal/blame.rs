@@ -249,25 +249,35 @@ fn walk(
         };
 
         let Some(new_content) = new_content else {
-            // A deletion: no lines, no origins; the chain carries on.
-            let truncated = state.truncated;
-            state = State {
-                truncated,
-                ..State::empty()
-            };
+            // A deletion establishes a *known* empty base: whatever history
+            // was lost or truncated above it belonged to lines that no longer
+            // exist. The state resets whole — carrying `truncated` or
+            // `base_lost` forward would mark the next incarnation's fully
+            // known lines as damaged history.
+            state = State::empty();
+            base_lost = false;
             continue;
         };
 
         // A rename's content arrived from another chain; blame follows the
-        // exact version it names and inherits those origins as the base.
-        if v.op == "rename_to"
-            && let Some(from_id) = &v.moved_from_version_id
-        {
-            state = rename_base(conn, blob_root, from_id, cancel, depth).unwrap_or_else(|| State {
-                truncated: true,
-                ..State::empty()
-            });
-            base_lost = false;
+        // exact version it names and inherits those origins as the base. A
+        // `rename_to` whose link is missing, dangling or unreconstructable
+        // is a hop whose base cannot be known — and diffing it against the
+        // destination's (usually empty) chain would credit the mover with
+        // every inherited line, which the journal has no evidence for. Lost
+        // base, same discipline.
+        if v.op == "rename_to" {
+            match v
+                .moved_from_version_id
+                .as_ref()
+                .and_then(|from_id| rename_base(conn, blob_root, from_id, cancel, depth))
+            {
+                Some(base) => {
+                    state = base;
+                    base_lost = false;
+                }
+                None => base_lost = true,
+            }
         }
 
         state = if base_lost {
@@ -298,6 +308,17 @@ fn rename_base(
     // Up to the rename_from itself. Its own row records the file *leaving*
     // (new = None), so the content the move carried is the version before it.
     let upto: Vec<JournalVersion> = full.into_iter().take_while(|x| x.seq < from.seq).collect();
+
+    // A file whose *first* journal event is being moved has no rows below the
+    // rename_from — the moved content lives only in that row's observed_old.
+    // Seeding it as `preexisting` mirrors what walk's own priming does for a
+    // first observation; an empty base here would credit the mover with every
+    // pre-journal line.
+    if upto.is_empty() {
+        let sha = from.observed_old_sha.as_ref()?;
+        let content = blobs::load(blob_root, sha).ok()?;
+        return Some(State::all(content, Origin::Preexisting, true));
+    }
     walk(conn, blob_root, &upto, cancel, depth + 1).ok()
 }
 
@@ -325,16 +346,22 @@ fn advance(state: State, new_content: String, origin: Origin) -> State {
 /// Compress per-line origins into contiguous spans.
 fn spans_of(state: &State) -> Vec<BlameSpan> {
     let mut spans: Vec<BlameSpan> = Vec::new();
+    let mut prev: Option<&Origin> = None;
     for (i, origin) in state.origins.iter().enumerate() {
         let line = (i + 1) as u32;
-        let same = match (spans.last(), origin) {
-            (Some(last), Origin::Preexisting) => last.kind == "preexisting",
-            (Some(last), Origin::External) => last.kind == "external",
-            (Some(last), Origin::Version(a)) => {
-                last.kind == a.kind && last.turn_id == a.turn_id && last.conversation_id == a.conversation_id
-            }
-            (None, _) => false,
+        // Merging is by *origin identity*, not by comparing the fields a span
+        // happens to expose: two versions in one turn share conversation and
+        // turn ids but differ in tool and time, and a field-subset comparison
+        // would fold them into one span wearing the first version's metadata.
+        // Every line from one version shares one `Rc`, so pointer equality is
+        // exactly "the same version".
+        let same = match (prev, origin) {
+            (Some(Origin::Preexisting), Origin::Preexisting) => true,
+            (Some(Origin::External), Origin::External) => true,
+            (Some(Origin::Version(a)), Origin::Version(b)) => std::rc::Rc::ptr_eq(a, b),
+            _ => false,
         };
+        prev = Some(origin);
         if same {
             spans.last_mut().expect("same implies a last").end_line = line;
             continue;
@@ -566,6 +593,143 @@ mod tests {
 
         let got = rig.blame(&mut conn, "/p/a.rs", "new life\n");
         assert_eq!(kinds(&got), vec![(1, 1, "conversation", Some("conv2"))]);
+        assert!(
+            !got.truncated,
+            "a deletion establishes a known empty base; the recreation's history is whole"
+        );
+    }
+
+    /// A deletion resets lost history: an unreadable snapshot before it must
+    /// not bleed `external` into a recreated file whose base — empty — is
+    /// perfectly known.
+    #[test]
+    fn a_deletion_resets_lost_history() {
+        let rig = Rig::new();
+        let mut conn = rig.pool.get().unwrap();
+        let v1 = "doomed\n";
+        rig.append(&mut conn, "/p/a.rs", "write", None, Some(v1), Some("conv1"), None, 1);
+        rig.append(&mut conn, "/p/a.rs", "delete", Some(v1), None, Some("conv1"), None, 2);
+        rig.append(
+            &mut conn,
+            "/p/a.rs",
+            "write",
+            None,
+            Some("reborn\n"),
+            Some("conv2"),
+            None,
+            3,
+        );
+        // Corrupt the *first incarnation's* snapshot.
+        std::fs::write(blobs::blob_path(&rig.blob_root, &blobs::sha256_of(v1)), "rotten").unwrap();
+
+        let got = rig.blame(&mut conn, "/p/a.rs", "reborn\n");
+        assert_eq!(kinds(&got), vec![(1, 1, "conversation", Some("conv2"))]);
+        assert!(
+            !got.truncated,
+            "the lost history belonged to lines that no longer exist"
+        );
+    }
+
+    /// A `rename_to` with no source link is a hop whose base cannot be known:
+    /// crediting the mover with every "inserted" line would hand it content
+    /// the journal has no evidence it wrote. Whole hop external instead.
+    #[test]
+    fn a_rename_without_a_source_link_goes_external() {
+        let rig = Rig::new();
+        let mut conn = rig.pool.get().unwrap();
+        let moved = "line one\nline two\n";
+        rig.append(
+            &mut conn,
+            "/p/new.rs",
+            "rename_to",
+            None,
+            Some(moved),
+            Some("mover"),
+            None,
+            1,
+        );
+
+        let got = rig.blame(&mut conn, "/p/new.rs", moved);
+        assert_eq!(kinds(&got), vec![(1, 2, "external", None)]);
+        assert!(got.truncated);
+    }
+
+    /// And the same when the link dangles — the old chain was cleaned away.
+    #[test]
+    fn a_dangling_rename_link_goes_external() {
+        let rig = Rig::new();
+        let mut conn = rig.pool.get().unwrap();
+        let moved = "line one\n";
+        rig.append(
+            &mut conn,
+            "/p/new.rs",
+            "rename_to",
+            None,
+            Some(moved),
+            Some("mover"),
+            Some("no-such-version"),
+            1,
+        );
+
+        let got = rig.blame(&mut conn, "/p/new.rs", moved);
+        assert_eq!(kinds(&got), vec![(1, 1, "external", None)]);
+        assert!(got.truncated);
+    }
+
+    /// A preexisting file whose first journal event is the move itself: the
+    /// moved content lives only in the rename_from's observed_old, and it is
+    /// `preexisting` — not the mover's.
+    #[test]
+    fn a_first_observation_rename_seeds_a_preexisting_base() {
+        let rig = Rig::new();
+        let mut conn = rig.pool.get().unwrap();
+        let content = "ancient one\nancient two\n";
+        let from_id = rig.append(
+            &mut conn,
+            "/p/old.rs",
+            "rename_from",
+            Some(content),
+            None,
+            Some("mover"),
+            None,
+            1,
+        );
+        let moved = "ancient one\nancient two\nmover's line\n";
+        rig.append(
+            &mut conn,
+            "/p/new.rs",
+            "rename_to",
+            None,
+            Some(moved),
+            Some("mover"),
+            Some(&from_id),
+            1,
+        );
+
+        let got = rig.blame(&mut conn, "/p/new.rs", moved);
+        assert_eq!(
+            kinds(&got),
+            vec![(1, 2, "preexisting", None), (3, 3, "conversation", Some("mover"))]
+        );
+        assert!(got.truncated, "a preexisting base is unseen history");
+    }
+
+    /// Two versions in one turn must stay two spans: a field-subset merge
+    /// would report the first version's tool and time for the second's lines.
+    #[test]
+    fn spans_do_not_merge_across_versions_of_one_turn() {
+        let rig = Rig::new();
+        let mut conn = rig.pool.get().unwrap();
+        let v1 = "first\n";
+        let v2 = "first\nsecond\n";
+        // Same conversation, same turn (the rig pins turn_id to "t1").
+        rig.append(&mut conn, "/p/a.rs", "write", None, Some(v1), Some("conv1"), None, 1);
+        rig.append(&mut conn, "/p/a.rs", "edit", Some(v1), Some(v2), Some("conv1"), None, 2);
+
+        let got = rig.blame(&mut conn, "/p/a.rs", v2);
+        assert_eq!(got.spans.len(), 2, "adjacent lines from two versions must not merge");
+        assert_eq!(got.spans[0].timestamp, Some(1));
+        assert_eq!(got.spans[1].timestamp, Some(2));
     }
 
     /// A move: inherited lines keep the source chain's attribution, the

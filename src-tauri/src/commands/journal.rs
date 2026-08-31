@@ -3,30 +3,30 @@
 //! the phone is asking about the host's attribution record, same as the
 //! workspace commands beside these.
 
-use std::collections::HashMap;
 use std::io::Read;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
 
 use crate::ServicesExt;
 use meridian_core::db;
 use meridian_core::journal::blame::BlameResult;
 
-/// The newest blame request per file wins; the ones a viewer has already
-/// flipped past are cancelled between hops. Keyed on the normalised path —
-/// two windows asking about one file share a slot, and the later asker
-/// cancelling the earlier is correct for both: the earlier answer would be
-/// discarded by its own staleness check anyway.
-fn latest() -> &'static Mutex<HashMap<String, tokio_util::sync::CancellationToken>> {
-    static LATEST: OnceLock<Mutex<HashMap<String, tokio_util::sync::CancellationToken>>> = OnceLock::new();
-    LATEST.get_or_init(|| Mutex::new(HashMap::new()))
-}
+/// Nothing past the journal's own snapshot cap has a chain to blame — the
+/// capture side skipped it — so reading more than this buys memory pressure
+/// on a remote-reachable command and no answer.
+const MAX_BLAME_BYTES: u64 = meridian_core::journal::capture::MAX_SNAPSHOT_BYTES as u64;
 
 /// Per-line attribution for one file, computed against what is on disk now.
 ///
 /// The disk is read through the same verified machinery the panel's viewer
 /// uses; the blame walk itself never touches the working tree. `current_sha`
 /// in the result is the staleness handle: re-fetch and compare.
+///
+/// No cross-request cancellation. The work is bounded (short chains, the byte
+/// cap above), and a slot keyed by path — the obvious design — turns out to
+/// cancel exactly the wrong thing: a viewer flipping through files asks about
+/// *different* paths, which never collide, while two windows showing one file
+/// collide and error each other for no reason. The frontend discards stale
+/// answers by request order instead.
 #[tauri::command]
 pub async fn journal_blame(
     app: tauri::AppHandle,
@@ -38,8 +38,6 @@ pub async fn journal_blame(
     let pool = services.db.clone();
     let blob_root = meridian_core::journal::journal_root(&services.paths.data_dir);
 
-    let cancel = tokio_util::sync::CancellationToken::new();
-
     tokio::task::spawn_blocking(move || {
         // Opened on the checked handle, and the *canonical* path from that
         // handle is what keys the journal — the requested spelling is not
@@ -47,37 +45,27 @@ pub async fn journal_blame(
         let verified =
             meridian_core::tools::verified::open_read(&root.join(&rel_path), Some(&root)).map_err(|e| e.message())?;
         let (mut file, real) = verified.into_parts();
+        if file.metadata().map_err(|e| e.to_string())?.len() > MAX_BLAME_BYTES {
+            return Err(format!(
+                "'{rel_path}' is larger than the journal snapshots, so it has no blame"
+            ));
+        }
         let mut disk = String::new();
-        file.read_to_string(&mut disk)
+        // The cap again on the handle itself: the metadata answered about a
+        // moment ago, the take answers about this read.
+        std::io::Read::take(&mut file, MAX_BLAME_BYTES + 1)
+            .read_to_string(&mut disk)
             .map_err(|e| format!("cannot read '{rel_path}': {e} (binary files have no blame)"))?;
+        if disk.len() as u64 > MAX_BLAME_BYTES {
+            return Err(format!(
+                "'{rel_path}' is larger than the journal snapshots, so it has no blame"
+            ));
+        }
 
         let norm = meridian_core::journal::norm_path(&real).ok_or("non-utf8 path: not journalled")?;
-
-        // Register as the newest request for this file, cancelling the one it
-        // supersedes. Registered *after* the file read: the read is fast and
-        // a slot taken before it would hold a token for a request that may
-        // yet fail its open.
-        {
-            let mut map = latest().lock().expect("blame token table poisoned");
-            if let Some(old) = map.insert(norm.clone(), cancel.clone()) {
-                old.cancel();
-            }
-        }
-
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        let result = meridian_core::journal::blame::blame(&mut conn, &blob_root, &norm, &disk, &cancel);
-
-        // Only the current occupant clears the slot. Under the same lock the
-        // insert path takes, "this token is not cancelled" proves no newer
-        // request has displaced it — displacement always cancels — so the
-        // entry being removed is necessarily our own.
-        {
-            let mut map = latest().lock().expect("blame token table poisoned");
-            if !cancel.is_cancelled() {
-                map.remove(&norm);
-            }
-        }
-        result
+        let cancel = tokio_util::sync::CancellationToken::new();
+        meridian_core::journal::blame::blame(&mut conn, &blob_root, &norm, &disk, &cancel)
     })
     .await
     .map_err(|e| e.to_string())?
