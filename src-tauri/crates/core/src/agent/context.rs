@@ -204,6 +204,16 @@ fn push_history_message(
 }
 
 fn push_message_context(msgs: &mut Vec<ChatMessage>, items: &[MessageContextItem]) {
+    for rendered in render_message_context_items(items) {
+        msgs.push(ChatMessage::user_provided_context(&rendered));
+    }
+}
+
+/// Render the frozen context attached to one user message exactly as native
+/// history replay does. Compaction uses the same projection so a summary does
+/// not silently replace an `@` marker or `!` command with none of the evidence
+/// the original turn received.
+pub(super) fn render_message_context_items(items: &[MessageContextItem]) -> Vec<String> {
     // A shell retry stores every attempt for diagnosis, but only the final one
     // is evidence for the next model turn. File and directory references all
     // remain in request order.
@@ -212,20 +222,20 @@ fn push_message_context(msgs: &mut Vec<ChatMessage>, items: &[MessageContextItem
         .filter(|item| item.kind == "shell_output")
         .max_by_key(|item| item.position)
         .map(|item| item.id.as_str());
-    for item in items {
-        if item.kind == "shell_output" && final_shell != Some(item.id.as_str()) {
-            continue;
-        }
-        let rendered = crate::workspace::reference::render_context_item(
-            &item.kind,
-            item.display_path.as_deref(),
-            item.line_start,
-            item.line_end,
-            &item.content,
-            item.truncated != 0,
-        );
-        msgs.push(ChatMessage::user_provided_context(&rendered));
-    }
+    items
+        .iter()
+        .filter(|item| item.kind != "shell_output" || final_shell == Some(item.id.as_str()))
+        .map(|item| {
+            crate::workspace::reference::render_context_item(
+                &item.kind,
+                item.display_path.as_deref(),
+                item.line_start,
+                item.line_end,
+                &item.content,
+                item.truncated != 0,
+            )
+        })
+        .collect()
 }
 
 pub fn resolve_file_uris_in_messages(messages: &mut [ChatMessage], files_root: Option<&std::path::Path>) {

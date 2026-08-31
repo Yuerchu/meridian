@@ -313,14 +313,7 @@ pub async fn run_user_command(
             };
             persist_result(&services, &prepared.message_id, next_position(&prepared.prior), &stored).await?;
             let result = stored.public(&conversation_id, &turn_id, &prepared.message_id);
-            let _ = services.events.emit(
-                "user-command",
-                serde_json::json!({ "type": "finish", "result": result }),
-            );
-            let _ = services.events.emit(
-                "conversation-updated",
-                serde_json::json!({ "conversation_id": conversation_id }),
-            );
+            emit_finished_user_command(&services.events, lease, &conversation_id, &result);
             return Ok(result);
         }
     };
@@ -427,18 +420,32 @@ pub async fn run_user_command(
     )
     .await?;
     let result = stored.public(&conversation_id, &turn_id, &prepared.message_id);
-    let _ = services.events.emit(
+    emit_finished_user_command(&services.events, lease, &conversation_id, &result);
+    Ok(result)
+}
+
+/// A finish event is also a synchronization point for windows and remote
+/// clients: they may reload immediately and ask which shell turn is active.
+/// Release the lease first so that read cannot resurrect the completed turn's
+/// busy/Stop state.
+fn emit_finished_user_command(
+    events: &meridian_core::events::EventBus,
+    lease: meridian_core::turn::TurnLease,
+    conversation_id: &str,
+    result: &UserCommandResult,
+) {
+    drop(lease);
+    let _ = events.emit(
         "user-command",
         serde_json::json!({
             "type": "finish",
             "result": result,
         }),
     );
-    let _ = services.events.emit(
+    let _ = events.emit(
         "conversation-updated",
         serde_json::json!({ "conversation_id": conversation_id }),
     );
-    Ok(result)
 }
 
 /// Return only a live literal `!` command. Model turns share the same
@@ -688,7 +695,25 @@ fn host_name() -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
     use super::*;
+
+    struct FinishObserver {
+        turns: Arc<meridian_core::turn::TurnCoordinator>,
+        saw_released_finish: AtomicBool,
+    }
+
+    impl meridian_core::events::EventSink for FinishObserver {
+        fn emit(&self, channel: &str, payload: &serde_json::Value) -> Result<(), String> {
+            if channel == "user-command" && payload["type"] == "finish" {
+                assert_eq!(self.turns.active_user_shell_turn("c"), None);
+                self.saw_released_finish.store(true, Ordering::SeqCst);
+            }
+            Ok(())
+        }
+    }
 
     fn stored(status: &str, retry: bool) -> StoredResult {
         StoredResult {
@@ -721,6 +746,28 @@ mod tests {
         assert_eq!(got.exit_code, Some(7));
         assert!(got.truncated);
         assert!(got.can_retry_without_sandbox);
+    }
+
+    #[test]
+    fn finish_event_observers_see_the_shell_turn_released() {
+        let turns = Arc::new(meridian_core::turn::TurnCoordinator::new());
+        let lease = turns
+            .clone()
+            .try_acquire_turn_as("c", TurnOrigin::UserShell, "t".into())
+            .unwrap();
+        assert_eq!(turns.active_user_shell_turn("c").as_deref(), Some("t"));
+
+        let observer = Arc::new(FinishObserver {
+            turns,
+            saw_released_finish: AtomicBool::new(false),
+        });
+        let events = meridian_core::events::EventBus::new();
+        events.register(Arc::clone(&observer) as Arc<dyn meridian_core::events::EventSink>, true);
+
+        let result = stored("completed", false).public("c", "t", "m");
+        emit_finished_user_command(&events, lease, "c", &result);
+
+        assert!(observer.saw_released_finish.load(Ordering::SeqCst));
     }
 
     #[test]

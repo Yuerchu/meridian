@@ -158,6 +158,47 @@ pub fn parse_references(text: &str) -> Vec<WorkspaceReferenceInput> {
     out
 }
 
+/// Parse references from the user-visible text of a stored message body.
+///
+/// Attachment and sticker messages are JSON arrays of provider content parts.
+/// Scanning that serialized envelope directly makes JSON punctuation part of
+/// unquoted paths and scans fields the user never typed. Decode the envelope
+/// and inspect only its text parts; ordinary and malformed bodies retain the
+/// plain-text parser used by older clients.
+pub fn parse_message_references(content: &str) -> Vec<WorkspaceReferenceInput> {
+    let Ok(parts) = serde_json::from_str::<Vec<serde_json::Value>>(content) else {
+        return parse_references(content);
+    };
+    // Plain user text can itself be a JSON array. The composer only wraps a
+    // message when it also carries a non-text part, so require that signal
+    // before treating the array as our provider-content envelope.
+    let is_content_envelope = !parts.is_empty()
+        && parts
+            .iter()
+            .all(|part| part.get("type").and_then(serde_json::Value::as_str).is_some())
+        && parts
+            .iter()
+            .any(|part| part.get("type").and_then(serde_json::Value::as_str) != Some("text"));
+    if !is_content_envelope {
+        return parse_references(content);
+    }
+
+    let mut seen = HashSet::new();
+    parts
+        .iter()
+        .filter(|part| part.get("type").and_then(serde_json::Value::as_str) == Some("text"))
+        .filter_map(|part| part.get("text").and_then(serde_json::Value::as_str))
+        .flat_map(parse_references)
+        .filter(|reference| {
+            seen.insert((
+                reference.path.replace('\\', "/"),
+                reference.line_start,
+                reference.line_end,
+            ))
+        })
+        .collect()
+}
+
 /// Compare a composer parse with the authoritative backend parse without
 /// making slash direction a platform-dependent disagreement.
 pub fn references_match(left: &[WorkspaceReferenceInput], right: &[WorkspaceReferenceInput]) -> bool {
@@ -1096,6 +1137,47 @@ mod tests {
         assert_eq!(got[0].path, "src/main.rs");
         assert_eq!(got[1].path, "docs/my file.md");
         assert_eq!((got[1].line_start, got[1].line_end), (Some(10), Some(20)));
+    }
+
+    #[test]
+    fn multimodal_message_parses_only_original_text_parts() {
+        let body = serde_json::json!([
+            {
+                "type": "text",
+                "text": r##"inspect @"docs/my file.md"#L10-20 and @src/main.rs"##
+            },
+            {
+                "type": "image_url",
+                "image_url": { "url": "file:///tmp/@not-user-text.png" },
+                "caption": "@also-not-user-text.txt"
+            }
+        ])
+        .to_string();
+
+        let parsed = parse_message_references(&body);
+        let supplied = vec![
+            WorkspaceReferenceInput {
+                path: "docs/my file.md".into(),
+                line_start: Some(10),
+                line_end: Some(20),
+            },
+            WorkspaceReferenceInput {
+                path: "src/main.rs".into(),
+                line_start: None,
+                line_end: None,
+            },
+        ];
+
+        assert_eq!(parsed, supplied);
+        assert_eq!(reconcile_references(Some(supplied.clone()), parsed).unwrap(), supplied);
+    }
+
+    #[test]
+    fn plain_json_array_is_not_mistaken_for_a_content_envelope() {
+        let body = "[\n  \"example @docs/spec.md\"\n]";
+
+        assert_eq!(parse_message_references(body), parse_references(body));
+        assert!(!parse_message_references(body).is_empty());
     }
 
     #[test]

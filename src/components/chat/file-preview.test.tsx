@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { useState } from 'react'
 
 const workspaceResolveRef = vi.hoisted(() => vi.fn())
+const workspaceProbeRef = vi.hoisted(() => vi.fn())
 const highlightInline = vi.hoisted(() =>
   vi.fn((text: string, language: string) => `<span data-syntax="${language}">${text}</span>`),
 )
@@ -9,6 +11,7 @@ vi.mock('@/api', () => ({
   api: {
     getPlatform: vi.fn(() => Promise.resolve('windows')),
     workspaceResolveRef,
+    workspaceProbeRef,
     openInEditor: vi.fn(() => Promise.resolve()),
   },
 }))
@@ -33,6 +36,19 @@ function PreviewTrigger({ reference }: { reference: MarkdownFileReference }) {
   return <button onClick={() => preview?.openPreview(reference)}>Open preview</button>
 }
 
+function ProbeTrigger({ path }: { path: string }) {
+  const preview = useFilePreview()
+  const [result, setResult] = useState('idle')
+  return (
+    <>
+      <button onClick={() => void preview?.probeReference(path).then((exists) => setResult(String(exists)))}>
+        Probe reference
+      </button>
+      <output>{result}</output>
+    </>
+  )
+}
+
 function renderPreview(reference: MarkdownFileReference) {
   return render(
     <FilePreviewProvider conversationId="conversation-1">
@@ -47,7 +63,30 @@ beforeAll(async () => {
 
 afterEach(() => {
   workspaceResolveRef.mockReset()
+  workspaceProbeRef.mockReset()
   highlightInline.mockClear()
+})
+
+describe('file reference probes', () => {
+  it('deduplicates only in-flight work so a path can appear after a failed probe', async () => {
+    workspaceProbeRef.mockRejectedValueOnce(new Error('not created yet')).mockResolvedValueOnce({
+      kind: 'project_file',
+      path: 'generated/result.ts',
+    })
+
+    render(
+      <FilePreviewProvider conversationId="conversation-1">
+        <ProbeTrigger path="generated/result.ts" />
+      </FilePreviewProvider>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Probe reference' }))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('false'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Probe reference' }))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('true'))
+    expect(workspaceProbeRef).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe('file preview source', () => {

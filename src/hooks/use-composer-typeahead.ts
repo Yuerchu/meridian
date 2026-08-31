@@ -140,7 +140,9 @@ export function useComposerTypeahead({
         : models.map((model) => ({ value: model.id, label: model.name || model.id }))
     } else if (command.id === 'thinking') {
       choices = isHosted
-        ? optionValues(commandOption('effort', acpOptions)).map((entry) => ({ value: entry.value, label: entry.name }))
+        ? optionValues(commandOption('effort', acpOptions) ?? commandOption('thought_level', acpOptions)).map(
+            (entry) => ({ value: entry.value, label: entry.name }),
+          )
         : [
             'default',
             ...(capabilities?.supports_thinking_off === false ? [] : ['off']),

@@ -323,10 +323,18 @@ export function FilePreviewProvider({
       const key = `${conversationId}\0${path}`
       const cached = probeCache.current.get(key)
       if (cached) return cached
-      const probe = api.workspaceProbeRef(path, { conversationId }).then(
-        () => true,
-        () => false,
-      )
+      const probe = api
+        .workspaceProbeRef(path, { conversationId })
+        .then(
+          () => true,
+          () => false,
+        )
+        .finally(() => {
+          // Deduplicate only concurrent probes. A later message must observe
+          // files created or removed since an earlier render, and a transient
+          // failure must not keep the path inert for the whole conversation.
+          if (probeCache.current.get(key) === probe) probeCache.current.delete(key)
+        })
       probeCache.current.set(key, probe)
       return probe
     },

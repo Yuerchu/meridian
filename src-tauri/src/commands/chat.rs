@@ -890,7 +890,7 @@ async fn chat_inner(
         None => {
             let parsed_refs = message
                 .as_deref()
-                .map(meridian_core::workspace::reference::parse_references)
+                .map(meridian_core::workspace::reference::parse_message_references)
                 .unwrap_or_default();
             let effective_refs = meridian_core::workspace::reference::reconcile_references(context_refs, parsed_refs)?;
             if message.is_none() && !effective_refs.is_empty() {

@@ -49,7 +49,7 @@ pub async fn queue_enqueue(
     let conversation = conversation_id.clone();
     let delivery = Delivery::parse_or_wait(&delivery);
 
-    let parsed = meridian_core::workspace::reference::parse_references(&content);
+    let parsed = meridian_core::workspace::reference::parse_message_references(&content);
     let references = meridian_core::workspace::reference::reconcile_references(context_refs, parsed)?;
     if !references.is_empty() && delivery == Delivery::Interject {
         return Err("workspace references can only be queued as follow-up messages".into());

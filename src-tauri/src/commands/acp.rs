@@ -40,7 +40,7 @@ pub async fn acp_send(
     context_refs: Option<Vec<meridian_core::workspace::reference::WorkspaceReferenceInput>>,
 ) -> Result<(), String> {
     let services = app.services();
-    let parsed = meridian_core::workspace::reference::parse_references(&message);
+    let parsed = meridian_core::workspace::reference::parse_message_references(&message);
     let references = meridian_core::workspace::reference::reconcile_references(context_refs, parsed)?;
     let context = if references.is_empty() {
         Vec::new()
