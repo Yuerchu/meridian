@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Description, Input, Label, TextField } from '@heroui/react'
+import { ItemCard } from '@heroui-pro/react/item-card'
 
 import { api } from '@/api'
 import { useConnectionState } from '@/hooks/use-connection-state'
 import { cn } from '@/lib/utils'
 import { isRemote, probeRemote, readRemoteConfig, writeRemoteConfig, type ProbeResult } from '@/lib/transport'
+import { useSettingsDirtyRegistration } from './dirty-guard'
 
 /**
  * Where *this* device gets its Meridian from.
@@ -28,17 +30,25 @@ export function RemoteClientSettings() {
   const [config] = useState(() => readRemoteConfig())
 
   const [host, setHost] = useState('')
-  const [port, setPort] = useState(8787)
+  const [port, setPort] = useState('8787')
   const [token, setToken] = useState('')
   const [probing, setProbing] = useState(false)
   const [probe, setProbe] = useState<ProbeResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const parsedPort = Number(port)
+  const validPort = Number.isInteger(parsedPort) && parsedPort >= 1 && parsedPort <= 65535
+  const dirty = host !== '' || port !== '8787' || token !== ''
+  useSettingsDirtyRegistration('general', 'remote-client', !isRemote && dirty)
 
   const handleTest = async () => {
+    if (!validPort) {
+      setError(t('settings.validation.port'))
+      return
+    }
     setProbing(true)
     setError(null)
     try {
-      setProbe(await probeRemote(host.trim(), port))
+      setProbe(await probeRemote(host.trim(), parsedPort))
     } finally {
       setProbing(false)
     }
@@ -55,13 +65,17 @@ export function RemoteClientSettings() {
    */
   const handleConnect = async () => {
     setError(null)
+    if (!validPort) {
+      setError(t('settings.validation.port'))
+      return
+    }
     try {
       await api.setSecret('REMOTE_TOKEN', token.trim())
     } catch (err) {
       setError(String(err))
       return
     }
-    writeRemoteConfig({ host: host.trim(), port })
+    writeRemoteConfig({ host: host.trim(), port: parsedPort })
     window.location.reload()
   }
 
@@ -75,23 +89,25 @@ export function RemoteClientSettings() {
     return (
       <div className="space-y-3">
         <p className="block text-xs font-medium text-muted">{t('settings.client.title')}</p>
-        <div className="rounded-lg border p-3 space-y-1">
-          <div className="flex items-center gap-2">
-            {/* Decoration: the state it stands for is spelled out beside it. */}
-            <span
-              aria-hidden
-              className={cn(
-                'inline-block size-2 rounded-full',
-                state === 'connected' ? 'bg-success' : offline ? 'bg-danger' : 'bg-warning',
-              )}
-            />
-            <span className="text-sm font-medium">{t(`settings.client.state.${state}`)}</span>
-          </div>
-          <p className="font-mono text-xs text-muted">
-            {config ? `${config.host}:${config.port}` : t('settings.client.unknownHost')}
-          </p>
-        </div>
-        <Button variant="outline" onClick={handleDisconnect}>
+        <ItemCard variant="outline">
+          <ItemCard.Content className="min-w-0">
+            <ItemCard.Title className="flex w-full items-center gap-2">
+              {/* Decoration: the state it stands for is spelled out beside it. */}
+              <span
+                aria-hidden
+                className={cn(
+                  'inline-block size-2 shrink-0 rounded-full',
+                  state === 'connected' ? 'bg-success' : offline ? 'bg-danger' : 'bg-warning',
+                )}
+              />
+              {t(`settings.client.state.${state}`)}
+            </ItemCard.Title>
+            <ItemCard.Description className="w-full truncate font-mono">
+              {config ? `${config.host}:${config.port}` : t('settings.client.unknownHost')}
+            </ItemCard.Description>
+          </ItemCard.Content>
+        </ItemCard>
+        <Button variant="outline" onPress={handleDisconnect}>
           {t('settings.client.disconnect')}
         </Button>
         <p className="text-xs text-muted">{t('settings.client.disconnectHint')}</p>
@@ -107,15 +123,22 @@ export function RemoteClientSettings() {
       <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
         <TextField fullWidth>
           <Label>{t('settings.client.host')}</Label>
-          <Input value={host} onChange={(e) => setHost(e.target.value)} placeholder="192.168.1.20" />
+          <Input
+            name="remoteClientHost"
+            value={host}
+            onChange={(e) => setHost(e.target.value)}
+            placeholder="192.168.1.20"
+          />
         </TextField>
         <TextField fullWidth type="number">
           <Label>{t('settings.client.port')}</Label>
           <Input
             min={1}
             max={65535}
+            name="remoteClientPort"
+            inputMode="numeric"
             value={port}
-            onChange={(e) => setPort(Math.min(65535, Math.max(1, parseInt(e.target.value, 10) || 8787)))}
+            onChange={(e) => setPort(e.target.value)}
             placeholder="8787"
           />
         </TextField>
@@ -123,21 +146,31 @@ export function RemoteClientSettings() {
 
       <TextField fullWidth type="password">
         <Label>{t('settings.client.token')}</Label>
-        <Input value={token} onChange={(e) => setToken(e.target.value)} className="max-w-xs" />
+        <Input
+          name="remoteClientToken"
+          autoComplete="off"
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          className="max-w-xs"
+        />
         <Description>{t('settings.client.tokenHint')}</Description>
       </TextField>
 
       <div className="flex items-center gap-2">
-        <Button variant="outline" onClick={handleTest} isDisabled={!host.trim() || probing}>
+        <Button variant="outline" onPress={handleTest} isDisabled={!host.trim() || probing} aria-busy={probing}>
           {probing ? t('settings.client.testing') : t('settings.client.test')}
         </Button>
-        <Button onClick={handleConnect} isDisabled={!host.trim() || !token.trim()}>
+        <Button onPress={handleConnect} isDisabled={!host.trim() || !token.trim()}>
           {t('settings.client.connect')}
         </Button>
       </div>
 
       {probe && <ProbeMessage probe={probe} />}
-      {error && <p className="text-xs text-danger break-all">{error}</p>}
+      {error && (
+        <p role="alert" className="text-xs text-danger break-all">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

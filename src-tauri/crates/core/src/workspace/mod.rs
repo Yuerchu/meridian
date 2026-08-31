@@ -19,6 +19,7 @@
 
 pub mod git;
 pub mod read;
+pub mod reference;
 pub mod tree;
 
 use std::path::PathBuf;

@@ -46,8 +46,8 @@ pub(crate) use context::SenderNames;
 #[cfg(any(test, feature = "test-support"))]
 pub use context::build_messages;
 pub use context::{
-    build_messages_with_senders, microcompact, resolve_file_uris_in_messages, resolve_sticker_parts_in_messages,
-    trim_to_context_limit,
+    build_messages_with_context_items, build_messages_with_senders, microcompact, resolve_file_uris_in_messages,
+    resolve_sticker_parts_in_messages, trim_to_context_limit,
 };
 pub use file_access::{build_file_access, file_access_prompt};
 pub(crate) use inline_tag::{InlineHiddenTagParser, InlineTagSpec};
@@ -66,7 +66,7 @@ pub(crate) use stream::{
     MAX_STREAM_RETRIES, STREAM_RETRY_BASE, StreamResult, is_context_window_error, is_retryable_stream_error,
     parse_retry_after,
 };
-pub use tokenizer::TokenBudget;
+pub use tokenizer::{TokenBudget, TokenCounter, TokenizerKind};
 pub use tool_calls::extract_tool_calls_from_blocks;
 pub(crate) use tool_calls::serialize_tool_calls_openai;
 pub(crate) use truncate::{TOOL_OUTPUT_TRUNCATION, formatted_truncate_text};

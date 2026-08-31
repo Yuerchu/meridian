@@ -55,7 +55,10 @@ pub fn append_message(conn: &mut SqliteConnection, new: &NewMessage, parent: Opt
 /// command output this table has no business holding a second copy of. A
 /// compaction summary is not something anyone said.
 fn audit_copy(conn: &mut SqliteConnection, row: &Message) {
-    if row.role != "user" || row.is_compact_summary != 0 {
+    // A `shell` row is a local execution record, not training/audit text. Its
+    // command routinely contains tokens and passwords, while the paired output
+    // already lives in the deliberately private context-item table.
+    if row.role != "user" || row.is_compact_summary != 0 || row.source.as_deref() == Some("shell") {
         return;
     }
     if let Err(e) = crate::db::ops::audit::record(conn, row) {
@@ -216,7 +219,7 @@ fn copy_of<'a>(n: &NewMessage<'a>) -> NewMessage<'a> {
         tool_outcome: n.tool_outcome,
         cache_read_tokens: n.cache_read_tokens,
         cache_write_tokens: n.cache_write_tokens,
-        server_tool_calls: None,
+        server_tool_calls: n.server_tool_calls,
         provider_name: n.provider_name,
     }
 }
@@ -272,6 +275,7 @@ pub fn update_assistant_message(
             messages::output_tokens.eq(usage.output_tokens),
             messages::cache_read_tokens.eq(usage.cache_read_tokens),
             messages::cache_write_tokens.eq(usage.cache_write_tokens),
+            messages::server_tool_calls.eq(usage.server_tool_calls),
         ))
         .execute(conn)?;
     if affected != 1 {
@@ -757,7 +761,7 @@ mod tests {
             output_tokens: Some(11),
             cache_read_tokens: Some(41),
             cache_write_tokens: Some(43),
-            server_tool_calls: None,
+            server_tool_calls: Some(47),
             tool_calls: Some("[]"),
             tool_call_id: Some("call-1"),
             sort_order: 0,
@@ -810,7 +814,7 @@ mod tests {
             tool_outcome,
             cache_read_tokens,
             cache_write_tokens,
-            server_tool_calls: _,
+            server_tool_calls,
             provider_name,
             provider_state,
             auto_review,
@@ -831,6 +835,7 @@ mod tests {
         assert_eq!(output_tokens, Some(11));
         assert_eq!(cache_read_tokens, Some(41), "a read must not land in the write column");
         assert_eq!(cache_write_tokens, Some(43));
+        assert_eq!(server_tool_calls, Some(47));
         assert_eq!(tool_calls.as_deref(), Some("[]"));
         assert_eq!(tool_call_id.as_deref(), Some("call-1"));
         assert!(sort_order > 0, "assigned by the trigger");

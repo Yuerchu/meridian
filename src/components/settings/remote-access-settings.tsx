@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Checkbox, Description, Input, Label, TextField } from '@heroui/react'
+import { Button, Checkbox, Description, Input, Label, Separator, TextField } from '@heroui/react'
+import { ItemCard } from '@heroui-pro/react/item-card'
+import { ItemCardGroup } from '@heroui-pro/react/item-card-group'
 import { Check, Copy, TriangleExclamation } from '@gravity-ui/icons'
 
 import { api } from '@/api'
@@ -8,7 +10,8 @@ import { useConfirm } from '@/hooks/use-confirm'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { cn } from '@/lib/utils'
 import type { ListenConfig, ListenStatus } from '@/types'
-import { SettingsHeader, SettingsPane } from './primitives'
+import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
+import { useSettingsDirtyRegistration } from './dirty-guard'
 
 /** Mirrors `ListenConfig::default()`; only used until the first load lands. */
 const DEFAULTS: ListenConfig = {
@@ -46,8 +49,17 @@ export function RemoteAccessSettings() {
   const [copied, markCopied] = useTemporaryFlag()
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loaded, setLoaded] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [portInput, setPortInput] = useState('8787')
+  const [savedDraft, setSavedDraft] = useState<string | null>(null)
+  const draft = JSON.stringify({ ...config, token: undefined, port: portInput })
+  const dirty = loaded && draft !== savedDraft
+  useSettingsDirtyRegistration('remote', 'remote-access-config', dirty)
 
   const loadData = useCallback(async () => {
+    setLoadError(null)
     try {
       const [cfg, sts, addrs] = await Promise.all([
         api.getListenConfig(),
@@ -57,8 +69,14 @@ export function RemoteAccessSettings() {
       setConfig(cfg)
       setStatus(sts)
       setAddresses(addrs)
+      const nextPort = cfg.port.toString()
+      setPortInput(nextPort)
+      setSavedDraft(JSON.stringify({ ...cfg, token: undefined, port: nextPort }))
+      setLoaded(true)
     } catch (err) {
-      setError(String(err))
+      setLoadError(String(err))
+    } finally {
+      setLoading(false)
     }
   }, [])
 
@@ -87,17 +105,26 @@ export function RemoteAccessSettings() {
    */
   const adoptConfig = async () => {
     try {
-      setConfig(await api.getListenConfig())
+      const next = await api.getListenConfig()
+      const nextPort = next.port.toString()
+      setConfig(next)
+      setPortInput(nextPort)
+      setSavedDraft(JSON.stringify({ ...next, token: undefined, port: nextPort }))
     } catch (err) {
       setError(String(err))
     }
   }
 
   const handleSave = async () => {
-    setSaving(true)
     setError(null)
+    const port = Number(portInput)
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      setError(t('settings.validation.port'))
+      return false
+    }
+    setSaving(true)
     try {
-      setStatus(await api.saveListenConfig(config))
+      setStatus(await api.saveListenConfig({ ...config, port }))
       await adoptConfig()
       markSaved()
       return true
@@ -135,7 +162,11 @@ export function RemoteAccessSettings() {
     if (!(await confirm({ body: t('settings.remote.regenerateConfirm'), status: 'warning' }))) return
     setError(null)
     try {
-      setConfig(await api.regenerateListenToken())
+      const next = await api.regenerateListenToken()
+      const nextPort = next.port.toString()
+      setConfig(next)
+      setPortInput(nextPort)
+      setSavedDraft(JSON.stringify({ ...next, token: undefined, port: nextPort }))
       setStatus(await api.getListenStatus())
     } catch (err) {
       setError(String(err))
@@ -153,6 +184,29 @@ export function RemoteAccessSettings() {
   // differ exactly while an edited port has not been saved yet, and offering
   // the unsaved one would be offering an address nothing answers at.
   const dialPort = status?.port ?? config.port
+
+  if (loading) return <SettingsSkeleton />
+  if (!loaded) {
+    return (
+      <SettingsPane>
+        <SettingsHeader title={t('settings.remote.title')} subtitle={t('settings.remote.subtitle')} />
+        <div role="alert" className="space-y-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+          <p>{t('settings.remote.loadError')}</p>
+          {loadError && <p className="break-all">{loadError}</p>}
+          <Button
+            size="sm"
+            variant="outline"
+            onPress={() => {
+              setLoading(true)
+              void loadData()
+            }}
+          >
+            {t('settings.remote.retry')}
+          </Button>
+        </div>
+      </SettingsPane>
+    )
+  }
 
   return (
     <SettingsPane>
@@ -189,6 +243,7 @@ export function RemoteAccessSettings() {
         <TextField fullWidth>
           <Label>{t('settings.remote.host')}</Label>
           <Input
+            name="remoteAccessHost"
             value={config.host}
             onChange={(e) => setConfig({ ...config, host: e.target.value })}
             placeholder="0.0.0.0"
@@ -198,12 +253,12 @@ export function RemoteAccessSettings() {
         <TextField fullWidth type="number">
           <Label>{t('settings.remote.port')}</Label>
           <Input
+            name="remoteAccessPort"
+            inputMode="numeric"
             min={1}
             max={65535}
-            value={config.port}
-            onChange={(e) =>
-              setConfig({ ...config, port: Math.min(65535, Math.max(1, parseInt(e.target.value, 10) || 8787)) })
-            }
+            value={portInput}
+            onChange={(e) => setPortInput(e.target.value)}
             placeholder="8787"
           />
         </TextField>
@@ -211,61 +266,72 @@ export function RemoteAccessSettings() {
 
       <div className="space-y-1.5">
         <p className="text-xs font-medium text-muted">{t('settings.remote.token')}</p>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Input
             fullWidth
             aria-label={t('settings.remote.token')}
+            name="remoteAccessToken"
+            autoComplete="off"
             readOnly
             type={revealToken ? 'text' : 'password'}
             value={config.token ?? ''}
             placeholder={t('settings.remote.tokenPending')}
           />
-          <Button variant="outline" onClick={() => setRevealToken(!revealToken)}>
+          <Button variant="outline" onPress={() => setRevealToken(!revealToken)}>
             {revealToken ? t('settings.remote.hide') : t('settings.remote.reveal')}
           </Button>
-          <Button variant="outline" onClick={handleRegenerate}>
+          <Button variant="outline" onPress={handleRegenerate}>
             {t('settings.remote.regenerate')}
           </Button>
         </div>
         <p className="text-xs text-muted">{t('settings.remote.tokenHint')}</p>
       </div>
 
-      {error && <p className="text-xs text-danger break-all">{error}</p>}
+      {error && (
+        <p role="alert" className="text-xs text-danger break-all">
+          {error}
+        </p>
+      )}
 
       <div className="flex items-center gap-3 pt-2">
-        <Button variant="outline" onClick={handleSave} isDisabled={saving}>
+        <Button variant="outline" onPress={handleSave} isDisabled={saving}>
           {saved ? t('common.saved') : t('common.save')}
         </Button>
+        {saved && (
+          <span role="status" className="sr-only">
+            {t('common.saved')}
+          </span>
+        )}
         {running ? (
-          <Button variant="danger-soft" onClick={handleStop}>
+          <Button variant="danger-soft" onPress={handleStop}>
             {t('settings.remote.stop')}
           </Button>
         ) : (
-          <Button onClick={handleStart}>{t('settings.remote.start')}</Button>
+          <Button onPress={handleStart}>{t('settings.remote.start')}</Button>
         )}
       </div>
 
       {status && (
-        <div className="rounded-lg border p-3 space-y-1 text-sm">
-          <div className="flex items-center gap-2">
-            {/* Decoration: the state it stands for is spelled out beside it,
+        <ItemCard variant="outline">
+          <ItemCard.Content className="min-w-0">
+            <ItemCard.Title className="flex w-full items-center gap-2">
+              {/* Decoration: the state it stands for is spelled out beside it,
                 so announcing the dot too would only say it twice. */}
-            <span
-              aria-hidden
-              className={cn('inline-block w-2 h-2 rounded-full', running ? 'bg-success' : 'bg-muted')}
-            />
-            <span className="font-medium">
+              <span
+                aria-hidden
+                className={cn('inline-block size-2 shrink-0 rounded-full', running ? 'bg-success' : 'bg-muted')}
+              />
               {running ? t('settings.remote.statusRunning') : t('settings.remote.statusStopped')}
-            </span>
-          </div>
-          {running && (
-            <p className="text-xs text-muted">
-              {t('settings.remote.connections', { count: status.connections })}
-              {' · '}
-              {status.host}:{status.port}
-            </p>
-          )}
-        </div>
+            </ItemCard.Title>
+            {running && (
+              <ItemCard.Description className="w-full whitespace-normal">
+                {t('settings.remote.connections', { count: status.connections })}
+                {' · '}
+                {status.host}:{status.port}
+              </ItemCard.Description>
+            )}
+          </ItemCard.Content>
+        </ItemCard>
       )}
 
       <div className="space-y-1.5">
@@ -273,29 +339,36 @@ export function RemoteAccessSettings() {
         {addresses.length === 0 ? (
           <p className="text-xs text-muted">{t('settings.remote.addressesEmpty')}</p>
         ) : (
-          <div className="rounded-lg border divide-y">
-            {addresses.map((address) => {
+          <ItemCardGroup variant="outline">
+            {addresses.map((address, index) => {
               const dialable = `${address}:${dialPort}`
               return (
-                <div key={address} className="flex items-center gap-2 p-2">
-                  <span className="min-w-0 flex-1 truncate font-mono text-sm">{dialable}</span>
-                  <Button
-                    isIconOnly
-                    size="sm"
-                    variant="ghost"
-                    aria-label={t('settings.remote.copyAddress')}
-                    onClick={() => copyAddress(dialable)}
-                  >
-                    {copied && copiedAddress === dialable ? (
-                      <Check className="size-3.5" />
-                    ) : (
-                      <Copy className="size-3.5" />
-                    )}
-                  </Button>
-                </div>
+                <Fragment key={address}>
+                  {index > 0 && <Separator />}
+                  <ItemCard>
+                    <ItemCard.Content className="min-w-0">
+                      <ItemCard.Title className="w-full break-all font-mono">{dialable}</ItemCard.Title>
+                    </ItemCard.Content>
+                    <ItemCard.Action>
+                      <Button
+                        isIconOnly
+                        size="sm"
+                        variant="ghost"
+                        aria-label={t('settings.remote.copyAddress')}
+                        onPress={() => copyAddress(dialable)}
+                      >
+                        {copied && copiedAddress === dialable ? (
+                          <Check className="size-3.5" />
+                        ) : (
+                          <Copy className="size-3.5" />
+                        )}
+                      </Button>
+                    </ItemCard.Action>
+                  </ItemCard>
+                </Fragment>
               )
             })}
-          </div>
+          </ItemCardGroup>
         )}
         <p className="text-xs text-muted">{t('settings.remote.addressesHint')}</p>
       </div>

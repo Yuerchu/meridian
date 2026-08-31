@@ -9,11 +9,21 @@ import { useAndroidInsets } from '@/hooks/use-android-insets'
 import { usePlatform } from '@/hooks/use-platform'
 import { useGlobalEventListener } from '@/hooks/use-global-event-listener'
 import { useConversationStore } from '@/stores/conversation-store'
+import type { InitialTurnDraft } from '@/components/chat/conversation-draft'
+import type { Conversation } from '@/types'
 
 /** How long to wait for a stopped turn to let go of its conversation before
  *  giving up and surfacing the refusal. */
 const RELEASE_POLL_MS = 100
 const RELEASE_ATTEMPTS = 20
+
+function keepConversationLocally(conversation: Conversation) {
+  useConversationStore.setState((state) => ({
+    conversations: state.conversations.some((entry) => entry.id === conversation.id)
+      ? state.conversations
+      : [conversation, ...state.conversations],
+  }))
+}
 
 async function deleteWhenFree(id: string) {
   for (let attempt = 0; ; attempt++) {
@@ -44,7 +54,7 @@ function App() {
 
   const [page, setPage] = useState<Page>('chat')
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('provider')
-  const [pendingMessage, setPendingMessage] = useState<string | null>(null)
+  const [pendingTurn, setPendingTurn] = useState<{ conversationId: string; draft: InitialTurnDraft } | null>(null)
 
   const conversations = useConversationStore((s) => s.conversations)
   const activeId = useConversationStore((s) => s.activeId)
@@ -67,16 +77,77 @@ function App() {
 
   const handleCreate = useCallback(async () => {
     const conv = await api.createConversation(undefined, activeProjectId ?? undefined)
-    await refreshConversations()
+    try {
+      await refreshConversations()
+    } catch {
+      // The row already exists. Treat a list refresh as cache repair rather
+      // than creation failure, otherwise retrying from the shell duplicates it.
+      keepConversationLocally(conv)
+    }
     storeSetActiveId(conv.id)
     setPage('chat')
   }, [refreshConversations, activeProjectId, storeSetActiveId])
 
-  const handleCreateWithMessage = useCallback(
-    async (text: string) => {
+  const handleCreateWithDraft = useCallback(
+    async (draft: InitialTurnDraft) => {
       const conv = await api.createConversation(undefined, activeProjectId ?? undefined)
-      await refreshConversations()
-      setPendingMessage(text)
+      const { settings } = draft
+      // A welcome-page toolbar is real, not decorative. Persist every setting
+      // that has a conversation column before the first turn starts; the model
+      // and provider remain first-turn overrides and travel in `pendingTurn`.
+      try {
+        const results = await Promise.allSettled([
+          settings.selectedAssistantId
+            ? api.setConversationAssistant(conv.id, settings.selectedAssistantId)
+            : Promise.resolve(),
+          api.setConversationReasoningPrefs(
+            conv.id,
+            settings.thinkingLevel === 'default' ? null : settings.thinkingLevel,
+            settings.fastMode,
+          ),
+          api.setConversationMode(conv.id, settings.mode === 'work' ? null : settings.mode),
+          api.setConversationAcceptEdits(conv.id, settings.acceptEdits),
+        ])
+        // Wait for every SQLite write before cleanup. Promise.all would enter
+        // the catch on the first rejection and race deletion against the other
+        // writes that are still in flight.
+        const rejected = results.find((result): result is PromiseRejectedResult => result.status === 'rejected')
+        if (rejected) throw rejected.reason
+      } catch (settingsError) {
+        // The row has no message yet. Remove that incomplete shell before
+        // returning the intact draft to the welcome page, otherwise every
+        // retry creates another orphaned conversation.
+        let failure = settingsError
+        try {
+          await api.deleteConversation(conv.id)
+        } catch (cleanupError) {
+          failure = new Error(`${String(settingsError)}; cleanup failed: ${String(cleanupError)}`)
+        }
+        try {
+          await refreshConversations()
+        } catch {
+          // The original settings/cleanup error is the actionable one.
+        }
+        throw failure
+      }
+      // Prefer putting the real row in the store before ChatView mounts so its
+      // persisted assistant/mode selectors are immediately authoritative. A
+      // refresh failure is still presentation state: the draft seed below is
+      // a complete fallback and must be allowed to start the valid conversation.
+      try {
+        await refreshConversations()
+      } catch (err) {
+        keepConversationLocally({
+          ...conv,
+          assistant_id: settings.selectedAssistantId ?? conv.assistant_id,
+          thinking_level: settings.thinkingLevel === 'default' ? null : settings.thinkingLevel,
+          fast_mode: Number(settings.fastMode),
+          mode: settings.mode === 'work' ? null : settings.mode,
+          accept_edits: Number(settings.acceptEdits),
+        })
+        console.error('Failed to refresh conversations', err)
+      }
+      setPendingTurn({ conversationId: conv.id, draft })
       storeSetActiveId(conv.id)
       setPage('chat')
     },
@@ -124,8 +195,18 @@ function App() {
 
   const handleCreateProject = useCallback(
     async (name: string, path: string) => {
-      await api.createProject(name, path)
-      await refreshProjects()
+      const project = await api.createProject(name, path)
+      try {
+        await refreshProjects()
+      } catch {
+        // Creation is already committed. Keep the new row visible and resolve
+        // successfully so retrying the form cannot create a duplicate project.
+        useConversationStore.setState((state) => ({
+          projects: state.projects.some((entry) => entry.id === project.id)
+            ? state.projects
+            : [...state.projects, project],
+        }))
+      }
     },
     [refreshProjects],
   )
@@ -141,15 +222,21 @@ function App() {
    */
   const handleCreateHostedSession = useCallback(
     async (cwd: string): Promise<string | null> => {
+      let conversationId: string
       try {
-        const conversationId = await api.acpOpenSession(cwd)
-        await refreshConversations()
-        storeSetActiveId(conversationId)
-        setPage('chat')
-        return null
+        conversationId = await api.acpOpenSession(cwd)
       } catch (err) {
         return String(err)
       }
+      try {
+        await refreshConversations()
+      } catch {
+        // The hosted process and its conversation already exist. Navigation by
+        // id still works; a later refresh repairs the sidebar cache.
+      }
+      storeSetActiveId(conversationId)
+      setPage('chat')
+      return null
     },
     [refreshConversations, storeSetActiveId],
   )
@@ -204,6 +291,13 @@ function App() {
 
   const activeConversation = conversations.find((c) => c.id === activeId)
   const activeProject = projects.find((p) => p.id === activeProjectId)
+  const appName = t('app.name')
+  const headerTitle =
+    page === 'settings' ? t('settings.title') : (activeConversation?.title ?? activeProject?.name ?? appName)
+
+  useEffect(() => {
+    document.title = headerTitle === appName ? appName : `${headerTitle} — ${appName}`
+  }, [appName, headerTitle])
 
   const shellProps: ShellProps = {
     conversations,
@@ -212,9 +306,8 @@ function App() {
     activeProjectId,
     page,
     settingsTab,
-    pendingMessage,
-    headerTitle:
-      page === 'settings' ? t('settings.title') : (activeConversation?.title ?? activeProject?.name ?? t('app.name')),
+    pendingDraft: pendingTurn?.conversationId === activeId ? pendingTurn.draft : null,
+    headerTitle,
     canDragWindow,
     onSelect: handleSelect,
     onCreate: handleCreate,
@@ -230,8 +323,8 @@ function App() {
     onOpenSettings: () => setPage('settings'),
     onCloseSettings: () => setPage('chat'),
     onSettingsTabChange: setSettingsTab,
-    onCreateWithMessage: handleCreateWithMessage,
-    onInitialMessageConsumed: () => setPendingMessage(null),
+    onCreateWithDraft: handleCreateWithDraft,
+    onInitialDraftConsumed: () => setPendingTurn(null),
   }
 
   return <AppShell {...shellProps} />

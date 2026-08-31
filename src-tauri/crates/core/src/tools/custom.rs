@@ -135,6 +135,14 @@ impl Tool for CustomToolExecutor {
         // custom tool written against the host's toolchain will not find it
         // inside a container. That is a thing to say in the settings, not a
         // reason to leave the hole open.
+        // Bracketed like `run_command` and for the same reason: a user's own
+        // command tool changes files through no primitive this crate owns, and
+        // without the bracket that work is `external` — real changes with
+        // nobody's name on them. Settled on every exit path.
+        let bracket = match &context.journal {
+            Some(j) => j.command_bracket().await,
+            None => None,
+        };
         let res = crate::sandbox::execute(
             &argv,
             &wd,
@@ -143,7 +151,11 @@ impl Tool for CustomToolExecutor {
             &context.cancel,
         )
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string());
+        if let (Some(j), Some(b)) = (&context.journal, bracket) {
+            j.settle_command_bracket(b, &self.tool_name).await;
+        }
+        let res = res?;
 
         if res.timed_out {
             return Err(format!("Command timed out after {}s", self.timeout.as_secs()));

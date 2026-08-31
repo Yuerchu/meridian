@@ -104,3 +104,38 @@ describe('PromptQueue', () => {
     expect(onSetDelivery).toHaveBeenCalledWith('a', 'interject')
   })
 })
+
+/** The drag handle needs a pointer; these are the same moves for a keyboard. */
+describe('PromptQueue keyboard reordering', () => {
+  it('moves a queued row with a named keyboard-operable action', async () => {
+    const items = [
+      item({ id: 'a', content: 'Prompt a', delivery: 'follow_up', position: 0 }),
+      item({ id: 'b', content: 'Prompt b', delivery: 'follow_up', position: 1 }),
+      item({ id: 'c', content: 'Prompt c', delivery: 'follow_up', position: 2 }),
+    ]
+    const onReorder = vi.fn()
+    mount(<PromptQueue {...NOOP} onReorder={onReorder} items={items} />)
+
+    const moveDown = screen.getAllByRole('button', { name: 'Move down' })[0]
+    moveDown.focus()
+    await userEvent.keyboard('{Enter}')
+
+    expect(onReorder).toHaveBeenCalledWith([items[1], items[0], items[2]])
+  })
+
+  it('does not offer movement across an in-doubt barrier', () => {
+    mount(
+      <PromptQueue
+        {...NOOP}
+        items={[
+          item({ id: 'a', content: 'Prompt a', delivery: 'follow_up', position: 0 }),
+          item({ id: 'barrier', content: 'Prompt barrier', delivery: 'follow_up', position: 1, dispatched_at: 1 }),
+          item({ id: 'c', content: 'Prompt c', delivery: 'follow_up', position: 2 }),
+        ]}
+      />,
+    )
+
+    expect(screen.getAllByRole('button', { name: 'Move down' })[0]).toBeDisabled()
+    expect(screen.getAllByRole('button', { name: 'Move up' }).at(-1)).toBeDisabled()
+  })
+})

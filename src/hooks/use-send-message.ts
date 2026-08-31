@@ -4,6 +4,8 @@ import { useConversationStore } from '@/stores/conversation-store'
 import { uploadAttachment } from '@/lib/upload'
 import type { AttachedFile } from '@/components/chat/input-bar'
 import type { ChatMode, StickerContentPart, ThinkingLevel } from '@/types'
+import type { WorkspaceReferenceInput } from '@/types'
+import { extractComposerReferences, referenceInputs } from '@/lib/composer-intent'
 
 /** The toolbar's answer to "how should this turn be sent", read at send time. */
 export interface SendOptions {
@@ -28,6 +30,7 @@ export interface SendMessage {
     replaces?: string,
     voice?: boolean,
     sticker?: StickerContentPart,
+    contextRefs?: WorkspaceReferenceInput[],
   ) => Promise<void>
   /** Says something to the run already going; false when nobody was reading. */
   steerMessage: (text: string) => Promise<boolean>
@@ -114,6 +117,7 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
       replaces?: string,
       voice?: boolean,
       sticker?: StickerContentPart,
+      contextRefs: WorkspaceReferenceInput[] = [],
     ) => {
       // A null message means "regenerate", which needs no text of its own.
       if ((text === null ? !replaces : !text.trim() && !sticker) || streaming || submittingRef.current) return
@@ -182,7 +186,7 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
       // settings and mean nothing to an adapter that picks its own; sending
       // them would suggest they had an effect.
       const dispatched = isHosted
-        ? api.acpSend(conversationId, messageContent ?? '', turnId)
+        ? api.acpSend(conversationId, messageContent ?? '', turnId, contextRefs)
         : api.chat(conversationId, messageContent, {
             turnId,
             replaces,
@@ -193,6 +197,7 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
             fast: fastMode || undefined,
             mode,
             voice: voice || undefined,
+            contextRefs,
           })
 
       dispatched.catch((err) => {
@@ -276,7 +281,8 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
   // reachable through the pager.
   const handleEdit = useCallback(
     (id: string, content: string) => {
-      sendMessage(content, true, undefined, id)
+      const refs = referenceInputs(extractComposerReferences(content))
+      sendMessage(content, true, undefined, id, undefined, undefined, refs)
     },
     [sendMessage],
   )

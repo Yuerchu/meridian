@@ -306,6 +306,7 @@ export const TurnItem = React.memo(function TurnItem({
                   isLastMessage={isLastTurn && isLast}
                   showFooter={ownsActions}
                   tokenTotals={ownsActions ? turn.tokens : undefined}
+                  turnUsage={ownsActions ? turn.usage : undefined}
                   onDelete={ownsActions ? onDeleteTurn : undefined}
                   onRegenerate={ownsActions ? onRegenerateTurn : undefined}
                   onRate={ownsActions ? onRate : undefined}
@@ -373,6 +374,7 @@ export const TurnItem = React.memo(function TurnItem({
               isFirstInGroup={false}
               showFooter
               tokenTotals={turn.tokens}
+              turnUsage={turn.usage}
               onDelete={onDeleteTurn}
               onRegenerate={onRegenerateTurn}
               onRate={onRate}

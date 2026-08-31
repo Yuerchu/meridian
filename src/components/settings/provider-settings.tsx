@@ -1,15 +1,19 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useId, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, ArrowsRotateRight, TrashBin, Cloud, Key, Sliders, Xmark } from '@gravity-ui/icons'
 import { Button, Description, Disclosure, Input, Label, Spinner, TextField, Tooltip } from '@heroui/react'
 import { EmptyState } from '@heroui-pro/react/empty-state'
+import { DataGrid, type DataGridColumn } from '@heroui-pro/react/data-grid'
+import { ListView } from '@heroui-pro/react/list-view'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
+import { ModelIcon } from '@/components/ui/model-icon'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import { MasterDetail } from './master-detail'
-import { SavedHint, SettingsRow, SettingsSelect, SettingsSkeleton } from './primitives'
+import { SavedHint, SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
 import { useMasterDetail } from './use-master-detail'
+import { useSettingsDirtyRegistration } from './dirty-guard'
 import { EFFORT_LADDER } from '@/lib/thinking'
 import type {
   CodexAuthStatus,
@@ -180,7 +184,7 @@ function CodexAccount() {
     <div data-slot="codex-account" className="border-t border-border pt-4 space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted">{t('settings.provider.codexAccount')}</p>
-        <Button variant="outline" onClick={() => void check()} isDisabled={checking}>
+        <Button variant="outline" onPress={() => void check()} isDisabled={checking}>
           <ArrowsRotateRight className={cn('w-3.5 h-3.5', checking && 'animate-spin')} />
           {t('settings.provider.codexRecheck')}
         </Button>
@@ -348,6 +352,8 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
             <TextField fullWidth>
               <Label>{t('settings.model.tierThreshold')}</Label>
               <Input
+                name={`modelTierThreshold-${index}`}
+                inputMode="numeric"
                 value={tier.threshold}
                 onChange={(e) => patch(index, 'threshold', e.target.value)}
                 placeholder="200000"
@@ -360,7 +366,7 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
                 variant="ghost"
                 aria-label={t('settings.model.removeTier')}
                 className="h-7 pointer-coarse:h-10 rounded-md px-2 text-danger"
-                onClick={() => onChange(tiers.filter((_, i) => i !== index))}
+                onPress={() => onChange(tiers.filter((_, i) => i !== index))}
               >
                 <TrashBin className="size-3.5" />
               </Button>
@@ -371,6 +377,8 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
             <TextField fullWidth>
               <Label>{t('settings.model.inputPrice')}</Label>
               <Input
+                name={`modelTierInputPrice-${index}`}
+                inputMode="decimal"
                 value={tier.input}
                 onChange={(e) => patch(index, 'input', e.target.value)}
                 className="h-7 pointer-coarse:h-10 text-xs"
@@ -379,6 +387,8 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
             <TextField fullWidth>
               <Label>{t('settings.model.outputPrice')}</Label>
               <Input
+                name={`modelTierOutputPrice-${index}`}
+                inputMode="decimal"
                 value={tier.output}
                 onChange={(e) => patch(index, 'output', e.target.value)}
                 className="h-7 pointer-coarse:h-10 text-xs"
@@ -387,6 +397,8 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
             <TextField fullWidth>
               <Label>{t('settings.model.cachePrice')}</Label>
               <Input
+                name={`modelTierCacheReadPrice-${index}`}
+                inputMode="decimal"
                 value={tier.cacheRead}
                 onChange={(e) => patch(index, 'cacheRead', e.target.value)}
                 placeholder="—"
@@ -396,6 +408,8 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
             <TextField fullWidth>
               <Label>{t('settings.model.cacheWritePrice')}</Label>
               <Input
+                name={`modelTierCacheWritePrice-${index}`}
+                inputMode="decimal"
                 value={tier.cacheWrite}
                 onChange={(e) => patch(index, 'cacheWrite', e.target.value)}
                 placeholder="—"
@@ -409,7 +423,7 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
         size="sm"
         variant="outline"
         className="h-7 pointer-coarse:h-10 rounded-md text-xs"
-        onClick={() => onChange([...tiers, { ...BLANK_TIER }])}
+        onPress={() => onChange([...tiers, { ...BLANK_TIER }])}
       >
         <Plus className="size-3.5" />
         {t('settings.model.addTier')}
@@ -447,6 +461,7 @@ function ModelConfigEditor({
   existing,
   onSave,
   onDelete,
+  onDirtyChange,
 }: {
   providerId: string
   modelId: string
@@ -455,8 +470,9 @@ function ModelConfigEditor({
    *  provider-side tools at all. */
   apiFormat: string
   existing?: ModelConfig
-  onSave: (input: ModelConfigInput) => void
+  onSave: (input: ModelConfigInput) => Promise<void>
   onDelete?: () => void
+  onDirtyChange?: (dirty: boolean) => void
 }) {
   const { t } = useTranslation()
   const [caps, setCaps] = useState<ProviderCapabilities | null>(null)
@@ -495,6 +511,10 @@ function ModelConfigEditor({
   const effortsDirty = useRef(false)
   const [capThinking, setCapThinking] = useState<Tri>('auto')
   const [capFast, setCapFast] = useState<Tri>('auto')
+  const [dirty, setDirty] = useState(false)
+
+  useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange])
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange])
 
   useEffect(() => {
     if (!existing && caps) {
@@ -534,10 +554,11 @@ function ModelConfigEditor({
     setCapThinking('auto')
     setCapFast('auto')
     if (caps) setEfforts(EFFORT_LADDER.filter((e) => (caps.supported_efforts ?? EFFORT_LADDER).includes(e)))
+    setDirty(true)
   }
 
-  const handleSave = () => {
-    onSave({
+  const handleSave = async () => {
+    await onSave({
       provider_id: providerId,
       model_id: modelId,
       context_window: parseInt(contextWindow) || 128000,
@@ -559,6 +580,7 @@ function ModelConfigEditor({
       server_tools: serverTools.length > 0 ? JSON.stringify(serverTools) : null,
       server_tool_price: serverToolPrice ? parseFloat(serverToolPrice) : null,
     })
+    setDirty(false)
   }
 
   return (
@@ -572,16 +594,26 @@ function ModelConfigEditor({
         <TextField fullWidth>
           <Label>{t('settings.model.contextWindow')}</Label>
           <Input
+            name={`modelContextWindow-${modelId}`}
+            inputMode="numeric"
             value={contextWindow}
-            onChange={(e) => setContextWindow(e.target.value)}
+            onChange={(e) => {
+              setContextWindow(e.target.value)
+              setDirty(true)
+            }}
             className="h-7 pointer-coarse:h-10 text-xs"
           />
         </TextField>
         <TextField fullWidth>
           <Label>{t('settings.model.compactThreshold')}</Label>
           <Input
+            name={`modelCompactThreshold-${modelId}`}
+            inputMode="numeric"
             value={compactThreshold}
-            onChange={(e) => setCompactThreshold(e.target.value)}
+            onChange={(e) => {
+              setCompactThreshold(e.target.value)
+              setDirty(true)
+            }}
             className="h-7 pointer-coarse:h-10 text-xs"
           />
         </TextField>
@@ -589,8 +621,13 @@ function ModelConfigEditor({
       <TextField fullWidth>
         <Label>{t('settings.model.maxOutput')}</Label>
         <Input
+          name={`modelMaxOutput-${modelId}`}
+          inputMode="numeric"
           value={maxOutput}
-          onChange={(e) => setMaxOutput(e.target.value)}
+          onChange={(e) => {
+            setMaxOutput(e.target.value)
+            setDirty(true)
+          }}
           placeholder={t('settings.model.optional')}
           className="h-7 pointer-coarse:h-10 text-xs"
         />
@@ -602,24 +639,39 @@ function ModelConfigEditor({
         <TextField fullWidth>
           <Label>{t('settings.model.inputPrice')}</Label>
           <Input
+            name={`modelInputPrice-${modelId}`}
+            inputMode="decimal"
             value={inputPrice}
-            onChange={(e) => setInputPrice(e.target.value)}
+            onChange={(e) => {
+              setInputPrice(e.target.value)
+              setDirty(true)
+            }}
             className="h-7 pointer-coarse:h-10 text-xs"
           />
         </TextField>
         <TextField fullWidth>
           <Label>{t('settings.model.outputPrice')}</Label>
           <Input
+            name={`modelOutputPrice-${modelId}`}
+            inputMode="decimal"
             value={outputPrice}
-            onChange={(e) => setOutputPrice(e.target.value)}
+            onChange={(e) => {
+              setOutputPrice(e.target.value)
+              setDirty(true)
+            }}
             className="h-7 pointer-coarse:h-10 text-xs"
           />
         </TextField>
         <TextField fullWidth>
           <Label>{t('settings.model.cachePrice')}</Label>
           <Input
+            name={`modelCachePrice-${modelId}`}
+            inputMode="decimal"
             value={cachePrice}
-            onChange={(e) => setCachePrice(e.target.value)}
+            onChange={(e) => {
+              setCachePrice(e.target.value)
+              setDirty(true)
+            }}
             placeholder="—"
             className="h-7 pointer-coarse:h-10 text-xs"
           />
@@ -628,8 +680,13 @@ function ModelConfigEditor({
         <TextField fullWidth>
           <Label>{t('settings.model.cacheWritePrice')}</Label>
           <Input
+            name={`modelCacheWritePrice-${modelId}`}
+            inputMode="decimal"
             value={cacheWritePrice}
-            onChange={(e) => setCacheWritePrice(e.target.value)}
+            onChange={(e) => {
+              setCacheWritePrice(e.target.value)
+              setDirty(true)
+            }}
             placeholder="—"
             className="h-7 pointer-coarse:h-10 text-xs"
           />
@@ -653,7 +710,10 @@ function ModelConfigEditor({
                   size="sm"
                   aria-pressed={on}
                   className="h-6 pointer-coarse:h-9 rounded-md px-2 text-xs font-normal"
-                  onClick={() => setServerTools(on ? serverTools.filter((x) => x !== name) : [...serverTools, name])}
+                  onPress={() => {
+                    setServerTools(on ? serverTools.filter((x) => x !== name) : [...serverTools, name])
+                    setDirty(true)
+                  }}
                 >
                   {t(`settings.model.serverTool.${name}`, name)}
                 </Button>
@@ -663,8 +723,13 @@ function ModelConfigEditor({
           <TextField fullWidth>
             <Label>{t('settings.model.serverToolPrice')}</Label>
             <Input
+              name={`modelServerToolPrice-${modelId}`}
+              inputMode="decimal"
               value={serverToolPrice}
-              onChange={(e) => setServerToolPrice(e.target.value)}
+              onChange={(e) => {
+                setServerToolPrice(e.target.value)
+                setDirty(true)
+              }}
               placeholder="5"
               className="h-7 pointer-coarse:h-10 text-xs"
             />
@@ -689,7 +754,13 @@ function ModelConfigEditor({
         </Disclosure.Heading>
         <Disclosure.Content className="min-h-0 w-full">
           <Disclosure.Body className="pt-1">
-            <PriceTierEditor tiers={tiers} onChange={setTiers} />
+            <PriceTierEditor
+              tiers={tiers}
+              onChange={(next) => {
+                setTiers(next)
+                setDirty(true)
+              }}
+            />
           </Disclosure.Body>
         </Disclosure.Content>
       </Disclosure>
@@ -725,11 +796,12 @@ function ModelConfigEditor({
                       size="sm"
                       aria-pressed={on}
                       className="h-6 pointer-coarse:h-9 px-2 text-xs font-normal"
-                      onClick={() => {
+                      onPress={() => {
                         // Rebuild from the ladder so the stored array stays in
                         // ascending order -- the median coercion ranks on position.
                         setEfforts(EFFORT_LADDER.filter((x) => (x === tier ? !on : efforts.includes(x))))
                         effortsDirty.current = true
+                        setDirty(true)
                       }}
                     >
                       {t(`toolbar.thinking.${tier}`)}
@@ -738,14 +810,28 @@ function ModelConfigEditor({
                 })}
               </div>
             </div>
-            <CapabilityTriRow label={t('settings.model.capThinking')} value={capThinking} onChange={setCapThinking} />
-            <CapabilityTriRow label={t('settings.model.capFast')} value={capFast} onChange={setCapFast} />
+            <CapabilityTriRow
+              label={t('settings.model.capThinking')}
+              value={capThinking}
+              onChange={(value) => {
+                setCapThinking(value)
+                setDirty(true)
+              }}
+            />
+            <CapabilityTriRow
+              label={t('settings.model.capFast')}
+              value={capFast}
+              onChange={(value) => {
+                setCapFast(value)
+                setDirty(true)
+              }}
+            />
             <p className="text-xs text-muted">{t('settings.model.capabilitiesHint')}</p>
             <Button
               variant="ghost"
               size="sm"
               className="h-6 pointer-coarse:h-9 px-0 text-xs text-muted hover:text-foreground"
-              onClick={resetOverrides}
+              onPress={resetOverrides}
             >
               {t('settings.model.capReset')}
             </Button>
@@ -753,11 +839,11 @@ function ModelConfigEditor({
         </Disclosure.Content>
       </Disclosure>
       <div className="flex items-center gap-2 pt-1">
-        <Button size="sm" className="h-7 pointer-coarse:h-10 text-xs" onClick={handleSave}>
+        <Button size="sm" className="h-7 pointer-coarse:h-10 text-xs" onPress={() => void handleSave()}>
           {t('common.save')}
         </Button>
         {onDelete && (
-          <Button size="sm" variant="ghost" className="h-7 pointer-coarse:h-10 text-xs text-danger" onClick={onDelete}>
+          <Button size="sm" variant="ghost" className="h-7 pointer-coarse:h-10 text-xs text-danger" onPress={onDelete}>
             {t('common.delete')}
           </Button>
         )}
@@ -770,18 +856,48 @@ function ProviderEditor({
   provider,
   onUpdate,
   onDelete,
+  onDirtyChange,
 }: {
   provider: Provider
   onUpdate: () => void
   /// Awaited so the button can show progress until the list has reloaded.
   onDelete: (id: string) => Promise<void>
+  onDirtyChange?: (id: string, dirty: boolean) => void
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const modelEditorId = useId()
+  const locale = i18n.resolvedLanguage ?? i18n.language
+  const balanceNumber = useMemo(
+    () => new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    [locale],
+  )
+  const formatBalance = useCallback(
+    (value: number, currency: string) => {
+      try {
+        return new Intl.NumberFormat(locale, {
+          style: 'currency',
+          currency,
+          currencyDisplay: 'code',
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(value)
+      } catch {
+        return `${currency} ${balanceNumber.format(value)}`
+      }
+    },
+    [balanceNumber, locale],
+  )
   const catalog = useProviderCatalog()
   const [name, setName] = useState(provider.name)
   const [providerType, setProviderType] = useState(provider.provider_type)
   const [baseUrl, setBaseUrl] = useState(provider.base_url)
   const [apiFormat, setApiFormat] = useState(provider.api_format || 'chat_completions')
+  const [savedDraft, setSavedDraft] = useState(() => ({
+    name: provider.name,
+    providerType: provider.provider_type,
+    baseUrl: provider.base_url,
+    apiFormat: provider.api_format || 'chat_completions',
+  }))
   const [apiKey, setApiKey] = useState('')
   const { confirm, confirmDialog } = useConfirm()
   // Not a boolean: while the lookup is in flight `false` renders exactly like
@@ -801,6 +917,17 @@ function ProviderEditor({
   const [modelConfigs, setModelConfigs] = useState<Map<string, ModelConfig>>(new Map())
   const [editingModelId, setEditingModelId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [modelConfigDirty, setModelConfigDirty] = useState(false)
+  const dirty =
+    name !== savedDraft.name ||
+    providerType !== savedDraft.providerType ||
+    baseUrl !== savedDraft.baseUrl ||
+    apiFormat !== savedDraft.apiFormat ||
+    apiKey.trim().length > 0 ||
+    modelConfigDirty
+
+  useEffect(() => onDirtyChange?.(provider.id, dirty), [dirty, onDirtyChange, provider.id])
+  useEffect(() => () => onDirtyChange?.(provider.id, false), [onDirtyChange, provider.id])
 
   // Deletion clears secrets and cached models before the list reloads, so the
   // button has to stay disabled and say what it is doing — otherwise a slow
@@ -852,6 +979,7 @@ function ProviderEditor({
       credentialKind: activeAuth?.credential_kind,
       transportProfile: activeAuth?.transport_profile,
     })
+    setSavedDraft({ name, providerType, baseUrl, apiFormat })
     markSaved()
     onUpdate()
   }, [provider.id, name, providerType, baseUrl, apiFormat, activeAuth, onUpdate, markSaved])
@@ -915,6 +1043,7 @@ function ProviderEditor({
           apiFormat: nextFormat,
           baseUrl: nextUrl,
         })
+        setSavedDraft((current) => ({ ...current, apiFormat: nextFormat, baseUrl: nextUrl }))
         markSaved()
         onUpdate()
       } catch (err) {
@@ -1014,6 +1143,15 @@ function ProviderEditor({
     [confirm, t, loadModelConfigs],
   )
 
+  const changeEditingModel = useCallback(
+    async (nextId: string | null) => {
+      if (modelConfigDirty && !(await confirm({ body: t('settings.unsavedChanges'), status: 'warning' }))) return
+      setModelConfigDirty(false)
+      setEditingModelId(nextId)
+    },
+    [confirm, modelConfigDirty, t],
+  )
+
   // Straight from the catalog, and not translated: these are brand names. The
   // i18n keys they replaced held the same strings in every locale, and a vendor
   // added to the catalog would have had no key at all — which is precisely the
@@ -1042,11 +1180,86 @@ function ProviderEditor({
         : t('settings.provider.apiFormatOpenAICompatibleHint')
       : undefined
 
+  const modelColumns = useMemo<DataGridColumn<ModelInfo>[]>(
+    () => [
+      {
+        id: 'model',
+        header: t('settings.provider.modelColumn'),
+        isRowHeader: true,
+        minWidth: 176,
+        cellClassName: 'text-xs',
+        cell: (model) => (
+          <span className={cn('block truncate', modelConfigs.has(model.id) ? 'text-foreground' : 'text-muted')}>
+            {model.name}
+          </span>
+        ),
+      },
+      {
+        id: 'status',
+        header: t('settings.provider.modelStatusColumn'),
+        width: 112,
+        minWidth: 112,
+        headerClassName: 'whitespace-nowrap',
+        cellClassName: 'text-xs',
+        cell: (model) => {
+          const config = modelConfigs.get(model.id)
+          if (!config) return <span className="text-muted">{t('settings.provider.modelNotConfigured')}</span>
+          return config.input_price > 0 || config.output_price > 0 ? (
+            <span className="inline-flex items-center gap-1.5 text-success-soft-foreground">
+              <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-success" />
+              {t('settings.provider.modelPriced')}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 text-warning">
+              <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-warning" />
+              {t('settings.provider.modelPriceMissing')}
+            </span>
+          )
+        },
+      },
+      {
+        id: 'actions',
+        header: t('settings.provider.modelActionsColumn'),
+        align: 'end',
+        width: 72,
+        minWidth: 72,
+        pinned: 'end',
+        headerClassName: 'whitespace-nowrap',
+        cell: (model) => {
+          const isEditing = editingModelId === model.id
+          const label = isEditing
+            ? t('settings.provider.closeModelConfig', { model: model.name })
+            : t('settings.provider.editModelConfig', { model: model.name })
+          return (
+            <Tooltip delay={0}>
+              <Button
+                isIconOnly
+                variant="ghost"
+                aria-label={label}
+                aria-controls={isEditing ? modelEditorId : undefined}
+                aria-expanded={isEditing}
+                className="touch-hitbox h-6 w-6"
+                onPress={() => void changeEditingModel(isEditing ? null : model.id)}
+              >
+                {isEditing ? <Xmark className="size-3.5" /> : <Sliders className="size-3.5" />}
+              </Button>
+              <Tooltip.Content placement="top">{label}</Tooltip.Content>
+            </Tooltip>
+          )
+        },
+      },
+    ],
+    [changeEditingModel, editingModelId, modelConfigs, modelEditorId, t],
+  )
+
+  const editingModel = editingModelId == null ? undefined : models.find((model) => model.id === editingModelId)
+  const editingModelConfig = editingModel == null ? undefined : modelConfigs.get(editingModel.id)
+
   return (
     <div className="space-y-5">
       <TextField fullWidth>
         <Label>{t('settings.provider.name')}</Label>
-        <Input value={name} onChange={(e) => setName(e.target.value)} />
+        <Input name={`providerName-${provider.id}`} value={name} onChange={(e) => setName(e.target.value)} />
       </TextField>
 
       <SettingsSelect
@@ -1075,9 +1288,12 @@ function ProviderEditor({
         />
       )}
 
-      <TextField fullWidth>
+      <TextField fullWidth type="url">
         <Label>{t('settings.provider.baseUrl')}</Label>
         <Input
+          name={`providerBaseUrl-${provider.id}`}
+          inputMode="url"
+          spellCheck={false}
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
           placeholder={
@@ -1106,7 +1322,7 @@ function ProviderEditor({
       )}
 
       <div className="flex items-center gap-2">
-        <Button onClick={handleSave}>{t('common.save')}</Button>
+        <Button onPress={handleSave}>{t('common.save')}</Button>
         {saved && <SavedHint />}
       </div>
 
@@ -1121,6 +1337,8 @@ function ProviderEditor({
             <Label>{t('settings.provider.apiKey')}</Label>
             <div className="flex gap-2">
               <Input
+                name={`providerApiKey-${provider.id}`}
+                autoComplete="off"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 disabled={keyStatus === 'loading' || savingKey}
@@ -1135,7 +1353,7 @@ function ProviderEditor({
               />
               <Button
                 variant="outline"
-                onClick={handleSaveKey}
+                onPress={handleSaveKey}
                 isDisabled={!apiKey.trim() || savingKey || keyStatus === 'loading'}
               >
                 {savingKey ? <Spinner className="w-3.5 h-3.5" /> : <Key className="w-3.5 h-3.5" />}
@@ -1166,12 +1384,16 @@ function ProviderEditor({
         <div data-slot="provider-balance" className="border-t border-border pt-4 space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-xs text-muted">{t('settings.provider.balance')}</p>
-            <Button variant="outline" onClick={handleFetchBalance} isDisabled={fetchingBalance || keyStatus !== 'set'}>
+            <Button variant="outline" onPress={handleFetchBalance} isDisabled={fetchingBalance || keyStatus !== 'set'}>
               <ArrowsRotateRight className={cn('w-3.5 h-3.5', fetchingBalance && 'animate-spin')} />
               {t('settings.provider.checkBalance')}
             </Button>
           </div>
-          {balanceError && <p className="text-xs text-danger break-all">{balanceError}</p>}
+          {balanceError && (
+            <p role="alert" className="text-xs text-danger break-all">
+              {balanceError}
+            </p>
+          )}
           {balance && (
             <div className="rounded-lg border border-border p-3 space-y-1.5">
               {!balance.is_available && (
@@ -1179,16 +1401,14 @@ function ProviderEditor({
               )}
               {balance.accounts.map((account) => (
                 <div key={account.currency} className="flex items-baseline justify-between gap-2">
-                  <span className="text-sm">
-                    {account.currency} {account.total.toFixed(2)}
-                  </span>
+                  <span className="text-sm">{formatBalance(account.total, account.currency)}</span>
                   {/* The split is the point: a total held up by expiring
                       promotional credit is closer to empty than it looks. */}
                   {account.topped_up != null && account.granted != null && (
                     <span className="text-xs text-muted">
                       {t('settings.provider.balanceSplit', {
-                        toppedUp: account.topped_up.toFixed(2),
-                        granted: account.granted.toFixed(2),
+                        toppedUp: balanceNumber.format(account.topped_up),
+                        granted: balanceNumber.format(account.granted),
                       })}
                     </span>
                   )}
@@ -1213,75 +1433,53 @@ function ProviderEditor({
               was written for. */}
           <Button
             variant="outline"
-            onClick={handleFetchModels}
+            onPress={handleFetchModels}
             isDisabled={fetchingModels || (!usesChatGptLogin(provider) && keyStatus !== 'set')}
           >
             <ArrowsRotateRight className={cn('w-3.5 h-3.5', fetchingModels && 'animate-spin')} />
             {t('settings.provider.fetchModels')}
           </Button>
         </div>
-        {modelsError && <p className="text-xs text-danger break-all">{modelsError}</p>}
+        {modelsError && (
+          <p role="alert" className="text-xs text-danger break-all">
+            {modelsError}
+          </p>
+        )}
         {models.length > 0 && (
-          <div
-            data-slot="provider-model-list"
-            className="h-60 overflow-y-auto overscroll-contain border border-border rounded-lg"
-          >
-            {models.map((m) => {
-              const cfg = modelConfigs.get(m.id)
-              const isEditing = editingModelId === m.id
-              return (
-                <div key={m.id} className="border-b border-border last:border-0">
-                  <div className="flex items-center justify-between px-3 py-1.5">
-                    <span className={cn('text-xs', cfg ? 'text-foreground' : 'text-muted')}>
-                      {m.name}
-                      {/* The dot is decoration; the name it carries is the
-                          part a screen reader can use. On its own it was read
-                          out as "black circle". */}
-                      {cfg && (
-                        <>
-                          <span aria-hidden className="ml-1.5 text-xs text-success-soft-foreground">
-                            ●
-                          </span>
-                          <span className="sr-only">{t('settings.provider.modelConfigured')}</span>
-                        </>
-                      )}
-                    </span>
-                    {/* The only way into a model's settings, at 24px and with no
-                        accessible name — the icon swaps between two glyphs and
-                        neither says anything. `touch-hitbox` because the `h-6`
-                        overrides HeroUI's own mobile-first sizing, which would
-                        otherwise have made it 40px here. */}
-                    <Button
-                      isIconOnly
-                      variant="ghost"
-                      aria-label={
-                        isEditing
-                          ? t('settings.provider.closeModelConfig', { model: m.name })
-                          : t('settings.provider.editModelConfig', { model: m.name })
-                      }
-                      className="touch-hitbox h-6 w-6"
-                      onClick={() => setEditingModelId(isEditing ? null : m.id)}
-                    >
-                      {isEditing ? <Xmark className="w-3.5 h-3.5" /> : <Sliders className="w-3.5 h-3.5" />}
-                    </Button>
-                  </div>
-                  {isEditing && (
-                    <ModelConfigEditor
-                      providerId={provider.id}
-                      modelId={m.id}
-                      // Which provider-side tools exist depends on the dialect,
-                      // so the capability lookup has to be redone when it
-                      // changes — otherwise switching to Responses leaves the
-                      // panel insisting this model has none.
-                      apiFormat={apiFormat}
-                      existing={cfg}
-                      onSave={handleSaveModelConfig}
-                      onDelete={cfg ? () => handleDeleteModelConfig(cfg.id) : undefined}
-                    />
-                  )}
-                </div>
-              )
-            })}
+          <div data-slot="provider-model-list" className="space-y-2">
+            <DataGrid<ModelInfo>
+              aria-label={t('settings.provider.models')}
+              variant="secondary"
+              columns={modelColumns}
+              data={models}
+              getRowId={(model) => model.id}
+              contentClassName="min-w-96"
+              scrollContainerClassName="max-h-60 overflow-y-auto overscroll-contain"
+            />
+            {editingModel && (
+              <div
+                id={modelEditorId}
+                className="max-h-96 overflow-y-auto overscroll-contain rounded-lg border border-border pt-3"
+              >
+                <h4 className="px-3 pb-3 text-xs font-medium">
+                  {t('settings.provider.editModelConfig', { model: editingModel.name })}
+                </h4>
+                <ModelConfigEditor
+                  key={editingModel.id}
+                  providerId={provider.id}
+                  modelId={editingModel.id}
+                  // Which provider-side tools exist depends on the dialect,
+                  // so the capability lookup has to be redone when it
+                  // changes — otherwise switching to Responses leaves the
+                  // panel insisting this model has none.
+                  apiFormat={apiFormat}
+                  existing={editingModelConfig}
+                  onSave={handleSaveModelConfig}
+                  onDelete={editingModelConfig ? () => handleDeleteModelConfig(editingModelConfig.id) : undefined}
+                  onDirtyChange={setModelConfigDirty}
+                />
+              </div>
+            )}
           </div>
         )}
         {models.length === 0 && !fetchingModels && !modelsError && (
@@ -1290,7 +1488,7 @@ function ProviderEditor({
       </div>
 
       <div className="border-t border-border pt-4">
-        <Button variant="ghost" className="text-danger hover:text-danger" onClick={handleDelete} isDisabled={deleting}>
+        <Button variant="ghost" className="text-danger hover:text-danger" onPress={handleDelete} isDisabled={deleting}>
           {deleting ? <Spinner className="w-3.5 h-3.5" /> : <TrashBin className="w-3.5 h-3.5" />}
           {deleting ? t('settings.provider.deletingProvider') : t('settings.provider.deleteProvider')}
         </Button>
@@ -1302,10 +1500,18 @@ function ProviderEditor({
 
 export function ProviderSettings() {
   const { t } = useTranslation()
-  const nav = useMasterDetail()
+  const { confirm, confirmDialog } = useConfirm()
+  const [dirtyProviderId, setDirtyProviderId] = useState<string | null>(null)
+  const requestLeave = useCallback(async () => {
+    if (!dirtyProviderId) return true
+    return confirm({ body: t('settings.unsavedChanges'), status: 'warning' })
+  }, [confirm, dirtyProviderId, t])
+  useSettingsDirtyRegistration('provider', 'provider-editor', dirtyProviderId !== null)
+  const nav = useMasterDetail({ beforeLeave: requestLeave })
   const { isNarrow, selectedId } = nav
   const [providers, setProviders] = useState<Provider[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const initialized = useRef(false)
 
   const refresh = useCallback(async () => {
@@ -1317,7 +1523,9 @@ export function ProviderSettings() {
   useEffect(() => {
     if (initialized.current) return
     initialized.current = true
-    refresh().then(() => setLoading(false))
+    void refresh()
+      .catch((reason) => setLoadError(String(reason)))
+      .finally(() => setLoading(false))
   }, [refresh])
 
   // Derived rather than decided inside the fetch above: the width is measured,
@@ -1340,6 +1548,7 @@ export function ProviderSettings() {
   // the user picking a vendor is a statement, and it must survive them editing
   // the address afterwards — which inference cannot do.
   const handleCreate = useCallback(async () => {
+    if (!(await requestLeave())) return
     const entry = (await loadProviderCatalog())[0]
     const auth = entry?.auth[0]
     const format = auth?.api_formats[0] ?? 'chat_completions'
@@ -1352,8 +1561,12 @@ export function ProviderSettings() {
       auth?.id,
     )
     await refresh()
-    nav.openItem(p.id)
-  }, [refresh, nav])
+    nav.select(p.id)
+  }, [refresh, nav, requestLeave])
+
+  const handleDirtyChange = useCallback((id: string, dirty: boolean) => {
+    setDirtyProviderId((current) => (dirty ? id : current === id ? null : current))
+  }, [])
 
   const handleDelete = useCallback(
     async (id: string) => {
@@ -1373,22 +1586,43 @@ export function ProviderSettings() {
     return <SettingsSkeleton className="max-w-3xl" />
   }
 
+  if (loadError && providers.length === 0) {
+    return (
+      <SettingsPane>
+        <SettingsHeader title={t('settings.provider.title')} />
+        <div role="alert" className="space-y-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+          <p>{t('settings.provider.loadError')}</p>
+          <p className="break-all">{loadError}</p>
+          <Button
+            size="sm"
+            variant="outline"
+            onPress={() => {
+              setLoadError(null)
+              setLoading(true)
+              void refresh()
+                .catch((reason) => setLoadError(String(reason)))
+                .finally(() => setLoading(false))
+            }}
+          >
+            {t('settings.provider.retry')}
+          </Button>
+        </div>
+      </SettingsPane>
+    )
+  }
+
   const selected = providers.find((p) => p.id === selectedId)
 
   const providerList = (
-    <>
-      {providers.map((p) => (
-        <SettingsRow
-          key={p.id}
-          icon={<Cloud />}
-          label={p.name}
-          isActive={selectedId === p.id}
-          // A list of peers, not a row that opens something else.
-          trailing={null}
-          onClick={() => nav.openItem(p.id)}
-        />
-      ))}
-      {providers.length === 0 && (
+    <ListView
+      aria-label={t('settings.provider.title')}
+      className="flex flex-col gap-1"
+      selectedKeys={selectedId ? new Set([selectedId]) : new Set<string>()}
+      selectionBehavior="replace"
+      selectionMode="single"
+      shouldSelectOnPressUp
+      variant="secondary"
+      renderEmptyState={() => (
         // The text used to point at the "+" in the header, which is what an
         // empty state has an action slot for.
         <EmptyState size="sm">
@@ -1399,36 +1633,69 @@ export function ProviderSettings() {
             <EmptyState.Title>{t('settings.provider.noProviders')}</EmptyState.Title>
           </EmptyState.Header>
           <EmptyState.Content>
-            <Button variant="outline" onClick={handleCreate}>
+            <Button variant="outline" onPress={handleCreate}>
               <Plus className="w-4 h-4" />
               {t('settings.provider.addProvider')}
             </Button>
           </EmptyState.Content>
         </EmptyState>
       )}
-    </>
+      onSelectionChange={(keys) => {
+        if (keys === 'all') return
+        const id = keys.values().next().value
+        if (typeof id === 'string' && id !== selectedId) nav.openItem(id)
+      }}
+    >
+      {providers.map((p) => {
+        const iconModel = p.catalog_id ?? p.provider_type
+        return (
+          <ListView.Item
+            key={p.id}
+            id={p.id}
+            textValue={p.name}
+            className="min-h-11 rounded-lg border-b-0 px-3 py-2 data-[selected=true]:bg-default data-[selected=true]:text-default-foreground"
+          >
+            <ListView.ItemContent>
+              <span className="flex size-4 shrink-0 items-center justify-center text-muted">
+                {iconModel ? <ModelIcon model={iconModel} size={16} /> : <Cloud className="size-4" />}
+              </span>
+              <ListView.Title className="font-normal">{p.name}</ListView.Title>
+            </ListView.ItemContent>
+          </ListView.Item>
+        )
+      })}
+    </ListView>
   )
 
   return (
-    <MasterDetail
-      nav={nav}
-      title={t('settings.provider.title')}
-      actions={
-        <Tooltip delay={0}>
-          <Button isIconOnly aria-label={t('settings.provider.addProvider')} variant="ghost" onClick={handleCreate}>
-            <Plus className="w-4 h-4" />
-          </Button>
-          <Tooltip.Content placement="top">{t('settings.provider.addProvider')}</Tooltip.Content>
-        </Tooltip>
-      }
-      list={providerList}
-      detailTitle={selected?.name}
-      detail={
-        selected ? (
-          <ProviderEditor key={selected.id} provider={selected} onUpdate={refresh} onDelete={handleDelete} />
-        ) : undefined
-      }
-      emptyDetail={t('settings.provider.selectProvider')}
-    />
+    <>
+      <MasterDetail
+        nav={nav}
+        title={t('settings.provider.title')}
+        actions={
+          <Tooltip delay={0}>
+            <Button isIconOnly aria-label={t('settings.provider.addProvider')} variant="ghost" onPress={handleCreate}>
+              <Plus className="w-4 h-4" />
+            </Button>
+            <Tooltip.Content placement="top">{t('settings.provider.addProvider')}</Tooltip.Content>
+          </Tooltip>
+        }
+        list={providerList}
+        detailTitle={selected?.name}
+        detail={
+          selected ? (
+            <ProviderEditor
+              key={selected.id}
+              provider={selected}
+              onUpdate={refresh}
+              onDelete={handleDelete}
+              onDirtyChange={handleDirtyChange}
+            />
+          ) : undefined
+        }
+        emptyDetail={t('settings.provider.selectProvider')}
+      />
+      {confirmDialog}
+    </>
   )
 }

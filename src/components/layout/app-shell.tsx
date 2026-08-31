@@ -1,16 +1,19 @@
-import { Suspense, lazy, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button, Tooltip } from '@heroui/react'
 import { Sidebar } from '@heroui-pro/react/sidebar'
 import { Resizable } from '@heroui-pro/react/resizable'
-import { FolderTree, Magnifier } from '@gravity-ui/icons'
+import { FolderTree, Magnifier, Xmark } from '@gravity-ui/icons'
 import { ChangesPanel } from '@/components/chat/changes-panel'
 import { ChatView } from '@/components/chat/chat-view'
 import { EmptyState } from '@/components/chat/empty-state'
+import { clearSettingsTabDirty, useSettingsTabDirty } from '@/components/settings/dirty-guard'
+import { useConfirm } from '@/hooks/use-confirm'
 import { useBackGesture, useHistoryLevel } from '@/hooks/use-history-level'
 import { useHotkey } from '@/hooks/use-hotkey'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { usePlatform } from '@/hooks/use-platform'
 import { ApprovalToastRegion } from './approval-toasts'
 import { AppSidebar } from './app-sidebar'
 import { CommandPalette } from './command-palette'
@@ -47,7 +50,7 @@ export function AppShell(props: ShellProps) {
     activeProjectId,
     page,
     settingsTab,
-    pendingMessage,
+    pendingDraft,
     headerTitle,
     canDragWindow,
     onSelect,
@@ -64,8 +67,8 @@ export function AppShell(props: ShellProps) {
     onOpenSettings,
     onCloseSettings,
     onSettingsTabChange,
-    onCreateWithMessage,
-    onInitialMessageConsumed,
+    onCreateWithDraft,
+    onInitialDraftConsumed,
   } = props
 
   // Controlled on purpose. Left uncontrolled, Pro writes the state to a
@@ -74,13 +77,26 @@ export function AppShell(props: ShellProps) {
   // custom protocol. Persisting the state is a store field if we ever want it.
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [settingsHistoryClaimed, setSettingsHistoryClaimed] = useState(true)
   // Local state, not a store field. Its lifetime would be identical either way
   // — neither survives a reload — and a width in the store would be written on
   // every frame of a drag, with the transcript subscribed to the same store.
   // Resizable keeps the width itself for as long as the panel is open, which is
   // the only span over which it means anything.
   const [changesOpen, setChangesOpen] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
   const { t } = useTranslation()
+  const { confirm, confirmDialog } = useConfirm()
+  const settingsDirty = useSettingsTabDirty(settingsTab)
+  const platform = usePlatform()
+  const pageHeadingRef = useRef<HTMLHeadingElement>(null)
+  const previousPageRef = useRef(page)
+
+  useEffect(() => {
+    if (previousPageRef.current === page) return
+    previousPageRef.current = page
+    pageHeadingRef.current?.focus({ preventScroll: true })
+  }, [page])
 
   // `ignoreInInput: false` on purpose, and it is the only shortcut that gets
   // it: wanting to jump somewhere else in the middle of writing a message is
@@ -96,45 +112,116 @@ export function AppShell(props: ShellProps) {
   // tree and subscribes to the session.
   const showChanges = changesOpen && activeId !== null && !isMobile
 
+  const requestLeaveSettings = useCallback(async () => {
+    if (!settingsDirty) return true
+    return confirm({ body: t('settings.unsavedChanges'), status: 'warning' })
+  }, [confirm, settingsDirty, t])
+
+  const changeSettingsTab = useCallback(
+    async (tab: typeof settingsTab) => {
+      if (tab === settingsTab) return true
+      if (!(await requestLeaveSettings())) return false
+      clearSettingsTabDirty(settingsTab)
+      onSettingsTabChange(tab)
+      return true
+    },
+    [onSettingsTabChange, requestLeaveSettings, settingsTab],
+  )
+
+  const closeSettings = useCallback(async () => {
+    if (!(await requestLeaveSettings())) return false
+    clearSettingsTabDirty(settingsTab)
+    onCloseSettings()
+    return true
+  }, [onCloseSettings, requestLeaveSettings, settingsTab])
+
+  const selectConversation = useCallback(
+    async (id: string) => {
+      if (page === 'settings') {
+        if (!(await requestLeaveSettings())) return false
+        clearSettingsTabDirty(settingsTab)
+      }
+      onSelect(id)
+      return true
+    },
+    [onSelect, page, requestLeaveSettings, settingsTab],
+  )
+
   useBackGesture()
   // Settings was a screen in the stack, and the back key left it. It is a page
   // now, so it has to claim its own level to keep doing that.
-  useHistoryLevel(page === 'settings', onCloseSettings)
+  useHistoryLevel(page === 'settings' && settingsHistoryClaimed, () => {
+    void closeSettings().then((closed) => {
+      if (closed || page !== 'settings') return
+      // A popstate has already retired this history level. If the user keeps
+      // editing, toggle the mirrored state so useHistoryLevel claims it again.
+      setSettingsHistoryClaimed(false)
+      requestAnimationFrame(() => setSettingsHistoryClaimed(true))
+    })
+  })
+
+  const commandShortcut = platform === null ? 'Ctrl/⌘ K' : platform === 'macos' || platform === 'ios' ? '⌘ K' : 'Ctrl K'
+  const createConversation = async () => {
+    const leavesSettings = page === 'settings'
+    if (leavesSettings) {
+      if (!(await requestLeaveSettings())) return
+    }
+    setActionError(null)
+    try {
+      await onCreate()
+      if (leavesSettings) clearSettingsTabDirty(settingsTab)
+    } catch (error) {
+      setActionError(t('sidebar.createConversationFailed', { error: String(error) }))
+    }
+  }
 
   return (
-    <Sidebar.Provider
-      open={sidebarOpen}
-      onOpenChange={setSidebarOpen}
-      variant="inset"
-      collapsible="icon"
-      // Pro's provider is `min-h-svh`: a page that grows. This one is a fixed
-      // viewport with its own scrollers inside, and the transcript's scroller
-      // needs a container that does not move to measure against.
-      className="h-svh overflow-hidden pb-[var(--ime-bottom,0px)]"
-    >
-      <AppSidebar
-        conversations={conversations}
-        activeId={activeId}
-        onSelect={onSelect}
-        onCreate={onCreate}
-        onDelete={onDelete}
-        page={page}
-        onOpenSettings={onOpenSettings}
-        onCloseSettings={onCloseSettings}
-        settingsTab={settingsTab}
-        onSettingsTabChange={onSettingsTabChange}
-        projects={projects}
-        activeProjectId={activeProjectId}
-        onSelectProject={onSelectProject}
-        onCreateProject={onCreateProject}
-        onCreateHostedSession={onCreateHostedSession}
-        onRename={onRename}
-        onTogglePin={onTogglePin}
-        onMoveToProject={onMoveToProject}
-        onDeleteProject={onDeleteProject}
-        onRenameProject={onRenameProject}
-      />
-      {/* `min-h-0` is what makes the keyboard inset above actually do
+    <>
+      <a
+        href="#main-content"
+        onClick={(event) => {
+          // Browser-dev uses the hash as its playground route and reloads on a
+          // hashchange. A skip link is an in-page focus move, not navigation.
+          event.preventDefault()
+          document.getElementById('main-content')?.focus({ preventScroll: true })
+        }}
+        className="sr-only focus:not-sr-only focus:fixed focus:start-2 focus:top-2 focus:z-100 focus:rounded-md focus:bg-overlay focus:px-3 focus:py-2 focus:text-sm focus:text-overlay-foreground focus:shadow-md focus:outline-none focus:ring-2 focus:ring-focus"
+      >
+        {t('app.skipToContent')}
+      </a>
+      <Sidebar.Provider
+        open={sidebarOpen}
+        onOpenChange={setSidebarOpen}
+        variant="inset"
+        collapsible="icon"
+        // Pro's provider is `min-h-svh`: a page that grows. This one is a fixed
+        // viewport with its own scrollers inside, and the transcript's scroller
+        // needs a container that does not move to measure against.
+        className="h-svh overflow-hidden pb-[var(--ime-bottom,0px)]"
+      >
+        <AppSidebar
+          conversations={conversations}
+          activeId={activeId}
+          onSelect={(id) => void selectConversation(id)}
+          onCreate={createConversation}
+          onDelete={onDelete}
+          page={page}
+          onOpenSettings={onOpenSettings}
+          onCloseSettings={() => void closeSettings()}
+          settingsTab={settingsTab}
+          onSettingsTabChange={(tab) => void changeSettingsTab(tab)}
+          projects={projects}
+          activeProjectId={activeProjectId}
+          onSelectProject={onSelectProject}
+          onCreateProject={onCreateProject}
+          onCreateHostedSession={onCreateHostedSession}
+          onRename={onRename}
+          onTogglePin={onTogglePin}
+          onMoveToProject={onMoveToProject}
+          onDeleteProject={onDeleteProject}
+          onRenameProject={onRenameProject}
+        />
+        {/* `min-h-0` is what makes the keyboard inset above actually do
           something. `.sidebar__main` is `min-height: 100svh` (`calc(100svh -
           1rem)` under `variant="inset"`), so shrinking the provider's content
           box leaves this pane insisting on a full viewport regardless — the
@@ -142,60 +229,86 @@ export function AppShell(props: ShellProps) {
           the provider either way, so removing the floor costs nothing on a
           desktop and is the whole fix on a phone. The shell that used to serve
           phones owned a plain `div` here, which is why this never came up. */}
-      <Sidebar.Main className="min-h-0 overflow-hidden">
-        <header
-          className="flex items-center min-h-12 gap-2 px-4 pt-[var(--safe-top)] pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))] border-b border-border select-none shrink-0"
-          data-tauri-drag-region={canDragWindow ? '' : undefined}
-        >
-          {/* Below 768px this is the only way to the conversation list, so it
+        <Sidebar.Main className="min-h-0 overflow-hidden">
+          <header
+            className="flex items-center min-h-12 gap-2 px-4 pt-[var(--safe-top)] pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))] border-b border-border select-none shrink-0"
+            data-tauri-drag-region={canDragWindow ? '' : undefined}
+          >
+            {/* Below 768px this is the only way to the conversation list, so it
               is sized for a thumb rather than for a pointer. */}
-          <Sidebar.Trigger className="-ml-1 size-10 md:size-8" />
-          <span className="text-sm font-medium truncate">{headerTitle}</span>
-          {/* Beside the title rather than in the group of buttons on the right:
+            <Sidebar.Trigger aria-label={t('sidebar.toggle')} className="-ml-1 size-11 md:size-8" />
+            <h1
+              ref={pageHeadingRef}
+              tabIndex={-1}
+              className="truncate rounded-sm text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-focus/50"
+            >
+              {headerTitle}
+            </h1>
+            {/* Beside the title rather than in the group of buttons on the right:
               it is not something to press, and it renders nothing at all while
               the connection is healthy — which on a desktop is always. */}
-          <RemoteStatus />
-          {/* The palette's other door. A phone has no `mod` key to press, and
+            <RemoteStatus />
+            {/* The palette's other door. A phone has no `mod` key to press, and
               on a desktop a shortcut nobody has written down is a shortcut
               nobody uses — the tooltip is where it gets written down. */}
-          {/* One `ml-auto`, on the group. Two auto margins split the free space
+            {/* One `ml-auto`, on the group. Two auto margins split the free space
               between them and leave a gap in the middle of the pair. */}
-          <div className="ml-auto flex shrink-0 items-center gap-1">
-            {/* Only where the panel it toggles can open. */}
-            {activeId && !isMobile && page !== 'settings' && (
+            <div className="ml-auto flex shrink-0 items-center gap-1">
+              {/* Only where the panel it toggles can open. */}
+              {activeId && !isMobile && page !== 'settings' && (
+                <Tooltip>
+                  <Button
+                    isIconOnly
+                    variant={changesOpen ? 'secondary' : 'ghost'}
+                    aria-label={t('chat.changes.toggle')}
+                    aria-pressed={changesOpen}
+                    onPress={() => setChangesOpen((open) => !open)}
+                    className="size-11 md:size-8"
+                  >
+                    <FolderTree />
+                  </Button>
+                  <Tooltip.Content placement="bottom">{t('chat.changes.toggle')}</Tooltip.Content>
+                </Tooltip>
+              )}
               <Tooltip>
                 <Button
                   isIconOnly
-                  variant={changesOpen ? 'secondary' : 'ghost'}
-                  aria-label={t('chat.changes.toggle')}
-                  aria-pressed={changesOpen}
-                  onClick={() => setChangesOpen((open) => !open)}
-                  className="size-10 md:size-8"
+                  variant="ghost"
+                  aria-label={t('palette.title')}
+                  aria-keyshortcuts="Meta+K Control+K"
+                  onPress={() => setPaletteOpen(true)}
+                  className="size-11 md:size-8"
                 >
-                  <FolderTree />
+                  <Magnifier />
                 </Button>
-                <Tooltip.Content placement="bottom">{t('chat.changes.toggle')}</Tooltip.Content>
+                <Tooltip.Content placement="bottom">
+                  {t('palette.title')}
+                  <kbd className="ml-2 text-xs opacity-70">{commandShortcut}</kbd>
+                </Tooltip.Content>
               </Tooltip>
-            )}
-            <Tooltip>
+            </div>
+          </header>
+
+          {actionError && (
+            <div
+              role="alert"
+              className="flex min-h-11 items-center gap-2 border-b border-danger/20 bg-danger/10 px-4 py-2 text-xs text-danger"
+            >
+              <span className="min-w-0 flex-1 break-words">{actionError}</span>
               <Button
                 isIconOnly
+                size="sm"
                 variant="ghost"
-                aria-label={t('palette.title')}
-                onClick={() => setPaletteOpen(true)}
-                className="size-10 md:size-8"
+                aria-label={t('common.close')}
+                onPress={() => setActionError(null)}
+                className="touch-hitbox shrink-0"
               >
-                <Magnifier />
+                <Xmark />
               </Button>
-              <Tooltip.Content placement="bottom">
-                {t('palette.title')}
-                <kbd className="ml-2 text-xs opacity-70">⌘K</kbd>
-              </Tooltip.Content>
-            </Tooltip>
-          </div>
-        </header>
+            </div>
+          )}
 
-        {/* The conversation stays mounted under the settings page rather than
+          {/* The conversation stays mounted under the settings page rather than
             being swapped out for it. Unmounting `ChatView` would take the draft
             in the composer and the transcript's scroll position with it, and
             coming back to a cleared composer reads as data loss.
@@ -205,88 +318,108 @@ export function AppShell(props: ShellProps) {
             collapses all of that to zero, so restoring it jumps back to the
             top. Inert keeps the layout exactly where it was while taking the
             subtree out of reach of focus and pointers. */}
-        <main className="relative flex-1 min-h-0 overflow-hidden">
-          <div className="flex h-full flex-col" inert={page === 'settings' || undefined}>
-            {/* The split lives inside the chat branch, not around it: `<main>`
+          <main id="main-content" tabIndex={-1} className="relative flex-1 min-h-0 overflow-hidden">
+            <div className="flex h-full flex-col" inert={page === 'settings' || undefined}>
+              {/* The split lives inside the chat branch, not around it: `<main>`
                 is the positioned box the settings layer covers, and a group
                 that enclosed both would have the settings page inside a panel
                 it has no business being in. */}
-            <Resizable orientation="horizontal" className="h-full min-h-0">
-              <Resizable.Panel id="chat" minSize={35}>
-                {/* `min-w-0` or a flex child refuses to shrink, and the
+              <Resizable orientation="horizontal" className="h-full min-h-0">
+                <Resizable.Panel id="chat" minSize={35}>
+                  {/* `min-w-0` or a flex child refuses to shrink, and the
                     transcript's `max-w-4xl mx-auto` overflows instead of
                     narrowing. */}
-                <div className="flex h-full min-w-0 flex-col">
-                  {activeId ? (
-                    <ChatView
-                      key={activeId}
-                      conversationId={activeId}
-                      initialMessage={pendingMessage}
-                      onInitialMessageConsumed={onInitialMessageConsumed}
-                    />
-                  ) : (
-                    <EmptyState onSubmit={onCreateWithMessage} />
-                  )}
-                </div>
-              </Resizable.Panel>
-              {/* Conditional rather than `collapsible`. Collapsed-to-zero and
+                  <div className="flex h-full min-w-0 flex-col">
+                    {activeId ? (
+                      <ChatView
+                        key={activeId}
+                        conversationId={activeId}
+                        initialDraft={pendingDraft}
+                        onInitialDraftConsumed={onInitialDraftConsumed}
+                        onCreate={createConversation}
+                        onOpenSettingsTab={(tab) => {
+                          void changeSettingsTab(tab).then((changed) => {
+                            if (changed) onOpenSettings()
+                          })
+                        }}
+                      />
+                    ) : (
+                      <EmptyState
+                        onSubmit={onCreateWithDraft}
+                        onCreate={onCreate}
+                        onOpenSettingsTab={(tab) => {
+                          void changeSettingsTab(tab).then((changed) => {
+                            if (changed) onOpenSettings()
+                          })
+                        }}
+                        activeProjectId={activeProjectId}
+                      />
+                    )}
+                  </div>
+                </Resizable.Panel>
+                {/* Conditional rather than `collapsible`. Collapsed-to-zero and
                   closed are two states that look identical and can disagree,
                   and the one that can disagree is the one that produces a panel
                   nobody can get back. */}
-              {showChanges && activeId && (
-                <>
-                  {/* Pro's handle is a 1px line with an 8px hit area, which is a
+                {showChanges && activeId && (
+                  <>
+                    {/* Pro's handle is a 1px line with an 8px hit area, which is a
                       pointer's measurement. This panel only mounts above 768px,
                       and a touch laptop or a tablet in landscape is squarely in
                       that range — the divider was there and could not be
                       dragged. The line itself is unchanged; only what catches
                       the finger grows. */}
-                  <Resizable.Handle
-                    aria-label={t('chat.changes.title')}
-                    className="[--resizable-handle-hit-area:16px] pointer-coarse:[--resizable-handle-hit-area:24px]"
-                  />
-                  <Resizable.Panel id="changes" defaultSize={30} minSize={18} maxSize={50}>
-                    <ChangesPanel conversationId={activeId} onClose={() => setChangesOpen(false)} />
-                  </Resizable.Panel>
-                </>
-              )}
-            </Resizable>
-          </div>
+                    <Resizable.Handle
+                      aria-label={t('chat.changes.title')}
+                      className="[--resizable-handle-hit-area:16px] pointer-coarse:[--resizable-handle-hit-area:24px]"
+                    />
+                    <Resizable.Panel id="changes" defaultSize={30} minSize={18} maxSize={50}>
+                      <ChangesPanel conversationId={activeId} onClose={() => setChangesOpen(false)} />
+                    </Resizable.Panel>
+                  </>
+                )}
+              </Resizable>
+            </div>
 
-          {/* `bg-surface`, not `bg-background`: this covers `Sidebar.Main`,
+            {/* `bg-surface`, not `bg-background`: this covers `Sidebar.Main`,
               which Pro paints `--surface`, and the two are different colours in
               both themes. */}
-          {page === 'settings' && (
-            <div data-slot="settings-layer" className="absolute inset-0 z-20 bg-surface">
-              {/* No spinner: the chunk is on local disk and resolves within a
+            {page === 'settings' && (
+              <div data-slot="settings-layer" className="absolute inset-0 z-20 bg-surface">
+                {/* No spinner: the chunk is on local disk and resolves within a
                   frame or two, where a flash of "loading" would read as jank. */}
-              <Suspense fallback={null}>
-                <SettingsPage activeTab={settingsTab} />
-              </Suspense>
-            </div>
-          )}
-        </main>
-      </Sidebar.Main>
+                <Suspense fallback={null}>
+                  {/* `onSelect` is the existing navigation boundary: it changes
+                    the active conversation and closes settings in one action. */}
+                  <SettingsPage activeTab={settingsTab} onOpenConversation={(id) => void selectConversation(id)} />
+                </Suspense>
+              </div>
+            )}
+          </main>
+        </Sidebar.Main>
 
-      {/* Outside `Sidebar.Main`, beside the palette: its region is `fixed`, and
+        {/* Outside `Sidebar.Main`, beside the palette: its region is `fixed`, and
           what it draws is about no particular pane. It sits above the settings
           layer by z-index, which is right — a conversation stopping on a
           permission prompt is not something being in settings should hide. */}
-      <ApprovalToastRegion onSelect={onSelect} transcriptInert={page === 'settings'} />
+        <ApprovalToastRegion onSelect={(id) => void selectConversation(id)} transcriptInert={page === 'settings'} />
 
-      <CommandPalette
-        isOpen={paletteOpen}
-        onOpenChange={setPaletteOpen}
-        conversations={conversations}
-        projects={projects}
-        onSelectConversation={onSelect}
-        onSelectProject={onSelectProject}
-        onOpenSettingsTab={(tab) => {
-          onSettingsTabChange(tab)
-          onOpenSettings()
-        }}
-        onCreate={onCreate}
-      />
-    </Sidebar.Provider>
+        <CommandPalette
+          isOpen={paletteOpen}
+          onOpenChange={setPaletteOpen}
+          conversations={conversations}
+          projects={projects}
+          onSelectConversation={(id) => void selectConversation(id)}
+          onSelectProject={onSelectProject}
+          onOpenSettingsTab={(tab) => {
+            void changeSettingsTab(tab).then((changed) => {
+              if (changed) onOpenSettings()
+            })
+          }}
+          onCreate={createConversation}
+        />
+        {confirmDialog}
+      </Sidebar.Provider>
+    </>
   )
 }

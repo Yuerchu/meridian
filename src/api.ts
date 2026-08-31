@@ -6,12 +6,14 @@ import type {
   AcpCheck,
   AcpConfig,
   AcpConfigOption,
+  BlameResult,
   AcpConversationSession,
   AcpDiscoveredSession,
   AcpImportOutcome,
   AppInfo,
   Assistant,
   ChatMode,
+  CommandTurnOutcome,
   CodexAuthStatus,
   ContextInfo,
   Conversation,
@@ -24,6 +26,7 @@ import type {
   HooksConfig,
   HooksStatus,
   ListenConfig,
+  JournalVersion,
   ListenStatus,
   LogFileInfo,
   LogPage,
@@ -35,6 +38,7 @@ import type {
   Memory,
   MemoryEnums,
   MemorySubject,
+  MessageContextContent,
   ModelConfig,
   ModelConfigInput,
   ModelInfo,
@@ -62,6 +66,10 @@ import type {
   VoiceModelStatus,
   VoiceTranscript,
   WorkspaceFileContent,
+  WorkspaceReferenceInput,
+  WorkspaceReferenceProbe,
+  WorkspaceReferencePreview,
+  WorkspaceReferenceSuggestion,
   WorkspaceRoot,
   WorkspaceTreeEntry,
 } from './types'
@@ -130,6 +138,9 @@ export const api = {
   conversationSnapshot: (conversationId: string) =>
     invoke<ConversationSnapshot>('conversation_snapshot', { conversationId }),
 
+  readMessageContextItem: (conversationId: string, itemId: string) =>
+    invoke<MessageContextContent>('read_message_context_item', { conversationId, itemId }),
+
   /** Makes that message's branch active, landing on its most recent tip. Read
    *  the result back with `conversationSnapshot`. */
   switchBranch: (conversationId: string, messageId: string) =>
@@ -153,6 +164,28 @@ export const api = {
   // of the old one.
   stopChat: (conversationId: string, turnId?: string | null) =>
     invoke<void>('stop_chat', { conversationId, turnId: turnId ?? null }),
+
+  /** Run a literal user-authored shell command without querying the model.
+   *  Reusing `turnId` returns the persisted result rather than running again.
+   *  `retryWithoutSandbox` succeeds only after this exact command was refused
+   *  by the Windows restricted-token sandbox. */
+  runUserCommand: (conversationId: string, command: string, turnId: string, retryWithoutSandbox = false) =>
+    invoke<CommandTurnOutcome>('run_user_command', {
+      conversationId,
+      turnId,
+      command,
+      retryWithoutSandbox,
+    }),
+
+  /** Rehydrate a persisted terminal card. Deliberately narrower than a raw
+   *  context-item reader. */
+  getUserCommandResult: (conversationId: string, messageId: string) =>
+    invoke<CommandTurnOutcome | null>('get_user_command_result', { conversationId, messageId }),
+
+  /** The live literal-command lease, if this conversation currently owns one.
+   *  Unlike the persisted row this distinguishes "still running" from a
+   *  process whose final result was never recorded. */
+  activeUserShellTurn: (conversationId: string) => invoke<string | null>('active_user_shell_turn', { conversationId }),
 
   // Says something to a run already going, rather than starting one: the text
   // goes into the run's inbox and the loop takes it between rounds. Rejects
@@ -192,6 +225,7 @@ export const api = {
       fast?: boolean
       mode?: ChatMode
       voice?: boolean
+      contextRefs?: WorkspaceReferenceInput[]
     } = {},
   ) =>
     invoke<void>('chat', {
@@ -206,6 +240,7 @@ export const api = {
       fast: opts.fast ?? null,
       mode: opts.mode ?? null,
       voice: opts.voice ?? null,
+      contextRefs: opts.contextRefs ?? null,
     }),
 
   // A hosted Claude Code session, over ACP. `acpSend` is the `chat` of these
@@ -234,8 +269,13 @@ export const api = {
   acpConversationSession: (conversationId: string) =>
     invoke<AcpConversationSession | null>('acp_conversation_session', { conversationId }),
 
-  acpSend: (conversationId: string, message: string, turnId?: string) =>
-    invoke<void>('acp_send', { conversationId, message, turnId: turnId ?? null }),
+  acpSend: (conversationId: string, message: string, turnId?: string, contextRefs?: WorkspaceReferenceInput[]) =>
+    invoke<void>('acp_send', {
+      conversationId,
+      message,
+      turnId: turnId ?? null,
+      contextRefs: contextRefs ?? null,
+    }),
 
   acpCancel: (conversationId: string) => invoke<void>('acp_cancel', { conversationId }),
 
@@ -265,8 +305,12 @@ export const api = {
   // Nothing else moves the queue except a turn ending — see `agent::queue`.
   queueList: (conversationId: string) => invoke<QueuedPrompt[]>('queue_list', { conversationId }),
 
-  queueEnqueue: (conversationId: string, content: string, delivery: QueueDelivery) =>
-    invoke<QueuedPrompt>('queue_enqueue', { conversationId, content, delivery }),
+  queueEnqueue: (
+    conversationId: string,
+    content: string,
+    delivery: QueueDelivery,
+    contextRefs?: WorkspaceReferenceInput[],
+  ) => invoke<QueuedPrompt>('queue_enqueue', { conversationId, content, delivery, contextRefs: contextRefs ?? null }),
 
   /** Refuses an item that has already been sent, and says so. */
   queueRemove: (conversationId: string, id: string) => invoke<void>('queue_remove', { conversationId, id }),
@@ -455,6 +499,31 @@ export const api = {
   workspaceReadFile: (conversationId: string, relPath: string) =>
     invoke<WorkspaceFileContent>('workspace_read_file', { conversationId, relPath }),
 
+  workspaceSuggestRefs: (query: string, opts: { conversationId?: string; projectId?: string; limit?: number } = {}) =>
+    invoke<WorkspaceReferenceSuggestion[]>('workspace_suggest_refs', {
+      conversationId: opts.conversationId ?? null,
+      projectId: opts.projectId ?? null,
+      query,
+      limit: opts.limit ?? 15,
+    }),
+
+  workspaceResolveRef: (
+    reference: WorkspaceReferenceInput,
+    opts: { conversationId?: string; projectId?: string } = {},
+  ) =>
+    invoke<WorkspaceReferencePreview>('workspace_resolve_ref', {
+      conversationId: opts.conversationId ?? null,
+      projectId: opts.projectId ?? null,
+      reference,
+    }),
+
+  workspaceProbeRef: (path: string, opts: { conversationId?: string; projectId?: string } = {}) =>
+    invoke<WorkspaceReferenceProbe>('workspace_probe_ref', {
+      conversationId: opts.conversationId ?? null,
+      projectId: opts.projectId ?? null,
+      path,
+    }),
+
   workspaceGitStatus: (conversationId: string) => invoke<GitStatusResult>('workspace_git_status', { conversationId }),
 
   workspaceGitDiff: (conversationId: string, relPath?: string) =>
@@ -462,6 +531,15 @@ export const api = {
 
   openInEditor: (conversationId: string, relPath: string, line?: number) =>
     invoke<void>('open_in_editor', { conversationId, relPath, line: line ?? null }),
+
+  // ---- The journal's read side: per-line attribution and file history.
+  journalBlame: (conversationId: string, relPath: string) =>
+    invoke<BlameResult>('journal_blame', { conversationId, relPath }),
+
+  journalFileHistory: (conversationId: string, relPath: string) =>
+    invoke<JournalVersion[]>('journal_file_history', { conversationId, relPath }),
+
+  journalVersionContent: (versionId: string) => invoke<string>('journal_version_content', { versionId }),
 
   // Memories
   listMemories: (projectId: string) => invoke<Memory[]>('list_memories', { projectId }),

@@ -40,6 +40,44 @@ function useDrilldownScroll(root: HTMLElement | null, showsDetail: boolean) {
   }, [root, showsDetail])
 }
 
+/** Moves focus with the narrow-screen navigation and returns it to its row. */
+function useDrilldownFocus(root: HTMLElement | null, showsDetail: boolean) {
+  const wasShowing = useRef(showsDetail)
+  const returnKey = useRef<string | null>(null)
+
+  useLayoutEffect(() => {
+    if (wasShowing.current === showsDetail) return
+    wasShowing.current = showsDetail
+    if (!root) return
+
+    if (showsDetail) {
+      const active = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      returnKey.current = active?.closest<HTMLElement>('[data-key]')?.dataset.key ?? null
+      const frame = requestAnimationFrame(() => {
+        const heading = root.querySelector<HTMLElement>('[data-slot="settings-subpage"] h2')
+        const target = heading ?? root.querySelector<HTMLElement>('[data-slot="settings-subpage-back"]')
+        if (heading) heading.tabIndex = -1
+        target?.focus()
+      })
+      return () => cancelAnimationFrame(frame)
+    }
+
+    const frame = requestAnimationFrame(() => {
+      const key = returnKey.current
+      const row = key
+        ? Array.from(root.querySelectorAll<HTMLElement>('[data-key]')).find(
+            (candidate) => candidate.dataset.key === key,
+          )
+        : null
+      const heading = root.querySelector<HTMLElement>('h2')
+      if (heading) heading.tabIndex = -1
+      const target = row ?? heading
+      target?.focus()
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [root, showsDetail])
+}
+
 /**
  * Renders {@link MasterDetailNav} as two columns or as two screens.
  *
@@ -100,6 +138,7 @@ export function MasterDetail<Aux extends string = never>({
     [nav],
   )
   useDrilldownScroll(rootRef.current, nav.showsDetail)
+  useDrilldownFocus(rootRef.current, nav.isNarrow && nav.showsDetail)
 
   return (
     // One root, unconditionally — this is the box `nav.ref` measures, and a node

@@ -6,7 +6,13 @@ import { AppSidebar } from './app-sidebar'
 import i18n from '@/i18n'
 import type { Conversation, Project } from '@/types'
 
-vi.mock('@/api', () => ({ api: { getPlatform: () => Promise.resolve('windows') } }))
+const apiMocks = vi.hoisted(() => ({ exportConversation: vi.fn() }))
+const dialogMocks = vi.hoisted(() => ({ open: vi.fn(), save: vi.fn() }))
+
+vi.mock('@/api', () => ({
+  api: { getPlatform: () => Promise.resolve('windows'), exportConversation: apiMocks.exportConversation },
+}))
+vi.mock('@tauri-apps/plugin-dialog', () => dialogMocks)
 // The dot beside a row subscribes to the store for streaming state; nothing
 // here is streaming, and the real one drags the whole conversation store in.
 vi.mock('./conversation-indicator', () => ({ ConversationIndicator: () => null }))
@@ -98,6 +104,12 @@ function row(name: string | RegExp) {
 describe('AppSidebar project tree', () => {
   beforeAll(async () => {
     await i18n.changeLanguage('zh-CN')
+  })
+
+  beforeEach(() => {
+    apiMocks.exportConversation.mockReset()
+    dialogMocks.open.mockReset()
+    dialogMocks.save.mockReset()
   })
 
   it('nests a project’s conversations under it, and leaves the rest alone', async () => {
@@ -210,6 +222,35 @@ describe('AppSidebar project tree', () => {
       const menu = await screen.findByRole('menu')
       expect(within(menu).getByText('置顶')).toBeInTheDocument()
     })
+
+    it('surfaces an export failure', async () => {
+      const user = userEvent.setup()
+      dialogMocks.save.mockResolvedValue('C:\\exports\\conversation.jsonl')
+      apiMocks.exportConversation.mockRejectedValue(new Error('disk full'))
+      renderSidebar({ activeId: 'c-1' })
+      const nested = await within(tree()).findByRole('row', { name: /侧边栏重构/ })
+      await user.pointer({ keys: '[MouseRight]', target: nested })
+
+      const menu = await screen.findByRole('menu')
+      await user.click(within(menu).getByText('导出 SFT 训练数据'))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('无法导出对话：Error: disk full')
+    })
+  })
+
+  it('keeps the new-project form open and reports a failed create', async () => {
+    const user = userEvent.setup()
+    const onCreateProject = vi.fn().mockRejectedValue(new Error('permission denied'))
+    dialogMocks.open.mockResolvedValue('C:\\code\\new-project')
+    renderSidebar({ onCreateProject })
+
+    await user.click(screen.getByRole('button', { name: '新建项目' }))
+    await user.type(screen.getByRole('textbox', { name: '项目名称' }), 'New project')
+    await user.click(screen.getByRole('button', { name: '选择目录…' }))
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('无法创建项目：Error: permission denied')
+    expect(screen.getByRole('textbox', { name: '项目名称' })).toHaveValue('New project')
   })
 
   /**

@@ -20,6 +20,7 @@ import {
 } from '@gravity-ui/icons'
 import { ModelIcon } from '@/components/ui/model-icon'
 import { Button, Drawer } from '@heroui/react'
+import { CellSwitch } from '@heroui-pro/react/cell-switch'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { allowedEfforts } from '@/lib/thinking'
@@ -189,7 +190,10 @@ export function MobileOptionsMenu({
         if (!o) setTimeout(() => setPanel('main'), 200)
       }}
     >
-      <Drawer.Trigger className="inline-flex items-center justify-center rounded-md p-1 text-muted hover:text-foreground hover:bg-default transition-colors touch-hitbox">
+      <Drawer.Trigger
+        aria-label={t('composer.menu')}
+        className="inline-flex items-center justify-center rounded-md p-1 text-muted hover:text-foreground hover:bg-default transition-colors touch-hitbox"
+      >
         <Plus className="w-4 h-4" />
       </Drawer.Trigger>
       <Drawer.Backdrop>
@@ -213,24 +217,24 @@ export function MobileOptionsMenu({
                 <div className="flex flex-col">
                   {supportsImages && (
                     <>
-                      <Button variant="ghost" className={itemCls} onClick={() => handleAction(onTakePhoto)}>
+                      <Button variant="ghost" className={itemCls} onPress={() => handleAction(onTakePhoto)}>
                         <Camera className="w-4 h-4 text-muted" />
                         {t('chat.takePhoto')}
                       </Button>
-                      <Button variant="ghost" className={itemCls} onClick={() => handleAction(onPickGallery)}>
+                      <Button variant="ghost" className={itemCls} onPress={() => handleAction(onPickGallery)}>
                         <Picture className="w-4 h-4 text-muted" />
                         {t('chat.pickFromGallery')}
                       </Button>
                     </>
                   )}
                   {onPickFile && (
-                    <Button variant="ghost" className={itemCls} onClick={() => handleAction(onPickFile)}>
+                    <Button variant="ghost" className={itemCls} onPress={() => handleAction(onPickFile)}>
                       <Paperclip className="w-4 h-4 text-muted" />
                       {t('chat.attachFile')}
                     </Button>
                   )}
                   <div className="h-px bg-border mx-4 my-1" />
-                  <Button variant="ghost" className={cn(itemCls, 'justify-between')} onClick={() => setPanel('mode')}>
+                  <Button variant="ghost" className={cn(itemCls, 'justify-between')} onPress={() => setPanel('mode')}>
                     <span className="flex items-center gap-3">
                       {(() => {
                         const active = CHAT_MODES.find((m) => m.id === mode) ?? CHAT_MODES[0]
@@ -252,7 +256,7 @@ export function MobileOptionsMenu({
                   <Button
                     variant="ghost"
                     className={cn(itemCls, 'justify-between')}
-                    onClick={() => setPanel('assistant')}
+                    onPress={() => setPanel('assistant')}
                   >
                     <span className="flex items-center gap-3">
                       <FaceRobot className="w-4 h-4 text-muted" />
@@ -260,7 +264,7 @@ export function MobileOptionsMenu({
                     </span>
                     <ChevronRight className="w-4 h-4 text-muted" />
                   </Button>
-                  <Button variant="ghost" className={cn(itemCls, 'justify-between')} onClick={() => setPanel('model')}>
+                  <Button variant="ghost" className={cn(itemCls, 'justify-between')} onPress={() => setPanel('model')}>
                     <span className="flex items-center gap-3">
                       {currentModelId ? (
                         <ModelIcon model={currentModelId} size={16} />
@@ -275,7 +279,7 @@ export function MobileOptionsMenu({
                     <Button
                       variant="ghost"
                       className={cn(itemCls, 'justify-between')}
-                      onClick={() => setPanel('thinking')}
+                      onPress={() => setPanel('thinking')}
                     >
                       <span className="flex items-center gap-3">
                         <Bulb
@@ -294,42 +298,48 @@ export function MobileOptionsMenu({
                     </Button>
                   )}
                   {mode !== 'plan' && (
-                    <Button
+                    <CellSwitch
                       data-slot="mobile-accept-edits-row"
-                      variant="ghost"
-                      aria-pressed={acceptEdits}
-                      className={cn(itemCls, 'justify-between')}
-                      onClick={() => onToggleAcceptEdits(!acceptEdits)}
+                      aria-label={t('toolbar.acceptEdits')}
+                      isSelected={acceptEdits}
+                      onChange={onToggleAcceptEdits}
+                      className="w-full [--switch-control-bg-checked:var(--warning)]"
                     >
-                      <span className="flex items-center gap-3">
+                      <CellSwitch.Trigger className="h-auto min-h-10 w-full gap-3 rounded-none border-0 bg-transparent px-4 py-2.5 text-foreground shadow-none transition-colors active:bg-default pointer-coarse:min-h-11">
                         <ChevronsRight
                           className={cn('w-4 h-4', acceptEdits ? 'text-warning-soft-foreground' : 'text-muted')}
                         />
-                        <span>{t('toolbar.acceptEdits')}</span>
-                      </span>
-                      <span className="text-xs text-muted">
-                        {acceptEdits ? t('toolbar.acceptEdits.on') : t('toolbar.acceptEdits.off')}
-                      </span>
-                    </Button>
+                        <CellSwitch.Label className="flex items-center justify-between gap-2 font-normal">
+                          <span>{t('toolbar.acceptEdits')}</span>
+                          <span className="text-xs font-normal text-muted">
+                            {acceptEdits ? t('toolbar.acceptEdits.on') : t('toolbar.acceptEdits.off')}
+                          </span>
+                        </CellSwitch.Label>
+                        <CellSwitch.Control />
+                      </CellSwitch.Trigger>
+                    </CellSwitch>
                   )}
                   {supportsFast && (
-                    <Button
+                    <CellSwitch
                       data-slot="mobile-fast-row"
-                      variant="ghost"
-                      aria-pressed={fastMode}
-                      className={cn(itemCls, 'justify-between')}
-                      onClick={() => onToggleFast(!fastMode)}
+                      aria-label={t('toolbar.fast')}
+                      isSelected={fastMode}
+                      onChange={onToggleFast}
+                      className="w-full [--switch-control-bg-checked:var(--warning)]"
                     >
-                      <span className="flex items-center gap-3">
+                      <CellSwitch.Trigger className="h-auto min-h-10 w-full gap-3 rounded-none border-0 bg-transparent px-4 py-2.5 text-foreground shadow-none transition-colors active:bg-default pointer-coarse:min-h-11">
                         <Thunderbolt
                           className={cn('w-4 h-4', fastMode ? 'text-warning-soft-foreground' : 'text-muted')}
                         />
-                        <span>{t('toolbar.fast')}</span>
-                      </span>
-                      <span className="text-xs text-muted">
-                        {fastMode ? t('toolbar.fast.on') : t('toolbar.fast.off')}
-                      </span>
-                    </Button>
+                        <CellSwitch.Label className="flex items-center justify-between gap-2 font-normal">
+                          <span>{t('toolbar.fast')}</span>
+                          <span className="text-xs font-normal text-muted">
+                            {fastMode ? t('toolbar.fast.on') : t('toolbar.fast.off')}
+                          </span>
+                        </CellSwitch.Label>
+                        <CellSwitch.Control />
+                      </CellSwitch.Trigger>
+                    </CellSwitch>
                   )}
                 </div>
               )}
@@ -339,9 +349,10 @@ export function MobileOptionsMenu({
                   <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
                     <Button
                       isIconOnly
+                      aria-label={t('common.back')}
                       variant="ghost"
                       className="size-auto p-1 rounded-md hover:bg-default"
-                      onClick={() => setPanel('main')}
+                      onPress={() => setPanel('main')}
                     >
                       <ChevronLeft className="w-4 h-4" />
                     </Button>
@@ -351,9 +362,10 @@ export function MobileOptionsMenu({
                     {assistants.map((a) => (
                       <Button
                         key={a.id}
+                        aria-pressed={a.id === currentAssistantId}
                         variant="ghost"
                         className={cn(itemCls, a.id === currentAssistantId && 'bg-default')}
-                        onClick={() => {
+                        onPress={() => {
                           onSelectAssistant(a.id)
                           close()
                         }}
@@ -377,18 +389,20 @@ export function MobileOptionsMenu({
                   <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
                     <Button
                       isIconOnly
+                      aria-label={t('common.back')}
                       variant="ghost"
                       className="size-auto p-1 rounded-md hover:bg-default"
-                      onClick={() => setPanel('main')}
+                      onPress={() => setPanel('main')}
                     >
                       <ChevronLeft className="w-4 h-4" />
                     </Button>
                     <span className="text-sm font-medium flex-1">{t('toolbar.models')}</span>
                     <Button
                       isIconOnly
+                      aria-label={`${t('settings.about.logs.refresh')} ${t('toolbar.models')}`}
                       variant="ghost"
                       className="h-6 w-6"
-                      onClick={() => {
+                      onPress={() => {
                         setLoadingModels(true)
                         setGroups([])
                         Promise.allSettled(
@@ -421,12 +435,13 @@ export function MobileOptionsMenu({
                         {g.models.map((m) => (
                           <Button
                             key={`${g.provider.id}-${m.id}`}
+                            aria-pressed={m.id === currentModelId && g.provider.id === currentProviderId}
                             variant="ghost"
                             className={cn(
                               itemCls,
                               m.id === currentModelId && g.provider.id === currentProviderId && 'bg-default',
                             )}
-                            onClick={() => {
+                            onPress={() => {
                               onSelectModel(m.id, g.provider.id)
                               close()
                             }}
@@ -452,9 +467,10 @@ export function MobileOptionsMenu({
                   <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
                     <Button
                       isIconOnly
+                      aria-label={t('common.back')}
                       variant="ghost"
                       className="size-auto p-1 rounded-md hover:bg-default"
-                      onClick={() => setPanel('main')}
+                      onPress={() => setPanel('main')}
                     >
                       <ChevronLeft className="w-4 h-4" />
                     </Button>
@@ -465,9 +481,10 @@ export function MobileOptionsMenu({
                     return (
                       <Button
                         key={m.id}
+                        aria-pressed={m.id === mode}
                         variant="ghost"
                         className={cn(itemCls, 'justify-between', m.id === mode && 'bg-default')}
-                        onClick={() => {
+                        onPress={() => {
                           onSelectMode(m.id)
                           close()
                         }}
@@ -488,9 +505,10 @@ export function MobileOptionsMenu({
                   <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
                     <Button
                       isIconOnly
+                      aria-label={t('common.back')}
                       variant="ghost"
                       className="size-auto p-1 rounded-md hover:bg-default"
-                      onClick={() => setPanel('main')}
+                      onPress={() => setPanel('main')}
                     >
                       <ChevronLeft className="w-4 h-4" />
                     </Button>
@@ -499,9 +517,10 @@ export function MobileOptionsMenu({
                   {levels.map((level) => (
                     <Button
                       key={level.id}
+                      aria-pressed={level.id === thinkingLevel}
                       variant="ghost"
                       className={cn(itemCls, 'justify-between', level.id === thinkingLevel && 'bg-default')}
-                      onClick={() => {
+                      onPress={() => {
                         onSelectThinkingLevel(level.id)
                         close()
                       }}

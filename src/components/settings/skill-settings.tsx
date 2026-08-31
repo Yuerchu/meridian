@@ -167,12 +167,17 @@ function SkillEditor({
       )}
 
       <div data-slot="skill-editor-actions" className="flex items-center gap-2">
-        <Button onClick={handleSave} isDisabled={!canSave}>
+        <Button onPress={handleSave} isDisabled={!canSave}>
           {t('common.save')}
         </Button>
         {saved && <SavedHint data-slot="skill-editor-saved" />}
         {onDelete && !isBuiltin && (
-          <Button variant="ghost" className="ml-auto text-danger hover:text-danger" onClick={onDelete}>
+          <Button
+            variant="ghost"
+            aria-label={t('settings.skills.delete')}
+            className="ml-auto text-danger hover:text-danger"
+            onPress={onDelete}
+          >
             <TrashBin className="w-3.5 h-3.5" />
           </Button>
         )}
@@ -253,11 +258,11 @@ export function SkillSettings() {
         subtitle={t('settings.skills.subtitle')}
         actions={
           <>
-            <Button variant="outline" onClick={handleRescan} isDisabled={rescanning}>
+            <Button variant="outline" onPress={handleRescan} isDisabled={rescanning}>
               <ArrowsRotateRight className={rescanning ? 'w-3.5 h-3.5 animate-spin' : 'w-3.5 h-3.5'} />
               {t('settings.skills.rescan')}
             </Button>
-            <Button variant="outline" onClick={() => setShowCreate(!showCreate)}>
+            <Button variant="outline" onPress={() => setShowCreate(!showCreate)}>
               <Plus className="w-3.5 h-3.5" />
               {t('settings.skills.new')}
             </Button>

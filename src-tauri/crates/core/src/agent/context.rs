@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::db::models::message::Message;
+use crate::db::models::message_context_item::MessageContextItem;
 use crate::db::ops::message::ActiveContext;
 use crate::provider::{self, ChatMessage, SenderRef};
 
@@ -39,6 +40,19 @@ pub fn build_messages_with_senders(
     trailing: Vec<ChatMessage>,
     sender_names: &SenderNames,
 ) -> Vec<ChatMessage> {
+    build_messages_with_context_items(system_prompt, context, trailing, sender_names, &HashMap::new())
+}
+
+/// Build provider history while replaying the frozen context items attached to
+/// each user row. Keeping the map separate from `Message` means raw snapshots
+/// never cross the transcript DTO or audit boundary.
+pub fn build_messages_with_context_items(
+    system_prompt: &str,
+    context: &ActiveContext,
+    trailing: Vec<ChatMessage>,
+    sender_names: &SenderNames,
+    context_items: &HashMap<String, Vec<MessageContextItem>>,
+) -> Vec<ChatMessage> {
     let mut msgs = Vec::new();
     if !system_prompt.is_empty() {
         msgs.push(ChatMessage {
@@ -59,7 +73,7 @@ pub fn build_messages_with_senders(
         msgs.push(ChatMessage::user(&summary.content));
     }
     for m in context.live() {
-        push_history_message(&mut msgs, m, sender_names);
+        push_history_message(&mut msgs, m, sender_names, context_items.get(&m.id).map(Vec::as_slice));
     }
     msgs.extend(trailing);
     // Unconditional, so every caller gets a payload the provider will accept.
@@ -109,7 +123,12 @@ fn sender_ref(user_id: i64, names: &SenderNames) -> SenderRef {
     }
 }
 
-fn push_history_message(msgs: &mut Vec<ChatMessage>, m: &Message, names: &SenderNames) {
+fn push_history_message(
+    msgs: &mut Vec<ChatMessage>,
+    m: &Message,
+    names: &SenderNames,
+    context_items: Option<&[MessageContextItem]>,
+) {
     match m.role.as_str() {
         "user" => {
             // Dictated messages carry a marker the voice_input prompt block
@@ -179,6 +198,44 @@ fn push_history_message(msgs: &mut Vec<ChatMessage>, m: &Message, names: &Sender
         "context" => msgs.push(ChatMessage::system_context(&m.content)),
         _ => {}
     }
+    if m.role == "user" {
+        push_message_context(msgs, context_items.unwrap_or_default());
+    }
+}
+
+fn push_message_context(msgs: &mut Vec<ChatMessage>, items: &[MessageContextItem]) {
+    for rendered in render_message_context_items(items) {
+        msgs.push(ChatMessage::user_provided_context(&rendered));
+    }
+}
+
+/// Render the frozen context attached to one user message exactly as native
+/// history replay does. Compaction uses the same projection so a summary does
+/// not silently replace an `@` marker or `!` command with none of the evidence
+/// the original turn received.
+pub(super) fn render_message_context_items(items: &[MessageContextItem]) -> Vec<String> {
+    // A shell retry stores every attempt for diagnosis, but only the final one
+    // is evidence for the next model turn. File and directory references all
+    // remain in request order.
+    let final_shell = items
+        .iter()
+        .filter(|item| item.kind == "shell_output")
+        .max_by_key(|item| item.position)
+        .map(|item| item.id.as_str());
+    items
+        .iter()
+        .filter(|item| item.kind != "shell_output" || final_shell == Some(item.id.as_str()))
+        .map(|item| {
+            crate::workspace::reference::render_context_item(
+                &item.kind,
+                item.display_path.as_deref(),
+                item.line_start,
+                item.line_end,
+                &item.content,
+                item.truncated != 0,
+            )
+        })
+        .collect()
 }
 
 pub fn resolve_file_uris_in_messages(messages: &mut [ChatMessage], files_root: Option<&std::path::Path>) {
@@ -328,9 +385,72 @@ pub(crate) fn take_injected_context(messages: &mut Vec<ChatMessage>) -> Vec<Chat
     taken
 }
 
+const MAX_MODEL_USER_CONTEXT_TOKENS: usize = 25_000;
+const USER_CONTEXT_BUDGET_MARKER: &str =
+    "\n[additional user-provided context omitted by Meridian to fit the model context window]";
+
+fn truncate_user_context_to_tokens(content: &str, max_tokens: usize) -> Option<String> {
+    let counter = default_counter();
+    if counter.count(USER_CONTEXT_BUDGET_MARKER) > max_tokens {
+        return None;
+    }
+    let boundaries = content
+        .char_indices()
+        .map(|(index, _)| index)
+        .chain(std::iter::once(content.len()))
+        .collect::<Vec<_>>();
+    let mut low = 0usize;
+    let mut high = boundaries.len() - 1;
+    while low < high {
+        let mid = (low + high).div_ceil(2);
+        let candidate = format!("{}{USER_CONTEXT_BUDGET_MARKER}", &content[..boundaries[mid]]);
+        if counter.count(&candidate) <= max_tokens {
+            low = mid;
+        } else {
+            high = mid - 1;
+        }
+    }
+    let candidate = format!("{}{USER_CONTEXT_BUDGET_MARKER}", &content[..boundaries[low]]);
+    (counter.count(&candidate) <= max_tokens).then_some(candidate)
+}
+
+/// User-provided snapshots are ordinary compactable history, but a large one
+/// can still land inside the recent tail that trimming deliberately preserves.
+/// Reserve at most one quarter of the model window for all such messages,
+/// keeping the newest evidence first and making any partial copy explicit.
+pub(crate) fn cap_user_provided_context(messages: &mut Vec<ChatMessage>, context_limit: usize) {
+    let mut keep = vec![true; messages.len()];
+    let mut remaining = (context_limit / 4).min(MAX_MODEL_USER_CONTEXT_TOKENS);
+    for index in (0..messages.len()).rev() {
+        if messages[index].origin != provider::MessageOrigin::UserProvidedContext {
+            continue;
+        }
+        let cost = estimate_tokens(&messages[index].content);
+        if cost <= remaining {
+            remaining -= cost;
+            continue;
+        }
+        let content_tokens = remaining.saturating_sub(4);
+        if let Some(truncated) = truncate_user_context_to_tokens(&messages[index].content, content_tokens) {
+            let cost = estimate_tokens(&truncated);
+            messages[index].content = truncated;
+            remaining = remaining.saturating_sub(cost);
+        } else {
+            keep[index] = false;
+        }
+    }
+    let mut index = 0usize;
+    messages.retain(|_| {
+        let retain = keep[index];
+        index += 1;
+        retain
+    });
+}
+
 pub fn trim_to_context_limit(messages: &mut Vec<ChatMessage>, context_limit: usize, keep_recent: usize) {
-    let total_tokens: usize = messages.iter().map(|m| estimate_tokens(&m.content)).sum();
     let safe_limit = context_limit * 4 / 5;
+    cap_user_provided_context(messages, context_limit);
+    let total_tokens: usize = messages.iter().map(|m| estimate_tokens(&m.content)).sum();
     if total_tokens <= safe_limit {
         return;
     }
@@ -883,7 +1003,7 @@ mod injected_context_tests {
         // What the next turn reads back off the history.
         let mut replayed = Vec::new();
         let row = frozen_row(block, "memory|full|100.abc|-|onebot:user:1");
-        push_history_message(&mut replayed, &row, &SenderNames::new());
+        push_history_message(&mut replayed, &row, &SenderNames::new(), None);
 
         assert_eq!(replayed.len(), 1);
         assert_eq!(replayed[0].content, fresh.content);
@@ -910,7 +1030,7 @@ mod injected_context_tests {
             "memory|full|100.abc|-|",
         );
         let mut msgs = Vec::new();
-        push_history_message(&mut msgs, &row, &SenderNames::new());
+        push_history_message(&mut msgs, &row, &SenderNames::new(), None);
         msgs.push(ChatMessage::user("hi"));
 
         let taken = take_injected_context(&mut msgs);
@@ -922,14 +1042,108 @@ mod injected_context_tests {
     fn take_injected_context_removes_only_injected_rows() {
         let mut msgs = vec![
             ChatMessage::user("hi"),
+            ChatMessage::user_provided_context("file snapshot"),
             ChatMessage::system_context("memories"),
             ChatMessage::assistant("hello"),
         ];
         let taken = take_injected_context(&mut msgs);
         assert_eq!(taken.len(), 1);
         assert_eq!(taken[0].content, "memories");
-        assert_eq!(msgs.len(), 2);
+        assert_eq!(msgs.len(), 3);
+        assert!(
+            msgs.iter()
+                .any(|m| matches!(m.origin, MessageOrigin::UserProvidedContext)),
+            "user-provided context remains ordinary compactable history"
+        );
         assert!(!msgs.iter().any(|m| m.origin.is_system_context()));
+    }
+
+    #[test]
+    fn only_the_final_shell_attempt_enters_native_history() {
+        let item = |id: &str, position: i32, content: &str| MessageContextItem {
+            id: id.into(),
+            message_id: "m".into(),
+            position,
+            kind: "shell_output".into(),
+            content: content.into(),
+            display_path: None,
+            line_start: None,
+            line_end: None,
+            content_hash: "hash".into(),
+            byte_count: content.len() as i32,
+            line_count: 1,
+            token_count: 1,
+            truncated: 0,
+            metadata: None,
+            created_at: 1,
+        };
+        let mut messages = Vec::new();
+        push_message_context(
+            &mut messages,
+            &[
+                item("in-doubt", 0, "result may be in doubt"),
+                item("final", 1, "final result"),
+            ],
+        );
+
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].content.contains("final result"));
+        assert!(!messages[0].content.contains("result may be in doubt"));
+    }
+
+    #[test]
+    fn a_recent_user_context_cannot_bypass_the_native_prompt_budget() {
+        let mut messages = vec![
+            ChatMessage::user("question"),
+            ChatMessage::user_provided_context(&"界".repeat(20_000)),
+            ChatMessage::assistant("previous answer"),
+        ];
+
+        trim_to_context_limit(&mut messages, 1_000, 20);
+
+        let contexts = messages
+            .iter()
+            .filter(|message| message.origin == MessageOrigin::UserProvidedContext)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            contexts.len(),
+            1,
+            "the newest context is reduced rather than silently reclassified"
+        );
+        assert!(contexts[0].content.contains(USER_CONTEXT_BUDGET_MARKER));
+        assert!(
+            contexts
+                .iter()
+                .map(|message| estimate_tokens(&message.content))
+                .sum::<usize>()
+                <= 250,
+            "all native user-provided context stays inside one quarter of the model window",
+        );
+    }
+
+    #[test]
+    fn native_user_context_has_an_aggregate_cap_across_messages() {
+        let mut messages = vec![
+            ChatMessage::user_provided_context(&"old ".repeat(4_000)),
+            ChatMessage::user("question"),
+            ChatMessage::user_provided_context(&"new ".repeat(4_000)),
+        ];
+
+        trim_to_context_limit(&mut messages, 2_000, 20);
+
+        let context_tokens = messages
+            .iter()
+            .filter(|message| message.origin == MessageOrigin::UserProvidedContext)
+            .map(|message| estimate_tokens(&message.content))
+            .sum::<usize>();
+        assert!(context_tokens <= 500);
+        assert!(
+            messages
+                .iter()
+                .filter(|message| message.origin == MessageOrigin::UserProvidedContext)
+                .any(|message| message.content.contains("new ")),
+            "the newest pending evidence receives the bounded allocation first",
+        );
     }
 
     /// The interrupted-turn block is the one piece of context whose whole point

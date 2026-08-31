@@ -36,7 +36,7 @@ export interface RowAction {
   run: () => void | Promise<void>
 }
 
-async function exportConversation(conv: Conversation, format: 'sft' | 'dpo') {
+async function exportConversation(conv: Conversation, format: 'sft' | 'dpo', onError: (error: unknown) => void) {
   // Cancelling rejects on Android rather than resolving to null, and the export
   // itself can fail after the picker has already closed — with the user looking
   // straight at the screen.
@@ -45,7 +45,11 @@ async function exportConversation(conv: Conversation, format: 'sft' | 'dpo') {
     filters: [{ name: 'JSONL', extensions: ['jsonl'] }],
   }).catch(() => null)
   if (!path) return
-  await api.exportConversation(conv.id, format, path).catch(() => {})
+  try {
+    await api.exportConversation(conv.id, format, path)
+  } catch (error) {
+    onError(error)
+  }
 }
 
 /**
@@ -64,6 +68,7 @@ export function useConversationActions(args: {
   /** Open the move-to-project picker for this conversation. */
   onRequestMove: (id: string) => void
   onRequestDelete: (id: string) => void
+  onExportError: (error: unknown) => void
   /**
    * Point a hosted conversation at a Claude Code session on disk.
    *
@@ -75,7 +80,7 @@ export function useConversationActions(args: {
   onRequestAttachSession?: (id: string) => void
 }): (conversation: Conversation) => RowAction[] {
   const { t } = useTranslation()
-  const { onTogglePin, onRequestRename, onRequestMove, onRequestDelete, onRequestAttachSession } = args
+  const { onTogglePin, onRequestRename, onRequestMove, onRequestDelete, onExportError, onRequestAttachSession } = args
 
   // The picker returns a path on the machine the *user* is at, and the export
   // is written by the machine the app is on. Connected to another one those are
@@ -117,14 +122,14 @@ export function useConversationActions(args: {
         icon: ArrowDownToLine,
         label: t('sidebar.exportSft'),
         disabledReason: exportBlocked,
-        run: () => exportConversation(conversation, 'sft'),
+        run: () => exportConversation(conversation, 'sft', onExportError),
       },
       {
         key: 'export-dpo',
         icon: ArrowDownToLine,
         label: t('sidebar.exportDpo'),
         disabledReason: exportBlocked,
-        run: () => exportConversation(conversation, 'dpo'),
+        run: () => exportConversation(conversation, 'dpo', onExportError),
       },
       {
         key: 'delete',
@@ -134,7 +139,16 @@ export function useConversationActions(args: {
         run: () => onRequestDelete(conversation.id),
       },
     ],
-    [t, exportBlocked, onTogglePin, onRequestRename, onRequestMove, onRequestDelete, onRequestAttachSession],
+    [
+      t,
+      exportBlocked,
+      onTogglePin,
+      onRequestRename,
+      onRequestMove,
+      onRequestDelete,
+      onExportError,
+      onRequestAttachSession,
+    ],
   )
 }
 

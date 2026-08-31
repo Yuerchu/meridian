@@ -119,6 +119,19 @@ fn prices_for(
         .first(conn)
         .map(|config| {
             let effective = crate::agent::pricing::Prices::for_prompt(&config, prompt_tokens.unwrap_or(0) as i64);
+            // Zero is the editor's untouched default, not a historical rate.
+            // Snapshotting it would freeze this request at "unknown" forever:
+            // `usage::resolve` could no longer fall back to a real price filled
+            // in later because the row appeared to carry a snapshot already.
+            if !effective.known() {
+                // The provider-tool rate is independent and can still be a
+                // known part of the bill. Keep it on the historical row so a
+                // later model deletion cannot erase that lower bound.
+                return Prices {
+                    server_tool: effective.server_tool,
+                    ..Default::default()
+                };
+            }
             Prices {
                 input: Some(effective.input),
                 output: Some(effective.output),
@@ -168,15 +181,17 @@ fn snapshot_of(conn: &mut SqliteConnection, subject: Subject<'_>) -> Snapshot {
     // Every one of these is best-effort. A missing project or a turn row that has
     // not been written yet is a gap in the record, not a reason to refuse to keep
     // the record at all.
-    let project: Option<(String, Option<String>)> = conversations::table
+    let conversation = conversations::table
         .find(subject.conversation_id)
-        .select(conversations::project_id)
-        .first::<Option<String>>(conn)
-        .ok()
-        .flatten()
-        .and_then(|pid| {
+        .select((conversations::project_id, conversations::agent_kind))
+        .first::<(Option<String>, Option<String>)>(conn)
+        .ok();
+    let project: Option<(String, Option<String>)> = conversation
+        .as_ref()
+        .and_then(|(project_id, _)| project_id.as_ref())
+        .and_then(|project_id| {
             projects::table
-                .find(pid)
+                .find(project_id)
                 .select((projects::source_type, projects::source_id))
                 .first(conn)
                 .ok()
@@ -205,6 +220,12 @@ fn snapshot_of(conn: &mut SqliteConnection, subject: Subject<'_>) -> Snapshot {
             .ok()
             .flatten()
     });
+    let billing_mode = billing_mode_for(
+        conn,
+        subject.provider_id,
+        turn_origin.as_deref(),
+        conversation.as_ref().and_then(|(_, agent_kind)| agent_kind.as_deref()),
+    );
 
     Snapshot {
         source_type: project.as_ref().map(|(t, _)| t.clone()),
@@ -213,7 +234,7 @@ fn snapshot_of(conn: &mut SqliteConnection, subject: Subject<'_>) -> Snapshot {
         self_id,
         sender_name,
         prices: prices_for(conn, subject.provider_id, subject.model_id, subject.prompt_tokens),
-        billing_mode: billing_mode_for(conn, subject.provider_id),
+        billing_mode,
     }
 }
 
@@ -223,7 +244,29 @@ fn snapshot_of(conn: &mut SqliteConnection, subject: Subject<'_>) -> Snapshot {
 /// request in the ledger — the same choice the price snapshot makes when it
 /// cannot find a rate. Guessing `Subscription` instead would drop real spend out
 /// of the totals with nothing to show it had gone.
-fn billing_mode_for(conn: &mut SqliteConnection, provider_id: Option<&str>) -> BillingMode {
+fn billing_mode_for(
+    conn: &mut SqliteConnection,
+    provider_id: Option<&str>,
+    turn_origin: Option<&str>,
+    agent_kind: Option<&str>,
+) -> BillingMode {
+    // Conversation rows can be read on Android even though the desktop-only
+    // ACP runtime module is not compiled there.
+    const CLAUDE_CODE_AGENT_KIND: &str = "claude_code";
+    // A live ACP reply is usage reported by the hosted Claude Code process. It
+    // belongs to that process's own subscription or provider account, not to a
+    // Meridian model config. Filing it as metered creates an unpriceable row
+    // whose only missing fact is one Meridian was never meant to supply.
+    // The turn is the request-level fact and therefore wins. `agent_kind` is a
+    // fallback only when the turn row is absent; using it to override a real
+    // desktop turn would bill the conversation rather than this request.
+    let hosted = match turn_origin {
+        Some(origin) => origin == crate::turn::TurnOrigin::ClaudeCode.as_str(),
+        None => agent_kind == Some(CLAUDE_CODE_AGENT_KIND),
+    };
+    if hosted {
+        return BillingMode::External;
+    }
     let Some(provider_id) = provider_id else {
         return BillingMode::Metered;
     };
@@ -557,6 +600,185 @@ mod tests {
         )
         .unwrap();
         assert_eq!(list_recent(&mut conn, 10).unwrap()[0].input_price, Some(3.0));
+    }
+
+    /// The model editor starts both token rates at zero. That is the absence of
+    /// a price, not a historical assertion that this request was free. Keeping
+    /// zero on the audit row would block `usage::resolve` from using a real
+    /// price filled in later, leaving a known model permanently unpriced.
+    #[test]
+    fn an_unpriced_model_does_not_snapshot_the_editors_zero_defaults() {
+        use crate::db::models::model_config::NewModelConfig;
+        use crate::db::models::provider::NewProvider;
+
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        diesel::insert_into(crate::db::schema::providers::table)
+            .values(&NewProvider {
+                id: "p1",
+                name: "Acme",
+                provider_type: "openai",
+                base_url: "https://example.invalid",
+                is_enabled: 1,
+                sort_order: 0,
+                created_at: 0,
+                updated_at: 0,
+                api_format: "chat",
+                catalog_id: None,
+                credential_kind: "api_key",
+                transport_profile: "standard",
+            })
+            .execute(&mut conn)
+            .unwrap();
+        crate::db::ops::model_config::upsert(
+            &mut conn,
+            &NewModelConfig {
+                id: "mc1",
+                provider_id: "p1",
+                model_id: "m1",
+                display_name: None,
+                context_window: 128_000,
+                compact_threshold: 100_000,
+                max_output_tokens: None,
+                input_price: 0.0,
+                output_price: 0.0,
+                cache_price: None,
+                cache_write_price: None,
+                created_at: 0,
+                updated_at: 0,
+                capability_overrides: None,
+                price_tiers: None,
+                server_tools: None,
+                server_tool_price: Some(15.0),
+            },
+        )
+        .unwrap();
+
+        let mut reply = user_row("m1", "c1");
+        reply.role = "assistant";
+        reply.provider_id = Some("p1");
+        reply.model_id = Some("m1");
+        reply.input_tokens = Some(100);
+        reply.server_tool_calls = Some(2);
+        let reply = append_message(&mut conn, &reply, None).unwrap();
+        record(&mut conn, &reply).unwrap();
+
+        let logged = &list_recent(&mut conn, 10).unwrap()[0];
+        assert_eq!(logged.input_price, None);
+        assert_eq!(logged.output_price, None);
+        assert_eq!(logged.server_tool_calls, Some(2));
+        assert_eq!(
+            logged.server_tool_price,
+            Some(15.0),
+            "the independent known rate survives"
+        );
+    }
+
+    /// Live ACP replies are accounted for by the hosted process, even though
+    /// they share the normal transcript/audit write path. The conversation's
+    /// kind is the durable identity; provider names are display text and cannot
+    /// decide billing.
+    #[test]
+    fn a_live_acp_reply_snapshots_external_billing() {
+        use crate::db::models::conversation::NewConversation;
+
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        crate::db::ops::conversation::insert(
+            &mut conn,
+            NewConversation {
+                id: "c1",
+                created_at: 1,
+                updated_at: 1,
+                agent_kind: Some(crate::acp::AGENT_KIND),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        crate::db::ops::turn::begin(&mut conn, "t1", "c1", crate::turn::TurnOrigin::ClaudeCode, None, 2).unwrap();
+
+        let mut reply = user_row("m1", "c1");
+        reply.role = "assistant";
+        reply.turn_id = Some("t1");
+        reply.provider_name = Some("Claude Code");
+        reply.model_id = Some("claude-opus-5");
+        let reply = append_message(&mut conn, &reply, None).unwrap();
+        record(&mut conn, &reply).unwrap();
+
+        let logged = &list_recent(&mut conn, 10).unwrap()[0];
+        assert_eq!(logged.billing_mode, BillingMode::External.as_str());
+        assert_eq!(logged.provider_name.as_deref(), Some("Claude Code"));
+    }
+
+    #[test]
+    fn conversation_kind_only_fills_a_missing_turn_origin() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        assert_eq!(
+            billing_mode_for(&mut conn, None, None, Some(crate::acp::AGENT_KIND)),
+            BillingMode::External,
+        );
+        assert_eq!(
+            billing_mode_for(
+                &mut conn,
+                None,
+                Some(crate::turn::TurnOrigin::Desktop.as_str()),
+                Some(crate::acp::AGENT_KIND),
+            ),
+            BillingMode::Metered,
+            "a conversation label must not override the request's own origin",
+        );
+    }
+
+    #[test]
+    fn acp_billing_migration_follows_origin_not_display_or_provider_shape() {
+        use diesel::connection::SimpleConnection;
+
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        conn.batch_execute(
+            "INSERT INTO audit_messages
+                (id, recorded_at, message_id, conversation_id, turn_origin, role,
+                 content, provider_id, provider_name, created_at, billing_mode)
+             VALUES
+                ('hosted', 1, 'm1', 'c1', 'claude_code', 'assistant', '', NULL,
+                 'Claude Code', 1, 'metered'),
+                ('desktop', 1, 'm2', 'c2', 'desktop', 'assistant', '', NULL,
+                 'Claude Code', 1, 'metered'),
+                ('provider-bound', 1, 'm3', 'c3', 'claude_code', 'assistant', '',
+                 'p1', 'Claude Code', 1, 'metered');",
+        )
+        .unwrap();
+        conn.batch_execute(include_str!(
+            "../../../migrations/00000000000043_acp_external_billing/up.sql"
+        ))
+        .unwrap();
+
+        let modes = audit_messages::table
+            .order(audit_messages::id.asc())
+            .select((audit_messages::id, audit_messages::billing_mode))
+            .load::<(String, String)>(&mut conn)
+            .unwrap();
+        assert_eq!(
+            modes,
+            [
+                ("desktop".into(), "metered".into()),
+                ("hosted".into(), "external".into()),
+                ("provider-bound".into(), "external".into()),
+            ]
+        );
+
+        conn.batch_execute(include_str!(
+            "../../../migrations/00000000000043_acp_external_billing/down.sql"
+        ))
+        .unwrap();
+        let hosted = audit_messages::table
+            .find("hosted")
+            .select(audit_messages::billing_mode)
+            .first::<String>(&mut conn)
+            .unwrap();
+        assert_eq!(hosted, "metered");
     }
 
     /// A tiered model is priced against *this* reply's prompt, at write time.

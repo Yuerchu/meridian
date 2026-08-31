@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { listen } from '@/lib/transport'
 import { open } from '@tauri-apps/plugin-dialog'
 import { TrashBin } from '@gravity-ui/icons'
-import { Button, Card, Description, Input, Label, ProgressCircle, TextField } from '@heroui/react'
+import { Button, Card, Description, Input, Label, ProgressCircle, Spinner, TextField } from '@heroui/react'
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
 import { usePlatform } from '@/hooks/use-platform'
 import type { VoiceModelStatus } from '@/types'
 import { SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
+import { useConfirm } from '@/hooks/use-confirm'
 
 const FILTER_LEVELS = ['off', 'standard', 'aggressive'] as const
 
@@ -17,19 +18,25 @@ interface DownloadProgress {
   total: number | null
 }
 
-function formatSize(bytes: number): string {
-  return `${(bytes / 1024 / 1024).toFixed(0)} MB`
+function formatSize(bytes: number, number: Intl.NumberFormat): string {
+  return `${number.format(bytes / 1024 / 1024)} MB`
 }
 
 export function VoiceSettings() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const isAndroid = usePlatform() === 'android'
   const [status, setStatus] = useState<VoiceModelStatus | null>(null)
+  const [statusLoading, setStatusLoading] = useState(true)
   const [progress, setProgress] = useState<DownloadProgress | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [filterLevel, setFilterLevel] = useState('standard')
   const [mirrorUrl, setMirrorUrl] = useState('')
   const [importing, setImporting] = useState(false)
+  const { confirm, confirmDialog } = useConfirm()
+  const sizeNumber = useMemo(
+    () => new Intl.NumberFormat(i18n.resolvedLanguage ?? i18n.language, { maximumFractionDigits: 1 }),
+    [i18n.language, i18n.resolvedLanguage],
+  )
 
   const refreshStatus = useCallback(async () => {
     const next = await api.voiceModelStatus()
@@ -38,7 +45,9 @@ export function VoiceSettings() {
 
   useEffect(() => {
     let disposed = false
-    void refreshStatus().catch(console.error)
+    void refreshStatus()
+      .catch((reason) => setError(String(reason)))
+      .finally(() => setStatusLoading(false))
     void api.getPreference('voice.filter_level').then((v) => {
       if (v && !disposed) setFilterLevel(v)
     })
@@ -103,6 +112,7 @@ export function VoiceSettings() {
   }
 
   const handleDelete = async () => {
+    if (!(await confirm({ body: t('settings.voice.deleteModelConfirm'), status: 'warning' }))) return
     setError(null)
     try {
       await api.voiceDeleteModel()
@@ -132,15 +142,30 @@ export function VoiceSettings() {
       <div className="space-y-1.5">
         <p className="block text-xs font-medium text-muted">{t('settings.voice.model')}</p>
         <Card>
-          {status?.installed ? (
+          {statusLoading ? (
+            <div
+              role="status"
+              aria-label={t('common.loading')}
+              className="flex items-center gap-2 p-4 text-sm text-muted"
+            >
+              <Spinner aria-hidden="true" size="sm" />
+              {t('common.loading')}
+            </div>
+          ) : status?.installed ? (
             <div className="flex items-center justify-between gap-2">
               <Card.Header className="min-w-0">
                 <Card.Title>{t('settings.voice.modelInstalled')}</Card.Title>
                 <Card.Description className="truncate">
-                  {formatSize(status.size_bytes)} · {status.path}
+                  {formatSize(status.size_bytes, sizeNumber)} · {status.path}
                 </Card.Description>
               </Card.Header>
-              <Button isIconOnly variant="ghost" onClick={handleDelete} isDisabled={downloading}>
+              <Button
+                isIconOnly
+                variant="ghost"
+                aria-label={t('settings.voice.deleteModel')}
+                onPress={handleDelete}
+                isDisabled={downloading}
+              >
                 <TrashBin className="w-4 h-4" />
               </Button>
             </div>
@@ -159,10 +184,10 @@ export function VoiceSettings() {
                 </ProgressCircle.Track>
               </ProgressCircle>
               <span className="text-xs text-muted flex-1">
-                {formatSize(progress.downloaded)}
-                {progress.total ? ` / ${formatSize(progress.total)}` : ''}
+                {formatSize(progress.downloaded, sizeNumber)}
+                {progress.total ? ` / ${formatSize(progress.total, sizeNumber)}` : ''}
               </span>
-              <Button variant="outline" size="sm" onClick={handleCancelDownload}>
+              <Button variant="outline" size="sm" onPress={handleCancelDownload}>
                 {t('settings.voice.cancelDownload')}
               </Button>
             </div>
@@ -174,7 +199,7 @@ export function VoiceSettings() {
               </Card.Header>
               <Card.Footer className="flex-col items-start gap-2">
                 <div className="flex gap-2">
-                  <Button size="sm" onClick={handleDownload}>
+                  <Button size="sm" onPress={handleDownload}>
                     {t('settings.voice.download')}
                   </Button>
                   {/* Downloading still works remotely — the host fetches it to
@@ -183,24 +208,33 @@ export function VoiceSettings() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={handleImport}
+                    onPress={handleImport}
                     isDisabled={importing || !can.importFromDisk}
+                    aria-busy={importing}
                   >
-                    {importing ? t('settings.voice.importing') : t('settings.voice.import')}
+                    {importing && <Spinner aria-hidden="true" size="sm" />}
+                    {t('settings.voice.import')}
                   </Button>
                 </div>
                 {!can.importFromDisk && <p className="text-xs text-muted">{t('capability.importFromDisk')}</p>}
               </Card.Footer>
             </>
           )}
-          {error && <p className="text-xs text-danger">{error}</p>}
+          {error && (
+            <p role="alert" className="text-xs text-danger">
+              {error}
+            </p>
+          )}
         </Card>
       </div>
 
-      <TextField fullWidth>
+      <TextField fullWidth type="url">
         <Label>{t('settings.voice.mirror')}</Label>
         <Input
           value={mirrorUrl}
+          name="voiceDownloadUrl"
+          inputMode="url"
+          spellCheck={false}
           onChange={(e) => handleMirrorChange(e.target.value)}
           placeholder={t('settings.voice.mirrorPlaceholder')}
           className="w-full"
@@ -218,6 +252,7 @@ export function VoiceSettings() {
         fullWidth
         triggerClassName="max-w-xs"
       />
+      {confirmDialog}
     </SettingsPane>
   )
 }

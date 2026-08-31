@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { api } from '@/api'
 import { listen } from '@/lib/transport'
-import type { QueueDelivery, QueueState, QueuedPrompt } from '@/types'
+import type { QueueDelivery, QueueState, QueuedPrompt, WorkspaceReferenceInput } from '@/types'
 
 /**
  * The state a row is in, derived here from the same timestamps the backend
@@ -73,8 +73,8 @@ export function usePromptQueue(conversationId: string, enabled: boolean) {
   }, [conversationId, enabled])
 
   const enqueue = useCallback(
-    async (content: string, delivery: QueueDelivery) => {
-      const item = await api.queueEnqueue(conversationId, content, delivery)
+    async (content: string, delivery: QueueDelivery, contextRefs?: WorkspaceReferenceInput[]) => {
+      const item = await api.queueEnqueue(conversationId, content, delivery, contextRefs)
       // Optimistic only in the sense that it saves a round trip; the event that
       // follows replaces the list wholesale, including this row.
       setItems((prev) => [...prev, item])

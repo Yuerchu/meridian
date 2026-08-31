@@ -13,6 +13,10 @@
    silently. One line per component we actually use. */
 @import '@heroui-pro/react/css/components/command.css' layer(components);
 @import '@heroui-pro/react/css/components/file-tree.css' layer(components);
+@import '@heroui-pro/react/css/components/list-view.css' layer(components);
+@import '@heroui-pro/react/css/components/inline-select.css' layer(components);
+@import '@heroui-pro/react/css/components/segment.css' layer(components);
+@import '@heroui-pro/react/css/components/cell-switch.css' layer(components);
 @import '@heroui-pro/react/css/components/floating-toc.css' layer(components);
 @import '@heroui-pro/react/css/components/resizable.css' layer(components);
 @import '@heroui-pro/react/css/components/kanban.css' layer(components);
@@ -24,10 +28,13 @@
    positions it lives here, so without this the drawer opened correctly and drew
    nothing. */
 @import '@heroui-pro/react/css/components/sheet.css' layer(components);
+@import '@heroui-pro/react/css/components/emoji-picker.css' layer(components);
 @import '@heroui-pro/react/css/components/markdown.css' layer(components);
 @import '@heroui-pro/react/css/components/code-block.css' layer(components);
 @import '@heroui-pro/react/css/components/prompt-input.css' layer(components);
+@import '@heroui-pro/react/css/components/prompt-suggestion.css' layer(components);
 @import '@heroui-pro/react/css/components/chat-attachment.css' layer(components);
+@import '@heroui-pro/react/css/components/chat-loader.css' layer(components);
 @import '@heroui-pro/react/css/components/chat-source.css' layer(components);
 /* `ChatSource` renders its hover preview through Pro's HoverCard, and styles
    only the trigger side of it (`.chat-source .hover-card__trigger`). Without
@@ -458,5 +465,16 @@ img.emoji-sticker {
       position: absolute;
       inset: min(0px, calc((100% - 2.75rem) / 2));
     }
+  }
+}
+
+/* MotionConfig only reaches motion/react. Loading and attention indicators use
+   Tailwind's CSS animations, so honour the same system preference here as the
+   final backstop. The icon or status text remains visible; only movement stops. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin,
+  .animate-pulse,
+  .animate-bounce {
+    animation: none !important;
   }
 }

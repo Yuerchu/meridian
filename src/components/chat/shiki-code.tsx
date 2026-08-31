@@ -1,6 +1,23 @@
+import { useMemo } from 'react'
 import { useShikiLanguage } from '@/hooks/use-shiki-language'
 import { highlight } from '@/lib/shiki'
 import { cn } from '@/lib/utils'
+
+const highlightCache = new Map<string, string>()
+const MAX_CACHE_ENTRIES = 64
+
+function cachedHighlight(code: string, language: string): string {
+  const key = `${language}\u0000${code}`
+  const cached = highlightCache.get(key)
+  if (cached !== undefined) return cached
+  const html = highlight(code, language)
+  if (highlightCache.size >= MAX_CACHE_ENTRIES) {
+    const oldest = highlightCache.keys().next().value
+    if (oldest !== undefined) highlightCache.delete(oldest)
+  }
+  highlightCache.set(key, html)
+  return html
+}
 
 /**
  * The highlighted body of a code block.
@@ -23,14 +40,18 @@ export function ShikiCode({
   code,
   language,
   className,
+  defer,
 }: {
   code: string
   language?: string | null
   className?: string
+  /** Streamed blocks stay plain until their content settles. */
+  defer?: boolean
 }) {
   const { language: lang, ready } = useShikiLanguage(language)
+  const html = useMemo(() => (ready && !defer ? cachedHighlight(code, lang) : ''), [code, defer, lang, ready])
 
-  if (!ready) {
+  if (!ready || defer) {
     return (
       <div className={cn('code-block__code', className)}>
         <pre>
@@ -45,7 +66,7 @@ export function ShikiCode({
       className={cn('code-block__code', className)}
       // Shiki escapes the code it is given; what comes back is its own markup
       // around that escaped text.
-      dangerouslySetInnerHTML={{ __html: highlight(code, lang) }}
+      dangerouslySetInnerHTML={{ __html: html }}
     />
   )
 }

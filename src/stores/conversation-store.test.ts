@@ -1,7 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { hydrateBlocks, reconcileMessages, useConversationStore } from '@/stores/conversation-store'
 import { api } from '@/api'
-import type { ContentBlock, ConversationSnapshot, Message, MessageTree, ToolCallDisplay, TurnRecord } from '@/types'
+import type {
+  CommandTurnOutcome,
+  ContentBlock,
+  ConversationSnapshot,
+  Message,
+  MessageTree,
+  ToolCallDisplay,
+  TurnRecord,
+} from '@/types'
 
 vi.mock('@tauri-apps/api/core')
 vi.mock('@/api', () => ({
@@ -10,6 +18,7 @@ vi.mock('@/api', () => ({
     // the turn records only mean anything together: a tool call with no result
     // row is waiting, running, or abandoned, and the row alone says none of it.
     conversationSnapshot: vi.fn(),
+    activeUserShellTurn: vi.fn(() => Promise.resolve(null)),
     switchBranch: vi.fn(),
     allPendingApprovals: vi.fn(),
   },
@@ -600,6 +609,120 @@ describe('a reload racing the live round', () => {
     expect(cards().map((c) => c.status)).toEqual(['completed', 'running'])
     store().handleToolResult(CONV, 'a1', '0', 'second result', 'success')
     expect(cards().map((c) => c.result)).toEqual(['first result', 'second result'])
+  })
+})
+
+describe('literal shell command lifecycle', () => {
+  const store = () => useConversationStore.getState()
+  const result = (conversationId: string, turnId: string, messageId: string): CommandTurnOutcome => ({
+    conversation_id: conversationId,
+    turn_id: turnId,
+    message_id: messageId,
+    status: 'completed',
+    stdout: 'done',
+    stderr: '',
+    exit_code: 0,
+    timed_out: false,
+    truncated: false,
+    sandbox: 'windows_restricted_token',
+    duration_ms: 12,
+    cwd: 'C:/repo',
+    host: 'desktop',
+    error: null,
+    can_retry_without_sandbox: false,
+    retry_without_sandbox: false,
+  })
+
+  beforeEach(() => {
+    vi.mocked(api.activeUserShellTurn).mockResolvedValue(null)
+    useConversationStore.setState({ sessions: {} })
+  })
+
+  it('keeps active commands scoped to their conversation and refreshes the finished message', () => {
+    store().beginShellCommand('c1', 'turn-1')
+    store().beginShellCommand('c2', 'turn-2')
+
+    store().finishShellCommand(result('c1', 'turn-1', 'message-1'))
+
+    expect(store().sessions.c1.activeShellTurnId).toBeNull()
+    expect(store().sessions.c1.shellResultKeys['message-1']).toContain('turn-1')
+    expect(store().sessions.c2.activeShellTurnId).toBe('turn-2')
+  })
+
+  it('does not let a late finish clear the command that replaced it', () => {
+    store().beginShellCommand('c1', 'turn-old')
+    store().beginShellCommand('c1', 'turn-live')
+
+    store().finishShellCommand(result('c1', 'turn-old', 'message-old'))
+
+    expect(store().sessions.c1.activeShellTurnId).toBe('turn-live')
+  })
+
+  it('rehydrates a live command when a conversation is loaded after reload', async () => {
+    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+      snapshotOf({
+        messages: [
+          msg('message-shell', {
+            conversation_id: 'c1',
+            role: 'user',
+            source: 'shell',
+            turn_id: 'turn-live',
+          }),
+        ],
+        head_message_id: 'message-shell',
+        branches: [],
+      }),
+    )
+    vi.mocked(api.activeUserShellTurn).mockResolvedValue('turn-live')
+
+    expect(await store().loadMessages('c1')).toBe(true)
+
+    expect(store().sessions.c1.activeShellTurnId).toBe('turn-live')
+    expect(store().sessions.c1.messages).toEqual([
+      expect.objectContaining({ id: 'message-shell', source: 'shell', turn_id: 'turn-live' }),
+    ])
+  })
+
+  it('does not let an in-flight hydrate resurrect a command after its finish event', async () => {
+    let resolveActive!: (turnId: string | null) => void
+    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+      snapshotOf({ messages: [], head_message_id: null, branches: [] }),
+    )
+    vi.mocked(api.activeUserShellTurn).mockReturnValue(
+      new Promise((resolve) => {
+        resolveActive = resolve
+      }),
+    )
+    store().beginShellCommand('c1', 'turn-live')
+    const loading = store().loadMessages('c1')
+
+    store().finishShellCommand(result('c1', 'turn-live', 'message-shell'))
+    resolveActive('turn-live')
+
+    expect(await loading).toBe(false)
+    expect(store().sessions.c1.activeShellTurnId).toBeNull()
+  })
+
+  it('invalidates a pre-reload active query when finish arrives before the session knew the turn', async () => {
+    let resolveActive!: (turnId: string | null) => void
+    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+      snapshotOf({ messages: [], head_message_id: null, branches: [] }),
+    )
+    vi.mocked(api.activeUserShellTurn).mockReturnValue(
+      new Promise((resolve) => {
+        resolveActive = resolve
+      }),
+    )
+    const loading = store().loadMessages('c1')
+
+    // A fresh page has no activeShellTurnId yet. The result event is still
+    // newer than the query that is about to return the old live id.
+    store().finishShellCommand(result('c1', 'turn-live', 'message-shell'))
+    resolveActive('turn-live')
+
+    expect(await loading).toBe(false)
+    expect(store().sessions.c1.activeShellTurnId).toBeNull()
+    expect(store().sessions.c1.shellResultKeys['message-shell']).toContain('turn-live')
   })
 })
 

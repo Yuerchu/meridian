@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react'
 
 import { useMasterDetail } from './use-master-detail'
 import { setContainerWidth } from '@/test/resize'
+import { useHistoryLevel } from '@/hooks/use-history-level'
 
 vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => true }))
 vi.mock('@/hooks/use-history-level', () => ({ useHistoryLevel: vi.fn() }))
@@ -26,7 +27,7 @@ describe('useMasterDetail', () => {
     expect(result.current.isNarrow).toBe(false)
   })
 
-  it('unwinds aux content before clearing the selected item', () => {
+  it('unwinds aux content before clearing the selected item', async () => {
     const { result } = renderHook(() => useMasterDetail<'import'>())
 
     act(() => result.current.openItem('server-1'))
@@ -34,11 +35,46 @@ describe('useMasterDetail', () => {
     expect(result.current.selectedId).toBe('server-1')
     expect(result.current.aux).toBe('import')
 
-    act(() => result.current.back())
+    await act(async () => {
+      await result.current.back()
+    })
     expect(result.current.aux).toBeNull()
     expect(result.current.selectedId).toBe('server-1')
 
-    act(() => result.current.back())
+    await act(async () => {
+      await result.current.back()
+    })
     expect(result.current.selectedId).toBeNull()
+  })
+
+  it('reclaims the history level when a dirty draft vetoes Back', async () => {
+    const rafCallbacks: FrameRequestCallback[] = []
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      rafCallbacks.push(callback)
+      return rafCallbacks.length
+    })
+    const beforeLeave = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useMasterDetail({ beforeLeave }))
+
+    await act(async () => {
+      result.current.openItem('provider-1')
+      await Promise.resolve()
+    })
+    beforeLeave.mockClear()
+    beforeLeave.mockResolvedValue(false)
+    const mockedHistory = vi.mocked(useHistoryLevel)
+    const dismiss = mockedHistory.mock.calls.at(-1)?.[1]
+    expect(mockedHistory.mock.calls.at(-1)?.[0]).toBe(true)
+
+    await act(async () => {
+      dismiss?.()
+      await Promise.resolve()
+    })
+    expect(beforeLeave).toHaveBeenCalledOnce()
+    expect(result.current.selectedId).toBe('provider-1')
+    expect(mockedHistory.mock.calls.at(-1)?.[0]).toBe(false)
+
+    act(() => rafCallbacks.shift()?.(0))
+    expect(mockedHistory.mock.calls.at(-1)?.[0]).toBe(true)
   })
 })

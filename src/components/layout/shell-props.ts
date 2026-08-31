@@ -1,4 +1,5 @@
 import type { SettingsTab } from '@/components/settings/tabs'
+import type { InitialTurnDraft } from '@/components/chat/conversation-draft'
 import type { Conversation, Project } from '@/types'
 
 /**
@@ -24,20 +25,20 @@ export interface ShellProps {
   activeProjectId: string | null
   page: Page
   settingsTab: SettingsTab
-  pendingMessage: string | null
+  pendingDraft: InitialTurnDraft | null
   /** Title for the header, already resolved from the active conversation. */
   headerTitle: string
   canDragWindow: boolean
 
   onSelect: (id: string) => void
-  onCreate: () => void
+  onCreate: () => void | Promise<void>
   onDelete: (id: string) => void
   onRename: (id: string, newTitle: string) => void
   onTogglePin: (id: string) => void
   /** Refile a conversation under another project, or under none (`null`). */
   onMoveToProject: (id: string, projectId: string | null) => Promise<string | null>
   onSelectProject: (id: string | null) => void
-  onCreateProject: (name: string, path: string) => void
+  onCreateProject: (name: string, path: string) => void | Promise<void>
   /** Start a hosted Claude Code session. Resolves to why it failed, or `null`. */
   onCreateHostedSession: (cwd: string) => Promise<string | null>
   onDeleteProject: (id: string) => void
@@ -45,6 +46,6 @@ export interface ShellProps {
   onOpenSettings: () => void
   onCloseSettings: () => void
   onSettingsTabChange: (tab: SettingsTab) => void
-  onCreateWithMessage: (text: string) => void
-  onInitialMessageConsumed: () => void
+  onCreateWithDraft: (draft: InitialTurnDraft) => Promise<void>
+  onInitialDraftConsumed: () => void
 }

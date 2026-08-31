@@ -34,6 +34,94 @@ export interface WorkspaceFileContent {
   binary: boolean
 }
 
+export interface WorkspaceReferenceInput {
+  path: string
+  line_start?: number | null
+  line_end?: number | null
+}
+
+export interface WorkspaceReferenceSuggestion {
+  path: string
+  name: string
+  is_dir: boolean
+}
+
+export interface WorkspaceReferencePreview {
+  kind: 'project_file' | 'project_directory'
+  path: string
+  content: string
+  line_start: number | null
+  line_end: number | null
+  byte_count: number
+  line_count: number
+  token_count: number
+  truncated: boolean
+}
+
+/** Metadata-only result used to distinguish real workspace paths from prose. */
+export interface WorkspaceReferenceProbe {
+  kind: 'project_file' | 'project_directory'
+  path: string
+}
+
+export interface MessageContextDescriptor {
+  id: string
+  position: number
+  kind: 'project_file' | 'project_directory' | 'shell_output'
+  display_path: string | null
+  line_start: number | null
+  line_end: number | null
+  byte_count: number
+  line_count: number
+  token_count: number
+  truncated: boolean
+}
+
+export interface MessageContextContent {
+  descriptor: MessageContextDescriptor
+  content: string
+  /** JSON owned by the context kind. Shell results use it for exit/cwd/status;
+   *  file snapshots use it only for original size/count metadata. */
+  metadata: string | null
+}
+
+export type CommandTurnStatus = 'completed' | 'sandbox_denied' | 'timed_out' | 'cancelled' | 'failed' | 'in_doubt'
+
+/** The structured result of a literal `!` command. The model is not queried;
+ *  the result is persisted as user-provided context for a later prompt. */
+export interface CommandTurnOutcome {
+  conversation_id: string
+  turn_id: string
+  message_id: string
+  status: CommandTurnStatus
+  stdout: string
+  stderr: string
+  exit_code: number | null
+  timed_out: boolean
+  truncated: boolean
+  /** `host`, `windows_restricted_token`, `container`, or `unknown`. */
+  sandbox: string
+  duration_ms: number
+  cwd: string
+  host: string
+  error: string | null
+  /** True only for a Windows restricted-token denial. */
+  can_retry_without_sandbox: boolean
+  retry_without_sandbox: boolean
+}
+
+export type UserCommandEvent =
+  | {
+      type: 'start'
+      conversation_id: string
+      turn_id: string
+      message_id: string
+      cwd: string
+      host: string
+      retry_without_sandbox: boolean
+    }
+  | { type: 'finish'; result: CommandTurnOutcome }
+
 export type GitFileStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'conflicted'
 
 export interface GitStatusEntry {
@@ -48,6 +136,52 @@ export type GitStatusResult =
 export interface GitDiffResult {
   diff_text: string
   truncated: boolean
+}
+
+/** One contiguous run of lines with one origin. 1-based, inclusive. */
+export interface BlameSpan {
+  start_line: number
+  end_line: number
+  /** `conversation` came from a turn; `inferred` was observed across a
+   *  run_command bracket; `external` is a change nobody here made (or history
+   *  the journal lost); `preexisting` predates the journal. */
+  kind: 'conversation' | 'inferred' | 'external' | 'preexisting'
+  conversation_id: string | null
+  turn_id: string | null
+  origin: string | null
+  model_id: string | null
+  tool_name: string | null
+  timestamp: number | null
+}
+
+export interface BlameResult {
+  /** Sha of the disk content this answer was computed against — re-fetch and
+   *  compare to know the answer aged. */
+  current_sha: string
+  /** `null` = the journal has never seen this file. */
+  head_sha: string | null
+  /** The chain does not reach the file's beginning. */
+  truncated: boolean
+  spans: BlameSpan[]
+}
+
+/** One journalled version of a file, as stored. */
+export interface JournalVersion {
+  id: string
+  file_id: string
+  seq: number
+  op: string
+  observed_old_sha: string | null
+  new_sha: string | null
+  source: string
+  conversation_id: string | null
+  turn_id: string | null
+  project_id: string | null
+  origin: string | null
+  model_id: string | null
+  tool_name: string | null
+  moved_from_version_id: string | null
+  created_at: number
 }
 
 /** Scope/origin/visibility values come from the `memory_enums` command rather
@@ -399,6 +533,44 @@ export interface TurnRecord {
   error: string | null
   started_at: number
   ended_at: number | null
+  /** Aggregated from the immutable audit rows for this run. Optional so a
+   *  frontend can still open snapshots from an older remote host. */
+  usage?: TurnUsageSummary | null
+}
+
+export type TurnPricingStatus = 'exact' | 'estimated' | 'lower_bound' | 'subscription' | 'external' | 'unavailable'
+
+/** The backend-priced usage of one agent-loop run. Cost fields are outputs,
+ *  never rates for the frontend to apply to the token fields. */
+export interface TurnUsageSummary {
+  messages: number
+  /** Replies where the provider supplied none of the token usage fields. */
+  missing_token_usage_messages: number
+  /** Replies missing either input or output token usage. */
+  incomplete_token_usage_messages: number
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  cache_write_tokens: number
+  server_tool_calls: number
+  input_cost: number | null
+  output_cost: number | null
+  cache_cost: number | null
+  tool_cost: number | null
+  total_cost: number | null
+  unpriced_token_messages: number
+  unpriced_input_messages: number
+  unpriced_output_messages: number
+  unpriced_cache_messages: number
+  unpriced_tool_messages: number
+  estimated_token_messages: number
+  estimated_tool_messages: number
+  estimated_messages: number
+  unpriced_messages: number
+  metered_messages: number
+  subscription_messages: number
+  external_messages: number
+  pricing_status: TurnPricingStatus
 }
 
 /** A conversation as of one instant.
@@ -520,7 +692,8 @@ export interface Message {
   /** The message this one answers or follows. Siblings under one parent are
    *  alternative versions of the same step. Null marks a root. */
   parent_id?: string | null
-  /** How the message was produced: null for typed, 'voice' for speech input. */
+  /** How the message was produced: null for typed, `voice` for speech input,
+   *  `shell` for a literal user-authored `!` command. */
   source?: string | null
   /** Platform id of whoever sent this, on surfaces where more than one person
    *  can speak. Null on desktop rows, which have a single implicit author, and
@@ -542,6 +715,9 @@ export interface Message {
    *  where the cards are built. Null on every call nothing reviewed, which is
    *  most of them. */
   auto_review?: string | null
+  /** Frozen context bound to this branch. The raw body is fetched separately
+   *  and never travels in an ordinary transcript snapshot. */
+  context_items?: MessageContextDescriptor[]
   _blocks?: ContentBlock[]
 }
 
@@ -1078,15 +1254,43 @@ export interface UsageBucket {
   label: string | null
   /** Replies. Only assistant rows carry tokens, so questions are not counted. */
   messages: number
+  /** Replies included in Meridian's locally priced amount. */
+  metered_messages: number
+  /** Replies covered by a provider subscription rather than per-request pricing. */
+  subscription_messages: number
+  /** Replies whose cost is settled outside Meridian. */
+  external_messages: number
+  /** Replies where the provider supplied none of the token usage fields. */
+  missing_token_usage_messages: number
+  /** Replies missing either input or output token usage. */
+  incomplete_token_usage_messages: number
   input_tokens: number
   output_tokens: number
   cache_read_tokens: number
   cache_write_tokens: number
+  /** Already-priced uncached prompt cost, computed by the backend. */
+  input_cost: number
+  /** Already-priced completion cost, computed by the backend. */
+  output_cost: number
+  /** Already-priced cache read/write cost, computed by the backend. */
+  cache_cost: number
+  /** Already-priced provider-hosted tool cost, computed by the backend. */
+  tool_cost: number
   cost: number
+  /** Replies with an unknown token component (usage or price). */
+  unpriced_token_messages: number
+  /** Replies with provider-tool calls whose rate is unknown. */
+  unpriced_tool_messages: number
+  /** Replies priced from today's token rates because their historical snapshot is absent. */
+  estimated_token_messages: number
+  /** Replies priced from today's tool rate because their historical snapshot is absent. */
+  estimated_tool_messages: number
+  /** Union of the two component estimate counts above. */
+  estimated_messages: number
   /**
-   * Replies produced by a model nobody has priced. Their tokens are in the
-   * counts above but their cost is in nobody's total, so a view that shows
-   * `cost` without showing this is claiming a bill it cannot support.
+   * Replies with incomplete metered usage or pricing. Known counts and priced
+   * components remain above; unknown parts are absent, so a view that shows
+   * `cost` without this state is claiming a complete bill it cannot support.
    */
   unpriced_messages: number
 }

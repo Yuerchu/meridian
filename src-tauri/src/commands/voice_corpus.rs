@@ -76,12 +76,21 @@ pub async fn set_voice_optout(app: tauri::AppHandle, sender_id: String, enabled:
     let services = app.services();
     let pool = services.db.clone();
     let corpus = services.corpus.clone();
+    #[cfg(not(target_os = "android"))]
     let config = meridian_core::onebot::load_config(&services.db);
     tokio::task::spawn_blocking(move || manage::set_optout(&pool, &corpus, &sender_id, enabled))
         .await
         .map_err(|e| e.to_string())??;
     // 名单立刻生效，不等下一次重启——这是一个人刚刚说的"别录我"。
-    meridian_core::onebot::refresh_voice_policy(&services, &config).await
+    #[cfg(not(target_os = "android"))]
+    {
+        meridian_core::onebot::refresh_voice_policy(&services, &config).await
+    }
+    // Android 没有 OneBot 采集者；写入持久名单就已经是完整操作。
+    #[cfg(target_os = "android")]
+    {
+        Ok(())
+    }
 }
 
 /// "把我的声音删掉，以后也别再录。"
@@ -93,11 +102,15 @@ pub async fn set_voice_optout(app: tauri::AppHandle, sender_id: String, enabled:
 pub async fn forget_voice_sender(app: tauri::AppHandle, sender_id: String) -> Result<DeleteReport, String> {
     let services = app.services();
     let data_dir = services.paths.data_dir.clone();
+    #[cfg(not(target_os = "android"))]
     let config = meridian_core::onebot::load_config(&services.db);
+    #[cfg(not(target_os = "android"))]
     let refresh = || {
         let services = services.clone();
         async move { meridian_core::onebot::refresh_voice_policy(&services, &config).await }
     };
+    #[cfg(target_os = "android")]
+    let refresh = || async { Ok::<(), String>(()) };
     manage::forget_sender(&services.db, &data_dir, &services.corpus, &sender_id, refresh).await
 }
 

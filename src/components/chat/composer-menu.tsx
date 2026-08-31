@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Bulb,
@@ -14,7 +14,8 @@ import {
 } from '@gravity-ui/icons'
 import { ModelIcon } from '@/components/ui/model-icon'
 
-import { Button, Popover, Spinner, Switch, Tooltip } from '@heroui/react'
+import { Button, Popover, Spinner, Tooltip } from '@heroui/react'
+import { CellSwitch } from '@heroui-pro/react/cell-switch'
 
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
@@ -126,6 +127,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
   const [hovered, setHovered] = useState<string | null>(null)
   const [groups, setGroups] = useState<GroupedModels[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
+  const detailPanelId = useId()
   const modelsLoaded = groups.length > 0
 
   const currentAssistant = props.assistants.find((a) => a.id === props.currentAssistantId)
@@ -313,7 +315,8 @@ export function ComposerMenu(props: ComposerMenuProps) {
           fit — on a 360px phone the model list was shifted clean off the screen
           edge rather than narrowed. */}
       <Popover.Content placement="top start" className="w-auto max-w-[calc(100vw-2rem)] overflow-hidden p-0">
-        {/* Fixed height, each column scrolling on its own.
+        <Popover.Dialog aria-label={t('composer.menu')} className="p-0">
+          {/* Fixed height, each column scrolling on its own.
             The popup opens upwards, so its bottom edge is pinned to the trigger
             and any growth pushes the top up — a right column taller than the
             left would slide the row out from under the cursor, and the menu
@@ -322,168 +325,190 @@ export function ComposerMenu(props: ComposerMenuProps) {
             column to the left one only moves the problem: both columns grow as
             features are added. A constant is the one thing neither side can
             push around. */}
-        {/* `max-h` rather than `h`: on a phone turned sideways the viewport is
+          {/* `max-h` rather than `h`: on a phone turned sideways the viewport is
             around 360px tall and a fixed 288px panel left nothing above it, so
             the popover's own limit clipped the bottom rows off a column that
             could not shrink to meet it. */}
-        <div data-slot="composer-menu-panels" className="flex h-72 max-h-[min(18rem,60svh)]">
-          <div data-slot="composer-menu-list" className="w-56 shrink-0 overflow-y-auto p-1">
-            {entries.map((entry) => {
-              const Icon = entry.icon
-              const isHovered = hovered === entry.key
-              const expandable = Boolean(entry.options || entry.loading)
-              const isToggle = entry.checked !== undefined
-              return (
-                // A plain button rather than the component: these rows are
-                // menu items and say so with `role="switch"`, which React Aria's
-                // Button will not surrender — it owns `role` and fixes it to
-                // "button". The visual weight was coming from the className
-                // below in any case.
-                // eslint-disable-next-line no-restricted-syntax -- role="switch" is unreachable through a React Aria Button
-                <button
-                  key={entry.key}
-                  type="button"
-                  data-slot="composer-menu-item"
-                  onMouseEnter={() => setHovered(entry.key)}
-                  onFocus={() => setHovered(entry.key)}
-                  role={isToggle ? 'switch' : undefined}
-                  aria-checked={isToggle ? entry.checked : undefined}
-                  onClick={() => {
-                    if (entry.onSelect) {
-                      entry.onSelect()
-                      // A toggle stays put: flipping two switches in a row is a
-                      // normal thing to want, and closing after each one would
-                      // make the menu fight the user for it.
-                      if (!isToggle) close()
-                      return
-                    }
-                    // A row with children toggles the column rather than
-                    // choosing anything — there is nothing here to choose yet.
-                    setHovered((prev) => (prev === entry.key ? null : entry.key))
-                  }}
-                  className={cn(
-                    // `rounded-2xl` is what `.menu-item` uses for a row sitting
-                    // in a `p-1` list inside the 24px popover: at `rounded-md`
-                    // the popover's own curve cuts into the first and last row's
-                    // hover fill.
-                    'flex w-full items-center justify-start gap-2 rounded-2xl px-1.5 py-1 text-left text-sm font-normal outline-none',
-                    'focus-visible:ring-3 focus-visible:ring-focus/50',
-                    isHovered
-                      ? 'bg-default text-default-foreground'
-                      : 'text-muted hover:bg-default/50 hover:text-foreground',
-                  )}
-                >
-                  <Icon
-                    className={cn(
-                      'size-4 shrink-0',
-                      entry.tone === 'warning' && 'text-warning-soft-foreground',
-                      entry.tone === 'info' && 'text-info-soft-foreground',
-                    )}
-                  />
-                  <span data-slot="composer-menu-item-label" className="flex-1 text-left truncate">
-                    {entry.label}
-                  </span>
-                  {entry.value && (
-                    <span
-                      data-slot="composer-menu-item-value"
-                      className={cn(
-                        'text-xs truncate max-w-[88px]',
-                        entry.tone === 'warning'
-                          ? 'text-warning-soft-foreground'
-                          : entry.tone === 'info'
-                            ? 'text-info-soft-foreground'
-                            : 'text-muted',
-                      )}
-                    >
-                      {entry.value}
-                    </span>
-                  )}
-                  {isToggle && (
-                    // The row owns the interaction, so the switch is decoration
-                    // with a state: letting it take pointer events too would
-                    // fire the handler twice on the switch and once elsewhere.
-                    // `inert` says all of that at once — not focusable, not
-                    // clickable, not in the accessibility tree — which a switch
-                    // nested inside a button has to be anyway.
-                    // `data-selected` only ever lands on the Switch root, so the
-                    // track is coloured through the custom property the
-                    // component publishes for it rather than a class on the
-                    // control, which would match nothing.
-                    <Switch
-                      inert
-                      isReadOnly
+          <div data-slot="composer-menu-panels" className="flex h-72 max-h-[min(18rem,60svh)]">
+            <div data-slot="composer-menu-list" className="w-56 shrink-0 overflow-y-auto p-1">
+              {entries.map((entry) => {
+                const Icon = entry.icon
+                const isHovered = hovered === entry.key
+                const expandable = Boolean(entry.options || entry.loading)
+                const isToggle = entry.checked !== undefined
+
+                if (isToggle) {
+                  return (
+                    <CellSwitch
+                      key={entry.key}
+                      data-slot="composer-menu-item"
+                      aria-label={entry.label}
                       size="sm"
                       isSelected={entry.checked}
-                      className="[--switch-control-bg-checked:var(--warning)]"
+                      onChange={() => entry.onSelect?.()}
+                      onMouseEnter={() => setHovered(entry.key)}
+                      onFocus={() => setHovered(entry.key)}
+                      className="w-full [--switch-control-bg-checked:var(--warning)]"
                     >
-                      <Switch.Content>
-                        <Switch.Control>
-                          <Switch.Thumb />
-                        </Switch.Control>
-                      </Switch.Content>
-                    </Switch>
-                  )}
-                  {expandable && <ChevronRight className="size-4 shrink-0 text-muted" />}
-                </button>
-              )
-            })}
-          </div>
-
-          {showSubPanel && (
-            // `min-w-0` and a basis rather than a hard `w-60`: with the panel
-            // capped to the viewport above, a fixed second column simply pushed
-            // itself past the clipped edge. It keeps its 240px wherever there is
-            // room, and gives ground first when there is not — the list on the
-            // left is the part you navigate by.
-            <div
-              data-slot="composer-menu-detail"
-              className="min-w-0 flex-1 basis-60 overflow-hidden border-l border-border"
-            >
-              <div className="h-full overflow-y-auto p-1">
-                {hoveredEntry?.loading ? (
-                  <div className="flex items-center justify-center py-6">
-                    <Spinner className="size-4" />
-                  </div>
-                ) : (
-                  hoveredEntry?.options?.map((opt, i) => {
-                    const heading = opt.group && opt.group !== hoveredEntry.options?.[i - 1]?.group ? opt.group : null
-                    return (
-                      <div key={opt.value}>
-                        {heading && (
-                          <div data-slot="composer-menu-detail-heading" className="px-1.5 pt-2 pb-1 text-xs text-muted">
-                            {heading}
-                          </div>
+                      <CellSwitch.Trigger
+                        className={cn(
+                          'h-auto min-h-8 gap-2 rounded-2xl border-0 bg-transparent px-1.5 py-1 shadow-none',
+                          isHovered
+                            ? 'bg-default text-default-foreground'
+                            : 'text-muted hover:bg-default/50 hover:text-foreground',
                         )}
-                        <Button
-                          data-slot="composer-menu-detail-item"
-                          variant="ghost"
-                          onClick={() => {
-                            opt.onSelect()
-                            close()
-                          }}
+                      >
+                        <Icon
                           className={cn(
-                            'w-full h-auto justify-start gap-2 rounded-2xl px-1.5 py-1 text-sm font-normal',
-                            opt.selected
-                              ? 'bg-default text-default-foreground'
-                              : 'text-muted hover:bg-default/50 hover:text-foreground',
+                            'size-4 shrink-0',
+                            entry.tone === 'warning' && 'text-warning-soft-foreground',
+                            entry.tone === 'info' && 'text-info-soft-foreground',
                           )}
+                        />
+                        <CellSwitch.Label
+                          data-slot="composer-menu-item-label"
+                          className="text-left text-sm font-normal text-inherit"
                         >
-                          {opt.icon && <span className="shrink-0">{opt.icon}</span>}
-                          <span className="flex-1 min-w-0 text-left">
-                            <span className="block truncate">{opt.label}</span>
-                            {opt.description && (
-                              <span className="block truncate text-xs text-muted">{opt.description}</span>
-                            )}
-                          </span>
-                        </Button>
-                      </div>
-                    )
-                  })
-                )}
-              </div>
+                          {entry.label}
+                        </CellSwitch.Label>
+                        <CellSwitch.Control />
+                      </CellSwitch.Trigger>
+                    </CellSwitch>
+                  )
+                }
+
+                return (
+                  // This is a plain button because these compact rows sit inside
+                  // a two-column picker. Boolean rows above use Pro CellSwitch so
+                  // the entire row has native switch semantics.
+                  // eslint-disable-next-line no-restricted-syntax -- the compact picker row owns this deliberately flattened layout
+                  <button
+                    key={entry.key}
+                    type="button"
+                    data-slot="composer-menu-item"
+                    aria-label={entry.value ? `${entry.label}: ${entry.value}` : entry.label}
+                    aria-expanded={expandable ? isHovered : undefined}
+                    aria-controls={expandable ? detailPanelId : undefined}
+                    onMouseEnter={() => setHovered(entry.key)}
+                    onFocus={() => setHovered(entry.key)}
+                    onClick={() => {
+                      if (entry.onSelect) {
+                        entry.onSelect()
+                        close()
+                        return
+                      }
+                      // A row with children toggles the column rather than
+                      // choosing anything — there is nothing here to choose yet.
+                      // Focus and pointer entry already select this row before
+                      // click. Toggling here would immediately close the panel
+                      // a keyboard or click just opened.
+                      setHovered(entry.key)
+                    }}
+                    className={cn(
+                      // `rounded-2xl` is what `.menu-item` uses for a row sitting
+                      // in a `p-1` list inside the 24px popover: at `rounded-md`
+                      // the popover's own curve cuts into the first and last row's
+                      // hover fill.
+                      'flex w-full items-center justify-start gap-2 rounded-2xl px-1.5 py-1 text-left text-sm font-normal outline-none',
+                      'focus-visible:ring-3 focus-visible:ring-focus/50',
+                      isHovered
+                        ? 'bg-default text-default-foreground'
+                        : 'text-muted hover:bg-default/50 hover:text-foreground',
+                    )}
+                  >
+                    <Icon
+                      className={cn(
+                        'size-4 shrink-0',
+                        entry.tone === 'warning' && 'text-warning-soft-foreground',
+                        entry.tone === 'info' && 'text-info-soft-foreground',
+                      )}
+                    />
+                    <span data-slot="composer-menu-item-label" className="flex-1 text-left truncate">
+                      {entry.label}
+                    </span>
+                    {entry.value && (
+                      <span
+                        data-slot="composer-menu-item-value"
+                        className={cn(
+                          'text-xs truncate max-w-[88px]',
+                          entry.tone === 'warning'
+                            ? 'text-warning-soft-foreground'
+                            : entry.tone === 'info'
+                              ? 'text-info-soft-foreground'
+                              : 'text-muted',
+                        )}
+                      >
+                        {entry.value}
+                      </span>
+                    )}
+                    {expandable && <ChevronRight className="size-4 shrink-0 text-muted" />}
+                  </button>
+                )
+              })}
             </div>
-          )}
-        </div>
+
+            {showSubPanel && (
+              // `min-w-0` and a basis rather than a hard `w-60`: with the panel
+              // capped to the viewport above, a fixed second column simply pushed
+              // itself past the clipped edge. It keeps its 240px wherever there is
+              // room, and gives ground first when there is not — the list on the
+              // left is the part you navigate by.
+              <div
+                id={detailPanelId}
+                data-slot="composer-menu-detail"
+                className="min-w-0 flex-1 basis-60 overflow-hidden border-l border-border"
+              >
+                <div className="h-full overflow-y-auto p-1">
+                  {hoveredEntry?.loading ? (
+                    <div className="flex items-center justify-center py-6">
+                      <Spinner className="size-4" />
+                    </div>
+                  ) : (
+                    hoveredEntry?.options?.map((opt, i) => {
+                      const heading = opt.group && opt.group !== hoveredEntry.options?.[i - 1]?.group ? opt.group : null
+                      return (
+                        <div key={opt.value}>
+                          {heading && (
+                            <div
+                              data-slot="composer-menu-detail-heading"
+                              className="px-1.5 pt-2 pb-1 text-xs text-muted"
+                            >
+                              {heading}
+                            </div>
+                          )}
+                          <Button
+                            data-slot="composer-menu-detail-item"
+                            aria-label={opt.label}
+                            aria-pressed={opt.selected}
+                            variant="ghost"
+                            onPress={() => {
+                              opt.onSelect()
+                              close()
+                            }}
+                            className={cn(
+                              'w-full h-auto justify-start gap-2 rounded-2xl px-1.5 py-1 text-sm font-normal',
+                              opt.selected
+                                ? 'bg-default text-default-foreground'
+                                : 'text-muted hover:bg-default/50 hover:text-foreground',
+                            )}
+                          >
+                            {opt.icon && <span className="shrink-0">{opt.icon}</span>}
+                            <span className="flex-1 min-w-0 text-left">
+                              <span className="block truncate">{opt.label}</span>
+                              {opt.description && (
+                                <span className="block truncate text-xs text-muted">{opt.description}</span>
+                              )}
+                            </span>
+                          </Button>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </Popover.Dialog>
       </Popover.Content>
     </Popover>
   )

@@ -44,7 +44,14 @@ const EPSILON = 0.5
  * has to outlast a smooth scroll rather than time one.
  */
 const AUTOSCROLL_TIMEOUT_MS = 1000
-const SCROLL_KEYS = new Set(['ArrowDown', 'ArrowUp', 'End', 'Home', 'PageDown', 'PageUp', ' '])
+const SCROLL_AWAY_KEYS = new Set(['ArrowUp', 'Home', 'PageUp'])
+
+export function resolveScrollBehavior(behavior: ScrollBehavior): ScrollBehavior {
+  if (behavior !== 'smooth' || typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return behavior
+  }
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : behavior
+}
 
 export type ScrollAlign = 'start' | 'center' | 'end' | 'nearest'
 export type DefaultScrollPosition = 'start' | 'end' | 'last-anchor'
@@ -195,13 +202,6 @@ function lastAnchorOf(items: HTMLElement[]): HTMLElement | null {
   return null
 }
 
-function firstAnchorFrom(items: HTMLElement[], from: number): HTMLElement | null {
-  for (let i = from; i < items.length; i++) {
-    if (items[i].dataset.scrollAnchor === 'true') return items[i]
-  }
-  return null
-}
-
 function firstVisibleItem(content: HTMLElement, spacer: HTMLElement | null, viewport: HTMLElement): HTMLElement | null {
   const bounds = viewport.getBoundingClientRect()
   for (const item of itemsOf(content, spacer)) {
@@ -256,6 +256,15 @@ export interface MessageScrollerProviderProps {
   children?: React.ReactNode
   /** Follow the live edge while the reader is at it. */
   autoScroll?: boolean
+  /**
+   * A product-level signal that a new live turn has started.
+   *
+   * When supplied, changing to a non-null value re-arms follow and DOM append
+   * heuristics no longer do so. That distinction matters for transcripts:
+   * loading or switching to a longer branch also appends anchored rows, but it
+   * is not permission to move a reader. Use a signal stable across row re-keys.
+   */
+  followKey?: React.Key | null
   /** Where a transcript opens, applied once on the first non-empty render. */
   defaultScrollPosition?: DefaultScrollPosition
   /** Distance from an edge that still counts as being at it. */
@@ -269,6 +278,7 @@ export interface MessageScrollerProviderProps {
 function useScrollerState({
   autoScroll = false,
   defaultScrollPosition = 'end',
+  followKey,
   scrollEdgeThreshold = DEFAULT_EDGE_THRESHOLD,
   scrollMargin = DEFAULT_SCROLL_MARGIN,
   scrollPreviousItemPeek = DEFAULT_PREVIOUS_ITEM_PEEK,
@@ -290,12 +300,20 @@ function useScrollerState({
   }, [autoScroll, scrollEdgeThreshold, scrollMargin, scrollPreviousItemPeek])
 
   const modeRef = React.useRef<ScrollMode>(autoScroll ? 'follow' : 'idle')
+  // `undefined` is also the uncontrolled sentinel. A non-null key on mount is
+  // therefore a real instruction: opening a conversation whose answer is
+  // already streaming should land on, and keep following, its live edge.
+  const followKeyRef = React.useRef<React.Key | null | undefined>(undefined)
+  const hasFollowKeyRef = React.useRef(followKey !== undefined)
+  hasFollowKeyRef.current = followKey !== undefined
   const itemCountRef = React.useRef(0)
   const firstItemRef = React.useRef<HTMLElement | null>(null)
+  const lastAnchorRef = React.useRef<HTMLElement | null>(null)
   const messageElementsRef = React.useRef(new Map<string, HTMLElement>())
   const trackedMessagesRef = React.useRef(new Set<string>())
   const visibleMessageIdsRef = React.useRef(new Set<string>())
   const pendingMessageRef = React.useRef<{ messageId: string; options?: ScrollCommandOptions } | null>(null)
+  const pendingHandledBeforeContentRef = React.useRef(false)
   const prependRestoreRef = React.useRef<{ element: HTMLElement; viewportTop: number } | null>(null)
   const preserveScrollOnPrependRef = React.useRef(true)
   const defaultAppliedRef = React.useRef(false)
@@ -479,7 +497,7 @@ function useScrollerState({
       }
       programmaticTargetRef.current = next
       markAutoscrolling(true)
-      viewport.scrollTo({ top: next, behavior })
+      viewport.scrollTo({ top: next, behavior: resolveScrollBehavior(behavior) })
       // `lastScrollTop` is deliberately left to the scroll event. Writing the
       // target here would make a smooth scroll look like it was travelling
       // backwards on its way there, and reading the transcript as the reader
@@ -611,8 +629,11 @@ function useScrollerState({
         // `onlyWhenAbove` target that is already in view — not that it was lost.
         return scrollToElement(element, options)
       }
-      // A permalink can resolve before the transcript has mounted; queue it once.
-      if (itemCountRef.current === 0) {
+      // A command can resolve while the transcript still only contains an empty
+      // state or another unaddressable decoration. Direct-child count is not a
+      // useful test here: those nodes are rows for layout, but there is no
+      // message a command could have meant yet.
+      if (trackedMessagesRef.current.size === 0) {
         pendingMessageRef.current = { messageId, options }
         defaultAppliedRef.current = true
         return true
@@ -622,15 +643,29 @@ function useScrollerState({
     [scrollToElement],
   )
 
-  const flushPendingMessage = React.useCallback((): boolean => {
-    const pending = pendingMessageRef.current
-    if (!pending) return false
-    const element = messageElementsRef.current.get(pending.messageId)
-    if (!element || !scrollToElement(element, pending.options)) return false
-    pendingMessageRef.current = null
-    defaultAppliedRef.current = true
-    return true
-  }, [scrollToElement])
+  const flushPendingMessage = React.useCallback(
+    (beforeContentChange = false): boolean => {
+      const pending = pendingMessageRef.current
+      if (!pending) return false
+      const element = messageElementsRef.current.get(pending.messageId)
+      const content = contentRef.current
+      const viewport = viewportRef.current
+      if (!element || !content || !viewport || !content.contains(element)) return false
+
+      // Consume the command even when `onlyWhenAbove` declines to move. Keeping
+      // it pending would turn a one-shot request into a trap: a later reflow could
+      // move the target above the reading line and unexpectedly fire it then.
+      pendingMessageRef.current = null
+      defaultAppliedRef.current = true
+      pendingHandledBeforeContentRef.current = beforeContentChange
+      if (!scrollToElement(element, pending.options)) {
+        commitScrollState()
+        syncVisibility()
+      }
+      return true
+    },
+    [commitScrollState, scrollToElement, syncVisibility],
+  )
 
   const applyDefaultPosition = React.useCallback((): boolean => {
     if (defaultAppliedRef.current || itemCountRef.current === 0) return false
@@ -684,24 +719,57 @@ function useScrollerState({
   /* -- lifecycle -------------------------------------------------------- */
 
   const applyContentChange = React.useCallback(
-    (items: HTMLElement[], previousCount: number, previousFirst: HTMLElement | null) => {
+    (
+      items: HTMLElement[],
+      previousCount: number,
+      previousFirst: HTMLElement | null,
+      previousLastAnchor: HTMLElement | null,
+      nextLastAnchor: HTMLElement | null,
+    ) => {
+      // Refs attach before the content observer runs. If registering the target
+      // already executed a queued command, this mutation is the same update and
+      // must not immediately override it as a newly appended turn.
+      if (pendingHandledBeforeContentRef.current) {
+        pendingHandledBeforeContentRef.current = false
+        commitScrollState()
+        syncVisibility()
+        return
+      }
       if (flushPendingMessage()) return
+      // If the first real batch mounted without the queued target, it is not in
+      // this transcript. Drop the stale command and honour the normal opening
+      // position instead of leaving the conversation at scrollTop=0 forever.
+      if (pendingMessageRef.current && trackedMessagesRef.current.size > 0) {
+        pendingMessageRef.current = null
+        defaultAppliedRef.current = false
+        if (applyDefaultPosition()) return
+      }
       if (previousCount === 0) {
         if (applyDefaultPosition()) return
         commitScrollState()
         syncVisibility()
         return
       }
-      // Older rows arriving above the transcript must not move what is on screen.
       const previousIndex = previousFirst ? items.indexOf(previousFirst) : -1
-      if (preserveScrollOnPrependRef.current && previousIndex > 0) {
-        restorePrepend()
+      const previousAnchorIndex = previousLastAnchor ? items.indexOf(previousLastAnchor) : -1
+      const nextAnchorIndex = nextLastAnchor ? items.indexOf(nextLastAnchor) : -1
+      // A new turn is the one event that overrides the reader: it exists because
+      // they just sent something. Compare surviving anchor elements rather than
+      // child counts: the turn is inserted before trailing status rows, and it
+      // may replace an empty/error row without changing the count at all. A
+      // reload re-key does not qualify because its old anchor is disconnected.
+      const appendedAnchor =
+        !hasFollowKeyRef.current &&
+        nextLastAnchor !== null &&
+        nextLastAnchor !== previousLastAnchor &&
+        (previousLastAnchor ? previousAnchorIndex >= 0 && nextAnchorIndex > previousAnchorIndex : previousIndex <= 0)
+      if (appendedAnchor) {
+        enterFollow()
         return
       }
-      // A new turn is the one event that overrides the reader: it exists because
-      // they just sent something.
-      if (items.length > previousCount && firstAnchorFrom(items, previousCount)) {
-        enterFollow()
+      // Older rows arriving above the transcript must not move what is on screen.
+      if (preserveScrollOnPrependRef.current && previousIndex > 0) {
+        restorePrepend()
         return
       }
       // Everything else — a row re-keyed by a reload, a branch swap, an error
@@ -727,10 +795,13 @@ function useScrollerState({
     const items = itemsOf(content, spacerRef.current)
     const previousCount = itemCountRef.current
     const previousFirst = firstItemRef.current
+    const previousLastAnchor = lastAnchorRef.current
+    const nextLastAnchor = lastAnchorOf(items)
     itemCountRef.current = items.length
     firstItemRef.current = items[0] ?? null
+    lastAnchorRef.current = nextLastAnchor
 
-    applyContentChange(items, previousCount, previousFirst)
+    applyContentChange(items, previousCount, previousFirst, previousLastAnchor, nextLastAnchor)
     rememberPrependAnchor()
   }, [applyContentChange, rememberPrependAnchor])
 
@@ -849,7 +920,7 @@ function useScrollerState({
           observerRef.current?.observe(element)
           syncVisibility()
         }
-        if (pendingMessageRef.current?.messageId === messageId) flushPendingMessage()
+        if (pendingMessageRef.current?.messageId === messageId) flushPendingMessage(true)
         return
       }
       if (previous && messageElementsRef.current.get(messageId) === previous) {
@@ -893,6 +964,12 @@ function useScrollerState({
   React.useLayoutEffect(() => {
     applyDefaultPosition()
   }, [applyDefaultPosition])
+
+  React.useLayoutEffect(() => {
+    if (Object.is(followKeyRef.current, followKey)) return
+    followKeyRef.current = followKey
+    if (followKey != null && autoScrollRef.current) enterFollow()
+  }, [enterFollow, followKey])
 
   React.useLayoutEffect(() => {
     if (autoScroll && modeRef.current === 'follow' && itemCountRef.current > 0) reconcile()
@@ -984,7 +1061,10 @@ function Viewport({
   children,
   onKeyDown,
   onScroll,
+  onTouchCancel,
+  onTouchEnd,
   onTouchMove,
+  onTouchStart,
   onWheel,
   preserveScrollOnPrepend = true,
   ref,
@@ -1002,6 +1082,7 @@ function Viewport({
     viewportRef,
   } = useScrollerContext()
   preserveScrollOnPrependRef.current = preserveScrollOnPrepend
+  const touchYRef = React.useRef<number | null>(null)
 
   const setRef = React.useCallback(
     (el: HTMLDivElement | null) => {
@@ -1023,23 +1104,56 @@ function Viewport({
     <div
       ref={setRef}
       role={role ?? 'region'}
-      aria-label={ariaLabel ?? 'Messages'}
+      aria-label={ariaLabel}
       tabIndex={tabIndex ?? 0}
       onKeyDown={(event) => {
-        if (SCROLL_KEYS.has(event.key)) userScrollIntent()
         onKeyDown?.(event)
+        if (event.defaultPrevented) return
+        const target = event.target
+        const interactive =
+          target instanceof Element &&
+          target !== event.currentTarget &&
+          target.closest(
+            'a[href], button, input, select, textarea, [contenteditable]:not([contenteditable="false"]), [role="button"], [role="checkbox"], [role="combobox"], [role="listbox"], [role="menu"], [role="radio"], [role="slider"], [role="spinbutton"], [role="switch"], [role="tab"], [role="textbox"]',
+          ) !== null
+        if (!interactive && (SCROLL_AWAY_KEYS.has(event.key) || (event.key === ' ' && event.shiftKey))) {
+          userScrollIntent()
+        }
       }}
       onScroll={(event) => {
         syncAfterScroll()
         onScroll?.(event)
       }}
+      onTouchCancel={(event) => {
+        touchYRef.current = null
+        onTouchCancel?.(event)
+      }}
+      onTouchEnd={(event) => {
+        touchYRef.current = null
+        onTouchEnd?.(event)
+      }}
       onTouchMove={(event) => {
-        userScrollIntent()
         onTouchMove?.(event)
+        if (event.defaultPrevented) return
+        const nextY = event.touches[0]?.clientY ?? null
+        const previousY = touchYRef.current
+        touchYRef.current = nextY
+        // A finger moving down moves the transcript away from its live edge.
+        // The opposite gesture is an attempt to reach the edge and must not
+        // disarm follow when the viewport is already there.
+        if (nextY !== null && previousY !== null && nextY > previousY + EPSILON) userScrollIntent()
+      }}
+      onTouchStart={(event) => {
+        onTouchStart?.(event)
+        if (event.defaultPrevented) return
+        touchYRef.current = event.touches[0]?.clientY ?? null
       }}
       onWheel={(event) => {
-        userScrollIntent()
         onWheel?.(event)
+        // Downward overscroll at the live edge emits no scroll event. Treating
+        // every wheel gesture as a departure leaves the next streamed chunk
+        // frozen for someone who was explicitly trying to stay at the bottom.
+        if (!event.defaultPrevented && !event.ctrlKey && event.deltaY < -EPSILON) userScrollIntent()
       }}
       {...props}
     >
@@ -1168,7 +1282,7 @@ function Button({
   type = 'button',
   ...props
 }: MessageScrollerButtonProps) {
-  const { scrollToEnd, scrollToStart, stateStore } = useScrollerContext()
+  const { scrollToEnd, scrollToStart, stateStore, viewportRef } = useScrollerContext()
   const onClickRef = React.useRef(onClick)
   React.useLayoutEffect(() => {
     onClickRef.current = onClick
@@ -1199,9 +1313,9 @@ function Button({
         if (!active) return
         onClickRef.current?.(event)
         if (event.defaultPrevented) return
-        event.currentTarget.blur()
         if (direction === 'start') scrollToStart({ behavior })
         else scrollToEnd({ behavior })
+        viewportRef.current?.focus({ preventScroll: true })
       }}
       render={render}
       {...props}

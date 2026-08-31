@@ -50,7 +50,7 @@ export function CommandPalette({
   onSelectConversation: (id: string) => void
   onSelectProject: (id: string | null) => void
   onOpenSettingsTab: (tab: SettingsTab) => void
-  onCreate: () => void
+  onCreate: () => void | Promise<void>
 }) {
   const { t } = useTranslation()
   const platform = usePlatform()
@@ -116,14 +116,14 @@ export function CommandPalette({
         }}
       >
         <Command.Container size="md">
-          <Command.Dialog inputValue={query} onInputChange={setQuery}>
+          <Command.Dialog aria-label={t('palette.title')} inputValue={query} onInputChange={setQuery}>
             <Command.Header>
               <Command.InputGroup aria-label={t('palette.title')}>
                 <Command.InputGroup.Prefix>
                   <Magnifier />
                 </Command.InputGroup.Prefix>
                 <Command.InputGroup.Input placeholder={t('palette.placeholder')} />
-                <Command.InputGroup.ClearButton />
+                <Command.InputGroup.ClearButton aria-label={t('palette.clearSearch')} />
               </Command.InputGroup>
             </Command.Header>
 

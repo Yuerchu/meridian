@@ -46,8 +46,27 @@ macro_rules! with_all_commands {
                 fast: Option<bool>,
                 mode: Option<String>,
                 voice: Option<bool>,
+                context_refs: Option<Vec<meridian_core::workspace::reference::WorkspaceReferenceInput>>,
             ),
             async commands::chat => stop_chat(conversation_id: String, turn_id: Option<String>),
+            async commands::message => read_message_context_item(conversation_id: String, item_id: String),
+            // A literal command the user typed with `!`. Desktop owns the
+            // process; remote clients may request it on that host. Standalone
+            // Android registers an explicit unavailable stub instead of
+            // failing with an unknown-command transport error.
+            async commands::user_command => run_user_command(
+                conversation_id: String,
+                turn_id: String,
+                command: String,
+                retry_without_sandbox: Option<bool>,
+            ),
+            async commands::user_command => get_user_command_result(
+                conversation_id: String,
+                message_id: String,
+            ),
+            async commands::user_command => active_user_shell_turn(
+                conversation_id: String,
+            ),
 
             // The generic key-value door onto the keychain, and so onto every
             // provider's API key: they are stored under a derived name
@@ -78,14 +97,6 @@ macro_rules! with_all_commands {
                 fast_mode: bool,
             ),
             async commands::conversation => toggle_pin_conversation(id: String),
-            async commands::conversation => set_conversation_project(
-                id: String,
-                project_id: Option<String>,
-            ),
-            async commands::conversation => search_conversations(
-                query: String,
-                limit: Option<u32>,
-            ),
             async commands::conversation => delete_conversation(id: String),
             async commands::conversation => compact(
                 conversation_id: String,
@@ -191,6 +202,22 @@ macro_rules! with_all_commands {
             async commands::workspace => workspace_root(conversation_id: String),
             async commands::workspace => workspace_tree(conversation_id: String, dir: Option<String>),
             async commands::workspace => workspace_read_file(conversation_id: String, rel_path: String),
+            async commands::workspace => workspace_suggest_refs(
+                conversation_id: Option<String>,
+                project_id: Option<String>,
+                query: String,
+                limit: Option<usize>
+            ),
+            async commands::workspace => workspace_resolve_ref(
+                conversation_id: Option<String>,
+                project_id: Option<String>,
+                reference: meridian_core::workspace::reference::WorkspaceReferenceInput
+            ),
+            async commands::workspace => workspace_probe_ref(
+                conversation_id: Option<String>,
+                project_id: Option<String>,
+                path: String
+            ),
             async commands::workspace => workspace_git_status(conversation_id: String),
             async commands::workspace => workspace_git_diff(conversation_id: String, rel_path: Option<String>),
             // Runs the user's configured editor command — a program launch, so
@@ -200,6 +227,13 @@ macro_rules! with_all_commands {
                 rel_path: String,
                 line: Option<u32>,
             ),
+
+            // The journal's read side: per-line attribution and file history.
+            // Read-only, and not `local` for the workspace commands' reason —
+            // remote mode asks about the host's record.
+            async commands::journal => journal_blame(conversation_id: String, rel_path: String),
+            async commands::journal => journal_file_history(conversation_id: String, rel_path: String),
+            async commands::journal => journal_version_content(version_id: String),
 
             async commands::conversation => list_conversations_by_project(
                 project_id: String,
@@ -344,7 +378,12 @@ macro_rules! with_all_commands {
             #[cfg(not(target_os = "android"))]
             async commands::acp => acp_open_session(cwd: String),
             #[cfg(not(target_os = "android"))]
-            async commands::acp => acp_send(conversation_id: String, message: String, turn_id: Option<String>),
+            async commands::acp => acp_send(
+                conversation_id: String,
+                message: String,
+                turn_id: Option<String>,
+                context_refs: Option<Vec<meridian_core::workspace::reference::WorkspaceReferenceInput>>
+            ),
             // Not `local`, for the same reason `acp_open_session` is not: that
             // row already lets a remote caller start an adapter in a directory
             // it chose. Listing what sessions exist and taking one over are the
@@ -394,6 +433,7 @@ macro_rules! with_all_commands {
                 conversation_id: String,
                 content: String,
                 delivery: String,
+                context_refs: Option<Vec<meridian_core::workspace::reference::WorkspaceReferenceInput>>,
             ),
             async commands::queue => queue_remove(conversation_id: String, id: String),
             async commands::queue => queue_reorder(conversation_id: String, ids: Vec<String>),

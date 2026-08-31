@@ -40,6 +40,9 @@ pub struct MessageDto {
     /// able to say who denied it and why — a reload that lost the reason would
     /// leave the model's refusal looking like its own choice.
     pub auto_review: Option<String>,
+    /// Descriptors only. Raw file snapshots and command output stay behind the
+    /// provider/preview boundary.
+    pub context_items: Vec<db::models::message_context_item::MessageContextDescriptor>,
 }
 
 impl From<Message> for MessageDto {
@@ -71,7 +74,15 @@ impl From<Message> for MessageDto {
             cache_write_tokens: row.cache_write_tokens,
             provider_name: row.provider_name,
             auto_review: row.auto_review,
+            context_items: Vec::new(),
         }
+    }
+}
+
+impl MessageDto {
+    fn with_context_items(mut self, items: Vec<db::models::message_context_item::MessageContextItem>) -> Self {
+        self.context_items = items.into_iter().map(|item| item.descriptor()).collect();
+        self
     }
 }
 
@@ -90,6 +101,53 @@ pub struct MessageTree {
     pub branches: Vec<db::ops::message::BranchPoint>,
 }
 
+#[derive(serde::Serialize)]
+pub struct MessageContextContent {
+    pub descriptor: db::models::message_context_item::MessageContextDescriptor,
+    pub content: String,
+    pub metadata: Option<String>,
+}
+
+/// Read raw context only while its owning message is on this conversation's
+/// active branch. Knowing an item UUID is not authority to read a sibling's
+/// repository snapshot or command output.
+#[tauri::command]
+pub async fn read_message_context_item(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    item_id: String,
+) -> Result<MessageContextContent, String> {
+    let pool = app.services().db.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        conn.transaction::<_, diesel::result::Error, _>(|conn| {
+            let conv = db::ops::conversation::get_conversation(conn, &conversation_id)?;
+            let history = db::ops::message::list_messages(conn, &conversation_id)?;
+            let active = db::ops::message::active_context(&history, conv.head_message_id.as_deref());
+            let active_ids = active.path.into_iter().map(|row| row.id).collect::<Vec<_>>();
+            let mut rows = db::ops::message_context_item::list_for_messages(conn, &active_ids)?
+                .into_values()
+                .flatten()
+                .filter(|item| item.id == item_id);
+            let item = rows.next().ok_or(diesel::result::Error::NotFound)?;
+            Ok(MessageContextContent {
+                descriptor: item.descriptor(),
+                content: item.content,
+                metadata: item.metadata,
+            })
+        })
+        .map_err(|e| {
+            if matches!(e, diesel::result::Error::NotFound) {
+                "context item is not on the active conversation branch".to_string()
+            } else {
+                e.to_string()
+            }
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 fn read_tree_with_conversation(
     conn: &mut db::PooledConn,
     conversation_id: &str,
@@ -99,7 +157,16 @@ fn read_tree_with_conversation(
     let ctx = db::ops::message::active_context(&history, conv.head_message_id.as_deref());
     let branches = db::ops::message::branch_points(&history, &ctx.path);
     let head_message_id = ctx.head_id.clone();
-    let mut messages = ctx.path.into_iter().map(MessageDto::from).collect::<Vec<_>>();
+    let ids = ctx.path.iter().map(|row| row.id.clone()).collect::<Vec<_>>();
+    let mut context_items = db::ops::message_context_item::list_for_messages(conn, &ids).map_err(|e| e.to_string())?;
+    let mut messages = ctx
+        .path
+        .into_iter()
+        .map(|row| {
+            let items = context_items.remove(&row.id).unwrap_or_default();
+            MessageDto::from(row).with_context_items(items)
+        })
+        .collect::<Vec<_>>();
     messages.extend(ctx.summary.map(MessageDto::from));
     Ok((
         conv,
@@ -131,6 +198,10 @@ pub struct TurnView {
     pub error: Option<String>,
     pub started_at: i64,
     pub ended_at: Option<i64>,
+    /// Durable, audit-backed cost for this turn. `None` means no billed audit
+    /// row carried this turn id; pricing status inside distinguishes an exact
+    /// local zero from subscription/external/unavailable cost.
+    pub usage: Option<db::ops::usage::TurnUsageSummary>,
 }
 
 /// A delegated run as the card on the parent's turn needs it.
@@ -363,10 +434,12 @@ fn read_snapshot(conn: &mut db::PooledConn, conversation_id: &str, live: &OwnedL
     conn.transaction::<_, diesel::result::Error, _>(|conn| {
         let (conversation, tree) = read_tree_with_conversation(conn, conversation_id)
             .map_err(|e| diesel::result::Error::QueryBuilderError(e.into()))?;
+        let mut usage_by_turn = db::ops::usage::turn_summaries(conn, conversation_id)?;
         let turns = db::ops::turn::list_for_conversation(conn, conversation_id)?
             .into_iter()
             .map(|t| TurnView {
                 status: effective_status(&t, live),
+                usage: usage_by_turn.remove(&t.id),
                 id: t.id,
                 phase: t.phase,
                 phase_tool: t.phase_tool,
@@ -503,7 +576,9 @@ pub async fn rate_message(app: tauri::AppHandle, id: String, rating: Option<i32>
 /// `<owner_notes>`, which exist on the understanding that they are never even
 /// quoted back to the person they are about.
 fn exportable(path: Vec<Message>) -> Vec<Message> {
-    path.into_iter().filter(|m| m.role != "context").collect()
+    path.into_iter()
+        .filter(|m| m.role != "context" && m.source.as_deref() != Some("shell"))
+        .collect()
 }
 
 #[tauri::command]
@@ -765,6 +840,15 @@ mod tests {
     }
 
     #[test]
+    fn literal_shell_commands_are_not_training_exports() {
+        let mut shell = exported_row("user", "!echo $SECRET");
+        shell.source = Some("shell".into());
+        let kept = exportable(vec![exported_row("user", "explain this"), shell]);
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].content, "explain this");
+    }
+
+    #[test]
     fn message_dto_is_an_explicit_public_projection() {
         let mut row = exported_row("assistant", "answer");
         row.provider_state = Some("opaque-provider-state".into());
@@ -919,6 +1003,8 @@ mod tests {
     /// with them, and the head names a row that is in it.
     #[test]
     fn the_tree_and_the_turns_describe_the_same_conversation() {
+        use diesel::RunQueryDsl;
+
         let pool = test_db();
         seed(&pool);
         {
@@ -957,6 +1043,17 @@ mod tests {
                 None,
             )
             .unwrap();
+            diesel::sql_query(
+                "INSERT INTO audit_messages
+                    (id, recorded_at, message_id, conversation_id, turn_id, turn_origin,
+                     role, content, provider_id, model_id, input_tokens, output_tokens,
+                     created_at, input_price, output_price, billing_mode)
+                 VALUES
+                    ('a1', 2, 'reply-1', 'c1', 't1', 'desktop', 'assistant', '',
+                     'p1', 'm1', 1000000, 0, 2, 10.0, 20.0, 'metered')",
+            )
+            .execute(&mut conn)
+            .unwrap();
         }
 
         let mut conn = pool.get().unwrap();
@@ -968,6 +1065,9 @@ mod tests {
         assert_eq!(tree.head_message_id.as_deref(), Some(tree.messages[0].id.as_str()));
         assert_eq!(turns.len(), 1);
         assert_eq!(turns[0].id, "t1");
+        let usage = turns[0].usage.as_ref().expect("the audit-backed turn cost is attached");
+        assert_eq!(usage.pricing_status, db::ops::usage::TurnPricingStatus::Exact);
+        assert_eq!(usage.total_cost, Some(10.0));
         assert!(runs.is_empty(), "a conversation that never delegated has no runs");
     }
 

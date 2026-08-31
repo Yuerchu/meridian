@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ProviderSettings } from './provider-settings'
 import i18n from '@/i18n'
@@ -17,6 +17,10 @@ vi.mock('@/api', () => ({
     deleteProvider: vi.fn(),
     updateProvider: vi.fn(),
     fetchProviderModels: vi.fn(),
+    listModelConfigs: vi.fn(),
+    getProviderCapabilities: vi.fn(),
+    saveModelConfig: vi.fn(),
+    deleteModelConfig: vi.fn(),
     setProviderKey: vi.fn(),
   },
 }))
@@ -110,6 +114,8 @@ describe('ProviderSettings list/detail navigation', () => {
     mockApi.listProviders.mockResolvedValue([makeProvider('p1', 'Provider One'), makeProvider('p2', 'Provider Two')])
     mockApi.listProviderCatalog.mockResolvedValue(CATALOG)
     mockApi.getProviderKeyExists.mockResolvedValue(false)
+    mockApi.listModelConfigs.mockResolvedValue([])
+    mockApi.getProviderCapabilities.mockRejectedValue(new Error('No capabilities in this test'))
   })
 
   it('mobile: shows the list first without auto-selecting a provider', async () => {
@@ -118,6 +124,15 @@ describe('ProviderSettings list/detail navigation', () => {
     expect(await screen.findByText('Provider One')).toBeInTheDocument()
     expect(screen.getByText('Provider Two')).toBeInTheDocument()
     expect(screen.queryByText(i18n.t('common.back'))).not.toBeInTheDocument()
+  })
+
+  it('mobile: the first click can open the second provider', async () => {
+    mockViewport(true)
+    const user = userEvent.setup()
+    render(<ProviderSettings />)
+
+    await user.click(await screen.findByRole('row', { name: 'Provider Two' }))
+    expect(await screen.findByRole('heading', { name: 'Provider Two' })).toBeInTheDocument()
   })
 
   it('mobile: back button returns from detail to the list', async () => {
@@ -137,6 +152,30 @@ describe('ProviderSettings list/detail navigation', () => {
     mockViewport(false)
     render(<ProviderSettings />)
     expect(await screen.findByText(i18n.t('settings.provider.deleteProvider'))).toBeInTheDocument()
+  })
+
+  it('renders providers as a controlled single-select list with provider icons', async () => {
+    mockViewport(false)
+    mockApi.listProviders.mockResolvedValue([
+      makeProvider('p1', 'Provider One'),
+      { ...makeProvider('p2', 'Provider Two'), catalog_id: null, provider_type: 'google' },
+    ])
+    render(<ProviderSettings />)
+
+    const list = await screen.findByRole('grid', { name: i18n.t('settings.provider.title') })
+    const rows = within(list).getAllByRole('row')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toHaveAttribute('data-key', 'p1')
+    expect(rows[1]).toHaveAccessibleName('Provider Two')
+    expect(within(list).queryByRole('checkbox')).not.toBeInTheDocument()
+    await waitFor(() => expect(rows[0]).toHaveAttribute('aria-selected', 'true'))
+
+    await waitFor(() => {
+      const icons = list.querySelectorAll('[data-slot="model-icon"]')
+      expect(icons).toHaveLength(2)
+      expect(icons[0]).toHaveAttribute('data-model', 'openai')
+      expect(icons[1]).toHaveAttribute('data-model', 'google')
+    })
   })
 
   // Creating a provider names the vendor to the backend rather than leaving it
@@ -225,6 +264,104 @@ describe('ProviderSettings list/detail navigation', () => {
     expect(mockApi.fetchProviderModels).toHaveBeenCalledWith('codex-1', true)
   })
 
+  it('renders fetched models as a data grid and keeps model configuration accessible', async () => {
+    mockViewport(false)
+    const user = userEvent.setup()
+    mockApi.getProviderKeyExists.mockResolvedValue(true)
+    mockApi.fetchProviderModels.mockResolvedValue([
+      { id: 'gpt-5.6', name: 'gpt-5.6' },
+      { id: 'gpt-5.6-mini', name: 'gpt-5.6-mini' },
+      { id: 'gpt-unconfigured', name: 'gpt-unconfigured' },
+    ])
+    mockApi.listModelConfigs.mockResolvedValue([
+      {
+        id: 'config-1',
+        provider_id: 'p1',
+        model_id: 'gpt-5.6',
+        display_name: null,
+        context_window: 128000,
+        compact_threshold: 100000,
+        max_output_tokens: null,
+        input_price: 1.25,
+        output_price: 10,
+        cache_price: null,
+        cache_write_price: null,
+        created_at: 0,
+        updated_at: 0,
+        capability_overrides: null,
+        price_tiers: null,
+        server_tools: null,
+        server_tool_price: null,
+      },
+      {
+        id: 'config-2',
+        provider_id: 'p1',
+        model_id: 'gpt-5.6-mini',
+        display_name: null,
+        context_window: 128000,
+        compact_threshold: 100000,
+        max_output_tokens: null,
+        input_price: 0,
+        output_price: 0,
+        cache_price: null,
+        cache_write_price: null,
+        created_at: 0,
+        updated_at: 0,
+        capability_overrides: null,
+        price_tiers: null,
+        server_tools: null,
+        server_tool_price: null,
+      },
+    ])
+    render(<ProviderSettings />)
+
+    await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
+
+    const grid = await screen.findByRole('grid', { name: i18n.t('settings.provider.models') })
+    expect(
+      within(grid).getByRole('columnheader', { name: i18n.t('settings.provider.modelColumn') }),
+    ).toBeInTheDocument()
+    expect(
+      within(grid).getByRole('columnheader', { name: i18n.t('settings.provider.modelStatusColumn') }),
+    ).toBeInTheDocument()
+    expect(
+      within(grid).getByRole('columnheader', { name: i18n.t('settings.provider.modelActionsColumn') }),
+    ).toBeInTheDocument()
+    expect(within(grid).getByText(i18n.t('settings.provider.modelPriced'))).toBeInTheDocument()
+    expect(within(grid).getByText(i18n.t('settings.provider.modelPriceMissing'))).toBeInTheDocument()
+    expect(within(grid).getByText(i18n.t('settings.provider.modelNotConfigured'))).toBeInTheDocument()
+    expect(within(grid).getByText('gpt-5.6-mini')).not.toHaveClass('text-muted')
+    expect(within(grid).getByText('gpt-unconfigured')).toHaveClass('text-muted')
+
+    await user.click(
+      within(grid).getByRole('button', {
+        name: i18n.t('settings.provider.editModelConfig', { model: 'gpt-5.6' }),
+      }),
+    )
+    expect(
+      within(grid).getByRole('button', {
+        name: i18n.t('settings.provider.closeModelConfig', { model: 'gpt-5.6' }),
+      }),
+    ).toHaveAttribute('aria-expanded', 'true')
+    expect(
+      screen.getByRole('heading', {
+        name: i18n.t('settings.provider.editModelConfig', { model: 'gpt-5.6' }),
+      }),
+    ).toBeInTheDocument()
+    const contextWindow = screen.getByRole('textbox', { name: i18n.t('settings.model.contextWindow') })
+    await user.clear(contextWindow)
+    await user.type(contextWindow, '42')
+
+    await user.click(
+      within(grid).getByRole('button', {
+        name: i18n.t('settings.provider.editModelConfig', { model: 'gpt-5.6-mini' }),
+      }),
+    )
+    const discard = screen.getByRole('alertdialog', { name: i18n.t('confirm.title') })
+    await user.click(within(discard).getByRole('button', { name: i18n.t('common.confirm') }))
+    expect(await screen.findByRole('textbox', { name: i18n.t('settings.model.contextWindow') })).toHaveValue('128000')
+  })
+
   /** An API-key provider keeps the field it has always had. */
   it('an API-key provider still gets a key field', async () => {
     mockViewport(false)
@@ -261,7 +398,7 @@ describe('ProviderSettings list/detail navigation', () => {
 
     // A vendor with one way in never shows this — asserted by the tests above
     // never finding it. Here it exists and carries both options.
-    await user.click(screen.getByRole('button', { name: new RegExp(i18n.t('settings.provider.authMethod')) }))
+    await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.authMethod')) }))
     await user.click(await screen.findByRole('option', { name: i18n.t('settings.provider.authMethodCodexCli') }))
 
     expect(mockApi.updateProvider).toHaveBeenCalledWith(

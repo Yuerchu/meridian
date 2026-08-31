@@ -157,6 +157,7 @@ export default function ScrollLab() {
   const rootRef = useRef<HTMLDivElement>(null)
   const [readout, setReadout] = useState('')
   const [results, setResults] = useState<ScenarioResult[] | null>(null)
+  const [hasTrailingRow, setHasTrailingRow] = useState(false)
   // Bumped to remount the transcript. The scroller keeps its mode outside React
   // state, so clearing the messages alone would carry `follow` from the previous
   // scenario into the next one and quietly decide its outcome.
@@ -173,6 +174,7 @@ export default function ScrollLab() {
     setMessages([])
     setStreaming(false)
     chunkRef.current = 0
+    setHasTrailingRow(false)
     setGeneration((g) => g + 1)
   }, [])
 
@@ -509,6 +511,145 @@ export default function ScrollLab() {
       detail: `按钮可用=${offered}，点后 mode=${resumed.mode}，距底 ${resumed.distanceFromBottom}`,
     })
 
+    // 6. A turn is inserted before status/decorative rows, not necessarily at
+    // the previous child count. Sending it still overrides an idle reader.
+    reset()
+    await frames(4)
+    setHasTrailingRow(true)
+    await frames(4)
+    seedHistory(6)
+    await frames(8)
+    wheelUp(700)
+    await frames(4)
+    const beforeSend = metrics()
+    sendUser(false)
+    await frames(6)
+    startAssistant()
+    await frames(4)
+    streamChunk(0)
+    await frames(4)
+    const afterSend = metrics()
+    out.push({
+      name: '尾部有状态行：发送新回合仍恢复跟随',
+      pass: beforeSend.mode === 'idle' && afterSend.mode === 'follow' && afterSend.distanceFromBottom <= 8,
+      detail: `${beforeSend.mode} → ${afterSend.mode}，距底 ${afterSend.distanceFromBottom}`,
+    })
+
+    // 7. Gestures towards the live edge and keys owned by a nested control are
+    // not departures. Neither emits a viewport scroll event at the bottom, so
+    // an eager "any input means idle" policy freezes the next chunk.
+    reset()
+    await frames(4)
+    sendUser(false)
+    await frames(6)
+    startAssistant()
+    await frames(4)
+    streamChunk(0)
+    await frames(4)
+    const vp = viewport()
+    vp?.dispatchEvent(new WheelEvent('wheel', { deltaY: 400, bubbles: true }))
+    const rowButton = vp?.querySelector<HTMLButtonElement>('button')
+    rowButton?.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }))
+    await frames(3)
+    streamChunk(1)
+    await frames(4)
+    const afterHarmlessInput = metrics()
+    out.push({
+      name: '已在底部：向下滚与行内按钮按键不解除跟随',
+      pass: rowButton != null && afterHarmlessInput.mode === 'follow' && afterHarmlessInput.distanceFromBottom <= 8,
+      detail: `行内按钮=${rowButton != null}，mode=${afterHarmlessInput.mode}，距底 ${afterHarmlessInput.distanceFromBottom}`,
+    })
+
+    // 8. More anchored DOM does not necessarily mean the user sent a turn. A
+    // longer branch or a refreshed history path can add rows while no answer is
+    // live, and must leave an idle reader exactly where they were.
+    reset()
+    await frames(4)
+    seedHistory(5)
+    await frames(8)
+    wheelUp(650)
+    await frames(4)
+    const beforeInactiveAppend = metrics()
+    setMessages((prev) => [
+      ...prev,
+      message({
+        id: nextId('persisted-user'),
+        role: 'user',
+        content: '另一条已经完成的历史分支。',
+        sort_order: prev.length,
+      }),
+      message({
+        id: nextId('persisted-assistant'),
+        role: 'assistant',
+        content: '这是从存储快照载入的答案，不是正在发生的新回合。',
+        sort_order: prev.length + 1,
+      }),
+    ])
+    await frames(8)
+    const afterInactiveAppend = metrics()
+    out.push({
+      name: '分支或历史变长：非流式追加不抢走阅读位置',
+      pass:
+        beforeInactiveAppend.mode === 'idle' &&
+        afterInactiveAppend.mode === 'idle' &&
+        afterInactiveAppend.scrollTop === beforeInactiveAppend.scrollTop,
+      detail: `mode ${beforeInactiveAppend.mode} → ${afterInactiveAppend.mode}，scrollTop ${beforeInactiveAppend.scrollTop} → ${afterInactiveAppend.scrollTop}`,
+    })
+
+    // 9. Mounting onto a turn that is already running is itself a live signal.
+    // The default "last anchor" opening position may be the answer's beginning;
+    // follow must win once for an active conversation so new chunks are visible.
+    reset()
+    await frames(4)
+    const activeMessages: Message[] = []
+    for (let i = 0; i < 5; i++) {
+      activeMessages.push(
+        message({
+          id: nextId('active-history-user'),
+          role: 'user',
+          content: `运行中会话的历史提问 ${i + 1}`,
+          sort_order: activeMessages.length,
+        }),
+        message({
+          id: nextId('active-history-assistant'),
+          role: 'assistant',
+          content: ANSWER_CHUNKS.slice(0, 5).join(''),
+          sort_order: activeMessages.length + 1,
+        }),
+      )
+    }
+    activeMessages.push(
+      message({
+        id: nextId('active-user'),
+        role: 'user',
+        content: SHORT_QUESTION,
+        sort_order: activeMessages.length,
+      }),
+      message({
+        id: nextId('active-assistant'),
+        role: 'assistant',
+        content: Array.from({ length: 3 }, () => ANSWER_CHUNKS.join('')).join('\n\n'),
+        sort_order: activeMessages.length + 1,
+      }),
+    )
+    setMessages(activeMessages)
+    setStreaming(true)
+    setGeneration((g) => g + 1)
+    await frames(10)
+    const openedActive = metrics()
+    streamChunk(2)
+    await frames(4)
+    const streamedActive = metrics()
+    out.push({
+      name: '打开运行中会话：初次挂载直接跟到实时边缘',
+      pass:
+        openedActive.mode === 'follow' &&
+        openedActive.distanceFromBottom <= 8 &&
+        streamedActive.mode === 'follow' &&
+        streamedActive.distanceFromBottom <= 8,
+      detail: `打开 mode=${openedActive.mode}/距底 ${openedActive.distanceFromBottom}，新块后 mode=${streamedActive.mode}/距底 ${streamedActive.distanceFromBottom}`,
+    })
+
     return out
   }, [callTool, finishTool, finishTurn, metrics, reset, seedHistory, sendUser, startAssistant, streamChunk, viewport])
 
@@ -621,6 +762,10 @@ export default function ScrollLab() {
         turns={turns}
         conversationId={LAB_CONVERSATION}
         streaming={streaming}
+        // A real transcript often has an error/compaction row after its turns.
+        // Scenario 6 turns this on so new-turn detection cannot assume that an
+        // appended turn starts at the old direct-child count.
+        trailing={hasTrailingRow ? <div aria-hidden="true" className="h-px shrink-0" /> : null}
         scrollToBottomLabel="回到最新"
       />
 

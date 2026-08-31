@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
 import { TrashBin } from '@gravity-ui/icons'
-import { Button, Card, Checkbox, Description, Input, Label, TextField } from '@heroui/react'
+import { Button, Checkbox, Description, Input, Label, Separator, Spinner, TextField } from '@heroui/react'
+import { ItemCard } from '@heroui-pro/react/item-card'
+import { ItemCardGroup } from '@heroui-pro/react/item-card-group'
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
 import { SettingsHeader, SettingsPane } from './primitives'
+import { useConfirm } from '@/hooks/use-confirm'
 
 interface DeleteReport {
   clips: number
@@ -23,9 +26,9 @@ interface CorpusSession {
   last_captured_at: number
 }
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+function formatSize(bytes: number, number: Intl.NumberFormat): string {
+  if (bytes < 1024 * 1024) return `${number.format(bytes / 1024)} KB`
+  return `${number.format(bytes / 1024 / 1024)} MB`
 }
 
 /**
@@ -38,20 +41,29 @@ function formatSize(bytes: number): string {
  * belongs to.
  */
 export function VoiceCorpusSettings() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [sessions, setSessions] = useState<CorpusSession[]>([])
+  const [loading, setLoading] = useState(true)
   const [senderInput, setSenderInput] = useState('')
   const [includeSender, setIncludeSender] = useState(false)
   const [includeUntranscribed, setIncludeUntranscribed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const { confirm, confirmDialog } = useConfirm()
+  const sizeNumber = useMemo(
+    () => new Intl.NumberFormat(i18n.resolvedLanguage ?? i18n.language, { maximumFractionDigits: 1 }),
+    [i18n.language, i18n.resolvedLanguage],
+  )
 
   const load = useCallback(async () => {
+    setLoading(true)
     try {
       setSessions(await api.listVoiceCorpus())
     } catch (err) {
       setError(String(err))
+    } finally {
+      setLoading(false)
     }
   }, [])
 
@@ -82,13 +94,17 @@ export function VoiceCorpusSettings() {
       ? t('settings.voiceCorpus.deletedWithFailures', { clips: report.clips, failures: report.failures.length })
       : t(`settings.voiceCorpus.${key}`, { clips: report.clips })
 
-  const deleteSession = (session: CorpusSession) =>
-    run(async () => deleteMessage(await api.deleteVoiceCorpus({ kind: 'session', handle: session.handle }), 'deleted'))
+  const deleteSession = async (session: CorpusSession) => {
+    if (!(await confirm({ body: t('settings.voiceCorpus.deleteSessionConfirm', { handle: session.handle }) }))) return
+    await run(async () =>
+      deleteMessage(await api.deleteVoiceCorpus({ kind: 'session', handle: session.handle }), 'deleted'),
+    )
+  }
 
-  const forgetSender = () =>
-    run(async () => {
-      const id = senderInput.trim()
-      if (!id) return null
+  const forgetSender = async () => {
+    const id = senderInput.trim()
+    if (!id || !(await confirm({ body: t('settings.voiceCorpus.forgetSenderConfirm', { sender: id }) }))) return
+    await run(async () => {
       // One call. Deleting history and refusing the future are two actions, and
       // this button means both — but sent as two calls the barrier comes down
       // between them while the opt-out is not yet in force, so anything
@@ -97,6 +113,7 @@ export function VoiceCorpusSettings() {
       setSenderInput('')
       return deleteMessage(report, 'forgot')
     })
+  }
 
   const exportBundle = () =>
     run(async () => {
@@ -110,39 +127,57 @@ export function VoiceCorpusSettings() {
     <SettingsPane>
       <SettingsHeader title={t('settings.voiceCorpus.title')} subtitle={t('settings.voiceCorpus.description')} />
 
-      {error && <p className="text-danger text-sm">{error}</p>}
-      {notice && <p className="text-muted text-sm">{notice}</p>}
+      {error && (
+        <p role="alert" className="text-danger text-sm">
+          {error}
+        </p>
+      )}
+      {notice && (
+        <p role="status" className="text-muted text-sm">
+          {notice}
+        </p>
+      )}
 
-      {sessions.length === 0 ? (
+      {loading ? (
+        <div role="status" aria-label={t('common.loading')} className="flex items-center gap-2 text-sm text-muted">
+          <Spinner aria-hidden="true" size="sm" />
+          {t('common.loading')}
+        </div>
+      ) : sessions.length === 0 ? (
         <p className="text-muted text-sm">{t('settings.voiceCorpus.empty')}</p>
       ) : (
-        <div className="flex flex-col gap-2">
-          {sessions.map((session) => (
-            <Card key={session.handle} className="flex-row items-center gap-3 p-3">
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-mono text-sm">
-                  {t(`settings.voiceCorpus.kind.${session.kind}`)} · {session.handle}
-                </p>
-                <p className="text-muted text-xs">
-                  {t('settings.voiceCorpus.summary', {
-                    clips: session.clips,
-                    size: formatSize(session.bytes),
-                    untranscribed: session.untranscribed,
-                  })}
-                </p>
-              </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                isDisabled={busy}
-                onPress={() => deleteSession(session)}
-                aria-label={t('settings.voiceCorpus.deleteSession')}
-              >
-                <TrashBin />
-              </Button>
-            </Card>
+        <ItemCardGroup variant="outline">
+          {sessions.map((session, index) => (
+            <Fragment key={session.handle}>
+              {index > 0 && <Separator />}
+              <ItemCard>
+                <ItemCard.Content className="min-w-0">
+                  <ItemCard.Title className="w-full truncate font-mono">
+                    {t(`settings.voiceCorpus.kind.${session.kind}`)} · {session.handle}
+                  </ItemCard.Title>
+                  <ItemCard.Description className="w-full whitespace-normal">
+                    {t('settings.voiceCorpus.summary', {
+                      clips: session.clips,
+                      size: formatSize(session.bytes, sizeNumber),
+                      untranscribed: session.untranscribed,
+                    })}
+                  </ItemCard.Description>
+                </ItemCard.Content>
+                <ItemCard.Action>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    isDisabled={busy}
+                    onPress={() => deleteSession(session)}
+                    aria-label={t('settings.voiceCorpus.deleteSession')}
+                  >
+                    <TrashBin />
+                  </Button>
+                </ItemCard.Action>
+              </ItemCard>
+            </Fragment>
           ))}
-        </div>
+        </ItemCardGroup>
       )}
 
       <TextField fullWidth>
@@ -183,6 +218,7 @@ export function VoiceCorpusSettings() {
           </Button>
         </div>
       )}
+      {confirmDialog}
     </SettingsPane>
   )
 }

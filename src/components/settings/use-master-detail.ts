@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useIsNarrow } from '@/hooks/use-narrow'
@@ -57,10 +57,14 @@ export interface MasterDetailNav<Aux extends string = never> {
   openAux: (name: Aux) => void
   /** Sets the selection directly — for falling back after a delete. */
   select: (id: string | null) => void
-  back: () => void
+  back: () => Promise<boolean>
 }
 
-export function useMasterDetail<Aux extends string = never>(): MasterDetailNav<Aux> {
+export function useMasterDetail<Aux extends string = never>({
+  beforeLeave,
+}: {
+  beforeLeave?: () => boolean | Promise<boolean>
+} = {}): MasterDetailNav<Aux> {
   // The viewport is only the fallback. A box that has never been laid out has
   // no width to offer, and there the viewport is the last thing that still
   // knows anything — but once the box answers, it wins: the same 769px window
@@ -69,32 +73,71 @@ export function useMasterDetail<Aux extends string = never>(): MasterDetailNav<A
   const { ref, isNarrow } = useIsNarrow(TWO_COLUMN_MIN, useIsMobile())
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [aux, setAux] = useState<Aux | null>(null)
+  const [historyClaimed, setHistoryClaimed] = useState(true)
 
-  const openItem = useCallback((id: string) => {
-    setAux(null)
-    setSelectedId(id)
-  }, [])
+  const afterLeaveCheck = useCallback(
+    async (action: () => void): Promise<boolean> => {
+      if (beforeLeave && !(await beforeLeave())) return false
+      action()
+      return true
+    },
+    [beforeLeave],
+  )
 
-  const openAux = useCallback((name: Aux) => {
-    setAux(name)
-  }, [])
+  const openItem = useCallback(
+    (id: string) => {
+      if (id === selectedId && aux === null) return
+      void afterLeaveCheck(() => {
+        setAux(null)
+        setSelectedId(id)
+      })
+    },
+    [afterLeaveCheck, aux, selectedId],
+  )
+
+  const openAux = useCallback(
+    (name: Aux) => {
+      if (name === aux) return
+      void afterLeaveCheck(() => setAux(name))
+    },
+    [afterLeaveCheck, aux],
+  )
 
   const select = useCallback((id: string | null) => {
     setSelectedId(id)
   }, [])
 
   const back = useCallback(() => {
-    // Aux sits on top of a selection when both are set, so it unwinds first.
-    if (aux !== null) setAux(null)
-    else setSelectedId(null)
-  }, [aux])
+    return afterLeaveCheck(() => {
+      // Aux sits on top of a selection when both are set, so it unwinds first.
+      if (aux !== null) setAux(null)
+      else setSelectedId(null)
+    })
+  }, [afterLeaveCheck, aux])
 
   const showsDetail = isNarrow && (selectedId !== null || aux !== null)
+
+  useEffect(() => {
+    // Reset the mirror while there is no level to claim, so the next detail
+    // registers in the same render instead of waiting an extra effect pass.
+    if (!showsDetail) setHistoryClaimed(true)
+  }, [showsDetail])
+
+  const handleHistoryBack = useCallback(() => {
+    // The store retires a history level before invoking its dismiss callback.
+    // If an unsaved-draft prompt vetoes the navigation, toggle this mirror so
+    // useHistoryLevel observes a fresh false→true edge and claims a replacement
+    // entry instead of letting the next Back escape past the still-open detail.
+    setHistoryClaimed(false)
+    void back().then((closed) => {
+      if (!closed) requestAnimationFrame(() => setHistoryClaimed(true))
+    })
+  }, [back])
 
   // Claims a history entry for the detail, so the hardware back key returns to
   // the list before it leaves settings. Inert while there is room for two
   // columns, where `showsDetail` can never be true.
-  useHistoryLevel(showsDetail, back)
+  useHistoryLevel(showsDetail && historyClaimed, handleHistoryBack)
 
   return useMemo(
     () => ({

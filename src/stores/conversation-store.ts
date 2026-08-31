@@ -5,6 +5,7 @@ import { parseTodoArgs, toDrafts, type TodoArgs } from '@/components/chat/todo-l
 import type {
   AutoReviewVerdict,
   BranchPoint,
+  CommandTurnOutcome,
   Conversation,
   Message,
   PendingApprovalInfo,
@@ -473,6 +474,13 @@ export interface ConversationSession {
    *  died before it wrote its first message — those send a stop with no id and
    *  are accepted on that basis. */
   activeTurnId: string | null
+  /** A literal `!` command is not a model turn, but it still owns the composer
+   *  and Stop button while the backend process is alive. Kept on the session
+   *  so switching conversations cannot forget it. */
+  activeShellTurnId: string | null
+  /** A durable result revision per shell message. Cards subscribe to this
+   *  narrow signal and rehydrate raw output only after the matching finish. */
+  shellResultKeys: Record<string, string>
   /** A turn belonging to somebody else — a QQ session answering the same
    *  conversation — that announced itself while this window still had an
    *  optimistic turn of its own outstanding.
@@ -533,6 +541,8 @@ function defaultSession(): ConversationSession {
     messages: [],
     streaming: false,
     activeTurnId: null,
+    activeShellTurnId: null,
+    shellResultKeys: {},
     candidateTurnId: null,
     retry: null,
     compacting: false,
@@ -739,7 +749,9 @@ export interface ConversationStore {
   resyncAfterReconnect: () => Promise<void>
 
   ensureSession: (convId: string) => void
-  loadMessages: (convId: string) => Promise<void>
+  /** Reload the active path and live shell lease. False means a newer event
+   *  superseded the response before it could be applied. */
+  loadMessages: (convId: string) => Promise<boolean>
   switchBranch: (convId: string, messageId: string) => Promise<void>
 
   /** Lock the composer and name the turn in one step, before the request goes
@@ -754,6 +766,9 @@ export interface ConversationStore {
    *  which is why the message is written here rather than by a separate
    *  `setError` the caller makes first. */
   abortTurn: (convId: string, turnId: string, error?: string) => void
+  beginShellCommand: (convId: string, turnId: string) => void
+  abortShellCommand: (convId: string, turnId: string, error?: string) => void
+  finishShellCommand: (result: CommandTurnOutcome) => void
   handleMessageStart: (convId: string, messageId: string, turnId?: string) => void
   handleUserMessage: (convId: string, messageId: string, content: string) => void
   handleText: (convId: string, messageId: string, content: string) => void
@@ -980,13 +995,17 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     // tool call with no result row is either waiting on the user, still running,
     // or was abandoned when its turn died — identical in the database, and told
     // apart only by the approvals and the turn records that came back with it.
-    const snap = await api.conversationSnapshot(convId)
+    const [snap, activeShellTurnId] = await Promise.all([
+      api.conversationSnapshot(convId),
+      api.activeUserShellTurn(convId),
+    ])
     // Reconciled outside produce: comparing against immer drafts would pit proxy
     // references against plain ones.
     const snapshot = reconcileMessages(
       get().sessions[convId]?.messages ?? [],
       hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns, snap.sub_agent_runs),
     )
+    let applied = false
     set(
       produce((state: ConversationStore) => {
         if (!state.sessions[convId]) {
@@ -1001,10 +1020,13 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         session.compactCursor = snap.conversation.compact_cursor
         session.branches = indexBranches(snap.tree.branches)
         session.turns = snap.turns
+        session.activeShellTurnId = activeShellTurnId
         adoptLiveTurn(session, snap.turns)
         applyPendingApprovals(session, snap.pending_approvals)
+        applied = true
       }),
     )
+    return applied
   },
 
   /** Show a different version of a step. The reply is the whole new path, so
@@ -1111,6 +1133,58 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         session.streaming = false
         session.activeTurnId = null
         session.retry = null
+      }),
+    )
+  },
+
+  beginShellCommand: (convId, turnId) => {
+    set(
+      produce((state: ConversationStore) => {
+        if (!state.sessions[convId]) state.sessions[convId] = defaultSession()
+        const session = state.sessions[convId]
+        if (session.activeShellTurnId !== turnId) session.generation += 1
+        session.activeShellTurnId = turnId
+        session.error = null
+      }),
+    )
+  },
+
+  abortShellCommand: (convId, turnId, error) => {
+    set(
+      produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (!session || session.activeShellTurnId !== turnId) return
+        session.activeShellTurnId = null
+        session.generation += 1
+        if (error !== undefined) session.error = error
+      }),
+    )
+  },
+
+  finishShellCommand: (result) => {
+    set(
+      produce((state: ConversationStore) => {
+        if (!state.sessions[result.conversation_id]) state.sessions[result.conversation_id] = defaultSession()
+        const session = state.sessions[result.conversation_id]
+        session.shellResultKeys ||= {}
+        const resultKey = [
+          result.turn_id,
+          result.retry_without_sandbox ? 'retry' : 'sandbox',
+          result.status,
+          result.exit_code ?? '',
+          result.timed_out ? 'timeout' : '',
+          result.truncated ? 'truncated' : '',
+          result.duration_ms,
+        ].join(':')
+        if (session.shellResultKeys[result.message_id] !== resultKey) {
+          session.shellResultKeys[result.message_id] = resultKey
+          // A finish can race the first post-reload hydrate, when this session
+          // does not know the active shell id yet. The durable result is still
+          // a newer fact and must invalidate that older active-id query.
+          session.generation += 1
+        }
+        if (session.activeShellTurnId !== result.turn_id) return
+        session.activeShellTurnId = null
       }),
     )
   },

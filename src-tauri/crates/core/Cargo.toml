@@ -61,6 +61,12 @@ http = "1"
 async-trait = "0.1"
 ignore = "0.4"
 glob = "0.3"
+# Line diffs for journal blame: attribution propagates hop by hop along a
+# file's version chain and every hop is one TextDiff. A maintained crate
+# rather than a hand-rolled Myers, because blame's correctness rests entirely
+# on the diff's line identity — and a golden test pins the outputs so an
+# upstream algorithm change cannot silently reassign lines. Apache-2.0.
+similar = "2"
 # OneBot WebSocket server (desktop only)
 tokio-tungstenite = "0.26"
 percent-encoding = "2"

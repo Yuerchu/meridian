@@ -2,7 +2,7 @@
  * Meridian 数据库模型 —— 画布与文档的唯一数据源。
  *
  * 由 src-tauri/crates/core/migrations/00000000000001_initial …
- * 00000000000039_voice_corpus 与 src-tauri/crates/core/src/db/ 归纳而成。
+ * 00000000000044_audit_conversation_turn_index 与 src-tauri/crates/core/src/db/ 归纳而成。
  *
  * 一半是散文，只有人能写：为什么 parent_id 不建外键、为什么两个 cache 列上 NULL 和 0
  * 是不同的答案、为什么价格要抄到审计行上。另一半是纯结构，由
@@ -407,6 +407,46 @@ const RAW_TABLES: RawTable[] = [
       "<code>role='tool'</code> ⇒ <code>tool_call_id</code> 有值；<code>tool_calls</code> 只出现在 <code>role='assistant'</code>。",
       '<code>is_compact_summary=1</code> ⇒ <code>compact_anchor_id</code> 有值、<code>turn_id</code> 为 NULL、不在 parent 链上。',
       '只通过 <code>append_message</code> 写（连边 + 移动 head 在同一事务）；只删整棵子树——单删一行会让工具结果变孤儿、或留下一个没有提问的回答。',
+    ],
+  },
+  {
+    name: 'message_context_items',
+    group: 'conv',
+    title: '消息绑定上下文（冻结快照）',
+    mig: 45,
+    show: ['id', 'message_id', 'position', 'kind', 'display_path', 'truncated'],
+    note: '用户用 <code>@</code> 选中的文件/目录，以及 <code>!</code> 的命令结果。原始内容冻结在这里并只随所属消息进入模型；它不是 transcript 行，不进入审计、导出、遥测或 sticky memory。',
+    cols: [
+      ['id', 'TEXT', ['PK', 'NN'], '—', 'UUID'],
+      ['message_id', 'TEXT', ['FK', 'NN', 'IDX'], '—', '→ <code>messages(id)</code> ON DELETE CASCADE'],
+      ['position', 'INTEGER', ['NN', 'IDX'], '—', '与 message_id 组成唯一键，决定同一消息内的注入顺序'],
+      [
+        'kind',
+        'TEXT',
+        ['NN'],
+        '—',
+        '<code>project_file</code> | <code>project_directory</code> | <code>shell_output</code>',
+      ],
+      ['content', 'TEXT', ['NN'], '—', '冻结的原始快照；前端列表 DTO 只带 descriptor，不带本列'],
+      ['display_path', 'TEXT', ['NULL'], 'NULL', '展示用的工作区相对路径'],
+      ['line_start', 'INTEGER', ['NULL'], 'NULL', '可选的 1-based 起始行'],
+      ['line_end', 'INTEGER', ['NULL'], 'NULL', '可选的 1-based 结束行（含）'],
+      ['content_hash', 'TEXT', ['NN'], '—', '冻结内容的 SHA-256'],
+      ['byte_count', 'INTEGER', ['NN'], '—', '冻结内容 UTF-8 字节数'],
+      ['line_count', 'INTEGER', ['NN'], '—', '冻结内容行数'],
+      ['token_count', 'INTEGER', ['NN'], '—', '冻结内容的估算 token 数'],
+      ['truncated', 'INTEGER', ['NN'], '0', '0/1；受单文件、行数、总量或 token 预算截断'],
+      ['metadata', 'TEXT', ['NULL'], 'NULL', 'kind 专用的结构化 JSON'],
+      ['created_at', 'BIGINT', ['NN'], '—', 'epoch ms'],
+    ],
+    rels: [
+      '<code>messages</code>（CASCADE）。',
+      '被 <code>acp_context_deliveries.context_item_id</code> 以 CASCADE 引用。',
+    ],
+    rules: [
+      '<code>UNIQUE(message_id, position)</code>；同一消息最多 16 个由后端解析并冻结的 @ 引用。',
+      '文件上限 256 KiB / 2000 行，一轮总读取 512 KiB；上下文 token 预算取窗口 25% 且不超过 25k。目录只保存最多 1000 个直接子项。',
+      '<code>line_start</code> 必须大于 0；<code>line_end</code> 非空时不得小于起始行。',
     ],
   },
   {
@@ -992,6 +1032,26 @@ const RAW_TABLES: RawTable[] = [
     ],
   },
   {
+    name: 'acp_context_deliveries',
+    group: 'conv',
+    title: 'ACP 上下文投递回执',
+    mig: 46,
+    show: ['context_item_id', 'delivered_at'],
+    note: 'ACP adapter 自己保存会话历史，Meridian transcript 里的 <code>shell_output</code> 因此必须在下一次 prompt 中恰好补送一次。本表只记录可变的投递状态；命令结果本身仍是不可变的 message context item。',
+    cols: [
+      [
+        'context_item_id',
+        'TEXT',
+        ['PK', 'FK', 'NN'],
+        '—',
+        '→ <code>message_context_items(id)</code> ON DELETE CASCADE',
+      ],
+      ['delivered_at', 'BIGINT', ['NN'], '—', 'adapter 确认读取后的 epoch ms'],
+    ],
+    rels: ['<code>message_context_items</code>（CASCADE）。'],
+    rules: ['只有 active path 上尚无回执的 <code>shell_output</code> 才会进入下一次 ACP prompt；确认响应后才写回执。'],
+  },
+  {
     name: 'queued_prompts',
     group: 'task',
     title: '提示词队列（双投递语义 + 崩溃账本）',
@@ -1042,6 +1102,36 @@ const RAW_TABLES: RawTable[] = [
   },
 
   // ── 工具、技能与 MCP ─────────────────────────────────────────
+  {
+    name: 'queued_prompt_context_items',
+    group: 'task',
+    title: '排队提示词的冻结上下文',
+    mig: 47,
+    show: ['id', 'queue_id', 'position', 'kind', 'display_path', 'truncated'],
+    note: '在提示词进入持久队列的那一刻冻结 <code>@</code> 文件/目录快照，避免真正轮到它时文件已改变。投递时与新 message context item 在同一事务内迁移。',
+    cols: [
+      ['id', 'TEXT', ['PK', 'NN'], '—', 'UUID'],
+      ['queue_id', 'TEXT', ['FK', 'NN', 'IDX'], '—', '→ <code>queued_prompts(id)</code> ON DELETE CASCADE'],
+      ['position', 'INTEGER', ['NN', 'IDX'], '—', '与 queue_id 组成唯一键'],
+      ['kind', 'TEXT', ['NN'], '—', '<code>project_file</code> | <code>project_directory</code>'],
+      ['content', 'TEXT', ['NN'], '—', '入队时的原始快照'],
+      ['display_path', 'TEXT', ['NULL'], 'NULL', '展示用的工作区相对路径'],
+      ['line_start', 'INTEGER', ['NULL'], 'NULL', '可选的 1-based 起始行'],
+      ['line_end', 'INTEGER', ['NULL'], 'NULL', '可选的 1-based 结束行（含）'],
+      ['content_hash', 'TEXT', ['NN'], '—', '冻结内容的 SHA-256'],
+      ['byte_count', 'INTEGER', ['NN'], '—', '冻结内容 UTF-8 字节数'],
+      ['line_count', 'INTEGER', ['NN'], '—', '冻结内容行数'],
+      ['token_count', 'INTEGER', ['NN'], '—', '冻结内容的估算 token 数'],
+      ['truncated', 'INTEGER', ['NN'], '0', '0/1'],
+      ['metadata', 'TEXT', ['NULL'], 'NULL', 'kind 专用的结构化 JSON'],
+      ['created_at', 'BIGINT', ['NN'], '—', 'epoch ms'],
+    ],
+    rels: ['<code>queued_prompts</code>（CASCADE）。'],
+    rules: [
+      '<code>UNIQUE(queue_id, position)</code>；只允许 follow-up 引用文件快照，interject 因无法安全绑定结构化上下文而被拒绝。',
+    ],
+  },
+
   {
     name: 'tool_permissions',
     group: 'tools',
@@ -1656,8 +1746,8 @@ const RAW_TABLES: RawTable[] = [
         '<b>写下记录的时间，不是消息发生的时间</b>。两者差很多的行，要么是耗时很久的回复，要么是导入',
       ],
       ['message_id', 'TEXT', ['NN'], '—', '无外键，可能已不存在'],
-      ['conversation_id', 'TEXT', ['NN'], '—', '同上'],
-      ['turn_id', 'TEXT', ['NULL'], 'NULL', '同上'],
+      ['conversation_id', 'TEXT', ['NN', 'IDX'], '—', '同上；与 turn_id 组成会话快照计价索引（迁移 44）'],
+      ['turn_id', 'TEXT', ['NULL', 'IDX'], 'NULL', '同上；与 conversation_id 组成会话快照计价索引（迁移 44）'],
       [
         'source_type',
         'TEXT',
@@ -1729,12 +1819,13 @@ const RAW_TABLES: RawTable[] = [
       '与 <code>model_configs</code> 也不 join：价格已经抄在行上。',
     ],
     rules: [
-      '存四个价格列而不是一个 <code>cost</code>：单一总额<b>拆不回去</b>，而界面上的 input/output/cache 分解必须可重建，公式变了还要能对历史重跑。',
+      '存四个 token 价格列和一个服务商工具价格列，而不是一个 <code>cost</code>：单一总额<b>拆不回去</b>，而界面上的 input/output/cache/tool 分解必须可重建，公式变了还要能对历史重跑。',
       '计价只有一处实现：<code>agent::pricing::compute_cost</code>。<code>db::ops::usage</code> 把几百万行归约成几十组再交给 <code>cost_of</code>，与停止事件里的 <code>cost_breakdown</code> 同一个函数。两套实现一定会在测试存在的那个 case 上打架。',
       '总数请用 <code>UsageDimension::Total</code>，<b>不要把分解加起来</b>。',
-      '<code>0/0</code> 价格的模型算「没填」，其流量进 <code>unpriced_messages</code> 并显示出来——不带这个计数的花费数字，比真相小且没有任何提示。',
+      '<code>0/0</code> 价格的模型算「没填」；计量字段全为 NULL 也不能当成供应商明确报告了 0。input / output 任一为 NULL 都是部分用量，进入 <code>unpriced_messages</code>；四个字段全 NULL 另记为完全不可用。已知的另一侧与 cache/tool 仍进入成本分解：仅有缺失部分时是下界；SQL 先按每条回复算 uncached input 再求和，不能让一条缺 input 但有 cache 的记录抵掉同组另一条的 input。若旧行借用了今天的同 provider/model 价格，则另记 <code>estimated_messages</code>，因为历史价格可能更高也可能更低，不能冒充下界。',
+      '<code>idx_audit_conversation_turn(conversation_id, turn_id)</code>（迁移 44）让 conversation snapshot 的逐 turn 成本批量查询按会话 seek；查询必须保留直接的 <code>conversation_id = ?</code>，把它藏进可空筛选的 OR 会退化成全账本扫描。',
       '<b><code>billing_mode</code> 必须在价格回落<b>之前</b>判</b>：<code>db::ops::usage::resolve</code> 在行上没有价格快照时会去查<b>今天的</b> model_configs，所以一条订阅制请求，只要它的 provider 恰好配过价，就会被按那个价算出钱来。「没存价格」和「压根没有价格」在行里长得一模一样，只有这一列能分开。仅 <code>metered</code> 允许走迁移 30 的回落。',
-      '订阅制<b>不进</b> <code>unpriced_messages</code>：那不是漏配，是根本没有单价可找——记进去就成了一条永远清不掉的告警。<code>external</code> 目前<b>无人写入</b>，是给「成本落在别人账上」预留的（ACP 的 usage_update 只报告、不落 audit 行）。',
+      '订阅制与 external 都<b>不进</b> <code>unpriced_messages</code>：那不是漏配，是根本没有 Meridian 单价可找——记进去就成了一条永远清不掉的告警。报表另带 metered / subscription / external 回复数，界面只把 metered 叫本地计价金额，不能把全 external 的 0 显示成精确免费。实时 ACP 回复按 <code>turn_origin=claude_code</code> 写 external；迁移 43 以同一请求级事实回填旧行，不依赖可能已经删除的 conversation。导入的 recital 没有可信的逐消息 usage，仍不写 assistant audit 行。',
       '读不出来的值一律当 <code>metered</code>：这样请求仍留在账里，缺价时也仍然可见。反过来当成「不计费」会让真实花费<b>静默消失</b>。',
       '只增不改是<b>构造上的</b>而非约束上的：没有任何代码 UPDATE 这些行，编辑消息会产生第二行而不是覆盖第一行。',
     ],
@@ -1790,11 +1881,28 @@ export const EDGES: SchemaEdge[] = [
   { from: 'messages', col: 'conversation_id', to: 'conversations', toCol: 'id', kind: 'fk', act: 'CASCADE' },
   { from: 'messages', col: 'provider_id', to: 'providers', toCol: 'id', kind: 'fk', act: 'SET NULL' },
   { from: 'messages', col: 'compact_anchor_id', to: 'messages', toCol: 'id', kind: 'fk', act: 'CASCADE', self: true },
+  { from: 'message_context_items', col: 'message_id', to: 'messages', toCol: 'id', kind: 'fk', act: 'CASCADE' },
+  {
+    from: 'acp_context_deliveries',
+    col: 'context_item_id',
+    to: 'message_context_items',
+    toCol: 'id',
+    kind: 'fk',
+    act: 'CASCADE',
+  },
   { from: 'turns', col: 'conversation_id', to: 'conversations', toCol: 'id', kind: 'fk', act: 'CASCADE' },
   { from: 'mode_artifacts', col: 'conversation_id', to: 'conversations', toCol: 'id', kind: 'fk', act: 'CASCADE' },
   { from: 'todo_lists', col: 'conversation_id', to: 'conversations', toCol: 'id', kind: 'fk', act: 'CASCADE' },
   { from: 'todo_items', col: 'list_id', to: 'todo_lists', toCol: 'id', kind: 'fk', act: 'CASCADE' },
   { from: 'queued_prompts', col: 'conversation_id', to: 'conversations', toCol: 'id', kind: 'fk', act: 'CASCADE' },
+  {
+    from: 'queued_prompt_context_items',
+    col: 'queue_id',
+    to: 'queued_prompts',
+    toCol: 'id',
+    kind: 'fk',
+    act: 'CASCADE',
+  },
   { from: 'acp_sessions', col: 'conversation_id', to: 'conversations', toCol: 'id', kind: 'fk', act: 'CASCADE' },
   { from: 'attachments', col: 'message_id', to: 'messages', toCol: 'id', kind: 'fk', act: 'CASCADE' },
   { from: 'message_stickers', col: 'message_id', to: 'messages', toCol: 'id', kind: 'fk', act: 'CASCADE' },
@@ -1895,11 +2003,14 @@ const LAYOUT: { x: number; tables: string[] }[] = [
     x: 1360,
     tables: [
       'messages',
+      'message_context_items',
       'attachments',
       'message_stickers',
       'todo_items',
       'queued_prompts',
+      'queued_prompt_context_items',
       'acp_sessions',
+      'acp_context_deliveries',
       'audit_messages',
     ],
   },

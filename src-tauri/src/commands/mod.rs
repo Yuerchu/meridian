@@ -11,6 +11,7 @@ pub mod dev;
 pub mod emoji;
 #[cfg(not(target_os = "android"))]
 pub mod hooks;
+pub mod journal;
 pub mod logs;
 pub mod mcp;
 pub mod memory;
@@ -31,6 +32,8 @@ pub mod sub_agent;
 pub mod todo;
 pub mod tool_system;
 pub mod usage;
+#[cfg_attr(target_os = "android", path = "user_command_android.rs")]
+pub mod user_command;
 pub mod voice;
 pub mod voice_corpus;
 pub mod workspace;

@@ -1,7 +1,9 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { render, renderHook, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 import { api } from '@/api'
-import { useEmojiMap } from './emoji-renderer'
+import i18n from '@/i18n'
+import { StickerImage, useEmojiMap } from './emoji-renderer'
 
 vi.mock('@/api', () => ({
   api: {
@@ -44,5 +46,27 @@ describe('useEmojiMap', () => {
     await Promise.resolve()
 
     expect(mockApi.listEmojis).not.toHaveBeenCalled()
+  })
+})
+
+describe('StickerImage', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    await i18n.changeLanguage('en')
+  })
+
+  it('shows an actionable error and retries the failed URL lookup', async () => {
+    mockApi.getEmojiFileUrl.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce('asset://wave.png')
+    render(<StickerImage stickerId="emoji-1" name="Wave" />)
+
+    expect(await screen.findByRole('group', { name: 'Could not load Wave' })).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+
+    const image = await screen.findByRole('img', { name: 'Wave' })
+    expect(image).toHaveAttribute('src', 'asset://wave.png')
+    expect(image).toHaveAttribute('loading', 'lazy')
+    expect(image).toHaveAttribute('width', '128')
+    expect(image).toHaveAttribute('height', '128')
+    expect(mockApi.getEmojiFileUrl).toHaveBeenCalledTimes(2)
   })
 })
