@@ -329,48 +329,105 @@ pub fn version_by_id(conn: &mut SqliteConnection, id: &str) -> QueryResult<Optio
         .optional()
 }
 
-/// Files whose normalised path starts with `prefix` and whose chain head says
-/// the file still exists, capped. This is the run_command bracket's scan set:
-/// files the journal already tracks, and only those — a file it has never seen
-/// is left to the external-labelling path rather than guessed at.
+/// Every chain under `prefix` with its head sha, dead heads included, capped.
 ///
-/// Two things a shorter version got wrong. SQLite's `LIKE` is not a path
-/// prefix test — it is ASCII-case-insensitive and its `\` does nothing
-/// without an `ESCAPE` clause — so the pattern (with `.escape()`) only
-/// pre-narrows, and the real test is `starts_with` on the exact key. And the
-/// cap is applied to *live* files, after the head check: applied before it, a
-/// window full of recently deleted chains would evict the tracked files the
-/// scan exists to watch.
+/// One SQL statement rather than a per-candidate head query: this runs before
+/// and after every shell command, and a project with a long journal history
+/// would otherwise turn each command into thousands of queries. Dead heads
+/// (`None`) are part of the answer on purpose — a file one command deleted and
+/// the next recreated is not untracked, and a scan that cannot see its chain
+/// leaves the recreation unattributed for ever.
+///
+/// `LIKE` is still not a path prefix test — ASCII-case-insensitive, and its
+/// `\` inert without the `ESCAPE` clause — so it only pre-narrows; the real
+/// test is `starts_with` on the exact key, applied after.
+pub fn chains_under_prefix(
+    conn: &mut SqliteConnection,
+    prefix: &str,
+    limit: usize,
+) -> QueryResult<Vec<(JournalFile, Option<String>)>> {
+    chains_query(conn, prefix, limit, false)
+}
+
+fn chains_query(
+    conn: &mut SqliteConnection,
+    prefix: &str,
+    limit: usize,
+    live_only: bool,
+) -> QueryResult<Vec<(JournalFile, Option<String>)>> {
+    #[derive(diesel::QueryableByName)]
+    struct Row {
+        #[diesel(sql_type = diesel::sql_types::Text)]
+        id: String,
+        #[diesel(sql_type = diesel::sql_types::Text)]
+        norm_path: String,
+        #[diesel(sql_type = diesel::sql_types::Text)]
+        display_path: String,
+        #[diesel(sql_type = diesel::sql_types::BigInt)]
+        created_at: i64,
+        #[diesel(sql_type = diesel::sql_types::BigInt)]
+        updated_at: i64,
+        #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Text>)]
+        head_sha: Option<String>,
+    }
+    // `live_only` narrows in SQL so the cap counts live files — applied
+    // afterwards, a window of freshly deleted chains would evict the tracked
+    // files a tombstone scan exists to find (the round-one review finding,
+    // kept fixed through the single-query rewrite).
+    let sql = if live_only {
+        "SELECT f.id, f.norm_path, f.display_path, f.created_at, f.updated_at, v.new_sha AS head_sha
+         FROM journal_files f
+         JOIN journal_versions v ON v.file_id = f.id
+          AND v.seq = (SELECT MAX(seq) FROM journal_versions v2 WHERE v2.file_id = f.id)
+         WHERE f.norm_path LIKE ?1 ESCAPE '\\' AND v.new_sha IS NOT NULL
+         ORDER BY f.updated_at DESC
+         LIMIT ?2"
+    } else {
+        "SELECT f.id, f.norm_path, f.display_path, f.created_at, f.updated_at, v.new_sha AS head_sha
+         FROM journal_files f
+         JOIN journal_versions v ON v.file_id = f.id
+          AND v.seq = (SELECT MAX(seq) FROM journal_versions v2 WHERE v2.file_id = f.id)
+         WHERE f.norm_path LIKE ?1 ESCAPE '\\'
+         ORDER BY f.updated_at DESC
+         LIMIT ?2"
+    };
+    let rows: Vec<Row> = diesel::sql_query(sql)
+        .bind::<diesel::sql_types::Text, _>(format!("{}%", like_escape(prefix)))
+        // Clamped: `usize::MAX as i64` is -1, which SQLite reads as LIMIT
+        // *removed* — accidentally the intent, but not a spelling to rely on.
+        .bind::<diesel::sql_types::BigInt, _>(limit.min(i64::MAX as usize) as i64)
+        .load(conn)?;
+
+    Ok(rows
+        .into_iter()
+        .filter(|r| r.norm_path.starts_with(prefix))
+        .map(|r| {
+            (
+                JournalFile {
+                    id: r.id,
+                    norm_path: r.norm_path,
+                    display_path: r.display_path,
+                    created_at: r.created_at,
+                    updated_at: r.updated_at,
+                },
+                r.head_sha,
+            )
+        })
+        .collect())
+}
+
+/// The live subset of [`chains_under_prefix`]: files whose chain head says
+/// they still exist, with the cap counting live files. What a recursive
+/// delete's tombstones scan over.
 pub fn tracked_files(
     conn: &mut SqliteConnection,
     prefix: &str,
     limit: usize,
 ) -> QueryResult<Vec<(JournalFile, String)>> {
-    let candidates: Vec<JournalFile> = journal_files::table
-        .filter(
-            journal_files::norm_path
-                .like(format!("{}%", like_escape(prefix)))
-                .escape('\\'),
-        )
-        .order(journal_files::updated_at.desc())
-        .select(JournalFile::as_select())
-        .load(conn)?;
-
-    let mut out = Vec::new();
-    for file in candidates {
-        if out.len() >= limit {
-            break;
-        }
-        if !file.norm_path.starts_with(prefix) {
-            continue;
-        }
-        if let Some(head) = head_version(conn, &file.id)?
-            && let Some(sha) = head.new_sha
-        {
-            out.push((file, sha));
-        }
-    }
-    Ok(out)
+    Ok(chains_query(conn, prefix, limit, true)?
+        .into_iter()
+        .filter_map(|(f, head)| head.map(|sha| (f, sha)))
+        .collect())
 }
 
 /// Everything a turn wrote, for rewind previews and the turn's own summary.
@@ -408,9 +465,11 @@ struct ShaRow {
 }
 
 /// LIKE special characters escaped so a path containing `%` or `_` cannot
-/// widen a prefix scan.
+/// widen a prefix scan. The escape character goes first: on Unix a `\` is an
+/// ordinary path character, and left bare it would escape whatever follows it
+/// in the pattern — a project under `/tmp/a\b` would match nothing at all.
 fn like_escape(s: &str) -> String {
-    s.replace('%', r"\%").replace('_', r"\_")
+    s.replace('\\', r"\\").replace('%', r"\%").replace('_', r"\_")
 }
 
 #[cfg(test)]

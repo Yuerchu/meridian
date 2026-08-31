@@ -49,6 +49,25 @@ pub const MAX_SNAPSHOT_BYTES: usize = 2 * 1024 * 1024;
 #[derive(Default)]
 pub struct JournalShared {
     locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    /// Open command-bracket windows, keyed by normalised project root.
+    ///
+    /// Two conversations bracketing one project concurrently cannot tell whose
+    /// command changed a file — whichever settled first would claim the other's
+    /// work through the per-file CAS, which is misattribution, the one output
+    /// this system may never produce. Overlap therefore voids *both* windows:
+    /// their observations are dropped and the changes surface as `external`.
+    /// Under-attribution, no serialisation — a build should not queue behind
+    /// another conversation's build for the journal's sake.
+    brackets: Mutex<HashMap<String, BracketSlot>>,
+}
+
+#[derive(Default)]
+struct BracketSlot {
+    active: usize,
+    /// Bumped whenever a second window joins. A window remembers the value it
+    /// opened under; a changed value at settle means someone overlapped it —
+    /// including an overlap that opened *and closed* entirely inside it.
+    taint_epoch: u64,
 }
 
 type IgnoreCache = HashMap<PathBuf, Arc<Vec<ignore::gitignore::Gitignore>>>;
@@ -549,10 +568,56 @@ enum PreState {
     Content(String),
 }
 
+/// One observation of a path, distinguishing the states the settle logic has
+/// to treat differently. `Unobservable` covers everything the bracket may not
+/// speak about: a stat failure that is *not* NotFound (a transient EIO or a
+/// permission change is not a deletion, and recording a tombstone for it would
+/// corrupt the head), a symlink (following it reads whatever it points at —
+/// including outside the project, or on the host when a container made it —
+/// so it is refused outright), a directory where a file was, and content the
+/// snapshot rules skip.
+enum Probe {
+    Missing,
+    Content(String),
+    Unobservable,
+}
+
+fn probe(path: &Path) -> Probe {
+    match std::fs::symlink_metadata(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Probe::Missing,
+        Err(_) => Probe::Unobservable,
+        Ok(meta) if meta.file_type().is_symlink() || !meta.is_file() => Probe::Unobservable,
+        Ok(_) => match snapshot_path(path) {
+            Some(content) => Probe::Content(content),
+            None => Probe::Unobservable,
+        },
+    }
+}
+
 struct BracketFile {
     path: PathBuf,
     norm: String,
     pre: PreState,
+}
+
+/// Decrements the open-window count on drop, so a panic between bracket and
+/// settle cannot leave the slot permanently occupied — which would taint
+/// every later bracket for the project until restart.
+struct SlotGuard {
+    shared: Arc<JournalShared>,
+    key: String,
+}
+
+impl Drop for SlotGuard {
+    fn drop(&mut self) {
+        let mut slots = self.shared.brackets.lock().expect("bracket slot table poisoned");
+        if let Some(slot) = slots.get_mut(&self.key) {
+            slot.active = slot.active.saturating_sub(1);
+            if slot.active == 0 {
+                slots.remove(&self.key);
+            }
+        }
+    }
 }
 
 /// The pre-command snapshot of every file the journal tracks under the
@@ -562,12 +627,18 @@ struct BracketFile {
 /// primitive this crate owns, and without the bracket every one of those
 /// changes is `external` — real work with nobody's name on it.
 ///
-/// The scan set is *only* what the journal already tracks. A file it has
-/// never seen changing under a command is left to the external-labelling
-/// path; attributing it here would be a guess, and the journal does not
-/// guess.
+/// The scan set is *only* what the journal already tracks — live chains and
+/// tombstoned ones alike, since a file one command deleted and the next
+/// recreated is not untracked. A file the journal has never seen changing
+/// under a command is left to the external-labelling path; attributing it
+/// would be a guess, and the journal does not guess.
 pub struct CommandBracket {
     files: Vec<BracketFile>,
+    /// Voids the window when another bracket overlapped it; see
+    /// `JournalShared::brackets`.
+    epoch_at_open: u64,
+    tainted_at_open: bool,
+    slot: SlotGuard,
 }
 
 /// The scan never reads more than this many tracked files or this many bytes
@@ -590,10 +661,29 @@ impl JournalCtx {
             prefix.push('/');
         }
 
+        // Open the window before anything is read: a second window joining at
+        // any point voids both, so the registration has to cover the whole
+        // observation span.
+        let (epoch_at_open, tainted_at_open) = {
+            let mut slots = self.shared.brackets.lock().expect("bracket slot table poisoned");
+            let slot = slots.entry(prefix.clone()).or_default();
+            slot.active += 1;
+            if slot.active > 1 {
+                slot.taint_epoch += 1;
+            }
+            (slot.taint_epoch, slot.active > 1)
+        };
+        let slot = SlotGuard {
+            shared: self.shared.clone(),
+            key: prefix.clone(),
+        };
+
         let pool = self.pool.clone();
+        let query_prefix = prefix.clone();
         let tracked = tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
-            crate::db::ops::journal::tracked_files(&mut conn, &prefix, BRACKET_MAX_FILES + 1).map_err(|e| e.to_string())
+            crate::db::ops::journal::chains_under_prefix(&mut conn, &query_prefix, BRACKET_MAX_FILES + 1)
+                .map_err(|e| e.to_string())
         })
         .await
         .map_err(|e| e.to_string())
@@ -615,21 +705,23 @@ impl JournalCtx {
                 continue;
             }
             let path = PathBuf::from(&file.display_path);
+            // The same visibility rule `record` enforces: a file that has
+            // since been gitignored (it may hold credentials now) must not be
+            // snapshotted by the scan either — nor may `.git` internals.
+            if self.skipped(&path) {
+                continue;
+            }
             let _guard = self.lock_path(&path).await;
-            let pre = match std::fs::symlink_metadata(&path) {
-                Err(_) => PreState::Missing,
-                Ok(_) => match snapshot_path(&path) {
-                    Some(content) => {
-                        budget = budget.saturating_sub(content.len());
-                        PreState::Content(content)
-                    }
-                    // Present but unreadable/oversized/non-UTF-8: the bracket
-                    // cannot compare it, so it cannot speak about it.
-                    None => {
-                        dropped += 1;
-                        continue;
-                    }
-                },
+            let pre = match probe(&path) {
+                Probe::Missing => PreState::Missing,
+                Probe::Content(content) => {
+                    budget = budget.saturating_sub(content.len());
+                    PreState::Content(content)
+                }
+                Probe::Unobservable => {
+                    dropped += 1;
+                    continue;
+                }
             };
 
             // Pin what somebody else already changed, under the same lock the
@@ -638,7 +730,7 @@ impl JournalCtx {
                 PreState::Content(c) => Some(blobs::sha256_of(c)),
                 PreState::Missing => None,
             };
-            if pre_sha.as_deref() != Some(head_sha.as_str()) {
+            if pre_sha != head_sha {
                 let pool = self.pool.clone();
                 let blob_root = self.blob_root.clone();
                 let norm = file.norm_path.clone();
@@ -667,6 +759,12 @@ impl JournalCtx {
                 if let Err(e) = outcome {
                     tracing::warn!(error = %e, "journal: pre-command reconcile failed; entry skipped");
                 }
+                // A hand-edited `.gitignore` was just pinned: the rules the
+                // rest of this scan (and the turn) run under changed with it.
+                if is_gitignore_file(&path) {
+                    let dir = path.parent().unwrap_or(&path);
+                    self.invalidate_ignore_under(dir);
+                }
             }
 
             files.push(BracketFile {
@@ -682,7 +780,12 @@ impl JournalCtx {
                 "journal: bracket scan capped; uncovered changes will label external"
             );
         }
-        Some(CommandBracket { files })
+        Some(CommandBracket {
+            files,
+            epoch_at_open,
+            tainted_at_open,
+            slot,
+        })
     }
 
     /// Compare the tracked set against the bracket and record what the command
@@ -690,16 +793,54 @@ impl JournalCtx {
     /// and drawn by the UI with an "inferred" marker because the journal saw
     /// the window, not the write.
     pub async fn settle_command_bracket(&self, bracket: CommandBracket, tool_name: &str) {
-        for f in bracket.files {
+        // A window somebody overlapped proves nothing about *whose* command
+        // changed a file, and the per-file CAS cannot tell either — the first
+        // settler would simply claim everything. Both windows void instead;
+        // the changes surface as `external`. Checked at settle rather than
+        // at open so an overlap that began after this bracket opened still
+        // counts.
+        let tainted = bracket.tainted_at_open || {
+            let slots = self.shared.brackets.lock().expect("bracket slot table poisoned");
+            slots
+                .get(&bracket.slot.key)
+                .is_none_or(|slot| slot.taint_epoch != bracket.epoch_at_open)
+        };
+        if tainted {
+            tracing::info!(
+                files = bracket.files.len(),
+                "journal: overlapping command brackets; observations voided, changes will label external"
+            );
+            return;
+        }
+
+        // `.gitignore` files first: a command that adds a rule and creates the
+        // file it hides must have the new rule in force before the other
+        // entries are re-tested below.
+        let (gitignores, others): (Vec<_>, Vec<_>) =
+            bracket.files.into_iter().partition(|f| is_gitignore_file(&f.path));
+
+        let mut budget = BRACKET_MAX_BYTES;
+        for f in gitignores.into_iter().chain(others) {
+            // Re-tested at settle: the command may have gitignored it.
+            if self.skipped(&f.path) {
+                continue;
+            }
+            if budget == 0 {
+                tracing::debug!("journal: bracket settle budget exhausted; remaining changes label external");
+                break;
+            }
             let _guard = self.lock_path(&f.path).await;
-            let post = match std::fs::symlink_metadata(&f.path) {
-                Err(_) => PreState::Missing,
-                Ok(_) => match snapshot_path(&f.path) {
-                    Some(content) => PreState::Content(content),
-                    // Became unreadable/oversized: nothing comparable to say.
-                    None => continue,
-                },
+            let post = match probe(&f.path) {
+                Probe::Missing => PreState::Missing,
+                Probe::Content(content) => {
+                    budget = budget.saturating_sub(content.len());
+                    PreState::Content(content)
+                }
+                // Became a symlink, a directory, unreadable or oversized:
+                // nothing this bracket may speak about.
+                Probe::Unobservable => continue,
             };
+            let changed_gitignore = post != f.pre && is_gitignore_file(&f.path);
             if post == f.pre {
                 continue;
             }
@@ -751,7 +892,15 @@ impl JournalCtx {
             })
             .await;
             match outcome {
-                Ok(Ok(crate::db::ops::journal::CommandObservedOutcome::Recorded)) => {}
+                Ok(Ok(crate::db::ops::journal::CommandObservedOutcome::Recorded)) => {
+                    // The command rewrote a `.gitignore`: the matchers built
+                    // under the old rules are stale for the rest of this turn,
+                    // exactly as `record` invalidates for a tool edit.
+                    if changed_gitignore {
+                        let dir = f.path.parent().unwrap_or(&f.path);
+                        self.invalidate_ignore_under(dir);
+                    }
+                }
                 Ok(Ok(other)) => {
                     tracing::debug!(?other, "journal: bracket observation not recorded")
                 }
@@ -1429,6 +1578,219 @@ mod tests {
             (chain[1].op.as_str(), chain[1].new_sha.as_deref()),
             ("command_observed", None)
         );
+    }
+
+    /// A file journalled while visible and *then* gitignored (it may hold
+    /// credentials now) is invisible to the bracket too: no snapshot of its
+    /// contents may enter the store through the scan, before or after.
+    #[tokio::test]
+    async fn a_newly_gitignored_tracked_file_is_not_scanned() {
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = ctx(Some(dir.path()));
+        let file = dir.path().join("config.txt");
+        std::fs::write(&file, "harmless\n").unwrap();
+        let real = crate::tools::verified::resolve_root(&file).unwrap();
+        ctx.record(&real, None, Some("harmless\n"), Op::Write, "write_file", None)
+            .await
+            .unwrap();
+
+        // The rule arrives after the file was journalled; a fresh turn sees
+        // it. Same pool and blob store as the first turn — `ctx_sharing`
+        // would mint a new database, and a bracket over an empty journal
+        // proves nothing (this test sat green under mutation for exactly
+        // that reason).
+        std::fs::write(dir.path().join(".gitignore"), "config.txt\n").unwrap();
+        let ctx2 = JournalCtx::new(
+            ctx.pool.clone(),
+            ctx.blob_root.clone(),
+            "conv2".into(),
+            "turn2".into(),
+            "desktop".into(),
+            None,
+            None,
+            Some(dir.path().to_path_buf()),
+            JournalShared::new(),
+        );
+        std::fs::write(&file, "SECRET=1\n").unwrap();
+
+        let bracket = ctx2.command_bracket().await.unwrap();
+        std::fs::write(&file, "SECRET=2\n").unwrap();
+        ctx2.settle_command_bracket(bracket, "run_command").await;
+
+        // Neither the pre-command reconcile nor the settle may have stored the
+        // secret contents.
+        for secret in ["SECRET=1\n", "SECRET=2\n"] {
+            let sha = blobs::sha256_of(secret);
+            assert!(
+                blobs::load(&ctx2.blob_root, &sha).is_err(),
+                "a gitignored file's contents reached the blob store"
+            );
+        }
+    }
+
+    /// A command that rewrites `.gitignore` changes the rules for the rest of
+    /// the turn: the settle must invalidate the cached matchers, exactly as a
+    /// tool edit of the same file does.
+    #[tokio::test]
+    async fn a_command_edit_of_gitignore_invalidates_the_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(".gitignore"), "").unwrap();
+        let ctx = ctx(Some(dir.path()));
+        let gi = dir.path().join(".gitignore");
+        let real_gi = crate::tools::verified::resolve_root(&gi).unwrap();
+        ctx.record(&real_gi, None, Some(""), Op::Write, "write_file", None)
+            .await
+            .unwrap();
+        // Warm the matcher cache with the empty rules.
+        let secret = dir.path().join("secret.env");
+        assert!(
+            ctx.record(&secret, None, Some("A"), Op::Write, "write_file", None)
+                .await
+                .is_some()
+        );
+
+        let bracket = ctx.command_bracket().await.unwrap();
+        std::fs::write(&gi, "secret.env\n").unwrap();
+        ctx.settle_command_bracket(bracket, "run_command").await;
+
+        assert!(
+            ctx.record(&secret, None, Some("B"), Op::Write, "write_file", None)
+                .await
+                .is_none(),
+            "the rule the command wrote must apply to the rest of the turn"
+        );
+    }
+
+    /// Deleted-then-recreated across two commands: the second bracket must see
+    /// the tombstoned chain (it is not untracked) and attribute the rebirth.
+    #[tokio::test]
+    async fn a_recreation_after_a_command_deletion_is_attributed() {
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = ctx(Some(dir.path()));
+        let file = dir.path().join("phoenix.txt");
+        std::fs::write(&file, "v1\n").unwrap();
+        let real = crate::tools::verified::resolve_root(&file).unwrap();
+        ctx.record(&real, None, Some("v1\n"), Op::Write, "write_file", None)
+            .await
+            .unwrap();
+
+        // Command one deletes it.
+        let bracket = ctx.command_bracket().await.unwrap();
+        std::fs::remove_file(&file).unwrap();
+        ctx.settle_command_bracket(bracket, "run_command").await;
+
+        // Command two recreates it.
+        let bracket = ctx.command_bracket().await.unwrap();
+        std::fs::write(&file, "reborn\n").unwrap();
+        ctx.settle_command_bracket(bracket, "run_command").await;
+
+        let mut conn = ctx.pool.get().unwrap();
+        let row = crate::db::ops::journal::file_by_path(&mut conn, &crate::journal::norm_path(&real).unwrap())
+            .unwrap()
+            .unwrap();
+        let chain = crate::db::ops::journal::chain(&mut conn, &row.id).unwrap();
+        assert_eq!(chain.len(), 3);
+        let rebirth = &chain[2];
+        assert_eq!(
+            (rebirth.op.as_str(), rebirth.observed_old_sha.as_deref()),
+            ("command_observed", None)
+        );
+        assert_eq!(rebirth.conversation_id.as_deref(), Some("conv"));
+    }
+
+    /// Two overlapping windows on one project void each other: neither may
+    /// claim the changes, because neither can prove whose command made them —
+    /// the misattribution this exists to prevent is the first settler
+    /// claiming the other's work through the per-file CAS.
+    #[tokio::test]
+    async fn overlapping_brackets_void_both_windows() {
+        let dir = tempfile::tempdir().unwrap();
+        let shared = JournalShared::new();
+        let a = ctx_sharing(Some(dir.path()), shared.clone());
+        let b = ctx_sharing(Some(dir.path()), shared);
+        let file = dir.path().join("contended.txt");
+        std::fs::write(&file, "v1\n").unwrap();
+        let real = crate::tools::verified::resolve_root(&file).unwrap();
+        a.record(&real, None, Some("v1\n"), Op::Write, "write_file", None)
+            .await
+            .unwrap();
+
+        let bracket_a = a.command_bracket().await.unwrap();
+        let bracket_b = b.command_bracket().await.unwrap();
+        // B's command changes the file; A settles first and must not claim it.
+        std::fs::write(&file, "b's work\n").unwrap();
+        a.settle_command_bracket(bracket_a, "run_command").await;
+        b.settle_command_bracket(bracket_b, "run_command").await;
+
+        let row = {
+            // Scoped: the test pool is tiny, and holding a connection across
+            // the next bracket starves its spawn_blocking query into a
+            // timeout — a defect of this test, not of the bracket.
+            let mut conn = a.pool.get().unwrap();
+            let row = crate::db::ops::journal::file_by_path(&mut conn, &crate::journal::norm_path(&real).unwrap())
+                .unwrap()
+                .unwrap();
+            let chain = crate::db::ops::journal::chain(&mut conn, &row.id).unwrap();
+            assert_eq!(chain.len(), 1, "voided windows record nothing: {chain:?}");
+            row
+        };
+
+        // And the window closes with its brackets: a later lone bracket works.
+        std::fs::write(&file, "later solo change\n").unwrap();
+        let bracket = a.command_bracket().await.unwrap();
+        std::fs::write(&file, "solo command work\n").unwrap();
+        a.settle_command_bracket(bracket, "run_command").await;
+        let mut conn = a.pool.get().unwrap();
+        let chain = crate::db::ops::journal::chain(&mut conn, &row.id).unwrap();
+        assert_eq!(
+            chain.last().map(|v| v.op.as_str()),
+            Some("command_observed"),
+            "the slot must not stay tainted after both windows closed"
+        );
+    }
+
+    /// A tracked path replaced by a symlink is refused, not followed: the
+    /// target may be outside the project entirely (or on the host, when a
+    /// container made the link), and snapshotting it would pull foreign bytes
+    /// into the store.
+    #[tokio::test]
+    async fn a_symlinked_path_is_not_snapshotted_at_settle() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let secret_target = outside.path().join("host-secret.txt");
+        std::fs::write(&secret_target, "HOST SECRET\n").unwrap();
+
+        let ctx = ctx(Some(dir.path()));
+        let file = dir.path().join("tracked.txt");
+        std::fs::write(&file, "v1\n").unwrap();
+        let real = crate::tools::verified::resolve_root(&file).unwrap();
+        ctx.record(&real, None, Some("v1\n"), Op::Write, "write_file", None)
+            .await
+            .unwrap();
+
+        let bracket = ctx.command_bracket().await.unwrap();
+        std::fs::remove_file(&file).unwrap();
+        #[cfg(unix)]
+        let made = std::os::unix::fs::symlink(&secret_target, &file).is_ok();
+        #[cfg(windows)]
+        let made = std::os::windows::fs::symlink_file(&secret_target, &file).is_ok();
+        if !made {
+            // Windows without developer mode cannot create symlinks.
+            return;
+        }
+        ctx.settle_command_bracket(bracket, "run_command").await;
+
+        let sha = blobs::sha256_of("HOST SECRET\n");
+        assert!(
+            blobs::load(&ctx.blob_root, &sha).is_err(),
+            "the symlink target's bytes reached the store"
+        );
+        let mut conn = ctx.pool.get().unwrap();
+        let row = crate::db::ops::journal::file_by_path(&mut conn, &crate::journal::norm_path(&real).unwrap())
+            .unwrap()
+            .unwrap();
+        let chain = crate::db::ops::journal::chain(&mut conn, &row.id).unwrap();
+        assert_eq!(chain.len(), 1, "an unobservable path appends nothing: {chain:?}");
     }
 
     /// The CAS at settle: a legitimate tool write landing inside the command
