@@ -155,7 +155,7 @@ test('attaching starts narrowed to the conversation directory and closes when it
   expect(acpListSessions).toHaveBeenCalledWith('/work/foxline')
 
   await rows(1)
-  await userEvent.click(screen.getByRole('button', { name: 'Follow' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Connect' }))
   expect(acpAttachSession).toHaveBeenCalledWith('conv-1', 's-a', '/work/foxline')
   // The opposite of an import: there is exactly one session to pick and the
   // conversation it was picked for is already open behind this.
@@ -195,7 +195,7 @@ test('a session held by another conversation cannot be attached', async () => {
 
   expect(screen.getByText('Taken by another conversation')).toBeInTheDocument()
   expect(screen.getByText('Current')).toBeInTheDocument()
-  expect(screen.queryByRole('button', { name: 'Follow' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Connect' })).not.toBeInTheDocument()
 })
 
 /** A failure belongs on the row that caused it, not on the dialog. */
