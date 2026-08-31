@@ -23,9 +23,11 @@ import { useIsOffline } from '@/hooks/use-connection-state'
 import { useVoiceRecorder, type VoiceNotice } from '@/hooks/use-voice-recorder'
 import { useAndroidVoiceRecorder } from '@/hooks/use-android-voice-recorder'
 import { useHistoryLevel } from '@/hooks/use-history-level'
+import { useComposerTypeahead } from '@/hooks/use-composer-typeahead'
 import { FileInput, type FileInputHandle } from '@/components/ui/file-input'
 import { VoiceButton } from '@/components/ui/voice-button'
 import { Composer } from './composer'
+import { ComposerSuggestions, type ComposerSuggestion } from './composer-suggestions'
 import { VoiceOverlay } from './voice-overlay'
 import { MobileOptionsMenu } from './toolbar'
 import { ComposerMenu } from './composer-menu'
@@ -63,6 +65,8 @@ interface InputBarProps {
    *  session's model and mode are the *agent's* to report, per session, rather
    *  than this app's settings. */
   conversationId: string | null
+  /** Project selected before the first conversation exists, for @ completion. */
+  workspaceProjectId?: string | null
   /** Removes the docked safe-area padding when the same composer is embedded
    * in the centred welcome state. All controls and behaviour stay identical. */
   embedded?: boolean
@@ -297,6 +301,7 @@ function ComposerContextMenu({
 
 export function InputBar({
   conversationId,
+  workspaceProjectId,
   embedded,
   isHosted,
   value,
@@ -341,6 +346,7 @@ export function InputBar({
   const { t } = useTranslation()
   const platform = usePlatform()
   const isAndroid = platform === 'android'
+  const [caret, setCaret] = useState(value.length)
   // One subscription for the whole composer. The knobs and the context gauge
   // both read the hosted session's state, and two calls would mean two fetches
   // and two listeners answering the same events.
@@ -352,6 +358,21 @@ export function InputBar({
     const model = acp.options.find((o) => o.id === 'model' || o.category === 'model')
     return model ? currentValueName(t, model) : null
   })()
+  const supportsFast = isHosted
+    ? acp.options.some((option) => option.id === 'fast')
+    : capabilities?.supports_fast === true
+  const typeahead = useComposerTypeahead({
+    value,
+    caret,
+    conversationId,
+    projectId: workspaceProjectId,
+    isHosted: !!isHosted,
+    supportsFast,
+    providerId: currentProviderId,
+    capabilities: capabilities ?? null,
+    acpOptions: acp.options,
+    platform,
+  })
   // A message sent to a machine that is not answering fails, and a field that
   // looks live while that is true is a lie the user only finds out about after
   // typing. This is the one connection state the composer has to care about.
@@ -434,6 +455,74 @@ export function InputBar({
     if ((disabled && !streaming) || (!value.trim() && !pendingSticker)) return
     onSubmit()
   }, [disabled, streaming, value, pendingSticker, onSubmit])
+
+  const moveCaret = useCallback((next: number) => {
+    requestAnimationFrame(() => {
+      const el = textareaRef.current
+      if (!el) return
+      el.selectionStart = next
+      el.selectionEnd = next
+      setCaret(next)
+      el.focus()
+    })
+  }, [])
+
+  // Pressing Enter on a command without an argument changes `/model` to
+  // `/model ` from above the field. React can keep the DOM selection at the old
+  // length, and then the caret-aware parser still sees the command token rather
+  // than the value token. Only this exact picker transition is repositioned;
+  // later clicks within the unchanged value remain untouched.
+  useEffect(() => {
+    if (/^\/\S+ $/.test(value)) moveCaret(value.length)
+  }, [moveCaret, value])
+
+  const acceptSuggestion = useCallback(
+    (item: ComposerSuggestion) => {
+      const next = typeahead.accept(item)
+      if (!next) return
+      onChange(next.value)
+      moveCaret(next.caret)
+      if (!next.keepOpen) typeahead.dismiss()
+    },
+    [moveCaret, onChange, typeahead],
+  )
+
+  const handleComposerKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (event.nativeEvent.isComposing) return
+      if (typeahead.open) {
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault()
+          event.stopPropagation()
+          const direction = event.key === 'ArrowDown' ? 1 : -1
+          typeahead.setActiveIndex((current) => (current + direction + typeahead.items.length) % typeahead.items.length)
+          return
+        }
+        if (event.key === 'Enter' || event.key === 'Tab') {
+          const item = typeahead.items[typeahead.activeIndex]
+          if (!item) return
+          event.preventDefault()
+          event.stopPropagation()
+          acceptSuggestion(item)
+          return
+        }
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          event.stopPropagation()
+          typeahead.dismiss()
+          return
+        }
+      }
+
+      if (value.startsWith('!') && event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        onChange(value.slice(1))
+        moveCaret(Math.max(0, event.currentTarget.selectionStart - 1))
+      }
+    },
+    [acceptSuggestion, moveCaret, onChange, typeahead, value],
+  )
 
   const handleFieldReady = useCallback(
     (el: HTMLTextAreaElement | null) => {
@@ -624,16 +713,35 @@ export function InputBar({
             queue={queue}
             ariaLabel={t('chat.placeholder')}
             placeholder={
-              queueing
-                ? t('chat.placeholderQueue')
-                : steerable && streaming
-                  ? t('chat.placeholderSteer')
-                  : // Only promises the hold while the hold is bound.
-                    voicePress
-                    ? t('chat.placeholderVoice')
-                    : t('chat.placeholder')
+              value.startsWith('!')
+                ? t('chat.shell.placeholder')
+                : queueing
+                  ? t('chat.placeholderQueue')
+                  : steerable && streaming
+                    ? t('chat.placeholderSteer')
+                    : // Only promises the hold while the hold is bound.
+                      voicePress
+                      ? t('chat.placeholderVoice')
+                      : t('chat.placeholder')
             }
             onFieldReady={handleFieldReady}
+            inputMode={value.startsWith('!') ? 'shell' : 'prompt'}
+            onCaretChange={setCaret}
+            onKeyDownCapture={handleComposerKeyDown}
+            suggestions={
+              typeahead.open ? (
+                <ComposerSuggestions
+                  items={typeahead.items}
+                  activeIndex={typeahead.activeIndex}
+                  onAction={acceptSuggestion}
+                  ariaLabel={
+                    typeahead.token?.kind === 'reference'
+                      ? t('chat.referenceSuggestions')
+                      : t('chat.commandSuggestions')
+                  }
+                />
+              ) : null
+            }
             // `!isHosted` for the same reason the attach menu and the sticker
             // picker are withheld: an attachment reaches a hosted agent as the
             // JSON that carries it, because an ACP prompt is a single text

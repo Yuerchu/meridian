@@ -15,8 +15,15 @@ import { useSenderNames } from '@/hooks/use-sender-names'
 import { useTurnSettings } from '@/hooks/use-turn-settings'
 import { useSendMessage } from '@/hooks/use-send-message'
 import { useContextInfo } from '@/hooks/use-context-info'
+import { useConfirm } from '@/hooks/use-confirm'
+import { usePlatform } from '@/hooks/use-platform'
 import { useConversationStore } from '@/stores/conversation-store'
-import type { Message, QueueDelivery } from '@/types'
+import { parseComposerIntent, referenceInputs } from '@/lib/composer-intent'
+import { findComposerCommand } from '@/lib/composer-commands'
+import { allowedEfforts } from '@/lib/thinking'
+import { visibleSettingsTabs, type SettingsTab } from '@/components/settings/tabs'
+import { isRemote } from '@/lib/transport'
+import type { ChatMode, Message, QueueDelivery, ThinkingLevel } from '@/types'
 import { StarterPrompts } from './empty-state'
 import type { InitialTurnDraft } from './conversation-draft'
 
@@ -24,14 +31,24 @@ import type { InitialTurnDraft } from './conversation-draft'
 // every render of a conversation whose session has not been created yet.
 const NO_MESSAGES: Message[] = []
 
+interface ShellSubmission {
+  draft: string
+  command: string
+  turnId: string
+}
+
 function ChatViewInner({
   conversationId,
   initialDraft,
   onInitialDraftConsumed,
+  onCreate,
+  onOpenSettingsTab,
 }: {
   conversationId: string
   initialDraft?: InitialTurnDraft | null
   onInitialDraftConsumed?: () => void
+  onCreate?: () => void | Promise<void>
+  onOpenSettingsTab?: (tab: SettingsTab) => void
 }) {
   const session = useConversationStore((s) => s.sessions[conversationId])
   const storeEnsureSession = useConversationStore((s) => s.ensureSession)
@@ -39,6 +56,9 @@ function ChatViewInner({
   const storeLoadActiveTodos = useConversationStore((s) => s.loadActiveTodos)
   const storeSetError = useConversationStore((s) => s.setError)
   const storeSetCompacting = useConversationStore((s) => s.setCompacting)
+  const storeBeginShellCommand = useConversationStore((s) => s.beginShellCommand)
+  const storeAbortShellCommand = useConversationStore((s) => s.abortShellCommand)
+  const storeFinishShellCommand = useConversationStore((s) => s.finishShellCommand)
   const isOneBot = useConversationStore((s) => {
     const conv = s.conversations.find((c) => c.id === conversationId)
     const project = conv?.project_id ? s.projects.find((p) => p.id === conv.project_id) : undefined
@@ -50,10 +70,18 @@ function ChatViewInner({
 
   const messages = session?.messages ?? NO_MESSAGES
   const streaming = session?.streaming ?? false
+  const shellTurnId = session?.activeShellTurnId ?? null
   const compacting = session?.compacting ?? false
   const error = session?.error ?? null
 
   const [input, setInput] = useState('')
+  const [commandPending, setCommandPending] = useState(false)
+  const commandPendingRef = useRef(false)
+  const shellSubmittingRef = useRef(false)
+  // A negative snapshot is not proof that the backend never accepted an
+  // invoke whose response was lost. Keep that submission's idempotency key so
+  // restoring or manually retyping the exact command cannot mint a new turn.
+  const shellRetriesRef = useRef<ShellSubmission[]>([])
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [pendingSticker, setPendingSticker] = useState<PendingSticker | null>(null)
   // What the *next* queued message will be, not a property of any row. Defaults
@@ -61,6 +89,7 @@ function ChatViewInner({
   // going, which is not a thing to do by accident.
   const [queueDelivery, setQueueDelivery] = useState<QueueDelivery>('follow_up')
   const settings = useTurnSettings(conversationId, initialDraft?.settings)
+  const platform = usePlatform()
   const emojiMap = useEmojiMap(settings.selectedAssistantId)
   // Only a OneBot conversation has more than one speaker; a desktop row has no
   // sender id to look up. Keyed on who is actually in the transcript so a
@@ -75,6 +104,28 @@ function ChatViewInner({
   }, [isOneBot, messages])
   const senderNames = useSenderNames(speakerKey)
   const { t } = useTranslation()
+  const { confirm, confirmDialog } = useConfirm()
+
+  const clearShellRetry = useCallback((turnId: string) => {
+    shellRetriesRef.current = shellRetriesRef.current.filter((submission) => submission.turnId !== turnId)
+  }, [])
+
+  useEffect(() => {
+    const durableTurnIds = new Set(
+      messages
+        .filter((message) => message.source === 'shell' && message.turn_id)
+        .map((message) => message.turn_id as string),
+    )
+    if (durableTurnIds.size === 0) return
+
+    const completed = shellRetriesRef.current.filter((submission) => durableTurnIds.has(submission.turnId))
+    if (completed.length === 0) return
+    shellRetriesRef.current = shellRetriesRef.current.filter((submission) => !durableTurnIds.has(submission.turnId))
+    // A later reload may discover the row after an earlier negative check
+    // restored the draft. Remove only that unchanged restored value; never
+    // overwrite text the user entered while the request was in doubt.
+    setInput((current) => (completed.some((submission) => submission.draft === current) ? '' : current))
+  }, [messages])
 
   useEffect(() => {
     storeEnsureSession(conversationId)
@@ -103,13 +154,17 @@ function ChatViewInner({
   // back of it. `acp_cancel` is the same act named for what it is, and it does
   // not need the turn id a reloaded window may not have.
   const handleStop = useCallback(() => {
+    if (shellTurnId) {
+      api.stopChat(conversationId, shellTurnId)
+      return
+    }
     if (isHostedAgent) {
       api.acpCancel(conversationId)
       return
     }
     const turnId = useConversationStore.getState().sessions[conversationId]?.activeTurnId
     api.stopChat(conversationId, turnId)
-  }, [conversationId, isHostedAgent])
+  }, [conversationId, isHostedAgent, shellTurnId])
 
   const handleDelete = useCallback(
     (id: string) => {
@@ -143,32 +198,6 @@ function ChatViewInner({
   )
 
   const initialDraftSent = useRef<string | null>(null)
-  useEffect(() => {
-    if (initialDraft && initialDraftSent.current !== conversationId) {
-      initialDraftSent.current = conversationId
-      if (initialDraft.remainingComposer) {
-        setInput(initialDraft.remainingComposer.text)
-        setAttachedFiles(initialDraft.remainingComposer.attachedFiles)
-        setPendingSticker(initialDraft.remainingComposer.pendingSticker)
-      }
-      onInitialDraftConsumed?.()
-      const sticker = initialDraft.pendingSticker
-        ? {
-            type: 'sticker' as const,
-            sticker_id: initialDraft.pendingSticker.emoji.id,
-            name: initialDraft.pendingSticker.emoji.name,
-          }
-        : undefined
-      void sendMessage(
-        initialDraft.text,
-        true,
-        initialDraft.attachedFiles.length > 0 ? initialDraft.attachedFiles : undefined,
-        undefined,
-        initialDraft.voice || undefined,
-        sticker,
-      )
-    }
-  }, [conversationId, initialDraft, onInitialDraftConsumed, sendMessage])
 
   // Memoised because useTurns keys its work on this array's identity; a fresh
   // filter() on every render would rebuild every turn on every stream chunk.
@@ -223,9 +252,356 @@ function ChatViewInner({
   const queue = usePromptQueue(conversationId, queueable)
   const queueing = queueable && streaming
 
+  const executeSlashCommand = useCallback(
+    async (name: string, args: string, submittedDraft: string) => {
+      if (commandPendingRef.current) {
+        storeSetError(conversationId, t('chat.command.busy'))
+        return
+      }
+      const command = findComposerCommand(name, {
+        hasConversation: true,
+        isHosted: isHostedAgent,
+        // Hosted capabilities are dynamic and validated below. Keeping the
+        // registry entry visible here lets a manually typed `/fast` receive the
+        // adapter's real answer instead of being mistaken for an unknown name.
+        supportsFast: isHostedAgent || settings.capabilities?.supports_fast === true,
+      })
+      if (!command) {
+        storeSetError(conversationId, t('chat.command.unknown', { name }))
+        return
+      }
+      const shellActive = useConversationStore.getState().sessions[conversationId]?.activeShellTurnId
+      if ((streaming || shellActive) && command.busyPolicy === 'idle-only') {
+        storeSetError(conversationId, t('chat.command.busy'))
+        return
+      }
+
+      commandPendingRef.current = true
+      setCommandPending(true)
+      storeSetError(conversationId, null)
+      const clearSubmittedDraft = () => setInput((current) => (current === submittedDraft ? '' : current))
+      try {
+        if (command.id === 'help') {
+          setInput('/')
+          return
+        }
+        if (command.id === 'new') {
+          await onCreate?.()
+          clearSubmittedDraft()
+          return
+        }
+        if (command.id === 'settings') {
+          const tab = args
+            ? visibleSettingsTabs(platform).find((candidate) => candidate.id.toLowerCase() === args.toLowerCase())?.id
+            : 'provider'
+          if (!tab) {
+            storeSetError(conversationId, t('chat.command.invalidArgument', { name: command.name, value: args }))
+            return
+          }
+          onOpenSettingsTab?.(tab)
+          clearSubmittedDraft()
+          return
+        }
+        if (command.id === 'compact') {
+          await handleCompact(args || undefined)
+          clearSubmittedDraft()
+          return
+        }
+
+        // A missing argument turns the same typeahead from command names to the
+        // values that command accepts. It is a picker, not an implicit default.
+        if (!args) {
+          setInput(`/${command.name} `)
+          return
+        }
+
+        if (isHostedAgent) {
+          const options = await api.acpSessionConfig(conversationId)
+          const option = options.find((candidate) => {
+            if (command.id === 'thinking') return candidate.id === 'effort' || candidate.category === 'thought_level'
+            return candidate.id === command.id || candidate.category === command.id
+          })
+          const values = option && 'options' in option && Array.isArray(option.options) ? option.options : []
+          const selected = values.find((value) => value.value.toLowerCase() === args.toLowerCase())
+          if (!option || !selected) {
+            storeSetError(conversationId, t('chat.command.invalidArgument', { name: command.name, value: args }))
+            return
+          }
+          await api.acpSetSessionConfig(conversationId, option.id, selected.value)
+          clearSubmittedDraft()
+          return
+        }
+
+        if (command.id === 'model') {
+          const providerId = settings.selectedProviderId
+          if (!providerId) {
+            storeSetError(conversationId, t('chat.command.invalidArgument', { name: command.name, value: args }))
+            return
+          }
+          const models = await api.fetchProviderModels(providerId)
+          const model = models.find(
+            (candidate) =>
+              candidate.id.toLowerCase() === args.toLowerCase() || candidate.name.toLowerCase() === args.toLowerCase(),
+          )
+          if (!model) {
+            storeSetError(conversationId, t('chat.command.invalidArgument', { name: command.name, value: args }))
+            return
+          }
+          settings.onSelectModel(model.id, providerId)
+        } else if (command.id === 'thinking') {
+          const values: ThinkingLevel[] = [
+            'default',
+            ...(settings.capabilities?.supports_thinking_off === false ? [] : (['off'] as ThinkingLevel[])),
+            ...allowedEfforts(settings.capabilities),
+          ]
+          const value = values.find((candidate) => candidate === args.toLowerCase())
+          if (!value) {
+            storeSetError(conversationId, t('chat.command.invalidArgument', { name: command.name, value: args }))
+            return
+          }
+          settings.onSelectThinkingLevel(value)
+        } else if (command.id === 'mode') {
+          const value = args.toLowerCase()
+          if (value !== 'work' && value !== 'plan') {
+            storeSetError(conversationId, t('chat.command.invalidArgument', { name: command.name, value: args }))
+            return
+          }
+          settings.onSelectMode(value as ChatMode)
+        } else if (command.id === 'fast') {
+          const value = args.toLowerCase()
+          if (value !== 'on' && value !== 'off') {
+            storeSetError(conversationId, t('chat.command.invalidArgument', { name: command.name, value: args }))
+            return
+          }
+          settings.onToggleFast(value === 'on')
+        }
+        clearSubmittedDraft()
+      } finally {
+        commandPendingRef.current = false
+        setCommandPending(false)
+      }
+    },
+    [
+      conversationId,
+      handleCompact,
+      isHostedAgent,
+      onCreate,
+      onOpenSettingsTab,
+      platform,
+      settings,
+      storeSetError,
+      streaming,
+      t,
+    ],
+  )
+
+  const executeShellCommand = useCallback(
+    async (command: string, originalDraft: string) => {
+      if (!command) {
+        storeSetError(conversationId, t('chat.shell.empty'))
+        return
+      }
+      const activeShellTurn = useConversationStore.getState().sessions[conversationId]?.activeShellTurnId
+      if (streaming || activeShellTurn || commandPendingRef.current || shellSubmittingRef.current) {
+        storeSetError(conversationId, t('chat.shell.busy'))
+        return
+      }
+
+      shellSubmittingRef.current = true
+      let turnId: string | null = null
+      try {
+        if (!isRemote && (platform ?? (await api.getPlatform())) === 'android') {
+          storeSetError(conversationId, t('chat.shell.androidUnavailable'))
+          return
+        }
+
+        const durableTurnIds = new Set(
+          (useConversationStore.getState().sessions[conversationId]?.messages ?? [])
+            .filter((message) => message.source === 'shell' && message.turn_id)
+            .map((message) => message.turn_id as string),
+        )
+        shellRetriesRef.current = shellRetriesRef.current.filter((submission) => !durableTurnIds.has(submission.turnId))
+        let submission = shellRetriesRef.current.find(
+          (candidate) => candidate.draft === originalDraft && candidate.command === command,
+        )
+        if (!submission) {
+          submission = { draft: originalDraft, command, turnId: crypto.randomUUID() }
+          shellRetriesRef.current.push(submission)
+        }
+        turnId = submission.turnId
+        storeSetError(conversationId, null)
+        storeBeginShellCommand(conversationId, turnId)
+        setInput((current) => (current === originalDraft ? '' : current))
+        let result = await api.runUserCommand(conversationId, command, turnId)
+        clearShellRetry(turnId)
+        storeFinishShellCommand(result)
+        if (result.can_retry_without_sandbox) {
+          const approved = await confirm({
+            status: 'warning',
+            title: t('chat.shell.retryTitle'),
+            body: (
+              <div className="space-y-3">
+                <p>{t('chat.shell.retryBody')}</p>
+                <dl className="space-y-2 rounded-xl bg-surface-secondary p-3 text-xs">
+                  <div>
+                    <dt className="font-medium text-muted">{t('chat.shell.commandLabel')}</dt>
+                    <dd className="mt-0.5 break-all font-mono text-foreground">{command}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-muted">{t('chat.shell.cwdLabel')}</dt>
+                    <dd className="mt-0.5 break-all font-mono text-foreground">{result.cwd}</dd>
+                  </div>
+                </dl>
+              </div>
+            ),
+            confirmLabel: t('chat.shell.retryConfirm'),
+          })
+          if (approved) {
+            storeBeginShellCommand(conversationId, turnId)
+            result = await api.runUserCommand(conversationId, command, turnId, true)
+            storeFinishShellCommand(result)
+          }
+        }
+        if (result.error && result.status !== 'completed') storeSetError(conversationId, result.error)
+      } catch (err) {
+        if (!turnId) {
+          setInput((current) => current || originalDraft)
+          storeSetError(conversationId, String(err))
+          return
+        }
+
+        // An invoke rejection is ambiguous: the backend may have run the side
+        // effect and only lost its reply. Reload under the store's generation
+        // guard. The draft becomes runnable again only when a successfully
+        // applied snapshot proves that this UUID never acquired a durable
+        // shell row. A failed/superseded reload stays in-doubt and keeps the
+        // original command out of the composer.
+        let confirmedAbsent = false
+        try {
+          const applied = await storeLoadMessages(conversationId)
+          const messages = useConversationStore.getState().sessions[conversationId]?.messages ?? []
+          const durable = messages.some((message) => message.source === 'shell' && message.turn_id === turnId)
+          if (applied && durable) clearShellRetry(turnId)
+          confirmedAbsent = applied && !durable
+        } catch {
+          // Absence was not established. Retrying under a new UUID could run an
+          // already-started command twice, so ambiguity deliberately wins.
+        }
+
+        if (confirmedAbsent) {
+          storeAbortShellCommand(conversationId, turnId, String(err))
+          setInput((current) => current || originalDraft)
+        } else {
+          storeSetError(conversationId, String(err))
+        }
+      } finally {
+        shellSubmittingRef.current = false
+        if (turnId) {
+          // The event path also reloads. This is best-effort repair for a lost
+          // event/response and must not turn an already-handled command error
+          // into an unhandled rejection of its own.
+          try {
+            await storeLoadMessages(conversationId)
+          } catch {
+            // The original error (if any) is already visible. A later
+            // conversation load rehydrates both the row and the live lease.
+          }
+        }
+      }
+    },
+    [
+      confirm,
+      clearShellRetry,
+      conversationId,
+      platform,
+      storeAbortShellCommand,
+      storeBeginShellCommand,
+      storeFinishShellCommand,
+      storeLoadMessages,
+      storeSetError,
+      streaming,
+      t,
+    ],
+  )
+
+  // The welcome composer becomes this composer after it creates the first
+  // conversation. Parse that draft at the same boundary as every later submit
+  // so `!` and `/` do not silently turn into ordinary model prompts merely
+  // because they were typed on the empty screen.
+  useEffect(() => {
+    if (!initialDraft || initialDraftSent.current === conversationId) return
+    initialDraftSent.current = conversationId
+    if (initialDraft.remainingComposer) {
+      setInput(initialDraft.remainingComposer.text)
+      setAttachedFiles(initialDraft.remainingComposer.attachedFiles)
+      setPendingSticker(initialDraft.remainingComposer.pendingSticker)
+    }
+    onInitialDraftConsumed?.()
+
+    const intent = parseComposerIntent(initialDraft.text)
+    const hasPayload = initialDraft.voice || initialDraft.attachedFiles.length > 0 || !!initialDraft.pendingSticker
+    if (!hasPayload && intent.kind === 'slash') {
+      setInput(initialDraft.text)
+      void executeSlashCommand(intent.name, intent.args, initialDraft.text).catch((error) =>
+        storeSetError(conversationId, String(error)),
+      )
+      return
+    }
+    if (!hasPayload && intent.kind === 'shell') {
+      setInput(initialDraft.text)
+      void executeShellCommand(intent.command, initialDraft.text)
+      return
+    }
+
+    const text = intent.kind === 'prompt' ? intent.text : initialDraft.text
+    const sticker = initialDraft.pendingSticker
+      ? {
+          type: 'sticker' as const,
+          sticker_id: initialDraft.pendingSticker.emoji.id,
+          name: initialDraft.pendingSticker.emoji.name,
+        }
+      : undefined
+    const firstReferences = intent.kind === 'prompt' ? referenceInputs(intent.references) : []
+    const files = initialDraft.attachedFiles.length > 0 ? initialDraft.attachedFiles : undefined
+    void sendMessage(text, true, files, undefined, initialDraft.voice || undefined, sticker, firstReferences)
+  }, [
+    conversationId,
+    executeShellCommand,
+    executeSlashCommand,
+    initialDraft,
+    onInitialDraftConsumed,
+    sendMessage,
+    storeSetError,
+  ])
+
   const handleSubmit = useCallback(() => {
-    const text = input.trim()
+    if (commandPendingRef.current) {
+      storeSetError(conversationId, t('chat.command.busy'))
+      return
+    }
+    if (shellSubmittingRef.current || useConversationStore.getState().sessions[conversationId]?.activeShellTurnId) {
+      storeSetError(conversationId, t('chat.shell.busy'))
+      return
+    }
+    const intent = parseComposerIntent(input)
+    const text = intent.kind === 'prompt' ? intent.text.trim() : input.trim()
+    const references = intent.kind === 'prompt' ? referenceInputs(intent.references) : []
+    const hasWorkspaceReferences = references.length > 0
     if (!text && !pendingSticker) return
+
+    // Commands are local control input. Resolve them before queue/steer so a
+    // typo cannot become a delayed model prompt and an idle-only command never
+    // claims to have been queued.
+    if (intent.kind === 'slash' && !pendingSticker && attachedFiles.length === 0) {
+      void executeSlashCommand(intent.name, intent.args, input).catch((err) =>
+        storeSetError(conversationId, String(err)),
+      )
+      return
+    }
+    if (intent.kind === 'shell' && !pendingSticker && attachedFiles.length === 0) {
+      void executeShellCommand(intent.command, input)
+      return
+    }
 
     // Ahead of everything else, including the slash commands: while the agent
     // is working there is no turn for any of them to reshape. The field is
@@ -233,7 +609,14 @@ function ChatViewInner({
     // for it by retyping.
     if (queueing) {
       if (!text) return
-      void queue.enqueue(text, queueDelivery).then(() => setInput(''))
+      if (hasWorkspaceReferences && queueDelivery === 'interject') {
+        storeSetError(conversationId, t('chat.referenceFollowUpOnly'))
+        return
+      }
+      void queue
+        .enqueue(text, queueDelivery, references)
+        .then(() => setInput(''))
+        .catch((error) => storeSetError(conversationId, String(error)))
       return
     }
 
@@ -243,25 +626,13 @@ function ChatViewInner({
     // nowhere, and retyping it would be the user paying for that.
     if (steering) {
       if (!text) return
+      if (hasWorkspaceReferences) {
+        storeSetError(conversationId, t('chat.referenceFollowUpOnly'))
+        return
+      }
       void steerMessage(text).then((sent) => {
         if (sent) setInput('')
       })
-      return
-    }
-
-    // `!isHostedAgent` for the same reason the gauge hides its manual compact
-    // button: summarising a hosted transcript spends the user's own provider on
-    // a history the agent never reads — it compacts its own context on its own
-    // terms and a hosted prompt carries only the newest message — and then
-    // folds their transcript away behind a summary nothing will use. On an
-    // imported session, which is the longest kind there is, that is one of the
-    // most expensive requests this app can make. Left through, it reaches
-    // `commands::compact`, which has no `agent_kind` check and would price it
-    // against the default assistant's model.
-    if (!isHostedAgent && !pendingSticker && attachedFiles.length === 0 && text.startsWith('/compact')) {
-      const instructions = text.slice('/compact'.length).trim() || undefined
-      setInput('')
-      handleCompact(instructions)
       return
     }
 
@@ -272,19 +643,22 @@ function ChatViewInner({
       ? { type: 'sticker' as const, sticker_id: pendingSticker.emoji.id, name: pendingSticker.emoji.name }
       : undefined
     setPendingSticker(null)
-    sendMessage(text, true, files.length > 0 ? files : undefined, undefined, undefined, sticker)
+    sendMessage(text, true, files.length > 0 ? files : undefined, undefined, undefined, sticker, references)
   }, [
     input,
     sendMessage,
     attachedFiles,
     pendingSticker,
-    handleCompact,
-    isHostedAgent,
+    executeSlashCommand,
+    executeShellCommand,
+    storeSetError,
+    conversationId,
     steering,
     steerMessage,
     queueing,
     queue,
     queueDelivery,
+    t,
   ])
 
   return (
@@ -331,7 +705,7 @@ function ChatViewInner({
                 <ProEmptyState.Description>{t('chat.startHint')}</ProEmptyState.Description>
               </ProEmptyState.Header>
               <ProEmptyState.Content className="w-full max-w-2xl">
-                <StarterPrompts disabled={streaming} onSelect={setInput} />
+                <StarterPrompts disabled={streaming || !!shellTurnId || commandPending} onSelect={setInput} />
               </ProEmptyState.Content>
             </ProEmptyState>
           ) : null
@@ -349,9 +723,9 @@ function ChatViewInner({
         onSubmit={handleSubmit}
         onVoiceSend={handleVoiceSend}
         onStop={handleStop}
-        disabled={streaming}
-        streaming={streaming}
-        steerable={steerable}
+        disabled={streaming || !!shellTurnId || commandPending}
+        streaming={streaming || !!shellTurnId}
+        steerable={shellTurnId ? false : steerable}
         queueing={queueing}
         queueDelivery={queueDelivery}
         onSelectQueueDelivery={setQueueDelivery}
@@ -391,6 +765,7 @@ function ChatViewInner({
         onSelectSticker={setPendingSticker}
         onRemoveSticker={() => setPendingSticker(null)}
       />
+      {confirmDialog}
     </div>
   )
 }
@@ -399,14 +774,24 @@ interface ChatViewProps {
   conversationId: string
   initialDraft?: InitialTurnDraft | null
   onInitialDraftConsumed?: () => void
+  onCreate?: () => void | Promise<void>
+  onOpenSettingsTab?: (tab: SettingsTab) => void
 }
 
-export function ChatView({ conversationId, initialDraft, onInitialDraftConsumed }: ChatViewProps) {
+export function ChatView({
+  conversationId,
+  initialDraft,
+  onInitialDraftConsumed,
+  onCreate,
+  onOpenSettingsTab,
+}: ChatViewProps) {
   return (
     <ChatViewInner
       conversationId={conversationId}
       initialDraft={initialDraft}
       onInitialDraftConsumed={onInitialDraftConsumed}
+      onCreate={onCreate}
+      onOpenSettingsTab={onOpenSettingsTab}
     />
   )
 }

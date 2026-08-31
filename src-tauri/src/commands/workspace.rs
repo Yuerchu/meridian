@@ -9,6 +9,27 @@ use crate::ServicesExt;
 use meridian_core::db;
 use meridian_core::workspace::{self, WorkspaceRoot};
 
+fn reference_context(
+    root: &std::path::Path,
+    file_access: meridian_core::tools::FileAccess,
+) -> meridian_core::tools::ToolContext {
+    meridian_core::tools::ToolContext {
+        working_directory: Some(root.to_string_lossy().into_owned()),
+        shell: meridian_core::tools::ShellType::default_for_platform(),
+        file_access,
+        project_id: None,
+        conversation_id: None,
+        turn_id: None,
+        assistant_id: None,
+        db_pool: None,
+        #[cfg(not(target_os = "android"))]
+        sandbox_policy: None,
+        tool_secrets: Default::default(),
+        cancel: tokio_util::sync::CancellationToken::new(),
+        journal: None,
+    }
+}
+
 /// Resolve a conversation's root and, when there is one, ask git about it.
 ///
 /// The database half runs under `spawn_blocking` (pooled connection), the git
@@ -53,6 +74,60 @@ pub async fn workspace_read_file(
     tokio::task::spawn_blocking(move || workspace::read::read_file(&root, &rel_path))
         .await
         .map_err(|e| e.to_string())?
+}
+
+/// Fuzzy `@` completion for either an existing conversation or the project on
+/// the empty-state composer. Exactly one owner is required, so a caller cannot
+/// use a valid conversation as cover to enumerate a different project.
+#[tauri::command]
+pub async fn workspace_suggest_refs(
+    app: tauri::AppHandle,
+    conversation_id: Option<String>,
+    project_id: Option<String>,
+    query: String,
+    limit: Option<usize>,
+) -> Result<Vec<workspace::reference::WorkspaceReferenceSuggestion>, String> {
+    let root = require_reference_directory(&app, conversation_id, project_id).await?;
+    let file_access = meridian_core::agent::build_file_access(&app.services().db).await;
+    let context = reference_context(&root, file_access);
+    workspace::reference::suggest_references_from_context(&context, &query, limit.unwrap_or(15)).await
+}
+
+/// Resolve and read one reference through the same limits and containment
+/// checks used when a message is sent. This is the read-only preview endpoint;
+/// sending still performs a fresh authoritative preflight.
+#[tauri::command]
+pub async fn workspace_resolve_ref(
+    app: tauri::AppHandle,
+    conversation_id: Option<String>,
+    project_id: Option<String>,
+    reference: workspace::reference::WorkspaceReferenceInput,
+) -> Result<workspace::reference::WorkspaceReferencePreview, String> {
+    let root = require_reference_directory(&app, conversation_id, project_id).await?;
+    let file_access = meridian_core::agent::build_file_access(&app.services().db).await;
+    let context = reference_context(&root, file_access);
+    let counter = meridian_core::agent::TokenCounter::new(meridian_core::agent::TokenizerKind::Cl100kBase);
+    let mut prepared = workspace::reference::prepare_references(&context, &[reference], &counter, 100_000).await?;
+    prepared
+        .pop()
+        .map(|item| item.preview())
+        .ok_or_else(|| "reference did not produce a snapshot".to_string())
+}
+
+/// Confirm that a path-looking Markdown token names a real object under the
+/// selected workspace. This performs containment and metadata checks only;
+/// unlike `workspace_resolve_ref`, it never reads file contents.
+#[tauri::command]
+pub async fn workspace_probe_ref(
+    app: tauri::AppHandle,
+    conversation_id: Option<String>,
+    project_id: Option<String>,
+    path: String,
+) -> Result<workspace::reference::WorkspaceReferenceProbe, String> {
+    let root = require_reference_directory(&app, conversation_id, project_id).await?;
+    let file_access = meridian_core::agent::build_file_access(&app.services().db).await;
+    let context = reference_context(&root, file_access);
+    workspace::reference::probe_reference(&context, &path).await
 }
 
 #[tauri::command]
@@ -192,6 +267,35 @@ async fn resolve_root(app: &tauri::AppHandle, conversation_id: String) -> Result
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+async fn require_reference_directory(
+    app: &tauri::AppHandle,
+    conversation_id: Option<String>,
+    project_id: Option<String>,
+) -> Result<PathBuf, String> {
+    match (conversation_id, project_id) {
+        (Some(conversation_id), None) => {
+            let pool = app.services().db.clone();
+            tokio::task::spawn_blocking(move || {
+                let mut conn = pool.get().map_err(|e| e.to_string())?;
+                workspace::resolve_workspace_dir(&mut conn, &conversation_id)?.ok_or_else(|| "no_path".to_string())
+            })
+            .await
+            .map_err(|e| e.to_string())?
+        }
+        (None, Some(project_id)) => {
+            let pool = app.services().db.clone();
+            tokio::task::spawn_blocking(move || {
+                let mut conn = pool.get().map_err(|e| e.to_string())?;
+                let project = db::ops::project::get_project(&mut conn, &project_id).map_err(|e| e.to_string())?;
+                project.path.map(PathBuf::from).ok_or_else(|| "no_path".to_string())
+            })
+            .await
+            .map_err(|e| e.to_string())?
+        }
+        _ => Err("exactly one of conversation_id or project_id is required".into()),
+    }
 }
 
 #[cfg(test)]

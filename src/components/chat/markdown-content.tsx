@@ -1,19 +1,138 @@
-import React, { useCallback, useMemo } from 'react'
+import React, { useCallback, useId, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { openExternally } from '@/lib/external-link'
+import { marked } from 'marked'
+import ReactMarkdown, { defaultUrlTransform, type UrlTransform } from 'react-markdown'
+import remarkBreaks from 'remark-breaks'
+import remarkGfm from 'remark-gfm'
+import { openExternalUrl } from '@/lib/external-link'
 import { Check, Copy } from '@gravity-ui/icons'
+import { Button, Tooltip } from '@heroui/react'
 import type { Components } from 'react-markdown'
 
-import { Markdown as ProMarkdown } from '@heroui-pro/react/markdown'
+import { markdownVariants } from '@heroui-pro/react/markdown'
 
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { ActionButton } from '@/components/ui/action-button'
-import { languageIconUrl } from '@/lib/file-icon'
+import { fileIconUrl, languageIconUrl } from '@/lib/file-icon'
+import {
+  classifyMarkdownTarget,
+  markdownFileCandidateHref,
+  markdownFileName,
+  markdownFileReferenceHref,
+  parseMarkdownFileCandidate,
+  remarkFileReferences,
+  type MarkdownFileReference,
+} from '@/lib/markdown-target'
 import { cn } from '@/lib/utils'
+import { useFilePreview, type FilePreviewContextValue } from './file-preview-context'
 import { ShikiCode } from './shiki-code'
 import type { EmojiMap } from './emoji-renderer'
 
 const MarkdownStreamingContext = React.createContext(false)
+
+function reactNodeText(node: React.ReactNode): string {
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(reactNodeText).join('')
+  if (React.isValidElement<{ children?: React.ReactNode }>(node)) return reactNodeText(node.props.children)
+  return ''
+}
+
+function markdownHeadingId(children: React.ReactNode): string {
+  return reactNodeText(children)
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s_-]/gu, '')
+    .replace(/\s+/gu, '-')
+}
+
+function MarkdownHeading({
+  as: Heading,
+  children,
+  node: _node,
+  ...props
+}: React.HTMLAttributes<HTMLHeadingElement> & {
+  as: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6'
+  node?: unknown
+}) {
+  return (
+    <Heading {...props} id={markdownHeadingId(children)}>
+      {children}
+    </Heading>
+  )
+}
+
+const MarkdownH1: Components['h1'] = (props) => <MarkdownHeading as="h1" {...props} />
+const MarkdownH2: Components['h2'] = (props) => <MarkdownHeading as="h2" {...props} />
+const MarkdownH3: Components['h3'] = (props) => <MarkdownHeading as="h3" {...props} />
+const MarkdownH4: Components['h4'] = (props) => <MarkdownHeading as="h4" {...props} />
+const MarkdownH5: Components['h5'] = (props) => <MarkdownHeading as="h5" {...props} />
+const MarkdownH6: Components['h6'] = (props) => <MarkdownHeading as="h6" {...props} />
+
+function referenceLabel(reference: MarkdownFileReference): string {
+  const line = reference.line
+    ? `:${reference.line}${reference.endLine ? `-${reference.endLine}` : ''}${reference.column ? `:${reference.column}` : ''}`
+    : ''
+  return `${reference.path}${line}`
+}
+
+function FileReferenceButton({ reference }: { reference: MarkdownFileReference }) {
+  const preview = useFilePreview()
+  const icon = fileIconUrl(reference.path)
+  const label = referenceLabel(reference)
+
+  return (
+    <Tooltip delay={0}>
+      <Button
+        data-slot="markdown-file-reference"
+        aria-label={label}
+        variant="ghost"
+        size="sm"
+        isDisabled={!preview}
+        onPress={() => preview?.openPreview(reference)}
+        className="mx-0.5 inline-flex h-auto min-w-0 max-w-full gap-1 rounded-md px-1.5 py-0.5 align-baseline font-mono text-xs"
+      >
+        {icon && <img src={icon} alt="" aria-hidden className="size-3.5 shrink-0" />}
+        <span className="truncate">{markdownFileName(reference.path)}</span>
+      </Button>
+      <Tooltip.Content>{label}</Tooltip.Content>
+    </Tooltip>
+  )
+}
+
+function CandidateFileReference({
+  reference,
+  children,
+}: {
+  reference: MarkdownFileReference
+  children: React.ReactNode
+}) {
+  const preview = useFilePreview()
+  const [verified, setVerified] = React.useState<{
+    owner: FilePreviewContextValue
+    path: string
+  } | null>(null)
+
+  React.useEffect(() => {
+    if (!preview) return
+    let live = true
+    void preview.probeReference(reference.path).then(
+      (exists) => {
+        if (live) setVerified(exists ? { owner: preview, path: reference.path } : null)
+      },
+      () => {
+        if (live) setVerified(null)
+      },
+    )
+    return () => {
+      live = false
+    }
+  }, [preview, reference.path])
+
+  if (preview && verified?.owner === preview && verified.path === reference.path) {
+    return <FileReferenceButton reference={reference} />
+  }
+  return <>{children}</>
+}
 
 export function CopyButton({ text, className }: { text: string; className?: string }) {
   const { t } = useTranslation()
@@ -55,11 +174,14 @@ const CodeBlock: Components['code'] = ({ className, children, node, ...props }) 
   const isStreaming = React.useContext(MarkdownStreamingContext)
   const start = node?.position?.start.line
   if (!start || start === node?.position?.end.line) {
-    return (
+    const value = String(children ?? '').trim()
+    const reference = !isStreaming ? parseMarkdownFileCandidate(value) : null
+    const fallback = (
       <code className={cn('rounded bg-default px-1.5 py-0.5 text-xs', className)} {...props}>
         {children}
       </code>
     )
+    return reference ? <CandidateFileReference reference={reference}>{fallback}</CandidateFileReference> : fallback
   }
 
   const language = fenceLanguage(className)
@@ -136,6 +258,140 @@ function preprocessMentions(content: string): string {
   return content.replace(/\[@([^\]]*)\((\d+)\)\]/g, '**@$1**')
 }
 
+const BASE_REMARK_PLUGINS = [remarkGfm, remarkBreaks]
+const FILE_REMARK_PLUGINS = [remarkGfm, remarkBreaks, remarkFileReferences]
+
+const markdownUrlTransform: UrlTransform = (url, key, _node) => {
+  if (key !== 'href') return defaultUrlTransform(url)
+  const target = classifyMarkdownTarget(url)
+  if (target.kind === 'external') return target.url
+  if (target.kind === 'file') return markdownFileReferenceHref(target.reference)
+  if (target.kind === 'file-candidate') return markdownFileCandidateHref(target.reference)
+  if (target.kind === 'fragment') return url
+  // ReactMarkdown treats a null result as an empty URL. The custom anchor
+  // below turns that into inert text, so no unknown scheme can escape through
+  // native WebView navigation.
+  return null
+}
+
+const MarkdownAnchor: Components['a'] = ({ href, children, node: _node, ...props }) => {
+  const target = classifyMarkdownTarget(href)
+  if (target.kind === 'file') return <FileReferenceButton reference={target.reference} />
+  if (target.kind === 'file-candidate') {
+    return <CandidateFileReference reference={target.reference}>{children}</CandidateFileReference>
+  }
+  if (target.kind === 'unsupported') return <span data-slot="markdown-unsupported-link">{children}</span>
+
+  const activate = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault()
+    if (target.kind === 'external') {
+      void openExternalUrl(target.url)
+      return
+    }
+    if (target.kind === 'fragment') {
+      // Scope the fragment to this rendered message. Different assistant
+      // messages routinely reuse headings such as "Tests"; document-wide
+      // lookup would jump into whichever message happened to render first.
+      const root = event.currentTarget.closest('[data-slot="markdown"]')
+      const destination = Array.from(root?.querySelectorAll<HTMLElement>('[id]') ?? []).find(
+        (candidate) => candidate.id === target.id,
+      )
+      destination?.scrollIntoView({ block: 'start' })
+    }
+  }
+
+  return (
+    <a
+      {...props}
+      // Keep the real external URL out of `href`: WebView context-menu and
+      // drag navigation do not pass through React's click handlers. The
+      // closure below is the only activation path and hands it to the native
+      // opener after classification.
+      href={target.kind === 'external' ? '#meridian-external' : `#${target.id}`}
+      data-external-href={target.kind === 'external' ? target.url : undefined}
+      title={target.kind === 'external' ? target.url : props.title}
+      rel="noreferrer noopener"
+      onClick={activate}
+      onAuxClick={(event) => {
+        // Middle-click is a separate default navigation path in WebView2.
+        event.preventDefault()
+        if (event.button === 1 && target.kind === 'external') void openExternalUrl(target.url)
+      }}
+    >
+      {children}
+    </a>
+  )
+}
+
+function blockHash(value: string): string {
+  let hash = 0
+  for (let index = 0; index < value.length; index++) hash = Math.imul(31, hash) + value.charCodeAt(index)
+  return (hash >>> 0).toString(36)
+}
+
+const MemoizedMarkdownBlock = React.memo(function MemoizedMarkdownBlock({
+  content,
+  components,
+  autoFileReferences,
+}: {
+  content: string
+  components: Partial<Components>
+  autoFileReferences: boolean
+}) {
+  const slots = useMemo(() => markdownVariants(), [])
+  return (
+    <div data-slot="markdown-block" className={slots.block()}>
+      <ReactMarkdown
+        components={components}
+        remarkPlugins={autoFileReferences ? FILE_REMARK_PLUGINS : BASE_REMARK_PLUGINS}
+        urlTransform={markdownUrlTransform}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  )
+})
+
+/** Pro's renderer with one deliberate seam: safe URL and text-node transforms. */
+function LocalMarkdown({
+  children,
+  components,
+  id,
+  autoFileReferences,
+}: {
+  children: string
+  components: Partial<Components>
+  id?: string
+  autoFileReferences: boolean
+}) {
+  const generatedId = useId()
+  const rendererId = id ?? generatedId
+  const slots = useMemo(() => markdownVariants(), [])
+  const rawBlocks = useMemo(() => marked.lexer(children).map((token) => token.raw), [children])
+  const blocks = useMemo(() => {
+    const occurrences = new Map<string, number>()
+    return rawBlocks.map((content) => {
+      const hash = blockHash(content)
+      const occurrence = occurrences.get(hash) ?? 0
+      occurrences.set(hash, occurrence + 1)
+      return { content, key: `${rendererId}-${hash}-${occurrence}` }
+    })
+  }, [rawBlocks, rendererId])
+
+  return (
+    <div data-slot="markdown" className={slots.base()}>
+      {blocks.map((block) => (
+        <MemoizedMarkdownBlock
+          key={block.key}
+          content={block.content}
+          components={components}
+          autoFileReferences={autoFileReferences}
+        />
+      ))}
+    </div>
+  )
+}
+
 function MarkdownImage({ alt = '', className, onError, onLoad, ...props }: React.ComponentProps<'img'>) {
   const [loaded, setLoaded] = React.useState(false)
 
@@ -172,11 +428,16 @@ function MarkdownImage({ alt = '', className, onError, onLoad, ...props }: React
   )
 }
 
+function isRemoteImageSource(source: string | undefined): boolean {
+  return source != null && /^(?:https?:|\/\/)/i.test(source)
+}
+
 export const MarkdownContent = React.memo(function MarkdownContent({
   content,
   isStreaming,
   oneBot,
   emojiMap,
+  allowRemoteImages = true,
   className,
   blockId,
 }: {
@@ -184,6 +445,8 @@ export const MarkdownContent = React.memo(function MarkdownContent({
   isStreaming?: boolean
   oneBot?: boolean
   emojiMap?: EmojiMap
+  /** File previews opt out so opening a local README never makes an implicit network request. */
+  allowRemoteImages?: boolean
   className?: string
   blockId?: string
 }) {
@@ -196,8 +459,26 @@ export const MarkdownContent = React.memo(function MarkdownContent({
   const components = useMemo<Partial<Components>>(
     () => ({
       code: CodeBlock,
+      pre: ({ children }) => <>{children}</>,
       table: TableBlock,
+      h1: MarkdownH1,
+      h2: MarkdownH2,
+      h3: MarkdownH3,
+      h4: MarkdownH4,
+      h5: MarkdownH5,
+      h6: MarkdownH6,
       img: ({ alt, src, ...props }) => {
+        if (!allowRemoteImages && isRemoteImageSource(src)) {
+          return (
+            <span
+              data-slot="markdown-blocked-image"
+              title={src}
+              className="my-3 block max-w-full truncate rounded-lg bg-default/30 px-3 py-2 text-xs text-muted"
+            >
+              {alt}
+            </span>
+          )
+        }
         if (alt?.startsWith('sticker:')) {
           return (
             <img
@@ -214,15 +495,9 @@ export const MarkdownContent = React.memo(function MarkdownContent({
         }
         return <MarkdownImage {...props} alt={alt ?? ''} src={src} />
       },
-      // A link in an answer is a link to the web, and this is a WebView: left
-      // alone it would navigate the app itself to the page, with no way back.
-      a: ({ href, children, ...props }) => (
-        <a href={href} rel="noreferrer noopener" onClick={(e) => openExternally(href, e)} {...props}>
-          {children}
-        </a>
-      ),
+      a: MarkdownAnchor,
     }),
-    [],
+    [allowRemoteImages],
   )
 
   return (
@@ -231,9 +506,9 @@ export const MarkdownContent = React.memo(function MarkdownContent({
           between renderers on screen — the key itself already hashes the block's
           own content. Falls back to a generated one. */}
       <MarkdownStreamingContext value={isStreaming === true}>
-        <ProMarkdown components={components} id={blockId}>
+        <LocalMarkdown components={components} id={blockId} autoFileReferences={!isStreaming}>
           {processed}
-        </ProMarkdown>
+        </LocalMarkdown>
       </MarkdownStreamingContext>
       {isStreaming && (
         <span className="ml-0.5 inline-block h-4 w-2 animate-pulse bg-muted motion-reduce:animate-none" />

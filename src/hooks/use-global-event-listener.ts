@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { listen } from '@/lib/transport'
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
 import { useConversationStore } from '@/stores/conversation-store'
-import type { StreamChunk } from '@/types'
+import type { StreamChunk, UserCommandEvent } from '@/types'
 
 // Keyed by turn, not by conversation. Keyed by conversation, a second turn's
 // stop deleted the first one's start time and the "this took a while" notice
@@ -254,6 +254,17 @@ export function useGlobalEventListener() {
       useConversationStore.getState().refreshConversations()
     })
 
+    const userCommandUnlisten = listen<UserCommandEvent>('user-command', (event) => {
+      const store = useConversationStore.getState()
+      if (event.payload.type === 'start') {
+        store.beginShellCommand(event.payload.conversation_id, event.payload.turn_id)
+        void store.loadMessages(event.payload.conversation_id)
+        return
+      }
+      store.finishShellCommand(event.payload.result)
+      void store.loadMessages(event.payload.result.conversation_id)
+    })
+
     // Synthesised by the transport when a dropped connection comes back. Not a
     // backend event: nothing was replayed, which is the whole reason this
     // exists. Whatever happened while the socket was down has to be read off
@@ -289,6 +300,7 @@ export function useGlobalEventListener() {
     return () => {
       chatStreamUnlisten.then((fn) => fn())
       convUpdatedUnlisten.then((fn) => fn())
+      userCommandUnlisten.then((fn) => fn())
       resyncUnlisten.then((fn) => fn())
       compactStartUnlisten.then((fn) => fn())
       compactDoneUnlisten.then((fn) => fn())

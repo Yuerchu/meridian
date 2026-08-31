@@ -18,7 +18,9 @@ const mocks = vi.hoisted(() => ({
     ]),
   ),
   fileUrl: vi.fn(() => Promise.resolve('asset://wave.png')),
+  workspaceSuggestRefs: vi.fn(() => Promise.resolve([])),
   voiceOnSend: null as ((text: string) => void) | null,
+  platform: 'windows' as string | null,
   settings: {
     assistants: [
       {
@@ -61,10 +63,11 @@ vi.mock('@/api', () => ({
     listAssistantEmojiPacks: mocks.listPacks,
     listEmojis: mocks.listEmojis,
     getEmojiFileUrl: mocks.fileUrl,
+    workspaceSuggestRefs: mocks.workspaceSuggestRefs,
   },
 }))
 
-vi.mock('@/hooks/use-platform', () => ({ usePlatform: () => 'windows' }))
+vi.mock('@/hooks/use-platform', () => ({ usePlatform: () => mocks.platform }))
 vi.mock('@/hooks/use-turn-settings', () => ({ useTurnSettings: () => mocks.settings }))
 vi.mock('@/hooks/use-voice-recorder', () => ({
   useVoiceRecorder: ({ onSend }: { onSend: (text: string) => void }) => {
@@ -106,12 +109,26 @@ describe('StarterPrompts', () => {
 describe('EmptyState welcome composer', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.platform = 'windows'
     return i18n.changeLanguage('en')
   })
 
+  function renderWelcome({
+    onSubmit = vi.fn(() => Promise.resolve()),
+    onCreate = vi.fn(() => Promise.resolve()),
+    onOpenSettingsTab = vi.fn(),
+  }: {
+    onSubmit?: ReturnType<typeof vi.fn<() => Promise<void>>>
+    onCreate?: ReturnType<typeof vi.fn<() => Promise<void>>>
+    onOpenSettingsTab?: ReturnType<typeof vi.fn<(tab: string) => void>>
+  } = {}) {
+    const view = render(<EmptyState onSubmit={onSubmit} onCreate={onCreate} onOpenSettingsTab={onOpenSettingsTab} />)
+    return { ...view, onSubmit, onCreate, onOpenSettingsTab }
+  }
+
   it('renders the same options, attachments, emoji and voice controls as a conversation composer', async () => {
     const user = userEvent.setup()
-    render(<EmptyState onSubmit={vi.fn(() => Promise.resolve())} />)
+    renderWelcome()
 
     expect(screen.getByRole('textbox', { name: 'Send a message...' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Options and attachments' })).toBeInTheDocument()
@@ -134,7 +151,7 @@ describe('EmptyState welcome composer', () => {
   it('fills the real composer from a suggestion without creating a conversation', async () => {
     const onSubmit = vi.fn(() => Promise.resolve())
     const user = userEvent.setup()
-    render(<EmptyState onSubmit={onSubmit} />)
+    renderWelcome({ onSubmit })
 
     await user.click(screen.getByRole('button', { name: 'Review some code and find problems' }))
 
@@ -145,7 +162,7 @@ describe('EmptyState welcome composer', () => {
   it('submits the welcome draft with the selected turn settings', async () => {
     const onSubmit = vi.fn(() => Promise.resolve())
     const user = userEvent.setup()
-    render(<EmptyState onSubmit={onSubmit} />)
+    renderWelcome({ onSubmit })
 
     await user.type(screen.getByRole('textbox', { name: 'Send a message...' }), '  First question  ')
     await user.click(screen.getByRole('button', { name: 'Send' }))
@@ -179,7 +196,7 @@ describe('EmptyState welcome composer', () => {
         }),
     )
     const user = userEvent.setup()
-    const { container } = render(<EmptyState onSubmit={onSubmit} />)
+    const { container } = renderWelcome({ onSubmit })
 
     await user.type(screen.getByRole('textbox', { name: 'Send a message...' }), 'First question')
     await user.click(screen.getByRole('button', { name: 'Send' }))
@@ -199,7 +216,7 @@ describe('EmptyState welcome composer', () => {
   it('keeps the draft and unlocks the composer when conversation creation fails', async () => {
     const onSubmit = vi.fn(() => Promise.reject(new Error('create failed')))
     const user = userEvent.setup()
-    render(<EmptyState onSubmit={onSubmit} />)
+    renderWelcome({ onSubmit })
 
     const textbox = screen.getByRole('textbox', { name: 'Send a message...' })
     await user.type(textbox, 'Keep this draft')
@@ -213,7 +230,7 @@ describe('EmptyState welcome composer', () => {
   it('carries a selected sticker through the initial-turn draft', async () => {
     const onSubmit = vi.fn(() => Promise.resolve())
     const user = userEvent.setup()
-    render(<EmptyState onSubmit={onSubmit} />)
+    renderWelcome({ onSubmit })
 
     await waitFor(() => expect(mocks.fileUrl).toHaveBeenCalledWith('emoji-1'))
     await user.click(screen.getByRole('button', { name: 'Emoji' }))
@@ -240,7 +257,7 @@ describe('EmptyState welcome composer', () => {
   it('marks a dictated first turn without consuming typed-composer rich input', async () => {
     const onSubmit = vi.fn(() => Promise.resolve())
     const user = userEvent.setup()
-    render(<EmptyState onSubmit={onSubmit} />)
+    renderWelcome({ onSubmit })
 
     await waitFor(() => expect(mocks.fileUrl).toHaveBeenCalledWith('emoji-1'))
     await user.type(screen.getByRole('textbox', { name: 'Send a message...' }), 'Typed remainder')
@@ -270,4 +287,66 @@ describe('EmptyState welcome composer', () => {
       ),
     )
   })
+
+  it('handles help and settings before creating a conversation', async () => {
+    const user = userEvent.setup()
+    const help = renderWelcome()
+    const textbox = screen.getByRole('textbox', { name: 'Send a message...' })
+
+    await user.type(textbox, '/help')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+
+    expect(textbox).toHaveValue('/')
+    expect(help.onSubmit).not.toHaveBeenCalled()
+    expect(help.onCreate).not.toHaveBeenCalled()
+    expect(help.onOpenSettingsTab).not.toHaveBeenCalled()
+
+    help.unmount()
+    const settings = renderWelcome()
+    await user.type(screen.getByRole('textbox', { name: 'Send a message...' }), '/settings general')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+
+    expect(settings.onOpenSettingsTab).toHaveBeenCalledWith('general')
+    expect(settings.onSubmit).not.toHaveBeenCalled()
+    expect(settings.onCreate).not.toHaveBeenCalled()
+  })
+
+  it('turns /new into exactly one ordinary creation', async () => {
+    const user = userEvent.setup()
+    const callbacks = renderWelcome()
+
+    await user.type(screen.getByRole('textbox', { name: 'Send a message...' }), '/new')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => expect(callbacks.onCreate).toHaveBeenCalledTimes(1))
+    expect(callbacks.onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('validates /settings sections against the current platform', async () => {
+    mocks.platform = 'android'
+    const user = userEvent.setup()
+    const callbacks = renderWelcome()
+
+    await user.type(screen.getByRole('textbox', { name: 'Send a message...' }), '/settings acp')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(callbacks.onOpenSettingsTab).not.toHaveBeenCalled()
+    expect(callbacks.onSubmit).not.toHaveBeenCalled()
+    expect(callbacks.onCreate).not.toHaveBeenCalled()
+  })
+
+  it.each(['Inspect this repository', '!echo ready', 'Read @src/main.ts'])(
+    '%s still creates a first turn',
+    async (text) => {
+      const user = userEvent.setup()
+      const callbacks = renderWelcome()
+
+      await user.type(screen.getByRole('textbox', { name: 'Send a message...' }), text)
+      await user.click(screen.getByRole('button', { name: 'Send' }))
+
+      await waitFor(() => expect(callbacks.onSubmit).toHaveBeenCalledWith(expect.objectContaining({ text })))
+      expect(callbacks.onCreate).not.toHaveBeenCalled()
+    },
+  )
 })

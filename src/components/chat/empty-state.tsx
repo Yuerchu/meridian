@@ -3,7 +3,11 @@ import { useTranslation } from 'react-i18next'
 import { EmptyState as ProEmptyState, PromptSuggestion } from '@heroui-pro/react'
 
 import { useIsOffline } from '@/hooks/use-connection-state'
+import { usePlatform } from '@/hooks/use-platform'
 import { useTurnSettings } from '@/hooks/use-turn-settings'
+import { visibleSettingsTabs, type SettingsTab } from '@/components/settings/tabs'
+import { findComposerCommand } from '@/lib/composer-commands'
+import { parseComposerIntent } from '@/lib/composer-intent'
 import type { InitialTurnDraft } from './conversation-draft'
 import { InputBar, type AttachedFile, type PendingSticker } from './input-bar'
 
@@ -32,11 +36,15 @@ export function StarterPrompts({ disabled, onSelect }: { disabled?: boolean; onS
 
 interface EmptyStateProps {
   onSubmit: (draft: InitialTurnDraft) => Promise<void>
+  onCreate: () => void | Promise<void>
+  onOpenSettingsTab: (tab: SettingsTab) => void
   disabled?: boolean
+  activeProjectId?: string | null
 }
 
-export function EmptyState({ onSubmit, disabled }: EmptyStateProps) {
+export function EmptyState({ onSubmit, onCreate, onOpenSettingsTab, disabled, activeProjectId }: EmptyStateProps) {
   const { t } = useTranslation()
+  const platform = usePlatform()
   const [value, setValue] = useState('')
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [pendingSticker, setPendingSticker] = useState<PendingSticker | null>(null)
@@ -53,6 +61,62 @@ export function EmptyState({ onSubmit, disabled }: EmptyStateProps) {
       const trimmed = text.trim()
       const sticker = voice ? null : pendingSticker
       if ((!trimmed && !sticker) || locked) return
+
+      // Commands that do not need a conversation are resolved while the
+      // welcome composer still owns the draft. Sending them through
+      // `onSubmit` would create an empty conversation merely to open settings
+      // or show help. `/new` is the converse: creating once is already its full
+      // meaning on a screen with no active conversation.
+      if (!voice && attachedFiles.length === 0 && !sticker) {
+        const intent = parseComposerIntent(trimmed)
+        if (intent.kind === 'slash') {
+          const context = {
+            hasConversation: false,
+            isHosted: false,
+            supportsFast: settings.capabilities?.supports_fast === true,
+          }
+          const available = findComposerCommand(intent.name, context)
+          const afterCreate = available ?? findComposerCommand(intent.name, { ...context, hasConversation: true })
+
+          if (!afterCreate) {
+            setSubmitError(t('chat.command.unknown', { name: intent.name }))
+            return
+          }
+          if (available?.id === 'help') {
+            setValue('/')
+            setSubmitError(null)
+            return
+          }
+          if (available?.id === 'settings') {
+            const tab = intent.args
+              ? visibleSettingsTabs(platform).find(
+                  (candidate) => candidate.id.toLowerCase() === intent.args.toLowerCase(),
+                )?.id
+              : 'provider'
+            if (!tab) {
+              setSubmitError(t('chat.command.invalidArgument', { name: available.name, value: intent.args }))
+              return
+            }
+            setValue('')
+            setSubmitError(null)
+            onOpenSettingsTab(tab)
+            return
+          }
+          if (afterCreate.id === 'new') {
+            setSubmitting(true)
+            setSubmitError(null)
+            void Promise.resolve()
+              .then(onCreate)
+              .catch((err) => {
+                console.error('Failed to create conversation', err)
+                setSubmitError(String(err))
+              })
+              .finally(() => setSubmitting(false))
+            return
+          }
+        }
+      }
+
       setSubmitting(true)
       setSubmitError(null)
       void Promise.resolve()
@@ -95,15 +159,20 @@ export function EmptyState({ onSubmit, disabled }: EmptyStateProps) {
     [
       attachedFiles,
       locked,
+      onCreate,
+      onOpenSettingsTab,
       onSubmit,
       pendingSticker,
+      platform,
       settings.acceptEdits,
+      settings.capabilities,
       settings.fastMode,
       settings.mode,
       settings.selectedAssistantId,
       settings.selectedModelId,
       settings.selectedProviderId,
       settings.thinkingLevel,
+      t,
       value,
     ],
   )
@@ -125,6 +194,7 @@ export function EmptyState({ onSubmit, disabled }: EmptyStateProps) {
           <InputBar
             embedded
             conversationId={null}
+            workspaceProjectId={activeProjectId}
             value={value}
             onChange={handleValueChange}
             onSubmit={handleSubmit}

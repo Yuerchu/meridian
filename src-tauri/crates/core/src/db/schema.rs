@@ -1,6 +1,13 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    acp_context_deliveries (context_item_id) {
+        context_item_id -> Text,
+        delivered_at -> BigInt,
+    }
+}
+
+diesel::table! {
     acp_sessions (conversation_id) {
         conversation_id -> Text,
         acp_session_id -> Nullable<Text>,
@@ -146,6 +153,26 @@ diesel::table! {
         file_size -> BigInt,
         seen_count -> Integer,
         last_seen_at -> Nullable<BigInt>,
+    }
+}
+
+diesel::table! {
+    message_context_items (id) {
+        id -> Text,
+        message_id -> Text,
+        position -> Integer,
+        kind -> Text,
+        content -> Text,
+        display_path -> Nullable<Text>,
+        line_start -> Nullable<Integer>,
+        line_end -> Nullable<Integer>,
+        content_hash -> Text,
+        byte_count -> Integer,
+        line_count -> Integer,
+        token_count -> Integer,
+        truncated -> Integer,
+        metadata -> Nullable<Text>,
+        created_at -> BigInt,
     }
 }
 
@@ -452,6 +479,26 @@ diesel::table! {
 }
 
 diesel::table! {
+    queued_prompt_context_items (id) {
+        id -> Text,
+        queue_id -> Text,
+        position -> Integer,
+        kind -> Text,
+        content -> Text,
+        display_path -> Nullable<Text>,
+        line_start -> Nullable<Integer>,
+        line_end -> Nullable<Integer>,
+        content_hash -> Text,
+        byte_count -> Integer,
+        line_count -> Integer,
+        token_count -> Integer,
+        truncated -> Integer,
+        metadata -> Nullable<Text>,
+        created_at -> BigInt,
+    }
+}
+
+diesel::table! {
     todo_lists (id) {
         id -> Text,
         conversation_id -> Text,
@@ -575,6 +622,7 @@ diesel::table! {
 }
 
 diesel::joinable!(assistant_emoji_packs -> assistants (assistant_id));
+diesel::joinable!(acp_context_deliveries -> message_context_items (context_item_id));
 diesel::joinable!(assistant_emoji_packs -> emoji_packs (pack_id));
 diesel::joinable!(assistants -> providers (provider_id));
 diesel::joinable!(assistants -> tool_presets (tool_preset_id));
@@ -586,6 +634,8 @@ diesel::joinable!(custom_tools -> tool_categories (category_id));
 diesel::joinable!(emojis -> emoji_packs (pack_id));
 diesel::joinable!(messages -> conversations (conversation_id));
 diesel::joinable!(messages -> providers (provider_id));
+diesel::joinable!(message_context_items -> messages (message_id));
+diesel::joinable!(queued_prompt_context_items -> queued_prompts (queue_id));
 diesel::joinable!(message_stickers -> emojis (sticker_id));
 diesel::joinable!(message_stickers -> messages (message_id));
 diesel::joinable!(projects -> assistants (assistant_id));
@@ -604,6 +654,7 @@ diesel::joinable!(voice_clips -> voice_blobs (blob_id));
 diesel::joinable!(journal_versions -> journal_files (file_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
+    acp_context_deliveries,
     acp_sessions,
     assistant_emoji_packs,
     assistants,
@@ -617,6 +668,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     journal_versions,
     mcp_servers,
     memories,
+    message_context_items,
     memory_proposals,
     memory_subjects,
     messages,
@@ -628,6 +680,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     prompt_templates,
     providers,
     queued_prompts,
+    queued_prompt_context_items,
     skill_bindings_assistant,
     skill_bindings_global,
     skill_bindings_project,

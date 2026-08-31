@@ -1,14 +1,18 @@
+use std::collections::HashMap;
+
 use crate::ServicesExt;
 use diesel::sqlite::SqliteConnection;
 
 use meridian_core::agent::{
-    TokenBudget, TurnParamsInput, build_file_access, do_compact, file_access_prompt, instruction_budget,
-    load_project_instructions, resolve_provider_config, resolve_turn_params,
+    TokenBudget, TurnParamsInput, build_file_access, build_messages_with_context_items, do_compact, file_access_prompt,
+    instruction_budget, load_project_instructions, resolve_provider_config, resolve_turn_params,
 };
 use meridian_core::db;
 use meridian_core::db::DbPool;
 use meridian_core::db::models::assistant::Assistant;
 use meridian_core::db::models::conversation::Conversation;
+use meridian_core::db::models::message_context_item::MessageContextItem;
+use meridian_core::provider::ChatMessage;
 use meridian_core::template;
 use meridian_core::util::now_ms;
 
@@ -462,13 +466,25 @@ async fn assemble_system_prompt(
     .unwrap_or_default()
 }
 
+/// Build the exact message list whose tokens `get_context_info` reports. Kept
+/// separate so a regression test can pin the frozen context that ordinary chat
+/// replays after each stored user row.
+fn context_info_messages(
+    system_prompt: &str,
+    context: &db::ops::message::ActiveContext,
+    trailing: Vec<ChatMessage>,
+    context_items: &HashMap<String, Vec<MessageContextItem>>,
+) -> Vec<ChatMessage> {
+    build_messages_with_context_items(system_prompt, context, trailing, &Default::default(), context_items)
+}
+
 #[tauri::command]
 pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) -> Result<ContextInfo, String> {
     let services = app.services();
     let pool = services.db.clone();
     let secrets = services.secrets.clone();
 
-    let (assistant, ctx, project_path, project_id, conv_mode, agent_kind) = {
+    let (assistant, ctx, context_items, project_path, project_id, conv_mode, agent_kind) = {
         let pool = pool.clone();
         let conv_id = conversation_id.clone();
         tokio::task::spawn_blocking(move || {
@@ -486,12 +502,16 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
             let project_path = project.as_ref().and_then(|p| p.path.clone());
             let project_id = project.as_ref().map(|p| p.id.clone());
             let ctx = db::ops::message::active_context(&history, conv.head_message_id.as_deref());
+            let path_ids = ctx.path.iter().map(|message| message.id.clone()).collect::<Vec<_>>();
+            let context_items =
+                db::ops::message_context_item::list_for_messages(&mut conn, &path_ids).map_err(|e| e.to_string())?;
             // The indicator has to describe the window a request from *this*
             // conversation would go into, which for a delegated run is its own
             // model's rather than the parent assistant's.
             Ok::<_, String>((
                 conv.pin_model(assistant),
                 ctx,
+                context_items,
                 project_path,
                 project_id,
                 conv.mode.clone(),
@@ -574,7 +594,7 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
 
     // Mirrors the chat path exactly, background blocks included, so the figure
     // the UI shows covers what a turn actually sends.
-    let msgs = meridian_core::agent::build_messages_with_senders(
+    let msgs = context_info_messages(
         system_prompt.trim(),
         &ctx,
         meridian_core::agent::trailing_with_memory(
@@ -585,7 +605,7 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
             // roster to draw and nothing to count for it.
             None,
         ),
-        &Default::default(),
+        &context_items,
     );
     // What the next turn would carry: the tail past the summary, plus the
     // summary itself when one applies.
@@ -686,6 +706,39 @@ mod tests {
             },
         )
         .unwrap();
+    }
+
+    fn make_message(id: &str, role: &str, content: &str) -> db::models::message::Message {
+        db::models::message::Message {
+            id: id.into(),
+            conversation_id: "c1".into(),
+            role: role.into(),
+            content: content.into(),
+            provider_id: None,
+            model_id: None,
+            input_tokens: None,
+            output_tokens: None,
+            tool_calls: None,
+            tool_call_id: None,
+            sort_order: 0,
+            created_at: 1,
+            reasoning_content: None,
+            rating: None,
+            schema_version: 2,
+            is_compact_summary: 0,
+            sender_id: None,
+            parent_id: None,
+            compact_anchor_id: None,
+            source: None,
+            turn_id: None,
+            tool_outcome: None,
+            cache_read_tokens: None,
+            cache_write_tokens: None,
+            server_tool_calls: None,
+            provider_name: None,
+            provider_state: None,
+            auto_review: None,
+        }
     }
 
     #[test]
@@ -853,6 +906,50 @@ mod tests {
         assert!(
             with_prompt > history_only + 20,
             "system prompt must be counted: {with_prompt} vs {history_only}"
+        );
+    }
+
+    #[test]
+    fn context_info_messages_include_frozen_user_context() {
+        let user = make_message("m1", "user", "inspect @src/lib.rs");
+        let context = db::ops::message::ActiveContext {
+            path: vec![user.clone()],
+            summary: None,
+            anchor_index: None,
+            head_id: Some(user.id.clone()),
+        };
+        let frozen = MessageContextItem {
+            id: "ctx1".into(),
+            message_id: user.id.clone(),
+            position: 0,
+            kind: "project_file".into(),
+            content: "pub fn counted_snapshot() { /* frozen bytes */ }".into(),
+            display_path: Some("src/lib.rs".into()),
+            line_start: None,
+            line_end: None,
+            content_hash: "hash".into(),
+            byte_count: 48,
+            line_count: 1,
+            token_count: 10,
+            truncated: 0,
+            metadata: None,
+            created_at: 1,
+        };
+        let items = HashMap::from([(user.id.clone(), vec![frozen])]);
+
+        let with_context = context_info_messages("system", &context, Vec::new(), &items);
+        let without_context = context_info_messages("system", &context, Vec::new(), &HashMap::new());
+
+        assert!(
+            with_context
+                .iter()
+                .any(|message| message.content.contains("counted_snapshot")),
+            "the estimate payload must replay the frozen snapshot"
+        );
+        let budget = TokenBudget::new("openai", "gpt-4o", 128_000, 16_384, None);
+        assert!(
+            budget.counter.count_messages(&with_context) > budget.counter.count_messages(&without_context),
+            "frozen context must contribute to the displayed token estimate"
         );
     }
 }

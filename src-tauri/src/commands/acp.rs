@@ -37,12 +37,47 @@ pub async fn acp_send(
     conversation_id: String,
     message: String,
     turn_id: Option<String>,
+    context_refs: Option<Vec<meridian_core::workspace::reference::WorkspaceReferenceInput>>,
 ) -> Result<(), String> {
     let services = app.services();
+    let parsed = meridian_core::workspace::reference::parse_message_references(&message);
+    let references = meridian_core::workspace::reference::reconcile_references(context_refs, parsed)?;
+    let context = if references.is_empty() {
+        Vec::new()
+    } else {
+        let pool = services.db.clone();
+        let conversation = conversation_id.clone();
+        let cwd = tokio::task::spawn_blocking(move || {
+            let mut conn = meridian_core::util::get_conn(&pool)?;
+            meridian_core::db::ops::acp_session::get(&mut conn, &conversation)
+                .map_err(|e| e.to_string())?
+                .map(|row| row.cwd)
+                .ok_or_else(|| "this conversation has no Claude Code working directory".to_string())
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        let file_access = meridian_core::agent::build_file_access(&services.db).await;
+        let tool_context = meridian_core::tools::ToolContext {
+            working_directory: Some(cwd),
+            shell: meridian_core::tools::ShellType::default_for_platform(),
+            file_access,
+            project_id: None,
+            conversation_id: Some(conversation_id.clone()),
+            turn_id: turn_id.clone(),
+            assistant_id: None,
+            db_pool: Some(services.db.clone()),
+            sandbox_policy: None,
+            tool_secrets: Default::default(),
+            cancel: tokio_util::sync::CancellationToken::new(),
+            journal: None,
+        };
+        let counter = meridian_core::agent::TokenCounter::new(meridian_core::agent::TokenizerKind::Cl100kBase);
+        meridian_core::workspace::reference::prepare_references(&tool_context, &references, &counter, 128_000).await?
+    };
     // Reopens a conversation whose adapter died with the last run of the app.
     // The transcript is still here; the agent's memory of it is not.
     let session = acp::reopen_session(&services, &conversation_id).await?;
-    session.prompt(&services, &message, turn_id).await
+    session.prompt_with_context(&services, &message, turn_id, context).await
 }
 
 /// Every Claude Code session on this machine, with the ones a conversation here

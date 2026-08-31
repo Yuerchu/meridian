@@ -940,7 +940,16 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
               href={src.url}
               title={src.site_name || src.title}
             >
-              <ChatSource.Trigger rel="noreferrer noopener" onClick={(e) => openExternally(src.url, e)}>
+              <ChatSource.Trigger
+                href="#meridian-external"
+                rel="noreferrer noopener"
+                target={undefined}
+                onAuxClick={(e) => {
+                  e.preventDefault()
+                  if (e.button === 1) openExternally(src.url, e)
+                }}
+                onClick={(e) => openExternally(src.url, e)}
+              >
                 <ChatSource.Icon faviconUrl={src.favicon ?? undefined} />
                 <ChatSource.Title>{src.site_name || src.title}</ChatSource.Title>
               </ChatSource.Trigger>

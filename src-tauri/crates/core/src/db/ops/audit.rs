@@ -250,6 +250,9 @@ fn billing_mode_for(
     turn_origin: Option<&str>,
     agent_kind: Option<&str>,
 ) -> BillingMode {
+    // Conversation rows can be read on Android even though the desktop-only
+    // ACP runtime module is not compiled there.
+    const CLAUDE_CODE_AGENT_KIND: &str = "claude_code";
     // A live ACP reply is usage reported by the hosted Claude Code process. It
     // belongs to that process's own subscription or provider account, not to a
     // Meridian model config. Filing it as metered creates an unpriceable row
@@ -259,7 +262,7 @@ fn billing_mode_for(
     // desktop turn would bill the conversation rather than this request.
     let hosted = match turn_origin {
         Some(origin) => origin == crate::turn::TurnOrigin::ClaudeCode.as_str(),
-        None => agent_kind == Some(crate::acp::AGENT_KIND),
+        None => agent_kind == Some(CLAUDE_CODE_AGENT_KIND),
     };
     if hosted {
         return BillingMode::External;

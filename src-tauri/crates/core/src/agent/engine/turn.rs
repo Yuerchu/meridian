@@ -435,14 +435,18 @@ async fn run(
     // must never compound: taking it from the previous request's already
     // reduced value would ratchet the ceiling down round after round.
     let configured_reply = params.max_tokens.filter(|m| *m > 0).map(|m| m as usize);
-    // Seeded here so the first request of the turn is measured too. Every later
-    // one is covered by the compaction pass, which leaves the estimate current.
-    budget.update_estimate(&chat_messages);
-
     loop {
         if cancel.is_cancelled() {
             break;
         }
+
+        // A caller may already have trimmed the initial history, but request
+        // safety cannot depend on that. Re-apply the user-context aggregate cap
+        // at the provider boundary on every round, including low-pressure
+        // histories that never enter compaction, then estimate exactly what is
+        // about to be sent.
+        crate::agent::context::cap_user_provided_context(&mut chat_messages, context_limit);
+        budget.update_estimate(&chat_messages);
 
         // A prompt that already fills the window has nowhere to put an answer,
         // and no output ceiling makes it servable. Sending it anyway buys one
@@ -582,6 +586,8 @@ async fn run(
                                 conversation_id: &conversation_id,
                             })
                             .await;
+                        crate::agent::context::cap_user_provided_context(&mut chat_messages, context_limit);
+                        budget.update_estimate(&chat_messages);
                         whisper(
                             "chat-stream",
                             serde_json::json!({
@@ -1626,6 +1632,54 @@ mod tests {
     }
 
     const ERRAND: &str = r#"{"agent":"explore","description":"find the caller","prompt":"Find every caller of resolve_head and say what each one does with the answer."}"#;
+
+    #[tokio::test]
+    async fn provider_boundary_caps_user_context_even_below_a_large_windows_trim_threshold() {
+        let pool = test_db();
+        conversation(&pool);
+        let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
+        let provider = Scripted::of(vec![says("done")]);
+        let approvals = Answers::nobody();
+        let mut turn = setup(&provider, &pool, &cancel, &[]);
+        turn.context_limit = 200_000;
+        turn.budget = TokenBudget::new("openai", "m", turn.context_limit, 4_096, None);
+        let shell = crate::workspace::reference::render_context_item(
+            "shell_output",
+            None,
+            None,
+            None,
+            &"界".repeat(crate::workspace::reference::MAX_MODEL_SHELL_CONTEXT_BYTES),
+            false,
+        );
+        for _ in 0..5 {
+            turn.chat_messages.push(ChatMessage::user_provided_context(&shell));
+        }
+        let before = turn
+            .chat_messages
+            .iter()
+            .filter(|message| message.origin == crate::provider::MessageOrigin::UserProvidedContext)
+            .map(|message| crate::agent::context::estimate_tokens(&message.content))
+            .sum::<usize>();
+        assert!(before > 25_000);
+        assert!(
+            before < turn.context_limit * 4 / 5,
+            "the regression must stay below trim pressure"
+        );
+
+        let outcome = run_turn(&services(&pool, &tools, &mcp), turn, ports(&approvals, None)).await;
+
+        assert_eq!(outcome.reply.as_deref(), Ok("done"));
+        let sent = &provider.requests()[0].0;
+        let sent_context = sent
+            .iter()
+            .filter(|message| message.origin == crate::provider::MessageOrigin::UserProvidedContext)
+            .map(|message| crate::agent::context::estimate_tokens(&message.content))
+            .sum::<usize>();
+        assert!(
+            sent_context <= 25_000,
+            "provider received {sent_context} user-context tokens"
+        );
+    }
 
     /// The whole point of the port: the loop recognises the name, hands over,
     /// and puts the answer back where a tool result goes.

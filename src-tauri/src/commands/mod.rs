@@ -32,6 +32,8 @@ pub mod sub_agent;
 pub mod todo;
 pub mod tool_system;
 pub mod usage;
+#[cfg_attr(target_os = "android", path = "user_command_android.rs")]
+pub mod user_command;
 pub mod voice;
 pub mod voice_corpus;
 pub mod workspace;

@@ -50,6 +50,7 @@ import type { SenderNames } from '@/hooks/use-sender-names'
 import type { EmojiMap } from './emoji-renderer'
 import { useRelativeTime } from '@/hooks/use-relative-time'
 import { TurnUsage } from './turn-usage'
+import { ShellCommandCard } from './shell-command-card'
 
 /**
  * Who answered and when, sitting level with the avatar at the top of a message.
@@ -569,6 +570,25 @@ export const MessageItem = React.memo(function MessageItem({
     const speaker = isOneBot ? speakerLabel(message.sender_id, senderNames, senderPrefix) : null
 
     const hasAttachments = !!contentParts && contentParts.some((p) => p.type === 'image_url' || p.type === 'file')
+
+    if (message.source === 'shell') {
+      return (
+        <>
+          <MessageUser>
+            <ShellCommandCard message={message} />
+            <MessageFooter className="gap-1 opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 pointer-coarse:opacity-100">
+              <CopyButton text={copyText} />
+              {onDelete && (
+                <ActionButton label={t('chat.delete')} onClick={requestDelete} className="text-muted hover:text-danger">
+                  <TrashBin className="size-3.5" />
+                </ActionButton>
+              )}
+            </MessageFooter>
+          </MessageUser>
+          {confirmDialog}
+        </>
+      )
+    }
 
     const userContent = (
       <ContextMenu onOpenChange={handleContextMenuOpenChange}>

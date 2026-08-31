@@ -40,6 +40,9 @@ pub struct MessageDto {
     /// able to say who denied it and why — a reload that lost the reason would
     /// leave the model's refusal looking like its own choice.
     pub auto_review: Option<String>,
+    /// Descriptors only. Raw file snapshots and command output stay behind the
+    /// provider/preview boundary.
+    pub context_items: Vec<db::models::message_context_item::MessageContextDescriptor>,
 }
 
 impl From<Message> for MessageDto {
@@ -71,7 +74,15 @@ impl From<Message> for MessageDto {
             cache_write_tokens: row.cache_write_tokens,
             provider_name: row.provider_name,
             auto_review: row.auto_review,
+            context_items: Vec::new(),
         }
+    }
+}
+
+impl MessageDto {
+    fn with_context_items(mut self, items: Vec<db::models::message_context_item::MessageContextItem>) -> Self {
+        self.context_items = items.into_iter().map(|item| item.descriptor()).collect();
+        self
     }
 }
 
@@ -90,6 +101,53 @@ pub struct MessageTree {
     pub branches: Vec<db::ops::message::BranchPoint>,
 }
 
+#[derive(serde::Serialize)]
+pub struct MessageContextContent {
+    pub descriptor: db::models::message_context_item::MessageContextDescriptor,
+    pub content: String,
+    pub metadata: Option<String>,
+}
+
+/// Read raw context only while its owning message is on this conversation's
+/// active branch. Knowing an item UUID is not authority to read a sibling's
+/// repository snapshot or command output.
+#[tauri::command]
+pub async fn read_message_context_item(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    item_id: String,
+) -> Result<MessageContextContent, String> {
+    let pool = app.services().db.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        conn.transaction::<_, diesel::result::Error, _>(|conn| {
+            let conv = db::ops::conversation::get_conversation(conn, &conversation_id)?;
+            let history = db::ops::message::list_messages(conn, &conversation_id)?;
+            let active = db::ops::message::active_context(&history, conv.head_message_id.as_deref());
+            let active_ids = active.path.into_iter().map(|row| row.id).collect::<Vec<_>>();
+            let mut rows = db::ops::message_context_item::list_for_messages(conn, &active_ids)?
+                .into_values()
+                .flatten()
+                .filter(|item| item.id == item_id);
+            let item = rows.next().ok_or(diesel::result::Error::NotFound)?;
+            Ok(MessageContextContent {
+                descriptor: item.descriptor(),
+                content: item.content,
+                metadata: item.metadata,
+            })
+        })
+        .map_err(|e| {
+            if matches!(e, diesel::result::Error::NotFound) {
+                "context item is not on the active conversation branch".to_string()
+            } else {
+                e.to_string()
+            }
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 fn read_tree_with_conversation(
     conn: &mut db::PooledConn,
     conversation_id: &str,
@@ -99,7 +157,16 @@ fn read_tree_with_conversation(
     let ctx = db::ops::message::active_context(&history, conv.head_message_id.as_deref());
     let branches = db::ops::message::branch_points(&history, &ctx.path);
     let head_message_id = ctx.head_id.clone();
-    let mut messages = ctx.path.into_iter().map(MessageDto::from).collect::<Vec<_>>();
+    let ids = ctx.path.iter().map(|row| row.id.clone()).collect::<Vec<_>>();
+    let mut context_items = db::ops::message_context_item::list_for_messages(conn, &ids).map_err(|e| e.to_string())?;
+    let mut messages = ctx
+        .path
+        .into_iter()
+        .map(|row| {
+            let items = context_items.remove(&row.id).unwrap_or_default();
+            MessageDto::from(row).with_context_items(items)
+        })
+        .collect::<Vec<_>>();
     messages.extend(ctx.summary.map(MessageDto::from));
     Ok((
         conv,
@@ -509,7 +576,9 @@ pub async fn rate_message(app: tauri::AppHandle, id: String, rating: Option<i32>
 /// `<owner_notes>`, which exist on the understanding that they are never even
 /// quoted back to the person they are about.
 fn exportable(path: Vec<Message>) -> Vec<Message> {
-    path.into_iter().filter(|m| m.role != "context").collect()
+    path.into_iter()
+        .filter(|m| m.role != "context" && m.source.as_deref() != Some("shell"))
+        .collect()
 }
 
 #[tauri::command]
@@ -768,6 +837,15 @@ mod tests {
         assert_eq!(kept.len(), 2);
         assert!(kept.iter().all(|m| !m.content.contains("找工作")));
         assert!(kept.iter().all(|m| m.role != "context"));
+    }
+
+    #[test]
+    fn literal_shell_commands_are_not_training_exports() {
+        let mut shell = exported_row("user", "!echo $SECRET");
+        shell.source = Some("shell".into());
+        let kept = exportable(vec![exported_row("user", "explain this"), shell]);
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].content, "explain this");
     }
 
     #[test]

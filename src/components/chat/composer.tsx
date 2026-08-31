@@ -43,6 +43,14 @@ interface ComposerProps {
   toolbarEnd?: ReactNode
   /** One line above the shell. Not `PromptInput.Footer`, which is below it. */
   notice?: ReactNode
+  /** Caret-anchored completion menu. The textarea keeps focus while it is open. */
+  suggestions?: ReactNode
+  /** Runs before the composer's submit guard; may consume Enter/Tab/Escape. */
+  onKeyDownCapture?: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void
+  /** Keeps a caret-aware typeahead in sync without replacing Pro's textarea ref. */
+  onCaretChange?: (caret: number) => void
+  /** A leading bang changes semantics without replacing the textarea. */
+  inputMode?: 'prompt' | 'shell'
   /**
    * Queued messages, in their own card above the shell.
    *
@@ -91,6 +99,10 @@ export function Composer({
   toolbarStart,
   toolbarEnd,
   notice,
+  suggestions,
+  onKeyDownCapture,
+  onCaretChange,
+  inputMode = 'prompt',
   queue,
   onDropFiles,
   onFieldReady,
@@ -118,10 +130,14 @@ export function Composer({
   // would see the event; stopping it here is the only way left to hold Enter
   // back. React ends the dispatch for this element's bubble handler too —
   // `#playground/heroui` has the probe that proves it.
-  const guardEnter = useCallback((e: React.KeyboardEvent) => {
-    if (e.key !== 'Enter' || e.shiftKey) return
-    if (!isSubmitKey(e)) e.stopPropagation()
-  }, [])
+  const guardEnter = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      onKeyDownCapture?.(e)
+      if (e.defaultPrevented || e.key !== 'Enter' || e.shiftKey) return
+      if (!isSubmitKey(e)) e.stopPropagation()
+    },
+    [onKeyDownCapture],
+  )
 
   // Pro's own rule for what the send button does, restated because only the
   // label and the extra Stop are ours and both have to agree with it: while a
@@ -131,8 +147,9 @@ export function Composer({
   const sendIsStop = !!streaming && !!onStop && !(steerable && value.trim() !== '')
 
   return (
-    <div ref={shellRef} className={cn('w-full', className)}>
+    <div ref={shellRef} className={cn('relative w-full', className)} data-input-mode={inputMode}>
       {notice}
+      {suggestions}
       <PromptInput
         value={value}
         onValueChange={onChange}
@@ -154,11 +171,20 @@ export function Composer({
         <PromptInput.Shell data-dragging={dropping ? 'true' : undefined}>
           <PromptInput.Content>
             {attachments && <PromptInput.Attachments>{attachments}</PromptInput.Attachments>}
+            {inputMode === 'shell' && (
+              <div className="flex items-center gap-1.5 px-3 pt-2 text-xs font-medium text-muted" aria-hidden>
+                <span className="font-mono text-accent">!</span>
+                Shell
+              </div>
+            )}
             <PromptInput.TextArea
               aria-label={ariaLabel}
               placeholder={placeholder}
               autoFocus={autoFocus}
               onKeyDownCapture={guardEnter}
+              onSelect={(event) => onCaretChange?.(event.currentTarget.selectionStart)}
+              onKeyUp={(event) => onCaretChange?.(event.currentTarget.selectionStart)}
+              onClick={(event) => onCaretChange?.(event.currentTarget.selectionStart)}
               onCompositionStart={() => {
                 composingRef.current = true
               }}
