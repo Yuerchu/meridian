@@ -69,6 +69,7 @@ function renderSidebar(over: Partial<React.ComponentProps<typeof AppSidebar>> = 
     onDelete: vi.fn(),
     onRename: vi.fn(),
     onTogglePin: vi.fn(),
+    onMoveToProject: vi.fn().mockResolvedValue(null),
     page: 'chat',
     onOpenSettings: vi.fn(),
     onCloseSettings: vi.fn(),
@@ -82,12 +83,13 @@ function renderSidebar(over: Partial<React.ComponentProps<typeof AppSidebar>> = 
     onRenameProject: vi.fn(),
     ...over,
   }
-  render(
-    <Sidebar.Provider>
+  const ui = (panelOpen: boolean) => (
+    <Sidebar.Provider open={panelOpen} onOpenChange={() => {}}>
       <AppSidebar {...props} />
-    </Sidebar.Provider>,
+    </Sidebar.Provider>
   )
-  return props
+  const view = render(ui(true))
+  return { props, setPanelOpen: (open: boolean) => view.rerender(ui(open)) }
 }
 
 /** The panel copy only — the mobile sheet renders the same tree a second time. */
@@ -153,11 +155,39 @@ describe('AppSidebar project tree', () => {
     expect(row(/QQ 群/)).toHaveAttribute('data-expanded')
   })
 
+  /**
+   * The icon rail. Two halves, one owner each: *Pro* drops submenu rows from
+   * the collection while the panel is collapsed — measured, and pinned here so
+   * an upgrade that stops doing it is caught — and *we* withhold the loose
+   * group, whose conversations have no project to fold under and stayed behind
+   * as a column of identical, unlabelled chat icons.
+   */
+  it('folds the tree and withholds loose conversations while collapsed', async () => {
+    const { setPanelOpen } = renderSidebar({ activeId: 'c-1' })
+    // Open, with c-1's project auto-expanded: the nested row is in the tree.
+    await waitFor(() => expect(within(tree()).getByRole('row', { name: /侧边栏重构/ })).toBeInTheDocument())
+    expect(screen.getByRole('treegrid', { name: '对话' })).toBeInTheDocument()
+
+    setPanelOpen(false)
+    expect(within(tree()).queryByRole('row', { name: /侧边栏重构/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('treegrid', { name: '对话' })).not.toBeInTheDocument()
+
+    // The expansion set survived underneath: reopening restores what was open.
+    setPanelOpen(true)
+    expect(within(tree()).getByRole('row', { name: /侧边栏重构/ })).toBeInTheDocument()
+    expect(screen.getByRole('treegrid', { name: '对话' })).toBeInTheDocument()
+  })
+
   /** Conversations belonging to no project keep a flat group of their own. */
   it('keeps unfiled conversations out of the tree', () => {
     renderSidebar()
     const loose = screen.getByRole('treegrid', { name: '对话' })
-    expect(within(loose).getByRole('row', { name: /随便问问/ })).toBeInTheDocument()
+    const looseRow = within(loose).getByRole('row', { name: /随便问问/ })
+    expect(looseRow).toBeInTheDocument()
+    expect(within(looseRow).getByRole('button', { name: /拖拽移动 随便问问/ })).toHaveAttribute(
+      'data-slot',
+      'sidebar-menu-action',
+    )
     expect(within(loose).queryByRole('row', { name: /侧边栏重构/ })).not.toBeInTheDocument()
   })
 
@@ -221,5 +251,59 @@ describe('AppSidebar project tree', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('无法创建项目：Error: permission denied')
     expect(screen.getByRole('textbox', { name: '项目名称' })).toHaveValue('New project')
+  })
+
+  /**
+   * Moving goes through a dialog rather than a submenu, so the same surface
+   * serves the right-click menu and the touch menu. The current location is
+   * disabled — the list also answers "where is this filed" — and choosing a
+   * destination reports the bare project id, `null` for none.
+   */
+  describe('move to project', () => {
+    it('moves a loose conversation into a chosen project', async () => {
+      const user = userEvent.setup()
+      const { props } = renderSidebar()
+      const loose = screen.getByRole('treegrid', { name: '对话' })
+      await user.pointer({ keys: '[MouseRight]', target: within(loose).getByRole('row', { name: /随便问问/ }) })
+
+      await user.click(within(await screen.findByRole('menu')).getByText('移动到项目…'))
+
+      const dialog = await screen.findByRole('dialog')
+      // Loose already: "no project" is where it is, not somewhere to go.
+      expect(within(dialog).getByRole('button', { name: /不归属项目/ })).toBeDisabled()
+      await user.click(within(dialog).getByRole('button', { name: /Meridian/ }))
+
+      expect(props.onMoveToProject).toHaveBeenCalledWith('c-loose', 'p-code')
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    })
+
+    it('moves a filed conversation out to no project', async () => {
+      const user = userEvent.setup()
+      const { props } = renderSidebar({ activeId: 'c-1' })
+      const nested = await within(tree()).findByRole('row', { name: /侧边栏重构/ })
+      await user.pointer({ keys: '[MouseRight]', target: nested })
+
+      await user.click(within(await screen.findByRole('menu')).getByText('移动到项目…'))
+
+      const dialog = await screen.findByRole('dialog')
+      expect(within(dialog).getByRole('button', { name: /Meridian/ })).toBeDisabled()
+      await user.click(within(dialog).getByRole('button', { name: /不归属项目/ }))
+
+      expect(props.onMoveToProject).toHaveBeenCalledWith('c-1', null)
+    })
+
+    it('keeps the dialog open and shows why a move was refused', async () => {
+      const user = userEvent.setup()
+      renderSidebar({ onMoveToProject: vi.fn().mockResolvedValue('conversation is busy') })
+      const loose = screen.getByRole('treegrid', { name: '对话' })
+      await user.pointer({ keys: '[MouseRight]', target: within(loose).getByRole('row', { name: /随便问问/ }) })
+
+      await user.click(within(await screen.findByRole('menu')).getByText('移动到项目…'))
+      const dialog = await screen.findByRole('dialog')
+      await user.click(within(dialog).getByRole('button', { name: /Meridian/ }))
+
+      expect(await within(dialog).findByRole('alert')).toHaveTextContent('conversation is busy')
+      expect(dialog).toBeInTheDocument()
+    })
   })
 })

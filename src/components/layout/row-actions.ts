@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
-import { ArrowDownToLine, Link, Pencil, Pin, PinSlash, TrashBin } from '@gravity-ui/icons'
+import { ArrowDownToLine, FolderArrowRight, Link, Pencil, Pin, PinSlash, TrashBin } from '@gravity-ui/icons'
 
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
@@ -20,7 +20,7 @@ import type { Conversation, Project } from '@/types'
  * refresh.
  */
 export interface RowAction {
-  key: 'pin' | 'rename' | 'attach-session' | 'export-sft' | 'export-dpo' | 'delete'
+  key: 'pin' | 'rename' | 'move' | 'attach-session' | 'export-sft' | 'export-dpo' | 'delete'
   icon: React.ComponentType<{ className?: string }>
   label: string
   variant?: 'default' | 'destructive'
@@ -65,6 +65,8 @@ async function exportConversation(conv: Conversation, format: 'sft' | 'dpo', onE
 export function useConversationActions(args: {
   onTogglePin: (id: string) => void
   onRequestRename: (id: string) => void
+  /** Open the move-to-project picker for this conversation. */
+  onRequestMove: (id: string) => void
   onRequestDelete: (id: string) => void
   onExportError: (error: unknown) => void
   /**
@@ -78,7 +80,7 @@ export function useConversationActions(args: {
   onRequestAttachSession?: (id: string) => void
 }): (conversation: Conversation) => RowAction[] {
   const { t } = useTranslation()
-  const { onTogglePin, onRequestRename, onRequestDelete, onExportError, onRequestAttachSession } = args
+  const { onTogglePin, onRequestRename, onRequestMove, onRequestDelete, onExportError, onRequestAttachSession } = args
 
   // The picker returns a path on the machine the *user* is at, and the export
   // is written by the machine the app is on. Connected to another one those are
@@ -98,6 +100,12 @@ export function useConversationActions(args: {
         icon: Pencil,
         label: t('contextMenu.rename'),
         run: () => onRequestRename(conversation.id),
+      },
+      {
+        key: 'move',
+        icon: FolderArrowRight,
+        label: t('moveDialog.action'),
+        run: () => onRequestMove(conversation.id),
       },
       ...(onRequestAttachSession && conversation.agent_kind === 'claude_code'
         ? [
@@ -131,7 +139,16 @@ export function useConversationActions(args: {
         run: () => onRequestDelete(conversation.id),
       },
     ],
-    [t, exportBlocked, onTogglePin, onRequestRename, onRequestDelete, onExportError, onRequestAttachSession],
+    [
+      t,
+      exportBlocked,
+      onTogglePin,
+      onRequestRename,
+      onRequestMove,
+      onRequestDelete,
+      onExportError,
+      onRequestAttachSession,
+    ],
   )
 }
 

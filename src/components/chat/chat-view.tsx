@@ -73,6 +73,7 @@ function ChatViewInner({
   const shellTurnId = session?.activeShellTurnId ?? null
   const compacting = session?.compacting ?? false
   const error = session?.error ?? null
+  const activeTodos = session?.activeTodos ?? null
 
   const [input, setInput] = useState('')
   const [commandPending, setCommandPending] = useState(false)
@@ -713,7 +714,11 @@ function ChatViewInner({
         scrollToBottomLabel={t('chat.scrollToBottom')}
       />
 
-      <TodoBar conversationId={conversationId} />
+      {/* Folded into the queue card when something is stacked: HeroUI's Queue
+          is current-plus-rows, and a TodoBar sitting above it made every
+          queued message look nested under the checklist — interject and
+          follow-up alike. Alone, the bar keeps its own card. */}
+      {queue.items.length === 0 && <TodoBar conversationId={conversationId} />}
 
       <InputBar
         conversationId={conversationId}
@@ -732,6 +737,8 @@ function ChatViewInner({
         queue={
           <PromptQueue
             items={queue.items}
+            currentTodos={queue.items.length > 0 ? activeTodos : null}
+            streaming={streaming}
             held={queue.held}
             onRemove={(id) => void queue.remove(id).catch((e) => storeSetError(conversationId, String(e)))}
             onReorder={(next) => void queue.reorder(next)}

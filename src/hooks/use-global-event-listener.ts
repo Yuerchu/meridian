@@ -254,6 +254,26 @@ export function useGlobalEventListener() {
       useConversationStore.getState().refreshConversations()
     })
 
+    // A queued message became a row in the transcript. Only the delivering
+    // announcement is acted on here: `usePromptQueue` listens to all of them to
+    // re-read the queue, but an enqueue or a drag changes nothing about the
+    // conversation, and re-reading one on every keystroke would be a snapshot
+    // of a running turn per character typed.
+    //
+    // The transcript half is what makes the queue half safe. The item leaves
+    // the queue as soon as `settled_message_id` is filled, which for a native
+    // delivery is the same transaction that writes the row — so without this
+    // the message is off the queue and not yet on screen, which is worse than
+    // the stale row it replaces.
+    const queueDeliveredUnlisten = listen<{ conversation_id?: string; delivered?: boolean }>(
+      'queue-updated',
+      (event) => {
+        const convId = event.payload?.conversation_id
+        if (!convId || !event.payload?.delivered) return
+        void useConversationStore.getState().loadMessages(convId)
+      },
+    )
+
     const userCommandUnlisten = listen<UserCommandEvent>('user-command', (event) => {
       const store = useConversationStore.getState()
       if (event.payload.type === 'start') {
@@ -300,6 +320,7 @@ export function useGlobalEventListener() {
     return () => {
       chatStreamUnlisten.then((fn) => fn())
       convUpdatedUnlisten.then((fn) => fn())
+      queueDeliveredUnlisten.then((fn) => fn())
       userCommandUnlisten.then((fn) => fn())
       resyncUnlisten.then((fn) => fn())
       compactStartUnlisten.then((fn) => fn())

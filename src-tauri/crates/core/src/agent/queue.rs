@@ -33,7 +33,7 @@ use crate::util::{get_conn, now_ms};
 
 mod native;
 
-pub use native::Interjections;
+pub use native::{Announcing, Interjections};
 
 /// Deliver whatever the queue owes this conversation, if anything can go now.
 ///
@@ -174,6 +174,33 @@ pub fn announce(services: &Services, conversation_id: &str) {
     let _ = services.events.emit(
         "queue-updated",
         serde_json::json!({ "conversation_id": conversation_id }),
+    );
+}
+
+/// The same, for the moment an item stops being queued and becomes a message.
+///
+/// Separate because it is the only one that changes the *transcript*, and the
+/// listener has to be able to tell: re-reading a conversation on every enqueue
+/// and every drag would be a snapshot of a running turn per keystroke.
+///
+/// Both halves are needed and neither works alone. Without the announcement the
+/// front end keeps the item's last known state — still `queued`, still stacked
+/// above the composer for the length of the turn — while the backend has
+/// already spent it, so pressing the delete it is still offering answers that
+/// the message has been sent. Without the transcript half, the row leaves the
+/// queue on `settled_message_id` and the message it became is not on screen
+/// either, which is the one state this must never produce.
+pub fn announce_delivered(services: &Services, conversation_id: &str) {
+    emit_delivered(&services.events, conversation_id);
+}
+
+/// The bus alone, for the port wrapper — everything it needs to do its job, and
+/// the difference between a decorator that can be built in a test and one that
+/// needs a data directory.
+pub(super) fn emit_delivered(events: &crate::events::EventBus, conversation_id: &str) {
+    let _ = events.emit(
+        "queue-updated",
+        serde_json::json!({ "conversation_id": conversation_id, "delivered": true }),
     );
 }
 

@@ -52,6 +52,26 @@ describe('api', () => {
       await api.deleteConversation('abc')
       expect(mockInvoke).toHaveBeenCalledWith('delete_conversation', { id: 'abc' })
     })
+
+    it('setConversationProject sends the target project', async () => {
+      mockInvoke.mockResolvedValueOnce(undefined)
+      await api.setConversationProject('abc', 'p-1')
+      expect(mockInvoke).toHaveBeenCalledWith('set_conversation_project', { id: 'abc', projectId: 'p-1' })
+    })
+
+    // `null` is a destination, not an omission: it files the conversation
+    // under no project at all.
+    it('setConversationProject sends null to unfile', async () => {
+      mockInvoke.mockResolvedValueOnce(undefined)
+      await api.setConversationProject('abc', null)
+      expect(mockInvoke).toHaveBeenCalledWith('set_conversation_project', { id: 'abc', projectId: null })
+    })
+
+    it('searchConversations defaults the limit to the backend', async () => {
+      mockInvoke.mockResolvedValueOnce([])
+      await api.searchConversations('锁')
+      expect(mockInvoke).toHaveBeenCalledWith('search_conversations', { query: '锁', limit: null })
+    })
   })
 
   describe('messages', () => {

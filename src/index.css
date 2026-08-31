@@ -130,6 +130,19 @@
   visibility: hidden;
 }
 
+/* Where a dragged conversation would land. React Aria marks the row under the
+   pointer with `data-drop-target`, and the whole loose list when the drop is a
+   root drop; Pro has no styles for either, so an unstyled drag gives no sign
+   of what letting go would do. `--accent` is the action colour. */
+.sidebar__menu-item[data-drop-target] .sidebar__menu-item-content {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.sidebar__menu[data-drop-target] {
+  outline: 1px dashed var(--accent);
+  outline-offset: -1px;
+  border-radius: var(--radius);
+}
+
 /* HeroUI ships a `dark` variant that also falls back to `prefers-color-scheme`.
    Ours is deliberate: the theme is an explicit setting, and a dark OS must not
    darken an app the user asked to keep light. Declared after the import so it

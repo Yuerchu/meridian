@@ -58,6 +58,7 @@ export function AppShell(props: ShellProps) {
     onDelete,
     onRename,
     onTogglePin,
+    onMoveToProject,
     onSelectProject,
     onCreateProject,
     onCreateHostedSession,
@@ -216,6 +217,7 @@ export function AppShell(props: ShellProps) {
           onCreateHostedSession={onCreateHostedSession}
           onRename={onRename}
           onTogglePin={onTogglePin}
+          onMoveToProject={onMoveToProject}
           onDeleteProject={onDeleteProject}
           onRenameProject={onRenameProject}
         />

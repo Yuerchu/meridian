@@ -46,6 +46,8 @@ import { TurnSteps } from '@/components/chat/turn-steps'
 import { TodoBarView } from '@/components/chat/todo-bar'
 import TodoBoard from '@/components/chat/todo-board'
 import type { TodoDraft } from '@/components/chat/todo-list'
+import { PromptQueue } from '@/components/chat/prompt-queue'
+import { Composer } from '@/components/chat/composer'
 import { ComposerMenu } from '@/components/chat/composer-menu'
 import { VoiceButton, type VoiceButtonState } from '@/components/ui/voice-button'
 import { ChangesPanelView } from '@/components/chat/changes-panel'
@@ -62,6 +64,7 @@ import type {
   Project,
   ProviderCapabilities,
   ThinkingLevel,
+  QueuedPrompt,
   ToolCallDisplay,
 } from '@/types'
 
@@ -456,6 +459,23 @@ const todoStep = (content: string, activeForm: string, status: string) => ({
   active_form: activeForm,
   status,
 })
+
+function queued(id: string, delivery: QueuedPrompt['delivery'], content: string): QueuedPrompt {
+  return {
+    id,
+    conversation_id: 'pg',
+    content,
+    delivery,
+    position: 0,
+    created_at: 0,
+    dispatched_at: null,
+    dispatched_turn_id: null,
+    settled_at: null,
+    settled_message_id: null,
+    held_at: null,
+    reported_at: null,
+  }
+}
 
 const TODO_RUNNING = JSON.stringify({
   title: '重构鉴权模块',
@@ -1131,6 +1151,36 @@ function Gallery() {
             <TodoBarView todos={JSON.parse(TODO_SINGLE)} />
             <TodoBarView todos={JSON.parse(TODO_NO_CURRENT)} />
           </div>
+        </Section>
+
+        <Section title="PromptQueue / 插队与做完再说">
+          {/* The queue is a child of PromptInput, which is the composer's
+              card. Two modes in one list: a follow-up is a sibling of the
+              current run, an interjection hangs off it with ↳. */}
+          <Composer
+            value=""
+            onChange={() => {}}
+            onSubmit={() => {}}
+            streaming
+            steerable
+            placeholder="排队接下来要做的事…"
+            ariaLabel="queue probe"
+            queue={
+              <PromptQueue
+                currentTodos={JSON.parse(TODO_RUNNING)}
+                streaming
+                held={false}
+                items={[
+                  queued('later', 'follow_up', '做完再说：补一条测试'),
+                  queued('now', 'interject', '插队：先停在这一步'),
+                ]}
+                onRemove={() => {}}
+                onReorder={() => {}}
+                onSetDelivery={() => {}}
+                onRelease={() => {}}
+              />
+            }
+          />
         </Section>
 
         <Section title="TodoBoard / 三列看板">

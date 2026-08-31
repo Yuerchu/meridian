@@ -217,6 +217,49 @@ pub async fn update_conversation_title(app: tauri::AppHandle, id: String, title:
     .map_err(|e| e.to_string())?
 }
 
+/// Refile a conversation under another project, or under none (`None`).
+///
+/// For a native conversation this also moves what the next turn resolves its
+/// working directory and file access against — see `update_project`.
+#[tauri::command]
+pub async fn set_conversation_project(
+    app: tauri::AppHandle,
+    id: String,
+    project_id: Option<String>,
+) -> Result<(), String> {
+    let services = app.services();
+    let _lease = services
+        .turns
+        .clone()
+        .try_acquire_mutation(&id, "a project move")
+        .map_err(|busy| busy.to_string())?;
+    let pool = services.db.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::conversation::update_project(&mut conn, &id, project_id.as_deref(), now_ms())
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Conversations whose transcript says the query, newest mention first.
+#[tauri::command]
+pub async fn search_conversations(
+    app: tauri::AppHandle,
+    query: String,
+    limit: Option<u32>,
+) -> Result<Vec<db::ops::conversation::TranscriptHit>, String> {
+    let pool = app.services().db.clone();
+    let limit = limit.unwrap_or(20).min(100) as usize;
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::conversation::search_transcripts(&mut conn, &query, limit).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub async fn toggle_pin_conversation(app: tauri::AppHandle, id: String) -> Result<Conversation, String> {
     let pool = app.services().db.clone();

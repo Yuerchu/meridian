@@ -165,9 +165,20 @@ function ApprovalToast({
 
   return (
     <Toast data-slot="approval-toast" toast={toast} variant="warning">
-      <Toast.Content data-slot="approval-toast-content">
-        <Toast.Title data-slot="approval-toast-title">{title ?? t('chat.newChat')}</Toast.Title>
-        <Toast.Description data-slot="approval-toast-description">
+      {/* `min-w-0` and the two `w-full` below are what make the truncation
+          underneath them work at all, and neither is ours to leave out.
+          `.toast__content` is a flex item of `.toast` with `grow` and no
+          `min-width: 0`, so its automatic minimum size is its content — and it
+          is itself `flex-col items-start`, which sizes its children to their
+          content rather than stretching them. A one-line `run_command` would
+          therefore push straight through a toast whose own width is fixed
+          (`.toast` is absolute with `inset-inline: 0`, so the region never
+          grows) and get drawn past the edge of the window. */}
+      <Toast.Content data-slot="approval-toast-content" className="min-w-0">
+        <Toast.Title data-slot="approval-toast-title" className="w-full truncate">
+          {title ?? t('chat.newChat')}
+        </Toast.Title>
+        <Toast.Description data-slot="approval-toast-description" className="w-full">
           <span className="flex min-w-0 items-start gap-1.5">
             <span className="shrink-0 font-medium leading-5">{toolLabel(t, item.toolName)}</span>
             <ToolArgsSummary toolName={item.toolName} args={args} />

@@ -257,6 +257,19 @@ function App() {
     [refreshConversations],
   )
 
+  const handleMoveToProject = useCallback(
+    async (id: string, projectId: string | null): Promise<string | null> => {
+      try {
+        await api.setConversationProject(id, projectId)
+        await refreshConversations()
+        return null
+      } catch (err) {
+        return String(err)
+      }
+    },
+    [refreshConversations],
+  )
+
   const handleDeleteProject = useCallback(
     async (id: string) => {
       await api.deleteProject(id)
@@ -301,6 +314,7 @@ function App() {
     onDelete: handleDelete,
     onRename: handleRename,
     onTogglePin: handleTogglePin,
+    onMoveToProject: handleMoveToProject,
     onSelectProject: handleSelectProject,
     onCreateProject: handleCreateProject,
     onCreateHostedSession: handleCreateHostedSession,

@@ -17,16 +17,20 @@
  */
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useDragAndDrop } from 'react-aria-components'
+import type { DropItem, Key } from 'react-aria-components'
 import { open } from '@tauri-apps/plugin-dialog'
-import { Button, Input, Spinner } from '@heroui/react'
+import { Button, Dropdown, Input, Label, Spinner } from '@heroui/react'
 import { Sidebar, useSidebar } from '@heroui-pro/react/sidebar'
 import {
   Archive,
   ArrowDownToSquare,
   ArrowLeft,
+  EllipsisVertical,
   FolderOpen,
   FolderPlus,
   Gear,
+  Grip,
   Pin,
   Plus,
   Terminal,
@@ -52,7 +56,10 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import { useConfirm } from '@/hooks/use-confirm'
+import { isCoarsePointer } from '@/hooks/use-coarse-pointer'
 import { ConversationIndicator } from './conversation-indicator'
+import { MoveDialog } from './move-dialog'
+import { CONVERSATION_DRAG_TYPE, conversationIdOf, dropDestination } from './sidebar-dnd'
 import { ProjectIcon } from './project-icon'
 import { RenameDialog } from './rename-dialog'
 import { RowActionsMenu } from './row-actions-menu'
@@ -66,6 +73,8 @@ interface AppSidebarProps {
   onDelete: (id: string) => void
   onRename: (id: string, newTitle: string) => void
   onTogglePin: (id: string) => void
+  /** Refile a conversation under another project, or under none (`null`). */
+  onMoveToProject: (id: string, projectId: string | null) => Promise<string | null>
   page: Page
   onOpenSettings: () => void
   onCloseSettings: () => void
@@ -439,6 +448,7 @@ export function AppSidebar({
   onDelete,
   onRename,
   onTogglePin,
+  onMoveToProject,
   page,
   onOpenSettings,
   onCloseSettings,
@@ -466,7 +476,7 @@ export function AppSidebar({
    * that works, which is what this used to do and called conservative.
    */
   const canHostSessions = platform !== 'android' || isRemote
-  const { isMobileOpen, setMobileOpen } = useSidebar()
+  const { isMobileOpen, setMobileOpen, isOpen } = useSidebar()
   const [showNewProject, setShowNewProject] = useState(false)
   const [showNewHosted, setShowNewHosted] = useState(false)
   // Held here because `settingsSide`/`appSide` below are rendered twice under
@@ -479,6 +489,10 @@ export function AppSidebar({
    *  carries the conversation being repointed. */
   const [picker, setPicker] = useState<{ mode: 'import' | 'attach'; conversationId?: string } | null>(null)
   const [renameTarget, setRenameTarget] = useState<{ type: 'conversation' | 'project'; id: string } | null>(null)
+  /** The conversation the move-to-project dialog is open for. */
+  const [moveTarget, setMoveTarget] = useState<string | null>(null)
+  const [moveError, setMoveError] = useState<string | null>(null)
+  const [movePending, setMovePending] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const { confirm, confirmDialog } = useConfirm()
 
@@ -545,9 +559,87 @@ export function AppSidebar({
     setExpanded((prev) => (prev.has(activeConversationProject) ? prev : new Set(prev).add(activeConversationProject)))
   }, [activeConversationProject])
 
+  /**
+   * Dragging a conversation onto where it should live, beside the dialog
+   * rather than instead of it.
+   *
+   * Disabled where the primary pointer is a finger: there a long press is
+   * already the way to a row's actions, and a drag gesture on the same fuse
+   * would fight it — the dialog is the touch path. One pair of hook configs
+   * above both copies of each tree (the keys differ only by prefix, which
+   * `sidebar-dnd` parses around); the hooks carry no per-collection state, so
+   * sharing them is sharing configuration.
+   */
+  const dndDisabled = isCoarsePointer()
+
+  /** What a dragged row carries. A row that is not a conversation — a
+   *  project, a header — carries nothing, and a drag with no payload has
+   *  nowhere it can be dropped. */
+  const dragConversations = useCallback(
+    (keys: Set<Key>) =>
+      [...keys].flatMap((key) => {
+        const id = conversationIdOf(String(key))
+        return id ? [{ [CONVERSATION_DRAG_TYPE]: id }] : []
+      }),
+    [],
+  )
+
+  const moveDropped = useCallback(
+    async (items: DropItem[], projectId: string | null) => {
+      for (const item of items) {
+        if (item.kind !== 'text' || !item.types.has(CONVERSATION_DRAG_TYPE)) continue
+        const id = await item.getText(CONVERSATION_DRAG_TYPE)
+        if (!id) continue
+        // Dropping a conversation where it already lives is a no-op, not a
+        // write: the move bumps `updated_at`, which would resort the sidebar
+        // over a drag that changed nothing.
+        const current = conversations.find((c) => c.id === id)?.project_id ?? null
+        if (current === projectId) continue
+        const failure = await onMoveToProject(id, projectId)
+        if (failure) {
+          // A drag has no surface of its own. Reopen the same dialog used by
+          // row actions so the refusal is visible and can be retried.
+          setMoveTarget(id)
+          setMoveError(failure)
+          return
+        }
+      }
+    },
+    [conversations, onMoveToProject],
+  )
+
+  // The project tree takes drops *on* rows only — a project files under it,
+  // "all projects" unfiles — never between them: the list's order is pinned
+  // state and recency, not something a person arranges.
+  const { dragAndDropHooks: projectTreeDnd } = useDragAndDrop({
+    isDisabled: dndDisabled,
+    getItems: dragConversations,
+    getAllowedDropOperations: () => ['move'],
+    acceptedDragTypes: [CONVERSATION_DRAG_TYPE],
+    shouldAcceptItemDrop: (target) => dropDestination(String(target.key)) !== null,
+    onItemDrop: (e) => {
+      const dest = dropDestination(String(e.target.key))
+      if (dest) void moveDropped(e.items, dest.projectId)
+    },
+  })
+
+  // The loose list is one big unfile target — a drop anywhere on it moves the
+  // conversation out of its project. Its own rows accept nothing.
+  const { dragAndDropHooks: looseDnd } = useDragAndDrop({
+    isDisabled: dndDisabled,
+    getItems: dragConversations,
+    getAllowedDropOperations: () => ['move'],
+    acceptedDragTypes: [CONVERSATION_DRAG_TYPE],
+    onRootDrop: (e) => void moveDropped(e.items, null),
+  })
+
   const conversationActions = useConversationActions({
     onTogglePin,
     onRequestRename: (id) => setRenameTarget({ type: 'conversation', id }),
+    onRequestMove: (id) => {
+      setMoveError(null)
+      setMoveTarget(id)
+    },
     onExportError: (error) => setActionError(t('sidebar.exportFailed', { error: String(error) })),
     onRequestDelete: async (id) => {
       if (await confirm({ body: t('confirm.deleteConversation') })) onDelete(id)
@@ -684,6 +776,18 @@ export function AppSidebar({
           {conv.is_archived ? <Archive /> : <ConversationIcon agentKind={conv.agent_kind} />}
         </Sidebar.MenuIcon>
         <Sidebar.MenuLabel>{title}</Sidebar.MenuLabel>
+        {/* React Aria's Tree drag contract is a real button, not merely a
+            draggable row. It is the keyboard and screen-reader entry point;
+            pointer users may still drag the row itself. Hidden on coarse
+            pointers because DnD is disabled there and the row-actions dialog
+            is the touch path. */}
+        <Sidebar.MenuAction
+          slot="drag"
+          aria-label={t('sidebar.dragConversation', { name: title })}
+          className="hidden pointer-fine:flex cursor-grab active:cursor-grabbing"
+        >
+          <Grip />
+        </Sidebar.MenuAction>
         <Sidebar.MenuChip>
           {/* Pinned rows were sorted to the top and said nothing about why they
               were there. */}
@@ -695,47 +799,58 @@ export function AppSidebar({
     )
   }
 
-  const chatSide = (prefix: string) => (
+  const chatSide = (prefix: string, collapsed: boolean) => (
     <>
       <Sidebar.Header>
         <Sidebar.Menu aria-label={t('sidebar.newChat')}>
+          {/* One row for all three ways a conversation comes into being. The
+              row itself is the common one — a click is a new chat — and the
+              two hosted ways live in the row's own menu, the same affordance
+              every conversation row already carries. Three header rows were
+              three icons in the collapsed rail, crowding out the tree. */}
           <Sidebar.MenuItem id={`${prefix}new`} textValue={t('sidebar.newChat')} onAction={createConversation}>
             <Sidebar.MenuIcon>
               <Plus />
             </Sidebar.MenuIcon>
             <Sidebar.MenuLabel>{t('sidebar.newChat')}</Sidebar.MenuLabel>
+            {/* See `canHostSessions`: the question is what the machine running
+                the adapter can do, which in remote mode is not this one. */}
+            {canHostSessions && (
+              <Sidebar.MenuActions>
+                <Dropdown>
+                  <Sidebar.MenuAction className="touch-hitbox" aria-label={t('sidebar.newChatMore')}>
+                    <EllipsisVertical />
+                  </Sidebar.MenuAction>
+                  <Dropdown.Popover placement="bottom end">
+                    <Dropdown.Menu aria-label={t('sidebar.newChatMore')}>
+                      <Dropdown.Item
+                        id="new-hosted"
+                        textValue={t('sidebar.newHostedSession')}
+                        onAction={() => setShowNewHosted((open) => !open)}
+                      >
+                        <Terminal className="size-4" />
+                        <Label>{t('sidebar.newHostedSession')}</Label>
+                      </Dropdown.Item>
+                      {/* Beside starting one, because it is the other way a
+                          hosted conversation comes into being — and the more
+                          common one for anybody who already has terminals
+                          open. Also the one that works best from a phone: the
+                          list and the directories in it are the host's, so
+                          nothing here needs a local file picker. */}
+                      <Dropdown.Item
+                        id="import-hosted"
+                        textValue={t('sidebar.importHostedSession')}
+                        onAction={dismissing(() => setPicker({ mode: 'import' }))}
+                      >
+                        <ArrowDownToSquare className="size-4" />
+                        <Label>{t('sidebar.importHostedSession')}</Label>
+                      </Dropdown.Item>
+                    </Dropdown.Menu>
+                  </Dropdown.Popover>
+                </Dropdown>
+              </Sidebar.MenuActions>
+            )}
           </Sidebar.MenuItem>
-          {/* See `canHostSessions`: the question is what the machine running
-              the adapter can do, which in remote mode is not this one. */}
-          {canHostSessions && (
-            <Sidebar.MenuItem
-              id={`${prefix}new-hosted`}
-              textValue={t('sidebar.newHostedSession')}
-              onAction={() => setShowNewHosted((open) => !open)}
-            >
-              <Sidebar.MenuIcon>
-                <Terminal />
-              </Sidebar.MenuIcon>
-              <Sidebar.MenuLabel>{t('sidebar.newHostedSession')}</Sidebar.MenuLabel>
-            </Sidebar.MenuItem>
-          )}
-          {/* Beside starting one, because it is the other way a hosted
-              conversation comes into being — and the more common one for
-              anybody who already has terminals open. Also the one that works
-              best from a phone: the list and the directories in it are the
-              host's, so nothing here needs a local file picker. */}
-          {canHostSessions && (
-            <Sidebar.MenuItem
-              id={`${prefix}import-hosted`}
-              textValue={t('sidebar.importHostedSession')}
-              onAction={dismissing(() => setPicker({ mode: 'import' }))}
-            >
-              <Sidebar.MenuIcon>
-                <ArrowDownToSquare />
-              </Sidebar.MenuIcon>
-              <Sidebar.MenuLabel>{t('sidebar.importHostedSession')}</Sidebar.MenuLabel>
-            </Sidebar.MenuItem>
-          )}
         </Sidebar.Menu>
         {showNewHosted && (
           <NewHostedSessionForm
@@ -785,6 +900,13 @@ export function AppSidebar({
               // `index.css` — see the note there.
               className="project-tree"
               aria-label={t('sidebar.projects')}
+              dragAndDropHooks={projectTreeDnd}
+              // Folding the tree while the panel is collapsed is *Pro's* work,
+              // not ours: the icon rail drops submenu rows from the collection
+              // whatever `expandedKeys` says (measured — the test named after
+              // the rail pins it, and is the tripwire if an upgrade stops).
+              // The set here survives a collapse untouched, so reopening the
+              // panel restores exactly what was open.
               expandedKeys={[...expanded].map((id) => `${prefix}project-${id}`)}
               onExpandedChange={(keys) =>
                 setExpanded(new Set([...keys].map((key) => String(key).slice(`${prefix}project-`.length))))
@@ -800,6 +922,13 @@ export function AppSidebar({
                   <FolderOpen />
                 </Sidebar.MenuIcon>
                 <Sidebar.MenuLabel>{t('sidebar.allProjects')}</Sidebar.MenuLabel>
+                {/* The DnD hook is attached to the whole Tree, so RAC expects
+                    every item to expose the slot. This row is a destination,
+                    never a source; the inert hidden button only satisfies the
+                    collection contract. */}
+                <Sidebar.MenuAction slot="drag" isDisabled aria-hidden className="hidden">
+                  <span />
+                </Sidebar.MenuAction>
               </Sidebar.MenuItem>
               {projects.map((project) => (
                 <Sidebar.MenuItem
@@ -823,6 +952,9 @@ export function AppSidebar({
                     <ProjectIcon sourceType={project.source_type} />
                   </Sidebar.MenuIcon>
                   <Sidebar.MenuLabel>{project.name}</Sidebar.MenuLabel>
+                  <Sidebar.MenuAction slot="drag" isDisabled aria-hidden className="hidden">
+                    <span />
+                  </Sidebar.MenuAction>
                   <RowActionsMenu label={project.name} actions={projectActions(project)} />
                   {/* A marker, not an element: Pro lifts these out and renders
                       them as sibling rows one level deeper. So a conversation
@@ -858,14 +990,21 @@ export function AppSidebar({
         {/* What is left after the tree: the conversations that belong to no
             project. They keep a group of their own rather than a node of their
             own, because someone who has never made a project should not be
-            asked to open one to reach their chats. */}
-        {loose.length > 0 && (
+            asked to open one to reach their chats.
+
+            Not in the icon rail, though. Pro folds the *nested* conversations
+            away with their projects, but these have no project to fold under,
+            so each one stayed behind as an unlabelled chat icon — a column of
+            identical rows that crowded the rail's real destinations out. A
+            conversation is reached through the reopened panel or ⌘K either
+            way; an icon nobody can tell apart is not a way to reach it. */}
+        {!collapsed && loose.length > 0 && (
           <Sidebar.Group>
             <Sidebar.GroupLabel>{t('sidebar.conversations')}</Sidebar.GroupLabel>
             {rowMenu(
               `${prefix}loose`,
               hitActions,
-              <Sidebar.Menu aria-label={t('sidebar.conversations')}>
+              <Sidebar.Menu aria-label={t('sidebar.conversations')} dragAndDropHooks={looseDnd}>
                 {loose.map((conv) => conversationItem(prefix, conv))}
               </Sidebar.Menu>,
             )}
@@ -907,9 +1046,12 @@ export function AppSidebar({
   // React Aria collection refuses outright ("Cannot change the id of an item"),
   // taking the whole screen down with it. The two sides share no state, so
   // there is nothing a remount costs.
-  const side = (prefix: string) => (
+  // `collapsed` is per copy, not global: only the desktop panel has an icon
+  // rail. The mobile sheet is either fully open or not rendered, so its tree
+  // never needs to fold.
+  const side = (prefix: string, collapsed: boolean) => (
     <Fragment key={page === 'settings' ? 'settings' : 'chat'}>
-      {page === 'settings' ? settingsSide(prefix) : chatSide(prefix)}
+      {page === 'settings' ? settingsSide(prefix) : chatSide(prefix, collapsed)}
     </Fragment>
   )
 
@@ -919,14 +1061,16 @@ export function AppSidebar({
           footer: `[data-state=collapsed] .sidebar__header` sets its own inline
           padding at a specificity a utility cannot reach, so a cutout would be
           honoured until the sidebar was collapsed and then quietly stop being. */}
-      <Sidebar className="pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)]">{side('d-')}</Sidebar>
+      <Sidebar className="pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)]">
+        {side('d-', !isOpen)}
+      </Sidebar>
       {/* Renders nothing above 768px. Below it Pro hides the panel outright, so
           without this a narrow window would have a toggle that toggles nothing.
           The sheet covers the full height including the cutout and the
           navigation bar, and it is a separate element from the panel above, so
           it needs its own copy of the insets rather than inheriting them. */}
       <Sidebar.Mobile className="pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)]">
-        {side('m-')}
+        {side('m-', false)}
       </Sidebar.Mobile>
 
       <RenameDialog
@@ -940,6 +1084,32 @@ export function AppSidebar({
           if (!renameTarget) return
           if (renameTarget.type === 'project') onRenameProject(renameTarget.id, value)
           else onRename(renameTarget.id, value)
+        }}
+      />
+
+      <MoveDialog
+        isOpen={moveTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setMoveTarget(null)
+            setMoveError(null)
+          }
+        }}
+        projects={projects}
+        currentProjectId={conversations.find((c) => c.id === moveTarget)?.project_id ?? null}
+        error={moveError}
+        isPending={movePending}
+        onMove={async (projectId) => {
+          if (!moveTarget || movePending) return false
+          setMovePending(true)
+          setMoveError(null)
+          const failure = await onMoveToProject(moveTarget, projectId)
+          setMovePending(false)
+          if (failure) {
+            setMoveError(failure)
+            return false
+          }
+          return true
         }}
       />
 
