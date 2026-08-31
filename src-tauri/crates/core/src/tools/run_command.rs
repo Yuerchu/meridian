@@ -127,7 +127,28 @@ impl Tool for RunCommandTool {
 /// composer command is itself an explicit user action.  Removing a sandbox is
 /// *not* implied by that action — callers must invoke this with
 /// `ToolContext::without_sandbox()` only after a second, explicit confirmation.
+///
+/// The journal cannot see what a shell does, so it brackets it here — at the
+/// one point both the model tool and the direct composer command pass through:
+/// tracked files are snapshotted before, compared after, and the differences
+/// recorded as inferred. Settled on every exit path, because a failed or
+/// timed-out command has usually still changed files.
 pub async fn execute_command(command: &str, context: &ToolContext) -> Result<CommandExecution, CommandExecutionError> {
+    let bracket = match &context.journal {
+        Some(j) => j.command_bracket().await,
+        None => None,
+    };
+    let result = execute_command_inner(command, context).await;
+    if let (Some(j), Some(b)) = (&context.journal, bracket) {
+        j.settle_command_bracket(b, "run_command").await;
+    }
+    result
+}
+
+async fn execute_command_inner(
+    command: &str,
+    context: &ToolContext,
+) -> Result<CommandExecution, CommandExecutionError> {
     if command.trim().is_empty() {
         return Err(CommandExecutionError::Execution("command cannot be empty".into()));
     }

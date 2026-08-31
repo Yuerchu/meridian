@@ -63,6 +63,128 @@ pub struct AppendOutcome {
     pub external_inserted: bool,
 }
 
+/// Materialise an out-of-band change now, without appending anything else.
+///
+/// The run_command bracket calls this *before* a command runs: whatever the
+/// disk says that the chain head does not is somebody else's edit, and pinning
+/// it as `external` first is what keeps it off the command's bill. Only files
+/// the journal already tracks get a row — `false` for an unknown path, because
+/// starting a chain on a reconcile would claim a first-observation the bracket
+/// never made.
+pub fn reconcile_external(
+    conn: &mut SqliteConnection,
+    norm_path: &str,
+    observed: Option<&StoredBlob>,
+    now: i64,
+) -> QueryResult<bool> {
+    conn.immediate_transaction(|conn| {
+        let Some(file) = file_by_path(conn, norm_path)? else {
+            return Ok(false);
+        };
+        let head = head_version(conn, &file.id)?;
+        let seq = head.as_ref().map(|h| h.seq + 1).unwrap_or(1);
+        let head_sha = head.as_ref().and_then(|h| h.new_sha.as_deref());
+        let observed_sha = observed.map(|b| b.sha256.as_str());
+        if head_sha == observed_sha {
+            return Ok(false);
+        }
+        if let Some(blob) = observed {
+            ensure_blob(conn, blob, now)?;
+        }
+        let row = NewJournalVersion {
+            id: &uuid::Uuid::new_v4().to_string(),
+            file_id: &file.id,
+            seq,
+            op: crate::db::models::journal::version_op::EXTERNAL,
+            observed_old_sha: head_sha,
+            new_sha: observed_sha,
+            source: crate::db::models::journal::version_source::EXTERNAL,
+            conversation_id: None,
+            turn_id: None,
+            project_id: None,
+            origin: None,
+            model_id: None,
+            tool_name: None,
+            moved_from_version_id: None,
+            created_at: now,
+        };
+        diesel::insert_into(journal_versions::table)
+            .values(&row)
+            .execute(conn)?;
+        diesel::update(journal_files::table.find(&file.id))
+            .set(journal_files::updated_at.eq(now))
+            .execute(conn)?;
+        Ok(true)
+    })
+}
+
+/// What became of one bracketed file at settle time.
+#[derive(Debug, PartialEq)]
+pub enum CommandObservedOutcome {
+    Recorded,
+    /// The chain moved while the command ran — a real tool write from some
+    /// turn landed in the window. Recording against the stale pre-state would
+    /// interpose a fictional `external` transition "undoing" that legitimate
+    /// write, so the bracket's observation is dropped instead; whatever the
+    /// disk now says beyond the head surfaces as `external` on the next
+    /// observation. Under-attribution, the permitted direction.
+    HeadMoved,
+    /// The chain vanished mid-window (cleanup); nothing to append to.
+    NoChain,
+}
+
+/// Append a command-observed transition, if and only if the chain head still
+/// equals the bracketed pre-state. The check and the insert share one
+/// transaction — done as two calls, the head can move between them and the
+/// fiction this exists to prevent comes back.
+pub fn append_command_observed(
+    conn: &mut SqliteConnection,
+    norm_path: &str,
+    pre: Option<&StoredBlob>,
+    post: Option<&StoredBlob>,
+    attribution: &Attribution,
+    now: i64,
+) -> QueryResult<CommandObservedOutcome> {
+    conn.immediate_transaction(|conn| {
+        let Some(file) = file_by_path(conn, norm_path)? else {
+            return Ok(CommandObservedOutcome::NoChain);
+        };
+        let head = head_version(conn, &file.id)?;
+        let seq = head.as_ref().map(|h| h.seq + 1).unwrap_or(1);
+        let head_sha = head.as_ref().and_then(|h| h.new_sha.as_deref());
+        if head_sha != pre.map(|b| b.sha256.as_str()) {
+            return Ok(CommandObservedOutcome::HeadMoved);
+        }
+        for blob in [pre, post].into_iter().flatten() {
+            ensure_blob(conn, blob, now)?;
+        }
+        let row = NewJournalVersion {
+            id: &uuid::Uuid::new_v4().to_string(),
+            file_id: &file.id,
+            seq,
+            op: crate::db::models::journal::version_op::COMMAND_OBSERVED,
+            observed_old_sha: pre.map(|b| b.sha256.as_str()),
+            new_sha: post.map(|b| b.sha256.as_str()),
+            source: crate::db::models::journal::version_source::INFERRED,
+            conversation_id: attribution.conversation_id,
+            turn_id: attribution.turn_id,
+            project_id: attribution.project_id,
+            origin: attribution.origin,
+            model_id: attribution.model_id,
+            tool_name: attribution.tool_name,
+            moved_from_version_id: None,
+            created_at: now,
+        };
+        diesel::insert_into(journal_versions::table)
+            .values(&row)
+            .execute(conn)?;
+        diesel::update(journal_files::table.find(&file.id))
+            .set(journal_files::updated_at.eq(now))
+            .execute(conn)?;
+        Ok(CommandObservedOutcome::Recorded)
+    })
+}
+
 pub fn append_version(conn: &mut SqliteConnection, norm_path: &str, v: &AppendVersion) -> QueryResult<AppendOutcome> {
     conn.immediate_transaction(|conn| {
         for blob in [v.observed_old, v.new].into_iter().flatten() {

@@ -541,6 +541,227 @@ impl JournalRecord<'_> {
     }
 }
 
+/// What one bracketed file looked like before the command ran.
+#[derive(Debug, Clone, PartialEq)]
+enum PreState {
+    /// Not on disk.
+    Missing,
+    Content(String),
+}
+
+struct BracketFile {
+    path: PathBuf,
+    norm: String,
+    pre: PreState,
+}
+
+/// The pre-command snapshot of every file the journal tracks under the
+/// project, taken by [`JournalCtx::command_bracket`] and settled after the
+/// command by [`JournalCtx::settle_command_bracket`]. What it exists for: a
+/// command that runs `sed`, a formatter or codegen changes files through no
+/// primitive this crate owns, and without the bracket every one of those
+/// changes is `external` — real work with nobody's name on it.
+///
+/// The scan set is *only* what the journal already tracks. A file it has
+/// never seen changing under a command is left to the external-labelling
+/// path; attributing it here would be a guess, and the journal does not
+/// guess.
+pub struct CommandBracket {
+    files: Vec<BracketFile>,
+}
+
+/// The scan never reads more than this many tracked files or this many bytes
+/// per command; past either, changes fall back to external labelling. Small
+/// on purpose: this runs before and after *every* shell command.
+const BRACKET_MAX_FILES: usize = 256;
+const BRACKET_MAX_BYTES: usize = 8 * 1024 * 1024;
+
+impl JournalCtx {
+    /// Snapshot the tracked files before a command runs. Also pins any change
+    /// somebody else made since the chain head as `external` *now* — pinned
+    /// after the command instead, it would land on the command's bill.
+    ///
+    /// `None` when there is no project to scan under; a command with no
+    /// project has no tracked set, and its effects stay external-labelled.
+    pub async fn command_bracket(&self) -> Option<CommandBracket> {
+        let root = self.project_root.as_ref()?;
+        let mut prefix = crate::journal::norm_path(root)?;
+        if !prefix.ends_with('/') {
+            prefix.push('/');
+        }
+
+        let pool = self.pool.clone();
+        let tracked = tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get().map_err(|e| e.to_string())?;
+            crate::db::ops::journal::tracked_files(&mut conn, &prefix, BRACKET_MAX_FILES + 1).map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| e.to_string())
+        .and_then(|inner| inner);
+        let tracked = match tracked {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::warn!(error = %e, "journal: bracket scan failed; command changes stay external");
+                return None;
+            }
+        };
+
+        let mut dropped = tracked.len().saturating_sub(BRACKET_MAX_FILES);
+        let mut budget = BRACKET_MAX_BYTES;
+        let mut files = Vec::new();
+        for (file, head_sha) in tracked.into_iter().take(BRACKET_MAX_FILES) {
+            if budget == 0 {
+                dropped += 1;
+                continue;
+            }
+            let path = PathBuf::from(&file.display_path);
+            let _guard = self.lock_path(&path).await;
+            let pre = match std::fs::symlink_metadata(&path) {
+                Err(_) => PreState::Missing,
+                Ok(_) => match snapshot_path(&path) {
+                    Some(content) => {
+                        budget = budget.saturating_sub(content.len());
+                        PreState::Content(content)
+                    }
+                    // Present but unreadable/oversized/non-UTF-8: the bracket
+                    // cannot compare it, so it cannot speak about it.
+                    None => {
+                        dropped += 1;
+                        continue;
+                    }
+                },
+            };
+
+            // Pin what somebody else already changed, under the same lock the
+            // snapshot was taken under.
+            let pre_sha = match &pre {
+                PreState::Content(c) => Some(blobs::sha256_of(c)),
+                PreState::Missing => None,
+            };
+            if pre_sha.as_deref() != Some(head_sha.as_str()) {
+                let pool = self.pool.clone();
+                let blob_root = self.blob_root.clone();
+                let norm = file.norm_path.clone();
+                let content = match &pre {
+                    PreState::Content(c) => Some(c.clone()),
+                    PreState::Missing => None,
+                };
+                let outcome = tokio::task::spawn_blocking(move || -> Result<(), String> {
+                    let stored = content
+                        .map(|c| blobs::store(&blob_root, &c))
+                        .transpose()
+                        .map_err(|e| e.to_string())?;
+                    let mut conn = pool.get().map_err(|e| e.to_string())?;
+                    crate::db::ops::journal::reconcile_external(
+                        &mut conn,
+                        &norm,
+                        stored.as_ref(),
+                        crate::util::now_ms(),
+                    )
+                    .map_err(|e| e.to_string())?;
+                    Ok(())
+                })
+                .await
+                .map_err(|e| e.to_string())
+                .and_then(|inner| inner);
+                if let Err(e) = outcome {
+                    tracing::warn!(error = %e, "journal: pre-command reconcile failed; entry skipped");
+                }
+            }
+
+            files.push(BracketFile {
+                path,
+                norm: file.norm_path,
+                pre,
+            });
+        }
+
+        if dropped > 0 {
+            tracing::debug!(
+                dropped,
+                "journal: bracket scan capped; uncovered changes will label external"
+            );
+        }
+        Some(CommandBracket { files })
+    }
+
+    /// Compare the tracked set against the bracket and record what the command
+    /// changed, as `command_observed` / `inferred` — attributed to this turn,
+    /// and drawn by the UI with an "inferred" marker because the journal saw
+    /// the window, not the write.
+    pub async fn settle_command_bracket(&self, bracket: CommandBracket, tool_name: &str) {
+        for f in bracket.files {
+            let _guard = self.lock_path(&f.path).await;
+            let post = match std::fs::symlink_metadata(&f.path) {
+                Err(_) => PreState::Missing,
+                Ok(_) => match snapshot_path(&f.path) {
+                    Some(content) => PreState::Content(content),
+                    // Became unreadable/oversized: nothing comparable to say.
+                    None => continue,
+                },
+            };
+            if post == f.pre {
+                continue;
+            }
+
+            let pool = self.pool.clone();
+            let blob_root = self.blob_root.clone();
+            let conversation_id = self.conversation_id.clone();
+            let turn_id = self.turn_id.clone();
+            let origin = self.origin.clone();
+            let model_id = self.model_id.clone();
+            let project_id = self.project_id.clone();
+            let tool = tool_name.to_string();
+            let norm = f.norm;
+            let pre_content = match f.pre {
+                PreState::Content(c) => Some(c),
+                PreState::Missing => None,
+            };
+            let post_content = match post {
+                PreState::Content(c) => Some(c),
+                PreState::Missing => None,
+            };
+            let outcome = tokio::task::spawn_blocking(move || -> Result<_, String> {
+                let stored_pre = pre_content
+                    .map(|c| blobs::store(&blob_root, &c))
+                    .transpose()
+                    .map_err(|e| e.to_string())?;
+                let stored_post = post_content
+                    .map(|c| blobs::store(&blob_root, &c))
+                    .transpose()
+                    .map_err(|e| e.to_string())?;
+                let mut conn = pool.get().map_err(|e| e.to_string())?;
+                crate::db::ops::journal::append_command_observed(
+                    &mut conn,
+                    &norm,
+                    stored_pre.as_ref(),
+                    stored_post.as_ref(),
+                    &Attribution {
+                        source: crate::db::models::journal::version_source::INFERRED,
+                        conversation_id: Some(&conversation_id),
+                        turn_id: Some(&turn_id),
+                        project_id: project_id.as_deref(),
+                        origin: Some(&origin),
+                        model_id: model_id.as_deref(),
+                        tool_name: Some(&tool),
+                    },
+                    crate::util::now_ms(),
+                )
+                .map_err(|e| e.to_string())
+            })
+            .await;
+            match outcome {
+                Ok(Ok(crate::db::ops::journal::CommandObservedOutcome::Recorded)) => {}
+                Ok(Ok(other)) => {
+                    tracing::debug!(?other, "journal: bracket observation not recorded")
+                }
+                Ok(Err(e)) => tracing::warn!(error = %e, "journal: bracket settle failed; entry skipped"),
+                Err(e) => tracing::warn!(error = %e, "journal: bracket settle task failed; entry skipped"),
+            }
+        }
+    }
+}
+
 impl JournalCtx {
     /// Journalled files that still exist under `dir`, for a recursive delete's
     /// tombstones. Only what the journal already tracks: an untracked file's
@@ -1092,6 +1313,162 @@ mod tests {
                 .await
                 .is_none(),
             "the outer gitignore still applies after the nested project cached"
+        );
+    }
+
+    /// The bracket's whole story: a tracked file changed by a "command"
+    /// (simulated by writing the disk between bracket and settle) lands as
+    /// one `command_observed` / `inferred` version attributed to the turn,
+    /// with the real before and after bytes.
+    #[tokio::test]
+    async fn a_bracketed_command_change_is_recorded_as_inferred() {
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = ctx(Some(dir.path()));
+        let file = dir.path().join("tracked.txt");
+        std::fs::write(&file, "v1\n").unwrap();
+        let real = crate::tools::verified::resolve_root(&file).unwrap();
+        ctx.record(&real, None, Some("v1\n"), Op::Write, "write_file", None)
+            .await
+            .unwrap();
+
+        let bracket = ctx.command_bracket().await.expect("a project has a bracket");
+        std::fs::write(&file, "v1\nv2 from a script\n").unwrap();
+        ctx.settle_command_bracket(bracket, "run_command").await;
+
+        let mut conn = ctx.pool.get().unwrap();
+        let row = crate::db::ops::journal::file_by_path(&mut conn, &crate::journal::norm_path(&real).unwrap())
+            .unwrap()
+            .unwrap();
+        let chain = crate::db::ops::journal::chain(&mut conn, &row.id).unwrap();
+        assert_eq!(chain.len(), 2);
+        let v = &chain[1];
+        assert_eq!((v.op.as_str(), v.source.as_str()), ("command_observed", "inferred"));
+        assert_eq!(v.conversation_id.as_deref(), Some("conv"));
+        assert_eq!(v.turn_id.as_deref(), Some("turn"));
+        assert_eq!(v.tool_name.as_deref(), Some("run_command"));
+        assert_eq!(
+            blobs::load(&ctx.blob_root, v.new_sha.as_deref().unwrap()).unwrap(),
+            "v1\nv2 from a script\n"
+        );
+    }
+
+    /// A hand edit *before* the command is pinned as `external` by the
+    /// bracket's opening scan, so it never lands on the command's bill — and
+    /// a command that then changes nothing adds nothing.
+    #[tokio::test]
+    async fn a_pre_command_hand_edit_is_pinned_external_not_inferred() {
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = ctx(Some(dir.path()));
+        let file = dir.path().join("tracked.txt");
+        std::fs::write(&file, "v1\n").unwrap();
+        let real = crate::tools::verified::resolve_root(&file).unwrap();
+        ctx.record(&real, None, Some("v1\n"), Op::Write, "write_file", None)
+            .await
+            .unwrap();
+
+        // The hand edit happens before the command.
+        std::fs::write(&file, "hand edited\n").unwrap();
+        let bracket = ctx.command_bracket().await.unwrap();
+        // The command changes nothing.
+        ctx.settle_command_bracket(bracket, "run_command").await;
+
+        let mut conn = ctx.pool.get().unwrap();
+        let row = crate::db::ops::journal::file_by_path(&mut conn, &crate::journal::norm_path(&real).unwrap())
+            .unwrap()
+            .unwrap();
+        let chain = crate::db::ops::journal::chain(&mut conn, &row.id).unwrap();
+        assert_eq!(chain.len(), 2);
+        assert_eq!(chain[1].op, "external");
+        assert_eq!(chain[1].conversation_id, None, "a hand edit is nobody's");
+    }
+
+    /// A file the journal has never seen is not scanned: its changes are the
+    /// external path's to notice, never something the bracket guesses at.
+    #[tokio::test]
+    async fn an_untracked_file_is_not_bracketed() {
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = ctx(Some(dir.path()));
+        std::fs::write(dir.path().join("stranger.txt"), "v1\n").unwrap();
+
+        let bracket = ctx.command_bracket().await.unwrap();
+        std::fs::write(dir.path().join("stranger.txt"), "v2\n").unwrap();
+        ctx.settle_command_bracket(bracket, "run_command").await;
+
+        let mut conn = ctx.pool.get().unwrap();
+        let real = crate::tools::verified::resolve_root(&dir.path().join("stranger.txt")).unwrap();
+        assert!(
+            crate::db::ops::journal::file_by_path(&mut conn, &crate::journal::norm_path(&real).unwrap())
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    /// A command deleting a tracked file is a tombstone on the command's bill.
+    #[tokio::test]
+    async fn a_command_deletion_is_a_command_observed_tombstone() {
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = ctx(Some(dir.path()));
+        let file = dir.path().join("doomed.txt");
+        std::fs::write(&file, "v1\n").unwrap();
+        let real = crate::tools::verified::resolve_root(&file).unwrap();
+        ctx.record(&real, None, Some("v1\n"), Op::Write, "write_file", None)
+            .await
+            .unwrap();
+
+        let bracket = ctx.command_bracket().await.unwrap();
+        std::fs::remove_file(&file).unwrap();
+        ctx.settle_command_bracket(bracket, "run_command").await;
+
+        let mut conn = ctx.pool.get().unwrap();
+        let row = crate::db::ops::journal::file_by_path(&mut conn, &crate::journal::norm_path(&real).unwrap())
+            .unwrap()
+            .unwrap();
+        let chain = crate::db::ops::journal::chain(&mut conn, &row.id).unwrap();
+        assert_eq!(chain.len(), 2);
+        assert_eq!(
+            (chain[1].op.as_str(), chain[1].new_sha.as_deref()),
+            ("command_observed", None)
+        );
+    }
+
+    /// The CAS at settle: a legitimate tool write landing inside the command
+    /// window moves the head, and the bracket must drop its stale observation
+    /// rather than interpose a fictional external transition "undoing" it.
+    #[tokio::test]
+    async fn a_head_moved_during_the_window_drops_the_observation() {
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = ctx(Some(dir.path()));
+        let file = dir.path().join("tracked.txt");
+        std::fs::write(&file, "v1\n").unwrap();
+        let real = crate::tools::verified::resolve_root(&file).unwrap();
+        ctx.record(&real, None, Some("v1\n"), Op::Write, "write_file", None)
+            .await
+            .unwrap();
+
+        let bracket = ctx.command_bracket().await.unwrap();
+        // Inside the window: a legitimate tool write (another turn's edit).
+        std::fs::write(&file, "tool wrote this\n").unwrap();
+        ctx.record(
+            &real,
+            Some("v1\n"),
+            Some("tool wrote this\n"),
+            Op::Edit,
+            "edit_file",
+            None,
+        )
+        .await
+        .unwrap();
+        ctx.settle_command_bracket(bracket, "run_command").await;
+
+        let mut conn = ctx.pool.get().unwrap();
+        let row = crate::db::ops::journal::file_by_path(&mut conn, &crate::journal::norm_path(&real).unwrap())
+            .unwrap()
+            .unwrap();
+        let chain = crate::db::ops::journal::chain(&mut conn, &row.id).unwrap();
+        assert_eq!(chain.len(), 2, "the stale observation must not append");
+        assert!(
+            chain.iter().all(|v| v.source != "external"),
+            "and must not mint external rows"
         );
     }
 
