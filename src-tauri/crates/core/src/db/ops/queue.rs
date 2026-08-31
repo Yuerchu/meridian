@@ -44,6 +44,18 @@ pub fn enqueue(
     delivery: Delivery,
     now: i64,
 ) -> QueryResult<QueuedPrompt> {
+    enqueue_with_context(conn, id, conversation_id, content, delivery, &[], now)
+}
+
+pub fn enqueue_with_context(
+    conn: &mut SqliteConnection,
+    id: &str,
+    conversation_id: &str,
+    content: &str,
+    delivery: Delivery,
+    context: &[crate::workspace::reference::PreparedContextItem],
+    now: i64,
+) -> QueryResult<QueuedPrompt> {
     conn.immediate_transaction(|conn| {
         let last: Option<i32> = queued_prompts::table
             .filter(queued_prompts::conversation_id.eq(conversation_id))
@@ -60,6 +72,8 @@ pub fn enqueue(
                 created_at: now,
             })
             .execute(conn)?;
+
+        crate::db::ops::queued_prompt_context_item::insert_prepared(conn, id, context, now)?;
 
         queued_prompts::table
             .find(id)

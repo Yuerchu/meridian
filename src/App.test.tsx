@@ -162,7 +162,7 @@ describe('creating a conversation from the welcome composer', () => {
     consoleError.mockRestore()
   })
 
-  it('treats an ordinary create as successful when only the conversation refresh fails', async () => {
+  it('creates exactly one blank conversation for the welcome /new route even when refresh fails', async () => {
     apiMocks.listConversations.mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('refresh failed'))
     await renderApp()
 
@@ -178,6 +178,7 @@ describe('creating a conversation from the welcome composer', () => {
     )
     expect(screen.getByTestId('app-shell')).toHaveAttribute('data-page', 'chat')
     expect(screen.getByTestId('app-shell')).toHaveAttribute('data-active-id', 'conversation-new')
+    expect(shellCapture.props?.pendingDraft).toBeNull()
   })
 
   it('keeps a created project locally and resolves the form mutation when its refresh fails', async () => {

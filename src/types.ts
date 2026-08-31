@@ -34,6 +34,94 @@ export interface WorkspaceFileContent {
   binary: boolean
 }
 
+export interface WorkspaceReferenceInput {
+  path: string
+  line_start?: number | null
+  line_end?: number | null
+}
+
+export interface WorkspaceReferenceSuggestion {
+  path: string
+  name: string
+  is_dir: boolean
+}
+
+export interface WorkspaceReferencePreview {
+  kind: 'project_file' | 'project_directory'
+  path: string
+  content: string
+  line_start: number | null
+  line_end: number | null
+  byte_count: number
+  line_count: number
+  token_count: number
+  truncated: boolean
+}
+
+/** Metadata-only result used to distinguish real workspace paths from prose. */
+export interface WorkspaceReferenceProbe {
+  kind: 'project_file' | 'project_directory'
+  path: string
+}
+
+export interface MessageContextDescriptor {
+  id: string
+  position: number
+  kind: 'project_file' | 'project_directory' | 'shell_output'
+  display_path: string | null
+  line_start: number | null
+  line_end: number | null
+  byte_count: number
+  line_count: number
+  token_count: number
+  truncated: boolean
+}
+
+export interface MessageContextContent {
+  descriptor: MessageContextDescriptor
+  content: string
+  /** JSON owned by the context kind. Shell results use it for exit/cwd/status;
+   *  file snapshots use it only for original size/count metadata. */
+  metadata: string | null
+}
+
+export type CommandTurnStatus = 'completed' | 'sandbox_denied' | 'timed_out' | 'cancelled' | 'failed' | 'in_doubt'
+
+/** The structured result of a literal `!` command. The model is not queried;
+ *  the result is persisted as user-provided context for a later prompt. */
+export interface CommandTurnOutcome {
+  conversation_id: string
+  turn_id: string
+  message_id: string
+  status: CommandTurnStatus
+  stdout: string
+  stderr: string
+  exit_code: number | null
+  timed_out: boolean
+  truncated: boolean
+  /** `host`, `windows_restricted_token`, `container`, or `unknown`. */
+  sandbox: string
+  duration_ms: number
+  cwd: string
+  host: string
+  error: string | null
+  /** True only for a Windows restricted-token denial. */
+  can_retry_without_sandbox: boolean
+  retry_without_sandbox: boolean
+}
+
+export type UserCommandEvent =
+  | {
+      type: 'start'
+      conversation_id: string
+      turn_id: string
+      message_id: string
+      cwd: string
+      host: string
+      retry_without_sandbox: boolean
+    }
+  | { type: 'finish'; result: CommandTurnOutcome }
+
 export type GitFileStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'conflicted'
 
 export interface GitStatusEntry {
@@ -604,7 +692,8 @@ export interface Message {
   /** The message this one answers or follows. Siblings under one parent are
    *  alternative versions of the same step. Null marks a root. */
   parent_id?: string | null
-  /** How the message was produced: null for typed, 'voice' for speech input. */
+  /** How the message was produced: null for typed, `voice` for speech input,
+   *  `shell` for a literal user-authored `!` command. */
   source?: string | null
   /** Platform id of whoever sent this, on surfaces where more than one person
    *  can speak. Null on desktop rows, which have a single implicit author, and
@@ -626,6 +715,9 @@ export interface Message {
    *  where the cards are built. Null on every call nothing reviewed, which is
    *  most of them. */
   auto_review?: string | null
+  /** Frozen context bound to this branch. The raw body is fetched separately
+   *  and never travels in an ordinary transcript snapshot. */
+  context_items?: MessageContextDescriptor[]
   _blocks?: ContentBlock[]
 }
 

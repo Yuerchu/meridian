@@ -88,6 +88,12 @@ describe('api', () => {
       })
     })
 
+    it('reads the active literal-command lease without exposing its output', async () => {
+      mockInvoke.mockResolvedValueOnce('turn-shell')
+      await expect(api.activeUserShellTurn('conv-1')).resolves.toBe('turn-shell')
+      expect(mockInvoke).toHaveBeenCalledWith('active_user_shell_turn', { conversationId: 'conv-1' })
+    })
+
     it('chat sends defaults for optional params', async () => {
       mockInvoke.mockResolvedValueOnce(undefined)
       await api.chat('conv-1', 'Hello')
@@ -103,6 +109,7 @@ describe('api', () => {
         fast: null,
         mode: null,
         voice: null,
+        contextRefs: null,
       })
     })
 
@@ -127,7 +134,15 @@ describe('api', () => {
         fast: null,
         mode: null,
         voice: null,
+        contextRefs: null,
       })
+    })
+
+    it('chat passes structured workspace references beside the visible message', async () => {
+      mockInvoke.mockResolvedValueOnce(undefined)
+      const contextRefs = [{ path: 'src/api.ts', line_start: 10, line_end: 12 }]
+      await api.chat('conv-1', 'Inspect @src/api.ts#L10-12', { contextRefs })
+      expect(mockInvoke).toHaveBeenCalledWith('chat', expect.objectContaining({ contextRefs }))
     })
 
     /// Regeneration carries no message of its own; the question it re-answers is

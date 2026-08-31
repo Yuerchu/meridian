@@ -334,9 +334,24 @@ export function AppShell(props: ShellProps) {
                         conversationId={activeId}
                         initialDraft={pendingDraft}
                         onInitialDraftConsumed={onInitialDraftConsumed}
+                        onCreate={createConversation}
+                        onOpenSettingsTab={(tab) => {
+                          void changeSettingsTab(tab).then((changed) => {
+                            if (changed) onOpenSettings()
+                          })
+                        }}
                       />
                     ) : (
-                      <EmptyState onSubmit={onCreateWithDraft} />
+                      <EmptyState
+                        onSubmit={onCreateWithDraft}
+                        onCreate={onCreate}
+                        onOpenSettingsTab={(tab) => {
+                          void changeSettingsTab(tab).then((changed) => {
+                            if (changed) onOpenSettings()
+                          })
+                        }}
+                        activeProjectId={activeProjectId}
+                      />
                     )}
                   </div>
                 </Resizable.Panel>

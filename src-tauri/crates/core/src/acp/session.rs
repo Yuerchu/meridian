@@ -977,6 +977,10 @@ impl Handler for Shared {
 struct Owed {
     turns: Option<crate::agent::interrupted::Report>,
     queued: Option<crate::agent::queue::Doubtful>,
+    /// Shell output is already part of native provider history. Hosted ACP
+    /// sessions keep their own history, so an undelivered result has to ride
+    /// the next `session/prompt` and receive its own acknowledgement ledger.
+    shell: Option<PendingShellContext>,
     /// The agent cannot see the conversation it is answering into.
     ///
     /// Not a ledger like the other two — there is nothing to write down, only
@@ -989,6 +993,84 @@ struct Owed {
     /// Same shape as `memory_lost` and for the same reason: something to say
     /// exactly once, cleared only once a prompt carrying it came back.
     tools_lost: bool,
+}
+
+struct PendingShellContext {
+    item_ids: Vec<String>,
+    rendered: String,
+}
+
+const MAX_ACP_PENDING_SHELL_ITEMS: usize = 4;
+const MAX_ACP_PENDING_SHELL_BYTES: usize = 128 * 1024;
+
+fn bounded_pending_shell_context(
+    candidates: &[crate::db::models::message_context_item::MessageContextItem],
+) -> Option<PendingShellContext> {
+    let mut item_ids = Vec::new();
+    let mut rendered = Vec::new();
+    let mut bytes = 0usize;
+    for item in candidates {
+        if item_ids.len() >= MAX_ACP_PENDING_SHELL_ITEMS {
+            break;
+        }
+        let body = crate::workspace::reference::render_context_item(
+            &item.kind,
+            item.display_path.as_deref(),
+            item.line_start,
+            item.line_end,
+            &item.content,
+            item.truncated != 0,
+        );
+        let message = provider::ChatMessage::user_provided_context(&body);
+        let wire = provider::render_message(&message, provider::SenderRendering::Prefix).content;
+        let separator = usize::from(!rendered.is_empty()) * 2;
+        if bytes.saturating_add(separator).saturating_add(wire.len()) > MAX_ACP_PENDING_SHELL_BYTES {
+            // Preserve branch order. This item and everything after it remain
+            // absent from the receipt ledger and are reconsidered next turn.
+            break;
+        }
+        bytes += separator + wire.len();
+        item_ids.push(item.id.clone());
+        rendered.push(wire);
+    }
+    (!item_ids.is_empty()).then(|| PendingShellContext {
+        item_ids,
+        rendered: rendered.join("\n\n"),
+    })
+}
+
+fn prompt_with_workspace_context(text: &str, context: &[crate::workspace::reference::PreparedContextItem]) -> String {
+    let mut payload = if context.is_empty() {
+        text.to_string()
+    } else {
+        let selected = context
+            .iter()
+            .filter_map(|item| {
+                item.display_path
+                    .as_ref()
+                    .map(|path| crate::workspace::reference::WorkspaceReferenceInput {
+                        path: path.clone(),
+                        line_start: item.line_start.map(|line| line as u32),
+                        line_end: item.line_end.map(|line| line as u32),
+                    })
+            })
+            .collect::<Vec<_>>();
+        crate::workspace::reference::neutralise_reference_markers(text, &selected)
+    };
+    for item in context {
+        let body = crate::workspace::reference::render_context_item(
+            &item.kind,
+            item.display_path.as_deref(),
+            item.line_start,
+            item.line_end,
+            &item.content,
+            item.truncated != 0,
+        );
+        let context_message = provider::ChatMessage::user_provided_context(&body);
+        payload.push_str("\n\n");
+        payload.push_str(&provider::render_message(&context_message, provider::SenderRendering::Prefix).content);
+    }
+    payload
 }
 
 /// Whether the prompt carrying an [`Owed`] ever reached the adapter.
@@ -1085,6 +1167,9 @@ impl Owed {
         if let Some(report) = &self.queued {
             parts.push(report.text());
         }
+        if let Some(shell) = &self.shell {
+            parts.push(&shell.rendered);
+        }
         if parts.is_empty() {
             return text.to_string();
         }
@@ -1093,7 +1178,7 @@ impl Owed {
     }
 
     fn is_empty(&self) -> bool {
-        self.turns.is_none() && self.queued.is_none() && !self.memory_lost && !self.tools_lost
+        self.turns.is_none() && self.queued.is_none() && self.shell.is_none() && !self.memory_lost && !self.tools_lost
     }
 
     /// Write the ledgers down, now that the agent has had them.
@@ -1103,6 +1188,21 @@ impl Owed {
         }
         if let Some(report) = self.queued {
             crate::agent::queue::confirm_reported(services, report).await;
+        }
+        if let Some(shell) = self.shell {
+            let pool = services.db.clone();
+            let count = shell.item_ids.len();
+            let settled = tokio::task::spawn_blocking(move || {
+                let mut conn = get_conn(&pool)?;
+                crate::db::ops::acp_context_delivery::mark_delivered(&mut conn, &shell.item_ids, now_ms())
+                    .map_err(|e| e.to_string())
+            })
+            .await;
+            match settled {
+                Ok(Ok(_)) => {}
+                Ok(Err(error)) => tracing::warn!(error = %error, count, "could not settle ACP shell context"),
+                Err(error) => tracing::warn!(error = %error, count, "ACP shell-context settlement task failed"),
+            }
         }
         if self.memory_lost
             && let Ok(mut slot) = shared.memory_lost.lock()
@@ -1851,7 +1951,20 @@ impl AcpSession {
     /// would not exist until the adapter had been reached, and everything
     /// arriving in the gap would be measured against nothing.
     pub async fn prompt(&self, services: &Services, text: &str, turn_id: Option<String>) -> Result<(), String> {
-        self.prompt_with(services, text, turn_id, None).await
+        self.prompt_with(services, text, turn_id, None, Vec::new()).await
+    }
+
+    /// The same turn with user-selected workspace snapshots. `text` remains
+    /// the clean transcript body; `context` is committed beside its row and is
+    /// appended only to the ACP payload.
+    pub async fn prompt_with_context(
+        &self,
+        services: &Services,
+        text: &str,
+        turn_id: Option<String>,
+        context: Vec<crate::workspace::reference::PreparedContextItem>,
+    ) -> Result<(), String> {
+        self.prompt_with(services, text, turn_id, None, context).await
     }
 
     /// Deliver a queued item as a turn of its own.
@@ -1863,7 +1976,16 @@ impl AcpSession {
     /// failed. Marking it in doubt instead would warn the next agent about a
     /// message sitting in plain sight a few rows above.
     pub async fn deliver_queued(&self, services: &Services, item: &QueuedPrompt) -> Result<(), String> {
-        self.prompt_with(services, &item.content, None, Some(&item.id)).await
+        let pool = services.db.clone();
+        let queue_id = item.id.clone();
+        let context = tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool)?;
+            crate::db::ops::queued_prompt_context_item::list_prepared(&mut conn, &queue_id).map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        self.prompt_with(services, &item.content, None, Some(&item.id), context)
+            .await
     }
 
     async fn prompt_with(
@@ -1872,6 +1994,7 @@ impl AcpSession {
         text: &str,
         turn_id: Option<String>,
         queued: Option<&str>,
+        context: Vec<crate::workspace::reference::PreparedContextItem>,
     ) -> Result<(), String> {
         let turn_id = match turn_id {
             Some(raw) => uuid::Uuid::parse_str(&raw)
@@ -1892,7 +2015,9 @@ impl AcpSession {
             )
             .map_err(|busy| busy.to_string())?;
 
-        let user_message_id = self.write_prompt_row(services, &turn_id, text, queued).await?;
+        let user_message_id = self
+            .write_prompt_row(services, &turn_id, text, queued, &context)
+            .await?;
 
         let assistant_message_id = begin_assistant(
             &services.db,
@@ -1931,9 +2056,10 @@ impl AcpSession {
         // sent in front of the message rather than stored: this is background
         // the agent needs for *this* answer, not something anybody said.
         let owed = self.owed_explanations(services, &turn_id).await;
+        let payload_text = prompt_with_workspace_context(text, &context);
         let params = serde_json::to_value(protocol::PromptParams {
             session_id: self.acp_session_id.clone(),
-            prompt: vec![protocol::ContentBlock::text(owed.in_front_of(text))],
+            prompt: vec![protocol::ContentBlock::text(owed.in_front_of(&payload_text))],
         })
         .map_err(|e| e.to_string())?;
 
@@ -2034,11 +2160,71 @@ impl AcpSession {
             turns: crate::agent::interrupted::load_block(&services.db, &services.turns, &self.conversation_id, turn_id)
                 .await,
             queued: crate::agent::queue::owed(services, &self.conversation_id).await,
+            shell: self.pending_shell_context(services).await,
             // Read, not taken. A turn can assemble this and then die before a
             // byte leaves; clearing it here would spend the one chance to say
             // it on a prompt nobody received.
             memory_lost: self.shared.memory_lost.lock().is_ok_and(|slot| *slot),
             tools_lost: self.shared.tools_lost.lock().is_ok_and(|slot| *slot),
+        }
+    }
+
+    /// Shell results on the active branch that this hosted session has never
+    /// received. Read, not taken: only an adapter reply settles the receipt, so
+    /// a pipe failure or a stop before first poll leaves them for the next
+    /// prompt instead of spending them on nobody.
+    async fn pending_shell_context(&self, services: &Services) -> Option<PendingShellContext> {
+        let pool = services.db.clone();
+        let conversation_id = self.conversation_id.clone();
+        let loaded = tokio::task::spawn_blocking(move || -> Result<Option<PendingShellContext>, String> {
+            let mut conn = get_conn(&pool)?;
+            let conversation = crate::db::ops::conversation::get_conversation(&mut conn, &conversation_id)
+                .map_err(|e| e.to_string())?;
+            let history =
+                crate::db::ops::message::list_messages(&mut conn, &conversation_id).map_err(|e| e.to_string())?;
+            let context = crate::db::ops::message::active_context(&history, conversation.head_message_id.as_deref());
+            let message_ids = context.path.iter().map(|row| row.id.clone()).collect::<Vec<_>>();
+            let mut by_message = crate::db::ops::message_context_item::list_for_messages(&mut conn, &message_ids)
+                .map_err(|e| e.to_string())?;
+
+            // Match native context construction: a denied sandbox attempt and
+            // its approved host retry are both retained for diagnosis, but only
+            // the final attempt is evidence for the next model turn.
+            let mut candidates = Vec::new();
+            for message in &context.path {
+                let Some(items) = by_message.remove(&message.id) else {
+                    continue;
+                };
+                if let Some(item) = items
+                    .into_iter()
+                    .filter(|item| item.kind == "shell_output")
+                    .max_by_key(|item| item.position)
+                {
+                    candidates.push(item);
+                }
+            }
+            let ids = candidates.iter().map(|item| item.id.clone()).collect::<Vec<_>>();
+            let delivered =
+                crate::db::ops::acp_context_delivery::delivered(&mut conn, &ids).map_err(|e| e.to_string())?;
+            candidates.retain(|item| !delivered.contains(&item.id));
+            if candidates.is_empty() {
+                return Ok(None);
+            }
+
+            Ok(bounded_pending_shell_context(&candidates))
+        })
+        .await;
+
+        match loaded {
+            Ok(Ok(pending)) => pending,
+            Ok(Err(error)) => {
+                tracing::warn!(error = %error, "could not load pending ACP shell context");
+                None
+            }
+            Err(error) => {
+                tracing::warn!(error = %error, "ACP shell-context load task failed");
+                None
+            }
         }
     }
 
@@ -2055,6 +2241,7 @@ impl AcpSession {
         turn_id: &str,
         text: &str,
         queued: Option<&str>,
+        context: &[crate::workspace::reference::PreparedContextItem],
     ) -> Result<String, String> {
         use crate::db::models::message::NewMessage;
         use diesel::Connection;
@@ -2066,6 +2253,7 @@ impl AcpSession {
         let returned = message_id.clone();
         let content = text.to_string();
         let queued = queued.map(str::to_string);
+        let context = context.to_vec();
 
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
@@ -2108,6 +2296,31 @@ impl AcpSession {
                     head.as_deref(),
                 )?;
 
+                let context_rows = context
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(position, item)| crate::db::models::message_context_item::NewMessageContextItem {
+                            id: &item.id,
+                            message_id: &message_id,
+                            position: position as i32,
+                            kind: &item.kind,
+                            content: &item.content,
+                            display_path: item.display_path.as_deref(),
+                            line_start: item.line_start,
+                            line_end: item.line_end,
+                            content_hash: &item.content_hash,
+                            byte_count: item.byte_count,
+                            line_count: item.line_count,
+                            token_count: item.token_count,
+                            truncated: item.truncated,
+                            metadata: item.metadata.as_deref(),
+                            created_at: now,
+                        },
+                    )
+                    .collect::<Vec<_>>();
+                crate::db::ops::message_context_item::insert_many(conn, &context_rows)?;
+
                 crate::db::ops::turn::begin(conn, &turn_id, &conversation_id, TurnOrigin::ClaudeCode, None, now)?;
                 if let Some(queued) = &queued {
                     // Refuses an item somebody has already taken, and rolls the
@@ -2125,6 +2338,7 @@ impl AcpSession {
                         return Err(diesel::result::Error::RollbackTransaction);
                     }
                     crate::db::ops::queue::mark_settled(conn, queued, Some(&message_id), now)?;
+                    crate::db::ops::queued_prompt_context_item::delete_for_queue(conn, queued)?;
                 }
                 Ok(())
             })
@@ -2657,6 +2871,7 @@ mod tests {
                 Some("asking"),
             ),
             queued: None,
+            shell: None,
             memory_lost: false,
             tools_lost: false,
         };
@@ -2682,6 +2897,7 @@ mod tests {
                 Some("asking"),
             ),
             queued: None,
+            shell: None,
             memory_lost: true,
             tools_lost: false,
         };
@@ -2701,6 +2917,18 @@ mod tests {
         };
         assert!(!alone.is_empty());
         assert!(alone.in_front_of("hello").ends_with("\n\nhello"));
+
+        let shell = Owed {
+            shell: Some(PendingShellContext {
+                item_ids: vec!["item-1".into()],
+                rendered: "<untrusted_context>\ncommand output\n</untrusted_context>".into(),
+            }),
+            ..Owed::default()
+        };
+        assert!(!shell.is_empty());
+        let sent = shell.in_front_of("explain the result");
+        assert!(sent.starts_with("<untrusted_context>"), "{sent}");
+        assert!(sent.ends_with("explain the result"), "{sent}");
     }
 
     /// A capability that was promised and is missing has to be *said*, not
@@ -2902,6 +3130,94 @@ mod tests {
             "a pipe that closed may have closed before the request went out"
         );
         assert!(!PromptDelivery::NeverSent.read_by(&died()));
+    }
+
+    #[test]
+    fn current_workspace_snapshot_rides_the_acp_prompt_without_a_live_at_trigger() {
+        let context = crate::workspace::reference::PreparedContextItem {
+            id: "ctx".into(),
+            kind: "project_file".into(),
+            content: "frozen bytes".into(),
+            display_path: Some("src/lib.rs".into()),
+            line_start: None,
+            line_end: None,
+            content_hash: "hash".into(),
+            byte_count: 12,
+            line_count: 1,
+            token_count: 3,
+            truncated: 0,
+            metadata: None,
+        };
+
+        let payload = prompt_with_workspace_context("inspect @src/lib.rs", &[context]);
+
+        assert!(payload.starts_with("inspect `src/lib.rs`"));
+        assert!(!payload.contains("@src/lib.rs"));
+        assert!(payload.contains("<untrusted_context>"));
+        assert!(payload.contains("frozen bytes"));
+    }
+
+    #[test]
+    fn pending_shell_output_is_placed_before_the_next_acp_prompt() {
+        let owed = Owed {
+            shell: Some(PendingShellContext {
+                item_ids: vec!["item".into()],
+                rendered: "<untrusted_context>\ncommand result\n</untrusted_context>".into(),
+            }),
+            ..Owed::default()
+        };
+
+        let payload = owed.in_front_of("next question");
+
+        assert!(payload.starts_with("<untrusted_context>\ncommand result"));
+        assert!(payload.ends_with("next question"));
+    }
+
+    #[test]
+    fn pending_shell_context_batches_items_and_receipts_only_what_was_injected() {
+        let item = |id: &str, content: String| crate::db::models::message_context_item::MessageContextItem {
+            id: id.into(),
+            message_id: format!("message-{id}"),
+            position: 0,
+            kind: "shell_output".into(),
+            content,
+            display_path: None,
+            line_start: None,
+            line_end: None,
+            content_hash: "hash".into(),
+            byte_count: 0,
+            line_count: 1,
+            token_count: 1,
+            truncated: 0,
+            metadata: None,
+            created_at: 1,
+        };
+        let repeat = crate::workspace::reference::MAX_MODEL_SHELL_CONTEXT_BYTES;
+        let candidates = vec![
+            item("first", "FIRST".repeat(repeat)),
+            item("deferred", "DEFERRED".repeat(repeat)),
+        ];
+
+        let batch = bounded_pending_shell_context(&candidates).expect("one item fits");
+
+        assert_eq!(batch.item_ids, vec!["first".to_string()]);
+        assert!(batch.rendered.len() <= MAX_ACP_PENDING_SHELL_BYTES);
+        assert!(batch.rendered.contains("FIRST"));
+        assert!(!batch.rendered.contains("DEFERRED"));
+
+        let small = (0..6)
+            .map(|index| item(&format!("item-{index}"), "ok".into()))
+            .collect::<Vec<_>>();
+        let batch = bounded_pending_shell_context(&small).expect("small items fit");
+        assert_eq!(
+            batch.item_ids,
+            vec![
+                "item-0".to_string(),
+                "item-1".to_string(),
+                "item-2".to_string(),
+                "item-3".to_string(),
+            ]
+        );
     }
 
     use super::super::mounts;

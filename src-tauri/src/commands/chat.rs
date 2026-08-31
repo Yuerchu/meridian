@@ -5,8 +5,8 @@ use crate::ServicesExt;
 use meridian_core::agent::engine;
 use meridian_core::agent::turn_record;
 use meridian_core::agent::{
-    CompactCircuitBreaker, TokenBudget, build_file_access, build_messages_with_senders, do_compact, file_access_prompt,
-    instruction_budget, load_project_instructions, microcompact, resolve_file_uris_in_messages,
+    CompactCircuitBreaker, TokenBudget, build_file_access, build_messages_with_context_items, do_compact,
+    file_access_prompt, instruction_budget, load_project_instructions, microcompact, resolve_file_uris_in_messages,
     resolve_sticker_parts_in_messages, trailing_with_memory, trim_to_context_limit,
 };
 use meridian_core::db;
@@ -49,6 +49,72 @@ struct PlanTransitions {
     /// where the turn was set up is undone by the first mode switch — handing
     /// back a local `web_search` to sit beside the provider-side one.
     server_tools: Vec<String>,
+}
+
+async fn load_message_context_items(
+    pool: &DbPool,
+    context: &db::ops::message::ActiveContext,
+) -> Result<std::collections::HashMap<String, Vec<db::models::message_context_item::MessageContextItem>>, String> {
+    let ids = context
+        .path
+        .iter()
+        .map(|message| message.id.clone())
+        .collect::<Vec<_>>();
+    let pool = pool.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = get_conn(&pool)?;
+        db::ops::message_context_item::list_for_messages(&mut conn, &ids).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn trailing_with_user_context(
+    memory: Option<&str>,
+    interrupted: Option<&str>,
+    user_message: &str,
+    roster: Option<&str>,
+    context: &[meridian_core::workspace::reference::PreparedContextItem],
+) -> Vec<ChatMessage> {
+    let mut trailing = trailing_with_memory(memory, interrupted, user_message, roster);
+    let user = trailing
+        .iter()
+        .rposition(|message| matches!(message.origin, provider::MessageOrigin::LegacyUser))
+        .unwrap_or(trailing.len().saturating_sub(1));
+    let injected = context.iter().map(|item| {
+        ChatMessage::user_provided_context(&meridian_core::workspace::reference::render_context_item(
+            &item.kind,
+            item.display_path.as_deref(),
+            item.line_start,
+            item.line_end,
+            &item.content,
+            item.truncated != 0,
+        ))
+    });
+    trailing.splice(user + 1..user + 1, injected);
+    trailing
+}
+
+fn reference_tool_context(
+    working_directory: Option<String>,
+    file_access: tools::FileAccess,
+    cancel: tokio_util::sync::CancellationToken,
+) -> tools::ToolContext {
+    tools::ToolContext {
+        working_directory,
+        shell: tools::ShellType::default_for_platform(),
+        file_access,
+        project_id: None,
+        conversation_id: None,
+        turn_id: None,
+        assistant_id: None,
+        db_pool: None,
+        #[cfg(not(target_os = "android"))]
+        sandbox_policy: None,
+        tool_secrets: Default::default(),
+        cancel,
+        journal: None,
+    }
 }
 
 #[async_trait::async_trait]
@@ -215,6 +281,14 @@ impl meridian_core::services::StartTurn for DesktopTurns {
         conversation_id: &str,
         queued: &meridian_core::db::models::queue::QueuedPrompt,
     ) -> Result<(), String> {
+        let pool = self.0.db.clone();
+        let queue_id = queued.id.clone();
+        let queued_context = tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool)?;
+            db::ops::queued_prompt_context_item::list_prepared(&mut conn, &queue_id).map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| e.to_string())??;
         run_turn(
             self.0.clone(),
             conversation_id.to_string(),
@@ -233,6 +307,8 @@ impl meridian_core::services::StartTurn for DesktopTurns {
             None,
             None,
             None,
+            None,
+            Some(queued_context),
             Some(queued.id.clone()),
         )
         .await
@@ -286,6 +362,7 @@ pub async fn chat(
     fast: Option<bool>,
     mode: Option<String>,
     voice: Option<bool>,
+    context_refs: Option<Vec<meridian_core::workspace::reference::WorkspaceReferenceInput>>,
 ) -> Result<(), String> {
     // Decided here rather than inside, so the failure path below can name the
     // turn it is closing without depending on how far the run got.
@@ -313,6 +390,8 @@ pub async fn chat(
         fast,
         mode,
         voice,
+        context_refs,
+        None,
         None,
     )
     .await
@@ -341,6 +420,8 @@ pub async fn run_turn(
     fast: Option<bool>,
     mode: Option<String>,
     voice: Option<bool>,
+    context_refs: Option<Vec<meridian_core::workspace::reference::WorkspaceReferenceInput>>,
+    queued_context: Option<Vec<meridian_core::workspace::reference::PreparedContextItem>>,
     queued: Option<String>,
 ) -> Result<(), String> {
     let pool = services.db.clone();
@@ -379,6 +460,8 @@ pub async fn run_turn(
         fast,
         mode,
         voice,
+        context_refs,
+        queued_context,
         queued,
     )
     .await
@@ -422,6 +505,8 @@ async fn chat_inner(
     fast: Option<bool>,
     mode: Option<String>,
     voice: Option<bool>,
+    context_refs: Option<Vec<meridian_core::workspace::reference::WorkspaceReferenceInput>>,
+    queued_context: Option<Vec<meridian_core::workspace::reference::PreparedContextItem>>,
     queued: Option<String>,
 ) -> Result<(), String> {
     let secrets = &services.secrets;
@@ -534,6 +619,7 @@ async fn chat_inner(
         .await
         .map_err(|e| e.to_string())??
     };
+    let mut stored_context_items = load_message_context_items(&pool, &ctx).await?;
 
     // Resolve provider config (with optional overrides). Off the async thread:
     // it takes a pooled connection and reads the OS credential store, either of
@@ -794,6 +880,38 @@ async fn chat_inner(
         turn_params.compact_threshold,
     );
 
+    // The backend resolves the token again even when the composer supplied a
+    // structured copy. The latter protects cursor/quote handling; the former
+    // ensures a stale or forged DTO cannot attach a path the message did not
+    // name. Old clients and queued prompts omit the DTO and use this parser
+    // directly.
+    let prepared_context = match queued_context {
+        Some(frozen) => frozen,
+        None => {
+            let parsed_refs = message
+                .as_deref()
+                .map(meridian_core::workspace::reference::parse_references)
+                .unwrap_or_default();
+            let effective_refs = meridian_core::workspace::reference::reconcile_references(context_refs, parsed_refs)?;
+            if message.is_none() && !effective_refs.is_empty() {
+                return Err("regeneration cannot introduce new workspace references".into());
+            }
+            if effective_refs.is_empty() {
+                Vec::new()
+            } else {
+                let reference_context =
+                    reference_tool_context(project_path.clone(), file_access.clone(), cancel.clone());
+                meridian_core::workspace::reference::prepare_references(
+                    &reference_context,
+                    &effective_refs,
+                    &budget.counter,
+                    context_limit,
+                )
+                .await?
+            }
+        }
+    };
+
     let circuit_breaker = {
         let mut map = services.compact_breakers.lock().await;
         map.entry(conversation_id.clone())
@@ -816,16 +934,18 @@ async fn chat_inner(
         let probe =
             meridian_core::agent::plan_injection_async(&pool, memory_request.clone(), ctx.live().to_vec(), now_ms())
                 .await;
-        let pre_msgs = build_messages_with_senders(
+        let pre_msgs = build_messages_with_context_items(
             system_prompt.trim(),
             &ctx,
-            trailing_with_memory(
+            trailing_with_user_context(
                 probe.as_ref().and_then(|i| i.text.as_deref()),
                 interrupted.as_ref().map(|r| r.text()),
                 payload_message.as_deref().unwrap_or(""),
                 None,
+                &prepared_context,
             ),
             &Default::default(),
+            &stored_context_items,
         );
         budget.update_estimate(&pre_msgs);
         if budget.needs_compact() && ctx.path.len() > keep_recent * 2 + 2 {
@@ -915,6 +1035,9 @@ async fn chat_inner(
     } else {
         ctx
     };
+    if compacted {
+        stored_context_items = load_message_context_items(&pool, &ctx).await?;
+    }
 
     // After compaction, never before it: compaction moves the summary anchor, and
     // with it what `live()` returns. A plan made against the old path would be
@@ -925,16 +1048,18 @@ async fn chat_inner(
     let injection = meridian_core::agent::plan_injection_async(&pool, memory_request, ctx.live().to_vec(), t0).await;
     let injected = injection.as_ref().and_then(|i| i.text.clone());
 
-    let mut chat_messages = build_messages_with_senders(
+    let mut chat_messages = build_messages_with_context_items(
         system_prompt.trim(),
         &ctx,
-        trailing_with_memory(
+        trailing_with_user_context(
             injected.as_deref(),
             interrupted.as_ref().map(|r| r.text()),
             payload_message.as_deref().unwrap_or(""),
             None,
+            &prepared_context,
         ),
         &Default::default(),
+        &stored_context_items,
     );
     resolve_sticker_parts_in_messages(
         &mut chat_messages,
@@ -987,6 +1112,7 @@ async fn chat_inner(
         let parent = parent_cursor.clone();
         let turn = turn_id.clone();
         let queued = queued.clone();
+        let context_items = prepared_context.clone();
         tokio::task::spawn_blocking(move || -> Result<(), String> {
             use diesel::Connection;
             let mut conn = get_conn(&pool)?;
@@ -1030,6 +1156,30 @@ async fn chat_inner(
                     parent.as_deref(),
                 )?;
                 db::ops::emoji::link_stickers_in_content(conn, &msg_id, &msg)?;
+                let rows = context_items
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(position, item)| db::models::message_context_item::NewMessageContextItem {
+                            id: &item.id,
+                            message_id: &msg_id,
+                            position: position as i32,
+                            kind: &item.kind,
+                            content: &item.content,
+                            display_path: item.display_path.as_deref(),
+                            line_start: item.line_start,
+                            line_end: item.line_end,
+                            content_hash: &item.content_hash,
+                            byte_count: item.byte_count,
+                            line_count: item.line_count,
+                            token_count: item.token_count,
+                            truncated: item.truncated,
+                            metadata: item.metadata.as_deref(),
+                            created_at: now,
+                        },
+                    )
+                    .collect::<Vec<_>>();
+                db::ops::message_context_item::insert_many(conn, &rows)?;
                 if let Some(queued) = &queued {
                     // Refuses an item somebody else already took, or that has
                     // been held or dragged out of first place since it was
@@ -1046,6 +1196,7 @@ async fn chat_inner(
                         return Err(diesel::result::Error::RollbackTransaction);
                     }
                     db::ops::queue::mark_settled(conn, queued, Some(&msg_id), now)?;
+                    db::ops::queued_prompt_context_item::delete_for_queue(conn, queued)?;
                 }
                 Ok(())
             })

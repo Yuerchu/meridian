@@ -56,6 +56,10 @@ pub enum TurnOrigin {
     /// in another process, so an interruption report must not claim this app
     /// knows how far it got.
     ClaudeCode,
+    /// A command the person typed with the composer's `!` prefix. It is a
+    /// cancellable occupant because it may run for minutes and write files,
+    /// but it does not query a model or create a `turns` row.
+    UserShell,
 }
 
 impl TurnOrigin {
@@ -152,6 +156,12 @@ impl std::fmt::Display for Busy {
                 write!(
                     f,
                     "Claude Code is still working on this. Wait for it to finish, or stop it first."
+                )
+            }
+            Busy::Turn(TurnOrigin::UserShell) => {
+                write!(
+                    f,
+                    "A shell command is still running in this conversation. Wait for it to finish, or stop it first."
                 )
             }
             Busy::Mutation(kind) => {
@@ -440,6 +450,19 @@ impl TurnCoordinator {
         self.observe(conversation_id).held
     }
 
+    /// The active literal shell command for this conversation, if any.
+    ///
+    /// This deliberately excludes model turns. Reload and remote-resync use it
+    /// to restore a terminal card's Stop state, and treating an ordinary model
+    /// turn as a shell command would attach that button to the wrong runner.
+    pub fn active_user_shell_turn(&self, conversation_id: &str) -> Option<String> {
+        let map = self.lock();
+        match map.by_conversation.get(conversation_id) {
+            Some(Occupant::Turn(turn)) if turn.origin == TurnOrigin::UserShell => Some(turn.turn_id.clone()),
+            _ => None,
+        }
+    }
+
     /// The held turn together with the revision it was read at.
     ///
     /// For a reader that will go away and read something slower — the database —
@@ -718,6 +741,28 @@ mod tests {
         let lease = c.try_acquire_turn("conv-1", TurnOrigin::Desktop).expect("free");
         assert!(c.cancel("conv-1", None));
         assert!(lease.cancel_token().is_cancelled());
+    }
+
+    #[test]
+    fn active_shell_query_names_only_user_shell_turns() {
+        let c = coordinator();
+        assert_eq!(c.active_user_shell_turn("conv-1"), None);
+
+        let model = c
+            .try_acquire_turn_as("conv-1", TurnOrigin::Desktop, "model-turn".into())
+            .expect("free");
+        assert_eq!(c.active_user_shell_turn("conv-1"), None);
+        drop(model);
+
+        let shell = c
+            .try_acquire_turn_as("conv-1", TurnOrigin::UserShell, "shell-turn".into())
+            .expect("free");
+        assert_eq!(c.active_user_shell_turn("conv-1").as_deref(), Some("shell-turn"));
+        drop(shell);
+        assert_eq!(c.active_user_shell_turn("conv-1"), None);
+
+        let _mutation = c.try_acquire_mutation("conv-1", "edit").expect("free");
+        assert_eq!(c.active_user_shell_turn("conv-1"), None);
     }
 
     /// Cancelling is not releasing: the runner still has to unwind, and until it

@@ -1,11 +1,84 @@
 use super::{Permission, ShellType, Tool, ToolContext};
-use crate::sandbox::{ExecResult, SandboxBackend};
+use crate::sandbox::{ExecError, ExecResult, SandboxBackend};
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 pub struct RunCommandTool;
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// The facts a caller needs to render or persist one command result.
+///
+/// `run_command` used to collapse these into one display string inside the
+/// tool.  The composer shell needs the same execution path, but it also needs
+/// to tell stdout from stderr and to preserve timeout/truncation/sandbox facts
+/// without scraping prose.  Keeping the structured result here makes the two
+/// entry points share the security boundary instead of reimplementing it in a
+/// Tauri command.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CommandExecution {
+    pub stdout: String,
+    pub stderr: String,
+    pub exit_code: i32,
+    pub timed_out: bool,
+    pub truncated: bool,
+    /// `host`, `windows_restricted_token`, or `container`.
+    pub sandbox: String,
+    pub duration_ms: u64,
+}
+
+impl CommandExecution {
+    /// The legacy tool result shown to the model.  Kept byte-for-byte compatible
+    /// with the old formatter while the direct composer path uses the fields.
+    pub fn formatted(&self) -> String {
+        let mut result = String::new();
+        if !self.stdout.is_empty() {
+            result.push_str(&self.stdout);
+        }
+        if !self.stderr.is_empty() {
+            if !result.is_empty() {
+                result.push('\n');
+            }
+            result.push_str("[stderr] ");
+            result.push_str(&self.stderr);
+        }
+        if self.exit_code != 0 && !self.timed_out {
+            result.push_str(&format!("\n[exit code: {}]", self.exit_code));
+        }
+        if self.timed_out {
+            result.push_str("\n[timed out; process tree killed]");
+        }
+        if self.truncated {
+            result.push_str("\n[output truncated at 256KB]");
+        }
+        if result.is_empty() {
+            result = "(no output)".to_string();
+        }
+        result
+    }
+}
+
+/// A sandbox refusal is not an ordinary failed command: it is the only state
+/// from which a caller may offer the explicit host retry.  Cancellation is
+/// separate as well so a direct user command can persist the truthful ending
+/// rather than presenting it as a spawn failure.
+#[derive(Debug)]
+pub enum CommandExecutionError {
+    SandboxDenied(CommandExecution),
+    Cancelled,
+    Execution(String),
+}
+
+impl std::fmt::Display for CommandExecutionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::SandboxDenied(_) => write!(f, "command blocked by the sandbox"),
+            Self::Cancelled => write!(f, "command cancelled"),
+            Self::Execution(message) => write!(f, "{message}"),
+        }
+    }
+}
 
 #[async_trait]
 impl Tool for RunCommandTool {
@@ -38,106 +111,132 @@ impl Tool for RunCommandTool {
     async fn execute(&self, args: serde_json::Value, context: &ToolContext) -> Result<String, String> {
         let command = args["command"].as_str().ok_or("missing 'command' argument")?;
 
-        let cwd = context.working_dir_or_current();
-
-        // `context.shell` describes this machine, and a container is not this
-        // machine: its argv resolves *inside*, where neither `C:\Program
-        // Files\Git\bin\bash.exe` nor necessarily `/bin/bash` exists — the
-        // default image is Alpine, which ships `sh` alone. So a containered
-        // command gets the one shell the POSIX image contract promises, and the
-        // host shell selection applies only where the command actually runs.
-        let containered = context
-            .sandbox_policy
-            .as_ref()
-            .is_some_and(|p| p.backend == SandboxBackend::Container);
-        let shell_argv: Vec<String> = if containered {
-            vec!["sh".into(), "-c".into(), command.into()]
-        } else {
-            match context.shell {
-                ShellType::Cmd => vec!["cmd".into(), "/C".into(), command.into()],
-                ShellType::PowerShell => {
-                    vec![
-                        find_powershell().into(),
-                        "-NoProfile".into(),
-                        "-Command".into(),
-                        command.into(),
-                    ]
-                }
-                ShellType::Bash => {
-                    vec![find_bash().into(), "-c".into(), command.into()]
-                }
-            }
-        };
-
-        let timeout = context
-            .sandbox_policy
-            .as_ref()
-            .map(|p| p.timeout)
-            .unwrap_or(COMMAND_TIMEOUT);
-
-        let sandboxed = context.sandbox_policy.is_some();
-        let started = std::time::Instant::now();
-        let res = crate::sandbox::execute(
-            &shell_argv,
-            &cwd,
-            context.sandbox_policy.as_ref(),
-            timeout,
-            &context.cancel,
-        )
-        .await
-        .map_err(|e| {
-            // The command string is never logged: it is model-generated and
-            // routinely contains exported tokens and passwords.
-            tracing::warn!(
-                tool = "run_command",
-                sandboxed,
-                timeout_secs = timeout.as_secs(),
-                error = %e,
-                "run_command could not be executed"
-            );
-            e.to_string()
-        })?;
-
-        // Two conditions, and the second is not redundant. The heuristic
-        // already only fires for the one backend whose escalation is safe;
-        // asking the backend as well means a new backend cannot be added to
-        // that heuristic and silently inherit the host-retry card. See
-        // `SandboxBackend::may_retry_on_host`.
-        if is_sandbox_denied(&res) && res.ran_under.may_retry_on_host() {
-            // The user is about to get an "allow this without the sandbox?"
-            // prompt. Without this line there is nothing recording what was
-            // blocked or why they were asked.
-            tracing::warn!(
-                tool = "run_command",
-                exit_code = res.exit_code,
-                stdout_len = res.stdout.len(),
-                stderr_len = res.stderr.len(),
-                duration_ms = started.elapsed().as_millis() as u64,
-                "command blocked by the sandbox; asking whether to retry without it"
-            );
-            return Err(super::encode_sandbox_denied(&format_output(&res)));
+        match execute_command(command, context).await {
+            Ok(result) => Ok(result.formatted()),
+            Err(CommandExecutionError::SandboxDenied(result)) => Err(super::encode_sandbox_denied(&result.formatted())),
+            Err(error) => Err(error.to_string()),
         }
-
-        if res.timed_out {
-            tracing::warn!(
-                tool = "run_command",
-                timeout_secs = timeout.as_secs(),
-                sandboxed,
-                "run_command timed out"
-            );
-        } else if res.exit_code != 0 {
-            // Below info on purpose: a non-zero exit is an ordinary outcome the
-            // model sees and handles, not something worth a line in the file.
-            tracing::debug!(
-                tool = "run_command",
-                exit_code = res.exit_code,
-                duration_ms = started.elapsed().as_millis() as u64,
-                "run_command exited non-zero"
-            );
-        }
-
-        Ok(format_output(&res))
     }
+}
+
+/// Execute one command through the exact shell, sandbox/container, timeout and
+/// cancellation path used by the model tool.
+///
+/// This function deliberately performs no permission check. `Tool::execute`
+/// is reached only after the agent approval layer has granted it; the direct
+/// composer command is itself an explicit user action.  Removing a sandbox is
+/// *not* implied by that action — callers must invoke this with
+/// `ToolContext::without_sandbox()` only after a second, explicit confirmation.
+pub async fn execute_command(command: &str, context: &ToolContext) -> Result<CommandExecution, CommandExecutionError> {
+    if command.trim().is_empty() {
+        return Err(CommandExecutionError::Execution("command cannot be empty".into()));
+    }
+
+    let cwd = context.working_dir_or_current();
+
+    // `context.shell` describes this machine, and a container is not this
+    // machine: its argv resolves *inside*, where neither `C:\Program
+    // Files\Git\bin\bash.exe` nor necessarily `/bin/bash` exists — the
+    // default image is Alpine, which ships `sh` alone. So a containered
+    // command gets the one shell the POSIX image contract promises, and the
+    // host shell selection applies only where the command actually runs.
+    let containered = context
+        .sandbox_policy
+        .as_ref()
+        .is_some_and(|p| p.backend == SandboxBackend::Container);
+    let shell_argv: Vec<String> = if containered {
+        vec!["sh".into(), "-c".into(), command.into()]
+    } else {
+        match context.shell {
+            ShellType::Cmd => vec!["cmd".into(), "/C".into(), command.into()],
+            ShellType::PowerShell => {
+                vec![
+                    find_powershell().into(),
+                    "-NoProfile".into(),
+                    "-Command".into(),
+                    command.into(),
+                ]
+            }
+            ShellType::Bash => {
+                vec![find_bash().into(), "-c".into(), command.into()]
+            }
+        }
+    };
+
+    let timeout = context
+        .sandbox_policy
+        .as_ref()
+        .map(|p| p.timeout)
+        .unwrap_or(COMMAND_TIMEOUT);
+
+    let sandboxed = context.sandbox_policy.is_some();
+    let started = std::time::Instant::now();
+    let res = crate::sandbox::execute(
+        &shell_argv,
+        &cwd,
+        context.sandbox_policy.as_ref(),
+        timeout,
+        &context.cancel,
+    )
+    .await
+    .map_err(|e| {
+        if matches!(e, ExecError::Cancelled) {
+            return CommandExecutionError::Cancelled;
+        }
+        // The command string is never logged: it is model-generated and
+        // routinely contains exported tokens and passwords.
+        tracing::warn!(
+            tool = "run_command",
+            sandboxed,
+            timeout_secs = timeout.as_secs(),
+            error = %e,
+            "run_command could not be executed"
+        );
+        CommandExecutionError::Execution(e.to_string())
+    })?;
+
+    let duration_ms = started.elapsed().as_millis().min(u64::MAX as u128) as u64;
+    let result = structured_output(&res, duration_ms);
+
+    // Two conditions, and the second is not redundant. The heuristic
+    // already only fires for the one backend whose escalation is safe;
+    // asking the backend as well means a new backend cannot be added to
+    // that heuristic and silently inherit the host-retry card. See
+    // `SandboxBackend::may_retry_on_host`.
+    if is_sandbox_denied(&res) && res.ran_under.may_retry_on_host() {
+        // The user is about to get an "allow this without the sandbox?"
+        // prompt. Without this line there is nothing recording what was
+        // blocked or why they were asked.
+        tracing::warn!(
+            tool = "run_command",
+            exit_code = res.exit_code,
+            stdout_len = res.stdout.len(),
+            stderr_len = res.stderr.len(),
+            duration_ms = started.elapsed().as_millis() as u64,
+            "command blocked by the sandbox; asking whether to retry without it"
+        );
+        return Err(CommandExecutionError::SandboxDenied(result));
+    }
+
+    if res.timed_out {
+        tracing::warn!(
+            tool = "run_command",
+            timeout_secs = timeout.as_secs(),
+            sandboxed,
+            "run_command timed out"
+        );
+    } else if res.exit_code != 0 {
+        // Below info on purpose: a non-zero exit is an ordinary outcome the
+        // model sees and handles, not something worth a line in the file.
+        tracing::debug!(
+            tool = "run_command",
+            exit_code = res.exit_code,
+            duration_ms,
+            "run_command exited non-zero"
+        );
+    }
+
+    Ok(result)
 }
 
 /// Heuristic ported from codex-rs/sandboxing/src/denial.rs, adjusted for
@@ -177,34 +276,21 @@ fn is_sandbox_denied(res: &ExecResult) -> bool {
     NEEDLES.iter().any(|n| hay.contains(n))
 }
 
-fn format_output(res: &ExecResult) -> String {
-    let stdout = String::from_utf8_lossy(&res.stdout);
-    let stderr = String::from_utf8_lossy(&res.stderr);
-
-    let mut result = String::new();
-    if !stdout.is_empty() {
-        result.push_str(&stdout);
-    }
-    if !stderr.is_empty() {
-        if !result.is_empty() {
-            result.push('\n');
+fn structured_output(res: &ExecResult, duration_ms: u64) -> CommandExecution {
+    CommandExecution {
+        stdout: String::from_utf8_lossy(&res.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&res.stderr).into_owned(),
+        exit_code: res.exit_code,
+        timed_out: res.timed_out,
+        truncated: res.truncated,
+        sandbox: match res.ran_under {
+            SandboxBackend::Host => "host",
+            SandboxBackend::WindowsRestrictedToken => "windows_restricted_token",
+            SandboxBackend::Container => "container",
         }
-        result.push_str("[stderr] ");
-        result.push_str(&stderr);
+        .into(),
+        duration_ms,
     }
-    if res.exit_code != 0 && !res.timed_out {
-        result.push_str(&format!("\n[exit code: {}]", res.exit_code));
-    }
-    if res.timed_out {
-        result.push_str("\n[timed out; process tree killed]");
-    }
-    if res.truncated {
-        result.push_str("\n[output truncated at 256KB]");
-    }
-    if result.is_empty() {
-        result = "(no output)".to_string();
-    }
-    result
 }
 
 fn find_powershell() -> &'static str {
@@ -405,5 +491,31 @@ mod tests {
         let encoded = crate::tools::encode_sandbox_denied("blocked output");
         assert_eq!(crate::tools::decode_sandbox_denied(&encoded), Some("blocked output"));
         assert_eq!(crate::tools::decode_sandbox_denied("plain error"), None);
+    }
+
+    #[test]
+    fn structured_result_preserves_the_model_tools_text_contract() {
+        let result = CommandExecution {
+            stdout: "out".into(),
+            stderr: "err".into(),
+            exit_code: 7,
+            timed_out: false,
+            truncated: true,
+            sandbox: "host".into(),
+            duration_ms: 12,
+        };
+        assert_eq!(
+            result.formatted(),
+            "out\n[stderr] err\n[exit code: 7]\n[output truncated at 256KB]"
+        );
+
+        let timed_out = CommandExecution {
+            timed_out: true,
+            ..result
+        };
+        assert_eq!(
+            timed_out.formatted(),
+            "out\n[stderr] err\n[timed out; process tree killed]\n[output truncated at 256KB]"
+        );
     }
 }

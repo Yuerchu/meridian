@@ -38,6 +38,155 @@ pub struct CappedRead {
     pub total_size: Option<u64>,
 }
 
+pub struct RangedRead {
+    pub content: String,
+    pub truncated: bool,
+    pub total_size: Option<u64>,
+    /// Bytes consumed while locating the range, including skipped lines.
+    pub bytes_read: usize,
+}
+
+fn scan_line_range<R: std::io::Read>(
+    reader: R,
+    label: &str,
+    total_size: Option<u64>,
+    source_truncated: bool,
+    start: usize,
+    end: usize,
+    max_scan_bytes: usize,
+    max_output_bytes: usize,
+    max_lines: usize,
+) -> Result<RangedRead, String> {
+    use std::io::{BufRead, Read};
+
+    let selected_end = end.min(start.saturating_add(max_lines.saturating_sub(1)));
+    let mut reader = std::io::BufReader::new(reader).take(max_scan_bytes as u64);
+    let mut current_line = 0usize;
+    let mut bytes_read = 0usize;
+    let mut selected = Vec::new();
+    let mut output_truncated = false;
+    let mut scan_cut_a_line = false;
+
+    while current_line < selected_end {
+        let mut line = Vec::new();
+        let read = reader
+            .read_until(b'\n', &mut line)
+            .map_err(|e| format!("failed to read '{label}': {e}"))?;
+        if read == 0 {
+            break;
+        }
+        bytes_read += read;
+        current_line += 1;
+        let complete_line = line.last() == Some(&b'\n');
+        if current_line >= start {
+            if complete_line {
+                line.pop();
+                if line.last() == Some(&b'\r') {
+                    line.pop();
+                }
+            }
+            if current_line > start {
+                if selected.len() < max_output_bytes {
+                    selected.push(b'\n');
+                } else {
+                    output_truncated = true;
+                }
+            }
+            let remaining = max_output_bytes.saturating_sub(selected.len());
+            let keep = remaining.min(line.len());
+            selected.extend_from_slice(&line[..keep]);
+            output_truncated |= keep < line.len();
+        }
+        if !complete_line && bytes_read == max_scan_bytes && source_truncated {
+            scan_cut_a_line = true;
+            break;
+        }
+    }
+
+    if current_line < start {
+        return Err(if source_truncated && bytes_read == max_scan_bytes {
+            format!("line {start} in '{label}' is beyond the remaining workspace read budget")
+        } else {
+            format!("line {start} is outside '{label}'")
+        });
+    }
+
+    let mut truncated = end > selected_end || output_truncated || scan_cut_a_line;
+    truncated |= source_truncated && current_line < selected_end;
+    let content = match String::from_utf8(selected) {
+        Ok(content) => content,
+        Err(error) => {
+            let bytes = error.as_bytes();
+            match std::str::from_utf8(bytes) {
+                Ok(value) => value.to_string(),
+                Err(invalid) if truncated && invalid.error_len().is_none() && invalid.valid_up_to() > 0 => {
+                    String::from_utf8_lossy(&bytes[..invalid.valid_up_to()]).into_owned()
+                }
+                Err(_) => return Err(format!("'{label}' is not valid UTF-8 (binary file?)")),
+            }
+        }
+    };
+    Ok(RangedRead {
+        content,
+        truncated,
+        total_size,
+        bytes_read,
+    })
+}
+
+/// Locate an explicit line range without retaining the prefix that precedes
+/// it. Skipped bytes still count against `max_scan_bytes`.
+pub async fn read_line_range_opened(
+    target: super::OpenedTarget,
+    start: usize,
+    end: usize,
+    max_scan_bytes: usize,
+    max_output_bytes: usize,
+    max_lines: usize,
+) -> Result<RangedRead, String> {
+    match target {
+        super::OpenedTarget::Real(vf) => {
+            let (file, real) = vf.into_parts();
+            tokio::task::spawn_blocking(move || {
+                let total_size = file.metadata().ok().map(|metadata| metadata.len());
+                let source_truncated = total_size.is_some_and(|size| size > max_scan_bytes as u64);
+                scan_line_range(
+                    file,
+                    &real.display().to_string(),
+                    total_size,
+                    source_truncated,
+                    start,
+                    end,
+                    max_scan_bytes,
+                    max_output_bytes,
+                    max_lines,
+                )
+            })
+            .await
+            .map_err(|e| format!("task failed: {e}"))?
+        }
+        #[cfg(target_os = "android")]
+        super::OpenedTarget::Saf { tree_uri, rel, display } => {
+            let read = crate::android_bridge::saf_read(&tree_uri, &rel, max_scan_bytes as i64)
+                .await
+                .map_err(|e| format!("'{display}': {e}"))?;
+            scan_line_range(
+                std::io::Cursor::new(read.content.into_bytes()),
+                &display,
+                read.size,
+                read.truncated,
+                start,
+                end,
+                max_scan_bytes,
+                max_output_bytes,
+                max_lines,
+            )
+        }
+        #[cfg(not(target_os = "android"))]
+        super::OpenedTarget::Saf { .. } => saf_unsupported(),
+    }
+}
+
 /// Read through a handle that has already been verified, without naming a path
 /// again.
 ///

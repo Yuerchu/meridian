@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/message-scroller'
 import { TurnItem } from './turn-item'
 import { TurnOutline } from './turn-outline'
+import { FilePreviewProvider } from './file-preview'
 import type { EmojiMap } from './emoji-renderer'
 import type { SenderNames } from '@/hooks/use-sender-names'
 import { answerAnchorId, type Turn } from '@/lib/turns'
@@ -252,58 +253,60 @@ export function ChatTranscript({
   }, [conversationId, turns, visibleStart])
 
   return (
-    <LazyMotion features={domAnimation}>
-      <MessageScrollerProvider
-        autoScroll
-        defaultScrollPosition="last-anchor"
-        // Count changes identify a genuinely new live turn, including queued
-        // turns, while surviving the optimistic row's persisted-id re-key.
-        // A non-streaming branch/history update must not re-arm follow.
-        followKey={streaming ? turns.length : null}
-        scrollPreviousItemPeek={48}
-      >
-        <ImeScrollSync />
-        <AnswerSettle streaming={streaming} anchorId={lastTurn ? answerAnchorId(lastTurn.id) : null} />
-        <MessageScroller className="flex-1 min-h-0">
-          <MessageScrollerViewport>
-            <MessageScrollerContent className="max-w-4xl mx-auto px-4 py-6 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]">
-              {leading}
-              {visibleStart > 0 && (
-                <LoadEarlierTurns
-                  remaining={visibleStart}
-                  oldFirstId={turns[visibleStart]?.id}
-                  onLoad={() => {
-                    const nextStart = Math.max(0, visibleStart - TRANSCRIPT_WINDOW_TURNS)
-                    setWindowState({ conversationId, firstVisibleId: turns[nextStart]?.id ?? null })
-                  }}
+    <FilePreviewProvider conversationId={conversationId}>
+      <LazyMotion features={domAnimation}>
+        <MessageScrollerProvider
+          autoScroll
+          defaultScrollPosition="last-anchor"
+          // Count changes identify a genuinely new live turn, including queued
+          // turns, while surviving the optimistic row's persisted-id re-key.
+          // A non-streaming branch/history update must not re-arm follow.
+          followKey={streaming ? turns.length : null}
+          scrollPreviousItemPeek={48}
+        >
+          <ImeScrollSync />
+          <AnswerSettle streaming={streaming} anchorId={lastTurn ? answerAnchorId(lastTurn.id) : null} />
+          <MessageScroller className="flex-1 min-h-0">
+            <MessageScrollerViewport>
+              <MessageScrollerContent className="max-w-4xl mx-auto px-4 py-6 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]">
+                {leading}
+                {visibleStart > 0 && (
+                  <LoadEarlierTurns
+                    remaining={visibleStart}
+                    oldFirstId={turns[visibleStart]?.id}
+                    onLoad={() => {
+                      const nextStart = Math.max(0, visibleStart - TRANSCRIPT_WINDOW_TURNS)
+                      setWindowState({ conversationId, firstVisibleId: turns[nextStart]?.id ?? null })
+                    }}
+                  />
+                )}
+                <TranscriptTurns
+                  turns={turns}
+                  visibleStart={visibleStart}
+                  conversationId={conversationId}
+                  streaming={streaming}
+                  onDelete={onDelete}
+                  onRegenerate={onRegenerate}
+                  onEdit={onEdit}
+                  onRate={onRate}
+                  isOneBot={isOneBot}
+                  isHosted={isHosted}
+                  emojiMap={emojiMap}
+                  senderNames={senderNames}
+                  assistantAvatar={assistantAvatar}
                 />
-              )}
-              <TranscriptTurns
-                turns={turns}
-                visibleStart={visibleStart}
-                conversationId={conversationId}
-                streaming={streaming}
-                onDelete={onDelete}
-                onRegenerate={onRegenerate}
-                onEdit={onEdit}
-                onRate={onRate}
-                isOneBot={isOneBot}
-                isHosted={isHosted}
-                emojiMap={emojiMap}
-                senderNames={senderNames}
-                assistantAvatar={assistantAvatar}
-              />
-              {trailing}
-              {emptyState}
-            </MessageScrollerContent>
-          </MessageScrollerViewport>
-          <MessageScrollerButton aria-label={scrollToBottomLabel} />
-          {/* Inside the scroller, not beside it: it reads the reading line off
-              the same context, and the root is already the positioned
-              ancestor. */}
-          <TurnOutline turns={visibleTurns} />
-        </MessageScroller>
-      </MessageScrollerProvider>
-    </LazyMotion>
+                {trailing}
+                {emptyState}
+              </MessageScrollerContent>
+            </MessageScrollerViewport>
+            <MessageScrollerButton aria-label={scrollToBottomLabel} />
+            {/* Inside the scroller, not beside it: it reads the reading line off
+                the same context, and the root is already the positioned
+                ancestor. */}
+            <TurnOutline turns={visibleTurns} />
+          </MessageScroller>
+        </MessageScrollerProvider>
+      </LazyMotion>
+    </FilePreviewProvider>
   )
 }

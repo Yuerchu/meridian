@@ -146,12 +146,18 @@ pub unsafe fn create_process_as_user(
     );
     if ok == 0 {
         let err = GetLastError() as i32;
+        // Commands routinely contain credentials (for example a bearer token
+        // passed to curl).  This path is especially easy to reach with an
+        // overlong command, so logging the complete command line turns an
+        // ordinary spawn failure into a durable secret leak.  Its encoded
+        // length is enough to diagnose the Windows limit without retaining
+        // user-authored bytes.
         let msg = format!(
-            "CreateProcessAsUserW failed: {} ({}) | cwd={} | cmd={} | env_u16_len={} | si_flags={} | creation_flags={}",
+            "CreateProcessAsUserW failed: {} ({}) | cwd={} | cmd_u16_len={} | env_u16_len={} | si_flags={} | creation_flags={}",
             err,
             format_last_error(err),
             cwd.display(),
-            cmdline_str,
+            cmdline.len(),
             env_block_len,
             si.StartupInfo.dwFlags,
             creation_flags,

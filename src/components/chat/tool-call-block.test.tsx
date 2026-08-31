@@ -389,7 +389,20 @@ describe('web search sources', () => {
     await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.tool.webSearch.sources', { count: 2 }) }))
 
     const link = screen.getByText('HeroUI').closest('a')!
+    expect(link).toHaveAttribute('href', '#meridian-external')
+    expect(link).not.toHaveAttribute('target')
     const event = new MouseEvent('click', { bubbles: true, cancelable: true })
+    fireEvent(link, event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(shellOpen).toHaveBeenCalledWith('https://heroui.com/docs')
+  })
+
+  it('routes a middle-click through the native opener too', async () => {
+    render(<ToolCallBlock data={withSources()} />)
+    await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.tool.webSearch.sources', { count: 2 }) }))
+
+    const link = screen.getByText('HeroUI').closest('a')!
+    const event = new MouseEvent('auxclick', { bubbles: true, button: 1, cancelable: true })
     fireEvent(link, event)
     expect(event.defaultPrevented).toBe(true)
     expect(shellOpen).toHaveBeenCalledWith('https://heroui.com/docs')

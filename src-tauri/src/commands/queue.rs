@@ -37,6 +37,7 @@ pub async fn queue_enqueue(
     conversation_id: String,
     content: String,
     delivery: String,
+    context_refs: Option<Vec<meridian_core::workspace::reference::WorkspaceReferenceInput>>,
 ) -> Result<QueuedPrompt, String> {
     let content = content.trim().to_string();
     if content.is_empty() {
@@ -48,9 +49,47 @@ pub async fn queue_enqueue(
     let conversation = conversation_id.clone();
     let delivery = Delivery::parse_or_wait(&delivery);
 
+    let parsed = meridian_core::workspace::reference::parse_references(&content);
+    let references = meridian_core::workspace::reference::reconcile_references(context_refs, parsed)?;
+    if !references.is_empty() && delivery == Delivery::Interject {
+        return Err("workspace references can only be queued as follow-up messages".into());
+    }
+    let prepared = if references.is_empty() {
+        Vec::new()
+    } else {
+        let pool_for_root = services.db.clone();
+        let conversation_for_root = conversation_id.clone();
+        let working_directory = blocking(move || {
+            let mut conn = get_conn(&pool_for_root)?;
+            meridian_core::workspace::resolve_workspace_dir(&mut conn, &conversation_for_root)?
+                .map(|path| path.to_string_lossy().into_owned())
+                .ok_or_else(|| "workspace unavailable".to_string())
+        })
+        .await?;
+        let file_access = meridian_core::agent::build_file_access(&services.db).await;
+        let context = meridian_core::tools::ToolContext {
+            working_directory: Some(working_directory),
+            shell: meridian_core::tools::ShellType::default_for_platform(),
+            file_access,
+            project_id: None,
+            conversation_id: Some(conversation_id.clone()),
+            turn_id: None,
+            assistant_id: None,
+            db_pool: Some(services.db.clone()),
+            #[cfg(not(target_os = "android"))]
+            sandbox_policy: None,
+            tool_secrets: Default::default(),
+            cancel: tokio_util::sync::CancellationToken::new(),
+            journal: None,
+        };
+        let counter = meridian_core::agent::TokenCounter::new(meridian_core::agent::TokenizerKind::Cl100kBase);
+        meridian_core::workspace::reference::prepare_references(&context, &references, &counter, 128_000).await?
+    };
+
     let item = blocking(move || {
         let mut conn = get_conn(&pool)?;
-        ops::enqueue(&mut conn, &id, &conversation, &content, delivery, now_ms()).map_err(|e| e.to_string())
+        ops::enqueue_with_context(&mut conn, &id, &conversation, &content, delivery, &prepared, now_ms())
+            .map_err(|e| e.to_string())
     })
     .await?;
 

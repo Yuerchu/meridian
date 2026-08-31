@@ -55,7 +55,10 @@ pub fn append_message(conn: &mut SqliteConnection, new: &NewMessage, parent: Opt
 /// command output this table has no business holding a second copy of. A
 /// compaction summary is not something anyone said.
 fn audit_copy(conn: &mut SqliteConnection, row: &Message) {
-    if row.role != "user" || row.is_compact_summary != 0 {
+    // A `shell` row is a local execution record, not training/audit text. Its
+    // command routinely contains tokens and passwords, while the paired output
+    // already lives in the deliberately private context-item table.
+    if row.role != "user" || row.is_compact_summary != 0 || row.source.as_deref() == Some("shell") {
         return;
     }
     if let Err(e) = crate::db::ops::audit::record(conn, row) {
