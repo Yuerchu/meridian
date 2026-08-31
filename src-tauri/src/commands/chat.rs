@@ -986,6 +986,8 @@ async fn chat_inner(
         let msg_id = user_msg_id.clone();
         let parent = parent_cursor.clone();
         let turn = turn_id.clone();
+        // Read before the shadowing clone below carries it into the closure.
+        let delivered_from_queue = queued.is_some();
         let queued = queued.clone();
         tokio::task::spawn_blocking(move || -> Result<(), String> {
             use diesel::Connection;
@@ -1053,6 +1055,15 @@ async fn chat_inner(
         })
         .await
         .map_err(|e| e.to_string())??;
+        // The row exists and the item has been spent, both in the transaction
+        // above. Nothing else will say so until the turn ends, which for a
+        // queued message is the whole of the wait: without this the front end
+        // holds the item at `queued` for the length of the turn — stacked above
+        // the composer, offering a delete that answers "the message has already
+        // been sent" — while the message it became is on no screen at all.
+        if delivered_from_queue {
+            meridian_core::agent::queue::announce_delivered(&services, &conversation_id);
+        }
         parent_cursor = Some(user_msg_id.clone());
     }
 
@@ -1220,8 +1231,13 @@ async fn chat_inner(
     let approvals = meridian_core::agent::denied::DeniedMemory::wrap(&approvals);
     // Per turn, because a row it writes belongs to the turn it interrupted —
     // which is where the model reads it.
-    let interjections =
-        meridian_core::agent::queue::Interjections::new(pool.clone(), conversation_id.clone(), turn_id.clone());
+    // Wrapped, so that taking one off the queue mid-turn reaches the window.
+    // The row and the item are spent in one transaction inside the port; what
+    // the wrapper adds is the only thing that says so.
+    let interjections = meridian_core::agent::queue::Announcing::wrap(
+        services.events.clone(),
+        meridian_core::agent::queue::Interjections::new(pool.clone(), conversation_id.clone(), turn_id.clone()),
+    );
     let outcome = engine::run_turn(
         &engine::TurnServices {
             pool: &pool,

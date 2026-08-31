@@ -16,6 +16,7 @@ use crate::agent::engine::{Steered, SteeredOrigin, Steering};
 use crate::db::DbPool;
 use crate::db::models::message::NewMessage;
 use crate::db::models::queue::Delivery;
+use crate::events::EventBus;
 use crate::services::Services;
 use crate::util::{get_conn, now_ms};
 
@@ -134,6 +135,38 @@ impl Steering for Interjections {
     }
 }
 
+/// [`Interjections`], plus telling the window what it just took.
+///
+/// A decorator rather than a field on the port, for the same reason the port
+/// exists: the turn loop drains `Steering` without knowing whether it is fed by
+/// a queue or by a sub-agent's inbox, and `Interjections` is built from a pool
+/// and two ids. Knowing that a delivery is worth announcing is knowing it came
+/// from the queue, so it belongs to whoever already knows that.
+///
+/// Only a non-empty drain says anything. The loop asks at every round boundary
+/// and most of them have nothing waiting.
+pub struct Announcing {
+    inner: Interjections,
+    events: EventBus,
+}
+
+impl Announcing {
+    pub fn wrap(events: EventBus, inner: Interjections) -> Self {
+        Self { inner, events }
+    }
+}
+
+#[async_trait::async_trait]
+impl Steering for Announcing {
+    async fn drain(&self) -> Vec<Steered> {
+        let taken = self.inner.drain().await;
+        if !taken.is_empty() {
+            super::emit_delivered(&self.events, &self.inner.conversation_id);
+        }
+        taken
+    }
+}
+
 /// Take the front of the queue and write the message it becomes, or answer that
 /// there is nothing to take.
 ///
@@ -224,6 +257,62 @@ mod tests {
     fn add(conn: &mut SqliteConnection, text: &str, delivery: Delivery) {
         let id = uuid::Uuid::new_v4().to_string();
         enqueue(conn, &id, "c1", text, delivery, 0).unwrap();
+    }
+
+    /// Counts what reached the window, per channel.
+    #[derive(Default)]
+    struct Heard(std::sync::Mutex<Vec<(String, serde_json::Value)>>);
+
+    impl crate::events::EventSink for Heard {
+        fn emit(&self, channel: &str, payload: &serde_json::Value) -> Result<(), String> {
+            self.0.lock().unwrap().push((channel.to_string(), payload.clone()));
+            Ok(())
+        }
+    }
+
+    /// Taking an interjection mid-turn spends the queue item and writes the row
+    /// in one transaction, and until this wrapper existed nothing said so.
+    ///
+    /// What that cost was not subtle: the front end went on showing the item as
+    /// `queued` for the rest of the turn, so the message appeared to be waiting
+    /// while it had in fact already been delivered — and the delete the row was
+    /// still offering came back "that message has already been sent", because
+    /// `remove` refuses anything dispatched. The message it became was on no
+    /// screen either, since the transcript is only re-read when the turn ends.
+    #[tokio::test]
+    async fn taking_an_interjection_tells_the_window_and_an_empty_round_does_not() {
+        let pool = test_db();
+        {
+            let mut conn = pool.get().unwrap();
+            conversation(&mut conn, "c1");
+            add(&mut conn, "actually, stop", Delivery::Interject);
+        }
+
+        let events = EventBus::new();
+        let heard = std::sync::Arc::new(Heard::default());
+        events.register(heard.clone(), false);
+
+        let port = Announcing::wrap(
+            events.clone(),
+            Interjections::new(pool.clone(), "c1".into(), "t1".into()),
+        );
+
+        assert_eq!(port.drain().await.len(), 1);
+        {
+            let seen = heard.0.lock().unwrap();
+            assert_eq!(seen.len(), 1, "the delivery is announced exactly once");
+            assert_eq!(seen[0].0, "queue-updated");
+            // The flag is what separates this from an enqueue or a drag: only
+            // this one changes the transcript, and only this one is worth a
+            // snapshot of a running turn.
+            assert_eq!(seen[0].1["delivered"], serde_json::json!(true));
+            assert_eq!(seen[0].1["conversation_id"], serde_json::json!("c1"));
+        }
+
+        // The loop asks at every round boundary, and most of them have nothing
+        // waiting. A round that took nothing must not re-read the conversation.
+        assert!(port.drain().await.is_empty());
+        assert_eq!(heard.0.lock().unwrap().len(), 1, "an empty round says nothing");
     }
 
     /// The whole port in one: interjections come out in order, already written,
