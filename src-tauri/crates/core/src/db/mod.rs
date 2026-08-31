@@ -616,6 +616,53 @@ mod migration_tests {
         assert!(ops::conversation::sub_agent_runs(&mut conn, "c1").unwrap().is_empty());
     }
 
+    /// Migration 48 removes only schema that had no runtime owner. Existing
+    /// conversations and messages must survive even when an attachment row and
+    /// the legacy compaction cursor are present in the old database.
+    #[test]
+    fn dead_schema_is_removed_without_touching_live_rows() {
+        let mut conn = conn_before("00000000000048");
+        conn.batch_execute(
+            "INSERT INTO conversations (id, title, is_pinned, is_archived, message_count,
+                                        created_at, updated_at, compact_cursor, fast_mode)
+             VALUES ('c1', 'A', 0, 0, 0, 1, 1, 1, 0);
+             INSERT INTO messages (id, conversation_id, role, content, sort_order,
+                                   created_at, schema_version, is_compact_summary)
+             VALUES ('m1', 'c1', 'user', 'hi', 1, 1, 2, 0);
+             INSERT INTO attachments (id, message_id, file_name, file_path, mime_type,
+                                      file_size, created_at)
+             VALUES ('a1', 'm1', 'old.txt', '/tmp/old.txt', 'text/plain', 3, 1);",
+        )
+        .unwrap();
+
+        run_migration(&mut conn, "00000000000048");
+
+        let dead_tables: CountRow = diesel::sql_query(
+            "SELECT COUNT(*) AS n FROM sqlite_master
+             WHERE type = 'table' AND name IN ('attachments', 'tool_permissions')",
+        )
+        .get_result(&mut conn)
+        .unwrap();
+        assert_eq!(dead_tables.n, 0);
+
+        let dead_columns: CountRow = diesel::sql_query(
+            "SELECT COUNT(*) AS n FROM pragma_table_info('conversations')
+             WHERE name = 'compact_cursor'",
+        )
+        .get_result(&mut conn)
+        .unwrap();
+        assert_eq!(dead_columns.n, 0);
+
+        let live_rows: CountRow = diesel::sql_query(
+            "SELECT COUNT(*) AS n FROM conversations c
+             JOIN messages m ON m.conversation_id = c.id
+             WHERE c.id = 'c1' AND m.id = 'm1'",
+        )
+        .get_result(&mut conn)
+        .unwrap();
+        assert_eq!(live_rows.n, 1);
+    }
+
     fn ids_of(candidates: Vec<ops::turn::InterruptedCandidate>) -> Vec<String> {
         candidates.into_iter().map(|c| c.turn.id).collect()
     }

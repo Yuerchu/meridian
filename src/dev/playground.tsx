@@ -1314,7 +1314,6 @@ function paletteRow(id: string, title: string | null, over: Partial<Conversation
     created_at: 0,
     updated_at: 0,
     assistant_id: null,
-    compact_cursor: null,
     thinking_level: null,
     fast_mode: 0,
     mode: null,

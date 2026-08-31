@@ -31,19 +31,15 @@ import { useAppTheme } from '@/lib/theme'
 import {
   EDGES,
   EDGE_COLUMNS,
-  GHOSTS,
-  GHOST_BY_ID,
   GROUPS,
   GROUP_BY_ID,
   NODE_WIDTH,
   ROW_HEIGHT,
   TABLES,
   TABLE_BY_NAME,
-  ghostId,
   nodeX,
   type SchemaColumn,
   type SchemaEdge,
-  type SchemaGhost,
   type SchemaTable,
 } from './schema-data'
 
@@ -94,12 +90,10 @@ type TableNodeData = { table: SchemaTable; dimmed: boolean; hit: boolean }
 
 function ColumnRow({ table, column, keyed }: { table: SchemaTable; column: SchemaColumn; keyed: boolean }) {
   const isPk = column.flags.includes('PK')
-  // 列上的点说的是「这里连着什么」:外键、逻辑引用,或者一条断掉的外键。
-  // 断的那种必须自己有颜色——它长得像外键,却什么都约束不了。
+  // 列上的点说的是「这里连着什么」：外键或逻辑引用。
   const mark = EDGE_COLUMNS.get(`${table.name}.${column.name}`)
-  const isBroken = mark === 'broken'
   const isSoft = mark === 'soft'
-  const isFk = !isBroken && !isSoft && column.flags.includes('FK')
+  const isFk = !isSoft && column.flags.includes('FK')
 
   // 一列的两侧各挂一对 handle。边往哪边走由两张表的相对位置决定,所以两侧都得备着。
   const handles = (['l', 'r'] as const).map((side) => {
@@ -133,18 +127,14 @@ function ColumnRow({ table, column, keyed }: { table: SchemaTable; column: Schem
         aria-hidden
         className={cn(
           'size-1.5 shrink-0 rounded-full',
-          isBroken && 'bg-danger ring-1 ring-danger/60',
-          !isBroken && isPk && 'bg-warning',
-          !isBroken && isFk && 'bg-success',
-          !isBroken && isSoft && 'bg-warning/40 ring-1 ring-warning/60',
-          !isBroken && !isPk && !isFk && !isSoft && 'bg-border',
+          isPk && 'bg-warning',
+          isFk && 'bg-success',
+          isSoft && 'bg-warning/40 ring-1 ring-warning/60',
+          !isPk && !isFk && !isSoft && 'bg-border',
         )}
       />
       <span
-        className={cn(
-          'truncate font-mono text-xs',
-          isBroken ? 'text-danger' : isPk ? 'text-warning' : keyed ? 'text-foreground' : 'text-muted',
-        )}
+        className={cn('truncate font-mono text-xs', isPk ? 'text-warning' : keyed ? 'text-foreground' : 'text-muted')}
       >
         {column.name}
       </span>
@@ -171,9 +161,7 @@ function TableNode({ data, selected }: NodeProps<Node<TableNodeData>>) {
     >
       <div className="flex items-center gap-2 border-b border-border bg-default/50 px-3 py-2">
         <span aria-hidden className="size-4 shrink-0 rounded" style={{ background: group?.color }} />
-        <span className={cn('font-mono text-sm font-semibold', table.legacy && 'text-muted line-through')}>
-          {table.name}
-        </span>
+        <span className="font-mono text-sm font-semibold">{table.name}</span>
         <span className="ml-auto font-mono text-xs text-muted/70">迁移 {table.mig}</span>
       </div>
       <div className="flex items-baseline gap-2 px-3 pt-1.5 pb-0.5 text-xs text-muted">
@@ -189,43 +177,13 @@ function TableNode({ data, selected }: NodeProps<Node<TableNodeData>>) {
   )
 }
 
-/**
- * 一张已经不在库里、却仍被外键指着的表。
- *
- * 它存在的唯一理由是给那条断掉的边一个诚实的终点。画成虚线空框而不是一张表，
- * 是因为它不是一张表——里面没有字段可画，只有「这里本该有东西」这一件事。
- */
-function GhostNode({ data }: NodeProps<Node<{ ghost: SchemaGhost; dimmed: boolean }>>) {
-  const { ghost, dimmed } = data
-  return (
-    <div
-      data-slot="schema-ghost"
-      className={cn(
-        'flex flex-col justify-center rounded-xl border-2 border-dashed border-danger/60 bg-danger/5 px-3',
-        dimmed && 'opacity-25',
-      )}
-      style={{ width: NODE_WIDTH, height: ghost.h }}
-    >
-      {/* 只需要一个入口：指着它的边从右边过来。 */}
-      <Handle type="target" id="id__rt" position={Position.Right} isConnectable={false} />
-      <Handle type="target" id="id__lt" position={Position.Left} isConnectable={false} />
-      <span className="font-mono text-sm font-semibold text-danger line-through">{ghost.name}</span>
-      <span className="text-xs text-danger/80">这张表已经不存在 · {ghost.referencedBy} 仍指着它</span>
-    </div>
-  )
-}
-
-const nodeTypes = { table: TableNode, ghost: GhostNode }
+const nodeTypes = { table: TableNode }
 
 // ── 边 ────────────────────────────────────────────────────────────────────
 
 function buildEdges(showSoft: boolean, selected: string | null): Edge[] {
-  // 开关管的是逻辑引用。broken 是库里真实存在的外键约束，只是目标没了，
-  // 跟着逻辑引用一起被关掉会让它在图上凭空消失。
   return EDGES.filter((e) => e.kind !== 'soft' || showSoft).map((e, i) => {
-    // 断掉的边连到墓碑,不连到 `to`。`to` 是这条外键的本意,而线的两端是一句陈述:
-    // 把它连回那张好好存在的表,就是在说「它引用着这张表」——恰恰是不成立的那句。
-    const target = e.kind === 'broken' && e.actualTarget ? ghostId(e.actualTarget) : e.to
+    const target = e.to
     const fromX = nodeX(e.from)
     const toX = nodeX(target)
     // 往右还是往左,由两端的相对位置决定;自环固定走右侧。
@@ -240,15 +198,12 @@ function buildEdges(showSoft: boolean, selected: string | null): Edge[] {
       type: e.self ? 'smoothstep' : 'default',
       className: cn(
         e.kind === 'soft' && 'schema-edge-soft',
-        e.kind === 'broken' && 'schema-edge-broken',
         related && 'schema-edge-hl',
         selected !== null && !related && 'schema-edge-dim',
       ),
       // 全部边都挂标签会糊成一片:外键常驻(它标的是删除行为,是这张图的重点),
-      // 逻辑引用只在选中相关表时才说话。断掉的那条永远说话——终点已经把事实说清楚了,
-      // 标签补的是「它本来要指哪」。
-      label:
-        e.kind === 'broken' ? `✕ ${e.act} · 本意是 ${e.to}` : e.kind === 'fk' ? e.act : related ? e.act : undefined,
+      // 逻辑引用只在选中相关表时才说话。
+      label: e.kind === 'fk' ? e.act : related ? e.act : undefined,
       labelShowBg: true,
       labelBgPadding: [4, 2] as [number, number],
       labelBgBorderRadius: 3,
@@ -275,8 +230,8 @@ function Canvas({
   const { resolvedTheme } = useAppTheme()
 
   const initial = useMemo<Node[]>(
-    () => [
-      ...TABLES.map((t) => ({
+    () =>
+      TABLES.map((t) => ({
         id: t.name,
         type: 'table',
         position: { x: t.x, y: t.y },
@@ -285,15 +240,6 @@ function Canvas({
         width: NODE_WIDTH,
         height: t.h,
       })),
-      ...GHOSTS.map((g) => ({
-        id: g.id,
-        type: 'ghost',
-        position: { x: g.x, y: g.y },
-        data: { ghost: g, dimmed: false },
-        width: NODE_WIDTH,
-        height: g.h,
-      })),
-    ],
     [],
   )
   const [nodes, setNodes, onNodesChange] = useNodesState(initial)
@@ -306,18 +252,7 @@ function Canvas({
     setNodes((ns) =>
       ns.map((n) => {
         const t = TABLE_BY_NAME.get(n.id)
-        if (!t) {
-          // 墓碑：跟着指着它的那张表一起显示或隐藏，不然会剩下一个没有来处的空框。
-          const ghost = GHOST_BY_ID.get(n.id)
-          const owner = ghost && TABLE_BY_NAME.get(ghost.referencedBy)
-          const hit = q.length > 0 && (ghost?.name.toLowerCase().includes(q) ?? false)
-          return {
-            ...n,
-            hidden: owner ? hiddenGroups.has(owner.group) : false,
-            selected: false,
-            data: { ...n.data, dimmed: q.length > 0 && !hit },
-          }
-        }
+        if (!t) return n
         const hit =
           q.length > 0 &&
           (t.name.toLowerCase().includes(q) ||
@@ -339,12 +274,7 @@ function Canvas({
     return () => clearTimeout(id)
   }, [rf])
 
-  // 点墓碑等于点它的来处：墓碑自己没有内容可看，而想知道的事（谁还指着它、为什么）
-  // 都写在那张表的说明里。
-  const onNodeClick = useCallback(
-    (_: unknown, node: Node) => onSelect(GHOST_BY_ID.get(node.id)?.referencedBy ?? node.id),
-    [onSelect],
-  )
+  const onNodeClick = useCallback((_: unknown, node: Node) => onSelect(node.id), [onSelect])
   const onPaneClick = useCallback(() => onSelect(null), [onSelect])
 
   return (
@@ -370,8 +300,7 @@ function Canvas({
         zoomable
         nodeColor={(n) => {
           const t = TABLE_BY_NAME.get(n.id)
-          if (!t) return 'var(--color-danger)' // 墓碑
-          return GROUP_BY_ID.get(t.group)?.color ?? '#888'
+          return t ? (GROUP_BY_ID.get(t.group)?.color ?? '#888') : '#888'
         }}
         nodeStrokeWidth={0}
       />
@@ -399,21 +328,15 @@ function EdgeRow({ edge, dir, onJump }: { edge: SchemaEdge; dir: 'out' | 'in'; o
     <Button
       variant="ghost"
       onClick={() => onJump(dir === 'out' ? edge.to : edge.from)}
-      // flex-wrap + wrap-anywhere：断掉那条边的说明比一行长，不换行就被面板右缘吃掉。
       className="h-auto w-full flex-wrap justify-start gap-x-2 gap-y-0.5 rounded-md px-4 py-1 font-normal"
     >
       <span
-        className={cn(
-          'font-mono text-xs wrap-anywhere',
-          edge.kind === 'broken' ? 'text-danger' : edge.kind === 'soft' ? 'text-warning' : 'text-foreground',
-        )}
+        className={cn('font-mono text-xs wrap-anywhere', edge.kind === 'soft' ? 'text-warning' : 'text-foreground')}
       >
         {text}
       </span>
-      <span
-        className={cn('ml-auto font-mono text-xs wrap-anywhere', edge.kind === 'broken' ? 'text-danger' : 'text-muted')}
-      >
-        {edge.kind === 'soft' ? '逻辑 · ' : edge.kind === 'broken' ? `✕ 实际指向 ${edge.actualTarget} · ` : ''}
+      <span className="ml-auto font-mono text-xs text-muted wrap-anywhere">
+        {edge.kind === 'soft' ? '逻辑 · ' : ''}
         {edge.act}
       </span>
     </Button>
@@ -444,7 +367,6 @@ function DetailPanel({
     )
   }
 
-  // 不用非空断言：选中的 id 可能来自画布上任何一个节点，而墓碑不是表。
   const table = TABLE_BY_NAME.get(name)
   if (!table) return null
   const group = GROUP_BY_ID.get(table.group)
@@ -559,7 +481,6 @@ function Lab() {
 
   const fkCount = EDGES.filter((e) => e.kind === 'fk').length
   const softCount = EDGES.filter((e) => e.kind === 'soft').length
-  const brokenCount = EDGES.filter((e) => e.kind === 'broken').length
 
   const jump = useCallback(
     (name: string) => {
@@ -585,7 +506,6 @@ function Lab() {
         <h1 className="text-sm font-semibold whitespace-nowrap">数据库模型</h1>
         <span className="font-mono text-xs whitespace-nowrap text-muted">
           {TABLES.length} 表 · {fkCount} 外键 · {softCount} 逻辑引用
-          {brokenCount > 0 && <span className="text-danger"> · {brokenCount} 断</span>}
         </span>
         <Input
           type="search"
@@ -653,8 +573,7 @@ function Lab() {
             onSelect={setSelected}
           />
           <p className="pointer-events-none absolute bottom-3.5 left-14 z-5 rounded-md border border-border bg-background/80 px-2.5 py-1 text-xs text-muted backdrop-blur-sm">
-            实线 = 真外键（标注 ON DELETE 行为） · 虚线 = 代码维护的逻辑引用，故意不建外键 · 红色断线 =
-            库里有这条外键但它指向一张不存在的表
+            实线 = 真外键（标注 ON DELETE 行为） · 虚线 = 代码维护的逻辑引用，故意不建外键
           </p>
         </div>
         <DetailPanel name={selected} onClose={() => setSelected(null)} onJump={jump} />
@@ -673,10 +592,6 @@ export default function SchemaLab() {
            看不出走向,而这张图上的线本身就是内容。 */
         .react-flow__edge-path { stroke: var(--color-muted); stroke-width: 1.4px; opacity: .55; }
         .schema-edge-soft .react-flow__edge-path { stroke: var(--color-warning); stroke-dasharray: 5 4; opacity: .75; }
-        /* 断掉的外键:库里有这条约束,但它指向一张不存在的表。画成断开的红线,
-           因为画成正常外键就是在陈述一件不成立的事。 */
-        .schema-edge-broken .react-flow__edge-path { stroke: var(--color-danger); stroke-dasharray: 2 5; stroke-width: 2px; opacity: .9; }
-        .schema-edge-broken .react-flow__edge-text { fill: var(--color-danger); }
         .schema-edge-hl .react-flow__edge-path { stroke: var(--color-accent); stroke-width: 2.2px; opacity: 1; }
         .schema-edge-dim { opacity: .12; }
         .react-flow__edge-text { fill: var(--color-muted); font-size: 9px; }

@@ -2,7 +2,7 @@
  * Meridian 数据库模型 —— 画布与文档的唯一数据源。
  *
  * 由 src-tauri/crates/core/migrations/00000000000001_initial …
- * 00000000000044_audit_conversation_turn_index 与 src-tauri/crates/core/src/db/ 归纳而成。
+ * 00000000000048_remove_dead_schema 与 src-tauri/crates/core/src/db/ 归纳而成。
  *
  * 一半是散文，只有人能写：为什么 parent_id 不建外键、为什么两个 cache 列上 NULL 和 0
  * 是不同的答案、为什么价格要抄到审计行上。另一半是纯结构，由
@@ -42,7 +42,6 @@ interface RawTable {
   /** 建这张表的迁移序号。后续 ALTER 不记在这里，列说明里会写。 */
   mig: number
   tags?: string[]
-  legacy?: boolean
   /** 值得先看一眼的列。只加重，不折叠——节点上所有列都画出来。 */
   show: string[]
   note?: string
@@ -67,44 +66,13 @@ export interface SchemaEdge {
   to: string
   toCol: string
   /**
-   * fk = 数据库强制的外键；soft = 代码维护的逻辑引用，故意不建外键；
-   * broken = 库里真的有这条外键，但它指向一张<b>不存在的表</b>，所以它什么也约束不了。
-   *
-   * `broken` 不是给注释用的形容词：画布按它把线画成断的，`check-db-schema.mjs`
-   * 按它去和真实 schema 对账——一条边标成 broken 而库里其实好着，或者反过来，都会报错。
-   * 光在旁边写一句说明是不够的，线本身画得像一条正常外键，看图的人就会当它是。
+   * fk = 数据库强制的外键；soft = 代码维护的逻辑引用，故意不建外键。
    */
-  kind: 'fk' | 'soft' | 'broken'
-  /** ON DELETE 行为（fk 与 broken 都只写这个），或 soft 边的一句话说明。 */
+  kind: 'fk' | 'soft'
+  /** ON DELETE 行为，或 soft 边的一句话说明。 */
   act: string
-  /**
-   * broken 专用：它**实际**指向的那张已经不存在的表。
-   *
-   * `to` 是本意（校验器拿它跟还原后的 SQL 比对），这一列是现实——画布连的是这一头，
-   * 连到 `to` 上就等于用一条线声称「它引用着那张好好存在的表」，而那正是不成立的事。
-   */
-  actualTarget?: string
   self?: boolean
 }
-
-/**
- * 墓碑：一张已经不在库里、却仍被某条外键指着的表。
- *
- * 它必须在图上占一个位置，否则那条断掉的边只能连回现存的表，而线的两端本身就是
- * 一句陈述——红色和标签都盖不过它。摆在最左边、所有列之外，因为它就在体系之外。
- */
-export interface SchemaGhost {
-  /** 节点 id，与表名分开：表名可能和某张真表重名，id 不能。 */
-  id: string
-  name: string
-  /** 还指着它的那张表。 */
-  referencedBy: string
-  x: number
-  y: number
-  h: number
-}
-
-export const ghostId = (name: string) => `ghost:${name}`
 
 export const GROUPS: SchemaGroup[] = [
   {
@@ -189,13 +157,6 @@ const RAW_TABLES: RawTable[] = [
       ['created_at', 'BIGINT', ['NN'], '—', 'epoch ms'],
       ['updated_at', 'BIGINT', ['NN', 'IDX'], '—', '插入消息的触发器会把它推到该消息的 created_at'],
       ['project_id', 'TEXT', ['FK', 'NULL'], 'NULL', '→ <code>projects(id)</code> ON DELETE SET NULL（迁移 3）'],
-      [
-        'compact_cursor',
-        'INTEGER',
-        ['NULL'],
-        'NULL',
-        '<b>遗留</b>：迁移 21 之后压缩边界改由 <code>messages.compact_anchor_id</code> 表达，分支交错时 sort_order 阈值不再成立',
-      ],
       ['thinking_level', 'TEXT', ['NULL'], 'NULL', 'NULL = 继承助手默认；如 <code>low/medium/high/xhigh</code>'],
       ['fast_mode', 'INTEGER', ['NN'], '0', '0/1'],
       [
@@ -399,7 +360,6 @@ const RAW_TABLES: RawTable[] = [
       '自引用两次：<code>parent_id</code>（逻辑边，无外键）与 <code>compact_anchor_id</code>（真外键，只有一层深，不会链式递归）。',
       '被 <code>conversations.head_message_id</code> 反向引用（SET NULL）。',
       '被 <code>message_stickers.message_id</code> 以 CASCADE 引用。',
-      '<code>attachments</code>（迁移 1）曾以 CASCADE 引用它，<b>现已无任何代码读写</b>。',
     ],
     rules: [
       '<b>NULL ≠ 0</b>（两个 cache 列）：NULL 是「上游没提缓存」，0 是「上游说没命中」。把前者当后者，会把所有沉默供应商的回复报告成 100% 未命中——那是关于供应商的断言，不是关于数据的。',
@@ -518,28 +478,6 @@ const RAW_TABLES: RawTable[] = [
       "<code>status='failed'</code> ⇒ <code>error</code> 通常有值；<code>ended_at</code> 为 NULL ⇒ 该回合没有正常收尾。",
     ],
   },
-  {
-    name: 'attachments',
-    group: 'conv',
-    title: '附件（遗留死表）',
-    mig: 1,
-    tags: ['legacy'],
-    legacy: true,
-    show: ['id', 'message_id', 'file_path', 'mime_type'],
-    note: '迁移 1 建的表，<b>今天没有任何 Rust 代码读写它</b>，Diesel 的 schema.rs 里也没有它。附件现在作为 OpenAI 风格 parts 存在 <code>messages.content</code> 的 JSON 里。表还在库里只是因为没人写删除它的迁移。',
-    cols: [
-      ['id', 'TEXT', ['PK', 'NN'], '—', ''],
-      ['message_id', 'TEXT', ['FK', 'NN', 'IDX'], '—', '→ <code>messages(id)</code> ON DELETE CASCADE'],
-      ['file_name', 'TEXT', ['NN'], '—', ''],
-      ['file_path', 'TEXT', ['NN'], '—', ''],
-      ['mime_type', 'TEXT', ['NN'], '—', ''],
-      ['file_size', 'BIGINT', ['NN'], '—', '字节'],
-      ['created_at', 'BIGINT', ['NN'], '—', ''],
-    ],
-    rels: ['仅 <code>messages</code> 一条边，且不再有代码走它。'],
-    rules: ['新代码不要往这里写；要加附件表得先决定它与 content parts 的关系。'],
-  },
-
   // ── 供应商与模型 ──────────────────────────────────────────────
   {
     name: 'providers',
@@ -1133,52 +1071,6 @@ const RAW_TABLES: RawTable[] = [
   },
 
   {
-    name: 'tool_permissions',
-    group: 'tools',
-    title: '工具权限（无代码读写 + 外键悬空）',
-    mig: 1,
-    tags: ['legacy'],
-    legacy: true,
-    show: ['id', 'tool_name', 'mcp_server_id', 'permission'],
-    note:
-      '<b>全项目只有模型定义，没有任何 ops、没有任何读写代码</b>——和 <code>attachments</code> 一样。' +
-      '实际的权限判定走 <code>tools::reach</code> 与自动审查装饰器，不经过这张表。' +
-      '而且它现在<b>也写不进去</b>：迁移 24 的重建把外键改写成指向一张随后被删掉的表，见下面的约束条。',
-    cols: [
-      ['id', 'TEXT', ['PK', 'NN'], '—', ''],
-      ['tool_name', 'TEXT', ['NN', 'UQ'], '—', '<code>UNIQUE(tool_name)</code>——<b>全局一条规则</b>，不是按服务器分的'],
-      [
-        'mcp_server_id',
-        'TEXT',
-        ['FK', 'NULL'],
-        'NULL',
-        '→ <code>mcp_servers(id)</code> ON DELETE CASCADE；内置工具为 NULL',
-      ],
-      [
-        'permission',
-        'TEXT',
-        ['NN'],
-        "'ask'",
-        '<code>always</code> | <code>ask</code> | <code>never</code>（<code>tools::Permission</code>）',
-      ],
-      ['created_at', 'BIGINT', ['NN'], '—', ''],
-      ['updated_at', 'BIGINT', ['NN'], '—', ''],
-    ],
-    rels: [
-      '<b>库里这条外键指向 <code>mcp_servers_old</code>——一张不存在的表。</b>画布上画的是它本来的意思（指向 <code>mcp_servers</code>，CASCADE）。',
-    ],
-    rules: [
-      '<b>迁移 24 把这张表写坏了。</b>那次重建走的是 <code>ALTER TABLE mcp_servers RENAME TO mcp_servers_old</code>，' +
-        'SQLite 3.25 起会顺手把其它表里指向它的 REFERENCES 一并改写（两种 <code>foreign_keys</code> 设置下都会，' +
-        '在 3.50.4 上实测过），于是这一列的外键变成指向 <code>mcp_servers_old</code>；' +
-        '同一个迁移随后 <code>DROP</code> 掉了那张表。',
-      '<b>后果是整张表都写不了</b>，不只是带 <code>mcp_server_id</code> 的行：SQLite 在准备 DML 时就要解析外键目标表，' +
-        '所以插入一条内置工具（该列为 NULL）的权限同样报 <code>no such table: main.mcp_servers_old</code>。' +
-        '眼下没人被绊到，只是因为没有任何代码在写它。要启用这张表，得先加一个迁移把它重建一遍。',
-      '唯一键在 <code>tool_name</code> 上而不是 <code>(server, tool_name)</code>：两个 MCP 服务器提供同名工具时会互相覆盖。',
-    ],
-  },
-  {
     name: 'mcp_servers',
     group: 'tools',
     title: 'MCP 服务器',
@@ -1199,7 +1091,6 @@ const RAW_TABLES: RawTable[] = [
       ['created_at', 'BIGINT', ['NN'], '—', ''],
       ['updated_at', 'BIGINT', ['NN'], '—', ''],
     ],
-    rels: ['被 <code>tool_permissions.mcp_server_id</code>（CASCADE）引用。'],
     rules: [
       "<code>transport_type='stdio'</code> ⇒ <code>command</code> 必填、<code>url</code> 无意义；HTTP 类反之。数据库不校验。",
       'MCP 工具定义带着用户自己的服务器名和参数 schema，因此<b>群聊会话一律不下发</b>（<code>qq_tools.rs</code>）。',
@@ -1244,7 +1135,7 @@ const RAW_TABLES: RawTable[] = [
       ['args_template', 'TEXT', ['NULL'], 'NULL', '参数模板'],
       ['working_directory', 'TEXT', ['NULL'], 'NULL', ''],
       ['timeout_ms', 'INTEGER', ['NULL'], '30000', '<b>可空但有默认</b>'],
-      ['permission', 'TEXT', ['NN'], "'ask'", '同 tool_permissions 的取值'],
+      ['permission', 'TEXT', ['NN'], "'ask'", '<code>always</code> | <code>ask</code> | <code>never</code>'],
       ['is_enabled', 'INTEGER', ['NN'], '1', '0/1'],
       ['sort_order', 'INTEGER', ['NN'], '0', ''],
       ['created_at', 'BIGINT', ['NN'], '—', ''],
@@ -1904,26 +1795,12 @@ export const EDGES: SchemaEdge[] = [
     act: 'CASCADE',
   },
   { from: 'acp_sessions', col: 'conversation_id', to: 'conversations', toCol: 'id', kind: 'fk', act: 'CASCADE' },
-  { from: 'attachments', col: 'message_id', to: 'messages', toCol: 'id', kind: 'fk', act: 'CASCADE' },
   { from: 'message_stickers', col: 'message_id', to: 'messages', toCol: 'id', kind: 'fk', act: 'CASCADE' },
   { from: 'message_stickers', col: 'sticker_id', to: 'emojis', toCol: 'id', kind: 'fk', act: 'RESTRICT' },
   { from: 'emojis', col: 'pack_id', to: 'emoji_packs', toCol: 'id', kind: 'fk', act: 'CASCADE' },
   { from: 'assistant_emoji_packs', col: 'assistant_id', to: 'assistants', toCol: 'id', kind: 'fk', act: 'CASCADE' },
   { from: 'assistant_emoji_packs', col: 'pack_id', to: 'emoji_packs', toCol: 'id', kind: 'fk', act: 'CASCADE' },
   { from: 'custom_tools', col: 'category_id', to: 'tool_categories', toCol: 'id', kind: 'fk', act: 'SET NULL' },
-  // 库里这条外键指向 mcp_servers_old —— 迁移 24 的 RENAME 改写了它，同一个迁移又把
-  // 那张表 DROP 了。线画成断的，因为它确实是断的：整张 tool_permissions 写不进去。
-  {
-    from: 'tool_permissions',
-    col: 'mcp_server_id',
-    to: 'mcp_servers',
-    toCol: 'id',
-    kind: 'broken',
-    // act 只写 ON DELETE 行为，坏在哪由 kind + actualTarget 说，渲染时自己拼。
-    // 两种含义挤进一个字段，校验就得靠切字符串，而那正是它开始不准的地方。
-    act: 'CASCADE',
-    actualTarget: 'mcp_servers_old',
-  },
   { from: 'skill_bindings_global', col: 'dir_name', to: 'skills', toCol: 'dir_name', kind: 'fk', act: 'CASCADE' },
   { from: 'skill_bindings_project', col: 'dir_name', to: 'skills', toCol: 'dir_name', kind: 'fk', act: 'CASCADE' },
   { from: 'skill_bindings_project', col: 'project_id', to: 'projects', toCol: 'id', kind: 'fk', act: 'CASCADE' },
@@ -1984,7 +1861,7 @@ export const EDGES: SchemaEdge[] = [
 const LAYOUT: { x: number; tables: string[] }[] = [
   {
     x: 0,
-    tables: ['providers', 'model_configs', 'cached_models', 'mcp_servers', 'tool_permissions', 'prompt_templates'],
+    tables: ['providers', 'model_configs', 'cached_models', 'mcp_servers', 'prompt_templates'],
   },
   { x: 340, tables: ['assistants', 'tool_presets', 'tool_categories', 'custom_tools', 'projects', 'skills'] },
   {
@@ -2004,7 +1881,6 @@ const LAYOUT: { x: number; tables: string[] }[] = [
     tables: [
       'messages',
       'message_context_items',
-      'attachments',
       'message_stickers',
       'todo_items',
       'queued_prompts',
@@ -2064,41 +1940,19 @@ export const TABLES: SchemaTable[] = place()
 export const TABLE_BY_NAME = new Map(TABLES.map((t) => [t.name, t]))
 export const GROUP_BY_ID = new Map(GROUPS.map((g) => [g.id, g]))
 
-/** 墓碑高度：表头一行加一行说明，比真表矮，看一眼就知道它不是一张表。 */
-const GHOST_HEIGHT = 64
-
-/**
- * 从 broken 边推导，不单独维护一份名单——两处各写一次，迟早有一处忘了改。
- * 摆在引用它的那张表左边、所有列之外（LAYOUT 最左是 x=0）。
- */
-export const GHOSTS: SchemaGhost[] = EDGES.filter((e) => e.kind === 'broken' && e.actualTarget).map((e) => {
-  const owner = TABLE_BY_NAME.get(e.from)
-  if (!owner) throw new Error(`断掉的外键挂在一张不存在的表上：${e.from}`)
-  return {
-    id: ghostId(e.actualTarget as string),
-    name: e.actualTarget as string,
-    referencedBy: e.from,
-    x: owner.x - 340,
-    y: owner.y + Math.max(0, (owner.h - GHOST_HEIGHT) / 2),
-    h: GHOST_HEIGHT,
-  }
-})
-
-export const GHOST_BY_ID = new Map(GHOSTS.map((g) => [g.id, g]))
-
-/** 画布上任一节点的 x —— 表或墓碑。边的走向靠它决定。 */
+/** 画布上节点的 x。边的走向靠它决定。 */
 export function nodeX(id: string): number {
-  return TABLE_BY_NAME.get(id)?.x ?? GHOST_BY_ID.get(id)?.x ?? 0
+  return TABLE_BY_NAME.get(id)?.x ?? 0
 }
 
 /**
  * 参与了边的列 → 该怎么标它。节点要把这些列画出来，否则连线没有落点。
  *
- * 一列可能同时是好几条边的端点（`messages.id` 被五处指着），取最要紧的那种：
- * 断的盖过逻辑引用，逻辑引用盖过外键——列上的标记要说的是「这里有事」。
+ * 一列可能同时是好几条边的端点（`messages.id` 被五处指着），逻辑引用
+ * 盖过外键——列上的标记要说的是「这里有事」。
  */
-export type ColumnMark = 'fk' | 'soft' | 'broken'
-const MARK_RANK: Record<ColumnMark, number> = { fk: 0, soft: 1, broken: 2 }
+export type ColumnMark = 'fk' | 'soft'
+const MARK_RANK: Record<ColumnMark, number> = { fk: 0, soft: 1 }
 
 export const EDGE_COLUMNS: Map<string, ColumnMark> = (() => {
   const m = new Map<string, ColumnMark>()

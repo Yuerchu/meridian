@@ -51,7 +51,7 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
   // (`db::ops::conversation::list_conversations`). Opened from a `run_agent`
   // card, this view therefore reads null for all of them and runs on defaults:
   // no assistant, work mode, accept-edits off. The snapshot already carries the
-  // whole conversation and `loadMessages` keeps only `compact_cursor`.
+  // whole conversation, but `loadMessages` currently drops it.
   //
   // Fix is a `conversationDetails: Record<string, Conversation>` filled from the
   // snapshot plus a `conversationById` selector these fall back through — and

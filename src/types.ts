@@ -257,7 +257,6 @@ export interface Conversation {
   created_at: number
   updated_at: number
   project_id: string | null
-  compact_cursor: number | null
   /** Per-conversation reasoning tier; null means inherit the assistant default. */
   thinking_level: string | null
   fast_mode: number

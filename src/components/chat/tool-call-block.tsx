@@ -1388,8 +1388,8 @@ function SubAgentBlock({
             on purpose. So `assistant_id`, `mode`, `accept_edits`,
             `thinking_level` and `fast_mode` all come back null and the header
             shows the app name. The snapshot already carries the whole
-            conversation; `loadMessages` takes `compact_cursor` off it and drops
-            the rest. Fix is a `conversationDetails` cache with a
+            conversation; `loadMessages` drops it. Fix is a
+            `conversationDetails` cache with a
             `conversationById` selector those seven reads fall back through —
             deferred with the rest of the navigation work until the HeroUI Pro
             change lands, since that is the layer it sits in.
