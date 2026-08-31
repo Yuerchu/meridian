@@ -506,6 +506,14 @@ mod tests {
             let out = std::process::Command::new("git")
                 .arg("-C")
                 .arg(&repo)
+                // The developer's global config must not reach into a test
+                // repository. `commit.gpgsign=true` in particular turns every
+                // suite run into a pinentry prompt waiting for a hardware key
+                // that times out after a minute when nobody touches it — the
+                // "unreproducible" failure this suite carried until the cause
+                // was caught red-handed. The test's commits are throwaway; the
+                // user's own commits keep their signing untouched.
+                .args(["-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false"])
                 .args(args)
                 .output()
                 .unwrap();
