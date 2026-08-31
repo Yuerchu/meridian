@@ -34,6 +34,8 @@ export interface ShellProps {
   onDelete: (id: string) => void
   onRename: (id: string, newTitle: string) => void
   onTogglePin: (id: string) => void
+  /** Refile a conversation under another project, or under none (`null`). */
+  onMoveToProject: (id: string, projectId: string | null) => Promise<string | null>
   onSelectProject: (id: string | null) => void
   onCreateProject: (name: string, path: string) => void
   /** Start a hosted Claude Code session. Resolves to why it failed, or `null`. */

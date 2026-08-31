@@ -150,6 +150,22 @@ pub fn update_mode(conn: &mut SqliteConnection, id: &str, mode: Option<&str>, no
     Ok(())
 }
 
+/// Refile the conversation under another project, or under none.
+///
+/// Organisational for a hosted conversation — its working directory lives in
+/// `acp_sessions` — but load-bearing for a native one: the project's path is
+/// what the next turn resolves its working directory and `FileAccess` against,
+/// so moving a conversation changes what its tools may reach from here on.
+pub fn update_project(conn: &mut SqliteConnection, id: &str, project_id: Option<&str>, now: i64) -> QueryResult<()> {
+    diesel::update(conversations::table.find(id))
+        .set((
+            conversations::project_id.eq(project_id),
+            conversations::updated_at.eq(now),
+        ))
+        .execute(conn)?;
+    Ok(())
+}
+
 /// Its own setter for the same reason as `update_mode`, and kept apart from it
 /// for a second one: a mode narrows what the assistant can do, this widens what
 /// it can do without asking. Writing both through one call would suggest they
@@ -175,6 +191,464 @@ pub fn sub_agent_conversation_ids(conn: &mut SqliteConnection, parent_id: &str) 
         .order(conversations::created_at.asc())
         .select(conversations::id)
         .load::<String>(conn)
+}
+
+/// One conversation that says the query somewhere in its transcript, with a
+/// snippet around the newest mention.
+#[derive(Debug, serde::Serialize)]
+pub struct TranscriptHit {
+    pub conversation_id: String,
+    pub title: Option<String>,
+    /// Who said the matched line — `user` or `assistant`.
+    pub role: String,
+    pub snippet: String,
+    pub created_at: i64,
+}
+
+#[derive(diesel::QueryableByName)]
+struct RawTranscriptHit {
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    id: String,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    conversation_id: String,
+    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Text>)]
+    title: Option<String>,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    role: String,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    content: String,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    created_at: i64,
+}
+
+/// Rows fetched per page while scanning. A bound on memory per round trip,
+/// **never on the answer**: the scan pages on until `limit` conversations are
+/// found or the candidates run out. Capping the scan itself was the first
+/// version's defect — one talkative conversation filled the whole window,
+/// newest first, and every quieter conversation behind it vanished from the
+/// results before the dedupe ever saw them.
+const SEARCH_PAGE: i64 = 400;
+
+/// The candidate rows: what the SQL side may prefilter away, and the shared
+/// WHERE/ORDER of both pages of the scan.
+///
+/// The prefilter must pass a **superset** of what the recheck accepts, and raw
+/// LIKE alone is not one: a block-array row stores its words JSON-encoded, so
+/// a query containing `"`, `\` or a newline matches the readable text and not
+/// the stored bytes, and a phrase can span two `text` blocks that the encoding
+/// keeps apart. Those rows are shipped wholesale (`LIKE '[%'` — the same
+/// predicate `searchable_text` decodes by, and the two must stay identical)
+/// and judged in Rust; plain rows are prefiltered by literal LIKE, which for
+/// them is exact.
+const SEARCH_CANDIDATES: &str = "FROM messages m JOIN conversations c ON c.id = m.conversation_id \
+     WHERE c.parent_conversation_id IS NULL \
+       AND m.role IN ('user', 'assistant') \
+       AND (m.content LIKE ? ESCAPE '\\' OR m.content LIKE '[%')";
+
+/// Full-text search over what people and the assistant actually said.
+///
+/// Two layers with one meaning: SQL prefilters candidates (see
+/// [`SEARCH_CANDIDATES`]) and the Rust side decides on the row's *readable*
+/// text — so a match inside a base64 data URI is not a mention, and words
+/// inside a block array are found however JSON spelled them. `user` and
+/// `assistant` rows only: `context` is injected background and tool rows are
+/// machine output, and surfacing either as "the conversation said this" is how
+/// search results stop being believed.
+pub fn search_transcripts(conn: &mut SqliteConnection, query: &str, limit: usize) -> QueryResult<Vec<TranscriptHit>> {
+    let trimmed = query.trim();
+    if trimmed.is_empty() || limit == 0 {
+        return Ok(Vec::new());
+    }
+    // `%` and `_` are wildcards to LIKE; someone searching for "100%" means
+    // the characters. ESCAPE has no default, so the clause names one. This
+    // only narrows the *prefilter* — the recheck below already refuses a row
+    // whose readable text lacks the literal query, so an unescaped wildcard
+    // could widen the scan but never the answer.
+    let escaped = trimmed.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+    let pattern = format!("%{escaped}%");
+
+    let first_page = format!(
+        "SELECT m.id, m.conversation_id, c.title, m.role, m.content, m.created_at {SEARCH_CANDIDATES} \
+         ORDER BY m.created_at DESC, m.id DESC LIMIT ?"
+    );
+    // Keyset, not OFFSET: the tie-break on `m.id` is what stops a run of rows
+    // sharing one millisecond from being skipped or served twice across pages.
+    let next_page = format!(
+        "SELECT m.id, m.conversation_id, c.title, m.role, m.content, m.created_at {SEARCH_CANDIDATES} \
+           AND (m.created_at < ? OR (m.created_at = ? AND m.id < ?)) \
+         ORDER BY m.created_at DESC, m.id DESC LIMIT ?"
+    );
+
+    let mut seen = std::collections::HashSet::new();
+    let mut hits = Vec::new();
+    let mut cursor: Option<(i64, String)> = None;
+    loop {
+        let raw: Vec<RawTranscriptHit> = match &cursor {
+            None => diesel::sql_query(&first_page)
+                .bind::<diesel::sql_types::Text, _>(&pattern)
+                .bind::<diesel::sql_types::BigInt, _>(SEARCH_PAGE)
+                .load(conn)?,
+            Some((at, id)) => diesel::sql_query(&next_page)
+                .bind::<diesel::sql_types::Text, _>(&pattern)
+                .bind::<diesel::sql_types::BigInt, _>(*at)
+                .bind::<diesel::sql_types::BigInt, _>(*at)
+                .bind::<diesel::sql_types::Text, _>(id)
+                .bind::<diesel::sql_types::BigInt, _>(SEARCH_PAGE)
+                .load(conn)?,
+        };
+        let page_len = raw.len() as i64;
+        for row in raw {
+            // Advanced on every row, refused or not — the cursor tracks the
+            // scan, and the scan includes what the recheck threw away.
+            cursor = Some((row.created_at, row.id));
+            if seen.contains(&row.conversation_id) {
+                continue;
+            }
+            let Some(snippet) = snippet_around(&searchable_text(&row.content), trimmed) else {
+                continue;
+            };
+            seen.insert(row.conversation_id.clone());
+            hits.push(TranscriptHit {
+                conversation_id: row.conversation_id,
+                title: row.title,
+                role: row.role,
+                snippet,
+                created_at: row.created_at,
+            });
+            if hits.len() >= limit {
+                return Ok(hits);
+            }
+        }
+        if page_len < SEARCH_PAGE {
+            return Ok(hits);
+        }
+    }
+}
+
+/// What a row *reads as*. A block-array row stores JSON; the words are its
+/// `text` members and everything else — data URIs, type tags — is transport.
+///
+/// The leading test is byte-for-byte the SQL prefilter's `LIKE '[%'` branch,
+/// on purpose: a row this function decodes but the prefilter does not ship is
+/// a row that can never match. The `type` check keeps a *plain* message that
+/// happens to be a JSON array — someone pasting `[1, 2, 3]` — matchable as the
+/// text it is.
+fn searchable_text(content: &str) -> String {
+    if content.starts_with('[')
+        && let Ok(serde_json::Value::Array(parts)) = serde_json::from_str::<serde_json::Value>(content)
+        && parts.iter().all(|p| p.get("type").is_some())
+    {
+        return parts
+            .iter()
+            .filter_map(|p| p.get("text").and_then(|t| t.as_str()))
+            .collect::<Vec<_>>()
+            .join(" ");
+    }
+    content.to_string()
+}
+
+/// How much of the line travels with a match. Chars, not bytes: the transcript
+/// is largely CJK, where 30 bytes is ten characters.
+const SNIPPET_BEFORE: usize = 24;
+const SNIPPET_AFTER: usize = 56;
+
+/// A window of text around the first occurrence of `query`, or `None` when the
+/// readable text never says it.
+///
+/// ASCII case folding, deliberately the same fold SQLite's LIKE applies: plain
+/// rows only reach here through the LIKE prefilter, so a broader Unicode fold
+/// would accept matches ("Ä" for "ä") on exactly the rows the prefilter never
+/// ships — a promise the pipeline as a whole cannot keep. Folding ASCII is
+/// also byte-preserving, so the offset found in the folded copy needs no
+/// translation back.
+fn snippet_around(text: &str, query: &str) -> Option<String> {
+    let anchor = text.to_ascii_lowercase().find(&query.to_ascii_lowercase())?;
+
+    let start = text[..anchor]
+        .char_indices()
+        .rev()
+        .take(SNIPPET_BEFORE)
+        .last()
+        .map_or(anchor, |(i, _)| i);
+    let end = text[anchor..]
+        .char_indices()
+        .nth(query.chars().count() + SNIPPET_AFTER)
+        .map_or(text.len(), |(i, _)| anchor + i);
+
+    let mut snippet = String::new();
+    if start > 0 {
+        snippet.push('…');
+    }
+    // Newlines flatten to spaces: the snippet is one line under a title, and a
+    // line break inside it would push the match out of the row.
+    snippet.extend(
+        text[start..end]
+            .chars()
+            .map(|c| if c == '\n' || c == '\r' { ' ' } else { c }),
+    );
+    if end < text.len() {
+        snippet.push('…');
+    }
+    Some(snippet)
+}
+
+#[cfg(test)]
+mod search_tests {
+    use super::*;
+
+    #[test]
+    fn snippet_centres_the_match_and_marks_the_cuts() {
+        let text = format!("{}目标词{}", "前".repeat(50), "后".repeat(100));
+        let s = snippet_around(&text, "目标词").unwrap();
+        assert!(s.starts_with('…') && s.ends_with('…'), "{s}");
+        assert!(s.contains("目标词"));
+    }
+
+    #[test]
+    fn snippet_is_case_insensitive_and_none_when_absent() {
+        assert!(snippet_around("Hello Meridian", "meridian").is_some());
+        assert!(snippet_around("Hello Meridian", "absent").is_none());
+    }
+
+    #[test]
+    fn multimodal_rows_match_on_their_words_not_their_bytes() {
+        let content = r#"[{"type":"text","text":"看看这张图"},{"type":"image_url","image_url":{"url":"data:image/png;base64,xyzzy"}}]"#;
+        assert_eq!(searchable_text(content), "看看这张图");
+        // A match that only exists inside the data URI is not a mention.
+        assert!(snippet_around(&searchable_text(content), "xyzzy").is_none());
+    }
+
+    #[test]
+    fn newlines_do_not_break_the_row() {
+        let s = snippet_around("first line\nsecond target line\r\nthird", "target").unwrap();
+        assert!(!s.contains('\n') && !s.contains('\r'), "{s}");
+    }
+
+    /// A pasted JSON array is somebody's text, not a block array — the `type`
+    /// gate is what tells them apart.
+    #[test]
+    fn a_pasted_json_array_stays_text() {
+        assert_eq!(searchable_text("[1, 2, 3]"), "[1, 2, 3]");
+        assert!(snippet_around(&searchable_text("[1, 2, 3]"), "2, 3").is_some());
+    }
+
+    /// The fold is ASCII on purpose — the same one LIKE applies — so both
+    /// layers of the pipeline promise the same matches. See `snippet_around`.
+    #[test]
+    fn case_folding_is_ascii_like_the_prefilter() {
+        assert!(snippet_around("ÄPFEL kaufen", "äpfel").is_none());
+    }
+
+    fn say(conn: &mut SqliteConnection, id: &str, conv: &str, role: &str, content: &str, at: i64) {
+        use crate::db::models::message::NewMessage;
+        crate::db::ops::message::append_message(
+            conn,
+            &NewMessage {
+                id,
+                conversation_id: conv,
+                role,
+                content,
+                provider_id: None,
+                model_id: None,
+                input_tokens: None,
+                output_tokens: None,
+                tool_calls: None,
+                tool_call_id: None,
+                sort_order: 0,
+                created_at: at,
+                reasoning_content: None,
+                rating: None,
+                schema_version: 2,
+                is_compact_summary: 0,
+                sender_id: None,
+                parent_id: None,
+                compact_anchor_id: None,
+                source: None,
+                turn_id: None,
+                tool_outcome: None,
+                cache_read_tokens: None,
+                cache_write_tokens: None,
+                server_tool_calls: None,
+                provider_name: None,
+            },
+            None,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn search_speaks_once_per_conversation_and_only_for_speech() {
+        let pool = crate::db::test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", Some("消息树聊天"), None, None, 1).unwrap();
+        create_conversation(&mut conn, "c2", Some("别的"), None, None, 2).unwrap();
+        say(&mut conn, "m1", "c1", "user", "我们聊聊消息树的设计", 10);
+        say(&mut conn, "m2", "c1", "assistant", "消息树以 parent_id 相连", 20);
+        // Injected background is not speech, and must not surface as it.
+        say(&mut conn, "m3", "c2", "context", "消息树的背景资料", 30);
+
+        let hits = search_transcripts(&mut conn, "消息树", 20).unwrap();
+        assert_eq!(hits.len(), 1, "two mentions in c1 collapse; c2's context row is out");
+        assert_eq!(hits[0].conversation_id, "c1");
+        assert_eq!(hits[0].created_at, 20, "the newest mention is the one shown");
+        assert!(hits[0].snippet.contains("消息树"), "{}", hits[0].snippet);
+    }
+
+    #[test]
+    fn a_zero_search_limit_returns_no_rows() {
+        let pool = crate::db::test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", Some("match"), None, None, 1).unwrap();
+        say(&mut conn, "m1", "c1", "user", "needle", 10);
+
+        assert!(search_transcripts(&mut conn, "needle", 0).unwrap().is_empty());
+    }
+
+    #[test]
+    fn search_skips_delegated_transcripts() {
+        let pool = crate::db::test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "parent", None, None, None, 1).unwrap();
+        insert(
+            &mut conn,
+            NewConversation {
+                id: "sub",
+                parent_conversation_id: Some("parent"),
+                created_at: 1,
+                updated_at: 1,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        say(&mut conn, "m1", "sub", "assistant", "errand 的中间产物", 10);
+
+        assert!(search_transcripts(&mut conn, "errand", 20).unwrap().is_empty());
+    }
+
+    #[test]
+    fn search_treats_like_wildcards_as_characters() {
+        let pool = crate::db::test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        say(&mut conn, "m1", "c1", "user", "进度到 50% 了", 10);
+        say(&mut conn, "m2", "c1", "assistant", "编号是 50X", 20);
+
+        let hits = search_transcripts(&mut conn, "50%", 20).unwrap();
+        assert_eq!(hits.len(), 1);
+        // What holds this is the readable-text recheck, not the LIKE escaping:
+        // an unescaped `%` widens the prefilter to "50X", and the recheck then
+        // refuses it for lacking the literal query. The escape is scan hygiene;
+        // this pins the answer.
+        assert_eq!(hits[0].created_at, 10);
+    }
+
+    /// JSON encodes `"` as `\"`, so a query containing a quote exists in the
+    /// readable text and *not* in the stored bytes. Raw LIKE alone silently
+    /// loses these rows; the `LIKE '[%'` branch is what ships them to the
+    /// decoder. This test goes red if that branch is dropped.
+    #[test]
+    fn search_survives_json_escaping_in_block_arrays() {
+        let pool = crate::db::test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        say(
+            &mut conn,
+            "m1",
+            "c1",
+            "user",
+            r#"[{"type":"text","text":"他说：\"消息树\"，很妙"}]"#,
+            10,
+        );
+
+        // The quoted phrase, quotes included — the bytes in the column spell
+        // it `\"消息树\"`, which raw LIKE cannot see.
+        let hits = search_transcripts(&mut conn, r#""消息树""#, 20).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].snippet.contains("\"消息树\""), "{}", hits[0].snippet);
+    }
+
+    /// One conversation saying the query more times than a whole scan page
+    /// must not push quieter conversations out of the answer. This is the test
+    /// that goes red if the scan is capped instead of paged.
+    #[test]
+    fn search_scans_past_a_talkative_conversation() {
+        let pool = crate::db::test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "chatty", None, None, None, 1).unwrap();
+        create_conversation(&mut conn, "quiet", None, None, None, 2).unwrap();
+        // Older than everything the talkative conversation says.
+        say(&mut conn, "mq", "quiet", "user", "关键词只提了一次", 5);
+        for i in 0..(SEARCH_PAGE + 5) {
+            say(
+                &mut conn,
+                &format!("mc{i}"),
+                "chatty",
+                "assistant",
+                "关键词又出现了",
+                1_000 + i,
+            );
+        }
+
+        let hits = search_transcripts(&mut conn, "关键词", 20).unwrap();
+        let ids: Vec<&str> = hits.iter().map(|h| h.conversation_id.as_str()).collect();
+        assert_eq!(ids, ["chatty", "quiet"], "newest first, and nobody crowded out");
+    }
+
+    /// The one case the LIKE prefilter and the readable-text recheck disagree
+    /// on, which is what makes the recheck observable at all: raw content that
+    /// contains the query only inside transport (a data URI), never in words.
+    /// This is the test that goes red if the recheck is dropped.
+    #[test]
+    fn search_never_matches_inside_a_data_uri() {
+        let pool = crate::db::test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        say(
+            &mut conn,
+            "m1",
+            "c1",
+            "user",
+            r#"[{"type":"text","text":"看看这张图"},{"type":"image_url","image_url":{"url":"data:image/png;base64,xyzzyAAAA"}}]"#,
+            10,
+        );
+
+        assert!(search_transcripts(&mut conn, "xyzzy", 20).unwrap().is_empty());
+        // And the words beside the image are still found, as words.
+        let hits = search_transcripts(&mut conn, "这张图", 20).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert!(!hits[0].snippet.contains("base64"), "{}", hits[0].snippet);
+    }
+
+    #[test]
+    fn update_project_refiles_and_unfiles() {
+        let pool = crate::db::test_db();
+        let mut conn = pool.get().unwrap();
+        crate::db::ops::project::create_project(
+            &mut conn,
+            &crate::db::models::project::NewProject {
+                id: "p1",
+                name: "P",
+                path: None,
+                source_type: "local",
+                source_id: None,
+                assistant_id: None,
+                description: None,
+                created_at: 1,
+                updated_at: 1,
+            },
+        )
+        .unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+
+        update_project(&mut conn, "c1", Some("p1"), 5).unwrap();
+        let conv = get_conversation(&mut conn, "c1").unwrap();
+        assert_eq!(conv.project_id.as_deref(), Some("p1"));
+        assert_eq!(conv.updated_at, 5, "a move is a change the sidebar sorts by");
+
+        // `None` is a destination — back out to no project at all.
+        update_project(&mut conn, "c1", None, 6).unwrap();
+        assert_eq!(get_conversation(&mut conn, "c1").unwrap().project_id, None);
+    }
 }
 
 /// Every delegated run this conversation started, for the cards that report on

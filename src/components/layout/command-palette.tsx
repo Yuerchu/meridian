@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Command } from '@heroui-pro/react/command'
-import { Archive, Comment, FolderOpen, Magnifier, Plus } from '@gravity-ui/icons'
+import { Archive, Comment, FolderOpen, Magnifier, Plus, TextAlignLeft } from '@gravity-ui/icons'
 
-import type { Conversation, Project } from '@/types'
+import { api } from '@/api'
+import type { Conversation, Project, TranscriptHit } from '@/types'
 import { visibleSettingsTabs, type SettingsTab } from '@/components/settings/tabs'
 import { useHistoryLevel } from '@/hooks/use-history-level'
 import { usePlatform } from '@/hooks/use-platform'
@@ -54,10 +55,40 @@ export function CommandPalette({
   const { t } = useTranslation()
   const platform = usePlatform()
   const [query, setQuery] = useState('')
+  /** What the transcripts say about the query — the backend's answer, since
+   *  message bodies are not in memory here. Empty until a search lands. */
+  const [transcriptHits, setTranscriptHits] = useState<TranscriptHit[]>([])
 
   // The palette is a level, not a screen: the back gesture dismisses it before
   // it reaches anything behind. A no-op where there is no back gesture.
   useHistoryLevel(isOpen, () => onOpenChange(false))
+
+  // Debounced rather than per keystroke: every query is a LIKE over the whole
+  // messages table, and the intermediate strings of someone still typing are
+  // questions nobody asked. A stale reply is dropped by the cleanup rather
+  // than raced — the timer and the fetch share one cancellation.
+  useEffect(() => {
+    const trimmed = query.trim()
+    if (!isOpen || trimmed === '') {
+      setTranscriptHits([])
+      return
+    }
+    let cancelled = false
+    const timer = setTimeout(() => {
+      api
+        .searchConversations(trimmed)
+        .then((hits) => {
+          if (!cancelled) setTranscriptHits(hits)
+        })
+        .catch(() => {
+          if (!cancelled) setTranscriptHits([])
+        })
+    }, 250)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [query, isOpen])
 
   /** Acting closes the palette; nothing here leaves it open behind a change. */
   const act = (run: () => void) => () => {
@@ -66,6 +97,12 @@ export function CommandPalette({
   }
 
   const listed = query ? conversations : conversations.slice(0, RECENT)
+
+  // A conversation whose title already says the query is in the group above;
+  // repeating it here as "also said in a message" is two rows for one answer.
+  const contentOnlyHits = transcriptHits.filter(
+    (hit) => !(hit.title ?? '').toLowerCase().includes(query.trim().toLowerCase()),
+  )
 
   return (
     <Command>
@@ -111,6 +148,30 @@ export function CommandPalette({
                   </Command.Item>
                 ))}
               </Command.Group>
+
+              {/* What the transcripts say, not just what they are called. The
+                  snippet is part of `textValue` on purpose: the outer
+                  Autocomplete filters items by it, and the match that earned
+                  this row a place is in the snippet, not necessarily in the
+                  title. */}
+              {contentOnlyHits.length > 0 && (
+                <Command.Group heading={t('palette.inMessages')}>
+                  {contentOnlyHits.map((hit) => (
+                    <Command.Item
+                      key={`content:${hit.conversation_id}`}
+                      id={`content:${hit.conversation_id}`}
+                      textValue={`${hit.title ?? t('sidebar.newChat')} ${hit.snippet}`}
+                      onAction={act(() => onSelectConversation(hit.conversation_id))}
+                    >
+                      <TextAlignLeft />
+                      <div className="flex min-w-0 flex-col">
+                        <span className="truncate">{hit.title ?? t('sidebar.newChat')}</span>
+                        <span className="truncate text-xs text-muted">{hit.snippet}</span>
+                      </div>
+                    </Command.Item>
+                  ))}
+                </Command.Group>
+              )}
 
               <Command.Group heading={t('sidebar.projects')}>
                 <Command.Item
