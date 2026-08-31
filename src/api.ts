@@ -6,6 +6,7 @@ import type {
   AcpCheck,
   AcpConfig,
   AcpConfigOption,
+  BlameResult,
   AcpConversationSession,
   AcpDiscoveredSession,
   AcpImportOutcome,
@@ -24,6 +25,7 @@ import type {
   HooksConfig,
   HooksStatus,
   ListenConfig,
+  JournalVersion,
   ListenStatus,
   LogFileInfo,
   LogPage,
@@ -462,6 +464,15 @@ export const api = {
 
   openInEditor: (conversationId: string, relPath: string, line?: number) =>
     invoke<void>('open_in_editor', { conversationId, relPath, line: line ?? null }),
+
+  // ---- The journal's read side: per-line attribution and file history.
+  journalBlame: (conversationId: string, relPath: string) =>
+    invoke<BlameResult>('journal_blame', { conversationId, relPath }),
+
+  journalFileHistory: (conversationId: string, relPath: string) =>
+    invoke<JournalVersion[]>('journal_file_history', { conversationId, relPath }),
+
+  journalVersionContent: (versionId: string) => invoke<string>('journal_version_content', { versionId }),
 
   // Memories
   listMemories: (projectId: string) => invoke<Memory[]>('list_memories', { projectId }),

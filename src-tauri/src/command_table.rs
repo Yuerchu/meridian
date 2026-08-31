@@ -193,6 +193,13 @@ macro_rules! with_all_commands {
                 line: Option<u32>,
             ),
 
+            // The journal's read side: per-line attribution and file history.
+            // Read-only, and not `local` for the workspace commands' reason —
+            // remote mode asks about the host's record.
+            async commands::journal => journal_blame(conversation_id: String, rel_path: String),
+            async commands::journal => journal_file_history(conversation_id: String, rel_path: String),
+            async commands::journal => journal_version_content(version_id: String),
+
             async commands::conversation => list_conversations_by_project(
                 project_id: String,
                 archived: bool,

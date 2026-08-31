@@ -35,8 +35,10 @@ use crate::db::ops::journal::{AppendVersion, Attribution};
 use crate::journal::blobs;
 
 /// Files past this size are not journalled — the snapshot store is for source
-/// files, and a generated bundle would crowd out everything else.
-pub(crate) const MAX_SNAPSHOT_BYTES: usize = 2 * 1024 * 1024;
+/// files, and a generated bundle would crowd out everything else. `pub`
+/// because the blame command refuses to *read* what capture refused to
+/// *store*: past this size there is no chain to blame, only memory to burn.
+pub const MAX_SNAPSHOT_BYTES: usize = 2 * 1024 * 1024;
 
 /// Process-wide per-path locks every turn's journal borrows.
 ///
