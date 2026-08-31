@@ -135,7 +135,6 @@ function conversation(overrides: Partial<Conversation> = {}): Conversation {
     created_at: 1,
     updated_at: 1,
     project_id: null,
-    compact_cursor: null,
     thinking_level: null,
     fast_mode: 0,
     mode: null,

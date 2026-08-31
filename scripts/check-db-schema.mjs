@@ -9,8 +9,8 @@
  * **用真实 SQLite 而不是手写 SQL 解析器**,是因为手写的那版会在关键处答错。它把
  * `ALTER TABLE ... RENAME TO` 当成只改表名,而 SQLite 3.25 起会同时改写其它表里
  * 指向它的 REFERENCES 子句——两种 foreign_keys 设置下都会(在 3.50.4 上实测过)。
- * 迁移 24 正是这个形状,后果见下面的 KNOWN_DEVIATIONS。一个会在重命名上答错的
- * 校验器,恰好在最需要它的地方沉默。
+ * 迁移 24 曾因此留下一条悬空外键，直到迁移 48 连同死表一起清掉。一个会在重命名
+ * 上答错的校验器，恰好会在最需要它的地方沉默。
  *
  * 重放条件对齐 `db/mod.rs:78`:迁移就是在 `PRAGMA foreign_keys=OFF` 下跑的。
  *
@@ -176,38 +176,6 @@ async function loadDocData() {
   }
 }
 
-/**
- * 被 SQLite 改写过目标表的外键。
- *
- * 这**不是**一个「跳过比较」的名单。第一版是那么写的,拿两个 key 把整条边屏蔽掉,
- * 结果是两个洞:修好之后它不会提醒自己该退休,而这条边的 ON DELETE 被人改坏也照样放行
- * ——恰恰是在唯一一处已知有问题的地方停止了检查。
- *
- * 现在它只做一件很窄的事:把 SQL 侧那条边的**目标表名**还原成本意,然后交回去照常比对。
- * 列名、ON DELETE、以及数据侧那条边是否存在,统统还在检查范围内。规则没被用到,说明
- * 库里已经不是这样了,那就该报出来让人删掉它。
- *
- * 相应地,数据里那条边必须标成 `kind: 'broken'` 并写明 `actualTarget`——两边互为对方的
- * 证据:图上说它坏了,库里就必须真的坏着;库里坏着,图上就不许画成一条正常外键。
- */
-const REWRITTEN_REFERENCES = [
-  {
-    from: 'tool_permissions',
-    col: 'mcp_server_id',
-    /** 库里真实指向的表（迁移 24 之后已不存在）。 */
-    actual: 'mcp_servers_old',
-    /** 这条外键本来要指的表。 */
-    intended: 'mcp_servers',
-    why:
-      '迁移 24 用 `ALTER TABLE mcp_servers RENAME TO mcp_servers_old` 重建了表，' +
-      'SQLite 顺手把这条 REFERENCES 改写成指向 mcp_servers_old，随后那张表被 DROP。\n' +
-      '      所以库里这条外键指向一张不存在的表：写 tool_permissions 会直接报 ' +
-      '"no such table: main.mcp_servers_old"，\n' +
-      '      连不带 mcp_server_id 的内置工具权限也写不进去（DML 准备阶段就要解析目标表）。\n' +
-      '      眼下没有影响——全项目只有模型定义，没有任何代码读写这张表。要用它得先加一个迁移重建。',
-  },
-]
-
 // ── 对账 ────────────────────────────────────────────────────────
 const NORM = (t) => (t === 'INT' ? 'INTEGER' : t)
 
@@ -277,32 +245,13 @@ function compare(sqlTables, doc) {
     }
   }
 
-  // 悬空外键：目标表根本不在库里。先算，后面用来核对 broken 标记。
+  // 悬空外键不能靠图上的目标节点掩盖：库里实际引用的表必须存在。
   const dangling = sqlEdges.filter((e) => !sqlTables.has(e.to))
+  for (const e of dangling) add(e.from, `悬空外键：${key(e)}（目标表不在库里）`)
 
-  // 只还原目标表名，其余交回去照常比对。
-  const usedRewrite = new Set()
-  const normalized = sqlEdges.map((e) => {
-    const r = REWRITTEN_REFERENCES.find((r) => r.from === e.from && r.col === e.col && r.actual === e.to)
-    if (!r) return e
-    usedRewrite.add(r)
-    return { ...e, to: r.intended, rewrittenFrom: r.actual }
-  })
-
-  for (const r of REWRITTEN_REFERENCES) {
-    if (!usedRewrite.has(r)) {
-      add(
-        r.from,
-        `${r.col} 的外键已经不指向 ${r.actual} 了 —— 把这条规则从 REWRITTEN_REFERENCES 删掉，` +
-          `数据里那条边的 kind 也要从 'broken' 改回 'fk'`,
-      )
-    }
-  }
-
-  // broken 边参与比对：它对应的正是库里那条被改写的外键。
-  const docEdges = doc.EDGES.filter((e) => e.kind === 'fk' || e.kind === 'broken')
+  const docEdges = doc.EDGES.filter((e) => e.kind === 'fk')
   const docByKey = new Map(docEdges.map((e) => [key(e), e]))
-  const sqlByKey = new Map(normalized.map((e) => [key(e), e]))
+  const sqlByKey = new Map(sqlEdges.map((e) => [key(e), e]))
 
   for (const [k, e] of sqlByKey) {
     const d = docByKey.get(k)
@@ -310,34 +259,19 @@ function compare(sqlTables, doc) {
       add(e.from, `外键缺失：${k}（ON DELETE ${e.act}）`)
       continue
     }
-    // 动作照常比对。`act` 在 fk 和 broken 上都只写 ON DELETE 行为，所以这里不用解析什么。
     if (d.act !== e.act) add(e.from, `外键动作不一致：${k} —— 迁移 ${e.act}，数据 ${d.act}`)
-
-    // 图上说坏 ⇔ 库里真坏。两个方向都查，否则「标成 broken」就成了另一种屏蔽开关。
-    const reallyBroken = e.rewrittenFrom != null && !sqlTables.has(e.rewrittenFrom)
-    if (reallyBroken && d.kind !== 'broken') {
-      add(e.from, `${k} 在库里指向已不存在的 ${e.rewrittenFrom}，数据里却标成了普通外键（应为 kind: 'broken'）`)
-    }
-    if (!reallyBroken && d.kind === 'broken') {
-      add(e.from, `${k} 数据里标成 broken，但库里这条外键是好的`)
-    }
-    // 只在库里确实坏着时核对目标名。不然「这条边其实是好的」上一条已经说过了，
-    // 再补一句 "库里实际是 undefined" 只是把同一件事讲得更难懂。
-    if (d.kind === 'broken' && reallyBroken && d.actualTarget !== e.rewrittenFrom) {
-      add(e.from, `${k} 的 actualTarget 写的是 ${d.actualTarget}，库里实际是 ${e.rewrittenFrom}`)
-    }
   }
   for (const [k, e] of docByKey) {
     if (!sqlByKey.has(k)) add(e.from, `数据声称的外键在迁移里不存在：${k}`)
   }
 
-  return { problems, dangling }
+  return problems
 }
 
 // ── 跑 ──────────────────────────────────────────────────────────
 const sqlTables = replayMigrations()
 const doc = await loadDocData()
-const { problems, dangling } = compare(sqlTables, doc)
+const problems = compare(sqlTables, doc)
 
 const where = STAGED ? '暂存区' : '工作树'
 const fkTotal = doc.EDGES.filter((e) => e.kind === 'fk').length
@@ -345,12 +279,6 @@ const colTotal = doc.TABLES.reduce((n, t) => n + t.columns.length, 0)
 
 if (problems.length === 0) {
   console.log(`✓ ${DATA_REL} 与迁移一致（${where}）：${sqlTables.size} 张表 / ${colTotal} 个字段 / ${fkTotal} 条外键`)
-  for (const r of REWRITTEN_REFERENCES) {
-    console.log(`  ! ${r.from}.${r.col} 的外键被改写成指向 ${r.actual}（本意是 ${r.intended}）\n      ${r.why}`)
-  }
-  for (const e of dangling) {
-    console.log(`  ! 悬空外键 ${e.from}.${e.col} → ${e.to}.${e.toCol}：目标表不在库里`)
-  }
   process.exit(0)
 }
 

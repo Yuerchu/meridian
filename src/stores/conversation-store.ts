@@ -512,7 +512,6 @@ export interface ConversationSession {
    *  old slot silently dropped the first one. */
   pendingApprovals: Record<string, PendingApprovalEntry>
   pendingAsks: Record<string, PendingApprovalEntry>
-  compactCursor: number | null
   generation: number
   /** The checklist the model is working through, or null when there is none. */
   activeTodos: TodoArgs | null
@@ -550,7 +549,6 @@ function defaultSession(): ConversationSession {
     fulfilledUnseen: false,
     pendingApprovals: {},
     pendingAsks: {},
-    compactCursor: null,
     generation: 0,
     activeTodos: null,
     expandedTurns: {},
@@ -1017,7 +1015,6 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         // just registered are not in there.
         if (session.generation !== generation) return
         session.messages = mergeSnapshot(session, snapshot)
-        session.compactCursor = snap.conversation.compact_cursor
         session.branches = indexBranches(snap.tree.branches)
         session.turns = snap.turns
         session.activeShellTurnId = activeShellTurnId
@@ -1958,7 +1955,6 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             if (session.generation !== generation) return
             session.messages = mergeSnapshot(session, snapshot)
             session.branches = indexBranches(snap.tree.branches)
-            session.compactCursor = snap.conversation.compact_cursor
             session.turns = snap.turns
           }),
         )

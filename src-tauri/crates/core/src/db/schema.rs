@@ -72,7 +72,6 @@ diesel::table! {
         created_at -> BigInt,
         updated_at -> BigInt,
         project_id -> Nullable<Text>,
-        compact_cursor -> Nullable<Integer>,
         thinking_level -> Nullable<Text>,
         fast_mode -> Integer,
         mode -> Nullable<Text>,
@@ -415,17 +414,6 @@ diesel::table! {
 }
 
 diesel::table! {
-    tool_permissions (id) {
-        id -> Text,
-        tool_name -> Text,
-        mcp_server_id -> Nullable<Text>,
-        permission -> Text,
-        created_at -> BigInt,
-        updated_at -> BigInt,
-    }
-}
-
-diesel::table! {
     tool_presets (id) {
         id -> Text,
         name -> Text,
@@ -639,7 +627,6 @@ diesel::joinable!(queued_prompt_context_items -> queued_prompts (queue_id));
 diesel::joinable!(message_stickers -> emojis (sticker_id));
 diesel::joinable!(message_stickers -> messages (message_id));
 diesel::joinable!(projects -> assistants (assistant_id));
-diesel::joinable!(tool_permissions -> mcp_servers (mcp_server_id));
 diesel::joinable!(skill_bindings_global -> skills (dir_name));
 diesel::joinable!(skill_bindings_project -> projects (project_id));
 diesel::joinable!(skill_bindings_project -> skills (dir_name));
@@ -688,7 +675,6 @@ diesel::allow_tables_to_appear_in_same_query!(
     todo_items,
     todo_lists,
     tool_categories,
-    tool_permissions,
     tool_presets,
     turns,
     voice_blobs,

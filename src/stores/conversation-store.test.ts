@@ -27,7 +27,7 @@ vi.mock('@/api', () => ({
 /** A snapshot with nothing outstanding, which is what most tests want. */
 function snapshotOf(tree: MessageTree, over: Partial<ConversationSnapshot> = {}): ConversationSnapshot {
   return {
-    conversation: { compact_cursor: null } as ConversationSnapshot['conversation'],
+    conversation: {} as ConversationSnapshot['conversation'],
     tree,
     turns: [],
     pending_approvals: [],

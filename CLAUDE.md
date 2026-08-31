@@ -1372,25 +1372,11 @@ from `src/dev/schema-data.ts`, which is the single source both halves of this fe
   `foreign_keys` settings, measured on 3.50.4. Migration 24 is exactly that shape, and a
   checker that models a rename as a rename goes quiet precisely where it is needed.
 
-  What that turned up is a real defect, and how it is recorded is the point.
-  `REWRITTEN_REFERENCES` restores **only the target table name** on the SQL side and hands
-  the edge back for the ordinary comparison, so the column, the `ON DELETE` and the edge's
-  existence on the doc side are all still checked. The first version suppressed the whole
-  edge by key, which bought two holes: it could never notice it had become unnecessary, and
-  it waved through a changed `ON DELETE` on the one edge already known to be suspect. A rule
-  that stops matching is reported, so fixing the migration forces the rule to retire.
-- **A defect has to be visible in the drawing, not just next to it.** That edge is
-  `kind: 'broken'`, and what it *terminates on* is the part that matters: a tombstone node
-  for `mcp_servers_old`, derived from the edge itself and parked left of every layout
-  column. Ending it on the live `mcp_servers` would have the line assert the one thing that
-  is not true — colour and a label do not outrank where a line stops, and the diagram is
-  what gets believed. `to` stays the *intent* (which is what the checker compares against);
-  `actualTarget` is the reality, and it is the end the canvas draws.
-
-  The two halves hold each other up: an edge marked `broken` whose target is fine in the
-  database is an error, and so is a rewritten reference the data still calls an ordinary
-  `fk`. A tombstone is not a node type anyone adds by hand — it exists for exactly as long
-  as a broken edge names it.
+  What that turned up was a real defect: migration 24 rewrote
+  `tool_permissions.mcp_server_id` to point at `mcp_servers_old`, then dropped that table.
+  Migration 48 removes `tool_permissions` because no runtime code ever read or wrote it,
+  and removes the exception machinery with it. The checker now treats every dangling
+  foreign key as an error; there is no waiver list that can make one look healthy.
 - **`--staged` is what `pre-commit` runs**, and the distinction is the point: a working-tree
   check passes when the migration is staged and the matching edit to `schema-data.ts` is
   not, and then the commit contains a version where the structure moved and the diagram

@@ -42,7 +42,6 @@ function conversation(id: string, title: string, projectId: string | null): Conv
     created_at: 0,
     updated_at: 0,
     project_id: projectId,
-    compact_cursor: null,
     thinking_level: null,
     fast_mode: 0,
     mode: null,
