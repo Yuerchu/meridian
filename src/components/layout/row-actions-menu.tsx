@@ -6,6 +6,37 @@ import { Sidebar } from '@heroui-pro/react/sidebar'
 import type { RowAction } from './row-actions'
 
 /**
+ * The dropdown's rows, shared between the button on a conversation row and the
+ * one on a project's group header — the two anchored menus that render the
+ * same `RowAction[]`.
+ */
+export function RowActionDropdownItems({ actions }: { actions: RowAction[] }) {
+  return (
+    <>
+      {actions.map((action) => (
+        <Dropdown.Item
+          key={action.key}
+          id={action.key}
+          textValue={action.label}
+          variant={action.variant === 'destructive' ? 'danger' : undefined}
+          isDisabled={Boolean(action.disabledReason)}
+          onAction={() => void action.run()}
+        >
+          <action.icon className="size-4" />
+          <Label>{action.label}</Label>
+          {/* Part of the item's own text, not a tooltip: a disabled item takes
+              no pointer events, so a tooltip on one is unreachable by mouse and
+              by screen reader alike. */}
+          {action.disabledReason && (
+            <span className="ml-auto shrink-0 text-xs text-muted">{action.disabledReason}</span>
+          )}
+        </Dropdown.Item>
+      ))}
+    </>
+  )
+}
+
+/**
  * The same row actions, reachable by touch.
  *
  * The right-click menu beside it cannot be opened without a right button, which
@@ -44,25 +75,7 @@ export function RowActionsMenu({
         </Sidebar.MenuAction>
         <Dropdown.Popover placement="bottom end">
           <Dropdown.Menu aria-label={t('sidebar.moreActions', { name: label })}>
-            {actions.map((action) => (
-              <Dropdown.Item
-                key={action.key}
-                id={action.key}
-                textValue={action.label}
-                variant={action.variant === 'destructive' ? 'danger' : undefined}
-                isDisabled={Boolean(action.disabledReason)}
-                onAction={() => void action.run()}
-              >
-                <action.icon className="size-4" />
-                <Label>{action.label}</Label>
-                {/* Part of the item's own text, not a tooltip: a disabled item
-                    takes no pointer events, so a tooltip on one is unreachable
-                    by mouse and by screen reader alike. */}
-                {action.disabledReason && (
-                  <span className="ml-auto shrink-0 text-xs text-muted">{action.disabledReason}</span>
-                )}
-              </Dropdown.Item>
-            ))}
+            <RowActionDropdownItems actions={actions} />
           </Dropdown.Menu>
         </Dropdown.Popover>
       </Dropdown>

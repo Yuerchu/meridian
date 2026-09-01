@@ -75,18 +75,27 @@ function App() {
     refreshConversations()
   }, [refreshConversations])
 
-  const handleCreate = useCallback(async () => {
-    const conv = await api.createConversation({ title: null, projectId: activeProjectId })
-    try {
-      await refreshConversations()
-    } catch {
-      // The row already exists. Treat a list refresh as cache repair rather
-      // than creation failure, otherwise retrying from the shell duplicates it.
-      keepConversationLocally(conv)
-    }
-    storeSetActiveId(conv.id)
-    setPage('chat')
-  }, [refreshConversations, activeProjectId, storeSetActiveId])
+  const handleCreate = useCallback(
+    async (projectId?: string | null) => {
+      // A per-group "+" names its project; the header row and every older caller
+      // pass nothing and get the active project. Checked by type rather than
+      // for `undefined` because two callers forward whatever their framework
+      // hands them (`.then(onCreate)`, a menu's `onAction`) — anything that is
+      // not a project id must mean "the default", not a garbage filing target.
+      const target = typeof projectId === 'string' ? projectId : projectId === null ? null : activeProjectId
+      const conv = await api.createConversation({ title: null, projectId: target })
+      try {
+        await refreshConversations()
+      } catch {
+        // The row already exists. Treat a list refresh as cache repair rather
+        // than creation failure, otherwise retrying from the shell duplicates it.
+        keepConversationLocally(conv)
+      }
+      storeSetActiveId(conv.id)
+      setPage('chat')
+    },
+    [refreshConversations, activeProjectId, storeSetActiveId],
+  )
 
   const handleCreateWithDraft = useCallback(
     async (draft: InitialTurnDraft) => {
