@@ -1644,6 +1644,11 @@ Pro import fails at once. Re-run the setup after one:
 HEROUI_KEY=<key> pnpm dlx hpsetup@latest react --auto
 ```
 
+GitHub CI and release jobs run the same staging command with the repository's
+`HEROUI_KEY` Actions secret.  Without that secret a clean checkout has only the
+npm stub and must fail before type checking; Pro code and the key are never
+committed to this repository.
+
 `ls node_modules/@heroui-pro/react/dist/components | wc -l` says which state it
 is in: 68-ish directories means staged, `dist/postinstall` alone means stub.
 Incremental installs are unaffected. `ERR_PNPM_IGNORED_BUILDS` on every install
