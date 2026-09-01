@@ -36,6 +36,7 @@ use crate::agent::{TokenBudget, serialize_tool_calls_openai};
 use crate::db::DbPool;
 use crate::db::models::message::MessageUsage;
 use crate::db::models::turn::TurnPhase;
+use crate::events::{ChatStopReason, ChatStreamEvent, ToolOutcome};
 use crate::mcp::McpRegistry;
 use crate::provider::{ChatMessage, ChatParams, ChatProvider, ToolDefinition};
 use crate::tools::{self, ToolContext, ToolRegistry};
@@ -105,6 +106,40 @@ fn parse_sub_agent(arguments: &str, parent_message_id: &str, parent_call_id: &st
         parent_message_id: parent_message_id.to_string(),
         parent_call_id: parent_call_id.to_string(),
     })
+}
+
+fn parse_tool_arguments(arguments: &str) -> Result<serde_json::Value, String> {
+    let value: serde_json::Value =
+        serde_json::from_str(arguments).map_err(|error| format!("invalid tool arguments JSON: {error}"))?;
+    if !value.is_object() {
+        return Err("tool arguments must be a JSON object".into());
+    }
+    Ok(value)
+}
+
+/// A provider may emit `exit_plan` before the `update_plan` beside it. Tool
+/// calls are ordinarily sequential and retain their wire order; the one
+/// exception is this batch barrier, which commits every plan patch before any
+/// exit snapshots the head. Relative order within both groups is stable.
+fn plan_batch_order(calls: &[crate::provider::ToolCall]) -> Vec<&crate::provider::ToolCall> {
+    if !calls
+        .iter()
+        .any(|call| call.name == crate::agent::modes::EXIT_PLAN_TOOL)
+        || !calls
+            .iter()
+            .any(|call| call.name == crate::agent::modes::UPDATE_PLAN_TOOL)
+    {
+        return calls.iter().collect();
+    }
+    calls
+        .iter()
+        .filter(|call| call.name != crate::agent::modes::EXIT_PLAN_TOOL)
+        .chain(
+            calls
+                .iter()
+                .filter(|call| call.name == crate::agent::modes::EXIT_PLAN_TOOL),
+        )
+        .collect()
 }
 
 /// What the parent's model is told about a run that has ended.
@@ -328,6 +363,9 @@ pub struct TurnProgress {
     /// row opens a branch and pushes whatever came after it off the path, which
     /// the reader sees as an answer disappearing.
     pub final_cursor: Option<String>,
+    /// A durable plan review was committed. The exit tool intentionally has no
+    /// result row yet; a later explicit decision continues that pending call.
+    pub waiting_review: Option<String>,
 }
 
 /// A turn's reply, plus what the caller needs to close it out.
@@ -347,15 +385,20 @@ impl TurnOutcome {
         }
     }
 
-    /// What to tell the front end this turn ended as.
-    pub fn stop_reason(&self) -> &'static str {
+    /// What to tell first-party clients this turn ended as.
+    pub fn chat_stop_reason(&self) -> ChatStopReason {
         if self.reply.is_err() {
-            "error"
+            ChatStopReason::Error
         } else if self.progress.aborted {
-            "loop_detected"
+            ChatStopReason::LoopDetected
         } else {
-            "end_turn"
+            ChatStopReason::EndTurn
         }
+    }
+
+    /// The same reason for transports whose protocol still carries strings.
+    pub fn stop_reason(&self) -> &'static str {
+        self.chat_stop_reason().as_str()
     }
 }
 
@@ -409,15 +452,20 @@ async fn run(
     // catches up, so the desktop's adapter reports the failure and the turn ends
     // on it; OneBot's answer travels by another road entirely and its adapter
     // never fails. `reset` is best-effort on both sides and always was.
-    let announce = |payload: serde_json::Value| -> Result<(), String> {
+    let announce = |event: ChatStreamEvent| -> Result<(), String> {
         match emit {
-            Some(e) => e.emit("chat-stream", payload),
+            Some(e) => e.emit_chat(event),
             None => Ok(()),
         }
     };
-    let whisper = |channel: &str, payload: serde_json::Value| {
+    let whisper_chat = |event: ChatStreamEvent| {
         if let Some(e) = emit {
-            let _ = e.emit(channel, payload);
+            let _ = e.emit_chat(event);
+        }
+    };
+    let whisper_conversation_updated = || {
+        if let Some(e) = emit {
+            let _ = e.emit_conversation_updated(&conversation_id);
         }
     };
 
@@ -489,10 +537,11 @@ async fn run(
         // afterwards arrives at. Two ways of asking "how long did this take"
         // that disagreed would be worse than either.
         progress.steps += 1;
-        announce(serde_json::json!({
-            "type": "message_start", "message_id": &assistant_msg_id,
-            "turn_id": &turn_id, "conversation_id": &conversation_id,
-        }))?;
+        announce(ChatStreamEvent::MessageStart {
+            message_id: assistant_msg_id.clone(),
+            turn_id: turn_id.clone(),
+            conversation_id: conversation_id.clone(),
+        })?;
 
         let result = {
             let mut attempt = 0u32;
@@ -509,27 +558,20 @@ async fn run(
                     // How many and how long, but not what went wrong: a
                     // provider's error body can echo the request back, and this
                     // goes to a window.
-                    whisper(
-                        "chat-stream",
-                        serde_json::json!({
-                            "type": "retry",
-                            "attempt": attempt,
-                            "max_attempts": MAX_STREAM_RETRIES,
-                            "delay_ms": delay.as_millis() as u64,
-                            "message_id": &assistant_msg_id,
-                            "conversation_id": &conversation_id,
-                        }),
-                    );
+                    whisper_chat(ChatStreamEvent::Retry {
+                        attempt,
+                        max_attempts: MAX_STREAM_RETRIES,
+                        delay_ms: delay.as_millis() as u64,
+                        message_id: assistant_msg_id.clone(),
+                        conversation_id: conversation_id.clone(),
+                    });
                     tokio::time::sleep(delay).await;
                     // A retry replays the whole stream under the same message
                     // id; tell any window to drop what it already appended.
-                    whisper(
-                        "chat-stream",
-                        serde_json::json!({
-                            "type": "reset", "message_id": &assistant_msg_id,
-                            "conversation_id": &conversation_id,
-                        }),
-                    );
+                    whisper_chat(ChatStreamEvent::Reset {
+                        message_id: assistant_msg_id.clone(),
+                        conversation_id: conversation_id.clone(),
+                    });
                 }
                 // Asked for against what this prompt has left rather than
                 // against the model's advertised maximum. Most providers count
@@ -588,13 +630,10 @@ async fn run(
                             .await;
                         crate::agent::context::cap_user_provided_context(&mut chat_messages, context_limit);
                         budget.update_estimate(&chat_messages);
-                        whisper(
-                            "chat-stream",
-                            serde_json::json!({
-                                "type": "reset", "message_id": &assistant_msg_id,
-                                "conversation_id": &conversation_id,
-                            }),
-                        );
+                        whisper_chat(ChatStreamEvent::Reset {
+                            message_id: assistant_msg_id.clone(),
+                            conversation_id: conversation_id.clone(),
+                        });
                         // There is one recovery attempt, so a second request that
                         // cannot be served spends it on nothing. Said plainly
                         // here rather than passed on as whatever the provider
@@ -723,9 +762,9 @@ async fn run(
                 &mut chat_messages,
                 files_root.as_deref(),
             )
-            .await;
+            .await?;
             narrow_offered(&mut offered, ports.steering);
-            whisper("conversation-updated", serde_json::json!({ "id": &conversation_id }));
+            whisper_conversation_updated();
             continue;
         }
 
@@ -746,19 +785,20 @@ async fn run(
         assistant_msg.provider_state = result.provider_state.clone();
         chat_messages.push(assistant_msg);
 
-        for tc in &result.tool_calls {
+        let ordered_calls = plan_batch_order(&result.tool_calls);
+        let mut plan_update_failed = false;
+        for tc in ordered_calls {
             if cancel.is_cancelled() {
                 break;
             }
 
-            announce(serde_json::json!({
-                "type": "tool_call",
-                "call_id": tc.id,
-                "tool_name": tc.name,
-                "arguments": tc.arguments,
-                "message_id": &assistant_msg_id,
-                "conversation_id": &conversation_id,
-            }))?;
+            announce(ChatStreamEvent::ToolCall {
+                call_id: tc.id.clone(),
+                tool_name: tc.name.clone(),
+                arguments: tc.arguments.clone(),
+                message_id: assistant_msg_id.clone(),
+                conversation_id: conversation_id.clone(),
+            })?;
 
             let allowed = offered.contains(&tc.name);
             let is_mcp = tc.name.starts_with("mcp__");
@@ -841,6 +881,50 @@ async fn run(
                         }
                     }
                 }
+            } else if let Some(transition_ports) = ports.transitions
+                && mode.id == crate::agent::modes::PLAN_MODE
+                && tc.name == crate::agent::modes::READ_PLAN_TOOL
+            {
+                match transitions::parse_empty_plan_arguments(&tc.name, &tc.arguments) {
+                    Err(error) => (format!("Error: {error}"), "error"),
+                    Ok(()) => match in_phase(
+                        pool,
+                        &turn_id,
+                        TurnPhase::RunningTool,
+                        Some(&tc.name),
+                        transition_ports.read_plan(),
+                    )
+                    .await
+                    {
+                        Ok(result) => match serde_json::to_string(&result) {
+                            Ok(output) => (output, "success"),
+                            Err(error) => (format!("Error: could not encode read_plan result: {error}"), "error"),
+                        },
+                        Err(error) => (format!("Error: {error}"), "error"),
+                    },
+                }
+            } else if let Some(transition_ports) = ports.transitions
+                && mode.id == crate::agent::modes::PLAN_MODE
+                && tc.name == crate::agent::modes::UPDATE_PLAN_TOOL
+            {
+                match transitions::parse_update_plan_arguments(&tc.arguments, &assistant_msg_id, &tc.id) {
+                    Err(error) => (format!("Error: {error}"), "error"),
+                    Ok(request) => match in_phase(
+                        pool,
+                        &turn_id,
+                        TurnPhase::RunningTool,
+                        Some(&tc.name),
+                        transition_ports.update_plan(request),
+                    )
+                    .await
+                    {
+                        Ok(result) => match serde_json::to_string(&result) {
+                            Ok(output) => (output, "success"),
+                            Err(error) => (format!("Error: could not encode update_plan result: {error}"), "error"),
+                        },
+                        Err(error) => (format!("Error: {error}"), "error"),
+                    },
+                }
             } else if let Some(target) = ports
                 .transitions
                 .and_then(|_| crate::agent::modes::by_enter_tool(&tc.name))
@@ -866,140 +950,175 @@ async fn run(
             } else if let Some(transition_ports) = ports.transitions
                 && mode.exit_tool == Some(tc.name.as_str())
             {
-                let asked = ports.approvals.ask(&assistant_msg_id, tc, None);
-                transitions::exit(
-                    pool,
-                    transition_ports,
-                    emit,
-                    &conversation_id,
-                    mode,
-                    &tc.arguments,
-                    asked,
-                )
-                .await?
-                .apply(&mut mode, &mut chat_messages, &mut tool_defs, &mut offered)
+                if plan_update_failed {
+                    (
+                        "Error: exit_plan was not submitted because an update_plan in the same batch failed. \
+                         Read the current plan, apply one corrected patch, and call exit_plan again."
+                            .into(),
+                        "error",
+                    )
+                } else {
+                    let request = transitions::SubmitPlanRequest {
+                        turn_id: turn_id.clone(),
+                        assistant_message_id: assistant_msg_id.clone(),
+                        provider_call_id: tc.id.clone(),
+                    };
+                    match in_phase(
+                        pool,
+                        &turn_id,
+                        TurnPhase::RunningTool,
+                        Some(&tc.name),
+                        transitions::submit(transition_ports, &tc.arguments, request),
+                    )
+                    .await
+                    {
+                        Ok(event) => {
+                            // Durable state first. An event is only an
+                            // invalidation hint and a failing sink must not
+                            // turn a committed WaitingReview boundary into a
+                            // failed turn that can never be decided.
+                            progress.waiting_review = Some(event.review_id.clone());
+                            if let Some(emitter) = emit {
+                                if let Err(error) = emitter.emit_plan_review_requested(event.clone()) {
+                                    tracing::warn!(%error, review_id = %event.review_id, "could not publish durable plan-review request");
+                                }
+                            }
+                            break;
+                        }
+                        Err(error) => (format!("Error: {error}"), "error"),
+                    }
+                }
             } else if is_mcp {
-                // External tools ask, always. They are the one class the
-                // authorizer knows nothing about.
-                match ports.approvals.ask(&assistant_msg_id, tc, None).await? {
-                    Some(ApprovalDecision::Approved) => {
-                        let args: serde_json::Value =
-                            serde_json::from_str(&tc.arguments).unwrap_or_else(|_| serde_json::json!({}));
-                        // Awaited with nothing locked: the registry hands
-                        // back a handle and the call runs outside it.
-                        let called = in_phase(
-                            pool,
-                            &turn_id,
-                            TurnPhase::RunningTool,
-                            Some(&tc.name),
-                            services.mcp.call_tool(&tc.name, args),
-                        )
-                        .await;
-                        match called {
-                            Ok(o) => (o, "success"),
-                            Err(e) => (format!("MCP error: {e}"), "error"),
+                match parse_tool_arguments(&tc.arguments) {
+                    Err(error) => (format!("Error: {error}"), "error"),
+                    Ok(args) => {
+                        // External tools ask, always. They are the one class the
+                        // authorizer knows nothing about.
+                        match ports.approvals.ask(&assistant_msg_id, tc, None).await? {
+                            Some(ApprovalDecision::Approved) => {
+                                // Awaited with nothing locked: the registry hands
+                                // back a handle and the call runs outside it.
+                                let called = in_phase(
+                                    pool,
+                                    &turn_id,
+                                    TurnPhase::RunningTool,
+                                    Some(&tc.name),
+                                    services.mcp.call_tool(&tc.name, args),
+                                )
+                                .await;
+                                match called {
+                                    Ok(o) => (o, "success"),
+                                    Err(e) => (format!("MCP error: {e}"), "error"),
+                                }
+                            }
+                            Some(ApprovalDecision::Denied(Some(reason))) => {
+                                (format!("Tool call denied by user. Reason: {reason}"), "denied")
+                            }
+                            Some(ApprovalDecision::Denied(None)) => ("Tool call denied by user.".to_string(), "denied"),
+                            // Nobody answered, which the port's contract says is not a
+                            // denial — see `UNANSWERED_APPROVAL`.
+                            _ => (UNANSWERED_APPROVAL.to_string(), "denied"),
                         }
                     }
-                    Some(ApprovalDecision::Denied(Some(reason))) => {
-                        (format!("Tool call denied by user. Reason: {reason}"), "denied")
-                    }
-                    Some(ApprovalDecision::Denied(None)) => ("Tool call denied by user.".to_string(), "denied"),
-                    // Nobody answered, which the port's contract says is not a
-                    // denial — see `UNANSWERED_APPROVAL`.
-                    _ => (UNANSWERED_APPROVAL.to_string(), "denied"),
                 }
             } else if let Some(tool) = tool {
-                let args: serde_json::Value =
-                    serde_json::from_str(&tc.arguments).unwrap_or_else(|_| serde_json::json!({}));
-                let permission = tool.default_permission();
-                let must_ask = match &approval_rule {
-                    // `reach` is advisory: it decides whether to prompt, not
-                    // what the tool may touch. `tools::verified` enforces
-                    // that against the handle when the I/O happens.
-                    ApprovalRule::ByReach { accept_edits } => {
-                        tools::reach::needs_approval(permission, tool.reach(&args, &tool_context), *accept_edits)
-                    }
-                    ApprovalRule::ByPermission => permission == tools::Permission::Ask,
-                };
-                // Three answers, not two. `None` is nobody answering — a card
-                // that expired, or a turn that outlived its question — and the
-                // `Approvals` contract says that is never a denial. Telling the
-                // model "denied by user" there attributes a decision to a
-                // person who made none, and the model acts on it: apologising
-                // for something nobody objected to, or not asking again when
-                // asking again is exactly what the user would want.
-                enum Authorised {
-                    Yes,
-                    Refused(Option<String>),
-                    Unanswered,
-                }
-                let authorised = if permission == tools::Permission::Never {
-                    Authorised::Refused(None)
-                } else if !must_ask {
-                    Authorised::Yes
-                } else {
-                    match ports.approvals.ask(&assistant_msg_id, tc, None).await? {
-                        Some(ApprovalDecision::Approved) => Authorised::Yes,
-                        Some(ApprovalDecision::Denied(reason)) => Authorised::Refused(reason),
-                        // Typed words are an answer to a question, and
-                        // only `ask_user` asked one. Reaching here with
-                        // some means the card was answered by something
-                        // that had no permission to grant, so it is not
-                        // one — and it is not a user's refusal either.
-                        Some(ApprovalDecision::Response(_)) | None => Authorised::Unanswered,
-                    }
-                };
-                match authorised {
-                    Authorised::Refused(Some(reason)) => {
-                        (format!("Tool call denied by user. Reason: {reason}"), "denied")
-                    }
-                    Authorised::Refused(None) => ("Tool call denied by user.".to_string(), "denied"),
-                    Authorised::Unanswered => (UNANSWERED_APPROVAL.to_string(), "denied"),
-                    Authorised::Yes => {
-                        // The one phase that describes something outside the
-                        // database. A turn found dead here may already have
-                        // written the file or run the command.
-                        let executed = in_phase(
-                            pool,
-                            &turn_id,
-                            TurnPhase::RunningTool,
-                            Some(&tc.name),
-                            tool.execute(args.clone(), &tool_context),
-                        )
-                        .await;
-                        match executed {
-                            Ok(o) => (o, "success"),
-                            Err(e) => match tools::decode_sandbox_denied(&e) {
-                                None => (format!("Error: {e}"), "error"),
-                                Some(blocked) => {
-                                    // The same call under the same id: it is the
-                                    // approval that is new, and that has an
-                                    // identity of its own.
-                                    let retry = ports.approvals.ask(&assistant_msg_id, tc, Some(blocked)).await?;
-                                    if matches!(retry, Some(ApprovalDecision::Approved)) {
-                                        let escalated = tool_context.without_sandbox();
-                                        let retried = in_phase(
-                                            pool,
-                                            &turn_id,
-                                            TurnPhase::RunningTool,
-                                            Some(&tc.name),
-                                            tool.execute(args, &escalated),
-                                        )
-                                        .await;
-                                        match retried {
-                                            Ok(o) => (o, "success"),
-                                            Err(e2) => (format!("Error: {e2}"), "error"),
+                match parse_tool_arguments(&tc.arguments) {
+                    Err(error) => (format!("Error: {error}"), "error"),
+                    Ok(args) => {
+                        let permission = tool.default_permission();
+                        let must_ask = match &approval_rule {
+                            // `reach` is advisory: it decides whether to prompt, not
+                            // what the tool may touch. `tools::verified` enforces
+                            // that against the handle when the I/O happens.
+                            ApprovalRule::ByReach { accept_edits } => tools::reach::needs_approval(
+                                permission,
+                                tool.reach(&args, &tool_context),
+                                *accept_edits,
+                            ),
+                            ApprovalRule::ByPermission => permission == tools::Permission::Ask,
+                        };
+                        // Three answers, not two. `None` is nobody answering — a card
+                        // that expired, or a turn that outlived its question — and the
+                        // `Approvals` contract says that is never a denial. Telling the
+                        // model "denied by user" there attributes a decision to a
+                        // person who made none, and the model acts on it: apologising
+                        // for something nobody objected to, or not asking again when
+                        // asking again is exactly what the user would want.
+                        enum Authorised {
+                            Yes,
+                            Refused(Option<String>),
+                            Unanswered,
+                        }
+                        let authorised = if permission == tools::Permission::Never {
+                            Authorised::Refused(None)
+                        } else if !must_ask {
+                            Authorised::Yes
+                        } else {
+                            match ports.approvals.ask(&assistant_msg_id, tc, None).await? {
+                                Some(ApprovalDecision::Approved) => Authorised::Yes,
+                                Some(ApprovalDecision::Denied(reason)) => Authorised::Refused(reason),
+                                // Typed words are an answer to a question, and
+                                // only `ask_user` asked one. Reaching here with
+                                // some means the card was answered by something
+                                // that had no permission to grant, so it is not
+                                // one — and it is not a user's refusal either.
+                                Some(ApprovalDecision::Response(_)) | None => Authorised::Unanswered,
+                            }
+                        };
+                        match authorised {
+                            Authorised::Refused(Some(reason)) => {
+                                (format!("Tool call denied by user. Reason: {reason}"), "denied")
+                            }
+                            Authorised::Refused(None) => ("Tool call denied by user.".to_string(), "denied"),
+                            Authorised::Unanswered => (UNANSWERED_APPROVAL.to_string(), "denied"),
+                            Authorised::Yes => {
+                                // The one phase that describes something outside the
+                                // database. A turn found dead here may already have
+                                // written the file or run the command.
+                                let executed = in_phase(
+                                    pool,
+                                    &turn_id,
+                                    TurnPhase::RunningTool,
+                                    Some(&tc.name),
+                                    tool.execute(args.clone(), &tool_context),
+                                )
+                                .await;
+                                match executed {
+                                    Ok(o) => (o, "success"),
+                                    Err(e) => match tools::decode_sandbox_denied(&e) {
+                                        None => (format!("Error: {e}"), "error"),
+                                        Some(blocked) => {
+                                            // The same call under the same id: it is the
+                                            // approval that is new, and that has an
+                                            // identity of its own.
+                                            let retry =
+                                                ports.approvals.ask(&assistant_msg_id, tc, Some(blocked)).await?;
+                                            if matches!(retry, Some(ApprovalDecision::Approved)) {
+                                                let escalated = tool_context.without_sandbox();
+                                                let retried = in_phase(
+                                                    pool,
+                                                    &turn_id,
+                                                    TurnPhase::RunningTool,
+                                                    Some(&tc.name),
+                                                    tool.execute(args, &escalated),
+                                                )
+                                                .await;
+                                                match retried {
+                                                    Ok(o) => (o, "success"),
+                                                    Err(e2) => (format!("Error: {e2}"), "error"),
+                                                }
+                                            } else {
+                                                (
+                                                    format!(
+                                                        "{blocked}\n[blocked by sandbox; user declined to retry without sandbox]"
+                                                    ),
+                                                    "denied",
+                                                )
+                                            }
                                         }
-                                    } else {
-                                        (
-                                            format!(
-                                                "{blocked}\n[blocked by sandbox; user declined to retry without sandbox]"
-                                            ),
-                                            "denied",
-                                        )
-                                    }
+                                    },
                                 }
-                            },
+                            }
                         }
                     }
                 }
@@ -1007,16 +1126,25 @@ async fn run(
                 (format!("Unknown tool: {}", tc.name), "error")
             };
 
+            if tc.name == crate::agent::modes::UPDATE_PLAN_TOOL && outcome != "success" {
+                plan_update_failed = true;
+            }
+
             let output = crate::agent::formatted_truncate_text(&output, crate::agent::TOOL_OUTPUT_TRUNCATION);
 
-            announce(serde_json::json!({
-                "type": "tool_result",
-                "call_id": tc.id,
-                "result": &output,
-                "outcome": outcome,
-                "message_id": &assistant_msg_id,
-                "conversation_id": &conversation_id,
-            }))?;
+            let event_outcome = match outcome {
+                "success" => ToolOutcome::Success,
+                "denied" => ToolOutcome::Denied,
+                "error" => ToolOutcome::Error,
+                other => return Err(format!("unknown tool outcome `{other}`")),
+            };
+            announce(ChatStreamEvent::ToolResult {
+                call_id: tc.id.clone(),
+                result: output.clone(),
+                outcome: event_outcome,
+                message_id: assistant_msg_id.clone(),
+                conversation_id: conversation_id.clone(),
+            })?;
 
             // `None` leaves the cursor where it is: the tool already ran, so the
             // row is worth less than the turn, and the next write hangs off the
@@ -1042,7 +1170,7 @@ async fn run(
             }
         }
 
-        if cancel.is_cancelled() || turn_aborted {
+        if cancel.is_cancelled() || turn_aborted || progress.waiting_review.is_some() {
             break;
         }
 
@@ -1061,9 +1189,9 @@ async fn run(
                     &mut chat_messages,
                     files_root.as_deref(),
                 )
-                .await;
+                .await?;
                 narrow_offered(&mut offered, ports.steering);
-                whisper("conversation-updated", serde_json::json!({ "id": &conversation_id }));
+                whisper_conversation_updated();
             }
         }
 
@@ -1119,7 +1247,7 @@ async fn inject_steering(
     parent_cursor: &mut Option<String>,
     chat_messages: &mut Vec<ChatMessage>,
     files_root: Option<&std::path::Path>,
-) {
+) -> Result<(), String> {
     for item in items {
         let sender = match &item.origin {
             SteeredOrigin::User(Some(s)) => Some(s.user_id),
@@ -1154,9 +1282,10 @@ async fn inject_steering(
             SteeredOrigin::User(None) => ChatMessage::user(&item.text),
             SteeredOrigin::System => ChatMessage::system_context(&item.text),
         }];
-        crate::agent::resolve_file_uris_in_messages(&mut injected, files_root);
+        crate::agent::resolve_file_uris_in_messages(&mut injected, files_root)?;
         chat_messages.extend(injected);
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1203,6 +1332,65 @@ mod tests {
                 usage: None,
             },
         ]
+    }
+
+    fn call_batch(calls: &[(&str, &str, &str)]) -> Vec<StreamEvent> {
+        let mut events = Vec::new();
+        for (index, (id, name, arguments)) in calls.iter().enumerate() {
+            events.push(StreamEvent::ToolCallStart {
+                index,
+                id: (*id).into(),
+                name: (*name).into(),
+            });
+            events.push(StreamEvent::ToolCallDone {
+                index,
+                arguments: (*arguments).into(),
+            });
+        }
+        events.push(StreamEvent::Stop {
+            reason: "tool_calls".into(),
+            usage: None,
+        });
+        events
+    }
+
+    #[test]
+    fn plan_batch_barrier_runs_updates_before_an_earlier_exit() {
+        let calls = vec![
+            ToolCall {
+                id: "exit".into(),
+                name: crate::agent::modes::EXIT_PLAN_TOOL.into(),
+                arguments: "{}".into(),
+            },
+            ToolCall {
+                id: "read".into(),
+                name: crate::agent::modes::READ_PLAN_TOOL.into(),
+                arguments: "{}".into(),
+            },
+            ToolCall {
+                id: "update-1".into(),
+                name: crate::agent::modes::UPDATE_PLAN_TOOL.into(),
+                arguments: "{}".into(),
+            },
+            ToolCall {
+                id: "update-2".into(),
+                name: crate::agent::modes::UPDATE_PLAN_TOOL.into(),
+                arguments: "{}".into(),
+            },
+        ];
+
+        let ordered: Vec<&str> = plan_batch_order(&calls)
+            .into_iter()
+            .map(|call| call.id.as_str())
+            .collect();
+        assert_eq!(ordered, ["read", "update-1", "update-2", "exit"]);
+
+        let ordinary = vec![calls[1].clone(), calls[2].clone()];
+        let unchanged: Vec<&str> = plan_batch_order(&ordinary)
+            .into_iter()
+            .map(|call| call.id.as_str())
+            .collect();
+        assert_eq!(unchanged, ["read", "update-1"]);
     }
 
     /// Answers from a script, one entry per request, and keeps every request it
@@ -1468,6 +1656,44 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct FailingPlanTransitions {
+        updates: std::sync::atomic::AtomicUsize,
+        submissions: std::sync::atomic::AtomicUsize,
+    }
+
+    #[async_trait::async_trait]
+    impl transitions::Transitions for FailingPlanTransitions {
+        async fn rebuild(&self, _mode: &'static ModeSpec) -> Result<Result<TurnConfig, String>, String> {
+            Err("not used".into())
+        }
+
+        async fn update_plan(
+            &self,
+            _request: transitions::UpdatePlanRequest,
+        ) -> Result<transitions::PlanUpdateResult, String> {
+            self.updates.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Err("stale plan generation".into())
+        }
+
+        async fn submit_plan(
+            &self,
+            request: transitions::SubmitPlanRequest,
+        ) -> Result<crate::events::PlanReviewEvent, String> {
+            self.submissions.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(crate::events::PlanReviewEvent {
+                review_id: "review-that-must-not-exist".into(),
+                conversation_id: "c1".into(),
+                document_id: "document-1".into(),
+                revision_id: "revision-1".into(),
+                turn_id: request.turn_id,
+                status: "pending".into(),
+                lock_version: 0,
+                delivery_state: None,
+            })
+        }
+    }
+
     // --- the fixtures ----------------------------------------------------
 
     fn conversation(pool: &DbPool) {
@@ -1476,7 +1702,7 @@ mod tests {
         crate::db::ops::turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
     }
 
-    fn rows(pool: &DbPool) -> Vec<crate::db::models::message::Message> {
+    fn rows(pool: &DbPool) -> Vec<crate::db::models::message::MessageRow> {
         let mut conn = pool.get().unwrap();
         crate::db::ops::message::list_messages(&mut conn, "c1").unwrap()
     }
@@ -1530,7 +1756,7 @@ mod tests {
             chat_messages: vec![system("you are helpful"), ChatMessage::user("do the thing")],
             tool_defs: offered.iter().map(|n| def(n)).collect(),
             offered: offered.iter().map(|n| n.to_string()).collect(),
-            mode: crate::agent::modes::resolve(None),
+            mode: crate::agent::modes::resolve(None).unwrap(),
             tool_context: context(pool, cancel),
             budget: TokenBudget::new("openai", "m", 128_000, 4096, None),
             turn_id: "t1".into(),
@@ -1644,7 +1870,7 @@ mod tests {
         turn.context_limit = 200_000;
         turn.budget = TokenBudget::new("openai", "m", turn.context_limit, 4_096, None);
         let shell = crate::workspace::reference::render_context_item(
-            "shell_output",
+            crate::workspace::reference::MessageContextKind::ShellOutput,
             None,
             None,
             None,
@@ -2150,6 +2376,64 @@ mod tests {
         assert_eq!(requests[0].0[0].content, "you are helpful", "and the old one before it");
     }
 
+    #[tokio::test]
+    async fn a_failed_update_in_the_batch_prevents_exit_from_submitting_a_review() {
+        let pool = test_db();
+        conversation(&pool);
+        let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
+        let patch = serde_json::json!({
+            "base_generation": 1,
+            "base_sha256": "0".repeat(64),
+            "patch": "*** Begin Patch\n*** Update File: plan.md\n@@\n-old\n+new\n*** End Patch"
+        })
+        .to_string();
+        let provider = Scripted::of(vec![
+            call_batch(&[
+                ("exit-first", crate::agent::modes::EXIT_PLAN_TOOL, "{}"),
+                ("update-second", crate::agent::modes::UPDATE_PLAN_TOOL, &patch),
+            ]),
+            says("I will read and retry the patch."),
+        ]);
+        let approvals = Answers::nobody();
+        let transitions = FailingPlanTransitions::default();
+        let mut turn = setup(
+            &provider,
+            &pool,
+            &cancel,
+            &[
+                crate::agent::modes::UPDATE_PLAN_TOOL,
+                crate::agent::modes::EXIT_PLAN_TOOL,
+            ],
+        );
+        turn.mode = crate::agent::modes::resolve(Some(crate::agent::modes::PLAN_MODE)).unwrap();
+
+        let outcome = run_turn(
+            &services(&pool, &tools, &mcp),
+            turn,
+            TurnPorts {
+                transitions: Some(&transitions),
+                ..ports(&approvals, None)
+            },
+        )
+        .await;
+
+        assert_eq!(outcome.reply.as_deref(), Ok("I will read and retry the patch."));
+        assert_eq!(transitions.updates.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(
+            transitions.submissions.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "exit_plan must not create a review after any same-batch update failure"
+        );
+        assert!(outcome.progress.waiting_review.is_none());
+        let tool_rows = rows(&pool)
+            .into_iter()
+            .filter(|row| row.role == "tool")
+            .collect::<Vec<_>>();
+        assert_eq!(tool_rows.len(), 2);
+        assert!(tool_rows[0].content.contains("stale plan generation"));
+        assert!(tool_rows[1].content.contains("was not submitted"));
+    }
+
     /// Steering appends and only appends. Everything ahead of the first user
     /// message is the prefix the prompt cache is keyed on; moving it costs the
     /// cache on every following request of the turn.
@@ -2519,7 +2803,7 @@ mod tests {
     fn owed(pool: &DbPool, asking: &str) -> Option<crate::agent::interrupted::Report> {
         let mut conn = pool.get().unwrap();
         let idle = crate::turn::TurnCoordinator::default();
-        crate::agent::interrupted::block(&mut conn, &idle, "c1", Some(asking))
+        crate::agent::interrupted::block(&mut conn, &idle, "c1", Some(asking)).unwrap()
     }
 
     fn ended(pool: &DbPool, turn: &str, status: crate::db::models::turn::TurnStatus, at: i64) {

@@ -4,7 +4,8 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use super::{Permission, Tool, ToolContext};
-use crate::logging::reader::{self, LogEntry, LogQuery};
+use crate::logging::LogLevel;
+use crate::logging::reader::{self, LogEntry, LogQuery, LogRecordLevel};
 use crate::util::{now_ms, take_bytes_at_char_boundary};
 
 /// Reads the application's own log so the assistant can answer "why did that
@@ -101,7 +102,7 @@ impl Tool for ReadAppLogsTool {
     }
 
     async fn execute(&self, args: Value, context: &ToolContext) -> Result<String, String> {
-        let level = args.get("level").and_then(Value::as_str).unwrap_or("warn").to_string();
+        let level = crate::logging::validate_level(args.get("level").and_then(Value::as_str).unwrap_or("warn"))?;
         let limit = args
             .get("limit")
             .and_then(Value::as_u64)
@@ -116,7 +117,7 @@ impl Tool for ReadAppLogsTool {
 
         let since_ts_ms = now_ms() - since_minutes * 60_000;
         let query = LogQuery {
-            min_level: Some(level.clone()),
+            min_level: Some(level),
             limit,
             contains: args
                 .get("contains")
@@ -144,13 +145,13 @@ impl Tool for ReadAppLogsTool {
         let dir = self.dir.clone();
         let page = tokio::task::spawn_blocking(move || reader::query(&dir, &query))
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())??;
 
-        Ok(render(&page.entries, &level, since_minutes, page.scan_truncated))
+        Ok(render(&page.entries, level, since_minutes, page.scan_truncated))
     }
 }
 
-fn render(entries: &[LogEntry], level: &str, since_minutes: i64, scan_truncated: bool) -> String {
+fn render(entries: &[LogEntry], level: LogLevel, since_minutes: i64, scan_truncated: bool) -> String {
     if entries.is_empty() {
         // A sentence, not an error: an Err reads to the model as "the tool is
         // broken" and it retries instead of reporting what it found.
@@ -158,7 +159,7 @@ fn render(entries: &[LogEntry], level: &str, since_minutes: i64, scan_truncated:
             "No {} records in the last {since_minutes} minutes. \
              Either nothing went wrong in that window, or it happened earlier — \
              try a wider since_minutes or a lower level.",
-            level.to_uppercase()
+            level.as_str().to_uppercase()
         );
     }
 
@@ -167,7 +168,7 @@ fn render(entries: &[LogEntry], level: &str, since_minutes: i64, scan_truncated:
     let mut out = format!(
         "Application log, newest first. Window: last {since_minutes} minutes, minimum level {}. \
          Times are UTC.\n\n",
-        level.to_uppercase()
+        level.as_str().to_uppercase()
     );
 
     let mut shown = 0usize;
@@ -201,16 +202,17 @@ fn render(entries: &[LogEntry], level: &str, since_minutes: i64, scan_truncated:
 }
 
 fn render_entry(entry: &LogEntry) -> String {
-    if let Some(raw) = &entry.raw {
-        return format!("[unparseable log line] {}\n", clip(raw, MAX_MSG_CHARS));
-    }
-
     // Time only: the window is stated once in the header, and the date would
     // cost a dozen characters on every line.
     let time = entry.ts.split('T').nth(1).unwrap_or(&entry.ts).trim_end_matches('Z');
     let mut block = format!(
         "[{time}] {} {} — {}\n",
-        entry.level,
+        match entry.level {
+            LogRecordLevel::Error => "ERROR",
+            LogRecordLevel::Warn => "WARN",
+            LogRecordLevel::Info => "INFO",
+            LogRecordLevel::Debug => "DEBUG",
+        },
         entry.target,
         clip(&entry.msg, MAX_MSG_CHARS)
     );
@@ -250,11 +252,11 @@ mod tests {
     use super::*;
     use serde_json::Map;
 
-    fn entry(level: &str, target: &str, msg: &str) -> LogEntry {
+    fn entry(level: LogRecordLevel, target: &str, msg: &str) -> LogEntry {
         LogEntry {
             ts: "2026-07-29T09:58:31.204Z".into(),
             ts_ms: 1_785_066_000_000,
-            level: level.into(),
+            level,
             target: target.into(),
             msg: msg.into(),
             fields: Map::new(),
@@ -262,7 +264,6 @@ mod tests {
             span_fields: Map::new(),
             file: None,
             line: None,
-            raw: None,
             cursor: reader::Cursor {
                 file_index: 0,
                 byte_offset: 0,
@@ -272,18 +273,22 @@ mod tests {
 
     #[test]
     fn an_empty_result_explains_itself_rather_than_erroring() {
-        let out = render(&[], "warn", 60, false);
+        let out = render(&[], LogLevel::Warn, 60, false);
         assert!(out.contains("No WARN records"), "{out}");
         assert!(out.contains("since_minutes"), "{out}");
     }
 
     #[test]
     fn a_record_renders_as_one_compact_line_plus_its_fields() {
-        let mut e = entry("ERROR", "meridian_lib::provider", "HTTP 401 from provider");
+        let mut e = entry(
+            LogRecordLevel::Error,
+            "meridian_lib::provider",
+            "HTTP 401 from provider",
+        );
         e.fields.insert("status".into(), Value::from(401));
         e.span_fields.insert("conversation_id".into(), Value::from("c-42"));
 
-        let out = render(&[e], "warn", 60, false);
+        let out = render(&[e], LogLevel::Warn, 60, false);
         assert!(
             out.contains("[09:58:31.204] ERROR meridian_lib::provider — HTTP 401"),
             "{out}"
@@ -295,10 +300,16 @@ mod tests {
     #[test]
     fn output_is_capped_and_says_how_much_it_dropped() {
         let entries: Vec<LogEntry> = (0..400)
-            .map(|i| entry("ERROR", "meridian_lib::provider", &format!("failure number {i}")))
+            .map(|i| {
+                entry(
+                    LogRecordLevel::Error,
+                    "meridian_lib::provider",
+                    &format!("failure number {i}"),
+                )
+            })
             .collect();
 
-        let out = render(&entries, "error", 60, false);
+        let out = render(&entries, LogLevel::Error, 60, false);
         assert!(out.len() <= MAX_OUTPUT_BYTES + 512, "output was {} bytes", out.len());
         // Being explicit about the cut is the point: otherwise the model reports
         // only the failures it happened to see.
@@ -308,22 +319,14 @@ mod tests {
     #[test]
     fn long_messages_are_clipped_on_a_char_boundary() {
         let long = "多字节".repeat(500);
-        let out = render(&[entry("WARN", "t", &long)], "warn", 60, false);
+        let out = render(&[entry(LogRecordLevel::Warn, "t", &long)], LogLevel::Warn, 60, false);
         assert!(out.contains('…'), "{out}");
         assert!(out.len() < long.len());
     }
 
     #[test]
-    fn a_line_that_would_not_parse_is_shown_as_such() {
-        let mut e = entry("UNKNOWN", "", "");
-        e.raw = Some("{not json".into());
-        let out = render(&[e], "warn", 60, false);
-        assert!(out.contains("[unparseable log line]"), "{out}");
-    }
-
-    #[test]
     fn a_budget_stop_is_reported() {
-        let out = render(&[entry("ERROR", "t", "boom")], "error", 60, true);
+        let out = render(&[entry(LogRecordLevel::Error, "t", "boom")], LogLevel::Error, 60, true);
         assert!(out.contains("size budget"), "{out}");
     }
 }

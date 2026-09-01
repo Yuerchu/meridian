@@ -46,6 +46,10 @@ pub use assessment::{Assessment, AuthLevel, Outcome, Read, RiskLevel};
 
 use crate::agent::engine::{ApprovalDecision, Approvals};
 use crate::db::models::message::MessageUsage;
+use crate::events::{
+    AutoReviewAuthorization, AutoReviewEvidence, AutoReviewOutcome as EventOutcome, AutoReviewRisk, AutoReviewStage,
+    AutoReviewVerdict, ChatStreamEvent,
+};
 use crate::provider::{ChatMessage, TokenUsage, ToolCall};
 use crate::services::Services;
 use crate::util::get_conn;
@@ -82,27 +86,32 @@ pub struct Settings {
 
 impl Settings {
     /// `autoreview.*`, read straight from preferences.
-    ///
-    /// Every failure reads as "off". A settings table that cannot be queried is
-    /// not a reason to start approving things on the user's behalf.
-    pub fn load(pool: &crate::db::DbPool) -> Self {
-        let Ok(mut conn) = get_conn(pool) else {
-            return Self::default();
-        };
-        fn read(conn: &mut diesel::SqliteConnection, key: &str) -> Option<String> {
-            crate::db::ops::preference::get_preference(conn, key).ok().flatten()
+    pub fn load(pool: &crate::db::DbPool) -> Result<Self, String> {
+        let mut conn = get_conn(pool)?;
+        fn read(conn: &mut diesel::SqliteConnection, key: &str) -> Result<Option<String>, String> {
+            crate::db::ops::preference::get_preference(conn, key)
+                .map_err(|error| format!("failed to read preference {key}: {error}"))
         }
-        Settings {
-            enabled: read(&mut conn, "autoreview.enabled").as_deref() == Some("true"),
-            model: read(&mut conn, "autoreview.model").filter(|m| !m.trim().is_empty()),
+        Ok(Settings {
+            enabled: parse_stored_bool("autoreview.enabled", read(&mut conn, "autoreview.enabled")?, false)?,
+            model: read(&mut conn, "autoreview.model")?.filter(|m| !m.trim().is_empty()),
             // Defaults on: the escalating pass is what keeps false positives
             // from making the whole mode unusable, and it only runs when the
             // cheap pass was not sure.
-            escalate: read(&mut conn, "autoreview.escalate").as_deref() != Some("false"),
-            allow_rules: read(&mut conn, "autoreview.allow_rules").unwrap_or_default(),
-            deny_rules: read(&mut conn, "autoreview.deny_rules").unwrap_or_default(),
-            environment: read(&mut conn, "autoreview.environment").unwrap_or_default(),
-        }
+            escalate: parse_stored_bool("autoreview.escalate", read(&mut conn, "autoreview.escalate")?, true)?,
+            allow_rules: read(&mut conn, "autoreview.allow_rules")?.unwrap_or_default(),
+            deny_rules: read(&mut conn, "autoreview.deny_rules")?.unwrap_or_default(),
+            environment: read(&mut conn, "autoreview.environment")?.unwrap_or_default(),
+        })
+    }
+}
+
+fn parse_stored_bool(key: &str, raw: Option<String>, default: bool) -> Result<bool, String> {
+    match raw.as_deref() {
+        None => Ok(default),
+        Some("true") => Ok(true),
+        Some("false") => Ok(false),
+        Some(value) => Err(format!("preference {key} must be 'true' or 'false', got {value:?}")),
     }
 }
 
@@ -189,19 +198,18 @@ struct Active {
 
 /// The QQ admin roster, read the same way `onebot::load_config` reads it.
 ///
-/// An unreadable or absent list is an empty one, which makes every speaker a
-/// bystander — the cautious end. Silently treating everyone as an admin because
-/// a JSON blob failed to parse would remove the distinction exactly when it
-/// mattered.
-fn admin_roster(pool: &crate::db::DbPool) -> Vec<i64> {
-    let Ok(mut conn) = get_conn(pool) else {
-        return Vec::new();
-    };
-    crate::db::ops::preference::get_preference(&mut conn, "onebot.admin_users")
-        .ok()
-        .flatten()
-        .and_then(|raw| serde_json::from_str::<Vec<i64>>(&raw).ok())
-        .unwrap_or_default()
+/// An absent list is an empty one, which makes every speaker a bystander — the
+/// cautious end. An unreadable list is a damaged first-party contract and must
+/// stop the turn rather than silently changing who may authorise it.
+fn admin_roster(pool: &crate::db::DbPool) -> Result<Vec<i64>, String> {
+    let mut conn = get_conn(pool)?;
+    let stored = crate::db::ops::preference::get_preference(&mut conn, "onebot.admin_users")
+        .map_err(|error| format!("failed to read preference onebot.admin_users: {error}"))?;
+    match stored {
+        None => Ok(Vec::new()),
+        Some(raw) => serde_json::from_str::<Vec<i64>>(&raw)
+            .map_err(|error| format!("preference onebot.admin_users has invalid JSON: {error}")),
+    }
 }
 
 impl<'a> AutoReviewed<'a> {
@@ -218,17 +226,17 @@ impl<'a> AutoReviewed<'a> {
         AutoReviewed { inner, active: None }
     }
 
-    pub fn wrap(inner: &'a dyn Approvals, context: Context) -> Self {
-        let settings = Settings::load(&context.services.db);
+    pub fn wrap(inner: &'a dyn Approvals, context: Context) -> Result<Self, String> {
+        let settings = Settings::load(&context.services.db)?;
         if !settings.enabled || settings.model.is_none() {
-            return AutoReviewed { inner, active: None };
+            return Ok(AutoReviewed { inner, active: None });
         }
         let admins = if context.multi_party {
-            admin_roster(&context.services.db)
+            admin_roster(&context.services.db)?
         } else {
             Vec::new()
         };
-        AutoReviewed {
+        Ok(AutoReviewed {
             inner,
             active: Some(Active {
                 settings,
@@ -236,7 +244,7 @@ impl<'a> AutoReviewed<'a> {
                 admins,
                 circuit: Mutex::new(Circuit::default()),
             }),
-        }
+        })
     }
 
     /// Tool calls this never answers on the user's behalf.
@@ -257,21 +265,17 @@ impl Active {
     /// Best-effort on purpose: this is commentary beside a decision that has
     /// already been made, so a closed window must not turn it into a failure.
     /// The verdict itself is on the message row, which survives a reload.
-    fn announce(&self, message_id: &str, call: &ToolCall, verdict: &serde_json::Value) {
-        let _ = self.context.services.events.emit(
-            "chat-stream",
-            serde_json::json!({
-                "type": "auto_review",
-                "conversation_id": self.context.conversation_id,
-                "turn_id": self.context.turn_id,
-                // The pair, not the call id alone: provider call ids repeat, so
-                // it is the message plus the call that identifies a card.
-                "message_id": message_id,
-                "call_id": call.id,
-                "tool_name": call.name,
-                "verdict": verdict,
-            }),
-        );
+    fn announce(&self, message_id: &str, call: &ToolCall, verdict: &AutoReviewVerdict) {
+        let _ = self.context.services.events.emit_chat(ChatStreamEvent::AutoReview {
+            conversation_id: self.context.conversation_id.clone(),
+            turn_id: self.context.turn_id.clone(),
+            // The pair, not the call id alone: provider call ids repeat, so it
+            // is the message plus the call that identifies a card.
+            message_id: message_id.to_string(),
+            call_id: call.id.clone(),
+            tool_name: call.name.clone(),
+            verdict: verdict.clone(),
+        });
     }
 
     /// The reviewer's own brief: the shared policy plus whatever the user added.
@@ -290,23 +294,24 @@ impl Active {
     }
 
     /// Everything the reviewer is shown, assembled from the database.
-    async fn scene_text(&self, call: &ToolCall, retry_reason: Option<&str>) -> String {
+    async fn scene_text(&self, call: &ToolCall, retry_reason: Option<&str>) -> Result<String, String> {
         let pool = self.context.services.db.clone();
         let id = self.context.conversation_id.clone();
         let history = tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool).ok()?;
-            let conversation = crate::db::ops::conversation::get_conversation(&mut conn, &id).ok()?;
-            let messages = crate::db::ops::message::list_messages(&mut conn, &id).ok()?;
-            Some(crate::db::ops::message::active_context(
+            let mut conn = get_conn(&pool)?;
+            let conversation = crate::db::ops::conversation::get_conversation(&mut conn, &id)
+                .map_err(|error| format!("failed to load conversation {id} for auto review: {error}"))?;
+            let messages = crate::db::ops::message::list_messages(&mut conn, &id)
+                .map_err(|error| format!("failed to load conversation {id} messages for auto review: {error}"))?;
+            Ok::<_, String>(crate::db::ops::message::active_context(
                 &messages,
                 conversation.head_message_id.as_deref(),
             ))
         })
         .await
-        .ok()
-        .flatten();
+        .map_err(|error| format!("auto-review transcript task failed: {error}"))??;
 
-        let live = history.as_ref().map(|h| h.live()).unwrap_or(&[]);
+        let live = history.live();
         // The roster only means anything where there is more than one person to
         // apply it to. A private chat has an empty one *and* a single
         // counterpart, and reading the first as the second is what made every
@@ -357,7 +362,7 @@ impl Active {
         let params = tokio::task::spawn_blocking(move || {
             crate::agent::resolve_turn_params(
                 &pool,
-                crate::agent::TurnParamsInput {
+                crate::agent::TurnParamsResolveRequest {
                     assistant: None,
                     provider_id: Some(&r.0),
                     provider_type: &r.1,
@@ -383,11 +388,11 @@ impl Active {
             &resolved.provider_type,
             &resolved.base_url,
             &resolved.credential,
-            Some(&resolved.api_format),
-            Some(&resolved.transport_profile),
-        );
+            &resolved.api_format,
+            &resolved.transport_profile,
+        )?;
 
-        let scene = self.scene_text(call, retry_reason).await;
+        let scene = self.scene_text(call, retry_reason).await?;
         let messages = vec![system(&self.system_prompt()), ChatMessage::user(&scene)];
 
         let asked = provider.chat_with_tools(messages.clone(), vec![], chat_params.clone());
@@ -398,8 +403,8 @@ impl Active {
 
         let mut usage = usage_of(first.usage.as_ref());
         let mut peak_prompt = usage.input_tokens;
-        let mut stage = "quick";
-        let mut evidence: Vec<serde_json::Value> = Vec::new();
+        let mut stage = AutoReviewStage::Quick;
+        let mut evidence: Vec<AutoReviewEvidence> = Vec::new();
 
         let read = assessment::parse(&first.text);
         // Escalate on anything the quick pass did not settle: a denial (the
@@ -410,7 +415,7 @@ impl Active {
         let read = if settled || !self.settings.escalate {
             read
         } else {
-            stage = "investigate";
+            stage = AutoReviewStage::Investigate;
             let deeper = investigate::run(investigate::Job {
                 services: &self.context.services,
                 provider: provider.as_ref(),
@@ -453,7 +458,7 @@ impl Active {
     /// Neither failure stops anything: the decision has already been made, and
     /// refusing to act on it because a bookkeeping write failed would turn a
     /// database hiccup into a stuck turn.
-    async fn record(&self, call: &ToolCall, verdict: &Verdict, payload: serde_json::Value) {
+    async fn record(&self, call: &ToolCall, verdict: &Verdict, stored_verdict: AutoReviewVerdict) {
         let pool = self.context.services.db.clone();
         let (message_id, call_id) = (verdict.message_id.clone(), call.id.clone());
         let cost = verdict.clone();
@@ -465,7 +470,9 @@ impl Active {
             let Ok(mut conn) = get_conn(&pool) else {
                 return;
             };
-            if let Err(e) = crate::db::ops::message::record_auto_review(&mut conn, &message_id, &call_id, &payload) {
+            if let Err(e) =
+                crate::db::ops::message::record_auto_review(&mut conn, &message_id, &call_id, &stored_verdict)
+            {
                 tracing::warn!(error = %e, "could not file the auto-review verdict");
             }
             if let Err(e) = crate::db::ops::audit::record_side_request(
@@ -494,12 +501,12 @@ impl Active {
 #[derive(Debug, Clone)]
 struct Verdict {
     read: Read,
-    stage: &'static str,
+    stage: AutoReviewStage,
     usage: MessageUsage,
     /// The largest single round's prompt, for choosing a price tier. Never
     /// the sum in `usage` — see `ReviewCost::peak_prompt_tokens`.
     peak_prompt: Option<i32>,
-    evidence: Vec<serde_json::Value>,
+    evidence: Vec<AutoReviewEvidence>,
     model: String,
     provider_id: String,
     provider_name: String,
@@ -508,33 +515,38 @@ struct Verdict {
 }
 
 impl Verdict {
-    fn payload(&self) -> serde_json::Value {
-        let mut out = serde_json::json!({
-            "stage": self.stage,
-            "model": self.model,
-            "usage": {
-                "input_tokens": self.usage.input_tokens,
-                "output_tokens": self.usage.output_tokens,
-                "cache_read_tokens": self.usage.cache_read_tokens,
-                "cache_write_tokens": self.usage.cache_write_tokens,
-            },
-        });
-        if !self.evidence.is_empty() {
-            out["evidence"] = serde_json::Value::Array(self.evidence.clone());
+    fn event_verdict(&self) -> AutoReviewVerdict {
+        let (outcome, risk, authorization, rationale) = match &self.read {
+            Read::Verdict(a) => (
+                match a.outcome {
+                    Outcome::Allow => EventOutcome::Allow,
+                    Outcome::Deny => EventOutcome::Deny,
+                },
+                Some(match a.risk {
+                    RiskLevel::Low => AutoReviewRisk::Low,
+                    RiskLevel::Medium => AutoReviewRisk::Medium,
+                    RiskLevel::High => AutoReviewRisk::High,
+                    RiskLevel::Critical => AutoReviewRisk::Critical,
+                }),
+                Some(match a.authorization {
+                    AuthLevel::Unknown => AutoReviewAuthorization::Unknown,
+                    AuthLevel::Low => AutoReviewAuthorization::Low,
+                    AuthLevel::Medium => AutoReviewAuthorization::Medium,
+                    AuthLevel::High => AutoReviewAuthorization::High,
+                }),
+                Some(a.rationale.clone()),
+            ),
+            Read::Unreadable(why) => (EventOutcome::Unreadable, None, None, Some((*why).to_string())),
+        };
+        AutoReviewVerdict {
+            outcome,
+            risk,
+            authorization,
+            rationale,
+            stage: Some(self.stage),
+            model: Some(self.model.clone()),
+            evidence: self.evidence.clone(),
         }
-        match &self.read {
-            Read::Verdict(a) => {
-                out["outcome"] = serde_json::json!(a.outcome);
-                out["risk"] = serde_json::json!(a.risk);
-                out["authorization"] = serde_json::json!(a.authorization);
-                out["rationale"] = serde_json::json!(a.rationale);
-            }
-            Read::Unreadable(why) => {
-                out["outcome"] = serde_json::json!("unreadable");
-                out["rationale"] = serde_json::json!(why);
-            }
-        }
-        out
     }
 }
 
@@ -639,7 +651,15 @@ impl Approvals for AutoReviewed<'_> {
                 active.announce(
                     assistant_message_id,
                     call,
-                    &serde_json::json!({ "outcome": "unreadable", "rationale": e }),
+                    &AutoReviewVerdict {
+                        outcome: EventOutcome::Unreadable,
+                        risk: None,
+                        authorization: None,
+                        rationale: Some(e.clone()),
+                        stage: None,
+                        model: None,
+                        evidence: Vec::new(),
+                    },
                 );
                 return self
                     .unresolved(active.context.unattended, assistant_message_id, call, retry_reason, &e)
@@ -647,32 +667,32 @@ impl Approvals for AutoReviewed<'_> {
             }
         };
 
-        let payload = verdict.payload();
-        active.record(call, &verdict, payload.clone()).await;
+        let event_verdict = verdict.event_verdict();
+        active.record(call, &verdict, event_verdict.clone()).await;
 
         match &verdict.read {
             Read::Verdict(a) if a.outcome == Outcome::Allow => {
                 if let Ok(mut c) = active.circuit.lock() {
                     c.allowed();
                 }
-                active.announce(assistant_message_id, call, &payload);
+                active.announce(assistant_message_id, call, &event_verdict);
                 tracing::info!(
                     tool = %call.name,
                     risk = ?a.risk,
                     authorization = ?a.authorization,
-                    stage = verdict.stage,
+                    stage = ?verdict.stage,
                     "auto review allowed a tool call"
                 );
                 Ok(Some(ApprovalDecision::Approved))
             }
             Read::Verdict(a) => {
                 let tripped = active.circuit.lock().map(|mut c| c.denied()).unwrap_or(false);
-                active.announce(assistant_message_id, call, &payload);
+                active.announce(assistant_message_id, call, &event_verdict);
                 tracing::info!(
                     tool = %call.name,
                     risk = ?a.risk,
                     authorization = ?a.authorization,
-                    stage = verdict.stage,
+                    stage = ?verdict.stage,
                     "auto review denied a tool call"
                 );
                 let mut reason = a.rationale.clone();
@@ -686,7 +706,7 @@ impl Approvals for AutoReviewed<'_> {
                 // this one *did* cost money, so the card has something to show
                 // for it — including what the escalating pass looked at before
                 // giving up.
-                active.announce(assistant_message_id, call, &payload);
+                active.announce(assistant_message_id, call, &event_verdict);
                 self.unresolved(active.context.unattended, assistant_message_id, call, retry_reason, why)
                     .await
             }
@@ -721,7 +741,66 @@ impl AutoReviewed<'_> {
 mod tests {
     use super::*;
     use crate::agent::modes::{ENTER_PLAN_TOOL, EXIT_PLAN_TOOL};
+    use crate::db::test_db;
+    use diesel::RunQueryDsl;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn set_preference(pool: &crate::db::DbPool, key: &str, value: &str) {
+        let mut conn = pool.get().unwrap();
+        crate::db::ops::preference::set_preference(&mut conn, key, value, 1).unwrap();
+    }
+
+    #[test]
+    fn absent_auto_review_preferences_keep_the_existing_defaults() {
+        let settings = Settings::load(&test_db()).unwrap();
+
+        assert!(!settings.enabled);
+        assert!(settings.escalate);
+        assert!(settings.model.is_none());
+        assert!(settings.allow_rules.is_empty());
+        assert!(settings.deny_rules.is_empty());
+        assert!(settings.environment.is_empty());
+    }
+
+    #[test]
+    fn malformed_auto_review_boole_are_not_defaulted() {
+        for (key, value) in [("autoreview.enabled", "1"), ("autoreview.escalate", "FALSE")] {
+            let pool = test_db();
+            set_preference(&pool, key, value);
+            let error = Settings::load(&pool)
+                .err()
+                .expect("malformed stored boolean must fail settings loading");
+            assert!(error.contains(key), "{key}: {error}");
+        }
+    }
+
+    #[test]
+    fn malformed_admin_roster_is_not_an_empty_roster() {
+        for value in ["not json", r#"{"admin": 1}"#, r#"[1,"2"]"#] {
+            let pool = test_db();
+            set_preference(&pool, "onebot.admin_users", value);
+            let error = admin_roster(&pool).err().expect("malformed admin roster must fail");
+            assert!(error.contains("onebot.admin_users"), "{value}: {error}");
+        }
+
+        let pool = test_db();
+        assert!(admin_roster(&pool).unwrap().is_empty());
+        set_preference(&pool, "onebot.admin_users", "[1,2]");
+        assert_eq!(admin_roster(&pool).unwrap(), vec![1, 2]);
+    }
+
+    #[test]
+    fn auto_review_preference_read_errors_are_not_defaulted() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        diesel::sql_query("DROP TABLE preferences").execute(&mut conn).unwrap();
+        drop(conn);
+
+        let error = Settings::load(&pool)
+            .err()
+            .expect("database errors must fail settings loading");
+        assert!(error.contains("autoreview.enabled"), "{error}");
+    }
 
     /// Whoever is behind the reviewer. Counts, because half of what these tests
     /// check is that it was *not* reached.

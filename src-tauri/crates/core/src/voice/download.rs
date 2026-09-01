@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use tokio_util::sync::CancellationToken;
 
-use crate::events::EventBus;
+use crate::events::{EventBus, VoiceModelDownloadDoneEvent, VoiceModelDownloadEvent};
 
 use super::{DEFAULT_MODEL_URL, models_dir};
 
@@ -52,11 +52,12 @@ pub async fn run(events: EventBus, app_data_dir: PathBuf, url: Option<String>, c
     };
 
     let _ = std::fs::remove_file(part_path(&app_data_dir));
-    let payload = match &result {
-        Ok(()) => serde_json::json!({ "ok": true }),
-        Err(e) => serde_json::json!({ "ok": false, "error": e }),
+    let event = match result {
+        Ok(()) => VoiceModelDownloadDoneEvent::Completed {},
+        Err(error) if error == "cancelled" => VoiceModelDownloadDoneEvent::Cancelled {},
+        Err(error) => VoiceModelDownloadDoneEvent::Failed { error },
     };
-    let _ = events.emit("voice-model-download-done", payload);
+    let _ = events.emit_voice_model_download_done(&event);
 }
 
 async fn fetch_and_install(events: &EventBus, app_data_dir: &Path, url: &str) -> Result<(), String> {
@@ -87,20 +88,14 @@ async fn fetch_and_install(events: &EventBus, app_data_dir: &Path, url: &str) ->
         file.write_all(&chunk).map_err(|e| format!("Cannot write file: {e}"))?;
         if last_emit.elapsed() >= PROGRESS_INTERVAL {
             last_emit = Instant::now();
-            let _ = events.emit(
-                "voice-model-download",
-                serde_json::json!({ "downloaded": downloaded, "total": total }),
-            );
+            let _ = events.emit_voice_model_download(&VoiceModelDownloadEvent::Progress { downloaded, total });
         }
     }
     file.flush().map_err(|e| format!("Cannot write file: {e}"))?;
     drop(file);
 
     // Final progress tick so the bar lands on 100% before the unpack pause.
-    let _ = events.emit(
-        "voice-model-download",
-        serde_json::json!({ "downloaded": downloaded, "total": total }),
-    );
+    let _ = events.emit_voice_model_download(&VoiceModelDownloadEvent::Progress { downloaded, total });
 
     let data_dir = app_data_dir.to_path_buf();
     tokio::task::spawn_blocking(move || {

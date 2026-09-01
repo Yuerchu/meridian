@@ -185,32 +185,52 @@ approve 时 issues 可以为空数组，message 可以省略。"#
     )
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum ReviewVerdict {
+    Approve,
+    Revise,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum IssueSeverity {
+    Blocker,
+    Major,
+    Minor,
+}
+
+impl IssueSeverity {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Blocker => "blocker",
+            Self::Major => "major",
+            Self::Minor => "minor",
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct Verdict {
-    pub verdict: String,
-    #[serde(default)]
+    verdict: ReviewVerdict,
     pub summary: String,
-    #[serde(default)]
     pub issues: Vec<Issue>,
-    #[serde(default)]
     pub message: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct Issue {
-    #[serde(default)]
-    pub severity: String,
-    #[serde(default)]
+    severity: IssueSeverity,
     pub r#where: String,
-    #[serde(default)]
     pub problem: String,
-    #[serde(default)]
     pub fix: String,
 }
 
 impl Issue {
     fn blocking(&self) -> bool {
-        matches!(self.severity.as_str(), "blocker" | "major")
+        matches!(self.severity, IssueSeverity::Blocker | IssueSeverity::Major)
     }
 }
 
@@ -234,8 +254,15 @@ pub(crate) enum Outcome {
 /// Takes the *last* JSON object, not the first: a reviewer objecting to a
 /// config will quote it, and that quote is often the earlier `{`.
 pub(crate) fn parse(reply: &str) -> Outcome {
-    let Some(raw) = extract_last_json_object(reply, |candidate| serde_json::from_str::<Verdict>(candidate).is_ok())
-    else {
+    // Stop at the last object that claims to be a verdict even when it violates
+    // the contract. Skipping an invalid final answer in favour of an earlier
+    // quoted example would silently manufacture a decision the reviewer did
+    // not make.
+    let Some(raw) = extract_last_json_object(reply, |candidate| {
+        serde_json::from_str::<serde_json::Value>(candidate)
+            .ok()
+            .is_some_and(|value| value.get("verdict").is_some())
+    }) else {
         return Outcome::Inconclusive {
             reason: "审查回复里没有可用的裁决对象",
         };
@@ -257,11 +284,9 @@ pub(crate) fn parse(reply: &str) -> Outcome {
         verdict.summary.trim().to_string()
     };
 
-    if verdict.verdict != "revise" {
-        if verdict.verdict != "approve" {
-            tracing::warn!(verdict = %verdict.verdict, "unknown verdict; treating as approve");
-        }
-        return Outcome::Approve { summary };
+    match verdict.verdict {
+        ReviewVerdict::Approve => return Outcome::Approve { summary },
+        ReviewVerdict::Revise => {}
     }
 
     // `message` is optional in the prompt on purpose — a reviewer that fills in
@@ -290,9 +315,9 @@ fn render(issues: &[Issue]) -> Option<String> {
     let mut lines = Vec::new();
     for issue in issues.iter().filter(|i| i.blocking()) {
         let head = if issue.r#where.trim().is_empty() {
-            format!("**{}**", issue.severity)
+            format!("**{}**", issue.severity.as_str())
         } else {
-            format!("**{} — {}**", issue.severity, issue.r#where.trim())
+            format!("**{} — {}**", issue.severity.as_str(), issue.r#where.trim())
         };
         lines.push(head);
         if !issue.problem.trim().is_empty() {
@@ -319,7 +344,7 @@ mod tests {
 
     #[test]
     fn approve_is_read_back() {
-        let out = parse(&fenced(r#"{"verdict":"approve","summary":"路径都对得上"}"#));
+        let out = parse(&fenced(r#"{"verdict":"approve","summary":"路径都对得上","issues":[]}"#));
         match out {
             Outcome::Approve { summary } => assert_eq!(summary, "路径都对得上"),
             _ => panic!("expected approve"),
@@ -329,7 +354,7 @@ mod tests {
     #[test]
     fn revise_carries_the_message_through() {
         let out = parse(&fenced(
-            r#"{"verdict":"revise","summary":"缺回滚","message":"补一节回滚"}"#,
+            r#"{"verdict":"revise","summary":"缺回滚","issues":[],"message":"补一节回滚"}"#,
         ));
         match out {
             Outcome::Revise { message, .. } => assert_eq!(message, "补一节回滚"),
@@ -365,9 +390,18 @@ mod tests {
     }
 
     #[test]
-    fn an_unknown_verdict_does_not_block() {
-        let out = parse(&fenced(r#"{"verdict":"needs-work","summary":"x"}"#));
-        assert!(matches!(out, Outcome::Approve { .. }));
+    fn unknown_values_fields_and_missing_required_fields_are_inconclusive() {
+        for body in [
+            r#"{"verdict":"needs-work","summary":"x","issues":[]}"#,
+            r#"{"verdict":"approve","summary":"x","issues":[{"severity":"critical","where":"x","problem":"x","fix":"x"}]}"#,
+            r#"{"verdict":"approve","summary":"x","issues":[],"future_field":true}"#,
+            r#"{"verdict":"approve","summary":"x"}"#,
+        ] {
+            assert!(
+                matches!(parse(&fenced(body)), Outcome::Inconclusive { .. }),
+                "body = {body:?}"
+            );
+        }
     }
 
     #[test]
@@ -383,11 +417,20 @@ mod tests {
     fn a_quoted_fragment_does_not_win_over_the_real_verdict() {
         let reply = concat!(
             "计划里贴的 `{\"verdict\": \"approve\"}` 是示例，不是我的结论。\n\n",
-            "```json\n{\"verdict\":\"revise\",\"summary\":\"缺回滚\",\"message\":\"补一节\"}\n```\n",
+            "```json\n{\"verdict\":\"revise\",\"summary\":\"缺回滚\",\"issues\":[],\"message\":\"补一节\"}\n```\n",
         );
         match parse(reply) {
             Outcome::Revise { summary, .. } => assert_eq!(summary, "缺回滚"),
             _ => panic!("expected revise"),
         }
+    }
+
+    #[test]
+    fn an_invalid_final_verdict_does_not_fall_back_to_a_quoted_example() {
+        let reply = concat!(
+            "示例是 `{\"verdict\":\"approve\",\"summary\":\"示例\",\"issues\":[]}`。\n",
+            "```json\n{\"verdict\":\"approve\",\"summary\":\"结论\",\"issues\":[],\"future_field\":true}\n```\n",
+        );
+        assert!(matches!(parse(reply), Outcome::Inconclusive { .. }));
     }
 }

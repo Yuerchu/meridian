@@ -34,9 +34,10 @@ use diesel::Connection;
 use diesel::sqlite::SqliteConnection;
 
 use crate::agent::tool_calls::serialize_tool_calls_openai;
-use crate::db::models::conversation::NewConversation;
-use crate::db::models::message::NewMessage;
+use crate::db::models::conversation::ConversationInsert;
+use crate::db::models::message::MessageInsert;
 use crate::db::models::turn::TurnStatus;
+use crate::events::ToolOutcome;
 use crate::provider;
 use crate::services::Services;
 use crate::turn::TurnOrigin;
@@ -65,11 +66,9 @@ const MAX_PAGES: usize = 20;
 /// One session the agent knows about, plus what this app has already done with
 /// it.
 ///
-/// camelCase because most of it is [`protocol::SessionInfo`] passed straight
-/// through, and a shape that is half wire-spelling and half ours is the kind of
-/// thing that gets read wrong at the other end.
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
+/// This is a core-domain value. The application shell owns the public IPC
+/// spelling and maps every field explicitly.
+#[derive(Debug, Clone)]
 pub struct DiscoveredSession {
     pub session_id: String,
     pub cwd: String,
@@ -92,7 +91,7 @@ pub struct DiscoveredSession {
 /// opened, because listing is a question about the disk rather than about a
 /// conversation.
 pub async fn discover(services: &Services, cwd: Option<&str>) -> Result<Vec<DiscoveredSession>, String> {
-    let config = AcpConfig::load(&services.db);
+    let config = AcpConfig::load(&services.db)?;
     let listed = list_sessions(&config, cwd).await?;
 
     let pool = services.db.clone();
@@ -218,14 +217,11 @@ async fn gather(peer: &Arc<Peer>, cwd: Option<&str>) -> Result<Vec<protocol::Ses
 /// The chosen row minus `owned_by`, deliberately: whether a session is already
 /// spoken for is decided here against the table rather than taken from a caller
 /// that could simply not mention it.
-#[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone)]
 pub struct ImportRequest {
     pub session_id: String,
     pub cwd: String,
-    #[serde(default)]
     pub title: Option<String>,
-    #[serde(default)]
     pub updated_at: Option<String>,
 }
 
@@ -235,9 +231,8 @@ pub struct ImportRequest {
 /// user has to be told and cannot find out any other way — see
 /// [`CONTINUATION_PREFIX`]. Reported at the moment they chose to import,
 /// because that is the moment it is actionable.
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportOutcome {
+#[derive(Debug, Clone)]
+pub struct ImportedSession {
     pub conversation_id: String,
     /// The agent recited only the part of the session after its last
     /// compaction, so what came back is a tail rather than the whole thing.
@@ -251,7 +246,7 @@ pub struct ImportOutcome {
 /// The conversation id is minted here and nothing is written under it until the
 /// recital is complete, so an import either produces a whole conversation or
 /// leaves the sidebar exactly as it was.
-pub async fn import(services: &Services, listed: &ImportRequest) -> Result<ImportOutcome, String> {
+pub async fn import(services: &Services, listed: &ImportRequest) -> Result<ImportedSession, String> {
     if !std::path::Path::new(&listed.cwd).is_dir() {
         return Err(format!("`{}` is not a folder any more", listed.cwd));
     }
@@ -278,7 +273,7 @@ pub async fn import(services: &Services, listed: &ImportRequest) -> Result<Impor
         return Err(format!("this session is already open as conversation {owner}"));
     }
 
-    let config = AcpConfig::load(&services.db);
+    let config = AcpConfig::load(&services.db)?;
     let conversation_id = uuid::Uuid::new_v4().to_string();
     let session = AcpSession::open_for_import(
         services.clone(),
@@ -383,11 +378,8 @@ pub async fn import(services: &Services, listed: &ImportRequest) -> Result<Impor
         wrote_ms = started.elapsed().as_millis(),
         "imported an agent session"
     );
-    let _ = services.events.emit(
-        "conversation-updated",
-        serde_json::json!({ "conversation_id": conversation_id }),
-    );
-    Ok(ImportOutcome {
+    let _ = services.events.emit_conversation_updated(&conversation_id);
+    Ok(ImportedSession {
         conversation_id,
         truncated,
         messages: counts.messages,
@@ -421,6 +413,13 @@ pub async fn attach(services: &Services, conversation_id: &str, session_id: &str
         )
         .map_err(|busy| busy.to_string())?;
 
+    if crate::agent::queue::has_plan_review_barrier(services, conversation_id).await? {
+        return Err(
+            "This conversation is waiting for plan review or its continuation. Finish it before attaching another ACP session."
+                .into(),
+        );
+    }
+
     let pool = services.db.clone();
     let conversation = conversation_id.to_string();
     let session = session_id.to_string();
@@ -447,10 +446,7 @@ pub async fn attach(services: &Services, conversation_id: &str, session_id: &str
     // being closed.
     services.acp.close(conversation_id).await;
     drop(lease);
-    let _ = services.events.emit(
-        "conversation-updated",
-        serde_json::json!({ "conversation_id": conversation_id }),
-    );
+    let _ = services.events.emit_conversation_updated(conversation_id);
     Ok(())
 }
 
@@ -535,7 +531,7 @@ struct ImportedRow {
     reasoning: String,
     calls: Vec<provider::ToolCall>,
     /// `(call_id, output, outcome)`, in the order the calls finished.
-    results: Vec<(String, String, &'static str)>,
+    results: Vec<(String, String, ToolOutcome)>,
 }
 
 impl ImportedRow {
@@ -847,7 +843,7 @@ fn write(conn: &mut SqliteConnection, w: &Written) -> Result<Counts, diesel::res
 
     crate::db::ops::conversation::insert(
         conn,
-        NewConversation {
+        ConversationInsert {
             id: &w.conversation_id,
             title: Some(&w.title),
             assistant_id: assistant_id.as_deref(),
@@ -893,7 +889,7 @@ fn write(conn: &mut SqliteConnection, w: &Written) -> Result<Counts, diesel::res
                 &turn_id,
                 parent.as_deref(),
                 clock.tick(),
-                NewMessage {
+                MessageInsert {
                     id: "",
                     conversation_id: "",
                     // **A compaction summary is not something a person said.**
@@ -925,7 +921,7 @@ fn write(conn: &mut SqliteConnection, w: &Written) -> Result<Counts, diesel::res
                 &turn_id,
                 parent.as_deref(),
                 clock.tick(),
-                NewMessage {
+                MessageInsert {
                     id: "",
                     conversation_id: "",
                     role: "assistant",
@@ -946,13 +942,13 @@ fn write(conn: &mut SqliteConnection, w: &Written) -> Result<Counts, diesel::res
                     &turn_id,
                     parent.as_deref(),
                     clock.tick(),
-                    NewMessage {
+                    MessageInsert {
                         id: "",
                         conversation_id: "",
                         role: "tool",
                         content: output,
                         tool_call_id: Some(call_id),
-                        tool_outcome: Some(outcome),
+                        tool_outcome: Some(outcome.as_str()),
                         ..blank()
                     },
                 )?);
@@ -968,11 +964,11 @@ fn write(conn: &mut SqliteConnection, w: &Written) -> Result<Counts, diesel::res
     }
 
     if !w.imported.plan.is_empty() {
-        let items: Vec<crate::db::ops::todo::TodoItemInput> = w
+        let items: Vec<crate::db::ops::todo::TodoItemSpec> = w
             .imported
             .plan
             .iter()
-            .map(|item| crate::db::ops::todo::TodoItemInput {
+            .map(|item| crate::db::ops::todo::TodoItemSpec {
                 active_form: item.content.clone(),
                 content: item.content.clone(),
                 status: crate::db::models::todo::ItemStatus::parse(&item.status)
@@ -992,12 +988,12 @@ fn row(
     turn_id: &str,
     parent: Option<&str>,
     created_at: i64,
-    fields: NewMessage<'_>,
+    fields: MessageInsert<'_>,
 ) -> Result<String, diesel::result::Error> {
     let id = uuid::Uuid::new_v4().to_string();
     crate::db::ops::message::append_message(
         conn,
-        &NewMessage {
+        &MessageInsert {
             id: &id,
             conversation_id,
             turn_id: Some(turn_id),
@@ -1009,9 +1005,9 @@ fn row(
     Ok(id)
 }
 
-/// The empty `NewMessage` the three shapes above vary from.
-fn blank<'a>() -> NewMessage<'a> {
-    NewMessage {
+/// The empty `MessageInsert` the three shapes above vary from.
+fn blank<'a>() -> MessageInsert<'a> {
+    MessageInsert {
         id: "",
         conversation_id: "",
         role: "",
@@ -1084,7 +1080,7 @@ mod tests {
         Effect::ToolResult {
             call_id: id.into(),
             result: output.into(),
-            outcome: "success",
+            outcome: ToolOutcome::Success,
         }
     }
 
@@ -1107,7 +1103,10 @@ mod tests {
         assert_eq!(turn.rows.len(), 2, "a change of messageId opens the next row");
         assert_eq!(turn.rows[0].text, "Let me look.");
         assert_eq!(turn.rows[0].calls.len(), 1);
-        assert_eq!(turn.rows[0].results, vec![("t1".into(), "3 passed".into(), "success")]);
+        assert_eq!(
+            turn.rows[0].results,
+            vec![("t1".into(), "3 passed".into(), ToolOutcome::Success)]
+        );
         assert_eq!(turn.rows[1].text, "All green.");
         assert!(turn.rows[1].calls.is_empty());
     }
@@ -1307,7 +1306,7 @@ mod tests {
         assert_eq!(first.rows.len(), 1);
         assert_eq!(
             first.rows[0].results,
-            vec![("t1".into(), "done at last".into(), "success")],
+            vec![("t1".into(), "done at last".into(), ToolOutcome::Success)],
             "the answer goes back to the round that asked",
         );
         assert!(imported.turns[1].rows[0].results.is_empty());
@@ -1482,7 +1481,7 @@ mod tests {
         let hosted = |conn: &mut SqliteConnection, id: &str, kind: Option<&str>| {
             crate::db::ops::conversation::insert(
                 conn,
-                NewConversation {
+                ConversationInsert {
                     id,
                     title: Some(id),
                     assistant_id: None,

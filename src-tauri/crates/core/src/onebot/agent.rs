@@ -9,7 +9,7 @@ use crate::agent::{
     TokenBudget, build_messages_with_senders, microcompact, resolve_provider_config, trim_to_context_limit,
 };
 use crate::db::DbPool;
-use crate::db::models::message::NewMessage;
+use crate::db::models::message::MessageInsert;
 use crate::db::models::turn::TurnPhase;
 use crate::mcp::McpRegistry;
 use crate::provider::{self, ChatMessage, ToolCall};
@@ -26,8 +26,11 @@ use crate::util::{get_conn, now_ms};
 /// and only the adapter that knows the tool can say. A transport that decided
 /// would be able to hand a permission prompt somebody's sentence as if it were
 /// an answer, which is the one mapping the ports forbid.
-pub type ApprovalFn =
-    Box<dyn Fn(ToolCall, Option<String>) -> Pin<Box<dyn Future<Output = Option<String>> + Send>> + Send + Sync>;
+pub type ApprovalFn = Box<
+    dyn Fn(ToolCall, Option<String>) -> Pin<Box<dyn Future<Output = Result<Option<String>, String>> + Send>>
+        + Send
+        + Sync,
+>;
 
 /// What the user is being asked for. Decides how the prompt is worded, what the
 /// acknowledgement says, and what their words become.
@@ -98,21 +101,22 @@ pub type HeadlessOutcome = engine::TurnOutcome;
 /// front end is sitting on the `streaming` flag its optimistic send set, and
 /// with no stop to clear it, it sits there until the window is reloaded. So
 /// `message_id` may be null; the event still goes out.
-pub fn turn_stop_payload(
+pub fn turn_stop_event(
     conversation_id: &str,
     turn_id: &str,
     message_id: Option<&str>,
-    reason: &str,
+    reason: crate::events::ChatStopReason,
     input_tokens: i32,
     output_tokens: i32,
-) -> serde_json::Value {
-    serde_json::json!({
-        "type": "stop", "reason": reason, "done": true,
-        "message_id": message_id,
-        "turn_id": turn_id,
-        "conversation_id": conversation_id,
-        "input_tokens": input_tokens, "output_tokens": output_tokens,
-    })
+) -> crate::events::ChatStreamEvent {
+    crate::events::ChatStreamEvent::Stop {
+        reason,
+        message_id: message_id.map(str::to_string),
+        turn_id: turn_id.to_string(),
+        conversation_id: conversation_id.to_string(),
+        input_tokens: Some(input_tokens),
+        output_tokens: Some(output_tokens),
+    }
 }
 
 /// A QQ turn answer travels over the chat transport; these events are a
@@ -159,9 +163,7 @@ impl crate::agent::engine::Approvals for ChatApprovals<'_> {
             Some(&call.name),
             (self.approval_fn)(call.clone(), retry_reason.map(str::to_string)),
         )
-        .await;
-        // Never `Err`: this side's answer goes out over the chat transport, so
-        // there is no send here that can fail the way drawing a card can.
+        .await?;
         //
         // `None` is nobody answering — the minute ran out, or the turn was swept
         // out from under the question. Distinct from a refusal for the first
@@ -306,7 +308,7 @@ pub(super) async fn oneshot_completion(
             let effective_model = assistant2.as_ref().and_then(|a| a.model_id.clone()).unwrap_or(model);
             let turn = crate::agent::resolve_turn_params(
                 &pool2,
-                crate::agent::TurnParamsInput {
+                crate::agent::TurnParamsResolveRequest {
                     assistant: assistant2.as_ref(),
                     provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
                     provider_type: &provider_type,
@@ -333,13 +335,8 @@ pub(super) async fn oneshot_completion(
         .await
         .map_err(|e| e.to_string())??
     };
-    let provider = provider::registry::create_provider(
-        &provider_type,
-        &base_url,
-        &credential,
-        Some(&api_format),
-        Some(&transport_profile),
-    );
+    let provider =
+        provider::registry::create_provider(&provider_type, &base_url, &credential, &api_format, &transport_profile)?;
 
     let messages = vec![
         ChatMessage {
@@ -501,21 +498,18 @@ async fn headless_chat_inner(
 
     // Keep the machine awake for the rest of the turn (RAII; missing pref = enabled).
     let _sleep_guard = {
-        let sleep_pref = {
+        let sleep_enabled = {
             let pool = pool.clone();
-            tokio::task::spawn_blocking(move || {
-                let mut conn = pool.get().ok()?;
-                crate::db::ops::preference::get_preference(&mut conn, "sleep_inhibitor.enabled")
-                    .ok()
-                    .flatten()
+            tokio::task::spawn_blocking(move || -> Result<bool, String> {
+                let mut conn = get_conn(&pool)?;
+                let stored = crate::db::ops::preference::get_preference(&mut conn, "sleep_inhibitor.enabled")
+                    .map_err(|error| error.to_string())?;
+                crate::db::ops::preference::parse_bool_preference("sleep_inhibitor.enabled", stored.as_deref(), true)
             })
             .await
-            .ok()
-            .flatten()
+            .map_err(|error| error.to_string())??
         };
-        services
-            .filter(|_| sleep_pref.as_deref() != Some("false"))
-            .map(|s| s.sleep.begin_turn())
+        services.filter(|_| sleep_enabled).map(|s| s.sleep.begin_turn())
     };
 
     // Load assistant + the conversation's active path
@@ -559,13 +553,8 @@ async fn headless_chat_inner(
             .await
             .map_err(|e| e.to_string())??
     };
-    let provider = provider::registry::create_provider(
-        &provider_type,
-        &base_url,
-        &credential,
-        Some(&api_format),
-        Some(&transport_profile),
-    );
+    let provider =
+        provider::registry::create_provider(&provider_type, &base_url, &credential, &api_format, &transport_profile)?;
 
     // The same resolver the desktop loop uses. Sharing it is what keeps a QQ
     // assistant's tool set honest: this path used to read `enabled_tools` only,
@@ -630,7 +619,7 @@ async fn headless_chat_inner(
         tokio::task::spawn_blocking(move || {
             crate::agent::resolve_turn_params(
                 &pool2,
-                crate::agent::TurnParamsInput {
+                crate::agent::TurnParamsResolveRequest {
                     assistant: assistant2.as_ref(),
                     provider_id: Some(pid.as_str()),
                     provider_type: &pt,
@@ -664,7 +653,7 @@ async fn headless_chat_inner(
     let turn = {
         let pool2 = pool.clone();
         let registry = tool_registry.clone();
-        let input = crate::agent::turn_config::TurnConfigInput {
+        let input = crate::agent::turn_config::TurnConfigResolveRequest {
             server_tools: turn_params.params.server_tools.clone(),
             assistant: assistant.clone(),
             conversation_id: conversation_id.to_string(),
@@ -700,7 +689,7 @@ async fn headless_chat_inner(
         };
         tokio::task::spawn_blocking(move || {
             let mut conn = pool2.get().map_err(|e| e.to_string())?;
-            Ok::<_, String>(crate::agent::turn_config::resolve(&mut conn, &registry, input))
+            crate::agent::turn_config::resolve(&mut conn, &registry, input)
         })
         .await
         .map_err(|e| e.to_string())??
@@ -733,7 +722,7 @@ async fn headless_chat_inner(
     // path could change under us — see the desktop loop, where this has to wait.
     let t0 = now_ms();
     let roster = crate::agent::roster_block(&memory_request);
-    let injection = crate::agent::plan_injection_async(pool, memory_request, ctx.live().to_vec(), t0).await;
+    let injection = crate::agent::plan_injection_async(pool, memory_request, ctx.live().to_vec(), t0).await?;
     let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
 
     let budget = TokenBudget::new(
@@ -772,7 +761,7 @@ async fn headless_chat_inner(
     // Emptied by the first reply read to the end, not by reading the record and
     // not by getting a request away.
     let interrupted = match coordinator {
-        Some(c) => crate::agent::interrupted::load_block(pool, c, conversation_id, turn_id).await,
+        Some(c) => crate::agent::interrupted::load_block(pool, c, conversation_id, turn_id).await?,
         None => None,
     };
 
@@ -800,11 +789,11 @@ async fn headless_chat_inner(
         trailing.push(provider::ChatMessage::system_context(roster.trim_start()));
     }
 
-    let mut chat_messages = build_messages_with_senders(&system_prompt, &ctx, trailing, &sender_names);
+    let mut chat_messages = build_messages_with_senders(&system_prompt, &ctx, trailing, &sender_names)?;
     let data_dir = services.map(|s| s.paths.data_dir.as_path());
-    crate::agent::resolve_sticker_parts_in_messages(&mut chat_messages, pool, data_dir, supports_images);
+    crate::agent::resolve_sticker_parts_in_messages(&mut chat_messages, pool, data_dir, supports_images)?;
     let files_root = data_dir.map(crate::files::files_dir);
-    crate::agent::resolve_file_uris_in_messages(&mut chat_messages, files_root.as_deref());
+    crate::agent::resolve_file_uris_in_messages(&mut chat_messages, files_root.as_deref())?;
     microcompact(&mut chat_messages, &budget, keep_recent);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
 
@@ -888,7 +877,7 @@ async fn headless_chat_inner(
             for (msg_id, msg, sender_id) in &rows {
                 crate::db::ops::message::append_message(
                     &mut conn,
-                    &NewMessage {
+                    &MessageInsert {
                         id: msg_id,
                         conversation_id: &conv_id,
                         role: "user",
@@ -948,15 +937,25 @@ async fn headless_chat_inner(
         .flatten()
         .unwrap_or((None, None))
     };
-    // Missing preference means enabled. Headless sessions have no project dir,
-    // so writable roots shrink to TEMP — failures surface as escalation asks.
-    let sandbox_enabled = sandbox_pref.as_deref() != Some("false");
+    let execution_mode = crate::sandbox::ExecutionMode::parse(sandbox_pref.as_deref())?;
+    // Headless sessions have no project directory. A requested container is
+    // therefore refused explicitly instead of being downgraded to the platform
+    // default; there is no honest answer to what the container should mount.
+    #[cfg(not(target_os = "android"))]
+    let sandbox_policy = crate::sandbox::resolve_sandbox_policy(
+        execution_mode,
+        None,
+        conversation_id,
+        services.map(|services| services.containers.clone() as std::sync::Arc<dyn crate::container::CommandConnector>),
+    )
+    .map_err(|error| error.to_string())?;
     #[cfg(target_os = "android")]
-    let _ = sandbox_enabled;
+    let _ = execution_mode;
     let tool_context = tools::ToolContext {
         working_directory: None,
         shell: shell_type
-            .map(|s| tools::ShellType::from_str(&s))
+            .map(|value| tools::ShellType::parse(&value))
+            .transpose()?
             .unwrap_or_else(tools::ShellType::default_for_platform),
         // Headless (QQ) sessions have no project dir, and Unrestricted access
         // with no directory to be restricted to is the whole host filesystem.
@@ -971,20 +970,8 @@ async fn headless_chat_inner(
         // validation layer, so there is nothing a journal here could ever
         // record — wiring one would be dead code asserting otherwise.
         journal: None,
-        // **Still the platform default, and deliberately not the container
-        // resolver.** A container mounts the conversation's project, and a QQ
-        // session has none — so `ExecutionMode::Container` has nothing to
-        // mount, and routing this through the resolver would fail every QQ turn
-        // the moment somebody set that mode for their desktop work.
-        //
-        // Saying so rather than letting it read as an oversight: what confines
-        // a headless session is already stricter in the direction that matters,
-        // since its `FileAccess` is an empty root set and every path fails
-        // validation before a command is reached. Giving QQ its own execution
-        // environment is a separate feature, and it starts by deciding what a
-        // session with no project would even mount.
         #[cfg(not(target_os = "android"))]
-        sandbox_policy: crate::sandbox::default_policy_if_enabled(sandbox_enabled, None),
+        sandbox_policy,
         tool_secrets: {
             let pool2 = pool.clone();
             let secrets2 = secrets.clone();
@@ -1034,7 +1021,7 @@ async fn headless_chat_inner(
                     .is_some_and(|q| matches!(q.session_kind(), crate::onebot::session::SessionKind::Group)),
                 unattended: true,
             },
-        ),
+        )?,
         None => crate::agent::auto_review::AutoReviewed::inert(&asker),
     };
     // Outermost, so it sees the reviewer's own refusals as well as the ones a
@@ -1166,22 +1153,20 @@ mod tests {
         let failed = outcome(Err("no api key".into()), false);
         assert!(failed.progress.message_id.is_none());
 
-        let payload = turn_stop_payload(
+        let event = turn_stop_event(
             "conv-1",
             "turn-1",
             failed.progress.message_id.as_deref(),
-            failed.stop_reason(),
+            failed.chat_stop_reason(),
             0,
             0,
         );
+        let payload = serde_json::to_value(event).unwrap();
 
         assert_eq!(payload["type"], "stop");
-        assert_eq!(payload["done"], true);
         assert_eq!(payload["reason"], "error");
         assert_eq!(payload["turn_id"], "turn-1");
         assert_eq!(payload["conversation_id"], "conv-1");
-        // Null, not absent: the front end reads a stop it cannot place as
-        // "whatever is running here", which is exactly right for this one.
         assert!(payload["message_id"].is_null());
     }
 
@@ -1189,7 +1174,15 @@ mod tests {
     /// end from anyone else's, or it streams for good.
     #[test]
     fn a_terminal_event_names_its_turn_and_its_message() {
-        let payload = turn_stop_payload("conv-1", "turn-1", Some("msg-9"), "end_turn", 12, 34);
+        let payload = serde_json::to_value(turn_stop_event(
+            "conv-1",
+            "turn-1",
+            Some("msg-9"),
+            crate::events::ChatStopReason::EndTurn,
+            12,
+            34,
+        ))
+        .unwrap();
         assert_eq!(payload["message_id"], "msg-9");
         assert_eq!(payload["turn_id"], "turn-1");
         assert_eq!(payload["input_tokens"], 12);
@@ -1216,7 +1209,7 @@ mod tests {
             }
             let approval_fn: ApprovalFn = Box::new(move |_, _| {
                 let said = said.clone();
-                Box::pin(async move { said })
+                Box::pin(async move { Ok(said) })
             });
             let adapter = ChatApprovals {
                 approval_fn: &approval_fn,

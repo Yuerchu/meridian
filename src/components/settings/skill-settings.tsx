@@ -19,7 +19,7 @@ import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import { SavedHint, SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
-import type { Skill } from '@/types'
+import type { SkillInfoResponse } from '@/types'
 
 /** The directory name doubles as the LLM-facing skill name, so it has to be a
  *  slug. Mirrors the backend's own validation. */
@@ -30,12 +30,12 @@ function SkillEditor({
   onSave,
   onDelete,
 }: {
-  skill?: Skill
+  skill?: SkillInfoResponse
   onSave: () => void | Promise<void>
   onDelete?: () => void
 }) {
   const { t } = useTranslation()
-  const isBuiltin = skill?.is_builtin === 1
+  const isBuiltin = skill?.is_builtin ?? false
   const [dirName, setDirName] = useState('')
   const [displayName, setDisplayName] = useState(skill?.display_name ?? '')
   const [description, setDescription] = useState(skill?.llm_description ?? '')
@@ -77,14 +77,20 @@ function SkillEditor({
     setError(null)
     try {
       if (skill) {
-        await api.updateSkill(skill.dir_name, {
+        await api.updateSkill({
+          dirName: skill.dir_name,
           displayName: displayName.trim(),
           // A built-in skill is regenerated on every launch, so writing its
           // SKILL.md back would be pointless (and the backend rejects it).
           ...(isBuiltin ? {} : { llmDescription: description.trim(), body }),
         })
       } else {
-        await api.createSkill(dirName.trim(), description.trim(), body, displayName.trim() || undefined)
+        await api.createSkill({
+          dirName: dirName.trim(),
+          llmDescription: description.trim(),
+          body,
+          displayName: displayName.trim() || null,
+        })
       }
       markSaved()
       await onSave()
@@ -188,7 +194,7 @@ function SkillEditor({
 
 export function SkillSettings() {
   const { t } = useTranslation()
-  const [skills, setSkills] = useState<Skill[]>([])
+  const [skills, setSkills] = useState<SkillInfoResponse[]>([])
   const [globalBound, setGlobalBound] = useState<Set<string>>(new Set())
   const [expandedDir, setExpandedDir] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
@@ -198,7 +204,10 @@ export function SkillSettings() {
   const { confirm, confirmDialog } = useConfirm()
 
   const refresh = useCallback(async () => {
-    const [list, bound] = await Promise.all([api.listSkills(), api.listSkillBindings('global')])
+    const [list, bound] = await Promise.all([
+      api.listSkills(),
+      api.listSkillBindings({ layer: 'global', anchorId: null }),
+    ])
     setSkills(list)
     setGlobalBound(new Set(bound))
   }, [])
@@ -223,10 +232,10 @@ export function SkillSettings() {
   }, [refresh])
 
   const toggleEnabled = useCallback(
-    async (skill: Skill, enabled: boolean) => {
+    async (skill: SkillInfoResponse, enabled: boolean) => {
       setError(null)
       try {
-        await api.updateSkill(skill.dir_name, { isEnabled: enabled })
+        await api.updateSkill({ dirName: skill.dir_name, isEnabled: enabled })
         await refresh()
       } catch (e) {
         setError(String(e))
@@ -240,7 +249,7 @@ export function SkillSettings() {
     try {
       // The backend caps bindings per anchor, so it is the source of truth for
       // the resulting set rather than a local optimistic update.
-      const next = await api.setSkillBinding('global', null, dirName, bound)
+      const next = await api.setSkillBinding({ layer: 'global', anchorId: null, dirName, bound })
       setGlobalBound(new Set(next))
     } catch (e) {
       setError(String(e))
@@ -298,7 +307,7 @@ export function SkillSettings() {
       >
         {skills.map((skill) => {
           const isExpanded = expandedDir === skill.dir_name
-          const isBuiltin = skill.is_builtin === 1
+          const isBuiltin = skill.is_builtin
           return (
             <Disclosure
               key={skill.dir_name}
@@ -352,7 +361,7 @@ export function SkillSettings() {
                 <Checkbox
                   data-slot="skill-item-enabled"
                   className="shrink-0 text-xs"
-                  isSelected={skill.is_enabled === 1}
+                  isSelected={skill.is_enabled}
                   onChange={(selected) => toggleEnabled(skill, selected)}
                 >
                   <Checkbox.Content>

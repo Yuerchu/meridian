@@ -139,7 +139,7 @@ impl Tool for LoadSkillTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::models::skill::NewSkill;
+    use crate::db::models::skill::SkillInsert;
     use crate::db::models::skill_binding::SkillLayer;
     use crate::db::{DbPool, test_db};
     use crate::tools::{FileAccess, ShellType};
@@ -159,7 +159,7 @@ mod tests {
         let mut conn = pool.get().unwrap();
         crate::db::ops::skill::upsert_skill(
             &mut conn,
-            &NewSkill {
+            &SkillInsert {
                 dir_name: dir,
                 llm_name: name,
                 llm_description: "Test skill",
@@ -248,7 +248,7 @@ mod tests {
         let mut conn = pool.get().unwrap();
         crate::db::ops::skill::upsert_skill(
             &mut conn,
-            &NewSkill {
+            &SkillInsert {
                 dir_name: "unbound",
                 llm_name: "unbound",
                 llm_description: "d",

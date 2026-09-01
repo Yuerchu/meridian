@@ -26,7 +26,7 @@
 //! report. A hosted turn's history lives in the adapter, so a row here proves
 //! nothing and the doubt is real.
 
-use crate::db::models::queue::{Delivery, QueuedPrompt};
+use crate::db::models::queue::{Delivery, QueuedPromptRow};
 use crate::db::models::turn::TurnStatus;
 use crate::services::Services;
 use crate::util::{get_conn, now_ms};
@@ -41,6 +41,19 @@ pub use native::{Announcing, Interjections};
 /// which is the ordinary case: this runs after every turn of every hosted
 /// conversation, and most of them have an empty queue.
 pub async fn pump(services: &Services, conversation_id: &str) {
+    // A durable plan review is a conversation barrier, not merely a missing
+    // in-memory lease.  The planning worker deliberately releases its lease at
+    // `exit_plan`; without this row check the next queued prompt could start in
+    // the gap and bypass the decision.  Read failures are fail-closed for the
+    // same reason.
+    match has_plan_review_barrier(services, conversation_id).await {
+        Ok(true) => return,
+        Ok(false) => {}
+        Err(error) => {
+            tracing::warn!(%error, conversation_id, "could not verify the plan-review barrier; leaving the queue alone");
+            return;
+        }
+    }
     // **Which runner is a property of the conversation, not of what happens to
     // be running.** Asking the registry answers "is an adapter alive right
     // now", and the two questions come apart exactly when it matters: after a
@@ -58,6 +71,25 @@ pub async fn pump(services: &Services, conversation_id: &str) {
         return hosted::pump(services, conversation_id).await;
     }
     native::pump(services, conversation_id).await;
+}
+
+/// Read the durable plan-review/continuation barrier off the database.
+///
+/// Public because writes outside the queue (manual compaction in both native
+/// shells) take the same mutation lease and must make the same check before
+/// changing the transcript. Keeping one async bridge avoids one caller
+/// accidentally checking only for a pending review and forgetting the
+/// unacknowledged delivery states.
+pub async fn has_plan_review_barrier(services: &Services, conversation_id: &str) -> Result<bool, String> {
+    let pool = services.db.clone();
+    let conversation_id = conversation_id.to_string();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = get_conn(&pool)?;
+        crate::db::ops::plan_review::has_conversation_barrier(&mut conn, &conversation_id)
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 /// Whether this conversation belongs to a hosted agent, from the row rather
@@ -117,6 +149,11 @@ pub fn pump_later(services: &Services, conversation_id: &str) {
 pub async fn after_turn(services: &Services, conversation_id: &str, status: Option<TurnStatus>) {
     match status {
         Some(TurnStatus::Done) => pump_later(services, conversation_id),
+        // exit_plan is a durable pause, not a failed premise. The review row
+        // blocks delivery until its continuation is acknowledged; marking the
+        // prompt queue held here would survive that acknowledgement and require
+        // an unrelated manual queue release.
+        Some(TurnStatus::WaitingReview) => {}
         _ => hold(services, conversation_id).await,
     }
 }
@@ -126,17 +163,18 @@ pub async fn after_turn(services: &Services, conversation_id: &str, status: Opti
 /// The record is the source of truth about how a turn ended, and reading it
 /// back is cheaper than threading the answer out through every early return of
 /// a function that has a dozen.
-pub async fn after_recorded_turn(services: &Services, conversation_id: &str, turn_id: &str) {
+pub async fn after_recorded_turn(services: &Services, conversation_id: &str, turn_id: &str) -> Result<(), String> {
     let pool = services.db.clone();
     let id = turn_id.to_string();
-    let status = tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().ok()?;
-        crate::db::ops::turn::get(&mut conn, &id).ok().flatten()?.status()
+    let status = tokio::task::spawn_blocking(move || -> Result<Option<TurnStatus>, String> {
+        let mut conn = get_conn(&pool)?;
+        let turn = crate::db::ops::turn::get(&mut conn, &id).map_err(|error| error.to_string())?;
+        turn.map(|row| row.status()).transpose()
     })
     .await
-    .ok()
-    .flatten();
+    .map_err(|error| error.to_string())??;
     after_turn(services, conversation_id, status).await;
+    Ok(())
 }
 
 /// Stop the queue, because the turn in front of it did not finish.
@@ -169,12 +207,12 @@ pub async fn hold(services: &Services, conversation_id: &str) {
 }
 
 /// Tell the window the queue has moved. It reads the rows back rather than the
-/// event, so this carries nothing but which conversation to re-read.
+/// event, so this carries only which conversation to re-read and the required
+/// delivery marker used to decide whether the transcript moved too.
 pub fn announce(services: &Services, conversation_id: &str) {
-    let _ = services.events.emit(
-        "queue-updated",
-        serde_json::json!({ "conversation_id": conversation_id }),
-    );
+    let _ = services
+        .events
+        .emit_queue_updated(&crate::events::QueueUpdatedEvent::new(conversation_id, false));
 }
 
 /// The same, for the moment an item stops being queued and becomes a message.
@@ -198,10 +236,7 @@ pub fn announce_delivered(services: &Services, conversation_id: &str) {
 /// the difference between a decorator that can be built in a test and one that
 /// needs a data directory.
 pub(super) fn emit_delivered(events: &crate::events::EventBus, conversation_id: &str) {
-    let _ = events.emit(
-        "queue-updated",
-        serde_json::json!({ "conversation_id": conversation_id, "delivered": true }),
-    );
+    let _ = events.emit_queue_updated(&crate::events::QueueUpdatedEvent::new(conversation_id, true));
 }
 
 /// How many doubtful items one message may describe.
@@ -243,7 +278,7 @@ pub async fn owed(services: &Services, conversation_id: &str) -> Option<Doubtful
     .ok()
     .flatten()?;
 
-    let items: Vec<QueuedPrompt> = items.into_iter().take(AT_MOST).collect();
+    let items: Vec<QueuedPromptRow> = items.into_iter().take(AT_MOST).collect();
     if items.is_empty() {
         return None;
     }
@@ -282,7 +317,7 @@ pub async fn confirm_reported(services: &Services, report: Doubtful) {
 /// doing it once. So the text asks for the state to be checked rather than for
 /// the work to be repeated, and it never says which of the two happened —
 /// because nothing here knows.
-fn describe(items: &[QueuedPrompt]) -> String {
+fn describe(items: &[QueuedPromptRow]) -> String {
     // Verbatim, in a tag of its own. A queued message is the user's own words
     // and gets the same treatment an ordinary prompt does — quoting it into one
     // line would fold a multi-line instruction into `\n`s and escaped quotes,
@@ -314,7 +349,7 @@ fn describe(items: &[QueuedPrompt]) -> String {
 /// `steerable` narrows to interjections; idle takes the front of the queue
 /// whatever mode it is in, because with no turn to interrupt the distinction
 /// has nothing to refer to.
-async fn read(services: &Services, conversation_id: &str, steerable: bool) -> Option<QueuedPrompt> {
+async fn read(services: &Services, conversation_id: &str, steerable: bool) -> Option<QueuedPromptRow> {
     let pool = services.db.clone();
     let id = conversation_id.to_string();
     let found = tokio::task::spawn_blocking(move || {
@@ -365,8 +400,139 @@ where
 mod tests {
     use super::*;
 
-    fn doubtful(content: &str) -> QueuedPrompt {
-        QueuedPrompt {
+    #[derive(Default)]
+    struct CountingStarter(std::sync::atomic::AtomicUsize);
+
+    #[async_trait::async_trait]
+    impl crate::services::StartTurn for CountingStarter {
+        async fn start(
+            &self,
+            _conversation_id: &str,
+            _queued: &crate::db::models::queue::QueuedPromptRow,
+        ) -> Result<(), String> {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn a_plan_review_blocks_then_acknowledgement_starts_the_queued_follow_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let services = crate::services::bare_services(dir.path());
+        let starter = std::sync::Arc::new(CountingStarter::default());
+        services.turn_starter.set(starter.clone()).ok().unwrap();
+        {
+            let mut conn = services.db.get().unwrap();
+            crate::db::ops::conversation::create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+            let document = crate::db::ops::plan_review::create_or_resume_document(&mut conn, "c1", 2).unwrap();
+            let appended = crate::db::ops::plan_review::append_assistant_revision(
+                &mut conn,
+                &crate::db::ops::plan_review::PlanRevisionAppend {
+                    document_id: &document.id,
+                    expected_generation: 0,
+                    expected_head_sha256: None,
+                    content_markdown: "# Plan\n",
+                    patch: "*** Add File: plan.md",
+                    source_message_id: None,
+                    source_call_id: None,
+                    responding_to_suggestion_revision_id: None,
+                    now: 3,
+                },
+            )
+            .unwrap();
+            crate::db::ops::plan_review::mark_materialization_applied(&mut conn, &appended.materialization.id, 4)
+                .unwrap();
+            crate::db::ops::turn::begin(&mut conn, "t1", "c1", crate::turn::TurnOrigin::Desktop, None, 5).unwrap();
+            crate::db::ops::plan_review::submit_native_head_for_review(
+                &mut conn,
+                &crate::db::ops::plan_review::PlanReviewSubmit {
+                    document_id: &document.id,
+                    expected_generation: 1,
+                    expected_head_sha256: &appended.revision.content_sha256,
+                    turn_id: Some("t1"),
+                    assistant_message_id: None,
+                    provider_call_id: None,
+                    provider_kind: crate::db::models::plan_review::PlanReviewProviderKind::Native,
+                    now: 6,
+                },
+                &crate::db::models::plan_review::NativePlanReviewRuntimeConfig::fixture(),
+            )
+            .unwrap();
+            crate::db::ops::queue::enqueue(&mut conn, "q1", "c1", "bypass the review", Delivery::FollowUp, 7).unwrap();
+        }
+
+        assert!(
+            has_plan_review_barrier(&services, "c1").await.unwrap(),
+            "desktop and OneBot compaction share this durable guard after taking their mutation lease"
+        );
+        pump(&services, "c1").await;
+
+        assert_eq!(starter.0.load(std::sync::atomic::Ordering::SeqCst), 0);
+        let queued = crate::db::ops::queue::list(&mut services.db.get().unwrap(), "c1").unwrap();
+        assert_eq!(queued[0].settled_at, None, "the prompt remains durable and undelivered");
+        assert_eq!(queued[0].state(), crate::db::models::queue::QueueState::Queued);
+
+        after_recorded_turn(&services, "c1", "t1").await.unwrap();
+        let queued = crate::db::ops::queue::list(&mut services.db.get().unwrap(), "c1").unwrap();
+        assert_eq!(
+            queued[0].state(),
+            crate::db::models::queue::QueueState::Queued,
+            "WaitingReview is a pause and must not hold the follow-up queue"
+        );
+
+        {
+            let mut conn = services.db.get().unwrap();
+            let review = crate::db::ops::plan_review::get_pending_review_for_conversation(&mut conn, "c1")
+                .unwrap()
+                .unwrap();
+            let bundle = crate::db::ops::plan_review::get_review_bundle(&mut conn, &review.id).unwrap();
+            let decided = crate::db::ops::plan_review::decide_review(
+                &mut conn,
+                &crate::db::ops::plan_review::PlanReviewDecision {
+                    review_id: &review.id,
+                    decision_id: "approve-1",
+                    expected_lock_version: review.lock_version,
+                    expected_draft_generation: bundle.draft.generation,
+                    expected_draft_sha256: &bundle.draft.draft_sha256,
+                    action: crate::db::ops::plan_review::PlanReviewDecisionAction::Approve,
+                    decision_summary: None,
+                    delivery_target: Some(crate::db::models::plan_review::PlanDeliveryTarget::Native),
+                    target_session_id: None,
+                    target_turn_id: Some("continuation-1"),
+                    now: 8,
+                },
+            )
+            .unwrap();
+            let delivery = decided.delivery.unwrap();
+            crate::db::ops::plan_review::mark_delivery_dispatched(&mut conn, &delivery.id, "attempt-1", 9).unwrap();
+            crate::db::ops::plan_review::mark_delivery_acknowledged(&mut conn, &delivery.id, "attempt-1", 10).unwrap();
+        }
+
+        pump(&services, "c1").await;
+        assert_eq!(
+            starter.0.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "an acknowledged plan continuation releases the durable barrier and starts the follow-up"
+        );
+    }
+
+    #[tokio::test]
+    async fn waiting_review_never_marks_an_ordinary_queued_prompt_held() {
+        let dir = tempfile::tempdir().unwrap();
+        let services = crate::services::bare_services(dir.path());
+        {
+            let mut conn = services.db.get().unwrap();
+            crate::db::ops::conversation::create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+            crate::db::ops::queue::enqueue(&mut conn, "q1", "c1", "after review", Delivery::FollowUp, 2).unwrap();
+        }
+
+        after_turn(&services, "c1", Some(TurnStatus::WaitingReview)).await;
+        let queued = crate::db::ops::queue::list(&mut services.db.get().unwrap(), "c1").unwrap();
+        assert_eq!(queued[0].state(), crate::db::models::queue::QueueState::Queued);
+    }
+
+    fn doubtful(content: &str) -> QueuedPromptRow {
+        QueuedPromptRow {
             id: format!("q-{content}"),
             conversation_id: "c1".into(),
             content: content.into(),
@@ -428,7 +594,7 @@ mod hosted {
     use super::{announce, read, write};
     use crate::acp::AcpSession;
     use crate::acp::protocol::SteerOutcome;
-    use crate::db::models::queue::{Delivery, QueuedPrompt};
+    use crate::db::models::queue::{Delivery, QueuedPromptRow};
     use crate::services::Services;
     use crate::util::now_ms;
 
@@ -451,7 +617,15 @@ mod hosted {
             return;
         };
 
-        let next = match steerable.filter(|_| next.delivery() == Delivery::Interject) {
+        let next_delivery = match next.delivery() {
+            Ok(delivery) => delivery,
+            Err(error) => {
+                tracing::error!(%error, conversation_id, queue_id = %next.id, "queued prompt has an invalid delivery mode");
+                return;
+            }
+        };
+
+        let next = match steerable.filter(|_| next_delivery == Delivery::Interject) {
             None => next,
             Some(turn_id) => match steer(services, &session, &next, &turn_id).await {
                 // Delivered, and the running turn is already adapting.
@@ -496,7 +670,7 @@ mod hosted {
         Unknown,
     }
 
-    async fn steer(services: &Services, session: &Arc<AcpSession>, item: &QueuedPrompt, turn_id: &str) -> Steered {
+    async fn steer(services: &Services, session: &Arc<AcpSession>, item: &QueuedPromptRow, turn_id: &str) -> Steered {
         // The record of the attempt goes down *before* the attempt, and this is
         // the whole reason the ledger exists. Killed in the gap, the agent may
         // already have run a command — and a command's effects outlive both

@@ -19,6 +19,7 @@ pub mod import;
 pub mod mapping;
 pub mod mounts;
 pub mod peer;
+mod plan_review;
 pub mod process;
 pub mod protocol;
 pub mod session;
@@ -28,6 +29,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::db::DbPool;
 
+pub use plan_review::{AcpPlanReviewDelivery, AcpPlanReviewDeliveryOutcome};
 pub use session::AcpSession;
 
 /// The sessions running right now.
@@ -159,7 +161,7 @@ impl AcpRegistry {
 /// this feature already have node and `claude` on them; shipping a copy would
 /// mean shipping a second Claude Code that ages separately from the one the
 /// user actually logs into.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone)]
 pub struct AcpConfig {
     pub command: String,
     pub args: Vec<String>,
@@ -172,12 +174,6 @@ pub struct AcpConfig {
 /// two sources instead of revising the first. The successor deduplicates
 /// (`emittedToolCalls`), and is where updates now go.
 const ADAPTER_PACKAGE: &str = "@agentclientprotocol/claude-agent-acp";
-
-/// What we used to ship. A stored config equal to this is not a choice the user
-/// made — it is the default they never changed — so it is read as unset rather
-/// than honoured into a deprecated package. Anything else they typed is theirs
-/// and is left alone.
-const RETIRED_ADAPTER_PACKAGE: &str = "@zed-industries/claude-code-acp";
 
 /// **Deliberately unpinned, and that is a standing hazard rather than an
 /// oversight.** The package is a fast-moving `0.x` (64 releases by 0.70) that
@@ -203,47 +199,25 @@ impl Default for AcpConfig {
 }
 
 impl AcpConfig {
-    pub fn load(pool: &DbPool) -> Self {
-        let Ok(mut conn) = pool.get() else {
-            return Self::default();
-        };
-        let mut get = |key: &str| -> Option<String> {
+    pub fn load(pool: &DbPool) -> Result<Self, String> {
+        let mut conn = crate::util::get_conn(pool)?;
+        let mut get = |key: &str| -> Result<Option<String>, String> {
             crate::db::ops::preference::get_preference(&mut conn, key)
-                .ok()
-                .flatten()
-                .filter(|s| !s.trim().is_empty())
+                .map_err(|error| format!("failed to read preference {key}: {error}"))
         };
 
         let default = Self::default();
-        Self {
-            command: get("acp.command").unwrap_or(default.command),
+        Ok(Self {
+            command: get("acp.command")?.unwrap_or(default.command),
             // Stored as JSON rather than a space-separated string: an argument
             // containing a space is ordinary on Windows, and splitting one back
             // apart would break a path under `Program Files`.
-            args: get("acp.args")
-                .and_then(|raw| serde_json::from_str::<Vec<String>>(&raw).ok())
-                .map(Self::retire_old_package)
-                .unwrap_or(default.args),
-        }
-    }
-
-    /// Swap the package we used to ship for the one that replaced it.
-    ///
-    /// Only that exact argument, and only in place: someone who pinned a
-    /// version, vendored a checkout, or points at anything else has made a
-    /// decision, and this must not overwrite it. Applied on read rather than
-    /// written back, so nothing is silently rewritten under the user — what
-    /// they see in the settings page is what they saved until they save again.
-    fn retire_old_package(args: Vec<String>) -> Vec<String> {
-        args.into_iter()
-            .map(|arg| {
-                if arg == RETIRED_ADAPTER_PACKAGE {
-                    ADAPTER_PACKAGE.to_string()
-                } else {
-                    arg
-                }
-            })
-            .collect()
+            args: match get("acp.args")? {
+                Some(raw) => serde_json::from_str::<Vec<String>>(&raw)
+                    .map_err(|error| format!("preference acp.args has invalid JSON: {error}"))?,
+                None => default.args,
+            },
+        })
     }
 
     pub fn save(&self, pool: &DbPool) -> Result<(), String> {
@@ -299,7 +273,7 @@ async fn remember_session(services: &crate::services::Services, session: &AcpSes
 /// row in the sidebar that can never be opened, and the usual reason for
 /// failure — the command is not installed — is one every attempt would repeat.
 pub async fn open_session(services: &crate::services::Services, cwd: &str) -> Result<String, String> {
-    let config = AcpConfig::load(&services.db);
+    let config = AcpConfig::load(&services.db)?;
     let conversation_id = uuid::Uuid::new_v4().to_string();
 
     let session = AcpSession::open(services.clone(), &config, conversation_id.clone(), cwd.to_string()).await?;
@@ -321,10 +295,7 @@ pub async fn open_session(services: &crate::services::Services, cwd: &str) -> Re
     }
     remember_session(services, &session).await;
 
-    let _ = services.events.emit(
-        "conversation-updated",
-        serde_json::json!({ "conversation_id": conversation_id }),
-    );
+    let _ = services.events.emit_conversation_updated(&conversation_id);
     Ok(conversation_id)
 }
 
@@ -367,7 +338,7 @@ pub async fn reopen_session(
     .await
     .map_err(|e| e.to_string())??;
 
-    let config = AcpConfig::load(&services.db);
+    let config = AcpConfig::load(&services.db)?;
     let session = AcpSession::reopen(
         services.clone(),
         &config,
@@ -400,7 +371,7 @@ async fn write_conversation_row(
     conversation_id: &str,
     cwd: &str,
 ) -> Result<(), String> {
-    use crate::db::models::conversation::NewConversation;
+    use crate::db::models::conversation::ConversationInsert;
     use diesel::Connection;
 
     let pool = services.db.clone();
@@ -423,7 +394,7 @@ async fn write_conversation_row(
 
             crate::db::ops::conversation::insert(
                 conn,
-                NewConversation {
+                ConversationInsert {
                     id: &conversation_id,
                     title: Some(&title),
                     assistant_id: assistant_id.as_deref(),
@@ -545,6 +516,7 @@ fn title_for(cwd: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::test_db;
 
     /// The directory a session is about is the useful half of its name, and it
     /// has to survive both separators — a Windows path reaches this with
@@ -575,5 +547,24 @@ mod tests {
         let default = AcpConfig::default();
         assert_eq!(default.command, "npx");
         assert!(default.args.contains(&"-y".to_string()));
+    }
+
+    #[test]
+    fn absent_acp_preferences_use_fresh_install_defaults() {
+        let loaded = AcpConfig::load(&test_db()).unwrap();
+        let expected = AcpConfig::default();
+        assert_eq!(loaded.command, expected.command);
+        assert_eq!(loaded.args, expected.args);
+    }
+
+    #[test]
+    fn malformed_stored_acp_arguments_are_not_defaulted() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        crate::db::ops::preference::set_preference(&mut conn, "acp.args", "npx -y adapter", 1).unwrap();
+        drop(conn);
+
+        let error = AcpConfig::load(&pool).unwrap_err();
+        assert!(error.contains("acp.args has invalid JSON"), "{error}");
     }
 }

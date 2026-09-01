@@ -7,9 +7,9 @@
 //! one thing only it can answer — where `data_dir` is — so that arrives as an
 //! argument and everything downstream is framework-free.
 //!
-//! Failures are still panics rather than a `Result`. An app whose database
-//! cannot be opened has nothing to show anyone, and the existing behaviour is
-//! that it says so and stops.
+//! A malformed first-party startup preference is returned to the shell so the
+//! app can report the exact contract error instead of booting with a guessed
+//! default. Lower-level failures that make the database unusable still panic.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -18,10 +18,10 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::agent::provider_secret_name;
-use crate::db::models::assistant::{AssistantUpdate, NewAssistant};
-use crate::db::models::provider::NewProvider;
-use crate::db::models::tool_category::NewToolCategory;
-use crate::db::models::tool_preset::NewToolPreset;
+use crate::db::models::assistant::{AssistantChangeset, AssistantInsert};
+use crate::db::models::provider::ProviderInsert;
+use crate::db::models::tool_category::ToolCategoryInsert;
+use crate::db::models::tool_preset::ToolPresetInsert;
 use crate::events::EventBus;
 use crate::secrets::{SecretName, SecretScope, SecretsManager};
 use crate::services::{Paths, Services, ServicesInner};
@@ -30,8 +30,12 @@ use crate::state::{AppSubAgentInboxes, ApprovalWaiters, VoiceState};
 use crate::util::now_ms;
 use crate::{agent, db, mcp, tools, turn};
 
+fn parse_tool_preset_names(preset_id: &str, json: &str) -> Result<Vec<String>, String> {
+    serde_json::from_str(json).map_err(|error| format!("tool preset `{preset_id}` has invalid `tool_names`: {error}"))
+}
+
 /// Open everything the app runs on, in the order it has to happen.
-pub fn bootstrap(data_dir: PathBuf, events: EventBus) -> Services {
+pub fn bootstrap(data_dir: PathBuf, events: EventBus) -> Result<Services, String> {
     std::fs::create_dir_all(&data_dir).expect("failed to create app data dir");
     crate::logging::attach_file_sink(&data_dir);
     let mgr = Arc::new(SecretsManager::new(data_dir.clone()));
@@ -43,9 +47,22 @@ pub fn bootstrap(data_dir: PathBuf, events: EventBus) -> Services {
 
     let db_path = data_dir.join("meridian.db");
     let pool = db::init_db(db_path.to_str().expect("invalid db path"));
+    let plan_files = Arc::new(crate::plan_files::PlanFileStore::new(&data_dir));
+    {
+        let mut conn = pool.get().expect("db connection");
+        match plan_files.reconcile_all(&mut conn, now_ms()) {
+            Ok(reports) => {
+                let conflicts = reports.iter().filter(|(_, report)| report.conflict.is_some()).count();
+                if conflicts > 0 {
+                    tracing::warn!(documents = conflicts, "plan files require explicit conflict recovery");
+                }
+            }
+            Err(error) => tracing::error!(error = %error, "could not reconcile durable plan files"),
+        }
+    }
     // The preference lives in the database, so the first few lines above
     // are recorded at the default level.
-    crate::logging::apply_saved_level(&pool);
+    crate::logging::apply_saved_level(&pool)?;
 
     // Create default assistant on first run
     {
@@ -59,7 +76,7 @@ pub fn bootstrap(data_dir: PathBuf, events: EventBus) -> Services {
             let now = now_ms();
             let _ = db::ops::assistant::create_assistant(
                 &mut conn,
-                &NewAssistant {
+                &AssistantInsert {
                     id: &id,
                     name: "Default",
                     description: None,
@@ -115,7 +132,7 @@ pub fn bootstrap(data_dir: PathBuf, events: EventBus) -> Services {
             let now = now_ms();
             if let Ok(provider) = db::ops::provider::create_provider(
                 &mut conn,
-                &NewProvider {
+                &ProviderInsert {
                     id: &pid,
                     name: "Default",
                     provider_type: &provider_type,
@@ -139,7 +156,7 @@ pub fn bootstrap(data_dir: PathBuf, events: EventBus) -> Services {
                 let _ = mgr.set(&SecretScope::Global, &SecretName::new(&key_name).unwrap(), &api_key);
                 // Link default assistant to this provider
                 if let Ok(Some(default_assistant)) = db::ops::assistant::get_default_assistant(&mut conn) {
-                    let changeset = AssistantUpdate {
+                    let changeset = AssistantChangeset {
                         provider_id: Some(Some(provider.id.clone())),
                         model_id: model.map(Some),
                         updated_at: Some(now),
@@ -170,7 +187,7 @@ pub fn bootstrap(data_dir: PathBuf, events: EventBus) -> Services {
             for (id, name, desc, order) in &cats {
                 let _ = db::ops::tool_category::create_category(
                     &mut conn,
-                    &NewToolCategory {
+                    &ToolCategoryInsert {
                         id,
                         name,
                         description: Some(desc),
@@ -212,7 +229,7 @@ pub fn bootstrap(data_dir: PathBuf, events: EventBus) -> Services {
                 if db::ops::tool_preset::get_preset(&mut conn, id).is_err() {
                     let _ = db::ops::tool_preset::create_preset(
                         &mut conn,
-                        &NewToolPreset {
+                        &ToolPresetInsert {
                             id,
                             name,
                             description: Some(desc),
@@ -231,9 +248,7 @@ pub fn bootstrap(data_dir: PathBuf, events: EventBus) -> Services {
             // gained web_search, and Coding gained update_todos.
             if let Ok(existing) = db::ops::tool_preset::list_presets(&mut conn) {
                 for p in existing {
-                    let Ok(mut names) = serde_json::from_str::<Vec<String>>(&p.tool_names) else {
-                        continue;
-                    };
+                    let mut names = parse_tool_preset_names(&p.id, &p.tool_names)?;
                     let mut changed = false;
                     for n in names.iter_mut() {
                         if n == "glob_files" {
@@ -263,8 +278,11 @@ pub fn bootstrap(data_dir: PathBuf, events: EventBus) -> Services {
                         let _ = db::ops::tool_preset::update_preset(
                             &mut conn,
                             &p.id,
-                            &db::models::tool_preset::ToolPresetUpdate {
-                                tool_names: serde_json::to_string(&names).ok(),
+                            &db::models::tool_preset::ToolPresetChangeset {
+                                tool_names: Some(
+                                    serde_json::to_string(&names)
+                                        .map_err(|error| format!("could not encode tool preset `{}`: {error}", p.id))?,
+                                ),
                                 updated_at: Some(now),
                                 ..Default::default()
                             },
@@ -281,12 +299,19 @@ pub fn bootstrap(data_dir: PathBuf, events: EventBus) -> Services {
         let mut conn = pool.get().expect("db connection");
         match db::ops::custom_tool::list_enabled_tools(&mut conn) {
             Ok(custom_tools) => {
-                registry.set_custom_tools(
-                    custom_tools
-                        .iter()
-                        .map(|ct| Arc::new(tools::custom::CustomToolExecutor::from_db(ct)) as Arc<dyn tools::Tool>)
-                        .collect(),
-                );
+                let loaded = custom_tools
+                    .iter()
+                    .map(|ct| {
+                        tools::custom::CustomToolExecutor::from_db(ct)
+                            .map(|tool| Arc::new(tool) as Arc<dyn tools::Tool>)
+                    })
+                    .collect::<Result<Vec<_>, _>>();
+                match loaded {
+                    Ok(tools) => registry.set_custom_tools(tools),
+                    Err(e) => {
+                        tracing::error!(error = %e, "custom tools contain an invalid contract and were not loaded")
+                    }
+                }
             }
             // Silently leaves the registry with no custom tools at all,
             // which the user reads as "my tools are gone".
@@ -307,7 +332,7 @@ pub fn bootstrap(data_dir: PathBuf, events: EventBus) -> Services {
             &mut tool_defs,
             // Switchable: the manual describes what a desktop
             // conversation can do, and entering plan mode is part of it.
-            agent::modes::Modes::Switchable(agent::modes::resolve(None)),
+            agent::modes::Modes::Switchable(agent::modes::resolve(None).expect("work mode must exist")),
             &registry,
         );
         if let Err(e) = agent::manual::write_manual(&skills_root, &tool_defs) {
@@ -324,7 +349,7 @@ pub fn bootstrap(data_dir: PathBuf, events: EventBus) -> Services {
         agent::skills::seed_builtin_bindings(&mut conn);
     }
 
-    Services::new(ServicesInner {
+    Ok(Services::new(ServicesInner {
         db: pool,
         secrets: mgr,
         tools: Arc::new(registry),
@@ -341,6 +366,7 @@ pub fn bootstrap(data_dir: PathBuf, events: EventBus) -> Services {
         sleep: AppSleepInhibitor::new(),
         events,
         paths: Paths { data_dir, skills_root },
+        plan_files,
         #[cfg(not(target_os = "android"))]
         acp: crate::acp::AcpRegistry::new(),
         #[cfg(not(target_os = "android"))]
@@ -350,7 +376,7 @@ pub fn bootstrap(data_dir: PathBuf, events: EventBus) -> Services {
         // way for this to be missing.
         turn_starter: std::sync::OnceLock::new(),
         journal_shared: crate::journal::capture::JournalShared::new(),
-    })
+    }))
 }
 
 /// Reconnect whatever the user marked for auto-connect.
@@ -391,4 +417,104 @@ pub async fn reconnect_mcp(services: Services) {
         }
     });
     futures::future::join_all(attempts).await;
+}
+
+/// Resume queues whose native plan continuation durably finished before the
+/// previous process could acknowledge it. Ordinary queues still never pump at
+/// startup; these rows carry an explicit, persisted user decision and a Done
+/// continuation turn, so leaving them behind would let a later direct prompt
+/// overtake the already queued follow-up.
+pub async fn resume_completed_plan_review_queues(services: Services) {
+    let pool = services.db.clone();
+    let resumes = tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|error| error.to_string())?;
+        crate::db::ops::plan_review::list_startup_queue_resumes(&mut conn).map_err(|error| error.to_string())
+    })
+    .await;
+    let resumes = match resumes {
+        Ok(Ok(resumes)) => resumes,
+        Ok(Err(error)) => {
+            tracing::warn!(%error, "could not read plan-review queue resumes at startup");
+            return;
+        }
+        Err(error) => {
+            tracing::warn!(%error, "reading plan-review queue resumes panicked");
+            return;
+        }
+    };
+
+    for (delivery_id, conversation_id) in resumes {
+        let before = next_pending_queue_id(&services, &conversation_id).await;
+        crate::agent::queue::pump(&services, &conversation_id).await;
+        let after = next_pending_queue_id(&services, &conversation_id).await;
+        let progressed = match (before, after) {
+            (Ok(before), Ok(after)) => queue_resume_progressed(before.as_deref(), after.as_deref()),
+            (Err(error), _) | (_, Err(error)) => {
+                tracing::warn!(%error, conversation_id, "could not verify plan-review queue resume progress");
+                false
+            }
+        };
+        if !progressed {
+            // Keep the durable marker. A missing starter, a busy lease or a
+            // failed turn start all leave the same queue head untouched; the
+            // next startup must be allowed to try this explicit user-authored
+            // continuation again.
+            tracing::warn!(conversation_id, "plan-review queue resume made no durable progress");
+            continue;
+        }
+        let pool = services.db.clone();
+        let cleared = tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get().map_err(|error| error.to_string())?;
+            crate::db::ops::plan_review::finish_startup_queue_resume(&mut conn, &delivery_id, now_ms())
+                .map_err(|error| error.to_string())
+        })
+        .await;
+        if !matches!(cleared, Ok(Ok(true))) {
+            tracing::warn!(
+                conversation_id,
+                "could not clear a completed plan-review queue resume marker"
+            );
+        }
+    }
+}
+
+async fn next_pending_queue_id(services: &Services, conversation_id: &str) -> Result<Option<String>, String> {
+    let pool = services.db.clone();
+    let conversation_id = conversation_id.to_string();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|error| error.to_string())?;
+        crate::db::ops::queue::next_pending(&mut conn, &conversation_id)
+            .map(|row| row.map(|row| row.id))
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+fn queue_resume_progressed(before: Option<&str>, after: Option<&str>) -> bool {
+    before.is_none() || before != after
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_tool_preset_names, queue_resume_progressed};
+
+    #[test]
+    fn tool_preset_names_require_an_array_of_strings() {
+        assert_eq!(
+            parse_tool_preset_names("preset", r#"["read_file","glob"]"#).unwrap(),
+            ["read_file", "glob"]
+        );
+        assert!(parse_tool_preset_names("preset", "{").is_err());
+        assert!(parse_tool_preset_names("preset", r#"{"tool":"read_file"}"#).is_err());
+        assert!(parse_tool_preset_names("preset", r#"["read_file",1]"#).is_err());
+    }
+
+    #[test]
+    fn startup_queue_resume_marker_is_kept_until_the_head_advances() {
+        assert!(!queue_resume_progressed(Some("queue-1"), Some("queue-1")));
+        assert!(queue_resume_progressed(Some("queue-1"), Some("queue-2")));
+        assert!(queue_resume_progressed(Some("queue-1"), None));
+        assert!(queue_resume_progressed(None, None));
+    }
 }

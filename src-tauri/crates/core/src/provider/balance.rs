@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use super::ProviderError;
 use super::dto::{ExtraIgnore, warn_extra_fields};
 use crate::client::{HttpTransport, Request, ReqwestTransport};
+use crate::decimal::Decimal;
 
 /// One currency's worth of credit.
 ///
@@ -26,12 +27,12 @@ use crate::client::{HttpTransport, Request, ReqwestTransport};
 pub struct BalanceAccount {
     pub currency: String,
     /// What can actually be spent, which is the only figure worth alerting on.
-    pub total: f64,
+    pub total_balance: Decimal,
     /// Promotional credit, which typically expires. Shown, never used as the
     /// threshold: an account with 50 of expiring grant and nothing topped up is
     /// closer to empty than the total suggests.
-    pub granted: Option<f64>,
-    pub topped_up: Option<f64>,
+    pub granted_balance: Option<Decimal>,
+    pub topped_up_balance: Option<Decimal>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -54,8 +55,9 @@ impl ProviderBalance {
     /// it is compared per currency rather than against a sum — one number cannot
     /// be a sensible floor for both CNY and USD at once, but somebody who holds
     /// balances in two currencies is better warned twice than not at all.
-    pub fn is_low(&self, threshold: f64) -> bool {
-        !self.is_available || (threshold > 0.0 && self.accounts.iter().any(|account| account.total < threshold))
+    pub fn is_low(&self, threshold: &Decimal) -> bool {
+        !self.is_available
+            || (!threshold.is_zero() && self.accounts.iter().any(|account| &account.total_balance < threshold))
     }
 }
 
@@ -137,20 +139,26 @@ async fn fetch_deepseek_balance(base_url: &str, api_key: &str) -> Result<Provide
     let mut accounts = Vec::with_capacity(parsed.balance_infos.len());
     for info in &parsed.balance_infos {
         warn_extra_fields("deepseek_balance_info", &info.extra);
-        let total = info.total_balance.trim().parse::<f64>().map_err(|error| {
-            tracing::warn!(
-                api = "deepseek",
-                currency = %info.currency,
-                error = %error,
-                "the balance was not a number"
-            );
-            ProviderError::Parse(format!("balance for {} is not a number", info.currency))
-        })?;
+        let total = info
+            .total_balance
+            .trim()
+            .parse::<Decimal>()
+            .map_err(|error| {
+                tracing::warn!(
+                    api = "deepseek",
+                    currency = %info.currency,
+                    error = %error,
+                    "the balance was not a number"
+                );
+                ProviderError::Parse(format!("balance for {} is not a number", info.currency))
+            })?
+            .require_non_negative("total_balance")
+            .map_err(|error| ProviderError::Parse(error.to_string()))?;
         accounts.push(BalanceAccount {
             currency: info.currency.clone(),
-            total,
-            granted: info.granted_balance.as_deref().and_then(amount),
-            topped_up: info.topped_up_balance.as_deref().and_then(amount),
+            total_balance: total,
+            granted_balance: amount(info.granted_balance.as_deref(), "granted_balance")?,
+            topped_up_balance: amount(info.topped_up_balance.as_deref(), "topped_up_balance")?,
         });
     }
 
@@ -160,15 +168,24 @@ async fn fetch_deepseek_balance(base_url: &str, api_key: &str) -> Result<Provide
     })
 }
 
-/// A breakdown figure. Unlike the total, one of these failing to parse costs
-/// only a line of detail, so it degrades to absent instead of failing the call.
-fn amount(raw: &str) -> Option<f64> {
-    raw.trim().parse::<f64>().ok()
+fn amount(raw: Option<&str>, field: &str) -> Result<Option<Decimal>, ProviderError> {
+    raw.map(|raw| {
+        raw.trim()
+            .parse::<Decimal>()
+            .map_err(|error| ProviderError::Parse(format!("{field} is not a decimal: {error}")))?
+            .require_non_negative(field)
+            .map_err(|error| ProviderError::Parse(error.to_string()))
+    })
+    .transpose()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn decimal(raw: &str) -> Decimal {
+        raw.parse().unwrap()
+    }
 
     /// The mapping half of `fetch_deepseek_balance`, without the HTTP half.
     fn parse(json: &str) -> ProviderBalance {
@@ -180,9 +197,9 @@ mod tests {
                 .iter()
                 .map(|info| BalanceAccount {
                     currency: info.currency.clone(),
-                    total: info.total_balance.trim().parse().expect("a numeric total"),
-                    granted: info.granted_balance.as_deref().and_then(amount),
-                    topped_up: info.topped_up_balance.as_deref().and_then(amount),
+                    total_balance: info.total_balance.trim().parse().expect("a numeric total"),
+                    granted_balance: amount(info.granted_balance.as_deref(), "granted_balance").unwrap(),
+                    topped_up_balance: amount(info.topped_up_balance.as_deref(), "topped_up_balance").unwrap(),
                 })
                 .collect(),
         }
@@ -199,8 +216,8 @@ mod tests {
         assert!(balance.is_available);
         assert_eq!(balance.accounts.len(), 1);
         assert_eq!(balance.accounts[0].currency, "CNY");
-        assert_eq!(balance.accounts[0].total, 110.0);
-        assert_eq!(balance.accounts[0].granted, Some(10.0));
+        assert_eq!(balance.accounts[0].total_balance, decimal("110"));
+        assert_eq!(balance.accounts[0].granted_balance, Some(decimal("10")));
     }
 
     /// The threshold is per currency. Summing them would compare a number in no
@@ -212,8 +229,8 @@ mod tests {
                 {"currency":"CNY","total_balance":"500.00"},
                 {"currency":"USD","total_balance":"0.80"}]}"#,
         );
-        assert!(balance.is_low(5.0));
-        assert!(!balance.is_low(0.5));
+        assert!(balance.is_low(&decimal("5")));
+        assert!(!balance.is_low(&decimal("0.5")));
     }
 
     /// The upstream's own verdict outranks the numbers: a postpaid account can
@@ -222,11 +239,14 @@ mod tests {
     #[test]
     fn an_unavailable_account_is_low_at_any_threshold() {
         let balance = parse(r#"{"is_available":false,"balance_infos":[{"currency":"CNY","total_balance":"999"}]}"#);
-        assert!(balance.is_low(0.0));
-        assert!(balance.is_low(1.0));
+        assert!(balance.is_low(&decimal("0")));
+        assert!(balance.is_low(&decimal("1")));
 
         let healthy = parse(r#"{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"999"}]}"#);
-        assert!(!healthy.is_low(0.0), "a zero threshold disables the early warning");
+        assert!(
+            !healthy.is_low(&decimal("0")),
+            "a zero threshold disables the early warning"
+        );
     }
 
     /// Both spellings of the chat base URL have to reach the same account

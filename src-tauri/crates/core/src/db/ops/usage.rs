@@ -23,12 +23,14 @@
 use std::collections::HashMap;
 
 use diesel::prelude::*;
-use diesel::sql_types::{BigInt, Double, Nullable, Text};
+use diesel::sql_types::{BigInt, Nullable, Text};
 use diesel::sqlite::SqliteConnection;
 use serde::{Deserialize, Serialize};
 
 use crate::agent::pricing::{BilledTokens, BillingMode, Prices, cost_of};
 use crate::db::schema::{conversations, model_configs, projects};
+use crate::decimal::Decimal;
+use crate::turn::TurnOrigin;
 
 /// Which window, and whose traffic.
 ///
@@ -51,11 +53,12 @@ use crate::db::schema::{conversations, model_configs, projects};
 /// has since moved projects, or been deleted, would answer differently from the
 /// row it is about. The one caller that needs a scope needs this one.
 #[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct UsageFilter {
     pub since_ms: Option<i64>,
     pub until_ms: Option<i64>,
-    /// `desktop` or `onebot`, matched against the snapshotted `turn_origin`.
-    pub origin: Option<String>,
+    /// Matched against the snapshotted `turn_origin`.
+    pub origin: Option<TurnOrigin>,
     /// One conversation and nothing else. See the note above.
     pub conversation_id: Option<String>,
 }
@@ -144,11 +147,11 @@ pub struct UsageBucket {
     pub output_tokens: i64,
     pub cache_read_tokens: i64,
     pub cache_write_tokens: i64,
-    pub input_cost: f64,
-    pub output_cost: f64,
-    pub cache_cost: f64,
-    pub tool_cost: f64,
-    pub cost: f64,
+    pub input_cost: Decimal,
+    pub output_cost: Decimal,
+    pub cache_cost: Decimal,
+    pub tool_cost: Decimal,
+    pub total_cost: Decimal,
     /// Replies whose token usage or token rates are incomplete. This is a
     /// component counter: unlike `unpriced_messages`, a reply can also appear
     /// in `unpriced_tool_messages`.
@@ -164,7 +167,7 @@ pub struct UsageBucket {
     /// How many of `messages` contain at least one metered component with no
     /// configured rate, or no provider-reported usage at all.
     ///
-    /// Known components remain in the four cost fields and `cost`. With no
+    /// Known components remain in the four cost fields and `total_cost`. With no
     /// current-price fallback that amount is a lower bound; with one it is a
     /// partial estimate that may be higher or lower than the historical bill.
     /// The estimate and gap counters let callers say which instead of calling
@@ -187,11 +190,11 @@ impl UsageBucket {
             output_tokens: 0,
             cache_read_tokens: 0,
             cache_write_tokens: 0,
-            input_cost: 0.0,
-            output_cost: 0.0,
-            cache_cost: 0.0,
-            tool_cost: 0.0,
-            cost: 0.0,
+            input_cost: Decimal::zero(),
+            output_cost: Decimal::zero(),
+            cache_cost: Decimal::zero(),
+            tool_cost: Decimal::zero(),
+            total_cost: Decimal::zero(),
             unpriced_token_messages: 0,
             unpriced_tool_messages: 0,
             estimated_token_messages: 0,
@@ -213,16 +216,16 @@ struct GroupRow {
     provider_id: Option<String>,
     #[diesel(sql_type = Nullable<Text>)]
     model_id: Option<String>,
-    #[diesel(sql_type = Nullable<Double>)]
-    input_price: Option<f64>,
-    #[diesel(sql_type = Nullable<Double>)]
-    output_price: Option<f64>,
-    #[diesel(sql_type = Nullable<Double>)]
-    cache_read_price: Option<f64>,
-    #[diesel(sql_type = Nullable<Double>)]
-    cache_write_price: Option<f64>,
-    #[diesel(sql_type = Nullable<Double>)]
-    server_tool_price: Option<f64>,
+    #[diesel(sql_type = Nullable<Text>)]
+    input_price: Option<Decimal>,
+    #[diesel(sql_type = Nullable<Text>)]
+    output_price: Option<Decimal>,
+    #[diesel(sql_type = Nullable<Text>)]
+    cache_read_price: Option<Decimal>,
+    #[diesel(sql_type = Nullable<Text>)]
+    cache_write_price: Option<Decimal>,
+    #[diesel(sql_type = Nullable<Text>)]
+    server_tool_price: Option<Decimal>,
     /// Grouped on, not just carried: the same model under the same rates can be
     /// billed two ways over its life — an API key today, a subscription
     /// tomorrow — and merging those into one group would price the subscription
@@ -346,11 +349,11 @@ pub struct TurnUsageSummary {
     pub cache_read_tokens: i64,
     pub cache_write_tokens: i64,
     pub server_tool_calls: i64,
-    pub input_cost: Option<f64>,
-    pub output_cost: Option<f64>,
-    pub cache_cost: Option<f64>,
-    pub tool_cost: Option<f64>,
-    pub total_cost: Option<f64>,
+    pub input_cost: Option<Decimal>,
+    pub output_cost: Option<Decimal>,
+    pub cache_cost: Option<Decimal>,
+    pub tool_cost: Option<Decimal>,
+    pub total_cost: Option<Decimal>,
     pub unpriced_token_messages: i64,
     pub unpriced_input_messages: i64,
     pub unpriced_output_messages: i64,
@@ -401,7 +404,7 @@ impl UsageAccumulator {
         }
     }
 
-    fn add(&mut self, group: &GroupRow, resolved: Option<ResolvedPrices>) {
+    fn add(&mut self, group: &GroupRow, resolved: Option<ResolvedPrices>) -> QueryResult<()> {
         self.bucket.messages += group.messages;
         self.bucket.input_tokens += group.input_tokens;
         self.bucket.output_tokens += group.output_tokens;
@@ -411,7 +414,7 @@ impl UsageAccumulator {
         self.bucket.missing_token_usage_messages += group.missing_token_usage_messages;
         self.bucket.incomplete_token_usage_messages += group.incomplete_token_usage_messages;
 
-        match billing_mode_of(group) {
+        match billing_mode_of(group)? {
             BillingMode::Metered => {
                 self.metered_messages += group.messages;
                 self.bucket.metered_messages += group.messages;
@@ -430,7 +433,7 @@ impl UsageAccumulator {
         let Some(resolved) = resolved else {
             // Subscription and external requests have no per-request rate to
             // find, so neither is an actionable pricing gap.
-            return;
+            return Ok(());
         };
         let tokens = BilledTokens {
             uncached_input: group.uncached_input_tokens,
@@ -444,7 +447,7 @@ impl UsageAccumulator {
         self.bucket.output_cost += cost.output_cost;
         self.bucket.cache_cost += cost.cache_cost;
         self.bucket.tool_cost += cost.tool_cost;
-        self.bucket.cost += cost.total_cost;
+        self.bucket.total_cost += cost.total_cost;
 
         if resolved.token_prices_known {
             // Preserve each reported side independently. A provider is allowed
@@ -461,7 +464,7 @@ impl UsageAccumulator {
             self.has_known_output_amount = true;
             self.has_known_cache_amount = true;
         }
-        self.has_priced_tool_calls |= group.server_tool_messages > 0 && resolved.prices.server_tool.is_some();
+        self.has_priced_tool_calls |= group.server_tool_messages > 0 && resolved.prices.server_tool_price.is_some();
 
         let token_incomplete = if resolved.token_prices_known {
             group.incomplete_token_usage_messages
@@ -477,7 +480,7 @@ impl UsageAccumulator {
             self.unpriced_output_messages += group.unpriced_output_usage_messages;
             self.unpriced_cache_messages += group.unpriced_cache_usage_messages;
         }
-        let tool_incomplete = if resolved.prices.server_tool.is_some() {
+        let tool_incomplete = if resolved.prices.server_tool_price.is_some() {
             0
         } else {
             group.server_tool_messages
@@ -488,12 +491,13 @@ impl UsageAccumulator {
         // Keep the known half as a lower bound, while making the missing half
         // visible. When neither half is known the whole group counts once,
         // never once for tokens and again for tools.
-        self.bucket.unpriced_messages += match (resolved.token_prices_known, resolved.prices.server_tool.is_some()) {
-            (true, true) => group.incomplete_token_usage_messages,
-            (true, false) => group.incomplete_token_or_tool_messages,
-            (false, true) => group.incomplete_or_positive_token_messages,
-            (false, false) => group.unpriced_usage_messages,
-        };
+        self.bucket.unpriced_messages +=
+            match (resolved.token_prices_known, resolved.prices.server_tool_price.is_some()) {
+                (true, true) => group.incomplete_token_usage_messages,
+                (true, false) => group.incomplete_token_or_tool_messages,
+                (false, true) => group.incomplete_or_positive_token_messages,
+                (false, false) => group.unpriced_usage_messages,
+            };
 
         if resolved.used_current_fallback {
             self.bucket.estimated_token_messages += resolved
@@ -512,6 +516,7 @@ impl UsageAccumulator {
                     (false, false) => 0,
                 };
         }
+        Ok(())
     }
 
     fn turn_summary(self) -> TurnUsageSummary {
@@ -550,9 +555,9 @@ impl UsageAccumulator {
             pricing_status,
             TurnPricingStatus::Exact | TurnPricingStatus::Estimated | TurnPricingStatus::LowerBound
         );
-        let token_cost = |known, value| (has_local_amount && known).then_some(value);
+        let token_cost = |known, value: &Decimal| (has_local_amount && known).then(|| value.clone());
         let tool_cost = (has_local_amount && (self.metered_server_tool_calls == 0 || self.has_priced_tool_calls))
-            .then_some(self.bucket.tool_cost);
+            .then(|| self.bucket.tool_cost.clone());
 
         TurnUsageSummary {
             messages: self.bucket.messages,
@@ -563,11 +568,11 @@ impl UsageAccumulator {
             cache_read_tokens: self.bucket.cache_read_tokens,
             cache_write_tokens: self.bucket.cache_write_tokens,
             server_tool_calls: self.server_tool_calls,
-            input_cost: token_cost(self.has_known_input_amount, self.bucket.input_cost),
-            output_cost: token_cost(self.has_known_output_amount, self.bucket.output_cost),
-            cache_cost: token_cost(self.has_known_cache_amount, self.bucket.cache_cost),
+            input_cost: token_cost(self.has_known_input_amount, &self.bucket.input_cost),
+            output_cost: token_cost(self.has_known_output_amount, &self.bucket.output_cost),
+            cache_cost: token_cost(self.has_known_cache_amount, &self.bucket.cache_cost),
             tool_cost,
-            total_cost: has_local_amount.then_some(self.bucket.cost),
+            total_cost: has_local_amount.then(|| self.bucket.total_cost.clone()),
             unpriced_token_messages: self.bucket.unpriced_token_messages,
             unpriced_input_messages: self.unpriced_input_messages,
             unpriced_output_messages: self.unpriced_output_messages,
@@ -593,7 +598,7 @@ pub fn report(
 ) -> QueryResult<Vec<UsageBucket>> {
     let groups = grouped(conn, dimension, filter)?;
     let current = current_prices(conn)?;
-    let mut out: Vec<UsageBucket> = accumulate(groups, &current)
+    let mut out: Vec<UsageBucket> = accumulate(groups, &current)?
         .into_values()
         .map(|accumulator| accumulator.bucket)
         .collect();
@@ -603,9 +608,8 @@ pub fn report(
         // Tokens break the tie, so unpriced rows — every one of which costs 0 —
         // still come back in an order that puts the largest first.
         out.sort_by(|a, b| {
-            b.cost
-                .partial_cmp(&a.cost)
-                .unwrap_or(std::cmp::Ordering::Equal)
+            b.total_cost
+                .cmp(&a.total_cost)
                 .then((b.input_tokens + b.output_tokens).cmp(&(a.input_tokens + a.output_tokens)))
         });
     }
@@ -626,22 +630,25 @@ pub fn turn_summaries(
     };
     let groups = grouped_for_key(conn, "turn_id", "AND turn_id IS NOT NULL", &filter, true)?;
     let current = current_prices(conn)?;
-    Ok(accumulate(groups, &current)
+    Ok(accumulate(groups, &current)?
         .into_iter()
         .map(|(turn_id, accumulator)| (turn_id, accumulator.turn_summary()))
         .collect())
 }
 
-fn accumulate(groups: Vec<GroupRow>, current: &HashMap<(String, String), Prices>) -> HashMap<String, UsageAccumulator> {
+fn accumulate(
+    groups: Vec<GroupRow>,
+    current: &HashMap<(String, String), Prices>,
+) -> QueryResult<HashMap<String, UsageAccumulator>> {
     let mut buckets = HashMap::new();
     for group in groups {
-        let resolved = resolve(&group, current);
+        let resolved = resolve(&group, current)?;
         buckets
             .entry(group.bucket_key.clone())
             .or_insert_with(|| UsageAccumulator::empty(group.bucket_key.clone()))
-            .add(&group, resolved);
+            .add(&group, resolved)?;
     }
-    buckets
+    Ok(buckets)
 }
 
 /// The snapshot if there is one, today's configuration if there is not, and
@@ -658,61 +665,63 @@ fn accumulate(groups: Vec<GroupRow>, current: &HashMap<(String, String), Prices>
 /// request through a provider that happens to have rates on file would be priced
 /// at them. "No rate was stored" and "no rate exists" are the same shape in the
 /// row and opposite in meaning, and only `billing_mode` tells them apart.
-fn resolve(group: &GroupRow, current: &HashMap<(String, String), Prices>) -> Option<ResolvedPrices> {
-    if !billing_mode_of(group).is_priced() {
-        return None;
+fn resolve(group: &GroupRow, current: &HashMap<(String, String), Prices>) -> QueryResult<Option<ResolvedPrices>> {
+    if !billing_mode_of(group)?.is_priced() {
+        return Ok(None);
     }
-    let snapshot = match (group.input_price, group.output_price) {
+    let snapshot = match (group.input_price.clone(), group.output_price.clone()) {
         (Some(input), Some(output)) => Some(Prices {
-            input,
-            output,
-            cache_read: group.cache_read_price,
-            cache_write: group.cache_write_price,
-            server_tool: group.server_tool_price,
+            input_price: Some(input),
+            output_price: Some(output),
+            cache_read_price: group.cache_read_price.clone(),
+            cache_write_price: group.cache_write_price.clone(),
+            server_tool_price: group.server_tool_price.clone(),
         }),
         _ => None,
     }
-    // Rows written while a model config still held the editor's 0/0 defaults
-    // predate the write-side guard in `audit::prices_for`. Zero was never a
-    // known price (`Prices::known` is the contract), so it must behave like a
-    // missing snapshot and remain eligible for the same current-price fallback
-    // as older NULL rows. A real historical rate still wins unchanged.
+    // A complete historical rate wins unchanged. Legacy rows with NULL rates
+    // remain eligible for the current-price estimate.
     .filter(Prices::known);
     let current_prices = group.provider_id.as_ref().and_then(|provider| {
         let model = group.model_id.as_ref()?;
-        current.get(&(provider.clone(), model.clone())).copied()
+        current.get(&(provider.clone(), model.clone())).cloned()
     });
-    let token_prices_from_current = snapshot.is_none() && current_prices.is_some_and(|prices| prices.known());
-    let tool_price_from_current =
-        group.server_tool_price.is_none() && current_prices.is_some_and(|prices| prices.server_tool.is_some());
-    let mut prices = snapshot.or(current_prices).unwrap_or_default();
+    let token_prices_from_current = snapshot.is_none() && current_prices.as_ref().is_some_and(Prices::known);
+    let tool_price_from_current = group.server_tool_price.is_none()
+        && current_prices
+            .as_ref()
+            .is_some_and(|prices| prices.server_tool_price.is_some());
+    let mut prices = snapshot.or_else(|| current_prices.clone()).unwrap_or_default();
 
     // A tool rate is independent of the token rates. Preserve an explicit
     // historical value even on a legacy/zero token snapshot; otherwise a
     // deleted model would lose the one part of its cost the row did know.
-    prices.server_tool = group
+    prices.server_tool_price = group
         .server_tool_price
-        .or(prices.server_tool)
+        .clone()
+        .or(prices.server_tool_price)
         // Migration 37 added the tool-rate snapshot after token snapshots
         // already existed. Its legacy NULL has the same best-available answer
         // as migration 30's NULL token rates: today's exact provider/model
         // config, never a same-named model under a different provider.
-        .or_else(|| current_prices.and_then(|current| current.server_tool));
+        .or_else(|| current_prices.and_then(|current| current.server_tool_price));
 
-    Some(ResolvedPrices {
+    Ok(Some(ResolvedPrices {
         token_prices_known: prices.known(),
         prices,
         token_prices_from_current,
         tool_price_from_current,
         used_current_fallback: token_prices_from_current || tool_price_from_current,
-    })
+    }))
 }
 
-/// An unreadable mode reads as `Metered`, which keeps the request in the ledger
-/// and, if it has no rate, visible as unpriced. The alternative — treating junk
-/// as "not billable" — would make spend disappear silently.
-fn billing_mode_of(group: &GroupRow) -> BillingMode {
-    group.billing_mode.parse().unwrap_or_default()
+/// Persisted enum values are strict. Unknown data is a contract violation,
+/// never a request to guess the closest current variant.
+fn billing_mode_of(group: &GroupRow) -> QueryResult<BillingMode> {
+    group
+        .billing_mode
+        .parse()
+        .map_err(|error| diesel::result::Error::DeserializationError(Box::new(error)))
 }
 
 fn current_prices(conn: &mut SqliteConnection) -> QueryResult<HashMap<(String, String), Prices>> {
@@ -722,11 +731,19 @@ fn current_prices(conn: &mut SqliteConnection) -> QueryResult<HashMap<(String, S
             model_configs::model_id,
             model_configs::input_price,
             model_configs::output_price,
-            model_configs::cache_price,
+            model_configs::cache_read_price,
             model_configs::cache_write_price,
             model_configs::server_tool_price,
         ))
-        .load::<(String, String, f64, f64, Option<f64>, Option<f64>, Option<f64>)>(conn)?;
+        .load::<(
+            String,
+            String,
+            Option<Decimal>,
+            Option<Decimal>,
+            Option<Decimal>,
+            Option<Decimal>,
+            Option<Decimal>,
+        )>(conn)?;
     Ok(rows
         .into_iter()
         .map(
@@ -734,11 +751,11 @@ fn current_prices(conn: &mut SqliteConnection) -> QueryResult<HashMap<(String, S
                 (
                     (provider, model),
                     Prices {
-                        input,
-                        output,
-                        cache_read,
-                        cache_write,
-                        server_tool,
+                        input_price: input,
+                        output_price: output,
+                        cache_read_price: cache_read,
+                        cache_write_price: cache_write,
+                        server_tool_price: server_tool,
                     },
                 )
             },
@@ -882,13 +899,14 @@ fn grouped_for_key(
             .join(", "),
     );
 
+    let origin = filter.origin.map(|value| value.as_str().to_string());
     let query = diesel::sql_query(sql)
         .bind::<Nullable<BigInt>, _>(filter.since_ms)
         .bind::<Nullable<BigInt>, _>(filter.since_ms)
         .bind::<Nullable<BigInt>, _>(filter.until_ms)
         .bind::<Nullable<BigInt>, _>(filter.until_ms)
-        .bind::<Nullable<Text>, _>(filter.origin.clone())
-        .bind::<Nullable<Text>, _>(filter.origin.clone());
+        .bind::<Nullable<Text>, _>(origin.clone())
+        .bind::<Nullable<Text>, _>(origin);
     if direct_conversation {
         query
             .bind::<Text, _>(
@@ -950,9 +968,13 @@ fn label(conn: &mut SqliteConnection, dimension: UsageDimension, buckets: &mut [
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::models::audit::NewAuditMessage;
+    use crate::db::models::audit::AuditMessageInsert;
     use crate::db::schema::audit_messages;
     use crate::db::test_db;
+
+    fn decimal(raw: &str) -> Decimal {
+        raw.parse().unwrap()
+    }
 
     /// Straight into the table. `record` is exercised by its own module's tests;
     /// what these need is control over prices and timestamps, which a real turn
@@ -964,12 +986,12 @@ mod tests {
         model: &str,
         created_at: i64,
         tokens: (i32, i32, i32, i32),
-        prices: Option<(f64, f64)>,
+        prices: Option<(&str, &str)>,
         origin: &str,
     ) {
         let (input, output, cache_read, cache_write) = tokens;
         diesel::insert_into(audit_messages::table)
-            .values(&NewAuditMessage {
+            .values(&AuditMessageInsert {
                 id,
                 recorded_at: created_at,
                 message_id: id,
@@ -990,8 +1012,8 @@ mod tests {
                 cache_read_tokens: Some(cache_read),
                 cache_write_tokens: Some(cache_write),
                 created_at,
-                input_price: prices.map(|p| p.0),
-                output_price: prices.map(|p| p.1),
+                input_price: prices.map(|p| decimal(p.0)),
+                output_price: prices.map(|p| decimal(p.1)),
                 cache_read_price: None,
                 cache_write_price: None,
                 server_tool_calls: None,
@@ -1006,12 +1028,12 @@ mod tests {
     /// A provider and a priced model, so the fallback in `resolve` has something
     /// to find. Without this the tests below could not tell "refused to price"
     /// from "had no price to use".
-    fn seed_model(conn: &mut SqliteConnection, model: &str, input: f64, output: f64) {
-        use crate::db::models::model_config::NewModelConfig;
-        use crate::db::models::provider::NewProvider;
+    fn seed_model(conn: &mut SqliteConnection, model: &str, input: &str, output: &str) {
+        use crate::db::models::model_config::ModelConfigInsert;
+        use crate::db::models::provider::ProviderInsert;
 
         diesel::insert_into(crate::db::schema::providers::table)
-            .values(&NewProvider {
+            .values(&ProviderInsert {
                 id: "p1",
                 name: "Acme",
                 provider_type: "openai",
@@ -1029,7 +1051,7 @@ mod tests {
             .unwrap();
         crate::db::ops::model_config::upsert(
             conn,
-            &NewModelConfig {
+            &ModelConfigInsert {
                 id: "mc1",
                 provider_id: "p1",
                 model_id: model,
@@ -1037,14 +1059,14 @@ mod tests {
                 context_window: 1,
                 compact_threshold: 1,
                 max_output_tokens: None,
-                input_price: input,
-                output_price: output,
-                cache_price: None,
+                input_price: Some(decimal(input)),
+                output_price: Some(decimal(output)),
+                cache_read_price: None,
                 cache_write_price: None,
                 created_at: 0,
                 updated_at: 0,
                 capability_overrides: None,
-                price_tiers: None,
+                pricing_tiers: None,
                 server_tools: None,
                 server_tool_price: None,
             },
@@ -1056,7 +1078,7 @@ mod tests {
     /// that makes the price fallback reachable.
     fn reply_billed(conn: &mut SqliteConnection, id: &str, model: &str, mode: &str, tokens: (i32, i32)) {
         diesel::insert_into(audit_messages::table)
-            .values(&NewAuditMessage {
+            .values(&AuditMessageInsert {
                 id,
                 recorded_at: 1,
                 message_id: id,
@@ -1103,7 +1125,7 @@ mod tests {
     /// needs at least two conversations to mean anything.
     fn reply_in(conn: &mut SqliteConnection, id: &str, conversation: &str, tokens: (i32, i32)) {
         diesel::insert_into(audit_messages::table)
-            .values(&NewAuditMessage {
+            .values(&AuditMessageInsert {
                 id,
                 recorded_at: 1,
                 message_id: id,
@@ -1142,7 +1164,7 @@ mod tests {
     fn a_conversation_filter_excludes_every_other_conversation() {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
-        seed_model(&mut conn, "m1", 1.0, 2.0);
+        seed_model(&mut conn, "m1", "1", "2");
         reply_in(&mut conn, "a1", "mine", (10, 10));
         reply_in(&mut conn, "b1", "theirs", (500, 500));
         reply_in(&mut conn, "b2", "theirs", (500, 500));
@@ -1173,7 +1195,7 @@ mod tests {
     fn no_dimension_widens_a_scoped_report() {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
-        seed_model(&mut conn, "m1", 1.0, 2.0);
+        seed_model(&mut conn, "m1", "1", "2");
         reply_in(&mut conn, "a1", "mine", (10, 10));
         reply_in(&mut conn, "b1", "theirs", (10, 10));
 
@@ -1214,18 +1236,22 @@ mod tests {
     fn a_subscription_is_not_priced_from_todays_configuration() {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
-        seed_model(&mut conn, "m1", 1.0, 2.0);
+        seed_model(&mut conn, "m1", "1", "2");
 
         reply_billed(&mut conn, "a1", "m1", "metered", (1_000_000, 1_000_000));
         let metered = report(&mut conn, UsageDimension::Total, &UsageFilter::default()).unwrap();
-        assert_eq!(metered[0].cost, 3.0, "a metered row still falls back to today's rates");
+        assert_eq!(
+            metered[0].total_cost,
+            decimal("3"),
+            "a metered row still falls back to today's rates"
+        );
 
         let pool2 = test_db();
         let mut conn2 = pool2.get().unwrap();
-        seed_model(&mut conn2, "m1", 1.0, 2.0);
+        seed_model(&mut conn2, "m1", "1", "2");
         reply_billed(&mut conn2, "b1", "m1", "subscription", (1_000_000, 1_000_000));
         let sub = report(&mut conn2, UsageDimension::Total, &UsageFilter::default()).unwrap();
-        assert_eq!(sub[0].cost, 0.0, "a subscription must not be priced");
+        assert_eq!(sub[0].total_cost, Decimal::zero(), "a subscription must not be priced");
         assert_eq!(sub[0].input_tokens, 1_000_000, "its tokens are still counted");
     }
 
@@ -1268,7 +1294,7 @@ mod tests {
             "m",
             1,
             (1_000_000, 100_000, 0, 0),
-            Some((10.0, 20.0)),
+            Some(("10", "20")),
             "desktop",
         );
         attach_to_turn(&mut conn, "exact-row", "exact");
@@ -1296,7 +1322,7 @@ mod tests {
             "m",
             3,
             (1_000_000, 0, 0, 0),
-            Some((10.0, 20.0)),
+            Some(("10", "20")),
             "desktop",
         );
         attach_to_turn(&mut conn, "mixed-local", "mixed");
@@ -1310,7 +1336,7 @@ mod tests {
             "m",
             4,
             (10, 0, 0, 0),
-            Some((10.0, 20.0)),
+            Some(("10", "20")),
             "desktop",
         );
 
@@ -1322,7 +1348,7 @@ mod tests {
         assert_eq!(exact.pricing_status, TurnPricingStatus::Exact);
         assert_eq!(exact.missing_token_usage_messages, 0);
         assert_eq!(exact.input_tokens, 1_000_000);
-        assert!((exact.total_cost.unwrap() - 12.0).abs() < 1e-9);
+        assert_eq!(exact.total_cost, Some(decimal("12")));
 
         let external = &summaries["external"];
         assert_eq!(external.pricing_status, TurnPricingStatus::External);
@@ -1345,7 +1371,7 @@ mod tests {
 
         let mixed = &summaries["mixed"];
         assert_eq!(mixed.pricing_status, TurnPricingStatus::LowerBound);
-        assert_eq!((mixed.total_cost.unwrap() - 10.0).abs(), 0.0);
+        assert_eq!(mixed.total_cost, Some(decimal("10")));
         assert_eq!((mixed.metered_messages, mixed.external_messages), (1, 1));
 
         let all = total(&mut conn, &UsageFilter::default());
@@ -1396,7 +1422,7 @@ mod tests {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         for (id, turn_id) in [("missing-row", "missing"), ("zero-row", "zero")] {
-            reply(&mut conn, id, "m", 1, (0, 0, 0, 0), Some((10.0, 20.0)), "desktop");
+            reply(&mut conn, id, "m", 1, (0, 0, 0, 0), Some(("10", "20")), "desktop");
             attach_to_turn(&mut conn, id, turn_id);
         }
         diesel::update(audit_messages::table.find("missing-row"))
@@ -1416,7 +1442,7 @@ mod tests {
             "unpriced",
             2,
             (0, 0, 0, 0),
-            Some((0.0, 0.0)),
+            Some(("0", "0")),
             "desktop",
         );
         attach_to_turn(&mut conn, "unknown-zero-row", "unknown-zero");
@@ -1427,7 +1453,7 @@ mod tests {
             "m",
             3,
             (0, 0, 0, 0),
-            Some((10.0, 20.0)),
+            Some(("10", "20")),
             "desktop",
         );
         attach_to_turn(&mut conn, "tool-only-row", "tool-only");
@@ -1438,7 +1464,7 @@ mod tests {
                 audit_messages::cache_read_tokens.eq(None::<i32>),
                 audit_messages::cache_write_tokens.eq(None::<i32>),
                 audit_messages::server_tool_calls.eq(Some(2)),
-                audit_messages::server_tool_price.eq(Some(15.0)),
+                audit_messages::server_tool_price.eq(Some(decimal("15"))),
             ))
             .execute(&mut conn)
             .unwrap();
@@ -1449,7 +1475,7 @@ mod tests {
             "m",
             4,
             (0, 0, 0, 0),
-            Some((10.0, 20.0)),
+            Some(("10", "20")),
             "desktop",
         );
         attach_to_turn(&mut conn, "overlap-row", "overlap");
@@ -1460,7 +1486,7 @@ mod tests {
                 audit_messages::cache_read_tokens.eq(None::<i32>),
                 audit_messages::cache_write_tokens.eq(None::<i32>),
                 audit_messages::server_tool_calls.eq(Some(2)),
-                audit_messages::server_tool_price.eq(None::<f64>),
+                audit_messages::server_tool_price.eq(None::<Decimal>),
             ))
             .execute(&mut conn)
             .unwrap();
@@ -1479,10 +1505,10 @@ mod tests {
         assert_eq!(zero.pricing_status, TurnPricingStatus::Exact);
         assert_eq!(zero.missing_token_usage_messages, 0);
         assert_eq!(zero.unpriced_messages, 0);
-        assert_eq!(zero.input_cost, Some(0.0));
+        assert_eq!(zero.input_cost, Some(Decimal::zero()));
         assert_eq!(
             zero.total_cost,
-            Some(0.0),
+            Some(Decimal::zero()),
             "the provider explicitly reported zero usage"
         );
 
@@ -1492,8 +1518,8 @@ mod tests {
             unknown_zero.unpriced_messages, 0,
             "no price is needed when every unit is explicitly zero"
         );
-        assert_eq!(unknown_zero.total_cost, Some(0.0));
-        assert_eq!(unknown_zero.input_cost, Some(0.0));
+        assert_eq!(unknown_zero.total_cost, Some(Decimal::zero()));
+        assert_eq!(unknown_zero.input_cost, Some(Decimal::zero()));
 
         let tool_only = &summaries["tool-only"];
         assert_eq!(tool_only.pricing_status, TurnPricingStatus::LowerBound);
@@ -1505,8 +1531,8 @@ mod tests {
         assert_eq!(tool_only.unpriced_token_messages, 1);
         assert_eq!(tool_only.unpriced_tool_messages, 0);
         assert_eq!(tool_only.input_cost, None);
-        assert!((tool_only.tool_cost.unwrap() - 0.03).abs() < 1e-9);
-        assert!((tool_only.total_cost.unwrap() - 0.03).abs() < 1e-9);
+        assert_eq!(tool_only.tool_cost, Some(decimal("0.03")));
+        assert_eq!(tool_only.total_cost, Some(decimal("0.03")));
 
         let overlap = &summaries["overlap"];
         assert_eq!(overlap.pricing_status, TurnPricingStatus::Unavailable);
@@ -1543,7 +1569,7 @@ mod tests {
             "m",
             1,
             (0, 100_000, 900_000, 0),
-            Some((10.0, 20.0)),
+            Some(("10", "20")),
             "desktop",
         );
         attach_to_turn(&mut conn, "input-missing-row", "input-missing");
@@ -1558,7 +1584,7 @@ mod tests {
             "m",
             2,
             (1_000_000, 0, 0, 0),
-            Some((10.0, 20.0)),
+            Some(("10", "20")),
             "desktop",
         );
         attach_to_turn(&mut conn, "output-missing-row", "output-missing");
@@ -1581,9 +1607,9 @@ mod tests {
         assert_eq!(input_missing.unpriced_output_messages, 0);
         assert_eq!(input_missing.unpriced_cache_messages, 0);
         assert_eq!(input_missing.input_cost, None);
-        assert!((input_missing.cache_cost.unwrap() - 9.0).abs() < 1e-9);
-        assert!((input_missing.output_cost.unwrap() - 2.0).abs() < 1e-9);
-        assert!((input_missing.total_cost.unwrap() - 11.0).abs() < 1e-9);
+        assert_eq!(input_missing.cache_cost, Some(decimal("9")));
+        assert_eq!(input_missing.output_cost, Some(decimal("2")));
+        assert_eq!(input_missing.total_cost, Some(decimal("11")));
 
         let output_missing = &summaries["output-missing"];
         assert_eq!(output_missing.missing_token_usage_messages, 0);
@@ -1592,10 +1618,10 @@ mod tests {
         assert_eq!(output_missing.unpriced_input_messages, 0);
         assert_eq!(output_missing.unpriced_output_messages, 1);
         assert_eq!(output_missing.unpriced_cache_messages, 0);
-        assert!((output_missing.input_cost.unwrap() - 10.0).abs() < 1e-9);
+        assert_eq!(output_missing.input_cost, Some(decimal("10")));
         assert_eq!(output_missing.output_cost, None);
-        assert_eq!(output_missing.cache_cost, Some(0.0));
-        assert!((output_missing.total_cost.unwrap() - 10.0).abs() < 1e-9);
+        assert_eq!(output_missing.cache_cost, Some(Decimal::zero()));
+        assert_eq!(output_missing.total_cost, Some(decimal("10")));
 
         let all = total(&mut conn, &UsageFilter::default());
         assert_eq!(all.missing_token_usage_messages, 0);
@@ -1603,20 +1629,7 @@ mod tests {
         assert_eq!((all.input_tokens, all.output_tokens), (1_900_000, 100_000));
         assert_eq!(all.unpriced_token_messages, 2);
         assert_eq!(all.unpriced_messages, 2);
-        assert!((all.cost - 21.0).abs() < 1e-9);
-    }
-
-    /// Junk in the column reads as `metered`, which keeps the request in the
-    /// ledger. Treating it as unbillable would make spend disappear silently.
-    #[test]
-    fn an_unreadable_billing_mode_is_treated_as_metered() {
-        let pool = test_db();
-        let mut conn = pool.get().unwrap();
-        seed_model(&mut conn, "m1", 1.0, 2.0);
-        reply_billed(&mut conn, "a1", "m1", "who knows", (1_000_000, 0));
-
-        let out = report(&mut conn, UsageDimension::Total, &UsageFilter::default()).unwrap();
-        assert_eq!(out[0].cost, 1.0);
+        assert_eq!(all.total_cost, decimal("21"));
     }
 
     /// The same model billed two ways over its life must not be merged into one
@@ -1625,20 +1638,24 @@ mod tests {
     fn the_two_modes_are_grouped_apart() {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
-        seed_model(&mut conn, "m1", 1.0, 2.0);
+        seed_model(&mut conn, "m1", "1", "2");
         reply_billed(&mut conn, "a1", "m1", "metered", (1_000_000, 0));
         reply_billed(&mut conn, "b1", "m1", "subscription", (1_000_000, 0));
 
         let out = report(&mut conn, UsageDimension::Total, &UsageFilter::default()).unwrap();
         assert_eq!(out[0].messages, 2);
         assert_eq!(out[0].input_tokens, 2_000_000, "both rows' tokens are reported");
-        assert_eq!(out[0].cost, 1.0, "but only the metered million is charged for");
+        assert_eq!(
+            out[0].total_cost,
+            decimal("1"),
+            "but only the metered million is charged for"
+        );
     }
 
     /// The same, filed as an automatic review rather than as an answer.
-    fn review(conn: &mut SqliteConnection, id: &str, created_at: i64, input: i32, price: f64) {
+    fn review(conn: &mut SqliteConnection, id: &str, created_at: i64, input: i32, price: &str) {
         diesel::insert_into(audit_messages::table)
-            .values(&NewAuditMessage {
+            .values(&AuditMessageInsert {
                 id,
                 recorded_at: created_at,
                 message_id: id,
@@ -1659,8 +1676,8 @@ mod tests {
                 cache_read_tokens: Some(0),
                 cache_write_tokens: Some(0),
                 created_at,
-                input_price: Some(price),
-                output_price: Some(0.0),
+                input_price: Some(decimal(price)),
+                output_price: Some(Decimal::zero()),
                 cache_read_price: None,
                 cache_write_price: None,
                 server_tool_calls: None,
@@ -1692,7 +1709,7 @@ mod tests {
             "m",
             1_000,
             (1_000_000, 0, 0, 0),
-            Some((10.0, 0.0)),
+            Some(("10", "0")),
             "desktop",
         );
         reply(
@@ -1701,13 +1718,13 @@ mod tests {
             "m",
             2_000,
             (1_000_000, 0, 0, 0),
-            Some((20.0, 0.0)),
+            Some(("20", "0")),
             "desktop",
         );
 
         let all = total(&mut conn, &UsageFilter::default());
         assert_eq!(all.messages, 2);
-        assert!((all.cost - 30.0).abs() < 0.001, "10 + 20, not 2 x either");
+        assert_eq!(all.total_cost, decimal("30"), "10 + 20, not 2 x either");
         assert_eq!(all.unpriced_messages, 0);
     }
 
@@ -1731,7 +1748,7 @@ mod tests {
             "grok-4.6",
             1_000,
             (100_000, 0, 0, 0),
-            Some((2.0, 6.0)),
+            Some(("2", "6")),
             "desktop",
         );
         reply(
@@ -1740,13 +1757,13 @@ mod tests {
             "grok-4.6",
             2_000,
             (250_000, 0, 0, 0),
-            Some((4.0, 12.0)),
+            Some(("4", "12")),
             "desktop",
         );
 
         let all = total(&mut conn, &UsageFilter::default());
         assert_eq!(all.messages, 2);
-        assert!((all.cost - 1.2).abs() < 1e-9, "0.2 + 1.0, got {}", all.cost);
+        assert_eq!(all.total_cost, decimal("1.2"), "0.2 + 1.0, got {}", all.total_cost);
         // And the model is still one row in the breakdown: the tier is a price,
         // not an identity.
         let by_model = report(&mut conn, UsageDimension::Model, &UsageFilter::default()).unwrap();
@@ -1767,14 +1784,14 @@ mod tests {
             "m",
             1_000,
             (1_000_000, 0, 0, 0),
-            Some((10.0, 0.0)),
+            Some(("10", "0")),
             "desktop",
         );
-        review(&mut conn, "r", 1_100, 1_000_000, 2.0);
+        review(&mut conn, "r", 1_100, 1_000_000, "2");
 
         let all = total(&mut conn, &UsageFilter::default());
         assert_eq!(all.messages, 2);
-        assert!((all.cost - 12.0).abs() < 0.001, "the review is part of what was spent");
+        assert_eq!(all.total_cost, decimal("12"), "the review is part of what was spent");
     }
 
     /// And they have to be separable, or the total is a number nobody can act
@@ -1790,15 +1807,21 @@ mod tests {
             "m",
             1_000,
             (1_000_000, 0, 0, 0),
-            Some((10.0, 0.0)),
+            Some(("10", "0")),
             "desktop",
         );
-        review(&mut conn, "r", 1_100, 1_000_000, 2.0);
+        review(&mut conn, "r", 1_100, 1_000_000, "2");
 
         let by_kind = report(&mut conn, UsageDimension::Kind, &UsageFilter::default()).unwrap();
-        let of = |key: &str| by_kind.iter().find(|b| b.key == key).map(|b| b.cost).unwrap_or(0.0);
-        assert!((of("assistant") - 10.0).abs() < 0.001);
-        assert!((of("auto_review") - 2.0).abs() < 0.001);
+        let of = |key: &str| {
+            by_kind
+                .iter()
+                .find(|bucket| bucket.key == key)
+                .map(|bucket| bucket.total_cost.clone())
+                .unwrap_or_else(Decimal::zero)
+        };
+        assert_eq!(of("assistant"), decimal("10"));
+        assert_eq!(of("auto_review"), decimal("2"));
     }
 
     /// A cached token is billed once. The same rule `compute_cost` is tested for
@@ -1815,12 +1838,12 @@ mod tests {
             "m",
             1_000,
             (1_000_000, 0, 900_000, 0),
-            Some((10.0, 0.0)),
+            Some(("10", "0")),
             "desktop",
         );
 
         let all = total(&mut conn, &UsageFilter::default());
-        assert!((all.cost - 10.0).abs() < 0.001, "the prompt is charged once over");
+        assert_eq!(all.total_cost, decimal("10"), "the prompt is charged once over");
         assert_eq!(all.cache_read_tokens, 900_000);
     }
 
@@ -1836,26 +1859,29 @@ mod tests {
             "m",
             1_000,
             (1_000_000, 2_000_000, 200_000, 100_000),
-            Some((10.0, 30.0)),
+            Some(("10", "30")),
             "desktop",
         );
         diesel::update(audit_messages::table.find("a"))
             .set((
-                audit_messages::cache_read_price.eq(Some(1.0)),
-                audit_messages::cache_write_price.eq(Some(12.5)),
+                audit_messages::cache_read_price.eq(Some(decimal("1"))),
+                audit_messages::cache_write_price.eq(Some(decimal("12.5"))),
                 audit_messages::server_tool_calls.eq(Some(2)),
-                audit_messages::server_tool_price.eq(Some(15.0)),
+                audit_messages::server_tool_price.eq(Some(decimal("15"))),
             ))
             .execute(&mut conn)
             .unwrap();
 
         let all = total(&mut conn, &UsageFilter::default());
-        assert!((all.input_cost - 7.0).abs() < 1e-9);
-        assert!((all.output_cost - 60.0).abs() < 1e-9);
-        assert!((all.cache_cost - 1.45).abs() < 1e-9);
-        assert!((all.tool_cost - 0.03).abs() < 1e-9);
-        assert!((all.cost - 68.48).abs() < 1e-9);
-        assert!((all.cost - (all.input_cost + all.output_cost + all.cache_cost + all.tool_cost)).abs() < 1e-9);
+        assert_eq!(all.input_cost, decimal("7"));
+        assert_eq!(all.output_cost, decimal("60"));
+        assert_eq!(all.cache_cost, decimal("1.45"));
+        assert_eq!(all.tool_cost, decimal("0.03"));
+        assert_eq!(all.total_cost, decimal("68.48"));
+        assert_eq!(
+            all.total_cost,
+            all.input_cost + all.output_cost + all.cache_cost + all.tool_cost
+        );
     }
 
     /// A missing provider-tool rate is not permission to call the tool free.
@@ -1872,7 +1898,7 @@ mod tests {
                 "m",
                 created_at,
                 (1_000_000, 0, 0, 0),
-                Some((10.0, 20.0)),
+                Some(("10", "20")),
                 "desktop",
             );
         }
@@ -1884,18 +1910,18 @@ mod tests {
 
         let all = total(&mut conn, &UsageFilter::default());
         assert_eq!(all.messages, 2);
-        assert!((all.input_cost - 20.0).abs() < 1e-9, "the known token spend remains");
-        assert_eq!(all.tool_cost, 0.0, "an absent rate is not guessed");
-        assert_eq!(all.cost, 20.0, "the total is the known lower bound");
+        assert_eq!(all.input_cost, decimal("20"), "the known token spend remains");
+        assert_eq!(all.tool_cost, Decimal::zero(), "an absent rate is not guessed");
+        assert_eq!(all.total_cost, decimal("20"), "the total is the known lower bound");
         assert_eq!(all.unpriced_token_messages, 0);
         assert_eq!(all.unpriced_tool_messages, 1);
         assert_eq!(all.unpriced_messages, 1, "the token-only reply is fully priced");
 
         let summary = turn_summaries(&mut conn, "c1").unwrap().remove("with-tool").unwrap();
         assert_eq!(summary.pricing_status, TurnPricingStatus::LowerBound);
-        assert_eq!(summary.input_cost, Some(10.0));
+        assert_eq!(summary.input_cost, Some(decimal("10")));
         assert_eq!(summary.tool_cost, None, "a missing tool rate is not an exact zero");
-        assert_eq!(summary.total_cost, Some(10.0));
+        assert_eq!(summary.total_cost, Some(decimal("10")));
     }
 
     /// The inverse partial-price case: a configured per-call rate remains a
@@ -1909,17 +1935,17 @@ mod tests {
         diesel::update(audit_messages::table.find("a"))
             .set((
                 audit_messages::server_tool_calls.eq(Some(2)),
-                audit_messages::server_tool_price.eq(Some(15.0)),
+                audit_messages::server_tool_price.eq(Some(decimal("15"))),
             ))
             .execute(&mut conn)
             .unwrap();
         attach_to_turn(&mut conn, "a", "tool-known");
 
         let all = total(&mut conn, &UsageFilter::default());
-        assert_eq!(all.input_cost, 0.0);
-        assert_eq!(all.output_cost, 0.0);
-        assert!((all.tool_cost - 0.03).abs() < 1e-9);
-        assert!((all.cost - 0.03).abs() < 1e-9, "known tool spend is retained");
+        assert_eq!(all.input_cost, Decimal::zero());
+        assert_eq!(all.output_cost, Decimal::zero());
+        assert_eq!(all.tool_cost, decimal("0.03"));
+        assert_eq!(all.total_cost, decimal("0.03"), "known tool spend is retained");
         assert_eq!(all.unpriced_token_messages, 1);
         assert_eq!(all.unpriced_tool_messages, 0);
         assert_eq!(all.unpriced_messages, 1, "one reply, despite two unknown token rates");
@@ -1927,8 +1953,8 @@ mod tests {
         let summary = turn_summaries(&mut conn, "c1").unwrap().remove("tool-known").unwrap();
         assert_eq!(summary.pricing_status, TurnPricingStatus::LowerBound);
         assert_eq!(summary.input_cost, None);
-        assert_eq!(summary.tool_cost, Some(0.03));
-        assert_eq!(summary.total_cost, Some(0.03));
+        assert_eq!(summary.tool_cost, Some(decimal("0.03")));
+        assert_eq!(summary.total_cost, Some(decimal("0.03")));
     }
 
     /// Rows between migrations 30 and 37 can carry historical token rates but
@@ -1939,9 +1965,9 @@ mod tests {
     fn a_legacy_null_tool_rate_falls_back_to_the_current_exact_model() {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
-        seed_model(&mut conn, "m", 99.0, 99.0);
+        seed_model(&mut conn, "m", "99", "99");
         diesel::update(model_configs::table.filter(model_configs::model_id.eq("m")))
-            .set(model_configs::server_tool_price.eq(Some(15.0)))
+            .set(model_configs::server_tool_price.eq(Some(decimal("15"))))
             .execute(&mut conn)
             .unwrap();
         reply(
@@ -1950,7 +1976,7 @@ mod tests {
             "m",
             1_000,
             (1_000_000, 0, 0, 0),
-            Some((10.0, 20.0)),
+            Some(("10", "20")),
             "desktop",
         );
         diesel::update(audit_messages::table.find("a"))
@@ -1959,9 +1985,10 @@ mod tests {
             .unwrap();
 
         let all = total(&mut conn, &UsageFilter::default());
-        assert!((all.input_cost - 10.0).abs() < 1e-9, "historical token rate still wins");
-        assert!(
-            (all.tool_cost - 0.03).abs() < 1e-9,
+        assert_eq!(all.input_cost, decimal("10"), "historical token rate still wins");
+        assert_eq!(
+            all.tool_cost,
+            decimal("0.03"),
             "legacy tool NULL uses today's exact model"
         );
         assert_eq!(all.estimated_token_messages, 0);
@@ -1983,16 +2010,16 @@ mod tests {
             "priced",
             1_000,
             (100, 200, 0, 0),
-            Some((10.0, 30.0)),
+            Some(("10", "30")),
             "desktop",
         );
-        reply(&mut conn, "b", "free", 2_000, (500, 500, 0, 0), None, "desktop");
+        reply(&mut conn, "b", "unpriced", 2_000, (500, 500, 0, 0), None, "desktop");
 
         let all = total(&mut conn, &UsageFilter::default());
         assert_eq!(all.messages, 2);
         assert_eq!(all.unpriced_messages, 1);
         assert_eq!(all.input_tokens, 600, "the tokens are still counted");
-        assert!(all.cost > 0.0, "the priced half still bills");
+        assert!(all.total_cost > Decimal::zero(), "the priced half still bills");
     }
 
     /// A row from before migration 30 has no price on it. Today's configuration
@@ -2000,13 +2027,13 @@ mod tests {
     /// would be a worse answer than a retroactive one.
     #[test]
     fn a_row_recorded_before_prices_were_kept_falls_back_to_the_current_one() {
-        use crate::db::models::model_config::NewModelConfig;
-        use crate::db::models::provider::NewProvider;
+        use crate::db::models::model_config::ModelConfigInsert;
+        use crate::db::models::provider::ProviderInsert;
 
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         diesel::insert_into(crate::db::schema::providers::table)
-            .values(&NewProvider {
+            .values(&ProviderInsert {
                 id: "p1",
                 name: "Acme",
                 provider_type: "openai",
@@ -2024,7 +2051,7 @@ mod tests {
             .unwrap();
         crate::db::ops::model_config::upsert(
             &mut conn,
-            &NewModelConfig {
+            &ModelConfigInsert {
                 id: "mc1",
                 provider_id: "p1",
                 model_id: "m",
@@ -2032,14 +2059,14 @@ mod tests {
                 context_window: 1,
                 compact_threshold: 1,
                 max_output_tokens: None,
-                input_price: 10.0,
-                output_price: 0.0,
-                cache_price: None,
+                input_price: Some(decimal("10")),
+                output_price: Some(decimal("0")),
+                cache_read_price: None,
                 cache_write_price: None,
                 created_at: 0,
                 updated_at: 0,
                 capability_overrides: None,
-                price_tiers: None,
+                pricing_tiers: None,
                 server_tools: None,
                 server_tool_price: None,
             },
@@ -2053,44 +2080,42 @@ mod tests {
         assert_eq!(all.unpriced_messages, 0, "there is a price, just not on the row");
         assert_eq!(all.estimated_token_messages, 1);
         assert_eq!(all.estimated_messages, 1);
-        assert!((all.cost - 10.0).abs() < 0.001);
+        assert_eq!(all.total_cost, decimal("10"));
 
         let summary = turn_summaries(&mut conn, "c1").unwrap().remove("legacy-price").unwrap();
         assert_eq!(summary.pricing_status, TurnPricingStatus::Estimated);
         assert_eq!(summary.estimated_token_messages, 1);
         assert_eq!(summary.unpriced_messages, 0);
-        assert_eq!(summary.total_cost, Some(10.0));
+        assert_eq!(summary.total_cost, Some(decimal("10")));
     }
 
-    /// Older builds wrote the model editor's 0/0 defaults onto the audit row.
-    /// Those are not known prices by the same definition used everywhere else,
-    /// so they must not outrank a real rate configured later.
+    /// Zero is a configured price, not a placeholder. A historical free request
+    /// must stay free even when the model is priced later.
     #[test]
-    fn a_zero_default_snapshot_falls_back_to_a_current_known_price() {
+    fn an_explicit_zero_snapshot_never_falls_back_to_a_current_price() {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
-        seed_model(&mut conn, "m", 10.0, 20.0);
+        seed_model(&mut conn, "m", "10", "20");
         reply(
             &mut conn,
             "a",
             "m",
             1_000,
             (1_000_000, 100_000, 0, 0),
-            Some((0.0, 0.0)),
+            Some(("0", "0")),
             "desktop",
         );
 
         let all = total(&mut conn, &UsageFilter::default());
-        assert_eq!(all.unpriced_messages, 0, "today's known price closes the old gap");
-        assert_eq!(all.estimated_token_messages, 1);
-        assert_eq!(all.estimated_messages, 1);
-        assert!((all.cost - 12.0).abs() < 0.001, "10 input + 2 output, got {}", all.cost);
+        assert_eq!(all.unpriced_messages, 0);
+        assert_eq!(all.estimated_token_messages, 0);
+        assert_eq!(all.estimated_messages, 0);
+        assert_eq!(all.total_cost, Decimal::zero());
     }
 
-    /// A model priced at 0/0 is one nobody has filled in — the editor opens that
-    /// way — not one that is free.
+    /// A zero rate is explicitly free. Only NULL means the price is unknown.
     #[test]
-    fn a_model_left_at_zero_reads_as_unpriced() {
+    fn an_explicit_zero_price_reads_as_free() {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         reply(
@@ -2099,11 +2124,13 @@ mod tests {
             "m",
             1_000,
             (100, 200, 0, 0),
-            Some((0.0, 0.0)),
+            Some(("0", "0")),
             "desktop",
         );
 
-        assert_eq!(total(&mut conn, &UsageFilter::default()).unpriced_messages, 1);
+        let all = total(&mut conn, &UsageFilter::default());
+        assert_eq!(all.unpriced_messages, 0);
+        assert_eq!(all.total_cost, Decimal::zero());
     }
 
     /// The window is half-open, so two adjacent reports over adjacent windows
@@ -2112,8 +2139,8 @@ mod tests {
     fn the_window_excludes_its_upper_bound() {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
-        reply(&mut conn, "a", "m", 1_000, (10, 0, 0, 0), Some((1.0, 1.0)), "desktop");
-        reply(&mut conn, "b", "m", 2_000, (10, 0, 0, 0), Some((1.0, 1.0)), "desktop");
+        reply(&mut conn, "a", "m", 1_000, (10, 0, 0, 0), Some(("1", "1")), "desktop");
+        reply(&mut conn, "b", "m", 2_000, (10, 0, 0, 0), Some(("1", "1")), "desktop");
 
         let first = UsageFilter {
             until_ms: Some(2_000),
@@ -2131,12 +2158,12 @@ mod tests {
     fn origin_separates_bot_traffic_from_the_desktop() {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
-        reply(&mut conn, "a", "m", 1_000, (10, 0, 0, 0), Some((1.0, 1.0)), "desktop");
-        reply(&mut conn, "b", "m", 2_000, (20, 0, 0, 0), Some((1.0, 1.0)), "onebot");
-        reply(&mut conn, "c", "m", 3_000, (30, 0, 0, 0), Some((1.0, 1.0)), "onebot");
+        reply(&mut conn, "a", "m", 1_000, (10, 0, 0, 0), Some(("1", "1")), "desktop");
+        reply(&mut conn, "b", "m", 2_000, (20, 0, 0, 0), Some(("1", "1")), "onebot");
+        reply(&mut conn, "c", "m", 3_000, (30, 0, 0, 0), Some(("1", "1")), "onebot");
 
         let bots = UsageFilter {
-            origin: Some("onebot".into()),
+            origin: Some(TurnOrigin::OneBot),
             ..Default::default()
         };
         assert_eq!(total(&mut conn, &bots).messages, 2);
@@ -2155,7 +2182,7 @@ mod tests {
             "big",
             1_000,
             (1_000, 500, 0, 0),
-            Some((10.0, 30.0)),
+            Some(("10", "30")),
             "desktop",
         );
         reply(
@@ -2164,7 +2191,7 @@ mod tests {
             "small",
             2_000,
             (300, 100, 0, 0),
-            Some((2.0, 6.0)),
+            Some(("2", "6")),
             "onebot",
         );
         reply(
@@ -2173,7 +2200,7 @@ mod tests {
             "big",
             3_000,
             (700, 200, 0, 0),
-            Some((10.0, 30.0)),
+            Some(("10", "30")),
             "onebot",
         );
 
@@ -2182,8 +2209,10 @@ mod tests {
 
         assert_eq!(by_model.len(), 2);
         assert_eq!(by_model.iter().map(|b| b.messages).sum::<i64>(), all.messages);
-        let summed: f64 = by_model.iter().map(|b| b.cost).sum();
-        assert!((summed - all.cost).abs() < 1e-9);
+        let summed = by_model
+            .iter()
+            .fold(Decimal::zero(), |sum, bucket| sum + bucket.total_cost.clone());
+        assert_eq!(summed, all.total_cost);
         assert_eq!(by_model[0].key, "big", "the expensive one comes first");
     }
 
@@ -2194,7 +2223,7 @@ mod tests {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         crate::db::ops::conversation::create_conversation(&mut conn, "c1", Some("Named"), None, None, 1).unwrap();
-        reply(&mut conn, "a", "m", 1_000, (100, 0, 0, 0), Some((10.0, 0.0)), "desktop");
+        reply(&mut conn, "a", "m", 1_000, (100, 0, 0, 0), Some(("10", "0")), "desktop");
 
         let named = report(&mut conn, UsageDimension::Conversation, &UsageFilter::default()).unwrap();
         assert_eq!(named[0].label.as_deref(), Some("Named"));
@@ -2212,7 +2241,7 @@ mod tests {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         crate::db::ops::conversation::create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
-        reply(&mut conn, "a", "m", 1_000, (100, 0, 0, 0), Some((10.0, 0.0)), "desktop");
+        reply(&mut conn, "a", "m", 1_000, (100, 0, 0, 0), Some(("10", "0")), "desktop");
 
         let existing = report(&mut conn, UsageDimension::Conversation, &UsageFilter::default()).unwrap();
         assert_eq!(
@@ -2232,7 +2261,7 @@ mod tests {
     fn a_source_key_carries_its_kind() {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
-        reply(&mut conn, "a", "m", 1_000, (100, 0, 0, 0), Some((10.0, 0.0)), "onebot");
+        reply(&mut conn, "a", "m", 1_000, (100, 0, 0, 0), Some(("10", "0")), "onebot");
 
         let sources = report(&mut conn, UsageDimension::Source, &UsageFilter::default()).unwrap();
         assert_eq!(sources[0].key, "onebot_group:900");
@@ -2249,7 +2278,7 @@ mod tests {
             "m",
             1_700_000_000_000,
             (10, 0, 0, 0),
-            Some((1.0, 1.0)),
+            Some(("1", "1")),
             "desktop",
         );
         reply(
@@ -2258,7 +2287,7 @@ mod tests {
             "m",
             1_700_180_000_000,
             (20, 0, 0, 0),
-            Some((1.0, 1.0)),
+            Some(("1", "1")),
             "desktop",
         );
 
@@ -2266,5 +2295,78 @@ mod tests {
         assert_eq!(days.len(), 2);
         assert!(days[0].key < days[1].key, "oldest first");
         assert_eq!(days[0].input_tokens, 10);
+    }
+}
+
+#[cfg(test)]
+mod decimal_tests {
+    use super::*;
+    use crate::db::models::audit::AuditMessageInsert;
+    use crate::db::schema::audit_messages;
+    use crate::db::test_db;
+
+    fn decimal(raw: &str) -> Decimal {
+        raw.parse().unwrap()
+    }
+
+    fn insert_reply(conn: &mut SqliteConnection, id: &str, billing_mode: &str) -> QueryResult<()> {
+        diesel::insert_into(audit_messages::table)
+            .values(&AuditMessageInsert {
+                id,
+                recorded_at: 1,
+                message_id: id,
+                conversation_id: "conversation",
+                turn_id: Some("turn"),
+                source_type: None,
+                source_id: None,
+                turn_origin: Some("desktop"),
+                role: "assistant",
+                content: "answer",
+                sender_id: None,
+                sender_name: None,
+                provider_id: Some("provider"),
+                provider_name: Some("Provider"),
+                model_id: Some("model"),
+                input_tokens: Some(1_000_000),
+                output_tokens: Some(1_000_000),
+                cache_read_tokens: Some(0),
+                cache_write_tokens: Some(0),
+                created_at: 1,
+                input_price: Some(decimal("2.123456789012345678")),
+                output_price: Some(decimal("6.000000000000000001")),
+                cache_read_price: None,
+                cache_write_price: None,
+                self_id: None,
+                server_tool_calls: Some(1),
+                server_tool_price: Some(decimal("5")),
+                billing_mode,
+            })
+            .execute(conn)?;
+        Ok(())
+    }
+
+    #[test]
+    fn report_preserves_full_decimal_precision_and_serializes_strings() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        insert_reply(&mut conn, "reply", "metered").unwrap();
+
+        let buckets = report(&mut conn, UsageDimension::Total, &UsageFilter::default()).unwrap();
+        assert_eq!(buckets.len(), 1);
+        assert_eq!(buckets[0].input_cost, decimal("2.123456789012345678"));
+        assert_eq!(buckets[0].output_cost, decimal("6.000000000000000001"));
+        assert_eq!(buckets[0].tool_cost, decimal("0.005"));
+        assert_eq!(buckets[0].total_cost, decimal("8.128456789012345679"));
+
+        let json = serde_json::to_value(&buckets[0]).unwrap();
+        assert_eq!(json["total_cost"], "8.128456789012345679");
+        assert!(json["total_cost"].is_string());
+    }
+
+    #[test]
+    fn database_rejects_unknown_billing_modes() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        assert!(insert_reply(&mut conn, "bad", "future_mode").is_err());
     }
 }

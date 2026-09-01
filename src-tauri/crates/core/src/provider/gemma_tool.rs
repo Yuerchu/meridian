@@ -34,13 +34,13 @@ impl GemmaToolProvider {
         tools: Option<&[ToolDefinition]>,
         params: &ChatParams,
         stream: bool,
-    ) -> Request {
+    ) -> Result<Request, ProviderError> {
         let tool_prompt = tools.map(format_tools_for_prompt).unwrap_or_default();
         let prepared = inject_tool_prompt(messages, &tool_prompt);
 
         let mut body = serde_json::json!({
             "model": params.model,
-            "messages": serialize_gemma_messages(&prepared),
+            "messages": serialize_gemma_messages(&prepared)?,
             "stream": stream,
         });
         if stream {
@@ -62,7 +62,7 @@ impl GemmaToolProvider {
             super::auth_header_value(&format!("Bearer {}", self.api_key)),
         );
         req.body = Some(RequestBody::Json(body));
-        req
+        Ok(req)
     }
 }
 
@@ -125,16 +125,14 @@ fn inject_tool_prompt(messages: &[ChatMessage], tool_prompt: &str) -> Vec<ChatMe
 
 // --- Message serialization ---
 
-fn content_value(content: &str) -> serde_json::Value {
-    if content.starts_with('[')
-        && let Ok(parts) = serde_json::from_str::<Vec<serde_json::Value>>(content)
-    {
-        return serde_json::Value::Array(parts);
+fn content_value(content: &str) -> Result<serde_json::Value, ProviderError> {
+    if let Some(parts) = super::decode_message_parts(content).map_err(ProviderError::Parse)? {
+        return serde_json::to_value(parts).map_err(|error| ProviderError::Parse(error.to_string()));
     }
-    serde_json::Value::String(content.to_string())
+    Ok(serde_json::Value::String(content.to_string()))
 }
 
-fn serialize_gemma_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
+fn serialize_gemma_messages(messages: &[ChatMessage]) -> Result<Vec<serde_json::Value>, ProviderError> {
     let mut id_to_name: HashMap<String, String> = HashMap::new();
     for msg in messages {
         if let Some(ref tcs) = msg.tool_calls {
@@ -151,14 +149,14 @@ fn serialize_gemma_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> 
                 let mut content = m.content.clone();
                 if let Some(ref tcs) = m.tool_calls {
                     for tc in tcs {
-                        let gemma_args = json_to_gemma_args(&tc.arguments);
+                        let gemma_args = json_to_gemma_args(&tc.arguments, &tc.id)?;
                         content.push_str(&format!(
                             "\n{TOOL_CALL_START}call:{}{{{}}}{}",
                             tc.name, gemma_args, TOOL_CALL_END
                         ));
                     }
                 }
-                serde_json::json!({ "role": "assistant", "content": content })
+                Ok(serde_json::json!({ "role": "assistant", "content": content }))
             }
             "tool" => {
                 let tool_name = m
@@ -171,20 +169,21 @@ fn serialize_gemma_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> 
                     "<|tool_response>response:{tool_name}{{result:{QUOTE}{}{QUOTE}}}<tool_response|>",
                     m.content
                 );
-                serde_json::json!({ "role": "tool", "content": content })
+                Ok(serde_json::json!({ "role": "tool", "content": content }))
             }
             // User and system rows: chat-completions shape, so identity rides
             // the native `name` field rather than the body.
             _ => {
-                let rendered = super::render_message(m, super::SenderRendering::NameField);
+                let rendered =
+                    super::render_message(m, super::SenderRendering::NameField).map_err(ProviderError::Parse)?;
                 let mut msg = serde_json::json!({
                     "role": m.role,
-                    "content": content_value(&rendered.content),
+                    "content": content_value(&rendered.content)?,
                 });
                 if let Some(ref name) = rendered.name {
                     msg["name"] = serde_json::json!(name);
                 }
-                msg
+                Ok(msg)
             }
         })
         .collect()
@@ -296,19 +295,14 @@ fn split_on_comma(raw: &str) -> Vec<String> {
 
 // --- JSON to Gemma format ---
 
-fn json_to_gemma_args(json: &str) -> String {
-    let obj: serde_json::Value = match serde_json::from_str(json) {
-        Ok(v) => v,
-        Err(_) => return String::new(),
-    };
-    let map = match obj.as_object() {
-        Some(m) => m,
-        None => return String::new(),
-    };
-    map.iter()
+fn json_to_gemma_args(json: &str, call_id: &str) -> Result<String, ProviderError> {
+    let obj = super::decode_tool_arguments(json, call_id).map_err(ProviderError::Parse)?;
+    let map = obj.as_object().expect("decode_tool_arguments returns an object");
+    Ok(map
+        .iter()
         .map(|(k, v)| format!("{}:{}", k, value_to_gemma(v)))
         .collect::<Vec<_>>()
-        .join(",")
+        .join(","))
 }
 
 fn value_to_gemma(v: &serde_json::Value) -> String {
@@ -322,7 +316,7 @@ fn value_to_gemma(v: &serde_json::Value) -> String {
             format!("[{}]", elements.join(","))
         }
         serde_json::Value::Object(_) => {
-            let s = serde_json::to_string(v).unwrap_or_else(|_| "{}".to_string());
+            let s = serde_json::to_string(v).expect("a JSON value is serializable");
             format!("{QUOTE}{s}{QUOTE}")
         }
     }
@@ -528,7 +522,7 @@ impl ChatProvider for GemmaToolProvider {
     ) -> Result<ChatStream, ProviderError> {
         let tools_opt = if tools.is_empty() { None } else { Some(tools.as_slice()) };
         let transport = ReqwestTransport::shared();
-        let req = self.build_request(&messages, tools_opt, &params, true);
+        let req = self.build_request(&messages, tools_opt, &params, true)?;
         let resp = transport.stream(req).await?;
 
         let raw_stream: ChatStream = Box::pin(
@@ -573,7 +567,7 @@ impl ChatProvider for GemmaToolProvider {
 
     async fn chat(&self, messages: Vec<ChatMessage>, params: ChatParams) -> Result<String, ProviderError> {
         let transport = ReqwestTransport::shared();
-        let req = self.build_request(&messages, None, &params, false);
+        let req = self.build_request(&messages, None, &params, false)?;
         let resp = transport.execute(req).await?;
 
         let parsed: serde_json::Value =
@@ -592,7 +586,7 @@ impl ChatProvider for GemmaToolProvider {
         params: ChatParams,
     ) -> Result<AgentResponse, ProviderError> {
         let transport = ReqwestTransport::shared();
-        let req = self.build_request(&messages, Some(&tools), &params, false);
+        let req = self.build_request(&messages, Some(&tools), &params, false)?;
         let resp = transport.execute(req).await?;
 
         let parsed: serde_json::Value =
@@ -707,7 +701,7 @@ mod tests {
     #[test]
     fn test_json_to_gemma_roundtrip() {
         let json = r#"{"city":"北京","limit":10,"verbose":true}"#;
-        let gemma = json_to_gemma_args(json);
+        let gemma = json_to_gemma_args(json, "call-1").unwrap();
         let back = parse_gemma_args(&gemma);
         let original: serde_json::Value = serde_json::from_str(json).unwrap();
         let restored: serde_json::Value = serde_json::from_str(&back).unwrap();

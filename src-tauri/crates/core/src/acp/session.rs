@@ -27,8 +27,9 @@ use tokio_util::sync::CancellationToken;
 use crate::agent::engine::transcript::{append_tool_result, begin_assistant, complete_assistant, write_steering};
 use crate::agent::tool_calls::serialize_tool_calls_openai;
 use crate::db::models::message::MessageUsage;
-use crate::db::models::queue::QueuedPrompt;
+use crate::db::models::queue::QueuedPromptRow;
 use crate::db::models::turn::{TurnPhase, TurnStatus};
+use crate::events::{ChatStopReason, ChatStreamEvent, ToolOutcome};
 use crate::provider;
 use crate::services::Services;
 use crate::turn::TurnOrigin;
@@ -73,7 +74,7 @@ struct OpenRow {
     reasoning: String,
     tool_calls: Vec<provider::ToolCall>,
     /// `(call_id, output, outcome)`, in the order the calls finished.
-    results: Vec<(String, String, &'static str)>,
+    results: Vec<(String, String, ToolOutcome)>,
     /// Every call on this row has a result, so the next prose or a new call
     /// opens the next one. Not the first result: Claude Code runs calls in
     /// parallel, and thought can land between them.
@@ -239,15 +240,19 @@ struct Shared {
     /// assembles its prompt, cleared only once that prompt came back. See
     /// [`NO_TOOLS`] for why the failure is visible rather than silent.
     tools_lost: Mutex<bool>,
+    /// The transient ACP option sender for a durable plan review. The plan and
+    /// decision live in SQLite; this only connects a still-running adapter to
+    /// that state and may disappear on restart without retiring the review.
+    plan_reviews: Arc<super::plan_review::ReviewControl>,
 }
 
 impl Shared {
-    fn emit(&self, payload: serde_json::Value) {
+    fn emit(&self, event: ChatStreamEvent) {
         // Failure here is a window that has gone away. A native turn treats
         // that as fatal because its events *are* its answer; this one has
         // already written the row, and the adapter is mid-turn on the other
         // side of a pipe that cannot be rewound.
-        if let Err(e) = self.services.events.emit("chat-stream", payload) {
+        if let Err(e) = self.services.events.emit_chat(event) {
             tracing::debug!(error = %e, "an ACP update reached no window");
         }
     }
@@ -319,11 +324,10 @@ impl Shared {
             merge_options(&mut held, incoming);
         }
         if !self.importing() {
-            self.emit(serde_json::json!({
-                "type": "acp_config",
-                "conversation_id": self.conversation_id,
-                "config_options": self.config_options(),
-            }));
+            self.emit(ChatStreamEvent::AcpConfig {
+                conversation_id: self.conversation_id.clone(),
+                config_options: self.config_options().into_iter().map(Into::into).collect(),
+            });
         }
     }
 
@@ -386,12 +390,11 @@ impl Shared {
                 }) else {
                     return;
                 };
-                self.emit(serde_json::json!({
-                    "type": "text",
-                    "content": chunk,
-                    "message_id": message_id,
-                    "conversation_id": self.conversation_id,
-                }));
+                self.emit(ChatStreamEvent::Text {
+                    content: chunk,
+                    message_id,
+                    conversation_id: self.conversation_id.clone(),
+                });
             }
             Effect::Reasoning { text: chunk, .. } => {
                 self.open_round_if_settled().await;
@@ -401,12 +404,11 @@ impl Shared {
                 }) else {
                     return;
                 };
-                self.emit(serde_json::json!({
-                    "type": "reasoning",
-                    "content": chunk,
-                    "message_id": message_id,
-                    "conversation_id": self.conversation_id,
-                }));
+                self.emit(ChatStreamEvent::Reasoning {
+                    content: chunk,
+                    message_id,
+                    conversation_id: self.conversation_id.clone(),
+                });
             }
             Effect::ToolCall {
                 call_id,
@@ -479,14 +481,13 @@ impl Shared {
                 }) else {
                     return;
                 };
-                self.emit(serde_json::json!({
-                    "type": "tool_call",
-                    "call_id": call_id,
-                    "tool_name": tool_name,
-                    "arguments": arguments,
-                    "message_id": message_id,
-                    "conversation_id": self.conversation_id,
-                }));
+                self.emit(ChatStreamEvent::ToolCall {
+                    call_id,
+                    tool_name: tool_name.clone(),
+                    arguments,
+                    message_id,
+                    conversation_id: self.conversation_id.clone(),
+                });
                 self.record_phase(TurnPhase::RunningTool, Some(&tool_name)).await;
             }
             Effect::ToolCallRevised {
@@ -514,14 +515,13 @@ impl Shared {
                 if quiet {
                     self.record_phase(TurnPhase::Streaming, None).await;
                 }
-                self.emit(serde_json::json!({
-                    "type": "tool_result",
-                    "call_id": call_id,
-                    "result": result,
-                    "outcome": outcome,
-                    "message_id": message_id,
-                    "conversation_id": self.conversation_id,
-                }));
+                self.emit(ChatStreamEvent::ToolResult {
+                    call_id,
+                    result,
+                    outcome,
+                    message_id,
+                    conversation_id: self.conversation_id.clone(),
+                });
             }
             Effect::Plan(items) => self.write_plan(items).await,
             // Reported but not stored. `used`/`size` is how full the context is,
@@ -536,12 +536,11 @@ impl Shared {
                 // answering and a limit that is not in force. Writing it into
                 // `input_tokens`/`output_tokens` would still be wrong, which is
                 // why it travels as an event rather than to a column.
-                self.emit(serde_json::json!({
-                    "type": "acp_usage",
-                    "conversation_id": self.conversation_id,
-                    "used": used,
-                    "size": size,
-                }));
+                self.emit(ChatStreamEvent::AcpUsage {
+                    conversation_id: self.conversation_id.clone(),
+                    used,
+                    size,
+                });
             }
             // Nothing to do beyond merging: `merge_config` announces.
             Effect::ConfigOptions(options) => self.merge_config(options),
@@ -592,7 +591,7 @@ impl Shared {
                 turn_id,
                 call_id,
                 output,
-                outcome,
+                outcome.as_str(),
                 Some(&last),
             )
             .await
@@ -637,12 +636,11 @@ impl Shared {
                             .map_err(|e| e.to_string())
                     })
                     .await;
-                    self.emit(serde_json::json!({
-                        "type": "user_message",
-                        "message_id": id,
-                        "content": item.text,
-                        "conversation_id": self.conversation_id,
-                    }));
+                    self.emit(ChatStreamEvent::UserMessage {
+                        message_id: id.clone(),
+                        content: item.text.clone(),
+                        conversation_id: self.conversation_id.clone(),
+                    });
                     last = id;
                 }
                 // The agent has it either way — this is the transcript's copy.
@@ -705,11 +703,11 @@ impl Shared {
                 // Same event a native turn sends at the top of every round; it
                 // is what makes the front end start a new bubble rather than
                 // append to the one that just closed.
-                self.emit(serde_json::json!({
-                    "type": "message_start",
-                    "message_id": id,
-                    "conversation_id": self.conversation_id,
-                }));
+                self.emit(ChatStreamEvent::MessageStart {
+                    message_id: id,
+                    turn_id: turn_id.clone(),
+                    conversation_id: self.conversation_id.clone(),
+                });
             }
             // The database is not answering, which the rest of this turn is
             // going to keep discovering. Stop here rather than carry on writing
@@ -812,14 +810,13 @@ impl Shared {
         let Some((message_id, tool_name, arguments)) = landed else {
             return;
         };
-        self.emit(serde_json::json!({
-            "type": "tool_call_revised",
-            "call_id": call_id,
-            "tool_name": tool_name,
-            "arguments": arguments,
-            "message_id": message_id,
-            "conversation_id": self.conversation_id,
-        }));
+        self.emit(ChatStreamEvent::ToolCallRevised {
+            call_id: call_id.to_string(),
+            tool_name,
+            arguments,
+            message_id,
+            conversation_id: self.conversation_id.clone(),
+        });
     }
 
     /// The half of [`Shared::revise`] that reaches a row already stored.
@@ -862,13 +859,13 @@ impl Shared {
     /// step is done, and an ACP session has no plan of this app's to retire.
     async fn write_plan(&self, items: Vec<mapping::PlanItem>) {
         use crate::db::models::todo::ItemStatus;
-        use crate::db::ops::todo::TodoItemInput;
+        use crate::db::ops::todo::TodoItemSpec;
 
         let pool = self.services.db.clone();
         let conversation_id = self.conversation_id.clone();
-        let items: Vec<TodoItemInput> = items
+        let items: Vec<TodoItemSpec> = items
             .into_iter()
-            .map(|item| TodoItemInput {
+            .map(|item| TodoItemSpec {
                 // ACP has no present-continuous form, and the todo bar shows
                 // that one while a step runs. Repeating the content reads
                 // slightly wrong; leaving it blank leaves the bar empty.
@@ -905,6 +902,7 @@ impl Shared {
                 turn_id: t.turn_id.clone(),
                 assistant_message_id: t.row.message_id.clone(),
                 cancel: t.cancel.clone(),
+                plan_reviews: Arc::clone(&self.plan_reviews),
             })
         })
     }
@@ -928,7 +926,7 @@ impl Handler for Shared {
             "session/request_permission" => {
                 let params = serde_json::from_value(params).map_err(|e| e.to_string())?;
                 match self.turn_context() {
-                    Some(context) => Ok(approvals::ask(&self.services, &self.conversation_id, &context, params).await),
+                    Some(context) => approvals::ask(&self.services, &self.conversation_id, &context, params).await,
                     // A question with no turn behind it has nowhere to draw a
                     // card and nobody to answer it. Refusing beats hanging the
                     // adapter on a prompt that will never appear.
@@ -945,9 +943,7 @@ impl Handler for Shared {
             "elicitation/create" => {
                 let params = serde_json::from_value(params).map_err(|e| e.to_string())?;
                 match self.turn_context() {
-                    Some(context) => {
-                        Ok(elicitation::ask(&self.services, &self.conversation_id, &context, params).await)
-                    }
+                    Some(context) => elicitation::ask(&self.services, &self.conversation_id, &context, params).await,
                     // A question nobody can be shown is one the agent should
                     // carry on without, rather than one it should abandon the
                     // turn over — the opposite of the arm above, and
@@ -1004,8 +1000,8 @@ const MAX_ACP_PENDING_SHELL_ITEMS: usize = 4;
 const MAX_ACP_PENDING_SHELL_BYTES: usize = 128 * 1024;
 
 fn bounded_pending_shell_context(
-    candidates: &[crate::db::models::message_context_item::MessageContextItem],
-) -> Option<PendingShellContext> {
+    candidates: &[crate::db::models::message_context_item::MessageContextItemRow],
+) -> Result<Option<PendingShellContext>, String> {
     let mut item_ids = Vec::new();
     let mut rendered = Vec::new();
     let mut bytes = 0usize;
@@ -1014,7 +1010,7 @@ fn bounded_pending_shell_context(
             break;
         }
         let body = crate::workspace::reference::render_context_item(
-            &item.kind,
+            crate::workspace::reference::MessageContextKind::parse(&item.kind)?,
             item.display_path.as_deref(),
             item.line_start,
             item.line_end,
@@ -1022,7 +1018,9 @@ fn bounded_pending_shell_context(
             item.truncated != 0,
         );
         let message = provider::ChatMessage::user_provided_context(&body);
-        let wire = provider::render_message(&message, provider::SenderRendering::Prefix).content;
+        let wire = provider::render_message(&message, provider::SenderRendering::Prefix)
+            .expect("user-provided context renders without a content envelope")
+            .content;
         let separator = usize::from(!rendered.is_empty()) * 2;
         if bytes.saturating_add(separator).saturating_add(wire.len()) > MAX_ACP_PENDING_SHELL_BYTES {
             // Preserve branch order. This item and everything after it remain
@@ -1033,10 +1031,10 @@ fn bounded_pending_shell_context(
         item_ids.push(item.id.clone());
         rendered.push(wire);
     }
-    (!item_ids.is_empty()).then(|| PendingShellContext {
+    Ok((!item_ids.is_empty()).then(|| PendingShellContext {
         item_ids,
         rendered: rendered.join("\n\n"),
-    })
+    }))
 }
 
 fn prompt_with_workspace_context(text: &str, context: &[crate::workspace::reference::PreparedContextItem]) -> String {
@@ -1048,7 +1046,7 @@ fn prompt_with_workspace_context(text: &str, context: &[crate::workspace::refere
             .filter_map(|item| {
                 item.display_path
                     .as_ref()
-                    .map(|path| crate::workspace::reference::WorkspaceReferenceInput {
+                    .map(|path| crate::workspace::reference::WorkspaceReferenceRequest {
                         path: path.clone(),
                         line_start: item.line_start.map(|line| line as u32),
                         line_end: item.line_end.map(|line| line as u32),
@@ -1059,7 +1057,7 @@ fn prompt_with_workspace_context(text: &str, context: &[crate::workspace::refere
     };
     for item in context {
         let body = crate::workspace::reference::render_context_item(
-            &item.kind,
+            item.kind.into(),
             item.display_path.as_deref(),
             item.line_start,
             item.line_end,
@@ -1068,7 +1066,11 @@ fn prompt_with_workspace_context(text: &str, context: &[crate::workspace::refere
         );
         let context_message = provider::ChatMessage::user_provided_context(&body);
         payload.push_str("\n\n");
-        payload.push_str(&provider::render_message(&context_message, provider::SenderRendering::Prefix).content);
+        payload.push_str(
+            &provider::render_message(&context_message, provider::SenderRendering::Prefix)
+                .expect("user-provided context renders without a content envelope")
+                .content,
+        );
     }
     payload
 }
@@ -1370,6 +1372,7 @@ impl AcpSession {
             unwritten_rows: std::sync::atomic::AtomicUsize::new(0),
             memory_lost: Mutex::new(false),
             tools_lost: Mutex::new(tools_lost),
+            plan_reviews: Arc::new(crate::acp::plan_review::ReviewControl::default()),
         });
         let peer = Peer::start(process, shared.clone() as Arc<dyn Handler>);
 
@@ -1822,7 +1825,152 @@ impl AcpSession {
     /// the other path.
     pub fn current_turn_id(&self) -> Option<String> {
         let guard = self.shared.turn.lock().ok()?;
-        guard.as_ref().map(|t| t.turn_id.clone())
+        let turn = guard.as_ref()?;
+        // A durable review deliberately releases the ordinary runner lease.
+        // Reporting it as steerable would let the queue inject a prompt into
+        // an adapter parked inside ExitPlanMode, bypassing the review barrier.
+        (!self.shared.plan_reviews.is_waiting_turn(&turn.turn_id)).then(|| turn.turn_id.clone())
+    }
+
+    /// Continue a committed durable plan decision across the ACP boundary.
+    ///
+    /// A live ExitPlanMode is resumed by answering its exact one-shot option.
+    /// Change feedback is steered into that turn first when the adapter can
+    /// prove it was injected; otherwise the rejection is allowed to close the
+    /// old turn and the same durable envelope is sent as a new prompt. After a
+    /// restart there is no option sender to recover, so the explicit delivery
+    /// likewise becomes a prompt on the resumed session.
+    pub async fn deliver_plan_review(
+        &self,
+        services: &Services,
+        delivery: super::AcpPlanReviewDelivery,
+    ) -> super::AcpPlanReviewDeliveryOutcome {
+        use super::plan_review::{
+            AcpPlanReviewDeliveryOutcome as Outcome, DeliveryAction, DeliveryBoundary, ReviewDecisionAction,
+        };
+
+        let action = match super::plan_review::delivery_action(&delivery.payload_json) {
+            Ok(action) => action,
+            Err(error) => return Outcome::Held(error),
+        };
+        let prompt = super::plan_review::delivery_prompt(&delivery.payload_json, action);
+
+        if let Some(identity) = self.shared.plan_reviews.identity(&delivery.review_id) {
+            if identity.call_id != delivery.provider_call_id {
+                return Outcome::Held(format!(
+                    "ACP review call mismatch: live {}, stored {}",
+                    identity.call_id, delivery.provider_call_id
+                ));
+            }
+            if let Some(expected) = delivery.target_session_id.as_deref()
+                && expected != identity.session_id
+            {
+                return Outcome::Held(format!(
+                    "ACP review session mismatch: live {}, stored {expected}",
+                    identity.session_id
+                ));
+            }
+            if identity.turn_id != delivery.submitting_turn_id {
+                return Outcome::Held(format!(
+                    "ACP review turn mismatch: live {}, stored {}",
+                    identity.turn_id, delivery.submitting_turn_id
+                ));
+            }
+
+            let mut needs_prompt = false;
+            // Once steering reports any success other than `promptRequired`,
+            // the feedback may already be inside the adapter. If resolving the
+            // parked ExitPlanMode option then fails, replaying this delivery is
+            // unsafe: surface an in-doubt boundary instead of a retryable hold.
+            let mut feedback_consumed = false;
+            if action == DeliveryAction::RequestChanges {
+                if self.steering {
+                    let params =
+                        match serde_json::to_value(protocol::SteerParams::text(self.acp_session_id.clone(), &prompt)) {
+                            Ok(params) => params,
+                            Err(error) => return Outcome::Held(error.to_string()),
+                        };
+                    match self.peer.request(protocol::STEER_METHOD, params).await {
+                        Ok(value) => match serde_json::from_value::<protocol::SteerResult>(value) {
+                            Ok(result) if result.outcome() == protocol::SteerOutcome::PromptRequired => {
+                                // Definitively not consumed; safe to carry it
+                                // as a normal prompt after rejection closes the
+                                // ExitPlanMode turn.
+                                needs_prompt = true;
+                            }
+                            // Injected, startedNewTurn and an unknown future
+                            // success all mean the adapter says it consumed the
+                            // message. An unreadable success reply is treated
+                            // the same way: replaying would be the dangerous
+                            // choice.
+                            Ok(_) | Err(_) => feedback_consumed = true,
+                        },
+                        Err(PeerError::Rpc(_)) => {
+                            // The adapter answered no, so nothing was consumed.
+                            needs_prompt = true;
+                        }
+                        Err(PeerError::Dead(error)) => return Outcome::InDoubt(error),
+                    }
+                } else {
+                    needs_prompt = true;
+                }
+            }
+
+            let action = match action {
+                DeliveryAction::Approve => ReviewDecisionAction::Approve,
+                DeliveryAction::RequestChanges => ReviewDecisionAction::RequestChanges,
+            };
+            let boundary = match self.shared.plan_reviews.resolve(&delivery.review_id, action) {
+                Ok(boundary) => boundary,
+                Err(error) if feedback_consumed => return Outcome::InDoubt(error),
+                Err(error) => return Outcome::Held(error),
+            };
+            match boundary.await {
+                Ok(DeliveryBoundary::Acknowledged) => {}
+                Ok(DeliveryBoundary::InDoubt(error)) => return Outcome::InDoubt(error),
+                Err(_) => {
+                    return Outcome::InDoubt("ACP review response ended without a prompt acknowledgement".into());
+                }
+            }
+
+            if !needs_prompt {
+                return Outcome::Acknowledged;
+            }
+            return match self.prompt_with(services, &prompt, None, None, Vec::new(), true).await {
+                Ok(()) => Outcome::Acknowledged,
+                Err(error) if !self.is_alive() => Outcome::InDoubt(error),
+                Err(error) => Outcome::Held(error),
+            };
+        }
+
+        // There is no recoverable JSON-RPC response sender after restart. An
+        // explicit user continuation instead delivers the immutable envelope
+        // to the resumed ACP session as a normal prompt. Never do this from a
+        // startup pump: callers reach it only from decide/continue commands.
+        if self.shared.turn.lock().is_ok_and(|turn| turn.is_some()) {
+            return Outcome::Held("the ACP session is busy with another turn".into());
+        }
+        let outcome = match self.prompt_with(services, &prompt, None, None, Vec::new(), true).await {
+            Ok(()) => Outcome::Acknowledged,
+            Err(error) if !self.is_alive() => Outcome::InDoubt(error),
+            Err(error) => Outcome::Held(error),
+        };
+        if matches!(outcome, Outcome::Acknowledged) {
+            let pool = services.db.clone();
+            let turn_id = delivery.submitting_turn_id;
+            let written = tokio::task::spawn_blocking(move || {
+                let mut conn = get_conn(&pool)?;
+                crate::db::ops::turn::finish_waiting_review(&mut conn, &turn_id, TurnStatus::Done, None, now_ms())
+                    .map_err(|error| error.to_string())
+            })
+            .await;
+            match written {
+                Ok(Ok(_)) => {}
+                Ok(Err(error)) => tracing::warn!(%error, "could not settle resumed ACP review turn"),
+                Err(error) => tracing::warn!(%error, "settling resumed ACP review turn panicked"),
+            }
+        }
+        outcome
     }
 
     /// Put a message into the turn that is already running.
@@ -1951,7 +2099,7 @@ impl AcpSession {
     /// would not exist until the adapter had been reached, and everything
     /// arriving in the gap would be measured against nothing.
     pub async fn prompt(&self, services: &Services, text: &str, turn_id: Option<String>) -> Result<(), String> {
-        self.prompt_with(services, text, turn_id, None, Vec::new()).await
+        self.prompt_with(services, text, turn_id, None, Vec::new(), false).await
     }
 
     /// The same turn with user-selected workspace snapshots. `text` remains
@@ -1964,7 +2112,7 @@ impl AcpSession {
         turn_id: Option<String>,
         context: Vec<crate::workspace::reference::PreparedContextItem>,
     ) -> Result<(), String> {
-        self.prompt_with(services, text, turn_id, None, context).await
+        self.prompt_with(services, text, turn_id, None, context, false).await
     }
 
     /// Deliver a queued item as a turn of its own.
@@ -1975,7 +2123,7 @@ impl AcpSession {
     /// *recorded turn*, which either answers or is written down as having
     /// failed. Marking it in doubt instead would warn the next agent about a
     /// message sitting in plain sight a few rows above.
-    pub async fn deliver_queued(&self, services: &Services, item: &QueuedPrompt) -> Result<(), String> {
+    pub async fn deliver_queued(&self, services: &Services, item: &QueuedPromptRow) -> Result<(), String> {
         let pool = services.db.clone();
         let queue_id = item.id.clone();
         let context = tokio::task::spawn_blocking(move || {
@@ -1984,7 +2132,7 @@ impl AcpSession {
         })
         .await
         .map_err(|e| e.to_string())??;
-        self.prompt_with(services, &item.content, None, Some(&item.id), context)
+        self.prompt_with(services, &item.content, None, Some(&item.id), context, false)
             .await
     }
 
@@ -1995,7 +2143,16 @@ impl AcpSession {
         turn_id: Option<String>,
         queued: Option<&str>,
         context: Vec<crate::workspace::reference::PreparedContextItem>,
+        bypass_plan_review_barrier: bool,
     ) -> Result<(), String> {
+        // Usually the coordinator lease is the whole concurrency guard. A
+        // waiting_review turn has intentionally released that lease while its
+        // ACP request is still alive, so the session-local state is the second
+        // half: no new prompt may overwrite the parked turn before its durable
+        // decision has crossed the adapter boundary.
+        if self.shared.turn.lock().is_ok_and(|turn| turn.is_some()) {
+            return Err("Claude Code is still finishing the previous plan review decision.".into());
+        }
         let turn_id = match turn_id {
             Some(raw) => uuid::Uuid::parse_str(&raw)
                 .map_err(|_| "turn id must be a uuid".to_string())?
@@ -2006,14 +2163,28 @@ impl AcpSession {
         // difference across it rather than the total.
         let dropped_before = self.peer.dropped_notifications();
         let cancel = CancellationToken::new();
-        let lease = Arc::clone(&services.turns)
-            .try_acquire_turn_with(
-                &self.conversation_id,
-                TurnOrigin::ClaudeCode,
-                turn_id.clone(),
-                cancel.clone(),
-            )
-            .map_err(|busy| busy.to_string())?;
+        let mut lease = Some(
+            Arc::clone(&services.turns)
+                .try_acquire_turn_with(
+                    &self.conversation_id,
+                    TurnOrigin::ClaudeCode,
+                    turn_id.clone(),
+                    cancel.clone(),
+                )
+                .map_err(|busy| busy.to_string())?,
+        );
+        if !bypass_plan_review_barrier
+            && crate::agent::queue::has_plan_review_barrier(services, &self.conversation_id).await?
+        {
+            return Err(
+                "This conversation is waiting for plan review or its continuation. Finish it before sending another ACP prompt."
+                    .into(),
+            );
+        }
+        // Subscribed before the prompt is sent. ExitPlanMode can arrive as the
+        // adapter's first act, and the pause notification must not be lost in
+        // the gap between durable submission and entering the select loop.
+        let mut review_pause = self.shared.plan_reviews.subscribe();
 
         let user_message_id = self
             .write_prompt_row(services, &turn_id, text, queued, &context)
@@ -2046,16 +2217,16 @@ impl AcpSession {
             });
         }
 
-        self.shared.emit(serde_json::json!({
-            "type": "message_start",
-            "message_id": assistant_message_id,
-            "conversation_id": self.conversation_id,
-        }));
+        self.shared.emit(ChatStreamEvent::MessageStart {
+            message_id: assistant_message_id,
+            turn_id: turn_id.clone(),
+            conversation_id: self.conversation_id.clone(),
+        });
 
         // Read after the turn record exists, so `asking` can exclude it, and
         // sent in front of the message rather than stored: this is background
         // the agent needs for *this* answer, not something anybody said.
-        let owed = self.owed_explanations(services, &turn_id).await;
+        let owed = self.owed_explanations(services, &turn_id).await?;
         let payload_text = prompt_with_workspace_context(text, &context);
         let params = serde_json::to_value(protocol::PromptParams {
             session_id: self.acp_session_id.clone(),
@@ -2125,6 +2296,17 @@ impl AcpSession {
                         serde_json::json!({ "sessionId": self.acp_session_id }),
                     ).await;
                 }
+                changed = review_pause.changed(), if lease.is_some() => {
+                    if changed.is_ok()
+                        && review_pause.borrow().as_deref() == Some(turn_id.as_str())
+                    {
+                        // SQLite is already at waiting_review. Releasing this
+                        // lease is what makes the boundary survive as durable
+                        // state rather than as a runner that merely happens to
+                        // be blocked on a person.
+                        drop(lease.take());
+                    }
+                }
             }
         };
 
@@ -2155,25 +2337,25 @@ impl AcpSession {
     /// nothing had happened — which is the case the warning exists for, since
     /// the adapter's own memory of that turn died with the process while
     /// whatever the tool did to the disk did not.
-    async fn owed_explanations(&self, services: &Services, turn_id: &str) -> Owed {
-        Owed {
+    async fn owed_explanations(&self, services: &Services, turn_id: &str) -> Result<Owed, String> {
+        Ok(Owed {
             turns: crate::agent::interrupted::load_block(&services.db, &services.turns, &self.conversation_id, turn_id)
-                .await,
+                .await?,
             queued: crate::agent::queue::owed(services, &self.conversation_id).await,
-            shell: self.pending_shell_context(services).await,
+            shell: self.pending_shell_context(services).await?,
             // Read, not taken. A turn can assemble this and then die before a
             // byte leaves; clearing it here would spend the one chance to say
             // it on a prompt nobody received.
             memory_lost: self.shared.memory_lost.lock().is_ok_and(|slot| *slot),
             tools_lost: self.shared.tools_lost.lock().is_ok_and(|slot| *slot),
-        }
+        })
     }
 
     /// Shell results on the active branch that this hosted session has never
     /// received. Read, not taken: only an adapter reply settles the receipt, so
     /// a pipe failure or a stop before first poll leaves them for the next
     /// prompt instead of spending them on nobody.
-    async fn pending_shell_context(&self, services: &Services) -> Option<PendingShellContext> {
+    async fn pending_shell_context(&self, services: &Services) -> Result<Option<PendingShellContext>, String> {
         let pool = services.db.clone();
         let conversation_id = self.conversation_id.clone();
         let loaded = tokio::task::spawn_blocking(move || -> Result<Option<PendingShellContext>, String> {
@@ -2195,6 +2377,9 @@ impl AcpSession {
                 let Some(items) = by_message.remove(&message.id) else {
                     continue;
                 };
+                for item in &items {
+                    crate::workspace::reference::MessageContextKind::parse(&item.kind)?;
+                }
                 if let Some(item) = items
                     .into_iter()
                     .filter(|item| item.kind == "shell_output")
@@ -2211,21 +2396,11 @@ impl AcpSession {
                 return Ok(None);
             }
 
-            Ok(bounded_pending_shell_context(&candidates))
+            bounded_pending_shell_context(&candidates)
         })
-        .await;
-
-        match loaded {
-            Ok(Ok(pending)) => pending,
-            Ok(Err(error)) => {
-                tracing::warn!(error = %error, "could not load pending ACP shell context");
-                None
-            }
-            Err(error) => {
-                tracing::warn!(error = %error, "ACP shell-context load task failed");
-                None
-            }
-        }
+        .await
+        .map_err(|error| format!("ACP shell-context load task failed: {error}"))?;
+        loaded
     }
 
     /// Write the user's row and the turn record — and, when this prompt came
@@ -2243,7 +2418,7 @@ impl AcpSession {
         queued: Option<&str>,
         context: &[crate::workspace::reference::PreparedContextItem],
     ) -> Result<String, String> {
-        use crate::db::models::message::NewMessage;
+        use crate::db::models::message::MessageInsert;
         use diesel::Connection;
 
         let pool = services.db.clone();
@@ -2265,7 +2440,7 @@ impl AcpSession {
 
                 crate::db::ops::message::append_message(
                     conn,
-                    &NewMessage {
+                    &MessageInsert {
                         id: &message_id,
                         conversation_id: &conversation_id,
                         role: "user",
@@ -2300,11 +2475,11 @@ impl AcpSession {
                     .iter()
                     .enumerate()
                     .map(
-                        |(position, item)| crate::db::models::message_context_item::NewMessageContextItem {
+                        |(position, item)| crate::db::models::message_context_item::MessageContextItemInsert {
                             id: &item.id,
                             message_id: &message_id,
                             position: position as i32,
-                            kind: &item.kind,
+                            kind: item.kind.as_str(),
                             content: &item.content,
                             display_path: item.display_path.as_deref(),
                             line_start: item.line_start,
@@ -2360,7 +2535,7 @@ impl AcpSession {
         services: &Services,
         turn_id: &str,
         outcome: Result<serde_json::Value, PeerError>,
-        lease: crate::turn::TurnLease,
+        lease: Option<crate::turn::TurnLease>,
         dropped_before: u64,
         owed: Owed,
         sent: PromptDelivery,
@@ -2393,6 +2568,11 @@ impl AcpSession {
             self.retire_approvals(services, turn_id);
             return Err("the ACP turn lost its state".into());
         };
+        // Present only after a durable review decision was handed back to the
+        // adapter. A process dying while the review is still pending has no
+        // boundary here, so the waiting_review row is deliberately left
+        // untouched for restart recovery.
+        let review_boundary = self.shared.plan_reviews.take_boundary(turn_id);
 
         // Before anything else, and on every path out of a turn. A question can
         // still be on screen when the turn ends — the adapter died with one
@@ -2429,18 +2609,22 @@ impl AcpSession {
             .await;
 
         let (status, reason, error) = match &outcome {
-            Ok(value) => {
-                let stop = value
-                    .get("stopReason")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("end_turn")
-                    .to_string();
-                match stop.as_str() {
-                    "cancelled" => (TurnStatus::Cancelled, stop, None),
-                    _ => (TurnStatus::Done, stop, None),
-                }
-            }
-            Err(e) => (TurnStatus::Failed, "error".to_string(), Some(e.to_string())),
+            Ok(value) => match value.get("stopReason").and_then(|v| v.as_str()) {
+                Some(raw) => match ChatStopReason::try_from(raw) {
+                    Ok(reason @ ChatStopReason::Cancelled) => (TurnStatus::Cancelled, reason, None),
+                    Ok(reason @ (ChatStopReason::Error | ChatStopReason::LoopDetected)) => {
+                        (TurnStatus::Failed, reason, None)
+                    }
+                    Ok(reason) => (TurnStatus::Done, reason, None),
+                    Err(error) => (TurnStatus::Failed, ChatStopReason::Error, Some(error)),
+                },
+                None => (
+                    TurnStatus::Failed,
+                    ChatStopReason::Error,
+                    Some("ACP prompt response is missing `stopReason`".to_string()),
+                ),
+            },
+            Err(e) => (TurnStatus::Failed, ChatStopReason::Error, Some(e.to_string())),
         };
 
         // An update the reader could not queue is a piece of this answer that
@@ -2470,29 +2654,42 @@ impl AcpSession {
             } else {
                 format!("{lost} update(s) from Claude Code were dropped, so this answer is incomplete.")
             };
-            (TurnStatus::Failed, "error".to_string(), Some(why))
+            (TurnStatus::Failed, ChatStopReason::Error, Some(why))
         } else {
             (status, reason, error)
         };
 
-        crate::agent::turn_record::finish(&services.db, turn_id, status, error.as_deref()).await;
+        if review_boundary.is_some() {
+            let pool = services.db.clone();
+            let id = turn_id.to_string();
+            let stored_error = error.clone();
+            let written = tokio::task::spawn_blocking(move || {
+                let mut conn = get_conn(&pool)?;
+                crate::db::ops::turn::finish_waiting_review(&mut conn, &id, status, stored_error.as_deref(), now_ms())
+                    .map_err(|error| error.to_string())
+            })
+            .await;
+            match written {
+                Ok(Ok(1)) => {}
+                Ok(Ok(_)) => tracing::warn!(turn_id, "ACP review decision found no waiting turn to settle"),
+                Ok(Err(error)) => tracing::warn!(%error, turn_id, "could not settle ACP waiting review turn"),
+                Err(error) => tracing::warn!(%error, turn_id, "settling ACP waiting review turn panicked"),
+            }
+        } else {
+            crate::agent::turn_record::finish(&services.db, turn_id, status, error.as_deref()).await;
+        }
 
-        self.shared.emit(serde_json::json!({
-            "type": "stop",
-            "reason": reason,
-            "done": true,
-            "message_id": last_row.message_id,
-            "turn_id": turn_id,
-            "conversation_id": self.conversation_id,
-            "input_tokens": 0,
-            "output_tokens": 0,
-        }));
+        self.shared.emit(ChatStreamEvent::Stop {
+            reason,
+            message_id: Some(last_row.message_id),
+            turn_id: turn_id.to_string(),
+            conversation_id: self.conversation_id.clone(),
+            input_tokens: Some(0),
+            output_tokens: Some(0),
+        });
         // The sidebar refetches on this; without it the conversation's preview
         // and timestamp stay at whatever they were before the turn.
-        let _ = services.events.emit(
-            "conversation-updated",
-            serde_json::json!({ "conversation_id": self.conversation_id }),
-        );
+        let _ = services.events.emit_conversation_updated(&self.conversation_id);
 
         drop(lease);
 
@@ -2506,6 +2703,16 @@ impl AcpSession {
         match status {
             TurnStatus::Done => crate::agent::queue::pump_later(services, &self.conversation_id),
             _ => crate::agent::queue::hold(services, &self.conversation_id).await,
+        }
+
+        if let Some(boundary) = review_boundary {
+            boundary.complete(match &outcome {
+                // An answer to session/prompt is the first protocol evidence
+                // that the adapter consumed our permission response. Its stop
+                // reason may still describe a failed turn; delivery happened.
+                Ok(_) => super::plan_review::DeliveryBoundary::Acknowledged,
+                Err(error) => super::plan_review::DeliveryBoundary::InDoubt(error.to_string()),
+            });
         }
 
         match outcome {
@@ -2869,7 +3076,8 @@ mod tests {
                 &crate::turn::TurnCoordinator::new(),
                 "c1",
                 Some("asking"),
-            ),
+            )
+            .unwrap(),
             queued: None,
             shell: None,
             memory_lost: false,
@@ -2895,7 +3103,8 @@ mod tests {
                 &crate::turn::TurnCoordinator::new(),
                 "c1",
                 Some("asking"),
-            ),
+            )
+            .unwrap(),
             queued: None,
             shell: None,
             memory_lost: true,
@@ -3136,7 +3345,7 @@ mod tests {
     fn current_workspace_snapshot_rides_the_acp_prompt_without_a_live_at_trigger() {
         let context = crate::workspace::reference::PreparedContextItem {
             id: "ctx".into(),
-            kind: "project_file".into(),
+            kind: crate::workspace::reference::WorkspaceReferenceKind::ProjectFile,
             content: "frozen bytes".into(),
             display_path: Some("src/lib.rs".into()),
             line_start: None,
@@ -3175,7 +3384,7 @@ mod tests {
 
     #[test]
     fn pending_shell_context_batches_items_and_receipts_only_what_was_injected() {
-        let item = |id: &str, content: String| crate::db::models::message_context_item::MessageContextItem {
+        let item = |id: &str, content: String| crate::db::models::message_context_item::MessageContextItemRow {
             id: id.into(),
             message_id: format!("message-{id}"),
             position: 0,
@@ -3198,7 +3407,9 @@ mod tests {
             item("deferred", "DEFERRED".repeat(repeat)),
         ];
 
-        let batch = bounded_pending_shell_context(&candidates).expect("one item fits");
+        let batch = bounded_pending_shell_context(&candidates)
+            .unwrap()
+            .expect("one item fits");
 
         assert_eq!(batch.item_ids, vec!["first".to_string()]);
         assert!(batch.rendered.len() <= MAX_ACP_PENDING_SHELL_BYTES);
@@ -3208,7 +3419,7 @@ mod tests {
         let small = (0..6)
             .map(|index| item(&format!("item-{index}"), "ok".into()))
             .collect::<Vec<_>>();
-        let batch = bounded_pending_shell_context(&small).expect("small items fit");
+        let batch = bounded_pending_shell_context(&small).unwrap().expect("small items fit");
         assert_eq!(
             batch.item_ids,
             vec![
@@ -3289,6 +3500,7 @@ mod tests {
             unwritten_rows: std::sync::atomic::AtomicUsize::new(0),
             memory_lost: Mutex::new(false),
             tools_lost: Mutex::new(false),
+            plan_reviews: Arc::new(crate::acp::plan_review::ReviewControl::default()),
         };
 
         // The first announcement is the placeholder one: the adapter knows a
@@ -3328,7 +3540,7 @@ mod tests {
                 .unwrap()
                 .into_iter()
                 .filter_map(|m| m.tool_calls)
-                .flat_map(|json| crate::agent::tool_calls::parse_openai_tool_calls(Some(&json)))
+                .flat_map(|json| crate::agent::tool_calls::parse_openai_tool_calls(Some(&json)).unwrap())
                 .find(|c| c.id == "A")
                 .expect("A's row was written")
         };
@@ -3397,6 +3609,7 @@ mod tests {
             unwritten_rows: std::sync::atomic::AtomicUsize::new(0),
             memory_lost: Mutex::new(false),
             tools_lost: Mutex::new(false),
+            plan_reviews: Arc::new(crate::acp::plan_review::ReviewControl::default()),
         };
 
         shared.absorb(update(call("A", "Bash", serde_json::json!({})))).await;

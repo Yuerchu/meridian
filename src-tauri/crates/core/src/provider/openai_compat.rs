@@ -62,15 +62,16 @@ impl OpenAICompatProvider {
         tools: Option<&[ToolDefinition]>,
         params: &ChatParams,
         stream: bool,
-    ) -> Request {
+    ) -> Result<Request, ProviderError> {
+        let serialized_messages = match self.flavor {
+            // Spelled out rather than wildcarded: the next flavor should have
+            // to say which serialisation it wants.
+            OpenAICompatFlavor::Generic | OpenAICompatFlavor::Xai => serialize_openai_messages(messages),
+            OpenAICompatFlavor::Google => serialize_google_messages(messages, &params.model),
+        }?;
         let mut body = serde_json::json!({
             "model": params.model,
-            "messages": match self.flavor {
-                // Spelled out rather than wildcarded: the next flavor should
-                // have to say which serialisation it wants.
-                OpenAICompatFlavor::Generic | OpenAICompatFlavor::Xai => serialize_openai_messages(messages),
-                OpenAICompatFlavor::Google => serialize_google_messages(messages, &params.model),
-            },
+            "messages": serialized_messages,
             "stream": stream,
         });
         if stream {
@@ -150,26 +151,24 @@ impl OpenAICompatProvider {
             }
         }
         req.body = Some(RequestBody::Json(body));
-        req
+        Ok(req)
     }
 }
 
-fn content_value(content: &str) -> serde_json::Value {
-    if content.starts_with('[')
-        && let Ok(parts) = serde_json::from_str::<Vec<serde_json::Value>>(content)
-    {
-        return serde_json::Value::Array(parts);
+fn content_value(content: &str) -> Result<serde_json::Value, ProviderError> {
+    if let Some(parts) = super::decode_message_parts(content).map_err(ProviderError::Parse)? {
+        return serde_json::to_value(parts).map_err(|error| ProviderError::Parse(error.to_string()));
     }
-    serde_json::Value::String(content.to_string())
+    Ok(serde_json::Value::String(content.to_string()))
 }
 
-pub fn serialize_openai_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
+pub fn serialize_openai_messages(messages: &[ChatMessage]) -> Result<Vec<serde_json::Value>, ProviderError> {
     messages
         .iter()
         .map(|m| {
             // chat-completions has a native `name`, so identity never touches the body.
-            let rendered = super::render_message(m, super::SenderRendering::NameField);
-            let mut msg = serde_json::json!({ "role": m.role, "content": content_value(&rendered.content) });
+            let rendered = super::render_message(m, super::SenderRendering::NameField).map_err(ProviderError::Parse)?;
+            let mut msg = serde_json::json!({ "role": m.role, "content": content_value(&rendered.content)? });
             if let Some(ref name) = rendered.name {
                 msg["name"] = serde_json::json!(name);
             }
@@ -190,7 +189,7 @@ pub fn serialize_openai_messages(messages: &[ChatMessage]) -> Vec<serde_json::Va
             if let Some(ref tool_call_id) = m.tool_call_id {
                 msg["tool_call_id"] = serde_json::json!(tool_call_id);
             }
-            msg
+            Ok(msg)
         })
         .collect()
 }
@@ -242,7 +241,7 @@ fn google_extra(signature: &str) -> serde_json::Value {
 /// Google validates historical Gemini 3 function calls. A call produced by a
 /// different vendor (or by Meridian before signatures were durable) cannot be
 /// sent as a native tool call, so it becomes ordinary transcript text instead.
-fn serialize_google_messages(messages: &[ChatMessage], model: &str) -> Vec<serde_json::Value> {
+fn serialize_google_messages(messages: &[ChatMessage], model: &str) -> Result<Vec<serde_json::Value>, ProviderError> {
     use super::state::GoogleSignatureLocation;
     use std::collections::{HashMap, HashSet};
 
@@ -260,6 +259,9 @@ fn serialize_google_messages(messages: &[ChatMessage], model: &str) -> Vec<serde
         if m.role == "assistant"
             && let Some(tool_calls) = m.tool_calls.as_ref()
         {
+            for call in tool_calls {
+                super::decode_tool_arguments(&call.arguments, &call.id).map_err(ProviderError::Parse)?;
+            }
             // Call ids are only unique within one provider round. A later
             // assistant message may legally reuse one, so flattening state is
             // scoped to the immediately following result group.
@@ -299,8 +301,8 @@ fn serialize_google_messages(messages: &[ChatMessage], model: &str) -> Vec<serde
             continue;
         }
 
-        let rendered = super::render_message(m, super::SenderRendering::NameField);
-        let mut msg = serde_json::json!({ "role": m.role, "content": content_value(&rendered.content) });
+        let rendered = super::render_message(m, super::SenderRendering::NameField).map_err(ProviderError::Parse)?;
+        let mut msg = serde_json::json!({ "role": m.role, "content": content_value(&rendered.content)? });
         if let Some(name) = rendered.name {
             msg["name"] = serde_json::json!(name);
         }
@@ -359,7 +361,7 @@ fn serialize_google_messages(messages: &[ChatMessage], model: &str) -> Vec<serde
         out.push(msg);
     }
     append_interrupted_results(&mut out, interrupted_results);
-    out
+    Ok(out)
 }
 
 fn append_interrupted_results(out: &mut Vec<serde_json::Value>, results: Vec<(String, String)>) {
@@ -823,7 +825,7 @@ impl ChatProvider for OpenAICompatProvider {
     ) -> Result<ChatStream, ProviderError> {
         let tools_opt = if tools.is_empty() { None } else { Some(tools.as_slice()) };
         let transport = ReqwestTransport::shared();
-        let req = self.build_request(&messages, tools_opt, &params, true);
+        let req = self.build_request(&messages, tools_opt, &params, true)?;
         let resp = transport.stream(req).await?;
         let google_model = (self.flavor == OpenAICompatFlavor::Google).then(|| params.model.clone());
 
@@ -866,7 +868,7 @@ impl ChatProvider for OpenAICompatProvider {
 
     async fn chat(&self, messages: Vec<ChatMessage>, params: ChatParams) -> Result<String, ProviderError> {
         let transport = ReqwestTransport::shared();
-        let req = self.build_request(&messages, None, &params, false);
+        let req = self.build_request(&messages, None, &params, false)?;
         let resp = transport.execute(req).await?;
 
         let parsed = parse_chat_response(&resp.body)?;
@@ -887,7 +889,7 @@ impl ChatProvider for OpenAICompatProvider {
         params: ChatParams,
     ) -> Result<AgentResponse, ProviderError> {
         let transport = ReqwestTransport::shared();
-        let req = self.build_request(&messages, Some(&tools), &params, false);
+        let req = self.build_request(&messages, Some(&tools), &params, false)?;
         let resp = transport.execute(req).await?;
 
         let parsed = parse_chat_response(&resp.body)?;
@@ -992,7 +994,9 @@ mod xai_tests {
     #[test]
     fn the_cache_key_becomes_the_routing_header() {
         let provider = OpenAICompatProvider::new_xai("https://api.x.ai/v1", "key");
-        let req = provider.build_request(&[ChatMessage::user("hello")], None, &params(), true);
+        let req = provider
+            .build_request(&[ChatMessage::user("hello")], None, &params(), true)
+            .unwrap();
         assert_eq!(req.headers.get("x-grok-conv-id").unwrap(), "conv-42");
 
         let Some(RequestBody::Json(body)) = req.body else {
@@ -1009,7 +1013,9 @@ mod xai_tests {
         let provider = OpenAICompatProvider::new_xai("https://api.x.ai/v1", "key");
         let mut p = params();
         p.cache_key = None;
-        let req = provider.build_request(&[ChatMessage::user("hello")], None, &p, true);
+        let req = provider
+            .build_request(&[ChatMessage::user("hello")], None, &p, true)
+            .unwrap();
         assert!(req.headers.get("x-grok-conv-id").is_none());
     }
 
@@ -1018,7 +1024,9 @@ mod xai_tests {
     #[test]
     fn a_generic_endpoint_is_not_sent_the_vendor_header() {
         let provider = OpenAICompatProvider::new("https://api.example.test/v1", "key");
-        let req = provider.build_request(&[ChatMessage::user("hello")], None, &params(), true);
+        let req = provider
+            .build_request(&[ChatMessage::user("hello")], None, &params(), true)
+            .unwrap();
         assert!(req.headers.get("x-grok-conv-id").is_none());
     }
 
@@ -1125,7 +1133,9 @@ mod google_tests {
             top_p: Some(0.9),
             ..Default::default()
         };
-        let req = provider.build_request(&[ChatMessage::user("hello")], None, &params, true);
+        let req = provider
+            .build_request(&[ChatMessage::user("hello")], None, &params, true)
+            .unwrap();
         let Some(RequestBody::Json(body)) = req.body else {
             panic!("JSON body")
         };
@@ -1169,7 +1179,7 @@ mod google_tests {
             index: 0,
             call_id: Some("call-1".into()),
         }));
-        let wire = serialize_google_messages(&[assistant], "gemini-3.7-flash");
+        let wire = serialize_google_messages(&[assistant], "gemini-3.7-flash").unwrap();
         assert_eq!(
             wire[0]["tool_calls"][0]["extra_content"]["google"]["thought_signature"],
             "signed-state"
@@ -1193,11 +1203,27 @@ mod google_tests {
         let wire = serialize_google_messages(
             &[assistant, ChatMessage::tool_result("foreign", "done")],
             "gemini-3.7-flash",
-        );
+        )
+        .unwrap();
         assert_eq!(wire[0]["role"], "assistant");
         assert!(wire[0].get("tool_calls").is_none());
         assert!(wire[0]["content"].as_str().unwrap().contains("Historical tool call"));
         assert_eq!(wire[1]["role"], "user");
+    }
+
+    #[test]
+    fn google_compat_rejects_malformed_historical_tool_arguments() {
+        let assistant = ChatMessage::assistant_with_tools(
+            "",
+            None,
+            vec![ToolCall {
+                id: "broken-call".into(),
+                name: "search".into(),
+                arguments: "{not-json".into(),
+            }],
+        );
+        let error = serialize_google_messages(&[assistant], "gemini-3.7-flash").unwrap_err();
+        assert!(matches!(error, ProviderError::Parse(ref message) if message.contains("broken-call")));
     }
 
     #[test]
@@ -1227,7 +1253,7 @@ mod google_tests {
             ChatMessage::tool_result("first", "one-result"),
             ChatMessage::tool_result("second", "two-result"),
         ];
-        let wire = serialize_google_messages(&messages, "gemini-3.7-flash");
+        let wire = serialize_google_messages(&messages, "gemini-3.7-flash").unwrap();
         assert_eq!(
             wire[0]["tool_calls"][0]["extra_content"]["google"]["thought_signature"],
             "signed-state"
@@ -1262,7 +1288,8 @@ mod google_tests {
         let wire = serialize_google_messages(
             &[assistant, ChatMessage::tool_result("first", "one-result")],
             "gemini-3.7-flash",
-        );
+        )
+        .unwrap();
         assert_eq!(wire[1]["tool_call_id"], "first");
         assert_eq!(wire[2]["tool_call_id"], "second");
         assert!(wire[2]["content"].as_str().unwrap().contains("not retried"));

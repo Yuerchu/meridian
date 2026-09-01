@@ -45,7 +45,7 @@ import { SelectTextModal } from './select-text-modal'
 import { markQueued } from '@/lib/turns'
 import { ToolCallBlock } from './tool-call-block'
 import { renderEmojisInText, StickerImage } from './emoji-renderer'
-import type { ContentBlock, Message as MessageData, TurnUsageSummary } from '@/types'
+import type { ContentBlock, MessageRating, MessageViewModel as MessageData, TurnUsageInfoResponse } from '@/types'
 import type { SenderNames } from '@/hooks/use-sender-names'
 import type { EmojiMap } from './emoji-renderer'
 import { useRelativeTime } from '@/hooks/use-relative-time'
@@ -398,7 +398,7 @@ interface MessageItemProps {
   onDelete?: (id: string) => void
   onRegenerate?: (id: string) => void
   onEdit?: (id: string, content: string) => void
-  onRate?: (id: string, rating: number | null) => void
+  onRate?: (id: string, rating: MessageRating | null) => void
   isOneBot?: boolean
   emojiMap?: EmojiMap
   /** Nicknames for the ids on user rows. Only a group has more than one. */
@@ -423,7 +423,7 @@ interface MessageItemProps {
   /** Backend-priced summary for the whole turn. It deliberately travels with
    *  `tokenTotals`: the one row that owns the actions also owns the usage
    *  disclosure, while intermediate rows stay quiet. */
-  turnUsage?: TurnUsageSummary | null
+  turnUsage?: TurnUsageInfoResponse | null
   /** Renders these instead of the message's own blocks. A collapsed turn shows
    *  its conclusion through this row, and the steps that led there are already
    *  drawn inside the collapsed region. */

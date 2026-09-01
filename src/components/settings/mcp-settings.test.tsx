@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { api } from '@/api'
 import i18n from '@/i18n'
 import { resizeViewportTo } from '@/test/viewport'
-import type { McpServer } from '@/types'
+import type { McpServerInfoResponse } from '@/types'
 import { McpSettings } from './mcp-settings'
 
 vi.mock('@/api', () => ({
@@ -22,17 +22,17 @@ vi.mock('@/api', () => ({
 
 const mockApi = vi.mocked(api)
 
-function makeServer(id: string, name: string, transportType: string): McpServer {
+function makeServer(id: string, name: string, transportType: string): McpServerInfoResponse {
   return {
     id,
     name,
     transport_type: transportType,
     command: transportType === 'stdio' ? 'npx' : null,
-    args: transportType === 'stdio' ? '[]' : null,
-    env: transportType === 'stdio' ? '{}' : null,
+    args: transportType === 'stdio' ? [] : null,
+    env: transportType === 'stdio' ? {} : null,
     url: transportType === 'streamablehttp' ? 'https://example.com/mcp' : null,
-    headers: transportType === 'streamablehttp' ? '{}' : null,
-    is_enabled: 0,
+    headers: transportType === 'streamablehttp' ? {} : null,
+    is_enabled: false,
     sort_order: 0,
     created_at: 0,
     updated_at: 0,

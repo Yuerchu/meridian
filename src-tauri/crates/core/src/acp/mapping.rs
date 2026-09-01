@@ -11,6 +11,7 @@
 //! a parallel one for ACP would mean a second renderer.
 
 use super::protocol::{PlanEntry, SessionConfigOption, SessionUpdate, ToolCall, Usage};
+use crate::events::ToolOutcome;
 
 /// What one `session/update` means here.
 ///
@@ -54,7 +55,7 @@ pub enum Effect {
         call_id: String,
         result: String,
         /// `success` or `error`, matching `messages.tool_outcome`.
-        outcome: &'static str,
+        outcome: ToolOutcome,
     },
     /// The agent's own todo list.
     Plan(Vec<PlanItem>),
@@ -111,12 +112,12 @@ pub fn effect_of(update: SessionUpdate) -> Effect {
             Some("completed") => Effect::ToolResult {
                 call_id: call.tool_call_id.clone(),
                 result: output_of(&call),
-                outcome: "success",
+                outcome: ToolOutcome::Success,
             },
             Some("failed") => Effect::ToolResult {
                 call_id: call.tool_call_id.clone(),
                 result: output_of(&call),
-                outcome: "error",
+                outcome: ToolOutcome::Error,
             },
             // Still running. Usually there is nothing to say — but this is also
             // how a call announced before its arguments were known gets them,
@@ -403,7 +404,7 @@ mod tests {
             Effect::ToolResult {
                 call_id: "t1".into(),
                 result: "3 passed".into(),
-                outcome: "success",
+                outcome: ToolOutcome::Success,
             }
         );
 
@@ -415,7 +416,7 @@ mod tests {
             Effect::ToolResult {
                 call_id: "t1".into(),
                 result: "exit 1".into(),
-                outcome: "error",
+                outcome: ToolOutcome::Error,
             }
         );
     }
@@ -436,7 +437,7 @@ mod tests {
             Effect::ToolResult {
                 call_id: "t1".into(),
                 result: "first\nsecond".into(),
-                outcome: "success",
+                outcome: ToolOutcome::Success,
             }
         );
     }

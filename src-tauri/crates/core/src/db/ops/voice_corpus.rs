@@ -11,7 +11,7 @@ use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
 use crate::db::models::voice_corpus::{
-    NewVoiceBlob, NewVoiceClip, VoiceBlob, VoiceClip, VoiceSenderOptout, blob_status,
+    VoiceBlobInsert, VoiceBlobRow, VoiceBlobStatus, VoiceClipInsert, VoiceClipRow, VoiceSenderOptoutInsert, blob_status,
 };
 use crate::db::schema::{voice_blobs, voice_clips, voice_sender_optouts};
 
@@ -32,40 +32,46 @@ pub enum ClaimOutcome {
     /// 本任务是 owner，可以发布文件。`token` 与 `epoch` 要一路带到 publish。
     Owned { id: String, token: String, epoch: i64 },
     /// 已经有一份发布好的。调用方仍要校验磁盘上那个文件确实对得上。
-    Ready(VoiceBlob),
+    Ready(VoiceBlobRow),
     /// 有人正在写，且 lease 未过期。退避重试。
-    PendingElsewhere(VoiceBlob),
+    PendingElsewhere(VoiceBlobRow),
     /// 有人写坏了，或者写到一半死了而 lease 已过期。调用方可以接管。
-    Takeable(VoiceBlob),
+    Takeable(VoiceBlobRow),
     /// 文件是坏的。不在采集路径上修——那是恢复器的事。
-    Damaged(VoiceBlob),
+    Damaged(VoiceBlobRow),
     /// 墓碑。用户刚要求删掉这段音频，此时再存一份是违背意图；
     /// 墓碑清完之后同样的音频再来会正常采集。
-    Deleting(VoiceBlob),
+    Deleting(VoiceBlobRow),
 }
 
-fn find_blob(conn: &mut SqliteConnection, key: &BlobKey<'_>) -> QueryResult<Option<VoiceBlob>> {
+fn find_blob(conn: &mut SqliteConnection, key: &BlobKey<'_>) -> QueryResult<Option<VoiceBlobRow>> {
     voice_blobs::table
         .filter(voice_blobs::bot_self_id.eq(key.bot_self_id))
         .filter(voice_blobs::source_type.eq(key.source_type))
         .filter(voice_blobs::source_id.eq(key.source_id))
         .filter(voice_blobs::file_format.eq(key.file_format))
         .filter(voice_blobs::sha256.eq(key.sha256))
-        .select(VoiceBlob::as_select())
+        .select(VoiceBlobRow::as_select())
         .first(conn)
         .optional()
 }
 
-fn classify(blob: VoiceBlob, now: i64) -> ClaimOutcome {
-    match blob.status.as_str() {
-        blob_status::READY => ClaimOutcome::Ready(blob),
-        blob_status::DAMAGED => ClaimOutcome::Damaged(blob),
-        blob_status::DELETING => ClaimOutcome::Deleting(blob),
-        _ => match blob.lease_expires_at {
+fn classify(blob: VoiceBlobRow, now: i64) -> QueryResult<ClaimOutcome> {
+    let status = VoiceBlobStatus::parse(&blob.status).map_err(|error| {
+        diesel::result::Error::DeserializationError(Box::new(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            error,
+        )))
+    })?;
+    Ok(match status {
+        VoiceBlobStatus::Ready => ClaimOutcome::Ready(blob),
+        VoiceBlobStatus::Damaged => ClaimOutcome::Damaged(blob),
+        VoiceBlobStatus::Deleting => ClaimOutcome::Deleting(blob),
+        VoiceBlobStatus::Pending => match blob.lease_expires_at {
             Some(expiry) if expiry <= now => ClaimOutcome::Takeable(blob),
             _ => ClaimOutcome::PendingElsewhere(blob),
         },
-    }
+    })
 }
 
 /// 尝试成为这段音频的 owner。
@@ -83,7 +89,7 @@ pub fn claim_blob(
     lease_ms: i64,
 ) -> QueryResult<ClaimOutcome> {
     let inserted = diesel::insert_into(voice_blobs::table)
-        .values(&NewVoiceBlob {
+        .values(&VoiceBlobInsert {
             id,
             bot_self_id: key.bot_self_id,
             source_type: key.source_type,
@@ -109,10 +115,10 @@ pub fn claim_blob(
         }),
         Err(diesel::result::Error::DatabaseError(diesel::result::DatabaseErrorKind::UniqueViolation, _)) => {
             match find_blob(conn, key)? {
-                Some(blob) => Ok(classify(blob, now)),
+                Some(blob) => classify(blob, now),
                 // 插入撞了唯一索引，回读却没有——只可能是这中间被删掉了。
                 // 当作可以重来，调用方会再转一圈。
-                None => Ok(ClaimOutcome::Takeable(VoiceBlob {
+                None => Ok(ClaimOutcome::Takeable(VoiceBlobRow {
                     id: id.to_string(),
                     bot_self_id: key.bot_self_id,
                     source_type: key.source_type.to_string(),
@@ -257,7 +263,7 @@ pub enum ClipOutcome {
 #[allow(clippy::too_many_arguments)]
 pub fn record_clip(
     conn: &mut SqliteConnection,
-    blob: &VoiceBlob,
+    blob: &VoiceBlobRow,
     id: &str,
     sender_id: &str,
     platform_message_id: Option<i64>,
@@ -275,7 +281,7 @@ pub fn record_clip(
             .filter(voice_clips::source_id.eq(&blob.source_id))
             .filter(voice_clips::platform_message_id.eq(message_id))
             .filter(voice_clips::segment_index.eq(segment_index))
-            .select(VoiceClip::as_select())
+            .select(VoiceClipRow::as_select())
             .first(conn)
             .optional()?,
         None => None,
@@ -299,7 +305,7 @@ pub fn record_clip(
     }
 
     diesel::insert_into(voice_clips::table)
-        .values(&NewVoiceClip {
+        .values(&VoiceClipInsert {
             id,
             blob_id: &blob.id,
             bot_self_id: blob.bot_self_id,
@@ -336,7 +342,7 @@ pub fn record_clip(
 ///   一条足够，但一个只在注释里成立的前提，改天会被一次"顺手挪出事务"推翻。
 /// - `damaged` 一并处理。它是"文件对不上"，不是"这行不算数"——留在外面，一个
 ///   没人引用的坏 blob 的文件永远不会被删掉。
-pub fn tombstone_unreferenced(conn: &mut SqliteConnection, now: i64) -> QueryResult<Vec<VoiceBlob>> {
+pub fn tombstone_unreferenced(conn: &mut SqliteConnection, now: i64) -> QueryResult<Vec<VoiceBlobRow>> {
     let collectable = || {
         voice_blobs::table
             .filter(voice_blobs::status.eq_any([blob_status::READY, blob_status::DAMAGED]))
@@ -360,7 +366,7 @@ pub fn tombstone_unreferenced(conn: &mut SqliteConnection, now: i64) -> QueryRes
         voice_blobs::table
             .filter(voice_blobs::id.eq_any(&doomed))
             .filter(voice_blobs::status.eq(blob_status::DELETING))
-            .select(VoiceBlob::as_select())
+            .select(VoiceBlobRow::as_select())
             .load(conn)
     })
 }
@@ -397,10 +403,10 @@ pub fn delete_all_clips(conn: &mut SqliteConnection) -> QueryResult<usize> {
 }
 
 /// 待重试的墓碑，恢复器用。
-pub fn tombstones(conn: &mut SqliteConnection) -> QueryResult<Vec<VoiceBlob>> {
+pub fn tombstones(conn: &mut SqliteConnection) -> QueryResult<Vec<VoiceBlobRow>> {
     voice_blobs::table
         .filter(voice_blobs::status.eq(blob_status::DELETING))
-        .select(VoiceBlob::as_select())
+        .select(VoiceBlobRow::as_select())
         .load(conn)
 }
 
@@ -408,10 +414,10 @@ pub fn tombstones(conn: &mut SqliteConnection) -> QueryResult<Vec<VoiceBlob>> {
 ///
 /// 只有拿到了语料目录独占锁才该调用这个：那时"还有 owner 活着"是不可能的，
 /// 剩下的必然是上一次进程死掉留下的。
-pub fn stale_pending(conn: &mut SqliteConnection) -> QueryResult<Vec<VoiceBlob>> {
+pub fn stale_pending(conn: &mut SqliteConnection) -> QueryResult<Vec<VoiceBlobRow>> {
     voice_blobs::table
         .filter(voice_blobs::status.eq(blob_status::PENDING))
-        .select(VoiceBlob::as_select())
+        .select(VoiceBlobRow::as_select())
         .load(conn)
 }
 
@@ -420,21 +426,21 @@ pub fn stale_pending(conn: &mut SqliteConnection) -> QueryResult<Vec<VoiceBlob>>
 /// 采集在写完 blob 与写 clip 之间死掉就会留下一个。文件占着地方，而没有任何
 /// 一次采集会承认它。`damaged` 也算：那是"文件对不上"，一个连 clip 都没有的
 /// 坏 blob 没有任何东西还需要它。
-pub fn orphaned(conn: &mut SqliteConnection) -> QueryResult<Vec<VoiceBlob>> {
+pub fn orphaned(conn: &mut SqliteConnection) -> QueryResult<Vec<VoiceBlobRow>> {
     voice_blobs::table
         .filter(voice_blobs::status.eq_any([blob_status::READY, blob_status::DAMAGED]))
         .filter(diesel::dsl::not(diesel::dsl::exists(
             voice_clips::table.filter(voice_clips::blob_id.eq(voice_blobs::id)),
         )))
-        .select(VoiceBlob::as_select())
+        .select(VoiceBlobRow::as_select())
         .load(conn)
 }
 
 /// 所有已发布的行，用来对着磁盘核一遍。
-pub fn all_ready(conn: &mut SqliteConnection) -> QueryResult<Vec<VoiceBlob>> {
+pub fn all_ready(conn: &mut SqliteConnection) -> QueryResult<Vec<VoiceBlobRow>> {
     voice_blobs::table
         .filter(voice_blobs::status.eq(blob_status::READY))
-        .select(VoiceBlob::as_select())
+        .select(VoiceBlobRow::as_select())
         .load(conn)
 }
 
@@ -442,12 +448,12 @@ pub fn all_ready(conn: &mut SqliteConnection) -> QueryResult<Vec<VoiceBlob>> {
 ///
 /// manifest 的每一行两边都要——转写和发送者在 clip 上，文件名和格式在 blob 上。
 /// 只读 `ready` 的：`damaged` 的文件对不上，`deleting` 的正在消失。
-pub fn export_rows(conn: &mut SqliteConnection) -> QueryResult<Vec<(VoiceClip, VoiceBlob)>> {
+pub fn export_rows(conn: &mut SqliteConnection) -> QueryResult<Vec<(VoiceClipRow, VoiceBlobRow)>> {
     voice_clips::table
         .inner_join(voice_blobs::table.on(voice_blobs::id.eq(voice_clips::blob_id)))
         .filter(voice_blobs::status.eq(blob_status::READY))
         .order(voice_clips::created_at.asc())
-        .select((VoiceClip::as_select(), VoiceBlob::as_select()))
+        .select((VoiceClipRow::as_select(), VoiceBlobRow::as_select()))
         .load(conn)
 }
 
@@ -498,11 +504,11 @@ pub struct SessionTotal {
 pub fn session_totals(conn: &mut SqliteConnection) -> QueryResult<Vec<SessionTotal>> {
     use std::collections::{HashMap, HashSet};
 
-    let rows: Vec<(VoiceClip, VoiceBlob)> = voice_clips::table
+    let rows: Vec<(VoiceClipRow, VoiceBlobRow)> = voice_clips::table
         .inner_join(voice_blobs::table.on(voice_blobs::id.eq(voice_clips::blob_id)))
         .filter(voice_blobs::status.eq_any([blob_status::READY, blob_status::DAMAGED]))
         .order(voice_clips::created_at.asc())
-        .select((VoiceClip::as_select(), VoiceBlob::as_select()))
+        .select((VoiceClipRow::as_select(), VoiceBlobRow::as_select()))
         .load(conn)?;
 
     let mut totals: HashMap<(i64, String, String), SessionTotal> = HashMap::new();
@@ -536,8 +542,8 @@ pub fn session_totals(conn: &mut SqliteConnection) -> QueryResult<Vec<SessionTot
 /// 每个 bot 账号再分别说一次。
 pub fn set_optout(conn: &mut SqliteConnection, sender_id: &str, now: i64) -> QueryResult<usize> {
     diesel::insert_into(voice_sender_optouts::table)
-        .values(&VoiceSenderOptout {
-            sender_id: sender_id.to_string(),
+        .values(&VoiceSenderOptoutInsert {
+            sender_id,
             created_at: now,
         })
         .on_conflict(voice_sender_optouts::sender_id)
@@ -578,7 +584,7 @@ mod tests {
         }
     }
 
-    fn ready_blob(conn: &mut SqliteConnection, sha: &str, id: &str) -> VoiceBlob {
+    fn ready_blob(conn: &mut SqliteConnection, sha: &str, id: &str) -> VoiceBlobRow {
         let (_, epoch) = own(conn, sha, id, "t");
         assert!(publish_blob(conn, id, "t", epoch, 1_000).unwrap());
         find_blob(conn, &key(sha)).unwrap().unwrap()
@@ -595,6 +601,17 @@ mod tests {
             ClaimOutcome::PendingElsewhere(blob) => assert_eq!(blob.id, "b1"),
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn an_unknown_persisted_blob_status_is_rejected() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        let mut blob = ready_blob(&mut conn, "aa", "b1");
+        blob.status = "archived".to_string();
+
+        let error = classify(blob, 1_000).unwrap_err();
+        assert!(error.to_string().contains("unknown voice blob status"), "{error}");
     }
 
     /// 另一个群里的同一段音频是另一份语料：删掉这个群的不该动那个群的。
@@ -683,8 +700,8 @@ mod tests {
         let again = record_clip(&mut conn, &blob, "c2", "alice", Some(10), 0, Some("你好"), Some("s"), 2).unwrap();
         assert_eq!(again, ClipOutcome::TranscriptFilled);
 
-        let rows: Vec<VoiceClip> = voice_clips::table
-            .select(VoiceClip::as_select())
+        let rows: Vec<VoiceClipRow> = voice_clips::table
+            .select(VoiceClipRow::as_select())
             .load(&mut conn)
             .unwrap();
         assert_eq!(rows.len(), 1);
@@ -694,8 +711,8 @@ mod tests {
         // 第三次什么都不做。
         let third = record_clip(&mut conn, &blob, "c3", "alice", Some(10), 0, Some("别的"), Some("s"), 3).unwrap();
         assert_eq!(third, ClipOutcome::AlreadyRecorded);
-        let rows: Vec<VoiceClip> = voice_clips::table
-            .select(VoiceClip::as_select())
+        let rows: Vec<VoiceClipRow> = voice_clips::table
+            .select(VoiceClipRow::as_select())
             .load(&mut conn)
             .unwrap();
         assert_eq!(rows[0].transcript.as_deref(), Some("你好"), "先到的那份不被覆盖");

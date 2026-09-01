@@ -8,7 +8,7 @@ import { api } from '@/api'
 import { MeridianMark } from '@/components/ui/meridian-mark'
 import { useHistoryLevel } from '@/hooks/use-history-level'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
-import type { AppInfo } from '@/types'
+import type { AppInfoResponse } from '@/types'
 import { LogViewer } from './logs/log-viewer'
 import { SettingsHeader, SettingsPane } from './primitives'
 
@@ -86,7 +86,7 @@ function InfoRow({ label, value, action }: { label: string; value?: string; acti
 
 export function About() {
   const { t } = useTranslation()
-  const [info, setInfo] = useState<AppInfo | null>(null)
+  const [info, setInfo] = useState<AppInfoResponse | null>(null)
   const [showLogs, setShowLogs] = useState(false)
   const [copied, markCopied] = useTemporaryFlag()
   const [pathCopied, markPathCopied] = useTemporaryFlag()
@@ -252,6 +252,7 @@ export function About() {
       <div className="border-border text-muted space-y-2 border-t pt-4 text-xs">
         <p>{t('settings.about.copyright')}</p>
         <p>{t('settings.about.notice')}</p>
+        <p>{t('settings.about.grokBuildNotice')}</p>
       </div>
     </SettingsPane>
   )

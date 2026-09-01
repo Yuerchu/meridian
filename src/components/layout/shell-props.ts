@@ -1,6 +1,6 @@
 import type { SettingsTab } from '@/components/settings/tabs'
 import type { InitialTurnDraft } from '@/components/chat/conversation-draft'
-import type { Conversation, Project } from '@/types'
+import type { ConversationInfoResponse, ProjectInfoResponse } from '@/types'
 
 /**
  * What fills the pane beside the sidebar.
@@ -19,9 +19,9 @@ export type Page = 'chat' | 'settings'
  * and importing it from the shell would close a cycle.
  */
 export interface ShellProps {
-  conversations: Conversation[]
+  conversations: ConversationInfoResponse[]
   activeId: string | null
-  projects: Project[]
+  projects: ProjectInfoResponse[]
   activeProjectId: string | null
   page: Page
   settingsTab: SettingsTab

@@ -34,7 +34,7 @@ const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 const FIRST_CHECK_DELAY: Duration = Duration::from_secs(60);
 
 pub fn spawn(state: Arc<SharedState>, mut shutdown_rx: watch::Receiver<bool>) {
-    let Some(threshold) = state.config.balance_alert_threshold else {
+    let Some(threshold) = state.config.balance_alert_threshold.clone() else {
         return;
     };
     if state.config.admin_users.is_empty() {
@@ -58,7 +58,7 @@ pub fn spawn(state: Arc<SharedState>, mut shutdown_rx: watch::Receiver<bool>) {
                     }
                 }
                 _ = tokio::time::sleep(delay) => {
-                    check_once(&state, threshold, &mut announced).await;
+                    check_once(&state, &threshold, &mut announced).await;
                     delay = CHECK_INTERVAL;
                 }
             }
@@ -66,7 +66,7 @@ pub fn spawn(state: Arc<SharedState>, mut shutdown_rx: watch::Receiver<bool>) {
     });
 }
 
-async fn check_once(state: &Arc<SharedState>, threshold: f64, announced: &mut HashSet<String>) {
+async fn check_once(state: &Arc<SharedState>, threshold: &crate::decimal::Decimal, announced: &mut HashSet<String>) {
     let pool = state.services.db.clone();
     let providers = match tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
@@ -152,11 +152,11 @@ fn alert_text(provider_name: &str, balance: &ProviderBalance) -> String {
         format!("{provider_name} 已停止服务：上游报告账户不可用")
     };
     for account in &balance.accounts {
-        text.push_str(&format!("\n{} {:.2}", account.currency, account.total));
+        text.push_str(&format!("\n{} {}", account.currency, account.total_balance));
         // The split matters: a total propped up by expiring promotional credit
         // is closer to empty than it looks.
-        if let (Some(topped_up), Some(granted)) = (account.topped_up, account.granted) {
-            text.push_str(&format!("（充值 {topped_up:.2} / 赠送 {granted:.2}）"));
+        if let (Some(topped_up), Some(granted)) = (&account.topped_up_balance, &account.granted_balance) {
+            text.push_str(&format!("（充值 {topped_up} / 赠送 {granted}）"));
         }
     }
     if balance.accounts.is_empty() {
@@ -171,12 +171,17 @@ mod tests {
     use super::*;
     use crate::provider::balance::BalanceAccount;
 
-    fn account(currency: &str, total: f64) -> BalanceAccount {
+    fn decimal(raw: &str) -> crate::decimal::Decimal {
+        raw.parse().unwrap()
+    }
+
+    fn account(currency: &str, total: &str) -> BalanceAccount {
+        let total = decimal(total);
         BalanceAccount {
             currency: currency.into(),
-            total,
-            granted: Some(10.0),
-            topped_up: Some(total - 10.0),
+            total_balance: total.clone(),
+            granted_balance: Some(decimal("10")),
+            topped_up_balance: Some(total - decimal("10")),
         }
     }
 
@@ -186,16 +191,16 @@ mod tests {
     fn the_alert_says_which_of_the_two_situations_this_is() {
         let low = ProviderBalance {
             is_available: true,
-            accounts: vec![account("CNY", 12.0)],
+            accounts: vec![account("CNY", "12")],
         };
         let text = alert_text("DeepSeek", &low);
         assert!(text.contains("余额偏低"));
-        assert!(text.contains("CNY 12.00"));
-        assert!(text.contains("充值 2.00 / 赠送 10.00"), "{text}");
+        assert!(text.contains("CNY 12"));
+        assert!(text.contains("充值 2 / 赠送 10"), "{text}");
 
         let dead = ProviderBalance {
             is_available: false,
-            accounts: vec![account("CNY", 0.0)],
+            accounts: vec![account("CNY", "0")],
         };
         assert!(alert_text("DeepSeek", &dead).contains("不可用"));
     }

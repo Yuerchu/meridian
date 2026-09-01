@@ -4,7 +4,7 @@ import { useConversationStore } from '@/stores/conversation-store'
 import { uploadAttachment } from '@/lib/upload'
 import type { AttachedFile } from '@/components/chat/input-bar'
 import type { ChatMode, StickerContentPart, ThinkingLevel } from '@/types'
-import type { WorkspaceReferenceInput } from '@/types'
+import type { WorkspaceReferenceRequest } from '@/types'
 import { extractComposerReferences, referenceInputs } from '@/lib/composer-intent'
 
 /** The toolbar's answer to "how should this turn be sent", read at send time. */
@@ -30,7 +30,7 @@ export interface SendMessage {
     replaces?: string,
     voice?: boolean,
     sticker?: StickerContentPart,
-    contextRefs?: WorkspaceReferenceInput[],
+    contextRefs?: WorkspaceReferenceRequest[],
   ) => Promise<void>
   /** Says something to the run already going; false when nobody was reading. */
   steerMessage: (text: string) => Promise<boolean>
@@ -75,8 +75,15 @@ function appendTempUser(conversationId: string, content: string, now: number) {
               created_at: now,
               reasoning_content: null,
               rating: null,
-              schema_version: 2,
-              is_compact_summary: 0,
+              is_compact_summary: false,
+              sender_id: null,
+              parent_id: null,
+              compact_anchor_id: null,
+              source: null,
+              turn_id: null,
+              tool_outcome: null,
+              auto_review: null,
+              context_items: [],
             },
           ],
         },
@@ -117,7 +124,7 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
       replaces?: string,
       voice?: boolean,
       sticker?: StickerContentPart,
-      contextRefs: WorkspaceReferenceInput[] = [],
+      contextRefs: WorkspaceReferenceRequest[] = [],
     ) => {
       // A null message means "regenerate", which needs no text of its own.
       if ((text === null ? !replaces : !text.trim() && !sticker) || streaming || submittingRef.current) return
@@ -186,17 +193,24 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
       // settings and mean nothing to an adapter that picks its own; sending
       // them would suggest they had an effect.
       const dispatched = isHosted
-        ? api.acpSend(conversationId, messageContent ?? '', turnId, contextRefs)
-        : api.chat(conversationId, messageContent, {
+        ? api.acpSend({
+            conversationId,
+            message: messageContent ?? '',
             turnId,
-            replaces,
-            modelOverride: selectedModelId ?? undefined,
-            providerOverride: selectedProviderId ?? undefined,
-            thinkingLevel: thinkingLevel !== 'default' ? thinkingLevel : undefined,
-            assistantId: selectedAssistantId ?? undefined,
-            fast: fastMode || undefined,
+            contextRefs: contextRefs ?? null,
+          })
+        : api.chat({
+            conversationId,
+            message: messageContent,
+            turnId,
+            replaces: replaces ?? null,
+            modelOverride: selectedModelId,
+            providerOverride: selectedProviderId,
+            thinkingLevel: thinkingLevel !== 'default' ? thinkingLevel : null,
+            assistantId: selectedAssistantId,
+            fast: fastMode ? true : null,
             mode,
-            voice: voice || undefined,
+            voice: voice ? true : null,
             contextRefs,
           })
 
@@ -247,7 +261,7 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
       const trimmed = text.trim()
       if (!trimmed) return false
       try {
-        await api.steerConversation(conversationId, trimmed)
+        await api.steerConversation({ conversationId, text: trimmed })
       } catch (err) {
         storeSetError(conversationId, String(err))
         return false

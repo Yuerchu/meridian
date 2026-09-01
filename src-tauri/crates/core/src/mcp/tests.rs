@@ -153,8 +153,8 @@ impl McpTransport for MockTransport {
     }
 }
 
-fn server(id: &str) -> McpServer {
-    McpServer {
+fn server(id: &str) -> McpServerRow {
+    McpServerRow {
         id: id.to_string(),
         name: id.to_string(),
         transport_type: "stdio".into(),

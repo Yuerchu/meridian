@@ -42,7 +42,7 @@ const DEFAULT_PORT: u16 = 8787;
 /// without a token.
 const DEFAULT_HOST: &str = "0.0.0.0";
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone)]
 pub struct ListenConfig {
     pub enabled: bool,
     pub host: String,
@@ -64,7 +64,7 @@ impl Default for ListenConfig {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct ListenStatus {
+pub struct ListenStatusResponse {
     pub enabled: bool,
     pub running: bool,
     pub host: String,
@@ -74,22 +74,43 @@ pub struct ListenStatus {
     pub connections: usize,
 }
 
-pub fn load_config(pool: &DbPool) -> ListenConfig {
-    let Ok(mut conn) = pool.get() else {
-        return ListenConfig::default();
+fn parse_stored_bool(key: &str, raw: Option<String>, default: bool) -> Result<bool, String> {
+    match raw.as_deref() {
+        None => Ok(default),
+        Some("true") => Ok(true),
+        Some("false") => Ok(false),
+        Some(value) => Err(format!("preference {key} must be 'true' or 'false', got {value:?}")),
+    }
+}
+
+fn parse_stored_port(key: &str, raw: Option<String>, default: u16) -> Result<u16, String> {
+    let Some(raw) = raw else {
+        return Ok(default);
     };
-    let mut get = |key: &str| -> Option<String> {
+    let port = raw
+        .parse::<u16>()
+        .map_err(|error| format!("preference {key} has invalid port {raw:?}: {error}"))?;
+    if port.to_string() != raw {
+        return Err(format!(
+            "preference {key} must use canonical decimal digits, got {raw:?}"
+        ));
+    }
+    Ok(port)
+}
+
+pub fn load_config(pool: &DbPool) -> Result<ListenConfig, String> {
+    let mut conn = pool.get().map_err(|error| error.to_string())?;
+    let mut get = |key: &str| -> Result<Option<String>, String> {
         meridian_core::db::ops::preference::get_preference(&mut conn, key)
-            .ok()
-            .flatten()
+            .map_err(|error| format!("failed to read preference {key}: {error}"))
     };
 
-    ListenConfig {
-        enabled: get("remote.enabled").as_deref() == Some("true"),
-        host: get("remote.host").unwrap_or_else(|| DEFAULT_HOST.into()),
-        port: get("remote.port").and_then(|s| s.parse().ok()).unwrap_or(DEFAULT_PORT),
-        token: get("remote.token").filter(|s| !s.is_empty()),
-    }
+    Ok(ListenConfig {
+        enabled: parse_stored_bool("remote.enabled", get("remote.enabled")?, false)?,
+        host: get("remote.host")?.unwrap_or_else(|| DEFAULT_HOST.into()),
+        port: parse_stored_port("remote.port", get("remote.port")?, DEFAULT_PORT)?,
+        token: get("remote.token")?.filter(|s| !s.is_empty()),
+    })
 }
 
 pub fn save_config(pool: &DbPool, config: &ListenConfig) -> Result<(), String> {
@@ -169,8 +190,8 @@ impl RemoteServer {
         self.running.load(Ordering::Relaxed)
     }
 
-    pub fn status(&self) -> ListenStatus {
-        ListenStatus {
+    pub fn status(&self) -> ListenStatusResponse {
+        ListenStatusResponse {
             enabled: self.state.config.enabled,
             running: self.is_running(),
             host: self.state.config.host.clone(),
@@ -275,8 +296,7 @@ impl RemoteServer {
 
 /// Start the server if the user has it enabled, and hand it back either way, so
 /// the IPC commands always have something to talk to.
-pub(crate) async fn maybe_start(services: Services, app: tauri::AppHandle) -> AppRemote {
-    let config = load_config(&services.db);
+pub(crate) async fn maybe_start(services: Services, config: ListenConfig, app: tauri::AppHandle) -> AppRemote {
     let enabled = config.enabled;
 
     let server = RemoteServer::new(services, config, app);
@@ -307,5 +327,21 @@ struct SinkGuard {
 impl Drop for SinkGuard {
     fn drop(&mut self) {
         self.events.unregister(self.id);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stored_remote_scalars_use_exact_wire_spellings() {
+        assert!(parse_stored_bool("remote.enabled", Some("yes".into()), false).is_err());
+        assert!(parse_stored_port("remote.port", Some("08787".into()), DEFAULT_PORT).is_err());
+        assert_eq!(parse_stored_bool("remote.enabled", None, false).unwrap(), false);
+        assert_eq!(
+            parse_stored_port("remote.port", None, DEFAULT_PORT).unwrap(),
+            DEFAULT_PORT
+        );
     }
 }

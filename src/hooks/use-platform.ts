@@ -1,11 +1,12 @@
 import * as React from 'react'
 import { api } from '@/api'
+import type { PlatformInfoResponse } from '@/types'
 
-let cached: string | null = null
+let cached: PlatformInfoResponse | null = null
 
-/** OS platform from the Rust backend: 'android' | 'windows' | 'macos' | 'linux' | ... */
+/** Closed OS platform returned by the Rust backend. */
 export function usePlatform() {
-  const [platform, setPlatform] = React.useState<string | null>(cached)
+  const [platform, setPlatform] = React.useState<PlatformInfoResponse | null>(cached)
 
   React.useEffect(() => {
     if (cached !== null) return

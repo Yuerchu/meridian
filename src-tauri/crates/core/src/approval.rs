@@ -58,6 +58,7 @@ use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
 use crate::agent::engine::ApprovalDecision;
+use crate::events::ChatStreamEvent;
 use crate::services::Services;
 use crate::state::PendingApproval;
 
@@ -96,18 +97,33 @@ impl RetireCause {
 /// Read per question rather than held: it is one indexed row and a card is a
 /// human-scale event, while a cached copy would mean the setting takes effect
 /// at some point nobody can name.
-pub fn ttl(services: &Services) -> Option<Duration> {
-    let minutes = services
-        .db
-        .get()
-        .ok()
-        .and_then(|mut conn| crate::db::ops::preference::get_preference(&mut conn, TTL_PREFERENCE).ok())
-        .flatten()
-        .and_then(|raw| raw.trim().parse::<u64>().ok())
-        .unwrap_or(DEFAULT_TTL_MINUTES);
+pub fn ttl(services: &Services) -> Result<Option<Duration>, String> {
+    let mut conn = services.db.get().map_err(|error| error.to_string())?;
+    let stored = crate::db::ops::preference::get_preference(&mut conn, TTL_PREFERENCE)
+        .map_err(|error| format!("failed to read preference {TTL_PREFERENCE}: {error}"))?;
+    let minutes = match stored {
+        None => DEFAULT_TTL_MINUTES,
+        Some(raw) => {
+            let minutes = raw
+                .parse::<u64>()
+                .map_err(|error| format!("preference {TTL_PREFERENCE} has invalid minutes {raw:?}: {error}"))?;
+            if minutes.to_string() != raw {
+                return Err(format!(
+                    "preference {TTL_PREFERENCE} must use canonical decimal digits, got {raw:?}"
+                ));
+            }
+            minutes
+        }
+    };
     // Zero is somebody saying "never expire", which is different from somebody
     // not having said anything.
-    (minutes > 0).then(|| Duration::from_secs(minutes * 60))
+    if minutes == 0 {
+        return Ok(None);
+    }
+    let seconds = minutes
+        .checked_mul(60)
+        .ok_or_else(|| format!("preference {TTL_PREFERENCE} is too large"))?;
+    Ok(Some(Duration::from_secs(seconds)))
 }
 
 /// Register a question, and wait for it to be answered, stopped, or to expire.
@@ -181,17 +197,13 @@ pub fn retire(services: &Services, approval_id: &str, cause: RetireCause) -> boo
             Some(b) => (&b.conversation_id, &b.assistant_message_id),
             None => (&pending.conversation_id, &pending.assistant_message_id),
         };
-        let _ = services.events.emit(
-            "chat-stream",
-            serde_json::json!({
-                "type": "tool_approval_expired",
-                "approval_id": approval_id,
-                "call_id": pending.provider_call_id,
-                "tool_name": pending.tool_name,
-                "message_id": message_id,
-                "conversation_id": conversation_id,
-            }),
-        );
+        let _ = services.events.emit_chat(ChatStreamEvent::ToolApprovalExpired {
+            approval_id: approval_id.to_string(),
+            call_id: pending.provider_call_id.clone(),
+            tool_name: pending.tool_name.clone(),
+            message_id: message_id.clone(),
+            conversation_id: conversation_id.clone(),
+        });
     }
     true
 }
@@ -261,6 +273,26 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let services = bare_services(dir.path());
         (dir, services)
+    }
+
+    fn set_ttl(services: &Services, raw: &str) {
+        let mut conn = services.db.get().unwrap();
+        crate::db::ops::preference::set_preference(&mut conn, TTL_PREFERENCE, raw, 1).unwrap();
+    }
+
+    #[test]
+    fn stored_ttl_is_strict_and_errors_are_not_defaulted() {
+        let (_dir, services) = services();
+        assert_eq!(ttl(&services).unwrap(), Some(Duration::from_secs(30 * 60)));
+
+        set_ttl(&services, "0");
+        assert_eq!(ttl(&services).unwrap(), None);
+
+        for raw in [" 5", "05", "five", "18446744073709551615"] {
+            set_ttl(&services, raw);
+            let error = ttl(&services).err().expect("invalid stored TTL must fail");
+            assert!(error.contains(TTL_PREFERENCE), "{raw:?}: {error}");
+        }
     }
 
     /// Keeps the payloads, which is what these tests are about — the recorder in

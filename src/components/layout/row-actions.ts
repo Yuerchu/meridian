@@ -5,7 +5,7 @@ import { ArrowDownToLine, FolderArrowRight, Link, Pencil, Pin, PinSlash, TrashBi
 
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
-import type { Conversation, Project } from '@/types'
+import type { ConversationInfoResponse, ProjectInfoResponse } from '@/types'
 
 /**
  * What can be done to a row, as data rather than as menu items.
@@ -36,7 +36,11 @@ export interface RowAction {
   run: () => void | Promise<void>
 }
 
-async function exportConversation(conv: Conversation, format: 'sft' | 'dpo', onError: (error: unknown) => void) {
+async function exportConversation(
+  conv: ConversationInfoResponse,
+  format: 'sft' | 'dpo',
+  onError: (error: unknown) => void,
+) {
   // Cancelling rejects on Android rather than resolving to null, and the export
   // itself can fail after the picker has already closed — with the user looking
   // straight at the screen.
@@ -46,7 +50,7 @@ async function exportConversation(conv: Conversation, format: 'sft' | 'dpo', onE
   }).catch(() => null)
   if (!path) return
   try {
-    await api.exportConversation(conv.id, format, path)
+    await api.exportConversation({ conversationId: conv.id, format, outputPath: path })
   } catch (error) {
     onError(error)
   }
@@ -78,7 +82,7 @@ export function useConversationActions(args: {
    * ordinary one has no directory and no agent to resume.
    */
   onRequestAttachSession?: (id: string) => void
-}): (conversation: Conversation) => RowAction[] {
+}): (conversation: ConversationInfoResponse) => RowAction[] {
   const { t } = useTranslation()
   const { onTogglePin, onRequestRename, onRequestMove, onRequestDelete, onExportError, onRequestAttachSession } = args
 
@@ -88,7 +92,7 @@ export function useConversationActions(args: {
   const exportBlocked = can.exportToDisk ? undefined : t('capability.localOnly')
 
   return useCallback(
-    (conversation: Conversation) => [
+    (conversation: ConversationInfoResponse) => [
       {
         key: 'pin',
         icon: conversation.is_pinned ? PinSlash : Pin,
@@ -156,12 +160,12 @@ export function useConversationActions(args: {
 export function useProjectActions(args: {
   onRequestRename: (id: string) => void
   onRequestDelete: (id: string) => void
-}): (project: Project) => RowAction[] {
+}): (project: ProjectInfoResponse) => RowAction[] {
   const { t } = useTranslation()
   const { onRequestRename, onRequestDelete } = args
 
   return useCallback(
-    (project: Project) => [
+    (project: ProjectInfoResponse) => [
       {
         key: 'rename',
         icon: Pencil,

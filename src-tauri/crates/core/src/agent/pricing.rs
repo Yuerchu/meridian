@@ -1,5 +1,16 @@
-use crate::db::models::model_config::ModelConfig;
+use crate::db::models::model_config::ModelConfigRow;
+use crate::decimal::Decimal;
 use crate::provider::TokenUsage;
+
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum PricingError {
+    #[error("unknown billing mode: {0}")]
+    UnknownBillingMode(String),
+    #[error("unknown transport profile: {0}")]
+    UnknownTransportProfile(String),
+    #[error("invalid price tier table: {0}")]
+    InvalidTierTable(String),
+}
 
 /// Whether a request owes a per-request price at all.
 ///
@@ -14,6 +25,7 @@ use crate::provider::TokenUsage;
 /// Snapshotted onto the audit row rather than joined from the provider, for the
 /// reason migration 30 gives about rates: this is a fact about the past.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum BillingMode {
     /// A price is owed. A missing rate is a misconfiguration and still counts
     /// into `unpriced_messages`.
@@ -55,10 +67,11 @@ impl BillingMode {
     ///
     /// Today only `standard` exists, so every row is `Metered` and this mapping
     /// is inert; `chatgpt_codex` arrives with the Codex transport.
-    pub fn for_transport(transport_profile: &str) -> Self {
+    pub fn for_transport(transport_profile: &str) -> Result<Self, PricingError> {
         match transport_profile {
-            "chatgpt_codex" => Self::Subscription,
-            _ => Self::Metered,
+            "standard" => Ok(Self::Metered),
+            "chatgpt_codex" => Ok(Self::Subscription),
+            unknown => Err(PricingError::UnknownTransportProfile(unknown.to_owned())),
         }
     }
 
@@ -72,34 +85,31 @@ impl BillingMode {
 }
 
 impl std::str::FromStr for BillingMode {
-    type Err = ();
+    type Err = PricingError;
 
-    /// Anything unrecognised reads as `Metered`, which is what every row held
-    /// before the column existed and the only answer that cannot silently drop
-    /// a cost: it keeps the request in the ledger and, if a rate is missing,
-    /// visible in `unpriced_messages`.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(match s {
-            "subscription" => Self::Subscription,
-            "external" => Self::External,
-            _ => Self::Metered,
-        })
+        match s {
+            "metered" => Ok(Self::Metered),
+            "subscription" => Ok(Self::Subscription),
+            "external" => Ok(Self::External),
+            unknown => Err(PricingError::UnknownBillingMode(unknown.to_owned())),
+        }
     }
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct RequestCost {
-    pub input_cost: f64,
-    pub output_cost: f64,
-    pub cache_cost: f64,
+    pub input_cost: Decimal,
+    pub output_cost: Decimal,
+    pub cache_cost: Decimal,
     /// What the provider's own tools charged, which is not a token cost.
     ///
     /// Its own slot rather than folded into the others because it does not
     /// divide by anything they do: a turn that cost $0.01 of tokens and $0.015
     /// of searching is a different decision from one that spent it all on
     /// tokens, and a single total cannot be taken apart again.
-    pub tool_cost: f64,
-    pub total_cost: f64,
+    pub tool_cost: Decimal,
+    pub total_cost: Decimal,
 }
 
 /// A turn is many requests, and with tiered pricing they are not all priced the
@@ -135,24 +145,28 @@ impl TurnPricing {
     /// `None` when no part of a model's cost is known. A provider-tool rate is
     /// useful on its own: live progress can still show that known lower bound
     /// while the usage report flags the missing token rates.
-    pub fn of(config: &ModelConfig) -> Option<Self> {
+    pub fn of(config: &ModelConfigRow) -> Result<Option<Self>, PricingError> {
         let base = Prices::of(config);
-        (base.known() || base.server_tool.is_some()).then(|| Self {
+        if !base.known() && base.server_tool_price.is_none() {
+            return Ok(None);
+        }
+        let tiers = if base.known() {
+            parse_tiers(config.pricing_tiers.as_deref())?
+        } else {
+            Vec::new()
+        };
+        Ok(Some(Self {
             base,
             // A tier cannot turn blank base token rates into known ones. Keep
             // tool-only pricing tool-only at every prompt size.
-            tiers: if base.known() {
-                parse_tiers(config.price_tiers.as_deref())
-            } else {
-                Vec::new()
-            },
-        })
+            tiers,
+        }))
     }
 
     /// The rates for one request of this size. See `Prices::for_prompt` — same
     /// rule, against an already-parsed table.
     pub fn for_prompt(&self, prompt_tokens: i64) -> Prices {
-        with_tool_rate(tier_for(&self.tiers, prompt_tokens), self.base)
+        with_tool_rate(tier_for(&self.tiers, prompt_tokens), self.base.clone())
     }
 }
 
@@ -165,7 +179,7 @@ impl TurnPricing {
 fn with_tool_rate(tier: Option<Prices>, base: Prices) -> Prices {
     match tier {
         Some(mut prices) => {
-            prices.server_tool = base.server_tool;
+            prices.server_tool_price = base.server_tool_price;
             prices
         }
         None => base,
@@ -191,23 +205,23 @@ fn tier_for(tiers: &[PriceTier], prompt_tokens: i64) -> Option<Prices> {
 /// A turn takes them off the model's configuration. A report takes them off the
 /// audit row, where they were copied at the time — and those two disagree by
 /// design, because a price edited last week must not reprice last month. Making
-/// this a type rather than passing `&ModelConfig` around is what lets both feed
+/// this a type rather than passing `&ModelConfigRow` around is what lets both feed
 /// the same formula instead of growing a second one.
 ///
 /// `None` on either cache rate means "priced like ordinary input", which is what
 /// most upstreams do and what every row written before migration 30 recorded.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Prices {
-    pub input: f64,
-    pub output: f64,
-    pub cache_read: Option<f64>,
-    pub cache_write: Option<f64>,
+    pub input_price: Option<Decimal>,
+    pub output_price: Option<Decimal>,
+    pub cache_read_price: Option<Decimal>,
+    pub cache_write_price: Option<Decimal>,
     /// What one provider-side tool invocation costs, per **thousand** calls —
     /// the unit the upstreams publish it in. `None` means nobody has said, which
     /// is not zero: a searching turn priced at nothing is under-reported, not
     /// free. Never carried by a tier, because a tier is about prompt size and
     /// this charge does not vary with it.
-    pub server_tool: Option<f64>,
+    pub server_tool_price: Option<Decimal>,
 }
 
 /// A rate set that takes over once the prompt is large enough.
@@ -219,84 +233,141 @@ pub struct Prices {
 /// double on the last thousand. Written down here because the intuitive reading
 /// — a bracket, like income tax — is the wrong one, and a formula built on it
 /// would be quietly cheap by almost exactly the base rate.
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct PriceTier {
     /// The prompt size at which this tier starts applying, inclusive.
     pub min_prompt_tokens: i64,
-    pub input: f64,
-    pub output: f64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cache_read: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cache_write: Option<f64>,
+    pub input_price: Decimal,
+    pub output_price: Decimal,
+    pub cache_read_price: Option<Decimal>,
+    pub cache_write_price: Option<Decimal>,
+}
+
+impl<'de> serde::Deserialize<'de> for PriceTier {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        // `Option<T>` normally treats a missing field as `None`. Stored tier
+        // documents do not: nullable prices must be present as an explicit JSON
+        // null so schema drift cannot masquerade as an intentionally blank rate.
+        struct RequiredNullableDecimal(Option<Decimal>);
+
+        #[derive(serde::Deserialize)]
+        #[serde(untagged)]
+        enum RequiredNullableDecimalValue {
+            Value(Decimal),
+            Null(()),
+        }
+
+        impl<'de> serde::Deserialize<'de> for RequiredNullableDecimal {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                Ok(
+                    match <RequiredNullableDecimalValue as serde::Deserialize>::deserialize(deserializer)? {
+                        RequiredNullableDecimalValue::Value(value) => Self(Some(value)),
+                        RequiredNullableDecimalValue::Null(()) => Self(None),
+                    },
+                )
+            }
+        }
+
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct PriceTierDocument {
+            min_prompt_tokens: i64,
+            input_price: Decimal,
+            output_price: Decimal,
+            cache_read_price: RequiredNullableDecimal,
+            cache_write_price: RequiredNullableDecimal,
+        }
+
+        let document = <PriceTierDocument as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(Self {
+            min_prompt_tokens: document.min_prompt_tokens,
+            input_price: document.input_price,
+            output_price: document.output_price,
+            cache_read_price: document.cache_read_price.0,
+            cache_write_price: document.cache_write_price.0,
+        })
+    }
 }
 
 impl PriceTier {
-    /// A tier states token rates and nothing else. `server_tool` is filled in by
+    /// A tier states token rates and nothing else. `server_tool_price` is filled in by
     /// the caller from the base rates — a per-call charge does not vary with how
     /// long the prompt was, and no upstream prices it that way.
     fn prices(&self) -> Prices {
         Prices {
-            input: self.input,
-            output: self.output,
-            cache_read: self.cache_read,
-            cache_write: self.cache_write,
-            server_tool: None,
+            input_price: Some(self.input_price.clone()),
+            output_price: Some(self.output_price.clone()),
+            cache_read_price: self.cache_read_price.clone(),
+            cache_write_price: self.cache_write_price.clone(),
+            server_tool_price: None,
         }
     }
 }
 
-/// Read the stored tier table, in ascending order and with the nonsense removed.
+/// Read and validate the stored tier table, returning it in ascending order.
 ///
-/// The column is hand-editable and reaches here from a form, so this cannot
-/// assume it is well formed. It is sorted rather than trusted, because the
-/// selection below takes the last tier that applies and an out-of-order array
-/// would silently pick the wrong one. Entries at or below zero are dropped:
-/// a tier that starts at nothing is not a tier, it is a replacement for the base
-/// rate, and letting one through would mean the base columns still shown in the
-/// editor no longer decided anything.
-///
-/// A malformed column yields no tiers at all, which prices the model at its base
-/// rate — the same behaviour as before this existed, and the only degradation
-/// here that cannot overcharge anyone.
-pub fn parse_tiers(raw: Option<&str>) -> Vec<PriceTier> {
-    let Some(raw) = raw.map(str::trim).filter(|raw| !raw.is_empty()) else {
-        return Vec::new();
+/// The column is hand-editable and reaches here from a form, so malformed JSON,
+/// unknown fields, non-positive or duplicate thresholds, and invalid monetary
+/// values are errors. Sorting is normalization, not compatibility: order carries
+/// no meaning in the contract, while each threshold remains unique and explicit.
+pub fn parse_tiers(raw: Option<&str>) -> Result<Vec<PriceTier>, PricingError> {
+    let Some(raw) = raw else {
+        return Ok(Vec::new());
     };
-    let Ok(mut tiers) = serde_json::from_str::<Vec<PriceTier>>(raw) else {
-        tracing::warn!(
-            raw_len = raw.len(),
-            "price_tiers is not an array of tiers; this model will be billed at its base rate"
-        );
-        return Vec::new();
-    };
-    // A negative rate produces a negative bill, and this column is reachable
-    // from `save_model_config` — which the remote transport can call — not only
-    // from the form that would have stopped it. Non-finite values would poison
-    // every sum they touch.
-    tiers.retain(|tier| {
-        tier.min_prompt_tokens > 0
-            && [tier.input, tier.output]
-                .into_iter()
-                .chain(tier.cache_read)
-                .chain(tier.cache_write)
-                .all(|rate| rate.is_finite() && rate >= 0.0)
-    });
-    // Stable, so two tiers sharing a threshold resolve to whichever was stored
-    // last — arbitrary, but deterministic, and there is no better answer to a
-    // table that contradicts itself.
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Err(PricingError::InvalidTierTable(
+            "empty string is not a tier table".into(),
+        ));
+    }
+    let tiers = serde_json::from_str::<Vec<PriceTier>>(raw)
+        .map_err(|error| PricingError::InvalidTierTable(error.to_string()))?;
+    validate_tiers(tiers)
+}
+
+pub fn validate_tiers(mut tiers: Vec<PriceTier>) -> Result<Vec<PriceTier>, PricingError> {
+    for tier in &tiers {
+        if tier.min_prompt_tokens <= 0 {
+            return Err(PricingError::InvalidTierTable(format!(
+                "min_prompt_tokens must be positive, got {}",
+                tier.min_prompt_tokens
+            )));
+        }
+        for (field, value) in [
+            ("input_price", Some(&tier.input_price)),
+            ("output_price", Some(&tier.output_price)),
+            ("cache_read_price", tier.cache_read_price.as_ref()),
+            ("cache_write_price", tier.cache_write_price.as_ref()),
+        ] {
+            if value.is_some_and(Decimal::is_negative) {
+                return Err(PricingError::InvalidTierTable(format!("{field} must be non-negative")));
+            }
+        }
+    }
     tiers.sort_by_key(|tier| tier.min_prompt_tokens);
-    tiers
+    if tiers
+        .windows(2)
+        .any(|pair| pair[0].min_prompt_tokens == pair[1].min_prompt_tokens)
+    {
+        return Err(PricingError::InvalidTierTable("duplicate min_prompt_tokens".into()));
+    }
+    Ok(tiers)
 }
 
 impl Prices {
-    pub fn of(config: &ModelConfig) -> Self {
+    pub fn of(config: &ModelConfigRow) -> Self {
         Self {
-            input: config.input_price,
-            output: config.output_price,
-            cache_read: config.cache_price,
-            cache_write: config.cache_write_price,
-            server_tool: config.server_tool_price,
+            input_price: config.input_price.clone(),
+            output_price: config.output_price.clone(),
+            cache_read_price: config.cache_read_price.clone(),
+            cache_write_price: config.cache_write_price.clone(),
+            server_tool_price: config.server_tool_price.clone(),
         }
     }
 
@@ -316,25 +387,24 @@ impl Prices {
     /// is the row that surprises people — otherwise made one model report as two
     /// things at once: its short requests counted into `unpriced_messages` while
     /// its long ones were billed, and the turn showed no cost either way.
-    pub fn for_prompt(config: &ModelConfig, prompt_tokens: i64) -> Self {
+    pub fn for_prompt(config: &ModelConfigRow, prompt_tokens: i64) -> Result<Self, PricingError> {
         let base = Self::of(config);
         if !base.known() {
-            return base;
+            return Ok(base);
         }
-        with_tool_rate(
-            tier_for(&parse_tiers(config.price_tiers.as_deref()), prompt_tokens),
+        Ok(with_tool_rate(
+            tier_for(&parse_tiers(config.pricing_tiers.as_deref())?, prompt_tokens),
             base,
-        )
+        ))
     }
 
     /// Whether anyone has actually said what this model costs.
     ///
-    /// Zero is not a price here: the editor opens with `0` in both boxes, so a
-    /// model nobody has priced and a model priced at nothing are the same row.
-    /// A report that reads the first as free understates the bill and gives no
-    /// sign it did, which is why callers have to be able to count these apart.
+    /// `None` is unknown and an explicit Decimal zero is free. Keeping those two
+    /// states separate is what lets reports distinguish missing configuration
+    /// from a provider that genuinely charges nothing.
     pub fn known(&self) -> bool {
-        self.input > 0.0 || self.output > 0.0
+        self.input_price.is_some() && self.output_price.is_some()
     }
 }
 
@@ -348,7 +418,7 @@ impl Prices {
 /// ```
 ///
 /// The previous formula charged `input_price` on the *whole* prompt and then
-/// `cache_price` on the cached part on top, so a cached token was billed twice —
+/// `cache_read_price` on the cached part on top, so a cached token was billed twice —
 /// once of them at full rate. It stayed dormant only because the single caller
 /// hard-coded the cache fields to `None`; with the adapters filling them in, a
 /// DeepSeek turn at a 90% hit rate would have reported nearly six times its real
@@ -402,57 +472,73 @@ impl BilledTokens {
 }
 
 pub fn cost_of(tokens: &BilledTokens, prices: &Prices) -> RequestCost {
-    let uncached = tokens.uncached_input as f64;
-    let cache_read = tokens.cache_read as f64;
-    let cache_write = tokens.cache_write as f64;
-    let output = tokens.output as f64;
+    let uncached = Decimal::from(tokens.uncached_input);
+    let cache_read = Decimal::from(tokens.cache_read);
+    let cache_write = Decimal::from(tokens.cache_write);
+    let output = Decimal::from(tokens.output);
+    let per_million: Decimal = "0.000001".parse().expect("constant decimal");
+    let per_thousand: Decimal = "0.001".parse().expect("constant decimal");
 
     // A blank cache price means "this model prices a cache read like ordinary
     // input". That reading can only ever over-report, which is the safe
     // direction for a number someone makes spending decisions on.
-    let read_price = prices.cache_read.unwrap_or(prices.input);
+    let input_price = prices.input_price.clone().unwrap_or_default();
+    let output_price = prices.output_price.clone().unwrap_or_default();
+    let read_price = prices.cache_read_price.clone().unwrap_or_else(|| input_price.clone());
     // Anthropic charges 1.25x input for a five-minute cache entry and 2x for an
     // hour. A blank column means this upstream charges no premium, which is true
     // of every provider except that one — and the same reading every row written
     // before migration 30 already had.
-    let write_price = prices.cache_write.unwrap_or(prices.input);
+    let write_price = prices.cache_write_price.clone().unwrap_or_else(|| input_price.clone());
 
-    let input_cost = uncached * prices.input / 1_000_000.0;
+    let input_cost = uncached * input_price * per_million.clone();
     // Both cache legs report under one heading because the breakdown has three
     // slots and "input" there means the part that paid full price. Splitting
     // writes out would need a fourth slot to say something nobody can act on.
-    let cache_cost = (cache_read * read_price + cache_write * write_price) / 1_000_000.0;
-    let output_cost = output * prices.output / 1_000_000.0;
+    let cache_cost = (cache_read * read_price + cache_write * write_price) * per_million;
+    let output_cost = output * output_price * "0.000001".parse::<Decimal>().expect("constant decimal");
     // Per *thousand*, not per million: that is the unit the upstreams publish an
     // invocation charge in, and the column stores it that way so nobody has to
     // convert while copying it off a pricing page. An unpriced rate contributes
     // nothing — the calls still happened, and `Prices::known` is what decides
     // whether the whole row counts as unpriced.
-    let tool_cost = tokens.server_tool_calls as f64 * prices.server_tool.unwrap_or(0.0) / 1_000.0;
+    let tool_cost =
+        Decimal::from(tokens.server_tool_calls) * prices.server_tool_price.clone().unwrap_or_default() * per_thousand;
+
+    let total_cost = input_cost.clone() + output_cost.clone() + cache_cost.clone() + tool_cost.clone();
 
     RequestCost {
         input_cost,
         output_cost,
         cache_cost,
         tool_cost,
-        total_cost: input_cost + output_cost + cache_cost + tool_cost,
+        total_cost,
     }
 }
 
-pub fn has_pricing(config: &ModelConfig) -> bool {
+pub fn has_pricing(config: &ModelConfigRow) -> bool {
     Prices::of(config).known()
 }
 
 #[cfg(test)]
-mod tests {
+mod pricing_tests {
     use super::*;
 
-    fn mock_config(input: f64, output: f64, cache: Option<f64>) -> ModelConfig {
+    fn decimal(raw: &str) -> Decimal {
+        raw.parse().unwrap()
+    }
+
+    fn mock_config(input: Option<&str>, output: Option<&str>, cache: Option<&str>) -> ModelConfigRow {
         priced(input, output, cache, None)
     }
 
-    fn priced(input: f64, output: f64, cache: Option<f64>, cache_write: Option<f64>) -> ModelConfig {
-        ModelConfig {
+    fn priced(
+        input: Option<&str>,
+        output: Option<&str>,
+        cache: Option<&str>,
+        cache_write: Option<&str>,
+    ) -> ModelConfigRow {
+        ModelConfigRow {
             id: "test".into(),
             provider_id: "p".into(),
             model_id: "m".into(),
@@ -460,14 +546,14 @@ mod tests {
             context_window: 128000,
             compact_threshold: 100000,
             max_output_tokens: None,
-            input_price: input,
-            output_price: output,
-            cache_price: cache,
-            cache_write_price: cache_write,
+            input_price: input.map(decimal),
+            output_price: output.map(decimal),
+            cache_read_price: cache.map(decimal),
+            cache_write_price: cache_write.map(decimal),
             created_at: 0,
             updated_at: 0,
             capability_overrides: None,
-            price_tiers: None,
+            pricing_tiers: None,
             server_tools: None,
             server_tool_price: None,
         }
@@ -484,18 +570,19 @@ mod tests {
             cache_write_tokens: None,
             billable_tool_calls: None,
         };
-        let config = mock_config(15.0, 60.0, None);
+        let config = mock_config(Some("15"), Some("60"), None);
         let cost = compute_cost(&usage, &Prices::of(&config));
-        assert!((cost.input_cost - 15.0).abs() < 0.001);
-        assert!((cost.output_cost - 60.0).abs() < 0.001);
-        assert!((cost.total_cost - 75.0).abs() < 0.001);
+        assert_eq!(cost.input_cost, decimal("15"));
+        assert_eq!(cost.output_cost, decimal("60"));
+        assert_eq!(cost.total_cost, decimal("75"));
+        assert_eq!(serde_json::to_value(&cost).unwrap()["total_cost"], "75");
     }
 
     /// The cached part is billed at the cache rate *instead of*, not in addition
     /// to, the input rate.
     ///
     /// The old formula charged the whole prompt at `input_price` and then added
-    /// the cached part again at `cache_price`, which on these numbers came to
+    /// the cached part again at `cache_read_price`, which on these numbers came to
     /// 16.35 against a real cost of 2.85. The explicit `< 15.0` below is there to
     /// fail loudly if anyone reintroduces that shape: 15.0 is what the full
     /// prompt alone would cost, so a total at or above it means the discount was
@@ -510,12 +597,12 @@ mod tests {
             cache_write_tokens: None,
             billable_tool_calls: None,
         };
-        let config = mock_config(15.0, 60.0, Some(1.5));
+        let config = mock_config(Some("15"), Some("60"), Some("1.5"));
         let cost = compute_cost(&usage, &Prices::of(&config));
-        assert!((cost.input_cost - 1.5).abs() < 0.001, "100k uncached at 15/M");
-        assert!((cost.cache_cost - 1.35).abs() < 0.001, "900k read at 1.5/M");
-        assert!((cost.total_cost - 2.85).abs() < 0.001);
-        assert!(cost.total_cost < 15.0, "the old formula gave 16.35 here");
+        assert_eq!(cost.input_cost, decimal("1.5"), "100k uncached at 15/M");
+        assert_eq!(cost.cache_cost, decimal("1.35"), "900k read at 1.5/M");
+        assert_eq!(cost.total_cost, decimal("2.85"));
+        assert!(cost.total_cost < decimal("15"), "the old formula gave 16.35 here");
     }
 
     fn wrote_100k() -> TokenUsage {
@@ -534,9 +621,10 @@ mod tests {
     /// migration 30 was already billed at.
     #[test]
     fn a_cache_write_with_no_price_of_its_own_costs_what_input_costs() {
-        let cost = compute_cost(&wrote_100k(), &Prices::of(&mock_config(15.0, 60.0, Some(1.5))));
-        assert!(cost.input_cost.abs() < 0.001, "nothing was uncached");
-        assert!((cost.cache_cost - 1.5).abs() < 0.001, "100k written at the input rate");
+        let config = mock_config(Some("15"), Some("60"), Some("1.5"));
+        let cost = compute_cost(&wrote_100k(), &Prices::of(&config));
+        assert_eq!(cost.input_cost, Decimal::zero(), "nothing was uncached");
+        assert_eq!(cost.cache_cost, decimal("1.5"), "100k written at the input rate");
     }
 
     /// The premium the column exists for. Anthropic's five-minute entry is
@@ -544,10 +632,11 @@ mod tests {
     /// the difference, which is what this asserts is no longer happening.
     #[test]
     fn a_cache_write_is_billed_at_its_own_price_when_there_is_one() {
-        let cost = compute_cost(&wrote_100k(), &Prices::of(&priced(15.0, 60.0, Some(1.5), Some(18.75))));
-        assert!((cost.cache_cost - 1.875).abs() < 0.001, "100k written at 18.75/M");
+        let config = priced(Some("15"), Some("60"), Some("1.5"), Some("18.75"));
+        let cost = compute_cost(&wrote_100k(), &Prices::of(&config));
+        assert_eq!(cost.cache_cost, decimal("1.875"), "100k written at 18.75/M");
         assert!(
-            cost.cache_cost > 1.5,
+            cost.cache_cost > decimal("1.5"),
             "the premium is what distinguishes this from input"
         );
     }
@@ -563,24 +652,27 @@ mod tests {
             cache_write_tokens: None,
             billable_tool_calls: None,
         };
-        let cost = compute_cost(&usage, &Prices::of(&mock_config(15.0, 60.0, Some(1.5))));
-        assert!(cost.input_cost >= 0.0);
-        assert!(cost.total_cost >= 0.0);
+        let config = mock_config(Some("15"), Some("60"), Some("1.5"));
+        let cost = compute_cost(&usage, &Prices::of(&config));
+        assert!(cost.input_cost >= Decimal::zero());
+        assert!(cost.total_cost >= Decimal::zero());
     }
 
     #[test]
-    fn test_zero_pricing() {
-        let config = mock_config(0.0, 0.0, None);
-        assert!(!has_pricing(&config));
+    fn explicit_zero_is_known_free_pricing() {
+        let config = mock_config(Some("0"), Some("0"), None);
+        assert!(has_pricing(&config));
+        assert!(!has_pricing(&mock_config(None, None, None)));
     }
 
     // --- tiered pricing ---
 
     /// xAI's actual `grok-4.6` table: everything doubles above a 200k prompt.
-    fn grok() -> ModelConfig {
-        let mut config = priced(2.0, 6.0, Some(0.5), None);
-        config.price_tiers =
-            Some(r#"[{"min_prompt_tokens":200000,"input":4.0,"output":12.0,"cache_read":1.0}]"#.into());
+    fn grok() -> ModelConfigRow {
+        let mut config = priced(Some("2"), Some("6"), Some("0.5"), None);
+        config.pricing_tiers = Some(
+            r#"[{"min_prompt_tokens":200000,"input_price":"4","output_price":"12","cache_read_price":"1","cache_write_price":null}]"#.into(),
+        );
         config
     }
 
@@ -595,22 +687,23 @@ mod tests {
             completion_tokens: Some(1_000),
             ..Default::default()
         };
-        let cost = compute_cost(&usage, &Prices::for_prompt(&config, 201_000));
+        let prices = Prices::for_prompt(&config, 201_000).unwrap();
+        let cost = compute_cost(&usage, &prices);
 
         // 201k at 4/M, not 200k at 2/M plus 1k at 4/M.
-        assert!((cost.input_cost - 0.804).abs() < 1e-6, "got {}", cost.input_cost);
-        assert!((cost.output_cost - 0.012).abs() < 1e-6);
-        let as_a_bracket = 200_000.0 * 2.0 / 1e6 + 1_000.0 * 4.0 / 1e6;
+        assert_eq!(cost.input_cost, decimal("0.804"));
+        assert_eq!(cost.output_cost, decimal("0.012"));
+        let as_a_bracket = decimal("0.404");
         assert!(cost.input_cost > as_a_bracket, "a bracket would give {as_a_bracket}");
     }
 
     /// One token below, and nothing has changed.
     #[test]
     fn a_prompt_under_the_threshold_pays_the_base_rate() {
-        let prices = Prices::for_prompt(&grok(), 199_999);
-        assert_eq!(prices.input, 2.0);
-        assert_eq!(prices.output, 6.0);
-        assert_eq!(prices.cache_read, Some(0.5));
+        let prices = Prices::for_prompt(&grok(), 199_999).unwrap();
+        assert_eq!(prices.input_price, Some(decimal("2")));
+        assert_eq!(prices.output_price, Some(decimal("6")));
+        assert_eq!(prices.cache_read_price, Some(decimal("0.5")));
     }
 
     /// The threshold counts the cached part too. Measuring the uncached
@@ -624,28 +717,44 @@ mod tests {
             cache_read_tokens: Some(390_000),
             ..Default::default()
         };
-        let prices = Prices::for_prompt(&grok(), usage.prompt_tokens.unwrap() as i64);
-        assert_eq!(prices.cache_read, Some(1.0), "the long-context cache rate");
+        let prices = Prices::for_prompt(&grok(), usage.prompt_tokens.unwrap() as i64).unwrap();
+        assert_eq!(
+            prices.cache_read_price,
+            Some(decimal("1")),
+            "the long-context cache rate"
+        );
         let cost = compute_cost(&usage, &prices);
         // 10k uncached at 4/M + 390k read at 1/M.
-        assert!((cost.input_cost - 0.04).abs() < 1e-6);
-        assert!((cost.cache_cost - 0.39).abs() < 1e-6);
+        assert_eq!(cost.input_cost, decimal("0.04"));
+        assert_eq!(cost.cache_cost, decimal("0.39"));
     }
 
     /// Several tiers, and the highest one that applies wins.
     #[test]
     fn the_highest_applicable_tier_is_the_one_that_applies() {
-        let mut config = priced(1.0, 2.0, None, None);
-        config.price_tiers = Some(
-            r#"[{"min_prompt_tokens":1000000,"input":9.0,"output":9.0},
-                {"min_prompt_tokens":200000,"input":3.0,"output":3.0}]"#
+        let mut config = priced(Some("1"), Some("2"), None, None);
+        config.pricing_tiers = Some(
+            r#"[{"min_prompt_tokens":1000000,"input_price":"9","output_price":"9","cache_read_price":null,"cache_write_price":null},
+                {"min_prompt_tokens":200000,"input_price":"3","output_price":"3","cache_read_price":null,"cache_write_price":null}]"#
                 .into(),
         );
         // Stored out of order on purpose: the reader sorts rather than trusting.
-        assert_eq!(Prices::for_prompt(&config, 100).input, 1.0);
-        assert_eq!(Prices::for_prompt(&config, 200_000).input, 3.0);
-        assert_eq!(Prices::for_prompt(&config, 999_999).input, 3.0);
-        assert_eq!(Prices::for_prompt(&config, 2_000_000).input, 9.0);
+        assert_eq!(
+            Prices::for_prompt(&config, 100).unwrap().input_price,
+            Some(decimal("1"))
+        );
+        assert_eq!(
+            Prices::for_prompt(&config, 200_000).unwrap().input_price,
+            Some(decimal("3"))
+        );
+        assert_eq!(
+            Prices::for_prompt(&config, 999_999).unwrap().input_price,
+            Some(decimal("3"))
+        );
+        assert_eq!(
+            Prices::for_prompt(&config, 2_000_000).unwrap().input_price,
+            Some(decimal("9"))
+        );
     }
 
     /// A tier that omits a cache rate means what a blank column has always
@@ -653,41 +762,72 @@ mod tests {
     /// tier's cheaper one, which would understate every long request.
     #[test]
     fn a_tier_without_a_cache_rate_prices_reads_at_its_own_input() {
-        let mut config = priced(2.0, 6.0, Some(0.5), None);
-        config.price_tiers = Some(r#"[{"min_prompt_tokens":200000,"input":4.0,"output":12.0}]"#.into());
+        let mut config = priced(Some("2"), Some("6"), Some("0.5"), None);
+        config.pricing_tiers = Some(
+            r#"[{"min_prompt_tokens":200000,"input_price":"4","output_price":"12","cache_read_price":null,"cache_write_price":null}]"#.into(),
+        );
         let usage = TokenUsage {
             prompt_tokens: Some(300_000),
             cache_read_tokens: Some(300_000),
             ..Default::default()
         };
-        let cost = compute_cost(&usage, &Prices::for_prompt(&config, 300_000));
-        assert!((cost.cache_cost - 1.2).abs() < 1e-6, "300k at the tier's 4/M");
+        let prices = Prices::for_prompt(&config, 300_000).unwrap();
+        let cost = compute_cost(&usage, &prices);
+        assert_eq!(cost.cache_cost, decimal("1.2"), "300k at the tier's 4/M");
     }
 
-    /// Everything a hand-edited column can be, and none of it may throw or
-    /// silently overcharge. A model that cannot be read falls back to its base
-    /// rate — the behaviour it had before tiers existed.
     #[test]
-    fn a_malformed_tier_table_falls_back_to_the_base_rate() {
+    fn nullable_tier_prices_must_be_explicit() {
+        let complete = serde_json::json!([{
+            "min_prompt_tokens": 200_000,
+            "input_price": "4",
+            "output_price": "12",
+            "cache_read_price": null,
+            "cache_write_price": null
+        }]);
+        assert!(parse_tiers(Some(&complete.to_string())).is_ok());
+
+        for key in ["cache_read_price", "cache_write_price"] {
+            let mut missing = complete.clone();
+            missing[0].as_object_mut().unwrap().remove(key);
+            assert!(
+                parse_tiers(Some(&missing.to_string())).is_err(),
+                "{key} must be present"
+            );
+        }
+    }
+
+    /// Malformed tier data is a broken contract, never a signal to bill at a
+    /// different rate. Both the direct parser and the model pricing path must
+    /// reject it rather than falling back to the base price.
+    #[test]
+    fn a_malformed_tier_table_is_rejected() {
         for raw in [
             "",
             "   ",
             "not json",
             "{}",
-            r#"[{"min_prompt_tokens":0,"input":99.0,"output":99.0}]"#,
-            r#"[{"min_prompt_tokens":-5,"input":99.0,"output":99.0}]"#,
+            r#"[{"min_prompt_tokens":0,"input_price":"99","output_price":"99"}]"#,
+            r#"[{"min_prompt_tokens":-5,"input_price":"99","output_price":"99"}]"#,
+            r#"[{"min_prompt_tokens":1,"input_price":99,"output_price":"99"}]"#,
+            r#"[{"min_prompt_tokens":1,"input_price":"99","output_price":"99","future":true}]"#,
+            r#"[{"min_prompt_tokens":1,"input_price":"4","output_price":"12"},{"min_prompt_tokens":1,"input_price":"5","output_price":"13"}]"#,
+            r#"[{"min_prompt_tokens":1,"input":"99","output":"99"}]"#,
         ] {
-            let mut config = priced(2.0, 6.0, None, None);
-            config.price_tiers = Some(raw.into());
-            assert_eq!(
-                Prices::for_prompt(&config, 10_000_000).input,
-                2.0,
-                "{raw:?} should not have priced anything"
+            let mut config = priced(Some("2"), Some("6"), None, None);
+            config.pricing_tiers = Some(raw.into());
+            assert!(parse_tiers(Some(raw)).is_err(), "{raw:?} must be rejected");
+            assert!(
+                Prices::for_prompt(&config, 10_000_000).is_err(),
+                "{raw:?} must fail through the model pricing path"
             );
         }
-        let mut config = priced(2.0, 6.0, None, None);
-        config.price_tiers = None;
-        assert_eq!(Prices::for_prompt(&config, 10_000_000).input, 2.0);
+        let mut config = priced(Some("2"), Some("6"), None, None);
+        config.pricing_tiers = None;
+        assert_eq!(
+            Prices::for_prompt(&config, 10_000_000).unwrap().input_price,
+            Some(decimal("2"))
+        );
     }
 
     /// A turn is many requests. Five small ones and one large one leave the same
@@ -695,7 +835,7 @@ mod tests {
     /// each round rather than the sum.
     #[test]
     fn five_small_requests_are_not_one_large_one() {
-        let pricing = TurnPricing::of(&grok()).expect("priced");
+        let pricing = TurnPricing::of(&grok()).unwrap().expect("base token prices are known");
         let round = |prompt: i64| {
             let usage = TokenUsage {
                 prompt_tokens: Some(prompt as i32),
@@ -711,8 +851,8 @@ mod tests {
         }
         let whole = round(250_000);
 
-        assert!((split.total_cost - 0.5).abs() < 1e-6, "250k at the base 2/M");
-        assert!((whole.total_cost - 1.0).abs() < 1e-6, "250k at the long 4/M");
+        assert_eq!(split.total_cost, decimal("0.5"), "250k at the base 2/M");
+        assert_eq!(whole.total_cost, decimal("1"), "250k at the long 4/M");
         assert!(
             whole.total_cost > split.total_cost,
             "identical token totals, different bills — pricing from the sum picks one of these at random",
@@ -727,8 +867,8 @@ mod tests {
     /// on top of the tokens. Counting only the tokens reports two thirds of it.
     #[test]
     fn a_search_is_billed_on_top_of_the_tokens() {
-        let mut config = priced(2.0, 6.0, Some(0.5), None);
-        config.server_tool_price = Some(5.0); // $5 per 1000 calls
+        let mut config = priced(Some("2"), Some("6"), Some("0.5"), None);
+        config.server_tool_price = Some(decimal("5")); // $5 per 1000 calls
         let usage = TokenUsage {
             prompt_tokens: Some(4551),
             completion_tokens: Some(74),
@@ -739,16 +879,12 @@ mod tests {
         };
 
         let cost = compute_cost(&usage, &Prices::of(&config));
-        assert!((cost.tool_cost - 0.005).abs() < 1e-9, "one search at $5/1k");
-        assert!(
-            (cost.total_cost - 0.012818).abs() < 1e-6,
-            "xAI billed 0.012818, got {}",
-            cost.total_cost,
-        );
+        assert_eq!(cost.tool_cost, decimal("0.005"), "one search at $5/1k");
+        assert_eq!(cost.total_cost, decimal("0.012818"));
         // The figure the old formula would have produced, kept explicit so
         // reintroducing it fails here rather than in a month's invoice.
         let tokens_only = cost.input_cost + cost.output_cost + cost.cache_cost;
-        assert!((tokens_only - 0.007818).abs() < 1e-6);
+        assert_eq!(tokens_only, decimal("0.007818"));
     }
 
     /// A model nobody has given a tool rate still ran the searches. The calls are
@@ -756,7 +892,7 @@ mod tests {
     /// was never configured.
     #[test]
     fn an_unpriced_tool_rate_adds_nothing_rather_than_guessing() {
-        let config = priced(2.0, 6.0, None, None);
+        let config = priced(Some("2"), Some("6"), None, None);
         let usage = TokenUsage {
             prompt_tokens: Some(1_000),
             completion_tokens: Some(0),
@@ -764,8 +900,8 @@ mod tests {
             ..Default::default()
         };
         let cost = compute_cost(&usage, &Prices::of(&config));
-        assert_eq!(cost.tool_cost, 0.0);
-        assert!((cost.total_cost - 0.002).abs() < 1e-9, "the tokens still bill");
+        assert_eq!(cost.tool_cost, Decimal::zero());
+        assert_eq!(cost.total_cost, decimal("0.002"), "the tokens still bill");
     }
 
     /// The per-call rate does not vary with prompt size, so a tier must not
@@ -773,40 +909,58 @@ mod tests {
     /// way. Long requests are the ones most likely to have searched.
     #[test]
     fn a_tier_keeps_the_base_tool_rate() {
-        let mut config = priced(2.0, 6.0, Some(0.5), None);
-        config.server_tool_price = Some(5.0);
-        config.price_tiers = Some(r#"[{"min_prompt_tokens":200000,"input":4.0,"output":12.0}]"#.into());
+        let mut config = priced(Some("2"), Some("6"), Some("0.5"), None);
+        config.server_tool_price = Some(decimal("5"));
+        config.pricing_tiers = Some(
+            r#"[{"min_prompt_tokens":200000,"input_price":"4","output_price":"12","cache_read_price":null,"cache_write_price":null}]"#.into(),
+        );
 
-        let long = Prices::for_prompt(&config, 250_000);
-        assert_eq!(long.input, 4.0, "the tier applied");
-        assert_eq!(long.server_tool, Some(5.0), "and did not take the tool rate with it");
+        let long = Prices::for_prompt(&config, 250_000).unwrap();
+        assert_eq!(long.input_price, Some(decimal("4")), "the tier applied");
+        assert_eq!(
+            long.server_tool_price,
+            Some(decimal("5")),
+            "and did not take the tool rate with it"
+        );
 
-        let pricing = TurnPricing::of(&config).expect("priced");
-        assert_eq!(pricing.for_prompt(250_000).server_tool, Some(5.0));
+        let pricing = TurnPricing::of(&config).unwrap().expect("priced");
+        assert_eq!(pricing.for_prompt(250_000).server_tool_price, Some(decimal("5")));
     }
 
     /// An unpriced model has no tier table worth reading, and has to stay
     /// distinguishable from one priced at zero.
     #[test]
     fn an_unpriced_model_has_no_turn_pricing() {
-        assert!(TurnPricing::of(&mock_config(0.0, 0.0, None)).is_none());
-        assert!(TurnPricing::of(&mock_config(2.0, 0.0, None)).is_some());
+        assert!(TurnPricing::of(&mock_config(None, None, None)).unwrap().is_none());
+        assert!(
+            TurnPricing::of(&mock_config(Some("0"), Some("0"), None))
+                .unwrap()
+                .is_some(),
+            "explicit zero is a known free rate"
+        );
+        assert!(
+            TurnPricing::of(&mock_config(Some("2"), None, None)).unwrap().is_none(),
+            "a partial token rate remains unknown"
+        );
     }
 
     #[test]
     fn a_tool_rate_alone_keeps_the_known_live_cost() {
-        let mut config = mock_config(0.0, 0.0, None);
-        config.server_tool_price = Some(15.0);
-        config.price_tiers = Some(r#"[{"min_prompt_tokens":1,"input":99.0,"output":99.0}]"#.into());
+        let mut config = mock_config(None, None, None);
+        config.server_tool_price = Some(decimal("15"));
+        config.pricing_tiers = Some(
+            r#"[{"min_prompt_tokens":1,"input_price":"99","output_price":"99","cache_read_price":null,"cache_write_price":null}]"#.into(),
+        );
 
-        let pricing = TurnPricing::of(&config).expect("the provider-tool rate is known");
+        let pricing = TurnPricing::of(&config)
+            .unwrap()
+            .expect("the provider-tool rate is known");
         let prices = pricing.for_prompt(1_000_000);
-        assert_eq!(
-            (prices.input, prices.output),
-            (0.0, 0.0),
+        assert!(
+            prices.input_price.is_none() && prices.output_price.is_none(),
             "a tier must not invent token pricing"
         );
-        assert_eq!(prices.server_tool, Some(15.0));
+        assert_eq!(prices.server_tool_price, Some(decimal("15")));
 
         let usage = TokenUsage {
             prompt_tokens: Some(100),
@@ -815,10 +969,10 @@ mod tests {
             ..Default::default()
         };
         let cost = compute_cost(&usage, &prices);
-        assert_eq!(cost.input_cost, 0.0);
-        assert_eq!(cost.output_cost, 0.0);
-        assert!((cost.tool_cost - 0.03).abs() < 1e-9);
-        assert!((cost.total_cost - 0.03).abs() < 1e-9);
+        assert_eq!(cost.input_cost, Decimal::zero());
+        assert_eq!(cost.output_cost, Decimal::zero());
+        assert_eq!(cost.tool_cost, decimal("0.03"));
+        assert_eq!(cost.total_cost, decimal("0.03"));
     }
 
     /// Filling in only the long-context row is an easy mistake — it is the row
@@ -828,29 +982,30 @@ mod tests {
     /// without base rates is unpriced at every size.
     #[test]
     fn tiers_alone_do_not_price_a_model_nobody_has_priced() {
-        let mut config = priced(0.0, 0.0, None, None);
-        config.price_tiers = Some(r#"[{"min_prompt_tokens":200000,"input":4.0,"output":12.0}]"#.into());
+        let mut config = priced(None, None, None, None);
+        config.pricing_tiers = Some(
+            r#"[{"min_prompt_tokens":200000,"input_price":"4","output_price":"12","cache_read_price":null,"cache_write_price":null}]"#.into(),
+        );
 
-        assert_eq!(Prices::for_prompt(&config, 500_000).input, 0.0, "still unpriced");
-        assert!(!Prices::for_prompt(&config, 500_000).known());
-        assert!(TurnPricing::of(&config).is_none(), "and the turn agrees");
+        let prices = Prices::for_prompt(&config, 500_000).unwrap();
+        assert_eq!(prices.input_price, None, "still unpriced");
+        assert!(!prices.known());
+        assert!(TurnPricing::of(&config).unwrap().is_none(), "and the turn agrees");
     }
 
-    /// A rate that would produce a negative or non-finite bill is not a rate.
-    /// The column is reachable from `save_model_config`, which the remote
-    /// transport can call — the form is not the only way in.
+    /// A negative rate is invalid data. It must fail instead of being dropped or
+    /// silently replaced with the base rate.
     #[test]
-    fn a_tier_that_would_bill_nonsense_is_dropped() {
+    fn a_negative_tier_rate_is_rejected() {
         for raw in [
-            r#"[{"min_prompt_tokens":200000,"input":-4.0,"output":12.0}]"#,
-            r#"[{"min_prompt_tokens":200000,"input":4.0,"output":-12.0}]"#,
-            r#"[{"min_prompt_tokens":200000,"input":4.0,"output":12.0,"cache_read":-1.0}]"#,
+            r#"[{"min_prompt_tokens":200000,"input_price":"-4","output_price":"12","cache_read_price":null,"cache_write_price":null}]"#,
+            r#"[{"min_prompt_tokens":200000,"input_price":"4","output_price":"-12","cache_read_price":null,"cache_write_price":null}]"#,
+            r#"[{"min_prompt_tokens":200000,"input_price":"4","output_price":"12","cache_read_price":"-1","cache_write_price":null}]"#,
         ] {
-            let mut config = priced(2.0, 6.0, None, None);
-            config.price_tiers = Some(raw.into());
-            let prices = Prices::for_prompt(&config, 500_000);
-            assert_eq!(prices.input, 2.0, "{raw} should not have applied");
-            assert_eq!(prices.output, 6.0);
+            let mut config = priced(Some("2"), Some("6"), None, None);
+            config.pricing_tiers = Some(raw.into());
+            assert!(parse_tiers(Some(raw)).is_err(), "{raw} must be rejected");
+            assert!(Prices::for_prompt(&config, 500_000).is_err());
         }
     }
 }
@@ -869,14 +1024,13 @@ mod billing_mode_tests {
         }
     }
 
-    /// Junk reads as metered, which keeps the request in the ledger and, if it
-    /// has no rate, visible as unpriced. Reading it as unbillable would make
-    /// real spend disappear with nothing to say so.
+    /// Billing mode is a closed contract. Unknown spelling cannot be interpreted
+    /// as metered because that would hide a producer/schema mismatch.
     #[test]
-    fn an_unknown_mode_is_metered() {
-        assert_eq!("".parse(), Ok(BillingMode::Metered));
-        assert_eq!("Subscription".parse(), Ok(BillingMode::Metered), "match is exact");
-        assert_eq!("whatever".parse(), Ok(BillingMode::Metered));
+    fn an_unknown_mode_is_rejected() {
+        assert!("".parse::<BillingMode>().is_err());
+        assert!("Subscription".parse::<BillingMode>().is_err(), "match is exact");
+        assert!("whatever".parse::<BillingMode>().is_err());
         assert_eq!(BillingMode::default(), BillingMode::Metered);
     }
 
@@ -899,9 +1053,11 @@ mod billing_mode_tests {
     /// `standard` exists, so this is inert until the Codex transport lands.
     #[test]
     fn the_transport_decides_how_a_request_is_paid_for() {
-        assert_eq!(BillingMode::for_transport("standard"), BillingMode::Metered);
-        assert_eq!(BillingMode::for_transport("chatgpt_codex"), BillingMode::Subscription);
-        // An unrecognised transport bills normally rather than silently free.
-        assert_eq!(BillingMode::for_transport("something_new"), BillingMode::Metered);
+        assert_eq!(BillingMode::for_transport("standard"), Ok(BillingMode::Metered));
+        assert_eq!(
+            BillingMode::for_transport("chatgpt_codex"),
+            Ok(BillingMode::Subscription)
+        );
+        assert!(BillingMode::for_transport("something_new").is_err());
     }
 }

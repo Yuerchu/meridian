@@ -6,20 +6,24 @@
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::message::NewMessage;
-use crate::db::models::queue::{Delivery, NewQueuedPrompt, QueueState, QueuedPrompt};
+use crate::db::models::message::MessageInsert;
+use crate::db::models::queue::{Delivery, QueueState, QueuedPromptInsert, QueuedPromptRow};
 use crate::db::schema::queued_prompts;
+
+fn contract_error(message: String) -> diesel::result::Error {
+    diesel::result::Error::QueryBuilderError(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, message)))
+}
 
 /// Everything queued for a conversation, in the order it will be delivered.
 ///
 /// Includes settled rows: the front end draws them as they leave, and dropping
 /// them here would make an item vanish a beat before its message appears.
 /// Callers that only want work use [`next_deliverable`].
-pub fn list(conn: &mut SqliteConnection, conversation_id: &str) -> QueryResult<Vec<QueuedPrompt>> {
+pub fn list(conn: &mut SqliteConnection, conversation_id: &str) -> QueryResult<Vec<QueuedPromptRow>> {
     queued_prompts::table
         .filter(queued_prompts::conversation_id.eq(conversation_id))
         .order((queued_prompts::position.asc(), queued_prompts::created_at.asc()))
-        .select(QueuedPrompt::as_select())
+        .select(QueuedPromptRow::as_select())
         .load(conn)
 }
 
@@ -43,7 +47,7 @@ pub fn enqueue(
     content: &str,
     delivery: Delivery,
     now: i64,
-) -> QueryResult<QueuedPrompt> {
+) -> QueryResult<QueuedPromptRow> {
     enqueue_with_context(conn, id, conversation_id, content, delivery, &[], now)
 }
 
@@ -55,7 +59,7 @@ pub fn enqueue_with_context(
     delivery: Delivery,
     context: &[crate::workspace::reference::PreparedContextItem],
     now: i64,
-) -> QueryResult<QueuedPrompt> {
+) -> QueryResult<QueuedPromptRow> {
     conn.immediate_transaction(|conn| {
         let last: Option<i32> = queued_prompts::table
             .filter(queued_prompts::conversation_id.eq(conversation_id))
@@ -63,7 +67,7 @@ pub fn enqueue_with_context(
             .first(conn)?;
 
         diesel::insert_into(queued_prompts::table)
-            .values(&NewQueuedPrompt {
+            .values(&QueuedPromptInsert {
                 id,
                 conversation_id,
                 content,
@@ -77,7 +81,7 @@ pub fn enqueue_with_context(
 
         queued_prompts::table
             .find(id)
-            .select(QueuedPrompt::as_select())
+            .select(QueuedPromptRow::as_select())
             .first(conn)
     })
 }
@@ -180,7 +184,7 @@ pub fn set_delivery(
 /// mode here instead would leave an `interject` queued after its turn had
 /// already ended blocking the queue for ever, waiting to interrupt something
 /// that will never run.
-pub fn next_pending(conn: &mut SqliteConnection, conversation_id: &str) -> QueryResult<Option<QueuedPrompt>> {
+pub fn next_pending(conn: &mut SqliteConnection, conversation_id: &str) -> QueryResult<Option<QueuedPromptRow>> {
     for item in list(conn, conversation_id)? {
         match item.state() {
             // Already gone by, in one way or another.
@@ -202,8 +206,12 @@ pub fn next_deliverable(
     conn: &mut SqliteConnection,
     conversation_id: &str,
     delivery: Delivery,
-) -> QueryResult<Option<QueuedPrompt>> {
-    Ok(next_pending(conn, conversation_id)?.filter(|item| item.delivery() == delivery))
+) -> QueryResult<Option<QueuedPromptRow>> {
+    let Some(item) = next_pending(conn, conversation_id)? else {
+        return Ok(None);
+    };
+    let stored = item.delivery().map_err(contract_error)?;
+    Ok((stored == delivery).then_some(item))
 }
 
 /// Take an item off the queue *and* write the message it becomes, atomically.
@@ -230,10 +238,10 @@ pub fn take_next(
     conversation_id: &str,
     delivery: Delivery,
     turn_id: &str,
-    message: &NewMessage,
+    message: &MessageInsert,
     parent: Option<&str>,
     now: i64,
-) -> QueryResult<Option<QueuedPrompt>> {
+) -> QueryResult<Option<QueuedPromptRow>> {
     // Plain, because the caller is already inside one — `take_one` has to peek
     // before it can build the row this writes, so the transaction that spans
     // the read and the write is *its*, and that is the one that is immediate.
@@ -259,7 +267,7 @@ pub fn take_next(
 
         queued_prompts::table
             .find(&item.id)
-            .select(QueuedPrompt::as_select())
+            .select(QueuedPromptRow::as_select())
             .first(conn)
             .map(Some)
     })
@@ -308,7 +316,8 @@ pub fn mark_dispatched(
     else {
         return Ok(0);
     };
-    if front.id != id || front.state() != QueueState::Queued || expect.is_some_and(|mode| front.delivery() != mode) {
+    let delivery = front.delivery().map_err(contract_error)?;
+    if front.id != id || front.state() != QueueState::Queued || expect.is_some_and(|mode| delivery != mode) {
         return Ok(0);
     }
 
@@ -428,14 +437,14 @@ pub fn release_all(conn: &mut SqliteConnection, conversation_id: &str) -> QueryR
 ///
 /// The same shape as `turns::unreported_for_conversation`, and settled the same
 /// way: reading this is not telling anyone, so nothing is written here.
-pub fn unreported_in_doubt(conn: &mut SqliteConnection, conversation_id: &str) -> QueryResult<Vec<QueuedPrompt>> {
+pub fn unreported_in_doubt(conn: &mut SqliteConnection, conversation_id: &str) -> QueryResult<Vec<QueuedPromptRow>> {
     queued_prompts::table
         .filter(queued_prompts::conversation_id.eq(conversation_id))
         .filter(queued_prompts::dispatched_at.is_not_null())
         .filter(queued_prompts::settled_at.is_null())
         .filter(queued_prompts::reported_at.is_null())
         .order(queued_prompts::position.asc())
-        .select(QueuedPrompt::as_select())
+        .select(QueuedPromptRow::as_select())
         .load(conn)
 }
 
@@ -462,8 +471,8 @@ mod tests {
         crate::db::ops::conversation::create_conversation(conn, id, Some("q"), None, None, 0).unwrap();
     }
 
-    fn user_row<'a>(id: &'a str, conversation_id: &'a str, content: &'a str, turn_id: &'a str) -> NewMessage<'a> {
-        NewMessage {
+    fn user_row<'a>(id: &'a str, conversation_id: &'a str, content: &'a str, turn_id: &'a str) -> MessageInsert<'a> {
+        MessageInsert {
             id,
             conversation_id,
             role: "user",
@@ -493,7 +502,7 @@ mod tests {
         }
     }
 
-    fn add(conn: &mut SqliteConnection, conv: &str, text: &str, delivery: Delivery) -> QueuedPrompt {
+    fn add(conn: &mut SqliteConnection, conv: &str, text: &str, delivery: Delivery) -> QueuedPromptRow {
         let id = uuid::Uuid::new_v4().to_string();
         enqueue(conn, &id, conv, text, delivery, 0).unwrap()
     }
@@ -989,12 +998,22 @@ mod tests {
         assert!(first.settled_at.is_some());
     }
 
-    /// A mode this build does not know reads as the one that waits. A row
-    /// written by a later version must not become an interruption by accident.
     #[test]
-    fn an_unknown_delivery_mode_waits_rather_than_interrupts() {
-        assert_eq!(Delivery::parse_or_wait("interject"), Delivery::Interject);
-        assert_eq!(Delivery::parse_or_wait("follow_up"), Delivery::FollowUp);
-        assert_eq!(Delivery::parse_or_wait("pre_empt_everything"), Delivery::FollowUp);
+    fn an_unknown_delivery_mode_is_rejected() {
+        assert_eq!(Delivery::parse("interject").unwrap(), Delivery::Interject);
+        assert_eq!(Delivery::parse("follow_up").unwrap(), Delivery::FollowUp);
+        assert!(Delivery::parse("pre_empt_everything").is_err());
+
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        conversation(&mut conn, "c1");
+        let first = add(&mut conn, "c1", "one", Delivery::FollowUp);
+        diesel::update(queued_prompts::table.find(&first.id))
+            .set(queued_prompts::delivery.eq("pre_empt_everything"))
+            .execute(&mut conn)
+            .unwrap();
+
+        let error = next_deliverable(&mut conn, "c1", Delivery::FollowUp).unwrap_err();
+        assert!(error.to_string().contains("unknown queue delivery mode"));
     }
 }

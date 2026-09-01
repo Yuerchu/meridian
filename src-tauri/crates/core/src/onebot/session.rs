@@ -117,7 +117,7 @@ impl SessionManager {
                 let project_id = uuid::Uuid::new_v4().to_string();
                 let project = crate::db::ops::project::create_project(
                     &mut conn,
-                    &crate::db::models::project::NewProject {
+                    &crate::db::models::project::ProjectInsert {
                         id: &project_id,
                         name: title,
                         path: None,

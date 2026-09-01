@@ -4,15 +4,15 @@ import { Button, Label, Skeleton, Spinner, Tabs, Tooltip } from '@heroui/react'
 import { EmptyState } from '@heroui-pro/react/empty-state'
 import { KPI } from '@heroui-pro/react/kpi'
 import { AreaChart } from '@heroui-pro/react/area-chart'
-import { BarChart } from '@heroui-pro/react/bar-chart'
 import { DataGrid, type DataGridColumn } from '@heroui-pro/react/data-grid'
 import { ArrowRightFromSquare } from '@gravity-ui/icons'
 
 import { api } from '@/api'
 import { costQualifier, formatCostAmount, type CostQualifier } from '@/lib/cost-format'
+import { compareDecimals, decimal, decimalPercent, sumDecimals, type DecimalString } from '@/lib/decimal'
 import { cn } from '@/lib/utils'
 import { SettingsHeader, SettingsPane } from './primitives'
-import type { UsageBucket, UsageFilter } from '@/types'
+import type { UsageBucketInfoResponse, UsageDimension, UsageReportRequest } from '@/types'
 
 /**
  * What the assistant has cost, out of the audit log.
@@ -86,9 +86,10 @@ const COST_SERIES = [
 ] as const
 
 type CostSeriesKey = (typeof COST_SERIES)[number]['key']
-type CostSplit = Record<CostSeriesKey, number>
+type CostSplit = Record<CostSeriesKey, DecimalString>
+const ZERO_DECIMAL = decimal('0')
 
-function costSplit(bucket: UsageBucket): CostSplit {
+function costSplit(bucket: UsageBucketInfoResponse): CostSplit {
   return {
     input_cost: bucket.input_cost,
     cache_cost: bucket.cache_cost,
@@ -104,7 +105,7 @@ function costSplit(bucket: UsageBucket): CostSplit {
  * that reports more cached tokens than prompt tokens is contradicting itself,
  * and the answer to that is a zero band rather than a bar drawn below the axis.
  */
-function split(bucket: UsageBucket): Split {
+function split(bucket: UsageBucketInfoResponse): Split {
   return {
     uncached: Math.max(0, bucket.input_tokens - bucket.cache_read_tokens - bucket.cache_write_tokens),
     cacheRead: bucket.cache_read_tokens,
@@ -127,18 +128,18 @@ function present(rows: Split[]): readonly (typeof SERIES)[number][] {
 }
 
 function presentCosts(rows: CostSplit[]): readonly (typeof COST_SERIES)[number][] {
-  return COST_SERIES.filter((s) => rows.some((row) => row[s.key] > 0))
+  return COST_SERIES.filter((s) => rows.some((row) => compareDecimals(row[s.key], ZERO_DECIMAL) > 0))
 }
 
-function nonLocalMessages(bucket: UsageBucket): number {
+function nonLocalMessages(bucket: UsageBucketInfoResponse): number {
   return bucket.subscription_messages + bucket.external_messages
 }
 
-function bucketCostQualifier(bucket: UsageBucket): CostQualifier {
+function bucketCostQualifier(bucket: UsageBucketInfoResponse): CostQualifier {
   return costQualifier(bucket.unpriced_messages + nonLocalMessages(bucket), bucket.estimated_messages)
 }
 
-function componentQualifier(bucket: UsageBucket, key: CostSeriesKey): CostQualifier {
+function componentQualifier(bucket: UsageBucketInfoResponse, key: CostSeriesKey): CostQualifier {
   const nonLocal = nonLocalMessages(bucket)
   return key === 'tool_cost'
     ? costQualifier(bucket.unpriced_tool_messages + nonLocal, bucket.estimated_tool_messages)
@@ -146,7 +147,7 @@ function componentQualifier(bucket: UsageBucket, key: CostSeriesKey): CostQualif
 }
 
 function qualifiedCost(
-  value: number,
+  value: DecimalString,
   qualifier: CostQualifier,
   t: ReturnType<typeof useTranslation>['t'],
   locale: string,
@@ -155,7 +156,11 @@ function qualifiedCost(
   return qualifier === 'partial_estimate' ? t('settings.usage.partialAmount', { amount }) : amount
 }
 
-function displayedCost(bucket: UsageBucket, t: ReturnType<typeof useTranslation>['t'], locale: string): string {
+function displayedCost(
+  bucket: UsageBucketInfoResponse,
+  t: ReturnType<typeof useTranslation>['t'],
+  locale: string,
+): string {
   if (bucket.metered_messages === 0) {
     if (bucket.external_messages > 0 && bucket.subscription_messages === 0) {
       return t('settings.usage.billing.external')
@@ -165,10 +170,10 @@ function displayedCost(bucket: UsageBucket, t: ReturnType<typeof useTranslation>
     }
     if (nonLocalMessages(bucket) > 0) return t('settings.usage.billing.unavailable')
   }
-  return qualifiedCost(bucket.cost, bucketCostQualifier(bucket), t, locale)
+  return qualifiedCost(bucket.total_cost, bucketCostQualifier(bucket), t, locale)
 }
 
-function billingCoverage(bucket: UsageBucket, t: ReturnType<typeof useTranslation>['t']): string | null {
+function billingCoverage(bucket: UsageBucketInfoResponse, t: ReturnType<typeof useTranslation>['t']): string | null {
   return nonLocalMessages(bucket) > 0
     ? t('settings.usage.billing.coverage', {
         subscription: bucket.subscription_messages,
@@ -179,7 +184,7 @@ function billingCoverage(bucket: UsageBucket, t: ReturnType<typeof useTranslatio
 
 function tokenTotal(
   value: number,
-  bucket: UsageBucket,
+  bucket: UsageBucketInfoResponse,
   t: ReturnType<typeof useTranslation>['t'],
   compact: Intl.NumberFormat,
 ): string {
@@ -191,15 +196,15 @@ function tokenTotal(
 }
 
 interface Report {
-  total: UsageBucket
-  days: UsageBucket[]
-  providers: UsageBucket[]
-  models: UsageBucket[]
-  rows: UsageBucket[]
+  total: UsageBucketInfoResponse
+  days: UsageBucketInfoResponse[]
+  providers: UsageBucketInfoResponse[]
+  models: UsageBucketInfoResponse[]
+  rows: UsageBucketInfoResponse[]
   rowsDimension: Breakdown
 }
 
-const EMPTY_TOTAL: UsageBucket = {
+const EMPTY_TOTAL: UsageBucketInfoResponse = {
   key: '',
   label: null,
   messages: 0,
@@ -212,11 +217,11 @@ const EMPTY_TOTAL: UsageBucket = {
   output_tokens: 0,
   cache_read_tokens: 0,
   cache_write_tokens: 0,
-  input_cost: 0,
-  output_cost: 0,
-  cache_cost: 0,
-  tool_cost: 0,
-  cost: 0,
+  input_cost: ZERO_DECIMAL,
+  output_cost: ZERO_DECIMAL,
+  cache_cost: ZERO_DECIMAL,
+  tool_cost: ZERO_DECIMAL,
+  total_cost: ZERO_DECIMAL,
   unpriced_token_messages: 0,
   unpriced_tool_messages: 0,
   estimated_token_messages: 0,
@@ -251,20 +256,22 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
     // Read here rather than in a memo over `range`: "the last 30 days" is
     // relative to the moment the query runs, and a clock read during render is
     // both impure and stale by the time anything uses it.
-    const filter: UsageFilter = {
-      since_ms: range === null ? null : Date.now() - range * DAY_MS,
-      until_ms: null,
+    const request = (dimension: UsageDimension): UsageReportRequest => ({
+      dimension,
+      sinceMs: range === null ? null : Date.now() - range * DAY_MS,
+      untilMs: null,
       origin,
-    }
+      conversationId: null,
+    })
     // Five groupings in flight together. They are independent queries over the
     // same table, and running them in series would show the page filling in one
     // chart at a time.
     Promise.all([
-      api.usageReport('total', filter),
-      api.usageReport('day', filter),
-      api.usageReport('provider', filter),
-      api.usageReport('model', filter),
-      api.usageReport(breakdown, filter),
+      api.usageReport(request('total')),
+      api.usageReport(request('day')),
+      api.usageReport(request('provider')),
+      api.usageReport(request('model')),
+      api.usageReport(request(breakdown)),
     ])
       .then(([total, days, providers, models, rows]) => {
         if (cancelled) return
@@ -579,7 +586,7 @@ function Kpi({ title, note, children }: { title: string; note?: string; children
  * components approximate. The backend supplies those component counters, so
  * the UI never has to infer them from the aggregate total.
  */
-function CostBreakdown({ bucket }: { bucket: UsageBucket }) {
+function CostBreakdown({ bucket }: { bucket: UsageBucketInfoResponse }) {
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage ?? i18n.language
   const qualifier = bucketCostQualifier(bucket)
@@ -636,7 +643,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
  * them — a cost chart would be flat and blank on a fresh install and read as
  * the feature being broken rather than as prices being unset.
  */
-function TokenTrend({ days }: { days: UsageBucket[] }) {
+function TokenTrend({ days }: { days: UsageBucketInfoResponse[] }) {
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage ?? i18n.language
   const compact = useMemo(
@@ -698,7 +705,7 @@ function TokenTrend({ days }: { days: UsageBucket[] }) {
  * breaks the bar into beads with gaps at every join, which reads as missing data
  * rather than as a stack.
  */
-function CostBars({ buckets }: { buckets: UsageBucket[] }) {
+function CostBars({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage ?? i18n.language
   const shownBuckets = useMemo(() => buckets.slice(0, 6), [buckets])
@@ -706,16 +713,22 @@ function CostBars({ buckets }: { buckets: UsageBucket[] }) {
     () =>
       shownBuckets.map((bucket) => ({
         name: bucket.label ?? bucket.key,
+        bucket,
         ...costSplit(bucket),
+        total: sumDecimals(Object.values(costSplit(bucket))),
       })),
     [shownBuckets],
   )
   const bands = presentCosts(data)
+  const maximum = data.reduce(
+    (current, row) => (compareDecimals(row.total, current) > 0 ? row.total : current),
+    ZERO_DECIMAL,
+  )
   const qualifier = costQualifier(
     shownBuckets.reduce((sum, bucket) => sum + bucket.unpriced_messages + nonLocalMessages(bucket), 0),
     shownBuckets.reduce((sum, bucket) => sum + bucket.estimated_messages, 0),
   )
-  if (data.length === 0 || bands.length === 0) {
+  if (data.length === 0 || bands.length === 0 || compareDecimals(maximum, ZERO_DECIMAL) === 0) {
     return <p className="text-sm text-muted">{t('settings.usage.noPricedCost')}</p>
   }
   return (
@@ -732,34 +745,39 @@ function CostBars({ buckets }: { buckets: UsageBucket[] }) {
           )}
         </p>
       )}
-      <BarChart data={data} height={Math.max(120, data.length * 34)} layout="vertical">
-        <BarChart.XAxis hide type="number" />
-        {/* `auto` rather than a fixed 110px, which is a third of the chart on a
-            phone — recharts measures the labels and takes what they need. Model
-            ids are long and the axis is what names the bars, so neither a fixed
-            width that starves the bars nor one that truncates the names is the
-            answer. */}
-        <BarChart.YAxis dataKey="name" tickMargin={4} type="category" width="auto" />
-        {bands.map((band, i) => (
-          <BarChart.Bar
-            key={band.key}
-            barSize={14}
-            dataKey={band.key}
-            fill={band.color}
-            name={t(band.labelKey)}
-            stackId="cost"
-            radius={i === 0 ? [4, 0, 0, 4] : i === bands.length - 1 ? [0, 4, 4, 0] : undefined}
-          />
+      {/* Widths are exact decimal percentages. Passing raw costs to Recharts
+          would coerce them through IEEE-754 before the first pixel was drawn. */}
+      <div className="space-y-2.5" data-slot="cost-bars">
+        {data.map((row) => (
+          <div key={row.bucket.key} className="grid grid-cols-[minmax(5rem,auto)_minmax(0,1fr)] items-center gap-2">
+            <span className="max-w-40 truncate text-xs text-muted" title={row.name}>
+              {row.name}
+            </span>
+            <div
+              className="flex h-3.5 min-w-0 overflow-hidden rounded bg-default"
+              role="img"
+              aria-label={`${row.name}: ${formatCostAmount(row.total, bucketCostQualifier(row.bucket), locale)}`}
+            >
+              {bands.map((band) => {
+                const amount = row[band.key]
+                if (compareDecimals(amount, ZERO_DECIMAL) === 0) return null
+                return (
+                  <span
+                    key={band.key}
+                    className="h-full first:rounded-s last:rounded-e"
+                    style={{ width: decimalPercent(amount, maximum), backgroundColor: band.color }}
+                    title={`${t(band.labelKey)}: ${formatCostAmount(
+                      amount,
+                      componentQualifier(row.bucket, band.key),
+                      locale,
+                    )}`}
+                  />
+                )
+              })}
+            </div>
+          </div>
         ))}
-        <BarChart.Tooltip
-          content={
-            <BarChart.TooltipContent
-              indicator="line"
-              valueFormatter={(v) => formatCostAmount(Number(v), 'exact', locale)}
-            />
-          }
-        />
-      </BarChart>
+      </div>
     </>
   )
 }
@@ -783,7 +801,7 @@ function Legend({ bands }: { bands: readonly { key: string; color: string; label
   )
 }
 
-interface UsageGridRow extends UsageBucket {
+interface UsageGridRow extends UsageBucketInfoResponse {
   rowId: string
   displayLabel: string
   isDeleted: boolean
@@ -808,7 +826,7 @@ function shortConversationId(id: string): string {
  * title those conversations shared while they existed.
  */
 function conversationRows(
-  buckets: UsageBucket[],
+  buckets: UsageBucketInfoResponse[],
   deletedLabel: string,
   instanceLabel: (id: string) => string,
 ): UsageGridRow[] {
@@ -863,11 +881,11 @@ function conversationRows(
       output_tokens: matches.reduce((sum, row) => sum + row.output_tokens, 0),
       cache_read_tokens: matches.reduce((sum, row) => sum + row.cache_read_tokens, 0),
       cache_write_tokens: matches.reduce((sum, row) => sum + row.cache_write_tokens, 0),
-      input_cost: matches.reduce((sum, row) => sum + row.input_cost, 0),
-      output_cost: matches.reduce((sum, row) => sum + row.output_cost, 0),
-      cache_cost: matches.reduce((sum, row) => sum + row.cache_cost, 0),
-      tool_cost: matches.reduce((sum, row) => sum + row.tool_cost, 0),
-      cost: matches.reduce((sum, row) => sum + row.cost, 0),
+      input_cost: sumDecimals(matches.map((row) => row.input_cost)),
+      output_cost: sumDecimals(matches.map((row) => row.output_cost)),
+      cache_cost: sumDecimals(matches.map((row) => row.cache_cost)),
+      tool_cost: sumDecimals(matches.map((row) => row.tool_cost)),
+      total_cost: sumDecimals(matches.map((row) => row.total_cost)),
       unpriced_token_messages: matches.reduce((sum, row) => sum + row.unpriced_token_messages, 0),
       unpriced_tool_messages: matches.reduce((sum, row) => sum + row.unpriced_tool_messages, 0),
       estimated_token_messages: matches.reduce((sum, row) => sum + row.estimated_token_messages, 0),
@@ -891,7 +909,7 @@ function conversationRows(
   return rows
     .sort(
       (a, b) =>
-        b.cost - a.cost ||
+        compareDecimals(b.total_cost, a.total_cost) ||
         b.input_tokens + b.output_tokens - (a.input_tokens + a.output_tokens) ||
         a.sourceIndex - b.sourceIndex,
     )
@@ -906,7 +924,7 @@ function BucketTable({
   isLoading,
   onOpenConversation,
 }: {
-  buckets: UsageBucket[]
+  buckets: UsageBucketInfoResponse[]
   dimension: Breakdown
   dimensionLabel: string
   isLoading: boolean

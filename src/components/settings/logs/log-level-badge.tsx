@@ -1,6 +1,6 @@
 import { tv, type VariantProps } from '@heroui/react'
 import { cn } from '@/lib/utils'
-import type { LogLevel } from '@/types'
+import type { LogRecordLevel } from '@/types'
 
 const levelBadgeVariants = tv({
   base: 'inline-flex shrink-0 items-center gap-1.5 font-mono text-xs uppercase tabular-nums',
@@ -32,7 +32,7 @@ type Tone = NonNullable<VariantProps<typeof levelBadgeVariants>['level']>
 
 /** Levels below info and anything unrecognised share the muted tone: they are
  *  context, not something to draw the eye. */
-export function toneFor(level: LogLevel): Tone {
+export function toneFor(level: LogRecordLevel): Tone {
   switch (level) {
     case 'ERROR':
       return 'error'
@@ -45,7 +45,7 @@ export function toneFor(level: LogLevel): Tone {
   }
 }
 
-export function LogLevelBadge({ level, className }: { level: LogLevel; className?: string }) {
+export function LogLevelBadge({ level, className }: { level: LogRecordLevel; className?: string }) {
   const tone = toneFor(level)
   return (
     <span data-slot="log-level-badge" className={cn(levelBadgeVariants({ level: tone }), className)}>

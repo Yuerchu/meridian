@@ -5,8 +5,8 @@ use sha2::{Digest, Sha256};
 
 use super::SharedState;
 use super::format::StickerRef;
-use crate::db::models::emoji::NewEmoji;
-use crate::db::models::emoji_pack::NewEmojiPack;
+use crate::db::models::emoji::EmojiInsert;
+use crate::db::models::emoji_pack::EmojiPackInsert;
 
 const MAX_CANDIDATES: usize = 500;
 const MAX_CANDIDATE_BYTES: i64 = 500 * 1024 * 1024;
@@ -49,7 +49,7 @@ fn ensure_pack(state: &SharedState, account_id: &str) -> Result<String, String> 
     let now = crate::util::now_ms();
     match crate::db::ops::emoji_pack::create_pack(
         &mut conn,
-        &NewEmojiPack {
+        &EmojiPackInsert {
             id: &id,
             name: &name,
             description: Some("OneBot 自动收集；确认语义后可由助手发送"),
@@ -198,7 +198,7 @@ pub async fn capture_stickers(state: &Arc<SharedState>, self_id: i64, stickers: 
         let inserted = state.services.db.get().ok().and_then(|mut conn| {
             crate::db::ops::emoji::create_emoji(
                 &mut conn,
-                &NewEmoji {
+                &EmojiInsert {
                     id: &id,
                     pack_id: &pack_id,
                     name: &name,

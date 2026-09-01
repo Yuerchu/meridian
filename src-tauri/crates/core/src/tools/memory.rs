@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use super::{Permission, Tool, ToolContext};
-use crate::db::models::memory::{GLOBAL_SCOPE_ID, MemoryScope, NewMemory, Origin, Visibility};
+use crate::db::models::memory::{GLOBAL_SCOPE_ID, MemoryInsert, MemoryScope, Origin, Visibility};
 
 /// Where a memory tool call reads and writes.
 ///
@@ -103,7 +103,7 @@ impl Tool for SaveMemoryTool {
             let now = crate::util::now_ms();
             crate::db::ops::memory::upsert_memory(
                 &mut conn,
-                &NewMemory {
+                &MemoryInsert {
                     id: &id,
                     scope_type: scope.as_str(),
                     scope_id: &scope_id,

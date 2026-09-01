@@ -26,7 +26,7 @@ describe('AndroidFileAccess', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockApi.getPreference.mockResolvedValue('false')
+    mockApi.getPreference.mockResolvedValue({ key: 'android.manage_storage_enabled', value: false })
     mockApi.getManageStorageStatus.mockResolvedValue(false)
     mockApi.listSafRoots.mockResolvedValue([])
     mockApi.setPreference.mockResolvedValue(undefined)
@@ -45,7 +45,7 @@ describe('AndroidFileAccess', () => {
     await user.click(toggle)
 
     await waitFor(() => {
-      expect(mockApi.setPreference).toHaveBeenCalledWith('android.manage_storage_enabled', 'true')
+      expect(mockApi.setPreference).toHaveBeenCalledWith({ key: 'android.manage_storage_enabled', value: true })
       expect(mockApi.requestManageStorage).toHaveBeenCalledTimes(1)
     })
     expect(toggle).toBeChecked()

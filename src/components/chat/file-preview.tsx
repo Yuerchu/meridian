@@ -6,7 +6,7 @@ import { Sheet } from '@heroui-pro/react/sheet'
 import { useTranslation } from 'react-i18next'
 
 import { api } from '@/api'
-import type { WorkspaceFileContent } from '@/types'
+import type { WorkspaceFileContentResponse } from '@/types'
 import { usePlatform } from '@/hooks/use-platform'
 import { useHistoryLevel } from '@/hooks/use-history-level'
 import { useShikiLanguage } from '@/hooks/use-shiki-language'
@@ -24,7 +24,7 @@ type PreviewState =
   | { status: 'loading' }
   | {
       status: 'loaded'
-      file: WorkspaceFileContent
+      file: WorkspaceFileContentResponse
       firstLine: number
       kind: 'project_file' | 'project_directory'
     }
@@ -43,7 +43,7 @@ function FilePreviewLines({
   reference,
   firstLine,
 }: {
-  file: WorkspaceFileContent
+  file: WorkspaceFileContentResponse
   reference: MarkdownFileReference
   firstLine: number
 }) {
@@ -176,7 +176,11 @@ function PreviewSheet({
   const openInEditor = React.useCallback(async () => {
     setEditorError(null)
     try {
-      await api.openInEditor(conversationId, reference.path, reference.line)
+      await api.openInEditor({
+        conversationId,
+        relPath: reference.path,
+        line: reference.line ?? null,
+      })
     } catch (error) {
       setEditorError(String(error))
     }
@@ -324,7 +328,7 @@ export function FilePreviewProvider({
       const cached = probeCache.current.get(key)
       if (cached) return cached
       const probe = api
-        .workspaceProbeRef(path, { conversationId })
+        .workspaceProbeRef({ conversationId, projectId: null, path })
         .then(
           () => true,
           () => false,
@@ -355,12 +359,18 @@ export function FilePreviewProvider({
       // A source location chooses where the preview scrolls, not what is read.
       // The resolver still applies its 256 KiB / 2,000-line limits and marks a
       // bounded prefix as truncated.
-      .workspaceResolveRef({ path: request.reference.path }, { conversationId: request.conversationId })
+      .workspaceResolveRef({
+        conversationId: request.conversationId,
+        projectId: null,
+        path: request.reference.path,
+        lineStart: null,
+        lineEnd: null,
+      })
       .then(
         (
           preview,
         ): {
-          file: WorkspaceFileContent
+          file: WorkspaceFileContentResponse
           firstLine: number
           kind: 'project_file' | 'project_directory'
         } => ({

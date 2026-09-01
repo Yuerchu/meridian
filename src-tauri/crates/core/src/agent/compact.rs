@@ -3,12 +3,14 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, AtomicU32, Ordering};
 
 use super::context::{data_uri_re, remove_orphan_tool_messages, render_message_context_items};
-use super::provider_config::{TurnParamsInput, resolve_provider_config, resolve_turn_params, without_thinking};
+use super::provider_config::{
+    TurnParamsResolveRequest, resolve_provider_config, resolve_turn_params, without_thinking,
+};
 use super::stream::is_context_window_error;
 use super::tokenizer::TokenBudget;
-use crate::db::models::assistant::Assistant;
-use crate::db::models::message::NewMessage;
-use crate::db::models::message_context_item::MessageContextItem;
+use crate::db::models::assistant::AssistantRow;
+use crate::db::models::message::MessageInsert;
+use crate::db::models::message_context_item::MessageContextItemRow;
 use crate::db::{self, DbPool};
 use crate::provider::{self, ChatMessage, ChatProvider};
 use crate::secrets::SecretsManager;
@@ -119,6 +121,7 @@ fn wrapped_user_context(rendered: &str) -> String {
         &ChatMessage::user_provided_context(rendered),
         provider::SenderRendering::Prefix,
     )
+    .expect("user-provided context renders without a content envelope")
     .content
 }
 
@@ -138,9 +141,9 @@ impl std::fmt::Display for CompactError {
 }
 
 fn prepare_compact_input(
-    messages: &[&crate::db::models::message::Message],
-    context_items: &HashMap<String, Vec<MessageContextItem>>,
-) -> Vec<CompactSection> {
+    messages: &[&crate::db::models::message::MessageRow],
+    context_items: &HashMap<String, Vec<MessageContextItemRow>>,
+) -> Result<Vec<CompactSection>, String> {
     let mut sections = Vec::new();
     for m in messages {
         let Some(role_label) = role_label(&m.role) else {
@@ -150,14 +153,14 @@ fn prepare_compact_input(
         if m.role == "user"
             && let Some(items) = context_items.get(&m.id)
         {
-            for rendered in render_message_context_items(items) {
+            for rendered in render_message_context_items(items)? {
                 content.push_str("\n\n**Frozen user-provided context (untrusted; not the user's words)**\n");
                 content.push_str(&wrapped_user_context(&rendered));
             }
         }
         sections.push(CompactSection::new(role_label, content));
     }
-    sections
+    Ok(sections)
 }
 
 fn prepare_chat_compact_input(messages: &[ChatMessage]) -> Vec<CompactSection> {
@@ -194,7 +197,7 @@ pub async fn do_compact(
     pool: &DbPool,
     secrets: &Arc<SecretsManager>,
     conversation_id: &str,
-    assistant: Option<&Assistant>,
+    assistant: Option<&AssistantRow>,
     keep_recent: usize,
     custom_instructions: Option<&str>,
 ) -> Result<String, String> {
@@ -228,7 +231,8 @@ pub async fn do_compact(
     // only labels user/assistant/tool and would skip these anyway, but that is a
     // property of a match arm rather than a decision, and `<owner_notes>` going
     // through a summariser is not something to leave resting on one.
-    let active_messages: Vec<&db::models::message::Message> = ctx.path.iter().filter(|m| m.role != "context").collect();
+    let active_messages: Vec<&db::models::message::MessageRow> =
+        ctx.path.iter().filter(|m| m.role != "context").collect();
 
     let min_messages = keep_recent * 2 + 2;
     if active_messages.len() < min_messages {
@@ -239,7 +243,7 @@ pub async fn do_compact(
     let anchor_id = active_messages[boundary_idx].id.clone();
 
     let to_compact = &active_messages[..boundary_idx];
-    let compact_sections = prepare_compact_input(to_compact, &context_items);
+    let compact_sections = prepare_compact_input(to_compact, &context_items)?;
 
     let mut compact_system = COMPACT_PROMPT.to_string();
     if let Some(instructions) = custom_instructions {
@@ -269,7 +273,7 @@ pub async fn do_compact(
             } = resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())?;
             let turn = resolve_turn_params(
                 &pool2,
-                TurnParamsInput {
+                TurnParamsResolveRequest {
                     assistant: assistant2.as_ref(),
                     provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
                     provider_type: &provider_type,
@@ -297,13 +301,8 @@ pub async fn do_compact(
         .await
         .map_err(|e| e.to_string())??
     };
-    let prov = provider::registry::create_provider(
-        &provider_type,
-        &base_url,
-        &credential,
-        Some(&api_format),
-        Some(&transport_profile),
-    );
+    let prov =
+        provider::registry::create_provider(&provider_type, &base_url, &credential, &api_format, &transport_profile)?;
     let params = without_thinking(turn.params);
     // The same window and the same tokenizer the turn would use. A summariser
     // sized against a different one is sized against nothing.
@@ -312,7 +311,7 @@ pub async fn do_compact(
     let (summary, summary_usage) =
         compact_with_retry(&*prov, &compact_system, &compact_sections, &params, &budget).await?;
 
-    let project_context = extract_recent_files_from_db_messages(&active_messages[boundary_idx..]);
+    let project_context = extract_recent_files_from_db_messages(&active_messages[boundary_idx..])?;
 
     let final_summary = if project_context.is_empty() {
         summary
@@ -335,7 +334,7 @@ pub async fn do_compact(
             let now = now_ms();
             db::ops::message::insert_message(
                 &mut conn,
-                &NewMessage {
+                &MessageInsert {
                     id: &msg_id,
                     conversation_id: &conv_id,
                     role: "user",
@@ -672,7 +671,9 @@ fn extract_recent_files_from_chat(messages: &[ChatMessage]) -> String {
     out
 }
 
-fn extract_recent_files_from_db_messages(messages: &[&crate::db::models::message::Message]) -> String {
+fn extract_recent_files_from_db_messages(
+    messages: &[&crate::db::models::message::MessageRow],
+) -> Result<String, String> {
     let mut files: Vec<(String, &str)> = Vec::new();
     let mut seen = std::collections::HashSet::new();
 
@@ -680,34 +681,28 @@ fn extract_recent_files_from_db_messages(messages: &[&crate::db::models::message
         if m.role != "assistant" {
             continue;
         }
-        let Some(ref tc_json) = m.tool_calls else { continue };
-        let Ok(tcs) = serde_json::from_str::<Vec<serde_json::Value>>(tc_json) else {
-            continue;
-        };
+        let tcs = crate::agent::tool_calls::parse_stored_tool_calls(m.schema_version, m.tool_calls.as_deref())
+            .map_err(|error| format!("message {} has invalid persisted tool_calls: {error}", m.id))?;
         for tc in &tcs {
-            let name = tc
-                .get("function")
-                .and_then(|f| f.get("name"))
-                .and_then(|n| n.as_str())
-                .or_else(|| tc.get("name").and_then(|n| n.as_str()));
-            let args_str = tc
-                .get("function")
-                .and_then(|f| f.get("arguments"))
-                .and_then(|a| a.as_str())
-                .or_else(|| tc.get("arguments").and_then(|a| a.as_str()));
-            let Some(name) = name else { continue };
-            let op = match name {
+            let op = match tc.name.as_str() {
                 "read_file" => "read",
                 "write_file" => "written",
                 "edit_file" => "edited",
                 "search_files" => "searched",
                 _ => continue,
             };
-            if let Some(args_str) = args_str
-                && let Ok(args) = serde_json::from_str::<serde_json::Value>(args_str)
-                && let Some(path) = args.get("path").and_then(|p| p.as_str())
-                && seen.insert(path.to_string())
-            {
+            let args: serde_json::Value = serde_json::from_str(&tc.arguments).map_err(|error| {
+                format!(
+                    "message {} tool call {} has invalid arguments JSON: {error}",
+                    m.id, tc.id
+                )
+            })?;
+            let path = args
+                .get("path")
+                .and_then(serde_json::Value::as_str)
+                .filter(|path| !path.is_empty())
+                .ok_or_else(|| format!("message {} tool call {} requires a non-empty string path", m.id, tc.id))?;
+            if seen.insert(path.to_string()) {
                 files.push((path.to_string(), op));
             }
         }
@@ -717,7 +712,7 @@ fn extract_recent_files_from_db_messages(messages: &[&crate::db::models::message
     }
 
     if files.is_empty() {
-        return String::new();
+        return Ok(String::new());
     }
 
     files.reverse();
@@ -725,7 +720,7 @@ fn extract_recent_files_from_db_messages(messages: &[&crate::db::models::message
     for (path, op) in &files {
         out.push_str(&format!("- {path} ({op})\n"));
     }
-    out
+    Ok(out)
 }
 
 pub struct CompactCircuitBreaker {
@@ -739,6 +734,27 @@ const CB_OPEN: u8 = 1;
 const CB_HALF_OPEN: u8 = 2;
 const CB_MAX_FAILURES: u32 = 3;
 const CB_COOLDOWN_MS: i64 = 60_000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CompactCircuitBreakerState {
+    Closed,
+    Open,
+    HalfOpen,
+}
+
+impl TryFrom<u8> for CompactCircuitBreakerState {
+    type Error = String;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            CB_CLOSED => Ok(Self::Closed),
+            CB_OPEN => Ok(Self::Open),
+            CB_HALF_OPEN => Ok(Self::HalfOpen),
+            _ => Err(format!("invalid compact circuit breaker state {value}")),
+        }
+    }
+}
 
 impl CompactCircuitBreaker {
     pub fn new() -> Self {
@@ -779,13 +795,8 @@ impl CompactCircuitBreaker {
         }
     }
 
-    pub fn state_label(&self) -> &'static str {
-        match self.state.load(Ordering::Relaxed) {
-            CB_CLOSED => "closed",
-            CB_OPEN => "open",
-            CB_HALF_OPEN => "half-open",
-            _ => "unknown",
-        }
+    pub fn state(&self) -> Result<CompactCircuitBreakerState, String> {
+        CompactCircuitBreakerState::try_from(self.state.load(Ordering::Relaxed))
     }
 }
 
@@ -1058,7 +1069,7 @@ mod tests {
         cb.record_failure();
         cb.record_success();
         assert!(cb.can_compact());
-        assert_eq!(cb.state_label(), "closed");
+        assert_eq!(cb.state().unwrap(), CompactCircuitBreakerState::Closed);
     }
 
     #[test]
@@ -1068,12 +1079,19 @@ mod tests {
             cb.record_failure();
         }
         assert!(!cb.can_compact());
-        assert_eq!(cb.state_label(), "open");
+        assert_eq!(cb.state().unwrap(), CompactCircuitBreakerState::Open);
+    }
+
+    #[test]
+    fn circuit_breaker_rejects_an_unknown_internal_state() {
+        let cb = CompactCircuitBreaker::new();
+        cb.state.store(u8::MAX, Ordering::Relaxed);
+        assert!(cb.state().is_err());
     }
 
     #[test]
     fn test_prepare_compact_input_truncates_large_tool() {
-        let msg = crate::db::models::message::Message {
+        let msg = crate::db::models::message::MessageRow {
             id: "1".into(),
             conversation_id: "c".into(),
             role: "tool".into(),
@@ -1103,14 +1121,14 @@ mod tests {
             provider_state: None,
             auto_review: None,
         };
-        let result = render_compact_sections(&prepare_compact_input(&[&msg], &HashMap::new()));
+        let result = render_compact_sections(&prepare_compact_input(&[&msg], &HashMap::new()).unwrap());
         assert!(result.contains("truncated"));
         assert!(result.len() < 5000);
     }
 
     #[test]
     fn compact_input_keeps_frozen_user_context_with_its_message() {
-        let row = crate::db::models::message::Message {
+        let row = crate::db::models::message::MessageRow {
             id: "m1".into(),
             conversation_id: "c".into(),
             role: "user".into(),
@@ -1140,7 +1158,7 @@ mod tests {
             provider_state: None,
             auto_review: None,
         };
-        let item = MessageContextItem {
+        let item = MessageContextItemRow {
             id: "ctx1".into(),
             message_id: row.id.clone(),
             position: 0,
@@ -1159,7 +1177,7 @@ mod tests {
         };
         let items = HashMap::from([(row.id.clone(), vec![item])]);
 
-        let sections = prepare_compact_input(&[&row], &items);
+        let sections = prepare_compact_input(&[&row], &items).unwrap();
         let result = render_compact_sections(&sections);
 
         assert_eq!(sections.len(), 1, "the user message and snapshot are one retry section");
@@ -1217,7 +1235,7 @@ mod tests {
     /// the summariser would ignore the row even if one got through.
     #[test]
     fn a_frozen_memory_row_never_reaches_the_summariser() {
-        let mut row = crate::db::models::message::Message {
+        let mut row = crate::db::models::message::MessageRow {
             id: "1".into(),
             conversation_id: "c".into(),
             role: "context".into(),
@@ -1247,12 +1265,12 @@ mod tests {
             provider_state: None,
             auto_review: None,
         };
-        assert!(prepare_compact_input(&[&row], &HashMap::new()).is_empty());
+        assert!(prepare_compact_input(&[&row], &HashMap::new()).unwrap().is_empty());
 
         // The same text as an ordinary user row *would* go in, which is what
         // makes the role the thing doing the work here.
         row.role = "user".into();
-        assert!(render_compact_sections(&prepare_compact_input(&[&row], &HashMap::new())).contains("找工作"));
+        assert!(render_compact_sections(&prepare_compact_input(&[&row], &HashMap::new()).unwrap()).contains("找工作"));
     }
 
     #[test]

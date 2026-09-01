@@ -10,13 +10,11 @@ use crate::ServicesExt;
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AppInfo {
+pub struct AppInfoResponse {
     pub version: String,
     pub tauri_version: String,
-    /// `windows` / `macos` / `linux` / `android`, as `std::env::consts` spells
-    /// them. `get_platform` answers the same question for layout decisions;
-    /// this is here so the whole block is one round trip.
-    pub os: String,
+    /// The same closed platform identifier returned by `get_platform`.
+    pub os: crate::platform::PlatformInfoResponse,
     pub arch: String,
     /// Where everything this app owns lives. Not the log directory, which sits
     /// inside it and which `get_log_settings` already reports to the panel that
@@ -25,12 +23,12 @@ pub struct AppInfo {
 }
 
 #[tauri::command]
-pub fn get_app_info(app: tauri::AppHandle) -> Result<AppInfo, String> {
+pub fn get_app_info(app: tauri::AppHandle) -> Result<AppInfoResponse, String> {
     let services = app.services();
-    Ok(AppInfo {
+    Ok(AppInfoResponse {
         version: app.package_info().version.to_string(),
         tauri_version: tauri::VERSION.to_string(),
-        os: std::env::consts::OS.to_string(),
+        os: crate::platform::PlatformInfoResponse::current()?,
         arch: std::env::consts::ARCH.to_string(),
         data_dir: services.paths.data_dir.display().to_string(),
     })

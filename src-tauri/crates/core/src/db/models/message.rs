@@ -1,9 +1,30 @@
 use crate::db::schema::messages;
 use diesel::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, strum::EnumString, strum::IntoStaticStr)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum MessageRole {
+    User,
+    Assistant,
+    Tool,
+    Context,
+}
+
+impl MessageRole {
+    pub fn parse(value: &str) -> Result<Self, String> {
+        value.parse().map_err(|_| format!("unknown message role `{value}`"))
+    }
+
+    pub fn as_str(self) -> &'static str {
+        self.into()
+    }
+}
 
 #[derive(Debug, Clone, Queryable, Selectable)]
 #[diesel(table_name = messages)]
-pub struct Message {
+pub struct MessageRow {
     pub id: String,
     pub conversation_id: String,
     pub role: String,
@@ -115,7 +136,7 @@ pub struct MessageUsage {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = messages)]
-pub struct NewMessage<'a> {
+pub struct MessageInsert<'a> {
     pub id: &'a str,
     pub conversation_id: &'a str,
     pub role: &'a str,

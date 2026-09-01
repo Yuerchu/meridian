@@ -10,14 +10,14 @@ import { usePlatform } from '@/hooks/use-platform'
 import { useGlobalEventListener } from '@/hooks/use-global-event-listener'
 import { useConversationStore } from '@/stores/conversation-store'
 import type { InitialTurnDraft } from '@/components/chat/conversation-draft'
-import type { Conversation } from '@/types'
+import type { ConversationInfoResponse } from '@/types'
 
 /** How long to wait for a stopped turn to let go of its conversation before
  *  giving up and surfacing the refusal. */
 const RELEASE_POLL_MS = 100
 const RELEASE_ATTEMPTS = 20
 
-function keepConversationLocally(conversation: Conversation) {
+function keepConversationLocally(conversation: ConversationInfoResponse) {
   useConversationStore.setState((state) => ({
     conversations: state.conversations.some((entry) => entry.id === conversation.id)
       ? state.conversations
@@ -76,7 +76,7 @@ function App() {
   }, [refreshConversations])
 
   const handleCreate = useCallback(async () => {
-    const conv = await api.createConversation(undefined, activeProjectId ?? undefined)
+    const conv = await api.createConversation({ title: null, projectId: activeProjectId })
     try {
       await refreshConversations()
     } catch {
@@ -90,7 +90,7 @@ function App() {
 
   const handleCreateWithDraft = useCallback(
     async (draft: InitialTurnDraft) => {
-      const conv = await api.createConversation(undefined, activeProjectId ?? undefined)
+      const conv = await api.createConversation({ title: null, projectId: activeProjectId })
       const { settings } = draft
       // A welcome-page toolbar is real, not decorative. Persist every setting
       // that has a conversation column before the first turn starts; the model
@@ -98,15 +98,15 @@ function App() {
       try {
         const results = await Promise.allSettled([
           settings.selectedAssistantId
-            ? api.setConversationAssistant(conv.id, settings.selectedAssistantId)
+            ? api.setConversationAssistant({ id: conv.id, assistantId: settings.selectedAssistantId })
             : Promise.resolve(),
-          api.setConversationReasoningPrefs(
-            conv.id,
-            settings.thinkingLevel === 'default' ? null : settings.thinkingLevel,
-            settings.fastMode,
-          ),
-          api.setConversationMode(conv.id, settings.mode === 'work' ? null : settings.mode),
-          api.setConversationAcceptEdits(conv.id, settings.acceptEdits),
+          api.setConversationReasoningPrefs({
+            id: conv.id,
+            thinkingLevel: settings.thinkingLevel === 'default' ? null : settings.thinkingLevel,
+            fastMode: settings.fastMode,
+          }),
+          api.setConversationMode({ id: conv.id, mode: settings.mode === 'work' ? null : settings.mode }),
+          api.setConversationAcceptEdits({ id: conv.id, acceptEdits: settings.acceptEdits }),
         ])
         // Wait for every SQLite write before cleanup. Promise.all would enter
         // the catch on the first rejection and race deletion against the other
@@ -141,9 +141,9 @@ function App() {
           ...conv,
           assistant_id: settings.selectedAssistantId ?? conv.assistant_id,
           thinking_level: settings.thinkingLevel === 'default' ? null : settings.thinkingLevel,
-          fast_mode: Number(settings.fastMode),
+          fast_mode: settings.fastMode,
           mode: settings.mode === 'work' ? null : settings.mode,
-          accept_edits: Number(settings.acceptEdits),
+          accept_edits: settings.acceptEdits,
         })
         console.error('Failed to refresh conversations', err)
       }
@@ -158,7 +158,7 @@ function App() {
     async (id: string) => {
       const session = useConversationStore.getState().sessions[id]
       if (session?.streaming) {
-        await api.stopChat(id, session.activeTurnId)
+        await api.stopChat({ conversationId: id, turnId: session.activeTurnId })
         // A stop is a signal, not a join. The turn keeps writing until it
         // reaches its next await, and the backend refuses to delete a
         // conversation someone is still writing to — so wait for it to let go
@@ -195,7 +195,14 @@ function App() {
 
   const handleCreateProject = useCallback(
     async (name: string, path: string) => {
-      const project = await api.createProject(name, path)
+      const project = await api.createProject({
+        name,
+        path,
+        sourceType: 'local',
+        sourceId: null,
+        assistantId: null,
+        description: null,
+      })
       try {
         await refreshProjects()
       } catch {
@@ -224,7 +231,7 @@ function App() {
     async (cwd: string): Promise<string | null> => {
       let conversationId: string
       try {
-        conversationId = await api.acpOpenSession(cwd)
+        conversationId = await api.acpOpenSession({ cwd })
       } catch (err) {
         return String(err)
       }
@@ -243,7 +250,7 @@ function App() {
 
   const handleRename = useCallback(
     async (id: string, newTitle: string) => {
-      await api.updateConversationTitle(id, newTitle)
+      await api.updateConversationTitle({ id, title: newTitle })
       await refreshConversations()
     },
     [refreshConversations],
@@ -260,7 +267,7 @@ function App() {
   const handleMoveToProject = useCallback(
     async (id: string, projectId: string | null): Promise<string | null> => {
       try {
-        await api.setConversationProject(id, projectId)
+        await api.setConversationProject({ id, projectId })
         await refreshConversations()
         return null
       } catch (err) {
@@ -283,7 +290,7 @@ function App() {
 
   const handleRenameProject = useCallback(
     async (id: string, newName: string) => {
-      await api.updateProject(id, { name: newName })
+      await api.updateProject({ id, name: newName })
       await refreshProjects()
     },
     [refreshProjects],

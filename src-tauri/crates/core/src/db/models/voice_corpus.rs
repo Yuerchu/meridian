@@ -8,6 +8,50 @@ use serde::Serialize;
 
 use crate::db::schema::{voice_blobs, voice_clips, voice_sender_optouts};
 
+/// OneBot conversation type persisted with a voice sample.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, strum::IntoStaticStr, strum::EnumString)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum VoiceCorpusSourceType {
+    OnebotGroup,
+    OnebotPrivate,
+}
+
+impl VoiceCorpusSourceType {
+    pub fn as_str(&self) -> &'static str {
+        self.into()
+    }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        value
+            .parse()
+            .map_err(|_| format!("unknown voice corpus source_type '{value}'"))
+    }
+}
+
+/// Publication state persisted for a voice blob.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, strum::IntoStaticStr, strum::EnumString)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum VoiceBlobStatus {
+    Pending,
+    Ready,
+    Damaged,
+    Deleting,
+}
+
+impl VoiceBlobStatus {
+    pub fn as_str(&self) -> &'static str {
+        self.into()
+    }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        value
+            .parse()
+            .map_err(|_| format!("unknown voice blob status '{value}'"))
+    }
+}
+
 /// blob 的发布状态。
 ///
 /// 字符串而不是整数：它会出现在日志和导出里，而一个人读到 `damaged` 就知道
@@ -25,7 +69,7 @@ pub mod blob_status {
 
 #[derive(Debug, Clone, Queryable, Selectable, Identifiable, Serialize)]
 #[diesel(table_name = voice_blobs)]
-pub struct VoiceBlob {
+pub struct VoiceBlobRow {
     pub id: String,
     pub bot_self_id: i64,
     pub source_type: String,
@@ -47,7 +91,7 @@ pub struct VoiceBlob {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = voice_blobs)]
-pub struct NewVoiceBlob<'a> {
+pub struct VoiceBlobInsert<'a> {
     pub id: &'a str,
     pub bot_self_id: i64,
     pub source_type: &'a str,
@@ -66,7 +110,7 @@ pub struct NewVoiceBlob<'a> {
 
 #[derive(Debug, Clone, Queryable, Selectable, Identifiable, Serialize)]
 #[diesel(table_name = voice_clips)]
-pub struct VoiceClip {
+pub struct VoiceClipRow {
     pub id: String,
     pub blob_id: String,
     pub bot_self_id: i64,
@@ -86,7 +130,7 @@ pub struct VoiceClip {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = voice_clips)]
-pub struct NewVoiceClip<'a> {
+pub struct VoiceClipInsert<'a> {
     pub id: &'a str,
     pub blob_id: &'a str,
     pub bot_self_id: i64,
@@ -102,10 +146,17 @@ pub struct NewVoiceClip<'a> {
 }
 
 /// "以后别再录我"。与删除历史是两件事，见迁移 39。
-#[derive(Debug, Clone, Queryable, Selectable, Identifiable, Insertable, Serialize)]
+#[derive(Debug, Clone, Queryable, Selectable, Identifiable, Serialize)]
 #[diesel(table_name = voice_sender_optouts)]
 #[diesel(primary_key(sender_id))]
-pub struct VoiceSenderOptout {
+pub struct VoiceSenderOptoutRow {
     pub sender_id: String,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Insertable)]
+#[diesel(table_name = voice_sender_optouts)]
+pub struct VoiceSenderOptoutInsert<'a> {
+    pub sender_id: &'a str,
     pub created_at: i64,
 }

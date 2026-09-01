@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 
 import { ClaudeSessionPicker } from './claude-session-picker'
 import i18n from '@/i18n'
-import type { AcpDiscoveredSession } from '@/types'
+import type { AcpDiscoveredSessionInfoResponse } from '@/types'
 
 const acpListSessions = vi.fn()
 const acpImportSession = vi.fn()
@@ -23,7 +23,9 @@ vi.mock('@/api', () => ({
   },
 }))
 
-function session(over: Partial<AcpDiscoveredSession> & { sessionId: string }): AcpDiscoveredSession {
+function session(
+  over: Partial<AcpDiscoveredSessionInfoResponse> & { sessionId: string },
+): AcpDiscoveredSessionInfoResponse {
   return {
     cwd: '/work/meridian',
     title: null,
@@ -33,7 +35,7 @@ function session(over: Partial<AcpDiscoveredSession> & { sessionId: string }): A
   }
 }
 
-const SESSIONS: AcpDiscoveredSession[] = [
+const SESSIONS: AcpDiscoveredSessionInfoResponse[] = [
   session({ sessionId: 's-old', title: '很久以前', updatedAt: '2026-01-01T00:00:00.000Z' }),
   session({ sessionId: 's-none', title: '不知道什么时候' }),
   session({ sessionId: 's-new', title: '刚刚', updatedAt: '2026-08-20T11:00:00.000Z' }),
@@ -152,11 +154,15 @@ test('attaching starts narrowed to the conversation directory and closes when it
   await open({ mode: 'attach', conversationId: 'conv-1', onOpenChange })
 
   expect(acpConversationSession).toHaveBeenCalledWith('conv-1')
-  expect(acpListSessions).toHaveBeenCalledWith('/work/foxline')
+  expect(acpListSessions).toHaveBeenCalledWith({ cwd: '/work/foxline' })
 
   await rows(1)
   await userEvent.click(screen.getByRole('button', { name: 'Connect' }))
-  expect(acpAttachSession).toHaveBeenCalledWith('conv-1', 's-a', '/work/foxline')
+  expect(acpAttachSession).toHaveBeenCalledWith({
+    conversationId: 'conv-1',
+    sessionId: 's-a',
+    cwd: '/work/foxline',
+  })
   // The opposite of an import: there is exactly one session to pick and the
   // conversation it was picked for is already open behind this.
   await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
@@ -170,13 +176,13 @@ test('attaching starts narrowed to the conversation directory and closes when it
 test('attaching a conversation with nothing on record lists every project', async () => {
   acpConversationSession.mockResolvedValue(null)
   await open({ mode: 'attach', conversationId: 'conv-1' })
-  expect(acpListSessions).toHaveBeenCalledWith(null)
+  expect(acpListSessions).toHaveBeenCalledWith({ cwd: null })
 
   vi.clearAllMocks()
   acpListSessions.mockResolvedValue(SESSIONS)
   acpConversationSession.mockRejectedValue('no such conversation')
   await open({ mode: 'attach', conversationId: 'conv-2' })
-  expect(acpListSessions).toHaveBeenCalledWith(null)
+  expect(acpListSessions).toHaveBeenCalledWith({ cwd: null })
 })
 
 /**
@@ -237,11 +243,11 @@ test('a list that failed offers a retry', async () => {
  * the whole list and takes the controls with it.
  */
 test('a slow first load cannot overwrite the narrowed one that overtook it', async () => {
-  let releaseWide: (v: AcpDiscoveredSession[]) => void = () => {}
+  let releaseWide: (v: AcpDiscoveredSessionInfoResponse[]) => void = () => {}
   let releaseWideError: (e: unknown) => void = () => {}
   acpListSessions.mockImplementationOnce(
     () =>
-      new Promise<AcpDiscoveredSession[]>((resolve, reject) => {
+      new Promise<AcpDiscoveredSessionInfoResponse[]>((resolve, reject) => {
         releaseWide = resolve
         releaseWideError = reject
       }),

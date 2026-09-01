@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { api } from '@/api'
 import { listen } from '@/lib/transport'
-import type { QueueDelivery, QueueState, QueuedPrompt, WorkspaceReferenceInput } from '@/types'
+import type { QueueDelivery, QueueState, QueuedPromptInfoResponse, WorkspaceReferenceRequest } from '@/types'
 
 /**
  * The state a row is in, derived here from the same timestamps the backend
@@ -14,7 +14,7 @@ import type { QueueDelivery, QueueState, QueuedPrompt, WorkspaceReferenceInput }
  * outranks everything, then in-doubt, which must never be mistaken for
  * deliverable.
  */
-export function queueState(item: QueuedPrompt): QueueState {
+export function queueState(item: QueuedPromptInfoResponse): QueueState {
   if (item.settled_at != null) return 'settled'
   if (item.dispatched_at != null) return 'in_doubt'
   if (item.held_at != null) return 'held'
@@ -29,10 +29,11 @@ export function queueState(item: QueuedPrompt): QueueState {
  * the next item, a steer settles one — and a copy maintained locally would
  * disagree with the ledger at exactly the moments the ledger exists for.
  *
- * `queue-updated` carries nothing but a conversation id for the same reason.
+ * `queue-updated` carries the conversation id and a required delivery flag;
+ * the rows remain the source of truth for everything else.
  */
 export function usePromptQueue(conversationId: string, enabled: boolean) {
-  const [items, setItems] = useState<QueuedPrompt[]>([])
+  const [items, setItems] = useState<QueuedPromptInfoResponse[]>([])
 
   const reload = useCallback(() => {
     if (!enabled) return
@@ -56,8 +57,8 @@ export function usePromptQueue(conversationId: string, enabled: boolean) {
       .catch(() => {
         if (alive) setItems([])
       })
-    const unlisten = listen<{ conversation_id?: string }>('queue-updated', (event) => {
-      if (event.payload?.conversation_id !== conversationId) return
+    const unlisten = listen('queue-updated', (event) => {
+      if (event.payload.conversation_id !== conversationId) return
       if (!alive) return
       api
         .queueList(conversationId)
@@ -73,8 +74,13 @@ export function usePromptQueue(conversationId: string, enabled: boolean) {
   }, [conversationId, enabled])
 
   const enqueue = useCallback(
-    async (content: string, delivery: QueueDelivery, contextRefs?: WorkspaceReferenceInput[]) => {
-      const item = await api.queueEnqueue(conversationId, content, delivery, contextRefs)
+    async (content: string, delivery: QueueDelivery, contextRefs?: WorkspaceReferenceRequest[]) => {
+      const item = await api.queueEnqueue({
+        conversationId,
+        content,
+        delivery,
+        contextRefs: contextRefs ?? null,
+      })
       // Optimistic only in the sense that it saves a round trip; the event that
       // follows replaces the list wholesale, including this row.
       setItems((prev) => [...prev, item])
@@ -88,29 +94,24 @@ export function usePromptQueue(conversationId: string, enabled: boolean) {
       // Refused for anything already sent, and the refusal is the point: the
       // list is redrawn from what the backend actually has rather than from
       // what was asked for.
-      await api.queueRemove(conversationId, id).finally(reload)
+      await api.queueRemove({ conversationId, id }).finally(reload)
     },
     [conversationId, reload],
   )
 
   const reorder = useCallback(
-    async (next: QueuedPrompt[]) => {
+    async (next: QueuedPromptInfoResponse[]) => {
       // Drawn immediately, because a row that snaps back while a request is in
       // flight reads as the drag having failed.
       setItems(next)
-      await api
-        .queueReorder(
-          conversationId,
-          next.map((i) => i.id),
-        )
-        .catch(reload)
+      await api.queueReorder({ conversationId, ids: next.map((i) => i.id) }).catch(reload)
     },
     [conversationId, reload],
   )
 
   const setDelivery = useCallback(
     async (id: string, delivery: QueueDelivery) => {
-      await api.queueSetDelivery(conversationId, id, delivery).finally(reload)
+      await api.queueSetDelivery({ conversationId, id, delivery }).finally(reload)
     },
     [conversationId, reload],
   )

@@ -35,34 +35,23 @@ macro_rules! with_all_commands {
     ($callback:ident) => {
         $callback! {
             async commands::chat => chat(
-                conversation_id: String,
-                message: Option<String>,
-                turn_id: Option<String>,
-                replaces: Option<String>,
-                model_override: Option<String>,
-                provider_override: Option<String>,
-                thinking_level: Option<String>,
-                assistant_id: Option<String>,
-                fast: Option<bool>,
-                mode: Option<String>,
-                voice: Option<bool>,
-                context_refs: Option<Vec<meridian_core::workspace::reference::WorkspaceReferenceInput>>,
+                request: $crate::commands::chat::ChatRequest,
             ),
-            async commands::chat => stop_chat(conversation_id: String, turn_id: Option<String>),
-            async commands::message => read_message_context_item(conversation_id: String, item_id: String),
+            async commands::chat => stop_chat(
+                request: $crate::commands::chat::ChatStopRequest,
+            ),
+            async commands::message => read_message_context_item(
+                request: $crate::commands::message::MessageContextReadRequest,
+            ),
             // A literal command the user typed with `!`. Desktop owns the
             // process; remote clients may request it on that host. Standalone
             // Android registers an explicit unavailable stub instead of
             // failing with an unknown-command transport error.
             async commands::user_command => run_user_command(
-                conversation_id: String,
-                turn_id: String,
-                command: String,
-                retry_without_sandbox: Option<bool>,
+                request: $crate::commands::user_command::UserCommandRunRequest,
             ),
             async commands::user_command => get_user_command_result(
-                conversation_id: String,
-                message_id: String,
+                request: $crate::commands::user_command::UserCommandResultReadRequest,
             ),
             async commands::user_command => active_user_shell_turn(
                 conversation_id: String,
@@ -77,56 +66,88 @@ macro_rules! with_all_commands {
             //
             // A remote client has no use for them anyway: its own copies are
             // answered locally, because the remote token itself lives here.
-            local commands::secret => set_secret(key: String, value: String),
-            local commands::secret => get_secret(key: String),
-            local commands::secret => delete_secret(key: String),
+            local commands::secret => set_secret(
+                request: $crate::commands::secret::SecretUpsertRequest,
+            ),
+            local commands::secret => get_secret(
+                request: $crate::commands::secret::SecretReadRequest,
+            ),
+            local commands::secret => delete_secret(
+                request: $crate::commands::secret::SecretDeleteRequest,
+            ),
 
             async commands::conversation => list_conversations(archived: bool),
             async commands::conversation => create_conversation(
-                title: Option<String>,
-                project_id: Option<String>,
+                request: $crate::commands::conversation::ConversationCreateRequest,
             ),
-            async commands::conversation => update_conversation_title(id: String, title: String),
+            async commands::conversation => update_conversation_title(
+                request: $crate::commands::conversation::ConversationTitleUpdateRequest,
+            ),
+            async commands::conversation => search_conversations(
+                request: $crate::commands::conversation::ConversationSearchRequest,
+            ),
             async commands::conversation => set_conversation_assistant(
-                id: String,
-                assistant_id: Option<String>,
+                request: $crate::commands::conversation::ConversationAssistantUpdateRequest,
             ),
             async commands::conversation => set_conversation_reasoning_prefs(
-                id: String,
-                thinking_level: Option<String>,
-                fast_mode: bool,
+                request: $crate::commands::conversation::ConversationReasoningPreferencesUpdateRequest,
             ),
             async commands::conversation => toggle_pin_conversation(id: String),
             async commands::conversation => delete_conversation(id: String),
             async commands::conversation => compact(
-                conversation_id: String,
-                custom_instructions: Option<String>,
+                request: $crate::commands::conversation::ConversationCompactionRequest,
             ),
             async commands::conversation => get_context_info(conversation_id: String),
 
-            async commands::message => conversation_snapshot(conversation_id: String),
-            async commands::message => switch_branch(conversation_id: String, message_id: String),
-            async commands::message => delete_message(conversation_id: String, id: String),
-            async commands::message => rate_message(id: String, rating: Option<i32>),
-            local commands::message => export_conversation(
-                conversation_id: String,
-                format: String,
-                output_path: Option<String>,
+            async commands::message => conversation_snapshot(
+                request: $crate::commands::message::ConversationSnapshotRequest,
             ),
-            local commands::message => upload_file(conversation_id: String, file_path: String),
+            async commands::plan_review => get_plan_review(
+                request: $crate::commands::plan_review::PlanReviewReadRequest,
+            ),
+            async commands::plan_review => list_plan_revisions(
+                request: $crate::commands::plan_review::PlanRevisionListRequest,
+            ),
+            async commands::plan_review => save_plan_review_draft(
+                request: $crate::commands::plan_review::PlanReviewDraftSaveRequest,
+            ),
+            async commands::plan_review => discard_plan_review_draft(
+                request: $crate::commands::plan_review::PlanReviewDraftDiscardRequest,
+            ),
+            async commands::plan_review => decide_plan_review(
+                request: $crate::commands::plan_review::PlanReviewDecisionRequest,
+            ),
+            async commands::plan_review => get_plan_review_delivery(
+                request: $crate::commands::plan_review::PlanReviewDeliveryReadRequest,
+            ),
+            async commands::plan_review => continue_plan_review_delivery(
+                request: $crate::commands::plan_review::PlanReviewDeliveryContinueRequest,
+            ),
+            async commands::plan_review => resolve_plan_file_conflict(
+                request: $crate::commands::plan_review::PlanFileConflictResolveRequest,
+            ),
+            async commands::message => switch_branch(
+                request: $crate::commands::message::MessageBranchSwitchRequest,
+            ),
+            async commands::message => delete_message(
+                request: $crate::commands::message::MessageDeleteRequest,
+            ),
+            async commands::message => rate_message(
+                request: $crate::commands::message::MessageRatingUpdateRequest,
+            ),
+            local commands::message => export_conversation(
+                request: $crate::commands::message::ConversationExportRequest,
+            ),
+            local commands::message => upload_file(
+                request: $crate::commands::message::MessageFileUploadRequest,
+            ),
 
             async commands::assistant => list_assistants(),
             async commands::assistant => create_assistant(
-                name: String,
-                system_prompt: String,
-                model_id: Option<String>,
-                temperature: Option<f32>,
-                top_p: Option<f32>,
-                max_tokens: Option<i32>,
+                request: $crate::commands::assistant::AssistantCreateRequest,
             ),
             async commands::assistant => update_assistant(
-                id: String,
-                updates: $crate::commands::assistant::AssistantPatch,
+                request: $crate::commands::assistant::AssistantUpdateRequest,
             ),
             async commands::assistant => delete_assistant(id: String),
 
@@ -138,138 +159,114 @@ macro_rules! with_all_commands {
             async commands::provider => codex_auth_status(),
             async commands::provider => list_providers(),
             async commands::provider => create_provider(
-                name: String,
-                provider_type: String,
-                base_url: String,
-                api_format: Option<String>,
-                catalog_id: Option<String>,
-                auth_option: Option<String>,
+                request: $crate::commands::provider::ProviderCreateRequest,
             ),
             async commands::provider => update_provider(
-                id: String,
-                name: Option<String>,
-                provider_type: Option<String>,
-                base_url: Option<String>,
-                is_enabled: Option<i32>,
-                api_format: Option<String>,
-                credential_kind: Option<String>,
-                transport_profile: Option<String>,
+                request: $crate::commands::provider::ProviderUpdateRequest,
             ),
             async commands::provider => delete_provider(id: String),
-            async commands::provider => set_provider_key(provider_id: String, api_key: String),
+            async commands::provider => set_provider_key(
+                request: $crate::commands::provider::ProviderKeyUpdateRequest,
+            ),
             async commands::provider => get_provider_key_exists(provider_id: String),
             async commands::provider => fetch_provider_models(
-                provider_id: String,
-                force_refresh: Option<bool>,
+                request: $crate::commands::provider::ProviderModelListRequest,
             ),
             async commands::provider => get_provider_capabilities(
-                provider_id: String,
-                model_id: String,
+                request: $crate::commands::provider::ProviderCapabilitiesReadRequest,
             ),
             async commands::provider => get_provider_balance(provider_id: String),
 
             async commands::model_config => list_model_configs(provider_id: String),
             async commands::model_config => get_model_config(
-                provider_id: String,
-                model_id: String,
+                request: $crate::commands::model_config::ModelConfigReadRequest,
             ),
             async commands::model_config => save_model_config(
-                input: meridian_core::db::models::model_config::ModelConfigInput,
+                request: $crate::commands::model_config::ModelConfigUpsertRequest,
             ),
             async commands::model_config => delete_model_config(id: String),
 
             async commands::project => list_projects(),
             async commands::project => create_project(
-                name: String,
-                path: Option<String>,
-                source_type: Option<String>,
-                source_id: Option<String>,
-                assistant_id: Option<String>,
-                description: Option<String>,
+                request: $crate::commands::project::ProjectCreateRequest,
             ),
             async commands::project => update_project(
-                id: String,
-                name: Option<String>,
-                path: Option<String>,
-                assistant_id: Option<String>,
-                description: Option<String>,
+                request: $crate::commands::project::ProjectUpdateRequest,
             ),
             async commands::project => delete_project(id: String),
 
             // The file panel. Read-only and deliberately not `local`: in remote
             // mode the phone is asking about the *host's* project files, which
             // is the whole point of looking at them from a phone.
-            async commands::workspace => workspace_root(conversation_id: String),
-            async commands::workspace => workspace_tree(conversation_id: String, dir: Option<String>),
-            async commands::workspace => workspace_read_file(conversation_id: String, rel_path: String),
+            async commands::workspace => workspace_root(
+                request: $crate::commands::workspace::WorkspaceRootRequest,
+            ),
+            async commands::workspace => workspace_tree(
+                request: $crate::commands::workspace::WorkspaceTreeRequest,
+            ),
+            async commands::workspace => workspace_read_file(
+                request: $crate::commands::workspace::WorkspaceFileReadRequest,
+            ),
             async commands::workspace => workspace_suggest_refs(
-                conversation_id: Option<String>,
-                project_id: Option<String>,
-                query: String,
-                limit: Option<usize>
+                request: $crate::commands::workspace::WorkspaceReferenceSuggestRequest,
             ),
             async commands::workspace => workspace_resolve_ref(
-                conversation_id: Option<String>,
-                project_id: Option<String>,
-                reference: meridian_core::workspace::reference::WorkspaceReferenceInput
+                request: $crate::commands::workspace::WorkspaceReferenceResolveRequest,
             ),
             async commands::workspace => workspace_probe_ref(
-                conversation_id: Option<String>,
-                project_id: Option<String>,
-                path: String
+                request: $crate::commands::workspace::WorkspaceReferenceProbeRequest,
             ),
-            async commands::workspace => workspace_git_status(conversation_id: String),
-            async commands::workspace => workspace_git_diff(conversation_id: String, rel_path: Option<String>),
+            async commands::workspace => workspace_git_status(
+                request: $crate::commands::workspace::WorkspaceGitStatusRequest,
+            ),
+            async commands::workspace => workspace_git_diff(
+                request: $crate::commands::workspace::WorkspaceGitDiffRequest,
+            ),
             // Runs the user's configured editor command — a program launch, so
             // a remote caller is refused outright.
             local commands::workspace => open_in_editor(
-                conversation_id: String,
-                rel_path: String,
-                line: Option<u32>,
+                request: $crate::commands::workspace::WorkspaceEditorOpenRequest,
             ),
 
             // The journal's read side: per-line attribution and file history.
             // Read-only, and not `local` for the workspace commands' reason —
             // remote mode asks about the host's record.
-            async commands::journal => journal_blame(conversation_id: String, rel_path: String),
-            async commands::journal => journal_file_history(conversation_id: String, rel_path: String),
-            async commands::journal => journal_version_content(version_id: String),
+            async commands::journal => journal_blame(
+                request: $crate::commands::journal::JournalBlameRequest,
+            ),
+            async commands::journal => journal_file_history(
+                request: $crate::commands::journal::JournalFileHistoryRequest,
+            ),
+            async commands::journal => journal_version_content(
+                request: $crate::commands::journal::JournalVersionContentRequest,
+            ),
 
             async commands::conversation => list_conversations_by_project(
-                project_id: String,
-                archived: bool,
+                request: $crate::commands::conversation::ConversationListByProjectRequest,
             ),
 
             async commands::memory => list_memories(project_id: String),
             async commands::memory => save_memory(
-                project_id: String,
-                key: String,
-                content: String,
-                memory_type: Option<String>,
+                request: $crate::commands::memory::MemoryUpsertRequest,
             ),
             async commands::memory => save_memory_scoped(
-                scope: String,
-                project_id: Option<String>,
-                subject_scope_id: Option<String>,
-                key: String,
-                content: String,
-                memory_type: Option<String>,
-                owner_only: Option<bool>,
+                request: $crate::commands::memory::MemoryScopedUpsertRequest,
             ),
             async commands::memory => update_memory(
-                id: String,
-                content: Option<String>,
-                memory_type: Option<String>,
-                owner_only: Option<bool>,
+                request: $crate::commands::memory::MemoryUpdateRequest,
             ),
             async commands::memory => delete_memory(id: String),
 
             async commands::todo => get_active_todo_list(conversation_id: String),
 
-            async commands::conversation => set_conversation_mode(id: String, mode: Option<String>),
+            async commands::conversation => set_conversation_mode(
+                request: $crate::commands::conversation::ConversationModeUpdateRequest,
+            ),
             async commands::conversation => set_conversation_accept_edits(
-                id: String,
-                accept_edits: bool,
+                request: $crate::commands::conversation::ConversationAcceptEditsUpdateRequest,
+            ),
+            async commands::conversation => set_conversation_project(
+                request: $crate::commands::conversation::ConversationProjectUpdateRequest,
             ),
 
             async commands::memory => delete_memories(ids: Vec<String>),
@@ -277,9 +274,7 @@ macro_rules! with_all_commands {
             async commands::memory => list_memory_subjects(),
             async commands::memory => forget_memory_subject(subject_scope_id: String),
             async commands::memory => set_memory_subject_flags(
-                subject_scope_id: String,
-                is_pinned: Option<bool>,
-                opted_out: Option<bool>,
+                request: $crate::commands::memory::MemorySubjectFlagsUpdateRequest,
             ),
             async commands::memory => list_memory_trash(limit: Option<i64>),
             async commands::memory => restore_memories(ids: Vec<String>),
@@ -287,12 +282,15 @@ macro_rules! with_all_commands {
             async commands::memory => memory_enums(),
 
             async commands::usage => usage_report(
-                dimension: meridian_core::db::ops::usage::UsageDimension,
-                filter: Option<meridian_core::db::ops::usage::UsageFilter>,
+                request: $crate::commands::usage::UsageReportRequest,
             ),
 
-            async commands::preference => get_preference(key: String),
-            async commands::preference => set_preference(key: String, value: String),
+            async commands::preference => get_preference(
+                request: $crate::commands::preference::PreferenceReadRequest,
+            ),
+            async commands::preference => set_preference(
+                request: $crate::commands::preference::PreferenceUpdateRequest,
+            ),
 
             async commands::mcp => list_mcp_servers(),
             // `local`: `command` is a binary this app will spawn, so a remote
@@ -300,17 +298,10 @@ macro_rules! with_all_commands {
             // `acp_save_config` is local. Listing stays reachable; env/headers
             // are stripped in `sanitize_remote_output`.
             local commands::mcp => create_mcp_server(
-                name: String,
-                transport_type: String,
-                command: Option<String>,
-                args: Option<String>,
-                env: Option<String>,
-                url: Option<String>,
-                headers: Option<String>,
+                request: $crate::commands::mcp::McpServerCreateRequest,
             ),
             local commands::mcp => update_mcp_server(
-                id: String,
-                updates: $crate::commands::mcp::McpServerPatch,
+                request: $crate::commands::mcp::McpServerUpdateRequest,
             ),
             async commands::mcp => delete_mcp_server(id: String),
             local commands::mcp => connect_mcp_server(id: String),
@@ -323,10 +314,16 @@ macro_rules! with_all_commands {
             // that needs to know what the desktop was already holding.
             sync commands::approval => all_pending_approvals(),
             async commands::approval => approve_tool_call(approval_id: String),
-            async commands::approval => deny_tool_call(approval_id: String, reason: Option<String>),
-            async commands::approval => respond_to_ask(approval_id: String, response: String),
+            async commands::approval => deny_tool_call(
+                request: $crate::commands::approval::ToolCallDenyRequest,
+            ),
+            async commands::approval => respond_to_ask(
+                request: $crate::commands::approval::AskResponseRequest,
+            ),
 
-            async commands::sub_agent => steer_conversation(conversation_id: String, text: String),
+            async commands::sub_agent => steer_conversation(
+                request: $crate::commands::sub_agent::ConversationSteerRequest,
+            ),
 
             sync platform => get_platform(),
             local platform => get_window_insets(),
@@ -341,7 +338,7 @@ macro_rules! with_all_commands {
 
             #[cfg(not(target_os = "android"))]
             async commands::onebot => get_onebot_status(),
-            // `local` for what it *returns*, not for what it does. `OneBotConfig`
+            // `local` for what it *returns*, not for what it does. `OneBotConfigInfoResponse`
             // carries `access_token` — another server's credential, the same one
             // `guard_preference` refuses to let a remote caller write — plus
             // `admin_users`, and the voice lists, whose private-chat entries are
@@ -353,7 +350,7 @@ macro_rules! with_all_commands {
             local commands::onebot => get_onebot_config(),
             #[cfg(not(target_os = "android"))]
             local commands::onebot => save_onebot_config(
-                config: meridian_core::onebot::OneBotConfig,
+                request: $crate::commands::onebot::OneBotConfigUpdateRequest,
             ),
             #[cfg(not(target_os = "android"))]
             local commands::onebot => get_voice_send_readiness(),
@@ -367,7 +364,9 @@ macro_rules! with_all_commands {
             #[cfg(not(target_os = "android"))]
             async commands::hooks => get_hooks_config(),
             #[cfg(not(target_os = "android"))]
-            local commands::hooks => save_hooks_config(config: meridian_core::hooks::HookConfig),
+            local commands::hooks => save_hooks_config(
+                request: $crate::commands::hooks::HookConfigUpdateRequest,
+            ),
             #[cfg(not(target_os = "android"))]
             local commands::hooks => regenerate_hooks_token(),
             #[cfg(not(target_os = "android"))]
@@ -376,13 +375,12 @@ macro_rules! with_all_commands {
             local commands::hooks => stop_hooks(),
 
             #[cfg(not(target_os = "android"))]
-            async commands::acp => acp_open_session(cwd: String),
+            async commands::acp => acp_open_session(
+                request: $crate::commands::acp::AcpSessionOpenRequest,
+            ),
             #[cfg(not(target_os = "android"))]
             async commands::acp => acp_send(
-                conversation_id: String,
-                message: String,
-                turn_id: Option<String>,
-                context_refs: Option<Vec<meridian_core::workspace::reference::WorkspaceReferenceInput>>
+                request: $crate::commands::acp::AcpPromptSendRequest,
             ),
             // Not `local`, for the same reason `acp_open_session` is not: that
             // row already lets a remote caller start an adapter in a directory
@@ -390,14 +388,16 @@ macro_rules! with_all_commands {
             // same privilege, on a machine whose transcripts the caller can
             // already read.
             #[cfg(not(target_os = "android"))]
-            async commands::acp => acp_list_sessions(cwd: Option<String>),
+            async commands::acp => acp_list_sessions(
+                request: $crate::commands::acp::AcpSessionListRequest,
+            ),
             #[cfg(not(target_os = "android"))]
-            async commands::acp => acp_import_session(session: meridian_core::acp::import::ImportRequest),
+            async commands::acp => acp_import_session(
+                request: $crate::commands::acp::AcpImportSessionRequest,
+            ),
             #[cfg(not(target_os = "android"))]
             async commands::acp => acp_attach_session(
-                conversation_id: String,
-                session_id: String,
-                cwd: String,
+                request: $crate::commands::acp::AcpSessionAttachRequest,
             ),
             #[cfg(not(target_os = "android"))]
             async commands::acp => acp_conversation_session(conversation_id: String),
@@ -408,12 +408,12 @@ macro_rules! with_all_commands {
             #[cfg(not(target_os = "android"))]
             async commands::acp => acp_live_sessions(),
             #[cfg(not(target_os = "android"))]
-            async commands::acp => acp_session_config(conversation_id: String),
+            async commands::acp => acp_session_config(
+                request: $crate::commands::acp::AcpSessionConfigReadRequest,
+            ),
             #[cfg(not(target_os = "android"))]
             async commands::acp => acp_set_session_config(
-                conversation_id: String,
-                config_id: String,
-                value: serde_json::Value,
+                request: $crate::commands::acp::AcpSessionConfigUpdateRequest,
             ),
             #[cfg(not(target_os = "android"))]
             async commands::acp => acp_get_config(),
@@ -421,7 +421,9 @@ macro_rules! with_all_commands {
             // remote writer of it has arbitrary code execution here. Not the
             // self-lockout the other `local` rows are about.
             #[cfg(not(target_os = "android"))]
-            local commands::acp => acp_save_config(config: meridian_core::acp::AcpConfig),
+            local commands::acp => acp_save_config(
+                request: $crate::commands::acp::AcpConfigUpdateRequest,
+            ),
             #[cfg(not(target_os = "android"))]
             local commands::acp => acp_check_adapter(),
 
@@ -430,17 +432,16 @@ macro_rules! with_all_commands {
             // for the desktop to get through is the case this was built for.
             async commands::queue => queue_list(conversation_id: String),
             async commands::queue => queue_enqueue(
-                conversation_id: String,
-                content: String,
-                delivery: String,
-                context_refs: Option<Vec<meridian_core::workspace::reference::WorkspaceReferenceInput>>,
+                request: $crate::commands::queue::QueuedPromptCreateRequest,
             ),
-            async commands::queue => queue_remove(conversation_id: String, id: String),
-            async commands::queue => queue_reorder(conversation_id: String, ids: Vec<String>),
+            async commands::queue => queue_remove(
+                request: $crate::commands::queue::QueuedPromptRemoveRequest,
+            ),
+            async commands::queue => queue_reorder(
+                request: $crate::commands::queue::QueuedPromptReorderRequest,
+            ),
             async commands::queue => queue_set_delivery(
-                conversation_id: String,
-                id: String,
-                delivery: String,
+                request: $crate::commands::queue::QueuedPromptDeliveryUpdateRequest,
             ),
             async commands::queue => queue_release(conversation_id: String),
 
@@ -449,7 +450,9 @@ macro_rules! with_all_commands {
             #[cfg(not(target_os = "android"))]
             async commands::remote => get_listen_config(),
             #[cfg(not(target_os = "android"))]
-            local commands::remote => save_listen_config(config: $crate::remote::ListenConfig),
+            local commands::remote => save_listen_config(
+                request: $crate::commands::remote::ListenConfigUpdateRequest,
+            ),
             #[cfg(not(target_os = "android"))]
             local commands::remote => start_listen(),
             #[cfg(not(target_os = "android"))]
@@ -459,13 +462,19 @@ macro_rules! with_all_commands {
             #[cfg(not(target_os = "android"))]
             sync commands::remote => get_listen_addresses(),
 
-            local commands::dev => voice_probe_echo(sample_rate: u32, pcm: String),
+            local commands::dev => voice_probe_echo(
+                request: $crate::commands::dev::VoiceProbeEchoRequest,
+            ),
 
             async commands::voice => voice_prewarm(),
             async commands::voice => voice_model_status(),
-            local commands::voice => voice_download_model(url: Option<String>),
+            local commands::voice => voice_download_model(
+                request: $crate::commands::voice::VoiceModelDownloadRequest,
+            ),
             async commands::voice => voice_cancel_download(),
-            local commands::voice => voice_import_model(archive_path: String),
+            local commands::voice => voice_import_model(
+                request: $crate::commands::voice::VoiceModelImportRequest,
+            ),
             async commands::voice => voice_delete_model(),
             #[cfg(not(target_os = "android"))]
             local commands::voice => voice_release_prewarm(),
@@ -476,7 +485,9 @@ macro_rules! with_all_commands {
             #[cfg(not(target_os = "android"))]
             local commands::voice => voice_cancel_recording(),
             #[cfg(target_os = "android")]
-            async commands::voice => voice_transcribe_pcm(sample_rate: u32, pcm: String),
+            async commands::voice => voice_transcribe_pcm(
+                request: $crate::commands::voice::VoicePcmTranscriptionRequest,
+            ),
 
             // 语料管理。三个命令的远程可见性是分开决定的:
             //
@@ -486,26 +497,24 @@ macro_rules! with_all_commands {
             // 列表只回答"占了多少地方",会话用的还是假名。
             async commands::voice_corpus => list_voice_corpus(),
             async commands::voice_corpus => delete_voice_corpus(
-                selector: meridian_core::voice_corpus::manage::CorpusSelector
+                request: $crate::commands::voice_corpus::VoiceCorpusDeleteRequest,
             ),
-            async commands::voice_corpus => set_voice_optout(sender_id: String, enabled: bool),
-            async commands::voice_corpus => forget_voice_sender(sender_id: String),
+            async commands::voice_corpus => set_voice_optout(
+                request: $crate::commands::voice_corpus::VoiceCorpusOptoutUpdateRequest,
+            ),
+            async commands::voice_corpus => forget_voice_sender(
+                request: $crate::commands::voice_corpus::VoiceCorpusForgetRequest,
+            ),
             local commands::voice_corpus => export_voice_corpus(
-                output_dir: String,
-                include_sender: bool,
-                include_untranscribed: bool
+                request: $crate::commands::voice_corpus::VoiceCorpusExportRequest,
             ),
 
             sync commands::prompt_template => list_prompt_templates(),
             sync commands::prompt_template => create_prompt_template(
-                name: String,
-                category: String,
-                template_text: String,
-                description: Option<String>,
+                request: $crate::commands::prompt_template::PromptTemplateCreateRequest,
             ),
             sync commands::prompt_template => update_prompt_template(
-                id: String,
-                updates: $crate::commands::prompt_template::PromptTemplatePatch,
+                request: $crate::commands::prompt_template::PromptTemplateUpdateRequest,
             ),
             sync commands::prompt_template => delete_prompt_template(id: String),
             sync commands::prompt_template => list_template_variables(),
@@ -514,22 +523,17 @@ macro_rules! with_all_commands {
             sync commands::skill => rescan_skills(),
             sync commands::skill => get_skill_body(dir_name: String),
             sync commands::skill => create_skill(
-                dir_name: String,
-                llm_description: String,
-                body: String,
-                display_name: Option<String>,
+                request: $crate::commands::skill::SkillCreateRequest,
             ),
             sync commands::skill => update_skill(
-                dir_name: String,
-                updates: $crate::commands::skill::SkillPatch,
+                request: $crate::commands::skill::SkillUpdateRequest,
             ),
             sync commands::skill => delete_skill(dir_name: String),
-            sync commands::skill => list_skill_bindings(layer: String, anchor_id: Option<String>),
+            sync commands::skill => list_skill_bindings(
+                request: $crate::commands::skill::SkillBindingListRequest,
+            ),
             sync commands::skill => set_skill_binding(
-                layer: String,
-                anchor_id: Option<String>,
-                dir_name: String,
-                bound: bool,
+                request: $crate::commands::skill::SkillBindingUpdateRequest,
             ),
 
             // Reachable from a phone on purpose: it describes the host, and a
@@ -543,24 +547,36 @@ macro_rules! with_all_commands {
             local splash => splash_animation_done(),
             local splash => splash_app_ready(),
 
-            async commands::logs => read_logs(query: $crate::commands::logs::LogQueryInput),
+            async commands::logs => read_logs(request: $crate::commands::logs::LogQueryRequest),
             async commands::logs => list_log_files(),
             async commands::logs => get_log_settings(),
-            async commands::logs => set_log_level(level: String),
-            local commands::logs => export_logs(output_path: String),
+            async commands::logs => set_log_level(request: $crate::commands::logs::LogLevelUpdateRequest),
+            local commands::logs => export_logs(request: $crate::commands::logs::LogExportRequest),
 
             sync commands::emoji => list_emoji_packs(),
-            sync commands::emoji => create_emoji_pack(name: String, description: Option<String>),
+            sync commands::emoji => create_emoji_pack(
+                request: $crate::commands::emoji::EmojiPackCreateRequest,
+            ),
             sync commands::emoji => delete_emoji_pack(id: String),
             sync commands::emoji => list_emojis(pack_id: String),
-            local commands::emoji => import_emojis(pack_id: String, file_paths: Vec<String>),
+            local commands::emoji => import_emojis(
+                request: $crate::commands::emoji::EmojiImportRequest,
+            ),
             sync commands::emoji => delete_emoji(id: String),
-            sync commands::emoji => rename_emoji(id: String, new_name: String),
+            sync commands::emoji => rename_emoji(
+                request: $crate::commands::emoji::EmojiRenameRequest,
+            ),
             async commands::emoji => suggest_sticker_semantics(id: String),
-            sync commands::emoji => confirm_sticker_semantics(id: String, name: String, tags: Option<String>),
+            sync commands::emoji => confirm_sticker_semantics(
+                request: $crate::commands::emoji::EmojiSemanticsConfirmRequest,
+            ),
             sync commands::emoji => search_emojis(query: String),
-            sync commands::emoji => assign_emoji_pack(assistant_id: String, pack_id: String),
-            sync commands::emoji => unassign_emoji_pack(assistant_id: String, pack_id: String),
+            sync commands::emoji => assign_emoji_pack(
+                request: $crate::commands::emoji::AssistantEmojiPackAssignmentRequest,
+            ),
+            sync commands::emoji => unassign_emoji_pack(
+                request: $crate::commands::emoji::AssistantEmojiPackAssignmentRequest,
+            ),
             sync commands::emoji => list_assistant_emoji_packs(assistant_id: String),
             sync commands::emoji => get_emoji_file_url(emoji_id: String),
 
@@ -570,34 +586,241 @@ macro_rules! with_all_commands {
             // never asks, and custom tools skip the OS sandbox. Same ACE
             // reason as `acp.command`.
             local commands::tool_system => create_custom_tool(
-                name: String,
-                description: String,
-                command: String,
-                category_id: Option<String>,
-                parameters_schema: Option<String>,
-                args_template: Option<String>,
-                working_directory: Option<String>,
-                timeout_ms: Option<i32>,
-                permission: Option<String>,
+                request: $crate::commands::tool_system::CustomToolCreateRequest,
             ),
             local commands::tool_system => update_custom_tool(
-                id: String,
-                updates: $crate::commands::tool_system::CustomToolPatch,
+                request: $crate::commands::tool_system::CustomToolUpdateRequest,
             ),
             sync commands::tool_system => delete_custom_tool(id: String),
             sync commands::tool_system => list_tool_presets(),
             sync commands::tool_system => create_tool_preset(
-                name: String,
-                description: Option<String>,
-                tool_names: String,
+                request: $crate::commands::tool_system::ToolPresetCreateRequest,
             ),
             sync commands::tool_system => update_tool_preset(
-                id: String,
-                updates: $crate::commands::tool_system::ToolPresetPatch,
+                request: $crate::commands::tool_system::ToolPresetUpdateRequest,
             ),
             sync commands::tool_system => delete_tool_preset(id: String),
-            sync commands::tool_system => set_service_key(service: String, key: String),
-            sync commands::tool_system => get_service_key_exists(service: String),
+            sync commands::tool_system => set_service_key(
+                request: $crate::commands::tool_system::ServiceKeyUpdateRequest,
+            ),
+            sync commands::tool_system => get_service_key_exists(service: $crate::commands::tool_system::ServiceKey),
         }
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use serde::de::DeserializeOwned;
+
+    fn rejects_unknown<T: DeserializeOwned>(value: serde_json::Value) {
+        assert!(serde_json::from_value::<T>(value).is_err());
+    }
+
+    fn requires_nullable_keys<T: DeserializeOwned>(value: serde_json::Value, keys: &[&str]) {
+        assert!(
+            serde_json::from_value::<T>(value.clone()).is_ok(),
+            "complete request must deserialize"
+        );
+        for key in keys {
+            let mut missing = value.clone();
+            missing.as_object_mut().unwrap().remove(*key);
+            assert!(
+                serde_json::from_value::<T>(missing).is_err(),
+                "missing nullable key {key:?} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn named_write_requests_reject_unknown_fields() {
+        rejects_unknown::<crate::commands::assistant::AssistantCreateRequest>(serde_json::json!({
+            "name": "Helper", "systemPrompt": "Help", "modelId": null, "temperature": null,
+            "topP": null, "maxTokens": null, "futureField": true
+        }));
+        rejects_unknown::<crate::commands::assistant::AssistantUpdateRequest>(serde_json::json!({
+            "id": "assistant-1", "futureField": true
+        }));
+        rejects_unknown::<crate::commands::emoji::EmojiPackCreateRequest>(serde_json::json!({
+            "name": "Pack", "description": null, "futureField": true
+        }));
+        rejects_unknown::<crate::commands::mcp::McpServerCreateRequest>(serde_json::json!({
+            "name": "Server", "transportType": "stdio", "command": null, "args": null,
+            "env": null, "url": null, "headers": null, "futureField": true
+        }));
+        rejects_unknown::<crate::commands::mcp::McpServerUpdateRequest>(serde_json::json!({
+            "id": "server-1", "futureField": true
+        }));
+        assert!(
+            serde_json::from_value::<crate::commands::mcp::McpServerUpdateRequest>(
+                serde_json::json!({ "name": "Server" })
+            )
+            .is_err(),
+            "McpServerUpdateRequest.id must be required",
+        );
+        rejects_unknown::<crate::commands::memory::MemoryUpdateRequest>(serde_json::json!({
+            "id": "memory-1", "futureField": true
+        }));
+        rejects_unknown::<crate::commands::memory::MemoryUpsertRequest>(serde_json::json!({
+            "projectId": "project-1", "key": "preference", "content": "concise",
+            "memoryType": null, "futureField": true
+        }));
+        rejects_unknown::<crate::commands::memory::MemoryScopedUpsertRequest>(serde_json::json!({
+            "scope": "project", "projectId": "project-1", "subjectScopeId": null,
+            "key": "preference", "content": "concise", "memoryType": null,
+            "ownerOnly": null, "futureField": true
+        }));
+        rejects_unknown::<crate::commands::project::ProjectCreateRequest>(serde_json::json!({
+            "name": "Project", "path": null, "sourceType": "local", "sourceId": null,
+            "assistantId": null, "description": null, "futureField": true
+        }));
+        rejects_unknown::<crate::commands::project::ProjectUpdateRequest>(serde_json::json!({
+            "id": "project-1", "futureField": true
+        }));
+        rejects_unknown::<crate::commands::prompt_template::PromptTemplateCreateRequest>(serde_json::json!({
+            "name": "Template", "category": "general", "templateText": "Hello",
+            "description": null, "futureField": true
+        }));
+        rejects_unknown::<crate::commands::prompt_template::PromptTemplateUpdateRequest>(serde_json::json!({
+            "id": "template-1", "futureField": true
+        }));
+        rejects_unknown::<crate::commands::provider::ProviderCreateRequest>(serde_json::json!({
+            "name": "OpenAI", "providerType": "openai", "baseUrl": "https://example.invalid",
+            "apiFormat": null, "catalogId": null, "authOption": null, "futureField": true
+        }));
+        rejects_unknown::<crate::commands::provider::ProviderUpdateRequest>(serde_json::json!({
+            "id": "provider-1", "futureField": true
+        }));
+        rejects_unknown::<crate::commands::skill::SkillCreateRequest>(serde_json::json!({
+            "dirName": "review", "llmDescription": "Review", "body": "Body",
+            "displayName": null, "futureField": true
+        }));
+        rejects_unknown::<crate::commands::skill::SkillUpdateRequest>(serde_json::json!({
+            "dirName": "review", "futureField": true
+        }));
+        rejects_unknown::<crate::commands::tool_system::CustomToolCreateRequest>(serde_json::json!({
+            "name": "Echo", "description": "Echo", "command": "echo", "categoryId": null,
+            "parametersSchema": null, "argsTemplate": null, "workingDirectory": null,
+            "timeoutMs": null, "permission": null, "futureField": true
+        }));
+        rejects_unknown::<crate::commands::tool_system::CustomToolUpdateRequest>(serde_json::json!({
+            "id": "tool-1", "futureField": true
+        }));
+        rejects_unknown::<crate::commands::tool_system::ToolPresetCreateRequest>(serde_json::json!({
+            "name": "Default", "description": null, "toolNames": [], "futureField": true
+        }));
+        rejects_unknown::<crate::commands::tool_system::ToolPresetUpdateRequest>(serde_json::json!({
+            "id": "preset-1", "futureField": true
+        }));
+    }
+
+    #[test]
+    fn named_create_requests_require_every_nullable_key() {
+        requires_nullable_keys::<crate::commands::assistant::AssistantCreateRequest>(
+            serde_json::json!({
+                "name": "Helper", "systemPrompt": "Help", "modelId": null,
+                "temperature": null, "topP": null, "maxTokens": null
+            }),
+            &["modelId", "temperature", "topP", "maxTokens"],
+        );
+        requires_nullable_keys::<crate::commands::emoji::EmojiPackCreateRequest>(
+            serde_json::json!({ "name": "Pack", "description": null }),
+            &["description"],
+        );
+        requires_nullable_keys::<crate::commands::mcp::McpServerCreateRequest>(
+            serde_json::json!({
+                "name": "Server", "transportType": "stdio", "command": null,
+                "args": null, "env": null, "url": null, "headers": null
+            }),
+            &["command", "args", "env", "url", "headers"],
+        );
+        requires_nullable_keys::<crate::commands::memory::MemoryUpsertRequest>(
+            serde_json::json!({
+                "projectId": "project-1", "key": "preference", "content": "concise",
+                "memoryType": null
+            }),
+            &["memoryType"],
+        );
+        requires_nullable_keys::<crate::commands::memory::MemoryScopedUpsertRequest>(
+            serde_json::json!({
+                "scope": "project", "projectId": "project-1", "subjectScopeId": null,
+                "key": "preference", "content": "concise", "memoryType": null,
+                "ownerOnly": null
+            }),
+            &["projectId", "subjectScopeId", "memoryType", "ownerOnly"],
+        );
+        requires_nullable_keys::<crate::commands::project::ProjectCreateRequest>(
+            serde_json::json!({
+                "name": "Project", "path": null, "sourceType": "local", "sourceId": null,
+                "assistantId": null, "description": null
+            }),
+            &["path", "sourceId", "assistantId", "description"],
+        );
+        requires_nullable_keys::<crate::commands::prompt_template::PromptTemplateCreateRequest>(
+            serde_json::json!({
+                "name": "Template", "category": "general", "templateText": "Hello",
+                "description": null
+            }),
+            &["description"],
+        );
+        requires_nullable_keys::<crate::commands::skill::SkillCreateRequest>(
+            serde_json::json!({
+                "dirName": "review", "llmDescription": "Review", "body": "Body",
+                "displayName": null
+            }),
+            &["displayName"],
+        );
+        requires_nullable_keys::<crate::commands::tool_system::CustomToolCreateRequest>(
+            serde_json::json!({
+                "name": "Echo", "description": "Echo", "command": "echo", "categoryId": null,
+                "parametersSchema": null, "argsTemplate": null, "workingDirectory": null,
+                "timeoutMs": null, "permission": null
+            }),
+            &[
+                "categoryId",
+                "parametersSchema",
+                "argsTemplate",
+                "workingDirectory",
+                "timeoutMs",
+                "permission",
+            ],
+        );
+        requires_nullable_keys::<crate::commands::tool_system::ToolPresetCreateRequest>(
+            serde_json::json!({ "name": "Default", "description": null, "toolNames": [] }),
+            &["description"],
+        );
+    }
+
+    #[test]
+    fn named_update_requests_require_their_routing_field() {
+        assert!(
+            serde_json::from_value::<crate::commands::assistant::AssistantUpdateRequest>(serde_json::json!({
+                "name": "Helper"
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<crate::commands::prompt_template::PromptTemplateUpdateRequest>(
+                serde_json::json!({ "name": "Template" })
+            )
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<crate::commands::skill::SkillUpdateRequest>(serde_json::json!({
+                "isEnabled": true
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<crate::commands::tool_system::CustomToolUpdateRequest>(serde_json::json!({
+                "name": "Echo"
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<crate::commands::tool_system::ToolPresetUpdateRequest>(serde_json::json!({
+                "name": "Default"
+            }))
+            .is_err()
+        );
+    }
 }

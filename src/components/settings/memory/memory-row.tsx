@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { TrashBin, TriangleExclamation } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { Button, Checkbox, Chip, Disclosure, TextArea, Tooltip } from '@heroui/react'
-import type { Memory } from '@/types'
+import type { MemoryInfoResponse } from '@/types'
 
 /**
  * `--info` is a project extension: HeroUI has no `info` colour, so the property
@@ -13,7 +13,7 @@ import type { Memory } from '@/types'
 export const INFO_CHIP = '[--chip-fg:var(--info-soft-foreground)]'
 
 interface MemoryRowProps {
-  memory: Memory
+  memory: MemoryInfoResponse
   checked: boolean
   onToggleCheck: () => void
   onChanged: () => void
@@ -30,7 +30,7 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
   const saveDraft = async () => {
     setSaving(true)
     try {
-      await api.updateMemory(memory.id, draft)
+      await api.updateMemory({ id: memory.id, content: draft })
       onChanged()
     } finally {
       setSaving(false)

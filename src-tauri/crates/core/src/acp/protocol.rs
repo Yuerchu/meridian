@@ -962,10 +962,23 @@ pub struct Usage {
 
 #[derive(Debug, Deserialize)]
 pub struct Cost {
-    #[serde(default)]
-    pub amount: f64,
+    /// ACP is an external protocol and specifies this field as a JSON number.
+    /// Convert its lexical decimal spelling immediately; Meridian's own JSON
+    /// contracts continue to accept monetary values only as strings.
+    #[serde(deserialize_with = "deserialize_acp_decimal")]
+    pub amount: crate::decimal::Decimal,
     #[serde(default)]
     pub currency: Option<String>,
+}
+
+fn deserialize_acp_decimal<'de, D>(deserializer: D) -> Result<crate::decimal::Decimal, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Error as _;
+
+    let number = serde_json::Number::deserialize(deserializer)?;
+    number.to_string().parse().map_err(D::Error::custom)
 }
 
 // -------------------------------------------------------------- permission

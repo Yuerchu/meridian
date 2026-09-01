@@ -1,7 +1,7 @@
-use crate::db::models::assistant::Assistant;
-use crate::db::models::model_config::ModelConfig;
+use crate::db::models::assistant::AssistantRow;
+use crate::db::models::model_config::ModelConfigRow;
 use crate::db::{self, DbPool};
-use crate::provider::{self, ChatParams, ProviderCapabilities};
+use crate::provider::{self, ChatParams, ProviderCapabilities, ServerToolKind};
 use crate::secrets::{SecretName, SecretScope, SecretsManager};
 use crate::util::get_conn;
 
@@ -52,7 +52,7 @@ pub fn build_tool_secrets(secrets: &SecretsManager, pool: &DbPool) -> std::colle
 pub fn resolve_provider_config(
     secrets: &SecretsManager,
     pool: &DbPool,
-    assistant: Option<&Assistant>,
+    assistant: Option<&AssistantRow>,
 ) -> Result<ResolvedProvider, String> {
     if let Some(provider_id) = assistant.and_then(|a| a.provider_id.as_deref()) {
         let mut conn = get_conn(pool)?;
@@ -77,32 +77,31 @@ pub fn resolve_provider_config(
 
     // Fallback: first enabled provider
     let mut conn = get_conn(pool)?;
-    // Still only the first enabled provider, and still all-or-nothing on it: if
-    // its credential cannot be resolved this falls through to "no provider
-    // configured" rather than moving on to the next row. A login that needs no
-    // key resolves here on its own terms instead of being rejected for lacking
-    // something it never had.
-    if let Ok(providers) = db::ops::provider::list_providers(&mut conn)
-        && let Some(p) = providers.into_iter().find(|p| p.is_enabled != 0)
-        && let Ok(credential) = resolve_credential(secrets, &p)
-    {
-        let model = assistant
-            .and_then(|a| a.model_id.clone())
-            .ok_or("No model configured. Go to Settings → Assistant to set a model.")?;
-        let base_url = p.base_url.trim_end_matches('/').to_string();
-        return Ok(ResolvedProvider {
-            provider_id: p.id,
-            provider_name: p.name,
-            provider_type: p.provider_type,
-            base_url,
-            credential,
-            model,
-            api_format: p.api_format,
-            transport_profile: p.transport_profile,
-        });
-    }
-
-    Err("No provider configured. Go to Settings → Provider to add one.".into())
+    // Still only the first enabled provider, and still all-or-nothing on it.
+    // A damaged row or unreadable credential is reported as itself rather than
+    // being relabelled "no provider configured" or silently moving to a
+    // different endpoint.
+    let providers = db::ops::provider::list_providers(&mut conn)
+        .map_err(|error| format!("could not read configured providers: {error}"))?;
+    let p = providers
+        .into_iter()
+        .find(|p| p.is_enabled != 0)
+        .ok_or("No provider configured. Go to Settings → Provider to add one.")?;
+    let credential = resolve_credential(secrets, &p)?;
+    let model = assistant
+        .and_then(|a| a.model_id.clone())
+        .ok_or("No model configured. Go to Settings → Assistant to set a model.")?;
+    let base_url = p.base_url.trim_end_matches('/').to_string();
+    Ok(ResolvedProvider {
+        provider_id: p.id,
+        provider_name: p.name,
+        provider_type: p.provider_type,
+        base_url,
+        credential,
+        model,
+        api_format: p.api_format,
+        transport_profile: p.transport_profile,
+    })
 }
 
 /// Where a request is going, once the caller's overrides have had their say.
@@ -140,9 +139,18 @@ pub struct ResolvedProvider {
 /// letting a misconfigured API-key provider through as an anonymous request.
 fn resolve_credential(
     secrets: &SecretsManager,
-    provider: &db::models::provider::Provider,
+    provider: &db::models::provider::ProviderRow,
 ) -> Result<provider::Credential, String> {
+    provider::registry::validate_stored_contract(
+        &provider.provider_type,
+        &provider.api_format,
+        &provider.transport_profile,
+        &provider.credential_kind,
+    )?;
     match provider.credential_kind.as_str() {
+        "api_key" => get_provider_api_key(secrets, &provider.id)
+            .map(provider::Credential::ApiKey)
+            .ok_or_else(|| format!("API Key not set for provider '{}'", provider.name)),
         "codex_cli" => {
             let home = crate::codex_auth::storage::find_codex_home()
                 .ok_or("Could not work out where the Codex CLI keeps its login (no home directory).")?;
@@ -164,9 +172,7 @@ fn resolve_credential(
                 slot: "default".into(),
             },
         ))),
-        _ => get_provider_api_key(secrets, &provider.id)
-            .map(provider::Credential::ApiKey)
-            .ok_or_else(|| format!("API Key not set for provider '{}'", provider.name)),
+        other => Err(format!("unknown provider credential kind `{other}`")),
     }
 }
 
@@ -185,7 +191,7 @@ fn resolve_credential(
 pub fn resolve_with_overrides(
     secrets: &SecretsManager,
     pool: &DbPool,
-    assistant: Option<&Assistant>,
+    assistant: Option<&AssistantRow>,
     model_override: Option<String>,
     provider_override: Option<&str>,
 ) -> Result<ResolvedProvider, String> {
@@ -270,7 +276,7 @@ pub(crate) fn without_thinking(params: ChatParams) -> ChatParams {
 }
 
 /// Everything a request needs beyond the messages: the wire parameters plus the
-/// limits the token budget is derived from. Assistant settings, the per-model
+/// limits the token budget is derived from. AssistantRow settings, the per-model
 /// config row and the catalog are layered here once, so no call site invents a
 /// value of its own — a summarisation request is filtered against the same
 /// capabilities as the turn it summarises.
@@ -283,11 +289,11 @@ pub struct TurnParams {
     /// `None` leaves the budget free to derive its own threshold.
     pub compact_threshold: Option<usize>,
     /// Handed back so callers that also need pricing don't query it twice.
-    pub model_config: Option<ModelConfig>,
+    pub model_config: Option<ModelConfigRow>,
 }
 
-pub struct TurnParamsInput<'a> {
-    pub assistant: Option<&'a Assistant>,
+pub struct TurnParamsResolveRequest<'a> {
+    pub assistant: Option<&'a AssistantRow>,
     /// The provider actually used this turn, which a per-request override may
     /// have moved away from the assistant's own.
     pub provider_id: Option<&'a str>,
@@ -303,43 +309,41 @@ pub struct TurnParamsInput<'a> {
 
 /// Which provider-side tools this turn actually asks for.
 ///
-/// The intersection of what the user switched on and what the model supports,
-/// and it has to be an intersection rather than a read: the stored list outlives
-/// the thing it names. Switching a model's provider from the Responses API to
-/// chat-completions leaves `["web_search"]` in the row while the endpoint that
-/// understood it is gone — and xAI answers an unknown tool type with a 422, so
-/// the un-narrowed version turns one stale setting into every request failing.
-///
-/// A list that will not parse is treated as empty, for the same reason
-/// `capability_overrides` is: the degraded behaviour has to be the one that
-/// changes nothing.
-fn enabled_server_tools(model_config: Option<&ModelConfig>, caps: &ProviderCapabilities) -> Vec<String> {
+/// What the user switched on, after proving every stored name belongs to this
+/// model's closed capability list. The stored list outlives the thing it names:
+/// switching a model from Responses to chat-completions can leave
+/// `["web_search"]` behind. Treating that as empty looks exactly like the tool
+/// was deliberately switched off, so stale names and malformed JSON fail the
+/// turn and point back to the damaged setting.
+fn enabled_server_tools(
+    model_config: Option<&ModelConfigRow>,
+    caps: &ProviderCapabilities,
+) -> Result<Vec<ServerToolKind>, String> {
     let Some(raw) = model_config.and_then(|mc| mc.server_tools.as_deref()) else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
-    let Ok(requested) = serde_json::from_str::<Vec<String>>(raw) else {
-        tracing::warn!(
-            raw_len = raw.len(),
-            "server_tools is not an array of names; no provider-side tools will be offered"
-        );
-        return Vec::new();
-    };
-    let (kept, dropped): (Vec<String>, Vec<String>) = requested
-        .into_iter()
-        .partition(|name| caps.server_tools.iter().any(|supported| supported == name));
-    if !dropped.is_empty() {
-        // Silence here would look exactly like the tool having been switched
-        // off, and the user would go on believing the model is searching.
-        tracing::info!(
-            dropped = dropped.join(","),
-            "these provider-side tools are configured but not supported by this model; they are not being offered"
-        );
+    let requested = serde_json::from_str::<Vec<ServerToolKind>>(raw)
+        .map_err(|error| format!("stored model server_tools is invalid: {error}"))?;
+    let unsupported: Vec<ServerToolKind> = requested
+        .iter()
+        .copied()
+        .filter(|tool| !caps.server_tools.contains(tool))
+        .collect();
+    if !unsupported.is_empty() {
+        return Err(format!(
+            "stored model server_tools contains unsupported tools: {}",
+            unsupported
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
     }
-    kept
+    Ok(requested)
 }
 
-pub fn resolve_turn_params(pool: &DbPool, input: TurnParamsInput<'_>) -> Result<TurnParams, String> {
-    let TurnParamsInput {
+pub fn resolve_turn_params(pool: &DbPool, input: TurnParamsResolveRequest<'_>) -> Result<TurnParams, String> {
+    let TurnParamsResolveRequest {
         assistant,
         provider_id,
         provider_type,
@@ -364,11 +368,11 @@ pub fn resolve_turn_params(pool: &DbPool, input: TurnParamsInput<'_>) -> Result<
         None => None,
     };
 
-    let mut caps = provider::capabilities::resolve_on(provider_type, Some(api_format), Some(transport_profile), model);
+    let mut caps = provider::registry::get_capabilities(provider_type, api_format, transport_profile, model)?;
     provider::capabilities::apply_overrides(
         &mut caps,
         model_config.as_ref().and_then(|mc| mc.capability_overrides.as_deref()),
-    );
+    )?;
 
     let context_limit = assistant
         .filter(|a| a.context_limit > 0)
@@ -386,13 +390,13 @@ pub fn resolve_turn_params(pool: &DbPool, input: TurnParamsInput<'_>) -> Result<
             format!("No max output tokens known for '{model}'. Go to Settings → Provider → Model to set one.")
         })?;
 
-    let server_tools = enabled_server_tools(model_config.as_ref(), &caps);
+    let server_tools = enabled_server_tools(model_config.as_ref(), &caps)?;
 
     let (thinking_enabled, thinking_budget, thinking_effort) = provider::capabilities::resolve_thinking(
         assistant.map(|a| a.thinking_enabled != 0).unwrap_or(false),
         assistant.and_then(|a| a.thinking_budget),
         thinking_level,
-    );
+    )?;
 
     let mut params = ChatParams {
         model: model.to_string(),
@@ -408,7 +412,7 @@ pub fn resolve_turn_params(pool: &DbPool, input: TurnParamsInput<'_>) -> Result<
         // filter_params below, not supplied by the caller.
         ..Default::default()
     };
-    provider::capabilities::filter_params(&mut params, &caps);
+    provider::capabilities::filter_params(&mut params, &caps)?;
 
     Ok(TurnParams {
         params,
@@ -424,13 +428,17 @@ pub fn resolve_turn_params(pool: &DbPool, input: TurnParamsInput<'_>) -> Result<
 mod tests {
     use super::*;
 
+    fn decimal(raw: &str) -> crate::decimal::Decimal {
+        raw.parse().unwrap()
+    }
+
     #[test]
     fn test_provider_secret_name() {
         assert_eq!(provider_secret_name("my-provider-1"), "PROVIDER_MY_PROVIDER_1_KEY");
     }
 
-    fn assistant_with(temperature: Option<f32>) -> Assistant {
-        Assistant {
+    fn assistant_with(temperature: Option<f32>) -> AssistantRow {
+        AssistantRow {
             id: "a1".into(),
             name: "A".into(),
             description: None,
@@ -455,10 +463,10 @@ mod tests {
         }
     }
 
-    fn resolve_for(pool: &DbPool, model: &str, assistant: &Assistant) -> TurnParams {
+    fn resolve_for(pool: &DbPool, model: &str, assistant: &AssistantRow) -> TurnParams {
         resolve_turn_params(
             pool,
-            TurnParamsInput {
+            TurnParamsResolveRequest {
                 assistant: Some(assistant),
                 provider_id: None,
                 provider_type: "openai",
@@ -510,7 +518,7 @@ mod tests {
             let mut conn = pool.get().unwrap();
             db::ops::provider::create_provider(
                 &mut conn,
-                &db::models::provider::NewProvider {
+                &db::models::provider::ProviderInsert {
                     id: "p1",
                     name: "P",
                     provider_type: "openai",
@@ -519,7 +527,7 @@ mod tests {
                     sort_order: 0,
                     created_at: 0,
                     updated_at: 0,
-                    api_format: "chat",
+                    api_format: "chat_completions",
                     catalog_id: None,
                     credential_kind: "api_key",
                     transport_profile: "standard",
@@ -528,7 +536,7 @@ mod tests {
             .unwrap();
             db::ops::model_config::upsert(
                 &mut conn,
-                &db::models::model_config::NewModelConfig {
+                &db::models::model_config::ModelConfigInsert {
                     id: "mc1",
                     provider_id: "p1",
                     model_id: "gpt-4o",
@@ -536,14 +544,14 @@ mod tests {
                     context_window: 128_000,
                     compact_threshold: 0,
                     max_output_tokens: Some(16_384),
-                    input_price: 0.0,
-                    output_price: 0.0,
-                    cache_price: None,
+                    input_price: None,
+                    output_price: None,
+                    cache_read_price: None,
                     cache_write_price: None,
                     created_at: 0,
                     updated_at: 0,
                     capability_overrides: Some(r#"{"supports_tools": false}"#),
-                    price_tiers: None,
+                    pricing_tiers: None,
                     server_tools: None,
                     server_tool_price: None,
                 },
@@ -554,11 +562,11 @@ mod tests {
 
         let with_provider = resolve_turn_params(
             &pool,
-            TurnParamsInput {
+            TurnParamsResolveRequest {
                 assistant: Some(&assistant),
                 provider_id: Some("p1"),
                 provider_type: "openai",
-                api_format: "chat",
+                api_format: "chat_completions",
                 transport_profile: "standard",
                 model: "gpt-4o",
                 thinking_level: None,
@@ -572,29 +580,27 @@ mod tests {
         assert!(resolve_for(&pool, "gpt-4o", &assistant).caps.supports_tools);
     }
 
-    /// The stored list outlives what it names, so it is intersected rather than
-    /// read. Moving a model from the Responses API to chat-completions leaves
-    /// `["web_search"]` behind in the row, and xAI answers an unknown tool type
-    /// with a 422 — so the un-narrowed version turns one stale setting into
-    /// every request failing.
+    /// The stored list outlives what it names. Moving a model from the Responses
+    /// API to chat-completions leaves `["web_search"]` behind in the row; that
+    /// stale first-party value must be reported rather than impersonating an
+    /// intentionally empty list.
     #[test]
-    fn a_server_tool_the_model_no_longer_supports_is_not_sent() {
+    fn a_server_tool_the_model_no_longer_supports_is_rejected() {
         let caps_responses = provider::capabilities::resolve("xai", Some("responses"), "grok-4.6");
         let caps_chat = provider::capabilities::resolve("xai", Some("chat_completions"), "grok-4.6");
 
         let mut config = configured_with(Some(r#"["web_search","x_search"]"#));
         assert_eq!(
-            enabled_server_tools(Some(&config), &caps_responses),
-            vec!["web_search", "x_search"],
+            enabled_server_tools(Some(&config), &caps_responses).unwrap(),
+            vec![ServerToolKind::WebSearch, ServerToolKind::XSearch],
         );
-        assert!(
-            enabled_server_tools(Some(&config), &caps_chat).is_empty(),
-            "this dialect has none of them",
-        );
+        let error = enabled_server_tools(Some(&config), &caps_chat).unwrap_err();
+        assert!(error.contains("web_search") && error.contains("x_search"), "{error}");
 
         // And one the user switched on that this model never had.
         config.server_tools = Some(r#"["web_search","image_generation"]"#.into());
-        assert_eq!(enabled_server_tools(Some(&config), &caps_responses), vec!["web_search"]);
+        let error = enabled_server_tools(Some(&config), &caps_responses).unwrap_err();
+        assert!(error.contains("image_generation"), "{error}");
     }
 
     /// End to end, the way the desktop actually reaches it: a stored row, a
@@ -613,7 +619,7 @@ mod tests {
             let mut conn = pool.get().unwrap();
             db::ops::provider::create_provider(
                 &mut conn,
-                &db::models::provider::NewProvider {
+                &db::models::provider::ProviderInsert {
                     id: "p1",
                     name: "xAI",
                     provider_type: "xai",
@@ -631,7 +637,7 @@ mod tests {
             .unwrap();
             db::ops::model_config::upsert(
                 &mut conn,
-                &db::models::model_config::NewModelConfig {
+                &db::models::model_config::ModelConfigInsert {
                     id: "mc1",
                     provider_id: "p1",
                     model_id: "grok-4.6",
@@ -639,14 +645,14 @@ mod tests {
                     context_window: 500_000,
                     compact_threshold: 400_000,
                     max_output_tokens: Some(64_000),
-                    input_price: 2.0,
-                    output_price: 6.0,
-                    cache_price: Some(0.5),
+                    input_price: Some(decimal("2")),
+                    output_price: Some(decimal("6")),
+                    cache_read_price: Some(decimal("0.5")),
                     cache_write_price: None,
                     created_at: 0,
                     updated_at: 0,
                     capability_overrides: None,
-                    price_tiers: None,
+                    pricing_tiers: None,
                     server_tools: Some(r#"["web_search"]"#),
                     server_tool_price: None,
                 },
@@ -657,7 +663,7 @@ mod tests {
 
         let turn = resolve_turn_params(
             &pool,
-            TurnParamsInput {
+            TurnParamsResolveRequest {
                 assistant: Some(&assistant),
                 provider_id: Some("p1"),
                 provider_type: "xai",
@@ -669,12 +675,12 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!(turn.params.server_tools, vec!["web_search"]);
+        assert_eq!(turn.params.server_tools, vec![ServerToolKind::WebSearch]);
 
         // The same row, reached over the dialect that has no such thing.
-        let over_chat = resolve_turn_params(
+        let error = resolve_turn_params(
             &pool,
-            TurnParamsInput {
+            TurnParamsResolveRequest {
                 assistant: Some(&assistant),
                 provider_id: Some("p1"),
                 provider_type: "xai",
@@ -685,33 +691,41 @@ mod tests {
                 fast: false,
             },
         )
-        .unwrap();
-        assert!(
-            over_chat.params.server_tools.is_empty(),
-            "an unknown tool type is a 422 on every request",
-        );
+        .unwrap_err();
+        assert!(error.contains("web_search"), "{error}");
     }
 
-    /// Nothing configured, nothing parseable, and nothing at all: each has to
-    /// mean "ask for none" rather than throw or invent.
+    /// Only absence and an explicit empty array mean "ask for none". Broken
+    /// JSON and wrong element types are damaged persisted contracts.
     #[test]
-    fn an_absent_or_broken_server_tool_list_asks_for_none() {
+    fn only_an_absent_or_explicitly_empty_server_tool_list_asks_for_none() {
         let caps = provider::capabilities::resolve("xai", Some("responses"), "grok-4.6");
-        for raw in [None, Some("not json"), Some("{}"), Some("[]"), Some(r#"[1,2]"#)] {
-            let config = configured_with(raw);
-            assert!(
-                enabled_server_tools(Some(&config), &caps).is_empty(),
-                "{raw:?} should have asked for none",
-            );
+        assert!(enabled_server_tools(None, &caps).unwrap().is_empty());
+        assert!(
+            enabled_server_tools(Some(&configured_with(None)), &caps)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            enabled_server_tools(Some(&configured_with(Some("[]"))), &caps)
+                .unwrap()
+                .is_empty()
+        );
+
+        for raw in ["not json", "{}", r#"[1,2]"#, r#"["web_search",1]"#] {
+            let config = configured_with(Some(raw));
+            let error = enabled_server_tools(Some(&config), &caps)
+                .err()
+                .expect("malformed stored server_tools must fail");
+            assert!(error.contains("server_tools"), "{raw:?}: {error}");
         }
-        assert!(enabled_server_tools(None, &caps).is_empty());
     }
 
-    fn seed_provider(pool: &DbPool) {
+    fn seed_provider_with(pool: &DbPool, api_format: &str, credential_kind: &str, transport_profile: &str) {
         let mut conn = pool.get().unwrap();
         db::ops::provider::create_provider(
             &mut conn,
-            &db::models::provider::NewProvider {
+            &db::models::provider::ProviderInsert {
                 id: "p1",
                 name: "Deepseek",
                 provider_type: "deepseek",
@@ -720,13 +734,17 @@ mod tests {
                 sort_order: 0,
                 created_at: 0,
                 updated_at: 0,
-                api_format: "chat",
+                api_format,
                 catalog_id: None,
-                credential_kind: "api_key",
-                transport_profile: "standard",
+                credential_kind,
+                transport_profile,
             },
         )
         .unwrap();
+    }
+
+    fn seed_provider(pool: &DbPool) {
+        seed_provider_with(pool, "chat_completions", "api_key", "standard");
     }
 
     fn mock_secrets(dir: &std::path::Path) -> SecretsManager {
@@ -734,6 +752,24 @@ mod tests {
             dir.to_path_buf(),
             std::sync::Arc::new(crate::keyring::test_support::MockKeyringStore::new()),
         )
+    }
+
+    #[test]
+    fn an_unknown_stored_credential_kind_is_reported_through_fallback_resolution() {
+        let pool = crate::db::test_db();
+        seed_provider_with(&pool, "chat_completions", "future_login", "standard");
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = mock_secrets(dir.path());
+        let mut assistant = assistant_with(None);
+        assistant.model_id = Some("deepseek-chat".into());
+
+        let error = resolve_provider_config(&secrets, &pool, Some(&assistant))
+            .err()
+            .expect("an unknown credential kind must not become an API-key provider");
+
+        assert!(error.contains("future_login"), "{error}");
+        assert!(error.contains("credential"), "{error}");
+        assert!(!error.contains("No provider configured"), "{error}");
     }
 
     /// How the auto reviewer resolves its model: a bare `provider:model` pair
@@ -766,7 +802,7 @@ mod tests {
             "trailing slash trimmed"
         );
         assert_eq!(resolved.credential.api_key(), "sk-test");
-        assert_eq!(resolved.api_format, "chat");
+        assert_eq!(resolved.api_format, "chat_completions");
     }
 
     /// And when the pair cannot resolve, the error is about the pair — the
@@ -787,8 +823,8 @@ mod tests {
         assert!(!err.contains("No model configured"), "{err}");
     }
 
-    fn configured_with(server_tools: Option<&str>) -> ModelConfig {
-        ModelConfig {
+    fn configured_with(server_tools: Option<&str>) -> ModelConfigRow {
+        ModelConfigRow {
             id: "mc".into(),
             provider_id: "p".into(),
             model_id: "grok-4.6".into(),
@@ -796,14 +832,14 @@ mod tests {
             context_window: 500_000,
             compact_threshold: 400_000,
             max_output_tokens: None,
-            input_price: 2.0,
-            output_price: 6.0,
-            cache_price: None,
+            input_price: Some(decimal("2")),
+            output_price: Some(decimal("6")),
+            cache_read_price: None,
             cache_write_price: None,
             created_at: 0,
             updated_at: 0,
             capability_overrides: None,
-            price_tiers: None,
+            pricing_tiers: None,
             server_tools: server_tools.map(str::to_string),
             server_tool_price: None,
         }
@@ -816,11 +852,11 @@ mod tests {
 
         let err = resolve_turn_params(
             &pool,
-            TurnParamsInput {
+            TurnParamsResolveRequest {
                 assistant: Some(&assistant),
                 provider_id: None,
                 provider_type: "openai",
-                api_format: "chat",
+                api_format: "chat_completions",
                 transport_profile: "standard",
                 model: "some-model-nobody-catalogued",
                 thinking_level: None,

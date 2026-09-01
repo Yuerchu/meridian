@@ -21,3 +21,11 @@ fi
 if git diff --cached --name-only | grep -qE '^src-tauri/crates/core/src/provider/(provider_catalog\.json|registry\.rs|capabilities\.rs|model_catalog\.json)$'; then
   node scripts/check-provider-catalog.mjs --staged
 fi
+
+# 模型层的四条红线：持久化/DTO 命名分层、first-party 请求拒绝未知字段、
+# 金额全程 Decimal 字符串、invoke response 的生成式 runtime exact schema。
+# 任何一侧改动都检查暂存快照，避免靠未暂存文件通过；生成器和它依赖的
+# syntax helper 自己变化也必须触发 freshness check。
+if git diff --cached --name-only | grep -qE '^src/.*\.(ts|tsx)$|^src-tauri/.*\.(rs|sql|json)$|^src-tauri/(Cargo\.toml|Cargo\.lock)$|^scripts/(check-model-contracts|generate-invoke-response-schema|model-contract-rules(\.test)?)\.mjs$'; then
+  node scripts/check-model-contracts.mjs --staged
+fi

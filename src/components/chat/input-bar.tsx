@@ -37,13 +37,13 @@ import { ContextGauge, type ContextReading } from './context-gauge'
 import { isSelect, useAcpConfig } from '@/hooks/use-acp-config'
 import type { TFunction } from 'i18next'
 import type {
-  AcpConfigOption,
-  AcpConfigOptionValue,
-  Assistant,
+  AcpConfigOptionInfoResponse,
+  AcpConfigOptionValueInfoResponse,
+  AssistantInfoResponse,
   ChatMode,
-  Emoji,
-  Provider,
-  ProviderCapabilities,
+  EmojiInfoResponse,
+  ProviderInfoResponse,
+  ProviderCapabilitiesInfoResponse,
   QueueDelivery,
   ThinkingLevel,
 } from '@/types'
@@ -56,7 +56,7 @@ import type {
 export type AttachedFile = Attachment
 
 export interface PendingSticker {
-  emoji: Emoji
+  emoji: EmojiInfoResponse
   url: string
 }
 
@@ -112,8 +112,8 @@ interface InputBarProps {
   pendingSticker?: PendingSticker | null
   onSelectSticker?: (sticker: PendingSticker) => void
   onRemoveSticker?: () => void
-  assistants: Assistant[]
-  providers: Provider[]
+  assistants: AssistantInfoResponse[]
+  providers: ProviderInfoResponse[]
   currentAssistantId: string | null
   currentModelId: string | null
   currentProviderId: string | null
@@ -127,7 +127,7 @@ interface InputBarProps {
   onSelectMode: (mode: ChatMode) => void
   acceptEdits: boolean
   onToggleAcceptEdits: (next: boolean) => void
-  capabilities?: ProviderCapabilities | null
+  capabilities?: ProviderCapabilitiesInfoResponse | null
   contextInfo?: ContextReading
   compacting?: boolean
   onCompact?: () => void
@@ -159,19 +159,23 @@ interface InputBarProps {
  * mode is `id: "fast"` under `category: "model_config"` — a category naming a
  * *class* of setting rather than the setting. Only the id names the thing.
  */
-function knobName(t: TFunction, option: AcpConfigOption): string {
+function knobName(t: TFunction, option: AcpConfigOptionInfoResponse): string {
   const fallback = option.name || option.id
   return t(`chat.acp.knob.${option.id.toLowerCase()}`, { defaultValue: fallback })
 }
 
-function knobValueName(t: TFunction, option: AcpConfigOption, value: AcpConfigOptionValue): string {
+function knobValueName(
+  t: TFunction,
+  option: AcpConfigOptionInfoResponse,
+  value: AcpConfigOptionValueInfoResponse,
+): string {
   const fallback = value.name || value.value
   // Scoped per knob, because `default` means a different thing on each of them
   // and a model id must never find a translation at all.
   return t(`chat.acp.value.${option.id.toLowerCase()}.${value.value.toLowerCase()}`, { defaultValue: fallback })
 }
 
-function currentValueName(t: TFunction, option: AcpConfigOption): string | null {
+function currentValueName(t: TFunction, option: AcpConfigOptionInfoResponse): string | null {
   if (typeof option.currentValue !== 'string') return null
   const value = option.options.find((v) => v.value === option.currentValue)
   return value ? knobValueName(t, option, value) : option.currentValue

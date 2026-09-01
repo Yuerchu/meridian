@@ -8,6 +8,7 @@ import { ArrowRight, Check, Clock, Xmark } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { ToolArgsSummary, toolDescription, toolLabel } from '@/components/chat/tool-call-block'
 import { useConversationStore, type AttentionItem } from '@/stores/conversation-store'
+import { usePlanReviewStore } from '@/stores/plan-review-store'
 import { MAX_VISIBLE, visible } from './approval-queue'
 
 /**
@@ -79,7 +80,13 @@ function useApprovalToasts(transcriptInert = false) {
   )
   // Compared as a sequence. `shown` is a fresh array on every store change, so
   // without this the queue would be rebuilt when nothing about it had moved.
-  const sequence = shown.map((i) => i.approvalId).join('')
+  // A review keeps the same queue id while it moves from a submitted plan to a
+  // queued or failed continuation. Include that presentation state or the
+  // module-scoped ToastQueue keeps the old content even though the store row
+  // was replaced underneath it.
+  const sequence = JSON.stringify(
+    shown.map((item) => [item.approvalId, item.kind === 'plan_review' ? item.stage : null]),
+  )
   const built = useRef<string | null>(null)
 
   useEffect(() => {
@@ -126,9 +133,11 @@ function ApprovalToast({
   const defer = useConversationStore((s) => s.deferAttention)
   const retireAnswered = useConversationStore((s) => s.retireAnsweredApproval)
   const markOrphaned = useConversationStore((s) => s.markApprovalOrphaned)
+  const openPlanReview = usePlanReviewStore((s) => s.openReview)
   const title = useConversationStore((s) => s.conversations.find((c) => c.id === item.conversationId)?.title ?? null)
 
   const args = useMemo(() => {
+    if (item.kind === 'plan_review') return {}
     try {
       const parsed: unknown = JSON.parse(item.arguments)
       return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {}
@@ -138,9 +147,17 @@ function ApprovalToast({
       // whose call did not parse is still a call somebody has to decide about.
       return {}
     }
-  }, [item.arguments])
+  }, [item])
 
-  const description = useMemo(() => toolDescription(args), [args])
+  const description = useMemo(() => (item.kind === 'plan_review' ? null : toolDescription(args)), [args, item.kind])
+  const planReviewMessage =
+    item.kind !== 'plan_review'
+      ? null
+      : item.stage === 'review'
+        ? t('chat.plan.reviewReady')
+        : item.stage === 'delivery_queued'
+          ? t('planReview.deliveryQueued')
+          : t('chat.plan.continuationNeedsAttention')
 
   // Retired in the store rather than remembered here, because for a delegated
   // run nothing else will ever do it: the question is filed under the parent
@@ -158,6 +175,7 @@ function ApprovalToast({
 
   const view = () => {
     onSelect(item.conversationId)
+    if (item.kind === 'plan_review') openPlanReview(item.reviewId)
     // Behind the reader, not gone: they are being taken to the card, and if they
     // leave without answering it the question is still owed.
     defer(item.approvalId)
@@ -179,10 +197,14 @@ function ApprovalToast({
           {title ?? t('chat.newChat')}
         </Toast.Title>
         <Toast.Description data-slot="approval-toast-description" className="w-full">
-          <span className="flex min-w-0 items-start gap-1.5">
-            <span className="shrink-0 font-medium leading-5">{toolLabel(t, item.toolName)}</span>
-            <ToolArgsSummary toolName={item.toolName} args={args} />
-          </span>
+          {item.kind === 'plan_review' ? (
+            <span className="font-medium leading-5">{planReviewMessage}</span>
+          ) : (
+            <span className="flex min-w-0 items-start gap-1.5">
+              <span className="shrink-0 font-medium leading-5">{toolLabel(t, item.toolName)}</span>
+              <ToolArgsSummary toolName={item.toolName} args={args} />
+            </span>
+          )}
           {/* Under the name, exactly as the card draws it. The row this replaces
               is a decision, so what the call *is* keeps the first line and what
               it is *for* gets the second — the reverse hid the path a
@@ -195,7 +217,7 @@ function ApprovalToast({
           {/* The sandbox asked once already and was refused by the sandbox, not
               by a person. Without this the second question looks identical to
               the first. */}
-          {item.retryReason !== undefined && (
+          {item.kind !== 'plan_review' && item.retryReason !== undefined && (
             <span className="mt-1 block text-xs">{t('chat.tool.sandboxRetryPrompt')}</span>
           )}
         </Toast.Description>
@@ -210,13 +232,17 @@ function ApprovalToast({
           {/* Left of the decisions, and the only way past a row without making
               one. No `Toast.CloseButton` beside it: two ways to say "not now"
               where one of them is irreversible is how a question gets lost. */}
-          <Button size="sm" variant="ghost" onClick={() => defer(item.approvalId)}>
+          <Button size="sm" variant="ghost" onPress={() => defer(item.approvalId)}>
             <Clock className="size-3.5" />
             {t('chat.approvalToast.defer')}
           </Button>
-          <Button size="sm" variant="ghost" onClick={view}>
+          <Button size="sm" variant="ghost" onPress={view}>
             <ArrowRight className="size-3.5" />
-            {item.kind === 'ask' ? t('chat.approvalToast.answer') : t('chat.approvalToast.view')}
+            {item.kind === 'ask'
+              ? t('chat.approvalToast.answer')
+              : item.kind === 'plan_review'
+                ? t('chat.plan.review')
+                : t('chat.approvalToast.view')}
           </Button>
           {/* A question with a form behind it cannot be answered from a row, so
               it is offered as a way in and nothing else. It is in the queue at
@@ -227,12 +253,12 @@ function ApprovalToast({
                 size="sm"
                 variant="outline"
                 className="text-danger hover:text-danger"
-                onClick={() => decide(() => api.denyToolCall(item.approvalId))}
+                onPress={() => decide(() => api.denyToolCall({ approvalId: item.approvalId, reason: null }))}
               >
                 <Xmark className="size-3.5" />
                 {t('chat.tool.deny')}
               </Button>
-              <Button size="sm" onClick={() => decide(() => api.approveToolCall(item.approvalId))}>
+              <Button size="sm" onPress={() => decide(() => api.approveToolCall(item.approvalId))}>
                 <Check className="size-3.5" />
                 {item.retryReason !== undefined ? t('chat.tool.retryWithoutSandbox') : t('chat.tool.allow')}
               </Button>

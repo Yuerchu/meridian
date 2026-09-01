@@ -67,8 +67,13 @@ jobs:
 
       - run: pnpm install
 
+      - name: Stage HeroUI Pro
+        env:
+          HEROUI_KEY: ${{ secrets.HEROUI_KEY }}
+        run: pnpm dlx hpsetup@latest react --auto
+
       - name: TypeScript check
-        run: pnpm exec tsc -b
+        run: pnpm typecheck
 
       # Style gates run on the Linux leg only: they are platform-independent,
       # and a Windows minute costs twice a Linux one.

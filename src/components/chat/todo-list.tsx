@@ -2,7 +2,7 @@ import { Square, SquareCheck, SquareMinus } from '@gravity-ui/icons'
 import { useTranslation } from 'react-i18next'
 
 import { cn } from '@/lib/utils'
-import type { TodoItem, TodoItemStatus } from '@/types'
+import type { TodoItemInfoResponse, TodoItemStatus } from '@/types'
 
 /**
  * One step as the model sent it. The tool arguments and the stored rows carry
@@ -42,7 +42,7 @@ export function parseTodoArgs(args: Record<string, unknown>): TodoArgs | null {
   return { title: args.title, todos: args.todos }
 }
 
-export function toDrafts(items: TodoItem[]): TodoDraft[] {
+export function toDrafts(items: TodoItemInfoResponse[]): TodoDraft[] {
   return items.map((i) => ({ content: i.content, active_form: i.active_form, status: i.status }))
 }
 

@@ -34,20 +34,34 @@ pub async fn fetch_models_on(
     base_url: &str,
     api_key: &str,
 ) -> Result<Vec<ModelInfo>, ProviderError> {
-    if transport_profile == Some("chatgpt_codex") {
+    let provider_type = super::registry::ProviderType::parse(provider_type).map_err(ProviderError::Parse)?;
+    let api_format = api_format
+        .map(super::registry::ApiFormat::parse)
+        .transpose()
+        .map_err(ProviderError::Parse)?;
+    let transport_profile = transport_profile
+        .map(super::registry::TransportProfile::parse)
+        .transpose()
+        .map_err(ProviderError::Parse)?;
+    if transport_profile == Some(super::registry::TransportProfile::ChatgptCodex) {
+        if provider_type != super::registry::ProviderType::Openai {
+            return Err(ProviderError::Parse(
+                "the ChatGPT Codex transport requires provider type `openai`".into(),
+            ));
+        }
         return Ok(codex_models());
     }
     match provider_type {
-        "anthropic" => fetch_anthropic_models(base_url, api_key).await,
-        "xai" => {
+        super::registry::ProviderType::Anthropic => fetch_anthropic_models(base_url, api_key).await,
+        super::registry::ProviderType::Xai => {
             let models = fetch_openai_models(base_url, api_key).await?;
             Ok(models
                 .into_iter()
                 .filter(|model| is_xai_text_model(&model.id))
                 .collect())
         }
-        "google" => {
-            let models = if api_format == Some("gemini_generate_content") {
+        super::registry::ProviderType::Google => {
+            let models = if api_format == Some(super::registry::ApiFormat::GeminiGenerateContent) {
                 fetch_google_models(base_url, api_key).await?
             } else {
                 fetch_openai_models(base_url, api_key).await?
@@ -57,7 +71,9 @@ pub async fn fetch_models_on(
                 .filter(|model| is_google_agent_model(&model.id))
                 .collect())
         }
-        _ => fetch_openai_models(base_url, api_key).await,
+        super::registry::ProviderType::Openai | super::registry::ProviderType::Deepseek => {
+            fetch_openai_models(base_url, api_key).await
+        }
     }
 }
 

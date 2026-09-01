@@ -259,8 +259,39 @@ mod tests {
         ]
     }
 
+    fn review_body() -> serde_json::Value {
+        serde_json::json!({
+            "sessionId": "s",
+            "cwd": "C:/repo",
+            "conversationId": null,
+            "plan": "do a thing",
+            "round": 1,
+            "max_rounds": null,
+            "stagnant": false,
+            "history": [],
+        })
+    }
+
+    fn stop_body() -> serde_json::Value {
+        serde_json::json!({
+            "sessionId": "s",
+            "cwd": "C:/repo",
+            "conversationId": null,
+            "diff": "+x",
+            "note": null,
+            "round": 1,
+            "max_rounds": null,
+            "stagnant": false,
+            "history": [],
+        })
+    }
+
+    fn encode_body(value: &serde_json::Value) -> Vec<u8> {
+        serde_json::to_vec(value).unwrap()
+    }
+
     fn body() -> Vec<u8> {
-        br#"{"sessionId":"s","cwd":"C:/repo","plan":"do a thing","round":1}"#.to_vec()
+        encode_body(&review_body())
     }
 
     #[test]
@@ -270,19 +301,122 @@ mod tests {
         assert_eq!(request.round, 1);
     }
 
-    /// A plugin that predates the continuation field still has to work — it
-    /// just gets a new conversation each round, which is what happened before.
     #[test]
-    fn a_request_without_a_conversation_id_still_parses() {
+    fn request_and_nested_history_reject_unknown_fields() {
+        let mut top_level = review_body();
+        top_level["futureField"] = true.into();
+        let mut nested = review_body();
+        nested["history"] = serde_json::json!([{
+            "round": 1,
+            "verdict": "revise",
+            "summary": "x",
+            "futureField": true,
+        }]);
+
+        for body in [encode_body(&top_level), encode_body(&nested)] {
+            assert_eq!(
+                classify(&parts(&authed()), &body, &config()).unwrap_err().0,
+                StatusCode::BAD_REQUEST
+            );
+        }
+
+        let mut stop = stop_body();
+        stop["futureField"] = true.into();
+        assert_eq!(
+            classify_stop(&parts(&authed()), &encode_body(&stop), &config())
+                .unwrap_err()
+                .0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+
+    #[test]
+    fn nullable_fields_accept_explicit_null() {
         let request = classify(&parts(&authed()), &body(), &config()).unwrap();
         assert_eq!(request.conversation_id, None);
+
+        let stop = classify_stop(&parts(&authed()), &encode_body(&stop_body()), &config()).unwrap();
+        assert_eq!(stop.conversation_id, None);
+        assert_eq!(stop.note, None);
     }
 
     #[test]
     fn a_conversation_id_is_carried_through() {
-        let with_id = br#"{"sessionId":"s","cwd":"C:/repo","plan":"p","conversationId":"c-1"}"#;
-        let request = classify(&parts(&authed()), with_id, &config()).unwrap();
+        let mut with_id = review_body();
+        with_id["conversationId"] = "c-1".into();
+        let request = classify(&parts(&authed()), &encode_body(&with_id), &config()).unwrap();
         assert_eq!(request.conversation_id.as_deref(), Some("c-1"));
+    }
+
+    #[test]
+    fn every_review_request_key_must_be_present() {
+        for key in [
+            "sessionId",
+            "cwd",
+            "conversationId",
+            "plan",
+            "round",
+            "max_rounds",
+            "stagnant",
+            "history",
+        ] {
+            let mut incomplete = review_body();
+            incomplete.as_object_mut().unwrap().remove(key);
+            let error = classify(&parts(&authed()), &encode_body(&incomplete), &config()).unwrap_err();
+            assert_eq!(error.0, StatusCode::BAD_REQUEST, "missing {key}");
+            assert!(error.1.contains("missing field"), "missing {key}: {}", error.1);
+        }
+    }
+
+    #[test]
+    fn every_stop_request_key_must_be_present() {
+        for key in [
+            "sessionId",
+            "cwd",
+            "conversationId",
+            "diff",
+            "note",
+            "round",
+            "max_rounds",
+            "stagnant",
+            "history",
+        ] {
+            let mut incomplete = stop_body();
+            incomplete.as_object_mut().unwrap().remove(key);
+            let error = classify_stop(&parts(&authed()), &encode_body(&incomplete), &config()).unwrap_err();
+            assert_eq!(error.0, StatusCode::BAD_REQUEST, "missing {key}");
+            assert!(error.1.contains("missing field"), "missing {key}: {}", error.1);
+        }
+    }
+
+    #[test]
+    fn every_history_key_must_be_present_and_verdict_is_closed() {
+        for key in ["round", "verdict", "summary"] {
+            let mut history = serde_json::json!({
+                "round": 1,
+                "verdict": "revise",
+                "summary": "x",
+            });
+            history.as_object_mut().unwrap().remove(key);
+            let mut incomplete = review_body();
+            incomplete["history"] = serde_json::json!([history]);
+            let error = classify(&parts(&authed()), &encode_body(&incomplete), &config()).unwrap_err();
+            assert_eq!(error.0, StatusCode::BAD_REQUEST, "missing history.{key}");
+            assert!(error.1.contains("missing field"), "missing history.{key}: {}", error.1);
+        }
+
+        let mut unknown = review_body();
+        unknown["history"] = serde_json::json!([{
+            "round": 1,
+            "verdict": "accepted_in_future",
+            "summary": "x",
+        }]);
+        assert_eq!(
+            classify(&parts(&authed()), &encode_body(&unknown), &config())
+                .unwrap_err()
+                .0,
+            StatusCode::BAD_REQUEST
+        );
     }
 
     #[test]
@@ -335,18 +469,24 @@ mod tests {
 
     #[test]
     fn an_empty_plan_is_nothing_to_review() {
-        let empty = br#"{"sessionId":"s","cwd":"C:/repo","plan":"   "}"#;
+        let mut empty = review_body();
+        empty["plan"] = "   ".into();
         assert_eq!(
-            classify(&parts(&authed()), empty, &config()).unwrap_err().0,
+            classify(&parts(&authed()), &encode_body(&empty), &config())
+                .unwrap_err()
+                .0,
             StatusCode::BAD_REQUEST
         );
     }
 
     #[test]
     fn a_missing_cwd_is_refused_because_the_reviewer_needs_a_repository() {
-        let no_cwd = br#"{"sessionId":"s","cwd":"","plan":"do a thing"}"#;
+        let mut no_cwd = review_body();
+        no_cwd["cwd"] = "".into();
         assert_eq!(
-            classify(&parts(&authed()), no_cwd, &config()).unwrap_err().0,
+            classify(&parts(&authed()), &encode_body(&no_cwd), &config())
+                .unwrap_err()
+                .0,
             StatusCode::BAD_REQUEST
         );
     }

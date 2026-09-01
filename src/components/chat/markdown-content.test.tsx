@@ -105,8 +105,8 @@ describe('MarkdownContent file references', () => {
     const existing = new Promise<{ kind: 'project_file'; path: string }>((resolve) => {
       resolveExisting = resolve
     })
-    workspaceProbeRef.mockImplementation((path: string) => {
-      if (path === 'fastapi/__init__.md') return existing
+    workspaceProbeRef.mockImplementation((request: { path: string }) => {
+      if (request.path === 'fastapi/__init__.md') return existing
       return Promise.reject(new Error('path does not exist'))
     })
 
@@ -119,8 +119,10 @@ describe('MarkdownContent file references', () => {
     expect(screen.queryByRole('button', { name: 'fastapi/__init__.md' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '条件1/条件2/条件3' })).not.toBeInTheDocument()
     await waitFor(() =>
-      expect(workspaceProbeRef).toHaveBeenCalledWith('fastapi/__init__.md', {
+      expect(workspaceProbeRef).toHaveBeenCalledWith({
         conversationId: 'conversation-1',
+        projectId: null,
+        path: 'fastapi/__init__.md',
       }),
     )
 
@@ -132,8 +134,8 @@ describe('MarkdownContent file references', () => {
     expect(await screen.findAllByRole('button', { name: 'fastapi/__init__.md' })).toHaveLength(2)
     expect(screen.queryByRole('button', { name: '条件1/条件2/条件3' })).not.toBeInTheDocument()
     expect(workspaceResolveRef).not.toHaveBeenCalled()
-    expect(workspaceProbeRef.mock.calls.filter(([path]) => path === 'fastapi/__init__.md')).toHaveLength(1)
-    expect(workspaceProbeRef.mock.calls.filter(([path]) => path === '条件1/条件2/条件3')).toHaveLength(1)
+    expect(workspaceProbeRef.mock.calls.filter(([request]) => request.path === 'fastapi/__init__.md')).toHaveLength(1)
+    expect(workspaceProbeRef.mock.calls.filter(([request]) => request.path === '条件1/条件2/条件3')).toHaveLength(1)
   })
 
   it('preserves inline-code styling when a path-shaped candidate does not exist', async () => {
@@ -180,7 +182,13 @@ describe('MarkdownContent file references', () => {
 
     fireEvent.click(source)
     await waitFor(() =>
-      expect(workspaceResolveRef).toHaveBeenCalledWith({ path: 'src/chat.ts' }, { conversationId: 'conversation-1' }),
+      expect(workspaceResolveRef).toHaveBeenCalledWith({
+        conversationId: 'conversation-1',
+        projectId: null,
+        path: 'src/chat.ts',
+        lineStart: null,
+        lineEnd: null,
+      }),
     )
     expect(workspaceReadFile).not.toHaveBeenCalled()
     expect(await screen.findByText('one')).toBeInTheDocument()
@@ -221,7 +229,13 @@ describe('MarkdownContent file references', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'README.md' }))
     await waitFor(() =>
-      expect(workspaceResolveRef).toHaveBeenCalledWith({ path: 'README.md' }, { conversationId: 'conversation-1' }),
+      expect(workspaceResolveRef).toHaveBeenCalledWith({
+        conversationId: 'conversation-1',
+        projectId: null,
+        path: 'README.md',
+        lineStart: null,
+        lineEnd: null,
+      }),
     )
     expect(workspaceReadFile).not.toHaveBeenCalled()
     expect(await screen.findByText('# Meridian')).toBeInTheDocument()

@@ -6,14 +6,15 @@ import { UsageSettings } from './usage-settings'
 // indistinguishable to a query by name.
 import i18n from '@/i18n'
 import { api } from '@/api'
-import type { UsageBucket, UsageDimension, UsageFilter } from '@/types'
+import { decimal } from '@/lib/decimal'
+import type { UsageBucketInfoResponse, UsageDimension, UsageReportRequest } from '@/types'
 
 vi.mock('@/api', () => ({ api: { usageReport: vi.fn() } }))
 
 const mockApi = vi.mocked(api)
 const onOpenConversation = vi.fn()
 
-function bucket(over: Partial<UsageBucket> = {}): UsageBucket {
+function bucket(over: Partial<UsageBucketInfoResponse> = {}): UsageBucketInfoResponse {
   return {
     key: 'k',
     label: 'A conversation',
@@ -27,11 +28,11 @@ function bucket(over: Partial<UsageBucket> = {}): UsageBucket {
     output_tokens: 500,
     cache_read_tokens: 250,
     cache_write_tokens: 0,
-    input_cost: 0.5,
-    output_cost: 0.75,
-    cache_cost: 0.2,
-    tool_cost: 0.05,
-    cost: 1.5,
+    input_cost: decimal('0.5'),
+    output_cost: decimal('0.75'),
+    cache_cost: decimal('0.2'),
+    tool_cost: decimal('0.05'),
+    total_cost: decimal('1.5'),
     unpriced_token_messages: 0,
     unpriced_tool_messages: 0,
     estimated_token_messages: 0,
@@ -43,8 +44,8 @@ function bucket(over: Partial<UsageBucket> = {}): UsageBucket {
 }
 
 /** Answers each of the five groupings the panel asks for. */
-function serve(by: Partial<Record<UsageDimension, UsageBucket[]>>) {
-  mockApi.usageReport.mockImplementation((dimension: UsageDimension) => Promise.resolve(by[dimension] ?? []))
+function serve(by: Partial<Record<UsageDimension, UsageBucketInfoResponse[]>>) {
+  mockApi.usageReport.mockImplementation((request: UsageReportRequest) => Promise.resolve(by[request.dimension] ?? []))
 }
 
 beforeEach(async () => {
@@ -70,7 +71,9 @@ it('shows a recoverable error when the initial report fails', async () => {
  * the truth with nothing to say so.
  */
 it('says so when part of the traffic could not be priced', async () => {
-  serve({ total: [bucket({ messages: 10, unpriced_token_messages: 4, unpriced_messages: 4, cost: 2 })] })
+  serve({
+    total: [bucket({ messages: 10, unpriced_token_messages: 4, unpriced_messages: 4, total_cost: decimal('2') })],
+  })
   render(<UsageSettings onOpenConversation={onOpenConversation} />)
 
   expect(await screen.findByText('≥ 2.00', { selector: '[data-slot="cost-total"]' })).toBeInTheDocument()
@@ -84,11 +87,11 @@ it('shows backend cost components without deriving them from token totals', asyn
     total: [
       bucket({
         input_tokens: 99_000_000,
-        input_cost: 0.1234567,
-        cache_cost: 0.000321,
-        output_cost: 0.45,
-        tool_cost: 0.006,
-        cost: 0.5797777,
+        input_cost: decimal('0.1234567'),
+        cache_cost: decimal('0.000321'),
+        output_cost: decimal('0.45'),
+        tool_cost: decimal('0.006'),
+        total_cost: decimal('0.5797777'),
       }),
     ],
   })
@@ -106,11 +109,11 @@ it('does not round a positive sub-micro charge down to zero', async () => {
   serve({
     total: [
       bucket({
-        input_cost: 0.0000004,
-        output_cost: 0,
-        cache_cost: 0,
-        tool_cost: 0,
-        cost: 0.0000004,
+        input_cost: decimal('0.0000004'),
+        output_cost: decimal('0'),
+        cache_cost: decimal('0'),
+        tool_cost: decimal('0'),
+        total_cost: decimal('0.0000004'),
         unpriced_token_messages: 1,
         unpriced_messages: 1,
       }),
@@ -123,7 +126,14 @@ it('does not round a positive sub-micro charge down to zero', async () => {
 
 it('qualifies token and tool components independently', async () => {
   serve({
-    total: [bucket({ tool_cost: 0, cost: 1.45, unpriced_tool_messages: 1, unpriced_messages: 1 })],
+    total: [
+      bucket({
+        tool_cost: decimal('0'),
+        total_cost: decimal('1.45'),
+        unpriced_tool_messages: 1,
+        unpriced_messages: 1,
+      }),
+    ],
   })
   render(<UsageSettings onOpenConversation={onOpenConversation} />)
 
@@ -137,8 +147,8 @@ it('keeps estimates distinct from lower bounds, including an incomplete estimate
   serve({
     total: [
       bucket({
-        tool_cost: 0,
-        cost: 1.45,
+        tool_cost: decimal('0'),
+        total_cost: decimal('1.45'),
         estimated_token_messages: 1,
         estimated_messages: 1,
         unpriced_tool_messages: 1,
@@ -176,8 +186,24 @@ it('marks a complete current-price fallback as an estimate', async () => {
 it('draws provider and model bars from backend cost components', async () => {
   serve({
     total: [bucket()],
-    provider: [bucket({ label: 'Provider A', input_tokens: 0, input_cost: 0.25, cache_cost: 0, output_cost: 0.5 })],
-    model: [bucket({ label: 'Model A', input_tokens: 0, input_cost: 0.1, cache_cost: 0, output_cost: 0.2 })],
+    provider: [
+      bucket({
+        label: 'Provider A',
+        input_tokens: 0,
+        input_cost: decimal('0.25'),
+        cache_cost: decimal('0'),
+        output_cost: decimal('0.5'),
+      }),
+    ],
+    model: [
+      bucket({
+        label: 'Model A',
+        input_tokens: 0,
+        input_cost: decimal('0.1'),
+        cache_cost: decimal('0'),
+        output_cost: decimal('0.2'),
+      }),
+    ],
   })
   render(<UsageSettings onOpenConversation={onOpenConversation} />)
 
@@ -203,11 +229,11 @@ it('does not render externally settled traffic as an exact local zero', async ()
         messages: 2,
         metered_messages: 0,
         external_messages: 2,
-        cost: 0,
-        input_cost: 0,
-        output_cost: 0,
-        cache_cost: 0,
-        tool_cost: 0,
+        total_cost: decimal('0'),
+        input_cost: decimal('0'),
+        output_cost: decimal('0'),
+        cache_cost: decimal('0'),
+        tool_cost: decimal('0'),
       }),
     ],
   })
@@ -401,7 +427,7 @@ it('aggregates duplicate conversation titles and keeps each real conversation as
         messages: 2,
         input_tokens: 1_000,
         output_tokens: 500,
-        cost: 1,
+        total_cost: decimal('1'),
         unpriced_messages: 1,
       }),
       bucket({
@@ -410,10 +436,10 @@ it('aggregates duplicate conversation titles and keeps each real conversation as
         messages: 3,
         input_tokens: 2_000,
         output_tokens: 500,
-        cost: 2,
+        total_cost: decimal('2'),
         unpriced_messages: 2,
       }),
-      bucket({ key: 'gone', label: null, cost: 0.5 }),
+      bucket({ key: 'gone', label: null, total_cost: decimal('0.5') }),
     ],
   })
   render(<UsageSettings onOpenConversation={onOpenConversation} />)
@@ -466,7 +492,7 @@ it('keeps an existing conversation with an empty title openable and falls back t
 
 it('groups every matching title before limiting the table to twelve visible rows', async () => {
   const unique = Array.from({ length: 12 }, (_, index) =>
-    bucket({ key: `unique-${index}`, label: `Unique ${index}`, cost: 20 - index }),
+    bucket({ key: `unique-${index}`, label: `Unique ${index}`, total_cost: decimal((20 - index).toString()) }),
   )
   serve({
     total: [bucket()],
@@ -474,8 +500,8 @@ it('groups every matching title before limiting the table to twelve visible rows
     // the top, so seeing the parent proves grouping happened before slicing.
     conversation: [
       ...unique,
-      bucket({ key: 'duplicate-a', label: 'Combined title', cost: 8 }),
-      bucket({ key: 'duplicate-b', label: 'Combined title', cost: 8 }),
+      bucket({ key: 'duplicate-a', label: 'Combined title', total_cost: decimal('8') }),
+      bucket({ key: 'duplicate-b', label: 'Combined title', total_cost: decimal('8') }),
     ],
   })
   render(<UsageSettings onOpenConversation={onOpenConversation} />)
@@ -492,13 +518,19 @@ it('ranks equal-cost conversation rows by tokens and then preserves backend orde
       label: `Equal ${index}`,
       input_tokens: 1_000,
       output_tokens: 500,
-      cost: 1,
+      total_cost: decimal('1'),
     }),
   )
   serve({
     total: [bucket()],
     conversation: [
-      bucket({ key: 'low-tokens', label: 'Low tokens', input_tokens: 1, output_tokens: 0, cost: 1 }),
+      bucket({
+        key: 'low-tokens',
+        label: 'Low tokens',
+        input_tokens: 1,
+        output_tokens: 0,
+        total_cost: decimal('1'),
+      }),
       ...equalCost,
     ],
   })
@@ -530,12 +562,13 @@ it('narrows the window without reloading the whole page', async () => {
   render(<UsageSettings onOpenConversation={onOpenConversation} />)
   await screen.findByText('Cost', { selector: '[data-slot="kpi-title"]' })
 
-  const sent = (): UsageFilter | null => (mockApi.usageReport.mock.calls.at(-1)?.[1] as UsageFilter | undefined) ?? null
-  const thirtyDays = sent()?.since_ms ?? 0
+  const sent = (): UsageReportRequest | null =>
+    (mockApi.usageReport.mock.calls.at(-1)?.[0] as UsageReportRequest | undefined) ?? null
+  const thirtyDays = sent()?.sinceMs ?? 0
 
   await userEvent.click(screen.getByRole('button', { name: 'Last 7 days' }))
 
-  await waitFor(() => expect(sent()?.since_ms ?? 0).toBeGreaterThan(thirtyDays))
+  await waitFor(() => expect(sent()?.sinceMs ?? 0).toBeGreaterThan(thirtyDays))
 })
 
 it('asks for the whole log when the range is cleared', async () => {
@@ -546,7 +579,7 @@ it('asks for the whole log when the range is cleared', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'All time' }))
 
   await waitFor(() => {
-    const filter = mockApi.usageReport.mock.calls.at(-1)?.[1] as UsageFilter
-    expect(filter.since_ms).toBeNull()
+    const request = mockApi.usageReport.mock.calls.at(-1)?.[0] as UsageReportRequest
+    expect(request.sinceMs).toBeNull()
   })
 })

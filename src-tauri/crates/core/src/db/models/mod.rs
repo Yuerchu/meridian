@@ -16,6 +16,7 @@ pub mod message_context_item;
 pub mod message_sticker;
 pub mod model_config;
 pub mod plan;
+pub mod plan_review;
 pub mod preference;
 pub mod project;
 pub mod prompt_template;

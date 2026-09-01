@@ -1,27 +1,158 @@
 use tauri::Manager;
 
 use crate::ServicesExt;
+use crate::commands::model_config::RequiredNullable;
 use meridian_core::onebot;
 
+#[derive(Debug, serde::Serialize)]
+pub struct OneBotConfigInfoResponse {
+    pub enabled: bool,
+    pub host: String,
+    pub port: u16,
+    pub access_token: Option<String>,
+    pub assistant_id: Option<String>,
+    pub admin_users: Vec<i64>,
+    pub ack_emoji_id: String,
+    pub balance_alert_threshold: Option<meridian_core::decimal::Decimal>,
+    pub voice_capture_sessions: Vec<String>,
+    pub voice_send_enabled: bool,
+    pub voice_send_groups: Vec<String>,
+    pub voice_tts_model: String,
+    pub voice_tts_reference_id: String,
+}
+
+impl From<onebot::OneBotConfig> for OneBotConfigInfoResponse {
+    fn from(config: onebot::OneBotConfig) -> Self {
+        Self {
+            enabled: config.enabled,
+            host: config.host,
+            port: config.port,
+            access_token: config.access_token,
+            assistant_id: config.assistant_id,
+            admin_users: config.admin_users,
+            ack_emoji_id: config.ack_emoji_id,
+            balance_alert_threshold: config.balance_alert_threshold,
+            voice_capture_sessions: config.voice_capture_sessions,
+            voice_send_enabled: config.voice_send_enabled,
+            voice_send_groups: config.voice_send_groups,
+            voice_tts_model: config.voice_tts_model,
+            voice_tts_reference_id: config.voice_tts_reference_id,
+        }
+    }
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct OneBotStatusInfoResponse {
+    pub enabled: bool,
+    pub running: bool,
+    pub connected_clients: u32,
+    pub host: String,
+    pub port: u16,
+}
+
+impl From<onebot::OneBotStatus> for OneBotStatusInfoResponse {
+    fn from(status: onebot::OneBotStatus) -> Self {
+        Self {
+            enabled: status.enabled,
+            running: status.running,
+            connected_clients: status.connected_clients,
+            host: status.host,
+            port: status.port,
+        }
+    }
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct VoiceSendReadinessInfoResponse {
+    pub enabled: bool,
+    pub has_model: bool,
+    pub has_reference_id: bool,
+    pub has_api_key: bool,
+    pub ready: bool,
+}
+
+impl From<onebot::VoiceSendReadiness> for VoiceSendReadinessInfoResponse {
+    fn from(readiness: onebot::VoiceSendReadiness) -> Self {
+        Self {
+            enabled: readiness.enabled,
+            has_model: readiness.has_model,
+            has_reference_id: readiness.has_reference_id,
+            has_api_key: readiness.has_api_key,
+            ready: readiness.ready,
+        }
+    }
+}
+
+/// The complete OneBot settings document accepted by IPC.
+///
+/// Every key is required. In particular, nullable values use
+/// [`RequiredNullable`] so omitting a key cannot silently clear it.
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OneBotConfigUpdateRequest {
+    pub enabled: bool,
+    pub host: String,
+    pub port: u16,
+    pub access_token: RequiredNullable<String>,
+    pub assistant_id: RequiredNullable<String>,
+    pub admin_users: Vec<i64>,
+    pub ack_emoji_id: String,
+    pub balance_alert_threshold: RequiredNullable<meridian_core::decimal::Decimal>,
+    pub voice_capture_sessions: Vec<String>,
+    pub voice_send_enabled: bool,
+    pub voice_send_groups: Vec<String>,
+    pub voice_tts_model: String,
+    pub voice_tts_reference_id: String,
+}
+
+impl TryFrom<OneBotConfigUpdateRequest> for onebot::OneBotConfig {
+    type Error = String;
+
+    fn try_from(config: OneBotConfigUpdateRequest) -> Result<Self, Self::Error> {
+        let balance_alert_threshold = config
+            .balance_alert_threshold
+            .0
+            .map(|value| value.require_non_negative("balance_alert_threshold"))
+            .transpose()
+            .map_err(|error| error.to_string())?;
+        Ok(Self {
+            enabled: config.enabled,
+            host: config.host,
+            port: config.port,
+            access_token: config.access_token.0,
+            assistant_id: config.assistant_id.0,
+            admin_users: config.admin_users,
+            ack_emoji_id: config.ack_emoji_id,
+            balance_alert_threshold,
+            voice_capture_sessions: config.voice_capture_sessions,
+            voice_send_enabled: config.voice_send_enabled,
+            voice_send_groups: config.voice_send_groups,
+            voice_tts_model: config.voice_tts_model,
+            voice_tts_reference_id: config.voice_tts_reference_id,
+        })
+    }
+}
+
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
-pub async fn get_onebot_status(app: tauri::AppHandle) -> Result<onebot::OneBotStatus, String> {
+pub async fn get_onebot_status(app: tauri::AppHandle) -> Result<OneBotStatusInfoResponse, String> {
     let ob = app.state::<onebot::AppOneBot>();
     let server = ob.0.lock().await;
-    Ok(server.status())
+    Ok(server.status().into())
 }
 
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
-pub async fn get_onebot_config(app: tauri::AppHandle) -> Result<onebot::OneBotConfig, String> {
+pub async fn get_onebot_config(app: tauri::AppHandle) -> Result<OneBotConfigInfoResponse, String> {
     let services = app.services();
-    Ok(onebot::load_config(&services.db))
+    onebot::load_config(&services.db).map(Into::into)
 }
 
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
-pub async fn save_onebot_config(app: tauri::AppHandle, config: onebot::OneBotConfig) -> Result<(), String> {
+pub async fn save_onebot_config(app: tauri::AppHandle, request: OneBotConfigUpdateRequest) -> Result<(), String> {
     let services = app.services();
+    let config = onebot::OneBotConfig::try_from(request)?;
     onebot::save_config(&services.db, &config)?;
 
     // 语音策略立刻生效，不等重启。
@@ -44,17 +175,17 @@ pub async fn save_onebot_config(app: tauri::AppHandle, config: onebot::OneBotCon
 /// 功能唯一一种"什么都不说"的失败就是开关开着、工具不出现。
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
-pub async fn get_voice_send_readiness(app: tauri::AppHandle) -> Result<onebot::VoiceSendReadiness, String> {
+pub async fn get_voice_send_readiness(app: tauri::AppHandle) -> Result<VoiceSendReadinessInfoResponse, String> {
     let services = app.services();
-    let config = onebot::load_config(&services.db);
-    Ok(onebot::voice_send_readiness(&services, &config))
+    let config = onebot::load_config(&services.db)?;
+    Ok(onebot::voice_send_readiness(&services, &config).into())
 }
 
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub async fn start_onebot(app: tauri::AppHandle) -> Result<(), String> {
     let services = app.services();
-    let config = onebot::load_config(&services.db);
+    let config = onebot::load_config(&services.db)?;
 
     let ob = app.state::<onebot::AppOneBot>();
     let mut server_guard = ob.0.lock().await;
@@ -82,4 +213,103 @@ pub async fn stop_onebot(app: tauri::AppHandle) -> Result<(), String> {
     let server = ob.0.lock().await;
     server.stop().await;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn request() -> serde_json::Value {
+        json!({
+            "enabled": false,
+            "host": "127.0.0.1",
+            "port": 6700,
+            "access_token": null,
+            "assistant_id": null,
+            "admin_users": [],
+            "ack_emoji_id": "76",
+            "balance_alert_threshold": null,
+            "voice_capture_sessions": [],
+            "voice_send_enabled": false,
+            "voice_send_groups": [],
+            "voice_tts_model": "",
+            "voice_tts_reference_id": ""
+        })
+    }
+
+    #[test]
+    fn onebot_config_request_requires_nullable_keys_and_rejects_unknown_fields() {
+        assert!(serde_json::from_value::<OneBotConfigUpdateRequest>(request()).is_ok());
+
+        let mut decimal = request();
+        decimal["balance_alert_threshold"] = json!("1.25");
+        assert!(serde_json::from_value::<OneBotConfigUpdateRequest>(decimal).is_ok());
+
+        let mut numeric_money = request();
+        numeric_money["balance_alert_threshold"] = json!(1.25);
+        assert!(serde_json::from_value::<OneBotConfigUpdateRequest>(numeric_money).is_err());
+
+        let mut negative = request();
+        negative["balance_alert_threshold"] = json!("-1");
+        let negative = serde_json::from_value::<OneBotConfigUpdateRequest>(negative).unwrap();
+        assert!(onebot::OneBotConfig::try_from(negative).is_err());
+
+        for key in ["access_token", "assistant_id", "balance_alert_threshold"] {
+            let mut missing = request();
+            missing.as_object_mut().unwrap().remove(key);
+            assert!(
+                serde_json::from_value::<OneBotConfigUpdateRequest>(missing).is_err(),
+                "{key} must be present"
+            );
+        }
+
+        let mut unknown = request();
+        unknown["legacy_field"] = json!(true);
+        assert!(serde_json::from_value::<OneBotConfigUpdateRequest>(unknown).is_err());
+    }
+
+    #[test]
+    fn onebot_status_is_projected_into_the_shell_response() {
+        let response = OneBotStatusInfoResponse::from(onebot::OneBotStatus {
+            enabled: true,
+            running: true,
+            connected_clients: 2,
+            host: "127.0.0.1".into(),
+            port: 6700,
+        });
+
+        assert_eq!(
+            serde_json::to_value(response).unwrap(),
+            json!({
+                "enabled": true,
+                "running": true,
+                "connected_clients": 2,
+                "host": "127.0.0.1",
+                "port": 6700
+            })
+        );
+    }
+
+    #[test]
+    fn voice_send_readiness_is_projected_into_the_shell_response() {
+        let response = VoiceSendReadinessInfoResponse::from(onebot::VoiceSendReadiness {
+            enabled: true,
+            has_model: true,
+            has_reference_id: false,
+            has_api_key: true,
+            ready: false,
+        });
+
+        assert_eq!(
+            serde_json::to_value(response).unwrap(),
+            json!({
+                "enabled": true,
+                "has_model": true,
+                "has_reference_id": false,
+                "has_api_key": true,
+                "ready": false
+            })
+        );
+    }
 }

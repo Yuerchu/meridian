@@ -4,7 +4,7 @@ import { Button, Separator } from '@heroui/react'
 import { HoverCard } from '@heroui-pro/react/hover-card'
 
 import { costQualifier, formatCostAmount, type CostQualifier } from '@/lib/cost-format'
-import type { TurnUsageSummary } from '@/types'
+import type { DecimalString, TurnUsageInfoResponse } from '@/types'
 
 type TokenTotals = { input: number | null; output: number | null }
 
@@ -21,7 +21,7 @@ function tokenText(tokens: TokenTotals, t: ReturnType<typeof useTranslation>['t'
   return t('chat.usage.tokensOne', { value: (input ?? output ?? 0).toLocaleString() })
 }
 
-function persistedTokenText(usage: TurnUsageSummary, t: ReturnType<typeof useTranslation>['t']): string | null {
+function persistedTokenText(usage: TurnUsageInfoResponse, t: ReturnType<typeof useTranslation>['t']): string | null {
   if (usage.messages > 0 && usage.missing_token_usage_messages >= usage.messages) {
     return t('chat.usage.tokensUnknown')
   }
@@ -30,12 +30,16 @@ function persistedTokenText(usage: TurnUsageSummary, t: ReturnType<typeof useTra
   return usage.incomplete_token_usage_messages > 0 ? t('chat.usage.tokensPartial', { tokens: reported }) : reported
 }
 
-function qualifiedAmount(value: number, qualifier: CostQualifier, t: ReturnType<typeof useTranslation>['t']): string {
+function qualifiedAmount(
+  value: DecimalString,
+  qualifier: CostQualifier,
+  t: ReturnType<typeof useTranslation>['t'],
+): string {
   const amount = formatCostAmount(value, qualifier)
   return qualifier === 'partial_estimate' ? t('chat.usage.partialAmount', { amount }) : amount
 }
 
-function turnTotalQualifier(usage: TurnUsageSummary): CostQualifier {
+function turnTotalQualifier(usage: TurnUsageInfoResponse): CostQualifier {
   // A mixed turn can also include subscription/external rows. They are not an
   // actionable pricing gap and therefore are not in `unpriced_messages`, but
   // their cost is still absent from this per-turn amount.
@@ -43,7 +47,7 @@ function turnTotalQualifier(usage: TurnUsageSummary): CostQualifier {
   return costQualifier(absentMessages, usage.estimated_messages)
 }
 
-function statusText(usage: TurnUsageSummary, t: ReturnType<typeof useTranslation>['t']): string {
+function statusText(usage: TurnUsageInfoResponse, t: ReturnType<typeof useTranslation>['t']): string {
   const isLocal =
     usage.pricing_status === 'exact' || usage.pricing_status === 'estimated' || usage.pricing_status === 'lower_bound'
   if (isLocal && usage.total_cost != null) {
@@ -63,7 +67,7 @@ function statusText(usage: TurnUsageSummary, t: ReturnType<typeof useTranslation
  * snapshot, and transcript rows written before turn ids existed. Those retain
  * the token text they have always shown and make no cost claim.
  */
-export function TurnUsage({ tokens, usage }: { tokens: TokenTotals; usage?: TurnUsageSummary | null }) {
+export function TurnUsage({ tokens, usage }: { tokens: TokenTotals; usage?: TurnUsageInfoResponse | null }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const detailsId = useId()

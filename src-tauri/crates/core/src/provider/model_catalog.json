@@ -5,8 +5,7 @@
     "Every field is optional: omitted fields inherit the provider default from capabilities.rs.",
     "`thinking_style` decides the request shape and is the field most likely to cause a hard 400",
     "if wrong -- see ThinkingStyle in provider/mod.rs.",
-    "`supported_efforts` must stay in ascending order; the median is used when coercing an",
-    "unsupported tier after a model switch."
+    "`supported_efforts` must stay in ascending order; unsupported explicit tiers are rejected."
   ],
   "models": [
     {
@@ -498,7 +497,7 @@
         "`max_output_tokens` is ours: xAI publishes no output ceiling and accepted a",
         "262144 request, so this is a budget reservation rather than a limit they set.",
         "Pricing steps up above a 200k prompt (input 2 -> 4, cached 0.5 -> 1, output",
-        "6 -> 12 per 1M). That belongs in the model's `price_tiers`, which is per",
+        "6 -> 12 per 1M). That belongs in the model's `pricing_tiers`, which is per",
         "installation because the rates are -- see migration 35."
       ],
       "supports_thinking": true,

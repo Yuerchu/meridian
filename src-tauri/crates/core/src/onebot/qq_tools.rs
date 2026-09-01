@@ -455,7 +455,11 @@ impl QqToolExecutor {
         if !self.available(spec) {
             return Err(format!("Tool {name} is not available in this session"));
         }
-        let args: serde_json::Value = serde_json::from_str(arguments).unwrap_or_else(|_| serde_json::json!({}));
+        let args: serde_json::Value =
+            serde_json::from_str(arguments).map_err(|error| format!("invalid JSON arguments for {name}: {error}"))?;
+        if !args.is_object() {
+            return Err(format!("arguments for {name} must be a JSON object"));
+        }
 
         match name {
             "list_stickers" => self.list_stickers(&args).await,
@@ -760,11 +764,7 @@ impl QqToolExecutor {
         .await
         .map_err(|e| e.to_string())??;
 
-        let payload = sticker
-            .native_payload
-            .as_deref()
-            .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
-            .unwrap_or_else(|| serde_json::json!({}));
+        let payload = crate::emoji::parse_native_payload(&sticker.id, sticker.native_payload.as_deref())?;
         let cached_image = || -> Result<MessageSegment, String> {
             use base64::Engine;
             if sticker.file_name.is_empty() {

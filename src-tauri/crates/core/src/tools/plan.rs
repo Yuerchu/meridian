@@ -66,25 +66,17 @@ impl Tool for ExitPlanTool {
     }
 
     fn description(&self) -> &str {
-        "Present your finished plan to the user and ask to leave plan mode. Pass the whole plan as \
-         markdown; the user reads it and either approves it — after which you start implementing \
-         straight away — or sends it back with feedback, in which case you stay in plan mode and \
-         revise. Call this only when the plan is complete: use `ask_user` for questions along the \
-         way, not this tool."
+        "Submit the current saved plan.md for review. This call takes no plan content: use \
+         read_plan and update_plan first, then call exit_plan only when the saved revision is \
+         complete. The turn ends while the user reviews it. If they request changes, a later \
+         continuation gives you their edits and comments and you revise plan.md with another patch."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
         serde_json::json!({
             "type": "object",
-            "properties": {
-                "plan": {
-                    "type": "string",
-                    "description": "The complete plan, as markdown. Name the files to change and \
-                                    what changes in each, point at existing code worth reusing, \
-                                    and say how to verify it worked."
-                }
-            },
-            "required": ["plan"]
+            "properties": {},
+            "additionalProperties": false
         })
     }
 
@@ -94,5 +86,87 @@ impl Tool for ExitPlanTool {
 
     async fn execute(&self, _args: serde_json::Value, _context: &ToolContext) -> Result<String, String> {
         Err("exit_plan must be handled by the agent loop".to_string())
+    }
+}
+
+/// Read the one private document plan mode owns. Like the transition tools this
+/// is a registry shell: the desktop adapter has the app-data root and performs
+/// the durable read, while runners with no plan-mode port never see it.
+pub struct ReadPlanTool;
+
+#[async_trait]
+impl Tool for ReadPlanTool {
+    fn name(&self) -> &str {
+        "read_plan"
+    }
+
+    fn description(&self) -> &str {
+        "Read the current private plan.md and its optimistic-concurrency token. Call this before \
+         every update. It returns the complete saved Markdown, generation, SHA-256, and file-sync \
+         state; it never reads a plan.md from the project working tree."
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+        })
+    }
+
+    fn default_permission(&self) -> Permission {
+        Permission::Always
+    }
+
+    async fn execute(&self, _args: serde_json::Value, _context: &ToolContext) -> Result<String, String> {
+        Err("read_plan must be handled by the agent loop".to_string())
+    }
+}
+
+/// Apply one patch to the private plan document. It cannot name a project file
+/// and therefore needs no ordinary filesystem approval.
+pub struct UpdatePlanTool;
+
+#[async_trait]
+impl Tool for UpdatePlanTool {
+    fn name(&self) -> &str {
+        "update_plan"
+    }
+
+    fn description(&self) -> &str {
+        "Apply one unified or Codex-style patch to the private plan.md. The first draft must add \
+         plan.md; later calls must update it. Pass the generation and SHA-256 returned by \
+         read_plan. Stale, multi-file, delete, move, empty, and no-op patches are rejected."
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "base_generation": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Generation returned by the most recent read_plan call"
+                },
+                "base_sha256": {
+                    "type": "string",
+                    "description": "SHA-256 returned by the most recent read_plan call"
+                },
+                "patch": {
+                    "type": "string",
+                    "description": "One patch whose only logical path is plan.md"
+                }
+            },
+            "required": ["base_generation", "base_sha256", "patch"],
+            "additionalProperties": false
+        })
+    }
+
+    fn default_permission(&self) -> Permission {
+        Permission::Always
+    }
+
+    async fn execute(&self, _args: serde_json::Value, _context: &ToolContext) -> Result<String, String> {
+        Err("update_plan must be handled by the agent loop".to_string())
     }
 }

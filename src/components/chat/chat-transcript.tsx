@@ -20,6 +20,7 @@ import { FilePreviewProvider } from './file-preview'
 import type { EmojiMap } from './emoji-renderer'
 import type { SenderNames } from '@/hooks/use-sender-names'
 import { answerAnchorId, type Turn } from '@/lib/turns'
+import type { MessageRating } from '@/types'
 
 const TRANSCRIPT_WINDOW_TURNS = 40
 
@@ -76,7 +77,7 @@ export interface ChatTranscriptProps {
   onDelete?: (id: string) => void
   onRegenerate?: (id: string) => void
   onEdit?: (id: string, content: string) => void
-  onRate?: (id: string, rating: number | null) => void
+  onRate?: (id: string, rating: MessageRating | null) => void
   isOneBot?: boolean
   /** A hosted Claude Code session: the assistant answering is not this app's. */
   isHosted?: boolean

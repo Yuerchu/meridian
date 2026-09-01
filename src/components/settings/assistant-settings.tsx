@@ -20,15 +20,16 @@ import { SavedHint, SettingsHeader, SettingsPane, SettingsSelect, SettingsSkelet
 import { ProviderModelPicker } from './provider-model-picker'
 import { SubAgentSettings } from './sub-agent-settings'
 import type {
-  Assistant,
-  EmojiPack,
-  Provider,
-  ModelInfo,
-  PromptTemplate,
-  Skill,
-  TemplateVariable,
-  ToolInfo,
-  ToolPreset,
+  AssistantInfoResponse,
+  AssistantUpdateRequest,
+  EmojiPackInfoResponse,
+  ProviderInfoResponse,
+  McpToolInfoResponse,
+  ProviderModelInfoResponse,
+  PromptTemplateInfoResponse,
+  SkillInfoResponse,
+  TemplateVariableInfoResponse,
+  ToolPresetInfoResponse,
 } from '@/types'
 import { SettingsDrilldown } from './settings-drilldown'
 import { useSettingsDirtyRegistration } from './dirty-guard'
@@ -40,9 +41,9 @@ function AssistantEditor({
   onDelete,
   onDirtyChange,
 }: {
-  assistant: Assistant
-  providers: Provider[]
-  onSave: (id: string, updates: Record<string, unknown>) => Promise<void>
+  assistant: AssistantInfoResponse
+  providers: ProviderInfoResponse[]
+  onSave: (id: string, updates: Omit<AssistantUpdateRequest, 'id'>) => Promise<void>
   onDelete?: (id: string) => void
   onDirtyChange?: (id: string, dirty: boolean) => void
 }) {
@@ -53,34 +54,27 @@ function AssistantEditor({
   const [modelId, setModelId] = useState(assistant.model_id ?? '')
   const [temperature, setTemperature] = useState(assistant.temperature?.toString() ?? '')
   const [contextLimit, setContextLimit] = useState(assistant.context_limit.toString())
-  const [autoCompactEnabled, setAutoCompactEnabled] = useState(assistant.auto_compact_enabled !== 0)
-  const [thinkingEnabled, setThinkingEnabled] = useState(assistant.thinking_enabled !== 0)
+  const [autoCompactEnabled, setAutoCompactEnabled] = useState(assistant.auto_compact_enabled)
+  const [thinkingEnabled, setThinkingEnabled] = useState(assistant.thinking_enabled)
   const [thinkingBudget, setThinkingBudget] = useState(assistant.thinking_budget?.toString() ?? '')
-  const [models, setModels] = useState<ModelInfo[]>([])
+  const [models, setModels] = useState<ProviderModelInfoResponse[]>([])
   const [saved, markSaved] = useTemporaryFlag()
-  const [allTools, setAllTools] = useState<ToolInfo[]>([])
-  const [templates, setTemplates] = useState<PromptTemplate[]>([])
-  const [templateVars, setTemplateVars] = useState<TemplateVariable[]>([])
+  const [allTools, setAllTools] = useState<McpToolInfoResponse[]>([])
+  const [templates, setTemplates] = useState<PromptTemplateInfoResponse[]>([])
+  const [templateVars, setTemplateVars] = useState<TemplateVariableInfoResponse[]>([])
   const [showTemplates, setShowTemplates] = useState(false)
-  const [allPacks, setAllPacks] = useState<EmojiPack[]>([])
+  const [allPacks, setAllPacks] = useState<EmojiPackInfoResponse[]>([])
   const [assignedPackIds, setAssignedPackIds] = useState<Set<string>>(new Set())
-  const [allSkills, setAllSkills] = useState<Skill[]>([])
+  const [allSkills, setAllSkills] = useState<SkillInfoResponse[]>([])
   const [boundSkillDirs, setBoundSkillDirs] = useState<Set<string>>(new Set())
   const [skillError, setSkillError] = useState<string | null>(null)
-  const [toolPresets, setToolPresets] = useState<ToolPreset[]>([])
+  const [toolPresets, setToolPresets] = useState<ToolPresetInfoResponse[]>([])
   const [selectedPresetId, setSelectedPresetId] = useState(assistant.tool_preset_id ?? '')
   const [toolMode, setToolMode] = useState<'all' | 'preset' | 'custom'>(
     assistant.tool_preset_id ? 'preset' : assistant.enabled_tools ? 'custom' : 'all',
   )
   const [selectedTools, setSelectedTools] = useState<Set<string>>(() => {
-    if (assistant.enabled_tools) {
-      try {
-        return new Set(JSON.parse(assistant.enabled_tools) as string[])
-      } catch {
-        /* ignore */
-      }
-    }
-    return new Set<string>()
+    return new Set(assistant.enabled_tools ?? [])
   })
   const initialToolMode = assistant.tool_preset_id ? 'preset' : assistant.enabled_tools ? 'custom' : 'all'
   const [savedDraft, setSavedDraft] = useState(() =>
@@ -91,18 +85,12 @@ function AssistantEditor({
       modelId: assistant.model_id ?? '',
       temperature: assistant.temperature?.toString() ?? '',
       contextLimit: assistant.context_limit.toString(),
-      autoCompactEnabled: assistant.auto_compact_enabled !== 0,
-      thinkingEnabled: assistant.thinking_enabled !== 0,
+      autoCompactEnabled: assistant.auto_compact_enabled,
+      thinkingEnabled: assistant.thinking_enabled,
       thinkingBudget: assistant.thinking_budget?.toString() ?? '',
       selectedPresetId: assistant.tool_preset_id ?? '',
       toolMode: initialToolMode,
-      selectedTools: (() => {
-        try {
-          return assistant.enabled_tools ? (JSON.parse(assistant.enabled_tools) as string[]).sort() : []
-        } catch {
-          return []
-        }
-      })(),
+      selectedTools: [...(assistant.enabled_tools ?? [])].sort(),
     }),
   )
   const draft = JSON.stringify({
@@ -127,7 +115,7 @@ function AssistantEditor({
   useEffect(() => {
     if (providerId) {
       api
-        .fetchProviderModels(providerId)
+        .fetchProviderModels({ providerId, forceRefresh: null })
         .then(setModels)
         .catch(() => setModels([]))
     } else {
@@ -143,11 +131,13 @@ function AssistantEditor({
     api.listToolPresets().then(setToolPresets)
     api.listAssistantEmojiPacks(assistant.id).then((packs) => setAssignedPackIds(new Set(packs.map((p) => p.id))))
     api.listSkills().then(setAllSkills)
-    api.listSkillBindings('assistant', assistant.id).then((dirs) => setBoundSkillDirs(new Set(dirs)))
+    api
+      .listSkillBindings({ layer: 'assistant', anchorId: assistant.id })
+      .then((dirs) => setBoundSkillDirs(new Set(dirs)))
   }, [assistant.id])
 
   async function handleSave() {
-    const enabledTools = toolMode === 'custom' ? JSON.stringify([...selectedTools]) : null
+    const enabledTools = toolMode === 'custom' ? [...selectedTools] : null
     const toolPresetId = toolMode === 'preset' && selectedPresetId ? selectedPresetId : null
     await onSave(assistant.id, {
       name,
@@ -155,12 +145,12 @@ function AssistantEditor({
       providerId: providerId.trim() || null,
       modelId: modelId.trim() || null,
       temperature: temperature ? parseFloat(temperature) : null,
-      contextLimit: contextLimit ? parseInt(contextLimit) : null,
+      contextLimit: contextLimit ? parseInt(contextLimit) : undefined,
       enabledTools,
-      thinkingEnabled: thinkingEnabled ? 1 : 0,
+      thinkingEnabled,
       thinkingBudget: thinkingBudget ? parseInt(thinkingBudget) : null,
       toolPresetId,
-      autoCompactEnabled: autoCompactEnabled ? 1 : 0,
+      autoCompactEnabled,
     })
     setSavedDraft(draft)
     markSaved()
@@ -413,10 +403,10 @@ function AssistantEditor({
                 isSelected={assignedPackIds.has(pack.id)}
                 onChange={async (selected) => {
                   if (selected) {
-                    await api.assignEmojiPack(assistant.id, pack.id)
+                    await api.assignEmojiPack({ assistantId: assistant.id, packId: pack.id })
                     setAssignedPackIds((prev) => new Set([...prev, pack.id]))
                   } else {
-                    await api.unassignEmojiPack(assistant.id, pack.id)
+                    await api.unassignEmojiPack({ assistantId: assistant.id, packId: pack.id })
                     setAssignedPackIds((prev) => {
                       const next = new Set(prev)
                       next.delete(pack.id)
@@ -454,13 +444,18 @@ function AssistantEditor({
                   key={skill.dir_name}
                   className="py-0.5 text-xs"
                   isSelected={boundSkillDirs.has(skill.dir_name)}
-                  isDisabled={skill.is_enabled === 0}
+                  isDisabled={!skill.is_enabled}
                   onChange={async (selected) => {
                     setSkillError(null)
                     try {
                       // The cap on bindings per anchor lives in the backend, so
                       // take the returned set rather than guessing locally.
-                      const next = await api.setSkillBinding('assistant', assistant.id, skill.dir_name, selected)
+                      const next = await api.setSkillBinding({
+                        layer: 'assistant',
+                        anchorId: assistant.id,
+                        dirName: skill.dir_name,
+                        bound: selected,
+                      })
                       setBoundSkillDirs(new Set(next))
                     } catch (e) {
                       setSkillError(String(e))
@@ -504,8 +499,8 @@ function AssistantEditor({
 
 export function AssistantSettings() {
   const { t } = useTranslation()
-  const [assistants, setAssistants] = useState<Assistant[]>([])
-  const [providers, setProviders] = useState<Provider[]>([])
+  const [assistants, setAssistants] = useState<AssistantInfoResponse[]>([])
+  const [providers, setProviders] = useState<ProviderInfoResponse[]>([])
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [dirtyAssistantId, setDirtyAssistantId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -544,14 +539,21 @@ export function AssistantSettings() {
 
   const handleCreate = useCallback(async () => {
     if (!(await requestLeave())) return
-    const a = await api.createAssistant('New Assistant', 'You are a helpful assistant.')
+    const a = await api.createAssistant({
+      name: 'New Assistant',
+      systemPrompt: 'You are a helpful assistant.',
+      modelId: null,
+      temperature: null,
+      topP: null,
+      maxTokens: null,
+    })
     await refresh()
     setExpandedId(a.id)
   }, [refresh, requestLeave])
 
   const handleSave = useCallback(
-    async (id: string, updates: Record<string, unknown>) => {
-      await api.updateAssistant(id, updates as never)
+    async (id: string, updates: Omit<AssistantUpdateRequest, 'id'>) => {
+      await api.updateAssistant({ ...updates, id })
       await refresh()
     },
     [refresh],
@@ -620,7 +622,7 @@ export function AssistantSettings() {
       >
         {assistants.map((a) => {
           const isExpanded = expandedId === a.id
-          const isDefault = a.is_default === 1
+          const isDefault = a.is_default
           const providerName = providers.find((p) => p.id === a.provider_id)?.name
 
           return (

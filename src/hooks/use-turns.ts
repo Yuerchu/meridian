@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef } from 'react'
 import { buildTurns, type Turn } from '@/lib/turns'
-import type { Message, TurnRecord } from '@/types'
+import type { MessageViewModel, TurnInfoResponse } from '@/types'
 
 /** The turns the backend says never reached an ending.
  *
@@ -9,17 +9,17 @@ import type { Message, TurnRecord } from '@/types'
  *  without recording how, while the same word here means something milder, and
  *  translating it in one place keeps the two from being confused for each
  *  other. */
-function crashedIds(turns: TurnRecord[]): ReadonlySet<string> {
+function crashedIds(turns: TurnInfoResponse[]): ReadonlySet<string> {
   return new Set(turns.filter((t) => t.status === 'interrupted').map((t) => t.id))
 }
 
-function usageByTurnId(turns: TurnRecord[]) {
+function usageByTurnId(turns: TurnInfoResponse[]) {
   return new Map(turns.flatMap((turn) => (turn.usage ? [[turn.id, turn.usage] as const] : [])))
 }
 
 /** One shared empty array, because a default parameter would mint a new one on
  *  every render and take the whole memo chain below it with it. */
-const NO_TURNS: TurnRecord[] = []
+const NO_TURNS: TurnInfoResponse[] = []
 
 /**
  * Groups messages into turns while keeping object identity across renders.
@@ -30,7 +30,11 @@ const NO_TURNS: TurnRecord[] = []
  * level; this preserves it one layer up, so only the turn actually being written
  * to changes reference.
  */
-export function useTurns(messages: Message[], streaming: boolean, turns: TurnRecord[] = NO_TURNS): Turn[] {
+export function useTurns(
+  messages: MessageViewModel[],
+  streaming: boolean,
+  turns: TurnInfoResponse[] = NO_TURNS,
+): Turn[] {
   const crashed = useMemo(() => crashedIds(turns), [turns])
   const usage = useMemo(() => usageByTurnId(turns), [turns])
   const built = useMemo(

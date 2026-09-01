@@ -41,7 +41,7 @@ pub(crate) fn is_builtin_skill_dir(dir_name: &str) -> bool {
 
 pub use base_prompt::base_prompt;
 pub(crate) use compact::mid_turn_compact;
-pub use compact::{CompactCircuitBreaker, do_compact};
+pub use compact::{CompactCircuitBreaker, CompactCircuitBreakerState, do_compact};
 pub(crate) use context::SenderNames;
 #[cfg(any(test, feature = "test-support"))]
 pub use context::build_messages;
@@ -59,14 +59,14 @@ pub(crate) use memory_context::{MemorySubjectRef, roster_block};
 pub use project_instructions::{instruction_budget, load_project_instructions};
 pub(crate) use provider_config::without_thinking;
 pub use provider_config::{
-    ResolvedProvider, TurnParams, TurnParamsInput, build_tool_secrets, get_provider_api_key, provider_secret_name,
-    resolve_provider_config, resolve_turn_params, resolve_with_overrides,
+    ResolvedProvider, TurnParams, TurnParamsResolveRequest, build_tool_secrets, get_provider_api_key,
+    provider_secret_name, resolve_provider_config, resolve_turn_params, resolve_with_overrides,
 };
 pub(crate) use stream::{
     MAX_STREAM_RETRIES, STREAM_RETRY_BASE, StreamResult, is_context_window_error, is_retryable_stream_error,
     parse_retry_after,
 };
 pub use tokenizer::{TokenBudget, TokenCounter, TokenizerKind};
-pub use tool_calls::extract_tool_calls_from_blocks;
 pub(crate) use tool_calls::serialize_tool_calls_openai;
+pub use tool_calls::{extract_tool_calls_from_blocks, parse_stored_tool_calls};
 pub(crate) use truncate::{TOOL_OUTPUT_TRUNCATION, formatted_truncate_text};

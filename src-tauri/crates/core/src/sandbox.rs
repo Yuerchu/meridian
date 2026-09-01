@@ -5,6 +5,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
 /// What is actually confining a command.
@@ -16,7 +17,8 @@ use tokio_util::sync::CancellationToken;
 /// [`ExecResult::ran_under`] — a refusal is only recognisable against the
 /// backend that produced it — and whether a refusal may be escalated, which is
 /// the difference between a safe retry and a very unsafe one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SandboxBackend {
     /// Nothing is confining it. The policy may still exist, for its timeout and
     /// its project directory.
@@ -134,7 +136,8 @@ pub fn default_policy_if_enabled(enabled: bool, project_dir: Option<&str>) -> Op
 /// explicit request for a *particular* backend it would fail on Linux for
 /// everybody, so the "whatever you have" answer stays its own value and the
 /// named ones mean what they say.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ExecutionMode {
     /// Nothing confines commands. An explicit choice, not a fallback.
     Off,
@@ -145,14 +148,14 @@ pub enum ExecutionMode {
 }
 
 impl ExecutionMode {
-    /// Reads the stored preference. Anything unrecognised is [`Self::Auto`] —
-    /// the value the app has always behaved as — because a typo must not
-    /// silently switch confinement off, and must not fail every turn either.
-    pub fn parse(raw: Option<&str>) -> Self {
-        match raw.map(str::trim) {
-            Some("off") | Some("false") => ExecutionMode::Off,
-            Some("container") | Some("docker") => ExecutionMode::Container,
-            _ => ExecutionMode::Auto,
+    /// Reads the stored preference. Absence is the canonical default; a stored
+    /// value must use one of the three current spellings exactly.
+    pub fn parse(raw: Option<&str>) -> Result<Self, String> {
+        match raw {
+            None | Some("auto") => Ok(ExecutionMode::Auto),
+            Some("off") => Ok(ExecutionMode::Off),
+            Some("container") => Ok(ExecutionMode::Container),
+            Some(value) => Err(format!("unknown execution mode `{value}`")),
         }
     }
 }
@@ -751,20 +754,15 @@ async fn execute_windows_sandboxed(
 mod tests {
     use super::*;
 
-    /// The one that has to hold: an unreadable setting must not switch
-    /// confinement off, and must not fail every turn either. `Auto` is what the
-    /// app has always behaved as.
     #[test]
-    fn an_unreadable_execution_mode_is_the_one_the_app_already_had() {
-        assert_eq!(ExecutionMode::parse(None), ExecutionMode::Auto);
-        assert_eq!(ExecutionMode::parse(Some("")), ExecutionMode::Auto);
-        assert_eq!(ExecutionMode::parse(Some("true")), ExecutionMode::Auto);
-        assert_eq!(ExecutionMode::parse(Some("banana")), ExecutionMode::Auto);
-        // The two the preference has always carried, and the new one.
-        assert_eq!(ExecutionMode::parse(Some("false")), ExecutionMode::Off);
-        assert_eq!(ExecutionMode::parse(Some("off")), ExecutionMode::Off);
-        assert_eq!(ExecutionMode::parse(Some("container")), ExecutionMode::Container);
-        assert_eq!(ExecutionMode::parse(Some(" docker ")), ExecutionMode::Container);
+    fn execution_mode_accepts_only_canonical_values() {
+        assert_eq!(ExecutionMode::parse(None), Ok(ExecutionMode::Auto));
+        assert_eq!(ExecutionMode::parse(Some("auto")), Ok(ExecutionMode::Auto));
+        assert_eq!(ExecutionMode::parse(Some("off")), Ok(ExecutionMode::Off));
+        assert_eq!(ExecutionMode::parse(Some("container")), Ok(ExecutionMode::Container));
+        for invalid in ["", "true", "false", "docker", " docker ", "banana"] {
+            assert!(ExecutionMode::parse(Some(invalid)).is_err(), "value = {invalid:?}");
+        }
     }
 
     #[cfg(not(target_os = "android"))]

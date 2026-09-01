@@ -40,6 +40,50 @@ src-tauri/
 
 ## Key Design Decisions
 
+### Hard model and protocol standards
+
+- **Names state the layer and operation.** Persistence structs are
+  `EntityRow` / `EntityInsert` / `EntityChangeset`; command inputs are
+  `EntityCreateRequest` / `EntityUpdateRequest` / `EntityUpsertRequest`;
+  public entity snapshots are `EntityInfoResponse` / `EntityListResponse`; bus
+  payloads are `EntityEvent`. Do not introduce `NewEntity`, `EntityPatch`,
+  `EntityInput`, bare persistence entity names, or a generic `Dto` suffix.
+- **Persistence rows never cross IPC.** Tauri and remote commands map rows into
+  explicit response contracts. Adding a database column must not implicitly
+  add a public field.
+- **JSON storage is not a public string contract.** A column may use `TEXT` to
+  store a JSON object or collection, but requests and responses expose its typed
+  object/array form. Decode errors fail the boundary; they never become `{}`,
+  `[]`, a default value, or an opaque JSON string. In particular this applies to
+  assistant tool lists, tool presets, model capability/pricing/tool settings,
+  and MCP args/env/headers.
+- **No forward-compatibility fallbacks in first-party contracts.** Unknown enum
+  variants, discriminator values, object fields, malformed JSON, and obsolete
+  aliases are errors. Do not guess a default, silently drop a value, accept both
+  old and new spellings, or keep legacy event tags. A contract change updates
+  every producer and consumer in the same change.
+- **Every monetary value is Decimal.** Prices, costs, balances, amounts and
+  monetary rates use exact base-10 values. Persisted/configurable values obey a
+  `NUMERIC(38,18)` boundary contract; calculated costs may carry additional
+  fractional digits rather than round early. SQLite stores canonical fixed-point
+  `TEXT`; JSON/IPC uses decimal strings; TypeScript performs authoritative
+  arithmetic with integer-scaled decimal helpers. `f32`, `f64`, JavaScript
+  `number`, `REAL`, `parseFloat` and `Number(...)` are forbidden for money.
+  `NULL` means an unknown/unconfigured price and `"0"` means an explicit zero
+  price. A nullable monetary request key is still required: omission is not a
+  second spelling of `null`.
+- **Every `api.ts` invoke response is runtime-validated.** The checked-in
+  generated exact schema covers the complete reachable response type for every
+  command, and the same validator guards local Tauri and remote `{ ok }`
+  answers. After changing `api.ts` or `types.ts`, run `pnpm responses:generate`
+  and `pnpm responses:check`; a generic cast or `unknown` passthrough is never a
+  substitute for validation.
+- Run `pnpm contracts:check` after model or protocol changes. It enforces these
+  naming, strict-object and monetary representation rules and also runs against
+  the staged snapshot in the pre-commit hook. The guard's syntax helpers have
+  focused fixtures under `scripts/model-contract-rules.test.mjs`; run them with
+  `node --test --test-isolation=none scripts/model-contract-rules.test.mjs`.
+
 - **Pure Rust backend**: No Python sidecar, no Codex submodule. Selectively port useful patterns from Codex (Apache 2.0) into our own code.
 - **Local-first + optional cloud**: Default standalone desktop app. Optional connection to foxline-pro backend for billing, collaboration, multimedia generation.
 - **Streaming via events**: the backend streams answers on the `chat-stream` channel and the frontend `listen()`s. Emit through `services.events`, never `app.emit` — see the bus below.
@@ -359,10 +403,10 @@ src-tauri/
   Both now go through `chat_with_tools` with an empty tool list, purely for the usage it hands back, and land in `audit_messages` through `record_side_request` under their own role. **The roles are the point**: `UsageDimension::Kind` separates answering the user from summarising, naming and reviewing, and `BILLED_ROLES` is the one list the reporting query filters on — a role missing from it is spend reported as nothing, which is exactly how these two went unnoticed. Mid-turn compaction is still unrecorded and says so at the call site: it runs inside a turn and has no row of its own to hang a cost on.
 
 - **A bill is priced once, in `agent::pricing`.** `compute_cost` carries a rule no summation expresses: a cached token bills at the cache rate *instead of* the input rate, not on top of it. That formula has been wrong once — the old one reported a DeepSeek turn at a 90% hit rate as costing nearly six times what it did — and three tests now stand on it. So nothing else computes a cost: not SQL, not the front end. `db::ops::usage` reduces millions of audit rows to a few dozen groups and hands each to `cost_of`, which is the same function behind the stop event's `cost_breakdown`. Two implementations would disagree in exactly the case the tests exist for. Report totals with `UsageDimension::Total` rather than adding a breakdown up, for the same reason.
-- **What a reply cost is a fact about the past, so the price travels with it.** `audit_messages` snapshots the four token rates at write time (migration 30) and the independent provider-tool rate (migration 37), beside the `provider_name` and `sender_name` it already copied. Joining `model_configs` at read time instead would mean correcting a typo in a rate silently rewrites what last month cost. Rows older than those migrations have NULL there and fall back to today's exact provider/model configuration — the retroactive answer, kept only because it is the sole number those rows have. That fallback is marked in `estimated_messages` (and its token/tool component counters): it is an estimate, not a lower bound, because today's price can be either side of the historical one. A model priced `0/0` is one nobody has filled in, not one that is free (the editor opens at zero): zero defaults are no longer snapshotted and legacy zero snapshots may fall back to a later known price. `Prices::known()` remains the token-price definition. Provider-tool pricing is independent: a known token half remains in the input/output/cache costs when its tool rate is missing, and a known tool rate remains in `tool_cost` when token rates are blank. An explicit historical tool rate wins; a legacy NULL may fall back to today's exact provider/model rate just like the token columns. `unpriced_messages` is the per-reply union of token/tool gaps; `unpriced_token_messages` and `unpriced_tool_messages` say which component is incomplete without double-counting the union. A token report is incomplete when either input or output is NULL, while `missing_token_usage_messages` remains the stricter all-fields-NULL state used to distinguish an unavailable total from a partial one. The SQL computes uncached input per reply before summing, retains reported cache tokens as the prompt lower bound when input is absent, and the turn DTO keeps input/output/cache costs independently optional so a known output is not erased by a missing input. Explicit zero stays exact. With gaps alone, `UsageBucket.cost` is the known lower bound; with a current-price fallback it is a possibly-partial estimate. `metered_messages`, `subscription_messages`, and `external_messages` travel with every bucket so non-local billing can never be presented as an exact zero. Conversation snapshots aggregate the same durable rows once by `turn_id`, and migration 44's `(conversation_id, turn_id)` index keeps that batched read scoped to one conversation instead of scanning the whole ledger.
+- **What a reply cost is a fact about the past, so the price travels with it.** `audit_messages` snapshots the four token rates at write time (migration 30) and the independent provider-tool rate (migration 37), beside the `provider_name` and `sender_name` it already copied. Joining `model_configs` at read time instead would mean correcting a typo in a rate silently rewrites what last month cost. Rows older than those migrations have NULL there and fall back to today's exact provider/model configuration — the retroactive answer, kept only because it is the sole number those rows have. That fallback is marked in `estimated_messages` (and its token/tool component counters): it is an estimate, not a lower bound, because today's price can be either side of the historical one. Since migration 49, `NULL` is the only unconfigured price and an explicit Decimal `"0"` is free; the migration maps only the legacy base pair `0/0` to `NULL/NULL`, because the old defaults made those two states indistinguishable, while a single zero beside a non-zero rate stays an exact free component. `Prices::known()` therefore means both base token prices are present, including explicit zero. Provider-tool pricing is independent: a known token half remains in the input/output/cache costs when its tool rate is missing, and a known tool rate remains in `tool_cost` when token rates are blank. An explicit historical tool rate wins; a legacy NULL may fall back to today's exact provider/model rate just like the token columns. `unpriced_messages` is the per-reply union of token/tool gaps; `unpriced_token_messages` and `unpriced_tool_messages` say which component is incomplete without double-counting the union. A token report is incomplete when either input or output is NULL, while `missing_token_usage_messages` remains the stricter all-fields-NULL state used to distinguish an unavailable total from a partial one. The SQL computes uncached input per reply before summing, retains reported cache tokens as the prompt lower bound when input is absent, and the turn DTO keeps input/output/cache costs independently optional so a known output is not erased by a missing input. Explicit zero stays exact. With gaps alone, `UsageBucket.total_cost` is the known lower bound; with a current-price fallback it is a possibly-partial estimate. `metered_messages`, `subscription_messages`, and `external_messages` travel with every bucket so non-local billing can never be presented as an exact zero. Conversation snapshots aggregate the same durable rows once by `turn_id`, and migration 44's `(conversation_id, turn_id)` index keeps that batched read scoped to one conversation instead of scanning the whole ledger.
 - **A reasoning token is an output token, and one dialect hides that.** OpenAI and DeepSeek count reasoning inside `completion_tokens`; xAI does not. A measured `grok-4.6` reply reported `prompt 214 / completion 1 / reasoning 59 / total 274` and billed all sixty — taken at face value that turn is reported at a sixtieth of its cost, and the number stays entirely plausible while being wrong. `billable_completion_tokens` folds them in, but decides from the provider's own `total_tokens` rather than from which vendor we think we are talking to: a dialect that already includes reasoning satisfies `total - prompt == completion` and is left alone, one that does not leaves exactly `reasoning_tokens` unaccounted for, and anything else is not evidence and changes nothing. A relay with a vague usage block can only be under-reported by its own numbers, never inflated by ours.
 
-- **A price can move with the size of the prompt, and it is chosen once — at write time.** xAI doubles every rate on `grok-4.6` above a 200k prompt, Gemini has charged a long-context premium since 1.5, and OpenAI prices its long-context tiers separately. `model_configs.price_tiers` (migration 35) holds those as a JSON array and `agent::pricing::parse_tiers` is the only reader.
+- **A price can move with the size of the prompt, and it is chosen once — at write time.** xAI doubles every rate on `grok-4.6` above a 200k prompt, Gemini has charged a long-context premium since 1.5, and OpenAI prices its long-context tiers separately. `model_configs.pricing_tiers` holds those as a JSON array and `agent::pricing::parse_tiers` is the only reader; migration 35 introduced the old `price_tiers` spelling and migration 49 renamed and strictly rewrote it.
 
   Two things about it are not the obvious reading. **The threshold counts the whole prompt, cached part included, and crossing it re-prices the entire request rather than the excess** — a 201k-token prompt costs double on all 201k. Read as a tax bracket, the formula comes out low by nearly the base rate; measured against the uncached remainder instead, a heavily-cached 400k conversation falls back into the cheap tier, which is the most likely case and the most expensive to miss.
 
@@ -401,6 +445,59 @@ src-tauri/
   **`without_thinking` clears the provider-side tools for a harder reason.** A summariser handed `web_search` is a background request that can reach the open internet, on a query the model composed out of whatever it was summarising, billed per call and reported to nobody. For `auto_review` it is worse: it is shown a projection built from untrusted tool output, its verdict goes back into the chat, and searching needs no approval — which is the exfiltration path the `FileAccess` rule in that module exists to close, reopened through another door. The hook reviewer clears the same field by hand, because it resolves its parameters without going through there. It is a flavor of `openai_compat` rather than an adapter of its own (`OpenAICompatFlavor::Xai`): the wire format is unchanged and one header is the whole difference. Sending that header to a generic OpenAI-compatible relay is not free — a vendor header it does not know may be rejected outright — so it is gated on the flavor and tested for its absence elsewhere.
 
 - **`--chart-1`..`--chart-4` are ours.** Pro's charts read them and Pro defines them in its base theme, which this project does not import — only the per-component CSS files. Undefined, every series draws transparent. They are categorical rather than a ramp, and deliberately clear of `--success` / `--warning` / `--danger`, which mean something here: a series that landed on the warning colour would read as a warning.
+
+## Durable plan documents
+
+Plan mode owns one app-private `plan.md` per unfinished planning episode. The
+chat no longer carries the document as `exit_plan` arguments: `read_plan`
+returns the current snapshot plus its generation and SHA-256, `update_plan`
+applies one patch against that token, and an empty `exit_plan` seals the saved
+head for review. The patch parser and applicator are the same ones
+`apply_patch` uses, narrowed to one logical `plan.md`; delete, move, multi-file,
+empty and stale changes are rejected before any revision is written.
+
+- **SQLite is canonical; the file is a projection.** `plan_documents` points at
+  immutable full-snapshot `plan_revisions`, while `plan_materializations`
+  records the expected and desired hashes for the app-private file. A database
+  commit therefore survives a crash before the atomic rename. Startup can
+  replay a pending materialisation, but never overwrites bytes whose hash it did
+  not expect. That becomes a visible conflict, and only the explicit “restore
+  from database” action authorises replacing it.
+- **A submitted plan ends the turn in `waiting_review`; it does not hold an
+  approval waiter open.** The review row, draft row, tool-call association and
+  turn status commit before the worker releases the conversation lease. Startup
+  reconciliation only converts `running` rows to `interrupted`, so a review
+  remains reviewable after a restart. Nothing starts a model turn merely because
+  the app opened again: a recorded but undelivered continuation is resumed by an
+  explicit user action.
+- **The editor is a review projection, not a second canonical source.** Markdown
+  that round-trips through the supported Tiptap grammar opens in HeroUI Pro's
+  `RichTextEditor`; unsupported constructs open in exact source mode. Draft JSON,
+  normalised Markdown, exact source text, schema identity, selection and comments
+  are all persisted with a generation. A second window must save against that
+  generation rather than silently winning last-write-wins.
+- **Inline comments are anchored, then mapped.** Rich mode stores a ProseMirror
+  range plus quote/prefix/suffix context and maps the decoration through editor
+  transactions. Source mode stores an exact character range with the same text
+  context. A range that can no longer be located is kept as orphaned feedback,
+  never guessed onto different words.
+- **User edits are suggestions.** Requesting changes seals the edited draft as a
+  `user_suggestion` revision whose parent is the submitted assistant revision;
+  it does not advance `plan_documents.head_revision_id` or rewrite `plan.md`.
+  The assistant receives that suggestion, its patch, inline comments and the
+  global note, then answers with another `update_plan` patch. Approve is only
+  valid for a pristine draft with no active feedback, so the approved revision
+  is always exactly the one the assistant submitted.
+- **Delivery is its own durable state machine.** Native feedback is queued for a
+  later turn; ACP feedback targets the existing session. `queued`, `dispatched`,
+  `acknowledged`, `held` and `in_doubt` distinguish “not tried” from “may already
+  have crossed the process boundary”. An in-doubt ACP send is shown for manual
+  continuation and is never retried blindly. Decision ids and delivery attempt
+  tokens make double presses and known retries idempotent.
+- **The old `mode_artifacts` rows remain readable.** Migration 51 backfills them
+  into immutable legacy revisions in Rust because SQLite cannot calculate the
+  content hash. The conversion is idempotent; new writes use only the document
+  tables, and a completed conversation marks its unfinished plan document done.
 
 ## Hook gates
 
@@ -454,9 +551,10 @@ that from answering the user, because a total nobody can decompose is one nobody
   none of those are evidence *about the action*. Where a card can be drawn they fall back
   to drawing it; where nothing would be drawn (`unattended`, which is QQ) they refuse.
   Reading "deny" out of an unparseable reply would let a bad connection become a policy.
-- **`ask_user` and the mode transitions are never answered here.** A `Response` is the
-  answer to a question and only `ask_user` asked one; `exit_plan` is the user being shown
-  a plan, not a permission being checked. Both go straight through.
+- **`ask_user` and mode changes are never answered here.** A `Response` is the
+  answer to a question and only `ask_user` asked one; entering plan mode is a
+  user choice, while `exit_plan` now creates a durable review instead of an
+  approval request. None of them is an action for the reviewer to authorise.
 - **The reviewer is shown a projection, not the conversation.** The assistant's prose is
   excluded — it is model-authored, and "the user approved this earlier" costs nothing to
   emit. Trust is labelled per line and JSON-encoded so a tool result cannot forge a
@@ -626,11 +724,14 @@ the machines that want this already have node and a signed-in `claude`.
   `_once` pair is offered — a card with two buttons must not produce a lasting decision the
   user was never shown.
 
-  That cost is visible on `ExitPlanMode`, whose four options are three *modes* plus "keep
-  planning". Only `default` — approve, and go on approving each edit by hand — is an
-  `allow_once`, so it is the one this card can offer; `acceptEdits` and `auto` are
-  `allow_always` and would be lasting decisions made on a two-button card. The plan itself
-  is `{"plan": "…"}`, which is `exit_plan`'s own shape, so `ExitPlanBlock` draws it.
+  `ExitPlanMode` is the exception to that approval bridge. ACP necessarily sends
+  a full plan snapshot rather than Meridian's patch-only `update_plan` calls, so
+  the adapter imports that snapshot as an assistant revision and opens the same
+  durable review page. It does not squeeze four upstream choices into a
+  two-button approval card. Approval may select the one-shot `default`; requested
+  changes are retained as a suggestion and delivered back to the existing ACP
+  session. Once that delivery may have crossed the process boundary, a lost reply
+  is `in_doubt` and requires an explicit continuation rather than a blind retry.
 
 - **A question is not a permission, and asking one needs a capability we nearly did not
   declare.** `AskUserQuestion` reaches an ACP client as `elicitation/create`, and the
@@ -1542,6 +1643,11 @@ Pro import fails at once. Re-run the setup after one:
 ```bash
 HEROUI_KEY=<key> pnpm dlx hpsetup@latest react --auto
 ```
+
+GitHub CI and release jobs run the same staging command with the repository's
+`HEROUI_KEY` Actions secret.  Without that secret a clean checkout has only the
+npm stub and must fail before type checking; Pro code and the key are never
+committed to this repository.
 
 `ls node_modules/@heroui-pro/react/dist/components | wc -l` says which state it
 is in: 68-ish directories means staged, `dist/postinstall` alone means stub.

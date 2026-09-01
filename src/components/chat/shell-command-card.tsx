@@ -6,16 +6,16 @@ import { useTranslation } from 'react-i18next'
 import { api } from '@/api'
 import { cn } from '@/lib/utils'
 import { useConversationStore } from '@/stores/conversation-store'
-import type { CommandTurnOutcome, Message } from '@/types'
+import type { MessageViewModel, UserCommandResultResponse } from '@/types'
 import { CopyButton } from './markdown-content'
 
 type LoadState =
   | { status: 'loading' }
-  | { status: 'loaded'; result: CommandTurnOutcome }
+  | { status: 'loaded'; result: UserCommandResultResponse }
   | { status: 'unavailable' }
   | { status: 'error'; message: string }
 
-function resultText(result: CommandTurnOutcome): string {
+function resultText(result: UserCommandResultResponse): string {
   const parts: string[] = []
   if (result.stdout) parts.push(result.stdout)
   if (result.stderr) parts.push(`[stderr]\n${result.stderr}`)
@@ -23,11 +23,11 @@ function resultText(result: CommandTurnOutcome): string {
   return parts.join('\n')
 }
 
-function commandSucceeded(result: CommandTurnOutcome): boolean {
+function commandSucceeded(result: UserCommandResultResponse): boolean {
   return result.status === 'completed' && result.exit_code === 0
 }
 
-function StatusIcon({ result }: { result: CommandTurnOutcome }) {
+function StatusIcon({ result }: { result: UserCommandResultResponse }) {
   if (commandSucceeded(result)) return <CircleCheck className="size-3.5 text-success" />
   if (result.status === 'timed_out' || result.status === 'cancelled') {
     return <Clock className="size-3.5 text-warning" />
@@ -39,7 +39,7 @@ function StatusIcon({ result }: { result: CommandTurnOutcome }) {
 /** A persisted `!` turn. The visible row remains the command the user typed;
  *  output is rehydrated through the narrow shell-result endpoint so ordinary
  *  transcript snapshots never carry raw injected context. */
-export function ShellCommandCard({ message }: { message: Message }) {
+export function ShellCommandCard({ message }: { message: MessageViewModel }) {
   const { t } = useTranslation()
   const [state, setState] = React.useState<LoadState>({ status: 'loading' })
   const command = message.content.startsWith('!') ? message.content.slice(1) : message.content
@@ -57,7 +57,7 @@ export function ShellCommandCard({ message }: { message: Message }) {
     }
     let live = true
     setState({ status: 'loading' })
-    void api.getUserCommandResult(message.conversation_id, message.id).then(
+    void api.getUserCommandResult({ conversationId: message.conversation_id, messageId: message.id }).then(
       (result) => {
         if (!live) return
         setState(result ? { status: 'loaded', result } : { status: 'unavailable' })

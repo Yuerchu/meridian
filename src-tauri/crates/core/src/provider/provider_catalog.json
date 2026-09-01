@@ -60,7 +60,8 @@
             "responses": "https://chatgpt.com/backend-api/codex"
           }
         }
-      ]
+      ],
+      "models": []
     },
     {
       "id": "anthropic",
@@ -84,7 +85,8 @@
             "chat_completions": "https://api.anthropic.com"
           }
         }
-      ]
+      ],
+      "models": []
     },
     {
       "id": "deepseek",
@@ -109,7 +111,8 @@
             "responses": "https://api.deepseek.com"
           }
         }
-      ]
+      ],
+      "models": []
     },
     {
       "id": "xai",
@@ -134,7 +137,8 @@
             "responses": "https://api.x.ai/v1"
           }
         }
-      ]
+      ],
+      "models": []
     },
     {
       "id": "google",
@@ -159,7 +163,8 @@
             "chat_completions": "https://generativelanguage.googleapis.com/v1beta/openai"
           }
         }
-      ]
+      ],
+      "models": []
     }
   ]
 }

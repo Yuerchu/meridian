@@ -13,7 +13,7 @@ use diesel::sqlite::SqliteConnection;
 
 use super::project_instructions::{MAX_FILE_SIZE, compute_mtime_hash, read_file_utf8};
 use crate::db;
-use crate::db::models::skill::{NewSkill, Skill};
+use crate::db::models::skill::{SkillInsert, SkillRow};
 use crate::db::models::skill_binding::SkillLayer;
 use crate::util::now_ms;
 
@@ -326,7 +326,7 @@ fn skill_dir(root: &Path, dir_name: &str) -> Option<PathBuf> {
 
 /// Reconcile the index with what is actually on disk. The filesystem wins:
 /// directories that vanished lose their rows (and, by cascade, their bindings).
-pub fn sync_index(conn: &mut SqliteConnection, root: &Path) -> Result<Vec<Skill>, String> {
+pub fn sync_index(conn: &mut SqliteConnection, root: &Path) -> Result<Vec<SkillRow>, String> {
     let found = scan_skills(root);
     let now = now_ms();
 
@@ -348,7 +348,7 @@ pub fn sync_index(conn: &mut SqliteConnection, root: &Path) -> Result<Vec<Skill>
 
         db::ops::skill::upsert_skill(
             conn,
-            &NewSkill {
+            &SkillInsert {
                 dir_name: &meta.dir_name,
                 llm_name: &meta.llm_name,
                 llm_description: &meta.llm_description,
@@ -623,7 +623,7 @@ mod tests {
         assert!(scan_skills(&dir.path().join("does-not-exist")).is_empty());
     }
 
-    use crate::db::models::skill::SkillUpdate;
+    use crate::db::models::skill::SkillChangeset;
     use crate::db::test_db;
 
     #[test]
@@ -704,7 +704,7 @@ mod tests {
         db::ops::skill::update_skill(
             &mut conn,
             "s",
-            &SkillUpdate {
+            &SkillChangeset {
                 display_name: Some("我的技能".into()),
                 ..Default::default()
             },

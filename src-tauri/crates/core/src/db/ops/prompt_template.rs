@@ -1,34 +1,34 @@
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::prompt_template::{NewPromptTemplate, PromptTemplate, PromptTemplateUpdate};
+use crate::db::models::prompt_template::{PromptTemplateChangeset, PromptTemplateInsert, PromptTemplateRow};
 use crate::db::schema::prompt_templates;
 
-pub fn list_templates(conn: &mut SqliteConnection) -> QueryResult<Vec<PromptTemplate>> {
+pub fn list_templates(conn: &mut SqliteConnection) -> QueryResult<Vec<PromptTemplateRow>> {
     prompt_templates::table
         .order(prompt_templates::sort_order.asc())
-        .load::<PromptTemplate>(conn)
+        .load::<PromptTemplateRow>(conn)
 }
 
 #[cfg(test)]
-pub fn get_template(conn: &mut SqliteConnection, id: &str) -> QueryResult<PromptTemplate> {
-    prompt_templates::table.find(id).first::<PromptTemplate>(conn)
+pub fn get_template(conn: &mut SqliteConnection, id: &str) -> QueryResult<PromptTemplateRow> {
+    prompt_templates::table.find(id).first::<PromptTemplateRow>(conn)
 }
 
-pub fn create_template(conn: &mut SqliteConnection, new: &NewPromptTemplate) -> QueryResult<PromptTemplate> {
+pub fn create_template(conn: &mut SqliteConnection, new: &PromptTemplateInsert) -> QueryResult<PromptTemplateRow> {
     diesel::insert_into(prompt_templates::table).values(new).execute(conn)?;
-    prompt_templates::table.find(new.id).first::<PromptTemplate>(conn)
+    prompt_templates::table.find(new.id).first::<PromptTemplateRow>(conn)
 }
 
 pub fn update_template(
     conn: &mut SqliteConnection,
     id: &str,
-    changeset: &PromptTemplateUpdate,
-) -> QueryResult<PromptTemplate> {
+    changeset: &PromptTemplateChangeset,
+) -> QueryResult<PromptTemplateRow> {
     diesel::update(prompt_templates::table.find(id))
         .set(changeset)
         .execute(conn)?;
-    prompt_templates::table.find(id).first::<PromptTemplate>(conn)
+    prompt_templates::table.find(id).first::<PromptTemplateRow>(conn)
 }
 
 pub fn delete_template(conn: &mut SqliteConnection, id: &str) -> QueryResult<()> {
@@ -41,8 +41,8 @@ mod tests {
     use super::*;
     use crate::db::test_db;
 
-    fn make_template<'a>(id: &'a str, name: &'a str) -> NewPromptTemplate<'a> {
-        NewPromptTemplate {
+    fn make_template<'a>(id: &'a str, name: &'a str) -> PromptTemplateInsert<'a> {
+        PromptTemplateInsert {
             id,
             name,
             description: None,
@@ -73,7 +73,7 @@ mod tests {
         let updated = update_template(
             &mut conn,
             "t1",
-            &PromptTemplateUpdate {
+            &PromptTemplateChangeset {
                 name: Some("New".into()),
                 ..Default::default()
             },

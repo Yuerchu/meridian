@@ -9,6 +9,279 @@ use crate::ServicesExt;
 use meridian_core::db;
 use meridian_core::workspace::{self, WorkspaceRoot};
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceRootRequest {
+    conversation_id: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum WorkspaceRootResponse {
+    Ok {
+        root: String,
+        git_available: bool,
+        is_repo: bool,
+    },
+    NoProject,
+    NoPath,
+    MissingDir {
+        path: String,
+    },
+}
+
+impl From<WorkspaceRoot> for WorkspaceRootResponse {
+    fn from(root: WorkspaceRoot) -> Self {
+        match root {
+            WorkspaceRoot::Ok {
+                root,
+                git_available,
+                is_repo,
+            } => Self::Ok {
+                root,
+                git_available,
+                is_repo,
+            },
+            WorkspaceRoot::NoProject => Self::NoProject,
+            WorkspaceRoot::NoPath => Self::NoPath,
+            WorkspaceRoot::MissingDir { path } => Self::MissingDir { path },
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceTreeRequest {
+    conversation_id: String,
+    #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
+    dir: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct WorkspaceTreeEntryInfoResponse {
+    pub name: String,
+    pub rel_path: String,
+    pub is_dir: bool,
+}
+
+pub type WorkspaceTreeEntryListResponse = Vec<WorkspaceTreeEntryInfoResponse>;
+
+impl From<workspace::tree::TreeEntry> for WorkspaceTreeEntryInfoResponse {
+    fn from(entry: workspace::tree::TreeEntry) -> Self {
+        Self {
+            name: entry.name,
+            rel_path: entry.rel_path,
+            is_dir: entry.is_dir,
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceFileReadRequest {
+    conversation_id: String,
+    rel_path: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct WorkspaceFileContentResponse {
+    pub content: String,
+    pub truncated: bool,
+    pub total_lines: u64,
+    pub size_bytes: u64,
+    pub binary: bool,
+}
+
+impl From<workspace::read::FileContent> for WorkspaceFileContentResponse {
+    fn from(file: workspace::read::FileContent) -> Self {
+        Self {
+            content: file.content,
+            truncated: file.truncated,
+            total_lines: file.total_lines,
+            size_bytes: file.size_bytes,
+            binary: file.binary,
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceReferenceSuggestRequest {
+    #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
+    conversation_id: Option<String>,
+    #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
+    project_id: Option<String>,
+    query: String,
+    #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct WorkspaceReferenceSuggestionInfoResponse {
+    pub path: String,
+    pub name: String,
+    pub is_dir: bool,
+}
+
+pub type WorkspaceReferenceSuggestionListResponse = Vec<WorkspaceReferenceSuggestionInfoResponse>;
+
+impl From<workspace::reference::WorkspaceReferenceSuggestion> for WorkspaceReferenceSuggestionInfoResponse {
+    fn from(suggestion: workspace::reference::WorkspaceReferenceSuggestion) -> Self {
+        Self {
+            path: suggestion.path,
+            name: suggestion.name,
+            is_dir: suggestion.is_dir,
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceReferenceResolveRequest {
+    #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
+    conversation_id: Option<String>,
+    #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
+    project_id: Option<String>,
+    path: String,
+    #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
+    line_start: Option<u32>,
+    #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
+    line_end: Option<u32>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct WorkspaceReferencePreviewResponse {
+    pub kind: workspace::reference::WorkspaceReferenceKind,
+    pub path: String,
+    pub content: String,
+    pub line_start: Option<u32>,
+    pub line_end: Option<u32>,
+    pub byte_count: usize,
+    pub line_count: usize,
+    pub token_count: usize,
+    pub truncated: bool,
+}
+
+impl From<workspace::reference::WorkspaceReferencePreview> for WorkspaceReferencePreviewResponse {
+    fn from(preview: workspace::reference::WorkspaceReferencePreview) -> Self {
+        Self {
+            kind: preview.kind,
+            path: preview.path,
+            content: preview.content,
+            line_start: preview.line_start,
+            line_end: preview.line_end,
+            byte_count: preview.byte_count,
+            line_count: preview.line_count,
+            token_count: preview.token_count,
+            truncated: preview.truncated,
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceReferenceProbeRequest {
+    #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
+    conversation_id: Option<String>,
+    #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
+    project_id: Option<String>,
+    path: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct WorkspaceReferenceProbeResponse {
+    pub kind: workspace::reference::WorkspaceReferenceKind,
+    pub path: String,
+}
+
+impl From<workspace::reference::WorkspaceReferenceProbe> for WorkspaceReferenceProbeResponse {
+    fn from(probe: workspace::reference::WorkspaceReferenceProbe) -> Self {
+        Self {
+            kind: probe.kind,
+            path: probe.path,
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceGitStatusRequest {
+    conversation_id: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct WorkspaceGitStatusEntryInfoResponse {
+    pub path: String,
+    pub status: workspace::git::GitFileStatus,
+    pub renamed_from: Option<String>,
+}
+
+impl From<workspace::git::StatusEntry> for WorkspaceGitStatusEntryInfoResponse {
+    fn from(entry: workspace::git::StatusEntry) -> Self {
+        Self {
+            path: entry.path,
+            status: entry.status,
+            renamed_from: entry.renamed_from,
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum WorkspaceGitStatusResponse {
+    Ok {
+        branch: Option<String>,
+        files: Vec<WorkspaceGitStatusEntryInfoResponse>,
+    },
+    NoGit,
+    NotRepo,
+}
+
+impl From<workspace::git::GitStatus> for WorkspaceGitStatusResponse {
+    fn from(status: workspace::git::GitStatus) -> Self {
+        match status {
+            workspace::git::GitStatus::Ok { branch, files } => Self::Ok {
+                branch,
+                files: files.into_iter().map(Into::into).collect(),
+            },
+            workspace::git::GitStatus::NoGit => Self::NoGit,
+            workspace::git::GitStatus::NotRepo => Self::NotRepo,
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceGitDiffRequest {
+    conversation_id: String,
+    #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
+    rel_path: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct WorkspaceGitDiffResponse {
+    pub diff_text: String,
+    pub truncated: bool,
+}
+
+impl From<workspace::git::GitDiffResult> for WorkspaceGitDiffResponse {
+    fn from(diff: workspace::git::GitDiffResult) -> Self {
+        Self {
+            diff_text: diff.diff_text,
+            truncated: diff.truncated,
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceEditorOpenRequest {
+    conversation_id: String,
+    rel_path: String,
+    #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
+    line: Option<u32>,
+}
+
 fn reference_context(
     root: &std::path::Path,
     file_access: meridian_core::tools::FileAccess,
@@ -36,44 +309,48 @@ fn reference_context(
 /// half stays async (subprocess) — which is why `resolve_workspace_root` hands
 /// back `git_available: false` for the command layer to fill in.
 #[tauri::command]
-pub async fn workspace_root(app: tauri::AppHandle, conversation_id: String) -> Result<WorkspaceRoot, String> {
-    let root = resolve_root(&app, conversation_id).await?;
+pub async fn workspace_root(
+    app: tauri::AppHandle,
+    request: WorkspaceRootRequest,
+) -> Result<WorkspaceRootResponse, String> {
+    let root = resolve_root(&app, request.conversation_id).await?;
     match root {
         WorkspaceRoot::Ok { root, .. } => {
             let git_available = workspace::git::git_available().await;
             let is_repo = git_available && workspace::git::is_repo(std::path::Path::new(&root)).await;
-            Ok(WorkspaceRoot::Ok {
+            Ok(WorkspaceRootResponse::Ok {
                 root,
                 git_available,
                 is_repo,
             })
         }
-        other => Ok(other),
+        other => Ok(other.into()),
     }
 }
 
 #[tauri::command]
 pub async fn workspace_tree(
     app: tauri::AppHandle,
-    conversation_id: String,
-    dir: Option<String>,
-) -> Result<Vec<workspace::tree::TreeEntry>, String> {
-    let root = require_root(&app, conversation_id).await?;
-    tokio::task::spawn_blocking(move || workspace::tree::list_dir(&root, dir.as_deref().unwrap_or("")))
-        .await
-        .map_err(|e| e.to_string())?
+    request: WorkspaceTreeRequest,
+) -> Result<WorkspaceTreeEntryListResponse, String> {
+    let root = require_root(&app, request.conversation_id).await?;
+    let entries =
+        tokio::task::spawn_blocking(move || workspace::tree::list_dir(&root, request.dir.as_deref().unwrap_or("")))
+            .await
+            .map_err(|e| e.to_string())??;
+    Ok(entries.into_iter().map(Into::into).collect())
 }
 
 #[tauri::command]
 pub async fn workspace_read_file(
     app: tauri::AppHandle,
-    conversation_id: String,
-    rel_path: String,
-) -> Result<workspace::read::FileContent, String> {
-    let root = require_root(&app, conversation_id).await?;
-    tokio::task::spawn_blocking(move || workspace::read::read_file(&root, &rel_path))
+    request: WorkspaceFileReadRequest,
+) -> Result<WorkspaceFileContentResponse, String> {
+    let root = require_root(&app, request.conversation_id).await?;
+    let file = tokio::task::spawn_blocking(move || workspace::read::read_file(&root, &request.rel_path))
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())??;
+    Ok(file.into())
 }
 
 /// Fuzzy `@` completion for either an existing conversation or the project on
@@ -82,15 +359,15 @@ pub async fn workspace_read_file(
 #[tauri::command]
 pub async fn workspace_suggest_refs(
     app: tauri::AppHandle,
-    conversation_id: Option<String>,
-    project_id: Option<String>,
-    query: String,
-    limit: Option<usize>,
-) -> Result<Vec<workspace::reference::WorkspaceReferenceSuggestion>, String> {
-    let root = require_reference_directory(&app, conversation_id, project_id).await?;
-    let file_access = meridian_core::agent::build_file_access(&app.services().db).await;
+    request: WorkspaceReferenceSuggestRequest,
+) -> Result<WorkspaceReferenceSuggestionListResponse, String> {
+    let root = require_reference_directory(&app, request.conversation_id, request.project_id).await?;
+    let file_access = meridian_core::agent::build_file_access(&app.services().db).await?;
     let context = reference_context(&root, file_access);
-    workspace::reference::suggest_references_from_context(&context, &query, limit.unwrap_or(15)).await
+    let suggestions =
+        workspace::reference::suggest_references_from_context(&context, &request.query, request.limit.unwrap_or(15))
+            .await?;
+    Ok(suggestions.into_iter().map(Into::into).collect())
 }
 
 /// Resolve and read one reference through the same limits and containment
@@ -99,18 +376,29 @@ pub async fn workspace_suggest_refs(
 #[tauri::command]
 pub async fn workspace_resolve_ref(
     app: tauri::AppHandle,
-    conversation_id: Option<String>,
-    project_id: Option<String>,
-    reference: workspace::reference::WorkspaceReferenceInput,
-) -> Result<workspace::reference::WorkspaceReferencePreview, String> {
+    request: WorkspaceReferenceResolveRequest,
+) -> Result<WorkspaceReferencePreviewResponse, String> {
+    let WorkspaceReferenceResolveRequest {
+        conversation_id,
+        project_id,
+        path,
+        line_start,
+        line_end,
+    } = request;
     let root = require_reference_directory(&app, conversation_id, project_id).await?;
-    let file_access = meridian_core::agent::build_file_access(&app.services().db).await;
+    let file_access = meridian_core::agent::build_file_access(&app.services().db).await?;
     let context = reference_context(&root, file_access);
     let counter = meridian_core::agent::TokenCounter::new(meridian_core::agent::TokenizerKind::Cl100kBase);
+    let reference = workspace::reference::WorkspaceReferenceRequest {
+        path,
+        line_start,
+        line_end,
+    };
     let mut prepared = workspace::reference::prepare_references(&context, &[reference], &counter, 100_000).await?;
     prepared
         .pop()
         .map(|item| item.preview())
+        .map(Into::into)
         .ok_or_else(|| "reference did not produce a snapshot".to_string())
 }
 
@@ -120,33 +408,34 @@ pub async fn workspace_resolve_ref(
 #[tauri::command]
 pub async fn workspace_probe_ref(
     app: tauri::AppHandle,
-    conversation_id: Option<String>,
-    project_id: Option<String>,
-    path: String,
-) -> Result<workspace::reference::WorkspaceReferenceProbe, String> {
-    let root = require_reference_directory(&app, conversation_id, project_id).await?;
-    let file_access = meridian_core::agent::build_file_access(&app.services().db).await;
+    request: WorkspaceReferenceProbeRequest,
+) -> Result<WorkspaceReferenceProbeResponse, String> {
+    let root = require_reference_directory(&app, request.conversation_id, request.project_id).await?;
+    let file_access = meridian_core::agent::build_file_access(&app.services().db).await?;
     let context = reference_context(&root, file_access);
-    workspace::reference::probe_reference(&context, &path).await
+    workspace::reference::probe_reference(&context, &request.path)
+        .await
+        .map(Into::into)
 }
 
 #[tauri::command]
 pub async fn workspace_git_status(
     app: tauri::AppHandle,
-    conversation_id: String,
-) -> Result<workspace::git::GitStatus, String> {
-    let root = require_root(&app, conversation_id).await?;
-    workspace::git::status(&root).await
+    request: WorkspaceGitStatusRequest,
+) -> Result<WorkspaceGitStatusResponse, String> {
+    let root = require_root(&app, request.conversation_id).await?;
+    workspace::git::status(&root).await.map(Into::into)
 }
 
 #[tauri::command]
 pub async fn workspace_git_diff(
     app: tauri::AppHandle,
-    conversation_id: String,
-    rel_path: Option<String>,
-) -> Result<workspace::git::GitDiffResult, String> {
-    let root = require_root(&app, conversation_id).await?;
-    workspace::git::diff(&root, rel_path.as_deref()).await
+    request: WorkspaceGitDiffRequest,
+) -> Result<WorkspaceGitDiffResponse, String> {
+    let root = require_root(&app, request.conversation_id).await?;
+    workspace::git::diff(&root, request.rel_path.as_deref())
+        .await
+        .map(Into::into)
 }
 
 /// Launch the user's configured editor on a file.
@@ -156,12 +445,12 @@ pub async fn workspace_git_diff(
 /// before it lands in the template: the template is the user's own to break,
 /// but the path came over IPC and must not name something outside the project.
 #[tauri::command]
-pub async fn open_in_editor(
-    app: tauri::AppHandle,
-    conversation_id: String,
-    rel_path: String,
-    line: Option<u32>,
-) -> Result<(), String> {
+pub async fn open_in_editor(app: tauri::AppHandle, request: WorkspaceEditorOpenRequest) -> Result<(), String> {
+    let WorkspaceEditorOpenRequest {
+        conversation_id,
+        rel_path,
+        line,
+    } = request;
     let services = app.services();
     let pool = services.db.clone();
     let (root, template) = tokio::task::spawn_blocking({
@@ -300,7 +589,7 @@ async fn require_reference_directory(
 
 #[cfg(test)]
 mod tests {
-    use super::split_template;
+    use super::*;
 
     /// The commonest Windows configuration: a quoted program path with spaces.
     /// `split_whitespace` turned it into `"C:\Program` and always failed.
@@ -321,5 +610,72 @@ mod tests {
     #[test]
     fn empty_quotes_and_trailing_space() {
         assert_eq!(split_template(r#"editor "" x "#), vec!["editor", "", "x"]);
+    }
+
+    #[test]
+    fn workspace_requests_reject_unknown_and_omitted_nullable_fields() {
+        let valid = serde_json::json!({
+            "conversationId": "conversation-1",
+            "projectId": null,
+            "path": "src/main.rs",
+            "lineStart": null,
+            "lineEnd": null
+        });
+        serde_json::from_value::<WorkspaceReferenceResolveRequest>(valid.clone()).unwrap();
+
+        let mut missing_nullable = valid.clone();
+        missing_nullable.as_object_mut().unwrap().remove("lineEnd");
+        assert!(serde_json::from_value::<WorkspaceReferenceResolveRequest>(missing_nullable).is_err());
+
+        let mut unknown = valid;
+        unknown
+            .as_object_mut()
+            .unwrap()
+            .insert("legacyPath".into(), serde_json::json!("src/old.rs"));
+        assert!(serde_json::from_value::<WorkspaceReferenceResolveRequest>(unknown).is_err());
+    }
+
+    #[test]
+    fn workspace_root_response_is_mapped_field_by_field() {
+        let response = WorkspaceRootResponse::from(WorkspaceRoot::Ok {
+            root: "C:/repo".into(),
+            git_available: true,
+            is_repo: false,
+        });
+
+        assert_eq!(
+            serde_json::to_value(response).unwrap(),
+            serde_json::json!({
+                "state": "ok",
+                "root": "C:/repo",
+                "git_available": true,
+                "is_repo": false
+            })
+        );
+    }
+
+    #[test]
+    fn workspace_git_response_maps_nested_core_entries() {
+        let response = WorkspaceGitStatusResponse::from(workspace::git::GitStatus::Ok {
+            branch: Some("main".into()),
+            files: vec![workspace::git::StatusEntry {
+                path: "src/main.rs".into(),
+                status: workspace::git::GitFileStatus::Modified,
+                renamed_from: None,
+            }],
+        });
+
+        assert_eq!(
+            serde_json::to_value(response).unwrap(),
+            serde_json::json!({
+                "state": "ok",
+                "branch": "main",
+                "files": [{
+                    "path": "src/main.rs",
+                    "status": "modified",
+                    "renamed_from": null
+                }]
+            })
+        );
     }
 }

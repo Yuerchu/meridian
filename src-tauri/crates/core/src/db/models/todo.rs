@@ -5,7 +5,7 @@ use crate::db::schema::{todo_items, todo_lists};
 
 /// Lifecycle of a checklist. A conversation may hold many lists but only one
 /// `InProgress` at a time — enforced by a partial unique index, not by code.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, strum::IntoStaticStr)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, strum::IntoStaticStr, strum::EnumString)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum ListStatus {
@@ -16,6 +16,12 @@ pub enum ListStatus {
 impl ListStatus {
     pub fn as_str(&self) -> &'static str {
         self.into()
+    }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        value
+            .parse()
+            .map_err(|_| format!("unknown todo-list status `{value}`; expected in_progress or completed"))
     }
 }
 
@@ -43,7 +49,7 @@ impl ItemStatus {
 
 #[derive(Debug, Clone, Queryable, Selectable, Serialize)]
 #[diesel(table_name = todo_lists)]
-pub struct TodoList {
+pub struct TodoListRow {
     pub id: String,
     pub conversation_id: String,
     pub title: String,
@@ -54,7 +60,7 @@ pub struct TodoList {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = todo_lists)]
-pub struct NewTodoList<'a> {
+pub struct TodoListInsert<'a> {
     pub id: &'a str,
     pub conversation_id: &'a str,
     pub title: &'a str,
@@ -65,7 +71,7 @@ pub struct NewTodoList<'a> {
 
 #[derive(Debug, Clone, Queryable, Selectable, Serialize)]
 #[diesel(table_name = todo_items)]
-pub struct TodoItem {
+pub struct TodoItemRow {
     pub id: String,
     pub list_id: String,
     pub content: String,
@@ -77,7 +83,7 @@ pub struct TodoItem {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = todo_items)]
-pub struct NewTodoItem<'a> {
+pub struct TodoItemInsert<'a> {
     pub id: &'a str,
     pub list_id: &'a str,
     pub content: &'a str,
@@ -91,6 +97,6 @@ pub struct NewTodoItem<'a> {
 /// ever wants — neither half is useful alone.
 #[derive(Debug, Clone, Serialize)]
 pub struct TodoListView {
-    pub list: TodoList,
-    pub items: Vec<TodoItem>,
+    pub list: TodoListRow,
+    pub items: Vec<TodoItemRow>,
 }

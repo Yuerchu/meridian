@@ -1,5 +1,6 @@
 import { parsePatchText } from './patch-parse'
-import type { Message } from '@/types'
+import { parseJsonText, requireRecord } from './strict-json'
+import type { MessageViewModel } from '@/types'
 
 /**
  * Which files a conversation changed, from the tool calls in its transcript.
@@ -99,7 +100,7 @@ function callEffects(toolName: string, args: Record<string, unknown>): Array<[st
  * not finish; listing either would put a file in the panel that is not on disk,
  * which is worse than leaving one out.
  */
-export function touchedFiles(messages: Message[]): TouchedFile[] {
+export function touchedFiles(messages: MessageViewModel[]): TouchedFile[] {
   const seen = new Map<string, TouchedFile>()
 
   for (const message of messages) {
@@ -107,17 +108,8 @@ export function touchedFiles(messages: Message[]): TouchedFile[] {
       if (block.type !== 'tool_call') continue
       if (block.data.status !== 'completed') continue
 
-      let args: Record<string, unknown>
-      try {
-        const parsed: unknown = JSON.parse(block.data.arguments)
-        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) continue
-        args = parsed as Record<string, unknown>
-      } catch {
-        // Arguments that never finished streaming. The call says it completed,
-        // so this is malformed rather than partial, and there is nothing to
-        // read a path out of either way.
-        continue
-      }
+      const label = `completed ${block.data.tool_name} arguments`
+      const args = requireRecord(parseJsonText(block.data.arguments, label), label)
 
       for (const [path, op] of callEffects(block.data.tool_name, args)) {
         const previous = seen.get(path)

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Button, Input, Label, TextArea } from '@heroui/react'
 import { api } from '@/api'
 import { cn } from '@/lib/utils'
-import type { AcpCheck, AcpConfig } from '@/types'
+import type { AcpCheckResponse, AcpConfigInfoResponse } from '@/types'
 import { SavedHint, SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
 import { useSettingsDirtyRegistration } from './dirty-guard'
 
@@ -12,9 +12,9 @@ import { useSettingsDirtyRegistration } from './dirty-guard'
  * panel needs something to render on the first frame, and the backend answers
  * with the stored values a moment later anyway.
  */
-const DEFAULTS: AcpConfig = {
+const DEFAULTS: AcpConfigInfoResponse = {
   command: 'npx',
-  args: ['-y', '@zed-industries/claude-code-acp'],
+  args: ['-y', '@agentclientprotocol/claude-agent-acp'],
 }
 
 /**
@@ -36,11 +36,11 @@ export function AcpSettings() {
   const { t } = useTranslation()
   const commandId = useId()
   const argsId = useId()
-  const [config, setConfig] = useState<AcpConfig | null>(null)
+  const [config, setConfig] = useState<AcpConfigInfoResponse | null>(null)
   const [argsText, setArgsText] = useState('')
   const [saved, setSaved] = useState(false)
   const [checking, setChecking] = useState(false)
-  const [check, setCheck] = useState<AcpCheck | null>(null)
+  const [check, setCheck] = useState<AcpCheckResponse | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
   /**
    * What is on disk, as opposed to what is in the fields.
@@ -51,7 +51,7 @@ export function AcpSettings() {
    * this page that looks authoritative. `save` already clears a stale verdict
    * for the same reason; this is the other direction.
    */
-  const [onDisk, setOnDisk] = useState<AcpConfig | null>(null)
+  const [onDisk, setOnDisk] = useState<AcpConfigInfoResponse | null>(null)
   /** Which check is the current one. See the picker's `generation`: the button
    *  is pressable again while a 120-second timeout is still outstanding, and
    *  the slow answer must not land on top of the fast one. */
@@ -75,7 +75,7 @@ export function AcpSettings() {
   const save = useCallback(async () => {
     if (!config) return
     setSaveError(null)
-    let next: AcpConfig
+    let next: AcpConfigInfoResponse
     try {
       next = await api.acpSaveConfig({ command: config.command.trim(), args: parseArgs(argsText) })
       setConfig(next)

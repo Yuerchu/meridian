@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Button, Popover, ProgressCircle } from '@heroui/react'
 
 import type { AcpUsage } from '@/hooks/use-acp-config'
+import type { CompactCircuitBreakerState, ConversationAgentKind } from '@/types'
 
 /** What the composer knows about this conversation's window. */
 export interface ContextReading {
@@ -14,12 +15,12 @@ export interface ContextReading {
   /** `closed` while compaction is being attempted. Anything else means enough
    *  summarisations failed in a row that it has stopped trying — the setting is
    *  still on, and the count will only keep climbing, so it has to be said. */
-  compactBreaker: string
+  compactBreaker: CompactCircuitBreakerState
   /** Whose window the numbers above describe. */
   model: string
   /** `agent` / `explore` for a delegated run, `claude_code` for a hosted
-   *  session, absent for an ordinary conversation. */
-  agentKind?: string
+   *  session, null for an ordinary conversation. */
+  agentKind: ConversationAgentKind | null
 }
 
 interface ContextGaugeProps {

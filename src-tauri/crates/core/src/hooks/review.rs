@@ -25,10 +25,11 @@ use crate::agent::engine::{self, ApprovalDecision, Approvals};
 use crate::agent::turn_record;
 use crate::db;
 use crate::db::DbPool;
-use crate::db::models::assistant::Assistant;
-use crate::db::models::conversation::NewConversation;
-use crate::db::models::message::NewMessage;
+use crate::db::models::assistant::AssistantRow;
+use crate::db::models::conversation::ConversationInsert;
+use crate::db::models::message::MessageInsert;
 use crate::db::models::turn::TurnStatus;
+use crate::events::ChatStreamEvent;
 use crate::provider::ToolCall;
 use crate::tools::{FileAccess, ShellType, ToolContext};
 use crate::turn::TurnOrigin;
@@ -66,19 +67,14 @@ impl engine::Emit for BestEffortEmit {
 /// Goes out even when there is no `message_id` — a turn that died before
 /// writing an assistant row still has to clear that flag.
 fn stopped(state: &SharedState, conversation_id: &str, turn_id: &str, outcome: &engine::TurnOutcome) {
-    let _ = state.services.events.emit(
-        "chat-stream",
-        serde_json::json!({
-            "type": "stop",
-            "reason": outcome.stop_reason(),
-            "done": true,
-            "message_id": outcome.progress.message_id,
-            "turn_id": turn_id,
-            "conversation_id": conversation_id,
-            "input_tokens": outcome.progress.input_tokens,
-            "output_tokens": outcome.progress.output_tokens,
-        }),
-    );
+    let _ = state.services.events.emit_chat(ChatStreamEvent::Stop {
+        reason: outcome.chat_stop_reason(),
+        message_id: outcome.progress.message_id.clone(),
+        turn_id: turn_id.to_string(),
+        conversation_id: conversation_id.to_string(),
+        input_tokens: Some(outcome.progress.input_tokens),
+        output_tokens: Some(outcome.progress.output_tokens),
+    });
 }
 
 /// Tell the sidebar a review conversation appeared or moved on.
@@ -89,10 +85,7 @@ fn stopped(state: &SharedState, conversation_id: &str, turn_id: &str, outcome: &
 /// the several minutes it runs, which reads exactly like the gate not being
 /// installed.
 fn announce(state: &SharedState, conversation_id: &str) {
-    let _ = state
-        .services
-        .events
-        .emit("conversation-updated", serde_json::json!({ "id": conversation_id }));
+    let _ = state.services.events.emit_conversation_updated(conversation_id);
 }
 
 /// Why no review happened. Every one of these is a non-200, and every non-200
@@ -256,7 +249,7 @@ async fn effective_assistant(
     model: &str,
     cwd: &str,
     job: &ReviewJob,
-) -> Result<Assistant, Refused> {
+) -> Result<AssistantRow, Refused> {
     let (provider_id, model_id) = model.split_once(':').ok_or_else(|| {
         refuse(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -266,7 +259,7 @@ async fn effective_assistant(
 
     let pool = state.services.db.clone();
     let wanted = state.config.assistant_id.clone();
-    let base = tokio::task::spawn_blocking(move || -> Result<Assistant, String> {
+    let base = tokio::task::spawn_blocking(move || -> Result<AssistantRow, String> {
         let mut conn = get_conn(&pool)?;
         match wanted {
             Some(id) => db::ops::assistant::get_assistant(&mut conn, &id).map_err(|e| e.to_string()),
@@ -288,7 +281,7 @@ async fn effective_assistant(
         Kind::Plan => verdict::prompt(cwd, round, max_rounds, job.stagnant),
         Kind::Implementation => verdict::implementation_prompt(cwd, round, max_rounds, job.stagnant),
     };
-    Ok(Assistant {
+    Ok(AssistantRow {
         provider_id: Some(provider_id.to_string()),
         model_id: Some(model_id.to_string()),
         context_limit: 0,
@@ -300,7 +293,7 @@ async fn effective_assistant(
     })
 }
 
-async fn resolve_params(state: &SharedState, assistant: &Assistant) -> Result<crate::agent::TurnParams, Refused> {
+async fn resolve_params(state: &SharedState, assistant: &AssistantRow) -> Result<crate::agent::TurnParams, Refused> {
     let pool = state.services.db.clone();
     let secrets = state.services.secrets.clone();
     let a = assistant.clone();
@@ -319,7 +312,7 @@ async fn resolve_params(state: &SharedState, assistant: &Assistant) -> Result<cr
     let mut params = tokio::task::spawn_blocking(move || {
         crate::agent::resolve_turn_params(
             &pool,
-            crate::agent::TurnParamsInput {
+            crate::agent::TurnParamsResolveRequest {
                 assistant: Some(&assistant),
                 provider_id: provider_id.as_deref(),
                 provider_type: &resolved.provider_type,
@@ -416,7 +409,7 @@ async fn write_round(
     conversation_id: &str,
     turn_id: &str,
     job: &ReviewJob,
-    assistant: &Assistant,
+    assistant: &AssistantRow,
     is_new: bool,
 ) -> Result<String, String> {
     let pool = state.services.db.clone();
@@ -464,7 +457,7 @@ async fn write_round(
             if is_new {
                 db::ops::conversation::insert(
                     conn,
-                    NewConversation {
+                    ConversationInsert {
                         id: &conversation_id,
                         title: Some(&title),
                         assistant_id: Some(&assistant_id),
@@ -498,7 +491,7 @@ async fn write_round(
 
             db::ops::message::append_message(
                 conn,
-                &NewMessage {
+                &MessageInsert {
                     id: &message_id,
                     conversation_id: &conversation_id,
                     role: "user",
@@ -583,7 +576,7 @@ fn round_prompt(job: &ReviewJob) -> String {
 #[allow(clippy::too_many_arguments)]
 async fn run_turn(
     state: &SharedState,
-    assistant: &Assistant,
+    assistant: &AssistantRow,
     params: &crate::agent::TurnParams,
     conversation_id: &str,
     turn_id: &str,
@@ -601,12 +594,15 @@ async fn run_turn(
     };
 
     let history = load_history(state, conversation_id).await;
-    let chat_messages = crate::agent::build_messages_with_senders(
+    let chat_messages = match crate::agent::build_messages_with_senders(
         config.system_prompt.trim(),
         &history,
         Vec::new(),
         &Default::default(),
-    );
+    ) {
+        Ok(messages) => messages,
+        Err(error) => return engine::TurnOutcome::failed(error),
+    };
 
     let mut budget = crate::agent::TokenBudget::new(
         &provider.1.provider_type,
@@ -731,11 +727,11 @@ async fn load_history(state: &SharedState, conversation_id: &str) -> db::ops::me
 
 async fn build_config(
     state: &SharedState,
-    assistant: &Assistant,
+    assistant: &AssistantRow,
     conversation_id: &str,
     params: &crate::agent::TurnParams,
 ) -> Result<crate::agent::turn_config::TurnConfig, String> {
-    let input = crate::agent::turn_config::TurnConfigInput {
+    let input = crate::agent::turn_config::TurnConfigResolveRequest {
         // The reviewer gets four read-only tools and no shell; searching
         // the web is not among them, provider-side or otherwise.
         server_tools: Vec::new(),
@@ -755,7 +751,7 @@ async fn build_config(
     let tools = state.services.tools.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = get_conn(&pool)?;
-        Ok::<_, String>(crate::agent::turn_config::resolve(&mut conn, &tools, input))
+        crate::agent::turn_config::resolve(&mut conn, &tools, input)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -763,7 +759,7 @@ async fn build_config(
 
 async fn build_provider(
     state: &SharedState,
-    assistant: &Assistant,
+    assistant: &AssistantRow,
 ) -> Result<(Box<dyn crate::provider::ChatProvider>, crate::agent::ResolvedProvider), String> {
     let pool = state.services.db.clone();
     let secrets = state.services.secrets.clone();
@@ -777,9 +773,9 @@ async fn build_provider(
         &resolved.provider_type,
         &resolved.base_url,
         &resolved.credential,
-        Some(&resolved.api_format),
-        Some(&resolved.transport_profile),
-    );
+        &resolved.api_format,
+        &resolved.transport_profile,
+    )?;
     Ok((provider, resolved))
 }
 
@@ -808,7 +804,7 @@ mod tests {
         let mut conn = pool.get().unwrap();
         db::ops::conversation::insert(
             &mut conn,
-            NewConversation {
+            ConversationInsert {
                 id,
                 title: Some("t"),
                 assistant_id: None,
@@ -927,7 +923,12 @@ mod tests {
                 .into_iter()
                 .map(|(round, verdict, summary)| super::super::protocol::HistoryEntry {
                     round,
-                    verdict: verdict.into(),
+                    verdict: match verdict {
+                        "approve" => super::super::protocol::HistoryVerdict::Approve,
+                        "revise" => super::super::protocol::HistoryVerdict::Revise,
+                        "inconclusive" => super::super::protocol::HistoryVerdict::Inconclusive,
+                        other => panic!("unknown test verdict {other:?}"),
+                    },
                     summary: summary.into(),
                 })
                 .collect(),

@@ -1,15 +1,20 @@
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::plan::{KIND_PLAN, NewPlan, Plan, PlanStatus};
+use crate::db::models::plan::{KIND_PLAN, ModeArtifactInsert, ModeArtifactRow, PlanStatus};
 use crate::db::schema::mode_artifacts;
 
 /// Store an artifact the model just proposed. It starts `pending`; the user's
 /// decision moves it on.
-pub fn record_plan(conn: &mut SqliteConnection, conversation_id: &str, content: &str, now: i64) -> QueryResult<Plan> {
+pub fn record_plan(
+    conn: &mut SqliteConnection,
+    conversation_id: &str,
+    content: &str,
+    now: i64,
+) -> QueryResult<ModeArtifactRow> {
     let id = uuid::Uuid::new_v4().to_string();
     diesel::insert_into(mode_artifacts::table)
-        .values(&NewPlan {
+        .values(&ModeArtifactInsert {
             id: &id,
             conversation_id,
             kind: KIND_PLAN,
@@ -19,22 +24,22 @@ pub fn record_plan(conn: &mut SqliteConnection, conversation_id: &str, content: 
             updated_at: now,
         })
         .execute(conn)?;
-    mode_artifacts::table.find(&id).first::<Plan>(conn)
+    mode_artifacts::table.find(&id).first::<ModeArtifactRow>(conn)
 }
 
 /// Accept an artifact, retiring whichever one was previously in force. Only one
 /// per conversation and kind is ever `approved` — enforced by a partial unique
 /// index as well as by this transaction, so two concurrent approvals cannot
 /// both land.
-pub fn approve(conn: &mut SqliteConnection, id: &str, now: i64) -> QueryResult<Plan> {
+pub fn approve(conn: &mut SqliteConnection, id: &str, now: i64) -> QueryResult<ModeArtifactRow> {
     conn.transaction(|conn| {
-        let plan = mode_artifacts::table.find(id).first::<Plan>(conn)?;
+        let plan = mode_artifacts::table.find(id).first::<ModeArtifactRow>(conn)?;
         retire_approved(conn, &plan.conversation_id, &plan.kind, PlanStatus::Superseded, now)?;
         set_status(conn, id, PlanStatus::Approved, now)
     })
 }
 
-pub fn reject(conn: &mut SqliteConnection, id: &str, now: i64) -> QueryResult<Plan> {
+pub fn reject(conn: &mut SqliteConnection, id: &str, now: i64) -> QueryResult<ModeArtifactRow> {
     set_status(conn, id, PlanStatus::Rejected, now)
 }
 
@@ -42,7 +47,29 @@ pub fn reject(conn: &mut SqliteConnection, id: &str, now: i64) -> QueryResult<Pl
 /// Without this an approved plan would keep being injected into every later
 /// request, long after it stopped being what the conversation is about.
 pub fn complete_active(conn: &mut SqliteConnection, conversation_id: &str, now: i64) -> QueryResult<usize> {
-    retire_approved(conn, conversation_id, KIND_PLAN, PlanStatus::Done, now)
+    conn.transaction(|conn| {
+        let legacy = retire_approved(conn, conversation_id, KIND_PLAN, PlanStatus::Done, now)?;
+        // The old table remains readable during the compatibility release, but
+        // the versioned document is the active source of truth.  Completing a
+        // conversation must retire both or the approved revision would keep
+        // being injected after its legacy mirror says the work is done.
+        let documents = diesel::update(
+            crate::db::schema::plan_documents::table
+                .filter(crate::db::schema::plan_documents::conversation_id.eq(conversation_id))
+                .filter(
+                    crate::db::schema::plan_documents::state
+                        .eq(crate::db::models::plan_review::PlanDocumentState::Approved.as_str()),
+                ),
+        )
+        .set((
+            crate::db::schema::plan_documents::state
+                .eq(crate::db::models::plan_review::PlanDocumentState::Done.as_str()),
+            crate::db::schema::plan_documents::lock_version.eq(crate::db::schema::plan_documents::lock_version + 1),
+            crate::db::schema::plan_documents::updated_at.eq(now),
+        ))
+        .execute(conn)?;
+        Ok(legacy + documents)
+    })
 }
 
 fn retire_approved(
@@ -65,23 +92,23 @@ fn retire_approved(
     .execute(conn)
 }
 
-fn set_status(conn: &mut SqliteConnection, id: &str, status: PlanStatus, now: i64) -> QueryResult<Plan> {
+fn set_status(conn: &mut SqliteConnection, id: &str, status: PlanStatus, now: i64) -> QueryResult<ModeArtifactRow> {
     diesel::update(mode_artifacts::table.find(id))
         .set((
             mode_artifacts::status.eq(status.as_str()),
             mode_artifacts::updated_at.eq(now),
         ))
         .execute(conn)?;
-    mode_artifacts::table.find(id).first::<Plan>(conn)
+    mode_artifacts::table.find(id).first::<ModeArtifactRow>(conn)
 }
 
 /// The plan currently being implemented, if any.
-pub fn get_active(conn: &mut SqliteConnection, conversation_id: &str) -> QueryResult<Option<Plan>> {
+pub fn get_active(conn: &mut SqliteConnection, conversation_id: &str) -> QueryResult<Option<ModeArtifactRow>> {
     mode_artifacts::table
         .filter(mode_artifacts::conversation_id.eq(conversation_id))
         .filter(mode_artifacts::kind.eq(KIND_PLAN))
         .filter(mode_artifacts::status.eq(PlanStatus::Approved.as_str()))
-        .first::<Plan>(conn)
+        .first::<ModeArtifactRow>(conn)
         .optional()
 }
 
@@ -89,18 +116,18 @@ pub fn get_active(conn: &mut SqliteConnection, conversation_id: &str) -> QueryRe
 /// go through `get_active_plan` / `get_approved_plan`, but tests verify row
 /// history directly.
 #[cfg(test)]
-pub fn list_plans(conn: &mut SqliteConnection, conversation_id: &str) -> QueryResult<Vec<Plan>> {
+pub fn list_plans(conn: &mut SqliteConnection, conversation_id: &str) -> QueryResult<Vec<ModeArtifactRow>> {
     mode_artifacts::table
         .filter(mode_artifacts::conversation_id.eq(conversation_id))
         .filter(mode_artifacts::kind.eq(KIND_PLAN))
         .order(mode_artifacts::created_at.asc())
-        .load::<Plan>(conn)
+        .load::<ModeArtifactRow>(conn)
 }
 
 /// Render the approved plan for the system prompt. Follows the same contract as
 /// the checklist block: `None` when there is nothing to say, a leading blank
 /// line built in, wrapped in a tag.
-pub fn format_plan_block(plan: &Plan) -> Option<String> {
+pub fn format_plan_block(plan: &ModeArtifactRow) -> Option<String> {
     let content = plan.content.trim();
     if content.is_empty() {
         return None;

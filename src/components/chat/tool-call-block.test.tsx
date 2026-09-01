@@ -5,6 +5,7 @@ import { expectCollapsed, expectExpanded } from '@/test/disclosure'
 import i18n from '@/i18n'
 import { api } from '@/api'
 import { useConversationStore } from '@/stores/conversation-store'
+import { usePlanReviewStore } from '@/stores/plan-review-store'
 import type { ToolCallDisplay } from '@/types'
 
 // The sources open in the user's browser, not in the WebView.
@@ -163,6 +164,41 @@ describe('ToolCallBlock file-edit diff rendering', () => {
     expect(args).not.toBeNull()
     expect(args!).toBeVisible()
     expect(args!.textContent).toContain(partial)
+  })
+})
+
+describe('durable plan review transcript entry', () => {
+  it('opens the linked review without rendering the full plan in the transcript', async () => {
+    usePlanReviewStore.setState({
+      activeReviewId: null,
+      summaries: {
+        'review-1': {
+          review_id: 'review-1',
+          conversation_id: 'conversation-1',
+          document_id: 'document-1',
+          revision_id: 'revision-1',
+          assistant_message_id: 'message-1',
+          provider_call_id: 'call-1',
+          turn_id: 'turn-1',
+          status: 'pending',
+          delivery_state: null,
+          lock_version: 0,
+        },
+      },
+    })
+    const data: ToolCallDisplay = {
+      call_id: 'call-1',
+      tool_name: 'exit_plan',
+      arguments: JSON.stringify({ plan: '# A very long plan body' }),
+      status: 'pending',
+      plan_review_id: 'review-1',
+    }
+
+    const { container } = render(<ToolCallBlock data={data} />)
+    expect(container.querySelector('[data-slot="plan-review-entry"]')).not.toBeNull()
+    expect(container.textContent).not.toContain('A very long plan body')
+    await userEvent.click(screen.getByRole('button', { name: 'Review plan' }))
+    expect(usePlanReviewStore.getState().activeReviewId).toBe('review-1')
   })
 })
 
@@ -588,7 +624,10 @@ describe('a hosted agent asks with the same cards', () => {
     await userEvent.click(screen.getByRole('radio', { name: 'A' }))
     await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.tool.askUserSubmit') }))
 
-    expect(api.respondToAsk).toHaveBeenCalledWith('appr-1', JSON.stringify({ scope: 'A' }))
+    expect(api.respondToAsk).toHaveBeenCalledWith({
+      approvalId: 'appr-1',
+      response: JSON.stringify({ scope: 'A' }),
+    })
   })
 
   it('keeps the submit name and exposes a busy state while an answer is sending', async () => {
@@ -650,7 +689,10 @@ describe('a hosted agent asks with the same cards', () => {
     // rather than being lost to a decline.
     await userEvent.type(branch, 'main')
     await userEvent.click(submit())
-    expect(api.respondToAsk).toHaveBeenCalledWith('appr-1', JSON.stringify({ branch: 'main', note: 'be careful' }))
+    expect(api.respondToAsk).toHaveBeenCalledWith({
+      approvalId: 'appr-1',
+      response: JSON.stringify({ branch: 'main', note: 'be careful' }),
+    })
   })
 
   /**
@@ -695,10 +737,10 @@ describe('a hosted agent asks with the same cards', () => {
     // be asserted here — `elicitation.rs` takes it apart into the two
     // properties the schema has, under
     // `a_required_question_answered_with_a_note_beside_it_is_still_accepted`.
-    expect(api.respondToAsk).toHaveBeenCalledWith(
-      'appr-1',
-      JSON.stringify({ scope: 'A\n\nNotes: something else entirely' }),
-    )
+    expect(api.respondToAsk).toHaveBeenCalledWith({
+      approvalId: 'appr-1',
+      response: JSON.stringify({ scope: 'A\n\nNotes: something else entirely' }),
+    })
   })
 
   /**

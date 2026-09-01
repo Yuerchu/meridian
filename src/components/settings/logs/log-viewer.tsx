@@ -38,7 +38,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
       filters: [{ name: 'JSONL', extensions: ['jsonl'] }],
     }).catch(() => null)
     if (!path) return
-    await api.exportLogs(path)
+    await api.exportLogs({ outputPath: path })
     markExported()
   }, [markExported])
 

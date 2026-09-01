@@ -28,6 +28,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::assessment::{self, Read};
 use crate::db::models::message::MessageUsage;
+use crate::events::AutoReviewEvidence;
 use crate::provider::{ChatMessage, ChatParams, ChatProvider, ToolDefinition};
 use crate::services::Services;
 use crate::tools::{FileAccess, ShellType, ToolContext};
@@ -66,7 +67,7 @@ pub(super) struct Findings {
     pub peak_prompt: Option<i32>,
     /// What it actually looked at, filed beside the verdict. This is the part a
     /// user reads when they want to know whether a denial was informed.
-    pub evidence: Vec<serde_json::Value>,
+    pub evidence: Vec<AutoReviewEvidence>,
 }
 
 /// What is appended to the shared prefix instead of the first pass's answer.
@@ -180,7 +181,7 @@ async fn drive(job: &Job<'_>, cancel: &CancellationToken, deadline: tokio::time:
     ];
     let mut usage = MessageUsage::default();
     let mut peak_prompt: Option<i32> = None;
-    let mut evidence: Vec<serde_json::Value> = Vec::new();
+    let mut evidence: Vec<AutoReviewEvidence> = Vec::new();
 
     for round in 0..MAX_ROUNDS {
         if cancel.is_cancelled() {
@@ -239,25 +240,37 @@ async fn drive(job: &Job<'_>, cancel: &CancellationToken, deadline: tokio::time:
             let allowed = crate::tools::READ_ONLY_TOOLS.contains(&call.name.as_str());
             let output = match (allowed, job.services.tools.get(&call.name)) {
                 (true, Some(tool)) => {
-                    let args = serde_json::from_str(&call.arguments).unwrap_or_else(|_| serde_json::json!({}));
-                    // A `search_files` over a huge tree blocks as readily as a
-                    // wedged endpoint does, and this is the other await a round
-                    // can be lost in. The tool is told through `cancel` as well,
-                    // for the ones that watch it.
-                    match tokio::time::timeout_at(deadline, tool.execute(args, &tool_context)).await {
-                        Err(_) => {
-                            cancel.cancel();
-                            "Error: 工具执行超出了审查的时间预算。".to_string()
+                    match serde_json::from_str::<serde_json::Value>(&call.arguments) {
+                        Err(error) => format!("Error: invalid tool arguments JSON: {error}"),
+                        Ok(args) if !args.is_object() => "Error: tool arguments must be a JSON object".to_string(),
+                        Ok(args) => {
+                            // A `search_files` over a huge tree blocks as readily as a
+                            // wedged endpoint does, and this is the other await a round
+                            // can be lost in. The tool is told through `cancel` as well,
+                            // for the ones that watch it.
+                            match tokio::time::timeout_at(deadline, tool.execute(args, &tool_context)).await {
+                                Err(_) => {
+                                    cancel.cancel();
+                                    "Error: 工具执行超出了审查的时间预算。".to_string()
+                                }
+                                Ok(Ok(out)) => {
+                                    crate::agent::truncate::truncate_middle_with_token_budget(
+                                        &out,
+                                        MAX_TOOL_OUTPUT_TOKENS,
+                                    )
+                                    .0
+                                }
+                                Ok(Err(e)) => format!("Error: {e}"),
+                            }
                         }
-                        Ok(Ok(out)) => {
-                            crate::agent::truncate::truncate_middle_with_token_budget(&out, MAX_TOOL_OUTPUT_TOKENS).0
-                        }
-                        Ok(Err(e)) => format!("Error: {e}"),
                     }
                 }
                 _ => "Error: 审查员只能使用 read_file、search_files、glob、list_directory。".to_string(),
             };
-            evidence.push(serde_json::json!({ "tool": call.name, "arguments": call.arguments }));
+            evidence.push(AutoReviewEvidence {
+                tool: call.name.clone(),
+                arguments: call.arguments.clone(),
+            });
             messages.push(ChatMessage::tool_result(&call.id, &output));
         }
     }

@@ -9,7 +9,23 @@
 //! The outbound half is Claude Code's, and that one is not ours to change —
 //! see `HookOutput`.
 
-use serde::{Deserialize, Serialize};
+use std::fmt;
+
+use serde::de::{self, DeserializeOwned};
+use serde::{Deserialize, Deserializer, Serialize};
+
+/// A nullable wire field whose key is nevertheless required.
+///
+/// Serde deliberately treats a bare `Option<T>` as `None` when the key is
+/// missing. The request implementations first deserialize these fields as
+/// required JSON values, then decode an explicitly supplied `null` as `None`.
+fn required_nullable<T, E>(value: serde_json::Value, field: &'static str) -> Result<Option<T>, E>
+where
+    T: DeserializeOwned,
+    E: de::Error,
+{
+    serde_json::from_value::<Option<T>>(value).map_err(|error| E::custom(format!("invalid field {field:?}: {error}")))
+}
 
 /// What is being reviewed. The two differ in what the reviewer is told to look
 /// for, where the transcript is filed, and nothing else — which is why they
@@ -63,27 +79,56 @@ pub(crate) struct ReviewJob {
 
 /// One `Stop` submission: the code as it now stands, and what the agent
 /// claims it did.
-#[derive(Debug, Deserialize)]
+#[derive(Debug)]
 pub(crate) struct StopReviewRequest {
-    #[serde(rename = "sessionId")]
     pub session_id: String,
     pub cwd: String,
-    #[serde(rename = "conversationId", default)]
     pub conversation_id: Option<String>,
     /// Everything not committed, as the plugin computed it. Sent rather than
     /// fetched because the reviewer has no shell — it reads files, it does not
     /// run `git`.
     pub diff: String,
-    #[serde(default)]
     pub note: Option<String>,
-    #[serde(default)]
     pub round: u32,
-    #[serde(default)]
     pub max_rounds: Option<u32>,
-    #[serde(default)]
     pub stagnant: bool,
-    #[serde(default)]
     pub history: Vec<HistoryEntry>,
+}
+
+impl<'de> Deserialize<'de> for StopReviewRequest {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Fields {
+            #[serde(rename = "sessionId")]
+            session_id: String,
+            cwd: String,
+            #[serde(rename = "conversationId")]
+            conversation_id: serde_json::Value,
+            diff: String,
+            note: serde_json::Value,
+            round: u32,
+            max_rounds: serde_json::Value,
+            stagnant: bool,
+            history: Vec<HistoryEntry>,
+        }
+
+        let fields = Fields::deserialize(deserializer)?;
+        Ok(Self {
+            session_id: fields.session_id,
+            cwd: fields.cwd,
+            conversation_id: required_nullable(fields.conversation_id, "conversationId")?,
+            diff: fields.diff,
+            note: required_nullable(fields.note, "note")?,
+            round: fields.round,
+            max_rounds: required_nullable(fields.max_rounds, "max_rounds")?,
+            stagnant: fields.stagnant,
+            history: fields.history,
+        })
+    }
 }
 
 impl StopReviewRequest {
@@ -104,9 +149,8 @@ impl StopReviewRequest {
 }
 
 /// One `ExitPlanMode` submission, as the plugin describes it.
-#[derive(Debug, Deserialize)]
+#[derive(Debug)]
 pub(crate) struct ReviewRequest {
-    #[serde(rename = "sessionId")]
     pub session_id: String,
     /// The repository the plan is about. The reviewing agent is confined to it,
     /// so this is load-bearing rather than informational.
@@ -118,20 +162,49 @@ pub(crate) struct ReviewRequest {
     /// two rounds has nothing to recover.
     ///
     /// Optional, and not trusted: see `review::open_or_reuse`.
-    #[serde(rename = "conversationId", default)]
     pub conversation_id: Option<String>,
     pub plan: String,
-    #[serde(default)]
     pub round: u32,
-    #[serde(default)]
     pub max_rounds: Option<u32>,
     /// Whether this submission is materially the same as the previous one. The
     /// reviewer is told, because "this is the third time you have seen this"
     /// changes what a useful answer looks like.
-    #[serde(default)]
     pub stagnant: bool,
-    #[serde(default)]
     pub history: Vec<HistoryEntry>,
+}
+
+impl<'de> Deserialize<'de> for ReviewRequest {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Fields {
+            #[serde(rename = "sessionId")]
+            session_id: String,
+            cwd: String,
+            #[serde(rename = "conversationId")]
+            conversation_id: serde_json::Value,
+            plan: String,
+            round: u32,
+            max_rounds: serde_json::Value,
+            stagnant: bool,
+            history: Vec<HistoryEntry>,
+        }
+
+        let fields = Fields::deserialize(deserializer)?;
+        Ok(Self {
+            session_id: fields.session_id,
+            cwd: fields.cwd,
+            conversation_id: required_nullable(fields.conversation_id, "conversationId")?,
+            plan: fields.plan,
+            round: fields.round,
+            max_rounds: required_nullable(fields.max_rounds, "max_rounds")?,
+            stagnant: fields.stagnant,
+            history: fields.history,
+        })
+    }
 }
 
 impl ReviewRequest {
@@ -152,13 +225,35 @@ impl ReviewRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct HistoryEntry {
-    #[serde(default)]
     pub round: u32,
-    #[serde(default)]
-    pub verdict: String,
-    #[serde(default)]
+    pub verdict: HistoryVerdict,
     pub summary: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum HistoryVerdict {
+    Approve,
+    Revise,
+    Inconclusive,
+}
+
+impl HistoryVerdict {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Approve => "approve",
+            Self::Revise => "revise",
+            Self::Inconclusive => "inconclusive",
+        }
+    }
+}
+
+impl fmt::Display for HistoryVerdict {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
 }
 
 /// What the plugin gets back.

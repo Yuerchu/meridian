@@ -58,3 +58,25 @@ Modifications made:
 
 The sandbox-types crate additionally contains code derived from
 path-absolutize (MIT), as inherited through codex-rs.
+
+---
+
+Grok Build
+Copyright 2023-2026 SpaceXAI
+Licensed under the Apache License, Version 2.0
+https://github.com/xai-org/grok-build
+
+Meridian's durable plan-document workflow borrows architecture and interaction
+patterns from Grok Build's file-backed plan mode, including treating the plan as
+a document, applying incremental edits before submission, and presenting a
+review boundary after the document has been updated.
+
+Modifications made:
+  - scoped each plan document to a Meridian conversation and planning episode
+    instead of placing one shared plan file in the workspace
+  - added immutable SQLite revisions, crash recovery, atomic file
+    materialisation, inline review comments, and editable user suggestions
+  - retained patch-only Native updates while adapting full-snapshot ACP agents
+    to the same review model
+  - integrated the workflow with Meridian's transcript, attention queue,
+    remote client and mobile navigation

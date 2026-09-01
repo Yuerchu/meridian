@@ -3,10 +3,10 @@ import { useTranslation } from 'react-i18next'
 import { ArrowsRotateRight, Picture } from '@gravity-ui/icons'
 import { Button } from '@heroui/react'
 import { api } from '@/api'
-import type { Emoji } from '@/types'
+import type { EmojiInfoResponse } from '@/types'
 
 export interface EmojiMap {
-  [name: string]: { emoji: Emoji; url: string }
+  [name: string]: { emoji: EmojiInfoResponse; url: string }
 }
 
 export function useEmojiMap(assistantId: string | null) {

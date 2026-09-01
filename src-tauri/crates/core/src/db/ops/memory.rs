@@ -5,11 +5,15 @@ use diesel::sqlite::SqliteConnection;
 use crate::db::models::memory::MemoryScope;
 use crate::db::models::memory::{
     DeletedBy, MAX_CLIENT_GLOBAL_MEMORIES, MAX_MEMORIES_PER_PROJECT, MAX_MEMORIES_PER_SUBJECT, MAX_MEMORY_CONTENT_LEN,
-    MAX_ONEBOT_GLOBAL_MEMORIES, MAX_PINNED_SUBJECTS, MAX_REMEMBERED_SUBJECTS, MAX_TRACKED_SUBJECTS, Memory,
-    MemoryProposal, MemorySubject, MemoryUpdate, NewMemory, NewMemoryProposal, NewMemorySubject, Origin,
+    MAX_ONEBOT_GLOBAL_MEMORIES, MAX_PINNED_SUBJECTS, MAX_REMEMBERED_SUBJECTS, MAX_TRACKED_SUBJECTS, MemoryChangeset,
+    MemoryInsert, MemoryProposalInsert, MemoryProposalRow, MemoryRow, MemorySubjectInsert, MemorySubjectRow, Origin,
     ProposalStatus, Visibility,
 };
 use crate::db::schema::{memories, memory_proposals, memory_subjects};
+
+fn contract_error(message: String) -> diesel::result::Error {
+    diesel::result::Error::QueryBuilderError(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, message)))
+}
 
 /// Trash retention. Soft-deleted rows outlive the delete so `/memory undo` and
 /// the desktop trash have something to restore.
@@ -90,12 +94,12 @@ pub struct ReadWindow<'a> {
 // Reads
 // ---------------------------------------------------------------------------
 
-pub fn list_by_scope(conn: &mut SqliteConnection, scope: MemoryScope, scope_id: &str) -> QueryResult<Vec<Memory>> {
+pub fn list_by_scope(conn: &mut SqliteConnection, scope: MemoryScope, scope_id: &str) -> QueryResult<Vec<MemoryRow>> {
     active()
         .filter(memories::scope_type.eq(scope.as_str()))
         .filter(memories::scope_id.eq(scope_id.to_string()))
         .order(memories::key.asc())
-        .load::<Memory>(conn)
+        .load::<MemoryRow>(conn)
 }
 
 /// One round trip for every participant in a turn rather than N.
@@ -111,7 +115,7 @@ pub fn list_by_scopes(
     scope_ids: &[String],
     ctx: &VisibilityCtx,
     window: Option<&ReadWindow<'_>>,
-) -> QueryResult<Vec<Memory>> {
+) -> QueryResult<Vec<MemoryRow>> {
     if scope_ids.is_empty() {
         return Ok(Vec::new());
     }
@@ -128,7 +132,7 @@ pub fn list_by_scopes(
     let Some(window) = window else {
         return q
             .order((memories::scope_id.asc(), memories::key.asc()))
-            .load::<Memory>(conn);
+            .load::<MemoryRow>(conn);
     };
     q = q.filter(memories::updated_at.lt(window.before_ts));
     if let Some(after) = window.after {
@@ -139,7 +143,7 @@ pub fn list_by_scopes(
         );
     }
     q.order((memories::updated_at.asc(), memories::id.asc()))
-        .load::<Memory>(conn)
+        .load::<MemoryRow>(conn)
 }
 
 /// What was soft-deleted inside `window`, so the model can be told to forget it.
@@ -155,7 +159,7 @@ pub fn list_deleted_by_scopes(
     scope_ids: &[String],
     ctx: &VisibilityCtx,
     window: &ReadWindow<'_>,
-) -> QueryResult<Vec<Memory>> {
+) -> QueryResult<Vec<MemoryRow>> {
     if scope_ids.is_empty() {
         return Ok(Vec::new());
     }
@@ -180,7 +184,7 @@ pub fn list_deleted_by_scopes(
         );
     }
     q.order((memories::deleted_at.asc(), memories::id.asc()))
-        .load::<Memory>(conn)
+        .load::<MemoryRow>(conn)
 }
 
 /// The single source of truth for "what may be shown about this person here".
@@ -188,7 +192,7 @@ pub fn visible_user_memories(
     conn: &mut SqliteConnection,
     subject_scope_id: &str,
     ctx: &VisibilityCtx,
-) -> QueryResult<Vec<Memory>> {
+) -> QueryResult<Vec<MemoryRow>> {
     list_by_scopes(
         conn,
         MemoryScope::OnebotUser,
@@ -198,8 +202,8 @@ pub fn visible_user_memories(
     )
 }
 
-pub fn get_memory(conn: &mut SqliteConnection, id: &str) -> QueryResult<Memory> {
-    memories::table.find(id).first::<Memory>(conn)
+pub fn get_memory(conn: &mut SqliteConnection, id: &str) -> QueryResult<MemoryRow> {
+    memories::table.find(id).first::<MemoryRow>(conn)
 }
 
 pub fn get_memory_by_key(
@@ -207,12 +211,12 @@ pub fn get_memory_by_key(
     scope: MemoryScope,
     scope_id: &str,
     key: &str,
-) -> QueryResult<Option<Memory>> {
+) -> QueryResult<Option<MemoryRow>> {
     active()
         .filter(memories::scope_type.eq(scope.as_str()))
         .filter(memories::scope_id.eq(scope_id.to_string()))
         .filter(memories::key.eq(key.to_string()))
-        .first::<Memory>(conn)
+        .first::<MemoryRow>(conn)
         .optional()
 }
 
@@ -226,32 +230,32 @@ pub fn count_by_scope(conn: &mut SqliteConnection, scope: MemoryScope, scope_id:
 
 /// Memories naming a person, wherever they live. Opt-out uses this to reach
 /// group-scoped rows that talk about someone.
-pub fn list_by_subject(conn: &mut SqliteConnection, subject_scope_id: &str) -> QueryResult<Vec<Memory>> {
+pub fn list_by_subject(conn: &mut SqliteConnection, subject_scope_id: &str) -> QueryResult<Vec<MemoryRow>> {
     active()
         .filter(memories::subject_scope_id.eq(subject_scope_id.to_string()))
         .order(memories::updated_at.desc())
-        .load::<Memory>(conn)
+        .load::<MemoryRow>(conn)
 }
 
 /// Every live memory, across all scopes. Backs the desktop browser, which needs
 /// the bot-wide and per-person layers as well as project rows — fanning out one
 /// query per project could only ever return the latter.
-pub fn list_all(conn: &mut SqliteConnection) -> QueryResult<Vec<Memory>> {
+pub fn list_all(conn: &mut SqliteConnection) -> QueryResult<Vec<MemoryRow>> {
     active()
         .order((
             memories::scope_type.asc(),
             memories::scope_id.asc(),
             memories::key.asc(),
         ))
-        .load::<Memory>(conn)
+        .load::<MemoryRow>(conn)
 }
 
-pub fn list_trash(conn: &mut SqliteConnection, limit: i64) -> QueryResult<Vec<Memory>> {
+pub fn list_trash(conn: &mut SqliteConnection, limit: i64) -> QueryResult<Vec<MemoryRow>> {
     memories::table
         .filter(memories::deleted_at.is_not_null())
         .order(memories::deleted_at.desc())
         .limit(limit)
-        .load::<Memory>(conn)
+        .load::<MemoryRow>(conn)
 }
 
 // ---------------------------------------------------------------------------
@@ -300,8 +304,9 @@ pub fn validate_memory(
 /// Upsert against the live row only. A soft-deleted row with the same key stays
 /// in the trash and a fresh row is created, so restoring never collides and the
 /// delete history survives.
-pub fn upsert_memory(conn: &mut SqliteConnection, new: &NewMemory) -> QueryResult<Memory> {
-    let scope = MemoryScope::parse(new.scope_type).unwrap_or(MemoryScope::Project);
+pub fn upsert_memory(conn: &mut SqliteConnection, new: &MemoryInsert) -> QueryResult<MemoryRow> {
+    let scope = MemoryScope::parse(new.scope_type).map_err(contract_error)?;
+    Visibility::parse(new.visibility).map_err(contract_error)?;
     let existing = get_memory_by_key(conn, scope, new.scope_id, new.key)?;
 
     if let Some(existing) = existing {
@@ -315,16 +320,16 @@ pub fn upsert_memory(conn: &mut SqliteConnection, new: &NewMemory) -> QueryResul
                 memories::updated_at.eq(new.updated_at),
             ))
             .execute(conn)?;
-        memories::table.find(&existing.id).first::<Memory>(conn)
+        memories::table.find(&existing.id).first::<MemoryRow>(conn)
     } else {
         diesel::insert_into(memories::table).values(new).execute(conn)?;
-        memories::table.find(new.id).first::<Memory>(conn)
+        memories::table.find(new.id).first::<MemoryRow>(conn)
     }
 }
 
-pub fn update_memory(conn: &mut SqliteConnection, id: &str, changeset: &MemoryUpdate) -> QueryResult<Memory> {
+pub fn update_memory(conn: &mut SqliteConnection, id: &str, changeset: &MemoryChangeset) -> QueryResult<MemoryRow> {
     diesel::update(memories::table.find(id)).set(changeset).execute(conn)?;
-    memories::table.find(id).first::<Memory>(conn)
+    memories::table.find(id).first::<MemoryRow>(conn)
 }
 
 pub fn soft_delete_memories(
@@ -425,7 +430,7 @@ pub fn touch_subject(
 ) -> QueryResult<()> {
     let existing = memory_subjects::table
         .find(scope_id)
-        .first::<MemorySubject>(conn)
+        .first::<MemorySubjectRow>(conn)
         .optional()?;
 
     match existing {
@@ -446,7 +451,7 @@ pub fn touch_subject(
         }
         None => {
             diesel::insert_into(memory_subjects::table)
-                .values(&NewMemorySubject {
+                .values(&MemorySubjectInsert {
                     scope_id,
                     display_name: display_name.filter(|n| !n.trim().is_empty()),
                     last_seen_at: now,
@@ -461,17 +466,17 @@ pub fn touch_subject(
     Ok(())
 }
 
-pub fn get_subject(conn: &mut SqliteConnection, scope_id: &str) -> QueryResult<Option<MemorySubject>> {
+pub fn get_subject(conn: &mut SqliteConnection, scope_id: &str) -> QueryResult<Option<MemorySubjectRow>> {
     memory_subjects::table
         .find(scope_id)
-        .first::<MemorySubject>(conn)
+        .first::<MemorySubjectRow>(conn)
         .optional()
 }
 
-pub fn list_subjects(conn: &mut SqliteConnection) -> QueryResult<Vec<MemorySubject>> {
+pub fn list_subjects(conn: &mut SqliteConnection) -> QueryResult<Vec<MemorySubjectRow>> {
     memory_subjects::table
         .order(memory_subjects::last_seen_at.desc())
-        .load::<MemorySubject>(conn)
+        .load::<MemorySubjectRow>(conn)
 }
 
 pub fn set_subject_flags(
@@ -623,25 +628,25 @@ pub fn sweep_untracked_subjects(conn: &mut SqliteConnection, now: i64) -> QueryR
 // Bot-wide proposals
 // ---------------------------------------------------------------------------
 
-pub fn create_proposal(conn: &mut SqliteConnection, new: &NewMemoryProposal) -> QueryResult<MemoryProposal> {
+pub fn create_proposal(conn: &mut SqliteConnection, new: &MemoryProposalInsert) -> QueryResult<MemoryProposalRow> {
     diesel::insert_into(memory_proposals::table).values(new).execute(conn)?;
     memory_proposals::table
         .order(memory_proposals::id.desc())
-        .first::<MemoryProposal>(conn)
+        .first::<MemoryProposalRow>(conn)
 }
 
-pub fn list_proposals(conn: &mut SqliteConnection, only_pending: bool) -> QueryResult<Vec<MemoryProposal>> {
+pub fn list_proposals(conn: &mut SqliteConnection, only_pending: bool) -> QueryResult<Vec<MemoryProposalRow>> {
     let mut q = memory_proposals::table.into_boxed();
     if only_pending {
         q = q.filter(memory_proposals::status.eq(ProposalStatus::Pending.as_str()));
     }
-    q.order(memory_proposals::id.desc()).load::<MemoryProposal>(conn)
+    q.order(memory_proposals::id.desc()).load::<MemoryProposalRow>(conn)
 }
 
-pub fn get_proposal(conn: &mut SqliteConnection, id: i32) -> QueryResult<Option<MemoryProposal>> {
+pub fn get_proposal(conn: &mut SqliteConnection, id: i32) -> QueryResult<Option<MemoryProposalRow>> {
     memory_proposals::table
         .find(id)
-        .first::<MemoryProposal>(conn)
+        .first::<MemoryProposalRow>(conn)
         .optional()
 }
 
@@ -694,7 +699,7 @@ pub fn escape_attr(value: &str) -> String {
 
 /// Render one section. The leading blank line belongs to the block because every
 /// call site concatenates bare strings.
-pub fn format_memory_section(memories: &[Memory], tag: &str, attrs: Option<&str>) -> Option<String> {
+pub fn format_memory_section(memories: &[MemoryRow], tag: &str, attrs: Option<&str>) -> Option<String> {
     if memories.is_empty() {
         return None;
     }
@@ -720,7 +725,7 @@ mod tests {
         let scope_id = onebot_user_scope_id(subject);
         upsert_memory(
             conn,
-            &NewMemory {
+            &MemoryInsert {
                 id,
                 scope_type: MemoryScope::OnebotUser.as_str(),
                 scope_id: &scope_id,
@@ -905,7 +910,7 @@ mod tests {
         let conn = &mut pool.get().unwrap();
         let p = create_proposal(
             conn,
-            &NewMemoryProposal {
+            &MemoryProposalInsert {
                 key: "tone",
                 content: "be brief",
                 memory_type: "instruction",
@@ -934,7 +939,7 @@ mod tests {
         let conn = &mut pool.get().unwrap();
         let p = create_proposal(
             conn,
-            &NewMemoryProposal {
+            &MemoryProposalInsert {
                 key: "tone",
                 content: "be brief",
                 memory_type: "instruction",
@@ -957,6 +962,40 @@ mod tests {
     fn attributes_are_escaped() {
         assert_eq!(escape_attr(r#"a"<b>&"#), "a&quot;&lt;b&gt;&amp;");
     }
+
+    #[test]
+    fn unknown_scope_and_visibility_are_rejected() {
+        assert!(MemoryScope::parse("workspace").is_err());
+        assert!(Visibility::parse("public").is_err());
+
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+        let invalid_scope = MemoryInsert {
+            id: "bad-scope",
+            scope_type: "workspace",
+            scope_id: crate::db::models::memory::GLOBAL_SCOPE_ID,
+            key: "k",
+            content: "v",
+            memory_type: "general",
+            subject_scope_id: None,
+            origin: Origin::Desktop.as_str(),
+            visibility: Visibility::Normal.as_str(),
+            source_session_id: None,
+            created_at: 1,
+            updated_at: 1,
+        };
+        let error = upsert_memory(conn, &invalid_scope).unwrap_err();
+        assert!(error.to_string().contains("unknown memory scope"));
+
+        let invalid_visibility = MemoryInsert {
+            id: "bad-visibility",
+            scope_type: MemoryScope::ClientGlobal.as_str(),
+            visibility: "public",
+            ..invalid_scope
+        };
+        let error = upsert_memory(conn, &invalid_visibility).unwrap_err();
+        assert!(error.to_string().contains("unknown memory visibility"));
+    }
 }
 
 #[cfg(test)]
@@ -975,7 +1014,7 @@ mod origin_visibility_tests {
         let scope = onebot_user_scope_id(1);
         upsert_memory(
             conn,
-            &NewMemory {
+            &MemoryInsert {
                 id: "m1",
                 scope_type: MemoryScope::OnebotUser.as_str(),
                 scope_id: &scope,
@@ -1021,7 +1060,7 @@ mod legacy_length_tests {
         let conn = &mut pool.get().unwrap();
         crate::db::ops::project::create_project(
             conn,
-            &crate::db::models::project::NewProject {
+            &crate::db::models::project::ProjectInsert {
                 id: "p1",
                 name: "P",
                 path: None,
@@ -1038,7 +1077,7 @@ mod legacy_length_tests {
         // Written directly, as migration 18 carries such rows through verbatim.
         let long = "x".repeat(3_000);
         diesel::insert_into(memories::table)
-            .values(&NewMemory {
+            .values(&MemoryInsert {
                 id: "old",
                 scope_type: "project",
                 scope_id: "p1",

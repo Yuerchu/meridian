@@ -22,11 +22,12 @@ impl DeepSeekProvider {
         }
     }
 
-    fn serialize_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
+    fn serialize_messages(messages: &[ChatMessage]) -> Result<Vec<serde_json::Value>, ProviderError> {
         messages
             .iter()
             .map(|m| {
-                let rendered = super::render_message(m, super::SenderRendering::NameField);
+                let rendered =
+                    super::render_message(m, super::SenderRendering::NameField).map_err(ProviderError::Parse)?;
                 let mut msg = serde_json::json!({ "role": m.role, "content": rendered.content });
                 if let Some(ref name) = rendered.name {
                     msg["name"] = serde_json::json!(name);
@@ -56,7 +57,7 @@ impl DeepSeekProvider {
                 if let Some(ref tool_call_id) = m.tool_call_id {
                     msg["tool_call_id"] = serde_json::json!(tool_call_id);
                 }
-                msg
+                Ok(msg)
             })
             .collect()
     }
@@ -67,10 +68,10 @@ impl DeepSeekProvider {
         tools: Option<&[ToolDefinition]>,
         params: &ChatParams,
         stream: bool,
-    ) -> Request {
+    ) -> Result<Request, ProviderError> {
         let mut body = serde_json::json!({
             "model": params.model,
-            "messages": Self::serialize_messages(messages),
+            "messages": Self::serialize_messages(messages)?,
             "stream": stream,
         });
         if stream {
@@ -111,7 +112,7 @@ impl DeepSeekProvider {
             super::auth_header_value(&format!("Bearer {}", self.api_key)),
         );
         req.body = Some(RequestBody::Json(body));
-        req
+        Ok(req)
     }
 }
 
@@ -130,7 +131,7 @@ impl ChatProvider for DeepSeekProvider {
     ) -> Result<ChatStream, ProviderError> {
         let tools_opt = if tools.is_empty() { None } else { Some(tools.as_slice()) };
         let transport = ReqwestTransport::shared();
-        let req = self.build_request(&messages, tools_opt, &params, true);
+        let req = self.build_request(&messages, tools_opt, &params, true)?;
         let resp = transport.stream(req).await?;
 
         let stream = resp
@@ -170,7 +171,7 @@ impl ChatProvider for DeepSeekProvider {
 
     async fn chat(&self, messages: Vec<ChatMessage>, params: ChatParams) -> Result<String, ProviderError> {
         let transport = ReqwestTransport::shared();
-        let req = self.build_request(&messages, None, &params, false);
+        let req = self.build_request(&messages, None, &params, false)?;
         let resp = transport.execute(req).await?;
 
         let parsed: serde_json::Value =
@@ -189,7 +190,7 @@ impl ChatProvider for DeepSeekProvider {
         params: ChatParams,
     ) -> Result<AgentResponse, ProviderError> {
         let transport = ReqwestTransport::shared();
-        let req = self.build_request(&messages, Some(&tools), &params, false);
+        let req = self.build_request(&messages, Some(&tools), &params, false)?;
         let resp = transport.execute(req).await?;
 
         let parsed: serde_json::Value =

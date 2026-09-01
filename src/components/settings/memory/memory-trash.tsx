@@ -5,7 +5,7 @@ import { api } from '@/api'
 import { Button, Card, Chip, Drawer, Spinner } from '@heroui/react'
 import { EmptyState } from '@heroui-pro/react/empty-state'
 import { INFO_CHIP } from './memory-row'
-import type { Memory } from '@/types'
+import type { MemoryInfoResponse } from '@/types'
 import { useHistoryLevel } from '@/hooks/use-history-level'
 import { useConfirm } from '@/hooks/use-confirm'
 
@@ -21,7 +21,7 @@ interface MemoryTrashProps {
  */
 export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps) {
   const { t } = useTranslation()
-  const [rows, setRows] = useState<Memory[]>([])
+  const [rows, setRows] = useState<MemoryInfoResponse[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { confirm, confirmDialog } = useConfirm()

@@ -3,7 +3,7 @@
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::acp_session::{AcpSessionRow, NewAcpSession};
+use crate::db::models::acp_session::{AcpSessionChangeset, AcpSessionInsert, AcpSessionRow};
 use crate::db::schema::acp_sessions;
 
 /// What is on record for a conversation, if anything.
@@ -59,7 +59,7 @@ pub fn upsert(
     now: i64,
 ) -> QueryResult<usize> {
     diesel::insert_into(acp_sessions::table)
-        .values(&NewAcpSession {
+        .values(&AcpSessionInsert {
             conversation_id,
             acp_session_id,
             cwd,
@@ -68,11 +68,11 @@ pub fn upsert(
         })
         .on_conflict(acp_sessions::conversation_id)
         .do_update()
-        .set((
-            acp_sessions::acp_session_id.eq(acp_session_id),
-            acp_sessions::cwd.eq(cwd),
-            acp_sessions::updated_at.eq(now),
-        ))
+        .set(&AcpSessionChangeset {
+            acp_session_id,
+            cwd,
+            updated_at: now,
+        })
         .execute(conn)
 }
 

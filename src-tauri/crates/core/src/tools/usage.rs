@@ -22,6 +22,7 @@
 //! to be useful, which is the thing this module exists not to be.
 
 use async_trait::async_trait;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::{Permission, Tool, ToolContext};
@@ -35,6 +36,49 @@ const MAX_DAYS: i64 = 90;
 const DEFAULT_DAYS: i64 = 30;
 /// Rows rendered. A breakdown longer than this is not being read.
 const MAX_ROWS: usize = 20;
+
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum UsageGroupBy {
+    #[default]
+    Total,
+    Model,
+    Day,
+    Kind,
+}
+
+impl UsageGroupBy {
+    fn dimension(self) -> UsageDimension {
+        match self {
+            Self::Total => UsageDimension::Total,
+            Self::Model => UsageDimension::Model,
+            Self::Day => UsageDimension::Day,
+            Self::Kind => UsageDimension::Kind,
+        }
+    }
+}
+
+fn default_days() -> i64 {
+    DEFAULT_DAYS
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConversationUsageRequest {
+    #[serde(default)]
+    group_by: UsageGroupBy,
+    #[serde(default = "default_days")]
+    days: i64,
+}
+
+fn parse_request(args: Value) -> Result<(UsageDimension, i64), String> {
+    let request: ConversationUsageRequest =
+        serde_json::from_value(args).map_err(|e| format!("invalid conversation_usage arguments: {e}"))?;
+    if !(1..=MAX_DAYS).contains(&request.days) {
+        return Err(format!("conversation_usage days must be between 1 and {MAX_DAYS}"));
+    }
+    Ok((request.group_by.dimension(), request.days))
+}
 
 pub struct ConversationUsageTool {
     conversation_id: String,
@@ -62,6 +106,7 @@ impl Tool for ConversationUsageTool {
     fn parameters_schema(&self) -> Value {
         json!({
             "type": "object",
+            "additionalProperties": false,
             "properties": {
                 "group_by": {
                     "type": "string",
@@ -88,20 +133,7 @@ impl Tool for ConversationUsageTool {
     }
 
     async fn execute(&self, args: Value, context: &ToolContext) -> Result<String, String> {
-        let dimension = match args.get("group_by").and_then(Value::as_str).unwrap_or("total") {
-            "model" => UsageDimension::Model,
-            "day" => UsageDimension::Day,
-            "kind" => UsageDimension::Kind,
-            // Anything unrecognised reads as the headline rather than
-            // erroring: the enum is advisory to the model and a typo should
-            // not cost a turn.
-            _ => UsageDimension::Total,
-        };
-        let days = args
-            .get("days")
-            .and_then(Value::as_i64)
-            .unwrap_or(DEFAULT_DAYS)
-            .clamp(1, MAX_DAYS);
+        let (dimension, days) = parse_request(args)?;
 
         // `self`, never `context.conversation_id` — which would look equivalent
         // and is not. The bridge builds this tool once per session, while the
@@ -133,17 +165,8 @@ impl Tool for ConversationUsageTool {
 /// Match the UI's cost precision without ever turning a real positive charge
 /// into a printed zero. Prices have no stored currency, so this formats only
 /// the amount.
-fn format_cost(value: f64) -> String {
-    if value != 0.0 && value.abs() < 0.000_001 {
-        return format!("{value:.2e}");
-    }
-
-    let mut formatted = format!("{value:.6}");
-    let decimal = formatted.find('.').unwrap_or(formatted.len());
-    while formatted.len().saturating_sub(decimal + 1) > 2 && formatted.ends_with('0') {
-        formatted.pop();
-    }
-    formatted
+fn format_cost(value: &crate::decimal::Decimal) -> String {
+    value.to_string()
 }
 
 fn render(buckets: &[UsageBucket], dimension: UsageDimension, days: i64) -> String {
@@ -196,8 +219,8 @@ fn render(buckets: &[UsageBucket], dimension: UsageDimension, days: i64) -> Stri
             (0, subscription, 0) if subscription > 0 => out.push_str(", cost covered by subscription\n"),
             (0, 0, external) if external > 0 => out.push_str(", cost settled externally\n"),
             (0, _, _) => out.push_str(", local cost unavailable\n"),
-            (_, 0, 0) => out.push_str(&format!(", cost {}\n", format_cost(bucket.cost))),
-            _ => out.push_str(&format!(", locally metered cost {}\n", format_cost(bucket.cost))),
+            (_, 0, 0) => out.push_str(&format!(", cost {}\n", format_cost(&bucket.total_cost))),
+            _ => out.push_str(&format!(", locally metered cost {}\n", format_cost(&bucket.total_cost))),
         }
     }
 
@@ -242,7 +265,22 @@ fn render(buckets: &[UsageBucket], dimension: UsageDimension, days: i64) -> Stri
 mod tests {
     use super::*;
 
-    fn bucket(key: &str, messages: i64, cost: f64, unpriced: i64) -> UsageBucket {
+    #[test]
+    fn arguments_are_closed_and_do_not_coerce_or_clamp() {
+        assert_eq!(parse_request(json!({})).unwrap(), (UsageDimension::Total, DEFAULT_DAYS));
+        assert_eq!(
+            parse_request(json!({ "group_by": "model", "days": 7 })).unwrap(),
+            (UsageDimension::Model, 7)
+        );
+        assert!(parse_request(json!({ "group_by": "future" })).is_err());
+        assert!(parse_request(json!({ "group_by": 1 })).is_err());
+        assert!(parse_request(json!({ "days": 0 })).is_err());
+        assert!(parse_request(json!({ "days": MAX_DAYS + 1 })).is_err());
+        assert!(parse_request(json!({ "extra": true })).is_err());
+    }
+
+    fn bucket(key: &str, messages: i64, total_cost: &str, unpriced: i64) -> UsageBucket {
+        let total_cost: crate::decimal::Decimal = total_cost.parse().unwrap();
         UsageBucket {
             key: key.into(),
             label: None,
@@ -256,11 +294,11 @@ mod tests {
             output_tokens: 50,
             cache_read_tokens: 0,
             cache_write_tokens: 0,
-            input_cost: cost,
-            output_cost: 0.0,
-            cache_cost: 0.0,
-            tool_cost: 0.0,
-            cost,
+            input_cost: total_cost.clone(),
+            output_cost: crate::decimal::Decimal::zero(),
+            cache_cost: crate::decimal::Decimal::zero(),
+            tool_cost: crate::decimal::Decimal::zero(),
+            total_cost,
             unpriced_token_messages: unpriced,
             unpriced_tool_messages: 0,
             estimated_token_messages: 0,
@@ -295,7 +333,7 @@ mod tests {
     /// The one thing `UsageBucket` asks every caller to do.
     #[test]
     fn unpriced_replies_are_reported_beside_the_total() {
-        let out = render(&[bucket("total", 5, 1.25, 2)], UsageDimension::Total, 30);
+        let out = render(&[bucket("total", 5, "1.25", 2)], UsageDimension::Total, 30);
         assert!(out.contains("cost 1.25"), "{out}");
         assert!(out.contains("2 of these replies"), "{out}");
         assert!(out.contains("is a lower bound"), "{out}");
@@ -303,14 +341,14 @@ mod tests {
 
     #[test]
     fn a_fully_priced_report_carries_no_warning() {
-        let out = render(&[bucket("total", 5, 1.25, 0)], UsageDimension::Total, 30);
+        let out = render(&[bucket("total", 5, "1.25", 0)], UsageDimension::Total, 30);
         assert!(!out.contains("incomplete usage or pricing"), "{out}");
         assert!(!out.contains("estimate"), "{out}");
     }
 
     #[test]
     fn a_current_price_fallback_is_called_an_estimate_not_a_lower_bound() {
-        let mut row = bucket("total", 5, 1.25, 0);
+        let mut row = bucket("total", 5, "1.25", 0);
         row.estimated_token_messages = 2;
         row.estimated_messages = 2;
         let out = render(&[row], UsageDimension::Total, 30);
@@ -324,7 +362,7 @@ mod tests {
 
     #[test]
     fn estimated_and_unpriced_traffic_is_called_a_partial_estimate() {
-        let mut row = bucket("total", 5, 1.25, 1);
+        let mut row = bucket("total", 5, "1.25", 1);
         row.estimated_tool_messages = 2;
         row.estimated_messages = 2;
         let out = render(&[row], UsageDimension::Total, 30);
@@ -339,14 +377,14 @@ mod tests {
 
     #[test]
     fn a_sub_micro_cost_is_never_rendered_as_zero() {
-        let out = render(&[bucket("total", 1, 0.000_000_4, 0)], UsageDimension::Total, 30);
-        assert!(out.contains("cost 4.00e-7"), "{out}");
-        assert!(!out.contains("cost 0.00"), "{out}");
+        let out = render(&[bucket("total", 1, "0.0000004", 0)], UsageDimension::Total, 30);
+        assert!(out.contains("cost 0.0000004"), "{out}");
+        assert!(!out.lines().any(|line| line.trim_end().ends_with("cost 0")), "{out}");
     }
 
     #[test]
     fn externally_settled_usage_is_not_rendered_as_a_free_local_request() {
-        let mut external = bucket("total", 2, 0.0, 0);
+        let mut external = bucket("total", 2, "0", 0);
         external.metered_messages = 0;
         external.external_messages = 2;
 
@@ -358,7 +396,7 @@ mod tests {
 
     #[test]
     fn missing_token_usage_is_not_rendered_as_zero() {
-        let mut unknown = bucket("total", 2, 0.0, 0);
+        let mut unknown = bucket("total", 2, "0", 0);
         unknown.input_tokens = 0;
         unknown.output_tokens = 0;
         unknown.missing_token_usage_messages = 2;
@@ -366,7 +404,7 @@ mod tests {
         assert!(out.contains("token usage unavailable"), "{out}");
         assert!(!out.contains("0 in / 0 out tokens"), "{out}");
 
-        let mut partial = bucket("total", 2, 0.1, 0);
+        let mut partial = bucket("total", 2, "0.1", 0);
         partial.missing_token_usage_messages = 1;
         partial.incomplete_token_usage_messages = 1;
         let out = render(&[partial], UsageDimension::Total, 30);
@@ -376,7 +414,9 @@ mod tests {
 
     #[test]
     fn a_long_breakdown_is_cut_and_says_how_much_it_dropped() {
-        let rows: Vec<UsageBucket> = (0..MAX_ROWS + 5).map(|i| bucket(&format!("m{i}"), 1, 0.1, 0)).collect();
+        let rows: Vec<UsageBucket> = (0..MAX_ROWS + 5)
+            .map(|i| bucket(&format!("m{i}"), 1, "0.1", 0))
+            .collect();
         let out = render(&rows, UsageDimension::Model, 30);
         assert!(out.contains("5 more rows omitted"), "{out}");
     }

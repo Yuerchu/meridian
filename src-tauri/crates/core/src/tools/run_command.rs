@@ -17,14 +17,14 @@ const COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 /// entry points share the security boundary instead of reimplementing it in a
 /// Tauri command.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CommandExecution {
     pub stdout: String,
     pub stderr: String,
     pub exit_code: i32,
     pub timed_out: bool,
     pub truncated: bool,
-    /// `host`, `windows_restricted_token`, or `container`.
-    pub sandbox: String,
+    pub sandbox: SandboxBackend,
     pub duration_ms: u64,
 }
 
@@ -304,12 +304,7 @@ fn structured_output(res: &ExecResult, duration_ms: u64) -> CommandExecution {
         exit_code: res.exit_code,
         timed_out: res.timed_out,
         truncated: res.truncated,
-        sandbox: match res.ran_under {
-            SandboxBackend::Host => "host",
-            SandboxBackend::WindowsRestrictedToken => "windows_restricted_token",
-            SandboxBackend::Container => "container",
-        }
-        .into(),
+        sandbox: res.ran_under,
         duration_ms,
     }
 }
@@ -522,7 +517,7 @@ mod tests {
             exit_code: 7,
             timed_out: false,
             truncated: true,
-            sandbox: "host".into(),
+            sandbox: SandboxBackend::Host,
             duration_ms: 12,
         };
         assert_eq!(

@@ -9,12 +9,12 @@ import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { cn } from '@/lib/utils'
-import type { ListenConfig, ListenStatus } from '@/types'
+import type { ListenConfigInfoResponse, ListenStatusResponse } from '@/types'
 import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
 import { useSettingsDirtyRegistration } from './dirty-guard'
 
 /** Mirrors `ListenConfig::default()`; only used until the first load lands. */
-const DEFAULTS: ListenConfig = {
+const DEFAULTS: ListenConfigInfoResponse = {
   enabled: false,
   host: '0.0.0.0',
   port: 8787,
@@ -40,8 +40,8 @@ const DEFAULTS: ListenConfig = {
 export function RemoteAccessSettings() {
   const { t } = useTranslation()
   const { confirm, confirmDialog } = useConfirm()
-  const [config, setConfig] = useState<ListenConfig>(DEFAULTS)
-  const [status, setStatus] = useState<ListenStatus | null>(null)
+  const [config, setConfig] = useState<ListenConfigInfoResponse>(DEFAULTS)
+  const [status, setStatus] = useState<ListenStatusResponse | null>(null)
   const [addresses, setAddresses] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [saved, markSaved] = useTemporaryFlag()

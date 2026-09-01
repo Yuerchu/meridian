@@ -19,16 +19,18 @@
 //! `_once` option gets `cancelled` rather than its lasting one — see
 //! [`Choices::pick`], where substituting it was a real bug and not a shortcut.
 
+use std::sync::Arc;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
 use crate::agent::engine::{self, ApprovalDecision};
 use crate::db::models::turn::TurnPhase;
+use crate::events::ChatStreamEvent;
 use crate::services::Services;
 use crate::state::PendingApproval;
 
-use super::mapping;
 use super::protocol::{self, PermissionOption, RequestPermissionParams};
+use super::{mapping, plan_review};
 
 /// Which option answers each of the two buttons this app draws.
 ///
@@ -75,27 +77,58 @@ pub struct TurnContext {
     pub turn_id: String,
     pub assistant_message_id: String,
     pub cancel: CancellationToken,
+    pub(super) plan_reviews: Arc<plan_review::ReviewControl>,
 }
 
 /// Put an ACP permission request in front of the user and wait.
 ///
-/// Always returns a valid `session/request_permission` reply. There is no error
-/// path back to the agent: it is parked on this call, and an error would leave
-/// it to decide for itself what a failure to ask means. `cancelled` is the
-/// protocol's own word for "no decision", and it is what every uncertain case
-/// resolves to — the turn is ending anyway in all of them.
+/// Runtime uncertainty still becomes the protocol's `cancelled` reply. A broken
+/// first-party approval preference is different: it is returned as an error so
+/// the caller cannot silently substitute another deadline.
 pub async fn ask(
     services: &Services,
     conversation_id: &str,
     turn: &TurnContext,
     params: RequestPermissionParams,
-) -> serde_json::Value {
+) -> Result<serde_json::Value, String> {
+    // ExitPlanMode is not a normal permission. Its raw input is the canonical
+    // full snapshot that has to survive before anybody can approve or annotate
+    // it. Detect it by the vendor's real tool name; title/kind are display
+    // fields and would collapse it into the generic approval path.
+    if let Some(submission) = plan_review::exit_plan_submission(&params)? {
+        let choices = plan_review::ReviewChoices::pick(&params.options)
+            .ok_or("ACP ExitPlanMode did not offer both one-shot approval and rejection options")?;
+        let submitted = plan_review::submit(
+            services,
+            conversation_id,
+            &turn.turn_id,
+            &turn.assistant_message_id,
+            submission,
+        )
+        .await?;
+        let wait = plan_review::install_permission_wait(&turn.plan_reviews, &submitted, &turn.turn_id, choices)?;
+        // The row is already durable. Missing this invalidation event costs a
+        // live refresh, not the review, so do not turn it into a JSON-RPC error
+        // that leaves Claude Code guessing whether its submission landed.
+        if let Err(error) = services.events.emit_plan_review_requested(&submitted.event) {
+            tracing::warn!(%error, review_id = %submitted.event.review_id, "could not announce ACP plan review");
+        }
+        return Ok(plan_review::await_permission_decision(
+            &turn.plan_reviews,
+            &submitted,
+            &turn.turn_id,
+            &turn.cancel,
+            wait,
+        )
+        .await);
+    }
+
     let Some(choices) = Choices::pick(&params.options) else {
         tracing::warn!(
             option_count = params.options.len(),
             "an ACP permission request offered no option this app can answer"
         );
-        return protocol::permission_cancelled();
+        return Ok(protocol::permission_cancelled());
     };
 
     let approval_id = uuid::Uuid::new_v4().to_string();
@@ -110,7 +143,7 @@ pub async fn ask(
     // Worked out once, here, rather than by the waiter. The two would be the
     // same number, but only one of them can be the answer to "when does this
     // stop standing" — and the listing paths read the stored one.
-    let ttl = crate::approval::ttl(services);
+    let ttl = crate::approval::ttl(services)?;
 
     // Registered before the event goes out, so an answer cannot arrive before
     // there is somewhere to put it.
@@ -133,20 +166,21 @@ pub async fn ask(
         },
     );
 
-    let payload = serde_json::json!({
-        "type": "tool_approval_req",
-        "approval_id": approval_id,
-        "call_id": call_id,
-        "tool_name": tool_name,
-        "arguments": arguments,
-        "message_id": turn.assistant_message_id,
-        "conversation_id": conversation_id,
-    });
-    if let Err(e) = services.events.emit("chat-stream", payload) {
+    let event = ChatStreamEvent::ToolApprovalReq {
+        approval_id: approval_id.clone(),
+        call_id: call_id.clone(),
+        tool_name: tool_name.clone(),
+        arguments,
+        message_id: turn.assistant_message_id.clone(),
+        conversation_id: conversation_id.to_string(),
+        delegation: None,
+        retry: None,
+    };
+    if let Err(e) = services.events.emit_chat(event) {
         // Nobody can answer a card that was never drawn.
         services.approvals.claim(&approval_id);
         tracing::warn!(error = %e, "could not draw an ACP approval card");
-        return protocol::permission_cancelled();
+        return Ok(protocol::permission_cancelled());
     }
 
     let pool = services.db.clone();
@@ -159,7 +193,7 @@ pub async fn ask(
     )
     .await;
 
-    match decision {
+    Ok(match decision {
         Some(ApprovalDecision::Approved) => protocol::permission_selected(&choices.allow),
         Some(ApprovalDecision::Denied(_)) => protocol::permission_selected(&choices.reject),
         // `Response` is the answer to `ask_user`, which is a question the agent
@@ -168,7 +202,7 @@ pub async fn ask(
         // sentence into an approval.
         Some(ApprovalDecision::Response(_)) => protocol::permission_cancelled(),
         None => protocol::permission_cancelled(),
-    }
+    })
 }
 
 #[cfg(test)]

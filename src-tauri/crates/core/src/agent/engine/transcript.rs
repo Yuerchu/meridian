@@ -28,7 +28,7 @@
 use std::future::Future;
 
 use crate::db::DbPool;
-use crate::db::models::message::{MessageUsage, NewMessage};
+use crate::db::models::message::{MessageInsert, MessageUsage};
 use crate::db::models::turn::TurnPhase;
 use crate::util::{get_conn, now_ms};
 
@@ -59,7 +59,7 @@ pub(crate) async fn begin_assistant(
         let mut conn = get_conn(&pool)?;
         crate::db::ops::message::append_message(
             &mut conn,
-            &NewMessage {
+            &MessageInsert {
                 id: &msg_id,
                 conversation_id: &conv_id,
                 role: "assistant",
@@ -201,7 +201,7 @@ pub(crate) async fn append_tool_result(
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         crate::db::ops::message::append_message(
             &mut conn,
-            &NewMessage {
+            &MessageInsert {
                 id: &msg_id,
                 conversation_id: &conv_id,
                 role: "tool",
@@ -306,7 +306,7 @@ pub async fn write_steering(
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         crate::db::ops::message::append_message(
             &mut conn,
-            &NewMessage {
+            &MessageInsert {
                 id: &msg_id,
                 conversation_id: &conv_id,
                 role: "user",
@@ -386,7 +386,7 @@ mod tests {
         crate::db::ops::turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
     }
 
-    fn rows(pool: &DbPool) -> Vec<crate::db::models::message::Message> {
+    fn rows(pool: &DbPool) -> Vec<crate::db::models::message::MessageRow> {
         let mut conn = pool.get().unwrap();
         crate::db::ops::message::list_messages(&mut conn, "c1").unwrap()
     }
@@ -400,8 +400,8 @@ mod tests {
 
     fn phase(pool: &DbPool) -> (Option<TurnPhase>, Option<String>) {
         let mut conn = pool.get().unwrap();
-        let t: crate::db::models::turn::Turn = crate::db::schema::turns::table.find("t1").first(&mut conn).unwrap();
-        (t.phase(), t.phase_tool)
+        let t: crate::db::models::turn::TurnRow = crate::db::schema::turns::table.find("t1").first(&mut conn).unwrap();
+        (t.phase().unwrap(), t.phase_tool)
     }
 
     #[tokio::test]

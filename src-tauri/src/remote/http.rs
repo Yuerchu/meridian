@@ -27,8 +27,9 @@ use tower_http::cors::{Any, CorsLayer};
 
 use super::SharedState;
 
-/// The wire protocol's version. Bumped when a client that predates a change
-/// would misread what this sends -- not for additions a client can ignore.
+/// The wire protocol's version. Bump this for every change to the first-party
+/// client/server contract. The wire DTOs are closed, so version skew is
+/// rejected rather than interpreted through ignored fields or defaults.
 ///
 /// 2: the voice corpus commands. An addition from the *server's* side, and the
 /// reason it still counts is that the direction that breaks is the other one --
@@ -36,13 +37,14 @@ use super::SharedState;
 /// `unknown command` on a page the user already opened, with nothing to say
 /// which half is old. The client compares `apiRev` against its own and calls it
 /// `server-too-old` before it gets there.
-pub(crate) const API_REV: u32 = 2;
+pub(crate) const API_REV: u32 = 3;
 
 /// The oldest client this server will talk to.
 ///
-/// Not raised with `API_REV`: an older client has simply never heard of the new
-/// commands, and everything it does ask for answers exactly as it did before.
-pub(crate) const MIN_CLIENT_REV: u32 = 1;
+/// Revision 3 changed existing DTO names, fields, and monetary encodings.  Old
+/// clients are rejected at the handshake instead of being interpreted through
+/// aliases or defaults.
+pub(crate) const MIN_CLIENT_REV: u32 = 3;
 
 pub(crate) fn router(state: Arc<SharedState>) -> Router {
     Router::new()
@@ -82,9 +84,9 @@ async fn healthz() -> Response {
 /// One command, named and with its arguments, exactly as `invoke()` would have
 /// sent it to Tauri.
 #[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Invoke {
     cmd: String,
-    #[serde(default)]
     args: serde_json::Value,
 }
 
@@ -125,24 +127,40 @@ async fn upload(
         return refusal;
     }
 
-    let mut conversation_id = String::new();
-    let mut file_name = String::new();
+    let mut conversation_id: Option<String> = None;
+    let mut file_name: Option<String> = None;
     let mut bytes: Option<axum::body::Bytes> = None;
 
     loop {
         match form.next_field().await {
-            Ok(Some(field)) => match field.name().unwrap_or_default() {
-                "conversationId" | "conversation_id" => {
-                    conversation_id = field.text().await.unwrap_or_default();
+            Ok(Some(field)) => match field.name() {
+                Some("conversationId") => {
+                    if conversation_id.is_some() {
+                        return refuse(StatusCode::BAD_REQUEST, "duplicate conversationId field");
+                    }
+                    match field.text().await {
+                        Ok(value) if !value.is_empty() => conversation_id = Some(value),
+                        Ok(_) => return refuse(StatusCode::BAD_REQUEST, "empty conversationId field"),
+                        Err(error) => return refuse(StatusCode::BAD_REQUEST, &error.to_string()),
+                    }
                 }
-                "file" => {
-                    file_name = field.file_name().unwrap_or("file").to_string();
+                Some("file") => {
+                    if bytes.is_some() {
+                        return refuse(StatusCode::BAD_REQUEST, "duplicate file field");
+                    }
+                    let Some(name) = field.file_name().filter(|name| !name.is_empty()).map(str::to_owned) else {
+                        return refuse(StatusCode::BAD_REQUEST, "file field has no filename");
+                    };
                     match field.bytes().await {
-                        Ok(b) => bytes = Some(b),
+                        Ok(value) => {
+                            file_name = Some(name);
+                            bytes = Some(value);
+                        }
                         Err(e) => return refuse(StatusCode::PAYLOAD_TOO_LARGE, &e.to_string()),
                     }
                 }
-                _ => {}
+                Some(name) => return refuse(StatusCode::BAD_REQUEST, &format!("unknown upload field: {name}")),
+                None => return refuse(StatusCode::BAD_REQUEST, "unnamed upload field"),
             },
             Ok(None) => break,
             Err(e) => return refuse(StatusCode::BAD_REQUEST, &e.to_string()),
@@ -152,9 +170,12 @@ async fn upload(
     let Some(bytes) = bytes else {
         return refuse(StatusCode::BAD_REQUEST, "no file in the upload");
     };
-    if conversation_id.is_empty() {
+    let Some(conversation_id) = conversation_id else {
         return refuse(StatusCode::BAD_REQUEST, "no conversationId in the upload");
-    }
+    };
+    let Some(file_name) = file_name else {
+        return refuse(StatusCode::BAD_REQUEST, "file field has no filename");
+    };
 
     let ext = file_name
         .rsplit('.')
@@ -179,16 +200,13 @@ async fn upload(
 
     // The same two shapes `upload_file` produces, chosen the same way.
     let mime = mime_guess::from_path(&file_name).first_or_octet_stream().to_string();
-    let part = if mime.starts_with("image/") {
-        serde_json::json!({ "type": "image_url", "image_url": { "url": uri } })
-    } else {
-        serde_json::json!({ "type": "file", "file": { "url": uri, "mime_type": mime, "name": file_name } })
-    };
+    let part = crate::commands::message::UploadFileResponse::from_stored(uri, mime, file_name);
     axum::Json(serde_json::json!({ "ok": part })).into_response()
 }
 
 /// What an `<img src>` on another device points at.
 #[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct AssetQuery {
     uri: String,
     ticket: String,
@@ -311,5 +329,15 @@ mod tests {
     fn no_token_configured_refuses_everyone() {
         assert!(!token_ok(&configured(None), "anything"));
         assert!(!token_ok(&configured(Some("")), ""));
+    }
+
+    #[test]
+    fn invoke_and_asset_contracts_reject_unknown_or_missing_fields() {
+        assert!(serde_json::from_str::<Invoke>(r#"{"cmd":"list_providers","args":{}}"#).is_ok());
+        assert!(serde_json::from_str::<Invoke>(r#"{"cmd":"list_providers"}"#).is_err());
+        assert!(serde_json::from_str::<Invoke>(r#"{"cmd":"list_providers","args":{},"future":true}"#).is_err());
+
+        assert!(serde_json::from_str::<AssetQuery>(r#"{"uri":"file://x","ticket":"t"}"#).is_ok());
+        assert!(serde_json::from_str::<AssetQuery>(r#"{"uri":"file://x","ticket":"t","future":1}"#).is_err());
     }
 }

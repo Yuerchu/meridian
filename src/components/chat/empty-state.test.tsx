@@ -28,7 +28,7 @@ const mocks = vi.hoisted(() => ({
         name: 'Default Assistant',
         provider_id: 'provider-1',
         model_id: 'model-1',
-        is_default: 1,
+        is_default: true,
       },
     ],
     providers: [],

@@ -3,6 +3,7 @@ src-tauri/
 dist/
 pnpm-lock.yaml
 skills-lock.json
+src/lib/invoke-response-schema.generated.ts
 
 # 文档的换行是作者的分段决定,不交给机器重排
 *.md

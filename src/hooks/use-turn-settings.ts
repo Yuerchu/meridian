@@ -2,13 +2,18 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '@/api'
 import type { DraftTurnSettings } from '@/components/chat/conversation-draft'
 import { useConversationStore } from '@/stores/conversation-store'
-import { coerceThinkingLevel } from '@/lib/thinking'
-import type { Assistant, ChatMode, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
+import type {
+  AssistantInfoResponse,
+  ChatMode,
+  ProviderInfoResponse,
+  ProviderCapabilitiesInfoResponse,
+  ThinkingLevel,
+} from '@/types'
 
 export interface TurnSettings {
-  assistants: Assistant[]
-  providers: Provider[]
-  selectedAssistant: Assistant | undefined
+  assistants: AssistantInfoResponse[]
+  providers: ProviderInfoResponse[]
+  selectedAssistant: AssistantInfoResponse | undefined
   selectedAssistantId: string | null
   selectedModelId: string | null
   selectedProviderId: string | null
@@ -16,7 +21,7 @@ export interface TurnSettings {
   fastMode: boolean
   mode: ChatMode
   acceptEdits: boolean
-  capabilities: ProviderCapabilities | null
+  capabilities: ProviderCapabilitiesInfoResponse | null
   onSelectAssistant: (id: string) => void
   onSelectModel: (modelId: string, providerId: string) => void
   onSelectThinkingLevel: (level: ThinkingLevel) => void
@@ -73,19 +78,19 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
     (s) => s.conversations.find((c) => c.id === conversationId)?.thinking_level ?? null,
   )
   const conversationFastMode = useConversationStore(
-    (s) => (s.conversations.find((c) => c.id === conversationId)?.fast_mode ?? 0) !== 0,
+    (s) => s.conversations.find((c) => c.id === conversationId)?.fast_mode ?? false,
   )
   const conversationMode = useConversationStore(
     (s) => (s.conversations.find((c) => c.id === conversationId)?.mode ?? 'work') as ChatMode,
   )
   const conversationAcceptEdits = useConversationStore(
-    (s) => (s.conversations.find((c) => c.id === conversationId)?.accept_edits ?? 0) !== 0,
+    (s) => s.conversations.find((c) => c.id === conversationId)?.accept_edits ?? false,
   )
   const refreshConversations = useConversationStore((s) => s.refreshConversations)
   const storeSetError = useConversationStore((s) => s.setError)
 
-  const [assistants, setAssistants] = useState<Assistant[]>([])
-  const [providers, setProviders] = useState<Provider[]>([])
+  const [assistants, setAssistants] = useState<AssistantInfoResponse[]>([])
+  const [providers, setProviders] = useState<ProviderInfoResponse[]>([])
   const [selectedAssistantId, setSelectedAssistantId] = useState<string | null>(initial?.selectedAssistantId ?? null)
   const [selectedModelId, setSelectedModelId] = useState<string | null>(initial?.selectedModelId ?? null)
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(initial?.selectedProviderId ?? null)
@@ -93,7 +98,7 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
   const [fastMode, setFastMode] = useState(initial?.fastMode ?? false)
   const [mode, setMode] = useState<ChatMode>(initial?.mode ?? 'work')
   const [acceptEdits, setAcceptEdits] = useState(initial?.acceptEdits ?? false)
-  const [capabilities, setCapabilities] = useState<ProviderCapabilities | null>(null)
+  const [capabilities, setCapabilities] = useState<ProviderCapabilitiesInfoResponse | null>(null)
 
   useEffect(() => {
     Promise.all([api.listAssistants(), api.listProviders()]).then(([a, p]) => {
@@ -112,7 +117,7 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
     const seededAssistant = seeded?.selectedAssistantId
       ? assistants.find((x) => x.id === seeded.selectedAssistantId)
       : undefined
-    const effective = seededAssistant ?? bound ?? assistants.find((x) => x.is_default === 1) ?? assistants[0]
+    const effective = seededAssistant ?? bound ?? assistants.find((x) => x.is_default) ?? assistants[0]
     if (effective) {
       setSelectedAssistantId(effective.id)
       // Only preserve a model/provider override when its assistant survived
@@ -144,7 +149,7 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
       if (conversationId === null) return
       // Persist the explicit switch so the binding survives conversation changes
       api
-        .setConversationAssistant(conversationId, id)
+        .setConversationAssistant({ id: conversationId, assistantId: id })
         .then(() => refreshConversations())
         .catch(() => {
           /* selection still applies locally for this session */
@@ -167,7 +172,7 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
       return
     }
     api
-      .getProviderCapabilities(selectedProviderId, selectedModelId)
+      .getProviderCapabilities({ providerId: selectedProviderId, modelId: selectedModelId })
       .then(setCapabilities)
       .catch(() => setCapabilities(null))
   }, [selectedProviderId, selectedModelId])
@@ -186,12 +191,11 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
     // eslint-disable-next-line react-hooks/exhaustive-deps -- seed-on-switch; see comment
   }, [conversationId])
 
-  // Model switch: drop to a tier the new model actually accepts. In-memory
-  // only -- the stored preference keeps the user's original intent so switching
-  // back to a more capable model restores it.
+  // Fast mode has no meaningful representation on models that do not advertise
+  // it. Thinking effort is deliberately not rewritten here: an unsupported
+  // explicit tier must be rejected by the request boundary, never substituted.
   useEffect(() => {
     if (!capabilities) return
-    setThinkingLevel((cur) => coerceThinkingLevel(cur, capabilities))
     if (capabilities.supports_fast !== true) setFastMode(false)
   }, [capabilities])
 
@@ -200,7 +204,11 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
       setThinkingLevel(level)
       if (conversationId === null) return
       api
-        .setConversationReasoningPrefs(conversationId, level === 'default' ? null : level, fastMode)
+        .setConversationReasoningPrefs({
+          id: conversationId,
+          thinkingLevel: level === 'default' ? null : level,
+          fastMode,
+        })
         .then(() => refreshConversations())
         .catch(() => {
           /* selection still applies locally for this session */
@@ -214,7 +222,11 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
       setFastMode(next)
       if (conversationId === null) return
       api
-        .setConversationReasoningPrefs(conversationId, thinkingLevel === 'default' ? null : thinkingLevel, next)
+        .setConversationReasoningPrefs({
+          id: conversationId,
+          thinkingLevel: thinkingLevel === 'default' ? null : thinkingLevel,
+          fastMode: next,
+        })
         .then(() => refreshConversations())
         .catch(() => {
           /* toggle still applies locally for this session */
@@ -229,7 +241,7 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
       setMode(next)
       if (conversationId === null) return
       api
-        .setConversationMode(conversationId, next === 'work' ? null : next)
+        .setConversationMode({ id: conversationId, mode: next === 'work' ? null : next })
         .then(() => refreshConversations())
         .catch((err) => {
           // Rolled back rather than kept locally, unlike the other two toggles.
@@ -249,7 +261,7 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
       setAcceptEdits(next)
       if (conversationId === null) return
       api
-        .setConversationAcceptEdits(conversationId, next)
+        .setConversationAcceptEdits({ id: conversationId, acceptEdits: next })
         .then(() => refreshConversations())
         .catch((err) => {
           // Rolled back rather than kept locally, for the same reason as the mode:

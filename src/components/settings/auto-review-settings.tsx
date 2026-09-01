@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Checkbox, Input, ListBox, Select, TextArea } from '@heroui/react'
 import { api } from '@/api'
-import type { ModelInfo, Provider } from '@/types'
+import type { PreferenceModelSelectionRequest, ProviderInfoResponse, ProviderModelInfoResponse } from '@/types'
 import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
 
 /**
@@ -69,6 +69,12 @@ function normaliseTtl(raw: string): number {
   return Math.min(n, MAX_TTL_MINUTES)
 }
 
+function modelSelection(value: string | null): PreferenceModelSelectionRequest | null {
+  const at = value?.indexOf(':') ?? -1
+  if (!value || at <= 0 || at === value.length - 1) return null
+  return { providerId: value.slice(0, at), modelId: value.slice(at + 1) }
+}
+
 /**
  * Which model reviews approvals.
  *
@@ -84,7 +90,7 @@ function ModelPicker({
   value,
   onChange,
 }: {
-  providers: Provider[]
+  providers: ProviderInfoResponse[]
   value: string | null
   onChange: (next: string | null) => void
 }) {
@@ -94,7 +100,7 @@ function ModelPicker({
   // which stays null until the pair is complete.
   const [providerId, setProviderId] = useState('')
   const [modelId, setModelId] = useState('')
-  const [models, setModels] = useState<ModelInfo[]>([])
+  const [models, setModels] = useState<ProviderModelInfoResponse[]>([])
 
   const composed = providerId && modelId ? `${providerId}:${modelId}` : null
 
@@ -114,7 +120,7 @@ function ModelPicker({
       return
     }
     api
-      .fetchProviderModels(providerId)
+      .fetchProviderModels({ providerId, forceRefresh: null })
       .then(setModels)
       .catch(() => setModels([]))
   }, [providerId])
@@ -232,7 +238,7 @@ function RuleBox({
 export function AutoReviewSettings() {
   const { t } = useTranslation()
   const [settings, setSettings] = useState<Settings>(DEFAULTS)
-  const [providers, setProviders] = useState<Provider[]>([])
+  const [providers, setProviders] = useState<ProviderInfoResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -249,27 +255,27 @@ export function AutoReviewSettings() {
   const load = useCallback(async () => {
     try {
       const [enabled, model, escalate, allow, deny, environment, ttl, provs] = await Promise.all([
-        api.getPreference(KEYS.enabled),
-        api.getPreference(KEYS.model),
-        api.getPreference(KEYS.escalate),
-        api.getPreference(KEYS.allow),
-        api.getPreference(KEYS.deny),
-        api.getPreference(KEYS.environment),
-        api.getPreference(KEYS.ttl),
+        api.getPreference({ key: KEYS.enabled }),
+        api.getPreference({ key: KEYS.model }),
+        api.getPreference({ key: KEYS.escalate }),
+        api.getPreference({ key: KEYS.allow }),
+        api.getPreference({ key: KEYS.deny }),
+        api.getPreference({ key: KEYS.environment }),
+        api.getPreference({ key: KEYS.ttl }),
         api.listProviders(),
       ])
       setSettings({
-        enabled: enabled === 'true',
-        model: model || null,
-        escalate: escalate !== 'false',
-        allow: allow ?? '',
-        deny: deny ?? '',
-        environment: environment ?? '',
+        enabled: enabled.value ?? false,
+        model: model.value ? `${model.value.provider_id}:${model.value.model_id}` : null,
+        escalate: escalate.value ?? true,
+        allow: allow.value ?? '',
+        deny: deny.value ?? '',
+        environment: environment.value ?? '',
         // Unset reads as the default rather than as blank, so the field always
         // shows the number that is actually in force. The backend applies the
         // same default; agreeing on it here means the box is not a lie the
         // first time it is opened.
-        ttl: ttl ?? DEFAULTS.ttl,
+        ttl: String(ttl.value ?? DEFAULTS.ttl),
       })
       setProviders(provs)
     } catch (err) {
@@ -288,17 +294,17 @@ export function AutoReviewSettings() {
     setError(null)
     try {
       await Promise.all([
-        api.setPreference(KEYS.enabled, String(settings.enabled)),
-        api.setPreference(KEYS.model, settings.model ?? ''),
-        api.setPreference(KEYS.escalate, String(settings.escalate)),
-        api.setPreference(KEYS.allow, settings.allow),
-        api.setPreference(KEYS.deny, settings.deny),
-        api.setPreference(KEYS.environment, settings.environment),
+        api.setPreference({ key: KEYS.enabled, value: settings.enabled }),
+        api.setPreference({ key: KEYS.model, value: modelSelection(settings.model) }),
+        api.setPreference({ key: KEYS.escalate, value: settings.escalate }),
+        api.setPreference({ key: KEYS.allow, value: settings.allow }),
+        api.setPreference({ key: KEYS.deny, value: settings.deny }),
+        api.setPreference({ key: KEYS.environment, value: settings.environment }),
         // Normalised on the way out, so the backend's parse never has to guess:
         // anything that is not a number becomes the default rather than
         // silently disabling the deadline, which is what an unparseable value
         // would otherwise do if the backend read it as zero.
-        api.setPreference(KEYS.ttl, String(normaliseTtl(settings.ttl))),
+        api.setPreference({ key: KEYS.ttl, value: normaliseTtl(settings.ttl) }),
       ])
       setSaved(true)
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current)

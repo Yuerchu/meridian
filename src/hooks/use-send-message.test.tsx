@@ -45,7 +45,7 @@ beforeEach(() => {
 describe('useSendMessage', () => {
   it('keeps the original @ prompt as the text part when attachments and stickers serialize the message', async () => {
     const prompt = 'Inspect @"docs/my file.md"#L10-20 before replying'
-    const contextRefs = [{ path: 'docs/my file.md', line_start: 10, line_end: 20 }]
+    const contextRefs = [{ path: 'docs/my file.md', lineStart: 10, lineEnd: 20 }]
     const { result } = renderHook(() =>
       useSendMessage('conversation-1', {
         streaming: false,
@@ -71,12 +71,12 @@ describe('useSendMessage', () => {
     })
 
     expect(mocks.chat).toHaveBeenCalledTimes(1)
-    const [, serialized, options] = mocks.chat.mock.calls[0]
-    expect(JSON.parse(serialized as string)).toEqual([
+    const [request] = mocks.chat.mock.calls[0]
+    expect(JSON.parse(request.message as string)).toEqual([
       { type: 'text', text: prompt },
       { type: 'image_url', image_url: { url: 'file:///attachments/design.png' } },
       { type: 'sticker', sticker_id: 'sticker-1' },
     ])
-    expect(options).toEqual(expect.objectContaining({ contextRefs }))
+    expect(request).toEqual(expect.objectContaining({ contextRefs }))
   })
 })

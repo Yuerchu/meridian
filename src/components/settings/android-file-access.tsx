@@ -5,7 +5,7 @@ import { Button } from '@heroui/react'
 import { CellSwitch } from '@heroui-pro/react/cell-switch'
 import { EmptyState } from '@heroui-pro/react/empty-state'
 import { api } from '@/api'
-import type { SafRootEntry } from '@/types'
+import type { SafRootListResponse } from '@/types'
 
 /**
  * Android-only settings block: SAF directory grants + the
@@ -15,7 +15,7 @@ export function AndroidFileAccess() {
   const { t } = useTranslation()
   const [manageEnabled, setManageEnabled] = useState(false)
   const [manageGranted, setManageGranted] = useState(false)
-  const [safRoots, setSafRoots] = useState<SafRootEntry[]>([])
+  const [safRoots, setSafRoots] = useState<SafRootListResponse>([])
   const [picking, setPicking] = useState(false)
 
   const refreshGranted = useCallback(() => {
@@ -28,8 +28,8 @@ export function AndroidFileAccess() {
   }, [])
 
   useEffect(() => {
-    api.getPreference('android.manage_storage_enabled').then((v) => {
-      setManageEnabled(v === 'true')
+    api.getPreference({ key: 'android.manage_storage_enabled' }).then(({ value }) => {
+      setManageEnabled(value ?? false)
     })
     api
       .listSafRoots()
@@ -53,7 +53,7 @@ export function AndroidFileAccess() {
 
   const handleManageToggle = async (checked: boolean) => {
     setManageEnabled(checked)
-    await api.setPreference('android.manage_storage_enabled', checked ? 'true' : 'false')
+    await api.setPreference({ key: 'android.manage_storage_enabled', value: checked })
     if (checked && !manageGranted) {
       try {
         await api.requestManageStorage()

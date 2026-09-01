@@ -32,10 +32,30 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Permission {
     Always,
     Ask,
     Never,
+}
+
+impl Permission {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Always => "always",
+            Self::Ask => "ask",
+            Self::Never => "never",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "always" => Ok(Self::Always),
+            "ask" => Ok(Self::Ask),
+            "never" => Ok(Self::Never),
+            other => Err(format!("unknown tool permission `{other}`")),
+        }
+    }
 }
 
 /// What an agent that must not change anything is allowed to call.
@@ -185,22 +205,23 @@ fn prefix_segments(prefix: &str) -> Vec<&str> {
     prefix.split('/').filter(|s| !s.is_empty()).collect()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ShellType {
-    /// Never the default and no preference names it; kept because `run_command`
-    /// still knows how to drive it.
-    #[allow(dead_code)]
+    /// Windows Command Prompt. Never the default, but an explicit preference.
     Cmd,
+    #[serde(rename = "powershell")]
     PowerShell,
     Bash,
 }
 
 impl ShellType {
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Result<Self, String> {
         match s {
-            "powershell" => Self::PowerShell,
-            "bash" => Self::Bash,
-            _ => Self::default_for_platform(),
+            "powershell" => Ok(Self::PowerShell),
+            "bash" => Ok(Self::Bash),
+            "cmd" => Ok(Self::Cmd),
+            value => Err(format!("unknown shell type '{value}'")),
         }
     }
 
@@ -509,10 +530,12 @@ impl ToolRegistry {
             Arc::new(sticker::ListStickersTool),
             Arc::new(sticker::SendStickerTool::new()),
             Arc::new(plan::EnterPlanTool),
+            Arc::new(plan::ReadPlanTool),
+            Arc::new(plan::UpdatePlanTool),
             Arc::new(plan::ExitPlanTool),
             // In the registry like anything else, but only ever offered to a
             // runner that has somewhere to run a sub-agent. Which runners those
-            // are is decided in `TurnConfigInput`, not here and not at dispatch:
+            // are is decided in `TurnConfigResolveRequest`, not here and not at dispatch:
             // `PlanTransitions` rebuilds the tool set mid-turn and would undo
             // any filtering a call site did.
             Arc::new(sub_agent::RunAgentTool),
@@ -556,6 +579,15 @@ impl ToolRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn permission_is_a_closed_contract() {
+        assert_eq!(Permission::parse("always").unwrap(), Permission::Always);
+        assert_eq!(Permission::parse("ask").unwrap(), Permission::Ask);
+        assert_eq!(Permission::parse("never").unwrap(), Permission::Never);
+        assert!(Permission::parse("future").is_err());
+        assert!(Permission::parse(" Ask ").is_err());
+    }
 
     fn ctx_roots(roots: Vec<AccessRoot>) -> ToolContext {
         ToolContext {
@@ -677,5 +709,15 @@ mod tests {
         assert!(ctx.is_access_root("/sdcard/Download/.."));
         assert!(!ctx.is_access_root("/sdcard/Download"));
         assert!(!ctx.is_access_root("/other"));
+    }
+
+    #[test]
+    fn shell_type_accepts_only_canonical_values() {
+        assert_eq!(ShellType::parse("bash"), Ok(ShellType::Bash));
+        assert_eq!(ShellType::parse("powershell"), Ok(ShellType::PowerShell));
+        assert_eq!(ShellType::parse("cmd"), Ok(ShellType::Cmd));
+        for value in ["", "power_shell", "Bash", " bash"] {
+            assert!(ShellType::parse(value).is_err(), "accepted {value:?}");
+        }
     }
 }

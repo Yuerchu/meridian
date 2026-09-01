@@ -1,7 +1,7 @@
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::skill::Skill;
+use crate::db::models::skill::SkillRow;
 use crate::db::models::skill_binding::SkillLayer;
 use crate::db::schema::{skill_bindings_assistant, skill_bindings_global, skill_bindings_project, skills};
 
@@ -114,7 +114,7 @@ pub fn resolve_available(
     conn: &mut SqliteConnection,
     project_id: Option<&str>,
     assistant_id: Option<&str>,
-) -> QueryResult<Vec<Skill>> {
+) -> QueryResult<Vec<SkillRow>> {
     let mut bound: Vec<String> = list_layer(conn, SkillLayer::Global, None)?;
     bound.extend(list_layer(conn, SkillLayer::Project, project_id)?);
     bound.extend(list_layer(conn, SkillLayer::Assistant, assistant_id)?);
@@ -129,20 +129,20 @@ pub fn resolve_available(
         .filter(skills::dir_name.eq_any(&bound))
         .filter(skills::is_enabled.eq(1))
         .order(skills::dir_name.asc())
-        .load::<Skill>(conn)
+        .load::<SkillRow>(conn)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::models::skill::NewSkill;
+    use crate::db::models::skill::SkillInsert;
     use crate::db::ops::skill::upsert_skill;
     use crate::db::test_db;
 
     fn seed_skill(conn: &mut SqliteConnection, dir_name: &str) {
         upsert_skill(
             conn,
-            &NewSkill {
+            &SkillInsert {
                 dir_name,
                 llm_name: dir_name,
                 llm_description: "desc",
@@ -251,7 +251,7 @@ mod tests {
 
     #[test]
     fn disabled_skills_are_excluded_even_when_bound() {
-        use crate::db::models::skill::SkillUpdate;
+        use crate::db::models::skill::SkillChangeset;
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         seed_skill(&mut conn, "off");
@@ -259,7 +259,7 @@ mod tests {
         crate::db::ops::skill::update_skill(
             &mut conn,
             "off",
-            &SkillUpdate {
+            &SkillChangeset {
                 is_enabled: Some(0),
                 ..Default::default()
             },

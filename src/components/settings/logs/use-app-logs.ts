@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '@/api'
-import type { LogCursor, LogEntry, LogSettings } from '@/types'
+import type { LogCursorInfoResponse, LogEntryInfoResponse, LogSettingsResponse } from '@/types'
 
 export type LevelFilter = 'all' | 'warn' | 'error'
 export type RangeFilter = '15m' | '1h' | '24h' | 'all'
@@ -32,13 +32,13 @@ export function useAppLogs() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
 
-  const [entries, setEntries] = useState<LogEntry[]>([])
-  const [cursor, setCursor] = useState<LogCursor | null>(null)
+  const [entries, setEntries] = useState<LogEntryInfoResponse[]>([])
+  const [cursor, setCursor] = useState<LogCursorInfoResponse | null>(null)
   const [truncated, setTruncated] = useState(false)
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [settings, setSettings] = useState<LogSettings | null>(null)
+  const [settings, setSettings] = useState<LogSettingsResponse | null>(null)
 
   // Typing a filter should not fire a request per keystroke; the backend walks
   // the file on every call.

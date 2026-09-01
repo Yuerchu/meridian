@@ -1,8 +1,11 @@
 import { useEffect } from 'react'
+import { parseChatStreamEvent } from '@/lib/chat-stream-event'
 import { listen } from '@/lib/transport'
+import i18n from '@/i18n'
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
 import { useConversationStore } from '@/stores/conversation-store'
-import type { StreamChunk, UserCommandEvent } from '@/types'
+import { usePlanReviewStore, type PlanReviewEventInfo } from '@/stores/plan-review-store'
+import type { ChatStreamEvent } from '@/types'
 
 // Keyed by turn, not by conversation. Keyed by conversation, a second turn's
 // stop deleted the first one's start time and the "this took a while" notice
@@ -58,7 +61,7 @@ function enqueueChunk(convId: string, messageId: string, type: 'text' | 'reasoni
  * title. It can be a relative path (`/question/what-is-xai` has been seen in a
  * live response), which is why this cannot just be `new URL(...).hostname`.
  */
-function serverToolResult(call: NonNullable<StreamChunk['call']>): string {
+function serverToolResult(call: Extract<ChatStreamEvent, { type: 'server_tool' }>['call']): string {
   return JSON.stringify({
     sources: call.sources.map((url) => ({
       title: url.replace(/^https?:\/\//, '').replace(/^www\./, '') || url,
@@ -89,20 +92,23 @@ async function trySendNotification(title: string, body: string) {
   }
 }
 
+function planContinuationNeedsAttention(state: PlanReviewEventInfo['delivery_state'] | undefined): boolean {
+  return state === 'held' || state === 'in_doubt'
+}
+
 export function useGlobalEventListener() {
   useEffect(() => {
-    const chatStreamUnlisten = listen<StreamChunk>('chat-stream', (event) => {
-      const p = event.payload
+    const chatStreamUnlisten = listen('chat-stream', (event) => {
+      const p = parseChatStreamEvent(event.payload)
       const convId = p.conversation_id
-      if (!convId) return
 
-      if (p.type === 'text' && p.content) {
-        enqueueChunk(convId, p.message_id!, 'text', p.content)
+      if (p.type === 'text') {
+        enqueueChunk(convId, p.message_id, 'text', p.content)
         return
       }
 
-      if (p.type === 'reasoning' && p.content) {
-        enqueueChunk(convId, p.message_id!, 'reasoning', p.content)
+      if (p.type === 'reasoning') {
+        enqueueChunk(convId, p.message_id, 'reasoning', p.content)
         return
       }
 
@@ -110,11 +116,11 @@ export function useGlobalEventListener() {
       flushChunks()
       const store = useConversationStore.getState()
 
-      if (p.type === 'message_start' && p.message_id) {
+      if (p.type === 'message_start') {
         // A turn writes one of these per iteration; only the first starts the
-        // clock. Turns that predate the id all share one key, which is the old
-        // per-conversation behaviour.
-        const streamKey = p.turn_id ?? convId
+        // clock. The required turn id keeps concurrent producers for one
+        // conversation from sharing a timer.
+        const streamKey = p.turn_id
         if (!streamStartTimes.has(streamKey)) {
           streamStartTimes.set(streamKey, Date.now())
         }
@@ -131,7 +137,7 @@ export function useGlobalEventListener() {
       // the second, so the first opens the card and the second revises it and
       // closes it out — there is no result event coming, because nothing here is
       // waiting to be executed.
-      if (p.type === 'server_tool' && p.message_id && p.call) {
+      if (p.type === 'server_tool') {
         const call = p.call
         const args = call.arguments ?? '{}'
         if (call.completed) {
@@ -146,8 +152,8 @@ export function useGlobalEventListener() {
       // Somebody's queued interjection reaching the agent mid-turn. Written by
       // the runner rather than the composer, so this window may never have seen
       // it before — it can have been typed on the phone.
-      if (p.type === 'user_message' && p.message_id) {
-        store.handleUserMessage(convId, p.message_id, p.content ?? '')
+      if (p.type === 'user_message') {
+        store.handleUserMessage(convId, p.message_id, p.content)
         return
       }
 
@@ -156,17 +162,17 @@ export function useGlobalEventListener() {
       // `reset` that follows marks the end of that wait and drops the partial
       // text; it is not what clears this.
       if (p.type === 'retry') {
-        store.handleRetry(convId, p.attempt ?? 1, p.max_attempts ?? 0, p.delay_ms ?? 0)
+        store.handleRetry(convId, p.attempt, p.max_attempts, p.delay_ms)
         return
       }
 
-      if (p.type === 'reset' && p.message_id) {
+      if (p.type === 'reset') {
         store.handleStreamReset(convId, p.message_id)
         return
       }
 
-      if (p.type === 'stop' || p.done) {
-        const streamKey = p.turn_id ?? convId
+      if (p.type === 'stop') {
+        const streamKey = p.turn_id
         const startTime = streamStartTimes.get(streamKey)
         streamStartTimes.delete(streamKey)
         if (startTime && Date.now() - startTime > LONG_STREAM_THRESHOLD_MS && shouldNotify(convId)) {
@@ -176,34 +182,39 @@ export function useGlobalEventListener() {
         return
       }
 
-      if (p.type === 'tool_call' && p.call_id) {
-        store.handleToolCall(convId, p.message_id!, p.call_id, p.tool_name!, p.arguments ?? '{}')
+      if (p.type === 'tool_call') {
+        store.handleToolCall(convId, p.message_id, p.call_id, p.tool_name, p.arguments)
         return
       }
 
-      // Without an approval_id there is nothing the buttons could answer with,
-      // so the card would be decorative. Drop the event rather than draw one.
-      if (p.type === 'tool_approval_req' && p.call_id && p.approval_id) {
+      // The contract requires an approval id because that is what the buttons
+      // answer; a producer cannot announce a decorative, unanswerable card.
+      if (p.type === 'tool_approval_req') {
         store.handleToolApproval(
           convId,
-          p.message_id!,
+          p.message_id,
           p.approval_id,
           p.call_id,
-          p.tool_name!,
+          p.tool_name,
           // Sent with every approval, not just a delegated one. It used to be
           // read only out of the `parent_call_id` branch, which was enough while
           // the only reader was a card sitting on a row it could not reach — the
           // queue needs it for all of them, and for the same reason: it draws
           // outside any transcript.
-          p.arguments ?? '{}',
-          p.retry_reason,
-          p.origin_call_id,
+          p.arguments,
+          p.retry?.reason,
+          p.retry?.origin_call_id,
           // Routed here rather than to the sub-agent's own conversation, which
           // is where the call is: nobody is necessarily looking at that one.
-          p.parent_call_id ? { parentCallId: p.parent_call_id, subConversationId: p.sub_conversation_id } : undefined,
+          p.delegation
+            ? {
+                parentCallId: p.delegation.parent_call_id,
+                subConversationId: p.delegation.sub_conversation_id,
+              }
+            : undefined,
         )
         if (shouldNotify(convId)) {
-          const toolName = p.tool_name === 'ask_user' ? 'Question' : p.tool_name!
+          const toolName = p.tool_name === 'ask_user' ? 'Question' : p.tool_name
           trySendNotification(getConversationTitle(convId), `Action required: ${toolName}`)
         }
         return
@@ -212,13 +223,13 @@ export function useGlobalEventListener() {
       // The deadline passed with nobody answering. The turn is still running —
       // this is not a stop — so nothing else would ever take the card down, and
       // its buttons already reach a receiver that has gone.
-      if (p.type === 'tool_approval_expired' && p.approval_id) {
+      if (p.type === 'tool_approval_expired') {
         store.handleApprovalExpired(convId, p.approval_id)
         return
       }
 
-      if (p.type === 'sub_agent_started' && p.call_id && p.sub_conversation_id && p.spawned_turn_id) {
-        store.handleSubAgentStarted(convId, p.message_id!, p.call_id, {
+      if (p.type === 'sub_agent_started') {
+        store.handleSubAgentStarted(convId, p.message_id, p.call_id, {
           conversationId: p.sub_conversation_id,
           turnId: p.spawned_turn_id,
           kind: p.kind,
@@ -229,7 +240,7 @@ export function useGlobalEventListener() {
       // A call the reviewer decided instead of the user. No notification: the
       // point of the feature is not interrupting anybody, and the verdict is
       // on the card either way.
-      if (p.type === 'auto_review' && p.call_id && p.message_id && p.verdict) {
+      if (p.type === 'auto_review') {
         store.handleAutoReview(convId, p.message_id, p.call_id, p.verdict)
         return
       }
@@ -237,17 +248,24 @@ export function useGlobalEventListener() {
       // A call that was drawn before it knew its own arguments. Only a hosted
       // ACP session sends this: its call ids are unique within a session, which
       // is what makes "the same card again" a safe thing to say.
-      if (p.type === 'tool_call_revised' && p.call_id) {
-        store.reviseToolCall(convId, p.message_id!, p.call_id, p.tool_name!, p.arguments ?? '{}')
+      if (p.type === 'tool_call_revised') {
+        store.reviseToolCall(convId, p.message_id, p.call_id, p.tool_name, p.arguments)
         return
       }
 
       // message_id as well as call_id: provider call ids repeat, so the pair is
       // what identifies a card.
-      if (p.type === 'tool_result' && p.call_id) {
-        store.handleToolResult(convId, p.message_id!, p.call_id, p.result ?? '', p.outcome)
+      if (p.type === 'tool_result') {
+        store.handleToolResult(convId, p.message_id, p.call_id, p.result, p.outcome)
         return
       }
+
+      // Read by `useAcpConfig`; named here so adding a new stream variant makes
+      // this listener fail type-checking until its handling is deliberate.
+      if (p.type === 'acp_config' || p.type === 'acp_usage') return
+
+      const exhaustive: never = p
+      throw new Error(`Unhandled chat stream event: ${String(exhaustive)}`)
     })
 
     const convUpdatedUnlisten = listen('conversation-updated', () => {
@@ -265,16 +283,12 @@ export function useGlobalEventListener() {
     // delivery is the same transaction that writes the row — so without this
     // the message is off the queue and not yet on screen, which is worse than
     // the stale row it replaces.
-    const queueDeliveredUnlisten = listen<{ conversation_id?: string; delivered?: boolean }>(
-      'queue-updated',
-      (event) => {
-        const convId = event.payload?.conversation_id
-        if (!convId || !event.payload?.delivered) return
-        void useConversationStore.getState().loadMessages(convId)
-      },
-    )
+    const queueDeliveredUnlisten = listen('queue-updated', (event) => {
+      if (!event.payload.delivered) return
+      void useConversationStore.getState().loadMessages(event.payload.conversation_id)
+    })
 
-    const userCommandUnlisten = listen<UserCommandEvent>('user-command', (event) => {
+    const userCommandUnlisten = listen('user-command', (event) => {
       const store = useConversationStore.getState()
       if (event.payload.type === 'start') {
         store.beginShellCommand(event.payload.conversation_id, event.payload.turn_id)
@@ -302,20 +316,51 @@ export function useGlobalEventListener() {
     // nobody.
     useConversationStore.getState().loadAllPending()
 
-    const compactStartUnlisten = listen<{ conversation_id: string }>('compact-start', (event) => {
+    const compactStartUnlisten = listen('compact-start', (event) => {
       useConversationStore.getState().handleCompactStart(event.payload.conversation_id)
     })
 
-    const compactDoneUnlisten = listen<{ conversation_id: string; error?: string; mid_turn?: boolean }>(
-      'compact-done',
-      (event) => {
-        const { conversation_id, error, mid_turn } = event.payload
-        // A compaction that fails silently is indistinguishable from one that was
-        // never attempted, while the context indicator stays pinned at its limit.
-        if (error) useConversationStore.getState().setError(conversation_id, error)
-        useConversationStore.getState().handleCompactDone(conversation_id, mid_turn)
-      },
-    )
+    const compactDoneUnlisten = listen('compact-done', (event) => {
+      const { conversation_id, error, mid_turn } = event.payload
+      // A compaction that fails silently is indistinguishable from one that was
+      // never attempted, while the context indicator stays pinned at its limit.
+      if (error) useConversationStore.getState().setError(conversation_id, error)
+      useConversationStore.getState().handleCompactDone(conversation_id, mid_turn)
+    })
+
+    const receivePlanReview = (payload: PlanReviewEventInfo) => {
+      const planReviews = usePlanReviewStore.getState()
+      const previous = planReviews.summaries[payload.review_id]
+      if (!planReviews.receiveReviewEvent(payload)) return { accepted: false, previous }
+      const conversation = useConversationStore.getState()
+      conversation.handlePlanReviewEvent(payload)
+      if (conversation.sessions[payload.conversation_id]) void conversation.loadMessages(payload.conversation_id)
+      return { accepted: true, previous }
+    }
+
+    const planReviewRequestedUnlisten = listen('plan-review-requested', (event) => {
+      if (receivePlanReview(event.payload).accepted && shouldNotify(event.payload.conversation_id)) {
+        trySendNotification(getConversationTitle(event.payload.conversation_id), i18n.t('chat.plan.reviewReady'))
+      }
+    })
+
+    const planReviewUpdatedUnlisten = listen('plan-review-updated', (event) => {
+      const received = receivePlanReview(event.payload)
+      // `queued` remains visible in the app, but it is the normal automatic
+      // handoff and usually lasts only a moment. An OS interruption belongs to
+      // the two states where that handoff stopped and a person can recover it.
+      if (
+        received.accepted &&
+        planContinuationNeedsAttention(event.payload.delivery_state) &&
+        !planContinuationNeedsAttention(received.previous?.delivery_state) &&
+        shouldNotify(event.payload.conversation_id)
+      ) {
+        trySendNotification(
+          getConversationTitle(event.payload.conversation_id),
+          i18n.t('chat.plan.continuationNeedsAttention'),
+        )
+      }
+    })
 
     return () => {
       chatStreamUnlisten.then((fn) => fn())
@@ -325,6 +370,8 @@ export function useGlobalEventListener() {
       resyncUnlisten.then((fn) => fn())
       compactStartUnlisten.then((fn) => fn())
       compactDoneUnlisten.then((fn) => fn())
+      planReviewRequestedUnlisten.then((fn) => fn())
+      planReviewUpdatedUnlisten.then((fn) => fn())
     }
   }, [])
 }

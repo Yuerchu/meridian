@@ -15,7 +15,7 @@ import { Button } from '@heroui/react'
 import { ChatTranscript } from '@/components/chat/chat-transcript'
 import { useTurns } from '@/hooks/use-turns'
 import { useAppTheme } from '@/lib/theme'
-import type { ContentBlock, Message, ToolCallDisplay } from '@/types'
+import type { ContentBlock, MessageViewModel, ToolCallDisplay } from '@/types'
 
 const LAB_CONVERSATION = 'scroll-lab'
 
@@ -63,7 +63,9 @@ function nextId(prefix: string): string {
   return `${prefix}-${seq}`
 }
 
-function message(over: Partial<Message> & Pick<Message, 'id' | 'role' | 'content'>): Message {
+function message(
+  over: Partial<MessageViewModel> & Pick<MessageViewModel, 'id' | 'role' | 'content'>,
+): MessageViewModel {
   return {
     conversation_id: LAB_CONVERSATION,
     provider_id: 'openai',
@@ -79,8 +81,15 @@ function message(over: Partial<Message> & Pick<Message, 'id' | 'role' | 'content
     created_at: Date.now(),
     reasoning_content: null,
     rating: null,
-    schema_version: 2,
-    is_compact_summary: 0,
+    is_compact_summary: false,
+    sender_id: null,
+    parent_id: null,
+    compact_anchor_id: null,
+    source: null,
+    turn_id: null,
+    tool_outcome: null,
+    auto_review: null,
+    context_items: [],
     ...over,
   }
 }
@@ -93,7 +102,10 @@ function toolBlock(over: Partial<ToolCallDisplay> & Pick<ToolCallDisplay, 'tool_
 }
 
 /** Replaces the last assistant row, leaving every other row's identity alone. */
-function withLastAssistant(messages: Message[], edit: (m: Message) => Message): Message[] {
+function withLastAssistant(
+  messages: MessageViewModel[],
+  edit: (m: MessageViewModel) => MessageViewModel,
+): MessageViewModel[] {
   for (let i = messages.length - 1; i >= 0; i--) {
     if (messages[i].role === 'assistant') {
       const out = messages.slice()
@@ -104,7 +116,7 @@ function withLastAssistant(messages: Message[], edit: (m: Message) => Message): 
   return messages
 }
 
-function appendBlock(m: Message, block: ContentBlock): Message {
+function appendBlock(m: MessageViewModel, block: ContentBlock): MessageViewModel {
   return { ...m, _blocks: [...(m._blocks ?? []), block] }
 }
 
@@ -151,7 +163,7 @@ export default function ScrollLab() {
   // its own record of what it wrote, and a class it did not write is a class it
   // will not remove.
   const { resolvedTheme, setTheme } = useAppTheme()
-  const [messages, setMessages] = useState<Message[]>([])
+  const [messages, setMessages] = useState<MessageViewModel[]>([])
   const [streaming, setStreaming] = useState(false)
   const chunkRef = useRef(0)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -179,7 +191,7 @@ export default function ScrollLab() {
   }, [])
 
   const seedHistory = useCallback((count = 6) => {
-    const seeded: Message[] = []
+    const seeded: MessageViewModel[] = []
     for (let i = 0; i < count; i++) {
       seeded.push(
         message({
@@ -601,7 +613,7 @@ export default function ScrollLab() {
     // follow must win once for an active conversation so new chunks are visible.
     reset()
     await frames(4)
-    const activeMessages: Message[] = []
+    const activeMessages: MessageViewModel[] = []
     for (let i = 0; i < 5; i++) {
       activeMessages.push(
         message({

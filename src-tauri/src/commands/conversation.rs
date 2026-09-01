@@ -1,17 +1,19 @@
 use std::collections::HashMap;
 
 use crate::ServicesExt;
+use crate::commands::entity_response::{ConversationAgentKind, ConversationInfoResponse, ConversationListResponse};
+use crate::commands::model_config::RequiredNullable;
 use diesel::sqlite::SqliteConnection;
 
 use meridian_core::agent::{
-    TokenBudget, TurnParamsInput, build_file_access, build_messages_with_context_items, do_compact, file_access_prompt,
-    instruction_budget, load_project_instructions, resolve_provider_config, resolve_turn_params,
+    TokenBudget, TurnParamsResolveRequest, build_file_access, build_messages_with_context_items, do_compact,
+    file_access_prompt, instruction_budget, load_project_instructions, resolve_provider_config, resolve_turn_params,
 };
 use meridian_core::db;
 use meridian_core::db::DbPool;
-use meridian_core::db::models::assistant::Assistant;
-use meridian_core::db::models::conversation::Conversation;
-use meridian_core::db::models::message_context_item::MessageContextItem;
+use meridian_core::db::models::assistant::AssistantRow;
+use meridian_core::db::models::message_context_item::MessageContextItemRow;
+use meridian_core::events::{CompactDoneEvent, CompactOutcome, CompactStartEvent, CompactTrigger};
 use meridian_core::provider::ChatMessage;
 use meridian_core::template;
 use meridian_core::util::now_ms;
@@ -22,18 +24,26 @@ use meridian_core::util::now_ms;
 /// path it read at the top, so the two would delete each other's summaries and
 /// anchor the survivor to ids that are no longer on the path. The OneBot side
 /// has refused this since it was written; the desktop side never did.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConversationCompactionRequest {
+    pub conversation_id: String,
+    pub custom_instructions: RequiredNullable<String>,
+}
+
 #[tauri::command]
-pub async fn compact(
-    app: tauri::AppHandle,
-    conversation_id: String,
-    custom_instructions: Option<String>,
-) -> Result<(), String> {
+pub async fn compact(app: tauri::AppHandle, request: ConversationCompactionRequest) -> Result<(), String> {
+    let conversation_id = request.conversation_id;
+    let custom_instructions = request.custom_instructions.0;
     let services = app.services();
     let _lease = services
         .turns
         .clone()
         .try_acquire_mutation(&conversation_id, "compaction")
         .map_err(|busy| busy.to_string())?;
+    if meridian_core::agent::queue::has_plan_review_barrier(&services, &conversation_id).await? {
+        return Err(PLAN_REVIEW_CONVERSATION_MUTATION_BARRIER.into());
+    }
     let pool = services.db.clone();
     let secrets = services.secrets.clone();
 
@@ -56,12 +66,11 @@ pub async fn compact(
         .map_err(|e| e.to_string())??
     };
 
-    services.events.emit(
-        "compact-start",
-        serde_json::json!({
-            "conversation_id": &conversation_id,
-        }),
-    )?;
+    services.events.emit_compact_start(&CompactStartEvent {
+        conversation_id: conversation_id.clone(),
+        mid_turn: false,
+        trigger: CompactTrigger::Manual,
+    })?;
 
     let result = do_compact(
         &pool,
@@ -84,12 +93,18 @@ pub async fn compact(
         );
     }
 
-    services.events.emit(
-        "compact-done",
-        serde_json::json!({
-            "conversation_id": &conversation_id,
-        }),
-    )?;
+    let (outcome, error) = match &result {
+        Ok(_) => (CompactOutcome::Completed, None),
+        Err(error) => (CompactOutcome::Failed, Some(error.clone())),
+    };
+    services.events.emit_compact_done(&CompactDoneEvent {
+        conversation_id: conversation_id.clone(),
+        mid_turn: false,
+        trigger: CompactTrigger::Manual,
+        outcome,
+        tokens_reclaimed: None,
+        error,
+    })?;
 
     result?;
     Ok(())
@@ -101,84 +116,145 @@ pub async fn compact(
 // in between. `conversation_snapshot` answers it once.
 
 #[tauri::command]
-pub async fn list_conversations(app: tauri::AppHandle, archived: bool) -> Result<Vec<Conversation>, String> {
+pub async fn list_conversations(app: tauri::AppHandle, archived: bool) -> Result<ConversationListResponse, String> {
     let pool = app.services().db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::conversation::list_conversations(&mut conn, archived).map_err(|e| e.to_string())
+        let rows = db::ops::conversation::list_conversations(&mut conn, archived).map_err(|e| e.to_string())?;
+        rows.into_iter().map(TryInto::try_into).collect()
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConversationCreateRequest {
+    title: RequiredNullable<String>,
+    project_id: RequiredNullable<String>,
+}
+
 #[tauri::command]
 pub async fn create_conversation(
     app: tauri::AppHandle,
-    title: Option<String>,
-    project_id: Option<String>,
-) -> Result<Conversation, String> {
+    request: ConversationCreateRequest,
+) -> Result<ConversationInfoResponse, String> {
     let pool = app.services().db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         let id = uuid::Uuid::new_v4().to_string();
         let default_assistant = db::ops::assistant::get_default_assistant(&mut conn).map_err(|e| e.to_string())?;
         let assistant_id = default_assistant.as_ref().map(|a| a.id.as_str());
-        db::ops::conversation::create_conversation(
+        let row = db::ops::conversation::create_conversation(
             &mut conn,
             &id,
-            title.as_deref(),
+            request.title.0.as_deref(),
             assistant_id,
-            project_id.as_deref(),
+            request.project_id.0.as_deref(),
             now_ms(),
         )
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+        row.try_into()
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConversationAssistantUpdateRequest {
+    pub id: String,
+    pub assistant_id: RequiredNullable<String>,
 }
 
 #[tauri::command]
 pub async fn set_conversation_assistant(
     app: tauri::AppHandle,
-    id: String,
-    assistant_id: Option<String>,
+    request: ConversationAssistantUpdateRequest,
 ) -> Result<(), String> {
-    let pool = app.services().db.clone();
+    let services = app.services();
+    let _lease = services
+        .turns
+        .clone()
+        .try_acquire_mutation(&request.id, "an assistant change")
+        .map_err(|busy| busy.to_string())?;
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::conversation::update_assistant(&mut conn, &id, assistant_id.as_deref(), now_ms())
-            .map_err(|e| e.to_string())
+        mutate_conversation_unless_plan_barrier(&mut conn, &request.id, |conn| {
+            db::ops::conversation::update_assistant(conn, &request.id, request.assistant_id.0.as_deref(), now_ms())
+        })
+        .map_err(|e| e.to_string())?
+        .then_some(())
+        .ok_or_else(|| PLAN_REVIEW_CONVERSATION_MUTATION_BARRIER.to_string())
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConversationReasoningPreferencesUpdateRequest {
+    pub id: String,
+    pub thinking_level: RequiredNullable<meridian_core::provider::capabilities::StoredThinkingLevel>,
+    pub fast_mode: bool,
 }
 
 #[tauri::command]
 pub async fn set_conversation_reasoning_prefs(
     app: tauri::AppHandle,
-    id: String,
-    thinking_level: Option<String>,
-    fast_mode: bool,
+    request: ConversationReasoningPreferencesUpdateRequest,
 ) -> Result<(), String> {
-    let pool = app.services().db.clone();
+    let thinking_level = request.thinking_level.0.map(|level| level.as_str().to_string());
+    let services = app.services();
+    let _lease = services
+        .turns
+        .clone()
+        .try_acquire_mutation(&request.id, "a reasoning preference change")
+        .map_err(|busy| busy.to_string())?;
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::conversation::update_reasoning_prefs(&mut conn, &id, thinking_level.as_deref(), fast_mode, now_ms())
-            .map_err(|e| e.to_string())
+        mutate_conversation_unless_plan_barrier(&mut conn, &request.id, |conn| {
+            db::ops::conversation::update_reasoning_prefs(
+                conn,
+                &request.id,
+                thinking_level.as_deref(),
+                request.fast_mode,
+                now_ms(),
+            )
+        })
+        .map_err(|e| e.to_string())?
+        .then_some(())
+        .ok_or_else(|| PLAN_REVIEW_CONVERSATION_MUTATION_BARRIER.to_string())
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
-/// Switch the conversation's collaboration mode. `None` is the default (work)
-/// mode. An unrecognised id is stored as-is and degrades to work when read, so
-/// a mode removed in a later build cannot strand a conversation.
+/// Switch the conversation's collaboration mode. `None` is the canonical
+/// default (work) mode; a present id must name a declared mode exactly.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConversationModeUpdateRequest {
+    pub id: String,
+    pub mode: RequiredNullable<meridian_core::agent::modes::ChatMode>,
+}
+
 #[tauri::command]
-pub async fn set_conversation_mode(app: tauri::AppHandle, id: String, mode: Option<String>) -> Result<(), String> {
+pub async fn set_conversation_mode(
+    app: tauri::AppHandle,
+    request: ConversationModeUpdateRequest,
+) -> Result<(), String> {
+    let mode = request
+        .mode
+        .0
+        .and_then(meridian_core::agent::modes::ChatMode::canonical_storage)
+        .map(str::to_string);
     let pool = app.services().db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::conversation::update_mode(&mut conn, &id, mode.as_deref(), now_ms()).map_err(|e| e.to_string())
+        db::ops::conversation::update_mode(&mut conn, &request.id, mode.as_deref(), now_ms()).map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -191,27 +267,54 @@ pub async fn set_conversation_mode(app: tauri::AppHandle, id: String, mode: Opti
 /// later keep asking however this is set. Per-conversation, like the mode and
 /// the todo list, because it describes this stretch of work rather than a
 /// general preference.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConversationAcceptEditsUpdateRequest {
+    pub id: String,
+    pub accept_edits: bool,
+}
+
 #[tauri::command]
 pub async fn set_conversation_accept_edits(
     app: tauri::AppHandle,
-    id: String,
-    accept_edits: bool,
+    request: ConversationAcceptEditsUpdateRequest,
 ) -> Result<(), String> {
-    let pool = app.services().db.clone();
+    let services = app.services();
+    let _lease = services
+        .turns
+        .clone()
+        .try_acquire_mutation(&request.id, "an edit-approval change")
+        .map_err(|busy| busy.to_string())?;
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::conversation::update_accept_edits(&mut conn, &id, accept_edits, now_ms()).map_err(|e| e.to_string())
+        mutate_conversation_unless_plan_barrier(&mut conn, &request.id, |conn| {
+            db::ops::conversation::update_accept_edits(conn, &request.id, request.accept_edits, now_ms())
+        })
+        .map_err(|e| e.to_string())?
+        .then_some(())
+        .ok_or_else(|| PLAN_REVIEW_CONVERSATION_MUTATION_BARRIER.to_string())
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConversationTitleUpdateRequest {
+    id: String,
+    title: String,
+}
+
 #[tauri::command]
-pub async fn update_conversation_title(app: tauri::AppHandle, id: String, title: String) -> Result<(), String> {
+pub async fn update_conversation_title(
+    app: tauri::AppHandle,
+    request: ConversationTitleUpdateRequest,
+) -> Result<(), String> {
     let pool = app.services().db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::conversation::update_title(&mut conn, &id, &title, now_ms()).map_err(|e| e.to_string())
+        db::ops::conversation::update_title(&mut conn, &request.id, &request.title, now_ms()).map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -221,51 +324,151 @@ pub async fn update_conversation_title(app: tauri::AppHandle, id: String, title:
 ///
 /// For a native conversation this also moves what the next turn resolves its
 /// working directory and file access against — see `update_project`.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConversationProjectUpdateRequest {
+    pub id: String,
+    pub project_id: RequiredNullable<String>,
+}
+
+const PLAN_REVIEW_CONVERSATION_MUTATION_BARRIER: &str = "This conversation is waiting for plan review or its continuation. Finish it before changing its transcript or project.";
+
+fn mutate_conversation_unless_plan_barrier<F>(
+    conn: &mut SqliteConnection,
+    conversation_id: &str,
+    mutation: F,
+) -> diesel::QueryResult<bool>
+where
+    F: FnOnce(&mut SqliteConnection) -> diesel::QueryResult<()>,
+{
+    conn.immediate_transaction(|conn| {
+        if db::ops::plan_review::has_conversation_barrier(conn, conversation_id)
+            .map_err(|error| diesel::result::Error::QueryBuilderError(Box::new(error)))?
+        {
+            return Ok(false);
+        }
+        mutation(conn).map(|_| true)
+    })
+}
+
+fn update_conversation_project_unless_plan_barrier(
+    conn: &mut SqliteConnection,
+    conversation_id: &str,
+    project_id: Option<&str>,
+    now: i64,
+) -> diesel::QueryResult<bool> {
+    conn.immediate_transaction(|conn| {
+        if db::ops::plan_review::has_conversation_barrier(conn, conversation_id)
+            .map_err(|error| diesel::result::Error::QueryBuilderError(Box::new(error)))?
+        {
+            return Ok(false);
+        }
+        db::ops::conversation::update_project(conn, conversation_id, project_id, now).map(|_| true)
+    })
+}
+
 #[tauri::command]
 pub async fn set_conversation_project(
     app: tauri::AppHandle,
-    id: String,
-    project_id: Option<String>,
+    request: ConversationProjectUpdateRequest,
 ) -> Result<(), String> {
     let services = app.services();
     let _lease = services
         .turns
         .clone()
-        .try_acquire_mutation(&id, "a project move")
+        .try_acquire_mutation(&request.id, "a project move")
         .map_err(|busy| busy.to_string())?;
     let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::conversation::update_project(&mut conn, &id, project_id.as_deref(), now_ms())
-            .map_err(|e| e.to_string())
+        update_conversation_project_unless_plan_barrier(
+            &mut conn,
+            &request.id,
+            request.project_id.0.as_deref(),
+            now_ms(),
+        )
+        .map_err(|e| e.to_string())?
+        .then_some(())
+        .ok_or_else(|| PLAN_REVIEW_CONVERSATION_MUTATION_BARRIER.to_string())
     })
     .await
     .map_err(|e| e.to_string())?
 }
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConversationSearchRequest {
+    query: String,
+    limit: RequiredNullable<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TranscriptRole {
+    User,
+    Assistant,
+}
+
+impl TranscriptRole {
+    fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "user" => Ok(Self::User),
+            "assistant" => Ok(Self::Assistant),
+            _ => Err(format!("unknown transcript role `{value}`")),
+        }
+    }
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct ConversationSearchHitInfoResponse {
+    pub conversation_id: String,
+    pub title: Option<String>,
+    pub role: TranscriptRole,
+    pub snippet: String,
+    pub created_at: i64,
+}
+
+impl TryFrom<db::ops::conversation::TranscriptHit> for ConversationSearchHitInfoResponse {
+    type Error = String;
+
+    fn try_from(hit: db::ops::conversation::TranscriptHit) -> Result<Self, Self::Error> {
+        Ok(Self {
+            conversation_id: hit.conversation_id,
+            title: hit.title,
+            role: TranscriptRole::parse(&hit.role)?,
+            snippet: hit.snippet,
+            created_at: hit.created_at,
+        })
+    }
+}
+
+pub type ConversationSearchHitListResponse = Vec<ConversationSearchHitInfoResponse>;
 
 /// Conversations whose transcript says the query, newest mention first.
 #[tauri::command]
 pub async fn search_conversations(
     app: tauri::AppHandle,
-    query: String,
-    limit: Option<u32>,
-) -> Result<Vec<db::ops::conversation::TranscriptHit>, String> {
+    request: ConversationSearchRequest,
+) -> Result<ConversationSearchHitListResponse, String> {
     let pool = app.services().db.clone();
-    let limit = limit.unwrap_or(20).min(100) as usize;
+    let limit = request.limit.0.unwrap_or(20).min(100) as usize;
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::conversation::search_transcripts(&mut conn, &query, limit).map_err(|e| e.to_string())
+        let hits =
+            db::ops::conversation::search_transcripts(&mut conn, &request.query, limit).map_err(|e| e.to_string())?;
+        hits.into_iter().map(TryInto::try_into).collect()
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub async fn toggle_pin_conversation(app: tauri::AppHandle, id: String) -> Result<Conversation, String> {
+pub async fn toggle_pin_conversation(app: tauri::AppHandle, id: String) -> Result<ConversationInfoResponse, String> {
     let pool = app.services().db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::conversation::toggle_pin(&mut conn, &id, now_ms()).map_err(|e| e.to_string())
+        let row = db::ops::conversation::toggle_pin(&mut conn, &id, now_ms()).map_err(|e| e.to_string())?;
+        row.try_into()
     })
     .await
     .map_err(|e| e.to_string())?
@@ -352,12 +555,12 @@ pub async fn delete_conversation(app: tauri::AppHandle, id: String) -> Result<()
 }
 
 #[derive(serde::Serialize)]
-pub struct ContextInfo {
+pub struct ContextInfoResponse {
     pub estimated_tokens: usize,
     pub context_limit: usize,
     pub compact_threshold: usize,
     pub auto_compact_enabled: bool,
-    pub circuit_breaker_state: String,
+    pub circuit_breaker_state: meridian_core::agent::CompactCircuitBreakerState,
     pub message_count: usize,
     /// Whose window this is. A number on its own cannot say, and a delegated run
     /// routinely has a different one from the conversation that started it.
@@ -365,8 +568,7 @@ pub struct ContextInfo {
     /// `explore` | `agent` when this conversation is a delegated run, `None`
     /// when it is somebody's own. Read off the row rather than inferred from the
     /// sidebar, which cannot see these at all.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub agent_kind: Option<String>,
+    pub agent_kind: Option<ConversationAgentKind>,
 }
 
 /// Test scaffolding only. Production assembly lives in
@@ -392,10 +594,10 @@ fn compose_system_prompt(base_block: Option<&str>, persona: &str, instructions: 
 /// write a row or move a cursor.
 fn load_persona_and_memory(
     conn: &mut SqliteConnection,
-    assistant: Option<&Assistant>,
+    assistant: Option<&AssistantRow>,
     project_id: Option<&str>,
-    live: &[db::models::message::Message],
-) -> (String, String) {
+    live: &[db::models::message::MessageRow],
+) -> Result<(String, String), String> {
     let raw_prompt = assistant.map(|a| a.system_prompt.as_str()).unwrap_or("");
     let user_name = db::ops::preference::get_preference(conn, "user_name").ok().flatten();
     let mut ctx = template::build_context(assistant.map(|a| a.name.as_str()), user_name.as_deref());
@@ -411,10 +613,10 @@ fn load_persona_and_memory(
         // than a slightly generous one.
         meridian_core::agent::memory_budget(usize::MAX),
     );
-    let memory = meridian_core::agent::plan_injection(conn, &req, live, meridian_core::util::now_ms())
+    let memory = meridian_core::agent::plan_injection(conn, &req, live, meridian_core::util::now_ms())?
         .text
         .unwrap_or_default();
-    (persona, memory)
+    Ok((persona, memory))
 }
 
 /// Rebuild the system prompt the way `commands::chat::chat` does, so the token
@@ -433,17 +635,17 @@ async fn assemble_system_prompt(
     pool: &DbPool,
     conversation_id: &str,
     mode: Option<&str>,
-    assistant: Option<&Assistant>,
+    assistant: Option<&AssistantRow>,
     project_path: Option<&str>,
     project_id: Option<&str>,
     context_limit: usize,
-    active_path: &[db::models::message::Message],
+    active_path: &[db::models::message::MessageRow],
     // `server_tools` is the turn's own, resolved by the caller. Counting the
     // local `web_search` that a provider-side one displaces would make the
     // estimate disagree with the prompt actually sent — the drift this function
     // exists to avoid, not to introduce.
-    server_tools: Vec<String>,
-) -> (String, String) {
+    server_tools: Vec<meridian_core::provider::ServerToolKind>,
+) -> Result<(String, String), String> {
     // Off the published snapshot, so the context estimator cannot be blocked by
     // a server that is busy answering something else.
     let mcp_defs = app.services().mcp.tool_definitions().as_ref().clone();
@@ -456,7 +658,7 @@ async fn assemble_system_prompt(
             None
         }
     };
-    let file_access = build_file_access(pool).await;
+    let file_access = build_file_access(pool).await?;
 
     // The very same resolver the chat loop runs. Counting anything else here is
     // how the estimate ended up short of what actually gets sent — the checklist
@@ -465,24 +667,22 @@ async fn assemble_system_prompt(
     let assistant = assistant.cloned();
     let conv_id = conversation_id.to_string();
     let pid = project_id.map(str::to_string);
-    let mode = meridian_core::agent::modes::resolve(mode);
+    let mode = meridian_core::agent::modes::resolve(mode)?;
     let context_blocks = vec![
         instruction_block.unwrap_or_default(),
         file_access_prompt(&file_access),
         // Same function the chat loop calls, so the estimate covers the block.
         meridian_core::voice::prompt::voice_context_block(active_path, false).unwrap_or_default(),
     ];
-    let live: Vec<db::models::message::Message> = active_path.to_vec();
-    tokio::task::spawn_blocking(move || {
-        let Ok(mut conn) = pool2.get() else {
-            return (String::new(), String::new());
-        };
-        let (persona, memory_block) = load_persona_and_memory(&mut conn, assistant.as_ref(), pid.as_deref(), &live);
-        let sub_agents = meridian_core::agent::sub_agents::catalog(&mut conn);
+    let live: Vec<db::models::message::MessageRow> = active_path.to_vec();
+    tokio::task::spawn_blocking(move || -> Result<(String, String), String> {
+        let mut conn = meridian_core::util::get_conn(&pool2)?;
+        let (persona, memory_block) = load_persona_and_memory(&mut conn, assistant.as_ref(), pid.as_deref(), &live)?;
+        let sub_agents = meridian_core::agent::sub_agents::catalog(&mut conn)?;
         let turn = meridian_core::agent::turn_config::resolve(
             &mut conn,
             &registry,
-            meridian_core::agent::turn_config::TurnConfigInput {
+            meridian_core::agent::turn_config::TurnConfigResolveRequest {
                 assistant,
                 conversation_id: conv_id,
                 // The estimate has to count the prompt the chat loop will send,
@@ -502,11 +702,11 @@ async fn assemble_system_prompt(
                 persona,
                 context_blocks,
             },
-        );
-        (turn.system_prompt, memory_block)
+        )?;
+        Ok((turn.system_prompt, memory_block))
     })
     .await
-    .unwrap_or_default()
+    .map_err(|error| error.to_string())?
 }
 
 /// Build the exact message list whose tokens `get_context_info` reports. Kept
@@ -516,13 +716,13 @@ fn context_info_messages(
     system_prompt: &str,
     context: &db::ops::message::ActiveContext,
     trailing: Vec<ChatMessage>,
-    context_items: &HashMap<String, Vec<MessageContextItem>>,
-) -> Vec<ChatMessage> {
+    context_items: &HashMap<String, Vec<MessageContextItemRow>>,
+) -> Result<Vec<ChatMessage>, String> {
     build_messages_with_context_items(system_prompt, context, trailing, &Default::default(), context_items)
 }
 
 #[tauri::command]
-pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) -> Result<ContextInfo, String> {
+pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) -> Result<ContextInfoResponse, String> {
     let services = app.services();
     let pool = services.db.clone();
     let secrets = services.secrets.clone();
@@ -588,7 +788,7 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
             } = resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())?;
             let turn = resolve_turn_params(
                 &pool2,
-                TurnParamsInput {
+                TurnParamsResolveRequest {
                     assistant: assistant2.as_ref(),
                     provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
                     provider_type: &provider_type,
@@ -626,14 +826,14 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
         &ctx.path,
         turn.params.server_tools.clone(),
     )
-    .await;
+    .await?;
 
     // What the next turn would carry, if it started now: no turn is running, so
     // nothing is excluded, and an interrupted turn before this one would be
     // reported to it. Reading costs nothing — only a request that reaches a
     // provider marks anything as told, and an estimate sends none.
     let interrupted_block =
-        meridian_core::agent::interrupted::load_block(&pool, &services.turns, &conversation_id, "").await;
+        meridian_core::agent::interrupted::load_block(&pool, &services.turns, &conversation_id, "").await?;
 
     // Mirrors the chat path exactly, background blocks included, so the figure
     // the UI shows covers what a turn actually sends.
@@ -649,7 +849,7 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
             None,
         ),
         &context_items,
-    );
+    )?;
     // What the next turn would carry: the tail past the summary, plus the
     // summary itself when one applies.
     // Injected background is not a message anybody sent, and this figure sits
@@ -659,12 +859,13 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
 
     let cb_state = {
         let map = services.compact_breakers.lock().await;
-        map.get(&conversation_id)
-            .map(|cb| cb.state_label().to_string())
-            .unwrap_or_else(|| "closed".to_string())
+        match map.get(&conversation_id) {
+            Some(cb) => cb.state()?,
+            None => meridian_core::agent::CompactCircuitBreakerState::Closed,
+        }
     };
 
-    Ok(ContextInfo {
+    Ok(ContextInfoResponse {
         estimated_tokens,
         context_limit,
         compact_threshold: budget.compact_threshold,
@@ -672,21 +873,29 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
         circuit_breaker_state: cb_state,
         message_count,
         model,
-        agent_kind,
+        agent_kind: agent_kind.as_deref().map(ConversationAgentKind::parse).transpose()?,
     })
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConversationListByProjectRequest {
+    pub project_id: String,
+    pub archived: bool,
 }
 
 #[tauri::command]
 pub async fn list_conversations_by_project(
     app: tauri::AppHandle,
-    project_id: String,
-    archived: bool,
-) -> Result<Vec<Conversation>, String> {
+    request: ConversationListByProjectRequest,
+) -> Result<ConversationListResponse, String> {
     let pool = app.services().db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::conversation::list_conversations_by_project(&mut conn, &project_id, archived)
-            .map_err(|e| e.to_string())
+        let rows =
+            db::ops::conversation::list_conversations_by_project(&mut conn, &request.project_id, request.archived)
+                .map_err(|e| e.to_string())?;
+        rows.into_iter().map(TryInto::try_into).collect()
     })
     .await
     .map_err(|e| e.to_string())?
@@ -696,17 +905,221 @@ pub async fn list_conversations_by_project(
 mod tests {
     use super::*;
     use meridian_core::agent::{base_prompt, build_messages};
-    use meridian_core::db::models::assistant::NewAssistant;
-    use meridian_core::db::models::emoji::NewEmoji;
-    use meridian_core::db::models::emoji_pack::NewEmojiPack;
-    use meridian_core::db::models::memory::NewMemory;
-    use meridian_core::db::models::project::NewProject;
+    use meridian_core::db::models::assistant::AssistantInsert;
+    use meridian_core::db::models::emoji::EmojiInsert;
+    use meridian_core::db::models::emoji_pack::EmojiPackInsert;
+    use meridian_core::db::models::memory::MemoryInsert;
+    use meridian_core::db::models::project::ProjectInsert;
     use meridian_core::db::test_db;
 
-    fn make_assistant(conn: &mut SqliteConnection, id: &str, name: &str, prompt: &str) -> Assistant {
+    fn seed_pending_review(conn: &mut SqliteConnection, conversation_id: &str) {
+        let document = db::ops::plan_review::create_or_resume_document(conn, conversation_id, 2).unwrap();
+        let appended = db::ops::plan_review::append_assistant_revision(
+            conn,
+            &db::ops::plan_review::PlanRevisionAppend {
+                document_id: &document.id,
+                expected_generation: 0,
+                expected_head_sha256: None,
+                content_markdown: "# Plan\n",
+                patch: "first patch",
+                source_message_id: Some("m1"),
+                source_call_id: Some("update-1"),
+                responding_to_suggestion_revision_id: None,
+                now: 3,
+            },
+        )
+        .unwrap();
+        db::ops::plan_review::mark_materialization_applied(conn, &appended.materialization.id, 4).unwrap();
+        db::ops::plan_review::submit_native_head_for_review(
+            conn,
+            &db::ops::plan_review::PlanReviewSubmit {
+                document_id: &document.id,
+                expected_generation: appended.document.working_generation,
+                expected_head_sha256: &appended.revision.content_sha256,
+                turn_id: None,
+                assistant_message_id: Some("m1"),
+                provider_call_id: Some("exit-1"),
+                provider_kind: db::models::plan_review::PlanReviewProviderKind::Native,
+                now: 5,
+            },
+            &db::models::plan_review::NativePlanReviewRuntimeConfig {
+                provider_id: "provider-test".into(),
+                model: "model-test".into(),
+                assistant_id: None,
+                thinking_level: None,
+                fast: false,
+                project_id: Some("project-a".into()),
+                project_path: Some("A".into()),
+                accept_edits: false,
+            },
+        )
+        .unwrap();
+    }
+
+    fn create_project(conn: &mut SqliteConnection, id: &str, path: &str) {
+        db::ops::project::create_project(
+            conn,
+            &ProjectInsert {
+                id,
+                name: id,
+                path: Some(path),
+                source_type: "local",
+                source_id: None,
+                assistant_id: None,
+                description: None,
+                created_at: 1,
+                updated_at: 1,
+            },
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_pending_plan_review_prevents_moving_the_conversation_to_another_project() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_project(&mut conn, "project-a", "A");
+        create_project(&mut conn, "project-b", "B");
+        db::ops::conversation::create_conversation(&mut conn, "conversation-1", None, None, Some("project-a"), 1)
+            .unwrap();
+        seed_pending_review(&mut conn, "conversation-1");
+
+        assert!(
+            !update_conversation_project_unless_plan_barrier(&mut conn, "conversation-1", Some("project-b"), 6,)
+                .unwrap()
+        );
+        assert_eq!(
+            db::ops::conversation::get_conversation(&mut conn, "conversation-1")
+                .unwrap()
+                .project_id
+                .as_deref(),
+            Some("project-a")
+        );
+    }
+
+    #[test]
+    fn conversation_requests_reject_unknown_fields() {
+        let create = serde_json::json!({
+            "title": null,
+            "projectId": null,
+            "futureField": true,
+        });
+        assert!(serde_json::from_value::<ConversationCreateRequest>(create).is_err());
+
+        let update = serde_json::json!({
+            "id": "conversation-1",
+            "title": "renamed",
+            "legacyTitle": "old",
+        });
+        assert!(serde_json::from_value::<ConversationTitleUpdateRequest>(update).is_err());
+
+        let search = serde_json::json!({
+            "query": "needle",
+            "limit": 20,
+            "cursor": "unsupported",
+        });
+        assert!(serde_json::from_value::<ConversationSearchRequest>(search).is_err());
+    }
+
+    #[test]
+    fn context_response_serializes_null_agent_kind() {
+        let payload = serde_json::to_value(ContextInfoResponse {
+            estimated_tokens: 1,
+            context_limit: 2,
+            compact_threshold: 1,
+            auto_compact_enabled: false,
+            circuit_breaker_state: meridian_core::agent::CompactCircuitBreakerState::Closed,
+            message_count: 0,
+            model: "model".into(),
+            agent_kind: None,
+        })
+        .unwrap();
+
+        assert_eq!(payload["agent_kind"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn conversation_actions_require_explicit_nullable_fields() {
+        let mut create = serde_json::json!({ "title": null, "projectId": null });
+        assert!(serde_json::from_value::<ConversationCreateRequest>(create.clone()).is_ok());
+        create.as_object_mut().unwrap().remove("projectId");
+        assert!(serde_json::from_value::<ConversationCreateRequest>(create).is_err());
+
+        let mut compaction = serde_json::json!({
+            "conversationId": "conversation-1",
+            "customInstructions": null
+        });
+        assert!(serde_json::from_value::<ConversationCompactionRequest>(compaction.clone()).is_ok());
+        compaction.as_object_mut().unwrap().remove("customInstructions");
+        assert!(serde_json::from_value::<ConversationCompactionRequest>(compaction).is_err());
+
+        let mut assistant = serde_json::json!({ "id": "conversation-1", "assistantId": null });
+        assert!(serde_json::from_value::<ConversationAssistantUpdateRequest>(assistant.clone()).is_ok());
+        assistant.as_object_mut().unwrap().remove("assistantId");
+        assert!(serde_json::from_value::<ConversationAssistantUpdateRequest>(assistant).is_err());
+
+        let mut reasoning = serde_json::json!({
+            "id": "conversation-1",
+            "thinkingLevel": null,
+            "fastMode": false
+        });
+        assert!(serde_json::from_value::<ConversationReasoningPreferencesUpdateRequest>(reasoning.clone()).is_ok());
+        reasoning.as_object_mut().unwrap().remove("thinkingLevel");
+        assert!(serde_json::from_value::<ConversationReasoningPreferencesUpdateRequest>(reasoning).is_err());
+
+        let mut mode = serde_json::json!({ "id": "conversation-1", "mode": null });
+        assert!(serde_json::from_value::<ConversationModeUpdateRequest>(mode.clone()).is_ok());
+        mode.as_object_mut().unwrap().remove("mode");
+        assert!(serde_json::from_value::<ConversationModeUpdateRequest>(mode).is_err());
+
+        let mut project = serde_json::json!({ "id": "conversation-1", "projectId": null });
+        assert!(serde_json::from_value::<ConversationProjectUpdateRequest>(project.clone()).is_ok());
+        project.as_object_mut().unwrap().remove("projectId");
+        assert!(serde_json::from_value::<ConversationProjectUpdateRequest>(project).is_err());
+
+        let mut search = serde_json::json!({ "query": "needle", "limit": null });
+        assert!(serde_json::from_value::<ConversationSearchRequest>(search.clone()).is_ok());
+        search.as_object_mut().unwrap().remove("limit");
+        assert!(serde_json::from_value::<ConversationSearchRequest>(search).is_err());
+    }
+
+    #[test]
+    fn remaining_conversation_request_objects_reject_unknown_fields() {
+        assert!(
+            serde_json::from_value::<ConversationAcceptEditsUpdateRequest>(serde_json::json!({
+                "id": "conversation-1",
+                "acceptEdits": true,
+                "futureField": true
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<ConversationListByProjectRequest>(serde_json::json!({
+                "projectId": "project-1",
+                "archived": false,
+                "cursor": null
+            }))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn transcript_search_role_is_closed_at_the_response_boundary() {
+        let hit = db::ops::conversation::TranscriptHit {
+            conversation_id: "conversation-1".into(),
+            title: None,
+            role: "future_role".into(),
+            snippet: "needle".into(),
+            created_at: 1,
+        };
+
+        assert!(ConversationSearchHitInfoResponse::try_from(hit).is_err());
+    }
+
+    fn make_assistant(conn: &mut SqliteConnection, id: &str, name: &str, prompt: &str) -> AssistantRow {
         db::ops::assistant::create_assistant(
             conn,
-            &NewAssistant {
+            &AssistantInsert {
                 id,
                 name,
                 description: None,
@@ -736,7 +1149,7 @@ mod tests {
     fn make_project(conn: &mut SqliteConnection, id: &str) {
         db::ops::project::create_project(
             conn,
-            &NewProject {
+            &ProjectInsert {
                 id,
                 name: "Proj",
                 path: None,
@@ -751,8 +1164,8 @@ mod tests {
         .unwrap();
     }
 
-    fn make_message(id: &str, role: &str, content: &str) -> db::models::message::Message {
-        db::models::message::Message {
+    fn make_message(id: &str, role: &str, content: &str) -> db::models::message::MessageRow {
+        db::models::message::MessageRow {
             id: id.into(),
             conversation_id: "c1".into(),
             role: role.into(),
@@ -807,7 +1220,7 @@ mod tests {
         make_project(&mut conn, "p1");
         db::ops::memory::upsert_memory(
             &mut conn,
-            &NewMemory {
+            &MemoryInsert {
                 id: "m1",
                 scope_type: "project",
                 scope_id: "p1",
@@ -824,13 +1237,13 @@ mod tests {
         )
         .unwrap();
 
-        let (persona, memory) = load_persona_and_memory(&mut conn, Some(&assistant), Some("p1"), &[]);
+        let (persona, memory) = load_persona_and_memory(&mut conn, Some(&assistant), Some("p1"), &[]).unwrap();
         assert_eq!(persona, "You are Nova helping Yuerchu.");
         assert!(memory.contains("<project_memories>"), "got: {memory}");
         assert!(memory.contains("stack: Rust + Tauri"), "got: {memory}");
 
         // Without a project there is no memory block at all.
-        let (_, none) = load_persona_and_memory(&mut conn, Some(&assistant), None, &[]);
+        let (_, none) = load_persona_and_memory(&mut conn, Some(&assistant), None, &[]).unwrap();
         assert!(none.is_empty());
     }
 
@@ -842,12 +1255,12 @@ mod tests {
 
         // Nothing assigned: the variable stays literal rather than expanding to
         // an instruction about an empty set.
-        let (persona, _) = load_persona_and_memory(&mut conn, Some(&assistant), None, &[]);
+        let (persona, _) = load_persona_and_memory(&mut conn, Some(&assistant), None, &[]).unwrap();
         assert_eq!(persona, "{{emoji_list}}");
 
         db::ops::emoji_pack::create_pack(
             &mut conn,
-            &NewEmojiPack {
+            &EmojiPackInsert {
                 id: "pack1",
                 name: "Pack",
                 description: None,
@@ -863,7 +1276,7 @@ mod tests {
         .unwrap();
         db::ops::emoji::create_emoji(
             &mut conn,
-            &NewEmoji {
+            &EmojiInsert {
                 id: "e1",
                 pack_id: "pack1",
                 name: "shocked",
@@ -886,7 +1299,7 @@ mod tests {
         .unwrap();
         db::ops::emoji_pack::assign_pack(&mut conn, "a1", "pack1", 1000).unwrap();
 
-        let (persona, _) = load_persona_and_memory(&mut conn, Some(&assistant), None, &[]);
+        let (persona, _) = load_persona_and_memory(&mut conn, Some(&assistant), None, &[]).unwrap();
         assert!(persona.contains("list_stickers"), "got: {persona}");
         assert!(!persona.contains("[emoji:shocked]"), "got: {persona}");
     }
@@ -905,7 +1318,7 @@ mod tests {
         make_project(&mut conn, "p1");
         db::ops::memory::upsert_memory(
             &mut conn,
-            &NewMemory {
+            &MemoryInsert {
                 id: "m1",
                 scope_type: "project",
                 scope_id: "p1",
@@ -922,7 +1335,7 @@ mod tests {
         )
         .unwrap();
 
-        let (persona, memory) = load_persona_and_memory(&mut conn, Some(&assistant), Some("p1"), &[]);
+        let (persona, memory) = load_persona_and_memory(&mut conn, Some(&assistant), Some("p1"), &[]).unwrap();
         let system_prompt = compose_system_prompt(base_prompt(&[]).as_deref(), &persona, "", "");
 
         let budget = TokenBudget::new("openai", "gpt-4o", 128_000, 16_384, None);
@@ -934,15 +1347,16 @@ mod tests {
             anchor_index: None,
             head_id: None,
         };
-        let with_prompt = budget
-            .counter
-            .count_messages(&meridian_core::agent::build_messages_with_senders(
+        let with_prompt = budget.counter.count_messages(
+            &meridian_core::agent::build_messages_with_senders(
                 system_prompt.trim(),
                 &empty,
                 meridian_core::agent::trailing_with_memory(Some(&memory), None, "", None),
                 &Default::default(),
-            ));
-        let history_only = budget.counter.count_messages(&build_messages("", &empty, ""));
+            )
+            .unwrap(),
+        );
+        let history_only = budget.counter.count_messages(&build_messages("", &empty, "").unwrap());
 
         // The regression this guards: get_context_info used to pass an empty
         // system prompt, so the UI reported a number that excluded it entirely.
@@ -961,7 +1375,7 @@ mod tests {
             anchor_index: None,
             head_id: Some(user.id.clone()),
         };
-        let frozen = MessageContextItem {
+        let frozen = MessageContextItemRow {
             id: "ctx1".into(),
             message_id: user.id.clone(),
             position: 0,
@@ -980,8 +1394,8 @@ mod tests {
         };
         let items = HashMap::from([(user.id.clone(), vec![frozen])]);
 
-        let with_context = context_info_messages("system", &context, Vec::new(), &items);
-        let without_context = context_info_messages("system", &context, Vec::new(), &HashMap::new());
+        let with_context = context_info_messages("system", &context, Vec::new(), &items).unwrap();
+        let without_context = context_info_messages("system", &context, Vec::new(), &HashMap::new()).unwrap();
 
         assert!(
             with_context

@@ -18,7 +18,7 @@
 
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::turn::{Turn, TurnPhase, TurnStatus};
+use crate::db::models::turn::{TurnPhase, TurnRow, TurnStatus};
 use crate::db::ops::turn::{InterruptedCandidate, Ledger};
 use crate::turn::{TurnCoordinator, TurnOrigin};
 
@@ -40,14 +40,12 @@ use crate::turn::{TurnCoordinator, TurnOrigin};
 /// `held` is the turn the coordinator has on this conversation, read once for
 /// however many rows are being judged. Asking it per row would let a list be
 /// answered against two different moments.
-pub fn was_cut_off(turn: &Turn, held: Option<&str>) -> bool {
-    match turn.status() {
-        Some(TurnStatus::Interrupted) => true,
-        Some(TurnStatus::Running) => held != Some(turn.id.as_str()),
-        // Done, cancelled and failed all reached an ending. A status this build
-        // does not recognise is not one to invent an interruption from.
-        _ => false,
-    }
+pub fn was_cut_off(turn: &TurnRow, held: Option<&str>) -> Result<bool, String> {
+    Ok(match turn.status()? {
+        TurnStatus::Interrupted => true,
+        TurnStatus::Running => held != Some(turn.id.as_str()),
+        TurnStatus::WaitingReview | TurnStatus::Done | TurnStatus::Cancelled | TurnStatus::Failed => false,
+    })
 }
 
 /// How many cut-off turns one message may describe.
@@ -104,8 +102,9 @@ pub(crate) fn block(
     coordinator: &TurnCoordinator,
     conversation_id: &str,
     asking: Option<&str>,
-) -> Option<Report> {
-    let candidates = crate::db::ops::turn::unreported_for_conversation(conn, conversation_id, asking, WINDOW).ok()?;
+) -> Result<Option<Report>, String> {
+    let candidates = crate::db::ops::turn::unreported_for_conversation(conn, conversation_id, asking, WINDOW)
+        .map_err(|error| error.to_string())?;
     // Per conversation, because a delegated run is held on its own. Judging a
     // sub-agent against the parent's lease would call every live one a wreck.
     // Read once per conversation rather than once per row, so one list is never
@@ -116,21 +115,23 @@ pub(crate) fn block(
             .or_insert_with(|| coordinator.held_turn(&c.turn.conversation_id));
     }
     // Newest first, the order the query returns.
-    let cut_off: Vec<&InterruptedCandidate> = candidates
-        .iter()
-        .filter(|c| {
-            let h = held.get(&c.turn.conversation_id).and_then(|h| h.as_deref());
-            was_cut_off(&c.turn, h)
-        })
-        .collect();
-    let picked = choose(&cut_off);
-    if picked.is_empty() {
-        return None;
+    let mut cut_off = Vec::new();
+    for candidate in &candidates {
+        let held_turn = held
+            .get(&candidate.turn.conversation_id)
+            .and_then(|turn| turn.as_deref());
+        if was_cut_off(&candidate.turn, held_turn)? {
+            cut_off.push(candidate);
+        }
     }
-    Some(Report {
-        text: describe(&picked),
+    let picked = choose(&cut_off)?;
+    if picked.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(Report {
+        text: describe(&picked)?,
         turns: picked.iter().map(|c| (c.turn.id.clone(), c.ledger)).collect(),
-    })
+    }))
 }
 
 /// Which of the turns still owed an explanation this message carries, oldest
@@ -146,12 +147,16 @@ pub(crate) fn block(
 ///
 /// Whatever does not fit is not dropped. It is still unreported, so the next
 /// message asks the same question and gets it.
-fn choose<'a>(cut_off: &[&'a InterruptedCandidate]) -> Vec<&'a InterruptedCandidate> {
-    let risky = |c: &InterruptedCandidate| matches!(c.turn.phase(), Some(TurnPhase::RunningTool));
-    let mut chosen: Vec<usize> = (0..cut_off.len())
-        .filter(|&i| risky(cut_off[i]))
-        .take(AT_MOST)
-        .collect();
+fn choose<'a>(cut_off: &[&'a InterruptedCandidate]) -> Result<Vec<&'a InterruptedCandidate>, String> {
+    let mut chosen = Vec::new();
+    for (index, candidate) in cut_off.iter().enumerate() {
+        if candidate.turn.phase()? == Some(TurnPhase::RunningTool) {
+            chosen.push(index);
+            if chosen.len() == AT_MOST {
+                break;
+            }
+        }
+    }
     for i in 0..cut_off.len() {
         if chosen.len() >= AT_MOST {
             break;
@@ -163,7 +168,7 @@ fn choose<'a>(cut_off: &[&'a InterruptedCandidate]) -> Vec<&'a InterruptedCandid
     // Indices count backwards through time, so descending is the order the
     // interruptions actually happened in.
     chosen.sort_unstable_by(|a, b| b.cmp(a));
-    chosen.into_iter().map(|i| cut_off[i]).collect()
+    Ok(chosen.into_iter().map(|i| cut_off[i]).collect())
 }
 
 /// Async wrapper for the runners, which hold a pool rather than a connection.
@@ -172,18 +177,17 @@ pub async fn load_block(
     coordinator: &std::sync::Arc<TurnCoordinator>,
     conversation_id: &str,
     asking: &str,
-) -> Option<Report> {
+) -> Result<Option<Report>, String> {
     let pool = pool.clone();
     let coordinator = std::sync::Arc::clone(coordinator);
     let conv = conversation_id.to_string();
     let asking = asking.to_string();
     tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().ok()?;
+        let mut conn = crate::util::get_conn(&pool)?;
         block(&mut conn, &coordinator, &conv, Some(&asking))
     })
     .await
-    .ok()
-    .flatten()
+    .map_err(|error| error.to_string())?
 }
 
 /// Record that these turns have now been described to the model.
@@ -226,8 +230,11 @@ pub(crate) async fn confirm_delivered(pool: &crate::db::DbPool, report: Report) 
     }
 }
 
-fn describe(turns: &[&InterruptedCandidate]) -> String {
-    let each: Vec<String> = turns.iter().map(|c| what_happened(c)).collect();
+fn describe(turns: &[&InterruptedCandidate]) -> Result<String, String> {
+    let each: Vec<String> = turns
+        .iter()
+        .map(|candidate| what_happened(candidate))
+        .collect::<Result<_, _>>()?;
     // Says that it stopped, not why. The rule that gets a turn here — running,
     // and nobody holding it — is met by a process that was killed, by a task
     // that panicked, and by one dropped at shutdown, and the record cannot tell
@@ -247,10 +254,10 @@ fn describe(turns: &[&InterruptedCandidate]) -> String {
             many.iter().map(|w| format!("- {w}")).collect::<Vec<_>>().join("\n")
         ),
     };
-    format!("<interrupted_turn>\n{body}\n</interrupted_turn>")
+    Ok(format!("<interrupted_turn>\n{body}\n</interrupted_turn>"))
 }
 
-fn what_happened(candidate: &InterruptedCandidate) -> String {
+fn what_happened(candidate: &InterruptedCandidate) -> Result<String, String> {
     let turn = &candidate.turn;
     let tool = turn.phase_tool.as_deref().unwrap_or("a tool");
     // Who this is about. A delegated run has to name itself: the parent's own
@@ -260,7 +267,7 @@ fn what_happened(candidate: &InterruptedCandidate) -> String {
         Some(s) => (s, "its own"),
         None => ("It".to_string(), "this conversation's"),
     };
-    match turn.phase() {
+    Ok(match turn.phase()? {
         // The dangerous one: the call had started, so whatever it does may
         // already be done. Saying "it failed" would be as wrong as saying it
         // succeeded, and either would have the model act on a guess.
@@ -284,7 +291,7 @@ fn what_happened(candidate: &InterruptedCandidate) -> String {
             "{who} stopped part way through writing a reply. Anything it had begun to say is \
              incomplete."
         ),
-    }
+    })
 }
 
 /// How a delegated run introduces itself, or `None` for a turn of this
@@ -332,7 +339,7 @@ mod tests {
 
     fn latest(pool: &crate::db::DbPool, coordinator: &TurnCoordinator) -> Option<Report> {
         let mut conn = pool.get().unwrap();
-        block(&mut conn, coordinator, "c1", None)
+        block(&mut conn, coordinator, "c1", None).unwrap()
     }
 
     /// What the real caller looks like: a turn that has already opened its own
@@ -340,7 +347,7 @@ mod tests {
     /// find itself — running, and held — and report nothing.
     fn asked_by(pool: &crate::db::DbPool, coordinator: &TurnCoordinator, asking: &str) -> Option<Report> {
         let mut conn = pool.get().unwrap();
-        block(&mut conn, coordinator, "c1", Some(asking))
+        block(&mut conn, coordinator, "c1", Some(asking)).unwrap()
     }
 
     /// The other half of a real caller: the request got out, so what it carried
@@ -716,7 +723,7 @@ mod tests {
     fn delegated(conn: &mut SqliteConnection, id: &str, parent: &str, title: Option<&str>) {
         crate::db::ops::conversation::insert(
             conn,
-            crate::db::models::conversation::NewConversation {
+            crate::db::models::conversation::ConversationInsert {
                 id,
                 title,
                 parent_conversation_id: Some(parent),
@@ -781,7 +788,9 @@ mod tests {
         // the notice, so the sub-agent's own conversation is settled.
         let inside = {
             let mut conn = pool.get().unwrap();
-            block(&mut conn, &c, "sub-1", None).expect("its own history was cut off")
+            block(&mut conn, &c, "sub-1", None)
+                .unwrap()
+                .expect("its own history was cut off")
         };
         assert_eq!(inside.turn_ids(), ["run"]);
         delivered(&pool, inside, 2000);
@@ -795,7 +804,7 @@ mod tests {
         delivered(&pool, told, 3000);
         assert!(latest(&pool, &c).is_none());
         let mut conn = pool.get().unwrap();
-        assert!(block(&mut conn, &c, "sub-1", None).is_none());
+        assert!(block(&mut conn, &c, "sub-1", None).unwrap().is_none());
     }
 
     /// The same rule from the other side: the parent hearing about it is not
@@ -811,7 +820,9 @@ mod tests {
         delivered(&pool, latest(&pool, &c).expect("the parent is owed it"), 2000);
 
         let mut conn = pool.get().unwrap();
-        let inside = block(&mut conn, &c, "sub-1", None).expect("the conversation it ran in has not been told");
+        let inside = block(&mut conn, &c, "sub-1", None)
+            .unwrap()
+            .expect("the conversation it ran in has not been told");
         assert_eq!(inside.turn_ids(), ["run"]);
     }
 
@@ -832,7 +843,9 @@ mod tests {
         assert!(latest(&pool, &c).is_none(), "the parent has no business with it");
 
         let mut conn = pool.get().unwrap();
-        let inside = block(&mut conn, &c, "sub-1", None).expect("but that conversation does");
+        let inside = block(&mut conn, &c, "sub-1", None)
+            .unwrap()
+            .expect("but that conversation does");
         assert_eq!(inside.turn_ids(), ["follow-up"]);
     }
 

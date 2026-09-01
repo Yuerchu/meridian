@@ -17,11 +17,12 @@ pub enum FilterLevel {
 }
 
 impl FilterLevel {
-    pub fn from_preference(value: Option<&str>) -> Self {
+    pub fn from_preference(value: Option<&str>) -> Result<Self, String> {
         match value {
-            Some("off") => FilterLevel::Off,
-            Some("aggressive") => FilterLevel::Aggressive,
-            _ => FilterLevel::Standard,
+            None | Some("standard") => Ok(FilterLevel::Standard),
+            Some("off") => Ok(FilterLevel::Off),
+            Some("aggressive") => Ok(FilterLevel::Aggressive),
+            Some(other) => Err(format!("unknown voice filter level `{other}`")),
         }
     }
 }
@@ -217,6 +218,18 @@ fn render(tokens: &[Token]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preference_is_a_closed_contract() {
+        assert_eq!(FilterLevel::from_preference(None).unwrap(), FilterLevel::Standard);
+        assert_eq!(FilterLevel::from_preference(Some("off")).unwrap(), FilterLevel::Off);
+        assert_eq!(
+            FilterLevel::from_preference(Some("aggressive")).unwrap(),
+            FilterLevel::Aggressive
+        );
+        assert!(FilterLevel::from_preference(Some("future")).is_err());
+        assert!(FilterLevel::from_preference(Some(" Standard ")).is_err());
+    }
 
     #[test]
     fn off_returns_input_trimmed() {

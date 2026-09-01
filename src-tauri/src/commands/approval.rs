@@ -1,4 +1,5 @@
 use crate::ServicesExt;
+use crate::commands::model_config::RequiredNullable;
 
 use meridian_core::agent::engine::ApprovalDecision;
 
@@ -29,28 +30,46 @@ fn decide(app: &tauri::AppHandle, approval_id: &str, decision: ApprovalDecision)
     }
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ToolCallDenyRequest {
+    approval_id: String,
+    reason: RequiredNullable<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AskResponseRequest {
+    approval_id: String,
+    response: String,
+}
+
 #[tauri::command]
 pub async fn approve_tool_call(app: tauri::AppHandle, approval_id: String) -> Result<(), String> {
     decide(&app, &approval_id, ApprovalDecision::Approved)
 }
 
 #[tauri::command]
-pub async fn deny_tool_call(app: tauri::AppHandle, approval_id: String, reason: Option<String>) -> Result<(), String> {
+pub async fn deny_tool_call(app: tauri::AppHandle, request: ToolCallDenyRequest) -> Result<(), String> {
+    let ToolCallDenyRequest {
+        approval_id,
+        reason: RequiredNullable(reason),
+    } = request;
     decide(&app, &approval_id, ApprovalDecision::Denied(reason))
 }
 
 #[tauri::command]
-pub async fn respond_to_ask(app: tauri::AppHandle, approval_id: String, response: String) -> Result<(), String> {
+pub async fn respond_to_ask(app: tauri::AppHandle, request: AskResponseRequest) -> Result<(), String> {
+    let AskResponseRequest { approval_id, response } = request;
     decide(&app, &approval_id, ApprovalDecision::Response(response))
 }
 
 /// Enough to redraw a card that is still waiting for an answer.
 ///
-/// `retry_reason` is left out rather than sent empty when this is not a
-/// sandbox escalation: the card tells the two apart by whether the field is
-/// there at all.
+/// Nullable fields remain present as `null`; the card distinguishes states by
+/// their values, never by accepting an incomplete response shape.
 #[derive(serde::Serialize)]
-pub struct PendingApprovalInfo {
+pub struct PendingApprovalInfoResponse {
     pub approval_id: String,
     /// Which conversation this view belongs to. Redundant when the caller asked
     /// for one conversation by name, and the whole point when it asked for all
@@ -62,27 +81,25 @@ pub struct PendingApprovalInfo {
     /// the sub-agent sees the row the call is actually on.
     pub assistant_message_id: String,
     pub provider_call_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub origin_call_id: Option<String>,
     pub tool_name: String,
     /// What the call was made with. Sent even though an ordinary card could
     /// read it off the transcript, because a bubbled one cannot: that row is in
     /// another conversation.
     pub arguments: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub retry_reason: Option<String>,
     /// This approval belongs to a delegated run and is being shown where it is
     /// *happening*, not where it can be answered. The card draws itself without
     /// buttons.
     pub bubbled: bool,
-    /// Which `run_agent` call to hang the card under. Present only in the
+    /// Which `run_agent` call to hang the card under. Non-null only in the
     /// parent's view, which is the only place it means anything.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_call_id: Option<String>,
     /// Where the delegated run can be watched.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub sub_conversation_id: Option<String>,
 }
+
+pub type PendingApprovalListResponse = Vec<PendingApprovalInfoResponse>;
 
 /// Which of this conversation's tool calls are still waiting on the user.
 ///
@@ -103,7 +120,7 @@ pub struct PendingApprovalInfo {
 /// sub-agent's own transcript, where the call really is. Both are the same
 /// `approval_id`, so there is exactly one place it can be answered from and no
 /// race between two cards.
-pub(crate) fn pending_for(app: &tauri::AppHandle, conversation_id: &str) -> Vec<PendingApprovalInfo> {
+pub(crate) fn pending_for(app: &tauri::AppHandle, conversation_id: &str) -> PendingApprovalListResponse {
     let services = app.services();
     let waiters = &services.approvals;
     let map = waiters.lock();
@@ -118,7 +135,7 @@ pub(crate) fn pending_for(app: &tauri::AppHandle, conversation_id: &str) -> Vec<
 fn views_for(
     map: &std::collections::HashMap<String, meridian_core::state::PendingApproval>,
     conversation_id: &str,
-) -> Vec<PendingApprovalInfo> {
+) -> Vec<PendingApprovalInfoResponse> {
     let mut out = Vec::new();
     for (id, p) in map.iter() {
         // Belt and braces. The waiter's own timer is what ends a question and
@@ -130,7 +147,7 @@ fn views_for(
         }
         // Where the call is happening. Ordinary approvals only ever match here.
         if p.conversation_id == conversation_id {
-            out.push(PendingApprovalInfo {
+            out.push(PendingApprovalInfoResponse {
                 approval_id: id.clone(),
                 conversation_id: p.conversation_id.clone(),
                 assistant_message_id: p.assistant_message_id.clone(),
@@ -164,7 +181,7 @@ fn views_for(
 /// showing the sub-agent should still say what it is waiting for; a queue must
 /// not, since listing both would put one question in front of the user twice
 /// and the copy without buttons is the one that would look broken.
-fn answerable_view(id: &str, p: &meridian_core::state::PendingApproval) -> PendingApprovalInfo {
+fn answerable_view(id: &str, p: &meridian_core::state::PendingApproval) -> PendingApprovalInfoResponse {
     let (conversation_id, assistant_message_id, parent_call_id, sub_conversation_id) = match &p.bubble {
         Some(b) => (
             b.conversation_id.clone(),
@@ -174,7 +191,7 @@ fn answerable_view(id: &str, p: &meridian_core::state::PendingApproval) -> Pendi
         ),
         None => (p.conversation_id.clone(), p.assistant_message_id.clone(), None, None),
     };
-    PendingApprovalInfo {
+    PendingApprovalInfoResponse {
         approval_id: id.to_string(),
         conversation_id,
         assistant_message_id,
@@ -204,7 +221,7 @@ fn answerable_view(id: &str, p: &meridian_core::state::PendingApproval) -> Pendi
 /// anyway: that is the shape both `generate_handler!` and `remote::dispatch`
 /// expect of a row in the command table.
 #[tauri::command]
-pub fn all_pending_approvals(app: tauri::AppHandle) -> Result<Vec<PendingApprovalInfo>, String> {
+pub fn all_pending_approvals(app: tauri::AppHandle) -> Result<PendingApprovalListResponse, String> {
     let services = app.services();
     let map = services.approvals.lock();
     Ok(map
@@ -259,6 +276,64 @@ mod tests {
             assistant_message_id: "parent-row".into(),
             parent_call_id: parent_call_id.into(),
             sub_conversation_id: "sub-1".into(),
+        }
+    }
+
+    #[test]
+    fn approval_action_requests_are_named_strict_and_complete() {
+        let deny: ToolCallDenyRequest = serde_json::from_value(serde_json::json!({
+            "approvalId": "appr-1",
+            "reason": null,
+        }))
+        .expect("valid denial");
+        assert_eq!(deny.approval_id, "appr-1");
+        assert!(deny.reason.0.is_none());
+
+        assert!(
+            serde_json::from_value::<ToolCallDenyRequest>(serde_json::json!({
+                "approvalId": "appr-1",
+            }))
+            .is_err(),
+            "nullable reason must still be present",
+        );
+        assert!(
+            serde_json::from_value::<ToolCallDenyRequest>(serde_json::json!({
+                "approvalId": "appr-1",
+                "reason": null,
+                "remember": true,
+            }))
+            .is_err()
+        );
+
+        let response: AskResponseRequest = serde_json::from_value(serde_json::json!({
+            "approvalId": "appr-2",
+            "response": "continue",
+        }))
+        .expect("valid ask response");
+        assert_eq!(response.response, "continue");
+        assert!(
+            serde_json::from_value::<AskResponseRequest>(serde_json::json!({
+                "approvalId": "appr-2",
+                "response": "continue",
+                "format": "text",
+            }))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn pending_approval_response_serializes_every_nullable_key() {
+        let mut map = HashMap::new();
+        registered(&mut map, "appr-1", "call-1", None);
+
+        let payload = serde_json::to_value(answerable_view("appr-1", &map["appr-1"])).unwrap();
+        for key in [
+            "origin_call_id",
+            "retry_reason",
+            "parent_call_id",
+            "sub_conversation_id",
+        ] {
+            assert_eq!(payload[key], serde_json::Value::Null, "missing required-null key {key}");
         }
     }
 

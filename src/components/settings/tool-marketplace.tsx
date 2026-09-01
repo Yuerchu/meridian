@@ -6,7 +6,7 @@ import { EmptyState } from '@heroui-pro/react/empty-state'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
-import type { CustomTool, ToolInfo, ToolPreset } from '@/types'
+import type { CustomToolInfoResponse, McpToolInfoResponse, ToolPermission, ToolPresetInfoResponse } from '@/types'
 import { SavedHint, SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
 import { SettingsDrilldown } from './settings-drilldown'
 import { useSettingsDirtyRegistration } from './dirty-guard'
@@ -16,7 +16,7 @@ function CustomToolEditor({
   onSave,
   onDelete,
 }: {
-  tool?: CustomTool
+  tool?: CustomToolInfoResponse
   onSave: () => void
   onDelete?: () => void
 }) {
@@ -25,7 +25,7 @@ function CustomToolEditor({
   const [description, setDescription] = useState(tool?.description ?? '')
   const [command, setCommand] = useState(tool?.command ?? '')
   const [argsTemplate, setArgsTemplate] = useState(tool?.args_template ?? '')
-  const [permission, setPermission] = useState(tool?.permission ?? 'ask')
+  const [permission, setPermission] = useState<ToolPermission>(tool?.permission ?? 'ask')
   const [timeoutMs, setTimeoutMs] = useState(tool?.timeout_ms?.toString() ?? '30000')
   const [saved, markSaved] = useTemporaryFlag()
   const [savedDraft, setSavedDraft] = useState(() =>
@@ -67,7 +67,8 @@ function CustomToolEditor({
     setSaveError(null)
     try {
       if (tool) {
-        await api.updateCustomTool(tool.id, {
+        await api.updateCustomTool({
+          id: tool.id,
           name: name.trim(),
           description: description.trim(),
           command: command.trim(),
@@ -80,9 +81,12 @@ function CustomToolEditor({
           name: name.trim(),
           description: description.trim(),
           command: command.trim(),
-          argsTemplate: argsTemplate.trim() || undefined,
+          categoryId: null,
+          parametersSchema: null,
+          argsTemplate: argsTemplate.trim() || null,
+          workingDirectory: null,
           permission,
-          timeoutMs: timeoutMs ? Number(timeoutMs) : undefined,
+          timeoutMs: timeoutMs ? Number(timeoutMs) : null,
         })
       }
       setSavedDraft(draft)
@@ -93,7 +97,7 @@ function CustomToolEditor({
     }
   }
 
-  const permissionOptions = [
+  const permissionOptions: { value: ToolPermission; label: string }[] = [
     { value: 'always', label: t('settings.tools.permAlways') },
     { value: 'ask', label: t('settings.tools.permAsk') },
     { value: 'never', label: t('settings.tools.permNever') },
@@ -203,9 +207,9 @@ function CustomToolEditor({
 
 export function ToolMarketplace() {
   const { t } = useTranslation()
-  const [builtinTools, setBuiltinTools] = useState<ToolInfo[]>([])
-  const [customTools, setCustomTools] = useState<CustomTool[]>([])
-  const [presets, setPresets] = useState<ToolPreset[]>([])
+  const [builtinTools, setBuiltinTools] = useState<McpToolInfoResponse[]>([])
+  const [customTools, setCustomTools] = useState<CustomToolInfoResponse[]>([])
+  const [presets, setPresets] = useState<ToolPresetInfoResponse[]>([])
   const [showCreate, setShowCreate] = useState(false)
   const [expandedToolId, setExpandedToolId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -346,7 +350,7 @@ export function ToolMarketplace() {
                     <Terminal className="w-3.5 h-3.5 shrink-0 text-muted" />
                     <span className="font-mono min-w-0 flex-1 truncate">{ct.name}</span>
                     <span className="text-muted truncate">{ct.command}</span>
-                    {ct.is_enabled === 0 && (
+                    {!ct.is_enabled && (
                       <span className="text-xs text-muted bg-default px-1 rounded shrink-0">
                         {t('settings.tools.disabled')}
                       </span>
@@ -396,7 +400,7 @@ export function ToolMarketplace() {
         <h3 className="text-sm font-medium mb-2">{t('settings.tools.presetsSection')}</h3>
         <div className="space-y-1">
           {presets.map((preset) => {
-            const toolNames: string[] = JSON.parse(preset.tool_names || '[]')
+            const toolNames = preset.tool_names
             return (
               <div
                 key={preset.id}
@@ -404,7 +408,7 @@ export function ToolMarketplace() {
               >
                 <span className="font-medium flex-1">{preset.name}</span>
                 <span className="text-muted">{t('settings.tools.presetCount', { count: toolNames.length })}</span>
-                {preset.is_builtin === 1 && <Chip className="text-muted">{t('settings.template.builtin')}</Chip>}
+                {preset.is_builtin && <Chip className="text-muted">{t('settings.template.builtin')}</Chip>}
               </div>
             )
           })}

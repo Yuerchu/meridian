@@ -15,8 +15,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+use super::LogLevel;
 use super::writer::{BASE_NAME, MAX_ARCHIVES, archive_name};
-use crate::util::take_bytes_at_char_boundary;
 
 /// Read granularity when walking a file backwards.
 const CHUNK: usize = 64 * 1024;
@@ -26,16 +26,12 @@ const CHUNK: usize = 64 * 1024;
 const MAX_SCAN_BYTES: u64 = 8 * 1024 * 1024;
 /// A record longer than this was not written by us — refuse to buffer it whole.
 const MAX_LINE_BYTES: usize = 256 * 1024;
-/// Longest raw fragment handed back for a line that would not parse.
-const MAX_RAW_CHARS: usize = 2000;
-
 /// Where a page stopped, so the next one can pick up.
 ///
 /// Deliberately a position rather than a timestamp: records routinely share a
 /// millisecond, and a timestamp cursor would either repeat or skip whatever sits
 /// on the boundary. The reader already knows its byte offset.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Cursor {
     /// 0 is `meridian.log`, 1 is `meridian.1.log`, and so on — newest first.
     pub file_index: usize,
@@ -44,37 +40,46 @@ pub struct Cursor {
     pub byte_offset: u64,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone)]
 pub struct LogEntry {
     pub ts: String,
     pub ts_ms: i64,
-    pub level: String,
+    pub level: LogRecordLevel,
     pub target: String,
     pub msg: String,
-    #[serde(skip_serializing_if = "Map::is_empty")]
     pub fields: Map<String, Value>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub spans: Vec<String>,
-    #[serde(skip_serializing_if = "Map::is_empty")]
     pub span_fields: Map<String, Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub file: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub line: Option<u32>,
-    /// Set instead of the parsed fields when the line was not valid JSON — a
-    /// torn write at the tail, or a file from a future schema. One bad line
-    /// should not fail the page it lands in.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub raw: Option<String>,
     /// Identifies this record for React keys and for resuming a scan.
     pub cursor: Cursor,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum LogRecordLevel {
+    Error,
+    Warn,
+    Info,
+    Debug,
+}
+
+impl LogRecordLevel {
+    const fn rank(self) -> u8 {
+        match self {
+            Self::Error => 4,
+            Self::Warn => 3,
+            Self::Info => 2,
+            Self::Debug => 1,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct LogQuery {
     /// Minimum severity, matched case-insensitively against the record's level.
-    pub min_level: Option<String>,
+    pub min_level: Option<LogLevel>,
     pub limit: usize,
     /// Case-insensitive substring over the message, target and field values.
     /// Substring rather than regex: no catastrophic backtracking, and no
@@ -88,8 +93,7 @@ pub struct LogQuery {
     pub cursor: Option<Cursor>,
 }
 
-#[derive(Debug, Default, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Default)]
 pub struct LogPage {
     /// Newest first.
     pub entries: Vec<LogEntry>,
@@ -99,16 +103,6 @@ pub struct LogPage {
     /// older matches may exist.
     pub scan_truncated: bool,
     pub files_scanned: Vec<String>,
-}
-
-fn level_rank(level: &str) -> u8 {
-    match level.to_ascii_uppercase().as_str() {
-        "ERROR" => 4,
-        "WARN" => 3,
-        "INFO" => 2,
-        "DEBUG" => 1,
-        _ => 0,
-    }
 }
 
 /// Log files newest first, skipping ones that are absent.
@@ -206,7 +200,10 @@ fn for_each_line_backward(
         // A record this long did not come from the writer. Stop rather than
         // grow the buffer without bound on a corrupt file.
         if carry.len() > MAX_LINE_BYTES {
-            return Ok(scanned);
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "log record exceeds the maximum line size",
+            ));
         }
         end = start;
     }
@@ -218,71 +215,74 @@ fn for_each_line_backward(
     Ok(scanned)
 }
 
-fn parse_line(line: &[u8], cursor: Cursor) -> LogEntry {
-    let text = String::from_utf8_lossy(line);
-    // Deliberately not a derived Deserialize: the schema belongs to the writer,
-    // and a field that changes shape should cost one field here, not the whole
-    // record.
-    let value: Option<Value> = serde_json::from_str(&text).ok();
-    let Some(Value::Object(obj)) = value else {
-        return LogEntry {
-            ts: String::new(),
-            ts_ms: 0,
-            level: "UNKNOWN".into(),
-            target: String::new(),
-            msg: String::new(),
-            fields: Map::new(),
-            spans: Vec::new(),
-            span_fields: Map::new(),
-            file: None,
-            line: None,
-            raw: Some(take_bytes_at_char_boundary(&text, MAX_RAW_CHARS).to_string()),
-            cursor,
-        };
-    };
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StoredLogRecord {
+    v: u32,
+    ts: String,
+    ts_ms: i64,
+    level: LogRecordLevel,
+    target: String,
+    msg: String,
+    #[serde(default)]
+    file: Option<String>,
+    #[serde(default)]
+    line: Option<u32>,
+    #[serde(rename = "pid")]
+    _pid: u32,
+    #[serde(default, rename = "thread")]
+    _thread: Option<String>,
+    #[serde(default)]
+    fields: Map<String, Value>,
+    #[serde(default)]
+    spans: Vec<String>,
+    #[serde(default)]
+    span_fields: Map<String, Value>,
+}
 
-    let string_at = |key: &str| obj.get(key).and_then(Value::as_str).unwrap_or_default().to_string();
-    let map_at = |key: &str| match obj.get(key) {
-        Some(Value::Object(m)) => m.clone(),
-        _ => Map::new(),
-    };
-
-    LogEntry {
-        ts: string_at("ts"),
-        ts_ms: obj.get("ts_ms").and_then(Value::as_i64).unwrap_or(0),
-        level: obj
-            .get("level")
-            .and_then(Value::as_str)
-            .unwrap_or("UNKNOWN")
-            .to_string(),
-        target: string_at("target"),
-        msg: string_at("msg"),
-        fields: map_at("fields"),
-        spans: obj
-            .get("spans")
-            .and_then(Value::as_array)
-            .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
-            .unwrap_or_default(),
-        span_fields: map_at("span_fields"),
-        file: obj.get("file").and_then(Value::as_str).map(str::to_string),
-        line: obj.get("line").and_then(Value::as_u64).map(|n| n as u32),
-        raw: None,
-        cursor,
+fn parse_line(line: &[u8], cursor: Cursor) -> Result<LogEntry, String> {
+    let text = std::str::from_utf8(line).map_err(|error| format!("log record is not UTF-8: {error}"))?;
+    let record: StoredLogRecord = serde_json::from_str(text).map_err(|error| format!("invalid log record: {error}"))?;
+    if record.v != super::record::SCHEMA_VERSION {
+        return Err(format!(
+            "unsupported log schema version {}; expected {}",
+            record.v,
+            super::record::SCHEMA_VERSION
+        ));
     }
+    chrono::DateTime::parse_from_rfc3339(&record.ts)
+        .map_err(|error| format!("invalid log timestamp {:?}: {error}", record.ts))?;
+    let StoredLogRecord {
+        ts,
+        ts_ms,
+        level,
+        target,
+        msg,
+        file,
+        line,
+        fields,
+        spans,
+        span_fields,
+        ..
+    } = record;
+    Ok(LogEntry {
+        ts,
+        ts_ms,
+        level,
+        target,
+        msg,
+        fields,
+        spans,
+        span_fields,
+        file,
+        line,
+        cursor,
+    })
 }
 
 fn matches(entry: &LogEntry, q: &LogQuery) -> bool {
-    // An unparseable line has no fields to match on. Surface it only when
-    // nothing is being filtered for, so it cannot masquerade as a hit.
-    if entry.raw.is_some() {
-        return q.contains.is_none()
-            && q.target_prefix.is_none()
-            && q.conversation_id.is_none()
-            && q.min_level.is_none();
-    }
-
     if let Some(min) = &q.min_level
-        && level_rank(&entry.level) < level_rank(min)
+        && entry.level.rank() < min.rank()
     {
         return false;
     }
@@ -326,7 +326,7 @@ fn matches(entry: &LogEntry, q: &LogQuery) -> bool {
 }
 
 /// Read a page of records, newest first.
-pub fn query(dir: &Path, q: &LogQuery) -> LogPage {
+pub fn query(dir: &Path, q: &LogQuery) -> Result<LogPage, String> {
     let limit = q.limit.max(1);
     let files = existing_files(dir, q.include_rotated);
     let mut page = LogPage::default();
@@ -350,13 +350,20 @@ pub fn query(dir: &Path, q: &LogQuery) -> LogPage {
         );
 
         let mut stopped_early = false;
+        let mut parse_error = None;
         let scanned_before = scanned;
         let result = for_each_line_backward(path, from_offset, |line, offset, in_file| {
             let cursor = Cursor {
                 file_index: *index,
                 byte_offset: offset,
             };
-            let entry = parse_line(line, cursor);
+            let entry = match parse_line(line, cursor) {
+                Ok(entry) => entry,
+                Err(error) => {
+                    parse_error = Some(format!("failed to read {} at byte {offset}: {error}", path.display()));
+                    return false;
+                }
+            };
 
             // Records are appended in order and files are ordered, so the first
             // record older than the window means nothing older can match. This
@@ -383,14 +390,19 @@ pub fn query(dir: &Path, q: &LogQuery) -> LogPage {
             true
         });
 
+        if let Some(error) = parse_error {
+            return Err(error);
+        }
+
         match result {
             Ok(read) => scanned += read,
-            Err(e) => {
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
                 // A rotation between listing and opening is normal, not an
                 // error worth failing the page over.
                 tracing::debug!(error = %e, path = %path.display(), "log file went away mid-scan");
                 continue;
             }
+            Err(e) => return Err(format!("failed to read {}: {e}", path.display())),
         }
 
         if stopped_early {
@@ -409,7 +421,7 @@ pub fn query(dir: &Path, q: &LogQuery) -> LogPage {
     } else {
         page.entries.last().map(|e| e.cursor)
     };
-    page
+    Ok(page)
 }
 
 #[cfg(test)]
@@ -453,7 +465,7 @@ mod tests {
             ],
         );
 
-        let page = query(dir.path(), &q(10));
+        let page = query(dir.path(), &q(10)).unwrap();
         let messages: Vec<&str> = page.entries.iter().map(|e| e.msg.as_str()).collect();
         assert_eq!(messages, ["newest", "middle", "oldest"]);
         assert!(page.next_cursor.is_none());
@@ -468,13 +480,13 @@ mod tests {
         write!(file, "{{\"v\":1,\"msg\":\"half writt").unwrap();
         drop(file);
 
-        let page = query(dir.path(), &q(10));
+        let page = query(dir.path(), &q(10)).unwrap();
         assert_eq!(page.entries.len(), 1);
         assert_eq!(page.entries[0].msg, "complete");
     }
 
     #[test]
-    fn a_corrupt_line_degrades_instead_of_failing_the_page() {
+    fn a_corrupt_line_fails_the_page() {
         let dir = tempfile::tempdir().unwrap();
         write_log(
             dir.path(),
@@ -486,10 +498,8 @@ mod tests {
             ],
         );
 
-        let page = query(dir.path(), &q(10));
-        assert_eq!(page.entries.len(), 3);
-        let raw = page.entries.iter().find(|e| e.raw.is_some()).unwrap();
-        assert!(raw.raw.as_ref().unwrap().contains("not json"));
+        let error = query(dir.path(), &q(10)).unwrap_err();
+        assert!(error.contains("invalid log record"), "{error}");
     }
 
     #[test]
@@ -505,7 +515,7 @@ mod tests {
             ],
         );
 
-        let page = query(dir.path(), &q(10));
+        let page = query(dir.path(), &q(10)).unwrap();
         assert_eq!(page.entries.len(), 2);
         assert_eq!(page.entries[0].msg.len(), long_msg.len());
         assert_eq!(page.entries[1].msg, "before");
@@ -514,12 +524,12 @@ mod tests {
     #[test]
     fn an_empty_or_missing_file_yields_an_empty_page() {
         let dir = tempfile::tempdir().unwrap();
-        let page = query(dir.path(), &q(10));
+        let page = query(dir.path(), &q(10)).unwrap();
         assert!(page.entries.is_empty());
         assert!(page.next_cursor.is_none());
 
         File::create(dir.path().join(BASE_NAME)).unwrap();
-        let page = query(dir.path(), &q(10));
+        let page = query(dir.path(), &q(10)).unwrap();
         assert!(page.entries.is_empty());
     }
 
@@ -534,7 +544,7 @@ mod tests {
         let mut seen = Vec::new();
         let mut cursor = None;
         loop {
-            let page = query(dir.path(), &LogQuery { cursor, ..q(7) });
+            let page = query(dir.path(), &LogQuery { cursor, ..q(7) }).unwrap();
             seen.extend(page.entries.iter().map(|e| e.msg.clone()));
             match page.next_cursor {
                 Some(next) => cursor = Some(next),
@@ -555,7 +565,7 @@ mod tests {
         write_log(dir.path(), &archive_name(1), &[record(1000, "INFO", "a", "in archive")]);
         write_log(dir.path(), BASE_NAME, &[record(2000, "INFO", "a", "in current")]);
 
-        let first = query(dir.path(), &q(1));
+        let first = query(dir.path(), &q(1)).unwrap();
         assert_eq!(first.entries[0].msg, "in current");
 
         let second = query(
@@ -564,7 +574,8 @@ mod tests {
                 cursor: first.next_cursor,
                 ..q(1)
             },
-        );
+        )
+        .unwrap();
         assert_eq!(second.entries[0].msg, "in archive");
     }
 
@@ -580,7 +591,8 @@ mod tests {
                 include_rotated: false,
                 ..q(10)
             },
-        );
+        )
+        .unwrap();
         assert_eq!(page.entries.len(), 1);
         assert_eq!(page.files_scanned, [BASE_NAME]);
     }
@@ -601,10 +613,11 @@ mod tests {
         let page = query(
             dir.path(),
             &LogQuery {
-                min_level: Some("warn".into()),
+                min_level: Some(LogLevel::Warn),
                 ..q(10)
             },
-        );
+        )
+        .unwrap();
         let messages: Vec<&str> = page.entries.iter().map(|e| e.msg.as_str()).collect();
         assert_eq!(messages, ["error", "warn"]);
     }
@@ -613,7 +626,8 @@ mod tests {
     fn searching_is_case_insensitive_and_covers_fields() {
         let dir = tempfile::tempdir().unwrap();
         let with_field = serde_json::json!({
-            "v": 1, "ts_ms": 2000, "level": "WARN", "target": "b", "msg": "nothing here",
+            "v": 1, "ts": super::super::record::format_ts(2000), "ts_ms": 2000,
+            "level": "WARN", "target": "b", "msg": "nothing here", "pid": 1,
             "fields": {"model": "gpt-5.6-sol"},
         })
         .to_string();
@@ -629,7 +643,8 @@ mod tests {
                 contains: Some("provider".into()),
                 ..q(10)
             },
-        );
+        )
+        .unwrap();
         assert_eq!(by_msg.entries.len(), 1);
         assert_eq!(by_msg.entries[0].msg, "Provider Rejected");
 
@@ -639,7 +654,8 @@ mod tests {
                 contains: Some("GPT-5.6".into()),
                 ..q(10)
             },
-        );
+        )
+        .unwrap();
         assert_eq!(by_field.entries.len(), 1);
         assert_eq!(by_field.entries[0].target, "b");
     }
@@ -648,7 +664,8 @@ mod tests {
     fn the_conversation_filter_reads_span_context() {
         let dir = tempfile::tempdir().unwrap();
         let scoped = serde_json::json!({
-            "v": 1, "ts_ms": 2000, "level": "WARN", "target": "chat", "msg": "compact failed",
+            "v": 1, "ts": super::super::record::format_ts(2000), "ts_ms": 2000,
+            "level": "WARN", "target": "chat", "msg": "compact failed", "pid": 1,
             "spans": ["chat"], "span_fields": {"conversation_id": "c-1"},
         })
         .to_string();
@@ -664,7 +681,8 @@ mod tests {
                 conversation_id: Some("c-1".into()),
                 ..q(10)
             },
-        );
+        )
+        .unwrap();
         assert_eq!(page.entries.len(), 1);
         assert_eq!(page.entries[0].msg, "compact failed");
     }
@@ -685,7 +703,8 @@ mod tests {
                 contains: Some("no-such-text".into()),
                 ..q(50)
             },
-        );
+        )
+        .unwrap();
 
         assert!(page.entries.is_empty());
         // Having stopped on the window rather than the budget, there is no more
@@ -709,7 +728,8 @@ mod tests {
                 until_ts_ms: Some(2000),
                 ..q(10)
             },
-        );
+        )
+        .unwrap();
         assert_eq!(page.entries.len(), 1);
         assert_eq!(page.entries[0].msg, "old");
     }

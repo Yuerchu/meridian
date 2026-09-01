@@ -1,28 +1,32 @@
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::provider::{NewProvider, Provider, ProviderUpdate};
+use crate::db::models::provider::{ProviderChangeset, ProviderInsert, ProviderRow};
 #[allow(unused_imports)]
 use crate::db::schema::providers;
 
-pub fn list_providers(conn: &mut SqliteConnection) -> QueryResult<Vec<Provider>> {
+pub fn list_providers(conn: &mut SqliteConnection) -> QueryResult<Vec<ProviderRow>> {
     providers::table
         .order(providers::sort_order.asc())
-        .load::<Provider>(conn)
+        .load::<ProviderRow>(conn)
 }
 
-pub fn get_provider(conn: &mut SqliteConnection, id: &str) -> QueryResult<Provider> {
-    providers::table.find(id).first::<Provider>(conn)
+pub fn get_provider(conn: &mut SqliteConnection, id: &str) -> QueryResult<ProviderRow> {
+    providers::table.find(id).first::<ProviderRow>(conn)
 }
 
-pub fn create_provider(conn: &mut SqliteConnection, new: &NewProvider) -> QueryResult<Provider> {
+pub fn create_provider(conn: &mut SqliteConnection, new: &ProviderInsert) -> QueryResult<ProviderRow> {
     diesel::insert_into(providers::table).values(new).execute(conn)?;
-    providers::table.find(new.id).first::<Provider>(conn)
+    providers::table.find(new.id).first::<ProviderRow>(conn)
 }
 
-pub fn update_provider(conn: &mut SqliteConnection, id: &str, changeset: &ProviderUpdate) -> QueryResult<Provider> {
+pub fn update_provider(
+    conn: &mut SqliteConnection,
+    id: &str,
+    changeset: &ProviderChangeset,
+) -> QueryResult<ProviderRow> {
     diesel::update(providers::table.find(id)).set(changeset).execute(conn)?;
-    providers::table.find(id).first::<Provider>(conn)
+    providers::table.find(id).first::<ProviderRow>(conn)
 }
 
 pub fn delete_provider(conn: &mut SqliteConnection, id: &str) -> QueryResult<()> {
@@ -38,10 +42,10 @@ pub fn count_providers(conn: &mut SqliteConnection) -> QueryResult<i64> {
 mod tests {
     use super::*;
 
-    fn seeded(conn: &mut SqliteConnection) -> Provider {
+    fn seeded(conn: &mut SqliteConnection) -> ProviderRow {
         create_provider(
             conn,
-            &NewProvider {
+            &ProviderInsert {
                 id: "p1",
                 name: "OpenAI",
                 provider_type: "openai",
@@ -74,7 +78,7 @@ mod tests {
         let untouched = update_provider(
             &mut conn,
             "p1",
-            &ProviderUpdate {
+            &ProviderChangeset {
                 name: Some("Renamed".into()),
                 ..Default::default()
             },
@@ -89,7 +93,7 @@ mod tests {
         let cleared = update_provider(
             &mut conn,
             "p1",
-            &ProviderUpdate {
+            &ProviderChangeset {
                 catalog_id: Some(None),
                 ..Default::default()
             },
@@ -100,7 +104,7 @@ mod tests {
         let rewritten = update_provider(
             &mut conn,
             "p1",
-            &ProviderUpdate {
+            &ProviderChangeset {
                 catalog_id: Some(Some("anthropic".into())),
                 ..Default::default()
             },

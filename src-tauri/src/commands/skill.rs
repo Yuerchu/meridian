@@ -1,12 +1,23 @@
 use std::path::PathBuf;
 
 use crate::ServicesExt;
+use crate::commands::entity_response::{SkillInfoResponse, SkillListResponse};
+use crate::commands::model_config::RequiredNullable;
 use meridian_core::agent::skills;
 use meridian_core::db;
-use meridian_core::db::models::skill::{Skill, SkillUpdate};
+use meridian_core::db::models::skill::SkillChangeset;
 use meridian_core::db::models::skill_binding::SkillLayer;
 use meridian_core::db::ops::skill_binding::MAX_BINDINGS_PER_ANCHOR;
 use meridian_core::util::{get_conn, now_ms};
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SkillCreateRequest {
+    dir_name: String,
+    llm_description: String,
+    body: String,
+    display_name: RequiredNullable<String>,
+}
 
 pub fn skills_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let services = app.services();
@@ -16,18 +27,25 @@ pub fn skills_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 }
 
 #[tauri::command]
-pub fn list_skills(app: tauri::AppHandle) -> Result<Vec<Skill>, String> {
+pub fn list_skills(app: tauri::AppHandle) -> Result<SkillListResponse, String> {
     let services = app.services();
     let mut conn = get_conn(&services.db)?;
-    db::ops::skill::list_skills(&mut conn).map_err(|e| e.to_string())
+    db::ops::skill::list_skills(&mut conn)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(TryInto::try_into)
+        .collect()
 }
 
 #[tauri::command]
-pub fn rescan_skills(app: tauri::AppHandle) -> Result<Vec<Skill>, String> {
+pub fn rescan_skills(app: tauri::AppHandle) -> Result<SkillListResponse, String> {
     let root = skills_root(&app)?;
     let services = app.services();
     let mut conn = get_conn(&services.db)?;
-    skills::sync_index(&mut conn, &root)
+    skills::sync_index(&mut conn, &root)?
+        .into_iter()
+        .map(TryInto::try_into)
+        .collect()
 }
 
 #[tauri::command]
@@ -37,30 +55,30 @@ pub fn get_skill_body(app: tauri::AppHandle, dir_name: String) -> Result<String,
 }
 
 #[tauri::command]
-pub fn create_skill(
-    app: tauri::AppHandle,
-    dir_name: String,
-    llm_description: String,
-    body: String,
-    display_name: Option<String>,
-) -> Result<Skill, String> {
+pub fn create_skill(app: tauri::AppHandle, request: SkillCreateRequest) -> Result<SkillInfoResponse, String> {
     let root = skills_root(&app)?;
-    if root.join(&dir_name).exists() {
-        return Err(format!("A skill directory named '{dir_name}' already exists"));
+    if root.join(&request.dir_name).exists() {
+        return Err(format!("A skill directory named '{}' already exists", request.dir_name));
     }
     // Directory name doubles as the LLM-facing name: one identifier, so the two
     // can never drift apart.
-    skills::write_skill_file(&root, &dir_name, &dir_name, &llm_description, &body)?;
+    skills::write_skill_file(
+        &root,
+        &request.dir_name,
+        &request.dir_name,
+        &request.llm_description,
+        &request.body,
+    )?;
 
     let services = app.services();
     let mut conn = get_conn(&services.db)?;
     skills::sync_index(&mut conn, &root)?;
 
-    if let Some(name) = display_name.filter(|n| !n.trim().is_empty()) {
+    if let Some(name) = request.display_name.0.filter(|n| !n.trim().is_empty()) {
         db::ops::skill::update_skill(
             &mut conn,
-            &dir_name,
-            &SkillUpdate {
+            &request.dir_name,
+            &SkillChangeset {
                 display_name: Some(name),
                 updated_at: Some(now_ms()),
                 ..Default::default()
@@ -68,12 +86,15 @@ pub fn create_skill(
         )
         .map_err(|e| e.to_string())?;
     }
-    db::ops::skill::get_skill(&mut conn, &dir_name).map_err(|e| e.to_string())
+    db::ops::skill::get_skill(&mut conn, &request.dir_name)
+        .map_err(|e| e.to_string())?
+        .try_into()
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SkillPatch {
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SkillUpdateRequest {
+    dir_name: String,
     display_name: Option<String>,
     llm_description: Option<String>,
     body: Option<String>,
@@ -81,23 +102,24 @@ pub struct SkillPatch {
 }
 
 #[tauri::command]
-pub fn update_skill(app: tauri::AppHandle, dir_name: String, updates: SkillPatch) -> Result<Skill, String> {
+pub fn update_skill(app: tauri::AppHandle, request: SkillUpdateRequest) -> Result<SkillInfoResponse, String> {
+    let dir_name = request.dir_name;
     let root = skills_root(&app)?;
     let services = app.services();
     let mut conn = get_conn(&services.db)?;
     let current = db::ops::skill::get_skill(&mut conn, &dir_name).map_err(|e| e.to_string())?;
 
-    if updates.llm_description.is_some() || updates.body.is_some() {
+    if request.llm_description.is_some() || request.body.is_some() {
         if current.is_builtin == 1 {
             return Err(format!(
                 "'{dir_name}' is generated by Meridian; its contents are rewritten on every launch"
             ));
         }
-        let description = updates
+        let description = request
             .llm_description
             .clone()
             .unwrap_or_else(|| current.llm_description.clone());
-        let body = match updates.body.clone() {
+        let body = match request.body.clone() {
             Some(b) => b,
             None => skills::read_skill_body(&root, &dir_name).unwrap_or_default(),
         };
@@ -108,14 +130,15 @@ pub fn update_skill(app: tauri::AppHandle, dir_name: String, updates: SkillPatch
     db::ops::skill::update_skill(
         &mut conn,
         &dir_name,
-        &SkillUpdate {
-            display_name: updates.display_name,
-            is_enabled: updates.is_enabled.map(i32::from),
+        &SkillChangeset {
+            display_name: request.display_name,
+            is_enabled: request.is_enabled.map(i32::from),
             updated_at: Some(now_ms()),
             ..Default::default()
         },
     )
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?
+    .try_into()
 }
 
 #[tauri::command]
@@ -135,56 +158,121 @@ pub fn delete_skill(app: tauri::AppHandle, dir_name: String) -> Result<(), Strin
     db::ops::skill::delete_skill(&mut conn, &dir_name).map_err(|e| e.to_string())
 }
 
-fn parse_layer(layer: &str) -> Result<SkillLayer, String> {
-    match layer {
-        "global" => Ok(SkillLayer::Global),
-        "project" => Ok(SkillLayer::Project),
-        "assistant" => Ok(SkillLayer::Assistant),
-        other => Err(format!("unknown skill binding layer '{other}'")),
-    }
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SkillBindingListRequest {
+    pub layer: SkillLayer,
+    pub anchor_id: Option<String>,
 }
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SkillBindingUpdateRequest {
+    pub layer: SkillLayer,
+    pub anchor_id: Option<String>,
+    pub dir_name: String,
+    pub bound: bool,
+}
+
+pub type SkillBindingNamesResponse = Vec<String>;
 
 #[tauri::command]
 pub fn list_skill_bindings(
     app: tauri::AppHandle,
-    layer: String,
-    anchor_id: Option<String>,
-) -> Result<Vec<String>, String> {
-    let layer = parse_layer(&layer)?;
+    request: SkillBindingListRequest,
+) -> Result<SkillBindingNamesResponse, String> {
     let services = app.services();
     let mut conn = get_conn(&services.db)?;
-    db::ops::skill_binding::list_layer(&mut conn, layer, anchor_id.as_deref()).map_err(|e| e.to_string())
+    db::ops::skill_binding::list_layer(&mut conn, request.layer, request.anchor_id.as_deref())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn set_skill_binding(
     app: tauri::AppHandle,
-    layer: String,
-    anchor_id: Option<String>,
-    dir_name: String,
-    bound: bool,
-) -> Result<Vec<String>, String> {
-    let layer = parse_layer(&layer)?;
-    if layer != SkillLayer::Global && anchor_id.is_none() {
-        return Err(format!("binding at the {} layer needs an anchor id", layer.as_str()));
+    request: SkillBindingUpdateRequest,
+) -> Result<SkillBindingNamesResponse, String> {
+    if request.layer != SkillLayer::Global && request.anchor_id.is_none() {
+        return Err(format!(
+            "binding at the {} layer needs an anchor id",
+            request.layer.as_str()
+        ));
     }
     let services = app.services();
     let mut conn = get_conn(&services.db)?;
 
-    if bound {
+    if request.bound {
         // Each binding costs context on every request, so the cap is per anchor
         // rather than a global storage limit.
-        let count =
-            db::ops::skill_binding::count_layer(&mut conn, layer, anchor_id.as_deref()).map_err(|e| e.to_string())?;
+        let count = db::ops::skill_binding::count_layer(&mut conn, request.layer, request.anchor_id.as_deref())
+            .map_err(|e| e.to_string())?;
         if count >= MAX_BINDINGS_PER_ANCHOR {
             return Err(format!(
                 "At most {MAX_BINDINGS_PER_ANCHOR} skills can be bound here; each one costs context on every message"
             ));
         }
-        db::ops::skill_binding::bind(&mut conn, layer, anchor_id.as_deref(), &dir_name).map_err(|e| e.to_string())?;
+        db::ops::skill_binding::bind(
+            &mut conn,
+            request.layer,
+            request.anchor_id.as_deref(),
+            &request.dir_name,
+        )
+        .map_err(|e| e.to_string())?;
     } else {
-        db::ops::skill_binding::unbind(&mut conn, layer, anchor_id.as_deref(), &dir_name).map_err(|e| e.to_string())?;
+        db::ops::skill_binding::unbind(
+            &mut conn,
+            request.layer,
+            request.anchor_id.as_deref(),
+            &request.dir_name,
+        )
+        .map_err(|e| e.to_string())?;
     }
 
-    db::ops::skill_binding::list_layer(&mut conn, layer, anchor_id.as_deref()).map_err(|e| e.to_string())
+    db::ops::skill_binding::list_layer(&mut conn, request.layer, request.anchor_id.as_deref())
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SkillBindingListRequest, SkillBindingUpdateRequest};
+    use meridian_core::db::models::skill_binding::SkillLayer;
+
+    #[test]
+    fn skill_binding_requests_are_strict_and_typed() {
+        let list = serde_json::from_value::<SkillBindingListRequest>(serde_json::json!({
+            "layer": "project",
+            "anchorId": "project-1"
+        }))
+        .unwrap();
+        assert_eq!(list.layer, SkillLayer::Project);
+        assert_eq!(list.anchor_id.as_deref(), Some("project-1"));
+
+        assert!(
+            serde_json::from_value::<SkillBindingListRequest>(serde_json::json!({
+                "layer": "future",
+                "anchorId": null
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<SkillBindingListRequest>(serde_json::json!({
+                "layer": "global",
+                "anchorId": null,
+                "legacyLayer": "project"
+            }))
+            .is_err()
+        );
+
+        let update = serde_json::from_value::<SkillBindingUpdateRequest>(serde_json::json!({
+            "layer": "assistant",
+            "anchorId": "assistant-1",
+            "dirName": "review",
+            "bound": true
+        }))
+        .unwrap();
+        assert_eq!(update.layer, SkillLayer::Assistant);
+        assert_eq!(update.anchor_id.as_deref(), Some("assistant-1"));
+        assert_eq!(update.dir_name, "review");
+        assert!(update.bound);
+    }
 }

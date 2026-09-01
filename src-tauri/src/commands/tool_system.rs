@@ -1,118 +1,147 @@
 use crate::ServicesExt;
+use crate::commands::entity_response::{
+    CustomToolInfoResponse, CustomToolListResponse, ToolCategoryListResponse, ToolPresetInfoResponse,
+    ToolPresetListResponse,
+};
+use crate::commands::model_config::RequiredNullable;
 use meridian_core::db;
-use meridian_core::db::models::custom_tool::{CustomTool, CustomToolUpdate, NewCustomTool};
-use meridian_core::db::models::tool_category::ToolCategory;
-use meridian_core::db::models::tool_preset::{NewToolPreset, ToolPreset, ToolPresetUpdate};
+use meridian_core::db::models::custom_tool::{CustomToolChangeset, CustomToolInsert};
+use meridian_core::db::models::tool_preset::{ToolPresetChangeset, ToolPresetInsert};
 use meridian_core::secrets::{SecretName, SecretScope};
+use meridian_core::tools::Permission;
 use meridian_core::util::{double_option, get_conn, now_ms};
 
 /// Rebuild the runtime registry's custom tool set from the DB so permission
 /// changes, disables and deletions apply immediately, not on next restart.
-fn reload_custom_tools(app: &tauri::AppHandle) {
+fn reload_custom_tools(app: &tauri::AppHandle) -> Result<(), String> {
     let services = app.services();
-    // Callers do not check the outcome, so a failure here means the database was
-    // updated but the running registry was not: the user disables a tool, the
-    // save succeeds, and the model keeps calling it.
-    let mut conn = match services.db.get() {
-        Ok(conn) => conn,
-        Err(e) => {
-            tracing::warn!(error = %e, "custom tools not reloaded; the change takes effect on restart");
-            return;
-        }
-    };
-    match db::ops::custom_tool::list_enabled_tools(&mut conn) {
-        Ok(list) => {
-            services.tools.set_custom_tools(
-                list.iter()
-                    .map(|ct| {
-                        std::sync::Arc::new(meridian_core::tools::custom::CustomToolExecutor::from_db(ct))
-                            as std::sync::Arc<dyn meridian_core::tools::Tool>
-                    })
-                    .collect(),
-            );
-        }
-        Err(e) => tracing::warn!(
-            error = %e,
-            "custom tools not reloaded; the change takes effect on restart"
-        ),
-    }
+    // A reload failure is part of the command result: reporting a successful
+    // save while the running registry kept the old definition is not success.
+    let mut conn = services.db.get().map_err(|e| e.to_string())?;
+    let list = db::ops::custom_tool::list_enabled_tools(&mut conn).map_err(|e| e.to_string())?;
+    let tools = list
+        .iter()
+        .map(|ct| {
+            meridian_core::tools::custom::CustomToolExecutor::from_db(ct)
+                .map(|tool| std::sync::Arc::new(tool) as std::sync::Arc<dyn meridian_core::tools::Tool>)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    services.tools.set_custom_tools(tools);
+    Ok(())
+}
+
+fn encode_string_list(items: &[String]) -> Result<String, String> {
+    serde_json::to_string(items).map_err(|error| error.to_string())
+}
+
+fn encode_json_object(object: &serde_json::Map<String, serde_json::Value>) -> Result<String, String> {
+    serde_json::to_string(object).map_err(|error| error.to_string())
+}
+
+fn default_parameters_schema() -> serde_json::Map<String, serde_json::Value> {
+    let mut schema = serde_json::Map::new();
+    schema.insert("type".to_string(), serde_json::Value::String("object".to_string()));
+    schema.insert(
+        "properties".to_string(),
+        serde_json::Value::Object(serde_json::Map::new()),
+    );
+    schema
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CustomToolPatch {
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CustomToolCreateRequest {
+    name: String,
+    description: String,
+    command: String,
+    category_id: RequiredNullable<String>,
+    parameters_schema: RequiredNullable<serde_json::Map<String, serde_json::Value>>,
+    args_template: RequiredNullable<String>,
+    working_directory: RequiredNullable<String>,
+    timeout_ms: RequiredNullable<i32>,
+    permission: RequiredNullable<Permission>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CustomToolUpdateRequest {
+    id: String,
     name: Option<String>,
     description: Option<String>,
     command: Option<String>,
     #[serde(default, deserialize_with = "double_option")]
     category_id: Option<Option<String>>,
-    parameters_schema: Option<String>,
+    parameters_schema: Option<serde_json::Map<String, serde_json::Value>>,
     #[serde(default, deserialize_with = "double_option")]
     args_template: Option<Option<String>>,
     #[serde(default, deserialize_with = "double_option")]
     working_directory: Option<Option<String>>,
     #[serde(default, deserialize_with = "double_option")]
     timeout_ms: Option<Option<i32>>,
-    permission: Option<String>,
-    is_enabled: Option<i32>,
+    permission: Option<Permission>,
+    is_enabled: Option<bool>,
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ToolPresetPatch {
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ToolPresetUpdateRequest {
+    id: String,
     name: Option<String>,
     #[serde(default, deserialize_with = "double_option")]
     description: Option<Option<String>>,
-    tool_names: Option<String>,
+    tool_names: Option<Vec<String>>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ToolPresetCreateRequest {
+    name: String,
+    description: RequiredNullable<String>,
+    tool_names: Vec<String>,
 }
 
 #[tauri::command]
-pub fn list_tool_categories(app: tauri::AppHandle) -> Result<Vec<ToolCategory>, String> {
+pub fn list_tool_categories(app: tauri::AppHandle) -> Result<ToolCategoryListResponse, String> {
     let services = app.services();
     let mut conn = get_conn(&services.db)?;
-    db::ops::tool_category::list_categories(&mut conn).map_err(|e| e.to_string())
+    db::ops::tool_category::list_categories(&mut conn)
+        .map(|rows| rows.into_iter().map(Into::into).collect())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn list_custom_tools(app: tauri::AppHandle) -> Result<Vec<CustomTool>, String> {
+pub fn list_custom_tools(app: tauri::AppHandle) -> Result<CustomToolListResponse, String> {
     let services = app.services();
     let mut conn = get_conn(&services.db)?;
-    db::ops::custom_tool::list_tools(&mut conn).map_err(|e| e.to_string())
+    let rows = db::ops::custom_tool::list_tools(&mut conn).map_err(|e| e.to_string())?;
+    rows.into_iter().map(TryInto::try_into).collect()
 }
 
 #[tauri::command]
 pub fn create_custom_tool(
     app: tauri::AppHandle,
-    name: String,
-    description: String,
-    command: String,
-    category_id: Option<String>,
-    parameters_schema: Option<String>,
-    args_template: Option<String>,
-    working_directory: Option<String>,
-    timeout_ms: Option<i32>,
-    permission: Option<String>,
-) -> Result<CustomTool, String> {
+    request: CustomToolCreateRequest,
+) -> Result<CustomToolInfoResponse, String> {
     let services = app.services();
     let mut conn = get_conn(&services.db)?;
     let id = uuid::Uuid::new_v4().to_string();
     let now = now_ms();
-    let schema = parameters_schema
-        .as_deref()
-        .unwrap_or(r#"{"type":"object","properties":{}}"#);
-    let perm = permission.as_deref().unwrap_or("ask");
+    let parameters_schema = request.parameters_schema.0.unwrap_or_else(default_parameters_schema);
+    let encoded_parameters_schema = encode_json_object(&parameters_schema)?;
+    let permission = request.permission.0.unwrap_or(Permission::Ask);
+    let perm = permission.as_str();
     let created = db::ops::custom_tool::create_tool(
         &mut conn,
-        &NewCustomTool {
+        &CustomToolInsert {
             id: &id,
-            name: &name,
-            description: &description,
-            category_id: category_id.as_deref(),
-            parameters_schema: schema,
-            command: &command,
-            args_template: args_template.as_deref(),
-            working_directory: working_directory.as_deref(),
-            timeout_ms,
+            name: &request.name,
+            description: &request.description,
+            category_id: request.category_id.0.as_deref(),
+            parameters_schema: &encoded_parameters_schema,
+            command: &request.command,
+            args_template: request.args_template.0.as_deref(),
+            working_directory: request.working_directory.0.as_deref(),
+            timeout_ms: request.timeout_ms.0,
             permission: perm,
             is_enabled: 1,
             sort_order: 0,
@@ -122,36 +151,40 @@ pub fn create_custom_tool(
     )
     .map_err(|e| e.to_string())?;
     drop(conn);
-    reload_custom_tools(&app);
-    Ok(created)
+    reload_custom_tools(&app)?;
+    created.try_into()
 }
 
 #[tauri::command]
-pub fn update_custom_tool(app: tauri::AppHandle, id: String, updates: CustomToolPatch) -> Result<CustomTool, String> {
+pub fn update_custom_tool(
+    app: tauri::AppHandle,
+    request: CustomToolUpdateRequest,
+) -> Result<CustomToolInfoResponse, String> {
     let services = app.services();
     let mut conn = get_conn(&services.db)?;
+    let parameters_schema = request.parameters_schema.as_ref().map(encode_json_object).transpose()?;
     let updated = db::ops::custom_tool::update_tool(
         &mut conn,
-        &id,
-        &CustomToolUpdate {
-            name: updates.name,
-            description: updates.description,
-            command: updates.command,
-            category_id: updates.category_id,
-            parameters_schema: updates.parameters_schema,
-            args_template: updates.args_template,
-            working_directory: updates.working_directory,
-            timeout_ms: updates.timeout_ms,
-            permission: updates.permission,
-            is_enabled: updates.is_enabled,
+        &request.id,
+        &CustomToolChangeset {
+            name: request.name,
+            description: request.description,
+            command: request.command,
+            category_id: request.category_id,
+            parameters_schema,
+            args_template: request.args_template,
+            working_directory: request.working_directory,
+            timeout_ms: request.timeout_ms,
+            permission: request.permission.map(|permission| permission.as_str().to_string()),
+            is_enabled: request.is_enabled.map(i32::from),
             updated_at: Some(now_ms()),
             ..Default::default()
         },
     )
     .map_err(|e| e.to_string())?;
     drop(conn);
-    reload_custom_tools(&app);
-    Ok(updated)
+    reload_custom_tools(&app)?;
+    updated.try_into()
 }
 
 #[tauri::command]
@@ -160,61 +193,67 @@ pub fn delete_custom_tool(app: tauri::AppHandle, id: String) -> Result<(), Strin
     let mut conn = get_conn(&services.db)?;
     db::ops::custom_tool::delete_tool(&mut conn, &id).map_err(|e| e.to_string())?;
     drop(conn);
-    reload_custom_tools(&app);
+    reload_custom_tools(&app)?;
     Ok(())
 }
 
 #[tauri::command]
-pub fn list_tool_presets(app: tauri::AppHandle) -> Result<Vec<ToolPreset>, String> {
+pub fn list_tool_presets(app: tauri::AppHandle) -> Result<ToolPresetListResponse, String> {
     let services = app.services();
     let mut conn = get_conn(&services.db)?;
-    db::ops::tool_preset::list_presets(&mut conn).map_err(|e| e.to_string())
+    let rows = db::ops::tool_preset::list_presets(&mut conn).map_err(|e| e.to_string())?;
+    rows.into_iter().map(TryInto::try_into).collect()
 }
 
 #[tauri::command]
 pub fn create_tool_preset(
     app: tauri::AppHandle,
-    name: String,
-    description: Option<String>,
-    tool_names: String,
-) -> Result<ToolPreset, String> {
+    request: ToolPresetCreateRequest,
+) -> Result<ToolPresetInfoResponse, String> {
     let services = app.services();
     let mut conn = get_conn(&services.db)?;
     let id = uuid::Uuid::new_v4().to_string();
     let now = now_ms();
-    db::ops::tool_preset::create_preset(
+    let encoded_tool_names = encode_string_list(&request.tool_names)?;
+    let row = db::ops::tool_preset::create_preset(
         &mut conn,
-        &NewToolPreset {
+        &ToolPresetInsert {
             id: &id,
-            name: &name,
-            description: description.as_deref(),
+            name: &request.name,
+            description: request.description.0.as_deref(),
             icon: None,
-            tool_names: &tool_names,
+            tool_names: &encoded_tool_names,
             is_builtin: 0,
             sort_order: 0,
             created_at: now,
             updated_at: now,
         },
     )
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+    row.try_into()
 }
 
 #[tauri::command]
-pub fn update_tool_preset(app: tauri::AppHandle, id: String, updates: ToolPresetPatch) -> Result<ToolPreset, String> {
+pub fn update_tool_preset(
+    app: tauri::AppHandle,
+    request: ToolPresetUpdateRequest,
+) -> Result<ToolPresetInfoResponse, String> {
     let services = app.services();
     let mut conn = get_conn(&services.db)?;
-    db::ops::tool_preset::update_preset(
+    let tool_names = request.tool_names.as_deref().map(encode_string_list).transpose()?;
+    let row = db::ops::tool_preset::update_preset(
         &mut conn,
-        &id,
-        &ToolPresetUpdate {
-            name: updates.name,
-            description: updates.description,
-            tool_names: updates.tool_names,
+        &request.id,
+        &ToolPresetChangeset {
+            name: request.name,
+            description: request.description,
+            tool_names,
             updated_at: Some(now_ms()),
             ..Default::default()
         },
     )
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+    row.try_into()
 }
 
 #[tauri::command]
@@ -224,31 +263,136 @@ pub fn delete_tool_preset(app: tauri::AppHandle, id: String) -> Result<(), Strin
     db::ops::tool_preset::delete_preset(&mut conn, &id).map_err(|e| e.to_string())
 }
 
-fn service_secret_name(service: &str) -> String {
-    format!("SERVICE_{}_KEY", service.replace('-', "_").to_uppercase())
+#[derive(Debug, Clone, Copy, serde::Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ServiceKey {
+    Tavily,
+    ZhipuSearch,
+    FishAudio,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ServiceKeyUpdateRequest {
+    pub service: ServiceKey,
+    pub key: String,
+}
+
+impl ServiceKey {
+    fn secret_name(self) -> &'static str {
+        match self {
+            Self::Tavily => "SERVICE_TAVILY_KEY",
+            Self::ZhipuSearch => "SERVICE_ZHIPU_SEARCH_KEY",
+            Self::FishAudio => "SERVICE_FISH_AUDIO_KEY",
+        }
+    }
 }
 
 #[tauri::command]
-pub fn set_service_key(app: tauri::AppHandle, service: String, key: String) -> Result<(), String> {
+pub fn set_service_key(app: tauri::AppHandle, request: ServiceKeyUpdateRequest) -> Result<(), String> {
     let services = app.services();
-    let name = service_secret_name(&service);
-    let name = SecretName::new(&name).map_err(|e| format!("invalid service name: {e}"))?;
+    let name = SecretName::new(request.service.secret_name()).expect("service key names are static and valid");
     services
         .secrets
-        .set(&SecretScope::Global, &name, &key)
+        .set(&SecretScope::Global, &name, &request.key)
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn get_service_key_exists(app: tauri::AppHandle, service: String) -> Result<bool, String> {
+pub fn get_service_key_exists(app: tauri::AppHandle, service: ServiceKey) -> Result<bool, String> {
     let services = app.services();
-    let name = service_secret_name(&service);
-    let name = SecretName::new(&name).map_err(|e| format!("invalid service name: {e}"))?;
-    let exists = services
+    let name = SecretName::new(service.secret_name()).expect("service key names are static and valid");
+    services
         .secrets
         .get(&SecretScope::Global, &name)
-        .ok()
-        .flatten()
-        .is_some();
-    Ok(exists)
+        .map(|value| value.is_some())
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn custom_tool_update_rejects_unknown_permissions_and_fields() {
+        assert!(
+            serde_json::from_value::<CustomToolUpdateRequest>(serde_json::json!({
+                "id": "tool-1",
+                "permission": "future"
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<CustomToolUpdateRequest>(serde_json::json!({
+                "id": "tool-1",
+                "permission": "ask",
+                "extra": true
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<CustomToolUpdateRequest>(serde_json::json!({
+                "id": "tool-1",
+                "isEnabled": 1
+            }))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn service_key_update_request_is_closed_and_typed() {
+        assert!(
+            serde_json::from_value::<ServiceKeyUpdateRequest>(serde_json::json!({
+                "service": "TAVILY",
+                "key": "secret"
+            }))
+            .is_ok()
+        );
+        assert!(
+            serde_json::from_value::<ServiceKeyUpdateRequest>(serde_json::json!({
+                "service": "FUTURE_SEARCH",
+                "key": "secret"
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<ServiceKeyUpdateRequest>(serde_json::json!({
+                "service": "TAVILY",
+                "key": "secret",
+                "scope": "global"
+            }))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn custom_tool_parameters_schema_is_a_json_object() {
+        assert!(
+            serde_json::from_value::<CustomToolUpdateRequest>(serde_json::json!({
+                "id": "tool-1",
+                "parametersSchema": {"type": "object", "properties": {}}
+            }))
+            .is_ok()
+        );
+        assert!(
+            serde_json::from_value::<CustomToolUpdateRequest>(serde_json::json!({
+                "id": "tool-1",
+                "parametersSchema": "{\"type\":\"object\"}"
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<CustomToolUpdateRequest>(serde_json::json!({
+                "id": "tool-1",
+                "parametersSchema": []
+            }))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn service_keys_are_closed() {
+        assert!(serde_json::from_str::<ServiceKey>(r#""TAVILY""#).is_ok());
+        assert!(serde_json::from_str::<ServiceKey>(r#""FUTURE_SEARCH""#).is_err());
+    }
 }

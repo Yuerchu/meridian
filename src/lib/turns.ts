@@ -1,4 +1,4 @@
-import type { ContentBlock, Message, ToolCallDisplay, TurnUsageSummary } from '@/types'
+import type { ContentBlock, MessageRating, MessageViewModel, ToolCallDisplay, TurnUsageInfoResponse } from '@/types'
 
 /**
  * A turn is one user message plus everything the agent produced in response.
@@ -54,7 +54,7 @@ export interface TurnResult {
   modelId: string | null
   inputTokens: number | null
   outputTokens: number | null
-  rating: number | null
+  rating: MessageRating | null
 }
 
 export interface TurnSummary {
@@ -68,8 +68,8 @@ export interface Turn {
   /** Stable across regeneration: the user row's id, so switching which answer is
    *  active does not change the turn's identity (and its scroll anchor). */
   id: string
-  userMessage: Message | null
-  assistantMessages: Message[]
+  userMessage: MessageViewModel | null
+  assistantMessages: MessageViewModel[]
   /** Everything leading up to the conclusion. Collapsed by default. */
   steps: TurnStep[]
   /** Steps that must stay reachable even when collapsed, because they are
@@ -87,7 +87,7 @@ export interface Turn {
   /** Backend-priced audit summary for the run on the active branch. Null for
    *  rows written before turns were recorded, and while a live turn has not
    *  reached its post-stop snapshot yet. */
-  usage: TurnUsageSummary | null
+  usage: TurnUsageInfoResponse | null
   lastMessageId: string
   firstSortOrder: number
 }
@@ -152,8 +152,8 @@ export interface BuildTurnsContext {
    *  the backend's own record of what was running. */
   crashedTurnIds?: ReadonlySet<string>
   /** Cost summaries keyed by the backend's run id. Kept as a map so this pure
-   *  transcript builder does not need to understand `TurnRecord` statuses. */
-  usageByTurnId?: ReadonlyMap<string, TurnUsageSummary>
+   *  transcript builder does not need to understand `TurnInfoResponse` statuses. */
+  usageByTurnId?: ReadonlyMap<string, TurnUsageInfoResponse>
 }
 
 /** Tools that block the turn while they wait for a response. `update_todos` is
@@ -161,7 +161,7 @@ export interface BuildTurnsContext {
  *  surfacing it again outside the collapsed region is noise. */
 const INTERACTIVE_TOOLS = new Set(['ask_user', 'AskUserQuestion', 'enter_plan', 'exit_plan', 'ExitPlanMode'])
 
-function blocksOf(message: Message): ContentBlock[] {
+function blocksOf(message: MessageViewModel): ContentBlock[] {
   if (message._blocks && message._blocks.length > 0) return message._blocks
   // Pre-`_blocks` rows, and any row whose stream produced nothing structured.
   return message.content ? [{ type: 'text', text: message.content }] : []
@@ -230,11 +230,11 @@ function summarize(steps: TurnStep[]): TurnSummary {
 }
 
 interface OpenTurn {
-  userMessage: Message | null
-  assistantMessages: Message[]
+  userMessage: MessageViewModel | null
+  assistantMessages: MessageViewModel[]
 }
 
-export function buildTurns(messages: Message[], ctx: BuildTurnsContext = {}): Turn[] {
+export function buildTurns(messages: MessageViewModel[], ctx: BuildTurnsContext = {}): Turn[] {
   const groups: OpenTurn[] = []
   let current: OpenTurn | null = null
 
@@ -286,7 +286,7 @@ function pathTurnId(group: OpenTurn): string | null {
   return group.assistantMessages.length > 0 ? null : (group.userMessage?.turn_id ?? null)
 }
 
-function finalize(group: OpenTurn, isStreaming: boolean, didCrash: boolean, usage: TurnUsageSummary | null): Turn {
+function finalize(group: OpenTurn, isStreaming: boolean, didCrash: boolean, usage: TurnUsageInfoResponse | null): Turn {
   const { userMessage, assistantMessages } = group
 
   const flat: TurnStep[] = []
@@ -372,7 +372,7 @@ function finalize(group: OpenTurn, isStreaming: boolean, didCrash: boolean, usag
 
 /** Null rather than 0 when nothing reported usage, so the footer can tell
  *  "no data" apart from "cost nothing". */
-function sumTokens(messages: Message[]): { input: number | null; output: number | null } {
+function sumTokens(messages: MessageViewModel[]): { input: number | null; output: number | null } {
   let input: number | null = null
   let output: number | null = null
   for (const m of messages) {
@@ -385,7 +385,7 @@ function sumTokens(messages: Message[]): { input: number | null; output: number 
 /** Rows written before per-message timestamps all share the turn's start time,
  *  so a zero difference means "unknown", not "instant". Callers show a step
  *  count instead of claiming 0s. */
-function elapsed(first: Message | null, last: Message | null | undefined): number | null {
+function elapsed(first: MessageViewModel | null, last: MessageViewModel | null | undefined): number | null {
   if (!first || !last) return null
   const ms = last.created_at - first.created_at
   return ms > 0 ? ms : null

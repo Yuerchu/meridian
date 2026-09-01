@@ -4,7 +4,7 @@ import { Command } from '@heroui-pro/react/command'
 import { Archive, Comment, FolderOpen, Magnifier, Plus, TextAlignLeft } from '@gravity-ui/icons'
 
 import { api } from '@/api'
-import type { Conversation, Project, TranscriptHit } from '@/types'
+import type { ConversationInfoResponse, ConversationSearchHitInfoResponse, ProjectInfoResponse } from '@/types'
 import { visibleSettingsTabs, type SettingsTab } from '@/components/settings/tabs'
 import { useHistoryLevel } from '@/hooks/use-history-level'
 import { usePlatform } from '@/hooks/use-platform'
@@ -45,8 +45,8 @@ export function CommandPalette({
 }: {
   isOpen: boolean
   onOpenChange: (open: boolean) => void
-  conversations: Conversation[]
-  projects: Project[]
+  conversations: ConversationInfoResponse[]
+  projects: ProjectInfoResponse[]
   onSelectConversation: (id: string) => void
   onSelectProject: (id: string | null) => void
   onOpenSettingsTab: (tab: SettingsTab) => void
@@ -57,7 +57,7 @@ export function CommandPalette({
   const [query, setQuery] = useState('')
   /** What the transcripts say about the query — the backend's answer, since
    *  message bodies are not in memory here. Empty until a search lands. */
-  const [transcriptHits, setTranscriptHits] = useState<TranscriptHit[]>([])
+  const [transcriptHits, setTranscriptHits] = useState<ConversationSearchHitInfoResponse[]>([])
 
   // The palette is a level, not a screen: the back gesture dismisses it before
   // it reaches anything behind. A no-op where there is no back gesture.
@@ -76,7 +76,7 @@ export function CommandPalette({
     let cancelled = false
     const timer = setTimeout(() => {
       api
-        .searchConversations(trimmed)
+        .searchConversations({ query: trimmed, limit: null })
         .then((hits) => {
           if (!cancelled) setTranscriptHits(hits)
         })

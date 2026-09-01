@@ -1,7 +1,6 @@
-use diesel::prelude::*;
-use serde::Serialize;
-
 use crate::db::schema::audit_messages;
+use crate::decimal::Decimal;
+use diesel::prelude::*;
 
 /// One thing that was said, recorded where deleting a conversation cannot reach
 /// it.
@@ -10,9 +9,9 @@ use crate::db::schema::audit_messages;
 /// gone, and the facts needed to read this one are copied in beside them. See
 /// migration 29 for why none of it is a foreign key.
 #[cfg_attr(not(test), allow(dead_code))]
-#[derive(Debug, Clone, Queryable, Selectable, Serialize)]
+#[derive(Debug, Clone, Queryable, Selectable)]
 #[diesel(table_name = audit_messages)]
-pub struct AuditMessage {
+pub struct AuditMessageRow {
     pub id: String,
     /// When the record was written, as distinct from when the message was sent.
     pub recorded_at: i64,
@@ -45,17 +44,17 @@ pub struct AuditMessage {
     /// Price per million tokens, as it stood when this row was written. NULL on
     /// anything recorded before migration 30, where the only price that exists
     /// is whatever `model_configs` says today.
-    pub input_price: Option<f64>,
-    pub output_price: Option<f64>,
-    pub cache_read_price: Option<f64>,
-    pub cache_write_price: Option<f64>,
+    pub input_price: Option<Decimal>,
+    pub output_price: Option<Decimal>,
+    pub cache_read_price: Option<Decimal>,
+    pub cache_write_price: Option<Decimal>,
     /// The bot account that answered. NULL for desktop traffic, which is a
     /// statement rather than a gap.
     pub self_id: Option<i64>,
     /// Billable provider-side tool invocations on this request, and what one
     /// cost per thousand — snapshotted for the same reason the token rates are.
     pub server_tool_calls: Option<i32>,
-    pub server_tool_price: Option<f64>,
+    pub server_tool_price: Option<Decimal>,
     /// Whether a per-request price is owed at all — see `agent::pricing::BillingMode`.
     ///
     /// Distinguishes "nobody has priced this model" from "this request draws on
@@ -66,7 +65,7 @@ pub struct AuditMessage {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = audit_messages)]
-pub struct NewAuditMessage<'a> {
+pub struct AuditMessageInsert<'a> {
     pub id: &'a str,
     pub recorded_at: i64,
     pub message_id: &'a str,
@@ -87,15 +86,15 @@ pub struct NewAuditMessage<'a> {
     pub cache_read_tokens: Option<i32>,
     pub cache_write_tokens: Option<i32>,
     pub created_at: i64,
-    pub input_price: Option<f64>,
-    pub output_price: Option<f64>,
-    pub cache_read_price: Option<f64>,
-    pub cache_write_price: Option<f64>,
+    pub input_price: Option<Decimal>,
+    pub output_price: Option<Decimal>,
+    pub cache_read_price: Option<Decimal>,
+    pub cache_write_price: Option<Decimal>,
     pub self_id: Option<i64>,
     /// Billable provider-side tool invocations on this request, and what one
     /// cost per thousand — snapshotted for the same reason the token rates are.
     pub server_tool_calls: Option<i32>,
-    pub server_tool_price: Option<f64>,
+    pub server_tool_price: Option<Decimal>,
     /// Defaults to `metered` at the database level, so a caller that says
     /// nothing gets exactly today's behaviour.
     pub billing_mode: &'a str,

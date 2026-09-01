@@ -37,7 +37,7 @@ impl PlanStatus {
 
 #[derive(Debug, Clone, Queryable, Selectable, Serialize)]
 #[diesel(table_name = mode_artifacts)]
-pub struct Plan {
+pub struct ModeArtifactRow {
     pub id: String,
     pub conversation_id: String,
     pub kind: String,
@@ -49,7 +49,7 @@ pub struct Plan {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = mode_artifacts)]
-pub struct NewPlan<'a> {
+pub struct ModeArtifactInsert<'a> {
     pub id: &'a str,
     pub conversation_id: &'a str,
     pub kind: &'a str,

@@ -3,129 +3,267 @@
 // pointed at another machine. See `lib/transport.ts`.
 import { invoke } from '@/lib/transport'
 import type {
-  AcpCheck,
-  AcpConfig,
-  AcpConfigOption,
-  BlameResult,
-  AcpConversationSession,
-  AcpDiscoveredSession,
-  AcpImportOutcome,
-  AppInfo,
-  Assistant,
-  ChatMode,
-  CommandTurnOutcome,
-  CodexAuthStatus,
-  ContextInfo,
-  Conversation,
-  ConversationSnapshot,
-  CustomTool,
-  Emoji,
-  EmojiPack,
-  GitDiffResult,
-  GitStatusResult,
-  HooksConfig,
-  HooksStatus,
-  ListenConfig,
-  JournalVersion,
-  ListenStatus,
-  LogFileInfo,
-  LogPage,
-  LogQuery,
-  LogSettings,
-  McpConnectionStatus,
-  McpServer,
-  McpToolDef,
-  Memory,
-  MemoryEnums,
-  MemorySubject,
-  MessageContextContent,
-  ModelConfig,
-  ModelConfigInput,
-  ModelInfo,
-  PendingApprovalInfo,
-  Project,
-  PromptTemplate,
-  Provider,
-  ProviderBalance,
-  ProviderCapabilities,
-  ProviderCatalogEntry,
-  QueueDelivery,
-  QueuedPrompt,
-  SafRootEntry,
-  Skill,
-  SkillLayer,
-  TemplateVariable,
-  TodoListView,
-  ToolCategory,
-  ToolInfo,
-  ToolPreset,
-  TranscriptHit,
-  UsageBucket,
-  UsageDimension,
-  UsageFilter,
-  VoiceModelStatus,
-  VoiceTranscript,
-  WorkspaceFileContent,
-  WorkspaceReferenceInput,
-  WorkspaceReferenceProbe,
-  WorkspaceReferencePreview,
-  WorkspaceReferenceSuggestion,
-  WorkspaceRoot,
-  WorkspaceTreeEntry,
+  AcpCheckResponse,
+  AcpConfigInfoResponse,
+  AcpConfigUpdateRequest,
+  AcpConfigOptionListResponse,
+  JournalBlameRequest,
+  JournalBlameResponse,
+  AcpConversationSessionInfoResponse,
+  AcpDiscoveredSessionListResponse,
+  AcpImportSessionRequest,
+  AcpImportSessionResponse,
+  AcpLiveConversationIdsResponse,
+  AcpPromptSendRequest,
+  AcpSessionAttachRequest,
+  AcpSessionConfigReadRequest,
+  AcpSessionConfigUpdateRequest,
+  AcpSessionListRequest,
+  AcpSessionOpenRequest,
+  AskResponseRequest,
+  AppInfoResponse,
+  AssistantEmojiPackAssignmentRequest,
+  AssistantInfoResponse,
+  AssistantListResponse,
+  AssistantCreateRequest,
+  AssistantUpdateRequest,
+  ChatRequest,
+  ChatStopRequest,
+  UserCommandRunRequest,
+  UserCommandResultReadRequest,
+  UserCommandResultResponse,
+  CodexAuthStatusResponse,
+  ContextInfoResponse,
+  ConversationAcceptEditsUpdateRequest,
+  ConversationAssistantUpdateRequest,
+  ConversationCompactionRequest,
+  ConversationCreateRequest,
+  ConversationInfoResponse,
+  ConversationListByProjectRequest,
+  ConversationListResponse,
+  ConversationModeUpdateRequest,
+  ConversationProjectUpdateRequest,
+  ConversationReasoningPreferencesUpdateRequest,
+  ConversationSearchHitListResponse,
+  ConversationSearchRequest,
+  ConversationSnapshotRequest,
+  ConversationSnapshotResponse,
+  ConversationSteerRequest,
+  ConversationExportRequest,
+  ConversationExportResponse,
+  ConversationTitleUpdateRequest,
+  CustomToolInfoResponse,
+  CustomToolListResponse,
+  CustomToolCreateRequest,
+  CustomToolUpdateRequest,
+  EmojiInfoResponse,
+  EmojiImportRequest,
+  EmojiListResponse,
+  EmojiPackCreateRequest,
+  EmojiPackInfoResponse,
+  EmojiPackListResponse,
+  EmojiRenameRequest,
+  EmojiSemanticsConfirmRequest,
+  HookConfigInfoResponse,
+  HookConfigUpdateRequest,
+  HookStatusInfoResponse,
+  ListenConfigInfoResponse,
+  ListenConfigUpdateRequest,
+  ListenAddressesResponse,
+  JournalFileHistoryRequest,
+  JournalVersionContentRequest,
+  JournalVersionContentResponse,
+  JournalVersionListResponse,
+  ListenStatusResponse,
+  LogFileListResponse,
+  LogLevelUpdateRequest,
+  LogExportRequest,
+  LogExportResponse,
+  LogPageResponse,
+  LogQueryRequest,
+  LogSettingsResponse,
+  McpConnectionStatusListResponse,
+  McpServerCreateRequest,
+  McpServerInfoResponse,
+  McpServerListResponse,
+  McpServerUpdateRequest,
+  McpServerToolListResponse,
+  McpToolListResponse,
+  MemoryInfoResponse,
+  MemoryListResponse,
+  MemoryEnumsResponse,
+  MemoryScopedUpsertRequest,
+  MemoryUpsertRequest,
+  MemoryUpdateRequest,
+  MemorySubjectListResponse,
+  MemorySubjectFlagsUpdateRequest,
+  MessageBranchSwitchRequest,
+  MessageContextContentResponse,
+  MessageContextReadRequest,
+  MessageDeleteRequest,
+  MessageFileUploadRequest,
+  MessageRatingUpdateRequest,
+  ModelConfigInfoResponse,
+  ModelConfigListResponse,
+  ModelConfigReadRequest,
+  ModelConfigUpsertRequest,
+  OneBotConfigInfoResponse,
+  OneBotConfigUpdateRequest,
+  ProviderModelListResponse,
+  OneBotStatusInfoResponse,
+  PendingApprovalListResponse,
+  PlanDocumentInfoResponse,
+  PlanFileConflictResolveRequest,
+  PlanReviewDecisionRequest,
+  PlanReviewDecisionResponse,
+  PlanReviewDeliveryContinueRequest,
+  PlanReviewDeliveryInfoResponse,
+  PlanReviewDeliveryReadRequest,
+  PlanReviewDraftDiscardRequest,
+  PlanReviewDraftSaveRequest,
+  PlanReviewDraftSaveResponse,
+  PlanReviewInfoResponse,
+  PlanReviewReadRequest,
+  PlanRevisionListRequest,
+  PlanRevisionListResponse,
+  PlatformInfoResponse,
+  PreferenceInfoResponse,
+  PreferenceKey,
+  PreferenceReadRequest,
+  PreferenceUpdateRequest,
+  ProjectInfoResponse,
+  ProjectListResponse,
+  ProjectCreateRequest,
+  ProjectUpdateRequest,
+  PromptTemplateCreateRequest,
+  PromptTemplateInfoResponse,
+  PromptTemplateListResponse,
+  PromptTemplateUpdateRequest,
+  ProviderInfoResponse,
+  ProviderListResponse,
+  ProviderCapabilitiesReadRequest,
+  ProviderCreateRequest,
+  ProviderKeyUpdateRequest,
+  ProviderModelListRequest,
+  ProviderUpdateRequest,
+  ProviderBalanceInfoResponse,
+  ProviderCapabilitiesInfoResponse,
+  ProviderCatalogEntryListResponse,
+  QueuedPromptCreateRequest,
+  QueuedPromptDeliveryUpdateRequest,
+  QueuedPromptInfoResponse,
+  QueuedPromptListResponse,
+  QueuedPromptRemoveRequest,
+  QueuedPromptReorderRequest,
+  SafRootListResponse,
+  SecretDeleteRequest,
+  SecretReadRequest,
+  SecretUpsertRequest,
+  ServiceKey,
+  ServiceKeyUpdateRequest,
+  SkillInfoResponse,
+  SkillBindingNamesResponse,
+  SkillListResponse,
+  SkillBindingListRequest,
+  SkillBindingUpdateRequest,
+  SkillCreateRequest,
+  SkillUpdateRequest,
+  TemplateVariableListResponse,
+  TodoInfoResponse,
+  ToolCallDenyRequest,
+  ToolCategoryListResponse,
+  ToolPresetCreateRequest,
+  ToolPresetInfoResponse,
+  ToolPresetListResponse,
+  ToolPresetUpdateRequest,
+  UsageReportRequest,
+  UsageBucketListResponse,
+  UploadFileResponse,
+  VoiceModelDownloadRequest,
+  VoiceModelImportRequest,
+  VoiceModelStatusInfoResponse,
+  VoicePcmTranscriptionRequest,
+  VoiceProbeEchoRequest,
+  VoiceSendReadinessInfoResponse,
+  VoiceCorpusDeleteRequest,
+  VoiceCorpusDeleteResponse,
+  VoiceCorpusExportRequest,
+  VoiceCorpusExportResponse,
+  VoiceCorpusForgetRequest,
+  VoiceCorpusForgetResponse,
+  VoiceCorpusOptoutUpdateRequest,
+  VoiceCorpusSessionListResponse,
+  VoiceTranscriptResponse,
+  WorkspaceEditorOpenRequest,
+  WorkspaceFileContentResponse,
+  WorkspaceFileReadRequest,
+  WorkspaceGitDiffRequest,
+  WorkspaceGitDiffResponse,
+  WorkspaceGitStatusRequest,
+  WorkspaceGitStatusResponse,
+  WorkspaceReferenceProbeRequest,
+  WorkspaceReferenceProbeResponse,
+  WorkspaceReferencePreviewResponse,
+  WorkspaceReferenceResolveRequest,
+  WorkspaceReferenceSuggestRequest,
+  WorkspaceReferenceSuggestionListResponse,
+  WorkspaceRootRequest,
+  WorkspaceRootResponse,
+  WorkspaceTreeEntryListResponse,
+  WorkspaceTreeRequest,
+  WindowInsetsInfoResponse,
 } from './types'
 
 export const api = {
-  listConversations: (archived = false) => invoke<Conversation[]>('list_conversations', { archived }),
+  listConversations: (archived = false) => invoke<ConversationListResponse>('list_conversations', { archived }),
 
-  createConversation: (title?: string, projectId?: string) =>
-    invoke<Conversation>('create_conversation', { title: title ?? null, projectId: projectId ?? null }),
+  createConversation: (request: ConversationCreateRequest = { title: null, projectId: null }) =>
+    invoke<ConversationInfoResponse>('create_conversation', { request }),
 
-  updateConversationTitle: (id: string, title: string) => invoke<void>('update_conversation_title', { id, title }),
+  updateConversationTitle: (request: ConversationTitleUpdateRequest) =>
+    invoke<void>('update_conversation_title', { request }),
 
-  setConversationAssistant: (id: string, assistantId: string | null) =>
-    invoke<void>('set_conversation_assistant', { id, assistantId }),
+  setConversationAssistant: (request: ConversationAssistantUpdateRequest) =>
+    invoke<void>('set_conversation_assistant', { request }),
 
-  setConversationReasoningPrefs: (id: string, thinkingLevel: string | null, fastMode: boolean) =>
-    invoke<void>('set_conversation_reasoning_prefs', { id, thinkingLevel, fastMode }),
+  setConversationReasoningPrefs: (request: ConversationReasoningPreferencesUpdateRequest) =>
+    invoke<void>('set_conversation_reasoning_prefs', { request }),
 
   // Its own setter rather than another field on the one above: that one writes
   // two columns at once, so every caller has to pass the other's current value.
-  setConversationMode: (id: string, mode: ChatMode | null) => invoke<void>('set_conversation_mode', { id, mode }),
+  setConversationMode: (request: ConversationModeUpdateRequest) => invoke<void>('set_conversation_mode', { request }),
 
   // Also its own setter, and kept apart from the mode for a second reason: a
   // mode narrows what the assistant may do, this widens what it may do without
   // asking. One call writing both would suggest they are the same kind of thing.
-  setConversationAcceptEdits: (id: string, acceptEdits: boolean) =>
-    invoke<void>('set_conversation_accept_edits', { id, acceptEdits }),
+  setConversationAcceptEdits: (request: ConversationAcceptEditsUpdateRequest) =>
+    invoke<void>('set_conversation_accept_edits', { request }),
 
-  togglePinConversation: (id: string) => invoke<Conversation>('toggle_pin_conversation', { id }),
+  togglePinConversation: (id: string) => invoke<ConversationInfoResponse>('toggle_pin_conversation', { id }),
 
   /** Refile a conversation under another project, or under none (`null`). For
    *  a native conversation this also moves what the next turn resolves its
    *  working directory and file access against. */
-  setConversationProject: (id: string, projectId: string | null) =>
-    invoke<void>('set_conversation_project', { id, projectId }),
+  setConversationProject: (request: ConversationProjectUpdateRequest) =>
+    invoke<void>('set_conversation_project', { request }),
 
   /** Conversations whose transcript says the query, newest mention first. */
-  searchConversations: (query: string, limit?: number) =>
-    invoke<TranscriptHit[]>('search_conversations', { query, limit: limit ?? null }),
+  searchConversations: (request: ConversationSearchRequest) =>
+    invoke<ConversationSearchHitListResponse>('search_conversations', { request }),
 
   deleteConversation: (id: string) => invoke<void>('delete_conversation', { id }),
 
-  compact: (conversationId: string, customInstructions?: string) =>
-    invoke<void>('compact', {
-      conversationId,
-      customInstructions: customInstructions ?? null,
-    }),
+  compact: (request: ConversationCompactionRequest) => invoke<void>('compact', { request }),
 
-  getContextInfo: (conversationId: string) => invoke<ContextInfo>('get_context_info', { conversationId }),
+  getContextInfo: (conversationId: string) => invoke<ContextInfoResponse>('get_context_info', { conversationId }),
 
-  listModelConfigs: (providerId: string) => invoke<ModelConfig[]>('list_model_configs', { providerId }),
+  listModelConfigs: (providerId: string) => invoke<ModelConfigListResponse>('list_model_configs', { providerId }),
 
-  getModelConfig: (providerId: string, modelId: string) =>
-    invoke<ModelConfig | null>('get_model_config', { providerId, modelId }),
+  getModelConfig: (request: ModelConfigReadRequest) =>
+    invoke<ModelConfigInfoResponse | null>('get_model_config', { request }),
 
-  saveModelConfig: (input: ModelConfigInput) => invoke<ModelConfig>('save_model_config', { input }),
+  saveModelConfig: (request: ModelConfigUpsertRequest) =>
+    invoke<ModelConfigInfoResponse>('save_model_config', { request }),
 
   deleteModelConfig: (id: string) => invoke<void>('delete_model_config', { id }),
 
@@ -135,52 +273,44 @@ export const api = {
    *  and the approvals separately is what this replaced: a running turn writes
    *  between such requests, and what came back described no moment that ever
    *  existed. */
-  conversationSnapshot: (conversationId: string) =>
-    invoke<ConversationSnapshot>('conversation_snapshot', { conversationId }),
+  conversationSnapshot: (request: ConversationSnapshotRequest) =>
+    invoke<ConversationSnapshotResponse>('conversation_snapshot', { request }),
 
-  readMessageContextItem: (conversationId: string, itemId: string) =>
-    invoke<MessageContextContent>('read_message_context_item', { conversationId, itemId }),
+  readMessageContextItem: (request: MessageContextReadRequest) =>
+    invoke<MessageContextContentResponse>('read_message_context_item', { request }),
 
   /** Makes that message's branch active, landing on its most recent tip. Read
    *  the result back with `conversationSnapshot`. */
-  switchBranch: (conversationId: string, messageId: string) =>
-    invoke<void>('switch_branch', { conversationId, messageId }),
+  switchBranch: (request: MessageBranchSwitchRequest) => invoke<void>('switch_branch', { request }),
 
   /** Deletes the message and everything descended from it. Read the result back
    *  with `conversationSnapshot`, same as a branch switch. */
-  deleteMessage: (conversationId: string, id: string) => invoke<void>('delete_message', { conversationId, id }),
+  deleteMessage: (request: MessageDeleteRequest) => invoke<void>('delete_message', { request }),
 
-  rateMessage: (id: string, rating: number | null) => invoke<void>('rate_message', { id, rating }),
+  rateMessage: (request: MessageRatingUpdateRequest) => invoke<void>('rate_message', { request }),
 
-  exportConversation: (conversationId: string, format: string, outputPath?: string) =>
-    invoke<string>('export_conversation', { conversationId, format, outputPath: outputPath ?? null }),
+  exportConversation: (request: ConversationExportRequest) =>
+    invoke<ConversationExportResponse>('export_conversation', { request }),
 
-  uploadFile: (conversationId: string, filePath: string) =>
-    invoke<unknown>('upload_file', { conversationId, filePath }),
+  uploadFile: (request: MessageFileUploadRequest) => invoke<UploadFileResponse>('upload_file', { request }),
 
   // `turnId` says which run to stop. Without it the backend stops whatever is
   // running, which is what a reloaded window has to fall back on — but sending
   // it means "stop, then send again" can no longer cancel the new turn instead
   // of the old one.
-  stopChat: (conversationId: string, turnId?: string | null) =>
-    invoke<void>('stop_chat', { conversationId, turnId: turnId ?? null }),
+  stopChat: (request: ChatStopRequest) => invoke<void>('stop_chat', { request }),
 
   /** Run a literal user-authored shell command without querying the model.
    *  Reusing `turnId` returns the persisted result rather than running again.
    *  `retryWithoutSandbox` succeeds only after this exact command was refused
    *  by the Windows restricted-token sandbox. */
-  runUserCommand: (conversationId: string, command: string, turnId: string, retryWithoutSandbox = false) =>
-    invoke<CommandTurnOutcome>('run_user_command', {
-      conversationId,
-      turnId,
-      command,
-      retryWithoutSandbox,
-    }),
+  runUserCommand: (request: UserCommandRunRequest) =>
+    invoke<UserCommandResultResponse>('run_user_command', { request }),
 
   /** Rehydrate a persisted terminal card. Deliberately narrower than a raw
    *  context-item reader. */
-  getUserCommandResult: (conversationId: string, messageId: string) =>
-    invoke<CommandTurnOutcome | null>('get_user_command_result', { conversationId, messageId }),
+  getUserCommandResult: (request: UserCommandResultReadRequest) =>
+    invoke<UserCommandResultResponse | null>('get_user_command_result', { request }),
 
   /** The live literal-command lease, if this conversation currently owns one.
    *  Unlike the persisted row this distinguishes "still running" from a
@@ -192,8 +322,7 @@ export const api = {
   // when nobody is reading — the run has ended, or there never was one — and
   // nothing is written down in that case, which is why the caller has to keep
   // hold of the text until this resolves.
-  steerConversation: (conversationId: string, text: string) =>
-    invoke<void>('steer_conversation', { conversationId, text }),
+  steerConversation: (request: ConversationSteerRequest) => invoke<void>('steer_conversation', { request }),
 
   // `mode` is passed per-request as well as being stored on the conversation:
   // the setter is async, and a message sent right after flipping the switch
@@ -212,222 +341,118 @@ export const api = {
   // acquired the conversation, read the assistant and resolved the provider —
   // and a stop belonging to the *previous* turn, arriving in that gap, would
   // find no id to be measured against and be taken for this one's.
-  chat: (
-    conversationId: string,
-    message: string | null,
-    opts: {
-      turnId?: string
-      replaces?: string
-      modelOverride?: string
-      providerOverride?: string
-      thinkingLevel?: string
-      assistantId?: string
-      fast?: boolean
-      mode?: ChatMode
-      voice?: boolean
-      contextRefs?: WorkspaceReferenceInput[]
-    } = {},
-  ) =>
-    invoke<void>('chat', {
-      conversationId,
-      message,
-      turnId: opts.turnId ?? null,
-      replaces: opts.replaces ?? null,
-      modelOverride: opts.modelOverride ?? null,
-      providerOverride: opts.providerOverride ?? null,
-      thinkingLevel: opts.thinkingLevel ?? null,
-      assistantId: opts.assistantId ?? null,
-      fast: opts.fast ?? null,
-      mode: opts.mode ?? null,
-      voice: opts.voice ?? null,
-      contextRefs: opts.contextRefs ?? null,
-    }),
+  chat: (request: ChatRequest) => invoke<void>('chat', { request }),
 
   // A hosted Claude Code session, over ACP. `acpSend` is the `chat` of these
   // conversations: it takes the same caller-minted `turnId`, for the same
   // reason — the composer locks on it before the backend has been reached, and
   // the stop event it waits for has to carry it back.
-  acpOpenSession: (cwd: string) => invoke<string>('acp_open_session', { cwd }),
+  acpOpenSession: (request: AcpSessionOpenRequest) => invoke<string>('acp_open_session', { request }),
 
   // Sessions that already exist on this machine, including every one started
   // from a terminal. Starts a short-lived adapter, so it takes a second or two.
   // `cwd` narrows it to one directory; omitted means every project.
-  acpListSessions: (cwd?: string | null) => invoke<AcpDiscoveredSession[]>('acp_list_sessions', { cwd: cwd ?? null }),
+  acpListSessions: (request: AcpSessionListRequest) =>
+    invoke<AcpDiscoveredSessionListResponse>('acp_list_sessions', { request }),
 
   // Take one over. The transcript comes with it — `session/load` recites the
   // whole history and this is the one path that writes the recital down.
   // Resolves to the new conversation's id.
-  acpImportSession: (session: Pick<AcpDiscoveredSession, 'sessionId' | 'cwd' | 'title' | 'updatedAt'>) =>
-    invoke<AcpImportOutcome>('acp_import_session', { session }),
+  acpImportSession: (request: AcpImportSessionRequest) =>
+    invoke<AcpImportSessionResponse>('acp_import_session', { request }),
 
   // Point a conversation that already exists at a session on disk. Writes the
   // id and nothing else: the rows are here already and came from that session,
   // so replaying them would double the transcript.
-  acpAttachSession: (conversationId: string, sessionId: string, cwd: string) =>
-    invoke<void>('acp_attach_session', { conversationId, sessionId, cwd }),
+  acpAttachSession: (request: AcpSessionAttachRequest) => invoke<void>('acp_attach_session', { request }),
 
   acpConversationSession: (conversationId: string) =>
-    invoke<AcpConversationSession | null>('acp_conversation_session', { conversationId }),
+    invoke<AcpConversationSessionInfoResponse | null>('acp_conversation_session', { conversationId }),
 
-  acpSend: (conversationId: string, message: string, turnId?: string, contextRefs?: WorkspaceReferenceInput[]) =>
-    invoke<void>('acp_send', {
-      conversationId,
-      message,
-      turnId: turnId ?? null,
-      contextRefs: contextRefs ?? null,
-    }),
+  acpSend: (request: AcpPromptSendRequest) => invoke<void>('acp_send', { request }),
 
   acpCancel: (conversationId: string) => invoke<void>('acp_cancel', { conversationId }),
 
   acpClose: (conversationId: string) => invoke<void>('acp_close', { conversationId }),
 
-  acpLiveSessions: () => invoke<string[]>('acp_live_sessions'),
+  acpLiveSessions: () => invoke<AcpLiveConversationIdsResponse>('acp_live_sessions'),
 
   // The knobs the *agent* exposes for one session — model, mode, effort —
   // as opposed to `acpGetConfig`, which is how this app launches the adapter.
   // Empty when nothing is running there: the composer falls back to the model
   // recorded on the transcript, because there is no session to change.
-  acpSessionConfig: (conversationId: string) => invoke<AcpConfigOption[]>('acp_session_config', { conversationId }),
+  acpSessionConfig: (request: AcpSessionConfigReadRequest) =>
+    invoke<AcpConfigOptionListResponse>('acp_session_config', { request }),
 
   // Hands back the whole set, not just the option that changed: picking a model
   // re-derives which modes exist.
-  acpSetSessionConfig: (conversationId: string, configId: string, value: unknown) =>
-    invoke<AcpConfigOption[]>('acp_set_session_config', { conversationId, configId, value }),
+  acpSetSessionConfig: (request: AcpSessionConfigUpdateRequest) =>
+    invoke<AcpConfigOptionListResponse>('acp_set_session_config', { request }),
 
-  acpGetConfig: () => invoke<AcpConfig>('acp_get_config'),
+  acpGetConfig: () => invoke<AcpConfigInfoResponse>('acp_get_config'),
 
-  acpSaveConfig: (config: AcpConfig) => invoke<AcpConfig>('acp_save_config', { config }),
+  acpSaveConfig: (request: AcpConfigUpdateRequest) => invoke<AcpConfigInfoResponse>('acp_save_config', { request }),
 
-  acpCheckAdapter: () => invoke<AcpCheck>('acp_check_adapter'),
+  acpCheckAdapter: () => invoke<AcpCheckResponse>('acp_check_adapter'),
 
   // The prompt queue. Adding one is also what may deliver it: an item queued
   // while a turn runs is a steer, and one queued with nothing running is a turn.
   // Nothing else moves the queue except a turn ending — see `agent::queue`.
-  queueList: (conversationId: string) => invoke<QueuedPrompt[]>('queue_list', { conversationId }),
+  queueList: (conversationId: string) => invoke<QueuedPromptListResponse>('queue_list', { conversationId }),
 
-  queueEnqueue: (
-    conversationId: string,
-    content: string,
-    delivery: QueueDelivery,
-    contextRefs?: WorkspaceReferenceInput[],
-  ) => invoke<QueuedPrompt>('queue_enqueue', { conversationId, content, delivery, contextRefs: contextRefs ?? null }),
+  queueEnqueue: (request: QueuedPromptCreateRequest) => invoke<QueuedPromptInfoResponse>('queue_enqueue', { request }),
 
   /** Refuses an item that has already been sent, and says so. */
-  queueRemove: (conversationId: string, id: string) => invoke<void>('queue_remove', { conversationId, id }),
+  queueRemove: (request: QueuedPromptRemoveRequest) => invoke<void>('queue_remove', { request }),
 
-  queueReorder: (conversationId: string, ids: string[]) => invoke<void>('queue_reorder', { conversationId, ids }),
+  queueReorder: (request: QueuedPromptReorderRequest) => invoke<void>('queue_reorder', { request }),
 
-  queueSetDelivery: (conversationId: string, id: string, delivery: QueueDelivery) =>
-    invoke<void>('queue_set_delivery', { conversationId, id, delivery }),
+  queueSetDelivery: (request: QueuedPromptDeliveryUpdateRequest) => invoke<void>('queue_set_delivery', { request }),
 
   /** Let a queue held by a failed turn go again. Pumps, because a person just
    *  said to. */
   queueRelease: (conversationId: string) => invoke<void>('queue_release', { conversationId }),
 
-  setSecret: (key: string, value: string) => invoke<void>('set_secret', { key, value }),
+  setSecret: (request: SecretUpsertRequest) => invoke<void>('set_secret', { request }),
 
-  getSecret: (key: string) => invoke<string | null>('get_secret', { key }),
+  getSecret: (request: SecretReadRequest) => invoke<string | null>('get_secret', { request }),
 
-  deleteSecret: (key: string) => invoke<boolean>('delete_secret', { key }),
+  deleteSecret: (request: SecretDeleteRequest) => invoke<boolean>('delete_secret', { request }),
 
-  listAssistants: () => invoke<Assistant[]>('list_assistants'),
+  listAssistants: () => invoke<AssistantListResponse>('list_assistants'),
 
-  createAssistant: (name: string, systemPrompt: string, modelId?: string) =>
-    invoke<Assistant>('create_assistant', {
-      name,
-      systemPrompt,
-      modelId: modelId ?? null,
-      temperature: null,
-      topP: null,
-      maxTokens: null,
-    }),
+  createAssistant: (request: AssistantCreateRequest) => invoke<AssistantInfoResponse>('create_assistant', { request }),
 
-  updateAssistant: (
-    id: string,
-    updates: {
-      name?: string
-      systemPrompt?: string
-      providerId?: string | null
-      modelId?: string | null
-      temperature?: number | null
-      contextLimit?: number | null
-      enabledTools?: string | null
-      thinkingEnabled?: number
-      thinkingBudget?: number | null
-      toolPresetId?: string | null
-      autoCompactEnabled?: number
-    },
-  ) => invoke<Assistant>('update_assistant', { id, updates }),
+  updateAssistant: (request: AssistantUpdateRequest) => invoke<AssistantInfoResponse>('update_assistant', { request }),
 
   deleteAssistant: (id: string) => invoke<void>('delete_assistant', { id }),
 
   // Providers
-  listProviders: () => invoke<Provider[]>('list_providers'),
+  listProviders: () => invoke<ProviderListResponse>('list_providers'),
 
   /** The shipped vendor catalog. Compiled into the binary, so it never changes
    *  within a run — callers may cache it for the lifetime of the process. */
-  listProviderCatalog: () => invoke<ProviderCatalogEntry[]>('list_provider_catalog'),
+  listProviderCatalog: () => invoke<ProviderCatalogEntryListResponse>('list_provider_catalog'),
 
   /** Which ChatGPT account a Codex-backed provider is signed in as. Never
    *  refreshes the session: opening a settings page must not spend a token. */
-  codexAuthStatus: () => invoke<CodexAuthStatus>('codex_auth_status'),
+  codexAuthStatus: () => invoke<CodexAuthStatusResponse>('codex_auth_status'),
 
-  createProvider: (
-    name: string,
-    providerType: string,
-    baseUrl: string,
-    apiFormat?: string,
-    catalogId?: string,
-    authOption?: string,
-  ) =>
-    invoke<Provider>('create_provider', {
-      name,
-      providerType,
-      baseUrl,
-      apiFormat: apiFormat ?? null,
-      // Which vendor the user picked, when they picked one. It outranks
-      // anything the backend could infer from the address: choosing OpenAI and
-      // then pointing it at a relay is still OpenAI.
-      catalogId: catalogId ?? null,
-      // Which of that vendor's sign-in options the row starts under. Absent
-      // means the entry's default, which is the API key everywhere today.
-      authOption: authOption ?? null,
-    }),
+  createProvider: (request: ProviderCreateRequest) => invoke<ProviderInfoResponse>('create_provider', { request }),
 
-  updateProvider: (
-    id: string,
-    updates: {
-      name?: string
-      providerType?: string
-      baseUrl?: string
-      isEnabled?: number
-      apiFormat?: string
-      credentialKind?: string
-      transportProfile?: string
-    },
-  ) =>
-    invoke<Provider>('update_provider', {
-      id,
-      name: updates.name ?? null,
-      providerType: updates.providerType ?? null,
-      baseUrl: updates.baseUrl ?? null,
-      isEnabled: updates.isEnabled ?? null,
-      apiFormat: updates.apiFormat ?? null,
-      credentialKind: updates.credentialKind ?? null,
-      transportProfile: updates.transportProfile ?? null,
-    }),
+  updateProvider: (request: ProviderUpdateRequest) => invoke<ProviderInfoResponse>('update_provider', { request }),
 
   deleteProvider: (id: string) => invoke<void>('delete_provider', { id }),
 
-  setProviderKey: (providerId: string, apiKey: string) => invoke<void>('set_provider_key', { providerId, apiKey }),
+  setProviderKey: (request: ProviderKeyUpdateRequest) => invoke<void>('set_provider_key', { request }),
 
   getProviderKeyExists: (providerId: string) => invoke<boolean>('get_provider_key_exists', { providerId }),
 
-  fetchProviderModels: (providerId: string, forceRefresh?: boolean) =>
-    invoke<ModelInfo[]>('fetch_provider_models', { providerId, forceRefresh: forceRefresh ?? null }),
+  fetchProviderModels: (request: ProviderModelListRequest) =>
+    invoke<ProviderModelListResponse>('fetch_provider_models', { request }),
 
-  getProviderCapabilities: (providerId: string, modelId: string) =>
-    invoke<ProviderCapabilities>('get_provider_capabilities', { providerId, modelId }),
+  getProviderCapabilities: (request: ProviderCapabilitiesReadRequest) =>
+    invoke<ProviderCapabilitiesInfoResponse>('get_provider_capabilities', { request }),
 
   /**
    * What is left on the account. Never cached anywhere — a stale balance is the
@@ -436,179 +461,141 @@ export const api = {
    * `null` means this upstream publishes no balance, which is most of them and
    * is not an error to show.
    */
-  getProviderBalance: (providerId: string) => invoke<ProviderBalance | null>('get_provider_balance', { providerId }),
+  getProviderBalance: (providerId: string) =>
+    invoke<ProviderBalanceInfoResponse | null>('get_provider_balance', { providerId }),
 
   // All three address an `approval_id` the backend minted, not the provider's
   // tool call id, and all three reject when nothing is waiting on it any more —
   // the caller turns that into an `orphaned` card rather than spinning.
   approveToolCall: (approvalId: string) => invoke<void>('approve_tool_call', { approvalId }),
 
-  denyToolCall: (approvalId: string, reason?: string) =>
-    invoke<void>('deny_tool_call', { approvalId, reason: reason ?? null }),
+  denyToolCall: (request: ToolCallDenyRequest) => invoke<void>('deny_tool_call', { request }),
 
-  respondToAsk: (approvalId: string, response: string) => invoke<void>('respond_to_ask', { approvalId, response }),
+  respondToAsk: (request: AskResponseRequest) => invoke<void>('respond_to_ask', { request }),
 
   /** Everything waiting on the user, in every conversation — including ones this
    *  client has never opened. The stream announced each of these once and
    *  replays nothing, so this is the only way back for a window that reloaded or
    *  a phone that has just connected. One row per approval, already reduced to
    *  the view that can answer it. */
-  allPendingApprovals: () => invoke<PendingApprovalInfo[]>('all_pending_approvals'),
+  allPendingApprovals: () => invoke<PendingApprovalListResponse>('all_pending_approvals'),
+
+  // Plan reviews are durable documents rather than approval waiters. Every
+  // mutation uses a generation or decision id so reloads and double presses
+  // cannot silently overwrite another window.
+  getPlanReview: (request: PlanReviewReadRequest) => invoke<PlanReviewInfoResponse>('get_plan_review', { request }),
+
+  listPlanRevisions: (request: PlanRevisionListRequest) =>
+    invoke<PlanRevisionListResponse>('list_plan_revisions', { request }),
+
+  savePlanReviewDraft: (request: PlanReviewDraftSaveRequest) =>
+    invoke<PlanReviewDraftSaveResponse>('save_plan_review_draft', { request }),
+
+  discardPlanReviewDraft: (request: PlanReviewDraftDiscardRequest) =>
+    invoke<PlanReviewInfoResponse>('discard_plan_review_draft', { request }),
+
+  decidePlanReview: (request: PlanReviewDecisionRequest) =>
+    invoke<PlanReviewDecisionResponse>('decide_plan_review', { request }),
+
+  getPlanReviewDelivery: (request: PlanReviewDeliveryReadRequest) =>
+    invoke<PlanReviewDeliveryInfoResponse | null>('get_plan_review_delivery', { request }),
+
+  continuePlanReviewDelivery: (request: PlanReviewDeliveryContinueRequest) =>
+    invoke<PlanReviewDeliveryInfoResponse>('continue_plan_review_delivery', { request }),
+
+  resolvePlanFileConflict: (request: PlanFileConflictResolveRequest) =>
+    invoke<PlanDocumentInfoResponse>('resolve_plan_file_conflict', { request }),
 
   // Projects
-  listProjects: () => invoke<Project[]>('list_projects'),
+  listProjects: () => invoke<ProjectListResponse>('list_projects'),
 
-  createProject: (
-    name: string,
-    path?: string,
-    sourceType?: string,
-    sourceId?: string,
-    assistantId?: string,
-    description?: string,
-  ) =>
-    invoke<Project>('create_project', {
-      name,
-      path: path ?? null,
-      sourceType: sourceType ?? null,
-      sourceId: sourceId ?? null,
-      assistantId: assistantId ?? null,
-      description: description ?? null,
-    }),
+  createProject: (request: ProjectCreateRequest) => invoke<ProjectInfoResponse>('create_project', { request }),
 
-  updateProject: (id: string, updates: { name?: string; path?: string; assistantId?: string; description?: string }) =>
-    invoke<Project>('update_project', {
-      id,
-      name: updates.name ?? null,
-      path: updates.path ?? null,
-      assistantId: updates.assistantId ?? null,
-      description: updates.description ?? null,
-    }),
+  updateProject: (request: ProjectUpdateRequest) => invoke<ProjectInfoResponse>('update_project', { request }),
 
   deleteProject: (id: string) => invoke<void>('delete_project', { id }),
 
-  listConversationsByProject: (projectId: string, archived = false) =>
-    invoke<Conversation[]>('list_conversations_by_project', { projectId, archived }),
+  listConversationsByProject: (request: ConversationListByProjectRequest) =>
+    invoke<ConversationListResponse>('list_conversations_by_project', { request }),
 
   // ---- The file panel. Read-only; `openInEditor` is local-only (it runs the
   // user's configured editor command on the host).
-  workspaceRoot: (conversationId: string) => invoke<WorkspaceRoot>('workspace_root', { conversationId }),
+  workspaceRoot: (request: WorkspaceRootRequest) => invoke<WorkspaceRootResponse>('workspace_root', { request }),
 
-  workspaceTree: (conversationId: string, dir?: string) =>
-    invoke<WorkspaceTreeEntry[]>('workspace_tree', { conversationId, dir: dir ?? null }),
+  workspaceTree: (request: WorkspaceTreeRequest) =>
+    invoke<WorkspaceTreeEntryListResponse>('workspace_tree', { request }),
 
-  workspaceReadFile: (conversationId: string, relPath: string) =>
-    invoke<WorkspaceFileContent>('workspace_read_file', { conversationId, relPath }),
+  workspaceReadFile: (request: WorkspaceFileReadRequest) =>
+    invoke<WorkspaceFileContentResponse>('workspace_read_file', { request }),
 
-  workspaceSuggestRefs: (query: string, opts: { conversationId?: string; projectId?: string; limit?: number } = {}) =>
-    invoke<WorkspaceReferenceSuggestion[]>('workspace_suggest_refs', {
-      conversationId: opts.conversationId ?? null,
-      projectId: opts.projectId ?? null,
-      query,
-      limit: opts.limit ?? 15,
-    }),
+  workspaceSuggestRefs: (request: WorkspaceReferenceSuggestRequest) =>
+    invoke<WorkspaceReferenceSuggestionListResponse>('workspace_suggest_refs', { request }),
 
-  workspaceResolveRef: (
-    reference: WorkspaceReferenceInput,
-    opts: { conversationId?: string; projectId?: string } = {},
-  ) =>
-    invoke<WorkspaceReferencePreview>('workspace_resolve_ref', {
-      conversationId: opts.conversationId ?? null,
-      projectId: opts.projectId ?? null,
-      reference,
-    }),
+  workspaceResolveRef: (request: WorkspaceReferenceResolveRequest) =>
+    invoke<WorkspaceReferencePreviewResponse>('workspace_resolve_ref', { request }),
 
-  workspaceProbeRef: (path: string, opts: { conversationId?: string; projectId?: string } = {}) =>
-    invoke<WorkspaceReferenceProbe>('workspace_probe_ref', {
-      conversationId: opts.conversationId ?? null,
-      projectId: opts.projectId ?? null,
-      path,
-    }),
+  workspaceProbeRef: (request: WorkspaceReferenceProbeRequest) =>
+    invoke<WorkspaceReferenceProbeResponse>('workspace_probe_ref', { request }),
 
-  workspaceGitStatus: (conversationId: string) => invoke<GitStatusResult>('workspace_git_status', { conversationId }),
+  workspaceGitStatus: (request: WorkspaceGitStatusRequest) =>
+    invoke<WorkspaceGitStatusResponse>('workspace_git_status', { request }),
 
-  workspaceGitDiff: (conversationId: string, relPath?: string) =>
-    invoke<GitDiffResult>('workspace_git_diff', { conversationId, relPath: relPath ?? null }),
+  workspaceGitDiff: (request: WorkspaceGitDiffRequest) =>
+    invoke<WorkspaceGitDiffResponse>('workspace_git_diff', { request }),
 
-  openInEditor: (conversationId: string, relPath: string, line?: number) =>
-    invoke<void>('open_in_editor', { conversationId, relPath, line: line ?? null }),
+  openInEditor: (request: WorkspaceEditorOpenRequest) => invoke<void>('open_in_editor', { request }),
 
   // ---- The journal's read side: per-line attribution and file history.
-  journalBlame: (conversationId: string, relPath: string) =>
-    invoke<BlameResult>('journal_blame', { conversationId, relPath }),
+  journalBlame: (request: JournalBlameRequest) => invoke<JournalBlameResponse>('journal_blame', { request }),
 
-  journalFileHistory: (conversationId: string, relPath: string) =>
-    invoke<JournalVersion[]>('journal_file_history', { conversationId, relPath }),
+  journalFileHistory: (request: JournalFileHistoryRequest) =>
+    invoke<JournalVersionListResponse>('journal_file_history', { request }),
 
-  journalVersionContent: (versionId: string) => invoke<string>('journal_version_content', { versionId }),
+  journalVersionContent: (request: JournalVersionContentRequest) =>
+    invoke<JournalVersionContentResponse>('journal_version_content', { request }),
 
   // Memories
-  listMemories: (projectId: string) => invoke<Memory[]>('list_memories', { projectId }),
+  listMemories: (projectId: string) => invoke<MemoryListResponse>('list_memories', { projectId }),
 
-  saveMemory: (projectId: string, key: string, content: string, memoryType?: string) =>
-    invoke<Memory>('save_memory', { projectId, key, content, memoryType: memoryType ?? null }),
+  saveMemory: (request: MemoryUpsertRequest) => invoke<MemoryInfoResponse>('save_memory', { request }),
 
-  updateMemory: (id: string, content?: string, memoryType?: string, ownerOnly?: boolean) =>
-    invoke<Memory>('update_memory', {
-      id,
-      content: content ?? null,
-      memoryType: memoryType ?? null,
-      ownerOnly: ownerOnly ?? null,
-    }),
+  updateMemory: (request: MemoryUpdateRequest) => invoke<MemoryInfoResponse>('update_memory', { request }),
 
   deleteMemory: (id: string) => invoke<void>('delete_memory', { id }),
 
   // Todos
   getActiveTodoList: (conversationId: string) =>
-    invoke<TodoListView | null>('get_active_todo_list', { conversationId }),
+    invoke<TodoInfoResponse | null>('get_active_todo_list', { conversationId }),
 
   /** Layered write. `origin` is always `desktop`; the backend assigns it. */
-  saveMemoryScoped: (args: {
-    scope: string
-    projectId?: string | null
-    subjectScopeId?: string | null
-    key: string
-    content: string
-    memoryType?: string | null
-    ownerOnly?: boolean
-  }) =>
-    invoke<Memory>('save_memory_scoped', {
-      scope: args.scope,
-      projectId: args.projectId ?? null,
-      subjectScopeId: args.subjectScopeId ?? null,
-      key: args.key,
-      content: args.content,
-      memoryType: args.memoryType ?? null,
-      ownerOnly: args.ownerOnly ?? null,
-    }),
+  saveMemoryScoped: (request: MemoryScopedUpsertRequest) =>
+    invoke<MemoryInfoResponse>('save_memory_scoped', { request }),
 
   deleteMemories: (ids: string[]) => invoke<number>('delete_memories', { ids }),
 
   /** Every live memory in one call — the browser needs all scopes, not just one project's. */
-  listAllMemories: () => invoke<Memory[]>('list_all_memories'),
+  listAllMemories: () => invoke<MemoryListResponse>('list_all_memories'),
 
-  listMemorySubjects: () => invoke<MemorySubject[]>('list_memory_subjects'),
+  listMemorySubjects: () => invoke<MemorySubjectListResponse>('list_memory_subjects'),
 
   forgetMemorySubject: (subjectScopeId: string) => invoke<number>('forget_memory_subject', { subjectScopeId }),
 
-  setMemorySubjectFlags: (subjectScopeId: string, isPinned?: boolean, optedOut?: boolean) =>
-    invoke<void>('set_memory_subject_flags', {
-      subjectScopeId,
-      isPinned: isPinned ?? null,
-      optedOut: optedOut ?? null,
-    }),
+  setMemorySubjectFlags: (request: MemorySubjectFlagsUpdateRequest) =>
+    invoke<void>('set_memory_subject_flags', { request }),
 
-  listMemoryTrash: (limit?: number) => invoke<Memory[]>('list_memory_trash', { limit: limit ?? null }),
+  listMemoryTrash: (limit?: number) => invoke<MemoryListResponse>('list_memory_trash', { limit: limit ?? null }),
 
   restoreMemories: (ids: string[]) => invoke<number>('restore_memories', { ids }),
 
   purgeMemories: (ids: string[]) => invoke<number>('purge_memories', { ids }),
 
-  memoryEnums: () => invoke<MemoryEnums>('memory_enums'),
+  memoryEnums: () => invoke<MemoryEnumsResponse>('memory_enums'),
 
   // Preferences
-  getPreference: (key: string) => invoke<string | null>('get_preference', { key }),
+  getPreference: <K extends PreferenceKey>(request: PreferenceReadRequest<K>) =>
+    invoke<PreferenceInfoResponse<K>>('get_preference', { request }),
 
-  setPreference: (key: string, value: string) => invoke<void>('set_preference', { key, value }),
+  setPreference: (request: PreferenceUpdateRequest) => invoke<void>('set_preference', { request }),
 
   // Voice input (desktop only)
   /** Open the microphone early so the first word is not lost to device latency. */
@@ -618,44 +605,44 @@ export const api = {
 
   voiceStartRecording: () => invoke<void>('voice_start_recording'),
 
-  voiceStopAndTranscribe: () => invoke<VoiceTranscript>('voice_stop_and_transcribe'),
+  voiceStopAndTranscribe: () => invoke<VoiceTranscriptResponse>('voice_stop_and_transcribe'),
 
   voiceCancelRecording: () => invoke<void>('voice_cancel_recording'),
 
-  voiceModelStatus: () => invoke<VoiceModelStatus>('voice_model_status'),
+  voiceModelStatus: () => invoke<VoiceModelStatusInfoResponse>('voice_model_status'),
 
-  voiceDownloadModel: (url?: string) => invoke<void>('voice_download_model', { url: url ?? null }),
+  voiceDownloadModel: (request: VoiceModelDownloadRequest) => invoke<void>('voice_download_model', { request }),
 
   voiceCancelDownload: () => invoke<void>('voice_cancel_download'),
 
-  voiceImportModel: (archivePath: string) => invoke<VoiceModelStatus>('voice_import_model', { archivePath }),
+  voiceImportModel: (request: VoiceModelImportRequest) =>
+    invoke<VoiceModelStatusInfoResponse>('voice_import_model', { request }),
 
   voiceDeleteModel: () => invoke<void>('voice_delete_model'),
 
   /** Decodes and counts the samples, nothing more. Measures what a base64 PCM
    *  payload actually costs over the bridge — Android has no raw IPC. */
-  voiceProbeEcho: (sampleRate: number, pcm: string) => invoke<number>('voice_probe_echo', { sampleRate, pcm }),
+  voiceProbeEcho: (request: VoiceProbeEchoRequest) => invoke<number>('voice_probe_echo', { request }),
 
   /** Android's transcription entry point: capture happens in the WebView, so
    *  the samples arrive as base64 16-bit PCM rather than from a Rust session. */
-  voiceTranscribePcm: (sampleRate: number, pcm: string) =>
-    invoke<VoiceTranscript>('voice_transcribe_pcm', { sampleRate, pcm }),
+  voiceTranscribePcm: (request: VoicePcmTranscriptionRequest) =>
+    invoke<VoiceTranscriptResponse>('voice_transcribe_pcm', { request }),
 
   // Platform / Android file access
-  getPlatform: () => invoke<string>('get_platform'),
+  getPlatform: () => invoke<PlatformInfoResponse>('get_platform'),
 
-  getWindowInsets: () =>
-    invoke<{ top: number; bottom: number; left: number; right: number; imeBottom: number }>('get_window_insets'),
+  getWindowInsets: () => invoke<WindowInsetsInfoResponse>('get_window_insets'),
 
   getManageStorageStatus: () => invoke<boolean>('get_manage_storage_status'),
 
   requestManageStorage: () => invoke<void>('request_manage_storage'),
 
-  pickSafDirectory: () => invoke<SafRootEntry[]>('pick_saf_directory'),
+  pickSafDirectory: () => invoke<SafRootListResponse>('pick_saf_directory'),
 
-  listSafRoots: () => invoke<SafRootEntry[]>('list_saf_roots'),
+  listSafRoots: () => invoke<SafRootListResponse>('list_saf_roots'),
 
-  removeSafRoot: (uri: string) => invoke<SafRootEntry[]>('remove_saf_root', { uri }),
+  removeSafRoot: (uri: string) => invoke<SafRootListResponse>('remove_saf_root', { uri }),
 
   takePhoto: () => invoke<string | null>('take_photo'),
 
@@ -664,42 +651,11 @@ export const api = {
   resolveFileName: (path: string) => invoke<string>('resolve_file_name', { path }),
 
   // MCP servers
-  listMcpServers: () => invoke<McpServer[]>('list_mcp_servers'),
+  listMcpServers: () => invoke<McpServerListResponse>('list_mcp_servers'),
 
-  createMcpServer: (
-    name: string,
-    transportType: string,
-    opts?: {
-      command?: string
-      args?: string
-      env?: string
-      url?: string
-      headers?: string
-    },
-  ) =>
-    invoke<McpServer>('create_mcp_server', {
-      name,
-      transportType,
-      command: opts?.command ?? null,
-      args: opts?.args ?? null,
-      env: opts?.env ?? null,
-      url: opts?.url ?? null,
-      headers: opts?.headers ?? null,
-    }),
+  createMcpServer: (request: McpServerCreateRequest) => invoke<McpServerInfoResponse>('create_mcp_server', { request }),
 
-  updateMcpServer: (
-    id: string,
-    updates: {
-      name?: string
-      transportType?: string
-      command?: string | null
-      args?: string | null
-      env?: string | null
-      url?: string | null
-      headers?: string | null
-      isEnabled?: number
-    },
-  ) => invoke<McpServer>('update_mcp_server', { id, updates }),
+  updateMcpServer: (request: McpServerUpdateRequest) => invoke<McpServerInfoResponse>('update_mcp_server', { request }),
 
   deleteMcpServer: (id: string) => invoke<void>('delete_mcp_server', { id }),
 
@@ -707,52 +663,21 @@ export const api = {
 
   disconnectMcpServer: (id: string) => invoke<void>('disconnect_mcp_server', { id }),
 
-  listMcpTools: (serverId?: string) => invoke<McpToolDef[]>('list_mcp_tools', { serverId: serverId ?? null }),
+  listMcpTools: (serverId?: string) =>
+    invoke<McpServerToolListResponse>('list_mcp_tools', { serverId: serverId ?? null }),
 
   // Only servers with a live entry come back. Anything absent is disconnected —
   // the caller already has the full list from the database.
-  listMcpConnectionStatuses: () => invoke<McpConnectionStatus[]>('list_mcp_connection_statuses'),
+  listMcpConnectionStatuses: () => invoke<McpConnectionStatusListResponse>('list_mcp_connection_statuses'),
 
-  listAllToolNames: () => invoke<ToolInfo[]>('list_all_tool_names'),
+  listAllToolNames: () => invoke<McpToolListResponse>('list_all_tool_names'),
 
   // OneBot
-  getOneBotStatus: () =>
-    invoke<{ enabled: boolean; running: boolean; connected_clients: number; host: string; port: number }>(
-      'get_onebot_status',
-    ),
+  getOneBotStatus: () => invoke<OneBotStatusInfoResponse>('get_onebot_status'),
 
-  getOneBotConfig: () =>
-    invoke<{
-      enabled: boolean
-      host: string
-      port: number
-      access_token: string | null
-      assistant_id: string | null
-      admin_users: number[]
-      ack_emoji_id: string
-      balance_alert_threshold: number | null
-      voice_capture_sessions: string[]
-      voice_send_enabled: boolean
-      voice_send_groups: string[]
-      voice_tts_model: string
-      voice_tts_reference_id: string
-    }>('get_onebot_config'),
+  getOneBotConfig: () => invoke<OneBotConfigInfoResponse>('get_onebot_config'),
 
-  saveOneBotConfig: (config: {
-    enabled: boolean
-    host: string
-    port: number
-    access_token: string | null
-    assistant_id: string | null
-    admin_users: number[]
-    ack_emoji_id: string
-    balance_alert_threshold: number | null
-    voice_capture_sessions: string[]
-    voice_send_enabled: boolean
-    voice_send_groups: string[]
-    voice_tts_model: string
-    voice_tts_reference_id: string
-  }) => invoke<void>('save_onebot_config', { config }),
+  saveOneBotConfig: (request: OneBotConfigUpdateRequest) => invoke<void>('save_onebot_config', { request }),
 
   /**
    * Which of the four outbound-voice settings are filled in.
@@ -762,30 +687,13 @@ export const api = {
    * the tool is absent, and the assistant cannot say why because it cannot see
    * the tool either. Asked, it answers that it has no voice tool.
    */
-  getVoiceSendReadiness: () =>
-    invoke<{
-      enabled: boolean
-      has_model: boolean
-      has_reference_id: boolean
-      has_api_key: boolean
-      ready: boolean
-    }>('get_voice_send_readiness'),
+  getVoiceSendReadiness: () => invoke<VoiceSendReadinessInfoResponse>('get_voice_send_readiness'),
 
   // Voice corpus. A session is named by its pseudonym and by nothing else:
   // this list travels to a phone, `bot_self_id` is the bot's own QQ number and
   // a private chat's session id is the other person's. The same pseudonym is
   // what goes back to delete it, so neither ever leaves the host.
-  listVoiceCorpus: () =>
-    invoke<
-      {
-        handle: string
-        kind: 'group' | 'private'
-        clips: number
-        bytes: number
-        untranscribed: number
-        last_captured_at: number
-      }[]
-    >('list_voice_corpus'),
+  listVoiceCorpus: () => invoke<VoiceCorpusSessionListResponse>('list_voice_corpus'),
 
   /**
    * Delete stored voice.
@@ -794,13 +702,11 @@ export const api = {
    * loses a field fails to deserialize rather than falling through to "all",
    * which is how one mistyped remote request would erase every recording.
    */
-  deleteVoiceCorpus: (
-    selector:
-      { kind: 'session'; handle: string } | { kind: 'sender'; id: string } | { kind: 'all'; confirmation: string },
-  ) => invoke<{ clips: number; files: number; bytes: number; failures: string[] }>('delete_voice_corpus', { selector }),
+  deleteVoiceCorpus: (request: VoiceCorpusDeleteRequest) =>
+    invoke<VoiceCorpusDeleteResponse>('delete_voice_corpus', { request }),
 
   /** "Never record me again" — a different thing from deleting what exists. */
-  setVoiceOptout: (senderId: string, enabled: boolean) => invoke<void>('set_voice_optout', { senderId, enabled }),
+  setVoiceOptout: (request: VoiceCorpusOptoutUpdateRequest) => invoke<void>('set_voice_optout', { request }),
 
   /**
    * Delete someone's voice *and* refuse the future, in that order.
@@ -810,28 +716,25 @@ export const api = {
    * landing in the gap is one nothing will ever go back for — while the button
    * has already reported success.
    */
-  forgetVoiceSender: (senderId: string) =>
-    invoke<{ clips: number; files: number; bytes: number; failures: string[] }>('forget_voice_sender', { senderId }),
+  forgetVoiceSender: (request: VoiceCorpusForgetRequest) =>
+    invoke<VoiceCorpusForgetResponse>('forget_voice_sender', { request }),
 
-  exportVoiceCorpus: (outputDir: string, includeSender: boolean, includeUntranscribed: boolean) =>
-    invoke<{ clips: number; skipped: number; bytes: number; path: string }>('export_voice_corpus', {
-      outputDir,
-      includeSender,
-      includeUntranscribed,
-    }),
+  exportVoiceCorpus: (request: VoiceCorpusExportRequest) =>
+    invoke<VoiceCorpusExportResponse>('export_voice_corpus', { request }),
 
   startOneBot: () => invoke<void>('start_onebot'),
 
   stopOneBot: () => invoke<void>('stop_onebot'),
 
   // Claude Code hook endpoint
-  getHooksStatus: () => invoke<HooksStatus>('get_hooks_status'),
+  getHooksStatus: () => invoke<HookStatusInfoResponse>('get_hooks_status'),
 
-  getHooksConfig: () => invoke<HooksConfig>('get_hooks_config'),
+  getHooksConfig: () => invoke<HookConfigInfoResponse>('get_hooks_config'),
 
   // Returns the stored config, which is how the caller learns the token the
   // backend minted on first save.
-  saveHooksConfig: (config: HooksConfig) => invoke<HooksConfig>('save_hooks_config', { config }),
+  saveHooksConfig: (request: HookConfigUpdateRequest) =>
+    invoke<HookConfigInfoResponse>('save_hooks_config', { request }),
 
   regenerateHooksToken: () => invoke<string>('regenerate_hooks_token'),
 
@@ -840,217 +743,144 @@ export const api = {
   stopHooks: () => invoke<void>('stop_hooks'),
 
   // Remote access: serving this desktop to another device
-  getListenStatus: () => invoke<ListenStatus>('get_listen_status'),
+  getListenStatus: () => invoke<ListenStatusResponse>('get_listen_status'),
 
-  getListenConfig: () => invoke<ListenConfig>('get_listen_config'),
+  getListenConfig: () => invoke<ListenConfigInfoResponse>('get_listen_config'),
 
   // The four calls that change anything restart the server, so each answers
   // with the status it left behind rather than making the caller ask again.
   // The token is minted by the backend on first enable, so the config has to be
   // re-read after any of them that could have created one.
-  saveListenConfig: (config: ListenConfig) => invoke<ListenStatus>('save_listen_config', { config }),
+  saveListenConfig: (request: ListenConfigUpdateRequest) =>
+    invoke<ListenStatusResponse>('save_listen_config', { request }),
 
-  startListen: () => invoke<ListenStatus>('start_listen'),
+  startListen: () => invoke<ListenStatusResponse>('start_listen'),
 
-  stopListen: () => invoke<ListenStatus>('stop_listen'),
+  stopListen: () => invoke<ListenStatusResponse>('stop_listen'),
 
   // Answers with the whole config, which is how the caller learns the new token.
-  regenerateListenToken: () => invoke<ListenConfig>('regenerate_listen_token'),
+  regenerateListenToken: () => invoke<ListenConfigInfoResponse>('regenerate_listen_token'),
 
   // The addresses another device could dial, so nobody has to read `ipconfig`.
-  getListenAddresses: () => invoke<string[]>('get_listen_addresses'),
+  getListenAddresses: () => invoke<ListenAddressesResponse>('get_listen_addresses'),
 
   // Prompt Templates
-  listPromptTemplates: () => invoke<PromptTemplate[]>('list_prompt_templates'),
+  listPromptTemplates: () => invoke<PromptTemplateListResponse>('list_prompt_templates'),
 
-  createPromptTemplate: (name: string, category: string, templateText: string, description?: string) =>
-    invoke<PromptTemplate>('create_prompt_template', {
-      name,
-      category,
-      templateText,
-      description: description ?? null,
-    }),
+  createPromptTemplate: (request: PromptTemplateCreateRequest) =>
+    invoke<PromptTemplateInfoResponse>('create_prompt_template', { request }),
 
-  updatePromptTemplate: (
-    id: string,
-    updates: {
-      name?: string
-      description?: string | null
-      category?: string
-      templateText?: string
-    },
-  ) => invoke<PromptTemplate>('update_prompt_template', { id, updates }),
+  updatePromptTemplate: (request: PromptTemplateUpdateRequest) =>
+    invoke<PromptTemplateInfoResponse>('update_prompt_template', { request }),
 
   deletePromptTemplate: (id: string) => invoke<void>('delete_prompt_template', { id }),
 
-  listTemplateVariables: () => invoke<TemplateVariable[]>('list_template_variables'),
+  listTemplateVariables: () => invoke<TemplateVariableListResponse>('list_template_variables'),
 
   // Emoji Packs
-  listEmojiPacks: () => invoke<EmojiPack[]>('list_emoji_packs'),
+  listEmojiPacks: () => invoke<EmojiPackListResponse>('list_emoji_packs'),
 
-  createEmojiPack: (name: string, description?: string) =>
-    invoke<EmojiPack>('create_emoji_pack', {
-      name,
-      description: description ?? null,
-    }),
+  createEmojiPack: (request: EmojiPackCreateRequest) => invoke<EmojiPackInfoResponse>('create_emoji_pack', { request }),
 
   deleteEmojiPack: (id: string) => invoke<void>('delete_emoji_pack', { id }),
 
-  listEmojis: (packId: string) => invoke<Emoji[]>('list_emojis', { packId }),
+  listEmojis: (packId: string) => invoke<EmojiListResponse>('list_emojis', { packId }),
 
-  importEmojis: (packId: string, filePaths: string[]) => invoke<Emoji[]>('import_emojis', { packId, filePaths }),
+  importEmojis: (request: EmojiImportRequest) => invoke<EmojiListResponse>('import_emojis', { request }),
 
   deleteEmoji: (id: string) => invoke<void>('delete_emoji', { id }),
 
-  renameEmoji: (id: string, newName: string) => invoke<Emoji>('rename_emoji', { id, newName }),
+  renameEmoji: (request: EmojiRenameRequest) => invoke<EmojiInfoResponse>('rename_emoji', { request }),
 
-  suggestStickerSemantics: (id: string) => invoke<Emoji>('suggest_sticker_semantics', { id }),
+  suggestStickerSemantics: (id: string) => invoke<EmojiInfoResponse>('suggest_sticker_semantics', { id }),
 
-  confirmStickerSemantics: (id: string, name: string, tags?: string) =>
-    invoke<Emoji>('confirm_sticker_semantics', { id, name, tags: tags ?? null }),
+  confirmStickerSemantics: (request: EmojiSemanticsConfirmRequest) =>
+    invoke<EmojiInfoResponse>('confirm_sticker_semantics', { request }),
 
-  searchEmojis: (query: string) => invoke<Emoji[]>('search_emojis', { query }),
+  searchEmojis: (query: string) => invoke<EmojiListResponse>('search_emojis', { query }),
 
-  assignEmojiPack: (assistantId: string, packId: string) => invoke<void>('assign_emoji_pack', { assistantId, packId }),
+  assignEmojiPack: (request: AssistantEmojiPackAssignmentRequest) => invoke<void>('assign_emoji_pack', { request }),
 
-  unassignEmojiPack: (assistantId: string, packId: string) =>
-    invoke<void>('unassign_emoji_pack', { assistantId, packId }),
+  unassignEmojiPack: (request: AssistantEmojiPackAssignmentRequest) => invoke<void>('unassign_emoji_pack', { request }),
 
-  listAssistantEmojiPacks: (assistantId: string) => invoke<EmojiPack[]>('list_assistant_emoji_packs', { assistantId }),
+  listAssistantEmojiPacks: (assistantId: string) =>
+    invoke<EmojiPackListResponse>('list_assistant_emoji_packs', { assistantId }),
 
   getEmojiFileUrl: (emojiId: string) => invoke<string>('get_emoji_file_url', { emojiId }),
 
   // Tool System
-  listToolCategories: () => invoke<ToolCategory[]>('list_tool_categories'),
+  listToolCategories: () => invoke<ToolCategoryListResponse>('list_tool_categories'),
 
-  listCustomTools: () => invoke<CustomTool[]>('list_custom_tools'),
+  listCustomTools: () => invoke<CustomToolListResponse>('list_custom_tools'),
 
-  createCustomTool: (params: {
-    name: string
-    description: string
-    command: string
-    categoryId?: string
-    parametersSchema?: string
-    argsTemplate?: string
-    workingDirectory?: string
-    timeoutMs?: number
-    permission?: string
-  }) =>
-    invoke<CustomTool>('create_custom_tool', {
-      name: params.name,
-      description: params.description,
-      command: params.command,
-      categoryId: params.categoryId ?? null,
-      parametersSchema: params.parametersSchema ?? null,
-      argsTemplate: params.argsTemplate ?? null,
-      workingDirectory: params.workingDirectory ?? null,
-      timeoutMs: params.timeoutMs ?? null,
-      permission: params.permission ?? null,
-    }),
+  createCustomTool: (request: CustomToolCreateRequest) =>
+    invoke<CustomToolInfoResponse>('create_custom_tool', { request }),
 
-  updateCustomTool: (
-    id: string,
-    updates: {
-      name?: string
-      description?: string
-      command?: string
-      categoryId?: string | null
-      parametersSchema?: string
-      argsTemplate?: string | null
-      workingDirectory?: string | null
-      timeoutMs?: number | null
-      permission?: string
-      isEnabled?: number
-    },
-  ) => invoke<CustomTool>('update_custom_tool', { id, updates }),
+  updateCustomTool: (request: CustomToolUpdateRequest) =>
+    invoke<CustomToolInfoResponse>('update_custom_tool', { request }),
 
   deleteCustomTool: (id: string) => invoke<void>('delete_custom_tool', { id }),
 
-  listToolPresets: () => invoke<ToolPreset[]>('list_tool_presets'),
+  listToolPresets: () => invoke<ToolPresetListResponse>('list_tool_presets'),
 
-  createToolPreset: (name: string, toolNames: string, description?: string) =>
-    invoke<ToolPreset>('create_tool_preset', {
-      name,
-      toolNames,
-      description: description ?? null,
-    }),
+  createToolPreset: (request: ToolPresetCreateRequest) =>
+    invoke<ToolPresetInfoResponse>('create_tool_preset', { request }),
 
-  updateToolPreset: (
-    id: string,
-    updates: {
-      name?: string
-      description?: string | null
-      toolNames?: string
-    },
-  ) => invoke<ToolPreset>('update_tool_preset', { id, updates }),
+  updateToolPreset: (request: ToolPresetUpdateRequest) =>
+    invoke<ToolPresetInfoResponse>('update_tool_preset', { request }),
 
   deleteToolPreset: (id: string) => invoke<void>('delete_tool_preset', { id }),
 
   // Skills
-  listSkills: () => invoke<Skill[]>('list_skills'),
+  listSkills: () => invoke<SkillListResponse>('list_skills'),
 
-  rescanSkills: () => invoke<Skill[]>('rescan_skills'),
+  rescanSkills: () => invoke<SkillListResponse>('rescan_skills'),
 
   getSkillBody: (dirName: string) => invoke<string>('get_skill_body', { dirName }),
 
-  createSkill: (dirName: string, llmDescription: string, body: string, displayName?: string) =>
-    invoke<Skill>('create_skill', {
-      dirName,
-      llmDescription,
-      body,
-      displayName: displayName ?? null,
-    }),
+  createSkill: (request: SkillCreateRequest) => invoke<SkillInfoResponse>('create_skill', { request }),
 
-  updateSkill: (
-    dirName: string,
-    updates: {
-      displayName?: string
-      llmDescription?: string
-      body?: string
-      isEnabled?: boolean
-    },
-  ) => invoke<Skill>('update_skill', { dirName, updates }),
+  updateSkill: (request: SkillUpdateRequest) => invoke<SkillInfoResponse>('update_skill', { request }),
 
   deleteSkill: (dirName: string) => invoke<void>('delete_skill', { dirName }),
 
-  listSkillBindings: (layer: SkillLayer, anchorId?: string) =>
-    invoke<string[]>('list_skill_bindings', { layer, anchorId: anchorId ?? null }),
+  listSkillBindings: (request: SkillBindingListRequest) =>
+    invoke<SkillBindingNamesResponse>('list_skill_bindings', { request }),
 
-  setSkillBinding: (layer: SkillLayer, anchorId: string | null, dirName: string, bound: boolean) =>
-    invoke<string[]>('set_skill_binding', { layer, anchorId: anchorId ?? null, dirName, bound }),
+  setSkillBinding: (request: SkillBindingUpdateRequest) =>
+    invoke<SkillBindingNamesResponse>('set_skill_binding', { request }),
 
   // Settings → About. Not `getVersion()` from `@tauri-apps/api/app`: that one
   // is answered by the shell this page may not be running in.
-  getAppInfo: () => invoke<AppInfo>('get_app_info'),
+  getAppInfo: () => invoke<AppInfoResponse>('get_app_info'),
 
   // Application logs
-  readLogs: (query: LogQuery = {}) =>
-    invoke<LogPage>('read_logs', {
-      query: {
-        minLevel: query.minLevel ?? null,
-        limit: query.limit ?? null,
-        contains: query.contains ?? null,
-        targetPrefix: query.targetPrefix ?? null,
-        conversationId: query.conversationId ?? null,
-        sinceTsMs: query.sinceTsMs ?? null,
-        untilTsMs: query.untilTsMs ?? null,
-        cursor: query.cursor ?? null,
-      },
-    }),
+  readLogs: (query: LogQueryRequest = {}) => {
+    const request: LogQueryRequest = {
+      minLevel: query.minLevel ?? null,
+      limit: query.limit ?? null,
+      contains: query.contains ?? null,
+      targetPrefix: query.targetPrefix ?? null,
+      conversationId: query.conversationId ?? null,
+      sinceTsMs: query.sinceTsMs ?? null,
+      untilTsMs: query.untilTsMs ?? null,
+      cursor: query.cursor ?? null,
+    }
+    return invoke<LogPageResponse>('read_logs', { request })
+  },
 
-  listLogFiles: () => invoke<LogFileInfo[]>('list_log_files'),
+  listLogFiles: () => invoke<LogFileListResponse>('list_log_files'),
 
-  getLogSettings: () => invoke<LogSettings>('get_log_settings'),
+  getLogSettings: () => invoke<LogSettingsResponse>('get_log_settings'),
 
-  setLogLevel: (level: string) => invoke<void>('set_log_level', { level }),
+  setLogLevel: (request: LogLevelUpdateRequest) => invoke<void>('set_log_level', { request }),
 
-  /** Returns the number of bytes written. */
-  exportLogs: (outputPath: string) => invoke<number>('export_logs', { outputPath }),
+  exportLogs: (request: LogExportRequest) => invoke<LogExportResponse>('export_logs', { request }),
 
   // Service Keys (for tool services like Tavily, Zhipu search)
-  setServiceKey: (service: string, key: string) => invoke<void>('set_service_key', { service, key }),
+  setServiceKey: (request: ServiceKeyUpdateRequest) => invoke<void>('set_service_key', { request }),
 
-  getServiceKeyExists: (service: string) => invoke<boolean>('get_service_key_exists', { service }),
+  getServiceKeyExists: (service: ServiceKey) => invoke<boolean>('get_service_key_exists', { service }),
 
   /**
    * Tokens and cost, grouped by `dimension`.
@@ -1061,6 +891,5 @@ export const api = {
    * front end: the cost of a group is not the sum of its rows' costs, because a
    * cached token bills at the cache rate instead of the input rate.
    */
-  usageReport: (dimension: UsageDimension, filter?: UsageFilter) =>
-    invoke<UsageBucket[]>('usage_report', { dimension, filter: filter ?? null }),
+  usageReport: (request: UsageReportRequest) => invoke<UsageBucketListResponse>('usage_report', { request }),
 }

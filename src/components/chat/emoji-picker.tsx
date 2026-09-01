@@ -5,15 +5,15 @@ import { Button, ScrollShadow, SearchField } from '@heroui/react'
 import { ChatLoader, EmojiPicker as ProEmojiPicker } from '@heroui-pro/react'
 
 import { api } from '@/api'
-import type { Emoji, EmojiPack } from '@/types'
+import type { EmojiInfoResponse, EmojiPackInfoResponse } from '@/types'
 
 interface PackWithEmojis {
-  pack: EmojiPack
-  emojis: Emoji[]
+  pack: EmojiPackInfoResponse
+  emojis: EmojiInfoResponse[]
 }
 
 interface StickerItem {
-  emoji: Emoji
+  emoji: EmojiInfoResponse
   packId: string
   packName: string
   url?: string
@@ -24,7 +24,7 @@ export function EmojiPicker({
   onSelect,
 }: {
   assistantId: string | null
-  onSelect: (sticker: { emoji: Emoji; url: string }) => void
+  onSelect: (sticker: { emoji: EmojiInfoResponse; url: string }) => void
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)

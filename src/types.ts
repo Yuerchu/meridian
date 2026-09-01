@@ -1,8 +1,344 @@
-export interface Project {
+import type { DecimalString } from './lib/decimal'
+
+export type { DecimalString } from './lib/decimal'
+
+export type AssistantListResponse = AssistantInfoResponse[]
+export type ConversationListResponse = ConversationInfoResponse[]
+export type ConversationSearchHitListResponse = ConversationSearchHitInfoResponse[]
+export type EmojiPackListResponse = EmojiPackInfoResponse[]
+export type EmojiListResponse = EmojiInfoResponse[]
+export type JournalVersionListResponse = JournalVersionInfoResponse[]
+export type McpServerListResponse = McpServerInfoResponse[]
+export type MemoryListResponse = MemoryInfoResponse[]
+export type MemorySubjectListResponse = MemorySubjectInfoResponse[]
+export type ModelConfigListResponse = ModelConfigInfoResponse[]
+export type ProjectListResponse = ProjectInfoResponse[]
+export type PromptTemplateListResponse = PromptTemplateInfoResponse[]
+export type ProviderListResponse = ProviderInfoResponse[]
+export type QueuedPromptListResponse = QueuedPromptInfoResponse[]
+export type SkillListResponse = SkillInfoResponse[]
+export type SkillBindingNamesResponse = string[]
+export type TodoItemListResponse = TodoItemInfoResponse[]
+export type ToolCategoryListResponse = ToolCategoryInfoResponse[]
+export type CustomToolListResponse = CustomToolInfoResponse[]
+export type ToolPresetListResponse = ToolPresetInfoResponse[]
+export type MessageListResponse = MessageInfoResponse[]
+export type PendingApprovalListResponse = PendingApprovalInfoResponse[]
+export type LogFileListResponse = LogFileInfoResponse[]
+export type UsageBucketListResponse = UsageBucketInfoResponse[]
+export type WorkspaceTreeEntryListResponse = WorkspaceTreeEntryInfoResponse[]
+export type WorkspaceReferenceSuggestionListResponse = WorkspaceReferenceSuggestionInfoResponse[]
+export type AcpLiveConversationIdsResponse = string[]
+export type ListenAddressesResponse = string[]
+
+export type SecretKey = 'REMOTE_TOKEN'
+
+export interface SecretUpsertRequest {
+  key: SecretKey
+  value: string
+}
+
+export interface SecretReadRequest {
+  key: SecretKey
+}
+
+export interface SecretDeleteRequest {
+  key: SecretKey
+}
+
+export interface ConversationCreateRequest {
+  title: string | null
+  projectId: string | null
+}
+
+export interface ConversationCompactionRequest {
+  conversationId: string
+  customInstructions: string | null
+}
+
+export interface ConversationAssistantUpdateRequest {
+  id: string
+  assistantId: string | null
+}
+
+export interface ConversationTitleUpdateRequest {
+  id: string
+  title: string
+}
+
+export interface ConversationReasoningPreferencesUpdateRequest {
+  id: string
+  thinkingLevel: StoredThinkingLevel | null
+  fastMode: boolean
+}
+
+export interface ConversationModeUpdateRequest {
+  id: string
+  mode: ChatMode | null
+}
+
+export interface ConversationAcceptEditsUpdateRequest {
+  id: string
+  acceptEdits: boolean
+}
+
+export interface ConversationProjectUpdateRequest {
+  id: string
+  projectId: string | null
+}
+
+export interface ConversationListByProjectRequest {
+  projectId: string
+  archived: boolean
+}
+
+export interface ConversationSearchRequest {
+  query: string
+  limit: number | null
+}
+
+export interface AssistantCreateRequest {
+  name: string
+  systemPrompt: string
+  modelId: string | null
+  temperature: number | null
+  topP: number | null
+  maxTokens: number | null
+}
+
+export interface AssistantUpdateRequest {
+  id: string
+  name?: string
+  systemPrompt?: string
+  providerId?: string | null
+  modelId?: string | null
+  temperature?: number | null
+  contextLimit?: number
+  enabledTools?: string[] | null
+  thinkingEnabled?: boolean
+  thinkingBudget?: number | null
+  toolPresetId?: string | null
+  autoCompactEnabled?: boolean
+}
+
+export interface EmojiPackCreateRequest {
+  name: string
+  description: string | null
+}
+
+export interface EmojiImportRequest {
+  packId: string
+  filePaths: string[]
+}
+
+export interface EmojiRenameRequest {
+  id: string
+  newName: string
+}
+
+export interface EmojiSemanticsConfirmRequest {
+  id: string
+  name: string
+  tags: string | null
+}
+
+export interface AssistantEmojiPackAssignmentRequest {
+  assistantId: string
+  packId: string
+}
+
+export interface McpServerCreateRequest {
+  name: string
+  transportType: McpTransport
+  command: string | null
+  args: string[] | null
+  env: Record<string, string> | null
+  url: string | null
+  headers: Record<string, string> | null
+}
+
+export interface McpServerUpdateRequest {
+  id: string
+  name?: string
+  transportType?: McpTransport
+  command?: string | null
+  args?: string[] | null
+  env?: Record<string, string> | null
+  url?: string | null
+  headers?: Record<string, string> | null
+  isEnabled?: boolean
+}
+
+export interface MemoryUpsertRequest {
+  projectId: string
+  key: string
+  content: string
+  memoryType: MemoryType | null
+}
+
+export interface MemoryScopedUpsertRequest {
+  scope: MemoryScope
+  projectId: string | null
+  subjectScopeId: string | null
+  key: string
+  content: string
+  memoryType: MemoryType | null
+  ownerOnly: boolean | null
+}
+
+export interface MemoryUpdateRequest {
+  id: string
+  content?: string
+  memoryType?: MemoryType
+  ownerOnly?: boolean
+}
+
+export interface MemorySubjectFlagsUpdateRequest {
+  subjectScopeId: string
+  isPinned: boolean | null
+  optedOut: boolean | null
+}
+
+export interface ProjectCreateRequest {
+  name: string
+  path: string | null
+  sourceType: ProjectSource
+  sourceId: string | null
+  assistantId: string | null
+  description: string | null
+}
+
+export interface ProjectUpdateRequest {
+  id: string
+  name?: string
+  path?: string
+  assistantId?: string
+  description?: string
+}
+
+export interface PromptTemplateCreateRequest {
+  name: string
+  category: string
+  templateText: string
+  description: string | null
+}
+
+export interface PromptTemplateUpdateRequest {
+  id: string
+  name?: string
+  description?: string | null
+  category?: string
+  templateText?: string
+}
+
+export interface ProviderCreateRequest {
+  name: string
+  providerType: ProviderType
+  baseUrl: string
+  apiFormat: ProviderApiFormat | null
+  catalogId: string | null
+  authOption: string | null
+}
+
+export interface ProviderUpdateRequest {
+  id: string
+  name?: string
+  providerType?: ProviderType
+  baseUrl?: string
+  isEnabled?: boolean
+  apiFormat?: ProviderApiFormat
+  credentialKind?: ProviderCredentialKind
+  transportProfile?: ProviderTransportProfile
+}
+
+export interface ProviderKeyUpdateRequest {
+  providerId: string
+  apiKey: string
+}
+
+export interface ProviderModelListRequest {
+  providerId: string
+  forceRefresh: boolean | null
+}
+
+export interface ProviderCapabilitiesReadRequest {
+  providerId: string
+  modelId: string
+}
+
+export interface SkillCreateRequest {
+  dirName: string
+  llmDescription: string
+  body: string
+  displayName: string | null
+}
+
+export interface SkillUpdateRequest {
+  dirName: string
+  displayName?: string
+  llmDescription?: string
+  body?: string
+  isEnabled?: boolean
+}
+
+export interface SkillBindingListRequest {
+  layer: SkillLayer
+  anchorId: string | null
+}
+
+export interface SkillBindingUpdateRequest {
+  layer: SkillLayer
+  anchorId: string | null
+  dirName: string
+  bound: boolean
+}
+
+export interface CustomToolCreateRequest {
+  name: string
+  description: string
+  command: string
+  categoryId: string | null
+  parametersSchema: Record<string, unknown> | null
+  argsTemplate: string | null
+  workingDirectory: string | null
+  timeoutMs: number | null
+  permission: ToolPermission | null
+}
+
+export interface CustomToolUpdateRequest {
+  id: string
+  name?: string
+  description?: string
+  command?: string
+  categoryId?: string | null
+  parametersSchema?: Record<string, unknown>
+  argsTemplate?: string | null
+  workingDirectory?: string | null
+  timeoutMs?: number | null
+  permission?: ToolPermission
+  isEnabled?: boolean
+}
+
+export type ToolPermission = 'always' | 'ask' | 'never'
+
+export interface ToolPresetCreateRequest {
+  name: string
+  description: string | null
+  toolNames: string[]
+}
+
+export interface ToolPresetUpdateRequest {
+  id: string
+  name?: string
+  description?: string | null
+  toolNames?: string[]
+}
+
+export interface ProjectInfoResponse {
   id: string
   name: string
   path: string | null
-  source_type: string
+  source_type: ProjectSource
   source_id: string | null
   assistant_id: string | null
   description: string | null
@@ -10,23 +346,119 @@ export interface Project {
   updated_at: number
 }
 
+export type ProjectSource = 'local' | 'onebot_private' | 'onebot_group'
+
+export type PreferenceKey =
+  | 'shell'
+  | 'sandbox.enabled'
+  | 'search_provider'
+  | 'voice.filter_level'
+  | 'voice.download_url'
+  | 'android.manage_storage_enabled'
+  | 'autoreview.enabled'
+  | 'autoreview.model'
+  | 'autoreview.escalate'
+  | 'autoreview.allow_rules'
+  | 'autoreview.deny_rules'
+  | 'autoreview.environment'
+  | 'approvals.ttl_minutes'
+  | 'sub_agent.explore.model'
+  | 'sub_agent.agent.model'
+
+export type ShellType = 'bash' | 'powershell' | 'cmd'
+export type SandboxMode = 'auto' | 'container' | 'off'
+export type SearchProvider = 'tavily' | 'zhipu'
+export type VoiceFilterLevel = 'off' | 'standard' | 'aggressive'
+
+export interface PreferenceModelSelectionRequest {
+  providerId: string
+  modelId: string
+}
+
+export interface PreferenceModelSelectionInfoResponse {
+  provider_id: string
+  model_id: string
+}
+
+export interface PreferenceReadRequest<K extends PreferenceKey = PreferenceKey> {
+  key: K
+}
+
+export interface PreferenceInfoValueByKey {
+  shell: ShellType | null
+  'sandbox.enabled': SandboxMode | null
+  search_provider: SearchProvider | null
+  'voice.filter_level': VoiceFilterLevel | null
+  'voice.download_url': string | null
+  'android.manage_storage_enabled': boolean | null
+  'autoreview.enabled': boolean | null
+  'autoreview.model': PreferenceModelSelectionInfoResponse | null
+  'autoreview.escalate': boolean | null
+  'autoreview.allow_rules': string | null
+  'autoreview.deny_rules': string | null
+  'autoreview.environment': string | null
+  'approvals.ttl_minutes': number | null
+  'sub_agent.explore.model': PreferenceModelSelectionInfoResponse | null
+  'sub_agent.agent.model': PreferenceModelSelectionInfoResponse | null
+}
+
+export type PreferenceInfoResponse<K extends PreferenceKey = PreferenceKey> = {
+  [P in K]: { key: P; value: PreferenceInfoValueByKey[P] }
+}[K]
+
+export interface PreferenceUpdateValueByKey {
+  shell: ShellType
+  'sandbox.enabled': SandboxMode
+  search_provider: SearchProvider
+  'voice.filter_level': VoiceFilterLevel
+  'voice.download_url': string | null
+  'android.manage_storage_enabled': boolean
+  'autoreview.enabled': boolean
+  'autoreview.model': PreferenceModelSelectionRequest | null
+  'autoreview.escalate': boolean
+  'autoreview.allow_rules': string
+  'autoreview.deny_rules': string
+  'autoreview.environment': string
+  'approvals.ttl_minutes': number
+  'sub_agent.explore.model': PreferenceModelSelectionRequest | null
+  'sub_agent.agent.model': PreferenceModelSelectionRequest | null
+}
+
+export type PreferenceUpdateRequest = {
+  [P in PreferenceKey]: { key: P; value: PreferenceUpdateValueByKey[P] }
+}[PreferenceKey]
+
+export interface WorkspaceRootRequest {
+  conversationId: string
+}
+
 /** Where a conversation's files live, or which of the three reasons there is
  *  nowhere to look. The empty states are distinct because they ask the user
  *  for three different actions. */
-export type WorkspaceRoot =
+export type WorkspaceRootResponse =
   | { state: 'ok'; root: string; git_available: boolean; is_repo: boolean }
   | { state: 'no_project' }
   | { state: 'no_path' }
   | { state: 'missing_dir'; path: string }
 
-export interface WorkspaceTreeEntry {
+export interface WorkspaceTreeRequest {
+  conversationId: string
+  dir: string | null
+}
+
+export interface WorkspaceTreeEntryInfoResponse {
   name: string
   /** Relative to the workspace root, `/`-separated on every platform. */
   rel_path: string
   is_dir: boolean
 }
 
-export interface WorkspaceFileContent {
+export interface WorkspaceFileReadRequest {
+  conversationId: string
+  relPath: string
+}
+
+export interface WorkspaceFileContentResponse {
   content: string
   truncated: boolean
   total_lines: number
@@ -34,20 +466,38 @@ export interface WorkspaceFileContent {
   binary: boolean
 }
 
-export interface WorkspaceReferenceInput {
+export interface WorkspaceReferenceRequest {
   path: string
-  line_start?: number | null
-  line_end?: number | null
+  lineStart: number | null
+  lineEnd: number | null
 }
 
-export interface WorkspaceReferenceSuggestion {
+export interface WorkspaceReferenceSuggestRequest {
+  conversationId: string | null
+  projectId: string | null
+  query: string
+  limit: number | null
+}
+
+export interface WorkspaceReferenceSuggestionInfoResponse {
   path: string
   name: string
   is_dir: boolean
 }
 
-export interface WorkspaceReferencePreview {
-  kind: 'project_file' | 'project_directory'
+export type WorkspaceReferenceKind = 'project_file' | 'project_directory'
+export type MessageContextKind = WorkspaceReferenceKind | 'shell_output'
+
+export interface WorkspaceReferenceResolveRequest {
+  conversationId: string | null
+  projectId: string | null
+  path: string
+  lineStart: number | null
+  lineEnd: number | null
+}
+
+export interface WorkspaceReferencePreviewResponse {
+  kind: WorkspaceReferenceKind
   path: string
   content: string
   line_start: number | null
@@ -58,16 +508,22 @@ export interface WorkspaceReferencePreview {
   truncated: boolean
 }
 
-/** Metadata-only result used to distinguish real workspace paths from prose. */
-export interface WorkspaceReferenceProbe {
-  kind: 'project_file' | 'project_directory'
+export interface WorkspaceReferenceProbeRequest {
+  conversationId: string | null
+  projectId: string | null
   path: string
 }
 
-export interface MessageContextDescriptor {
+/** Metadata-only result used to distinguish real workspace paths from prose. */
+export interface WorkspaceReferenceProbeResponse {
+  kind: WorkspaceReferenceKind
+  path: string
+}
+
+export interface MessageContextInfoResponse {
   id: string
   position: number
-  kind: 'project_file' | 'project_directory' | 'shell_output'
+  kind: MessageContextKind
   display_path: string | null
   line_start: number | null
   line_end: number | null
@@ -77,30 +533,64 @@ export interface MessageContextDescriptor {
   truncated: boolean
 }
 
-export interface MessageContextContent {
-  descriptor: MessageContextDescriptor
+export interface MessageContextContentResponse {
+  descriptor: MessageContextInfoResponse
   content: string
-  /** JSON owned by the context kind. Shell results use it for exit/cwd/status;
-   *  file snapshots use it only for original size/count metadata. */
-  metadata: string | null
 }
 
-export type CommandTurnStatus = 'completed' | 'sandbox_denied' | 'timed_out' | 'cancelled' | 'failed' | 'in_doubt'
+export interface MessageContextReadRequest {
+  conversationId: string
+  itemId: string
+}
+
+export interface ChatRequest {
+  conversationId: string
+  message: string | null
+  turnId: string | null
+  replaces: string | null
+  modelOverride: string | null
+  providerOverride: string | null
+  thinkingLevel: StoredThinkingLevel | null
+  assistantId: string | null
+  fast: boolean | null
+  mode: ChatMode | null
+  voice: boolean | null
+  contextRefs: WorkspaceReferenceRequest[] | null
+}
+
+export interface ChatStopRequest {
+  conversationId: string
+  turnId: string | null
+}
+
+export type UserCommandStatus = 'completed' | 'sandbox_denied' | 'timed_out' | 'cancelled' | 'failed' | 'in_doubt'
+export type SandboxBackend = 'host' | 'windows_restricted_token' | 'container'
+
+export interface UserCommandRunRequest {
+  conversationId: string
+  turnId: string
+  command: string
+  retryWithoutSandbox: boolean | null
+}
+
+export interface UserCommandResultReadRequest {
+  conversationId: string
+  messageId: string
+}
 
 /** The structured result of a literal `!` command. The model is not queried;
  *  the result is persisted as user-provided context for a later prompt. */
-export interface CommandTurnOutcome {
+export interface UserCommandResultResponse {
   conversation_id: string
   turn_id: string
   message_id: string
-  status: CommandTurnStatus
+  status: UserCommandStatus
   stdout: string
   stderr: string
   exit_code: number | null
   timed_out: boolean
   truncated: boolean
-  /** `host`, `windows_restricted_token`, `container`, or `unknown`. */
-  sandbox: string
+  sandbox: SandboxBackend | null
   duration_ms: number
   cwd: string
   host: string
@@ -120,41 +610,74 @@ export type UserCommandEvent =
       host: string
       retry_without_sandbox: boolean
     }
-  | { type: 'finish'; result: CommandTurnOutcome }
+  | { type: 'finish'; result: UserCommandResultResponse }
 
-export type GitFileStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'conflicted'
+export interface WorkspaceGitStatusRequest {
+  conversationId: string
+}
 
-export interface GitStatusEntry {
+export type WorkspaceGitFileStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'conflicted'
+
+export interface WorkspaceGitStatusEntryInfoResponse {
   path: string
-  status: GitFileStatus
+  status: WorkspaceGitFileStatus
   renamed_from: string | null
 }
 
-export type GitStatusResult =
-  { state: 'ok'; branch: string | null; files: GitStatusEntry[] } | { state: 'no_git' } | { state: 'not_repo' }
+export type WorkspaceGitStatusResponse =
+  | { state: 'ok'; branch: string | null; files: WorkspaceGitStatusEntryInfoResponse[] }
+  | { state: 'no_git' }
+  | { state: 'not_repo' }
 
-export interface GitDiffResult {
+export interface WorkspaceGitDiffRequest {
+  conversationId: string
+  relPath: string | null
+}
+
+export interface WorkspaceGitDiffResponse {
   diff_text: string
   truncated: boolean
 }
 
+export interface WorkspaceEditorOpenRequest {
+  conversationId: string
+  relPath: string
+  line: number | null
+}
+
+export type JournalBlameKind = 'conversation' | 'inferred' | 'external' | 'preexisting'
+
+export interface JournalBlameRequest {
+  conversationId: string
+  relPath: string
+}
+
+export interface JournalFileHistoryRequest {
+  conversationId: string
+  relPath: string
+}
+
+export interface JournalVersionContentRequest {
+  versionId: string
+}
+
 /** One contiguous run of lines with one origin. 1-based, inclusive. */
-export interface BlameSpan {
+export interface JournalBlameSpanInfoResponse {
   start_line: number
   end_line: number
   /** `conversation` came from a turn; `inferred` was observed across a
    *  run_command bracket; `external` is a change nobody here made (or history
    *  the journal lost); `preexisting` predates the journal. */
-  kind: 'conversation' | 'inferred' | 'external' | 'preexisting'
+  kind: JournalBlameKind
   conversation_id: string | null
   turn_id: string | null
-  origin: string | null
+  origin: TurnOrigin | null
   model_id: string | null
   tool_name: string | null
   timestamp: number | null
 }
 
-export interface BlameResult {
+export interface JournalBlameResponse {
   /** Sha of the disk content this answer was computed against — re-fetch and
    *  compare to know the answer aged. */
   current_sha: string
@@ -162,50 +685,66 @@ export interface BlameResult {
   head_sha: string | null
   /** The chain does not reach the file's beginning. */
   truncated: boolean
-  spans: BlameSpan[]
+  spans: JournalBlameSpanInfoResponse[]
 }
 
+export interface JournalVersionContentResponse {
+  content: string
+}
+
+export type JournalOperation =
+  'write' | 'edit' | 'patch' | 'delete' | 'rename_from' | 'rename_to' | 'command_observed' | 'external' | 'rewind'
+
+export type JournalSource = 'native' | 'hosted' | 'inferred' | 'external' | 'rewind'
+
 /** One journalled version of a file, as stored. */
-export interface JournalVersion {
+export interface JournalVersionInfoResponse {
   id: string
   file_id: string
   seq: number
-  op: string
+  op: JournalOperation
   observed_old_sha: string | null
   new_sha: string | null
-  source: string
+  source: JournalSource
   conversation_id: string | null
   turn_id: string | null
   project_id: string | null
-  origin: string | null
+  origin: TurnOrigin | null
   model_id: string | null
   tool_name: string | null
   moved_from_version_id: string | null
   created_at: number
 }
 
-/** Scope/origin/visibility values come from the `memory_enums` command rather
- *  than literal unions here, so the front end cannot drift from the Rust enums. */
-export interface Memory {
+export type MemoryScope = 'project' | 'client_global' | 'onebot_global' | 'onebot_user'
+export type MemoryType = 'general' | 'preference' | 'fact' | 'instruction' | 'relationship'
+export type MemoryOrigin = 'private' | 'group' | 'admin' | 'desktop' | 'legacy'
+export type MemoryVisibility = 'normal' | 'owner_only'
+export type MemoryDeletedBy = 'self' | 'admin' | 'lru'
+
+/** Persisted memory fields are closed enums. `memory_enums` supplies display
+ *  choices; it is not a compatibility escape hatch for unknown values. */
+export interface MemoryInfoResponse {
   id: string
-  scope_type: string
+  scope_type: MemoryScope
   scope_id: string
   key: string
   content: string
-  memory_type: string
+  memory_type: MemoryType
   subject_scope_id: string | null
-  origin: string
-  visibility: string
+  origin: MemoryOrigin
+  visibility: MemoryVisibility
   source_session_id: string | null
   deleted_at: number | null
-  deleted_by: string | null
+  deleted_by: MemoryDeletedBy | null
   created_at: number
   updated_at: number
 }
 
 export type TodoItemStatus = 'pending' | 'in_progress' | 'completed'
+export type TodoListStatus = 'in_progress' | 'completed'
 
-export interface TodoItem {
+export interface TodoItemInfoResponse {
   id: string
   list_id: string
   content: string
@@ -216,83 +755,113 @@ export interface TodoItem {
   created_at: number
 }
 
-export interface TodoList {
+export interface TodoListInfoResponse {
   id: string
   conversation_id: string
   title: string
-  status: 'in_progress' | 'completed'
+  status: TodoListStatus
   created_at: number
   updated_at: number
 }
 
-export interface TodoListView {
-  list: TodoList
-  items: TodoItem[]
+export interface TodoInfoResponse {
+  list: TodoListInfoResponse
+  items: TodoItemInfoResponse[]
 }
 
-export interface MemorySubject {
+export interface MemorySubjectInfoResponse {
   scope_id: string
   display_name: string | null
   last_seen_at: number
   created_at: number
-  is_protected: number
-  is_pinned: number
-  opted_out: number
+  is_protected: boolean
+  is_pinned: boolean
+  opted_out: boolean
 }
 
-export interface MemoryEnums {
-  scopes: string[]
-  origins: string[]
-  visibilities: string[]
-  memory_types: string[]
+export interface MemoryEnumsResponse {
+  scopes: MemoryScope[]
+  origins: MemoryOrigin[]
+  visibilities: MemoryVisibility[]
+  memory_types: MemoryType[]
 }
 
-export interface Conversation {
+export interface ConversationInfoResponse {
   id: string
   title: string | null
   assistant_id: string | null
-  is_pinned: number
-  is_archived: number
+  is_pinned: boolean
+  is_archived: boolean
   message_count: number
   created_at: number
   updated_at: number
   project_id: string | null
   /** Per-conversation reasoning tier; null means inherit the assistant default. */
-  thinking_level: string | null
-  fast_mode: number
+  thinking_level: StoredThinkingLevel | null
+  fast_mode: boolean
   /** Collaboration mode; null is the default (work) mode. */
-  mode: string | null
+  mode: ChatMode | null
   /** Leaf the active path ends at. Null falls back to the newest message. */
-  head_message_id?: string | null
+  head_message_id: string | null
   /**
    * Standing approval for ordinary edits inside the project. What it widens is
    * bounded in the backend, not here: never outside the project, never anything
    * irreversible, never a path that makes code run later.
    */
-  accept_edits: number
+  accept_edits: boolean
   /**
    * `claude_code` for a hosted ACP session, `plan_review` / `impl_review` for a
    * gate's transcript, absent for an ordinary conversation. What the composer
    * reads to decide which backend command a message goes to.
    */
-  agent_kind?: string | null
+  parent_conversation_id: string | null
+  spawned_by_message_id: string | null
+  spawned_by_call_id: string | null
+  spawned_turn_id: string | null
+  agent_kind: ConversationAgentKind | null
+  agent_provider_id: string | null
+  agent_model_id: string | null
 }
 
 /** One conversation whose transcript says the search query, with a snippet
  *  around the newest mention. What `search_conversations` returns. */
-export interface TranscriptHit {
+export interface ConversationSearchHitInfoResponse {
   conversation_id: string
   title: string | null
-  /** Who said the matched line — `user` or `assistant`. */
-  role: string
+  role: TranscriptRole
   snippet: string
   created_at: number
 }
 
-/** How to start the ACP adapter. `command` names a binary this app executes. */
-export interface AcpConfig {
+export type TranscriptRole = 'user' | 'assistant'
+
+/** Stored ACP adapter settings returned by the host. */
+export interface AcpConfigInfoResponse {
   command: string
   args: string[]
+}
+
+/** Complete ACP adapter settings accepted by the host. */
+export interface AcpConfigUpdateRequest {
+  command: string
+  args: string[]
+}
+
+export interface AcpSessionOpenRequest {
+  cwd: string
+}
+
+export interface AcpPromptSendRequest {
+  conversationId: string
+  message: string
+  turnId: string | null
+  contextRefs: WorkspaceReferenceRequest[] | null
+}
+
+export interface AcpSessionAttachRequest {
+  conversationId: string
+  sessionId: string
+  cwd: string
 }
 
 /**
@@ -303,32 +872,44 @@ export interface AcpConfig {
  * us — picking a model re-derives which modes exist — so this is never
  * hardcoded, only rendered.
  */
-export interface AcpConfigOption {
+export interface AcpConfigOptionInfoResponse {
   id: string
   name: string
-  description?: string
+  description: string | null
   /** `model` | `mode` | `effort` | … Advisory; `id` is the fallback. */
   category: string | null
   /** `select` | `boolean`. Only `select` is drawn as a picker. */
   type: string | null
   /** A value id for a select, a boolean for a toggle. */
   currentValue: unknown
-  options: AcpConfigOptionValue[]
+  options: AcpConfigOptionValueInfoResponse[]
 }
 
-export interface AcpConfigOptionValue {
+export interface AcpConfigOptionValueInfoResponse {
   value: string
   name: string
-  description?: string
+  description: string | null
+}
+
+export type AcpConfigOptionListResponse = AcpConfigOptionInfoResponse[]
+
+export interface AcpSessionConfigReadRequest {
+  conversationId: string
+}
+
+export interface AcpSessionConfigUpdateRequest {
+  conversationId: string
+  configId: string
+  value: unknown
 }
 
 /**
  * A Claude Code session the agent found on this machine.
  *
  * camelCase because most of it is the ACP `SessionInfo` passed straight
- * through, the way `AcpConfigOption` is.
+ * through, the way `AcpConfigOptionInfoResponse` is.
  */
-export interface AcpDiscoveredSession {
+export interface AcpDiscoveredSessionInfoResponse {
   sessionId: string
   /** Absolute, and where the session's work happened. */
   cwd: string
@@ -346,8 +927,23 @@ export interface AcpDiscoveredSession {
   ownedBy: string | null
 }
 
+export type AcpDiscoveredSessionListResponse = AcpDiscoveredSessionInfoResponse[]
+
+/** Complete discovery scope. `cwd: null` means every project. */
+export interface AcpSessionListRequest {
+  cwd: string | null
+}
+
+/** Complete description of the discovered session selected for import. */
+export interface AcpImportSessionRequest {
+  sessionId: string
+  cwd: string
+  title: string | null
+  updatedAt: string | null
+}
+
 /** What one import produced. */
-export interface AcpImportOutcome {
+export interface AcpImportSessionResponse {
   conversationId: string
   /**
    * Only the tail of the session came back.
@@ -362,7 +958,7 @@ export interface AcpImportOutcome {
 }
 
 /** Which agent session a hosted conversation follows, and where it works. */
-export interface AcpConversationSession {
+export interface AcpConversationSessionInfoResponse {
   cwd: string
   /** `null` for a conversation from before the session table existed, which is
    *  exactly the one worth attaching to something. */
@@ -380,6 +976,29 @@ export interface AcpConversationSession {
  */
 export type QueueDelivery = 'follow_up' | 'interject'
 
+export interface QueuedPromptCreateRequest {
+  conversationId: string
+  content: string
+  delivery: QueueDelivery
+  contextRefs: WorkspaceReferenceRequest[] | null
+}
+
+export interface QueuedPromptDeliveryUpdateRequest {
+  conversationId: string
+  id: string
+  delivery: QueueDelivery
+}
+
+export interface QueuedPromptRemoveRequest {
+  conversationId: string
+  id: string
+}
+
+export interface QueuedPromptReorderRequest {
+  conversationId: string
+  ids: string[]
+}
+
 /**
  * Where a queued message has got to. Derived on the backend from which
  * timestamps are set, never stored — see the migration.
@@ -390,11 +1009,11 @@ export type QueueDelivery = 'follow_up' | 'interject'
  */
 export type QueueState = 'queued' | 'in_doubt' | 'settled' | 'held'
 
-export interface QueuedPrompt {
+export interface QueuedPromptInfoResponse {
   id: string
   conversation_id: string
   content: string
-  delivery: string
+  delivery: QueueDelivery
   position: number
   created_at: number
   dispatched_at: number | null
@@ -406,7 +1025,7 @@ export interface QueuedPrompt {
 }
 
 /** What the settings page learned by starting the adapter and greeting it. */
-export interface AcpCheck {
+export interface AcpCheckResponse {
   ok: boolean
   agent: string | null
   protocol_version: number | null
@@ -415,7 +1034,7 @@ export interface AcpCheck {
 }
 
 /** A step on the active path that was answered more than once. */
-export interface BranchPoint {
+export interface BranchPointInfoResponse {
   /** The version currently on the path. */
   message_id: string
   /** 0-based position among `sibling_ids`. */
@@ -425,16 +1044,34 @@ export interface BranchPoint {
   sibling_ids: string[]
 }
 
+export type BranchPointListResponse = BranchPointInfoResponse[]
+
 /** One snapshot of a conversation: the active path plus where it can be paged.
  *  Returned whole so the two can never disagree on screen. */
-export interface MessageTree {
-  messages: Message[]
+export interface MessageTreeResponse {
+  messages: MessageListResponse
   head_message_id: string | null
-  branches: BranchPoint[]
+  branches: BranchPointListResponse
+}
+
+export interface MessageBranchSwitchRequest {
+  conversationId: string
+  messageId: string
+}
+
+export interface MessageDeleteRequest {
+  conversationId: string
+  id: string
 }
 
 /** Ids must match `agent::modes` on the Rust side. */
 export type ChatMode = 'work' | 'plan'
+
+/** Persisted and wire-visible kinds for a conversation snapshot. */
+export type ConversationAgentKind = 'explore' | 'agent' | 'claude_code' | 'plan_review' | 'impl_review'
+
+/** The only two kinds a `run_agent` delegated run can create. */
+export type SubAgentKind = 'explore' | 'agent'
 
 export interface ToolCallDisplay {
   call_id: string
@@ -466,6 +1103,9 @@ export interface ToolCallDisplay {
    *  be answered, and is shown as `orphaned` rather than falling back to
    *  `call_id`. */
   approval_id?: string
+  /** A durable plan review associated with this call. Unlike `approval_id`,
+   *  this survives process restarts and never addresses an in-memory waiter. */
+  plan_review_id?: string
   /** Present exactly when this is a sandbox-blocked call asking to be retried
    *  without the sandbox. The retry reuses the original call id. */
   retry_reason?: string
@@ -479,7 +1119,7 @@ export interface ToolCallDisplay {
   /** Set when this call was decided by the automatic reviewer rather than by a
    *  person. Shown beside the status so a denial does not read as the model
    *  giving up on its own. */
-  auto_review?: AutoReviewVerdict
+  auto_review?: AutoReviewVerdictInfoResponse
 }
 
 /** The delegated run a `run_agent` call started. */
@@ -489,10 +1129,15 @@ export interface SubAgentRunDisplay {
   /** The run itself. The card counts steps against this rather than against the
    *  conversation, whose later turns may be a follow-up chat. */
   turn_id: string
-  kind?: string
+  kind: SubAgentKind
   /** Assistant iterations — how many times the model was asked. From the
    *  snapshot; while the run is live the store's own counter is ahead of it. */
   steps: number
+}
+
+export interface ConversationSteerRequest {
+  conversationId: string
+  text: string
 }
 
 /** A tool call inside a delegated run, waiting on the person watching the
@@ -517,31 +1162,30 @@ export interface NestedApproval {
  *  read as one still going. The backend decides against its live register of
  *  what is running and sends the answer; there is nothing here that could
  *  ask — which is also why nothing here should read a cause into it. */
-export interface TurnRecord {
+export interface TurnInfoResponse {
   id: string
-  /** `running` | `done` | `cancelled` | `failed` | `interrupted`. A value from a
-   *  later build travels through as written rather than being flattened into
-   *  one of these, so treat anything unrecognised as "no opinion". */
-  status: string
+  status: TurnStatus
   /** What it was doing when it last said anything: `streaming` |
    *  `awaiting_approval` | `running_tool` | `compacting`. Written before the
    *  thing it names, so on an interrupted turn this is where it died. */
-  phase: string | null
+  phase: TurnPhase | null
   /** The call `phase` refers to, when it refers to one. */
   phase_tool: string | null
   error: string | null
   started_at: number
   ended_at: number | null
-  /** Aggregated from the immutable audit rows for this run. Optional so a
-   *  frontend can still open snapshots from an older remote host. */
-  usage?: TurnUsageSummary | null
+  /** Aggregated from the immutable audit rows for this run. */
+  usage: TurnUsageInfoResponse | null
 }
+
+export type TurnStatus = 'running' | 'waiting_review' | 'done' | 'cancelled' | 'failed' | 'interrupted'
+export type TurnPhase = 'streaming' | 'awaiting_approval' | 'running_tool' | 'compacting'
 
 export type TurnPricingStatus = 'exact' | 'estimated' | 'lower_bound' | 'subscription' | 'external' | 'unavailable'
 
 /** The backend-priced usage of one agent-loop run. Cost fields are outputs,
  *  never rates for the frontend to apply to the token fields. */
-export interface TurnUsageSummary {
+export interface TurnUsageInfoResponse {
   messages: number
   /** Replies where the provider supplied none of the token usage fields. */
   missing_token_usage_messages: number
@@ -552,11 +1196,11 @@ export interface TurnUsageSummary {
   cache_read_tokens: number
   cache_write_tokens: number
   server_tool_calls: number
-  input_cost: number | null
-  output_cost: number | null
-  cache_cost: number | null
-  tool_cost: number | null
-  total_cost: number | null
+  input_cost: DecimalString | null
+  output_cost: DecimalString | null
+  cache_cost: DecimalString | null
+  tool_cost: DecimalString | null
+  total_cost: DecimalString | null
   unpriced_token_messages: number
   unpriced_input_messages: number
   unpriced_output_messages: number
@@ -572,39 +1216,274 @@ export interface TurnUsageSummary {
   pricing_status: TurnPricingStatus
 }
 
+export type PlanDocumentState = 'drafting' | 'reviewing' | 'approved' | 'done'
+export type PlanReviewStatus = 'pending' | 'approved' | 'changes_requested' | 'orphaned'
+export type PlanRevisionAuthorKind = 'assistant' | 'user_suggestion' | 'legacy'
+export type PlanReviewDraftMode = 'rich' | 'source'
+export type PlanCommentState = 'draft' | 'active' | 'orphaned' | 'submitted' | 'deleted'
+export type PlanReviewDeliveryTarget = 'native' | 'acp'
+export type PlanReviewDeliveryState = 'queued' | 'dispatched' | 'acknowledged' | 'held' | 'in_doubt'
+export type PlanFileSyncState = 'pending' | 'applied' | 'conflict'
+
+export interface PlanProseMirrorRange {
+  kind: 'prosemirror_range'
+  from: number
+  to: number
+  quote: string
+  prefix: string
+  suffix: string
+}
+
+export interface PlanSourceRange {
+  kind: 'source_range'
+  from: number
+  to: number
+  quote: string
+  prefix: string
+  suffix: string
+}
+
+export type PlanCommentAnchor = PlanProseMirrorRange | PlanSourceRange
+
+export interface PlanDocumentInfoResponse {
+  id: string
+  conversation_id: string
+  state: PlanDocumentState
+  head_revision_id: string | null
+  approved_revision_id: string | null
+  working_generation: number
+  file_rel_path: string
+  file_sync_state: PlanFileSyncState
+  created_at: number
+  updated_at: number
+}
+
+export interface PlanRevisionInfoResponse {
+  id: string
+  document_id: string
+  revision_no: number
+  parent_revision_id: string | null
+  author_kind: PlanRevisionAuthorKind
+  content_markdown: string
+  content_sha256: string
+  patch: string | null
+  responding_to_suggestion_revision_id: string | null
+  assistant_message_id: string | null
+  provider_call_id: string | null
+  editor_json: JsonValue | null
+  created_at: number
+}
+
+export type PlanRevisionListResponse = PlanRevisionInfoResponse[]
+
+export interface PlanReviewSessionInfoResponse {
+  id: string
+  document_id: string
+  submitted_revision_id: string
+  state: PlanReviewStatus
+  decision_id: string | null
+  suggestion_revision_id: string | null
+  assistant_message_id: string
+  provider_call_id: string
+  turn_id: string
+  lock_version: number
+  created_at: number
+  updated_at: number
+}
+
+export interface PlanReviewSummaryInfoResponse {
+  review_id: string
+  conversation_id: string
+  document_id: string
+  revision_id: string
+  assistant_message_id: string
+  provider_call_id: string
+  turn_id: string
+  status: PlanReviewStatus
+  /** Latest continuation delivery. A settled review remains a conversation
+   *  barrier until this reaches `acknowledged`. */
+  delivery_state: PlanReviewDeliveryState | null
+  lock_version: number
+}
+
+export type PlanReviewSummaryListResponse = PlanReviewSummaryInfoResponse[]
+
+export interface PlanReviewDraftInfoResponse {
+  review_id: string
+  base_revision_id: string
+  generation: number
+  mode: PlanReviewDraftMode
+  base_editor_json: JsonValue | null
+  draft_editor_json: JsonValue | null
+  source_text: string | null
+  base_normalized_markdown: string
+  draft_normalized_markdown: string
+  draft_sha256: string
+  global_note: string | null
+  selection: PlanCommentAnchor | null
+  editor_schema_version: number | null
+  editor_schema_hash: string | null
+  created_at: number
+  updated_at: number
+}
+
+export interface PlanCommentInfoResponse {
+  id: string
+  review_id: string
+  position: number
+  state: PlanCommentState
+  anchor: PlanCommentAnchor
+  body: string
+  created_at: number
+  updated_at: number
+}
+
+export type PlanCommentListResponse = PlanCommentInfoResponse[]
+
+export interface PlanReviewDeliveryInfoResponse {
+  id: string
+  review_id: string
+  target: PlanReviewDeliveryTarget
+  state: PlanReviewDeliveryState
+  payload: JsonValue
+  error: string | null
+  created_at: number
+  updated_at: number
+}
+
+export interface PlanReviewInfoResponse {
+  document: PlanDocumentInfoResponse
+  review: PlanReviewSessionInfoResponse
+  submitted_revision: PlanRevisionInfoResponse
+  parent_revision: PlanRevisionInfoResponse | null
+  draft: PlanReviewDraftInfoResponse
+  comments: PlanCommentListResponse
+  delivery: PlanReviewDeliveryInfoResponse | null
+}
+
+export interface PlanReviewReadRequest {
+  reviewId: string
+}
+
+export interface PlanRevisionListRequest {
+  documentId: string
+}
+
+export interface PlanCommentDraftRequest {
+  id: string
+  state: PlanCommentState
+  anchor: PlanCommentAnchor
+  body: string
+}
+
+export interface PlanReviewDraftSaveRequest {
+  reviewId: string
+  expectedGeneration: number
+  mode: PlanReviewDraftMode
+  baseEditorJson: JsonValue | null
+  baseNormalizedMarkdown: string
+  editorJson: JsonValue | null
+  sourceText: string | null
+  normalizedMarkdown: string
+  comments: PlanCommentDraftRequest[]
+  globalNote: string | null
+  selection: PlanCommentAnchor | null
+  editorSchemaVersion: number | null
+  editorSchemaHash: string | null
+  editorSchemaFallback: {
+    fromVersion: number
+    fromHash: string | null
+  } | null
+}
+
+export interface PlanReviewDraftSaveResponse {
+  review_id: string
+  generation: number
+  draft_sha256: string
+  updated_at: number
+}
+
+export interface PlanReviewDraftDiscardRequest {
+  reviewId: string
+  expectedGeneration: number
+}
+
+export type PlanReviewDecisionAction = 'approve' | 'request_changes'
+
+export interface PlanReviewDecisionRequest {
+  reviewId: string
+  decisionId: string
+  expectedGeneration: number
+  expectedDraftHash: string
+  action: PlanReviewDecisionAction
+}
+
+export interface PlanReviewDecisionResponse {
+  review_id: string
+  state: PlanReviewStatus
+  delivery_state: PlanReviewDeliveryState | null
+  continuation_turn_id: string | null
+}
+
+export interface PlanReviewDeliveryReadRequest {
+  reviewId: string
+}
+
+export interface PlanReviewDeliveryContinueRequest {
+  deliveryId: string
+}
+
+export interface PlanFileConflictResolveRequest {
+  documentId: string
+  action: 'restore_db'
+}
+
 /** A conversation as of one instant.
  *
  *  Replaces three parallel requests. Those could interleave with a running turn
  *  — the tree fetched before a tool result landed, the turns after — and the
  *  result was a conversation that was never true at any moment. */
-export interface ConversationSnapshot {
-  conversation: Conversation
-  tree: MessageTree
-  turns: TurnRecord[]
-  pending_approvals: PendingApprovalInfo[]
+export interface ConversationSnapshotResponse {
+  conversation: ConversationInfoResponse
+  tree: MessageTreeResponse
+  turns: TurnListResponse
+  pending_approvals: PendingApprovalListResponse
+  /** Plan reviews on the active transcript path, including settled reviews so
+   *  historical cards remain navigable after a reload. */
+  plan_reviews: PlanReviewSummaryListResponse
+  /** Conversation-wide hard barrier. This remains true even if no plan review
+   *  card is visible on the active transcript path. */
+  plan_review_barrier: boolean
   /** Empty for every conversation that has never delegated. */
-  sub_agent_runs: SubAgentRunView[]
+  sub_agent_runs: SubAgentRunListResponse
 }
 
+export interface ConversationSnapshotRequest {
+  conversationId: string
+}
+
+export type TurnListResponse = TurnInfoResponse[]
+export type SubAgentRunListResponse = SubAgentRunInfoResponse[]
+
 /** One delegated run, as the conversation that started it sees it. */
-export interface SubAgentRunView {
+export interface SubAgentRunInfoResponse {
   conversation_id: string
   /** Which `run_agent` call started it — both halves, because a provider call
    *  id repeats across the rows of one conversation. */
   spawned_by_message_id: string | null
   spawned_by_call_id: string | null
   spawned_turn_id: string | null
-  agent_kind: string | null
+  agent_kind: SubAgentKind
   title: string | null
   steps: number
   /** Already folded against the live register, so `running` here means running.
    *  `null` when the delegating turn's row has gone. */
-  status: string | null
+  status: TurnStatus | null
 }
 
 /** A tool call the backend is still holding a turn open for. Recovered on load,
  *  since the streamed event that first announced it is gone by then. */
-export interface PendingApprovalInfo {
+export interface PendingApprovalInfoResponse {
   approval_id: string
   /** Which conversation this view belongs to. Redundant inside a snapshot,
    *  which was asked for one; the whole point in `allPendingApprovals`, where a
@@ -615,21 +1494,31 @@ export interface PendingApprovalInfo {
    *  call is on. */
   assistant_message_id: string
   provider_call_id: string
-  /** The call this one retries. Set only for sandbox escalations, where it
+  /** The call this one retries. Non-null only for sandbox escalations, where it
    *  currently equals `provider_call_id` — a retry reuses the id. */
-  origin_call_id?: string
+  origin_call_id: string | null
   tool_name: string
   /** What the tool was called with. Sent rather than read off the transcript,
    *  because a delegated call's row is in another conversation. */
   arguments: string
-  retry_reason?: string
+  retry_reason: string | null
   /** Shown here, answered elsewhere: this belongs to a delegated run and the
    *  card draws without buttons. */
   bubbled: boolean
-  /** Which `run_agent` call to nest the card under. Parent's view only. */
-  parent_call_id?: string
-  /** Where the delegated run can be watched. Parent's view only. */
-  sub_conversation_id?: string
+  /** Which `run_agent` call to nest the card under. Non-null only in the parent's view. */
+  parent_call_id: string | null
+  /** Where the delegated run can be watched. Non-null only in the parent's view. */
+  sub_conversation_id: string | null
+}
+
+export interface ToolCallDenyRequest {
+  approvalId: string
+  reason: string | null
+}
+
+export interface AskResponseRequest {
+  approvalId: string
+  response: string
 }
 
 export type ContentBlock =
@@ -644,26 +1533,132 @@ export interface OpenAIToolCall {
   function: { name: string; arguments: string }
 }
 
-export interface VoiceModelStatus {
+export type UploadFileResponse =
+  | { type: 'image_url'; image_url: { url: string } }
+  | { type: 'file'; file: { url: string; mime_type: string; name: string } }
+
+export type MessageRating = -1 | 1
+
+export interface MessageRatingUpdateRequest {
+  id: string
+  rating: MessageRating | null
+}
+
+export type ConversationExportFormat = 'sft' | 'dpo'
+
+export interface ConversationExportRequest {
+  conversationId: string
+  format: ConversationExportFormat
+  outputPath: string | null
+}
+
+export interface ConversationExportResponse {
+  path: string
+}
+
+export interface MessageFileUploadRequest {
+  conversationId: string
+  filePath: string
+}
+
+export interface VoiceModelStatusInfoResponse {
   installed: boolean
   path: string | null
   size_bytes: number
   downloading: boolean
 }
 
-export interface VoiceTranscript {
-  status: 'ok' | 'too_short' | 'empty'
+export interface VoiceModelDownloadRequest {
+  url: string | null
+}
+
+export interface VoiceModelImportRequest {
+  archivePath: string
+}
+
+export interface VoicePcmTranscriptionRequest {
+  sampleRate: number
+  pcm: string
+}
+
+export interface VoiceProbeEchoRequest {
+  sampleRate: number
+  pcm: string
+}
+
+export type VoiceTranscriptStatus = 'ok' | 'too_short' | 'empty'
+
+export interface VoiceTranscriptResponse {
+  status: VoiceTranscriptStatus
   text: string
   duration_ms: number
 }
 
-export interface Message {
+export type VoiceCorpusSessionKind = 'group' | 'private'
+
+export interface VoiceCorpusSessionInfoResponse {
+  handle: string
+  kind: VoiceCorpusSessionKind
+  clips: number
+  bytes: number
+  untranscribed: number
+  last_captured_at: number
+}
+
+export type VoiceCorpusSessionListResponse = VoiceCorpusSessionInfoResponse[]
+
+export type VoiceCorpusDeleteSelector =
+  { kind: 'session'; handle: string } | { kind: 'sender'; id: string } | { kind: 'all'; confirmation: string }
+
+export interface VoiceCorpusDeleteRequest {
+  selector: VoiceCorpusDeleteSelector
+}
+
+export interface VoiceCorpusOptoutUpdateRequest {
+  senderId: string
+  enabled: boolean
+}
+
+export interface VoiceCorpusForgetRequest {
+  senderId: string
+}
+
+export interface VoiceCorpusExportRequest {
+  outputDir: string
+  includeSender: boolean
+  includeUntranscribed: boolean
+}
+
+export interface VoiceCorpusDeleteResponse {
+  clips: number
+  files: number
+  bytes: number
+  failures: string[]
+}
+
+export interface VoiceCorpusForgetResponse {
+  clips: number
+  files: number
+  bytes: number
+  failures: string[]
+}
+
+export interface VoiceCorpusExportResponse {
+  clips: number
+  skipped: number
+  bytes: number
+  path: string
+}
+
+export interface MessageInfoResponse {
   id: string
   conversation_id: string
   /** `context` is background the backend injected and froze into the history —
    *  memories, mostly. Nobody said it, so it is not drawn: `chat-view` keeps
-   *  only user and assistant rows. */
-  role: 'user' | 'assistant' | 'system' | 'tool' | 'context'
+   *  only user and assistant rows. Its `content` and internal source metadata
+   *  are redacted at the IPC boundary; the row remains only to preserve the
+   *  branch shape. */
+  role: 'user' | 'assistant' | 'tool' | 'context'
   content: string
   provider_id: string | null
   model_id: string | null
@@ -680,43 +1675,44 @@ export interface Message {
   cache_write_tokens: number | null
   /** Which upstream answered, by the name it had at the time. */
   provider_name: string | null
-  tool_calls: string | null
+  /** Parsed persisted message blocks/tool calls. SQLite's JSON encoding does not cross IPC. */
+  tool_calls: OpenAIToolCall[] | null
   tool_call_id: string | null
   sort_order: number
   created_at: number
   reasoning_content: string | null
-  rating: number | null
-  schema_version: number
-  is_compact_summary: number
+  rating: MessageRating | null
+  is_compact_summary: boolean
   /** The message this one answers or follows. Siblings under one parent are
    *  alternative versions of the same step. Null marks a root. */
-  parent_id?: string | null
+  parent_id: string | null
   /** How the message was produced: null for typed, `voice` for speech input,
    *  `shell` for a literal user-authored `!` command. */
-  source?: string | null
+  source: 'voice' | 'shell' | null
   /** Platform id of whoever sent this, on surfaces where more than one person
    *  can speak. Null on desktop rows, which have a single implicit author, and
    *  on history written before speakers were attributed. The nickname is not
    *  stored alongside it — nicknames change, so they are looked up separately. */
-  sender_id?: number | null
+  sender_id: number | null
   /** Only on compaction summaries: the first message the summary stands in
    *  front of. */
-  compact_anchor_id?: string | null
+  compact_anchor_id: string | null
   /** Which run of the agent loop wrote this row. Null on rows written before
    *  turns were recorded, and on compaction summaries, which belong to no one
    *  turn's output. */
-  turn_id?: string | null
+  turn_id: string | null
   /** Only on `role: 'tool'` rows: `success` | `denied` | `error`. Null reads as
    *  success — rows written before the column existed all claimed as much. */
-  tool_outcome?: string | null
-  /** JSON: automatic-review verdicts for this row's tool calls, keyed by call
-   *  id. Arrives as a string because that is how the column stores it; parsed
-   *  where the cards are built. Null on every call nothing reviewed, which is
-   *  most of them. */
-  auto_review?: string | null
+  tool_outcome: ToolOutcome | null
+  /** Automatic-review verdicts keyed by provider call id. */
+  auto_review: Record<string, AutoReviewVerdictInfoResponse> | null
   /** Frozen context bound to this branch. The raw body is fetched separately
    *  and never travels in an ordinary transcript snapshot. */
-  context_items?: MessageContextDescriptor[]
+  context_items: MessageContextInfoResponse[]
+}
+
+/** A transcript row after the front end has derived its renderable blocks. */
+export interface MessageViewModel extends MessageInfoResponse {
   _blocks?: ContentBlock[]
 }
 
@@ -726,20 +1722,25 @@ export interface Message {
  *  and produced nothing usable, so the decision fell back to whoever was
  *  watching. It is recorded because a review that cost money and answered
  *  nothing is worth being able to see. */
-export interface AutoReviewVerdict {
-  outcome: 'allow' | 'deny' | 'unreadable'
-  risk?: 'low' | 'medium' | 'high' | 'critical'
-  authorization?: 'unknown' | 'low' | 'medium' | 'high'
-  rationale?: string
-  /** `quick` for the single-request pass, `investigate` when it went and read
-   *  the repository before deciding. */
-  stage?: 'quick' | 'investigate'
-  model?: string
-  /** What the escalating pass looked at, in the order it looked. */
-  evidence?: { tool: string; arguments: string }[]
+export interface AutoReviewEvidenceInfoResponse {
+  tool: string
+  arguments: string
 }
 
-export interface Assistant {
+export interface AutoReviewVerdictInfoResponse {
+  outcome: 'allow' | 'deny' | 'unreadable'
+  risk: 'low' | 'medium' | 'high' | 'critical' | null
+  authorization: 'unknown' | 'low' | 'medium' | 'high' | null
+  rationale: string | null
+  /** `quick` for the single-request pass, `investigate` when it went and read
+   *  the repository before deciding. */
+  stage: 'quick' | 'investigate' | null
+  model: string | null
+  /** What the escalating pass looked at, in the order it looked. */
+  evidence: AutoReviewEvidenceInfoResponse[]
+}
+
+export interface AssistantInfoResponse {
   id: string
   name: string
   description: string | null
@@ -750,17 +1751,17 @@ export interface Assistant {
   temperature: number | null
   top_p: number | null
   max_tokens: number | null
-  is_default: number
+  is_default: boolean
   sort_order: number
   created_at: number
   updated_at: number
   context_limit: number
   compact_keep_recent: number
-  enabled_tools: string | null
-  thinking_enabled: number
+  enabled_tools: string[] | null
+  thinking_enabled: boolean
   thinking_budget: number | null
   tool_preset_id: string | null
-  auto_compact_enabled: number
+  auto_compact_enabled: boolean
 }
 
 /** Effort tiers a model can advertise, ascending. Mirrors EFFORT_LADDER in the Rust catalog. */
@@ -768,16 +1769,27 @@ export type ThinkingEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | '
 
 export type ThinkingLevel = 'default' | 'off' | ThinkingEffort
 
-export interface Provider {
+/** Stored conversation values never contain the UI-only inheritance sentinel. */
+export type StoredThinkingLevel = Exclude<ThinkingLevel, 'default'>
+
+/** Provider-specific wire shape used to enable or disable model reasoning. */
+export type ThinkingStyle = 'none' | 'effort_only' | 'budget' | 'adaptive' | 'always_on' | 'toggle_off'
+
+export type ProviderApiFormat = 'chat_completions' | 'responses' | 'gemini_generate_content' | 'gemma_tool'
+export type ProviderCredentialKind = 'api_key' | 'codex_cli' | 'chatgpt_oauth'
+export type ProviderTransportProfile = 'standard' | 'chatgpt_codex'
+export type ProviderType = 'openai' | 'anthropic' | 'deepseek' | 'xai' | 'google'
+
+export interface ProviderInfoResponse {
   id: string
   name: string
-  provider_type: string
+  provider_type: ProviderType
   base_url: string
-  is_enabled: number
+  is_enabled: boolean
   sort_order: number
   created_at: number
   updated_at: number
-  api_format: string
+  api_format: ProviderApiFormat
   /**
    * Which entry in the shipped vendor catalog this row is an instance of, or
    * null for one the catalog does not describe.
@@ -793,13 +1805,13 @@ export interface Provider {
    * Not an input to which adapter runs — two ways of signing in to ChatGPT
    * produce the same token on the same wire.
    */
-  credential_kind: string
+  credential_kind: ProviderCredentialKind
   /**
    * How requests are shaped, and the third input to picking an adapter beside
    * `provider_type` and `api_format`. It exists because the format alone cannot
    * separate OpenAI's API from ChatGPT's Codex backend — both are `responses`.
    */
-  transport_profile: string
+  transport_profile: ProviderTransportProfile
 }
 
 /**
@@ -808,21 +1820,30 @@ export interface Provider {
  * Mirrors `provider::catalog::CatalogEntry`. It describes and prefills; nothing
  * here decides how a request is sent.
  */
-export interface ProviderCatalogEntry {
+export interface ProviderCatalogWebsitesInfoResponse {
+  official: string | null
+  api_key: string | null
+  docs: string | null
+  models: string | null
+}
+
+export interface ProviderCatalogModelGroupInfoResponse {
+  family: string
+  ids: string[]
+}
+
+export interface ProviderCatalogEntryInfoResponse {
   id: string
-  provider_type: string
+  provider_type: ProviderType
   name: string
   icon: string
   balance: boolean
-  websites: {
-    official?: string | null
-    api_key?: string | null
-    docs?: string | null
-    models?: string | null
-  }
-  auth: ProviderAuthOption[]
-  models: { family: string; ids: string[] }[]
+  websites: ProviderCatalogWebsitesInfoResponse
+  auth: ProviderCatalogAuthOptionInfoResponse[]
+  models: ProviderCatalogModelGroupInfoResponse[]
 }
+
+export type ProviderCatalogEntryListResponse = ProviderCatalogEntryInfoResponse[]
 
 /**
  * A way of signing in, carrying the endpoint and dialect that come with it.
@@ -838,81 +1859,106 @@ export interface ProviderCatalogEntry {
  * not inherit a terminal's environment, which is the usual reason for "I am
  * logged in but the app says I am not".
  */
-export interface CodexAuthStatus {
+export interface CodexAuthStatusResponse {
   logged_in: boolean
   email: string | null
   plan: string | null
-  /** `file` or `keyring` — where the login actually lives. */
-  storage: string | null
+  /** Where the login actually lives. */
+  storage: 'file' | 'keyring' | null
   codex_home: string | null
   /** Present when something is wrong, phrased as what to do about it. */
   problem: string | null
 }
 
-export interface ProviderAuthOption {
+export interface ProviderCatalogAuthOptionInfoResponse {
   id: string
-  credential_kind: string
-  transport_profile: string
+  credential_kind: ProviderCredentialKind
+  transport_profile: ProviderTransportProfile
   /** A single entry means the dialect is not a choice, so no selector is drawn. */
-  api_formats: string[]
-  default_base_url: Record<string, string>
+  api_formats: ProviderApiFormat[]
+  default_base_url: Partial<Record<ProviderApiFormat, string>>
 }
 
-export interface ModelInfo {
+export interface ProviderModelInfoResponse {
   id: string
   name: string
 }
 
-export interface McpServer {
+export type ProviderModelListResponse = ProviderModelInfoResponse[]
+
+export type McpTransport = 'stdio' | 'streamablehttp'
+
+export interface McpServerInfoResponse {
   id: string
   name: string
-  transport_type: string
+  transport_type: McpTransport
   command: string | null
-  args: string | null
-  env: string | null
+  args: string[] | null
+  env: Record<string, string> | null
   url: string | null
-  headers: string | null
-  is_enabled: number
+  headers: Record<string, string> | null
+  is_enabled: boolean
   sort_order: number
   created_at: number
   updated_at: number
 }
 
-export interface McpToolDef {
+export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
+
+export interface McpServerToolInfoResponse {
   server_id: string
   server_name: string
   qualified_name: string
   name: string
   description: string
+  input_schema: JsonValue
 }
+
+export type McpServerToolListResponse = McpServerToolInfoResponse[]
 
 /** Reported for servers the backend currently has an entry for. A server that
  *  is connected but exposes no tools is still connected — which is exactly what
  *  guessing from the tool list got wrong. */
-export interface McpConnectionStatus {
+export interface McpConnectionStatusInfoResponse {
   server_id: string
   state: 'disconnected' | 'connecting' | 'connected'
   tool_count: number
 }
 
-export interface ToolInfo {
+export type McpConnectionStatusListResponse = McpConnectionStatusInfoResponse[]
+
+export interface McpToolInfoResponse {
   name: string
   description: string
   source: 'builtin' | 'mcp' | 'onebot'
-  server_name?: string
-  admin_only?: boolean
-  needs_approval?: boolean
-  scope?: 'any' | 'group' | 'private'
+  server_name: string | null
+  admin_only: boolean | null
+  needs_approval: boolean | null
+  scope: 'any' | 'group' | 'private' | null
 }
 
-export interface SafRootEntry {
+export type McpToolListResponse = McpToolInfoResponse[]
+
+export interface SafRootInfoResponse {
   uri: string
   display_name: string
   virtual_prefix: string
 }
 
-/** The local endpoint another coding agent's hooks post to. */
-export interface HooksConfig {
+export type SafRootListResponse = SafRootInfoResponse[]
+
+export interface WindowInsetsInfoResponse {
+  top: number
+  right: number
+  bottom: number
+  left: number
+  imeBottom: number
+}
+
+export type PlatformInfoResponse = 'android' | 'windows' | 'macos' | 'linux' | 'ios'
+
+/** The local hook endpoint configuration returned by the host. */
+export interface HookConfigInfoResponse {
   enabled: boolean
   host: string
   port: number
@@ -930,7 +1976,19 @@ export interface HooksConfig {
   max_rounds: number
 }
 
-export interface HooksStatus {
+/** Complete hook endpoint settings accepted by the host. Nullable keys remain required. */
+export interface HookConfigUpdateRequest {
+  enabled: boolean
+  host: string
+  port: number
+  token: string | null
+  review_model: string | null
+  assistant_id: string | null
+  timeout_secs: number
+  max_rounds: number
+}
+
+export interface HookStatusInfoResponse {
   enabled: boolean
   running: boolean
   host: string
@@ -939,8 +1997,8 @@ export interface HooksStatus {
   handshake_path: string | null
 }
 
-/** The server a second device connects to in order to use this desktop. */
-export interface ListenConfig {
+/** Remote-listener configuration returned by the host. */
+export interface ListenConfigInfoResponse {
   enabled: boolean
   /** `0.0.0.0` by default: a remote access server on loopback is reachable only
    *  by the machine that already has the app open. */
@@ -952,7 +2010,15 @@ export interface ListenConfig {
   token: string | null
 }
 
-export interface ListenStatus {
+/** Complete remote-listener settings accepted by the host. Nullable keys remain required. */
+export interface ListenConfigUpdateRequest {
+  enabled: boolean
+  host: string
+  port: number
+  token: string | null
+}
+
+export interface ListenStatusResponse {
   enabled: boolean
   running: boolean
   host: string
@@ -962,20 +2028,74 @@ export interface ListenStatus {
   connections: number
 }
 
-export interface EmojiPack {
+export interface OneBotStatusInfoResponse {
+  enabled: boolean
+  running: boolean
+  connected_clients: number
+  host: string
+  port: number
+}
+
+export interface VoiceSendReadinessInfoResponse {
+  enabled: boolean
+  has_model: boolean
+  has_reference_id: boolean
+  has_api_key: boolean
+  ready: boolean
+}
+
+/** OneBot configuration returned by the host. */
+export interface OneBotConfigInfoResponse {
+  enabled: boolean
+  host: string
+  port: number
+  access_token: string | null
+  assistant_id: string | null
+  admin_users: number[]
+  ack_emoji_id: string
+  balance_alert_threshold: DecimalString | null
+  voice_capture_sessions: string[]
+  voice_send_enabled: boolean
+  voice_send_groups: string[]
+  voice_tts_model: string
+  voice_tts_reference_id: string
+}
+
+/** Complete OneBot settings accepted by the host. Nullable keys remain required. */
+export interface OneBotConfigUpdateRequest {
+  enabled: boolean
+  host: string
+  port: number
+  access_token: string | null
+  assistant_id: string | null
+  admin_users: number[]
+  ack_emoji_id: string
+  balance_alert_threshold: DecimalString | null
+  voice_capture_sessions: string[]
+  voice_send_enabled: boolean
+  voice_send_groups: string[]
+  voice_tts_model: string
+  voice_tts_reference_id: string
+}
+
+export type EmojiPackKind = 'manual' | 'onebot'
+export type EmojiSource = 'local' | 'onebot_face' | 'onebot_mface' | 'onebot_image'
+export type EmojiSemanticStatus = 'pending' | 'suggested' | 'confirmed'
+
+export interface EmojiPackInfoResponse {
   id: string
   name: string
   description: string | null
   cover_image: string | null
-  is_builtin: number
+  is_builtin: boolean
   sort_order: number
   created_at: number
   updated_at: number
-  kind: 'manual' | 'onebot'
+  kind: EmojiPackKind
   source_account_id: string | null
 }
 
-export interface Emoji {
+export interface EmojiInfoResponse {
   id: string
   pack_id: string
   name: string
@@ -984,10 +2104,9 @@ export interface Emoji {
   file_format: string
   sort_order: number
   created_at: number
-  source: 'local' | 'onebot_face' | 'onebot_mface' | 'onebot_image'
+  source: EmojiSource
   source_key: string | null
-  native_payload: string | null
-  semantic_status: 'pending' | 'suggested' | 'confirmed'
+  semantic_status: EmojiSemanticStatus
   suggested_name: string | null
   suggested_tags: string | null
   file_size: number
@@ -1001,25 +2120,27 @@ export interface StickerContentPart {
   name?: string
 }
 
-export interface PromptTemplate {
+export interface PromptTemplateInfoResponse {
   id: string
   name: string
   description: string | null
   category: string
   template_text: string
-  is_builtin: number
+  is_builtin: boolean
   sort_order: number
   created_at: number
   updated_at: number
 }
 
-export interface TemplateVariable {
+export interface TemplateVariableInfoResponse {
   name: string
   description_en: string
   description_zh: string
 }
 
-export interface ToolCategory {
+export type TemplateVariableListResponse = TemplateVariableInfoResponse[]
+
+export interface ToolCategoryInfoResponse {
   id: string
   name: string
   description: string | null
@@ -1028,47 +2149,49 @@ export interface ToolCategory {
   created_at: number
 }
 
-export interface CustomTool {
+export interface CustomToolInfoResponse {
   id: string
   name: string
   description: string
   category_id: string | null
-  parameters_schema: string
+  parameters_schema: Record<string, unknown>
   command: string
   args_template: string | null
   working_directory: string | null
   timeout_ms: number | null
-  permission: string
-  is_enabled: number
+  permission: ToolPermission
+  is_enabled: boolean
   sort_order: number
   created_at: number
   updated_at: number
 }
 
-export interface ToolPreset {
+export interface ToolPresetInfoResponse {
   id: string
   name: string
   description: string | null
   icon: string | null
-  tool_names: string
-  is_builtin: number
+  tool_names: string[]
+  is_builtin: boolean
   sort_order: number
   created_at: number
   updated_at: number
 }
 
+export type SkillSource = 'official' | 'user' | 'assistant' | 'imported'
+
 /** Index row for a skill directory on disk. The SKILL.md body is not part of
  *  the row; fetch it separately with `getSkillBody`. Two name pairs on purpose:
  *  `display_*` is what the user reads, `llm_*` is what reaches the model. */
-export interface Skill {
+export interface SkillInfoResponse {
   dir_name: string
   llm_name: string
   llm_description: string
   display_name: string
   display_description: string | null
-  source: 'official' | 'user' | 'assistant' | 'imported'
-  is_enabled: number
-  is_builtin: number
+  source: SkillSource
+  is_enabled: boolean
+  is_builtin: boolean
   mtime_hash: string | null
   created_at: number
   updated_at: number
@@ -1077,35 +2200,62 @@ export interface Skill {
 /** Binding scope for a skill. Only `global` accepts a null anchor id. */
 export type SkillLayer = 'global' | 'project' | 'assistant'
 
-export interface ProviderCapabilities {
+export interface ProviderCapabilitiesInfoResponse {
   supports_tools: boolean
   supports_streaming_tools: boolean
   supports_thinking: boolean
   /** False for always-thinking models such as Gemini 3.x. */
-  supports_thinking_off?: boolean
+  supports_thinking_off: boolean
   supports_images: boolean
   max_context_tokens: number | null
   max_output_tokens: number | null
-  supports_pdf?: boolean
-  supports_temperature?: boolean
-  supports_top_p?: boolean
-  supports_reasoning_effort?: boolean
-  max_temperature?: number | null
+  supports_pdf: boolean
+  supports_temperature: boolean
+  supports_top_p: boolean
+  max_temperature: number | null
+  thinking_style: ThinkingStyle
   /** Effort tiers this model accepts, ascending. Empty means no effort control. */
-  supported_efforts?: ThinkingEffort[]
-  default_effort?: ThinkingEffort | null
-  supports_fast?: boolean
-  supports_verbosity?: boolean
-  default_verbosity?: string | null
+  supported_efforts: ThinkingEffort[]
+  default_effort: ThinkingEffort | null
+  supports_fast: boolean
+  supports_verbosity: boolean
+  default_verbosity: CapabilityVerbosity | null
   /**
    * Provider-side tools this model *can* be asked to run, by wire type name.
    * What it will run is `ModelConfig.server_tools`, narrowed against this.
    * Empty on chat-completions, where no such thing exists.
    */
-  server_tools?: string[]
+  server_tools: ServerToolKind[]
 }
 
-export interface ModelConfig {
+export type CapabilityVerbosity = 'low' | 'medium' | 'high'
+
+/** Provider-side tools Meridian knows how to request. This is not an extension point. */
+export type ServerToolKind = 'web_search' | 'x_search' | 'code_execution'
+
+/** Closed patch shape persisted as JSON text but carried over IPC as an object. */
+export interface ProviderCapabilityOverrides {
+  supports_tools?: boolean
+  supports_streaming_tools?: boolean
+  supports_thinking?: boolean
+  supports_thinking_off?: boolean
+  supports_images?: boolean
+  supports_pdf?: boolean
+  supports_temperature?: boolean
+  supports_top_p?: boolean
+  supports_fast?: boolean
+  supports_verbosity?: boolean
+  thinking_style?: ThinkingStyle
+  supported_efforts?: ThinkingEffort[]
+  server_tools?: ServerToolKind[]
+  default_effort?: ThinkingEffort | null
+  default_verbosity?: CapabilityVerbosity | null
+  max_context_tokens?: number | null
+  max_output_tokens?: number | null
+  max_temperature?: number | null
+}
+
+export interface ModelConfigInfoResponse {
   id: string
   provider_id: string
   model_id: string
@@ -1113,38 +2263,38 @@ export interface ModelConfig {
   context_window: number
   compact_threshold: number
   max_output_tokens: number | null
-  input_price: number
-  output_price: number
+  input_price: DecimalString | null
+  output_price: DecimalString | null
   /** What a cache *read* costs. Blank means "priced like input". */
-  cache_price: number | null
+  cache_read_price: DecimalString | null
   /**
    * What a cache *write* costs, when it costs more than input. Anthropic
    * charges 1.25x for a five-minute entry and 2x for an hour; nobody else
    * charges a premium, which is what null means.
    */
-  cache_write_price: number | null
+  cache_write_price: DecimalString | null
   created_at: number
   updated_at: number
-  /** JSON patch over the built-in catalog; malformed content is ignored. */
-  capability_overrides: string | null
+  /** Strict patch over the built-in catalog; malformed or unknown persisted fields fail the read. */
+  capability_overrides: ProviderCapabilityOverrides | null
   /**
-   * Rates that take over above a prompt size, as a JSON array of
-   * {@link PriceTier}. Null means one price at every size, which is most
-   * models. Crossing a threshold re-prices the *whole* request, not the excess.
+   * Rates that take over above a prompt size. An empty array means one price at
+   * every size. Crossing a threshold re-prices the *whole* request, not the
+   * excess.
    */
-  price_tiers: string | null
+  pricing_tiers: PriceTier[]
   /**
-   * Provider-side tools switched on for this model, as a JSON array of wire
-   * type names. Narrowed against the model's capabilities at turn time, so a
+   * Provider-side tools switched on for this model. Narrowed against the
+   * model's capabilities at turn time, so a
    * name here cannot outlive the support it refers to.
    */
-  server_tools: string | null
+  server_tools: ServerToolKind[] | null
   /**
    * What one provider-side tool invocation costs, per **thousand** calls — the
    * unit the upstreams publish it in. Null means nobody has said, which is not
    * zero: a searching turn priced at nothing is under-reported, not free.
    */
-  server_tool_price: number | null
+  server_tool_price: DecimalString | null
 }
 
 /**
@@ -1165,13 +2315,13 @@ export interface ServerToolCall {
 }
 
 /** One currency's worth of credit on a provider account. */
-export interface BalanceAccount {
+export interface ProviderBalanceAccountInfoResponse {
   currency: string
   /** What can actually be spent — the figure worth acting on. */
-  total: number
+  total_balance: DecimalString
   /** Promotional credit, which typically expires. */
-  granted: number | null
-  topped_up: number | null
+  granted_balance: DecimalString | null
+  topped_up_balance: DecimalString | null
 }
 
 /**
@@ -1181,9 +2331,9 @@ export interface BalanceAccount {
  * numbers on purpose: it accounts for postpaid arrangements, expired grants and
  * holds, none of which a total shows.
  */
-export interface ProviderBalance {
+export interface ProviderBalanceInfoResponse {
   is_available: boolean
-  accounts: BalanceAccount[]
+  accounts: ProviderBalanceAccountInfoResponse[]
 }
 
 /**
@@ -1196,27 +2346,32 @@ export interface ProviderBalance {
  */
 export interface PriceTier {
   min_prompt_tokens: number
-  input: number
-  output: number
-  cache_read?: number | null
-  cache_write?: number | null
+  input_price: DecimalString
+  output_price: DecimalString
+  cache_read_price: DecimalString | null
+  cache_write_price: DecimalString | null
 }
 
-export interface ModelConfigInput {
+export interface ModelConfigUpsertRequest {
   provider_id: string
   model_id: string
-  display_name?: string | null
+  display_name: string | null
   context_window: number
   compact_threshold: number
-  max_output_tokens?: number | null
-  input_price: number
-  output_price: number
-  cache_price?: number | null
-  cache_write_price?: number | null
-  capability_overrides?: string | null
-  price_tiers?: string | null
-  server_tools?: string | null
-  server_tool_price?: number | null
+  max_output_tokens: number | null
+  input_price: DecimalString | null
+  output_price: DecimalString | null
+  cache_read_price: DecimalString | null
+  cache_write_price: DecimalString | null
+  capability_overrides: ProviderCapabilityOverrides | null
+  pricing_tiers: PriceTier[]
+  server_tools: ServerToolKind[] | null
+  server_tool_price: DecimalString | null
+}
+
+export interface ModelConfigReadRequest {
+  providerId: string
+  modelId: string
 }
 
 /**
@@ -1240,14 +2395,25 @@ export type UsageDimension =
    *  the backend — the caller names them. */
   | 'kind'
 
-export interface UsageFilter {
-  since_ms?: number | null
-  until_ms?: number | null
-  /** `desktop` or `onebot`; absent means both. */
-  origin?: string | null
+export interface UsageReportRequest {
+  dimension: UsageDimension
+  sinceMs: number | null
+  untilMs: number | null
+  origin: TurnOrigin | null
+  conversationId: string | null
 }
 
-export interface UsageBucket {
+export type TurnOrigin =
+  'desktop' | 'onebot' | 'sub_agent' | 'plan_review' | 'impl_review' | 'claude_code' | 'user_shell'
+
+export type ServiceKey = 'TAVILY' | 'ZHIPU_SEARCH' | 'FISH_AUDIO'
+
+export interface ServiceKeyUpdateRequest {
+  service: ServiceKey
+  key: string
+}
+
+export interface UsageBucketInfoResponse {
   key: string
   /** `null` once the thing `key` names has been deleted. */
   label: string | null
@@ -1268,14 +2434,14 @@ export interface UsageBucket {
   cache_read_tokens: number
   cache_write_tokens: number
   /** Already-priced uncached prompt cost, computed by the backend. */
-  input_cost: number
+  input_cost: DecimalString
   /** Already-priced completion cost, computed by the backend. */
-  output_cost: number
+  output_cost: DecimalString
   /** Already-priced cache read/write cost, computed by the backend. */
-  cache_cost: number
+  cache_cost: DecimalString
   /** Already-priced provider-hosted tool cost, computed by the backend. */
-  tool_cost: number
-  cost: number
+  tool_cost: DecimalString
+  total_cost: DecimalString
   /** Replies with an unknown token component (usage or price). */
   unpriced_token_messages: number
   /** Replies with provider-tool calls whose rate is unknown. */
@@ -1294,70 +2460,89 @@ export interface UsageBucket {
   unpriced_messages: number
 }
 
-export interface ContextInfo {
+export interface ContextInfoResponse {
   estimated_tokens: number
   context_limit: number
   compact_threshold: number
   auto_compact_enabled: boolean
-  circuit_breaker_state: string
+  circuit_breaker_state: CompactCircuitBreakerState
   message_count: number
   /** Whose window this is. A percentage on its own cannot say, and a delegated
    *  run routinely runs on a different model from the conversation that started
    *  it — so the same fraction means a different number of tokens. */
   model: string
-  /** `explore` | `agent` when this conversation is a delegated run. Absent for
+  /** `explore` | `agent` when this conversation is a delegated run. Null for
    *  an ordinary one. */
-  agent_kind?: string
+  agent_kind: ConversationAgentKind | null
 }
 
-export type LogLevel = 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'TRACE' | 'UNKNOWN'
+export type CompactCircuitBreakerState = 'closed' | 'open' | 'half-open'
 
-/** Where a page of log records stopped, so the next one resumes exactly there. */
-export interface LogCursor {
+export type LogLevel = 'error' | 'warn' | 'info' | 'debug'
+export type LogRecordLevel = 'ERROR' | 'WARN' | 'INFO' | 'DEBUG'
+
+/** Where a page request resumes. */
+export interface LogCursorRequest {
+  fileIndex: number
+  byteOffset: number
+}
+
+/** Where a response page stopped, so the next one can resume exactly there. */
+export interface LogCursorInfoResponse {
   fileIndex: number
   byteOffset: number
 }
 
 /** One line of the application log, already parsed and redacted by the backend. */
-export interface LogEntry {
+export interface LogEntryInfoResponse {
   /** RFC3339, UTC. */
   ts: string
   tsMs: number
-  level: LogLevel
+  level: LogRecordLevel
   /** Tracing target, e.g. "meridian_lib::provider::openai_compat". */
   target: string
   msg: string
   /** Fields the event itself carried. */
-  fields?: Record<string, unknown>
+  fields: Record<string, unknown>
   /** Enclosing span names, outermost first. */
-  spans?: string[]
+  spans: string[]
   /** Fields inherited from those spans, such as conversation_id. */
-  spanFields?: Record<string, unknown>
-  file?: string
-  line?: number
-  /** Present instead of the parsed fields when the line could not be read. */
-  raw?: string
-  cursor: LogCursor
+  spanFields: Record<string, unknown>
+  file: string | null
+  line: number | null
+  cursor: LogCursorInfoResponse
 }
 
-export interface LogPage {
-  entries: LogEntry[]
+export interface LogPageResponse {
+  entries: LogEntryInfoResponse[]
   /** Null once the scan reached the oldest available record. */
-  nextCursor: LogCursor | null
+  nextCursor: LogCursorInfoResponse | null
   /** The scan stopped on its size budget, so older matches may exist. */
   scanTruncated: boolean
   filesScanned: string[]
 }
 
-export interface LogQuery {
-  minLevel?: string
-  limit?: number
-  contains?: string
-  targetPrefix?: string
-  conversationId?: string
-  sinceTsMs?: number
-  untilTsMs?: number
-  cursor?: LogCursor | null
+export interface LogQueryRequest {
+  minLevel?: LogLevel | null
+  limit?: number | null
+  contains?: string | null
+  targetPrefix?: string | null
+  conversationId?: string | null
+  sinceTsMs?: number | null
+  untilTsMs?: number | null
+  cursor?: LogCursorRequest | null
+}
+
+export interface LogLevelUpdateRequest {
+  level: LogLevel
+}
+
+export interface LogExportRequest {
+  outputPath: string
+}
+
+export interface LogExportResponse {
+  bytesWritten: number
 }
 
 /**
@@ -1366,23 +2551,22 @@ export interface LogQuery {
  * "Host" is load-bearing in remote mode: the turns run there, so these are the
  * numbers worth quoting in a bug report — not the phone's.
  */
-export interface AppInfo {
+export interface AppInfoResponse {
   version: string
   tauriVersion: string
-  /** `windows` / `macos` / `linux` / `android`. */
-  os: string
+  os: PlatformInfoResponse
   arch: string
   dataDir: string
 }
 
-export interface LogFileInfo {
+export interface LogFileInfoResponse {
   name: string
   size: number
 }
 
-export interface LogSettings {
-  level: string
-  levels: string[]
+export interface LogSettingsResponse {
+  level: LogLevel
+  levels: LogLevel[]
   directory: string
   maxFileBytes: number
   maxFiles: number
@@ -1390,62 +2574,97 @@ export interface LogSettings {
   available: boolean
 }
 
-export interface StreamChunk {
-  type?: string
-  content?: string
-  done?: boolean
-  reason?: string
-  message_id?: string
-  /** Which run of a turn this belongs to, on `message_start` and `stop`. One
-   *  conversation can have events from more than one run reaching it — a QQ
-   *  session opened in the desktop UI is the same conversation — and without
-   *  this a stop cannot be told apart from any other stop. */
-  turn_id?: string
-  conversation_id?: string
-  call_id?: string
-  tool_name?: string
-  arguments?: string
-  result?: string
-  outcome?: string
-  /** Only on `server_tool`: a tool the provider ran on its own side. */
-  call?: ServerToolCall
-  /** On `tool_approval_req`, what the answer must be addressed to. On
-   *  `tool_approval_expired`, which question stopped standing. */
-  approval_id?: string
-  /** Set only when this approval is a sandbox-blocked call asking to run
-   *  again without the sandbox. Its presence is what marks the escalation. */
-  retry_reason?: string
-  /** The call being retried, alongside `retry_reason`. */
-  origin_call_id?: string
-  /** On `retry`: which attempt is about to be waited out, and out of how many.
-   *  1-based, so the first retry reads as 1 of 3. `delay_ms` is how long the
-   *  backoff holds before the request goes again — the event arrives *before*
-   *  that wait rather than after it, so a turn is never silent through it.
-   *
-   *  Deliberately carries no error text. A provider's message can quote the
-   *  request back, and this ends up on a screen. */
-  attempt?: number
-  max_attempts?: number
-  delay_ms?: number
-  input_tokens?: number
-  output_tokens?: number
-  /** On `sub_agent_started`, and on a `tool_approval_req` a delegated run
-   *  raised: which `run_agent` call on `message_id` this belongs under. Its
-   *  presence is what marks the event as being about a sub-agent. */
-  parent_call_id?: string
-  /** Where the delegated run is happening — the conversation to open when the
-   *  card is clicked. */
-  sub_conversation_id?: string
-  /** The turn that run *is*, which the card counts steps against. Not the
-   *  sub-agent conversation's latest turn: that becomes a follow-up chat the
-   *  moment anyone types into it. */
-  spawned_turn_id?: string
-  /** `explore` | `agent`, and the three-to-five words the parent wrote. Only on
-   *  `sub_agent_started`. */
-  kind?: string
-  description?: string
-  /** Only on `auto_review`: what the reviewer decided about `call_id`. The call
-   *  itself was never drawn as pending — nobody was asked — so this is the
-   *  first and only event about that decision. */
-  verdict?: AutoReviewVerdict
-}
+export type ToolOutcome = 'success' | 'denied' | 'error'
+
+export type ChatStopReason =
+  'end_turn' | 'error' | 'loop_detected' | 'cancelled' | 'max_tokens' | 'max_turn_requests' | 'refusal'
+
+/** The complete, closed contract carried by the `chat-stream` channel. */
+export type ChatStreamEvent =
+  | { type: 'text'; content: string; message_id: string; conversation_id: string }
+  | { type: 'reasoning'; content: string; message_id: string; conversation_id: string }
+  | { type: 'message_start'; message_id: string; turn_id: string; conversation_id: string }
+  | { type: 'user_message'; content: string; message_id: string; conversation_id: string }
+  | {
+      type: 'retry'
+      attempt: number
+      max_attempts: number
+      delay_ms: number
+      message_id: string
+      conversation_id: string
+    }
+  | { type: 'reset'; message_id: string; conversation_id: string }
+  | { type: 'server_tool'; message_id: string; conversation_id: string; call: ServerToolCall }
+  | {
+      type: 'tool_call'
+      call_id: string
+      tool_name: string
+      arguments: string
+      message_id: string
+      conversation_id: string
+    }
+  | {
+      type: 'tool_call_revised'
+      call_id: string
+      tool_name: string
+      arguments: string
+      message_id: string
+      conversation_id: string
+    }
+  | {
+      type: 'tool_result'
+      call_id: string
+      result: string
+      outcome: ToolOutcome
+      message_id: string
+      conversation_id: string
+    }
+  | {
+      type: 'tool_approval_req'
+      approval_id: string
+      call_id: string
+      tool_name: string
+      arguments: string
+      message_id: string
+      conversation_id: string
+      delegation: { parent_call_id: string; sub_conversation_id: string } | null
+      retry: { reason: string; origin_call_id: string } | null
+    }
+  | {
+      type: 'tool_approval_expired'
+      approval_id: string
+      call_id: string
+      tool_name: string
+      message_id: string
+      conversation_id: string
+    }
+  | {
+      type: 'sub_agent_started'
+      conversation_id: string
+      message_id: string
+      call_id: string
+      sub_conversation_id: string
+      spawned_turn_id: string
+      kind: SubAgentKind
+      description: string
+    }
+  | {
+      type: 'auto_review'
+      conversation_id: string
+      turn_id: string
+      message_id: string
+      call_id: string
+      tool_name: string
+      verdict: AutoReviewVerdictInfoResponse
+    }
+  | { type: 'acp_config'; conversation_id: string; config_options: AcpConfigOptionInfoResponse[] }
+  | { type: 'acp_usage'; conversation_id: string; used: number; size: number }
+  | {
+      type: 'stop'
+      reason: ChatStopReason
+      message_id: string | null
+      turn_id: string
+      conversation_id: string
+      input_tokens: number | null
+      output_tokens: number | null
+    }

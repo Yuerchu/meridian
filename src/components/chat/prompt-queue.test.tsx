@@ -5,14 +5,16 @@ import { PromptInput } from '@heroui-pro/react/prompt-input'
 
 import i18n from '@/i18n'
 import { PromptQueue } from './prompt-queue'
-import type { QueuedPrompt } from '@/types'
+import type { QueuedPromptInfoResponse } from '@/types'
 import type { TodoArgs } from './todo-list'
 
 beforeAll(() => {
   void i18n.changeLanguage('en')
 })
 
-function item(over: Partial<QueuedPrompt> & Pick<QueuedPrompt, 'id' | 'content' | 'delivery'>): QueuedPrompt {
+function item(
+  over: Partial<QueuedPromptInfoResponse> & Pick<QueuedPromptInfoResponse, 'id' | 'content' | 'delivery'>,
+): QueuedPromptInfoResponse {
   return {
     conversation_id: 'c1',
     position: 0,

@@ -7,8 +7,8 @@
 use diesel::sqlite::SqliteConnection;
 
 use crate::db::DbPool;
-use crate::db::models::memory::{GLOBAL_SCOPE_ID, Memory, MemoryScope, Visibility, onebot_user_scope_id};
-use crate::db::models::message::Message;
+use crate::db::models::memory::{GLOBAL_SCOPE_ID, MemoryRow, MemoryScope, Visibility, onebot_user_scope_id};
+use crate::db::models::message::MessageRow;
 use crate::db::ops::memory::{
     Cursor, ReadWindow, TRASH_RETENTION_MS, VisibilityCtx, escape_attr, format_memory_section, list_by_scopes,
     list_deleted_by_scopes,
@@ -204,10 +204,10 @@ fn layer_budgets(total: usize) -> LayerBudgets {
 /// a cursor that steps past an entry nobody sent would never come back for it,
 /// and at these budgets — a few hundred tokens per person — dropping is the
 /// ordinary case rather than the exceptional one.
-fn fit_to_budget(memories: Vec<Memory>, budget: usize) -> (Vec<Memory>, Vec<Memory>) {
+fn fit_to_budget(memories: Vec<MemoryRow>, budget: usize) -> (Vec<MemoryRow>, Vec<MemoryRow>) {
     let mut used = 0usize;
-    let mut kept: Vec<Memory> = Vec::new();
-    let mut dropped: Vec<Memory> = Vec::new();
+    let mut kept: Vec<MemoryRow> = Vec::new();
+    let mut dropped: Vec<MemoryRow> = Vec::new();
     for m in memories {
         let cost = estimate_tokens(&m.content) + estimate_tokens(&m.key) + 8;
         // Always admit the first entry. A section whose smallest row exceeds its
@@ -236,7 +236,7 @@ pub(crate) struct Accounting {
 }
 
 impl Accounting {
-    fn take(&mut self, kept: &[Memory], dropped: &[Memory], key: fn(&Memory) -> i64) {
+    fn take(&mut self, kept: &[MemoryRow], dropped: &[MemoryRow], key: fn(&MemoryRow) -> i64) {
         self.sent.extend(kept.iter().map(|m| (key(m), m.id.clone())));
         self.unsent.extend(dropped.iter().map(|m| (key(m), m.id.clone())));
     }
@@ -293,11 +293,11 @@ pub(crate) fn roster_block(req: &MemoryRequest) -> Option<String> {
     Some(out)
 }
 
-fn by_updated(m: &Memory) -> i64 {
+fn by_updated(m: &MemoryRow) -> i64 {
     m.updated_at
 }
 
-fn by_deleted(m: &Memory) -> i64 {
+fn by_deleted(m: &MemoryRow) -> i64 {
     m.deleted_at.unwrap_or(m.updated_at)
 }
 
@@ -370,39 +370,59 @@ impl Injection {
     }
 }
 
-fn parse_cursor(field: &str) -> Option<Cursor> {
-    let (ts, id) = field.split_once('.')?;
-    Some(Cursor {
-        ts: ts.parse().ok()?,
+fn parse_cursor(field: &str, label: &str) -> Result<Option<Cursor>, String> {
+    if field == "-" {
+        return Ok(None);
+    }
+    let (ts, id) = field
+        .split_once('.')
+        .ok_or_else(|| format!("memory source {label} cursor must use '<timestamp>.<id>'"))?;
+    if ts.is_empty() || id.is_empty() || id.contains('.') {
+        return Err(format!("memory source {label} cursor is malformed"));
+    }
+    Ok(Some(Cursor {
+        ts: ts
+            .parse()
+            .map_err(|_| format!("memory source {label} cursor timestamp is invalid"))?,
         id: id.to_string(),
-    })
+    }))
 }
 
-/// `(kind, state)` off a row's `source`, or `None` if it cannot be read.
-///
-/// An unreadable row is treated as no row at all, which sends the turn down the
-/// full path. That is the safe direction: the alternative is trusting a cursor
-/// nobody can account for.
-fn parse_source(source: &str) -> Option<(InjectionKind, InjectionState)> {
-    let mut parts = source.split('|');
-    if parts.next()? != SOURCE_TAG {
-        return None;
+/// Parse a memory row's source contract. Sources owned by another context
+/// producer are ignored; anything claiming the `memory` tag must match this
+/// version exactly.
+fn parse_source(source: &str) -> Result<Option<(InjectionKind, InjectionState)>, String> {
+    let parts: Vec<&str> = source.split('|').collect();
+    if parts.first().copied() != Some(SOURCE_TAG) {
+        return Ok(None);
     }
-    let kind = match parts.next()? {
+    if parts.len() != 5 {
+        return Err(format!(
+            "memory source must contain exactly 5 fields, got {}",
+            parts.len()
+        ));
+    }
+    let kind = match parts[1] {
         "full" => InjectionKind::Full,
         "delta" => InjectionKind::Delta,
-        _ => return None,
+        value => return Err(format!("unknown memory injection kind '{value}'")),
     };
-    let upsert = parse_cursor(parts.next()?);
-    let delete = parse_cursor(parts.next()?);
-    let people = parts
-        .next()
-        .unwrap_or("")
-        .split(',')
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-        .collect();
-    Some((kind, InjectionState { upsert, delete, people }))
+    let upsert = parse_cursor(parts[2], "upsert")?;
+    let delete = parse_cursor(parts[3], "delete")?;
+    let people = if parts[4].is_empty() {
+        Vec::new()
+    } else {
+        let values: Vec<String> = parts[4].split(',').map(str::to_string).collect();
+        if values.iter().any(String::is_empty) {
+            return Err("memory source people list contains an empty scope id".into());
+        }
+        let unique: std::collections::BTreeSet<&str> = values.iter().map(String::as_str).collect();
+        if unique.len() != values.len() {
+            return Err("memory source people list contains duplicates".into());
+        }
+        values
+    };
+    Ok(Some((kind, InjectionState { upsert, delete, people })))
 }
 
 /// Walk the live path backwards and rebuild what the model has already been
@@ -419,7 +439,7 @@ fn parse_source(source: &str) -> Option<(InjectionKind, InjectionState)> {
 ///   discoverable while its tombstone survives (`purge_expired_trash` drops it
 ///   after `TRASH_RETENTION_MS`), so past that horizon "nothing was deleted" and
 ///   "the evidence is gone" are the same answer.
-fn scan_prior_state(live: &[Message], t0: i64) -> Option<InjectionState> {
+fn scan_prior_state(live: &[MessageRow], t0: i64) -> Result<Option<InjectionState>, String> {
     let mut people: Vec<String> = Vec::new();
     let mut newest: Option<InjectionState> = None;
 
@@ -427,7 +447,12 @@ fn scan_prior_state(live: &[Message], t0: i64) -> Option<InjectionState> {
         if m.role != "context" {
             continue;
         }
-        let (kind, state) = parse_source(m.source.as_deref()?)?;
+        let Some(source) = m.source.as_deref() else {
+            continue;
+        };
+        let Some((kind, state)) = parse_source(source)? else {
+            continue;
+        };
         // The cursors come off the most recent row; the people accumulate across
         // every row back to the full one.
         if newest.is_none() {
@@ -439,16 +464,16 @@ fn scan_prior_state(live: &[Message], t0: i64) -> Option<InjectionState> {
             }
         }
         if kind == InjectionKind::Full {
-            let mut state = newest?;
+            let mut state = newest.expect("the current memory row established prior state");
             let stale = |c: &Option<Cursor>| c.as_ref().is_some_and(|c| c.ts < t0 - TRASH_RETENTION_MS);
             if stale(&state.upsert) || stale(&state.delete) {
-                return None;
+                return Ok(None);
             }
             state.people = people;
-            return Some(state);
+            return Ok(Some(state));
         }
     }
-    None
+    Ok(None)
 }
 
 /// The cursor may not step over anything that was read but not sent.
@@ -467,6 +492,18 @@ fn advance_cursor(mut sent: Vec<(i64, String)>, unsent: Vec<(i64, String)>) -> O
     .map(|(ts, id)| Cursor { ts, id })
 }
 
+fn partition_visibility(rows: Vec<MemoryRow>) -> Result<(Vec<MemoryRow>, Vec<MemoryRow>), String> {
+    let mut ordinary = Vec::new();
+    let mut owner_only = Vec::new();
+    for row in rows {
+        match row.visibility()? {
+            Visibility::Normal => ordinary.push(row),
+            Visibility::OwnerOnly => owner_only.push(row),
+        }
+    }
+    Ok((ordinary, owner_only))
+}
+
 /// Assemble the block. `None` when there is nothing to say.
 ///
 /// Always the whole picture: this is the path a turn takes when it cannot
@@ -480,7 +517,7 @@ pub(crate) fn load_memory_block_sync(
     conn: &mut SqliteConnection,
     req: &MemoryRequest,
     acct: &mut Accounting,
-) -> Option<String> {
+) -> Result<Option<String>, String> {
     let budgets = layer_budgets(req.budget_tokens);
 
     // A query that fails leaves the layer empty, and an empty layer is
@@ -569,16 +606,9 @@ pub(crate) fn load_memory_block_sync(
     // to read out. Partitioned across *every* layer, not just the subject one —
     // the project and bot layers can hold owner-only rows too, and the desktop
     // UI exposes the flag for all of them.
-    let (mut owner_notes, subject_rows): (Vec<Memory>, Vec<Memory>) = subject_rows
-        .into_iter()
-        .partition(|m| m.visibility() == Visibility::OwnerOnly);
-
-    let (global_notes, global): (Vec<Memory>, Vec<Memory>) = global
-        .into_iter()
-        .partition(|m| m.visibility() == Visibility::OwnerOnly);
-    let (project_notes, project): (Vec<Memory>, Vec<Memory>) = project
-        .into_iter()
-        .partition(|m| m.visibility() == Visibility::OwnerOnly);
+    let (subject_rows, mut owner_notes) = partition_visibility(subject_rows)?;
+    let (global, global_notes) = partition_visibility(global)?;
+    let (project, project_notes) = partition_visibility(project)?;
     owner_notes.extend(global_notes);
     owner_notes.extend(project_notes);
     // Stable order regardless of which layer contributed.
@@ -594,7 +624,7 @@ pub(crate) fn load_memory_block_sync(
         && owner_notes.is_empty()
         && scope_ids.is_empty()
     {
-        return None;
+        return Ok(None);
     }
 
     // A single-speaker turn (the desktop) gets the plain layers with no policy
@@ -615,7 +645,7 @@ pub(crate) fn load_memory_block_sync(
         if let Some(s) = format_memory_section(&project, "project_memories", None) {
             out.push_str(&s);
         }
-        return (!out.is_empty()).then_some(out);
+        return Ok((!out.is_empty()).then_some(out));
     }
 
     let mut out = String::new();
@@ -639,7 +669,7 @@ pub(crate) fn load_memory_block_sync(
         let per_subject = budgets.subjects / scope_ids.len().max(1);
         let mut people = String::new();
         for scope_id in &scope_ids {
-            let rows: Vec<Memory> = subject_rows
+            let rows: Vec<MemoryRow> = subject_rows
                 .iter()
                 .filter(|m| &m.scope_id == scope_id)
                 .cloned()
@@ -675,7 +705,7 @@ pub(crate) fn load_memory_block_sync(
         out.push_str(&s);
     }
 
-    Some(out)
+    Ok(Some(out))
 }
 
 /// The tail of a request: history, what changed, what was just said, and who is
@@ -746,22 +776,27 @@ fn subject_scope_ids(req: &MemoryRequest) -> Vec<String> {
 /// Decide what this turn injects. Reads only — the caller persists the result if
 /// it is running a real turn, and the context estimator uses the same answer
 /// without writing anything.
-pub fn plan_injection(conn: &mut SqliteConnection, req: &MemoryRequest, live: &[Message], t0: i64) -> Injection {
-    match scan_prior_state(live, t0) {
+pub fn plan_injection(
+    conn: &mut SqliteConnection,
+    req: &MemoryRequest,
+    live: &[MessageRow],
+    t0: i64,
+) -> Result<Injection, String> {
+    match scan_prior_state(live, t0)? {
         Some(prior) => delta_injection(conn, req, &prior, t0),
         None => full_injection(conn, req, t0),
     }
 }
 
-fn full_injection(conn: &mut SqliteConnection, req: &MemoryRequest, t0: i64) -> Injection {
+fn full_injection(conn: &mut SqliteConnection, req: &MemoryRequest, t0: i64) -> Result<Injection, String> {
     let mut acct = Accounting::default();
-    let text = load_memory_block_sync(conn, req, &mut acct);
+    let text = load_memory_block_sync(conn, req, &mut acct)?;
     // A full block states what is remembered *now*, so every delete up to this
     // moment is already accounted for by the rows it does not contain. The
     // delete cursor therefore jumps to the present rather than replaying a
     // history of removals the model was never told about in the first place.
     let delete = latest_delete_cursor(conn, req, t0);
-    Injection {
+    Ok(Injection {
         text,
         kind: InjectionKind::Full,
         state: InjectionState {
@@ -769,7 +804,7 @@ fn full_injection(conn: &mut SqliteConnection, req: &MemoryRequest, t0: i64) -> 
             delete,
             people: acct.complete,
         },
-    }
+    })
 }
 
 /// The most recent delete anyone could have been told about, for a full block to
@@ -819,7 +854,12 @@ fn delete_layers(req: &MemoryRequest) -> Vec<(MemoryScope, Vec<String>, Visibili
 /// someone the model has already been told about, "what changed" is a window on
 /// the cursor. For someone it has not, the answer is everything — their memories
 /// are as old as they are, so no cursor would ever reach back far enough.
-fn delta_injection(conn: &mut SqliteConnection, req: &MemoryRequest, prior: &InjectionState, t0: i64) -> Injection {
+fn delta_injection(
+    conn: &mut SqliteConnection,
+    req: &MemoryRequest,
+    prior: &InjectionState,
+    t0: i64,
+) -> Result<Injection, String> {
     let budgets = layer_budgets(req.budget_tokens);
     let mut acct = Accounting::default();
     let window = ReadWindow {
@@ -835,15 +875,15 @@ fn delta_injection(conn: &mut SqliteConnection, req: &MemoryRequest, prior: &Inj
         })
     };
 
-    let mut owner_notes: Vec<Memory> = Vec::new();
+    let mut owner_notes: Vec<MemoryRow> = Vec::new();
     let section = |out: &mut String,
-                   rows: Vec<Memory>,
+                   rows: Vec<MemoryRow>,
                    tag: &str,
                    budget: usize,
                    acct: &mut Accounting,
-                   notes: &mut Vec<Memory>| {
-        let (rows, mine): (Vec<Memory>, Vec<Memory>) =
-            rows.into_iter().partition(|m| m.visibility() != Visibility::OwnerOnly);
+                   notes: &mut Vec<MemoryRow>|
+     -> Result<(), String> {
+        let (rows, mine) = partition_visibility(rows)?;
         notes.extend(mine);
         // Trimmed in cursor order — the order the query returned — so that what
         // survives is a prefix the cursor can advance through. Sorting by key
@@ -856,6 +896,7 @@ fn delta_injection(conn: &mut SqliteConnection, req: &MemoryRequest, prior: &Inj
         if let Some(s) = format_memory_section(&kept, tag, None) {
             out.push_str(&s);
         }
+        Ok(())
     };
 
     if let Some(scope) = global_scope(req) {
@@ -872,7 +913,7 @@ fn delta_injection(conn: &mut SqliteConnection, req: &MemoryRequest, prior: &Inj
             budgets.global,
             &mut acct,
             &mut owner_notes,
-        );
+        )?;
     }
     if let Some(pid) = req.project_id.as_ref() {
         let rows = changed(
@@ -888,7 +929,7 @@ fn delta_injection(conn: &mut SqliteConnection, req: &MemoryRequest, prior: &Inj
             budgets.project,
             &mut acct,
             &mut owner_notes,
-        );
+        )?;
     }
 
     // People, in two groups: newcomers get everything, everyone else gets the
@@ -908,7 +949,7 @@ fn delta_injection(conn: &mut SqliteConnection, req: &MemoryRequest, prior: &Inj
             .cloned()
             .collect();
 
-        let mut rows: Vec<Memory> = Vec::new();
+        let mut rows: Vec<MemoryRow> = Vec::new();
         if !known.is_empty() {
             rows.extend(changed(conn, MemoryScope::OnebotUser, known, &req.subject_visibility));
         }
@@ -918,12 +959,11 @@ fn delta_injection(conn: &mut SqliteConnection, req: &MemoryRequest, prior: &Inj
                     .unwrap_or_default(),
             );
         }
-        let (rows, notes): (Vec<Memory>, Vec<Memory>) =
-            rows.into_iter().partition(|m| m.visibility() != Visibility::OwnerOnly);
+        let (rows, notes) = partition_visibility(rows)?;
         owner_notes.extend(notes);
 
         for scope_id in &scope_ids {
-            let mine: Vec<Memory> = rows.iter().filter(|m| &m.scope_id == scope_id).cloned().collect();
+            let mine: Vec<MemoryRow> = rows.iter().filter(|m| &m.scope_id == scope_id).cloned().collect();
             let is_newcomer = !prior.people.contains(scope_id);
             if mine.is_empty() && !is_newcomer {
                 continue;
@@ -985,7 +1025,7 @@ fn delta_injection(conn: &mut SqliteConnection, req: &MemoryRequest, prior: &Inj
     let text = (!out.is_empty()).then(|| format!("<memory_update>{out}\n</memory_update>"));
     let mut people_seen = prior.people.clone();
     people_seen.extend(acct.complete.iter().cloned());
-    Injection {
+    Ok(Injection {
         text,
         kind: InjectionKind::Delta,
         state: InjectionState {
@@ -993,7 +1033,7 @@ fn delta_injection(conn: &mut SqliteConnection, req: &MemoryRequest, prior: &Inj
             delete,
             people: people_seen,
         },
-    }
+    })
 }
 
 /// What to forget, and how far the delete cursor may advance.
@@ -1012,7 +1052,7 @@ fn forgotten_section(
         after: prior.delete.as_ref(),
         before_ts: t0,
     };
-    let mut rows: Vec<(String, Memory)> = Vec::new();
+    let mut rows: Vec<(String, MemoryRow)> = Vec::new();
     for (scope, ids, ctx) in delete_layers(req) {
         let label = match scope {
             MemoryScope::Project => "chat_memories".to_string(),
@@ -1095,7 +1135,7 @@ pub async fn persist_injection(
         let mut conn = pool2.get().map_err(|e| e.to_string())?;
         crate::db::ops::message::append_message(
             &mut conn,
-            &crate::db::models::message::NewMessage {
+            &crate::db::models::message::MessageInsert {
                 id: &id,
                 conversation_id: &conv,
                 role: "context",
@@ -1144,29 +1184,33 @@ pub async fn persist_injection(
 }
 
 /// Async wrapper for the call sites that hold a pool rather than a connection.
-pub async fn plan_injection_async(pool: &DbPool, req: MemoryRequest, live: Vec<Message>, t0: i64) -> Option<Injection> {
+pub async fn plan_injection_async(
+    pool: &DbPool,
+    req: MemoryRequest,
+    live: Vec<MessageRow>,
+    t0: i64,
+) -> Result<Option<Injection>, String> {
     let pool = pool.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().ok()?;
-        Some(plan_injection(&mut conn, &req, &live, t0))
+    tokio::task::spawn_blocking(move || -> Result<Option<Injection>, String> {
+        let mut conn = pool.get().map_err(|error| error.to_string())?;
+        plan_injection(&mut conn, &req, &live, t0).map(Some)
     })
     .await
-    .ok()
-    .flatten()
+    .map_err(|error| error.to_string())?
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::models::memory::{NewMemory, Origin};
-    use crate::db::models::project::NewProject;
+    use crate::db::models::memory::{MemoryInsert, Origin};
+    use crate::db::models::project::ProjectInsert;
     use crate::db::ops::memory::upsert_memory;
     use crate::db::test_db;
 
     fn project(conn: &mut SqliteConnection, id: &str) {
         crate::db::ops::project::create_project(
             conn,
-            &NewProject {
+            &ProjectInsert {
                 id,
                 name: "P",
                 path: None,
@@ -1195,7 +1239,7 @@ mod tests {
         let subject = (scope == MemoryScope::OnebotUser).then_some(scope_id);
         upsert_memory(
             conn,
-            &NewMemory {
+            &MemoryInsert {
                 id,
                 scope_type: scope.as_str(),
                 scope_id,
@@ -1216,7 +1260,49 @@ mod tests {
     /// The full block, with the cursor bookkeeping discarded. Most of these
     /// tests are about what the model reads.
     fn block(conn: &mut SqliteConnection, req: &MemoryRequest) -> Option<String> {
-        load_memory_block_sync(conn, req, &mut Accounting::default())
+        load_memory_block_sync(conn, req, &mut Accounting::default()).unwrap()
+    }
+
+    #[test]
+    fn memory_source_contract_is_exact() {
+        let (_, state) = parse_source("memory|full|10.row-a|-|onebot:user:1").unwrap().unwrap();
+        assert_eq!(state.upsert.unwrap().id, "row-a");
+        assert!(state.delete.is_none());
+        assert_eq!(state.people, ["onebot:user:1"]);
+
+        assert!(parse_source("memory|future|-|-|").is_err());
+        assert!(parse_source("memory|full|broken|-|").is_err());
+        assert!(parse_source("memory|full|-|-||extra").is_err());
+        assert!(parse_source("shell").unwrap().is_none());
+    }
+
+    #[test]
+    fn invalid_stored_visibility_aborts_injection() {
+        use diesel::prelude::*;
+
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+        project(conn, "p1");
+        add(
+            conn,
+            "m1",
+            MemoryScope::Project,
+            "p1",
+            "key",
+            "value",
+            Origin::Desktop,
+            Visibility::Normal,
+        );
+        diesel::update(crate::db::schema::memories::table.find("m1"))
+            .set(crate::db::schema::memories::visibility.eq("public"))
+            .execute(conn)
+            .unwrap();
+
+        let error = match plan_injection(conn, &MemoryRequest::desktop(Some("p1".into()), 8_000), &[], 2) {
+            Err(error) => error,
+            Ok(_) => panic!("an unknown visibility must reject the injection"),
+        };
+        assert!(error.contains("unknown memory visibility"));
     }
 
     /// One person, one memory, written at `updated_at`.
@@ -1224,7 +1310,7 @@ mod tests {
         let subject = (scope == MemoryScope::OnebotUser).then_some(scope_id);
         upsert_memory(
             conn,
-            &NewMemory {
+            &MemoryInsert {
                 id,
                 scope_type: scope.as_str(),
                 scope_id,
@@ -1243,8 +1329,8 @@ mod tests {
     }
 
     /// A frozen injection row, as `plan_injection` would have left it.
-    fn frozen(injection: &Injection) -> Message {
-        Message {
+    fn frozen(injection: &Injection) -> MessageRow {
+        MessageRow {
             id: uuid::Uuid::new_v4().to_string(),
             conversation_id: "c".into(),
             role: "context".into(),
@@ -1295,8 +1381,13 @@ mod tests {
 
         /// Run a round the way a surface would: plan against the rows frozen so
         /// far, then append this round's row to them.
-        fn round(conn: &mut SqliteConnection, req: &MemoryRequest, history: &mut Vec<Message>, t0: i64) -> Injection {
-            let injection = plan_injection(conn, req, history, t0);
+        fn round(
+            conn: &mut SqliteConnection,
+            req: &MemoryRequest,
+            history: &mut Vec<MessageRow>,
+            t0: i64,
+        ) -> Injection {
+            let injection = plan_injection(conn, req, history, t0).unwrap();
             if injection.text.is_some() {
                 history.push(frozen(&injection));
             }
@@ -1464,7 +1555,7 @@ mod tests {
 
             // Compaction keeps the tail and drops everything before the anchor.
             let tail = history.split_off(1);
-            let next = plan_injection(conn, &req, &tail, 3_000);
+            let next = plan_injection(conn, &req, &tail, 3_000).unwrap();
             assert_eq!(next.kind, InjectionKind::Full);
             let text = next.text.expect("a full block");
             assert!(text.contains("style") && text.contains("coffee"), "{text}");
@@ -1485,7 +1576,7 @@ mod tests {
             round(conn, &req, &mut history, 1_000);
             let much_later = 1_000 + TRASH_RETENTION_MS + 1;
             assert_eq!(
-                plan_injection(conn, &req, &history, much_later).kind,
+                plan_injection(conn, &req, &history, much_later).unwrap().kind,
                 InjectionKind::Full
             );
         }

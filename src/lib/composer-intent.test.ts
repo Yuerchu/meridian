@@ -5,6 +5,7 @@ import {
   extractComposerReferences,
   insertReferenceToken,
   parseComposerIntent,
+  referenceInputs,
 } from './composer-intent'
 
 describe('composer intent', () => {
@@ -31,6 +32,13 @@ describe('composer intent', () => {
     expect(overflow).toMatchObject({ path: 'src/a.ts#L2147483648' })
     expect(overflow).not.toHaveProperty('lineStart')
     expect(overflow).not.toHaveProperty('lineEnd')
+  })
+
+  it('emits complete nullable workspace reference requests', () => {
+    expect(referenceInputs(extractComposerReferences('inspect @src/a.ts and @src/b.ts#L3'))).toEqual([
+      { path: 'src/a.ts', lineStart: null, lineEnd: null },
+      { path: 'src/b.ts', lineStart: 3, lineEnd: 3 },
+    ])
   })
 
   it('separates shell, slash, paths and escaped prefixes', () => {

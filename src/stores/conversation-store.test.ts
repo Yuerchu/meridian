@@ -1,14 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { hydrateBlocks, reconcileMessages, useConversationStore } from '@/stores/conversation-store'
+import { usePlanReviewStore } from '@/stores/plan-review-store'
 import { api } from '@/api'
 import type {
-  CommandTurnOutcome,
+  UserCommandResultResponse,
   ContentBlock,
-  ConversationSnapshot,
-  Message,
-  MessageTree,
+  ConversationSnapshotResponse,
+  MessageInfoResponse,
+  MessageViewModel,
+  MessageTreeResponse,
+  PlanReviewSummaryInfoResponse,
   ToolCallDisplay,
-  TurnRecord,
+  TurnInfoResponse,
+  TurnStatus,
 } from '@/types'
 
 vi.mock('@tauri-apps/api/core')
@@ -25,18 +29,23 @@ vi.mock('@/api', () => ({
 }))
 
 /** A snapshot with nothing outstanding, which is what most tests want. */
-function snapshotOf(tree: MessageTree, over: Partial<ConversationSnapshot> = {}): ConversationSnapshot {
+function snapshotOf(
+  tree: MessageTreeResponse,
+  over: Partial<ConversationSnapshotResponse> = {},
+): ConversationSnapshotResponse {
   return {
-    conversation: {} as ConversationSnapshot['conversation'],
+    conversation: {} as ConversationSnapshotResponse['conversation'],
     tree,
     turns: [],
     pending_approvals: [],
+    plan_reviews: [],
+    plan_review_barrier: false,
     sub_agent_runs: [],
     ...over,
   }
 }
 
-function turnRecord(id: string, status: string): TurnRecord {
+function turnRecord(id: string, status: TurnStatus): TurnInfoResponse {
   return {
     id,
     status,
@@ -45,10 +54,11 @@ function turnRecord(id: string, status: string): TurnRecord {
     error: null,
     started_at: 0,
     ended_at: null,
+    usage: null,
   }
 }
 
-function msg(id: string, over: Partial<Message> = {}): Message {
+function msg(id: string, over: Partial<MessageViewModel> = {}): MessageViewModel {
   return {
     id,
     conversation_id: 'c',
@@ -64,26 +74,194 @@ function msg(id: string, over: Partial<Message> = {}): Message {
     created_at: 0,
     reasoning_content: null,
     rating: null,
-    schema_version: 2,
-    is_compact_summary: 0,
+    is_compact_summary: false,
+    cache_read_tokens: null,
+    cache_write_tokens: null,
+    provider_name: null,
+    sender_id: null,
+    parent_id: null,
+    compact_anchor_id: null,
+    source: null,
+    turn_id: null,
+    tool_outcome: null,
+    auto_review: null,
+    context_items: [],
     ...over,
   }
 }
 
+describe('plan review snapshot monotonicity', () => {
+  const CONV = 'plan-race'
+  const store = () => useConversationStore.getState()
+  const pendingEvent = {
+    review_id: 'review-race',
+    conversation_id: CONV,
+    document_id: 'document-race',
+    revision_id: 'revision-race',
+    turn_id: 'turn-race',
+    status: 'pending' as const,
+    delivery_state: null,
+    lock_version: 1,
+  }
+  const settledEvent = {
+    ...pendingEvent,
+    status: 'approved' as const,
+    delivery_state: 'acknowledged' as const,
+    lock_version: 3,
+  }
+  const summary = {
+    ...pendingEvent,
+    assistant_message_id: 'assistant-race',
+    provider_call_id: 'call-race',
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useConversationStore.setState({ sessions: {}, attention: {}, attentionOrder: [] })
+    usePlanReviewStore.setState({ activeReviewId: null, summaries: {} })
+    store().ensureSession(CONV)
+    vi.mocked(api.activeUserShellTurn).mockResolvedValue(null)
+    expect(usePlanReviewStore.getState().receiveReviewEvent(pendingEvent)).toBe(true)
+    store().handlePlanReviewEvent(pendingEvent)
+  })
+
+  it.each(['loadMessages', 'turn-stop', 'compact', 'switch'] as const)(
+    'does not let a delayed pending snapshot roll back an acknowledged event through %s',
+    async (path) => {
+      let resolveStale!: (snapshot: ConversationSnapshotResponse) => void
+      const stalePromise = new Promise<ConversationSnapshotResponse>((resolve) => {
+        resolveStale = resolve
+      })
+      const fresh = snapshotOf(
+        { messages: [], head_message_id: null, branches: [] },
+        {
+          plan_reviews: [{ ...summary, ...settledEvent }],
+          plan_review_barrier: false,
+        },
+      )
+      vi.mocked(api.conversationSnapshot).mockReturnValueOnce(stalePromise).mockResolvedValue(fresh)
+      vi.mocked(api.switchBranch).mockResolvedValue(undefined)
+
+      let operation: Promise<unknown> | null = null
+      if (path === 'loadMessages') operation = store().loadMessages(CONV)
+      else if (path === 'turn-stop') store().handleStop(CONV)
+      else if (path === 'compact') {
+        store().handleCompactStart(CONV)
+        store().handleCompactDone(CONV)
+      } else operation = store().switchBranch(CONV, 'message-other')
+
+      await vi.waitFor(() => expect(api.conversationSnapshot).toHaveBeenCalled())
+      expect(usePlanReviewStore.getState().receiveReviewEvent(settledEvent)).toBe(true)
+      store().handlePlanReviewEvent(settledEvent)
+      resolveStale(
+        snapshotOf(
+          { messages: [msg('stale')], head_message_id: 'stale', branches: [] },
+          { plan_reviews: [summary], plan_review_barrier: true },
+        ),
+      )
+
+      if (operation) await operation
+      else {
+        await stalePromise
+        await Promise.resolve()
+      }
+
+      expect(usePlanReviewStore.getState().summaries['review-race']).toMatchObject(settledEvent)
+      expect(store().sessions[CONV]?.planReviewBarrier).toBe(false)
+      expect(store().attention['review-race']).toBeUndefined()
+      expect(store().sessions[CONV]?.messages.map((message) => message.id)).not.toContain('stale')
+    },
+  )
+})
+
+describe('plan review global attention', () => {
+  const CONV = 'plan-attention'
+  const REVIEW = 'review-attention'
+  const store = () => useConversationStore.getState()
+  const summary = (
+    deliveryState: PlanReviewSummaryInfoResponse['delivery_state'],
+    lockVersion = 1,
+  ): PlanReviewSummaryInfoResponse => ({
+    review_id: REVIEW,
+    conversation_id: CONV,
+    document_id: 'document-attention',
+    revision_id: 'revision-attention',
+    assistant_message_id: 'assistant-attention',
+    provider_call_id: 'call-attention',
+    turn_id: 'turn-attention',
+    status: 'approved',
+    delivery_state: deliveryState,
+    lock_version: lockVersion,
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useConversationStore.setState({ sessions: {}, attention: {}, attentionOrder: [] })
+    usePlanReviewStore.setState({ activeReviewId: null, summaries: {} })
+    store().ensureSession(CONV)
+    vi.mocked(api.activeUserShellTurn).mockResolvedValue(null)
+  })
+
+  it.each([
+    ['queued', 'delivery_queued', true],
+    ['held', 'delivery_attention', true],
+    ['in_doubt', 'delivery_attention', true],
+    ['dispatched', null, true],
+    ['acknowledged', null, false],
+  ] as const)('restores a %s settled delivery consistently from a snapshot', async (deliveryState, stage, barrier) => {
+    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+      snapshotOf(
+        { messages: [], head_message_id: null, branches: [] },
+        { plan_reviews: [summary(deliveryState)], plan_review_barrier: barrier },
+      ),
+    )
+
+    await store().loadMessages(CONV)
+
+    if (stage === null) expect(store().attention[REVIEW]).toBeUndefined()
+    else expect(store().attention[REVIEW]).toMatchObject({ kind: 'plan_review', stage })
+    expect(store().sessions[CONV]?.planReviewBarrier).toBe(barrier)
+  })
+
+  it('updates realtime attention without confusing it with the dispatched barrier', () => {
+    const apply = (review: PlanReviewSummaryInfoResponse) => {
+      expect(usePlanReviewStore.getState().receiveReviewEvent(review)).toBe(true)
+      store().handlePlanReviewEvent(review)
+    }
+
+    apply({ ...summary(null, 1), status: 'pending' })
+    expect(store().attention[REVIEW]).toMatchObject({ kind: 'plan_review', stage: 'review' })
+
+    apply(summary('queued', 2))
+    expect(store().attention[REVIEW]).toMatchObject({ kind: 'plan_review', stage: 'delivery_queued' })
+
+    apply(summary('dispatched', 3))
+    expect(store().attention[REVIEW]).toBeUndefined()
+    expect(store().sessions[CONV]?.planReviewBarrier).toBe(true)
+
+    apply(summary('held', 4))
+    expect(store().attention[REVIEW]).toMatchObject({ kind: 'plan_review', stage: 'delivery_attention' })
+
+    apply(summary('acknowledged', 5))
+    expect(store().attention[REVIEW]).toBeUndefined()
+    expect(store().sessions[CONV]?.planReviewBarrier).toBe(false)
+  })
+})
+
 describe('hydrateBlocks', () => {
   /** An assistant row that made one tool call. */
-  function caller(id: string, callId: string, name = 'read_file'): Message {
+  function caller(id: string, callId: string, name = 'read_file'): MessageInfoResponse {
     return msg(id, {
-      tool_calls: JSON.stringify([{ id: callId, type: 'function', function: { name, arguments: '{}' } }]),
+      tool_calls: [{ id: callId, type: 'function', function: { name, arguments: '{}' } }],
     })
   }
 
   /** The tool row that answered one. */
-  function answer(id: string, callId: string, content = 'done'): Message {
+  function answer(id: string, callId: string, content = 'done'): MessageInfoResponse {
     return msg(id, { role: 'tool', tool_call_id: callId, content })
   }
 
-  function callBlocks(out: Message[], messageId: string): ToolCallDisplay[] {
+  function callBlocks(out: MessageViewModel[], messageId: string): ToolCallDisplay[] {
     const row = out.find((m) => m.id === messageId)
     return (row?._blocks ?? [])
       .filter((b): b is Extract<ContentBlock, { type: 'tool_call' }> => b.type === 'tool_call')
@@ -95,15 +273,95 @@ describe('hydrateBlocks', () => {
     expect(callBlocks(out, 'a')[0]).toMatchObject({ status: 'completed', result: 'the result' })
   })
 
+  it.each([
+    'not an array',
+    {},
+    [{ id: 'c1', type: 'function', function: { name: 'read_file', arguments: '{}' }, future: true }],
+    [{ id: 'c1', type: 'future', function: { name: 'read_file', arguments: '{}' } }],
+    [{ id: 'c1', type: 'function', function: { name: 'read_file' } }],
+    [{ id: 'c1', type: 'function', function: { name: 'read_file', arguments: 'not-json' } }],
+    [{ id: 'c1', type: 'function', function: { name: 'read_file', arguments: '[]' } }],
+  ])('rejects malformed stored tool calls: %j', (toolCalls) => {
+    expect(() =>
+      hydrateBlocks([msg('a', { tool_calls: toolCalls as unknown as MessageInfoResponse['tool_calls'] })]),
+    ).toThrow(/message\.tool_calls/)
+  })
+
+  it('rejects malformed and extended automatic-review verdicts', () => {
+    const base = caller('a', 'c1')
+    for (const autoReview of [
+      'not an object',
+      [],
+      { c1: { outcome: 'future' } },
+      { c1: { outcome: 'allow', future: true } },
+      { c1: { outcome: 'allow', evidence: [{ tool: 'read_file' }] } },
+    ]) {
+      expect(() =>
+        hydrateBlocks([{ ...base, auto_review: autoReview as unknown as MessageInfoResponse['auto_review'] }]),
+      ).toThrow(/message\.auto_review/)
+    }
+  })
+
+  it('rejects unknown message roles', () => {
+    const unknownRole = { ...msg('a'), role: 'future_role' } as unknown as MessageInfoResponse
+    expect(() => hydrateBlocks([unknownRole])).toThrow(/unknown message role/)
+  })
+
+  it('rejects front-end-only blocks in a wire snapshot', () => {
+    const derived = msg('a', { _blocks: [{ type: 'text', text: 'must not cross IPC' }] })
+    expect(() => hydrateBlocks([derived])).toThrow(/unknown field.*_blocks/)
+  })
+
+  it('rejects unknown sources and extended context descriptors', () => {
+    const unknownSource = { ...msg('u', { role: 'user' }), source: 'future_source' } as unknown as MessageInfoResponse
+    expect(() => hydrateBlocks([unknownSource])).toThrow(/unknown message source/)
+
+    const extendedContext = msg('u', {
+      role: 'user',
+      context_items: [
+        {
+          id: 'ctx',
+          position: 0,
+          kind: 'project_file',
+          display_path: 'src/main.ts',
+          line_start: null,
+          line_end: null,
+          byte_count: 1,
+          line_count: 1,
+          token_count: 1,
+          truncated: false,
+          metadata: 'must not cross IPC',
+        } as unknown as MessageInfoResponse['context_items'][number],
+      ],
+    })
+    expect(() => hydrateBlocks([extendedContext])).toThrow(/must contain exactly/)
+  })
+
+  it('rejects unknown turn phases and sub-agent kinds', () => {
+    const unknownPhase = { ...turnRecord('t1', 'running'), phase: 'future_phase' } as unknown as TurnInfoResponse
+    expect(() => hydrateBlocks([], [], [unknownPhase])).toThrow(/unknown turn phase/)
+    const unknownKind = {
+      conversation_id: 'child',
+      spawned_by_message_id: 'a',
+      spawned_by_call_id: 'c1',
+      spawned_turn_id: 't1',
+      agent_kind: 'future_kind',
+      title: null,
+      steps: 0,
+      status: 'running',
+    } as unknown as ConversationSnapshotResponse['sub_agent_runs'][number]
+    expect(() => hydrateBlocks([], [], [], [unknownKind])).toThrow(/unknown sub-agent kind/)
+  })
+
   it('projects a successful send_sticker result as an independent sticker block', () => {
     const assistant = msg('a', {
-      tool_calls: JSON.stringify([
+      tool_calls: [
         {
           id: 'c1',
           type: 'function',
           function: { name: 'send_sticker', arguments: JSON.stringify({ sticker_id: 's1' }) },
         },
-      ]),
+      ],
     })
     const out = hydrateBlocks([assistant, answer('t', 'c1', JSON.stringify({ sticker_id: 's1', name: 'wave' }))])
     expect(out[0]._blocks).toContainEqual({ type: 'sticker', sticker_id: 's1', name: 'wave' })
@@ -115,9 +373,16 @@ describe('hydrateBlocks', () => {
       [
         {
           approval_id: 'appr-1',
+          conversation_id: 'c',
           assistant_message_id: 'a',
           provider_call_id: 'c1',
+          origin_call_id: null,
           tool_name: 'read_file',
+          arguments: '{}',
+          retry_reason: null,
+          bubbled: false,
+          parent_call_id: null,
+          sub_conversation_id: null,
         },
       ],
     )
@@ -149,9 +414,7 @@ describe('hydrateBlocks', () => {
       [
         msg('a', {
           turn_id: 't1',
-          tool_calls: JSON.stringify([
-            { id: 'c1', type: 'function', function: { name: 'edit_file', arguments: '{}' } },
-          ]),
+          tool_calls: [{ id: 'c1', type: 'function', function: { name: 'edit_file', arguments: '{}' } }],
         }),
       ],
       [],
@@ -168,9 +431,7 @@ describe('hydrateBlocks', () => {
         [
           msg('a', {
             turn_id: 't1',
-            tool_calls: JSON.stringify([
-              { id: 'c1', type: 'function', function: { name: 'edit_file', arguments: '{}' } },
-            ]),
+            tool_calls: [{ id: 'c1', type: 'function', function: { name: 'edit_file', arguments: '{}' } }],
           }),
         ],
         [],
@@ -180,20 +441,14 @@ describe('hydrateBlocks', () => {
     }
   })
 
-  /// Only a turn that positively says it ended earns `orphaned`. A record this
-  /// build cannot find, or a status a later one invented, is not evidence of
-  /// anything — and the two mistakes are not the same size: a live call drawn
-  /// as dead sits there with no buttons, while a dead one drawn as live is
-  /// corrected by the next reload.
-  it('does not read a missing or unrecognised turn record as an ending', () => {
+  it('keeps a missing turn record live but rejects an unknown stored status', () => {
     const row = msg('a', {
       turn_id: 't1',
-      tool_calls: JSON.stringify([{ id: 'c1', type: 'function', function: { name: 'edit_file', arguments: '{}' } }]),
+      tool_calls: [{ id: 'c1', type: 'function', function: { name: 'edit_file', arguments: '{}' } }],
     })
     expect(callBlocks(hydrateBlocks([row], [], []), 'a')[0]).toMatchObject({ status: 'running' })
-    expect(callBlocks(hydrateBlocks([row], [], [turnRecord('t1', 'from_the_future')]), 'a')[0]).toMatchObject({
-      status: 'running',
-    })
+    const malformed = { ...turnRecord('t1', 'running'), status: 'from_the_future' } as unknown as TurnInfoResponse
+    expect(() => hydrateBlocks([row], [], [malformed])).toThrow(/unknown turn status/)
   })
 
   /// Reloading used to turn every refusal into a green tick, with the refusal
@@ -219,10 +474,16 @@ describe('hydrateBlocks', () => {
       [
         {
           approval_id: 'appr-1',
+          conversation_id: 'c',
           assistant_message_id: 'a',
           provider_call_id: 'c1',
+          origin_call_id: 'c1',
           tool_name: 'run_command',
+          arguments: '{}',
           retry_reason: 'sandbox denied',
+          bubbled: false,
+          parent_call_id: null,
+          sub_conversation_id: null,
         },
       ],
     )
@@ -244,16 +505,40 @@ describe('hydrateBlocks', () => {
 
   it('gives two calls sharing an id their own approvals', () => {
     const both = msg('a', {
-      tool_calls: JSON.stringify([
+      tool_calls: [
         { id: '0', type: 'function', function: { name: 'read_file', arguments: '{}' } },
         { id: '0', type: 'function', function: { name: 'read_file', arguments: '{}' } },
-      ]),
+      ],
     })
     const out = hydrateBlocks(
       [both],
       [
-        { approval_id: 'appr-1', assistant_message_id: 'a', provider_call_id: '0', tool_name: 'read_file' },
-        { approval_id: 'appr-2', assistant_message_id: 'a', provider_call_id: '0', tool_name: 'read_file' },
+        {
+          approval_id: 'appr-1',
+          conversation_id: 'c',
+          assistant_message_id: 'a',
+          provider_call_id: '0',
+          origin_call_id: null,
+          tool_name: 'read_file',
+          arguments: '{}',
+          retry_reason: null,
+          bubbled: false,
+          parent_call_id: null,
+          sub_conversation_id: null,
+        },
+        {
+          approval_id: 'appr-2',
+          conversation_id: 'c',
+          assistant_message_id: 'a',
+          provider_call_id: '0',
+          origin_call_id: null,
+          tool_name: 'read_file',
+          arguments: '{}',
+          retry_reason: null,
+          bubbled: false,
+          parent_call_id: null,
+          sub_conversation_id: null,
+        },
       ],
     )
     expect(callBlocks(out, 'a').map((b) => b.approval_id)).toEqual(['appr-1', 'appr-2'])
@@ -265,9 +550,16 @@ describe('hydrateBlocks', () => {
       [
         {
           approval_id: 'appr-1',
+          conversation_id: 'c',
           assistant_message_id: 'a2',
           provider_call_id: 'c1',
+          origin_call_id: null,
           tool_name: 'read_file',
+          arguments: '{}',
+          retry_reason: null,
+          bubbled: false,
+          parent_call_id: null,
+          sub_conversation_id: null,
         },
       ],
     )
@@ -526,10 +818,10 @@ describe('a reload racing the live round', () => {
   }
 
   /** A reload whose response lands only when the test says so. */
-  function reloadPausedMidRound(): [Promise<void>, (snap: ConversationSnapshot) => void] {
-    let land: (snap: ConversationSnapshot) => void = () => {}
+  function reloadPausedMidRound(): [Promise<void>, (snap: ConversationSnapshotResponse) => void] {
+    let land: (snap: ConversationSnapshotResponse) => void = () => {}
     vi.mocked(api.conversationSnapshot).mockReturnValueOnce(
-      new Promise<ConversationSnapshot>((resolve) => {
+      new Promise<ConversationSnapshotResponse>((resolve) => {
         land = resolve
       }),
     )
@@ -538,20 +830,18 @@ describe('a reload racing the live round', () => {
 
   /** What the database has once the round's calls are written and none of its
    *  tool rows are. */
-  function roundWritten(ids: string[]): ConversationSnapshot {
+  function roundWritten(ids: string[]): ConversationSnapshotResponse {
     return snapshotOf(
       {
         messages: [
           msg('a1', {
             turn_id: 'turn-1',
             content: 'on it',
-            tool_calls: JSON.stringify(
-              ids.map((id) => ({
-                id,
-                type: 'function',
-                function: { name: 'run_command', arguments: '{}' },
-              })),
-            ),
+            tool_calls: ids.map((id) => ({
+              id,
+              type: 'function',
+              function: { name: 'run_command', arguments: '{}' },
+            })),
           }),
         ],
         head_message_id: 'a1',
@@ -614,7 +904,7 @@ describe('a reload racing the live round', () => {
 
 describe('literal shell command lifecycle', () => {
   const store = () => useConversationStore.getState()
-  const result = (conversationId: string, turnId: string, messageId: string): CommandTurnOutcome => ({
+  const result = (conversationId: string, turnId: string, messageId: string): UserCommandResultResponse => ({
     conversation_id: conversationId,
     turn_id: turnId,
     message_id: messageId,
@@ -811,7 +1101,7 @@ describe('stops are scoped to a turn', () => {
       snapshotOf(
         { messages: [], head_message_id: null, branches: [] },
         {
-          turns: [turnRecord('turn-1', 'interrupted'), turnRecord('turn-2', 'crashed'), turnRecord('turn-3', 'done')],
+          turns: [turnRecord('turn-1', 'interrupted'), turnRecord('turn-2', 'failed'), turnRecord('turn-3', 'done')],
         },
       ),
     )
@@ -865,9 +1155,9 @@ describe('stops are scoped to a turn', () => {
   /// fetched before the user sent — the one the previous turn's stop kicks off
   /// — still passes the check and lands on top of the bubble they just added.
   it('discards a reload that was already in flight when the turn started', async () => {
-    let land: (snap: ConversationSnapshot) => void = () => {}
+    let land: (snap: ConversationSnapshotResponse) => void = () => {}
     vi.mocked(api.conversationSnapshot).mockReturnValueOnce(
-      new Promise<ConversationSnapshot>((resolve) => {
+      new Promise<ConversationSnapshotResponse>((resolve) => {
         land = resolve
       }),
     )
@@ -1091,7 +1381,7 @@ describe('stops are scoped to a turn', () => {
     store().handleStop(CONV, 'turn-1')
 
     await vi.waitFor(() => {
-      expect(api.conversationSnapshot).toHaveBeenCalledWith(CONV)
+      expect(api.conversationSnapshot).toHaveBeenCalledWith({ conversationId: CONV })
     })
     expect(session().streaming).toBe(true)
   })
@@ -1106,9 +1396,7 @@ describe('stops are scoped to a turn', () => {
           messages: [
             msg('a1', {
               turn_id: 'turn-1',
-              tool_calls: JSON.stringify([
-                { id: 'c1', type: 'function', function: { name: 'run_command', arguments: '{}' } },
-              ]),
+              tool_calls: [{ id: 'c1', type: 'function', function: { name: 'run_command', arguments: '{}' } }],
             }),
           ],
           head_message_id: 'a1',
@@ -1121,9 +1409,13 @@ describe('stops are scoped to a turn', () => {
               conversation_id: CONV,
               assistant_message_id: 'a1',
               provider_call_id: 'c1',
+              origin_call_id: null,
               tool_name: 'run_command',
               arguments: '{}',
+              retry_reason: null,
               bubbled: false,
+              parent_call_id: null,
+              sub_conversation_id: null,
             },
           ],
           turns: [turnRecord('turn-1', 'running')],
@@ -1183,7 +1475,7 @@ describe('compaction state', () => {
     store().handleCompactDone(CONV)
 
     await vi.waitFor(() => {
-      expect(api.conversationSnapshot).toHaveBeenCalledWith(CONV)
+      expect(api.conversationSnapshot).toHaveBeenCalledWith({ conversationId: CONV })
     })
     expect(session().compacting).toBe(false)
   })
@@ -1214,6 +1506,26 @@ describe('branch state', () => {
       expect(useConversationStore.getState().sessions[CONV]?.branches.a2).toBeDefined()
     })
     expect(useConversationStore.getState().sessions[CONV]?.branches.a2.total).toBe(2)
+  })
+
+  it('rejects inconsistent and extended branch responses', async () => {
+    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+      snapshotOf({
+        messages: [msg('a2')],
+        head_message_id: 'a2',
+        branches: [
+          {
+            message_id: 'a2',
+            index: 1,
+            total: 3,
+            sibling_ids: ['a1', 'a2'],
+            future: true,
+          } as unknown as MessageTreeResponse['branches'][number],
+        ],
+      }),
+    )
+
+    await expect(useConversationStore.getState().loadMessages(CONV)).rejects.toThrow(/message tree\.branches/)
   })
 
   it('replaces the message list outright when switching branches', async () => {
@@ -1262,10 +1574,10 @@ describe('branch state', () => {
     const session = () => store().sessions[CONV]!
     vi.mocked(api.switchBranch).mockResolvedValue(undefined)
 
-    let land: (snap: ConversationSnapshot) => void = () => {}
+    let land: (snap: ConversationSnapshotResponse) => void = () => {}
     vi.mocked(api.conversationSnapshot)
       .mockReturnValueOnce(
-        new Promise<ConversationSnapshot>((resolve) => {
+        new Promise<ConversationSnapshotResponse>((resolve) => {
           land = resolve
         }),
       )
@@ -1309,23 +1621,23 @@ describe('branch state', () => {
 describe('delegated runs', () => {
   const store = () => useConversationStore.getState()
 
-  function callBlocks(msgs: Message[], messageId: string): ToolCallDisplay[] {
+  function callBlocks(msgs: MessageViewModel[], messageId: string): ToolCallDisplay[] {
     const row = msgs.find((m) => m.id === messageId)
     return (row?._blocks ?? [])
       .filter((b): b is Extract<ContentBlock, { type: 'tool_call' }> => b.type === 'tool_call')
       .map((b) => b.data)
   }
 
-  function delegator(id: string, callId: string): Message {
+  function delegator(id: string, callId: string): MessageInfoResponse {
     return msg(id, {
       turn_id: 't1',
-      tool_calls: JSON.stringify([
+      tool_calls: [
         {
           id: callId,
           type: 'function',
           function: { name: 'run_agent', arguments: '{"agent":"agent","description":"fix the test"}' },
         },
-      ]),
+      ],
     })
   }
 
@@ -1382,10 +1694,13 @@ describe('delegated runs', () => {
       [
         {
           approval_id: 'appr-1',
+          conversation_id: 'c',
           assistant_message_id: 'a1',
           provider_call_id: 'child-call',
+          origin_call_id: null,
           tool_name: 'run_command',
           arguments: '{"command":"cargo test --all"}',
+          retry_reason: null,
           bubbled: false,
           parent_call_id: '0',
           sub_conversation_id: 'sub-1',
@@ -1410,20 +1725,23 @@ describe('delegated runs', () => {
   it('shows the call as waiting on the conversation above, with no way to answer', () => {
     const caller = msg('a1', {
       turn_id: 't1',
-      tool_calls: JSON.stringify([
-        { id: 'child-call', type: 'function', function: { name: 'run_command', arguments: '{}' } },
-      ]),
+      tool_calls: [{ id: 'child-call', type: 'function', function: { name: 'run_command', arguments: '{}' } }],
     })
     const out = hydrateBlocks(
       [caller],
       [
         {
           approval_id: 'appr-1',
+          conversation_id: 'c',
           assistant_message_id: 'a1',
           provider_call_id: 'child-call',
+          origin_call_id: null,
           tool_name: 'run_command',
           arguments: '{}',
+          retry_reason: null,
           bubbled: true,
+          parent_call_id: null,
+          sub_conversation_id: null,
         },
       ],
       [turnRecord('t1', 'running')],
@@ -1784,9 +2102,13 @@ describe('the waiting-on-you queue', () => {
           conversation_id: CONV,
           assistant_message_id: 'a1',
           provider_call_id: 'c1',
+          origin_call_id: null,
           tool_name: 'run_command',
           arguments: '{"command":"ls"}',
+          retry_reason: null,
           bubbled: false,
+          parent_call_id: null,
+          sub_conversation_id: null,
         },
       ])
 
