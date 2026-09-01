@@ -127,9 +127,7 @@ function renderNode(node: FileNode, t: TFunction) {
       }
       title={
         <span className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="min-w-0 flex-1 truncate" title={node.id}>
-            {node.name}
-          </span>
+          <span className="min-w-0 flex-1 truncate">{node.name}</span>
           {node.file && node.file.count > 1 && (
             <span className="shrink-0 text-xs tabular-nums text-muted">×{node.file.count}</span>
           )}

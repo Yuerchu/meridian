@@ -7,6 +7,7 @@ import { useShikiLanguage } from '@/hooks/use-shiki-language'
 import { highlightInline } from '@/lib/shiki'
 import { fileIconUrl } from '@/lib/file-icon'
 import { cn } from '@/lib/utils'
+import { Hint } from '@/components/ui/hint'
 
 // ---- Diff rendering for file-editing tools (write_file / edit_file / apply_patch) ----
 
@@ -107,9 +108,9 @@ export function FileDiffCard({ diff }: { diff: FileDiff }) {
           {/* A move used to arrive as one string with an arrow in the middle,
               which read correctly and could not be used as a path. The parser
               keeps the two apart now; the tooltip puts them back together. */}
-          <span className="font-mono truncate" title={diff.movedFrom ? `${diff.movedFrom} → ${diff.path}` : diff.path}>
+          <Hint className="font-mono truncate" label={diff.movedFrom ? `${diff.movedFrom} → ${diff.path}` : diff.path}>
             {fileName}
-          </span>
+          </Hint>
           {diff.op === 'create' && (
             <span className="text-success-soft-foreground shrink-0">{t('chat.tool.diff.newFile')}</span>
           )}

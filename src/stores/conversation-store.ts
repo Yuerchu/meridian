@@ -825,11 +825,12 @@ export interface ConversationSession {
   generation: number
   /** The checklist the model is working through, or null when there is none. */
   activeTodos: TodoArgs | null
-  /** Turns the user opened or closed by hand, keyed by turn id. Absent means
-   *  "follow the automatic policy"; once a turn appears here it keeps whatever
-   *  the user chose. Lives on the session so the choice survives switching
-   *  conversations and back. */
-  expandedTurns: Record<string, boolean>
+  /** Keyboard panels the user opened or closed by hand, keyed by the panel's
+   *  own key (a call id, or a bubble's reasoning). Absent means "follow the
+   *  automatic policy"; once a panel appears here it keeps whatever the user
+   *  chose. Lives on the session so the choice survives the post-turn reload
+   *  and switching conversations and back. */
+  expandedPanels: Record<string, boolean>
   /** Steps on the path with more than one version, keyed by the version
    *  currently shown. Empty until something has been regenerated. */
   branches: Record<string, BranchPointInfoResponse>
@@ -862,7 +863,7 @@ function defaultSession(): ConversationSession {
     pendingAsks: {},
     generation: 0,
     activeTodos: null,
-    expandedTurns: {},
+    expandedPanels: {},
     branches: {},
     switchingBranch: false,
     turns: [],
@@ -1095,6 +1096,11 @@ export interface ConversationStore {
    *  can be reordered without anything about the questions changing: deferring
    *  one moves it to the end and nothing else. */
   attentionOrder: string[]
+  /** An approval the keyboard shortcut asked to refuse. Refusing needs a
+   *  reason typed, so the shortcut cannot finish the job itself: it names the
+   *  question here, and the panel that owns it switches to its reason field
+   *  and clears this. Transient — nothing reads it after that. */
+  denyRequestApprovalId: string | null
 
   /** Where the reader came from, innermost last. Empty whenever they are
    *  looking at something they picked from the sidebar.
@@ -1225,6 +1231,11 @@ export interface ConversationStore {
    *  can no longer reach anybody. */
   handleApprovalExpired: (convId: string, approvalId: string) => void
   retireAnsweredApproval: (approvalId: string) => void
+  /** The keyboard asking for this question to be refused; see
+   *  `denyRequestApprovalId`. */
+  requestDeny: (approvalId: string) => void
+  /** The panel that owns the question has taken the request up. */
+  consumeDenyRequest: (approvalId: string) => void
   /** Not now — move it to the end of the queue and offer the next one.
    *
    *  Deliberately not a dismissal. The question is still outstanding and the
@@ -1261,7 +1272,8 @@ export interface ConversationStore {
   setActiveTodos: (convId: string, todos: TodoArgs | null) => void
   loadActiveTodos: (convId: string) => Promise<void>
   markSeen: (convId: string) => void
-  setTurnExpanded: (convId: string, turnId: string, expanded: boolean) => void
+  /** `null` forgets the choice, handing the panel back to the automatic policy. */
+  setPanelExpanded: (convId: string, key: string, expanded: boolean | null) => void
 }
 
 export const useConversationStore = create<ConversationStore>((set, get) => ({
@@ -1271,6 +1283,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   subAgentSteps: {},
   attention: {},
   attentionOrder: [],
+  denyRequestApprovalId: null,
   navigationStack: [],
   activeProjectId: null,
   sessions: {},
@@ -1457,7 +1470,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           adoptLiveTurn(session, snap.turns)
           applyPendingApprovals(session, snap.pending_approvals)
           applyPlanReviewAttention(state, convId, snap.plan_reviews)
-          session.expandedTurns = {}
+          session.expandedPanels = {}
           applied = true
         }),
       )
@@ -2137,6 +2150,14 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     )
   },
 
+  requestDeny: (approvalId) => {
+    set({ denyRequestApprovalId: approvalId })
+  },
+
+  consumeDenyRequest: (approvalId) => {
+    set((state) => (state.denyRequestApprovalId === approvalId ? { denyRequestApprovalId: null } : state))
+  },
+
   retireAnsweredApproval: (approvalId) => {
     set(
       produce((state: ConversationStore) => {
@@ -2472,11 +2493,13 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     )
   },
 
-  setTurnExpanded: (convId, turnId, expanded) => {
+  setPanelExpanded: (convId, key, expanded) => {
     set(
       produce((state: ConversationStore) => {
         const session = state.sessions[convId]
-        if (session) session.expandedTurns[turnId] = expanded
+        if (!session) return
+        if (expanded === null) delete session.expandedPanels[key]
+        else session.expandedPanels[key] = expanded
       }),
     )
   },

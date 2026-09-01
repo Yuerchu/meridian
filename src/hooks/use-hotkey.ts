@@ -43,6 +43,41 @@ export function parseHotkey(combo: string): Hotkey | null {
   return spec.key ? spec : null
 }
 
+/** Whether this is a keyboard with a Command key — decided from the user
+ *  agent only for the *label*, never for matching, which accepts both. */
+function hasCommandKey(): boolean {
+  return typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent)
+}
+
+/**
+ * A combo as a person reads it: `⌘⇧Y` beside a Command key, `Ctrl+Shift+Y`
+ * elsewhere. For tooltips and `aria-keyshortcuts` hints, where `mod` means
+ * nothing to anyone.
+ */
+export function formatHotkey(combo: string): string {
+  const spec = parseHotkey(combo)
+  if (!spec) return combo
+  const key = spec.key.length === 1 ? spec.key.toUpperCase() : spec.key
+  if (hasCommandKey()) {
+    return [(spec.mod || spec.meta) && '⌘', spec.ctrl && '⌃', spec.alt && '⌥', spec.shift && '⇧', key]
+      .filter(Boolean)
+      .join('')
+  }
+  return [(spec.mod || spec.ctrl) && 'Ctrl', spec.meta && 'Win', spec.alt && 'Alt', spec.shift && 'Shift', key]
+    .filter(Boolean)
+    .join('+')
+}
+
+/** The same combo in the `aria-keyshortcuts` grammar, both readings of `mod`. */
+export function ariaHotkey(combo: string): string {
+  const spec = parseHotkey(combo)
+  if (!spec) return ''
+  const key = spec.key.length === 1 ? spec.key.toUpperCase() : spec.key
+  const tail = [spec.alt && 'Alt', spec.shift && 'Shift', key].filter(Boolean).join('+')
+  if (spec.mod) return `Control+${tail} Meta+${tail}`
+  return [spec.ctrl && 'Control', spec.meta && 'Meta', tail].filter(Boolean).join('+')
+}
+
 export function matchesHotkey(event: KeyboardEvent, spec: Hotkey): boolean {
   if (event.key.toLowerCase() !== spec.key) return false
   if (event.shiftKey !== spec.shift || event.altKey !== spec.alt) return false

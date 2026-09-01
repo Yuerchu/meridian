@@ -6,7 +6,7 @@ import { Marker, MarkerContent } from '@/components/ui/marker'
 import { TurnItem } from './turn-item'
 import type { EmojiMap } from './emoji-renderer'
 import type { SenderNames } from '@/hooks/use-sender-names'
-import type { Turn } from '@/lib/turns'
+import { turnEndedAt, type Turn } from '@/lib/turns'
 import type { MessageViewModel } from '@/types'
 
 export interface CompactedRegionProps {
@@ -59,11 +59,12 @@ export function CompactedRegion({
           >
             {t('chat.compact.hideCompacted', { count: compactedCount })}
           </Button>
-          {turns.map((turn) => (
+          {turns.map((turn, i) => (
             <div key={turn.id} className="opacity-40">
               <TurnItem
                 turn={turn}
                 conversationId={conversationId}
+                previousTurnEndedAt={i > 0 ? turnEndedAt(turns[i - 1]) : null}
                 onDelete={onDelete}
                 isOneBot={isOneBot}
                 emojiMap={emojiMap}

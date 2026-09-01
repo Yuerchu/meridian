@@ -256,3 +256,30 @@ describe('MarkdownContent file references', () => {
     expect(openInEditor).not.toHaveBeenCalled()
   })
 })
+
+describe('MarkdownContent trailer', () => {
+  const trailer = <time data-testid="sent-at">14:20</time>
+
+  /// The float has to be inside the paragraph's own box: placed after the
+  /// block it could only ever land on the line below it.
+  it('floats the trailer into the last paragraph', () => {
+    render(<MarkdownContent content={'First.\n\nLast line here.'} trailer={trailer} />)
+    const time = screen.getByTestId('sent-at')
+    const paragraph = time.closest('p')!
+    expect(paragraph).toHaveTextContent('Last line here.')
+    expect(paragraph).not.toHaveTextContent('First.')
+  })
+
+  it('puts the trailer on a line of its own under a code block', () => {
+    const { container } = render(<MarkdownContent content={'Intro\n\n```js\nconst x = 1\n```'} trailer={trailer} />)
+    const time = screen.getByTestId('sent-at')
+    expect(time.closest('p')).toBeNull()
+    expect(time.closest('pre')).toBeNull()
+    expect(container.querySelector('[data-slot="markdown-trailer"]')).toContainElement(time)
+  })
+
+  it('drops the trailer while the text is still streaming', () => {
+    render(<MarkdownContent content="Half a sen" isStreaming trailer={trailer} />)
+    expect(screen.queryByTestId('sent-at')).toBeNull()
+  })
+})

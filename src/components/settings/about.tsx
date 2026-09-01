@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, ChevronRight, Copy, FileText } from '@gravity-ui/icons'
 import { Button, Chip, Separator, Skeleton, Tooltip } from '@heroui/react'
+import { Hint } from '@/components/ui/hint'
 import { ItemCard } from '@heroui-pro/react/item-card'
 import { ItemCardGroup } from '@heroui-pro/react/item-card-group'
 import { api } from '@/api'
@@ -73,9 +74,9 @@ function InfoRow({ label, value, action }: { label: string; value?: string; acti
           {value === undefined ? (
             <Skeleton className="h-4 w-28 rounded-md" />
           ) : (
-            <span className="text-muted min-w-0 truncate text-xs select-text" title={value}>
+            <Hint className="text-muted min-w-0 truncate text-xs select-text" label={value}>
               {value}
-            </span>
+            </Hint>
           )}
           {action}
         </div>

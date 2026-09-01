@@ -353,6 +353,18 @@
   --chart-3: var(--info);
   --chart-4: oklch(66.8% 0.196 330.2);
 
+  /* Project extension. The two bubble fills of the transcript, as tokens of
+     their own rather than `bg-accent` and `bg-default` written at the call
+     site. What a message bubble is filled with is a first-class decision — it
+     is the one colour on screen that says who is speaking — and it is not the
+     same decision as "the main action colour" or "the neutral hover wash",
+     even while it happens to share their values. Referenced, so the dark theme
+     follows without a second definition; retune here, not in the component. */
+  --bubble-user: var(--accent);
+  --bubble-user-foreground: var(--accent-foreground);
+  --bubble-assistant: var(--default);
+  --bubble-assistant-foreground: var(--foreground);
+
   --border: oklch(0.922 0 0);
   --separator: oklch(0.922 0 0);
   /* Not `var(--accent)` as HeroUI defaults it: a near-black focus ring on a

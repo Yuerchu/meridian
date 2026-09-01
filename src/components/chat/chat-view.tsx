@@ -11,6 +11,7 @@ import { ChatTranscript } from './chat-transcript'
 import { CompactedRegion } from './compacted-region'
 import { TranscriptStatus } from './transcript-status'
 import { useTurns } from '@/hooks/use-turns'
+import { useTranscriptHotkeys } from '@/hooks/use-transcript-hotkeys'
 import { InputBar, type AttachedFile, type PendingSticker } from './input-bar'
 import { PromptQueue } from './prompt-queue'
 import { TodoBar } from './todo-bar'
@@ -231,6 +232,7 @@ function ChatViewInner({
     [messages],
   )
   const allTurns = useTurns(visibleMessages, streaming, session?.turns)
+  useTranscriptHotkeys(conversationId, allTurns)
   const compactSummary = messages.find((m) => m.is_compact_summary)
   // The boundary comes from the summary's anchor rather than a stored cursor:
   // once a conversation can branch, one sort_order threshold cannot describe
