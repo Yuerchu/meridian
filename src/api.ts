@@ -101,6 +101,7 @@ import type {
   MessageContextContentResponse,
   MessageContextReadRequest,
   MessageDeleteRequest,
+  MessageFileBytesUploadRequest,
   MessageFileUploadRequest,
   MessageRatingUpdateRequest,
   ModelConfigInfoResponse,
@@ -293,6 +294,9 @@ export const api = {
     invoke<ConversationExportResponse>('export_conversation', { request }),
 
   uploadFile: (request: MessageFileUploadRequest) => invoke<UploadFileResponse>('upload_file', { request }),
+
+  uploadFileBytes: (request: MessageFileBytesUploadRequest) =>
+    invoke<UploadFileResponse>('upload_file_bytes', { request }),
 
   // `turnId` says which run to stop. Without it the backend stops whatever is
   // running, which is what a reloaded window has to fall back on — but sending

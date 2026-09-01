@@ -1561,6 +1561,14 @@ export interface MessageFileUploadRequest {
   filePath: string
 }
 
+export interface MessageFileBytesUploadRequest {
+  conversationId: string
+  fileName: string
+  /** The file's bytes, base64-encoded — Android has no raw IPC, and one
+   *  encoding shared by every platform beats a fast path only some have. */
+  dataBase64: string
+}
+
 export interface VoiceModelStatusInfoResponse {
   installed: boolean
   path: string | null

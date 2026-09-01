@@ -1,26 +1,28 @@
 import { useEffect, useRef, useState } from 'react'
 
 /**
- * Files dropped onto the window, as absolute paths.
+ * Files dropped onto the window, as `File` objects.
  *
- * Not `dragover`/`drop`. Tauri v2 leaves `dragDropEnabled` on by default, which
- * hands the WebView's native drop handler to Tauri — the DOM events for a file
- * drag never reach JavaScript at all, so a listener on an element looks correct
- * and fires never. What Tauri gives back instead is better for this app anyway:
- * absolute paths rather than `File` objects, which is exactly what an
- * `AttachedFile` holds and what the backend reads.
+ * DOM `dragover`/`drop`, not Tauri's `onDragDropEvent`. The native handler
+ * those events come from (`dragDropEnabled`) is switched off in
+ * `tauri.conf.json`, because on Windows it takes the WebView's drop target
+ * with it — every in-page HTML5 drag, the sidebar's conversation filing
+ * included, showed a refusal cursor wherever it went. What this costs is the
+ * absolute path the native event used to carry: an HTML5 drop hands over
+ * `File` objects with no path on any WebView, so the upload sends bytes — the
+ * same shape the remote picker has always produced.
  *
- * The event is webview-wide — there is no DOM target to hit-test against. That
- * is left as it is rather than compared against a rectangle: this hook is only
- * mounted where a composer is, so "dropped on the window" and "dropped on the
- * composer" already mean the same thing, and asking someone to land a file
- * inside a two-line field is asking a lot.
+ * Only a drag that carries files is touched. `preventDefault` on `dragover`
+ * is what marks the window as a drop target, and doing it for every drag
+ * would swallow the in-page drags this hook exists to make room for.
  *
- * Outside a Tauri webview — the dev playground runs in a plain browser — the
- * import throws and nothing is listening, which is the correct amount of
- * nothing.
+ * The listener is window-wide — this hook is only mounted where a composer
+ * is, so "dropped on the window" and "dropped on the composer" already mean
+ * the same thing, and asking someone to land a file inside a two-line field
+ * is asking a lot. The enter/leave depth is counted because a drag crossing
+ * child elements fires a leave for every boundary.
  */
-export function useFileDrop(onDrop: ((paths: string[]) => void) | undefined): boolean {
+export function useFileDrop(onDrop: ((files: File[]) => void) | undefined): boolean {
   const [isDragging, setDragging] = useState(false)
   // Kept in a ref so a caller that rebuilds its handler every render does not
   // tear the subscription down and put it back.
@@ -30,33 +32,43 @@ export function useFileDrop(onDrop: ((paths: string[]) => void) | undefined): bo
 
   useEffect(() => {
     if (!enabled) return
-    let cancelled = false
-    let unlisten: (() => void) | undefined
+    let depth = 0
 
-    void (async () => {
-      try {
-        const { getCurrentWebview } = await import('@tauri-apps/api/webview')
-        const stop = await getCurrentWebview().onDragDropEvent((event) => {
-          const payload = event.payload
-          if (payload.type === 'enter' || payload.type === 'over') {
-            setDragging(true)
-          } else if (payload.type === 'leave') {
-            setDragging(false)
-          } else if (payload.type === 'drop') {
-            setDragging(false)
-            if (payload.paths.length > 0) onDropRef.current?.(payload.paths)
-          }
-        })
-        if (cancelled) stop()
-        else unlisten = stop
-      } catch {
-        // Not a Tauri webview.
-      }
-    })()
+    const carriesFiles = (event: DragEvent) => event.dataTransfer?.types.includes('Files') ?? false
 
+    const onDragEnter = (event: DragEvent) => {
+      if (!carriesFiles(event)) return
+      event.preventDefault()
+      depth += 1
+      setDragging(true)
+    }
+    const onDragOver = (event: DragEvent) => {
+      if (!carriesFiles(event)) return
+      event.preventDefault()
+    }
+    const onDragLeave = (event: DragEvent) => {
+      if (!carriesFiles(event)) return
+      depth = Math.max(0, depth - 1)
+      if (depth === 0) setDragging(false)
+    }
+    const onDropEvent = (event: DragEvent) => {
+      if (!carriesFiles(event)) return
+      event.preventDefault()
+      depth = 0
+      setDragging(false)
+      const files = [...(event.dataTransfer?.files ?? [])]
+      if (files.length > 0) onDropRef.current?.(files)
+    }
+
+    window.addEventListener('dragenter', onDragEnter)
+    window.addEventListener('dragover', onDragOver)
+    window.addEventListener('dragleave', onDragLeave)
+    window.addEventListener('drop', onDropEvent)
     return () => {
-      cancelled = true
-      unlisten?.()
+      window.removeEventListener('dragenter', onDragEnter)
+      window.removeEventListener('dragover', onDragOver)
+      window.removeEventListener('dragleave', onDragLeave)
+      window.removeEventListener('drop', onDropEvent)
     }
   }, [enabled])
 

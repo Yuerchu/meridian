@@ -476,6 +476,10 @@ mod tests {
             // Paths on the machine the *user* is sitting at, which is not this
             // one when the request came over a socket.
             "upload_file",
+            // No path in it, but a remote client already has `/upload` for the
+            // same operation as multipart — base64 through the socket would be
+            // a second, worse spelling of it.
+            "upload_file_bytes",
             "export_conversation",
             "export_logs",
             "import_emojis",

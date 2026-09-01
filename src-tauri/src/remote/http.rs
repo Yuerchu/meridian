@@ -177,30 +177,20 @@ async fn upload(
         return refuse(StatusCode::BAD_REQUEST, "file field has no filename");
     };
 
-    let ext = file_name
-        .rsplit('.')
-        .next()
-        .filter(|e| e.len() <= 10 && !e.contains('/') && e.len() < file_name.len())
-        .unwrap_or("bin")
-        .to_string();
-
     let data_dir = state.services.paths.data_dir.clone();
+    // The same shapes `upload_file` produces, from the same store as
+    // `upload_file_bytes` — this endpoint is that command with the bytes
+    // carried over HTTP instead of IPC.
     let stored = tokio::task::spawn_blocking(move || {
-        let (dest, uri) = meridian_core::files::alloc_dest(&data_dir, &conversation_id, &ext)?;
-        std::fs::write(&dest, &bytes).map_err(|e| e.to_string())?;
-        Ok::<_, String>(uri)
+        crate::commands::message::store_uploaded_bytes(&data_dir, &conversation_id, &file_name, &bytes)
     })
     .await;
 
-    let uri = match stored {
-        Ok(Ok(uri)) => uri,
+    let part = match stored {
+        Ok(Ok(part)) => part,
         Ok(Err(e)) => return refuse(StatusCode::INTERNAL_SERVER_ERROR, &e),
         Err(e) => return refuse(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
     };
-
-    // The same two shapes `upload_file` produces, chosen the same way.
-    let mime = mime_guess::from_path(&file_name).first_or_octet_stream().to_string();
-    let part = crate::commands::message::UploadFileResponse::from_stored(uri, mime, file_name);
     axum::Json(serde_json::json!({ "ok": part })).into_response()
 }
 

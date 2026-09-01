@@ -39,12 +39,31 @@ export interface Attachment {
   file?: File
 }
 
+/** A `File`'s bytes as bare base64, via the data-URL reader — the one base64
+ *  encoder the platform has that neither blows the stack on a large file the
+ *  way a spread into `btoa` does, nor needs a manual chunk loop. */
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(`could not read ${file.name}`)
+    reader.onload = () => {
+      const url = String(reader.result)
+      resolve(url.slice(url.indexOf(',') + 1))
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
 /**
  * Store an attachment and answer with the content part the message will carry.
  *
- * Both routes produce the identical part — `/upload` is `upload_file` with the
- * bytes carried rather than named — so nothing downstream of here can tell
- * which one ran, and the composer does not branch on it either.
+ * All three routes produce the identical part — `/upload` and
+ * `upload_file_bytes` are `upload_file` with the bytes carried rather than
+ * named — so nothing downstream of here can tell which one ran, and the
+ * composer does not branch on it either. A `File` arrives from the browser's
+ * own picker in remote mode and from an HTML5 drop everywhere (the window's
+ * native drop handler is off — see `use-file-drop` — so a drop never has a
+ * path).
  *
  * Rejections are strings on the local path (Tauri's `Err(String)`) and this
  * keeps that: `use-send-message` reports failures with `String(err)`, and an
@@ -56,7 +75,13 @@ export async function uploadAttachment(conversationId: string, attachment: Attac
     return api.uploadFile({ conversationId, filePath: attachment.path })
   }
 
-  if (!remoteConnection) throw `no connection to upload ${attachment.name} over`
+  if (!remoteConnection) {
+    return api.uploadFileBytes({
+      conversationId,
+      fileName: attachment.name,
+      dataBase64: await fileToBase64(attachment.file),
+    })
+  }
 
   const form = new FormData()
   form.append('conversationId', conversationId)

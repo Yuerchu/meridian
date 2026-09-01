@@ -141,6 +141,9 @@ macro_rules! with_all_commands {
             local commands::message => upload_file(
                 request: $crate::commands::message::MessageFileUploadRequest,
             ),
+            local commands::message => upload_file_bytes(
+                request: $crate::commands::message::MessageFileBytesUploadRequest,
+            ),
 
             async commands::assistant => list_assistants(),
             async commands::assistant => create_assistant(

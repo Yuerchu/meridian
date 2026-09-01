@@ -706,6 +706,10 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "ref",
       "id": 254
     },
+    "upload_file_bytes": {
+      "kind": "ref",
+      "id": 254
+    },
     "usage_report": {
       "kind": "ref",
       "id": 259
@@ -9135,4 +9139,4 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
   }
 }
 
-export const INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT = 214
+export const INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT = 215
