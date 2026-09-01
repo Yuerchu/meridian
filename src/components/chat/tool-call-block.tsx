@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef, useId } from 'react'
+import { useState, useCallback, useContext, useEffect, useMemo, useRef, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { diffLines } from 'diff'
@@ -29,11 +29,16 @@ import {
   ChatToolArgs,
   ChatToolContent,
   ChatToolError,
+  ChatToolPresentationContext,
   ChatToolResult,
   ChatToolStatusIcon,
   ChatToolTrigger,
   type ChatToolState,
 } from '@/components/ui/chat-tool'
+import { BubbleKeyboardKey } from '@/components/ui/bubble-keyboard'
+import { usePanelExpansion } from '@/hooks/use-panel-expansion'
+import { ariaHotkey, formatHotkey } from '@/hooks/use-hotkey'
+import { APPROVE_HOTKEY, DENY_HOTKEY } from '@/hooks/use-transcript-hotkeys'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { parseTodoArgs, todoProgress, TodoItemList, type TodoDraft } from './todo-list'
@@ -288,8 +293,21 @@ function QuestionBlock({
   )
 }
 
-function AskUserBlock({ data, onAnswered }: { data: ToolCallDisplay; onAnswered?: () => void }) {
+function AskUserBlock({
+  data,
+  onAnswered,
+  chromeless = false,
+}: {
+  data: ToolCallDisplay
+  onAnswered?: () => void
+  /** The form with no card or key around it, for a question that is already
+   *  inside another tool's panel — a delegated run's. A card inside a panel
+   *  is a rounder corner inside a squarer one, the wrong way up the ladder. */
+  chromeless?: boolean
+}) {
   const { t } = useTranslation()
+  const presentation = useContext(ChatToolPresentationContext)
+  const expansion = usePanelExpansion(`${data.call_id}:ask`, false, data.status === 'pending')
   const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>({})
   const [skippedSet, setSkippedSet] = useState<Set<string>>(new Set())
   const [sending, setSending] = useState(false)
@@ -402,18 +420,12 @@ function AskUserBlock({ data, onAnswered }: { data: ToolCallDisplay; onAnswered?
   // and by then the card has already reported success and retired the queue
   // entry, so every other answer is lost without a word.
   const unanswered = questions.filter((q) => q.required && !hasRequiredAnswer(q, answers[q.id]))
-  return (
-    <div className="my-3 overflow-hidden rounded-2xl bg-surface text-sm shadow-surface ring-1 ring-border ring-inset">
-      <div className="flex items-center gap-2 bg-default px-4 py-3">
-        <CircleQuestion className="w-3.5 h-3.5 text-muted" />
-        <span className="font-medium text-foreground">{t('chat.tool.askUser')}</span>
-        {/* No spinner here for `running`: the body below says so in words, and
-            two of them side by side read as two things happening. */}
-        {data.status === 'completed' && <Check className="w-3.5 h-3.5 text-success-soft-foreground ml-auto" />}
-      </div>
-
+  const inCard = !chromeless && presentation === 'card'
+  const section = inCard ? 'px-4 py-3' : ''
+  const body = (
+    <>
       {data.status === 'pending' && (
-        <form className="space-y-3 px-4 py-3" aria-busy={sending} noValidate onSubmit={handleSubmit}>
+        <form className={cn('space-y-3', section)} aria-busy={sending} noValidate onSubmit={handleSubmit}>
           {questions.map((q) => (
             <QuestionBlock
               key={q.id}
@@ -453,18 +465,56 @@ function AskUserBlock({ data, onAnswered }: { data: ToolCallDisplay; onAnswered?
           the form goes, since there is no longer anyone to send it to, and
           whatever did become of it is said here instead. */}
       {data.status !== 'pending' && data.status !== 'completed' && (
-        <div className="px-4 py-3">
+        <div className={section}>
           <CardOutcome status={data.status} />
         </div>
       )}
 
       {data.result && (
-        <div className="border-t border-separator bg-default/40">
+        <div className={inCard ? 'border-t border-separator bg-default/40' : 'rounded-lg bg-default/50'}>
           <div className="max-h-40 overflow-y-auto ">
-            <pre className="whitespace-pre-wrap text-foreground px-4 py-3 text-xs">{data.result}</pre>
+            <pre className={cn('whitespace-pre-wrap text-foreground text-xs', inCard ? 'px-4 py-3' : 'px-3 py-2')}>
+              {data.result}
+            </pre>
           </div>
         </div>
       )}
+    </>
+  )
+
+  if (chromeless) {
+    return (
+      <div data-slot="ask-user" data-status={data.status} className="flex flex-col gap-3">
+        {body}
+      </div>
+    )
+  }
+
+  if (presentation === 'keyboard') {
+    return (
+      <ChatTool state={mapChatToolState(data.status)} {...expansion}>
+        <ChatToolTrigger>
+          <CircleQuestion aria-hidden className="size-3.5 shrink-0 text-muted" />
+          <span className="font-medium text-foreground shrink-0">{t('chat.tool.askUser')}</span>
+          {data.status === 'completed' && (
+            <Check aria-hidden className="size-3.5 shrink-0 text-success-soft-foreground" />
+          )}
+        </ChatToolTrigger>
+        <ChatToolContent>{body}</ChatToolContent>
+      </ChatTool>
+    )
+  }
+
+  return (
+    <div className="my-3 overflow-hidden rounded-2xl bg-surface text-sm shadow-surface ring-1 ring-border ring-inset">
+      <div className="flex items-center gap-2 bg-default px-4 py-3">
+        <CircleQuestion className="w-3.5 h-3.5 text-muted" />
+        <span className="font-medium text-foreground">{t('chat.tool.askUser')}</span>
+        {/* No spinner here for `running`: the body below says so in words, and
+            two of them side by side read as two things happening. */}
+        {data.status === 'completed' && <Check className="w-3.5 h-3.5 text-success-soft-foreground ml-auto" />}
+      </div>
+      {body}
     </div>
   )
 }
@@ -725,6 +775,16 @@ function PendingApproval({
   const retireAnswered = useConversationStore((s) => s.retireAnsweredApproval)
   const isEscalation = retryReason !== undefined
 
+  // The refuse shortcut cannot refuse on its own — a reason may be typed — so
+  // it asks; this is the answer, and taking it up clears the ask.
+  const denyRequested = useConversationStore((s) => s.denyRequestApprovalId === approvalId)
+  const consumeDenyRequest = useConversationStore((s) => s.consumeDenyRequest)
+  useEffect(() => {
+    if (!denyRequested) return
+    if (ui === 'idle') setUi('feedback')
+    consumeDenyRequest(approvalId)
+  }, [denyRequested, ui, approvalId, consumeDenyRequest])
+
   // Optimistic, with a way back. The backend rejects when it is no longer
   // holding the turn open, and a card that swallowed that would spin forever.
   const decide = (send: () => Promise<void>) => {
@@ -765,13 +825,27 @@ function PendingApproval({
           </div>
         )}
         <ChatToolApproval>
-          <Button variant="outline" className="text-danger hover:text-danger" onPress={() => setUi('feedback')}>
+          {/* The label in its own span, with the chord beside it as a hint the
+              accessible name leaves out: `aria-keyshortcuts` is what a screen
+              reader announces, and `aria-hidden` keeps the hint from being read
+              as part of the button's name. */}
+          <Button
+            variant="outline"
+            className="text-danger hover:text-danger"
+            aria-keyshortcuts={ariaHotkey(DENY_HOTKEY)}
+            onPress={() => setUi('feedback')}
+          >
             <Xmark className="w-3.5 h-3.5" />
-            {t('chat.tool.deny')}
+            <span>{t('chat.tool.deny')}</span>
+            <HotkeyHint combo={DENY_HOTKEY} />
           </Button>
-          <Button onPress={() => decide(() => api.approveToolCall(approvalId))}>
+          <Button
+            aria-keyshortcuts={ariaHotkey(APPROVE_HOTKEY)}
+            onPress={() => decide(() => api.approveToolCall(approvalId))}
+          >
             <Check className="w-3.5 h-3.5" />
-            {isEscalation ? t('chat.tool.retryWithoutSandbox') : t('chat.tool.allow')}
+            <span>{isEscalation ? t('chat.tool.retryWithoutSandbox') : t('chat.tool.allow')}</span>
+            <HotkeyHint combo={APPROVE_HOTKEY} />
           </Button>
         </ChatToolApproval>
       </>
@@ -842,6 +916,94 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
   }, [data.arguments])
 
   const sources = useMemo(() => (data.result ? parseWebSearchResult(data.result) : null), [data.result])
+  const presentation = useContext(ChatToolPresentationContext)
+  const settled =
+    data.status === 'completed' || data.status === 'denied' || data.status === 'error' || data.status === 'orphaned'
+  const expansion = usePanelExpansion(data.call_id, !settled, data.status === 'pending')
+
+  // One key whatever the state, so the row of keys under a bubble does not
+  // change shape as a search goes from asked to running to answered. The card
+  // below draws each state as its own thing, which was right for a card in a
+  // column and wrong for a key in a row.
+  if (presentation === 'keyboard') {
+    const failed = data.status === 'error' || (data.status === 'completed' && sources === null)
+    const state: ChatToolState = failed ? 'output-error' : mapChatToolState(data.status)
+    return (
+      <ChatTool state={state} {...expansion}>
+        <ChatToolTrigger
+          endContent={
+            sources && sources.length > 0 ? (
+              <span className="tabular-nums">{t('chat.tool.webSearch.sources', { count: sources.length })}</span>
+            ) : null
+          }
+        >
+          <Globe aria-hidden className="size-3.5 shrink-0 text-muted" />
+          <span className="font-medium text-foreground shrink-0">{t('chat.tool.name.web_search')}</span>
+          {query && (
+            <span data-slot="tool-arg" className="text-muted">
+              {query}
+            </span>
+          )}
+        </ChatToolTrigger>
+        <ChatToolContent>
+          {data.status === 'pending' && data.approval_id && (
+            <PendingApproval key={data.approval_id} approvalId={data.approval_id} retryReason={data.retry_reason} />
+          )}
+          {data.status === 'orphaned' && <OrphanedNotice />}
+          {!settled && data.status !== 'pending' && (
+            <div className="flex items-center gap-2 text-muted">
+              <Globe className="size-3.5 animate-pulse" />
+              <span>{t('chat.tool.webSearch.searching')}</span>
+            </div>
+          )}
+          {data.status === 'denied' && <CardOutcome status="denied" detail={data.result} />}
+          {failed && (
+            <>
+              <div className="flex items-center gap-2 text-danger">
+                <Globe className="size-3.5 shrink-0" />
+                <span>{t('chat.tool.webSearch.failed')}</span>
+              </div>
+              {data.result && <ToolErrorResult result={data.result} />}
+            </>
+          )}
+          {sources && sources.length === 0 && (
+            <div className="flex items-center gap-2 text-muted">
+              <Globe className="size-3.5" />
+              <span>{t('chat.tool.webSearch.noResults')}</span>
+            </div>
+          )}
+          {sources && sources.length > 0 && (
+            <ul data-slot="web-search-sources" className="flex flex-col gap-1">
+              {sources.map((src, i) => (
+                <li key={i}>
+                  <ChatSource
+                    description={src.title}
+                    faviconUrl={src.favicon ?? undefined}
+                    href={src.url}
+                    title={src.site_name || src.title}
+                  >
+                    <ChatSource.Trigger
+                      href="#meridian-external"
+                      rel="noreferrer noopener"
+                      target={undefined}
+                      onAuxClick={(e) => {
+                        e.preventDefault()
+                        if (e.button === 1) openExternally(src.url, e)
+                      }}
+                      onClick={(e) => openExternally(src.url, e)}
+                    >
+                      <ChatSource.Icon faviconUrl={src.favicon ?? undefined} />
+                      <ChatSource.Title>{src.site_name || src.title}</ChatSource.Title>
+                    </ChatSource.Trigger>
+                  </ChatSource>
+                </li>
+              ))}
+            </ul>
+          )}
+        </ChatToolContent>
+      </ChatTool>
+    )
+  }
 
   if (data.status === 'pending') {
     return (
@@ -992,6 +1154,66 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
     [approvalId, markOrphaned],
   )
 
+  const presentation = useContext(ChatToolPresentationContext)
+  const expansion = usePanelExpansion(data.call_id, false, data.status === 'pending')
+  const inCard = presentation === 'card'
+  const section = inCard ? 'px-4 py-3' : ''
+  const divider = inCard ? 'border-t border-separator' : ''
+
+  const body = (
+    <>
+      <div data-slot="enter-plan-reason" className={cn('text-foreground', section)}>
+        {reason}
+      </div>
+
+      {data.status === 'pending' && approvalId && !sent && (
+        <div data-slot="enter-plan-actions" className={cn(divider, section)}>
+          <ChatToolApproval>
+            <Button variant="outline" onPress={() => decide(() => api.denyToolCall({ approvalId, reason: null }))}>
+              <Xmark className="w-3.5 h-3.5" />
+              {t('chat.plan.keepBuilding')}
+            </Button>
+            <Button onPress={() => decide(() => api.approveToolCall(approvalId))}>
+              <Compass className="w-3.5 h-3.5" />
+              {t('chat.plan.startPlanning')}
+            </Button>
+          </ChatToolApproval>
+        </div>
+      )}
+
+      {data.status === 'pending' && sent && (
+        <div data-slot="enter-plan-waiting" className={cn('flex items-center gap-2 text-muted', divider, section)}>
+          <CircleDashed className="w-3.5 h-3.5 animate-spin" />
+          <span>{t('chat.tool.running')}</span>
+        </div>
+      )}
+
+      {data.status !== 'pending' && data.status !== 'completed' && (
+        <div data-slot="enter-plan-outcome" className={cn(divider, section)}>
+          <CardOutcome status={data.status} detail={data.result} />
+        </div>
+      )}
+    </>
+  )
+
+  if (presentation === 'keyboard') {
+    return (
+      <ChatTool state={mapChatToolState(data.status)} {...expansion}>
+        <ChatToolTrigger>
+          <Compass aria-hidden className="size-3.5 shrink-0 text-muted" />
+          <span data-slot="enter-plan-title" className="font-medium text-foreground shrink-0">
+            {t('chat.plan.enterTitle')}
+          </span>
+          {data.status === 'completed' && (
+            <Check aria-hidden className="size-3.5 shrink-0 text-success-soft-foreground" />
+          )}
+          {declined && <Xmark aria-hidden className="size-3.5 shrink-0 text-muted" />}
+        </ChatToolTrigger>
+        <ChatToolContent>{body}</ChatToolContent>
+      </ChatTool>
+    )
+  }
+
   // Same status ring as `ChatTool`: the card's own edge is recoloured to mean
   // "this one is waiting on you". Which is `pending` and only `pending` — keyed
   // off "not denied" it was drawn around every other state too, so a call that
@@ -1014,41 +1236,7 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
         {data.status === 'completed' && <Check className="ml-auto size-3.5 text-success-soft-foreground" />}
         {declined && <Xmark className="ml-auto size-3.5 text-muted" />}
       </div>
-
-      <div data-slot="enter-plan-reason" className="px-4 py-3 text-foreground">
-        {reason}
-      </div>
-
-      {data.status === 'pending' && approvalId && !sent && (
-        <div data-slot="enter-plan-actions" className="border-t border-separator px-4 py-3">
-          <ChatToolApproval>
-            <Button variant="outline" onPress={() => decide(() => api.denyToolCall({ approvalId, reason: null }))}>
-              <Xmark className="w-3.5 h-3.5" />
-              {t('chat.plan.keepBuilding')}
-            </Button>
-            <Button onPress={() => decide(() => api.approveToolCall(approvalId))}>
-              <Compass className="w-3.5 h-3.5" />
-              {t('chat.plan.startPlanning')}
-            </Button>
-          </ChatToolApproval>
-        </div>
-      )}
-
-      {data.status === 'pending' && sent && (
-        <div
-          data-slot="enter-plan-waiting"
-          className="flex items-center gap-2 border-t border-separator px-4 py-3 text-muted"
-        >
-          <CircleDashed className="w-3.5 h-3.5 animate-spin" />
-          <span>{t('chat.tool.running')}</span>
-        </div>
-      )}
-
-      {data.status !== 'pending' && data.status !== 'completed' && (
-        <div data-slot="enter-plan-outcome" className="border-t border-separator px-4 py-3">
-          <CardOutcome status={data.status} detail={data.result} />
-        </div>
-      )}
+      {body}
     </div>
   )
 }
@@ -1083,31 +1271,20 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
     if (approvalId) decide(() => api.denyToolCall({ approvalId, reason: feedback.trim() || null }))
   }, [decide, approvalId, feedback])
 
-  return (
-    <div
-      data-slot="exit-plan"
-      data-status={data.status}
-      className={cn(
-        'my-3 overflow-hidden rounded-2xl bg-surface text-sm shadow-surface ring-1 ring-border ring-inset',
-        // Only while it is actually waiting on a decision — see `EnterPlanBlock`.
-        data.status === 'pending' && 'ring-info/40',
-      )}
-    >
-      <div data-slot="exit-plan-header" className="flex items-center gap-2 bg-default px-4 py-3">
-        <SquareListUl aria-hidden className="size-3.5 shrink-0 text-muted" />
-        <span data-slot="exit-plan-title" className="font-medium text-foreground">
-          {t('chat.plan.title')}
-        </span>
-        {data.status === 'completed' && <Check className="ml-auto size-3.5 text-success-soft-foreground" />}
-        {wasRejected && <Xmark className="ml-auto size-3.5 text-muted" />}
-      </div>
+  const presentation = useContext(ChatToolPresentationContext)
+  const expansion = usePanelExpansion(data.call_id, false, data.status === 'pending')
+  const inCard = presentation === 'card'
+  const section = inCard ? 'px-4 py-3' : ''
+  const divider = inCard ? 'border-t border-separator' : ''
 
-      <div data-slot="exit-plan-body" className="max-h-96 overflow-y-auto px-4 py-3">
+  const body = (
+    <>
+      <div data-slot="exit-plan-body" className={cn('max-h-96 overflow-y-auto', section)}>
         <MarkdownContent content={plan} />
       </div>
 
       {data.status === 'pending' && approvalId && ui !== 'sent' && (
-        <div data-slot="exit-plan-actions" className="border-t border-separator px-4 py-3">
+        <div data-slot="exit-plan-actions" className={cn(divider, section)}>
           {ui === 'feedback' ? (
             <div data-slot="exit-plan-feedback" className="space-y-2">
               <Input
@@ -1152,20 +1329,57 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
       )}
 
       {data.status === 'pending' && ui === 'sent' && (
-        <div
-          data-slot="exit-plan-waiting"
-          className="flex items-center gap-2 border-t border-separator px-4 py-3 text-muted"
-        >
+        <div data-slot="exit-plan-waiting" className={cn('flex items-center gap-2 text-muted', divider, section)}>
           <CircleDashed className="w-3.5 h-3.5 animate-spin" />
           <span>{t('chat.tool.running')}</span>
         </div>
       )}
 
       {data.status !== 'pending' && data.status !== 'completed' && (
-        <div data-slot="exit-plan-outcome" className="border-t border-separator px-4 py-3">
+        <div data-slot="exit-plan-outcome" className={cn(divider, section)}>
           <CardOutcome status={data.status} detail={data.result} />
         </div>
       )}
+    </>
+  )
+
+  if (presentation === 'keyboard') {
+    return (
+      <ChatTool state={mapChatToolState(data.status)} {...expansion}>
+        <ChatToolTrigger>
+          <SquareListUl aria-hidden className="size-3.5 shrink-0 text-muted" />
+          <span data-slot="exit-plan-title" className="font-medium text-foreground shrink-0">
+            {t('chat.plan.title')}
+          </span>
+          {data.status === 'completed' && (
+            <Check aria-hidden className="size-3.5 shrink-0 text-success-soft-foreground" />
+          )}
+          {wasRejected && <Xmark aria-hidden className="size-3.5 shrink-0 text-muted" />}
+        </ChatToolTrigger>
+        <ChatToolContent>{body}</ChatToolContent>
+      </ChatTool>
+    )
+  }
+
+  return (
+    <div
+      data-slot="exit-plan"
+      data-status={data.status}
+      className={cn(
+        'my-3 overflow-hidden rounded-2xl bg-surface text-sm shadow-surface ring-1 ring-border ring-inset',
+        // Only while it is actually waiting on a decision — see `EnterPlanBlock`.
+        data.status === 'pending' && 'ring-info/40',
+      )}
+    >
+      <div data-slot="exit-plan-header" className="flex items-center gap-2 bg-default px-4 py-3">
+        <SquareListUl aria-hidden className="size-3.5 shrink-0 text-muted" />
+        <span data-slot="exit-plan-title" className="font-medium text-foreground">
+          {t('chat.plan.title')}
+        </span>
+        {data.status === 'completed' && <Check className="ml-auto size-3.5 text-success-soft-foreground" />}
+        {wasRejected && <Xmark className="ml-auto size-3.5 text-muted" />}
+      </div>
+      {body}
     </div>
   )
 }
@@ -1183,6 +1397,26 @@ function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay; revie
         : data.status === 'denied'
           ? 'changes_requested'
           : 'orphaned')
+  const presentation = useContext(ChatToolPresentationContext)
+
+  // A key that goes somewhere rather than opening something: the review has a
+  // page of its own, and a panel here would be a second, smaller copy of it.
+  if (presentation === 'keyboard') {
+    return (
+      <BubbleKeyboardKey
+        data-slot="plan-review-entry"
+        data-status={status}
+        state={status === 'pending' ? 'navigate' : 'output-available'}
+        onClick={() => openReview(reviewId)}
+      >
+        <SquareListUl aria-hidden className="size-3.5 shrink-0" />
+        <span className="font-medium shrink-0">{t('chat.plan.title')}</span>
+        <Chip size="sm" variant="secondary" className="ml-auto">
+          {t(`chat.plan.status.${status}`)}
+        </Chip>
+      </BubbleKeyboardKey>
+    )
+  }
 
   return (
     <div
@@ -1217,9 +1451,10 @@ function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay; revie
 function TodoListBlock({ data, title, todos }: { data: ToolCallDisplay; title: string; todos: TodoDraft[] }) {
   const { t } = useTranslation()
   const { done, total } = todoProgress(todos)
+  const expansion = usePanelExpansion(data.call_id, done < total, false)
 
   return (
-    <ChatTool state={mapChatToolState(data.status)} defaultExpanded={done < total} className="my-3">
+    <ChatTool state={mapChatToolState(data.status)} {...expansion}>
       <ChatToolTrigger
         endContent={
           <span className="shrink-0 text-muted tabular-nums">{t('chat.todo.progress', { done, total })}</span>
@@ -1334,7 +1569,6 @@ export function ToolArgsSummary({ toolName, args }: { toolName: string; args: Re
     <span
       data-slot="tool-arg"
       className="line-clamp-2 min-w-0 break-words whitespace-normal font-mono text-xs text-foreground [overflow-wrap:anywhere]"
-      title={arg}
     >
       {arg}
     </span>
@@ -1373,9 +1607,15 @@ function SubAgentBlock({
   const steps = Math.max(live ?? 0, data.sub_agent?.steps ?? 0)
   const nested = data.nested_approval
   const readOnly = kind === 'explore'
+  const settled =
+    data.status === 'completed' || data.status === 'denied' || data.status === 'error' || data.status === 'orphaned'
+  const expansion = usePanelExpansion(data.call_id, !settled, nested != null)
 
+  // A question the run raised makes this key the one waiting on a person, and
+  // the key has to say so: `run_agent` itself is merely running, and a spinner
+  // is what a reader scrolls past.
   return (
-    <ChatTool state={mapChatToolState(data.status)} defaultExpanded className="my-3">
+    <ChatTool state={nested ? 'requires-action' : mapChatToolState(data.status)} {...expansion}>
       <ChatToolTrigger>
         {readOnly ? (
           <Compass aria-hidden className="size-3.5 shrink-0 text-muted" />
@@ -1416,6 +1656,7 @@ function SubAgentBlock({
                   approval_id: nested.approval_id,
                   retry_reason: nested.retry_reason,
                 }}
+                chromeless
                 onAnswered={() => activeId && resolveNested(activeId, nested.approval_id)}
               />
             ) : (
@@ -1488,6 +1729,17 @@ function mapChatToolState(status: ToolCallDisplay['status']): ChatToolState {
     default:
       return 'output-error'
   }
+}
+
+/** A chord drawn beside a decision, the way a menu item shows its shortcut.
+ *  Hidden from assistive technology: `aria-keyshortcuts` on the button says
+ *  the same thing in a form a screen reader knows how to announce. */
+function HotkeyHint({ combo }: { combo: string }) {
+  return (
+    <kbd aria-hidden className="ml-1 hidden font-sans text-xs opacity-60 pointer-fine:inline">
+      {formatHotkey(combo)}
+    </kbd>
+  )
 }
 
 /** The turn that asked this is gone, so there is no longer anything to answer.
@@ -1673,6 +1925,12 @@ export function ToolCallBlock({
 
   const fileDiffs = useMemo(() => toolFileDiffs(data.tool_name, parsedArgs), [data.tool_name, parsedArgs])
 
+  // Open while it works or waits, shut once it has an outcome — unless the
+  // reader said otherwise. Called before the specialised cards return, because
+  // hooks are; the ones that draw their own chrome keep an expansion of their
+  // own and ignore this one.
+  const expansion = usePanelExpansion(data.call_id, !isCompleted, data.status === 'pending')
+
   // A hosted agent's questions and plans are the same two cards under different
   // names. Matching the name rather than translating it upstream keeps the
   // transcript honest about which tool actually ran — the card is a rendering
@@ -1734,7 +1992,7 @@ export function ToolCallBlock({
   const showArgs = trimmedArgs !== '' && trimmedArgs !== '{}'
 
   return (
-    <ChatTool state={mapChatToolState(data.status)} defaultExpanded={!isCompleted} className={cn('my-3', className)}>
+    <ChatTool state={mapChatToolState(data.status)} {...expansion} className={className}>
       {/* Both, on two lines: what this call is, and what it is for. Neither
           displaces the other — see `toolDescription`. */}
       <ChatToolTrigger subtitle={toolDescription(parsedArgs)}>

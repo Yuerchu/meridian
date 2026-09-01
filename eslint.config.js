@@ -61,6 +61,37 @@ const nativeElementRestrictions = [
   },
 ]
 
+// Enforced everywhere, src/components/ui/ included: a native hover tooltip is
+// never the point of a component, it is the browser drawing its own UI over
+// ours. `iframe` keeps `title` because there it is the frame's accessible name
+// and draws nothing.
+const nativeChromeRestrictions = [
+  {
+    selector: "JSXOpeningElement[name.name=/^[a-z]/][name.name!='iframe'] > JSXAttribute[name.name='title']",
+    message:
+      "Native `title` draws the browser's own tooltip. Wrap the element in <Tooltip> from @heroui/react (Tooltip.Trigger with `render` for a focusable element, plain Tooltip.Trigger around a span), or drop the hint.",
+  },
+  {
+    selector: "JSXOpeningElement[name.object.name='dom'] > JSXAttribute[name.name='title']",
+    message: "Native `title` on a dom.* element draws the browser's own tooltip. Use <Tooltip> from @heroui/react.",
+  },
+  {
+    selector: 'JSXOpeningElement[name.name=/^(?:details|summary|progress|meter|datalist|marquee)$/]',
+    message: 'Native browser widget. Use the HeroUI equivalent (Disclosure, Progress, Listbox…).',
+  },
+  // A bare `confirm(...)` in this codebase is the app's own `useConfirm`, which
+  // is the replacement, so only `alert` and `prompt` are matched by bare name.
+  {
+    selector: 'CallExpression[callee.name=/^(?:alert|prompt)$/]',
+    message: "The browser's own dialog. Use useConfirm / AlertDialog / Modal / a toast from the app instead.",
+  },
+  {
+    selector:
+      'CallExpression[callee.object.name=/^(?:window|globalThis)$/][callee.property.name=/^(?:alert|confirm|prompt)$/]',
+    message: "The browser's own dialog. Use useConfirm / AlertDialog / Modal / a toast from the app instead.",
+  },
+]
+
 export default tseslint.config(
   { ignores: ['dist', 'src-tauri', '**/*.test.ts', '**/*.test.tsx'] },
   js.configs.recommended,
@@ -85,14 +116,19 @@ export default tseslint.config(
   {
     files: ['src/**/*.{ts,tsx}'],
     rules: {
-      'no-restricted-syntax': ['error', ...styleRestrictions],
+      'no-restricted-syntax': ['error', ...styleRestrictions, ...nativeChromeRestrictions],
     },
   },
   {
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['src/components/ui/**'],
     rules: {
-      'no-restricted-syntax': ['error', ...styleRestrictions, ...nativeElementRestrictions],
+      'no-restricted-syntax': [
+        'error',
+        ...styleRestrictions,
+        ...nativeChromeRestrictions,
+        ...nativeElementRestrictions,
+      ],
     },
   },
   // The settings barrel imports all eleven panels, and App.tsx loads it lazily

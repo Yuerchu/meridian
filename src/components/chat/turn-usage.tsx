@@ -85,6 +85,9 @@ export function TurnUsage({ tokens, usage }: { tokens: TokenTotals; usage?: Turn
   }
 
   const costLabel = statusText(usage, t)
+  // The full summary names the trigger for assistive technology; what is
+  // drawn is the cost alone. Seven digits of token counts beside every answer
+  // is a ledger line, not a footer, and the counts are one hover away.
   const summary = tokensLabel ? t('chat.usage.summary', { tokens: tokensLabel, cost: costLabel }) : costLabel
   const priced =
     usage.pricing_status === 'exact' || usage.pricing_status === 'estimated' || usage.pricing_status === 'lower_bound'
@@ -109,7 +112,7 @@ export function TurnUsage({ tokens, usage }: { tokens: TokenTotals; usage?: Turn
           onPress={() => setOpen(true)}
           className="touch-hitbox h-auto min-w-0 cursor-[var(--cursor-interactive)] rounded-sm px-0 py-0 font-normal tabular-nums hover:text-foreground"
         >
-          {summary}
+          {costLabel}
         </Button>
       </HoverCard.Trigger>
       <HoverCard.Content placement="top" className="w-64 p-3">

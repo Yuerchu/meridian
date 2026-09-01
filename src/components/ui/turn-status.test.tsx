@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Turn, TurnBranchPager, TurnContent, TurnTrigger } from './turn'
-import { expectCollapsed, expectExpanded } from '@/test/disclosure'
+import { TurnBranchPager, TurnStatusIcon } from './turn-status'
 
 describe('TurnBranchPager', () => {
   it('renders nothing when there is only one version', () => {
@@ -48,32 +47,13 @@ describe('TurnBranchPager', () => {
   })
 })
 
-describe('Turn', () => {
-  it('keeps the process out of sight until the trigger is used', async () => {
-    render(
-      <Turn status="complete">
-        <TurnTrigger>Worked for 9m 46s</TurnTrigger>
-        <TurnContent>process</TurnContent>
-      </Turn>,
-    )
-
-    // `aria-expanded` on its own proves nothing: the panel renders its children
-    // either way, so the state has to be read off the panel as well.
-    const trigger = screen.getByRole('button', { name: /Worked for/ })
-    expectCollapsed(trigger)
-    expect(screen.getByText('process')).not.toBeVisible()
-
-    await userEvent.click(trigger)
-    expectExpanded(trigger)
-    expect(screen.getByText('process')).toBeVisible()
-  })
-
-  it('exposes the status for styling hooks', () => {
-    const { container } = render(
-      <Turn status="awaiting-input">
-        <TurnTrigger>Waiting for you</TurnTrigger>
-      </Turn>,
-    )
-    expect(container.querySelector('[data-slot="turn-collapsible"]')).toHaveAttribute('data-status', 'awaiting-input')
+describe('TurnStatusIcon', () => {
+  /// A turn the user stopped needs no attention; one that stopped unexpectedly
+  /// may have left something half-done, and is coloured to say so.
+  it('colours a crash as a warning and a stop as nothing', () => {
+    const { container, rerender } = render(<TurnStatusIcon status="crashed" />)
+    expect(container.querySelector('svg')).toHaveClass('text-warning-soft-foreground')
+    rerender(<TurnStatusIcon status="interrupted" />)
+    expect(container.querySelector('svg')).toHaveClass('text-muted')
   })
 })

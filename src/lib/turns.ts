@@ -7,6 +7,10 @@ import type { ContentBlock, MessageRating, MessageViewModel, ToolCallDisplay, Tu
  * tool-loop iteration, so a single question can leave a dozen rows behind. The
  * boundary is recovered here from `role === 'user'` alone, which is why nothing
  * upstream has to change for the UI to group them.
+ *
+ * What a turn *looks like* — bubbles, keyboards, which row carries the avatar —
+ * is derived a layer up, in `lib/message-groups`. This module only decides what
+ * a turn *is*: its identity, its status, and what it cost.
  */
 
 export type TurnStatus =
@@ -38,19 +42,11 @@ export type TurnStatus =
   /** Produced no text at all. */
   | 'empty'
 
-export type TurnStep =
-  | { kind: 'thinking'; messageId: string; blockIndex: number; text: string }
-  | { kind: 'text'; messageId: string; blockIndex: number; text: string }
-  | { kind: 'tool'; messageId: string; blockIndex: number; data: ToolCallDisplay }
-  | { kind: 'sticker'; messageId: string; blockIndex: number; stickerId: string; name?: string }
-
 export interface TurnResult {
   /** The assistant row carrying the conclusion — rating and regeneration act on it. */
   messageId: string
+  /** The concluding prose, joined. What the copy button copies for a turn. */
   text: string
-  /** Just the concluding blocks. That row's own `_blocks` also hold the steps
-   *  leading up to it, which the collapsed region has already rendered. */
-  blocks: ContentBlock[]
   modelId: string | null
   inputTokens: number | null
   outputTokens: number | null
@@ -61,7 +57,6 @@ export interface TurnSummary {
   toolCount: number
   thinkingCount: number
   textCount: number
-  lastToolName: string | null
 }
 
 export interface Turn {
@@ -70,11 +65,6 @@ export interface Turn {
   id: string
   userMessage: MessageViewModel | null
   assistantMessages: MessageViewModel[]
-  /** Everything leading up to the conclusion. Collapsed by default. */
-  steps: TurnStep[]
-  /** Steps that must stay reachable even when collapsed, because they are
-   *  waiting on the user. */
-  pinned: TurnStep[]
   result: TurnResult | null
   status: TurnStatus
   /** null when it cannot be derived — rows written before per-message timestamps,
@@ -158,75 +148,82 @@ export interface BuildTurnsContext {
 
 /** Tools that block the turn while they wait for a response. `update_todos` is
  *  deliberately absent: the persistent TodoBar already shows that checklist, so
- *  surfacing it again outside the collapsed region is noise. */
+ *  treating it as a question would hold the turn open for nobody. */
 const INTERACTIVE_TOOLS = new Set(['ask_user', 'AskUserQuestion', 'enter_plan', 'exit_plan', 'ExitPlanMode'])
 
-function blocksOf(message: MessageViewModel): ContentBlock[] {
+/** The blocks a row renders as. Pre-`_blocks` rows, and any row whose stream
+ *  produced nothing structured, read their `content` as one text block. */
+export function blocksOf(message: MessageViewModel): ContentBlock[] {
   if (message._blocks && message._blocks.length > 0) return message._blocks
-  // Pre-`_blocks` rows, and any row whose stream produced nothing structured.
   return message.content ? [{ type: 'text', text: message.content }] : []
 }
 
-function isPinned(step: TurnStep): boolean {
-  if (step.kind !== 'tool') return false
-  if (step.data.status === 'pending') return true
-  // A delegated run asking for permission. The card itself is only `running` —
-  // `run_agent` really is — so without this the one thing on screen that needs
-  // a person could sit inside a collapsed region.
-  if (step.data.nested_approval) return true
-  // An interactive tool with no outcome yet is still holding the turn open.
-  return INTERACTIVE_TOOLS.has(step.data.tool_name) && step.data.status === 'running'
-}
-
-function toStep(block: ContentBlock, messageId: string, blockIndex: number): TurnStep | null {
-  if (block.type === 'thinking') return { kind: 'thinking', messageId, blockIndex, text: block.text }
-  if (block.type === 'text') return { kind: 'text', messageId, blockIndex, text: block.text }
-  if (block.type === 'tool_call') return { kind: 'tool', messageId, blockIndex, data: block.data }
-  if (block.type === 'sticker') {
-    return { kind: 'sticker', messageId, blockIndex, stickerId: block.sticker_id, name: block.name }
-  }
-  return null
-}
-
-/** Splits the flattened step list into "process" and "conclusion".
+/**
+ * A call that is holding the turn open until a person answers.
  *
- *  The conclusion is the run of text after the last tool call. That mirrors the
- *  agent loop exactly: iterations that call tools are steps, and the model only
- *  signs off in plain text once it stops calling them. A turn with no tool calls
- *  is therefore all conclusion, which is what keeps ordinary Q&A from being
- *  wrapped in a collapse header. */
-function splitAtConclusion(steps: TurnStep[]): { process: TurnStep[]; conclusion: TurnStep[] } {
-  let lastToolIndex = -1
-  for (let i = steps.length - 1; i >= 0; i--) {
-    if (steps[i].kind === 'tool') {
-      lastToolIndex = i
-      break
+ * Three shapes, and the second is the easy one to miss. A delegated run asking
+ * for permission leaves its own card merely `running` — `run_agent` really is —
+ * so without `nested_approval` the one thing on screen that needs a person
+ * would look like work in progress. An interactive tool with no outcome yet is
+ * the third: `ask_user` sits at `running` for as long as the form is open.
+ */
+export function isBlockingCall(data: ToolCallDisplay): boolean {
+  if (data.status === 'pending') return true
+  if (data.nested_approval) return true
+  return INTERACTIVE_TOOLS.has(data.tool_name) && data.status === 'running'
+}
+
+/**
+ * The text after the last tool call, which is the model signing off.
+ *
+ * That mirrors the agent loop exactly: rounds that call tools are process, and
+ * the model only concludes in plain text once it stops calling them. A turn
+ * with no tool calls is therefore all conclusion.
+ *
+ * A turn blocked on the user has not concluded, whatever text follows its last
+ * *unblocked* call: what it said before the blocked call was introducing that
+ * call, not answering the question. Reading it as a conclusion would put the
+ * introduction after the thing it introduces, and move it again once the call
+ * is approved and the turn carries on past it.
+ */
+function findConclusion(messages: MessageViewModel[]): { messageId: string; text: string } | null {
+  let owner: MessageViewModel | null = null
+  const tail: string[] = []
+  for (const m of messages) {
+    for (const block of blocksOf(m)) {
+      if (block.type === 'tool_call') {
+        if (isBlockingCall(block.data)) return null
+        owner = null
+        tail.length = 0
+      } else if (block.type === 'text' && block.text.trim()) {
+        owner = m
+        tail.push(block.text)
+      } else if (block.type === 'sticker') {
+        // A sticker sent after its tool call is an answer with no words in it.
+        owner = m
+      }
     }
   }
-  const tail = steps.slice(lastToolIndex + 1)
-  const conclusion = tail.filter((s) => (s.kind === 'text' && s.text.trim()) || s.kind === 'sticker')
-  if (conclusion.length === 0) return { process: steps, conclusion: [] }
-  // Thinking that trails the last tool call belongs to the process, not the answer.
-  const process = steps.slice(0, lastToolIndex + 1).concat(tail.filter((s) => !conclusion.includes(s)))
-  return { process, conclusion }
+  if (!owner) return null
+  return { messageId: owner.id, text: tail.join('\n\n').trim() }
 }
 
-function summarize(steps: TurnStep[]): TurnSummary {
+function summarize(messages: MessageViewModel[]): TurnSummary {
   let toolCount = 0
   let thinkingCount = 0
   let textCount = 0
-  let lastToolName: string | null = null
-  for (const s of steps) {
-    if (s.kind === 'tool') {
-      toolCount += 1
-      lastToolName = s.data.tool_name
-    } else if (s.kind === 'thinking') {
-      thinkingCount += 1
-    } else if (s.kind === 'text') {
-      textCount += 1
+  for (const m of messages) {
+    for (const block of blocksOf(m)) {
+      if (block.type === 'tool_call') toolCount += 1
+      else if (block.type === 'thinking') thinkingCount += 1
+      else if (block.type === 'text' && block.text.trim()) textCount += 1
     }
   }
-  return { toolCount, thinkingCount, textCount, lastToolName }
+  return { toolCount, thinkingCount, textCount }
+}
+
+function hasBlockingCall(messages: MessageViewModel[]): boolean {
+  return messages.some((m) => blocksOf(m).some((b) => b.type === 'tool_call' && isBlockingCall(b.data)))
 }
 
 interface OpenTurn {
@@ -289,60 +286,32 @@ function pathTurnId(group: OpenTurn): string | null {
 function finalize(group: OpenTurn, isStreaming: boolean, didCrash: boolean, usage: TurnUsageInfoResponse | null): Turn {
   const { userMessage, assistantMessages } = group
 
-  const flat: TurnStep[] = []
-  for (const m of assistantMessages) {
-    blocksOf(m).forEach((block, blockIndex) => {
-      const step = toStep(block, m.id, blockIndex)
-      if (step) flat.push(step)
-    })
-  }
+  const blocked = hasBlockingCall(assistantMessages)
+  const conclusion = findConclusion(assistantMessages)
+  const resultOwner = conclusion ? (assistantMessages.find((m) => m.id === conclusion.messageId) ?? null) : null
 
-  const pinned = flat.filter(isPinned)
-  // A turn blocked on the user has not concluded: whatever it said before the
-  // blocked call was introducing that call, not answering the question. Reading
-  // the conclusion off the remaining steps would find that text sitting after
-  // the last *unblocked* tool and render it below the approval it introduces —
-  // the wrong way round. It also keeps the text from moving once the call is
-  // approved and the turn carries on past it.
-  const { process, conclusion } =
-    pinned.length > 0 ? { process: flat.filter((s) => !isPinned(s)), conclusion: [] } : splitAtConclusion(flat)
-
-  const resultOwner =
-    conclusion.length > 0
-      ? (assistantMessages.find((m) => m.id === conclusion[conclusion.length - 1].messageId) ?? null)
+  const result: TurnResult | null =
+    resultOwner && conclusion
+      ? {
+          messageId: resultOwner.id,
+          text: conclusion.text,
+          modelId: resultOwner.model_id,
+          inputTokens: resultOwner.input_tokens,
+          outputTokens: resultOwner.output_tokens,
+          rating: resultOwner.rating,
+        }
       : null
 
-  const result: TurnResult | null = resultOwner
-    ? {
-        messageId: resultOwner.id,
-        text: conclusion
-          .map((s) => (s.kind === 'text' ? s.text : ''))
-          .join('\n\n')
-          .trim(),
-        blocks: conclusion.flatMap<ContentBlock>((s) =>
-          s.kind === 'text'
-            ? [{ type: 'text' as const, text: s.text }]
-            : s.kind === 'sticker'
-              ? [{ type: 'sticker' as const, sticker_id: s.stickerId, name: s.name }]
-              : [],
-        ),
-        modelId: resultOwner.model_id,
-        inputTokens: resultOwner.input_tokens,
-        outputTokens: resultOwner.output_tokens,
-        rating: resultOwner.rating,
-      }
-    : null
-
-  const summary = summarize(process)
+  const summary = summarize(assistantMessages)
   const last = assistantMessages[assistantMessages.length - 1] ?? userMessage
 
   let status: TurnStatus
-  if (pinned.length > 0) status = 'awaiting-input'
+  if (blocked) status = 'awaiting-input'
   // Ahead of `result`, which is the whole point of having it: a turn cut off
   // just after writing a paragraph has text sitting past its last tool call,
   // and read from the transcript alone that is indistinguishable from an
-  // answer. It would collapse itself with a tick beside it and say nothing
-  // about the tool that may have run.
+  // answer. It would draw a tick beside itself and say nothing about the tool
+  // that may have run.
   //
   // Behind `isStreaming`, which is the fresher signal. Turn records are read
   // when a conversation is opened or a turn ends; a live stream is being
@@ -357,8 +326,6 @@ function finalize(group: OpenTurn, isStreaming: boolean, didCrash: boolean, usag
     id: userMessage?.id ?? assistantMessages[0]?.id ?? 'empty-turn',
     userMessage,
     assistantMessages,
-    steps: process,
-    pinned,
     result,
     status,
     durationMs: elapsed(userMessage, last),
@@ -383,12 +350,27 @@ function sumTokens(messages: MessageViewModel[]): { input: number | null; output
 }
 
 /** Rows written before per-message timestamps all share the turn's start time,
- *  so a zero difference means "unknown", not "instant". Callers show a step
- *  count instead of claiming 0s. */
+ *  so a zero difference means "unknown", not "instant". Callers show nothing
+ *  instead of claiming 0s. */
 function elapsed(first: MessageViewModel | null, last: MessageViewModel | null | undefined): number | null {
   if (!first || !last) return null
   const ms = last.created_at - first.created_at
   return ms > 0 ? ms : null
+}
+
+/** When the turn began, for the date separator above it. Null for rows written
+ *  before per-message timestamps, whose clock reads zero. */
+export function turnStartedAt(turn: Turn): number | null {
+  const ts = turn.userMessage?.created_at ?? turn.assistantMessages[0]?.created_at ?? 0
+  return ts > 0 ? ts : null
+}
+
+/** When the turn's last row was written — what the next turn compares its own
+ *  start against to decide whether a day has passed between them. */
+export function turnEndedAt(turn: Turn): number | null {
+  const last = turn.assistantMessages[turn.assistantMessages.length - 1] ?? turn.userMessage
+  const ts = last?.created_at ?? 0
+  return ts > 0 ? ts : null
 }
 
 export function formatDuration(ms: number): string {
@@ -401,22 +383,4 @@ export function formatDuration(ms: number): string {
   const hours = Math.floor(minutes / 60)
   const restMinutes = minutes % 60
   return restMinutes > 0 ? `${hours}h ${restMinutes}m` : `${hours}h`
-}
-
-/** Whether this turn is worth collapsing at all.
- *
- *  Ordinary question-and-answer is not: a "Worked for 3s" header above a
- *  two-line reply buries it behind a click for nothing. Tool calls are what make
- *  a turn worth collapsing, and they are also what makes it multi-round in the
- *  first place — the agent loop only writes another assistant row when the last
- *  one called tools. Pinned calls count too: they are excluded from `steps`, so
- *  a turn whose only tool is still awaiting approval would otherwise look bare.
- *  Reasoning alone does not count; it already collapses itself.
- *
- *  A turn that crashed always counts, tools or no tools. The header is the only
- *  place that says so — without it a turn cut off part way through a sentence
- *  renders as a sentence that simply stops, which is exactly the reading this
- *  status exists to prevent. */
-export function hasCollapsibleProcess(turn: Turn): boolean {
-  return turn.summary.toolCount > 0 || turn.pinned.length > 0 || turn.status === 'crashed'
 }

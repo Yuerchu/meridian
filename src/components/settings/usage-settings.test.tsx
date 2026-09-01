@@ -449,10 +449,14 @@ it('aggregates duplicate conversation titles and keeps each real conversation as
   const parentRow = parentHeader.closest('[role="row"]') as HTMLElement
   expect(within(parentRow).getByText('2 conversations · 5 replies')).toBeInTheDocument()
   expect(within(parentRow).getByText('4K')).toBeInTheDocument()
-  expect(within(parentRow).getByText('≥ 3.00')).toHaveAttribute(
-    'title',
+  // The qualifier's explanation is a HeroUI tooltip, not the browser's.
+  const partial = within(parentRow).getByText('≥ 3.00')
+  expect(partial).not.toHaveAttribute('title')
+  await userEvent.hover(partial)
+  expect(await screen.findByRole('tooltip')).toHaveTextContent(
     '3 replies have incomplete usage or pricing. Amounts marked ≥ include only the priced portion.',
   )
+  await userEvent.unhover(partial)
   expect(within(parentRow).queryByRole('button', { name: /Open conversation/ })).not.toBeInTheDocument()
 
   await userEvent.click(within(parentRow).getByRole('button', { name: /^Expand row/ }))

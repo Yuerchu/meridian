@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 
 import { api } from '@/api'
 import { cn } from '@/lib/utils'
+import { Hint } from '@/components/ui/hint'
 import { useConversationStore } from '@/stores/conversation-store'
 import type { MessageViewModel, UserCommandResultResponse } from '@/types'
 import { CopyButton } from './markdown-content'
@@ -77,9 +78,9 @@ export function ShellCommandCard({ message }: { message: MessageViewModel }) {
     <Card className="w-full max-w-[92%] overflow-hidden border border-divider bg-surface shadow-none">
       <Card.Header className="flex min-w-0 items-center gap-2 border-b border-divider px-3 py-2">
         <Terminal className="size-4 shrink-0 text-muted" />
-        <code className="min-w-0 flex-1 truncate text-xs text-foreground" title={command}>
+        <Hint as="code" className="min-w-0 flex-1 truncate text-xs text-foreground" label={command}>
           {command}
-        </code>
+        </Hint>
         {state.status === 'loading' && <Spinner size="sm" aria-label={t('chat.shell.loading')} />}
         {state.status === 'loaded' && (
           <span
@@ -103,9 +104,9 @@ export function ShellCommandCard({ message }: { message: MessageViewModel }) {
         {state.status === 'loaded' && (
           <>
             <div className="flex min-w-0 flex-wrap gap-x-3 gap-y-1 border-b border-divider px-3 py-1.5 font-mono text-xs text-muted">
-              <span className="truncate" title={state.result.cwd}>
+              <Hint className="truncate" label={state.result.cwd}>
                 {state.result.cwd}
-              </span>
+              </Hint>
               {state.result.host && <span className="shrink-0">{state.result.host}</span>}
               <span className="shrink-0">{state.result.duration_ms} ms</span>
               {state.result.truncated && <span className="shrink-0 text-warning">{t('chat.shell.truncated')}</span>}

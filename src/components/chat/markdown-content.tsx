@@ -13,6 +13,7 @@ import { markdownVariants } from '@heroui-pro/react/markdown'
 
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { ActionButton } from '@/components/ui/action-button'
+import { Hint } from '@/components/ui/hint'
 import { fileIconUrl, languageIconUrl } from '@/lib/file-icon'
 import {
   classifyMarkdownTarget,
@@ -300,26 +301,43 @@ const MarkdownAnchor: Components['a'] = ({ href, children, node: _node, ...props
     }
   }
 
+  const anchorProps: React.ComponentProps<'a'> = {
+    ...props,
+    // Keep the real external URL out of `href`: WebView context-menu and
+    // drag navigation do not pass through React's click handlers. The
+    // closure below is the only activation path and hands it to the native
+    // opener after classification.
+    href: target.kind === 'external' ? '#meridian-external' : `#${target.id}`,
+    'data-external-href': target.kind === 'external' ? target.url : undefined,
+    rel: 'noreferrer noopener',
+    onClick: activate,
+    onAuxClick: (event) => {
+      // Middle-click is a separate default navigation path in WebView2.
+      event.preventDefault()
+      if (event.button === 1 && target.kind === 'external') void openExternalUrl(target.url)
+    },
+  } as React.ComponentProps<'a'>
+
+  if (target.kind !== 'external') return <a {...anchorProps}>{children}</a>
+
+  // Where the link really goes, since `href` deliberately does not say. The
+  // anchor is its own trigger — rendered through `Tooltip.Trigger` rather than
+  // wrapped by it, so there is one tab stop and it is the link. `role` is put
+  // back: the trigger defaults to `button`, and this is not one.
   return (
-    <a
-      {...props}
-      // Keep the real external URL out of `href`: WebView context-menu and
-      // drag navigation do not pass through React's click handlers. The
-      // closure below is the only activation path and hands it to the native
-      // opener after classification.
-      href={target.kind === 'external' ? '#meridian-external' : `#${target.id}`}
-      data-external-href={target.kind === 'external' ? target.url : undefined}
-      title={target.kind === 'external' ? target.url : props.title}
-      rel="noreferrer noopener"
-      onClick={activate}
-      onAuxClick={(event) => {
-        // Middle-click is a separate default navigation path in WebView2.
-        event.preventDefault()
-        if (event.button === 1 && target.kind === 'external') void openExternalUrl(target.url)
-      }}
-    >
-      {children}
-    </a>
+    <Tooltip delay={300}>
+      <Tooltip.Trigger
+        role="link"
+        render={(triggerProps) => (
+          <a {...(triggerProps as React.ComponentProps<'a'>)} {...anchorProps}>
+            {children}
+          </a>
+        )}
+      />
+      <Tooltip.Content placement="top" className="max-w-xs break-all">
+        {target.url}
+      </Tooltip.Content>
+    </Tooltip>
   )
 }
 
@@ -352,43 +370,103 @@ const MemoizedMarkdownBlock = React.memo(function MemoizedMarkdownBlock({
   )
 })
 
+/**
+ * The paragraph a trailer is floated into.
+ *
+ * `flow-root` so the paragraph contains its own float: without it the float
+ * hangs below the paragraph's box, and since the bubble around it clips
+ * overflow, the time would be cut off at the bubble's bottom padding.
+ */
+function TrailedParagraph({
+  trailer,
+  children,
+  node: _node,
+  ...props
+}: React.HTMLAttributes<HTMLParagraphElement> & { trailer: React.ReactNode; node?: unknown }) {
+  return (
+    <p {...props} className={cn('flow-root', props.className)}>
+      {children}
+      <span data-slot="markdown-trailer" className="float-right ml-2 mt-1.5">
+        {trailer}
+      </span>
+    </p>
+  )
+}
+
 /** Pro's renderer with one deliberate seam: safe URL and text-node transforms. */
 function LocalMarkdown({
   children,
   components,
   id,
   autoFileReferences,
+  trailer,
 }: {
   children: string
   components: Partial<Components>
   id?: string
   autoFileReferences: boolean
+  trailer?: React.ReactNode
 }) {
   const generatedId = useId()
   const rendererId = id ?? generatedId
   const slots = useMemo(() => markdownVariants(), [])
-  const rawBlocks = useMemo(() => marked.lexer(children).map((token) => token.raw), [children])
+  const tokens = useMemo(
+    () => marked.lexer(children).map((token) => ({ raw: token.raw, type: token.type })),
+    [children],
+  )
   const blocks = useMemo(() => {
     const occurrences = new Map<string, number>()
-    return rawBlocks.map((content) => {
-      const hash = blockHash(content)
+    return tokens.map((token) => {
+      const hash = blockHash(token.raw)
       const occurrence = occurrences.get(hash) ?? 0
       occurrences.set(hash, occurrence + 1)
-      return { content, key: `${rendererId}-${hash}-${occurrence}` }
+      return { content: token.raw, type: token.type, key: `${rendererId}-${hash}-${occurrence}` }
     })
-  }, [rawBlocks, rendererId])
+  }, [tokens, rendererId])
+
+  // Where the trailer goes is decided by the *last* block, and only a
+  // paragraph can take it inline: a float placed after a whole block can only
+  // ever land on the line after it, never at the end of its last line, so the
+  // trailer has to be rendered inside the paragraph's own `<p>`. After a code
+  // block, a table or a list it goes on a line of its own — floated into those
+  // it would sit inside the box, next to the last row of a table.
+  let lastIndex = -1
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    if (blocks[i].type !== 'space') {
+      lastIndex = i
+      break
+    }
+  }
+  const inline = trailer != null && lastIndex >= 0 && blocks[lastIndex].type === 'paragraph'
+  const trailedComponents = useMemo<Partial<Components>>(
+    () =>
+      inline
+        ? {
+            ...components,
+            p: (props) => <TrailedParagraph {...props} trailer={trailer} />,
+          }
+        : components,
+    [components, inline, trailer],
+  )
 
   return (
-    <div data-slot="markdown" className={slots.base()}>
-      {blocks.map((block) => (
-        <MemoizedMarkdownBlock
-          key={block.key}
-          content={block.content}
-          components={components}
-          autoFileReferences={autoFileReferences}
-        />
-      ))}
-    </div>
+    <>
+      <div data-slot="markdown" className={slots.base()}>
+        {blocks.map((block, i) => (
+          <MemoizedMarkdownBlock
+            key={block.key}
+            content={block.content}
+            components={inline && i === lastIndex ? trailedComponents : components}
+            autoFileReferences={autoFileReferences}
+          />
+        ))}
+      </div>
+      {trailer != null && !inline && (
+        <div data-slot="markdown-trailer" className="mt-1 flex justify-end">
+          {trailer}
+        </div>
+      )}
+    </>
   )
 }
 
@@ -440,6 +518,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({
   allowRemoteImages = true,
   className,
   blockId,
+  trailer,
 }: {
   content: string
   isStreaming?: boolean
@@ -449,6 +528,11 @@ export const MarkdownContent = React.memo(function MarkdownContent({
   allowRemoteImages?: boolean
   className?: string
   blockId?: string
+  /** Something small to hang off the end of the last line — a bubble's time.
+   *  Floated into the final paragraph when there is one, put on its own line
+   *  under anything else. Ignored while streaming: the cursor owns that spot,
+   *  and a time on a message still being written would be wrong anyway. */
+  trailer?: React.ReactNode
 }) {
   const processed = useMemo(() => {
     let result = preprocessEmojis(content, emojiMap)
@@ -470,13 +554,13 @@ export const MarkdownContent = React.memo(function MarkdownContent({
       img: ({ alt, src, ...props }) => {
         if (!allowRemoteImages && isRemoteImageSource(src)) {
           return (
-            <span
+            <Hint
               data-slot="markdown-blocked-image"
-              title={src}
+              label={src}
               className="my-3 block max-w-full truncate rounded-lg bg-default/30 px-3 py-2 text-xs text-muted"
             >
               {alt}
-            </span>
+            </Hint>
           )
         }
         if (alt?.startsWith('sticker:')) {
@@ -485,7 +569,6 @@ export const MarkdownContent = React.memo(function MarkdownContent({
               {...props}
               src={src}
               alt={alt.slice(8)}
-              title={alt.slice(8)}
               loading="lazy"
               width={48}
               height={48}
@@ -506,7 +589,12 @@ export const MarkdownContent = React.memo(function MarkdownContent({
           between renderers on screen — the key itself already hashes the block's
           own content. Falls back to a generated one. */}
       <MarkdownStreamingContext value={isStreaming === true}>
-        <LocalMarkdown components={components} id={blockId} autoFileReferences={!isStreaming}>
+        <LocalMarkdown
+          components={components}
+          id={blockId}
+          autoFileReferences={!isStreaming}
+          trailer={isStreaming ? null : trailer}
+        >
           {processed}
         </LocalMarkdown>
       </MarkdownStreamingContext>

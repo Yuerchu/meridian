@@ -318,9 +318,19 @@ function useScrollerState({
   const preserveScrollOnPrependRef = React.useRef(true)
   const defaultAppliedRef = React.useRef(false)
   const lastScrollTopRef = React.useRef(0)
+  /** The scroll height at the last scroll event, which is what says whether an
+   *  upward move was the browser clamping to an end that has since moved. */
+  const lastScrollHeightRef = React.useRef(0)
   const spacerHeightRef = React.useRef(0)
   const spacerGapRef = React.useRef<number | null>(null)
   const autoscrollingRef = React.useRef(false)
+  /** Whether the programmatic scroll in flight is a smooth one. Only that kind
+   *  is shown as `data-autoscrolling`: following the stream is an instant
+   *  `scrollTo` on every chunk, and hiding the scrollbar thumb for each of
+   *  them made it blink at the reader for as long as the answer streamed. A
+   *  smooth scroll is a journey of several frames, and *that* is the one whose
+   *  thumb should not be seen sprinting. */
+  const autoscrollSmoothRef = React.useRef(false)
   const autoscrollingTimerRef = React.useRef<number | null>(null)
   /** Where the in-flight programmatic scroll is headed, so the scroll event
    *  that lands on it can hand control back. */
@@ -368,7 +378,7 @@ function useScrollerState({
       if (!el) continue
       if (edges) el.setAttribute('data-scrollable', edges)
       else el.removeAttribute('data-scrollable')
-      el.toggleAttribute('data-autoscrolling', autoscrollingRef.current)
+      el.toggleAttribute('data-autoscrolling', autoscrollingRef.current && autoscrollSmoothRef.current)
       // Mirrored so the policy is inspectable from the DOM. Whether the
       // viewport is chasing the stream or holding still for the reader is the
       // first thing worth knowing when the scroll behaviour looks wrong.
@@ -496,8 +506,10 @@ function useScrollerState({
         return
       }
       programmaticTargetRef.current = next
+      const resolved = resolveScrollBehavior(behavior)
+      autoscrollSmoothRef.current = resolved === 'smooth'
       markAutoscrolling(true)
-      viewport.scrollTo({ top: next, behavior: resolveScrollBehavior(behavior) })
+      viewport.scrollTo({ top: next, behavior: resolved })
       // `lastScrollTop` is deliberately left to the scroll event. Writing the
       // target here would make a smooth scroll look like it was travelling
       // backwards on its way there, and reading the transcript as the reader
@@ -819,14 +831,34 @@ function useScrollerState({
     const top = viewport.scrollTop
     const movedUp = top < lastScrollTopRef.current - EPSILON
     lastScrollTopRef.current = top
+    // A clamp is not a move. When the transcript gets shorter — the spacer
+    // re-solved smaller, a panel shut — the browser pulls `scrollTop` down to
+    // the new end and reports it as a scroll, and by the time that event is
+    // dispatched the transcript may have grown again (the answer row landing),
+    // so the event reads as "moved up, and not at the end": the reader's
+    // signature, in a move nobody made. What identifies it is where it landed:
+    // exactly at the end as it was at the previous event, give or take a
+    // device pixel. A reader dragging the bar to precisely that spot is not a
+    // case worth losing following over.
+    const previousEnd = Math.max(0, lastScrollHeightRef.current - viewport.clientHeight)
+    lastScrollHeightRef.current = viewport.scrollHeight
+    const clamped = movedUp && Math.abs(top - previousEnd) <= 2
 
     // A programmatic scroll owns the viewport until it lands. Handing control
     // back on a timer instead would let a long smooth scroll be read as the
     // reader arriving at the live edge, and following would drag it back.
     const target = programmaticTargetRef.current
-    if (target !== null && Math.abs(top - target) <= 1) markAutoscrolling(false)
+    const landed = target !== null && Math.abs(top - target) <= 1
+    if (landed) markAutoscrolling(false)
 
-    if (!autoscrollingRef.current) {
+    // A landing is not read as intent. The command that issued it already set
+    // the mode — `scrollToElement` hands the viewport to the reader, `scrollToEnd`
+    // and `enterFollow` keep it — and the event that lands is about where the
+    // viewport *was sent*, not where the reader took it. Reading it anyway lost
+    // a race: following scrolled to the end, the answer row landed before the
+    // scroll event fired, and the event saw "moved up, not at the end" — the
+    // reader's signature — in a move the scroller had made itself.
+    if (!autoscrollingRef.current && !landed) {
       const threshold = edgeThresholdRef.current
       // Two different questions, and following needs both answered yes.
       //
@@ -844,7 +876,7 @@ function useScrollerState({
       const remaining = contentRef.current
         ? contentExtent(contentRef.current, spacerRef.current, viewport) - top - viewport.clientHeight
         : 0
-      if (movedUp && !atEnd) {
+      if (movedUp && !atEnd && !clamped) {
         // Dragging the scrollbar produces no wheel or key event, so this is the
         // only signal that it happened.
         modeRef.current = 'idle'
