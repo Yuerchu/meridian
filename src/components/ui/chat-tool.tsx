@@ -1,9 +1,12 @@
 import * as React from 'react'
-import { Disclosure, tv, type VariantProps } from '@heroui/react'
+import { createPortal } from 'react-dom'
+import { Disclosure, Tooltip, tv, type VariantProps } from '@heroui/react'
+import { DisclosureStateContext } from 'react-aria-components'
 import { CircleCheck, CircleDashed, CircleExclamation, CircleXmark, Clock } from '@gravity-ui/icons'
 import { useShikiLanguage } from '@/hooks/use-shiki-language'
 import { highlightInline } from '@/lib/shiki'
 import { cn } from '@/lib/utils'
+import { BubbleKeyboardStackContext, keyboardKeyVariants, keyboardPanelVariants } from './bubble-keyboard'
 
 /**
  * The first four mirror the states an assistant-UI tool part goes through.
@@ -18,10 +21,23 @@ type ChatToolState =
 const ChatToolStateContext = React.createContext<ChatToolState>('input-available')
 
 /**
- * True for a tool card rendered inside a `ChatToolGroup`. The group is the card;
- * its children are rows in it, the way `.accordion--surface` treats its items.
+ * How a tool is drawn: as a card of its own, or as a key on the inline keyboard
+ * under a bubble with its panel in the keyboard's stack.
+ *
+ * One context rather than two component sets, because what changes is only the
+ * chrome. The trigger, the panel, the status icon, the approval row and every
+ * specialised card built on them keep their structure and their behaviour; the
+ * keyboard mode swaps what the trigger looks like and where the panel lands.
+ * `card` remains the default so the playground and the tests that exercise the
+ * card go on doing so.
  */
-const ChatToolNestedContext = React.createContext(false)
+type ChatToolPresentation = 'card' | 'keyboard'
+
+const ChatToolPresentationContext = React.createContext<ChatToolPresentation>('card')
+
+function ChatToolPresentationProvider({ value, children }: { value: ChatToolPresentation; children: React.ReactNode }) {
+  return <ChatToolPresentationContext.Provider value={value}>{children}</ChatToolPresentationContext.Provider>
+}
 
 /**
  * The Pro ChatTool's 12px corner and compact row, with Meridian's surface and
@@ -56,10 +72,6 @@ const chatToolVariants = tv({
     ],
   },
   variants: {
-    nested: {
-      true: { base: 'border-t border-separator' },
-      false: { base: CHAT_TOOL_CARD },
-    },
     // The ordinary states leave the card's own `ring-border` alone; these two
     // recolour it, which is what makes them worth noticing without adding a
     // second edge beside the first.
@@ -80,28 +92,34 @@ const chatToolVariants = tv({
     },
   },
   defaultVariants: {
-    nested: false,
     state: 'input-available',
   },
 })
 
-interface ChatToolProps
-  extends
-    React.ComponentProps<typeof Disclosure>,
-    // `nested` is read from context, not passed: only `ChatToolGroup` knows.
-    Omit<VariantProps<typeof chatToolVariants>, 'nested'> {}
+interface ChatToolProps extends React.ComponentProps<typeof Disclosure>, VariantProps<typeof chatToolVariants> {}
 
 function ChatTool({ state, className, ...props }: ChatToolProps) {
-  const nested = React.useContext(ChatToolNestedContext)
+  const presentation = React.useContext(ChatToolPresentationContext)
   const resolvedState = state ?? 'input-available'
   const active = resolvedState === 'input-streaming' || resolvedState === 'input-available'
   return (
     <ChatToolStateContext.Provider value={resolvedState}>
+      {/* In keyboard mode the disclosure has no box of its own: its trigger is a
+          key in the row and its panel is carried off to the stack, so a wrapper
+          with a box would be an empty item in the row's flex. `contents` keeps
+          the disclosure as a React tree — which is what pairs the two — without
+          giving it a place in the layout. Nothing the animation needs lives on
+          this element; React Aria measures the panel itself. */}
       <Disclosure
         data-slot="chat-tool"
         data-state={resolvedState}
         data-active={active || undefined}
-        className={cn(chatToolVariants({ state: resolvedState, nested }).base(), className)}
+        data-presentation={presentation}
+        className={
+          presentation === 'keyboard'
+            ? cn('contents', className)
+            : cn(CHAT_TOOL_CARD, chatToolVariants({ state: resolvedState }).base(), className)
+        }
         {...props}
       />
     </ChatToolStateContext.Provider>
@@ -134,7 +152,70 @@ interface ChatToolTriggerProps extends Omit<React.ComponentProps<typeof Disclosu
 
 function ChatToolTrigger({ className, children, endContent, subtitle, ...props }: ChatToolTriggerProps) {
   const state = React.useContext(ChatToolStateContext)
+  const presentation = React.useContext(ChatToolPresentationContext)
   const requiresAction = state === 'requires-action'
+  const hasSubtitle = subtitle != null && subtitle !== ''
+
+  if (presentation === 'keyboard') {
+    // No `Disclosure.Heading`: React Aria's heading is an `<h3>`, and a row of
+    // keys is not a row of headings. The trigger pairs with its panel through
+    // the disclosure's own context, so nothing is lost by leaving it off.
+    //
+    // A key that asks for a decision takes the whole row and clamps nothing —
+    // the exact path or command is what the decision rests on — and draws its
+    // description under the label the way the card does. An ordinary key is
+    // half a row and truncates, with the description as a tooltip: it is a
+    // supplement there, not the thing being approved.
+    const key = (
+      <Disclosure.Trigger
+        data-slot="chat-tool-trigger"
+        data-state={state}
+        className={cn(keyboardKeyVariants({ state }), className)}
+        {...props}
+      >
+        <div data-slot="chat-tool-trigger-lines" className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <div
+            data-slot="chat-tool-trigger-label"
+            className={cn(
+              'flex min-w-0 items-center gap-1.5',
+              '[&_[data-slot=tool-arg]]:min-w-0 [&_[data-slot=tool-arg]]:flex-1',
+              requiresAction
+                ? '[&_[data-slot=tool-arg]]:whitespace-pre-wrap [&_[data-slot=tool-arg]]:break-words [&_[data-slot=tool-arg]]:[overflow-wrap:anywhere]'
+                : '[&_[data-slot=tool-arg]]:truncate',
+            )}
+          >
+            {children}
+          </div>
+          {requiresAction && hasSubtitle && (
+            <span
+              data-slot="chat-tool-subtitle"
+              className="break-words text-left text-xs leading-snug text-muted [overflow-wrap:anywhere]"
+            >
+              {subtitle}
+            </span>
+          )}
+        </div>
+        <span data-slot="chat-tool-trigger-end" className="flex shrink-0 items-center gap-1.5 text-xs text-muted">
+          {endContent}
+          <Disclosure.Indicator className="ms-0 size-3 shrink-0 text-muted" />
+        </span>
+      </Disclosure.Trigger>
+    )
+    // An ordinary key keeps its description as a tooltip: it is a supplement
+    // there, not the thing being decided. The trigger is a React Aria button,
+    // so `Tooltip` attaches to it directly — no wrapper, no second tab stop —
+    // and the disclosure's own context reaches through.
+    if (!requiresAction && hasSubtitle) {
+      return (
+        <Tooltip delay={0}>
+          {key}
+          <Tooltip.Content placement="top">{subtitle}</Tooltip.Content>
+        </Tooltip>
+      )
+    }
+    return key
+  }
+
   return (
     <Disclosure.Heading>
       {/* `flex` is not optional: HeroUI styles the indicator with `ms-auto` and
@@ -161,7 +242,7 @@ function ChatToolTrigger({ className, children, endContent, subtitle, ...props }
           >
             {children}
           </div>
-          {subtitle != null && subtitle !== '' && (
+          {hasSubtitle && (
             <span
               data-slot="chat-tool-subtitle"
               className="line-clamp-2 break-words text-left text-xs leading-snug text-muted [overflow-wrap:anywhere]"
@@ -229,7 +310,83 @@ function ChatToolStatusIcon({ className }: { className?: string }) {
   }
 }
 
+function isFormControl(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  if (target.isContentEditable) return true
+  const tag = target.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+}
+
+/** Whether something is drawn over the page that owns Escape ahead of a panel. */
+function overlayIsOpen(doc: Document): boolean {
+  const candidates = doc.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"], [role="menu"]')
+  for (const el of candidates) {
+    if (typeof el.checkVisibility !== 'function' || el.checkVisibility()) return true
+  }
+  return false
+}
+
 function ChatToolContent({ className, children, ...props }: React.ComponentProps<typeof Disclosure.Content>) {
+  const presentation = React.useContext(ChatToolPresentationContext)
+  const state = React.useContext(ChatToolStateContext)
+  const stack = React.useContext(BubbleKeyboardStackContext)
+  const disclosure = React.useContext(DisclosureStateContext)
+
+  // Escape closes the panel and hands focus back to its key — but only when
+  // nothing else has a better claim on the key. A field inside the panel (the
+  // reason for a refusal being typed) keeps it; an overlay drawn over the page
+  // keeps it; and a panel that is not actually on screen has nothing to close.
+  //
+  // Listened for on the body, since React Aria's panel takes no key handler
+  // of its own; the panel — the element that carries the id a key names in
+  // `aria-controls` — is the body's parent.
+  const handleKeyDown = React.useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.defaultPrevented || presentation !== 'keyboard') return
+      if (event.key !== 'Escape' || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+      if (isFormControl(event.target)) return
+      const panel = event.currentTarget.closest<HTMLElement>('[data-slot="chat-tool-content"]')
+      if (!panel) return
+      if (overlayIsOpen(panel.ownerDocument)) return
+      if (typeof panel.checkVisibility === 'function' && !panel.checkVisibility()) return
+      event.preventDefault()
+      event.stopPropagation()
+      disclosure?.collapse()
+      // React Aria's ids are safe in a selector as they are; `CSS.escape` is
+      // belt and braces where the environment has it (jsdom does not).
+      const id = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(panel.id) : panel.id
+      panel.ownerDocument.querySelector<HTMLElement>(`[aria-controls="${id}"]`)?.focus()
+    },
+    [disclosure, presentation],
+  )
+
+  if (presentation === 'keyboard') {
+    const panel = (
+      // `min-h-0` is load-bearing: the panel sits in a flex column, and a flex
+      // item's default `min-height: auto` floors it at its content height — so
+      // the panel would take `height: 0` and still render full size.
+      //
+      // The top margin is conditional on the panel not being `hidden`, which is
+      // the attribute React Aria sets once a collapse has finished animating.
+      // A collapsed panel is a zero-height box, not nothing, and a margin on it
+      // would be a blank line in the stack for every closed key.
+      <Disclosure.Content
+        data-slot="chat-tool-content"
+        data-presentation="keyboard"
+        className={cn('min-h-0 not-[[hidden]]:mt-1', keyboardPanelVariants({ state }))}
+        {...props}
+      >
+        <Disclosure.Body className={cn('flex flex-col gap-2.5 p-3', className)} onKeyDown={handleKeyDown}>
+          {children}
+        </Disclosure.Body>
+      </Disclosure.Content>
+    )
+    // Inside a keyboard, the panel belongs to the stack. Without one — a tool
+    // drawn in keyboard mode with no keyboard around it — it stays where it is.
+    if (!stack) return panel
+    return createPortal(panel, stack.node)
+  }
+
   return (
     // `min-h-0` is load-bearing: the card is a flex column, and a flex item's
     // default `min-height: auto` floors it at its content height — so the panel
@@ -311,64 +468,29 @@ function ChatToolError({ className, ...props }: React.ComponentProps<'div'>) {
   )
 }
 
+/**
+ * The decision row. In a card the buttons sit at the right, the way a dialog's
+ * do; on a keyboard they share the row equally, the way an inline keyboard's
+ * do — each is a key, and a key is as wide as its neighbours.
+ */
 function ChatToolApproval({ className, children, ...props }: React.ComponentProps<'div'>) {
+  const presentation = React.useContext(ChatToolPresentationContext)
   return (
-    <div data-slot="chat-tool-approval" className={cn('flex min-w-0 flex-col gap-2 pt-2.5', className)} {...props}>
+    <div
+      data-slot="chat-tool-approval"
+      className={cn('flex min-w-0 flex-col gap-2', presentation === 'card' && 'pt-2.5', className)}
+      {...props}
+    >
       <div
         data-slot="chat-tool-approval-actions"
-        className="flex min-w-0 flex-wrap items-center justify-end gap-2 [&>button]:min-h-8 [&>button]:max-w-full [&>button]:min-w-0 [&>button]:whitespace-normal"
+        className={cn(
+          'flex min-w-0 flex-wrap items-center gap-2 [&>button]:min-h-8 [&>button]:max-w-full [&>button]:min-w-0 [&>button]:whitespace-normal',
+          presentation === 'keyboard' ? '[&>button]:flex-1' : 'justify-end',
+        )}
       >
         {children}
       </div>
     </div>
-  )
-}
-
-function ChatToolGroup({ className, ...props }: React.ComponentProps<typeof Disclosure>) {
-  return (
-    <Disclosure
-      data-slot="chat-tool-group"
-      className={cn('flex w-full flex-col text-xs', CHAT_TOOL_CARD, className)}
-      {...props}
-    />
-  )
-}
-
-function ChatToolGroupTrigger({
-  className,
-  children,
-  ...props
-}: Omit<React.ComponentProps<typeof Disclosure.Trigger>, 'children'> & {
-  children?: React.ReactNode
-}) {
-  return (
-    <Disclosure.Heading>
-      <Disclosure.Trigger
-        data-slot="chat-tool-group-trigger"
-        className={cn(chatToolVariants().trigger(), 'font-medium text-foreground', className)}
-        {...props}
-      >
-        <span data-slot="chat-tool-group-trigger-label" className="min-w-0 flex-1 truncate">
-          {children}
-        </span>
-        {/* The indicator carries `ms-auto` of its own, which is what the hand-
-            written chevron used `ml-auto` for. */}
-        <Disclosure.Indicator className="size-3.5 shrink-0 text-muted" />
-      </Disclosure.Trigger>
-    </Disclosure.Heading>
-  )
-}
-
-function ChatToolGroupContent({ className, children, ...props }: React.ComponentProps<typeof Disclosure.Content>) {
-  return (
-    <Disclosure.Content data-slot="chat-tool-group-content" className="min-h-0 w-full" {...props}>
-      {/* Flush, not inset: the group is the card, so its children are rows in it
-          rather than cards inside a card. Repeating rounded cards inside a
-          rounded card adds a second frame and a gutter with no information. */}
-      <Disclosure.Body className={cn('flex flex-col', className)}>
-        <ChatToolNestedContext.Provider value={true}>{children}</ChatToolNestedContext.Provider>
-      </Disclosure.Body>
-    </Disclosure.Content>
   )
 }
 
@@ -381,8 +503,8 @@ export {
   ChatToolResult,
   ChatToolError,
   ChatToolApproval,
-  ChatToolGroup,
-  ChatToolGroupTrigger,
-  ChatToolGroupContent,
+  ChatToolPresentationProvider,
+  ChatToolPresentationContext,
   type ChatToolState,
+  type ChatToolPresentation,
 }

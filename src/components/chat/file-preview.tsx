@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { ArrowRightFromSquare, Check, Copy, FileText } from '@gravity-ui/icons'
 import { Button, Spinner } from '@heroui/react'
+import { Hint } from '@/components/ui/hint'
 import { Segment } from '@heroui-pro/react/segment'
 import { Sheet } from '@heroui-pro/react/sheet'
 import { useTranslation } from 'react-i18next'
@@ -196,12 +197,12 @@ function PreviewSheet({
                 <FileGlyph path={reference.path} />
                 <Sheet.Heading className="truncate">{name}</Sheet.Heading>
               </div>
-              <p className="mt-1 truncate font-mono text-xs text-muted" title={reference.path}>
+              <Hint as="p" className="mt-1 truncate font-mono text-xs text-muted" label={reference.path}>
                 {reference.path}
                 {reference.line
                   ? `:${reference.line}${reference.endLine ? `-${reference.endLine}` : ''}${reference.column ? `:${reference.column}` : ''}`
                   : ''}
-              </p>
+              </Hint>
               {richPreview && (
                 <Segment
                   aria-label={t('chat.filePreview.mode')}

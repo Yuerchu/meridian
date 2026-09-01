@@ -11,6 +11,7 @@ import { api } from '@/api'
 import { costQualifier, formatCostAmount, type CostQualifier } from '@/lib/cost-format'
 import { compareDecimals, decimal, decimalPercent, sumDecimals, type DecimalString } from '@/lib/decimal'
 import { cn } from '@/lib/utils'
+import { Hint } from '@/components/ui/hint'
 import { SettingsHeader, SettingsPane } from './primitives'
 import type { UsageBucketInfoResponse, UsageDimension, UsageReportRequest } from '@/types'
 
@@ -342,9 +343,9 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
           role="alert"
           className="flex flex-wrap items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger"
         >
-          <span className="min-w-0 flex-1 break-words" title={error}>
+          <Hint className="min-w-0 flex-1 break-words" label={error}>
             {t('settings.usage.loadError')}
-          </span>
+          </Hint>
           <Button size="sm" variant="outline" onPress={() => setReload((value) => value + 1)}>
             {t('settings.usage.retry')}
           </Button>
@@ -750,9 +751,9 @@ function CostBars({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
       <div className="space-y-2.5" data-slot="cost-bars">
         {data.map((row) => (
           <div key={row.bucket.key} className="grid grid-cols-[minmax(5rem,auto)_minmax(0,1fr)] items-center gap-2">
-            <span className="max-w-40 truncate text-xs text-muted" title={row.name}>
+            <Hint className="max-w-40 truncate text-xs text-muted" label={row.name}>
               {row.name}
-            </span>
+            </Hint>
             <div
               className="flex h-3.5 min-w-0 overflow-hidden rounded bg-default"
               role="img"
@@ -762,11 +763,12 @@ function CostBars({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
                 const amount = row[band.key]
                 if (compareDecimals(amount, ZERO_DECIMAL) === 0) return null
                 return (
-                  <span
+                  <Hint
                     key={band.key}
-                    className="h-full first:rounded-s last:rounded-e"
+                    focusable={false}
+                    className="block h-full first:rounded-s last:rounded-e"
                     style={{ width: decimalPercent(amount, maximum), backgroundColor: band.color }}
-                    title={`${t(band.labelKey)}: ${formatCostAmount(
+                    label={`${t(band.labelKey)}: ${formatCostAmount(
                       amount,
                       componentQualifier(row.bucket, band.key),
                       locale,
@@ -989,16 +991,17 @@ function BucketTable({
               </span>
             </span>
           ) : (
-            <span
+            <Hint
+              focusable={false}
               className={cn(
                 'block truncate text-sm',
                 row.isDeleted && 'text-muted italic',
                 row.isConversationInstance && 'text-muted',
               )}
-              title={row.isConversationInstance ? (row.conversationId ?? undefined) : undefined}
+              label={row.isConversationInstance ? (row.conversationId ?? row.displayLabel) : row.displayLabel}
             >
               {row.displayLabel}
-            </span>
+            </Hint>
           ),
       },
       {
@@ -1034,11 +1037,13 @@ function BucketTable({
                 : localQualifier === 'lower_bound'
                   ? t('settings.usage.unpriced', { count: row.unpriced_messages })
                   : undefined
-          const title = [pricingTitle, billingCoverage(row, t)].filter(Boolean).join(' ') || undefined
+          const hint = [pricingTitle, billingCoverage(row, t)].filter(Boolean).join(' ')
+          if (!hint)
+            return <span className={cn(qualifier !== 'exact' && 'text-muted')}>{displayedCost(row, t, locale)}</span>
           return (
-            <span className={cn(qualifier !== 'exact' && 'text-muted')} title={title}>
+            <Hint focusable={false} className={cn(qualifier !== 'exact' && 'text-muted')} label={hint}>
               {displayedCost(row, t, locale)}
-            </span>
+            </Hint>
           )
         },
       },

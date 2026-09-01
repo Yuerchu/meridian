@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { TurnItem } from './turn-item'
 import { expectCollapsed, expectExpanded } from '@/test/disclosure'
@@ -116,7 +116,8 @@ describe('TurnItem', () => {
   })
 
   beforeEach(() => {
-    useConversationStore.setState({ sessions: {} })
+    // The keyboard keeps its panel choices on the active session.
+    useConversationStore.setState({ sessions: {}, activeId: CONV })
     // ChatView calls ensureSession on mount, so the session always exists by the
     // time a turn renders.
     useConversationStore.getState().ensureSession(CONV)
@@ -152,7 +153,7 @@ describe('TurnItem', () => {
     expect(screen.getByText('unprompted')).toBeInTheDocument()
   })
 
-  it('gives the intermediate rows no actions of their own', () => {
+  it('gives the run one footer, not one per row', () => {
     const u = msg('user', { content: 'q' })
     const a1 = msg('assistant', { _blocks: [text('let me check')], content: 'let me check' })
     const a2 = msg('assistant', { _blocks: [text('the answer')], content: 'the answer' })
@@ -162,12 +163,12 @@ describe('TurnItem', () => {
       <TurnItem turn={turn} conversationId={CONV} onDelete={vi.fn()} onRegenerate={vi.fn()} onRate={vi.fn()} />,
     )
 
-    const footers = container.querySelectorAll('[data-slot="message-footer"]')
-    // One for the question bubble, one for the conclusion — nothing on the step.
+    const footers = container.querySelectorAll('[data-slot="message-group-footer"]')
+    // One for the question, one for the whole run of answers.
     expect(footers).toHaveLength(2)
   })
 
-  it('moves the actions to the last row when the turn was cut short', () => {
+  it('keeps the actions reachable when the turn was cut short', () => {
     const turn = toolTurn({ conclusion: false })
     expect(turn.status).toBe('interrupted')
 
@@ -175,7 +176,7 @@ describe('TurnItem', () => {
       <TurnItem turn={turn} conversationId={CONV} onDelete={vi.fn()} onRegenerate={vi.fn()} />,
     )
     // Still reachable: an interrupted turn with no way to retry would be a trap.
-    expect(container.querySelectorAll('[data-slot="message-footer"]')).toHaveLength(2)
+    expect(container.querySelectorAll('[data-slot="message-group-footer"]')).toHaveLength(2)
   })
 
   it('aims deletion at the turn, not the row that was clicked', async () => {
@@ -572,7 +573,7 @@ describe('TurnItem', () => {
     const follows = (earlier: Element, later: Element) =>
       Boolean(earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING)
 
-    it('opens a collapsed turn with the avatar and the model that answered', () => {
+    it('names the model once, at the top of the run, with one avatar beside it', () => {
       const u = msg('user', { content: 'q', created_at: 1000 })
       const a = msg('assistant', {
         model_id: 'gpt-5.6-sol',
@@ -584,15 +585,14 @@ describe('TurnItem', () => {
 
       const { container } = render(<TurnItem turn={turn} conversationId={CONV} onRegenerate={vi.fn()} />)
 
-      // One speaker, one avatar: the conclusion below the collapsed steps is the
-      // same turn talking, not a second one.
-      const avatars = container.querySelectorAll('[data-slot="message-avatar"]')
-      expect(avatars).toHaveLength(1)
-
-      // Both sit above the process line, so the avatar has something to name.
-      const trigger = container.querySelector('[data-slot="turn-trigger"]')!
-      expect(follows(avatars[0], trigger)).toBe(true)
-      expect(follows(screen.getByText('gpt-5.6-sol'), trigger)).toBe(true)
+      // One speaker, one avatar: the two bubbles are the same turn talking,
+      // not two speakers.
+      expect(container.querySelectorAll('[data-slot="message-group-avatar"]')).toHaveLength(1)
+      const header = container.querySelector('[data-slot="message-group-header"]')!
+      expect(header).toHaveTextContent('gpt-5.6-sol')
+      // In the first bubble, above everything the run said.
+      expect(follows(header, screen.getByText('let me check'))).toBe(true)
+      expect(follows(header, screen.getByText('the answer'))).toBe(true)
     })
 
     it('draws one avatar for a run of answers from the same model', () => {
@@ -603,9 +603,35 @@ describe('TurnItem', () => {
 
       const { container } = render(<TurnItem turn={turn} conversationId={CONV} />)
 
-      const avatars = container.querySelectorAll('[data-slot="message-avatar"]')
-      expect(avatars).toHaveLength(1)
-      expect(follows(avatars[0], screen.getByText('two'))).toBe(true)
+      expect(container.querySelectorAll('[data-slot="message-group-avatar"]')).toHaveLength(1)
+      expect(container.querySelectorAll('[data-slot="message-group-header"]')).toHaveLength(1)
+    })
+
+    it('cuts the run where the model changes', () => {
+      const u = msg('user', { content: 'q' })
+      const a1 = msg('assistant', { model_id: 'a', _blocks: [text('one')], content: 'one' })
+      const a2 = msg('assistant', { model_id: 'b', _blocks: [text('two')], content: 'two' })
+      const turn = buildTurns([u, a1, a2])[0]
+
+      const { container } = render(<TurnItem turn={turn} conversationId={CONV} />)
+
+      expect(container.querySelectorAll('[data-slot="message-group-avatar"]')).toHaveLength(2)
+      const headers = Array.from(container.querySelectorAll('[data-slot="message-group-header"]'))
+      expect(headers.map((h) => h.textContent)).toEqual(['a', 'b'])
+    })
+
+    it('draws the date above a turn that opens a new day', () => {
+      const day = 24 * 3600 * 1000
+      const u = msg('user', { content: 'q', created_at: 10 * day + 1000 })
+      const a = msg('assistant', { _blocks: [text('one')], content: 'one', created_at: 10 * day + 2000 })
+      const turn = buildTurns([u, a])[0]
+
+      const sameDay = render(<TurnItem turn={turn} conversationId={CONV} previousTurnEndedAt={10 * day + 500} />)
+      expect(sameDay.container.querySelector('[data-slot="turn-date"]')).toBeNull()
+      sameDay.unmount()
+
+      const nextDay = render(<TurnItem turn={turn} conversationId={CONV} previousTurnEndedAt={9 * day + 500} />)
+      expect(nextDay.container.querySelector('[data-slot="turn-date"]')).toBeInTheDocument()
     })
   })
 
@@ -727,78 +753,133 @@ describe('TurnItem', () => {
     })
   })
 
-  describe('collapsing', () => {
-    it('leaves a tool-free turn uncollapsed', () => {
-      const u = msg('user', { content: 'q' })
-      const a = msg('assistant', { _blocks: [text('short answer')], content: 'short answer' })
+  describe('keyboard', () => {
+    const key = (name: RegExp) => screen.getByRole('button', { name })
+
+    it('draws a tool as a key under the bubble that introduced it, shut once it has returned', () => {
+      render(<TurnItem turn={toolTurn()} conversationId={CONV} />)
+
+      const k = key(/Read File/)
+      expectCollapsed(k)
+      // Nothing is folded away any more: both what the model said on the way
+      // and what it concluded are on screen.
+      expect(screen.getByText('let me check')).toBeVisible()
+      expect(screen.getByText('the answer')).toBeVisible()
+
+      // The key sits in the keyboard's row and its panel in the stack below —
+      // two layers, so the Tab order runs every key before any panel.
+      const keyboard = k.closest('[data-slot="bubble-keyboard"]')!
+      expect(keyboard.querySelector('[data-slot="bubble-keyboard-row"]')).toContainElement(k)
+      const panel = document.getElementById(k.getAttribute('aria-controls')!)!
+      expect(keyboard.querySelector('[data-slot="bubble-keyboard-stack"]')).toContainElement(panel)
+      expect(keyboard.querySelector('[data-slot="bubble-keyboard-row"]')).not.toContainElement(panel)
+    })
+
+    it('shows the duration in the footer rather than as a headline', () => {
+      const { container } = render(<TurnItem turn={toolTurn()} conversationId={CONV} />)
+      expect(container.querySelector('[data-slot="turn-duration"]')).toHaveTextContent('9s')
+      expect(screen.queryByRole('button', { name: /Worked for/ })).toBeNull()
+    })
+
+    it('says nothing about duration when the clock reads nothing', () => {
+      const u = msg('user', { content: 'q', created_at: 1000 })
+      const a = msg('assistant', { _blocks: [toolBlock('read_file'), text('done')], content: 'done', created_at: 1000 })
       const turn = buildTurns([u, a])[0]
 
       const { container } = render(<TurnItem turn={turn} conversationId={CONV} />)
-      expect(container.querySelector('[data-slot="turn-trigger"]')).not.toBeInTheDocument()
-      // The other half of that claim: a turn that does collapse is found by the
-      // same selector, so renaming the slot cannot quietly retire the check above.
-      const { container: withTools } = render(<TurnItem turn={toolTurn()} conversationId={CONV} />)
-      expect(withTools.querySelector('[data-slot="turn-trigger"]')).toBeInTheDocument()
-    })
-
-    it('collapses a turn that used tools, showing its duration', () => {
-      const turn = toolTurn()
-      render(<TurnItem turn={turn} conversationId={CONV} />)
-
-      const trigger = screen.getByRole('button', { name: /Worked for 9s/ })
-      expectCollapsed(trigger)
-      // The narration that introduced the tool call is inside the collapsed
-      // region — rendered, but not on screen.
-      expect(screen.getByText('let me check')).not.toBeVisible()
-      // The conclusion stays outside it.
-      expect(screen.getByText('the answer')).toBeVisible()
-    })
-
-    it('falls back to a step count when timestamps carry no duration', () => {
-      const u = msg('user', { content: 'q', created_at: 1000 })
-      const a = msg('assistant', {
-        _blocks: [toolBlock('read_file'), text('done')],
-        content: 'done',
-        created_at: 1000,
-      })
-      const turn = buildTurns([u, a])[0]
-
-      render(<TurnItem turn={turn} conversationId={CONV} />)
       // Never "0s" — equal timestamps mean unknown, not instant.
-      expect(screen.getByRole('button', { name: /steps/ })).toBeInTheDocument()
+      expect(container.querySelector('[data-slot="turn-duration"]')).toBeNull()
     })
 
-    it('holds itself open while the turn is still running', () => {
+    it('opens the panel while the tool runs', () => {
       const u = msg('user', { content: 'q', created_at: 1000 })
       const a = msg('assistant', { _blocks: [text('working'), toolBlock('read_file', 'running')], created_at: 5000 })
       const turn = buildTurns([u, a], { streaming: true })[0]
 
       render(<TurnItem turn={turn} conversationId={CONV} streaming isLastTurn />)
-      expectExpanded(screen.getByRole('button', { name: /Working/ }))
+      expectExpanded(key(/Read File/))
       expect(screen.getByText('working')).toBeVisible()
     })
 
-    it('stays open while waiting on the user, so the prompt is reachable', async () => {
+    it('opens the decision row for a call waiting on the user, one press from anywhere', async () => {
       const turn = toolTurn({ status: 'pending', conclusion: false })
       expect(turn.status).toBe('awaiting-input')
 
       render(<TurnItem turn={turn} conversationId={CONV} />)
-      const trigger = screen.getByRole('button', { name: /Waiting for you/ })
-      expectExpanded(trigger)
-
-      // What actually makes the prompt reachable is that the blocked call sits
-      // outside the panel: collapsing the turn by hand must not take the
-      // approval buttons with it.
-      await userEvent.click(trigger)
-      expectCollapsed(trigger)
+      const k = key(/Read File/)
+      expectExpanded(k)
       expect(screen.getByText('Allow')).toBeVisible()
       expect(screen.getByText('Deny')).toBeVisible()
+
+      // Closing the panel by hand is allowed — and reopening it is the same
+      // key, which stays marked as waiting the whole time.
+      await userEvent.click(k)
+      expectCollapsed(k)
+      expect(k).toHaveAttribute('data-state', 'requires-action')
+      await userEvent.click(k)
+      expectExpanded(k)
+      expect(screen.getByText('Allow')).toBeVisible()
     })
 
-    /// A turn that stopped without ever reaching an ending. Collapsed it looks
-    /// like a short answer, and what it was doing when it stopped — which may be
-    /// a half-written file — is exactly what is inside the panel.
-    it('holds a crashed turn open, and says so in words of its own', () => {
+    it('closes the panel as soon as the tool returns', async () => {
+      const u = msg('user', { content: 'q', created_at: 1000 })
+      const running = msg('assistant', {
+        _blocks: [text('working'), toolBlock('read_file', 'running')],
+        created_at: 5000,
+      })
+      const done = { ...running, _blocks: [text('working'), toolBlock('read_file'), text('done')], content: 'done' }
+
+      const live = buildTurns([u, running], { streaming: true })[0]
+      const settled = buildTurns([u, done])[0]
+
+      const { rerender } = render(<TurnItem turn={live} conversationId={CONV} streaming isLastTurn />)
+      expectExpanded(key(/Read File/))
+
+      rerender(<TurnItem turn={settled} conversationId={CONV} isLastTurn />)
+      // Not on a timer of its own: the reload that follows a turn re-keys
+      // nothing here, so there is no second reflow to wait out. The wait is
+      // React Aria's, which marks the panel hidden once its animation settles.
+      await waitFor(() => expectCollapsed(key(/Read File/)))
+      expect(screen.getByText('done')).toBeVisible()
+    })
+
+    /// A sandbox escalation: the call ran, was refused, and comes back asking
+    /// whether to retry without the sandbox. A reader who had closed the panel
+    /// while it ran is not a reader who chose to ignore that question.
+    it('reopens a panel the reader had closed when the call comes back asking', async () => {
+      const u = msg('user', { content: 'q', created_at: 1000 })
+      const running = msg('assistant', {
+        _blocks: [text('working'), toolBlock('run_command', 'running')],
+        created_at: 5000,
+      })
+      const asking = { ...running, _blocks: [text('working'), toolBlock('run_command', 'pending')] }
+
+      const { rerender } = render(
+        <TurnItem turn={buildTurns([u, running], { streaming: true })[0]} conversationId={CONV} streaming isLastTurn />,
+      )
+      const k = key(/Run Command/)
+      expectExpanded(k)
+      await userEvent.click(k)
+      expectCollapsed(k)
+
+      rerender(
+        <TurnItem turn={buildTurns([u, asking], { streaming: true })[0]} conversationId={CONV} streaming isLastTurn />,
+      )
+      expectExpanded(key(/Run Command/))
+      expect(screen.getByText('Allow')).toBeVisible()
+    })
+
+    it('remembers a panel the user opened by hand', async () => {
+      render(<TurnItem turn={toolTurn()} conversationId={CONV} />)
+
+      const k = key(/Read File/)
+      await userEvent.click(k)
+
+      expectExpanded(k)
+      expect(useConversationStore.getState().sessions[CONV]?.expandedPanels['read_file-1']).toBe(true)
+    })
+
+    it('says a crashed turn was cut off, in words of its own', () => {
       const u = msg('user', { content: 'q', created_at: 1000 })
       const a = msg('assistant', {
         turn_id: 't-dead',
@@ -808,13 +889,14 @@ describe('TurnItem', () => {
       const turn = buildTurns([u, a], { crashedTurnIds: new Set(['t-dead']) })[0]
       expect(turn.status).toBe('crashed')
 
-      render(<TurnItem turn={turn} conversationId={CONV} />)
+      const { container } = render(<TurnItem turn={turn} conversationId={CONV} />)
 
-      // Its own headline, not the one a turn the user stopped gets: nobody
-      // stopped this, and saying "stopped" about it is how a half-written file
-      // goes unnoticed.
-      const trigger = screen.getByRole('button', { name: /Cut off before it finished/ })
-      expectExpanded(trigger)
+      // Its own line, not the one a turn the user stopped gets: nobody stopped
+      // this, and saying "stopped" about it is how a half-written file goes
+      // unnoticed. Everything it was doing stays on screen above it.
+      const status = container.querySelector('[data-slot="turn-status"]')!
+      expect(status).toHaveAttribute('data-status', 'crashed')
+      expect(status).toHaveTextContent('Cut off before it finished')
       expect(screen.getByText('editing the file')).toBeVisible()
     })
 
@@ -831,52 +913,15 @@ describe('TurnItem', () => {
       const turn = buildTurns([u, a])[0]
 
       expect(turn.status).toBe('interrupted')
+      const { container } = render(<TurnItem turn={turn} conversationId={CONV} />)
+      const status = container.querySelector('[data-slot="turn-status"]')!
+      expect(status).toHaveAttribute('data-status', 'interrupted')
+      expect(status).toHaveTextContent('Stopped')
     })
 
-    it('remembers a turn the user opened by hand', async () => {
-      const turn = toolTurn()
-      render(<TurnItem turn={turn} conversationId={CONV} />)
-
-      const trigger = screen.getByRole('button', { name: /Worked for/ })
-      await userEvent.click(trigger)
-
-      expectExpanded(trigger)
-      expect(screen.getByText('let me check')).toBeVisible()
-      expect(useConversationStore.getState().sessions[CONV]?.expandedTurns[turn.id]).toBe(true)
-    })
-
-    it('collapses shortly after the stream ends', async () => {
-      vi.useFakeTimers()
-      try {
-        const streamingTurn = (() => {
-          const u = msg('user', { content: 'q', created_at: 1000 })
-          const a = msg('assistant', {
-            _blocks: [text('working'), toolBlock('read_file'), text('done')],
-            content: 'done',
-            created_at: 9000,
-          })
-          return { u, a }
-        })()
-
-        const live = buildTurns([streamingTurn.u, streamingTurn.a], { streaming: true })[0]
-        const settled = buildTurns([streamingTurn.u, streamingTurn.a])[0]
-
-        const { rerender } = render(<TurnItem turn={live} conversationId={CONV} streaming isLastTurn />)
-        expectExpanded(screen.getByRole('button', { name: /Working/ }))
-
-        rerender(<TurnItem turn={settled} conversationId={CONV} isLastTurn />)
-        // Deliberately not immediate: the post-stop reload lands first, so
-        // collapsing right away would reflow twice.
-        expectExpanded(screen.getByRole('button', { name: /Worked for/ }))
-
-        await act(async () => {
-          vi.advanceTimersByTime(400)
-        })
-        expectCollapsed(screen.getByRole('button', { name: /Worked for/ }))
-        expect(screen.getByText('working')).not.toBeVisible()
-      } finally {
-        vi.useRealTimers()
-      }
+    it('says nothing about how a finished turn ended', () => {
+      const { container } = render(<TurnItem turn={toolTurn()} conversationId={CONV} />)
+      expect(container.querySelector('[data-slot="turn-status"]')).toBeNull()
     })
   })
 })

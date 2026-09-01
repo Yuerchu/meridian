@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LazyMotion, domAnimation } from 'motion/react'
 import * as m from 'motion/react-m'
@@ -19,7 +19,7 @@ import { TurnOutline } from './turn-outline'
 import { FilePreviewProvider } from './file-preview'
 import type { EmojiMap } from './emoji-renderer'
 import type { SenderNames } from '@/hooks/use-sender-names'
-import { answerAnchorId, type Turn } from '@/lib/turns'
+import { answerAnchorId, turnEndedAt, type Turn } from '@/lib/turns'
 import type { MessageRating } from '@/types'
 
 const TRANSCRIPT_WINDOW_TURNS = 40
@@ -135,6 +135,96 @@ function LoadEarlierTurns({
   )
 }
 
+/** How far past the viewport a turn is still drawn, in viewport heights. Two
+ *  screens each way is enough that a flick of the wheel never lands on a
+ *  placeholder, and few enough that a forty-turn window costs a handful. */
+const LAZY_MARGIN_SCREENS = 2
+
+/** What a turn is assumed to be before it has been drawn. Only wrong until the
+ *  first time it is, and the layout effect below absorbs the correction when
+ *  that happens above the reader. */
+const LAZY_ESTIMATE_PX = 160
+
+/**
+ * A turn that is not drawn until the reader has come near it.
+ *
+ * `content-visibility: auto` is the browser's version of this and crashes
+ * desktop WebView2 under a long transcript, so it is done by hand: an
+ * `IntersectionObserver` with a generous margin says when the turn has come
+ * near, and until then it renders a box of an estimated height instead of its
+ * rows. The DOM of a forty-turn window measured at four thousand nodes and half
+ * a second to mount; with the turns the reader has not reached left as boxes
+ * it is the handful at the end.
+ *
+ * **Drawn once, drawn for good.** The first version boxed a turn again once it
+ * had scrolled far enough away, which is what `content-visibility` does — and
+ * it cost the stream its following. A turn above the viewport turning back
+ * into a shorter box is a height change above the reader; the browser's scroll
+ * anchoring moves `scrollTop` up to hold the view still, and the scroller reads
+ * an upward move it did not make as the reader taking over, so `follow` became
+ * `idle` in the middle of an answer. Growth is the only direction left now,
+ * and it only happens above the reader when they scroll up into a box — which
+ * is `idle` already, and where the swap compensates for itself (the viewport
+ * has the browser's anchoring switched off; see `MessageScrollerViewport`).
+ * What is given up is memory for a transcript the reader has walked back
+ * through, which the forty-turn window bounds anyway.
+ *
+ * The scroller is untouched by this. Every turn keeps its `MessageScrollerItem`
+ * and its id, so anchoring, the outline and "load earlier" all address the same
+ * rows; only what is inside the item changes. The last turns are drawn from
+ * the first render regardless: that is where the transcript opens, and the
+ * observer only reports after a frame.
+ *
+ * Without an `IntersectionObserver` — jsdom — everything is drawn.
+ */
+function LazyTurn({ children, near: initiallyNear }: { children: React.ReactNode; near: boolean }) {
+  const ref = useRef<HTMLDivElement | null>(null)
+  const [near, setNear] = useState(initiallyNear || typeof IntersectionObserver === 'undefined')
+  const revealed = useRef(false)
+
+  useEffect(() => {
+    if (near) return
+    const el = ref.current
+    if (!el || typeof IntersectionObserver === 'undefined') return
+    const viewport = el.closest<HTMLElement>('[data-slot="message-scroller-viewport"]')
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return
+        revealed.current = true
+        setNear(true)
+      },
+      { root: viewport, rootMargin: `${LAZY_MARGIN_SCREENS * 100}% 0px` },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [near])
+
+  // The rows are taller than the box they replace, and with the browser's own
+  // scroll anchoring off (see the viewport) nothing else keeps the reader
+  // still when that happens above them. Done here, at the moment of the swap,
+  // rather than through `useHeightCompensation`: that observes the turn's own
+  // element, which is only mounted by this swap and so never sees it.
+  useLayoutEffect(() => {
+    if (!near || !revealed.current) return
+    revealed.current = false
+    const el = ref.current
+    const viewport = el?.closest<HTMLElement>('[data-slot="message-scroller-viewport"]')
+    if (!el || !viewport || viewport.getAttribute('data-scroll-mode') !== 'idle') return
+    if (el.getBoundingClientRect().top >= viewport.getBoundingClientRect().top) return
+    viewport.scrollTop += el.offsetHeight - LAZY_ESTIMATE_PX
+  }, [near])
+
+  return (
+    <div ref={ref} data-slot="lazy-turn" data-near={near || undefined}>
+      {near ? children : <div style={{ height: LAZY_ESTIMATE_PX }} aria-hidden />}
+    </div>
+  )
+}
+
+/** The turns drawn from the first render, before the observer has said
+ *  anything: the transcript opens at its end, so these are the ones on screen. */
+const EAGER_TAIL_TURNS = 6
+
 /**
  * Keep the initial DOM bounded without relying on `content-visibility`, which
  * crashes desktop WebView2 under a long scrolling transcript. The first visible
@@ -163,21 +253,26 @@ function TranscriptTurns({
         const i = visibleStart + visibleIndex
         const isLastTurn = i === turns.length - 1
         const turnEl = (
-          <TurnItem
-            turn={turn}
-            conversationId={conversationId}
-            isLastTurn={isLastTurn}
-            streaming={streaming}
-            onDelete={onDelete}
-            onRegenerate={onRegenerate}
-            onEdit={onEdit}
-            onRate={onRate}
-            isOneBot={isOneBot}
-            isHosted={isHosted}
-            emojiMap={emojiMap}
-            senderNames={senderNames}
-            assistantAvatar={assistantAvatar}
-          />
+          <LazyTurn near={i >= turns.length - EAGER_TAIL_TURNS}>
+            <TurnItem
+              turn={turn}
+              conversationId={conversationId}
+              isLastTurn={isLastTurn}
+              streaming={streaming}
+              // Off the full list, not the window: a day passed between two turns
+              // whether or not the earlier one is rendered.
+              previousTurnEndedAt={i > 0 ? turnEndedAt(turns[i - 1]) : null}
+              onDelete={onDelete}
+              onRegenerate={onRegenerate}
+              onEdit={onEdit}
+              onRate={onRate}
+              isOneBot={isOneBot}
+              isHosted={isHosted}
+              emojiMap={emojiMap}
+              senderNames={senderNames}
+              assistantAvatar={assistantAvatar}
+            />
+          </LazyTurn>
         )
         // Turns hold many messages each, so the reveal animation covers fewer
         // items than the old per-message window did.

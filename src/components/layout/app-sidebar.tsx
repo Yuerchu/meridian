@@ -2,6 +2,13 @@
  * The sidebar, on HeroUI Pro's — a panel on a wide window, a sheet on a narrow
  * one, and the phone's conversation list either way.
  *
+ * The shape is HeroUI Pro's agent-workspace example: one `Sidebar.Group` per
+ * project with the group label carrying the project's own affordances (fold,
+ * select, new-conversation, actions, and the drop target a drag files into),
+ * and a flat menu of conversation rows under it. There is no project row and
+ * no nested tree any more — a conversation row looks the same wherever it
+ * lives, and where it lives is said by the group above it.
+ *
  * No row is given an `href`, and no `navigate` is configured. There is no URL
  * here to map a route onto: `lib/history-bridge.ts` writes a depth and nothing
  * else, deliberately, and an href without a `navigate` falls through to the
@@ -16,8 +23,9 @@
  * through it or the sheet stays open over the page it just opened.
  */
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useDragAndDrop } from 'react-aria-components'
+import { DropZone, useDragAndDrop } from 'react-aria-components'
 import type { DropItem, Key } from 'react-aria-components'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Button, Dropdown, Input, Label, Spinner } from '@heroui/react'
@@ -26,11 +34,13 @@ import {
   Archive,
   ArrowDownToSquare,
   ArrowLeft,
+  ChevronRight,
   EllipsisVertical,
   FolderOpen,
   FolderPlus,
   Gear,
   Grip,
+  Magnifier,
   Pin,
   Plus,
   Terminal,
@@ -40,6 +50,7 @@ import { ConversationIcon } from '@/components/ui/agent-icon'
 import { ClaudeSessionPicker } from './claude-session-picker'
 
 import { can } from '@/lib/capabilities'
+import { cn } from '@/lib/utils'
 import { isRemote } from '@/lib/transport'
 import type { ConversationInfoResponse, ProjectInfoResponse } from '@/types'
 import type { Page } from './shell-props'
@@ -48,6 +59,7 @@ import type { Page } from './shell-props'
 import { visibleSettingsTabs, type SettingsTab } from '@/components/settings/tabs'
 import { usePlatform } from '@/hooks/use-platform'
 import { useHistoryLevel } from '@/hooks/use-history-level'
+import { useRelativeTime } from '@/hooks/use-relative-time'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -59,17 +71,20 @@ import { useConfirm } from '@/hooks/use-confirm'
 import { isCoarsePointer } from '@/hooks/use-coarse-pointer'
 import { ConversationIndicator } from './conversation-indicator'
 import { MoveDialog } from './move-dialog'
-import { CONVERSATION_DRAG_TYPE, conversationIdOf, dropDestination } from './sidebar-dnd'
-import { ProjectIcon } from './project-icon'
+import { acceptsConversationDrop, CONVERSATION_DRAG_TYPE, conversationIdOf } from './sidebar-dnd'
 import { RenameDialog } from './rename-dialog'
-import { RowActionsMenu } from './row-actions-menu'
+import { RowActionDropdownItems, RowActionsMenu } from './row-actions-menu'
 import { useConversationActions, useProjectActions, type RowAction } from './row-actions'
 
 interface AppSidebarProps {
   conversations: ConversationInfoResponse[]
   activeId: string | null
   onSelect: (id: string) => void
-  onCreate: () => void | Promise<void>
+  /** Start a conversation — under `projectId` when given, under the active
+   *  project when omitted, loose when `null`. */
+  onCreate: (projectId?: string | null) => void | Promise<void>
+  /** Open the command palette — the sidebar's search row is its second door. */
+  onOpenSearch: () => void
   onDelete: (id: string) => void
   onRename: (id: string, newTitle: string) => void
   onTogglePin: (id: string) => void
@@ -440,11 +455,179 @@ function RowActionItems({ actions }: { actions: RowAction[] }) {
   )
 }
 
+/** The loose group's key in the folded set. Project ids are uuids, so this
+ *  cannot collide with one. */
+const LOOSE_KEY = 'loose'
+
+/**
+ * The panel keeps the example's density; the mobile sheet keeps Pro's default,
+ * because a finger needs the taller row. Withheld while settings fills the
+ * pane — that side is a short nav list, and two densities inside one app read
+ * as a bug.
+ */
+const DENSITY = { '--spacing': '0.2rem' } as CSSProperties
+
+interface ConversationGroupProps {
+  /** `null` is the loose group — the drop that unfiles. */
+  projectId: string | null
+  title: string
+  isCurrent: boolean
+  folded: boolean
+  conversations: ConversationInfoResponse[]
+  onToggleFold: () => void
+  /** Absent on the loose group, which is not selectable. */
+  onSelectToggle?: () => void
+  onNewConversation: () => void
+  /** The "…" dropdown's rows; absent on the loose group. */
+  actions?: RowAction[]
+  dndDisabled: boolean
+  dragConversations: (keys: Set<Key>) => Record<string, string>[]
+  moveDropped: (items: DropItem[], projectId: string | null) => Promise<void>
+  renderConversation: (conv: ConversationInfoResponse) => ReactNode
+}
+
+/**
+ * One group: a header that is the project's whole surface, and a flat menu of
+ * its conversations. A component rather than a render function because each
+ * group owns a `useDragAndDrop` of its own — the hooks carry the group's
+ * project id in their drop handlers, and hooks cannot be called in a loop.
+ *
+ * The header is a `DropZone`, not a collection row: React Aria registers it
+ * with the same drag manager the tree hooks use, so a drag started on a
+ * conversation row can land here — including on a folded group, and on an
+ * empty project, which renders no menu and has no other surface a drop could
+ * find. Dropping a conversation on its own group is `moveDropped`'s no-op.
+ */
+function ConversationGroup({
+  projectId,
+  title,
+  isCurrent,
+  folded,
+  conversations,
+  onToggleFold,
+  onSelectToggle,
+  onNewConversation,
+  actions,
+  dndDisabled,
+  dragConversations,
+  moveDropped,
+  renderConversation,
+}: ConversationGroupProps) {
+  const { t } = useTranslation()
+
+  // Drops on this group's rows and on its background both mean "file here":
+  // with flat per-project menus the rows carry no destination of their own, so
+  // the whole list is one fat target. Insertion drops stay rejected — there is
+  // no `onInsert` — because the order inside a group is pinned state and
+  // recency, not something a person arranges.
+  const { dragAndDropHooks } = useDragAndDrop({
+    isDisabled: dndDisabled,
+    getItems: dragConversations,
+    getAllowedDropOperations: () => ['move'],
+    acceptedDragTypes: [CONVERSATION_DRAG_TYPE],
+    shouldAcceptItemDrop: () => true,
+    onItemDrop: (e) => void moveDropped(e.items, projectId),
+    onRootDrop: (e) => void moveDropped(e.items, projectId),
+  })
+
+  const moreLabel = t('sidebar.moreActions', { name: title })
+  return (
+    <Sidebar.Group>
+      <Sidebar.GroupLabel className="flex">
+        <DropZone
+          aria-label={projectId ? t('sidebar.moveInto', { name: title }) : t('sidebar.moveOut')}
+          getDropOperation={(types) => (acceptsConversationDrop(types) ? 'move' : 'cancel')}
+          onDrop={(e) => void moveDropped(e.items, projectId)}
+          className="sidebar-group-drop min-w-0 flex-1 rounded-md"
+        >
+          {/* The row-hit attributes sit on this inner div, not on the zone:
+              `recordHit` walks `closest('[data-row-id]')` from wherever the
+              right-click landed, and the zone's own element is replaced
+              wholesale by React Aria's render props. The loose group carries
+              none — it has no actions a context menu could offer. */}
+          <div
+            className="flex min-w-0 items-center gap-0.5"
+            data-row-id={projectId ?? undefined}
+            data-row-kind={projectId ? 'project' : undefined}
+          >
+            <Button
+              isIconOnly
+              size="sm"
+              variant="ghost"
+              aria-expanded={!folded}
+              aria-label={folded ? t('sidebar.unfoldGroup', { name: title }) : t('sidebar.foldGroup', { name: title })}
+              onPress={onToggleFold}
+              className="touch-hitbox size-5 shrink-0 rounded-md text-muted"
+            >
+              <ChevronRight className={cn('size-3 transition-transform', !folded && 'rotate-90')} />
+            </Button>
+            {onSelectToggle ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                onPress={onSelectToggle}
+                // The selection this toggles decides where a new conversation
+                // files and which workspace the empty state reads — state, so
+                // `aria-pressed` rather than `aria-current`.
+                aria-pressed={isCurrent}
+                className={cn(
+                  'h-auto min-w-0 flex-1 justify-start rounded-sm px-1 py-0.5 text-xs font-medium',
+                  isCurrent ? 'text-foreground' : 'text-muted',
+                )}
+              >
+                <span className="truncate">{title}</span>
+              </Button>
+            ) : (
+              <span className="min-w-0 flex-1 truncate px-1">{title}</span>
+            )}
+            <span className="sidebar-group-actions flex shrink-0 items-center">
+              <Button
+                isIconOnly
+                size="sm"
+                variant="ghost"
+                aria-label={projectId ? t('sidebar.newConversationIn', { name: title }) : t('sidebar.newChat')}
+                onPress={onNewConversation}
+                className="touch-hitbox size-6 rounded-md text-muted"
+              >
+                <Plus />
+              </Button>
+              {actions && actions.length > 0 && (
+                <Dropdown>
+                  {/* Styled as a menu action — the docs' own pattern for a
+                      dropdown trigger in a sidebar — so the two buttons match. */}
+                  <Dropdown.Trigger
+                    aria-label={moreLabel}
+                    className="sidebar__menu-action touch-hitbox"
+                    data-slot="sidebar-menu-action"
+                  >
+                    <EllipsisVertical className="size-4" />
+                  </Dropdown.Trigger>
+                  <Dropdown.Popover placement="bottom end">
+                    <Dropdown.Menu aria-label={moreLabel}>
+                      <RowActionDropdownItems actions={actions} />
+                    </Dropdown.Menu>
+                  </Dropdown.Popover>
+                </Dropdown>
+              )}
+            </span>
+          </div>
+        </DropZone>
+      </Sidebar.GroupLabel>
+      {!folded && conversations.length > 0 && (
+        <Sidebar.Menu aria-label={title} dragAndDropHooks={dragAndDropHooks}>
+          {conversations.map(renderConversation)}
+        </Sidebar.Menu>
+      )}
+    </Sidebar.Group>
+  )
+}
+
 export function AppSidebar({
   conversations,
   activeId,
   onSelect,
   onCreate,
+  onOpenSearch,
   onDelete,
   onRename,
   onTogglePin,
@@ -462,8 +645,9 @@ export function AppSidebar({
   onRenameProject,
   onCreateHostedSession,
 }: AppSidebarProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const platform = usePlatform()
+  const relativeTime = useRelativeTime()
   /**
    * Whether the machine that would run the adapter can run one.
    *
@@ -476,10 +660,13 @@ export function AppSidebar({
    * that works, which is what this used to do and called conservative.
    */
   const canHostSessions = platform !== 'android' || isRemote
-  const { isMobileOpen, setMobileOpen, isOpen } = useSidebar()
+  const { isMobileOpen, setMobileOpen, isOpen, isMobile, collapsible } = useSidebar()
+  // Pro's own rail test, verbatim: the desktop panel is an icon rail only
+  // under `collapsible="icon"`, and the mobile sheet is never one.
+  const isIconCollapsed = collapsible === 'icon' && !isMobile && !isOpen
   const [showNewProject, setShowNewProject] = useState(false)
   const [showNewHosted, setShowNewHosted] = useState(false)
-  // Held here because `settingsSide`/`appSide` below are rendered twice under
+  // Held here because `settingsSide`/`chatSide` below are rendered twice under
   // 768px — once as the hidden panel, once as the sheet. See `useDraft`.
   const projectDraft = useDraft()
   const projectCreation = useProjectCreation()
@@ -521,43 +708,63 @@ export function AppSidebar({
   const selectConversation = dismissing(onSelect)
   const selectProject = dismissing(onSelectProject)
   const createConversation = dismissing(onCreate)
+  const openSearch = dismissing(onOpenSearch)
   const openSettings = dismissing(onOpenSettings)
   const closeSettings = dismissing(onCloseSettings)
   const changeSettingsTab = dismissing(onSettingsTabChange)
 
-  // One menu per list rather than one per row. A row cannot be the trigger:
-  // `Sidebar.Menu` is a React Aria `Tree`, whose items pass only a fixed set of
-  // DOM props through — `onContextMenu` is not among them — and anything
-  // inserted between the tree and its items is not a collection item at all.
-  // So the trigger wraps the whole list and the row is read back off the event,
-  // which also leaves one popover behind where there used to be one per
-  // conversation.
+  // One menu per copy of the sidebar rather than one per group or per row. A
+  // row cannot be the trigger: `Sidebar.Menu` is a React Aria `Tree`, whose
+  // items pass only a fixed set of DOM props through — `onContextMenu` is not
+  // among them — and anything inserted between the tree and its items is not a
+  // collection item at all. So the trigger wraps all of the groups and the row
+  // is read back off the event, which also leaves one popover behind where
+  // there used to be one per conversation.
   //
   // `open` is controlled because a click that lands between rows has to be
   // refused, and the hit is a ref because that decision is taken inside
   // `onOpenChange`, which runs before a state update from the same event is
-  // visible. The scope is part of it because the tree below is rendered twice —
-  // once for the panel, once for the mobile sheet — and only the copy that was
-  // right-clicked may open.
+  // visible. The scope is part of it because the groups below are rendered
+  // twice — once for the panel, once for the mobile sheet — and only the copy
+  // that was right-clicked may open.
   const hitRef = useRef<MenuHit | null>(null)
   const [menu, setMenu] = useState<MenuHit | null>(null)
 
   const { filed, loose } = useMemo(() => groupByProject(conversations), [conversations])
+  const projectNameById = useMemo(() => new Map(projects.map((p) => [p.id, p.name])), [projects])
+  const exactTime = useMemo(
+    () => new Intl.DateTimeFormat(i18n.resolvedLanguage ?? i18n.language, { dateStyle: 'medium', timeStyle: 'short' }),
+    [i18n.resolvedLanguage, i18n.language],
+  )
 
-  // Which projects are open, as bare project ids. The tree below is rendered
-  // twice — once for the panel, once for the mobile sheet — under different key
-  // prefixes, so what RAC hands back has to be translated on the way in and out
-  // rather than stored as it comes.
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set<string>())
+  // Which groups are folded shut, keyed by project id (`LOOSE_KEY` for the
+  // loose group). Inverted from the tree this replaces on purpose: a group
+  // starts open — the example's look — and folding is the opt-out, so a new
+  // project needs no bookkeeping to appear expanded. In-memory only, same as
+  // the tree's set was.
+  const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set<string>())
+  const toggleFold = useCallback((key: string) => {
+    setFolded((prev) => {
+      const next = new Set(prev)
+      if (!next.delete(key)) next.add(key)
+      return next
+    })
+  }, [])
 
-  // Whatever is on screen has its project opened for it. A conversation reached
+  // Whatever is on screen has its group opened for it. A conversation reached
   // from anywhere but this list — the command palette, a notification — would
-  // otherwise be current inside a branch nobody can see.
-  const activeConversationProject = conversations.find((c) => c.id === activeId)?.project_id ?? null
+  // otherwise be current inside a group folded shut.
+  const activeConversation = conversations.find((c) => c.id === activeId)
+  const activeGroupKey = activeConversation ? (activeConversation.project_id ?? LOOSE_KEY) : null
   useEffect(() => {
-    if (!activeConversationProject) return
-    setExpanded((prev) => (prev.has(activeConversationProject) ? prev : new Set(prev).add(activeConversationProject)))
-  }, [activeConversationProject])
+    if (!activeGroupKey) return
+    setFolded((prev) => {
+      if (!prev.has(activeGroupKey)) return prev
+      const next = new Set(prev)
+      next.delete(activeGroupKey)
+      return next
+    })
+  }, [activeGroupKey])
 
   /**
    * Dragging a conversation onto where it should live, beside the dialog
@@ -565,16 +772,15 @@ export function AppSidebar({
    *
    * Disabled where the primary pointer is a finger: there a long press is
    * already the way to a row's actions, and a drag gesture on the same fuse
-   * would fight it — the dialog is the touch path. One pair of hook configs
-   * above both copies of each tree (the keys differ only by prefix, which
-   * `sidebar-dnd` parses around); the hooks carry no per-collection state, so
-   * sharing them is sharing configuration.
+   * would fight it — the dialog is the touch path. `getItems` is shared by
+   * every group's hooks (the keys differ only by prefix, which `sidebar-dnd`
+   * parses around); the hooks themselves are per group, because each carries
+   * its own destination.
    */
   const dndDisabled = isCoarsePointer()
 
-  /** What a dragged row carries. A row that is not a conversation — a
-   *  project, a header — carries nothing, and a drag with no payload has
-   *  nowhere it can be dropped. */
+  /** What a dragged row carries. A row that is not a conversation carries
+   *  nothing, and a drag with no payload has nowhere it can be dropped. */
   const dragConversations = useCallback(
     (keys: Set<Key>) =>
       [...keys].flatMap((key) => {
@@ -608,31 +814,6 @@ export function AppSidebar({
     [conversations, onMoveToProject],
   )
 
-  // The project tree takes drops *on* rows only — a project files under it,
-  // "all projects" unfiles — never between them: the list's order is pinned
-  // state and recency, not something a person arranges.
-  const { dragAndDropHooks: projectTreeDnd } = useDragAndDrop({
-    isDisabled: dndDisabled,
-    getItems: dragConversations,
-    getAllowedDropOperations: () => ['move'],
-    acceptedDragTypes: [CONVERSATION_DRAG_TYPE],
-    shouldAcceptItemDrop: (target) => dropDestination(String(target.key)) !== null,
-    onItemDrop: (e) => {
-      const dest = dropDestination(String(e.target.key))
-      if (dest) void moveDropped(e.items, dest.projectId)
-    },
-  })
-
-  // The loose list is one big unfile target — a drop anywhere on it moves the
-  // conversation out of its project. Its own rows accept nothing.
-  const { dragAndDropHooks: looseDnd } = useDragAndDrop({
-    isDisabled: dndDisabled,
-    getItems: dragConversations,
-    getAllowedDropOperations: () => ['move'],
-    acceptedDragTypes: [CONVERSATION_DRAG_TYPE],
-    onRootDrop: (e) => void moveDropped(e.items, null),
-  })
-
   const conversationActions = useConversationActions({
     onTogglePin,
     onRequestRename: (id) => setRenameTarget({ type: 'conversation', id }),
@@ -665,8 +846,8 @@ export function AppSidebar({
 
   // Only the right-click menu needs to know which row was hit; the button on a
   // row already knows. Which *kind* of row it was is read off the DOM too:
-  // projects and their conversations share one tree now, so the list a click
-  // landed in no longer says what was clicked.
+  // a conversation row and a project's group header live under one trigger, so
+  // the list a click landed in no longer says what was clicked.
   const hitConversation = menu?.kind === 'conversation' ? conversations.find((c) => c.id === menu.id) : undefined
   const hitProject = menu?.kind === 'project' ? projects.find((p) => p.id === menu.id) : undefined
   const hitActions = hitConversation
@@ -754,13 +935,14 @@ export function AppSidebar({
   )
 
   /**
-   * One conversation, wherever it sits — nested under its project or loose in
-   * the group below. The same row either way: its depth is the collection's
-   * business, and Pro indents it off `aria-level` rather than off anything
-   * written here.
+   * One conversation row, in whichever group it sits — the same row either
+   * way, since the group above it says where it lives. The rich tooltip
+   * carries what the compact row cannot: the untruncated title, the project,
+   * and the exact time behind the relative chip.
    */
   const conversationItem = (prefix: string, conv: ConversationInfoResponse) => {
     const title = conv.title ?? t('sidebar.newChat')
+    const projectName = conv.project_id ? projectNameById.get(conv.project_id) : undefined
     return (
       <Sidebar.MenuItem
         key={conv.id}
@@ -771,6 +953,20 @@ export function AppSidebar({
         isCurrent={conv.id === activeId}
         onAction={() => selectConversation(conv.id)}
         className={conv.is_archived ? 'opacity-50' : undefined}
+        tooltipProps={{
+          className: 'text-xs',
+          delay: 500,
+          placement: 'right',
+          content: (
+            <div className="flex flex-col gap-1">
+              <span className="font-medium">{title}</span>
+              <span className="opacity-60">
+                {projectName ? `${projectName} · ` : ''}
+                {exactTime.format(conv.updated_at)}
+              </span>
+            </div>
+          ),
+        }}
       >
         <Sidebar.MenuIcon>
           {conv.is_archived ? <Archive /> : <ConversationIcon agentKind={conv.agent_kind} />}
@@ -780,15 +976,18 @@ export function AppSidebar({
             draggable row. It is the keyboard and screen-reader entry point;
             pointer users may still drag the row itself. Hidden on coarse
             pointers because DnD is disabled there and the row-actions dialog
-            is the touch path. */}
+            is the touch path; on fine pointers it appears on hover, the way a
+            file tree's handle does — see `conv-grip` in `index.css`. */}
         <Sidebar.MenuAction
           slot="drag"
           aria-label={t('sidebar.dragConversation', { name: title })}
-          className="hidden pointer-fine:flex cursor-grab active:cursor-grabbing"
+          className="conv-grip hidden pointer-fine:flex cursor-grab active:cursor-grabbing"
         >
           <Grip />
         </Sidebar.MenuAction>
-        <Sidebar.MenuChip>
+        <Sidebar.MenuChip className="gap-1">
+          {/* Hover swaps this for the action buttons — see `conv-time`. */}
+          <span className="conv-time">{relativeTime(conv.updated_at)}</span>
           {/* Pinned rows were sorted to the top and said nothing about why they
               were there. */}
           {conv.is_pinned && <Pin aria-label={t('contextMenu.pin')} className="size-3 text-muted" />}
@@ -799,6 +998,8 @@ export function AppSidebar({
     )
   }
 
+  const searchShortcut = platform === null ? 'Ctrl/⌘ K' : platform === 'macos' || platform === 'ios' ? '⌘ K' : 'Ctrl K'
+
   const chatSide = (prefix: string, collapsed: boolean) => (
     <>
       <Sidebar.Header>
@@ -806,9 +1007,8 @@ export function AppSidebar({
           {/* One row for all three ways a conversation comes into being. The
               row itself is the common one — a click is a new chat — and the
               two hosted ways live in the row's own menu, the same affordance
-              every conversation row already carries. Three header rows were
-              three icons in the collapsed rail, crowding out the tree. */}
-          <Sidebar.MenuItem id={`${prefix}new`} textValue={t('sidebar.newChat')} onAction={createConversation}>
+              every conversation row already carries. */}
+          <Sidebar.MenuItem id={`${prefix}new`} textValue={t('sidebar.newChat')} onAction={() => createConversation()}>
             <Sidebar.MenuIcon>
               <Plus />
             </Sidebar.MenuIcon>
@@ -851,6 +1051,19 @@ export function AppSidebar({
               </Sidebar.MenuActions>
             )}
           </Sidebar.MenuItem>
+          {/* The palette's third door, and the sheet's only one: a phone has
+              no `mod` key to press and no header button while the sheet is
+              open. The chip writes the shortcut down where a desktop reader
+              will look for it; Pro hides it in the rail on its own. */}
+          <Sidebar.MenuItem id={`${prefix}search`} textValue={t('sidebar.search')} onAction={openSearch}>
+            <Sidebar.MenuIcon>
+              <Magnifier />
+            </Sidebar.MenuIcon>
+            <Sidebar.MenuLabel>{t('sidebar.search')}</Sidebar.MenuLabel>
+            <Sidebar.MenuChip>
+              <span>{searchShortcut}</span>
+            </Sidebar.MenuChip>
+          </Sidebar.MenuItem>
         </Sidebar.Menu>
         {showNewHosted && (
           <NewHostedSessionForm
@@ -876,140 +1089,88 @@ export function AppSidebar({
       </Sidebar.Header>
 
       <Sidebar.Content>
-        <Sidebar.Group>
-          <Sidebar.GroupLabel>
-            <span className="flex flex-1 items-center justify-between">
-              {t('sidebar.projects')}
-              <Button
-                isIconOnly
-                size="sm"
-                variant="ghost"
-                aria-label={t('sidebar.newProject')}
-                onPress={() => setShowNewProject(true)}
-                className="touch-hitbox size-6 rounded-md text-muted"
-              >
-                <FolderPlus />
-              </Button>
-            </span>
-          </Sidebar.GroupLabel>
-          {rowMenu(
-            `${prefix}tree`,
+        {/* Nothing below the header exists in the icon rail. Pro would keep
+            every conversation row as an anonymous icon — the group labels are
+            `display: none` there, so the rows lose the only thing that told
+            them apart — and a column of identical chat icons crowds out the
+            rail's real destinations. A conversation is reached through the
+            reopened panel or the palette either way. */}
+        {!collapsed &&
+          rowMenu(
+            `${prefix}groups`,
             hitActions,
-            <Sidebar.Menu
-              // `project-tree` is ours, and only for the spacer rule in
-              // `index.css` — see the note there.
-              className="project-tree"
-              aria-label={t('sidebar.projects')}
-              dragAndDropHooks={projectTreeDnd}
-              // Folding the tree while the panel is collapsed is *Pro's* work,
-              // not ours: the icon rail drops submenu rows from the collection
-              // whatever `expandedKeys` says (measured — the test named after
-              // the rail pins it, and is the tripwire if an upgrade stops).
-              // The set here survives a collapse untouched, so reopening the
-              // panel restores exactly what was open.
-              expandedKeys={[...expanded].map((id) => `${prefix}project-${id}`)}
-              onExpandedChange={(keys) =>
-                setExpanded(new Set([...keys].map((key) => String(key).slice(`${prefix}project-`.length))))
-              }
-            >
-              <Sidebar.MenuItem
-                id={`${prefix}all-projects`}
-                textValue={t('sidebar.allProjects')}
-                isCurrent={activeProjectId === null}
-                onAction={() => selectProject(null)}
-              >
-                <Sidebar.MenuIcon>
-                  <FolderOpen />
-                </Sidebar.MenuIcon>
-                <Sidebar.MenuLabel>{t('sidebar.allProjects')}</Sidebar.MenuLabel>
-                {/* The DnD hook is attached to the whole Tree, so RAC expects
-                    every item to expose the slot. This row is a destination,
-                    never a source; the inert hidden button only satisfies the
-                    collection contract. */}
-                <Sidebar.MenuAction slot="drag" isDisabled aria-hidden className="hidden">
-                  <span />
-                </Sidebar.MenuAction>
-              </Sidebar.MenuItem>
+            <>
               {projects.map((project) => (
-                <Sidebar.MenuItem
+                <ConversationGroup
                   key={project.id}
-                  id={`${prefix}project-${project.id}`}
-                  data-row-id={project.id}
-                  data-row-kind="project"
-                  textValue={project.name}
+                  projectId={project.id}
+                  title={project.name}
                   isCurrent={project.id === activeProjectId}
-                  onAction={() => selectProject(project.id)}
-                >
-                  {/* Before the icon, so the tree has one straight edge to read
-                      down. It has to be a direct child of the item: Pro turns it
-                      into the row's `slot="chevron"` button only here, and put
-                      inside `MenuLabel` — as the docs' own first example does —
-                      it renders as a bare, unclickable svg. */}
-                  <Sidebar.MenuTrigger>
-                    <Sidebar.MenuIndicator />
-                  </Sidebar.MenuTrigger>
-                  <Sidebar.MenuIcon>
-                    <ProjectIcon sourceType={project.source_type} />
-                  </Sidebar.MenuIcon>
-                  <Sidebar.MenuLabel>{project.name}</Sidebar.MenuLabel>
-                  <Sidebar.MenuAction slot="drag" isDisabled aria-hidden className="hidden">
-                    <span />
-                  </Sidebar.MenuAction>
-                  <RowActionsMenu label={project.name} actions={projectActions(project)} />
-                  {/* A marker, not an element: Pro lifts these out and renders
-                      them as sibling rows one level deeper. So a conversation
-                      row is never a DOM descendant of its project, which is what
-                      keeps the `closest('[data-row-id]')` read above landing on
-                      the row that was actually clicked. */}
-                  <Sidebar.Submenu>
-                    {(filed.get(project.id) ?? []).map((conv) => conversationItem(prefix, conv))}
-                  </Sidebar.Submenu>
-                </Sidebar.MenuItem>
+                  folded={folded.has(project.id)}
+                  conversations={filed.get(project.id) ?? []}
+                  onToggleFold={() => toggleFold(project.id)}
+                  // Toggling, because the "all projects" row this list used to
+                  // open with is gone: deselecting the current project is the
+                  // only way left to say "no project".
+                  onSelectToggle={() => selectProject(project.id === activeProjectId ? null : project.id)}
+                  onNewConversation={() => createConversation(project.id)}
+                  actions={projectActions(project)}
+                  dndDisabled={dndDisabled}
+                  dragConversations={dragConversations}
+                  moveDropped={moveDropped}
+                  renderConversation={(conv) => conversationItem(prefix, conv)}
+                />
               ))}
-            </Sidebar.Menu>,
+              {/* The conversations belonging to no project. Always rendered,
+                  even empty: its header is the drop that unfiles, and hiding
+                  it when everything is filed would leave dragging *out* of a
+                  project with nowhere to land. */}
+              <ConversationGroup
+                projectId={null}
+                title={t('sidebar.conversations')}
+                isCurrent={false}
+                folded={folded.has(LOOSE_KEY)}
+                conversations={loose}
+                onToggleFold={() => toggleFold(LOOSE_KEY)}
+                onNewConversation={() => createConversation(null)}
+                dndDisabled={dndDisabled}
+                dragConversations={dragConversations}
+                moveDropped={moveDropped}
+                renderConversation={(conv) => conversationItem(prefix, conv)}
+              />
+              <Sidebar.Group>
+                <Sidebar.Menu aria-label={t('sidebar.newProject')}>
+                  <Sidebar.MenuItem
+                    id={`${prefix}new-project`}
+                    textValue={t('sidebar.newProject')}
+                    onAction={() => setShowNewProject(true)}
+                  >
+                    <Sidebar.MenuIcon>
+                      <FolderPlus />
+                    </Sidebar.MenuIcon>
+                    <Sidebar.MenuLabel className="text-muted">{t('sidebar.newProject')}</Sidebar.MenuLabel>
+                  </Sidebar.MenuItem>
+                </Sidebar.Menu>
+                {showNewProject && (
+                  <NewProjectForm
+                    draft={projectDraft}
+                    creation={projectCreation}
+                    onSubmit={async (name, path) => {
+                      await onCreateProject(name, path)
+                      setShowNewProject(false)
+                      projectDraft.reset()
+                      projectCreation.reset()
+                    }}
+                    onCancel={() => {
+                      setShowNewProject(false)
+                      projectDraft.reset()
+                      projectCreation.reset()
+                    }}
+                  />
+                )}
+              </Sidebar.Group>
+            </>,
           )}
-          {showNewProject && (
-            <NewProjectForm
-              draft={projectDraft}
-              creation={projectCreation}
-              onSubmit={async (name, path) => {
-                await onCreateProject(name, path)
-                setShowNewProject(false)
-                projectDraft.reset()
-                projectCreation.reset()
-              }}
-              onCancel={() => {
-                setShowNewProject(false)
-                projectDraft.reset()
-                projectCreation.reset()
-              }}
-            />
-          )}
-        </Sidebar.Group>
-
-        {/* What is left after the tree: the conversations that belong to no
-            project. They keep a group of their own rather than a node of their
-            own, because someone who has never made a project should not be
-            asked to open one to reach their chats.
-
-            Not in the icon rail, though. Pro folds the *nested* conversations
-            away with their projects, but these have no project to fold under,
-            so each one stayed behind as an unlabelled chat icon — a column of
-            identical rows that crowded the rail's real destinations out. A
-            conversation is reached through the reopened panel or ⌘K either
-            way; an icon nobody can tell apart is not a way to reach it. */}
-        {!collapsed && loose.length > 0 && (
-          <Sidebar.Group>
-            <Sidebar.GroupLabel>{t('sidebar.conversations')}</Sidebar.GroupLabel>
-            {rowMenu(
-              `${prefix}loose`,
-              hitActions,
-              <Sidebar.Menu aria-label={t('sidebar.conversations')} dragAndDropHooks={looseDnd}>
-                {loose.map((conv) => conversationItem(prefix, conv))}
-              </Sidebar.Menu>,
-            )}
-          </Sidebar.Group>
-        )}
       </Sidebar.Content>
 
       <Sidebar.Footer>
@@ -1047,8 +1208,8 @@ export function AppSidebar({
   // taking the whole screen down with it. The two sides share no state, so
   // there is nothing a remount costs.
   // `collapsed` is per copy, not global: only the desktop panel has an icon
-  // rail. The mobile sheet is either fully open or not rendered, so its tree
-  // never needs to fold.
+  // rail. The mobile sheet is either fully open or not rendered, so its groups
+  // never need to fold away.
   const side = (prefix: string, collapsed: boolean) => (
     <Fragment key={page === 'settings' ? 'settings' : 'chat'}>
       {page === 'settings' ? settingsSide(prefix) : chatSide(prefix, collapsed)}
@@ -1061,8 +1222,11 @@ export function AppSidebar({
           footer: `[data-state=collapsed] .sidebar__header` sets its own inline
           padding at a specificity a utility cannot reach, so a cutout would be
           honoured until the sidebar was collapsed and then quietly stop being. */}
-      <Sidebar className="pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)]">
-        {side('d-', !isOpen)}
+      <Sidebar
+        style={page === 'settings' ? undefined : DENSITY}
+        className="pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)]"
+      >
+        {side('d-', isIconCollapsed)}
       </Sidebar>
       {/* Renders nothing above 768px. Below it Pro hides the panel outright, so
           without this a narrow window would have a toggle that toggles nothing.

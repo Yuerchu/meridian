@@ -209,11 +209,7 @@ function ApprovalToast({
               is a decision, so what the call *is* keeps the first line and what
               it is *for* gets the second — the reverse hid the path a
               `write_file` was being approved for. */}
-          {description !== null && (
-            <span className="mt-0.5 line-clamp-2 break-words text-xs" title={description}>
-              {description}
-            </span>
-          )}
+          {description !== null && <span className="mt-0.5 line-clamp-2 break-words text-xs">{description}</span>}
           {/* The sandbox asked once already and was refused by the sandbox, not
               by a person. Without this the second question looks identical to
               the first. */}

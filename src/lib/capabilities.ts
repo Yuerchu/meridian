@@ -35,14 +35,15 @@ export const can = {
   /**
    * Drop a file onto the composer.
    *
-   * Not a policy so much as a limit of the mechanism: Tauri's drag-and-drop is
-   * native and hands over *paths*, never a `File`. A path names something on the
-   * device the user is at, which in remote mode is not the machine that would
-   * have to read it. The picker gets around this with a real `<input
-   * type="file">`; there is no equivalent for the native drop, so it is simply
-   * not offered, and the picker beside it still is.
+   * True everywhere since the drop moved off Tauri's native handler onto the
+   * DOM's own events (see `use-file-drop`): an HTML5 drop hands over `File`
+   * objects — the bytes, not a path — which is exactly what remote mode's
+   * `/upload` has always taken, and what `upload_file_bytes` now takes on the
+   * host. The limit the old `!isRemote` recorded belonged to the mechanism,
+   * and went with it. Kept as a capability rather than deleted, because it is
+   * still a fact about the *session* the composer asks about.
    */
-  dropFiles: !isRemote,
+  dropFiles: true,
   /** Reconfigure the servers this app runs, including the one answering. */
   manageServers: !isRemote,
 } as const

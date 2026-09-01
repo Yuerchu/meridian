@@ -978,6 +978,9 @@ function ProviderEditor({
   // user to enter a key they already have — and saving one rewrites the store
   // under a fresh passphrase, which is how the *other* providers' keys get lost.
   const [keyStatus, setKeyStatus] = useState<'loading' | 'set' | 'unset' | 'error'>('loading')
+  /** What went wrong saving a key or switching the sign-in method, said under
+   *  the field rather than in the browser's own dialog. */
+  const [credentialError, setCredentialError] = useState<string | null>(null)
   const [savingKey, setSavingKey] = useState(false)
   const [keySaved, markKeySaved] = useTemporaryFlag()
   const [saved, markSaved] = useTemporaryFlag()
@@ -1115,6 +1118,7 @@ function ProviderEditor({
       setApiFormat(nextFormat)
       setBaseUrl(nextUrl)
       try {
+        setCredentialError(null)
         await api.updateProvider({
           id: provider.id,
           credentialKind: next.credential_kind,
@@ -1127,7 +1131,7 @@ function ProviderEditor({
         onUpdate()
       } catch (err) {
         console.error('Failed to switch the sign-in method:', err)
-        alert(String(err))
+        setCredentialError(String(err))
       }
     },
     [catalog, providerType, activeAuth, apiFormat, baseUrl, provider.id, markSaved, onUpdate],
@@ -1136,6 +1140,7 @@ function ProviderEditor({
   const handleSaveKey = useCallback(async () => {
     if (!apiKey.trim()) return
     setSavingKey(true)
+    setCredentialError(null)
     try {
       await api.setProviderKey({ providerId: provider.id, apiKey: apiKey.trim() })
       setKeyStatus('set')
@@ -1143,7 +1148,7 @@ function ProviderEditor({
       markKeySaved()
     } catch (err) {
       console.error('Failed to save key:', err)
-      alert(String(err))
+      setCredentialError(String(err))
     } finally {
       setSavingKey(false)
     }
@@ -1452,6 +1457,11 @@ function ProviderEditor({
           )}
           {keyStatus === 'error' && (
             <p className="text-xs text-warning-soft-foreground">{t('settings.provider.apiKeyCheckFailed')}</p>
+          )}
+          {credentialError && (
+            <p role="alert" className="text-xs text-danger break-all">
+              {credentialError}
+            </p>
           )}
         </div>
       )}

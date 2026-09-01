@@ -207,7 +207,25 @@ export default function ScrollLab() {
           role: 'assistant',
           content: '',
           sort_order: seeded.length,
-          _blocks: [{ type: 'text', text: `历史回答 ${i + 1}。\n\n` + ANSWER_CHUNKS.slice(0, 6).join('') }],
+          _blocks: [
+            { type: 'text', text: `历史回答 ${i + 1}。\n\n` + ANSWER_CHUNKS.slice(0, 6).join('') },
+            // Every other answer carries a call, so a long seeded history
+            // exercises the keyboard and its panels, not just prose.
+            ...(i % 2 === 1
+              ? [
+                  {
+                    type: 'tool_call' as const,
+                    data: {
+                      call_id: nextId('seed-call'),
+                      tool_name: 'read_file',
+                      arguments: JSON.stringify({ path: `src/history/${i}.ts` }),
+                      status: 'completed' as const,
+                      result: 'export const seeded = true\n'.repeat(12),
+                    },
+                  },
+                ]
+              : []),
+          ],
         }),
       )
     }
@@ -414,9 +432,13 @@ export default function ScrollLab() {
     await frames(6)
     finishTool()
     await frames(6)
-    // Twice through, so the answer clears the viewport with room to spare: it
-    // has to still be out of sight once the turn collapses.
-    for (let i = 4; i < ANSWER_CHUNKS.length * 2; i++) {
+    // Three times through, so the answer clears the viewport with room to
+    // spare. Twice used to be enough, while the tool card stayed open after
+    // its result landed; the keyboard shuts its panel as soon as the tool
+    // returns, which is right, and takes the card's height off the answer.
+    // An answer that fits the viewport is *meant* to stay put at the end of
+    // a turn (scenario 4), so this one has to be long enough not to.
+    for (let i = 4; i < ANSWER_CHUNKS.length * 3; i++) {
       streamChunk(i)
       await frames(4)
     }
@@ -572,6 +594,44 @@ export default function ScrollLab() {
       detail: `行内按钮=${rowButton != null}，mode=${afterHarmlessInput.mode}，距底 ${afterHarmlessInput.distanceFromBottom}`,
     })
 
+    // 7b. Following the stream is a jump per chunk, not a journey: the viewport
+    // must not put on its "autoscrolling" face — which hides the scrollbar
+    // thumb — for any of them, or the thumb blinks at the reader for as long
+    // as the answer streams. Only a smooth scroll earns the attribute.
+    reset()
+    await frames(4)
+    seedHistory(3)
+    await frames(8)
+    sendUser(false)
+    await frames(6)
+    startAssistant()
+    await frames(4)
+    let thumbHidden = 0
+    const vpForThumb = viewport()
+    const thumbObserver =
+      vpForThumb &&
+      new MutationObserver((records) => {
+        for (const record of records) {
+          if (record.attributeName === 'data-autoscrolling' && vpForThumb.hasAttribute('data-autoscrolling')) {
+            thumbHidden += 1
+          }
+        }
+      })
+    if (vpForThumb && thumbObserver) thumbObserver.observe(vpForThumb, { attributes: true })
+    for (let i = 0; i < 6; i++) {
+      streamChunk(i)
+      await frames(3)
+    }
+    thumbObserver?.disconnect()
+    const whileStreaming = metrics()
+    out.push({
+      name: '已在底部：跟随流式不隐藏滚动条',
+      pass: thumbObserver != null && thumbHidden === 0 && whileStreaming.mode === 'follow',
+      detail: `拇指隐藏 ${thumbHidden} 次，mode=${whileStreaming.mode}`,
+    })
+    finishTurn()
+    await settled()
+
     // 8. More anchored DOM does not necessarily mean the user sent a turn. A
     // longer branch or a refreshed history path can add rows while no answer is
     // live, and must leave an idle reader exactly where they were.
@@ -724,6 +784,14 @@ export default function ScrollLab() {
         <span className="text-sm font-semibold">滚动行为实验场</span>
         <Button size="sm" variant="outline" onClick={() => seedHistory()}>
           铺历史
+        </Button>
+        {/* Well past the transcript's window, so what this measures is the
+            cost of a long conversation as the product actually renders one. */}
+        <Button size="sm" variant="outline" onClick={() => seedHistory(200)}>
+          铺 200 轮
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => setHasTrailingRow((v) => !v)}>
+          尾部状态行
         </Button>
         <Button size="sm" variant="outline" onClick={() => sendUser(false)}>
           发短消息

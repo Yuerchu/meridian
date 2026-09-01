@@ -194,27 +194,49 @@
   }
 }
 
-/* The project tree keeps one straight edge to read down.
+/* A group header's own buttons — new-conversation and the "…" menu — appear on
+   hover, the way Pro shows a row's `.sidebar__menu-actions`; a group label is
+   not a menu item, so that rule cannot reach it and this one stands in.
+   Opacity rather than `display`, because a `display: none` button is skipped
+   by the tab order and these have to stay reachable by keyboard —
+   `:focus-within` is what shows them to it. Always visible in the mobile
+   sheet, where there is no hover to reveal them. */
+.sidebar-group-actions {
+  opacity: 0;
+}
+.sidebar__group-label:hover .sidebar-group-actions,
+.sidebar-group-actions:focus-within,
+.sidebar-group-actions:has([aria-expanded='true']),
+.sidebar__mobile .sidebar-group-actions {
+  opacity: 1;
+}
 
-   Pro hides the expand button on a row that has no children
-   (`.sidebar__menu-item:not([data-has-child-items]) .sidebar__menu-trigger
-   { display: none }`), which is right for a flat menu and wrong for a tree: an
-   empty project's icon would slide 20px left, under its siblings' chevrons, and
-   a nested conversation's would not line up with anything. Hidden rather than
-   absent, so the column stays.
+/* The drag handle appears on hover, the way a file tree's does. Same opacity
+   reasoning as above: the grip is the keyboard's entry point into a drag, so
+   it may not leave the tab order. The coarse-pointer case is handled by the
+   `hidden pointer-fine:flex` utilities on the element itself. */
+.sidebar__menu-item .conv-grip {
+  opacity: 0;
+}
+.sidebar__menu-item:is(:hover, [data-hovered='true']) .conv-grip,
+.conv-grip:focus-visible {
+  opacity: 1;
+}
 
-   Scoped to the one menu that is a tree. Applied to `.sidebar__menu-item` at
-   large it would punch a 20px hole into the settings list, every row of which
-   is childless. */
-.project-tree .sidebar__menu-item:not([data-has-child-items]) .sidebar__menu-trigger {
-  display: flex;
-  visibility: hidden;
+/* Hovering a row swaps the time-ago chip for the action buttons. At the
+   panel's density a 240px row cannot hold the title, the chip *and* the
+   hover-revealed grip and menu button; the time is the one of those a pointer
+   resting on the row has the least need of, and the tooltip repeats it in
+   full. */
+.sidebar__menu-item:is(:hover, [data-hovered='true']) .conv-time {
+  display: none;
 }
 
 /* Where a dragged conversation would land. React Aria marks the row under the
-   pointer with `data-drop-target`, and the whole loose list when the drop is a
-   root drop; Pro has no styles for either, so an unstyled drag gives no sign
-   of what letting go would do. `--accent` is the action colour. */
+   pointer with `data-drop-target`, the whole list when the drop is a root
+   drop, and a group header's `DropZone` likewise; Pro has no styles for any of
+   them, so an unstyled drag gives no sign of what letting go would do.
+   `--accent` is the action colour. */
 .sidebar__menu-item[data-drop-target] .sidebar__menu-item-content {
   box-shadow: inset 0 0 0 1px var(--accent);
 }
@@ -222,6 +244,10 @@
   outline: 1px dashed var(--accent);
   outline-offset: -1px;
   border-radius: var(--radius);
+}
+.sidebar-group-drop[data-drop-target] {
+  box-shadow: inset 0 0 0 1px var(--accent);
+  background-color: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 /* HeroUI ships a `dark` variant that also falls back to `prefers-color-scheme`.
@@ -326,6 +352,18 @@
   --chart-2: oklch(74.6% 0.136 196.1);
   --chart-3: var(--info);
   --chart-4: oklch(66.8% 0.196 330.2);
+
+  /* Project extension. The two bubble fills of the transcript, as tokens of
+     their own rather than `bg-accent` and `bg-default` written at the call
+     site. What a message bubble is filled with is a first-class decision — it
+     is the one colour on screen that says who is speaking — and it is not the
+     same decision as "the main action colour" or "the neutral hover wash",
+     even while it happens to share their values. Referenced, so the dark theme
+     follows without a second definition; retune here, not in the component. */
+  --bubble-user: var(--accent);
+  --bubble-user-foreground: var(--accent-foreground);
+  --bubble-assistant: var(--default);
+  --bubble-assistant-foreground: var(--foreground);
 
   --border: oklch(0.922 0 0);
   --separator: oklch(0.922 0 0);

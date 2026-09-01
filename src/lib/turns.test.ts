@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildTurns, formatDuration, hasCollapsibleProcess, markQueued } from '@/lib/turns'
+import { buildTurns, formatDuration, isBlockingCall, markQueued } from '@/lib/turns'
 import { reconcileTurns } from '@/hooks/use-turns'
 import type { ContentBlock, MessageViewModel, ToolCallDisplay } from '@/types'
 
@@ -41,6 +41,8 @@ function msg(role: MessageViewModel['role'], over: Partial<MessageViewModel> = {
 function tool(name: string, status: ToolCallDisplay['status'] = 'completed'): ContentBlock {
   return { type: 'tool_call', data: { call_id: `${name}-1`, tool_name: name, arguments: '{}', status } }
 }
+
+const NESTED = { approval_id: 'n1', call_id: 'inner', tool_name: 'run_command', arguments: '{}' }
 
 const text = (t: string): ContentBlock => ({ type: 'text', text: t })
 const thinking = (t: string): ContentBlock => ({ type: 'thinking', text: t })
@@ -144,7 +146,7 @@ describe('buildTurns — result', () => {
     const turn = buildTurns([u, a])[0]
     expect(turn.status).toBe('complete')
     expect(turn.result?.text).toBe('')
-    expect(turn.result?.blocks).toEqual([{ type: 'sticker', sticker_id: 's1', name: 'wave' }])
+    expect(turn.result?.messageId).toBe(a.id)
     expect(turn.summary.toolCount).toBe(1)
   })
 
@@ -157,7 +159,7 @@ describe('buildTurns — result', () => {
     const turn = buildTurns([u, a])[0]
     expect(turn.result?.text).toBe('here is the answer')
     expect(turn.result?.messageId).toBe(a.id)
-    expect(turn.steps.map((s) => s.kind)).toEqual(['thinking', 'text', 'tool'])
+    expect(turn.summary).toEqual({ toolCount: 1, thinkingCount: 1, textCount: 2 })
     expect(turn.status).toBe('complete')
   })
 
@@ -167,27 +169,23 @@ describe('buildTurns — result', () => {
     const turn = buildTurns([u, a])[0]
     expect(turn.result?.text).toBe('short answer')
     expect(turn.summary.toolCount).toBe(0)
-    // Reasoning alone is not a process worth collapsing — it collapses itself.
-    expect(hasCollapsibleProcess(turn)).toBe(false)
   })
 
-  it('collapses a turn whose only tool is still awaiting approval', () => {
+  it('counts a tool that is still awaiting approval', () => {
     const u = msg('user', { content: 'q' })
     const a = msg('assistant', { _blocks: [text('need to run this'), tool('run_command', 'pending')] })
     const turn = buildTurns([u, a])[0]
-    // The pending call moves to `pinned`, so a toolCount-only test would miss it.
-    expect(turn.summary.toolCount).toBe(0)
-    expect(hasCollapsibleProcess(turn)).toBe(true)
+    expect(turn.summary.toolCount).toBe(1)
+    expect(turn.status).toBe('awaiting-input')
   })
 
-  it('keeps mid-turn narration in the collapsed region', () => {
+  it('takes only the last row as the conclusion when narration came before a call', () => {
     const u = msg('user', { content: 'q' })
     const a1 = msg('assistant', { _blocks: [text('first, some context'), tool('read_file')] })
     const a2 = msg('assistant', { _blocks: [text('and here is the answer')] })
     const turn = buildTurns([u, a1, a2])[0]
-    expect(turn.summary.textCount).toBe(1)
+    expect(turn.summary.textCount).toBe(2)
     expect(turn.result?.text).toBe('and here is the answer')
-    expect(hasCollapsibleProcess(turn)).toBe(true)
   })
 
   it('reports interrupted when the turn ends on a tool call', () => {
@@ -196,7 +194,6 @@ describe('buildTurns — result', () => {
     const turn = buildTurns([u, a])[0]
     expect(turn.result).toBeNull()
     expect(turn.status).toBe('interrupted')
-    expect(hasCollapsibleProcess(turn)).toBe(true)
   })
 
   it('reports empty when the turn produced no text at all', () => {
@@ -207,13 +204,12 @@ describe('buildTurns — result', () => {
     expect(turn.status).toBe('empty')
   })
 
-  it('pins a pending tool outside the collapsed region', () => {
+  it('reads a pending tool as the turn waiting on the user', () => {
     const u = msg('user', { content: 'q' })
     const a = msg('assistant', { _blocks: [text('need approval'), tool('run_command', 'pending')] })
     const turn = buildTurns([u, a])[0]
     expect(turn.status).toBe('awaiting-input')
-    expect(turn.pinned).toHaveLength(1)
-    expect(turn.steps.some((s) => s.kind === 'tool')).toBe(false)
+    expect(turn.result).toBeNull()
   })
 
   /** The reported bug: "看下 main.py" rendered below the approval it announced.
@@ -231,40 +227,48 @@ describe('buildTurns — result', () => {
     })
     const turn = buildTurns([u, a])[0]
 
-    // Nothing has concluded while the turn is blocked, so both lines stay in
-    // the process — where they still read before the approval.
+    // Nothing has concluded while the turn is blocked: the second line is
+    // introducing the call, not answering the question.
     expect(turn.result).toBeNull()
-    expect(turn.steps.flatMap((s) => (s.kind === 'text' ? [s.text] : []))).toEqual([
-      'let me look around',
-      'now let me read main.py',
-    ])
-    expect(turn.pinned).toHaveLength(1)
     expect(turn.status).toBe('awaiting-input')
   })
 
-  it('pins ask_user while it is still running', () => {
+  it('treats a running ask_user as waiting on the user', () => {
     const u = msg('user', { content: 'q' })
     const a = msg('assistant', { _blocks: [tool('ask_user', 'running')] })
     const turn = buildTurns([u, a])[0]
     expect(turn.status).toBe('awaiting-input')
-    expect(turn.pinned).toHaveLength(1)
   })
 
-  it('lets a resolved ask_user fall back into the collapsed region', () => {
+  it('stops waiting once ask_user has been answered', () => {
     const u = msg('user', { content: 'q' })
     const a = msg('assistant', { _blocks: [tool('ask_user', 'completed'), text('thanks')] })
     const turn = buildTurns([u, a])[0]
-    expect(turn.pinned).toHaveLength(0)
-    expect(turn.steps.some((s) => s.kind === 'tool')).toBe(true)
     expect(turn.status).toBe('complete')
+    expect(turn.result?.text).toBe('thanks')
   })
 
-  it('keeps update_todos in the collapsed region', () => {
+  it('does not hold the turn open for update_todos', () => {
     const u = msg('user', { content: 'q' })
-    const a = msg('assistant', { _blocks: [tool('update_todos'), text('on it')] })
+    const a = msg('assistant', { _blocks: [tool('update_todos', 'running'), text('on it')] })
     const turn = buildTurns([u, a])[0]
-    expect(turn.pinned).toHaveLength(0)
+    expect(turn.status).toBe('complete')
     expect(turn.summary.toolCount).toBe(1)
+  })
+
+  it('names the three shapes of a call that blocks the turn', () => {
+    const call = (over: Partial<ToolCallDisplay>): ToolCallDisplay => ({
+      call_id: 'c',
+      tool_name: 'run_command',
+      arguments: '{}',
+      status: 'running',
+      ...over,
+    })
+    expect(isBlockingCall(call({ status: 'pending' }))).toBe(true)
+    expect(isBlockingCall(call({ tool_name: 'run_agent', nested_approval: NESTED }))).toBe(true)
+    expect(isBlockingCall(call({ tool_name: 'ask_user' }))).toBe(true)
+    expect(isBlockingCall(call({}))).toBe(false)
+    expect(isBlockingCall(call({ tool_name: 'ask_user', status: 'completed' }))).toBe(false)
   })
 
   it('marks only the last turn as streaming', () => {
@@ -388,8 +392,6 @@ describe('buildTurns — a hosted session writes rounds, not one row', () => {
     const turn = buildTurns([u, first, result, last])[0]
     expect(turn.status).toBe('complete')
     expect(turn.result?.text).toBe('Here is the answer.')
-    // The call still counts as process, so the turn collapses the way any
-    // answer with a tool in it does.
     expect(turn.summary.toolCount).toBe(1)
   })
 })
@@ -440,15 +442,14 @@ describe('buildTurns — turns that never finished', () => {
     expect(buildTurns([u, a], ctx).at(-1)!.status).toBe('streaming')
   })
 
-  /// Without a header there is nowhere to say it. A turn cut off part way
-  /// through a sentence has no tool calls, so the ordinary rule would render it
-  /// as a sentence that simply stops.
-  it('is always worth collapsing, even with nothing in it', () => {
+  /// A turn cut off part way through a sentence has no tool calls, so the
+  /// ordinary rule would read it as a finished answer that simply stops.
+  it('outranks a text-only answer too', () => {
     const u = msg('user', { content: 'q', turn_id: 't1' })
     const a = msg('assistant', { turn_id: 't1', _blocks: [text('half a sen')] })
 
-    expect(hasCollapsibleProcess(buildTurns([u, a]).at(-1)!)).toBe(false)
-    expect(hasCollapsibleProcess(buildTurns([u, a], crashed('t1')).at(-1)!)).toBe(true)
+    expect(buildTurns([u, a]).at(-1)!.status).toBe('complete')
+    expect(buildTurns([u, a], crashed('t1')).at(-1)!.status).toBe('crashed')
   })
 
   /// Rows written before turns were recorded carry no id, and inventing an

@@ -111,7 +111,6 @@ export function StickerImage({
     <img
       src={load.url}
       alt={name ?? t('chat.emoji.sticker')}
-      title={name}
       loading="lazy"
       width={128}
       height={128}
@@ -143,7 +142,6 @@ export function renderEmojisInText(text: string, emojiMap: EmojiMap): (string | 
           key={`${start}-${emojiName}`}
           src={entry.url}
           alt={emojiName}
-          title={emojiName}
           loading="lazy"
           width={48}
           height={48}

@@ -645,11 +645,14 @@ export function InputBar({
     if (paths) await attachPaths(Array.isArray(paths) ? paths : [paths])
   }, [attachPaths])
 
+  // Straight to the `file` form of an attachment: an HTML5 drop has no path
+  // to resolve, and `uploadAttachment` already knows what to do with bytes on
+  // both transports.
   const handleDropFiles = useCallback(
-    (paths: string[]) => {
-      void attachPaths(paths)
+    (files: File[]) => {
+      onAttachFiles?.(files.map((file) => ({ name: file.name, file })))
     },
-    [attachPaths],
+    [onAttachFiles],
   )
 
   const menuItems = (

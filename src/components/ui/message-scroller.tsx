@@ -38,8 +38,16 @@ function MessageScrollerViewport({
       aria-label={ariaLabel ?? t('chat.messages')}
       // scroll-fade-b（滚动驱动 mask 动画）与 contain-content 在 WebView2
       // 滚动时产生内容错位残影，与 content-visibility 崩溃同源，一并移除
+      //
+      // `overflow-anchor: none`: the scroller owns the scroll position, and
+      // the browser's own anchoring fights it. With fractional row heights the
+      // browser nudges `scrollTop` by a device pixel while the spacer is being
+      // re-solved, and a nudge upward that lands in the same event as the
+      // answer row appearing reads to `syncAfterScroll` as the reader leaving
+      // the live edge — `follow` became `idle` on the first chunk. Growth above
+      // an idle reader is compensated by `useHeightCompensation` instead.
       className={cn(
-        'size-full min-h-0 min-w-0 scrollbar-gutter-stable overflow-y-auto overscroll-contain data-autoscrolling:scrollbar-thumb-transparent data-autoscrolling:scrollbar-track-transparent',
+        'size-full min-h-0 min-w-0 scrollbar-gutter-stable overflow-y-auto overscroll-contain [overflow-anchor:none] data-autoscrolling:scrollbar-thumb-transparent data-autoscrolling:scrollbar-track-transparent',
         className,
       )}
       {...props}

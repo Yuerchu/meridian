@@ -169,7 +169,7 @@ export function AppShell(props: ShellProps) {
   useHistoryLevel(activeReviewId !== null, closePlanReview)
 
   const commandShortcut = platform === null ? 'Ctrl/⌘ K' : platform === 'macos' || platform === 'ios' ? '⌘ K' : 'Ctrl K'
-  const createConversation = async () => {
+  const createConversation = async (projectId?: string | null) => {
     const leavesSettings = page === 'settings'
     if (leavesSettings) {
       if (!(await requestLeaveSettings())) return
@@ -177,7 +177,7 @@ export function AppShell(props: ShellProps) {
     setActionError(null)
     try {
       closePlanReview()
-      await onCreate()
+      await onCreate(projectId)
       if (leavesSettings) clearSettingsTabDirty(settingsTab)
     } catch (error) {
       setActionError(t('sidebar.createConversationFailed', { error: String(error) }))
@@ -213,6 +213,7 @@ export function AppShell(props: ShellProps) {
           activeId={activeId}
           onSelect={(id) => void selectConversation(id)}
           onCreate={createConversation}
+          onOpenSearch={() => setPaletteOpen(true)}
           onDelete={onDelete}
           page={page}
           onOpenSettings={() => {

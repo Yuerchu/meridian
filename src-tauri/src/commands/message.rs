@@ -677,6 +677,16 @@ pub struct MessageFileUploadRequest {
     pub file_path: String,
 }
 
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MessageFileBytesUploadRequest {
+    pub conversation_id: String,
+    pub file_name: String,
+    /// The file's bytes, base64-encoded — Android has no raw IPC, and one
+    /// encoding shared by every platform beats a fast path only some have.
+    pub data_base64: String,
+}
+
 /// Read raw context only while its owning message is on this conversation's
 /// active branch. Knowing an item UUID is not authority to read a sibling's
 /// repository snapshot or command output.
@@ -1596,6 +1606,52 @@ pub async fn upload_file(
     let name = src.file_name().and_then(|n| n.to_str()).unwrap_or("file").to_string();
 
     Ok(UploadFileResponse::from_stored(uri, mime, name))
+}
+
+/// Store bytes that arrived without a path, answering with the same part
+/// `upload_file` produces. Two callers: the remote `/upload` endpoint, and
+/// `upload_file_bytes` below.
+pub fn store_uploaded_bytes(
+    app_data_dir: &std::path::Path,
+    conversation_id: &str,
+    file_name: &str,
+    bytes: &[u8],
+) -> Result<UploadFileResponse, String> {
+    let ext = file_name
+        .rsplit('.')
+        .next()
+        .filter(|e| e.len() <= 10 && !e.contains('/') && e.len() < file_name.len())
+        .unwrap_or("bin");
+    let (dest, uri) = meridian_core::files::alloc_dest(app_data_dir, conversation_id, ext)?;
+    std::fs::write(&dest, bytes).map_err(|e| e.to_string())?;
+    let mime = mime_guess::from_path(file_name).first_or_octet_stream().to_string();
+    Ok(UploadFileResponse::from_stored(uri, mime, file_name.to_string()))
+}
+
+/// `upload_file` for a file that never had a path. The window's native
+/// drag-drop handler is disabled (`dragDropEnabled: false` — in-page HTML5
+/// drag and drop cannot work with it on), so a file dropped on the window
+/// reaches JavaScript as a `File` object, and no WebView puts a filesystem
+/// path on one of those.
+#[tauri::command]
+pub async fn upload_file_bytes(
+    app: tauri::AppHandle,
+    request: MessageFileBytesUploadRequest,
+) -> Result<UploadFileResponse, String> {
+    use base64::Engine as _;
+    let MessageFileBytesUploadRequest {
+        conversation_id,
+        file_name,
+        data_base64,
+    } = request;
+    let services = app.services();
+    let app_data_dir = services.paths.data_dir.clone();
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data_base64)
+        .map_err(|e| format!("payload is not valid base64: {e}"))?;
+    tokio::task::spawn_blocking(move || store_uploaded_bytes(&app_data_dir, &conversation_id, &file_name, &bytes))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[cfg(test)]

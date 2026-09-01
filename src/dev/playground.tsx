@@ -17,32 +17,16 @@ import {
   ChatToolArgs,
   ChatToolContent,
   ChatToolError,
-  ChatToolGroup,
-  ChatToolGroupContent,
-  ChatToolGroupTrigger,
   ChatToolResult,
   ChatToolStatusIcon,
   ChatToolTrigger,
 } from '@/components/ui/chat-tool'
-import {
-  Turn,
-  TurnActions,
-  TurnBranchPager,
-  TurnContent,
-  TurnFooter,
-  TurnPinned,
-  TurnResult,
-  TurnStatusIcon,
-  TurnTrigger,
-  type TurnStatus,
-} from '@/components/ui/turn'
 import HeroUiLab from './heroui-lab'
 import ResponsiveLab, { ResponsiveFrame } from './responsive-lab'
 import SchemaLab from './schema-lab'
 import ScrollLab from './scroll-lab'
 import { ToolCallBlock } from '@/components/chat/tool-call-block'
 import { TurnItem } from '@/components/chat/turn-item'
-import { TurnSteps } from '@/components/chat/turn-steps'
 import { TodoBarView } from '@/components/chat/todo-bar'
 import TodoBoard from '@/components/chat/todo-board'
 import type { TodoDraft } from '@/components/chat/todo-list'
@@ -54,7 +38,7 @@ import { ChangesPanelView } from '@/components/chat/changes-panel'
 import { CommandPalette } from '@/components/layout/command-palette'
 import type { TouchedFile } from '@/lib/touched-files'
 import { useHotkey } from '@/hooks/use-hotkey'
-import { buildTurns, formatDuration, type TurnStep } from '@/lib/turns'
+import { buildTurns } from '@/lib/turns'
 import { useAppTheme } from '@/lib/theme'
 import type {
   ChatMode,
@@ -113,50 +97,6 @@ function caps(over: Partial<ProviderCapabilitiesInfoResponse> = {}): ProviderCap
   }
 }
 
-function step(over: Partial<TurnStep> & Pick<TurnStep, 'kind'>): TurnStep {
-  const base = { messageId: 'pg', blockIndex: 0 }
-  if (over.kind === 'tool') {
-    return { data: tool({ tool_name: 'read_file', status: 'completed' }), ...base, ...over } as TurnStep
-  }
-  return { text: '', ...base, ...over } as TurnStep
-}
-
-const DEMO_STEPS: TurnStep[] = [
-  step({ kind: 'thinking', text: '先确认改动范围，再决定从哪个文件读起。' }),
-  step({ kind: 'text', text: '我先看一下现有实现。' }),
-  step({
-    kind: 'tool',
-    data: tool({
-      tool_name: 'read_file',
-      status: 'completed',
-      arguments: '{"path":"src/lib/turns.ts"}',
-      result: 'export function buildTurns(...)',
-    }),
-  }),
-  step({ kind: 'text', text: '分组逻辑没问题，接着跑一遍测试。' }),
-  step({
-    kind: 'tool',
-    data: tool({
-      tool_name: 'run_command',
-      status: 'completed',
-      arguments: '{"command":"pnpm test"}',
-      result: '89 passed',
-    }),
-  }),
-]
-
-const MANY_STEPS: TurnStep[] = Array.from({ length: 40 }, (_, i) =>
-  step({
-    kind: 'tool',
-    data: tool({
-      tool_name: 'read_file',
-      status: 'completed',
-      call_id: `pg-many-${i}`,
-      arguments: `{"path":"src/file-${i}.ts"}`,
-    }),
-  }),
-)
-
 /** Fixed so the relative timestamps below stay on "刚刚" between reloads. */
 const PG_NOW = Date.now()
 
@@ -201,34 +141,57 @@ const ANSWER_MD = [
 ].join('\n')
 
 /**
- * A whole turn as the chat view renders it: avatar, attribution, the collapsed
- * process line and the footer. Built through `buildTurns` so the preview splits
- * process from conclusion the same way the real transcript does.
+ * A whole turn as the chat view renders it: the question bubble, the answer as
+ * a run of bubbles with their keyboards, the footer and the status line. Built
+ * through `buildTurns` so the preview cuts the answer into bubbles the same
+ * way the real transcript does.
  */
 function TurnItemCase({
   label,
   blocks,
+  rows,
   streaming = false,
+  crashed = false,
+  oneBot = false,
+  hosted = false,
+  question = '把审批矩阵那一节补完，然后我们定稿。',
+  previousTurnEndedAt = PG_NOW - 60_000,
 }: {
   label: string
-  blocks: ContentBlock[]
+  /** One assistant row. */
+  blocks?: ContentBlock[]
+  /** Several assistant rows, each a round of the loop; overrides `blocks`. */
+  rows?: { blocks: ContentBlock[]; modelId?: string }[]
   streaming?: boolean
+  crashed?: boolean
+  oneBot?: boolean
+  hosted?: boolean
+  question?: string | null
+  /** Null draws the date separator above the turn. */
+  previousTurnEndedAt?: number | null
 }) {
+  const assistantRows = rows ?? (blocks ? [{ blocks }] : [])
   const turns = buildTurns(
     [
-      msg({ id: `${label}-u`, role: 'user', content: '把审批矩阵那一节补完，然后我们定稿。', sort_order: 0 }),
-      msg({
-        id: `${label}-a`,
-        role: 'assistant',
-        content: ANSWER,
-        sort_order: 1,
-        created_at: PG_NOW + 450_000,
-        input_tokens: 611_603,
-        output_tokens: 6_699,
-        _blocks: blocks,
-      }),
+      ...(question === null
+        ? []
+        : [msg({ id: `${label}-u`, role: 'user', content: question, sort_order: 0, turn_id: 't' })]),
+      ...assistantRows.map((row, i) =>
+        msg({
+          id: `${label}-a${i}`,
+          role: 'assistant',
+          content: row.blocks.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('\n\n'),
+          sort_order: i + 1,
+          created_at: PG_NOW + 450_000 + i * 30_000,
+          model_id: row.modelId ?? 'gpt-4.1-mini',
+          input_tokens: i === assistantRows.length - 1 ? 611_603 : null,
+          output_tokens: i === assistantRows.length - 1 ? 6_699 : null,
+          turn_id: 't',
+          _blocks: row.blocks,
+        }),
+      ),
     ],
-    { streaming },
+    { streaming, crashedTurnIds: crashed ? new Set(['t']) : undefined },
   )
   return (
     <div className="w-full max-w-2xl space-y-1 rounded-xl border border-dashed border-border/60 p-4">
@@ -240,6 +203,9 @@ function TurnItemCase({
           conversationId="pg"
           isLastTurn={streaming}
           streaming={streaming}
+          isOneBot={oneBot}
+          isHosted={hosted}
+          previousTurnEndedAt={previousTurnEndedAt}
           onRegenerate={noop}
           onRate={noop}
           onDelete={noop}
@@ -250,93 +216,6 @@ function TurnItemCase({
 }
 
 function noop() {}
-
-/**
- * A turn collapse with local open state, so the header, the panel transition
- * and the footer can be exercised together.
- */
-function TurnCase({
-  label,
-  status,
-  steps = DEMO_STEPS,
-  durationMs = 586_000,
-  result = '改完了：分组层落在 `src/lib/turns.ts`，测试 89 项全过。',
-  pinned,
-  branch,
-  defaultOpen = false,
-}: {
-  label: string
-  status: TurnStatus
-  steps?: TurnStep[]
-  durationMs?: number | null
-  result?: string | null
-  pinned?: TurnStep[]
-  branch?: { index: number; total: number }
-  defaultOpen?: boolean
-}) {
-  const [open, setOpen] = useState(defaultOpen)
-  const [index, setIndex] = useState(branch?.index ?? 1)
-  const headline =
-    status === 'streaming'
-      ? '处理中…'
-      : status === 'crashed'
-        ? '还没结束就中断了'
-        : status === 'interrupted'
-          ? '已中断'
-          : status === 'awaiting-input'
-            ? '等待你的响应'
-            : durationMs != null
-              ? `已处理 ${formatDuration(durationMs)}`
-              : `${steps.length} 个步骤`
-
-  return (
-    <div className="group/turn w-full max-w-2xl space-y-1 rounded-xl border border-dashed border-border/60 p-4">
-      <div className="text-xs text-muted">{label}</div>
-      <Turn status={status} isExpanded={open} onExpandedChange={setOpen}>
-        <TurnTrigger>
-          <span className="inline-flex items-center gap-1.5">
-            <TurnStatusIcon />
-            {headline}
-          </span>
-        </TurnTrigger>
-        <TurnContent>
-          <TurnSteps steps={steps} />
-        </TurnContent>
-        {pinned && pinned.length > 0 && (
-          <TurnPinned>
-            <TurnSteps steps={pinned} />
-          </TurnPinned>
-        )}
-        {result && (
-          <TurnResult>
-            <p className="text-sm">{result}</p>
-          </TurnResult>
-        )}
-        <TurnFooter>
-          {branch && (
-            <TurnBranchPager
-              index={index}
-              total={branch.total}
-              onPrevious={() => setIndex((v) => Math.max(1, v - 1))}
-              onNext={() => setIndex((v) => Math.min(branch.total, v + 1))}
-              previousLabel="上一个版本"
-              nextLabel="下一个版本"
-            />
-          )}
-          <span className="text-muted">1,204 + 318 tokens</span>
-          <TurnActions>
-            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
-              复制
-            </Button>
-            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
-              重新生成
-            </Button>
-          </TurnActions>
-        </TurnFooter>
-      </Turn>
-    </div>
-  )
-}
 
 /**
  * The composer menu with nothing behind it: `providers` is empty, so the model
@@ -662,32 +541,6 @@ function Gallery() {
                 </ChatToolApproval>
               </ChatToolContent>
             </ChatTool>
-
-            <ChatToolGroup defaultExpanded>
-              <ChatToolGroupTrigger>2 tool calls</ChatToolGroupTrigger>
-              <ChatToolGroupContent>
-                <ChatTool state="output-available">
-                  <ChatToolTrigger>
-                    <ChatToolStatusIcon />
-                    <span className="text-muted">Used tool:</span>
-                    <span className="font-medium text-foreground">searchDocs</span>
-                  </ChatToolTrigger>
-                  <ChatToolContent>
-                    <ChatToolResult value={{ matches: 3 }} />
-                  </ChatToolContent>
-                </ChatTool>
-                <ChatTool state="output-available">
-                  <ChatToolTrigger>
-                    <ChatToolStatusIcon />
-                    <span className="text-muted">Used tool:</span>
-                    <span className="font-medium text-foreground">fetchPage</span>
-                  </ChatToolTrigger>
-                  <ChatToolContent>
-                    <ChatToolResult value={{ status: 200 }} />
-                  </ChatToolContent>
-                </ChatTool>
-              </ChatToolGroupContent>
-            </ChatToolGroup>
           </div>
         </Section>
 
@@ -1121,43 +974,150 @@ function Gallery() {
           </div>
         </Section>
 
-        <Section title="Turn / 折叠中间过程">
+        <Section title="TurnItem / 状态与形态">
           <div className="space-y-3">
-            <TurnCase label="complete · 有时长" status="complete" />
-            <TurnCase label="complete · 展开态" status="complete" defaultOpen />
-            <TurnCase label="streaming · 处理中" status="streaming" defaultOpen />
-            <TurnCase
-              label="awaiting-input · 待审批块留在折叠区外"
-              status="awaiting-input"
-              pinned={[
-                step({
-                  kind: 'tool',
-                  data: tool({ tool_name: 'run_command', status: 'pending', arguments: '{"command":"rm -rf dist"}' }),
-                }),
+            <TurnItemCase
+              label="多轮 · 同一模型的连续回答合成一组，头像贴底"
+              rows={[
+                {
+                  blocks: [
+                    { type: 'text', text: '我先看一下现有实现。' },
+                    {
+                      type: 'tool_call',
+                      data: tool({
+                        tool_name: 'read_file',
+                        status: 'completed',
+                        call_id: 'pg-g1',
+                        arguments: '{"path":"src/lib/turns.ts"}',
+                        result: 'export function buildTurns(...)',
+                      }),
+                    },
+                  ],
+                },
+                {
+                  blocks: [
+                    { type: 'text', text: '分组逻辑没问题，接着跑一遍测试。' },
+                    {
+                      type: 'tool_call',
+                      data: tool({
+                        tool_name: 'run_command',
+                        status: 'completed',
+                        call_id: 'pg-g2',
+                        arguments: '{"command":"pnpm test"}',
+                        result: '89 passed',
+                      }),
+                    },
+                  ],
+                },
+                { blocks: [{ type: 'text', text: ANSWER }] },
               ]}
-              result={null}
             />
-            <TurnCase label="interrupted · 无结论" status="interrupted" result={null} />
-            {/* 崩溃时最后一个工具后面还有文字：正是会被读成"已完成"的那种。
-                默认展开，因为断在哪才是这个状态唯一要说的事。 */}
-            <TurnCase
+            <TurnItemCase
+              label="换了模型 · 断成两组，各自一个头像"
+              rows={[
+                { modelId: 'gpt-4.1-mini', blocks: [{ type: 'text', text: '这个问题我答不好，换个模型。' }] },
+                { modelId: 'claude-sonnet-5', blocks: [{ type: 'text', text: ANSWER }] },
+              ]}
+            />
+            <TurnItemCase
+              label="只有工具没有话 · 裸键盘"
+              blocks={[
+                { type: 'thinking', text: '先确认改动范围，再决定从哪个文件读起。' },
+                {
+                  type: 'tool_call',
+                  data: tool({
+                    tool_name: 'read_file',
+                    status: 'completed',
+                    call_id: 'pg-bare',
+                    arguments: '{"path":"docs/approval.md"}',
+                    result: '## 审批矩阵',
+                  }),
+                },
+              ]}
+            />
+            <TurnItemCase
+              label="ask_user · 表单在面板里"
+              blocks={[
+                { type: 'text', text: '有两个方向，你选一个。' },
+                {
+                  type: 'tool_call',
+                  data: tool({
+                    tool_name: 'ask_user',
+                    status: 'pending',
+                    call_id: 'pg-ask',
+                    approval_id: 'pg-ask-appr',
+                    arguments: JSON.stringify({
+                      questions: [
+                        { id: 'q1', question: '先做哪一个？', options: [{ label: '气泡' }, { label: '键盘' }] },
+                      ],
+                    }),
+                  }),
+                },
+              ]}
+            />
+            <TurnItemCase
+              label="思考中 · 键盘上唯一的活动迹象"
+              streaming
+              blocks={[{ type: 'thinking', text: '用户想要 Telegram 那种样子……' }]}
+            />
+            <TurnItemCase
               label="crashed · 尾部有文字也不算完成"
-              status="crashed"
-              defaultOpen
-              result="改完了，文件已更新。"
+              crashed
+              blocks={[
+                {
+                  type: 'tool_call',
+                  data: tool({
+                    tool_name: 'edit_file',
+                    status: 'completed',
+                    call_id: 'pg-crash',
+                    arguments: '{"path":"src/a.ts","old_string":"a","new_string":"b"}',
+                  }),
+                },
+                { type: 'text', text: '改完了，文件已更新。' },
+              ]}
             />
-            <TurnCase
-              label="crashed · 工具跑到一半"
-              status="crashed"
-              defaultOpen
-              steps={[step({ kind: 'tool', data: tool({ tool_name: 'edit_file', status: 'orphaned' }) })]}
-              result={null}
-              durationMs={null}
+            <TurnItemCase
+              label="interrupted · 停在工具调用上"
+              blocks={[
+                { type: 'text', text: '我先跑一下。' },
+                {
+                  type: 'tool_call',
+                  data: tool({
+                    tool_name: 'run_command',
+                    status: 'completed',
+                    call_id: 'pg-int',
+                    arguments: '{"command":"pnpm test"}',
+                    result: '1 failed',
+                  }),
+                },
+              ]}
             />
-            <TurnCase label="empty · 一条文本都没有" status="empty" steps={[]} result={null} durationMs={null} />
-            <TurnCase label="无时长 · 退化显示步骤数" status="complete" durationMs={null} />
-            <TurnCase label="40 个步骤" status="complete" steps={MANY_STEPS} />
-            <TurnCase label="分支 2/3" status="complete" branch={{ index: 2, total: 3 }} />
+            <TurnItemCase
+              label="OneBot · 一条回复切成多个气泡"
+              oneBot
+              blocks={[{ type: 'text', text: '收到。\n---\n我看看。\n---\n这个可以改，稍等。' }]}
+            />
+            <TurnItemCase
+              label="贴纸 · 不进气泡"
+              blocks={[
+                {
+                  type: 'tool_call',
+                  data: tool({
+                    tool_name: 'send_sticker',
+                    status: 'completed',
+                    call_id: 'pg-stk',
+                    arguments: '{"name":"wave"}',
+                  }),
+                },
+                { type: 'sticker', sticker_id: 'pg-wave', name: 'wave' },
+              ]}
+            />
+            <TurnItemCase
+              label="换日 · 上方画日期分隔"
+              previousTurnEndedAt={null}
+              blocks={[{ type: 'text', text: ANSWER }]}
+            />
+            <TurnItemCase label="托管会话 · 组头不写模型 id" hosted blocks={[{ type: 'text', text: ANSWER }]} />
           </div>
         </Section>
 

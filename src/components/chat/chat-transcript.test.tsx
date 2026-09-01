@@ -46,12 +46,10 @@ function turn(id: number): Turn {
     id: `turn-${id}`,
     userMessage: null,
     assistantMessages: [],
-    steps: [],
-    pinned: [],
     result: null,
     status: 'complete',
     durationMs: null,
-    summary: { toolCount: 0, thinkingCount: 0, textCount: 0, lastToolName: null },
+    summary: { toolCount: 0, thinkingCount: 0, textCount: 0 },
     tokens: { input: null, output: null },
     usage: null,
     lastMessageId: `message-${id}`,
@@ -63,6 +61,13 @@ describe('ChatTranscript long-history window', () => {
   beforeEach(async () => {
     scroller.scrollToMessage.mockClear()
     await i18n.changeLanguage('en')
+    // These are about the window, not about laziness: with no observer every
+    // turn in the window is drawn. `lazy-turn.test.tsx` covers the observer.
+    vi.stubGlobal('IntersectionObserver', undefined)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
   it('renders a bounded tail and loads earlier chunks without content-visibility', async () => {

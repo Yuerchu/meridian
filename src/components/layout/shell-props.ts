@@ -31,7 +31,9 @@ export interface ShellProps {
   canDragWindow: boolean
 
   onSelect: (id: string) => void
-  onCreate: () => void | Promise<void>
+  /** Start a conversation — under `projectId` when given, under the active
+   *  project when the argument is omitted, loose when it is `null`. */
+  onCreate: (projectId?: string | null) => void | Promise<void>
   onDelete: (id: string) => void
   onRename: (id: string, newTitle: string) => void
   onTogglePin: (id: string) => void

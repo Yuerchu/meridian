@@ -59,8 +59,8 @@ interface ComposerProps {
    * have already been written, not about the one being typed.
    */
   queue?: ReactNode
-  /** Absolute paths of files dropped on the window. Desktop only. */
-  onDropFiles?: (paths: string[]) => void
+  /** Files dropped on the window, as the `File` objects an HTML5 drop carries. */
+  onDropFiles?: (files: File[]) => void
   /**
    * The field element, once there is one.
    *

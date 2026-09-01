@@ -21,7 +21,8 @@
         "decorations": true,
         "center": true,
         "backgroundColor": "#0a0a0a",
-        "visible": false
+        "visible": false,
+        "dragDropEnabled": false
       },
       {
         "label": "splashscreen",
