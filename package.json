@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build --configLoader native",
     "preview": "vite preview",
     "tauri": "tauri",
+    "typecheck": "tsc -b",
     "lint": "eslint src",
     "test": "vitest run --configLoader native --pool threads",
     "test:watch": "vitest --configLoader native --pool threads",

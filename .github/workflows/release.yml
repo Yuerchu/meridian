@@ -114,7 +114,7 @@ jobs:
       - run: pnpm install
 
       - name: TypeScript check
-        run: pnpm exec tsc -b
+        run: pnpm typecheck
 
       - name: Frontend tests
         run: pnpm test
