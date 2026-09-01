@@ -9,9 +9,8 @@ import { listen as tauriListen } from '@tauri-apps/api/event'
  * deliberate in the source (see the note on `transport`), which means a test
  * cannot flip it and has to reload instead.
  *
- * `api.test.ts` covers the other half: with no configuration stored, everything
- * below is a straight pass-through to `@tauri-apps/api/core`, and those 330
- * assertions are what says so.
+ * `api.test.ts` mocks this transport boundary and owns command argument shape;
+ * this file owns local/remote routing and response validation.
  */
 
 vi.mock('@tauri-apps/api/core')
@@ -44,8 +43,8 @@ class FakeSocket {
   }
 
   /** What the server sends the moment it has accepted the token. */
-  ready(assetTicket = 'ticket-1') {
-    this.onmessage?.({ data: JSON.stringify({ channel: 'remote-ready', payload: { assetTicket } }) })
+  ready(assetTicket = 'ticket-1', apiRev = 3) {
+    this.onmessage?.({ data: JSON.stringify({ channel: 'remote-ready', payload: { assetTicket, apiRev } }) })
   }
 }
 
@@ -117,9 +116,9 @@ describe('remote invoke', () => {
 
   it('unwraps ok', async () => {
     const { invoke } = await loadRemote()
-    respondWith({ ok: [{ id: '1' }] })
+    respondWith({ ok: 'new-token' })
 
-    await expect(invoke('list_conversations', { archived: false })).resolves.toEqual([{ id: '1' }])
+    await expect(invoke('regenerate_hooks_token')).resolves.toBe('new-token')
   })
 
   it('unwraps an ok that is null rather than treating it as absent', async () => {
@@ -151,6 +150,21 @@ describe('remote invoke', () => {
     await expect(invoke('chat', {})).rejects.toThrow('unreadable response (502)')
   })
 
+  it('rejects missing, mixed, and unknown response fields', async () => {
+    const { invoke } = await loadRemote()
+    for (const body of [{}, { ok: 1, err: 'no' }, { ok: 1, future: true }, { err: 7 }]) {
+      respondWith(body)
+      await expect(invoke('chat', {})).rejects.toThrow(/malformed response|err must be a string/)
+    }
+  })
+
+  it('rejects a malformed command payload inside an otherwise valid ok envelope', async () => {
+    const { invoke } = await loadRemote()
+    respondWith({ ok: [{ id: 'project-1' }] })
+
+    await expect(invoke('list_projects')).rejects.toThrow('must be present')
+  })
+
   it('reports a dead connection as one', async () => {
     const { invoke } = await loadRemote()
     vi.mocked(globalThis.fetch).mockRejectedValueOnce(new TypeError('Failed to fetch'))
@@ -160,26 +174,30 @@ describe('remote invoke', () => {
 })
 
 describe('commands that belong to this device', () => {
-  it.each(['get_secret', 'set_secret', 'delete_secret', 'get_platform', 'get_window_insets', 'take_photo'])(
-    '%s never leaves the device',
-    async (cmd) => {
-      const { invoke } = await loadRemote()
-      mockInvoke.mockClear()
-      mockInvoke.mockResolvedValueOnce('local answer')
+  it.each([
+    ['get_secret', 'local answer'],
+    ['set_secret', null],
+    ['delete_secret', true],
+    ['get_platform', 'windows'],
+    ['get_window_insets', { top: 0, right: 0, bottom: 0, left: 0, imeBottom: 0 }],
+    ['take_photo', 'file:///photo.jpg'],
+  ])('%s never leaves the device', async (cmd, answer) => {
+    const { invoke } = await loadRemote()
+    mockInvoke.mockClear()
+    mockInvoke.mockResolvedValueOnce(answer)
 
-      await expect(invoke(cmd, { key: 'K' })).resolves.toBe('local answer')
+    await expect(invoke(cmd, { key: 'K' })).resolves.toEqual(answer)
 
-      expect(mockInvoke).toHaveBeenCalledWith(cmd, { key: 'K' })
-      expect(globalThis.fetch).not.toHaveBeenCalled()
-    },
-  )
+    expect(mockInvoke).toHaveBeenCalledWith(cmd, { key: 'K' })
+    expect(globalThis.fetch).not.toHaveBeenCalled()
+  })
 
   it('sends everything else over the wire instead', async () => {
     const { invoke } = await loadRemote()
     mockInvoke.mockClear()
-    respondWith({ ok: 'x' })
+    respondWith({ ok: { key: 'shell', value: 'bash' } })
 
-    await invoke('get_preference', { key: 'shell' })
+    await invoke('get_preference', { request: { key: 'shell' } })
 
     expect(mockInvoke).not.toHaveBeenCalled()
     expect(globalThis.fetch).toHaveBeenCalledTimes(1)
@@ -246,17 +264,106 @@ describe('the event socket', () => {
     expect(sockets).toHaveLength(2)
   })
 
+  it('rejects malformed event frames', async () => {
+    const { remoteConnection } = await loadRemote()
+    sockets[0].onopen?.()
+
+    sockets[0].onmessage?.({ data: 'not json' })
+    expect(remoteConnection?.getState()).toBe('offline')
+  })
+
+  it('rejects a newer ready revision', async () => {
+    const { remoteConnection, CLIENT_API_REV } = await loadRemote()
+    sockets[0].onopen?.()
+    sockets[0].onmessage?.({
+      data: JSON.stringify({ channel: 'remote-ready', payload: { assetTicket: 'ticket', apiRev: CLIENT_API_REV + 1 } }),
+    })
+    expect(remoteConnection?.getState()).toBe('offline')
+  })
+
+  it('rejects an unknown event channel', async () => {
+    const { remoteConnection } = await loadRemote()
+    sockets[0].onopen?.()
+    sockets[0].ready()
+    sockets[0].onmessage?.({ data: JSON.stringify({ channel: 'future-event', payload: {} }) })
+    expect(remoteConnection?.getState()).toBe('offline')
+  })
+
   it('delivers a frame to whoever is listening on its channel', async () => {
+    const { listen, remoteConnection } = await loadRemote()
+    const seen: unknown[] = []
+    await listen('chat-stream', (event) => seen.push(event.payload))
+    const payload = { type: 'text', content: 'hi', message_id: 'm1', conversation_id: 'c1' }
+
+    sockets[0].onopen?.()
+    sockets[0].ready()
+    sockets[0].onmessage?.({ data: JSON.stringify({ channel: 'chat-stream', payload }) })
+
+    expect(seen).toEqual([payload])
+    expect(remoteConnection?.assetUrl('file:///tmp/a.png')).toContain('ticket=ticket-1')
+  })
+
+  it.each(['plan-review-requested', 'plan-review-updated'] as const)(
+    'delivers the exact %s contract over the remote socket',
+    async (channel) => {
+      const { listen, remoteConnection } = await loadRemote()
+      const seen: unknown[] = []
+      await listen(channel, (event) => seen.push(event.payload))
+      const payload = {
+        review_id: 'review-1',
+        conversation_id: 'conversation-1',
+        document_id: 'document-1',
+        revision_id: 'revision-1',
+        turn_id: 'turn-1',
+        status: 'approved',
+        delivery_state: 'queued',
+        lock_version: 1,
+      }
+
+      sockets[0].onopen?.()
+      sockets[0].ready()
+      sockets[0].onmessage?.({ data: JSON.stringify({ channel, payload }) })
+
+      expect(seen).toEqual([payload])
+      expect(remoteConnection?.getState()).toBe('connected')
+    },
+  )
+
+  it('rejects a malformed chat-stream payload before dispatch', async () => {
     const { listen, remoteConnection } = await loadRemote()
     const seen: unknown[] = []
     await listen('chat-stream', (event) => seen.push(event.payload))
 
     sockets[0].onopen?.()
     sockets[0].ready()
-    sockets[0].onmessage?.({ data: JSON.stringify({ channel: 'chat-stream', payload: { delta: 'hi' } }) })
+    sockets[0].onmessage?.({
+      data: JSON.stringify({
+        channel: 'chat-stream',
+        payload: { type: 'text', content: 'hi', message_id: 'm1', conversation_id: 'c1', future: true },
+      }),
+    })
 
-    expect(seen).toEqual([{ delta: 'hi' }])
-    expect(remoteConnection?.assetUrl('file:///tmp/a.png')).toContain('ticket=ticket-1')
+    expect(seen).toEqual([])
+    expect(remoteConnection?.getState()).toBe('offline')
+  })
+
+  it('rejects a malformed non-stream payload at the same boundary', async () => {
+    const { listen, remoteConnection } = await loadRemote()
+    const seen: unknown[] = []
+    await listen('queue-updated', (event) => seen.push(event.payload))
+
+    sockets[0].onopen?.()
+    sockets[0].ready()
+    sockets[0].onmessage?.({
+      data: JSON.stringify({
+        channel: 'queue-updated',
+        // `delivered` is required even when it is false.
+        payload: { conversation_id: 'c1' },
+      }),
+    })
+
+    expect(seen).toEqual([])
+    expect(remoteConnection?.getState()).toBe('offline')
   })
 
   it('stops delivering after the handler has been removed', async () => {
@@ -265,7 +372,12 @@ describe('the event socket', () => {
     const unlisten = await listen('chat-stream', (event) => seen.push(event.payload))
     unlisten()
 
-    sockets[0].onmessage?.({ data: JSON.stringify({ channel: 'chat-stream', payload: 1 }) })
+    sockets[0].onmessage?.({
+      data: JSON.stringify({
+        channel: 'chat-stream',
+        payload: { type: 'text', content: 'hi', message_id: 'm1', conversation_id: 'c1' },
+      }),
+    })
 
     expect(seen).toEqual([])
   })
@@ -350,14 +462,15 @@ describe('probeRemote', () => {
   })
 
   it('names a version mismatch as one rather than as a bad address', async () => {
-    const { probeRemote } = await import('./transport')
-    respondWith({ app: 'meridian', version: '9.0.0', apiRev: 4, minClientRev: 3 })
+    const { probeRemote, CLIENT_API_REV } = await import('./transport')
+    const newerRevision = CLIENT_API_REV + 1
+    respondWith({ app: 'meridian', version: '9.0.0', apiRev: newerRevision, minClientRev: newerRevision })
 
     await expect(probeRemote('10.0.0.7', 8787)).resolves.toEqual({
       ok: false,
       reason: 'client-too-old',
-      apiRev: 4,
-      minClientRev: 3,
+      apiRev: newerRevision,
+      minClientRev: newerRevision,
     })
   })
 
@@ -394,13 +507,17 @@ describe('the stored configuration', () => {
     expect(readRemoteConfig()).toBeNull()
   })
 
-  it('treats a half-written entry as none at all', async () => {
+  it('rejects half-written, malformed, mistyped, and extended entries', async () => {
     const { readRemoteConfig } = await import('./transport')
 
     localStorage.setItem('meridian.remote', '{"host":"desk.local"}')
-    expect(readRemoteConfig()).toBeNull()
+    expect(() => readRemoteConfig()).toThrow('must contain exactly')
     localStorage.setItem('meridian.remote', 'not json')
-    expect(readRemoteConfig()).toBeNull()
+    expect(() => readRemoteConfig()).toThrow('invalid meridian.remote JSON')
+    localStorage.setItem('meridian.remote', '{"host":"desk.local","port":"8787"}')
+    expect(() => readRemoteConfig()).toThrow('port must be an integer')
+    localStorage.setItem('meridian.remote', '{"host":"desk.local","port":8787,"future":true}')
+    expect(() => readRemoteConfig()).toThrow('must contain exactly')
   })
 
   it('stays local when nothing is stored', async () => {
@@ -409,5 +526,12 @@ describe('the stored configuration', () => {
     expect(isRemote).toBe(false)
     expect(remoteConnection).toBeNull()
     expect(sockets).toHaveLength(0)
+  })
+
+  it('rejects a malformed local Tauri response at the same boundary', async () => {
+    mockInvoke.mockResolvedValueOnce({ top: 0, right: 0, bottom: 0, left: 0, imeBottom: 0, future: true })
+    const { invoke } = await import('./transport')
+
+    await expect(invoke('get_window_insets')).rejects.toThrow('unknown field "future"')
   })
 })

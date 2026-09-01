@@ -8,7 +8,7 @@ import { api } from '@/api'
 import { can } from '@/lib/capabilities'
 import { HostedAgentGlyph } from '@/components/ui/agent-icon'
 import { useRelativeTime } from '@/hooks/use-relative-time'
-import type { AcpDiscoveredSession } from '@/types'
+import type { AcpDiscoveredSessionInfoResponse } from '@/types'
 
 /**
  * How many rows are drawn at once.
@@ -64,7 +64,7 @@ export function ClaudeSessionPicker({
   const { t } = useTranslation()
   const relative = useRelativeTime()
 
-  const [sessions, setSessions] = useState<AcpDiscoveredSession[] | null>(null)
+  const [sessions, setSessions] = useState<AcpDiscoveredSessionInfoResponse[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   /** The directory the list is narrowed to. Empty means every project. */
@@ -94,7 +94,7 @@ export function ClaudeSessionPicker({
     setSessions(null)
     setError(null)
     try {
-      const listed = await api.acpListSessions(scope.trim() || null)
+      const listed = await api.acpListSessions({ cwd: scope.trim() || null })
       if (generation.current !== mine) return
       setSessions(listed)
     } catch (err) {
@@ -169,7 +169,7 @@ export function ClaudeSessionPicker({
     if (typeof selected === 'string') scopeTo(selected)
   }
 
-  const act = async (session: AcpDiscoveredSession) => {
+  const act = async (session: AcpDiscoveredSessionInfoResponse) => {
     if (busy) return
     // The same generation the loads are counted by, read here for a different
     // reason: an attach is a round trip to an adapter, and the user can close
@@ -182,7 +182,7 @@ export function ClaudeSessionPicker({
     try {
       if (mode === 'attach') {
         if (!conversationId) return
-        await api.acpAttachSession(conversationId, session.sessionId, session.cwd)
+        await api.acpAttachSession({ conversationId, sessionId: session.sessionId, cwd: session.cwd })
         if (generation.current !== mine) return
         onOpenChange(false)
       } else {
@@ -330,7 +330,7 @@ export function ClaudeSessionPicker({
                       conversationId={conversationId ?? null}
                       busy={busy === session.sessionId}
                       disabled={busy !== null}
-                      error={rowError?.sessionId === session.sessionId ? rowError.message : null}
+                      error={rowError && rowError.sessionId === session.sessionId ? rowError.message : null}
                       truncated={truncated.has(session.sessionId)}
                       // Through `stamp` rather than straight off the field: an
                       // unreadable timestamp is 0 there, and formatting that
@@ -375,7 +375,7 @@ function SessionRow({
   onAct,
   onOpen,
 }: {
-  session: AcpDiscoveredSession
+  session: AcpDiscoveredSessionInfoResponse
   mode: 'import' | 'attach'
   conversationId: string | null
   busy: boolean

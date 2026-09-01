@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { Button, Modal } from '@heroui/react'
 import { Comment } from '@gravity-ui/icons'
 
-import type { Project } from '@/types'
+import type { ProjectInfoResponse } from '@/types'
 import { useHistoryLevel } from '@/hooks/use-history-level'
 import { ProjectIcon } from './project-icon'
 
@@ -25,7 +25,7 @@ export function MoveDialog({
 }: {
   isOpen: boolean
   onOpenChange: (open: boolean) => void
-  projects: Project[]
+  projects: ProjectInfoResponse[]
   /** Where the conversation is now; that row is disabled rather than hidden,
       so the list also answers "where is this filed". */
   currentProjectId: string | null

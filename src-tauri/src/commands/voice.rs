@@ -21,12 +21,59 @@ use meridian_core::voice;
 /// Recordings shorter than this are almost certainly accidental taps.
 const MIN_DURATION_MS: u64 = 1000;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceTranscriptStatus {
+    Ok,
+    TooShort,
+    Empty,
+}
+
 #[derive(serde::Serialize)]
-pub struct VoiceTranscript {
-    /// "ok" | "too_short" | "empty"
-    pub status: &'static str,
+pub struct VoiceTranscriptResponse {
+    pub status: VoiceTranscriptStatus,
     pub text: String,
     pub duration_ms: u64,
+}
+
+#[cfg(any(target_os = "android", test))]
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct VoicePcmTranscriptionRequest {
+    pub sample_rate: u32,
+    pub pcm: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct VoiceModelDownloadRequest {
+    #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct VoiceModelImportRequest {
+    pub archive_path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct VoiceModelStatusInfoResponse {
+    pub installed: bool,
+    pub path: Option<String>,
+    pub size_bytes: u64,
+    pub downloading: bool,
+}
+
+impl From<voice::model::ModelStatus> for VoiceModelStatusInfoResponse {
+    fn from(status: voice::model::ModelStatus) -> Self {
+        Self {
+            installed: status.installed,
+            path: status.path,
+            size_bytes: status.size_bytes,
+            downloading: status.downloading,
+        }
+    }
 }
 
 fn data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -59,10 +106,10 @@ async fn transcribe_samples(
     samples: Vec<f32>,
     sample_rate: u32,
     duration_ms: u64,
-) -> Result<VoiceTranscript, String> {
+) -> Result<VoiceTranscriptResponse, String> {
     if duration_ms < MIN_DURATION_MS {
-        return Ok(VoiceTranscript {
-            status: "too_short",
+        return Ok(VoiceTranscriptResponse {
+            status: VoiceTranscriptStatus::TooShort,
             text: String::new(),
             duration_ms,
         });
@@ -78,7 +125,7 @@ async fn transcribe_samples(
             let mut conn = pool.get().map_err(|e| e.to_string())?;
             let pref =
                 db::ops::preference::get_preference(&mut conn, "voice.filter_level").map_err(|e| e.to_string())?;
-            voice::filter::FilterLevel::from_preference(pref.as_deref())
+            voice::filter::FilterLevel::from_preference(pref.as_deref())?
         };
         let raw = engine.transcribe(&samples, sample_rate);
         Ok::<_, String>(voice::filter::clean(&raw, level))
@@ -87,14 +134,14 @@ async fn transcribe_samples(
     .map_err(|e| e.to_string())??;
 
     if text.is_empty() {
-        return Ok(VoiceTranscript {
-            status: "empty",
+        return Ok(VoiceTranscriptResponse {
+            status: VoiceTranscriptStatus::Empty,
             text,
             duration_ms,
         });
     }
-    Ok(VoiceTranscript {
-        status: "ok",
+    Ok(VoiceTranscriptResponse {
+        status: VoiceTranscriptStatus::Ok,
         text,
         duration_ms,
     })
@@ -160,10 +207,11 @@ pub async fn voice_prewarm(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn voice_transcribe_pcm(
     app: tauri::AppHandle,
-    sample_rate: u32,
-    pcm: String,
-) -> Result<VoiceTranscript, String> {
+    request: VoicePcmTranscriptionRequest,
+) -> Result<VoiceTranscriptResponse, String> {
     use base64::Engine as _;
+
+    let VoicePcmTranscriptionRequest { sample_rate, pcm } = request;
 
     if !(8_000..=192_000).contains(&sample_rate) {
         return Err(format!("implausible sample rate: {sample_rate}"));
@@ -250,7 +298,7 @@ pub async fn voice_start_recording(app: tauri::AppHandle) -> Result<(), String> 
 
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
-pub async fn voice_stop_and_transcribe(app: tauri::AppHandle) -> Result<VoiceTranscript, String> {
+pub async fn voice_stop_and_transcribe(app: tauri::AppHandle) -> Result<VoiceTranscriptResponse, String> {
     let services = app.services();
     let state = &services.voice;
     let session = state.inner.lock().await.session.take().ok_or("Not recording")?;
@@ -272,7 +320,7 @@ pub async fn voice_cancel_recording(app: tauri::AppHandle) -> Result<(), String>
 }
 
 #[tauri::command]
-pub async fn voice_model_status(app: tauri::AppHandle) -> Result<voice::model::ModelStatus, String> {
+pub async fn voice_model_status(app: tauri::AppHandle) -> Result<VoiceModelStatusInfoResponse, String> {
     let dir = data_dir(&app)?;
     let services = app.services();
     let downloading = services.voice.inner.lock().await.download.is_some();
@@ -280,11 +328,12 @@ pub async fn voice_model_status(app: tauri::AppHandle) -> Result<voice::model::M
         .await
         .map_err(|e| e.to_string())?;
     status.downloading = downloading;
-    Ok(status)
+    Ok(status.into())
 }
 
 #[tauri::command]
-pub async fn voice_download_model(app: tauri::AppHandle, url: Option<String>) -> Result<(), String> {
+pub async fn voice_download_model(app: tauri::AppHandle, request: VoiceModelDownloadRequest) -> Result<(), String> {
+    let VoiceModelDownloadRequest { url } = request;
     let dir = data_dir(&app)?;
     let services = app.services();
     let state = &services.voice;
@@ -321,8 +370,9 @@ pub async fn voice_cancel_download(app: tauri::AppHandle) -> Result<(), String> 
 #[tauri::command]
 pub async fn voice_import_model(
     app: tauri::AppHandle,
-    archive_path: String,
-) -> Result<voice::model::ModelStatus, String> {
+    request: VoiceModelImportRequest,
+) -> Result<VoiceModelStatusInfoResponse, String> {
+    let VoiceModelImportRequest { archive_path } = request;
     let dir = data_dir(&app)?;
     let services = app.services();
     let state = &services.voice;
@@ -333,7 +383,7 @@ pub async fn voice_import_model(
         .map_err(|e| e.to_string())??;
 
     *state.engine.lock().await = None;
-    Ok(voice::model::status(&dir))
+    Ok(voice::model::status(&dir).into())
 }
 
 #[tauri::command]
@@ -349,4 +399,72 @@ pub async fn voice_delete_model(app: tauri::AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())??;
     *state.engine.lock().await = None;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        VoiceModelDownloadRequest, VoiceModelImportRequest, VoiceModelStatusInfoResponse, VoicePcmTranscriptionRequest,
+        VoiceTranscriptStatus,
+    };
+
+    #[test]
+    fn transcript_status_uses_closed_snake_case_contract() {
+        assert_eq!(serde_json::to_value(VoiceTranscriptStatus::Ok).unwrap(), "ok");
+        assert_eq!(
+            serde_json::to_value(VoiceTranscriptStatus::TooShort).unwrap(),
+            "too_short"
+        );
+        assert_eq!(serde_json::to_value(VoiceTranscriptStatus::Empty).unwrap(), "empty");
+        assert!(serde_json::from_value::<VoiceTranscriptStatus>(serde_json::json!("future_status")).is_err());
+    }
+
+    #[test]
+    fn voice_requests_are_strict_named_contracts() {
+        let download: VoiceModelDownloadRequest = serde_json::from_value(serde_json::json!({ "url": null })).unwrap();
+        assert!(download.url.is_none());
+        assert!(serde_json::from_value::<VoiceModelDownloadRequest>(serde_json::json!({})).is_err());
+        assert!(
+            serde_json::from_value::<VoiceModelImportRequest>(serde_json::json!({
+                "archivePath": "model.tar.bz2",
+                "legacyPath": "model.zip",
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<VoicePcmTranscriptionRequest>(serde_json::json!({
+                "sampleRate": 16_000,
+                "pcm": "AA==",
+                "format": "pcm16",
+            }))
+            .is_err()
+        );
+
+        let pcm: VoicePcmTranscriptionRequest = serde_json::from_value(serde_json::json!({
+            "sampleRate": 16_000,
+            "pcm": "AA==",
+        }))
+        .expect("valid PCM request");
+        assert_eq!(pcm.sample_rate, 16_000);
+        assert_eq!(pcm.pcm, "AA==");
+    }
+
+    #[test]
+    fn voice_model_status_is_explicitly_mapped() {
+        let response = VoiceModelStatusInfoResponse::from(meridian_core::voice::model::ModelStatus {
+            installed: true,
+            path: Some("models/sense-voice".to_string()),
+            size_bytes: 42,
+            downloading: false,
+        });
+        assert_eq!(
+            response,
+            VoiceModelStatusInfoResponse {
+                installed: true,
+                path: Some("models/sense-voice".to_string()),
+                size_bytes: 42,
+                downloading: false,
+            }
+        );
+    }
 }

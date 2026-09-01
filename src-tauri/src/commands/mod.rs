@@ -9,6 +9,7 @@ pub mod chat;
 pub mod conversation;
 pub mod dev;
 pub mod emoji;
+pub mod entity_response;
 #[cfg(not(target_os = "android"))]
 pub mod hooks;
 pub mod journal;
@@ -19,6 +20,7 @@ pub mod message;
 pub mod model_config;
 #[cfg(not(target_os = "android"))]
 pub mod onebot;
+pub mod plan_review;
 pub mod preference;
 pub mod project;
 pub mod prompt_template;

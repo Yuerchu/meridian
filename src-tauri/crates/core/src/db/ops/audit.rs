@@ -2,9 +2,10 @@ use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
 use crate::agent::pricing::BillingMode;
-use crate::db::models::audit::NewAuditMessage;
-use crate::db::models::message::Message;
+use crate::db::models::audit::AuditMessageInsert;
+use crate::db::models::message::MessageRow;
 use crate::db::schema::{audit_messages, conversations, memory_subjects, model_configs, projects, providers, turns};
+use crate::decimal::Decimal;
 use crate::util::now_ms;
 
 /// What a row needs beside itself to be readable once everything it points at is
@@ -41,13 +42,13 @@ struct Snapshot {
 /// much traffic has no price" rather than quietly reporting it as free.
 #[derive(Default)]
 struct Prices {
-    input: Option<f64>,
-    output: Option<f64>,
-    cache_read: Option<f64>,
-    cache_write: Option<f64>,
+    input_price: Option<Decimal>,
+    output_price: Option<Decimal>,
+    cache_read_price: Option<Decimal>,
+    cache_write_price: Option<Decimal>,
     /// Per thousand invocations, not per million tokens — the unit the
     /// upstream publishes it in.
-    server_tool: Option<f64>,
+    server_tool_price: Option<Decimal>,
 }
 
 /// The role an automatic-review request is filed under.
@@ -108,48 +109,48 @@ fn prices_for(
     provider_id: Option<&str>,
     model_id: Option<&str>,
     prompt_tokens: Option<i32>,
-) -> Prices {
+) -> QueryResult<Prices> {
     let (Some(provider), Some(model)) = (provider_id, model_id) else {
-        return Prices::default();
+        return Ok(Prices::default());
     };
-    model_configs::table
+    let config = model_configs::table
         .filter(model_configs::provider_id.eq(provider))
         .filter(model_configs::model_id.eq(model))
-        .select(crate::db::models::model_config::ModelConfig::as_select())
+        .select(crate::db::models::model_config::ModelConfigRow::as_select())
         .first(conn)
-        .map(|config| {
-            let effective = crate::agent::pricing::Prices::for_prompt(&config, prompt_tokens.unwrap_or(0) as i64);
-            // Zero is the editor's untouched default, not a historical rate.
-            // Snapshotting it would freeze this request at "unknown" forever:
-            // `usage::resolve` could no longer fall back to a real price filled
-            // in later because the row appeared to carry a snapshot already.
-            if !effective.known() {
-                // The provider-tool rate is independent and can still be a
-                // known part of the bill. Keep it on the historical row so a
-                // later model deletion cannot erase that lower bound.
-                return Prices {
-                    server_tool: effective.server_tool,
-                    ..Default::default()
-                };
-            }
-            Prices {
-                input: Some(effective.input),
-                output: Some(effective.output),
-                // Left as resolved but not defaulted: a blank cache price means
-                // "priced like input", and `compute_cost` is the one place that
-                // reading belongs. Filling it in here would put the same rule in
-                // two places, to disagree later.
-                cache_read: effective.cache_read,
-                cache_write: effective.cache_write,
-                server_tool: effective.server_tool,
-            }
-        })
-        .unwrap_or_default()
+        .optional()?;
+    let Some(config) = config else {
+        return Ok(Prices::default());
+    };
+    let effective = crate::agent::pricing::Prices::for_prompt(&config, prompt_tokens.unwrap_or(0) as i64)
+        .map_err(|error| diesel::result::Error::DeserializationError(Box::new(error)))?;
+    // A partial base rate is still unknown; an explicit Decimal zero is a
+    // complete, free rate and is snapshotted like any other known price.
+    if !effective.known() {
+        // The provider-tool rate is independent and can still be a known part
+        // of the bill. Keep it on the historical row so a later model deletion
+        // cannot erase that lower bound.
+        return Ok(Prices {
+            server_tool_price: effective.server_tool_price,
+            ..Default::default()
+        });
+    }
+    Ok(Prices {
+        input_price: effective.input_price,
+        output_price: effective.output_price,
+        // Left as resolved but not defaulted: a blank cache price means
+        // "priced like input", and `compute_cost` is the one place that reading
+        // belongs. Filling it in here would put the same rule in two places, to
+        // disagree later.
+        cache_read_price: effective.cache_read_price,
+        cache_write_price: effective.cache_write_price,
+        server_tool_price: effective.server_tool_price,
+    })
 }
 
 /// The four lookups, from the identifiers rather than from a row.
 ///
-/// Takes the pieces rather than a `Message` because the review rows have no
+/// Takes the pieces rather than a `MessageRow` because the review rows have no
 /// `messages` row of their own — they describe spend against a message that
 /// somebody else wrote.
 struct Subject<'a> {
@@ -163,7 +164,7 @@ struct Subject<'a> {
     prompt_tokens: Option<i32>,
 }
 
-fn snapshot(conn: &mut SqliteConnection, msg: &Message) -> Snapshot {
+fn snapshot(conn: &mut SqliteConnection, msg: &MessageRow) -> QueryResult<Snapshot> {
     snapshot_of(
         conn,
         Subject {
@@ -177,7 +178,7 @@ fn snapshot(conn: &mut SqliteConnection, msg: &Message) -> Snapshot {
     )
 }
 
-fn snapshot_of(conn: &mut SqliteConnection, subject: Subject<'_>) -> Snapshot {
+fn snapshot_of(conn: &mut SqliteConnection, subject: Subject<'_>) -> QueryResult<Snapshot> {
     // Every one of these is best-effort. A missing project or a turn row that has
     // not been written yet is a gap in the record, not a reason to refuse to keep
     // the record at all.
@@ -225,17 +226,17 @@ fn snapshot_of(conn: &mut SqliteConnection, subject: Subject<'_>) -> Snapshot {
         subject.provider_id,
         turn_origin.as_deref(),
         conversation.as_ref().and_then(|(_, agent_kind)| agent_kind.as_deref()),
-    );
+    )?;
 
-    Snapshot {
+    Ok(Snapshot {
         source_type: project.as_ref().map(|(t, _)| t.clone()),
         source_id: project.and_then(|(_, id)| id),
         turn_origin,
         self_id,
         sender_name,
-        prices: prices_for(conn, subject.provider_id, subject.model_id, subject.prompt_tokens),
+        prices: prices_for(conn, subject.provider_id, subject.model_id, subject.prompt_tokens)?,
         billing_mode,
-    }
+    })
 }
 
 /// How the provider behind this message is paid for.
@@ -249,7 +250,7 @@ fn billing_mode_for(
     provider_id: Option<&str>,
     turn_origin: Option<&str>,
     agent_kind: Option<&str>,
-) -> BillingMode {
+) -> QueryResult<BillingMode> {
     // Conversation rows can be read on Android even though the desktop-only
     // ACP runtime module is not compiled there.
     const CLAUDE_CODE_AGENT_KIND: &str = "claude_code";
@@ -265,17 +266,22 @@ fn billing_mode_for(
         None => agent_kind == Some(CLAUDE_CODE_AGENT_KIND),
     };
     if hosted {
-        return BillingMode::External;
+        return Ok(BillingMode::External);
     }
     let Some(provider_id) = provider_id else {
-        return BillingMode::Metered;
+        return Ok(BillingMode::Metered);
     };
     providers::table
         .filter(providers::id.eq(provider_id))
         .select(providers::transport_profile)
         .first::<String>(conn)
-        .map(|profile| BillingMode::for_transport(&profile))
-        .unwrap_or_default()
+        .optional()?
+        .map(|profile| {
+            BillingMode::for_transport(&profile)
+                .map_err(|error| diesel::result::Error::DeserializationError(Box::new(error)))
+        })
+        .transpose()
+        .map(|mode| mode.unwrap_or(BillingMode::Metered))
 }
 
 /// Copy a message into the audit log.
@@ -290,11 +296,11 @@ fn billing_mode_for(
 /// caller should let it fail a turn: a database that cannot take the audit copy
 /// is a problem to be shouted about, but refusing to answer the user because of
 /// it would turn a bookkeeping fault into an outage.
-pub fn record(conn: &mut SqliteConnection, msg: &Message) -> QueryResult<()> {
-    let snap = snapshot(conn, msg);
+pub fn record(conn: &mut SqliteConnection, msg: &MessageRow) -> QueryResult<()> {
+    let snap = snapshot(conn, msg)?;
     let id = uuid::Uuid::new_v4().to_string();
     diesel::insert_into(audit_messages::table)
-        .values(&NewAuditMessage {
+        .values(&AuditMessageInsert {
             id: &id,
             recorded_at: now_ms(),
             message_id: &msg.id,
@@ -316,11 +322,11 @@ pub fn record(conn: &mut SqliteConnection, msg: &Message) -> QueryResult<()> {
             cache_write_tokens: msg.cache_write_tokens,
             server_tool_calls: msg.server_tool_calls,
             created_at: msg.created_at,
-            input_price: snap.prices.input,
-            output_price: snap.prices.output,
-            cache_read_price: snap.prices.cache_read,
-            cache_write_price: snap.prices.cache_write,
-            server_tool_price: snap.prices.server_tool,
+            input_price: snap.prices.input_price,
+            output_price: snap.prices.output_price,
+            cache_read_price: snap.prices.cache_read_price,
+            cache_write_price: snap.prices.cache_write_price,
+            server_tool_price: snap.prices.server_tool_price,
             self_id: snap.self_id,
             billing_mode: snap.billing_mode.as_str(),
         })
@@ -391,11 +397,11 @@ pub fn record_side_request(conn: &mut SqliteConnection, cost: SideRequestCost<'_
             // `ReviewCost::peak_prompt_tokens`.
             prompt_tokens: cost.peak_prompt_tokens,
         },
-    );
+    )?;
     let id = uuid::Uuid::new_v4().to_string();
     let now = now_ms();
     diesel::insert_into(audit_messages::table)
-        .values(&NewAuditMessage {
+        .values(&AuditMessageInsert {
             id: &id,
             recorded_at: now,
             message_id: cost.message_id,
@@ -417,11 +423,11 @@ pub fn record_side_request(conn: &mut SqliteConnection, cost: SideRequestCost<'_
             cache_write_tokens: cost.usage.cache_write_tokens,
             server_tool_calls: cost.usage.server_tool_calls,
             created_at: now,
-            input_price: snap.prices.input,
-            output_price: snap.prices.output,
-            cache_read_price: snap.prices.cache_read,
-            cache_write_price: snap.prices.cache_write,
-            server_tool_price: snap.prices.server_tool,
+            input_price: snap.prices.input_price,
+            output_price: snap.prices.output_price,
+            cache_read_price: snap.prices.cache_read_price,
+            cache_write_price: snap.prices.cache_write_price,
+            server_tool_price: snap.prices.server_tool_price,
             self_id: snap.self_id,
             billing_mode: snap.billing_mode.as_str(),
         })
@@ -435,12 +441,12 @@ pub fn record_side_request(conn: &mut SqliteConnection, cost: SideRequestCost<'_
 pub fn list_recent(
     conn: &mut SqliteConnection,
     limit: i64,
-) -> QueryResult<Vec<crate::db::models::audit::AuditMessage>> {
-    use crate::db::models::audit::AuditMessage;
+) -> QueryResult<Vec<crate::db::models::audit::AuditMessageRow>> {
+    use crate::db::models::audit::AuditMessageRow;
     audit_messages::table
         .order(audit_messages::created_at.desc())
         .limit(limit)
-        .select(AuditMessage::as_select())
+        .select(AuditMessageRow::as_select())
         .load(conn)
 }
 
@@ -451,8 +457,12 @@ mod tests {
     use crate::db::ops::message::append_message;
     use crate::db::test_db;
 
-    fn user_row<'a>(id: &'a str, conv: &'a str) -> crate::db::models::message::NewMessage<'a> {
-        crate::db::models::message::NewMessage {
+    fn decimal(raw: &str) -> Decimal {
+        raw.parse().unwrap()
+    }
+
+    fn user_row<'a>(id: &'a str, conv: &'a str) -> crate::db::models::message::MessageInsert<'a> {
+        crate::db::models::message::MessageInsert {
             id,
             conversation_id: conv,
             role: "user",
@@ -515,14 +525,14 @@ mod tests {
     /// nothing that has already happened.
     #[test]
     fn a_reply_carries_away_the_price_it_was_charged() {
-        use crate::db::models::model_config::NewModelConfig;
-        use crate::db::models::provider::NewProvider;
+        use crate::db::models::model_config::ModelConfigInsert;
+        use crate::db::models::provider::ProviderInsert;
 
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
         diesel::insert_into(crate::db::schema::providers::table)
-            .values(&NewProvider {
+            .values(&ProviderInsert {
                 id: "p1",
                 name: "Acme",
                 provider_type: "openai",
@@ -540,7 +550,7 @@ mod tests {
             .unwrap();
         crate::db::ops::model_config::upsert(
             &mut conn,
-            &NewModelConfig {
+            &ModelConfigInsert {
                 id: "mc1",
                 provider_id: "p1",
                 model_id: "m1",
@@ -548,14 +558,14 @@ mod tests {
                 context_window: 128_000,
                 compact_threshold: 100_000,
                 max_output_tokens: None,
-                input_price: 3.0,
-                output_price: 15.0,
-                cache_price: Some(0.3),
-                cache_write_price: Some(3.75),
+                input_price: Some(decimal("3")),
+                output_price: Some(decimal("15")),
+                cache_read_price: Some(decimal("0.3")),
+                cache_write_price: Some(decimal("3.75")),
                 created_at: 0,
                 updated_at: 0,
                 capability_overrides: None,
-                price_tiers: None,
+                pricing_tiers: None,
                 server_tools: None,
                 server_tool_price: None,
             },
@@ -570,15 +580,15 @@ mod tests {
         record(&mut conn, &reply).unwrap();
 
         let logged = &list_recent(&mut conn, 10).unwrap()[0];
-        assert_eq!(logged.input_price, Some(3.0));
-        assert_eq!(logged.output_price, Some(15.0));
-        assert_eq!(logged.cache_read_price, Some(0.3));
-        assert_eq!(logged.cache_write_price, Some(3.75));
+        assert_eq!(logged.input_price, Some(decimal("3")));
+        assert_eq!(logged.output_price, Some(decimal("15")));
+        assert_eq!(logged.cache_read_price, Some(decimal("0.3")));
+        assert_eq!(logged.cache_write_price, Some(decimal("3.75")));
 
         // The price moves; the record does not.
         crate::db::ops::model_config::upsert(
             &mut conn,
-            &NewModelConfig {
+            &ModelConfigInsert {
                 id: "mc1",
                 provider_id: "p1",
                 model_id: "m1",
@@ -586,20 +596,20 @@ mod tests {
                 context_window: 128_000,
                 compact_threshold: 100_000,
                 max_output_tokens: None,
-                input_price: 99.0,
-                output_price: 99.0,
-                cache_price: None,
+                input_price: Some(decimal("99")),
+                output_price: Some(decimal("99")),
+                cache_read_price: None,
                 cache_write_price: None,
                 created_at: 0,
                 updated_at: 0,
                 capability_overrides: None,
-                price_tiers: None,
+                pricing_tiers: None,
                 server_tools: None,
                 server_tool_price: None,
             },
         )
         .unwrap();
-        assert_eq!(list_recent(&mut conn, 10).unwrap()[0].input_price, Some(3.0));
+        assert_eq!(list_recent(&mut conn, 10).unwrap()[0].input_price, Some(decimal("3")));
     }
 
     /// The model editor starts both token rates at zero. That is the absence of
@@ -608,14 +618,14 @@ mod tests {
     /// price filled in later, leaving a known model permanently unpriced.
     #[test]
     fn an_unpriced_model_does_not_snapshot_the_editors_zero_defaults() {
-        use crate::db::models::model_config::NewModelConfig;
-        use crate::db::models::provider::NewProvider;
+        use crate::db::models::model_config::ModelConfigInsert;
+        use crate::db::models::provider::ProviderInsert;
 
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
         diesel::insert_into(crate::db::schema::providers::table)
-            .values(&NewProvider {
+            .values(&ProviderInsert {
                 id: "p1",
                 name: "Acme",
                 provider_type: "openai",
@@ -633,7 +643,7 @@ mod tests {
             .unwrap();
         crate::db::ops::model_config::upsert(
             &mut conn,
-            &NewModelConfig {
+            &ModelConfigInsert {
                 id: "mc1",
                 provider_id: "p1",
                 model_id: "m1",
@@ -641,16 +651,16 @@ mod tests {
                 context_window: 128_000,
                 compact_threshold: 100_000,
                 max_output_tokens: None,
-                input_price: 0.0,
-                output_price: 0.0,
-                cache_price: None,
+                input_price: None,
+                output_price: None,
+                cache_read_price: None,
                 cache_write_price: None,
                 created_at: 0,
                 updated_at: 0,
                 capability_overrides: None,
-                price_tiers: None,
+                pricing_tiers: None,
                 server_tools: None,
-                server_tool_price: Some(15.0),
+                server_tool_price: Some(decimal("15")),
             },
         )
         .unwrap();
@@ -670,7 +680,7 @@ mod tests {
         assert_eq!(logged.server_tool_calls, Some(2));
         assert_eq!(
             logged.server_tool_price,
-            Some(15.0),
+            Some(decimal("15")),
             "the independent known rate survives"
         );
     }
@@ -681,13 +691,13 @@ mod tests {
     /// decide billing.
     #[test]
     fn a_live_acp_reply_snapshots_external_billing() {
-        use crate::db::models::conversation::NewConversation;
+        use crate::db::models::conversation::ConversationInsert;
 
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         crate::db::ops::conversation::insert(
             &mut conn,
-            NewConversation {
+            ConversationInsert {
                 id: "c1",
                 created_at: 1,
                 updated_at: 1,
@@ -717,7 +727,7 @@ mod tests {
         let mut conn = pool.get().unwrap();
         assert_eq!(
             billing_mode_for(&mut conn, None, None, Some(crate::acp::AGENT_KIND)),
-            BillingMode::External,
+            Ok(BillingMode::External),
         );
         assert_eq!(
             billing_mode_for(
@@ -726,7 +736,7 @@ mod tests {
                 Some(crate::turn::TurnOrigin::Desktop.as_str()),
                 Some(crate::acp::AGENT_KIND),
             ),
-            BillingMode::Metered,
+            Ok(BillingMode::Metered),
             "a conversation label must not override the request's own origin",
         );
     }
@@ -790,14 +800,14 @@ mod tests {
     /// two price sets, which is a thing it already knows how to add up.
     #[test]
     fn a_long_prompt_is_snapshotted_at_its_tier_rate() {
-        use crate::db::models::model_config::NewModelConfig;
-        use crate::db::models::provider::NewProvider;
+        use crate::db::models::model_config::ModelConfigInsert;
+        use crate::db::models::provider::ProviderInsert;
 
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
         diesel::insert_into(crate::db::schema::providers::table)
-            .values(&NewProvider {
+            .values(&ProviderInsert {
                 id: "p1",
                 name: "Acme",
                 provider_type: "xai",
@@ -815,7 +825,7 @@ mod tests {
             .unwrap();
         crate::db::ops::model_config::upsert(
             &mut conn,
-            &NewModelConfig {
+            &ModelConfigInsert {
                 id: "mc1",
                 provider_id: "p1",
                 model_id: "grok-4.6",
@@ -823,16 +833,18 @@ mod tests {
                 context_window: 500_000,
                 compact_threshold: 400_000,
                 max_output_tokens: None,
-                input_price: 2.0,
-                output_price: 6.0,
-                cache_price: Some(0.5),
+                input_price: Some(decimal("2")),
+                output_price: Some(decimal("6")),
+                cache_read_price: Some(decimal("0.5")),
                 cache_write_price: None,
                 created_at: 0,
                 updated_at: 0,
                 server_tools: None,
                 server_tool_price: None,
                 capability_overrides: None,
-                price_tiers: Some(r#"[{"min_prompt_tokens":200000,"input":4.0,"output":12.0,"cache_read":1.0}]"#),
+                pricing_tiers: Some(
+                    r#"[{"min_prompt_tokens":200000,"input_price":"4","output_price":"12","cache_read_price":"1","cache_write_price":null}]"#,
+                ),
             },
         )
         .unwrap();
@@ -861,11 +873,15 @@ mod tests {
                 .find(|row| row.message_id == id && row.role == "assistant")
                 .expect("recorded")
         };
-        assert_eq!(of("m1").input_price, Some(2.0), "under the threshold");
-        assert_eq!(of("m1").cache_read_price, Some(0.5));
-        assert_eq!(of("m2").input_price, Some(4.0), "over it, and the whole prompt");
-        assert_eq!(of("m2").output_price, Some(12.0));
-        assert_eq!(of("m2").cache_read_price, Some(1.0));
+        assert_eq!(of("m1").input_price, Some(decimal("2")), "under the threshold");
+        assert_eq!(of("m1").cache_read_price, Some(decimal("0.5")));
+        assert_eq!(
+            of("m2").input_price,
+            Some(decimal("4")),
+            "over it, and the whole prompt"
+        );
+        assert_eq!(of("m2").output_price, Some(decimal("12")));
+        assert_eq!(of("m2").cache_read_price, Some(decimal("1")));
     }
 
     /// A question has no model and so no price. Storing a zero would make it
@@ -888,14 +904,14 @@ mod tests {
     #[test]
     fn a_review_is_priced_like_everything_else() {
         use crate::db::models::message::MessageUsage;
-        use crate::db::models::model_config::NewModelConfig;
-        use crate::db::models::provider::NewProvider;
+        use crate::db::models::model_config::ModelConfigInsert;
+        use crate::db::models::provider::ProviderInsert;
 
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
         diesel::insert_into(crate::db::schema::providers::table)
-            .values(&NewProvider {
+            .values(&ProviderInsert {
                 id: "p1",
                 name: "Acme",
                 provider_type: "openai",
@@ -913,7 +929,7 @@ mod tests {
             .unwrap();
         crate::db::ops::model_config::upsert(
             &mut conn,
-            &NewModelConfig {
+            &ModelConfigInsert {
                 id: "mc1",
                 provider_id: "p1",
                 model_id: "cheap",
@@ -921,14 +937,14 @@ mod tests {
                 context_window: 128_000,
                 compact_threshold: 100_000,
                 max_output_tokens: None,
-                input_price: 1.0,
-                output_price: 2.0,
-                cache_price: None,
+                input_price: Some(decimal("1")),
+                output_price: Some(decimal("2")),
+                cache_read_price: None,
                 cache_write_price: None,
                 created_at: 0,
                 updated_at: 0,
                 capability_overrides: None,
-                price_tiers: None,
+                pricing_tiers: None,
                 server_tools: None,
                 server_tool_price: None,
             },
@@ -966,10 +982,10 @@ mod tests {
         assert_eq!(review.input_tokens, Some(900));
         assert_eq!(
             review.input_price,
-            Some(1.0),
+            Some(decimal("1")),
             "priced at write time like everything else"
         );
-        assert_eq!(review.output_price, Some(2.0));
+        assert_eq!(review.output_price, Some(decimal("2")));
         // A review is something the app did, never something a person said.
         assert_eq!(review.sender_id, None);
     }

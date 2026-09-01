@@ -33,6 +33,35 @@ use tracing_subscriber::{EnvFilter, Layer, Registry};
 use layer::{JsonlLayer, LineSink};
 use writer::RollingWriter;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LogLevel {
+    Error,
+    Warn,
+    Info,
+    Debug,
+}
+
+impl LogLevel {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Error => "error",
+            Self::Warn => "warn",
+            Self::Info => "info",
+            Self::Debug => "debug",
+        }
+    }
+
+    pub const fn rank(self) -> u8 {
+        match self {
+            Self::Error => 4,
+            Self::Warn => 3,
+            Self::Info => 2,
+            Self::Debug => 1,
+        }
+    }
+}
+
 /// Lines held while the destination is still unknown.
 ///
 /// Logging has to start before `app_data_dir()` is available, and the gap covers
@@ -197,23 +226,32 @@ pub(crate) fn attach_file_sink(data_dir: &Path) {
     let _ = LOG_DIR.set(dir);
 }
 
-/// Apply the saved level. Runs after the database is up, so the handful of lines
-/// written before this point use the default level.
-pub(crate) fn apply_saved_level(pool: &crate::db::DbPool) {
-    let Ok(mut conn) = pool.get() else { return };
+pub const LEVEL_PREFERENCE_KEY: &str = "logging.level";
+
+pub fn validate_level(level: &str) -> Result<LogLevel, String> {
+    config::normalize_level(level).ok_or_else(|| format!("unsupported log level {level:?}"))
+}
+
+/// Read the exact saved spelling. Absence means the documented default; a row
+/// that exists but is invalid is a broken contract and is returned as an error.
+pub fn load_saved_level(pool: &crate::db::DbPool) -> Result<LogLevel, String> {
+    let mut conn = pool.get().map_err(|error| error.to_string())?;
     let saved = crate::db::ops::preference::get_preference(&mut conn, LEVEL_PREFERENCE_KEY)
-        .ok()
-        .flatten();
-    if let Some(level) = saved.as_deref().and_then(config::normalize_level) {
-        let _ = set_level(level);
+        .map_err(|error| format!("failed to read preference {LEVEL_PREFERENCE_KEY}: {error}"))?;
+    match saved {
+        None => Ok(config::DEFAULT_LEVEL),
+        Some(level) => validate_level(&level),
     }
 }
 
-pub const LEVEL_PREFERENCE_KEY: &str = "logging.level";
+/// Apply the saved level. Runs after the database is up, so the handful of lines
+/// written before this point use the default level.
+pub(crate) fn apply_saved_level(pool: &crate::db::DbPool) -> Result<(), String> {
+    set_level(load_saved_level(pool)?)
+}
 
 /// Change the file log level for the running process.
-pub fn set_level(level: &str) -> Result<(), String> {
-    let level = config::normalize_level(level).ok_or_else(|| format!("unsupported log level '{level}'"))?;
+pub fn set_level(level: LogLevel) -> Result<(), String> {
     LEVEL_RELOAD
         .get()
         .ok_or("logging is not initialised")?
@@ -235,11 +273,11 @@ pub fn file_limits() -> (u64, usize) {
     (writer::MAX_FILE_BYTES, writer::MAX_ARCHIVES + 1)
 }
 
-pub fn selectable_levels() -> &'static [&'static str] {
+pub fn selectable_levels() -> &'static [LogLevel] {
     config::SELECTABLE_LEVELS
 }
 
-pub fn default_level() -> &'static str {
+pub fn default_level() -> LogLevel {
     config::DEFAULT_LEVEL
 }
 
@@ -286,6 +324,23 @@ mod tests {
     use super::*;
     use tracing_subscriber::layer::SubscriberExt;
 
+    #[test]
+    fn stored_log_level_is_strict_and_errors_are_not_defaulted() {
+        let pool = crate::db::test_db();
+        assert_eq!(load_saved_level(&pool).unwrap(), default_level());
+
+        for raw in ["WARN", " info ", "trace", "future"] {
+            {
+                let mut conn = pool.get().unwrap();
+                crate::db::ops::preference::set_preference(&mut conn, LEVEL_PREFERENCE_KEY, raw, 1).unwrap();
+            }
+            let error = load_saved_level(&pool)
+                .err()
+                .expect("invalid stored log level must fail");
+            assert!(error.contains("unsupported log level"), "{raw:?}: {error}");
+        }
+    }
+
     /// A sink writing to a real rolling file, so the whole chain is exercised.
     struct WriterSink(RollingWriter);
 
@@ -316,19 +371,19 @@ mod tests {
                 include_rotated: true,
                 ..Default::default()
             },
-        );
+        )
+        .unwrap();
 
         assert_eq!(page.entries.len(), 2);
         // Newest first.
         let newest = &page.entries[0];
-        assert_eq!(newest.level, "WARN");
+        assert_eq!(newest.level, reader::LogRecordLevel::Warn);
         assert_eq!(newest.msg, "auth failed");
         assert_eq!(newest.fields.get("status").and_then(|v| v.as_i64()), Some(401));
         assert_eq!(
             newest.span_fields.get("conversation_id").and_then(|v| v.as_str()),
             Some("c-42")
         );
-        assert!(newest.raw.is_none(), "a record we wrote must parse: {newest:?}");
         assert_eq!(page.entries[1].msg, "plain event");
 
         // The credential never reached the disk.
@@ -357,7 +412,8 @@ mod tests {
                 conversation_id: Some("wanted".into()),
                 ..Default::default()
             },
-        );
+        )
+        .unwrap();
 
         assert_eq!(page.entries.len(), 1);
         assert_eq!(page.entries[0].msg, "this one");

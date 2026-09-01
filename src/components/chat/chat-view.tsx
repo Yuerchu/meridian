@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Button } from '@heroui/react'
 import { EmptyState as ProEmptyState } from '@heroui-pro/react/empty-state'
 import { api } from '@/api'
 import { ChatTranscript } from './chat-transcript'
@@ -18,18 +19,19 @@ import { useContextInfo } from '@/hooks/use-context-info'
 import { useConfirm } from '@/hooks/use-confirm'
 import { usePlatform } from '@/hooks/use-platform'
 import { useConversationStore } from '@/stores/conversation-store'
+import { usePlanReviewStore } from '@/stores/plan-review-store'
 import { parseComposerIntent, referenceInputs } from '@/lib/composer-intent'
 import { findComposerCommand } from '@/lib/composer-commands'
 import { allowedEfforts } from '@/lib/thinking'
 import { visibleSettingsTabs, type SettingsTab } from '@/components/settings/tabs'
 import { isRemote } from '@/lib/transport'
-import type { ChatMode, Message, QueueDelivery, ThinkingLevel } from '@/types'
+import type { ChatMode, MessageRating, MessageViewModel, QueueDelivery, ThinkingLevel } from '@/types'
 import { StarterPrompts } from './empty-state'
 import type { InitialTurnDraft } from './conversation-draft'
 
 // Stable identity for the empty case: `?? []` would hand useTurns a new array on
 // every render of a conversation whose session has not been created yet.
-const NO_MESSAGES: Message[] = []
+const NO_MESSAGES: MessageViewModel[] = []
 
 interface ShellSubmission {
   draft: string
@@ -51,6 +53,8 @@ function ChatViewInner({
   onOpenSettingsTab?: (tab: SettingsTab) => void
 }) {
   const session = useConversationStore((s) => s.sessions[conversationId])
+  const planReviewSummaries = usePlanReviewStore((state) => state.summaries)
+  const openPlanReview = usePlanReviewStore((state) => state.openReview)
   const storeEnsureSession = useConversationStore((s) => s.ensureSession)
   const storeLoadMessages = useConversationStore((s) => s.loadMessages)
   const storeLoadActiveTodos = useConversationStore((s) => s.loadActiveTodos)
@@ -74,6 +78,20 @@ function ChatViewInner({
   const compacting = session?.compacting ?? false
   const error = session?.error ?? null
   const activeTodos = session?.activeTodos ?? null
+  const pendingPlanReview = useMemo(
+    () =>
+      Object.values(planReviewSummaries).find(
+        (review) =>
+          review.conversation_id === conversationId &&
+          (review.status === 'pending' ||
+            review.delivery_state === 'queued' ||
+            review.delivery_state === 'dispatched' ||
+            review.delivery_state === 'held' ||
+            review.delivery_state === 'in_doubt'),
+      ) ?? null,
+    [conversationId, planReviewSummaries],
+  )
+  const reviewBlocked = (session?.planReviewBarrier ?? false) || pendingPlanReview !== null
 
   const [input, setInput] = useState('')
   const [commandPending, setCommandPending] = useState(false)
@@ -156,7 +174,7 @@ function ChatViewInner({
   // not need the turn id a reloaded window may not have.
   const handleStop = useCallback(() => {
     if (shellTurnId) {
-      api.stopChat(conversationId, shellTurnId)
+      api.stopChat({ conversationId, turnId: shellTurnId })
       return
     }
     if (isHostedAgent) {
@@ -164,12 +182,12 @@ function ChatViewInner({
       return
     }
     const turnId = useConversationStore.getState().sessions[conversationId]?.activeTurnId
-    api.stopChat(conversationId, turnId)
+    api.stopChat({ conversationId, turnId })
   }, [conversationId, isHostedAgent, shellTurnId])
 
   const handleDelete = useCallback(
     (id: string) => {
-      api.deleteMessage(conversationId, id).then(() => {
+      api.deleteMessage({ conversationId, id }).then(() => {
         storeLoadMessages(conversationId)
       })
     },
@@ -177,8 +195,8 @@ function ChatViewInner({
   )
 
   const handleRate = useCallback(
-    (id: string, rating: number | null) => {
-      api.rateMessage(id, rating).then(() => {
+    (id: string, rating: MessageRating | null) => {
+      api.rateMessage({ id, rating }).then(() => {
         storeLoadMessages(conversationId)
       })
     },
@@ -189,7 +207,7 @@ function ChatViewInner({
     async (instructions?: string) => {
       storeSetError(conversationId, null)
       try {
-        await api.compact(conversationId, instructions)
+        await api.compact({ conversationId, customInstructions: instructions ?? null })
       } catch (err) {
         storeSetError(conversationId, String(err))
         storeSetCompacting(conversationId, false)
@@ -203,11 +221,11 @@ function ChatViewInner({
   // Memoised because useTurns keys its work on this array's identity; a fresh
   // filter() on every render would rebuild every turn on every stream chunk.
   const visibleMessages = useMemo(
-    () => messages.filter((m) => (m.role === 'user' || m.role === 'assistant') && m.is_compact_summary !== 1),
+    () => messages.filter((m) => (m.role === 'user' || m.role === 'assistant') && !m.is_compact_summary),
     [messages],
   )
   const allTurns = useTurns(visibleMessages, streaming, session?.turns)
-  const compactSummary = messages.find((m) => m.is_compact_summary === 1)
+  const compactSummary = messages.find((m) => m.is_compact_summary)
   // The boundary comes from the summary's anchor rather than a stored cursor:
   // once a conversation can branch, one sort_order threshold cannot describe
   // where the summary takes over on every path.
@@ -317,7 +335,7 @@ function ChatViewInner({
         }
 
         if (isHostedAgent) {
-          const options = await api.acpSessionConfig(conversationId)
+          const options = await api.acpSessionConfig({ conversationId })
           const option = options.find((candidate) => {
             if (command.id === 'thinking') return candidate.id === 'effort' || candidate.category === 'thought_level'
             return candidate.id === command.id || candidate.category === command.id
@@ -328,7 +346,7 @@ function ChatViewInner({
             storeSetError(conversationId, t('chat.command.invalidArgument', { name: command.name, value: args }))
             return
           }
-          await api.acpSetSessionConfig(conversationId, option.id, selected.value)
+          await api.acpSetSessionConfig({ conversationId, configId: option.id, value: selected.value })
           clearSubmittedDraft()
           return
         }
@@ -339,7 +357,7 @@ function ChatViewInner({
             storeSetError(conversationId, t('chat.command.invalidArgument', { name: command.name, value: args }))
             return
           }
-          const models = await api.fetchProviderModels(providerId)
+          const models = await api.fetchProviderModels({ providerId, forceRefresh: null })
           const model = models.find(
             (candidate) =>
               candidate.id.toLowerCase() === args.toLowerCase() || candidate.name.toLowerCase() === args.toLowerCase(),
@@ -433,7 +451,12 @@ function ChatViewInner({
         storeSetError(conversationId, null)
         storeBeginShellCommand(conversationId, turnId)
         setInput((current) => (current === originalDraft ? '' : current))
-        let result = await api.runUserCommand(conversationId, command, turnId)
+        let result = await api.runUserCommand({
+          conversationId,
+          command,
+          turnId,
+          retryWithoutSandbox: null,
+        })
         clearShellRetry(turnId)
         storeFinishShellCommand(result)
         if (result.can_retry_without_sandbox) {
@@ -459,7 +482,12 @@ function ChatViewInner({
           })
           if (approved) {
             storeBeginShellCommand(conversationId, turnId)
-            result = await api.runUserCommand(conversationId, command, turnId, true)
+            result = await api.runUserCommand({
+              conversationId,
+              command,
+              turnId,
+              retryWithoutSandbox: true,
+            })
             storeFinishShellCommand(result)
           }
         }
@@ -531,6 +559,7 @@ function ChatViewInner({
   // because they were typed on the empty screen.
   useEffect(() => {
     if (!initialDraft || initialDraftSent.current === conversationId) return
+    if (reviewBlocked) return
     initialDraftSent.current = conversationId
     if (initialDraft.remainingComposer) {
       setInput(initialDraft.remainingComposer.text)
@@ -573,9 +602,15 @@ function ChatViewInner({
     onInitialDraftConsumed,
     sendMessage,
     storeSetError,
+    reviewBlocked,
   ])
 
   const handleSubmit = useCallback(() => {
+    if (reviewBlocked) {
+      storeSetError(conversationId, t('chat.plan.reviewBlocked'))
+      if (pendingPlanReview) openPlanReview(pendingPlanReview.review_id)
+      return
+    }
     if (commandPendingRef.current) {
       storeSetError(conversationId, t('chat.command.busy'))
       return
@@ -660,6 +695,9 @@ function ChatViewInner({
     queue,
     queueDelivery,
     t,
+    reviewBlocked,
+    pendingPlanReview,
+    openPlanReview,
   ])
 
   return (
@@ -706,7 +744,10 @@ function ChatViewInner({
                 <ProEmptyState.Description>{t('chat.startHint')}</ProEmptyState.Description>
               </ProEmptyState.Header>
               <ProEmptyState.Content className="w-full max-w-2xl">
-                <StarterPrompts disabled={streaming || !!shellTurnId || commandPending} onSelect={setInput} />
+                <StarterPrompts
+                  disabled={streaming || !!shellTurnId || commandPending || reviewBlocked}
+                  onSelect={setInput}
+                />
               </ProEmptyState.Content>
             </ProEmptyState>
           ) : null
@@ -720,6 +761,17 @@ function ChatViewInner({
           follow-up alike. Alone, the bar keeps its own card. */}
       {queue.items.length === 0 && <TodoBar conversationId={conversationId} />}
 
+      {reviewBlocked && (
+        <div className="flex shrink-0 items-center gap-3 border-t border-border bg-accent-soft px-4 py-2 text-xs text-accent">
+          <p className="min-w-0 flex-1">{t('chat.plan.reviewBlocked')}</p>
+          {pendingPlanReview && (
+            <Button size="sm" variant="ghost" onPress={() => openPlanReview(pendingPlanReview.review_id)}>
+              {t('chat.plan.review')}
+            </Button>
+          )}
+        </div>
+      )}
+
       <InputBar
         conversationId={conversationId}
         isHosted={isHostedAgent}
@@ -728,7 +780,7 @@ function ChatViewInner({
         onSubmit={handleSubmit}
         onVoiceSend={handleVoiceSend}
         onStop={handleStop}
-        disabled={streaming || !!shellTurnId || commandPending}
+        disabled={streaming || !!shellTurnId || commandPending || reviewBlocked}
         streaming={streaming || !!shellTurnId}
         steerable={shellTurnId ? false : steerable}
         queueing={queueing}

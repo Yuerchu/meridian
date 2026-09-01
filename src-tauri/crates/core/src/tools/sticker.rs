@@ -22,7 +22,7 @@ fn assigned_sticker(
     conn: &mut diesel::SqliteConnection,
     assistant_id: &str,
     sticker_id: &str,
-) -> Result<crate::db::models::emoji::Emoji, String> {
+) -> Result<crate::db::models::emoji::EmojiRow, String> {
     let sticker = crate::db::ops::emoji::get_emoji(conn, sticker_id).map_err(|_| "Unknown sticker id".to_string())?;
     let packs = crate::db::ops::emoji_pack::list_assigned_pack_ids(conn, assistant_id).map_err(|e| e.to_string())?;
     if sticker.semantic_status != "confirmed" || !packs.contains(&sticker.pack_id) {

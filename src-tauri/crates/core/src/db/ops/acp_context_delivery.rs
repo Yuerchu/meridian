@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::acp_context_delivery::NewAcpContextDelivery;
+use crate::db::models::acp_context_delivery::AcpContextDeliveryInsert;
 use crate::db::schema::acp_context_deliveries;
 
 /// Which candidate context items an ACP prompt has already carried.
@@ -23,7 +23,7 @@ pub fn delivered(conn: &mut SqliteConnection, context_item_ids: &[String]) -> Qu
 pub fn mark_delivered(conn: &mut SqliteConnection, context_item_ids: &[String], now: i64) -> QueryResult<usize> {
     let rows = context_item_ids
         .iter()
-        .map(|id| NewAcpContextDelivery {
+        .map(|id| AcpContextDeliveryInsert {
             context_item_id: id,
             delivered_at: now,
         })
@@ -39,14 +39,14 @@ pub fn mark_delivered(conn: &mut SqliteConnection, context_item_ids: &[String], 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::models::message::NewMessage;
-    use crate::db::models::message_context_item::NewMessageContextItem;
+    use crate::db::models::message::MessageInsert;
+    use crate::db::models::message_context_item::MessageContextItemInsert;
 
     fn seed(conn: &mut SqliteConnection) {
         crate::db::ops::conversation::create_conversation(conn, "c1", None, None, None, 1).unwrap();
         crate::db::ops::message::append_message(
             conn,
-            &NewMessage {
+            &MessageInsert {
                 id: "m1",
                 conversation_id: "c1",
                 role: "user",
@@ -79,7 +79,7 @@ mod tests {
         .unwrap();
         crate::db::ops::message_context_item::insert_many(
             conn,
-            &[NewMessageContextItem {
+            &[MessageContextItemInsert {
                 id: "i1",
                 message_id: "m1",
                 position: 0,

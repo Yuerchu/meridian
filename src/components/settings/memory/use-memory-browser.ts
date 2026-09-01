@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '@/api'
-import type { Memory, MemoryEnums, MemorySubject, Project } from '@/types'
+import type { MemoryInfoResponse, MemoryEnumsResponse, MemorySubjectInfoResponse, ProjectInfoResponse } from '@/types'
 
 /** Which branch of the left-hand filter is selected.
  *
@@ -17,10 +17,10 @@ export type ScopeFilter =
   | { kind: 'person'; scopeId: string }
 
 export function useMemoryBrowser() {
-  const [projects, setProjects] = useState<Project[]>([])
-  const [subjects, setSubjects] = useState<MemorySubject[]>([])
-  const [memories, setMemories] = useState<Memory[]>([])
-  const [enums, setEnums] = useState<MemoryEnums | null>(null)
+  const [projects, setProjects] = useState<ProjectInfoResponse[]>([])
+  const [subjects, setSubjects] = useState<MemorySubjectInfoResponse[]>([])
+  const [memories, setMemories] = useState<MemoryInfoResponse[]>([])
+  const [enums, setEnums] = useState<MemoryEnumsResponse | null>(null)
   const [filter, setFilter] = useState<ScopeFilter>({ kind: 'all' })
   const [search, setSearch] = useState('')
   const [originFilter, setOriginFilter] = useState<string>('all')

@@ -8,6 +8,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::Emit;
 use crate::agent::{InlineHiddenTagParser, InlineTagSpec, StreamResult};
+use crate::events::ChatStreamEvent;
 use crate::provider;
 
 /// How long a stream may say nothing before it is taken as dead.
@@ -30,15 +31,9 @@ pub(crate) async fn consume_stream(
 ) -> Result<StreamResult, String> {
     use futures::StreamExt;
 
-    let send = |kind: &str, content: &str| -> Result<(), String> {
+    let send = |event: ChatStreamEvent| -> Result<(), String> {
         match emit {
-            Some(e) => e.emit(
-                "chat-stream",
-                serde_json::json!({
-                    "type": kind, "content": content, "message_id": message_id,
-                    "conversation_id": conversation_id,
-                }),
-            ),
+            Some(e) => e.emit_chat(event),
             None => Ok(()),
         }
     };
@@ -73,16 +68,28 @@ pub(crate) async fn consume_stream(
                         let chunk = think_parser.push_str(s);
                         if !chunk.visible_text.is_empty() {
                             text.push_str(&chunk.visible_text);
-                            send("text", &chunk.visible_text)?;
+                            send(ChatStreamEvent::Text {
+                                content: chunk.visible_text.clone(),
+                                message_id: message_id.to_string(),
+                                conversation_id: conversation_id.to_string(),
+                            })?;
                         }
                         for tag in &chunk.extracted {
                             reasoning.push_str(&tag.content);
-                            send("reasoning", &tag.content)?;
+                            send(ChatStreamEvent::Reasoning {
+                                content: tag.content.clone(),
+                                message_id: message_id.to_string(),
+                                conversation_id: conversation_id.to_string(),
+                            })?;
                         }
                     }
                     Ok(Some(Ok(provider::StreamEvent::Reasoning { content: ref s }))) => {
                         reasoning.push_str(s);
-                        send("reasoning", s)?;
+                        send(ChatStreamEvent::Reasoning {
+                            content: s.clone(),
+                            message_id: message_id.to_string(),
+                            conversation_id: conversation_id.to_string(),
+                        })?;
                     }
                     Ok(Some(Ok(provider::StreamEvent::ProviderStateUpdate { update }))) => {
                         provider_state.apply(update)?;
@@ -125,15 +132,11 @@ pub(crate) async fn consume_stream(
                         // round, but it is sooner than "on reload" — worth
                         // knowing before wondering where the card went.
                         if let Some(e) = emit {
-                            e.emit(
-                                "chat-stream",
-                                serde_json::json!({
-                                    "type": "server_tool",
-                                    "message_id": message_id,
-                                    "conversation_id": conversation_id,
-                                    "call": call,
-                                }),
-                            )?;
+                            e.emit_chat(ChatStreamEvent::ServerTool {
+                                message_id: message_id.to_string(),
+                                conversation_id: conversation_id.to_string(),
+                                call: call.clone(),
+                            })?;
                         }
                     }
                     Ok(Some(Ok(provider::StreamEvent::UsageUpdate { usage: ref u }))) => {
@@ -164,10 +167,18 @@ pub(crate) async fn consume_stream(
     let tail = think_parser.finish();
     if !cancel.is_cancelled() {
         if !tail.visible_text.is_empty() {
-            send("text", &tail.visible_text)?;
+            send(ChatStreamEvent::Text {
+                content: tail.visible_text.clone(),
+                message_id: message_id.to_string(),
+                conversation_id: conversation_id.to_string(),
+            })?;
         }
         for tag in &tail.extracted {
-            send("reasoning", &tag.content)?;
+            send(ChatStreamEvent::Reasoning {
+                content: tag.content.clone(),
+                message_id: message_id.to_string(),
+                conversation_id: conversation_id.to_string(),
+            })?;
         }
     }
     text.push_str(&tail.visible_text);

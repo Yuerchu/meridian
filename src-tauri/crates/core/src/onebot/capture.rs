@@ -18,7 +18,7 @@ use tokio::io::AsyncWriteExt;
 use super::format::MediaRef;
 use super::protocol::OneBotAction;
 use super::{DirectedCallOutcome, SharedState};
-use crate::db::models::voice_corpus::VoiceBlob;
+use crate::db::models::voice_corpus::VoiceBlobRow;
 use crate::db::ops::voice_corpus as ops;
 use crate::voice_corpus::{self, CapturePermit, CaptureScope};
 
@@ -326,7 +326,7 @@ fn commit(input: CommitInput) -> Result<Settled, String> {
 /// [`settle_blob`] 的三种答案。
 enum Claimed {
     /// 可以挂 clip 的那一行。
-    Blob(VoiceBlob),
+    Blob(VoiceBlobRow),
     /// 有人正握着它，退一步再来。
     Retry,
     /// 这次不写：墓碑，或者已经被标坏了。
@@ -401,7 +401,7 @@ fn read_blob(conn: &mut diesel::SqliteConnection, key: &ops::BlobKey<'_>) -> Res
         .filter(voice_blobs::source_id.eq(key.source_id))
         .filter(voice_blobs::file_format.eq(key.file_format))
         .filter(voice_blobs::sha256.eq(key.sha256))
-        .select(VoiceBlob::as_select())
+        .select(VoiceBlobRow::as_select())
         .first(conn)
         .optional()?;
     // 刚刚 publish 过，所以它必然在。真读不到就当作没抢到，让上面再转一圈。

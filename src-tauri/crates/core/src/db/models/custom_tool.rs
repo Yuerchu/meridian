@@ -5,7 +5,7 @@ use crate::db::schema::custom_tools;
 
 #[derive(Debug, Clone, Queryable, Selectable, Serialize)]
 #[diesel(table_name = custom_tools)]
-pub struct CustomTool {
+pub struct CustomToolRow {
     pub id: String,
     pub name: String,
     pub description: String,
@@ -24,7 +24,7 @@ pub struct CustomTool {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = custom_tools)]
-pub struct NewCustomTool<'a> {
+pub struct CustomToolInsert<'a> {
     pub id: &'a str,
     pub name: &'a str,
     pub description: &'a str,
@@ -43,7 +43,7 @@ pub struct NewCustomTool<'a> {
 
 #[derive(Debug, AsChangeset, Default)]
 #[diesel(table_name = custom_tools)]
-pub struct CustomToolUpdate {
+pub struct CustomToolChangeset {
     pub name: Option<String>,
     pub description: Option<String>,
     pub category_id: Option<Option<String>>,

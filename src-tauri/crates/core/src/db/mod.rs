@@ -88,6 +88,19 @@ pub fn init_db(db_path: &str) -> DbPool {
     // Memories no longer hang off projects by foreign key, and migrations run
     // with foreign keys off anyway, so a table rebuild can leave orphans behind.
     let now = crate::util::now_ms();
+    match ops::plan_review::backfill_legacy_artifacts(&mut conn, now) {
+        Ok(0) => {}
+        Ok(n) => tracing::info!(documents = n, "backfilled legacy plan artifacts"),
+        // The old rows remain readable through their existing path, so this is
+        // diagnosable degradation rather than a reason to make the database
+        // unavailable. The next startup retries the idempotent backfill.
+        Err(error) => tracing::error!(error = %error, "could not backfill legacy plan artifacts"),
+    }
+    match ops::plan_review::reconcile_dispatched_deliveries(&mut conn, now) {
+        Ok(0) => {}
+        Ok(n) => tracing::warn!(deliveries = n, "reconciled plan review deliveries after restart"),
+        Err(error) => tracing::error!(error = %error, "could not reconcile plan review deliveries"),
+    }
     let orphans = ops::memory::purge_orphan_project_memories(&mut conn).unwrap_or(0);
     let proposals = ops::memory::expire_proposals(&mut conn, now).unwrap_or(0);
     // Bounded-growth housekeeping. Kept off the write path: neither sweep
@@ -170,6 +183,24 @@ mod migration_tests {
         n: i64,
     }
 
+    #[derive(QueryableByName)]
+    struct DecimalMigrationRow {
+        #[diesel(sql_type = Nullable<Text>)]
+        input_price: Option<String>,
+        #[diesel(sql_type = Nullable<Text>)]
+        output_price: Option<String>,
+        #[diesel(sql_type = Nullable<Text>)]
+        cache_read_price: Option<String>,
+        #[diesel(sql_type = Nullable<Text>)]
+        pricing_tiers: Option<String>,
+    }
+
+    #[derive(QueryableByName)]
+    struct AutoReviewMigrationRow {
+        #[diesel(sql_type = Nullable<Text>)]
+        auto_review: Option<String>,
+    }
+
     /// Two migrations sharing a version number is silent: Diesel records the
     /// version as applied and the second one never runs, so a column simply
     /// never appears and every query against it fails at runtime. Cheap to
@@ -190,7 +221,7 @@ mod migration_tests {
     /// otherwise a runtime error rather than a compile one.
     #[test]
     fn a_conversation_starts_out_asking_about_every_edit() {
-        use crate::db::models::conversation::Conversation;
+        use crate::db::models::conversation::ConversationRow;
         use crate::db::schema::conversations::dsl::*;
 
         let mut conn = SqliteConnection::establish(":memory:").unwrap();
@@ -202,9 +233,9 @@ mod migration_tests {
         )
         .unwrap();
 
-        let c: Conversation = conversations
+        let c: ConversationRow = conversations
             .find("c1")
-            .select(Conversation::as_select())
+            .select(ConversationRow::as_select())
             .first(&mut conn)
             .unwrap();
         assert_eq!(
@@ -661,6 +692,332 @@ mod migration_tests {
         .get_result(&mut conn)
         .unwrap();
         assert_eq!(live_rows.n, 1);
+    }
+
+    /// Migration 49 is a data migration, not merely a column-type change. It
+    /// must turn legacy REAL values and numeric tier JSON into the one canonical
+    /// string representation accepted by the Decimal protocol. The old 0/0
+    /// sentinel becomes NULL only when both token prices are zero, so a model
+    /// with free input and paid output keeps that deliberate zero.
+    #[test]
+    fn exact_decimal_migration_canonicalizes_existing_money() {
+        let mut conn = conn_before("00000000000049");
+        conn.batch_execute(
+            r#"
+            INSERT INTO providers (id, name, base_url, created_at, updated_at)
+            VALUES ('p1', 'Provider', 'https://example.invalid', 1, 1);
+
+            INSERT INTO model_configs VALUES (
+                'mc1', 'p1', 'm1', NULL, 128000, 100000, NULL,
+                0, 1.25, 0.125, 1, 1, NULL, 0.5,
+                '[{"min_prompt_tokens":1000,"input":2.5,"output":3,"cache_read":0.25}]',
+                NULL, 4.75
+            );
+
+            INSERT INTO model_configs VALUES (
+                'mc_future', 'p1', 'm-future', NULL, 128000, 100000, NULL,
+                0, 1.25, 0.125, 1, 1, NULL, 0.5,
+                '[{"min_prompt_tokens":1000,"input":2.5,"output":3,"future":"keep"}]',
+                NULL, 4.75
+            );
+
+            INSERT INTO model_configs VALUES (
+                'mc_free', 'p1', 'm-free', NULL, 128000, 100000, NULL,
+                0, 0, NULL, 1, 1, NULL, NULL, NULL, NULL, NULL
+            );
+
+            INSERT INTO audit_messages (
+                id, recorded_at, message_id, conversation_id, role, content,
+                created_at, input_price, output_price, cache_read_price,
+                cache_write_price, server_tool_price, billing_mode
+            ) VALUES (
+                'a1', 1, 'm1', 'c1', 'assistant', 'ok', 1,
+                1.25, 2.5, 0.125, 0.5, 4.75, 'metered'
+            );
+
+            INSERT INTO preferences (key, value, updated_at)
+            VALUES ('onebot.balance_alert_threshold', '', 1);
+            "#,
+        )
+        .unwrap();
+
+        run_migration(&mut conn, "00000000000049");
+
+        let model: DecimalMigrationRow = diesel::sql_query(
+            "SELECT input_price, output_price, cache_read_price, pricing_tiers
+             FROM model_configs WHERE id = 'mc1'",
+        )
+        .get_result(&mut conn)
+        .unwrap();
+        assert_eq!(model.input_price.as_deref(), Some("0"));
+        assert_eq!(model.output_price.as_deref(), Some("1.25"));
+        assert_eq!(model.cache_read_price.as_deref(), Some("0.125"));
+
+        let tiers: serde_json::Value = serde_json::from_str(model.pricing_tiers.as_deref().unwrap()).unwrap();
+        assert_eq!(tiers[0]["input_price"], "2.5");
+        assert_eq!(tiers[0]["output_price"], "3");
+        assert_eq!(tiers[0]["cache_read_price"], "0.25");
+        assert!(tiers[0].get("cache_write_price").is_some());
+        assert!(tiers[0]["cache_write_price"].is_null());
+        assert!(tiers[0].get("input").is_none());
+        assert!(tiers[0].get("output").is_none());
+        assert!(tiers[0].get("cache_read").is_none());
+        assert!(crate::agent::pricing::parse_tiers(model.pricing_tiers.as_deref()).is_ok());
+
+        let future: DecimalMigrationRow = diesel::sql_query(
+            "SELECT input_price, output_price, cache_read_price, pricing_tiers
+             FROM model_configs WHERE id = 'mc_future'",
+        )
+        .get_result(&mut conn)
+        .unwrap();
+        let future_tiers: serde_json::Value = serde_json::from_str(future.pricing_tiers.as_deref().unwrap()).unwrap();
+        assert_eq!(future_tiers[0]["future"], "keep");
+        assert!(future_tiers[0].get("cache_read_price").is_some());
+        assert!(future_tiers[0]["cache_read_price"].is_null());
+        assert!(crate::agent::pricing::parse_tiers(future.pricing_tiers.as_deref()).is_err());
+
+        let free: DecimalMigrationRow = diesel::sql_query(
+            "SELECT input_price, output_price, cache_read_price, pricing_tiers
+             FROM model_configs WHERE id = 'mc_free'",
+        )
+        .get_result(&mut conn)
+        .unwrap();
+        assert_eq!(free.input_price, None);
+        assert_eq!(free.output_price, None);
+
+        let audit: DecimalMigrationRow = diesel::sql_query(
+            "SELECT input_price, output_price, cache_read_price AS cache_read_price,
+                    NULL AS pricing_tiers
+             FROM audit_messages WHERE id = 'a1'",
+        )
+        .get_result(&mut conn)
+        .unwrap();
+        assert_eq!(audit.input_price.as_deref(), Some("1.25"));
+        assert_eq!(audit.output_price.as_deref(), Some("2.5"));
+        assert_eq!(audit.cache_read_price.as_deref(), Some("0.125"));
+
+        conn.batch_execute(
+            "UPDATE audit_messages
+             SET input_price = '12.34', output_price = '23.45',
+                 cache_read_price = '0.12', cache_write_price = '0.34',
+                 server_tool_price = '4.56'
+             WHERE id = 'a1'",
+        )
+        .unwrap();
+        let canonical_audit_money: CountRow = diesel::sql_query(
+            "SELECT COUNT(*) AS n FROM audit_messages
+             WHERE id = 'a1'
+               AND typeof(input_price) = 'text'
+               AND typeof(output_price) = 'text'
+               AND typeof(cache_read_price) = 'text'
+               AND typeof(cache_write_price) = 'text'
+               AND typeof(server_tool_price) = 'text'",
+        )
+        .get_result(&mut conn)
+        .unwrap();
+        assert_eq!(canonical_audit_money.n, 1);
+
+        for column in [
+            "input_price",
+            "output_price",
+            "cache_read_price",
+            "cache_write_price",
+            "server_tool_price",
+        ] {
+            assert!(
+                conn.batch_execute(&format!("UPDATE audit_messages SET {column} = x'3132' WHERE id = 'a1'"))
+                    .is_err(),
+                "audit_messages.{column} must reject BLOB money"
+            );
+        }
+
+        assert!(
+            conn.batch_execute("UPDATE model_configs SET output_price = '01.25' WHERE id = 'mc1'")
+                .is_err()
+        );
+        assert!(
+            conn.batch_execute("UPDATE model_configs SET output_price = '' WHERE id = 'mc1'")
+                .is_err()
+        );
+        assert!(
+            conn.batch_execute("UPDATE audit_messages SET billing_mode = 'future' WHERE id = 'a1'")
+                .is_err()
+        );
+
+        let empty_threshold: CountRow = diesel::sql_query(
+            "SELECT COUNT(*) AS n FROM preferences
+             WHERE key = 'onebot.balance_alert_threshold'",
+        )
+        .get_result(&mut conn)
+        .unwrap();
+        assert_eq!(empty_threshold.n, 0);
+    }
+
+    fn seed_auto_review_before_50(conn: &mut SqliteConnection, raw: &str) {
+        conn.batch_execute(
+            "INSERT INTO conversations
+                 (id, is_pinned, is_archived, message_count, created_at, updated_at)
+             VALUES ('c1', 0, 0, 1, 1, 1);
+             INSERT INTO messages
+                 (id, conversation_id, role, content, sort_order, created_at,
+                  schema_version, is_compact_summary)
+             VALUES ('m1', 'c1', 'assistant', '', 1, 1, 2, 0);",
+        )
+        .unwrap();
+        diesel::sql_query("UPDATE messages SET auto_review = ? WHERE id = 'm1'")
+            .bind::<Text, _>(raw)
+            .execute(conn)
+            .unwrap();
+    }
+
+    #[test]
+    fn auto_review_migration_rewrites_legacy_rows_to_the_only_public_shape() {
+        let mut conn = conn_before("00000000000050");
+        seed_auto_review_before_50(
+            &mut conn,
+            r#"{
+                "call-allow": {
+                    "outcome": "allow",
+                    "risk": "low",
+                    "authorization": "high",
+                    "rationale": "requested",
+                    "stage": "quick",
+                    "model": "reviewer",
+                    "evidence": [{"tool": "read_file", "arguments": "{\"path\":\"x\"}"}],
+                    "usage": {
+                        "input_tokens": 10,
+                        "output_tokens": 2,
+                        "cache_read_tokens": null,
+                        "cache_write_tokens": 0
+                    }
+                },
+                "call-unreadable": {
+                    "outcome": "unreadable",
+                    "rationale": "bad response",
+                    "stage": "investigate",
+                    "model": "reviewer",
+                    "usage": {
+                        "input_tokens": null,
+                        "output_tokens": null,
+                        "cache_read_tokens": null,
+                        "cache_write_tokens": null
+                    }
+                }
+            }"#,
+        );
+
+        run_migration(&mut conn, "00000000000050");
+
+        let stored: AutoReviewMigrationRow = diesel::sql_query("SELECT auto_review FROM messages WHERE id = 'm1'")
+            .get_result(&mut conn)
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_str(stored.auto_review.as_deref().unwrap()).unwrap();
+        let expected_keys = [
+            "authorization",
+            "evidence",
+            "model",
+            "outcome",
+            "rationale",
+            "risk",
+            "stage",
+        ];
+        for call_id in ["call-allow", "call-unreadable"] {
+            let verdict = value[call_id].as_object().unwrap();
+            let mut keys = verdict.keys().map(String::as_str).collect::<Vec<_>>();
+            keys.sort_unstable();
+            assert_eq!(keys, expected_keys);
+            serde_json::from_value::<crate::events::AutoReviewVerdict>(value[call_id].clone()).unwrap();
+        }
+        assert_eq!(
+            value["call-allow"]["evidence"],
+            serde_json::json!([{"tool": "read_file", "arguments": "{\"path\":\"x\"}"}])
+        );
+        assert_eq!(value["call-unreadable"]["evidence"], serde_json::json!([]));
+        assert!(value["call-unreadable"]["risk"].is_null());
+        assert!(value["call-unreadable"]["authorization"].is_null());
+    }
+
+    #[test]
+    fn auto_review_migration_rejects_json_it_cannot_canonicalize() {
+        for (label, raw) in [
+            ("invalid JSON", "not json"),
+            ("wrong outer type", "[]"),
+            (
+                "unknown verdict field",
+                r#"{"call-1":{"outcome":"allow","future":true}}"#,
+            ),
+            (
+                "missing evidence arguments",
+                r#"{"call-1":{"outcome":"deny","evidence":[{"tool":"read"}]}}"#,
+            ),
+            ("missing outcome", r#"{"call-1":{"risk":"low"}}"#),
+            (
+                "missing evidence tool",
+                r#"{"call-1":{"outcome":"deny","evidence":[{"arguments":"{}"}]}}"#,
+            ),
+            (
+                "duplicate usage key",
+                r#"{"call-1":{"outcome":"allow","usage":{"input_tokens":1,"input_tokens":2,"output_tokens":1,"cache_read_tokens":0}}}"#,
+            ),
+            (
+                "duplicate evidence key",
+                r#"{"call-1":{"outcome":"deny","evidence":[{"tool":"read","tool":"write"}]}}"#,
+            ),
+        ] {
+            let mut conn = conn_before("00000000000050");
+            seed_auto_review_before_50(&mut conn, raw);
+            let all = MigrationSource::<diesel::sqlite::Sqlite>::migrations(&MIGRATIONS).unwrap();
+            let migration = all
+                .into_iter()
+                .find(|migration| migration.name().version().as_owned() == "00000000000050".into())
+                .unwrap();
+            assert!(migration.run(&mut conn).is_err(), "{label} must fail migration 50");
+
+            let stored: AutoReviewMigrationRow = diesel::sql_query("SELECT auto_review FROM messages WHERE id = 'm1'")
+                .get_result(&mut conn)
+                .unwrap();
+            assert_eq!(
+                stored.auto_review.as_deref(),
+                Some(raw),
+                "{label} must not be rewritten"
+            );
+        }
+    }
+
+    #[test]
+    fn sandbox_mode_migration_preserves_legacy_and_canonical_choices() {
+        for (stored, expected) in [
+            ("true", "auto"),
+            ("false", "off"),
+            ("auto", "auto"),
+            ("off", "off"),
+            ("container", "container"),
+            ("FALSE", "FALSE"),
+        ] {
+            let mut conn = conn_before("00000000000052");
+            conn.batch_execute(&format!(
+                "INSERT INTO preferences (key, value, updated_at)
+                 VALUES ('sandbox.enabled', '{stored}', 17),
+                        ('unrelated.enabled', 'false', 23);"
+            ))
+            .unwrap();
+
+            run_migration(&mut conn, "00000000000052");
+
+            use crate::db::schema::preferences::dsl::{preferences, updated_at, value};
+            let migrated: (String, i64) = preferences
+                .find("sandbox.enabled")
+                .select((value, updated_at))
+                .first(&mut conn)
+                .unwrap();
+            assert_eq!(migrated, (expected.into(), 17), "legacy value {stored:?}");
+            assert_eq!(
+                ops::preference::get_preference(&mut conn, "unrelated.enabled")
+                    .unwrap()
+                    .as_deref(),
+                Some("false")
+            );
+        }
     }
 
     fn ids_of(candidates: Vec<ops::turn::InterruptedCandidate>) -> Vec<String> {

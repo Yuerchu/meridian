@@ -2,7 +2,8 @@ import { renderHook, waitFor, act } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 
 import { api } from '@/api'
-import type { QueuedPrompt } from '@/types'
+import type { QueueUpdatedEvent } from '@/lib/app-event'
+import type { QueuedPromptInfoResponse } from '@/types'
 import { usePromptQueue } from './use-prompt-queue'
 
 vi.mock('@/api', () => ({
@@ -10,9 +11,9 @@ vi.mock('@/api', () => ({
 }))
 
 /** Captured so a `queue-updated` can be delivered by hand. */
-let notify: ((payload: { conversation_id?: string }) => void) | null = null
+let notify: ((payload: QueueUpdatedEvent) => void) | null = null
 vi.mock('@/lib/transport', () => ({
-  listen: (_event: string, handler: (e: { payload: { conversation_id?: string } }) => void) => {
+  listen: (_event: string, handler: (e: { payload: QueueUpdatedEvent }) => void) => {
     notify = (payload) => handler({ payload })
     return Promise.resolve(() => {
       notify = null
@@ -22,7 +23,7 @@ vi.mock('@/lib/transport', () => ({
 
 const CONV = 'conv-1'
 
-function row(id: string, over: Partial<QueuedPrompt> = {}): QueuedPrompt {
+function row(id: string, over: Partial<QueuedPromptInfoResponse> = {}): QueuedPromptInfoResponse {
   return {
     id,
     conversation_id: CONV,
@@ -97,7 +98,7 @@ test('still filters after the backend announces a change', async () => {
     row('waiting', { dispatched_at: 2, settled_at: 2, settled_message_id: 'm2' }),
   ])
   await act(async () => {
-    notify?.({ conversation_id: CONV })
+    notify?.({ conversation_id: CONV, delivered: false })
   })
 
   await waitFor(() => expect(result.current.items).toHaveLength(0))

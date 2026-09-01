@@ -1,31 +1,31 @@
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::emoji::{Emoji, NewEmoji};
-use crate::db::models::message_sticker::NewMessageSticker;
+use crate::db::models::emoji::{EmojiInsert, EmojiRow};
+use crate::db::models::message_sticker::MessageStickerInsert;
 use crate::db::schema::{emojis, message_stickers};
 
-pub fn list_by_pack(conn: &mut SqliteConnection, pack_id: &str) -> QueryResult<Vec<Emoji>> {
+pub fn list_by_pack(conn: &mut SqliteConnection, pack_id: &str) -> QueryResult<Vec<EmojiRow>> {
     emojis::table
         .filter(emojis::pack_id.eq(pack_id))
         .order(emojis::sort_order.asc())
-        .load::<Emoji>(conn)
+        .load::<EmojiRow>(conn)
 }
 
-pub fn get_emoji(conn: &mut SqliteConnection, id: &str) -> QueryResult<Emoji> {
-    emojis::table.find(id).first::<Emoji>(conn)
+pub fn get_emoji(conn: &mut SqliteConnection, id: &str) -> QueryResult<EmojiRow> {
+    emojis::table.find(id).first::<EmojiRow>(conn)
 }
 
-pub fn create_emoji(conn: &mut SqliteConnection, new: &NewEmoji) -> QueryResult<Emoji> {
+pub fn create_emoji(conn: &mut SqliteConnection, new: &EmojiInsert) -> QueryResult<EmojiRow> {
     diesel::insert_into(emojis::table).values(new).execute(conn)?;
-    emojis::table.find(new.id).first::<Emoji>(conn)
+    emojis::table.find(new.id).first::<EmojiRow>(conn)
 }
 
-pub fn rename_emoji(conn: &mut SqliteConnection, id: &str, new_name: &str) -> QueryResult<Emoji> {
+pub fn rename_emoji(conn: &mut SqliteConnection, id: &str, new_name: &str) -> QueryResult<EmojiRow> {
     diesel::update(emojis::table.find(id))
         .set(emojis::name.eq(new_name))
         .execute(conn)?;
-    emojis::table.find(id).first::<Emoji>(conn)
+    emojis::table.find(id).first::<EmojiRow>(conn)
 }
 
 pub fn delete_emoji(conn: &mut SqliteConnection, id: &str) -> QueryResult<()> {
@@ -33,25 +33,25 @@ pub fn delete_emoji(conn: &mut SqliteConnection, id: &str) -> QueryResult<()> {
     Ok(())
 }
 
-pub fn search_emojis(conn: &mut SqliteConnection, query: &str) -> QueryResult<Vec<Emoji>> {
+pub fn search_emojis(conn: &mut SqliteConnection, query: &str) -> QueryResult<Vec<EmojiRow>> {
     let pattern = format!("%{query}%");
     emojis::table
         .filter(emojis::name.like(&pattern).or(emojis::tags.like(&pattern)))
         .order(emojis::sort_order.asc())
         .limit(50)
-        .load::<Emoji>(conn)
+        .load::<EmojiRow>(conn)
 }
 
-pub fn list_confirmed_for_packs(conn: &mut SqliteConnection, pack_ids: &[String]) -> QueryResult<Vec<Emoji>> {
+pub fn list_confirmed_for_packs(conn: &mut SqliteConnection, pack_ids: &[String]) -> QueryResult<Vec<EmojiRow>> {
     emojis::table
         .filter(emojis::pack_id.eq_any(pack_ids))
         .filter(emojis::semantic_status.eq("confirmed"))
         .filter(emojis::file_format.ne("lottie"))
         .order((emojis::pack_id.asc(), emojis::sort_order.asc()))
-        .load::<Emoji>(conn)
+        .load::<EmojiRow>(conn)
 }
 
-pub fn list_candidates(conn: &mut SqliteConnection, pack_id: &str) -> QueryResult<Vec<Emoji>> {
+pub fn list_candidates(conn: &mut SqliteConnection, pack_id: &str) -> QueryResult<Vec<EmojiRow>> {
     emojis::table
         .filter(emojis::pack_id.eq(pack_id))
         .filter(emojis::semantic_status.ne("confirmed"))
@@ -59,7 +59,12 @@ pub fn list_candidates(conn: &mut SqliteConnection, pack_id: &str) -> QueryResul
         .load(conn)
 }
 
-pub fn update_suggestion(conn: &mut SqliteConnection, id: &str, name: &str, tags: Option<&str>) -> QueryResult<Emoji> {
+pub fn update_suggestion(
+    conn: &mut SqliteConnection,
+    id: &str,
+    name: &str,
+    tags: Option<&str>,
+) -> QueryResult<EmojiRow> {
     diesel::update(emojis::table.find(id))
         .set((
             emojis::suggested_name.eq(Some(name)),
@@ -70,7 +75,12 @@ pub fn update_suggestion(conn: &mut SqliteConnection, id: &str, name: &str, tags
     get_emoji(conn, id)
 }
 
-pub fn confirm_semantics(conn: &mut SqliteConnection, id: &str, name: &str, tags: Option<&str>) -> QueryResult<Emoji> {
+pub fn confirm_semantics(
+    conn: &mut SqliteConnection,
+    id: &str,
+    name: &str,
+    tags: Option<&str>,
+) -> QueryResult<EmojiRow> {
     diesel::update(emojis::table.find(id))
         .set((
             emojis::name.eq(name),
@@ -88,7 +98,7 @@ pub fn find_by_source_key(
     pack_id: &str,
     source: &str,
     source_key: &str,
-) -> QueryResult<Option<Emoji>> {
+) -> QueryResult<Option<EmojiRow>> {
     emojis::table
         .filter(emojis::pack_id.eq(pack_id))
         .filter(emojis::source.eq(source))
@@ -97,7 +107,7 @@ pub fn find_by_source_key(
         .optional()
 }
 
-pub fn mark_seen(conn: &mut SqliteConnection, id: &str, now: i64) -> QueryResult<Emoji> {
+pub fn mark_seen(conn: &mut SqliteConnection, id: &str, now: i64) -> QueryResult<EmojiRow> {
     diesel::update(emojis::table.find(id))
         .set((
             emojis::seen_count.eq(emojis::seen_count + 1),
@@ -114,7 +124,7 @@ pub fn attach_captured_media(
     file_format: &str,
     file_size: i64,
     native_payload: &str,
-) -> QueryResult<Emoji> {
+) -> QueryResult<EmojiRow> {
     diesel::update(emojis::table.find(id))
         .set((
             emojis::file_name.eq(file_name),
@@ -133,7 +143,7 @@ pub fn link_message_sticker(
     position: i32,
 ) -> QueryResult<()> {
     diesel::insert_or_ignore_into(message_stickers::table)
-        .values(&NewMessageSticker {
+        .values(&MessageStickerInsert {
             message_id,
             sticker_id,
             position,

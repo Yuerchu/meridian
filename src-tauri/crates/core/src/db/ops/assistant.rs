@@ -1,36 +1,40 @@
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::assistant::{Assistant, AssistantUpdate, NewAssistant};
+use crate::db::models::assistant::{AssistantChangeset, AssistantInsert, AssistantRow};
 use crate::db::schema::assistants;
 
-pub fn list_assistants(conn: &mut SqliteConnection) -> QueryResult<Vec<Assistant>> {
+pub fn list_assistants(conn: &mut SqliteConnection) -> QueryResult<Vec<AssistantRow>> {
     assistants::table
         .order(assistants::sort_order.asc())
-        .load::<Assistant>(conn)
+        .load::<AssistantRow>(conn)
 }
 
-pub fn get_assistant(conn: &mut SqliteConnection, id: &str) -> QueryResult<Assistant> {
-    assistants::table.find(id).first::<Assistant>(conn)
+pub fn get_assistant(conn: &mut SqliteConnection, id: &str) -> QueryResult<AssistantRow> {
+    assistants::table.find(id).first::<AssistantRow>(conn)
 }
 
-pub fn get_default_assistant(conn: &mut SqliteConnection) -> QueryResult<Option<Assistant>> {
+pub fn get_default_assistant(conn: &mut SqliteConnection) -> QueryResult<Option<AssistantRow>> {
     assistants::table
         .filter(assistants::is_default.eq(1))
-        .first::<Assistant>(conn)
+        .first::<AssistantRow>(conn)
         .optional()
 }
 
-pub fn create_assistant(conn: &mut SqliteConnection, new: &NewAssistant) -> QueryResult<Assistant> {
+pub fn create_assistant(conn: &mut SqliteConnection, new: &AssistantInsert) -> QueryResult<AssistantRow> {
     diesel::insert_into(assistants::table).values(new).execute(conn)?;
-    assistants::table.find(new.id).first::<Assistant>(conn)
+    assistants::table.find(new.id).first::<AssistantRow>(conn)
 }
 
-pub fn update_assistant(conn: &mut SqliteConnection, id: &str, changeset: &AssistantUpdate) -> QueryResult<Assistant> {
+pub fn update_assistant(
+    conn: &mut SqliteConnection,
+    id: &str,
+    changeset: &AssistantChangeset,
+) -> QueryResult<AssistantRow> {
     diesel::update(assistants::table.find(id))
         .set(changeset)
         .execute(conn)?;
-    assistants::table.find(id).first::<Assistant>(conn)
+    assistants::table.find(id).first::<AssistantRow>(conn)
 }
 
 pub fn delete_assistant(conn: &mut SqliteConnection, id: &str) -> QueryResult<()> {
@@ -43,8 +47,8 @@ mod tests {
     use super::*;
     use crate::db::test_db;
 
-    fn make_new_assistant<'a>(id: &'a str, name: &'a str, sort_order: i32) -> NewAssistant<'a> {
-        NewAssistant {
+    fn make_new_assistant<'a>(id: &'a str, name: &'a str, sort_order: i32) -> AssistantInsert<'a> {
+        AssistantInsert {
             id,
             name,
             description: None,
@@ -123,7 +127,7 @@ mod tests {
         let mut conn = pool.get().unwrap();
         create_assistant(&mut conn, &make_new_assistant("a1", "Old Name", 0)).unwrap();
 
-        let changeset = AssistantUpdate {
+        let changeset = AssistantChangeset {
             name: Some("New Name".into()),
             system_prompt: Some("Updated prompt".into()),
             ..Default::default()

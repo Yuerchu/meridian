@@ -4,16 +4,56 @@ use meridian_core::listen_guard::generate_token;
 use tauri::Manager;
 
 use crate::ServicesExt;
-use crate::remote::{AppRemote, ListenConfig, ListenStatus, RemoteServer, load_config, save_config};
+use crate::commands::model_config::RequiredNullable;
+use crate::remote::{AppRemote, ListenConfig, ListenStatusResponse, RemoteServer, load_config, save_config};
+
+#[derive(Debug, serde::Serialize)]
+pub struct ListenConfigInfoResponse {
+    pub enabled: bool,
+    pub host: String,
+    pub port: u16,
+    pub token: Option<String>,
+}
+
+impl From<ListenConfig> for ListenConfigInfoResponse {
+    fn from(config: ListenConfig) -> Self {
+        Self {
+            enabled: config.enabled,
+            host: config.host,
+            port: config.port,
+            token: config.token,
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ListenConfigUpdateRequest {
+    pub enabled: bool,
+    pub host: String,
+    pub port: u16,
+    pub token: RequiredNullable<String>,
+}
+
+impl From<ListenConfigUpdateRequest> for ListenConfig {
+    fn from(config: ListenConfigUpdateRequest) -> Self {
+        Self {
+            enabled: config.enabled,
+            host: config.host,
+            port: config.port,
+            token: config.token.0,
+        }
+    }
+}
 
 #[tauri::command]
-pub async fn get_listen_status(app: tauri::AppHandle) -> Result<ListenStatus, String> {
+pub async fn get_listen_status(app: tauri::AppHandle) -> Result<ListenStatusResponse, String> {
     Ok(app.state::<AppRemote>().0.lock().await.status())
 }
 
 #[tauri::command]
-pub async fn get_listen_config(app: tauri::AppHandle) -> Result<ListenConfig, String> {
-    Ok(app.state::<AppRemote>().0.lock().await.config().clone())
+pub async fn get_listen_config(app: tauri::AppHandle) -> Result<ListenConfigInfoResponse, String> {
+    Ok(app.state::<AppRemote>().0.lock().await.config().clone().into())
 }
 
 /// Save, and bring the running server into line with what was saved.
@@ -22,8 +62,12 @@ pub async fn get_listen_config(app: tauri::AppHandle) -> Result<ListenConfig, St
 /// without one: a user who has never turned this on has no token, and asking
 /// them to invent one is asking for `1234`.
 #[tauri::command]
-pub async fn save_listen_config(app: tauri::AppHandle, mut config: ListenConfig) -> Result<ListenStatus, String> {
+pub async fn save_listen_config(
+    app: tauri::AppHandle,
+    request: ListenConfigUpdateRequest,
+) -> Result<ListenStatusResponse, String> {
     let services = app.services();
+    let mut config = ListenConfig::from(request);
     if config.enabled && config.token.as_deref().unwrap_or("").is_empty() {
         config.token = Some(generate_token());
     }
@@ -33,19 +77,19 @@ pub async fn save_listen_config(app: tauri::AppHandle, mut config: ListenConfig)
 
 /// Mint a new token, which disconnects every device using the old one.
 #[tauri::command]
-pub async fn regenerate_listen_token(app: tauri::AppHandle) -> Result<ListenConfig, String> {
+pub async fn regenerate_listen_token(app: tauri::AppHandle) -> Result<ListenConfigInfoResponse, String> {
     let services = app.services();
-    let mut config = load_config(&services.db);
+    let mut config = load_config(&services.db)?;
     config.token = Some(generate_token());
     save_config(&services.db, &config)?;
     restart(&app, config.clone()).await?;
-    Ok(config)
+    Ok(config.into())
 }
 
 #[tauri::command]
-pub async fn start_listen(app: tauri::AppHandle) -> Result<ListenStatus, String> {
+pub async fn start_listen(app: tauri::AppHandle) -> Result<ListenStatusResponse, String> {
     let services = app.services();
-    let mut config = load_config(&services.db);
+    let mut config = load_config(&services.db)?;
     config.enabled = true;
     if config.token.as_deref().unwrap_or("").is_empty() {
         config.token = Some(generate_token());
@@ -55,13 +99,15 @@ pub async fn start_listen(app: tauri::AppHandle) -> Result<ListenStatus, String>
 }
 
 #[tauri::command]
-pub async fn stop_listen(app: tauri::AppHandle) -> Result<ListenStatus, String> {
+pub async fn stop_listen(app: tauri::AppHandle) -> Result<ListenStatusResponse, String> {
     let services = app.services();
-    let mut config = load_config(&services.db);
+    let mut config = load_config(&services.db)?;
     config.enabled = false;
     save_config(&services.db, &config)?;
     restart(&app, config).await
 }
+
+pub type ListenAddressesResponse = Vec<String>;
 
 /// The addresses a second device could dial.
 ///
@@ -70,7 +116,7 @@ pub async fn stop_listen(app: tauri::AppHandle) -> Result<ListenStatus, String> 
 /// interface first is not worth the trouble — they are shown as a list and the
 /// user picks the one their phone is on.
 #[tauri::command]
-pub fn get_listen_addresses(_app: tauri::AppHandle) -> Result<Vec<String>, String> {
+pub fn get_listen_addresses(_app: tauri::AppHandle) -> Result<ListenAddressesResponse, String> {
     Ok(local_addresses())
 }
 
@@ -105,12 +151,40 @@ fn hostname() -> Result<String, String> {
         .map_err(|e| e.to_string())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn request() -> serde_json::Value {
+        json!({
+            "enabled": false,
+            "host": "0.0.0.0",
+            "port": 8787,
+            "token": null
+        })
+    }
+
+    #[test]
+    fn listen_config_request_is_a_closed_complete_object() {
+        assert!(serde_json::from_value::<ListenConfigUpdateRequest>(request()).is_ok());
+
+        let mut missing = request();
+        missing.as_object_mut().unwrap().remove("token");
+        assert!(serde_json::from_value::<ListenConfigUpdateRequest>(missing).is_err());
+
+        let mut unknown = request();
+        unknown["bind_all"] = json!(true);
+        assert!(serde_json::from_value::<ListenConfigUpdateRequest>(unknown).is_err());
+    }
+}
+
 /// Stop whatever is running and start what the config now says.
 ///
 /// The pause is the port: a listener that has just been dropped is not
 /// immediately re-bindable, and without it the restart fails with "address in
 /// use" for a server that is on its way out. Same 300ms the hook server uses.
-async fn restart(app: &tauri::AppHandle, config: ListenConfig) -> Result<ListenStatus, String> {
+async fn restart(app: &tauri::AppHandle, config: ListenConfig) -> Result<ListenStatusResponse, String> {
     let services = app.services();
     let holder = app.state::<AppRemote>();
     let mut guard = holder.0.lock().await;

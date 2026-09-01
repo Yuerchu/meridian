@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 
 import { api } from '@/api'
 import i18n from '@/i18n'
-import type { Assistant, ToolInfo, ToolPreset } from '@/types'
+import type { AssistantInfoResponse, McpToolInfoResponse, ToolPresetInfoResponse } from '@/types'
 import { AssistantSettings } from './assistant-settings'
 
 vi.mock('@/api', () => ({
@@ -28,7 +28,7 @@ vi.mock('@/api', () => ({
 
 const mockApi = vi.mocked(api)
 
-const ASSISTANT: Assistant = {
+const ASSISTANT: AssistantInfoResponse = {
   id: 'assistant-1',
   name: 'Assistant One',
   description: null,
@@ -39,32 +39,36 @@ const ASSISTANT: Assistant = {
   temperature: null,
   top_p: null,
   max_tokens: null,
-  is_default: 1,
+  is_default: true,
   sort_order: 0,
   created_at: 0,
   updated_at: 0,
   context_limit: 0,
   compact_keep_recent: 0,
   enabled_tools: null,
-  thinking_enabled: 0,
+  thinking_enabled: false,
   thinking_budget: null,
   tool_preset_id: null,
-  auto_compact_enabled: 1,
+  auto_compact_enabled: true,
 }
 
-const TOOL: ToolInfo = {
+const TOOL: McpToolInfoResponse = {
   name: 'read_file',
   description: 'Read a file',
   source: 'builtin',
+  server_name: null,
+  admin_only: null,
+  needs_approval: null,
+  scope: null,
 }
 
-const PRESET: ToolPreset = {
+const PRESET: ToolPresetInfoResponse = {
   id: 'preset-1',
   name: 'Coding',
   description: null,
   icon: null,
-  tool_names: '["read_file"]',
-  is_builtin: 1,
+  tool_names: ['read_file'],
+  is_builtin: true,
   sort_order: 0,
   created_at: 0,
   updated_at: 0,
@@ -87,7 +91,7 @@ describe('AssistantSettings tool mode segment', () => {
     mockApi.listAssistantEmojiPacks.mockResolvedValue([])
     mockApi.listSkills.mockResolvedValue([])
     mockApi.listSkillBindings.mockResolvedValue([])
-    mockApi.getPreference.mockResolvedValue(null)
+    mockApi.getPreference.mockImplementation(async (request) => ({ key: request.key, value: null }) as never)
     mockApi.updateAssistant.mockResolvedValue(undefined)
   })
 
@@ -120,9 +124,9 @@ describe('AssistantSettings tool mode segment', () => {
 
     await waitFor(() =>
       expect(mockApi.updateAssistant).toHaveBeenCalledWith(
-        ASSISTANT.id,
         expect.objectContaining({
-          enabledTools: JSON.stringify([TOOL.name]),
+          id: ASSISTANT.id,
+          enabledTools: [TOOL.name],
           toolPresetId: null,
         }),
       ),

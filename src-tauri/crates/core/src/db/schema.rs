@@ -100,6 +100,134 @@ diesel::table! {
 }
 
 diesel::table! {
+    plan_documents (id) {
+        id -> Text,
+        conversation_id -> Text,
+        state -> Text,
+        head_revision_id -> Nullable<Text>,
+        approved_revision_id -> Nullable<Text>,
+        working_generation -> BigInt,
+        file_rel_path -> Text,
+        lock_version -> BigInt,
+        created_at -> BigInt,
+        updated_at -> BigInt,
+    }
+}
+
+diesel::table! {
+    plan_revisions (id) {
+        id -> Text,
+        document_id -> Text,
+        revision_no -> BigInt,
+        parent_revision_id -> Nullable<Text>,
+        author_kind -> Text,
+        content_markdown -> Text,
+        content_sha256 -> Text,
+        patch -> Nullable<Text>,
+        source_message_id -> Nullable<Text>,
+        source_call_id -> Nullable<Text>,
+        responding_to_suggestion_revision_id -> Nullable<Text>,
+        editor_json -> Nullable<Text>,
+        editor_schema_version -> Nullable<Integer>,
+        editor_schema_hash -> Nullable<Text>,
+        legacy_source_artifact_id -> Nullable<Text>,
+        created_at -> BigInt,
+    }
+}
+
+diesel::table! {
+    plan_review_sessions (id) {
+        id -> Text,
+        document_id -> Text,
+        submitted_revision_id -> Text,
+        turn_id -> Nullable<Text>,
+        assistant_message_id -> Nullable<Text>,
+          provider_call_id -> Nullable<Text>,
+          provider_kind -> Text,
+          native_runtime_config_json -> Nullable<Text>,
+          state -> Text,
+        decision_id -> Nullable<Text>,
+        decision_summary -> Nullable<Text>,
+        suggestion_revision_id -> Nullable<Text>,
+        lock_version -> BigInt,
+        created_at -> BigInt,
+        updated_at -> BigInt,
+        decided_at -> Nullable<BigInt>,
+    }
+}
+
+diesel::table! {
+    plan_review_drafts (review_id) {
+        review_id -> Text,
+        base_revision_id -> Text,
+        generation -> BigInt,
+        mode -> Text,
+        base_editor_json -> Nullable<Text>,
+        draft_editor_json -> Nullable<Text>,
+        base_normalized_markdown -> Text,
+        draft_normalized_markdown -> Text,
+        source_text -> Nullable<Text>,
+        editor_schema_version -> Nullable<Integer>,
+        editor_schema_hash -> Nullable<Text>,
+        global_note -> Nullable<Text>,
+        selection_json -> Nullable<Text>,
+        draft_sha256 -> Text,
+        created_at -> BigInt,
+        updated_at -> BigInt,
+    }
+}
+
+diesel::table! {
+    plan_comments (id) {
+        id -> Text,
+        review_id -> Text,
+        position -> Integer,
+        state -> Text,
+        anchor_kind -> Text,
+        anchor_json -> Text,
+        body -> Text,
+        created_at -> BigInt,
+        updated_at -> BigInt,
+    }
+}
+
+diesel::table! {
+    plan_review_deliveries (id) {
+        id -> Text,
+        review_id -> Text,
+        target -> Text,
+        state -> Text,
+        payload_json -> Text,
+        attempt_token -> Nullable<Text>,
+        target_session_id -> Nullable<Text>,
+        target_turn_id -> Nullable<Text>,
+        error -> Nullable<Text>,
+        created_at -> BigInt,
+        updated_at -> BigInt,
+        dispatched_at -> Nullable<BigInt>,
+        acknowledged_at -> Nullable<BigInt>,
+        held_at -> Nullable<BigInt>,
+    }
+}
+
+diesel::table! {
+    plan_materializations (id) {
+        id -> Text,
+        document_id -> Text,
+        revision_id -> Text,
+        generation -> BigInt,
+        expected_sha256 -> Nullable<Text>,
+        desired_sha256 -> Text,
+        state -> Text,
+        force_replace -> Integer,
+        error -> Nullable<Text>,
+        created_at -> BigInt,
+        updated_at -> BigInt,
+        applied_at -> Nullable<BigInt>,
+    }
+}
+
+diesel::table! {
     custom_tools (id) {
         id -> Text,
         name -> Text,
@@ -269,13 +397,13 @@ diesel::table! {
         cache_read_tokens -> Nullable<Integer>,
         cache_write_tokens -> Nullable<Integer>,
         created_at -> BigInt,
-        input_price -> Nullable<Double>,
-        output_price -> Nullable<Double>,
-        cache_read_price -> Nullable<Double>,
-        cache_write_price -> Nullable<Double>,
+        input_price -> Nullable<Text>,
+        output_price -> Nullable<Text>,
+        cache_read_price -> Nullable<Text>,
+        cache_write_price -> Nullable<Text>,
         self_id -> Nullable<BigInt>,
         server_tool_calls -> Nullable<Integer>,
-        server_tool_price -> Nullable<Double>,
+        server_tool_price -> Nullable<Text>,
         billing_mode -> Text,
     }
 }
@@ -436,16 +564,16 @@ diesel::table! {
         context_window -> Integer,
         compact_threshold -> Integer,
         max_output_tokens -> Nullable<Integer>,
-        input_price -> Double,
-        output_price -> Double,
-        cache_price -> Nullable<Double>,
+        input_price -> Nullable<Text>,
+        output_price -> Nullable<Text>,
+        cache_read_price -> Nullable<Text>,
         created_at -> BigInt,
         updated_at -> BigInt,
         capability_overrides -> Nullable<Text>,
-        cache_write_price -> Nullable<Double>,
-        price_tiers -> Nullable<Text>,
+        cache_write_price -> Nullable<Text>,
+        pricing_tiers -> Nullable<Text>,
         server_tools -> Nullable<Text>,
-        server_tool_price -> Nullable<Double>,
+        server_tool_price -> Nullable<Text>,
     }
 }
 
@@ -633,6 +761,13 @@ diesel::joinable!(skill_bindings_project -> skills (dir_name));
 diesel::joinable!(skill_bindings_assistant -> assistants (assistant_id));
 diesel::joinable!(skill_bindings_assistant -> skills (dir_name));
 diesel::joinable!(mode_artifacts -> conversations (conversation_id));
+diesel::joinable!(plan_documents -> conversations (conversation_id));
+diesel::joinable!(plan_revisions -> plan_documents (document_id));
+diesel::joinable!(plan_review_sessions -> plan_documents (document_id));
+diesel::joinable!(plan_review_drafts -> plan_review_sessions (review_id));
+diesel::joinable!(plan_comments -> plan_review_sessions (review_id));
+diesel::joinable!(plan_review_deliveries -> plan_review_sessions (review_id));
+diesel::joinable!(plan_materializations -> plan_documents (document_id));
 diesel::joinable!(todo_lists -> conversations (conversation_id));
 diesel::joinable!(todo_items -> todo_lists (list_id));
 diesel::joinable!(turns -> conversations (conversation_id));
@@ -661,6 +796,13 @@ diesel::allow_tables_to_appear_in_same_query!(
     messages,
     message_stickers,
     mode_artifacts,
+    plan_documents,
+    plan_revisions,
+    plan_review_sessions,
+    plan_review_drafts,
+    plan_comments,
+    plan_review_deliveries,
+    plan_materializations,
     model_configs,
     preferences,
     projects,

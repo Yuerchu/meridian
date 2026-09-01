@@ -78,6 +78,20 @@ function read(rel) {
 
 const problems = []
 const fail = (msg) => problems.push(msg)
+const requireExactObject = (value, keys, at) => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    fail(`${at}: 必须是 object`)
+    return false
+  }
+  const expected = new Set(keys)
+  for (const key of keys) {
+    if (!Object.hasOwn(value, key)) fail(`${at}: 缺 ${key}`)
+  }
+  for (const key of Object.keys(value)) {
+    if (!expected.has(key)) fail(`${at}: 未知字段 ${key}`)
+  }
+  return true
+}
 
 // ── 目录本身 ────────────────────────────────────────────────────
 let catalog
@@ -88,24 +102,34 @@ try {
   process.exit(1)
 }
 
-const entries = catalog.providers ?? []
+requireExactObject(catalog, ['version', '_comment', 'providers'], 'catalog')
+if (catalog.version !== 1) fail(`catalog.version 必须是 1，当前为 ${JSON.stringify(catalog.version)}`)
+if (!Array.isArray(catalog._comment) || catalog._comment.some((line) => typeof line !== 'string')) {
+  fail('catalog._comment 必须是 string[]')
+}
+const entries = Array.isArray(catalog.providers) ? catalog.providers : []
+if (!Array.isArray(catalog.providers)) fail('catalog.providers 必须是 array')
 if (entries.length === 0) fail('目录是空的')
 
 // ── registry 接受哪些 provider_type ────────────────────────────
 //
-// 从 create_provider 的 match 臂里抠字符串字面量。这里只需要"它认得这个词",
-// 所以宽松地扫 `"xxx" =>` 就够;真要精确解析 Rust 得上语法树,而这个校验的
-// 失败模式是"目录写了个 registry 没听过的 type",宽松扫描完全够用。
+// `ProviderType` 已经是闭合枚举；目录必须与它对账，不能再靠
+// `create_provider` 的字符串分支或兜底臂猜测。枚举当前只有无载荷单元变体，
+// `strum(serialize_all = "snake_case")` 决定持久化/IPC 拼写。
 const registrySrc = read(REGISTRY_REL)
-const createFn = registrySrc.slice(registrySrc.indexOf('pub fn create_provider'))
-const KNOWN_TYPES = new Set([...createFn.matchAll(/"([a-z0-9_]+)"\s*=>/g)].map((m) => m[1]))
+const providerTypeBody = registrySrc.match(/pub enum ProviderType\s*\{([\s\S]*?)\n\}/)?.[1] ?? ''
+const rustVariantToSnake = (variant) =>
+  variant
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1_$2')
+    .toLowerCase()
+const KNOWN_TYPES = new Set(
+  [...providerTypeBody.matchAll(/^\s*([A-Z][A-Za-z0-9]*)\s*,\s*$/gm)].map((match) => rustVariantToSnake(match[1])),
+)
 if (KNOWN_TYPES.size === 0) fail(`没能从 ${REGISTRY_REL} 里认出任何 provider_type,校验器需要更新`)
 
-// **没有明确分支不是错误。** `create_provider` 有 `_ =>` 兜底臂,落进去的是
-// OpenAI 兼容适配器——而 openai 自己就没有专门分支,它正是那条兜底路径的原型。
-// 一堆 OpenAI 兼容厂商共用它,恰恰是 catalog_id 与 provider_type 分开要达成的
-// 效果。所以判据是"这个词至少被某一边认识",两边都不认识的才是拼错。
-const HAS_FALLBACK_ARM = /_\s*=>/.test(createFn)
+// `create_provider` 对这个枚举做穷尽匹配；未知 provider_type 在 parse 时即失败。
+// 多家兼容厂商仍可共享 `ProviderType::Openai`，共享的是已声明的类型，不是未知值兜底。
 
 // ── capabilities 认哪些 catalog namespace ──────────────────────
 const capsSrc = read(CAPABILITIES_REL)
@@ -129,8 +153,11 @@ if (migrationDefault && !API_FORMATS.includes(migrationDefault)) {
 
 // ── 逐条 entry ─────────────────────────────────────────────────
 const seenIds = new Set()
-for (const entry of entries) {
-  const at = `providers[${entry.id ?? '<无 id>'}]`
+for (const [entryIndex, entry] of entries.entries()) {
+  const at = `providers[${entry?.id ?? entryIndex}]`
+  if (!requireExactObject(entry, ['id', 'provider_type', 'name', 'icon', 'balance', 'websites', 'auth', 'models'], at)) {
+    continue
+  }
 
   if (!entry.id) fail(`${at}: 缺 id`)
   else if (seenIds.has(entry.id)) fail(`${at}: catalog id 重复`)
@@ -139,22 +166,42 @@ for (const entry of entries) {
   for (const field of ['provider_type', 'name', 'icon']) {
     if (!entry[field]) fail(`${at}: 缺 ${field}`)
   }
+  if (typeof entry.balance !== 'boolean') fail(`${at}: balance 必须是 boolean`)
 
-  // 注意验的是 provider_type,不是 entry.id——多家厂商共用一个 adapter 正是目录
-  // 存在的意义。而 provider_type 本身也不要求有专门分支:没有分支就走兜底的
-  // OpenAI 兼容适配器,openai 自己就是这么走的。所以只有"两边都不认识"才判错。
-  const type = entry.provider_type
-  if (type && !KNOWN_TYPES.has(type) && !NAMESPACES.has(type)) {
-    const hint = HAS_FALLBACK_ARM ? '(它会落到兜底的 OpenAI 兼容适配器,多半是拼错了)' : ''
-    fail(`${at}: create_provider 和 capabilities 都不认识 provider_type '${type}' ${hint}`)
+  if (requireExactObject(entry.websites, ['official', 'api_key', 'docs', 'models'], `${at}.websites`)) {
+    for (const field of ['official', 'api_key', 'docs', 'models']) {
+      if (entry.websites[field] !== null && typeof entry.websites[field] !== 'string') {
+        fail(`${at}.websites.${field}: 必须是 string | null`)
+      }
+    }
   }
 
-  const auth = entry.auth ?? []
+  // 注意验的是 provider_type,不是 entry.id——多家厂商共用一个 adapter 正是目录
+  // 存在的意义。provider_type 本身必须是闭合枚举中的一个值；capabilities 的
+  // namespace 不能替一个拼错的运行时类型开后门。
+  const type = entry.provider_type
+  if (type && !KNOWN_TYPES.has(type)) {
+    fail(`${at}: ProviderType 不认识 provider_type '${type}'`)
+  } else if (type && !NAMESPACES.has(type)) {
+    fail(`${at}: capabilities 没有 provider_type '${type}' 的 namespace`)
+  }
+
+  const auth = Array.isArray(entry.auth) ? entry.auth : []
+  if (!Array.isArray(entry.auth)) fail(`${at}.auth: 必须是 array`)
   if (auth.length === 0) fail(`${at}: 至少要有一种登录方式`)
 
   const seenAuthIds = new Set()
-  for (const option of auth) {
-    const oat = `${at}.auth[${option.id ?? '<无 id>'}]`
+  for (const [optionIndex, option] of auth.entries()) {
+    const oat = `${at}.auth[${option?.id ?? optionIndex}]`
+    if (
+      !requireExactObject(
+        option,
+        ['id', 'credential_kind', 'transport_profile', 'api_formats', 'default_base_url'],
+        oat,
+      )
+    ) {
+      continue
+    }
 
     if (!option.id) fail(`${oat}: 缺 id`)
     else if (seenAuthIds.has(option.id)) fail(`${oat}: auth id 在同一厂商下重复`)
@@ -169,7 +216,8 @@ for (const entry of entries) {
       fail(`${oat}: transport '${transport}' 不接受 credential_kind '${cred}'`)
     }
 
-    const formats = option.api_formats ?? []
+    const formats = Array.isArray(option.api_formats) ? option.api_formats : []
+    if (!Array.isArray(option.api_formats)) fail(`${oat}.api_formats: 必须是 array`)
     if (formats.length === 0) fail(`${oat}: 至少要声明一种 api_format`)
     for (const f of formats) {
       if (!API_FORMATS.includes(f)) fail(`${oat}: api_format '${f}' 不是数据库认的取值`)
@@ -177,7 +225,13 @@ for (const entry of entries) {
 
     // 预填地址必须能被声明过的方言取到,反过来也不许有多余的 key——多出来的那个
     // 永远不会被读到,是笔悄悄失效的配置。
-    const urls = option.default_base_url ?? {}
+    const urls =
+      option.default_base_url !== null &&
+      typeof option.default_base_url === 'object' &&
+      !Array.isArray(option.default_base_url)
+        ? option.default_base_url
+        : {}
+    if (urls !== option.default_base_url) fail(`${oat}.default_base_url: 必须是 object`)
     for (const f of formats) {
       if (!urls[f]) fail(`${oat}: 声明了 ${f} 却没有预填地址`)
     }
@@ -188,9 +242,14 @@ for (const entry of entries) {
 
   // 预置模型列表:分组显式写死,id 精确。空列表是常态(有 /models 的厂商都靠拉取)。
   const seenModelIds = new Set()
-  for (const group of entry.models ?? []) {
+  const models = Array.isArray(entry.models) ? entry.models : []
+  if (!Array.isArray(entry.models)) fail(`${at}.models: 必须是 array`)
+  for (const [groupIndex, group] of models.entries()) {
+    if (!requireExactObject(group, ['family', 'ids'], `${at}.models[${groupIndex}]`)) continue
     if (!group.family) fail(`${at}: 模型分组缺 family`)
-    for (const id of group.ids ?? []) {
+    const ids = Array.isArray(group.ids) ? group.ids : []
+    if (!Array.isArray(group.ids)) fail(`${at}.models[${groupIndex}].ids: 必须是 array`)
+    for (const id of ids) {
       if (seenModelIds.has(id)) fail(`${at}: 模型 id '${id}' 在多个分组里出现`)
       seenModelIds.add(id)
     }

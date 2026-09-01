@@ -20,7 +20,6 @@
 //! behaviour — see the drift list.
 
 use std::collections::HashSet;
-use std::future::Future;
 
 use crate::agent::modes::ModeSpec;
 use crate::agent::turn_config::TurnConfig;
@@ -40,6 +39,108 @@ pub trait Transitions: Send + Sync {
     /// failure and folding them together would turn a panicked worker into a
     /// sentence the model reads and carries on from.
     async fn rebuild(&self, mode: &'static ModeSpec) -> Result<Result<TurnConfig, String>, String>;
+
+    /// Read the durable private plan document. Defaulting to an error keeps
+    /// non-desktop runners honest; their fixed work mode never offers the tool.
+    async fn read_plan(&self) -> Result<PlanReadResult, String> {
+        Err("this runner has no durable plan document".into())
+    }
+
+    /// Apply one optimistic patch to the durable plan document.
+    async fn update_plan(&self, _request: UpdatePlanRequest) -> Result<PlanUpdateResult, String> {
+        Err("this runner has no durable plan document".into())
+    }
+
+    /// Seal the current head as a review and move the recorded turn to
+    /// `waiting_review`. This does not wait for a person and does not return a
+    /// tool result; a later explicit continuation settles that pending call.
+    async fn submit_plan(&self, _request: SubmitPlanRequest) -> Result<crate::events::PlanReviewEvent, String> {
+        Err("this runner has no durable plan review surface".into())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct PlanReadResult {
+    pub content: String,
+    pub generation: i64,
+    pub sha256: String,
+    pub file_sync_state: crate::db::models::plan_review::PlanMaterializationState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdatePlanRequest {
+    pub base_generation: i64,
+    pub base_sha256: String,
+    pub patch: String,
+    /// The assistant row and provider call identify the revision in the
+    /// transcript. They are supplied by the loop, never accepted from the
+    /// model's JSON.
+    #[serde(skip)]
+    pub source_message_id: String,
+    #[serde(skip)]
+    pub source_call_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct PlanUpdateResult {
+    pub generation: i64,
+    pub sha256: String,
+    pub applied_diff: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SubmitPlanRequest {
+    pub turn_id: String,
+    pub assistant_message_id: String,
+    pub provider_call_id: String,
+}
+
+pub(crate) fn parse_update_plan_arguments(
+    arguments: &str,
+    source_message_id: &str,
+    source_call_id: &str,
+) -> Result<UpdatePlanRequest, String> {
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Arguments {
+        base_generation: i64,
+        base_sha256: String,
+        patch: String,
+    }
+
+    let arguments: Arguments =
+        serde_json::from_str(arguments).map_err(|error| format!("invalid update_plan arguments: {error}"))?;
+    if arguments.base_generation < 0 {
+        return Err("invalid update_plan arguments: base_generation must be non-negative".into());
+    }
+    if arguments.base_sha256.len() != 64
+        || !arguments
+            .base_sha256
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
+        return Err("invalid update_plan arguments: base_sha256 must be 64 lowercase hexadecimal characters".into());
+    }
+    if arguments.patch.trim().is_empty() {
+        return Err("invalid update_plan arguments: patch must not be empty".into());
+    }
+    Ok(UpdatePlanRequest {
+        base_generation: arguments.base_generation,
+        base_sha256: arguments.base_sha256,
+        patch: arguments.patch,
+        source_message_id: source_message_id.to_string(),
+        source_call_id: source_call_id.to_string(),
+    })
+}
+
+pub(crate) fn parse_empty_plan_arguments(tool: &str, arguments: &str) -> Result<(), String> {
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Empty {}
+    serde_json::from_str::<Empty>(arguments)
+        .map(|_| ())
+        .map_err(|error| format!("invalid {tool} arguments: {error}"))
 }
 
 /// A switch that went all the way through: conversation row written *and* turn
@@ -200,132 +301,16 @@ pub(crate) async fn enter(
     })
 }
 
-/// The model asked to leave a mode, handing over the artifact it produced.
-///
-/// Takes the question rather than its answer because there is work on both sides
-/// of it. The plan is recorded first, so one the user rejects is still on file
-/// and the approved one can be re-injected into later turns without depending on
-/// the transcript surviving. Sequencing that ahead of the question rather than
-/// matching on the two together is deliberate: a tuple match evaluates both, so
-/// a failed write would still put the card in front of the user and then throw
-/// their answer away.
-pub(crate) async fn exit<A>(
-    pool: &DbPool,
+/// Submit the already-saved head. Unlike the former approval waiter this is a
+/// bounded durable write: it returns as soon as the review and the turn's
+/// `waiting_review` state have committed.
+pub(crate) async fn submit(
     transitions: &dyn Transitions,
-    emit: Option<&dyn Emit>,
-    conversation_id: &str,
-    from: &'static ModeSpec,
     arguments: &str,
-    ask: A,
-) -> Result<TransitionEffect, String>
-where
-    A: Future<Output = Result<Option<ApprovalDecision>, String>>,
-{
-    let plan_text = serde_json::from_str::<serde_json::Value>(arguments)
-        .ok()
-        .and_then(|v| v.get("plan").and_then(|p| p.as_str()).map(str::to_string))
-        .unwrap_or_default();
-    if plan_text.trim().is_empty() {
-        // Nothing recorded and nothing asked: the user is not shown a card for a
-        // plan that does not exist.
-        return Ok(TransitionEffect::said(
-            "exit_plan needs a `plan`: pass the whole plan as markdown.",
-            "error",
-        ));
-    }
-
-    let recorded = {
-        let pool = pool.clone();
-        let conv_id = conversation_id.to_string();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool)?;
-            db::ops::plan::record_plan(&mut conn, &conv_id, &plan_text, now_ms()).map_err(|e| e.to_string())
-        })
-        .await
-        .map_err(|e| e.to_string())?
-    };
-    let row = match recorded {
-        Ok(row) => row,
-        Err(e) => {
-            return Ok(TransitionEffect::said(
-                format!("Could not record the plan: {e}"),
-                "error",
-            ));
-        }
-    };
-
-    let decision = ask.await?;
-    if !matches!(decision, Some(ApprovalDecision::Approved)) {
-        mark_rejected(pool, &row.id).await?;
-        return Ok(match decision {
-            Some(ApprovalDecision::Denied(Some(reason))) => TransitionEffect::said(
-                format!(
-                    "The user sent the plan back: {reason}\n\nYou are still in \
-                     plan mode. Revise the plan and call exit_plan again."
-                ),
-                "denied",
-            ),
-            // Same rule as `enter`: an unanswered card is not a verdict on the
-            // plan, and the model should offer it again rather than revise.
-            None => TransitionEffect::said(
-                "No one answered before the plan approval expired. You are still in \
-                 plan mode; you may present the plan again.",
-                "denied",
-            ),
-            _ => TransitionEffect::said(
-                "The user did not approve the plan. You are still in plan mode.",
-                "denied",
-            ),
-        });
-    }
-
-    // One worker, but not one transaction — approving and leaving the mode can
-    // still land half. Inherited as it was; it is on the list of things this
-    // refactor deliberately does not fix.
-    let switched = {
-        let pool = pool.clone();
-        let conv_id = conversation_id.to_string();
-        let plan_id = row.id.clone();
-        let next_mode = from.exit_to;
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool)?;
-            let now = now_ms();
-            db::ops::plan::approve(&mut conn, &plan_id, now).map_err(|e| e.to_string())?;
-            db::ops::conversation::update_mode(&mut conn, &conv_id, next_mode, now).map_err(|e| e.to_string())
-        })
-        .await
-        .map_err(|e| e.to_string())?
-    };
-    // Re-resolve the turn so the same reply can start implementing. Both this
-    // and the write above have to succeed before the model is told the tools are
-    // back — otherwise it acts on a promise the tool set does not keep and burns
-    // the turn on "unknown tool" retries.
-    let target = crate::agent::modes::resolve(from.exit_to);
-    let rebuilt = match switched {
-        Err(e) => Err(e),
-        Ok(()) => transitions.rebuild(target).await?,
-    };
-    Ok(match rebuilt {
-        Ok(next) => {
-            announce(emit, conversation_id);
-            TransitionEffect::switched(
-                "The user approved the plan. You are out of plan mode and the \
-                 editing tools are available again — start implementing now, in \
-                 this reply. The approved plan is in your system prompt.",
-                target,
-                next,
-            )
-        }
-        Err(e) => TransitionEffect::said(
-            format!(
-                "The user approved the plan, but switching out of plan mode \
-                 failed: {e}. You are still in plan mode and the editing tools \
-                 are still unavailable. Tell the user, and do not try to \
-                 implement anything this turn."
-            ),
-            "error",
-        ),
-    })
+    request: SubmitPlanRequest,
+) -> Result<crate::events::PlanReviewEvent, String> {
+    parse_empty_plan_arguments("exit_plan", arguments)?;
+    transitions.submit_plan(request).await
 }
 
 async fn store_mode(
@@ -343,21 +328,6 @@ async fn store_mode(
     .map_err(|e| e.to_string())
 }
 
-/// Refusing a plan is bookkeeping. The user has already been answered by the
-/// time it runs, so a database that will not take it changes nothing they can
-/// see and is not worth ending the turn over.
-async fn mark_rejected(pool: &DbPool, plan_id: &str) -> Result<(), String> {
-    let pool = pool.clone();
-    let plan_id = plan_id.to_string();
-    let _ = tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        db::ops::plan::reject(&mut conn, &plan_id, now_ms()).map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
 /// The toolbar reads the mode off the conversation row, which just changed.
 ///
 /// Ignored if it fails, on both paths and as it always was: the row is already
@@ -365,7 +335,7 @@ async fn mark_rejected(pool: &DbPool, plan_id: &str) -> Result<(), String> {
 /// turn that is not part of the answer.
 fn announce(emit: Option<&dyn Emit>, conversation_id: &str) {
     if let Some(e) = emit {
-        let _ = e.emit("conversation-updated", serde_json::json!({ "id": conversation_id }));
+        let _ = e.emit_conversation_updated(conversation_id);
     }
 }
 
@@ -375,15 +345,14 @@ mod tests {
     use crate::agent::modes::{PLAN_MODE, WORK_MODE};
     use crate::db::test_db;
     use crate::provider::ChatMessage;
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::{Arc, Mutex};
+    use std::sync::Mutex;
 
     fn plan_mode() -> &'static ModeSpec {
-        crate::agent::modes::resolve(Some(PLAN_MODE))
+        crate::agent::modes::resolve(Some(PLAN_MODE)).unwrap()
     }
 
     fn work_mode() -> &'static ModeSpec {
-        crate::agent::modes::resolve(Some(WORK_MODE))
+        crate::agent::modes::resolve(Some(WORK_MODE)).unwrap()
     }
 
     fn conversation(pool: &DbPool) {
@@ -394,11 +363,6 @@ mod tests {
     fn stored_mode(pool: &DbPool) -> Option<String> {
         let mut conn = pool.get().unwrap();
         db::ops::conversation::get_conversation(&mut conn, "c1").unwrap().mode
-    }
-
-    fn plans(pool: &DbPool) -> Vec<crate::db::models::plan::Plan> {
-        let mut conn = pool.get().unwrap();
-        db::ops::plan::list_plans(&mut conn, "c1").unwrap()
     }
 
     fn def(name: &str) -> ToolDefinition {
@@ -423,6 +387,7 @@ mod tests {
     struct FakeRebuild {
         answer: Result<Result<TurnConfig, String>, String>,
         asked: Mutex<Vec<&'static str>>,
+        submitted: Mutex<Vec<SubmitPlanRequest>>,
     }
 
     impl FakeRebuild {
@@ -430,12 +395,14 @@ mod tests {
             Self {
                 answer: Ok(Ok(config(prompt, tools))),
                 asked: Mutex::new(Vec::new()),
+                submitted: Mutex::new(Vec::new()),
             }
         }
         fn refusing() -> Self {
             Self {
                 answer: Ok(Err("no connection".into())),
                 asked: Mutex::new(Vec::new()),
+                submitted: Mutex::new(Vec::new()),
             }
         }
     }
@@ -453,6 +420,20 @@ mod tests {
                 Ok(Err(e)) => Ok(Err(e.clone())),
                 Err(e) => Err(e.clone()),
             }
+        }
+
+        async fn submit_plan(&self, request: SubmitPlanRequest) -> Result<crate::events::PlanReviewEvent, String> {
+            self.submitted.lock().unwrap().push(request.clone());
+            Ok(crate::events::PlanReviewEvent {
+                review_id: "review-1".into(),
+                conversation_id: "c1".into(),
+                document_id: "document-1".into(),
+                revision_id: "revision-1".into(),
+                turn_id: request.turn_id,
+                status: "pending".into(),
+                lock_version: 0,
+                delivery_state: None,
+            })
         }
     }
 
@@ -644,169 +625,65 @@ mod tests {
         assert_eq!(stored_mode(&pool), None);
     }
 
-    fn answer(d: Option<ApprovalDecision>) -> impl Future<Output = Result<Option<ApprovalDecision>, String>> {
-        std::future::ready(Ok(d))
-    }
-
     #[tokio::test]
-    async fn an_approved_plan_is_recorded_the_mode_ends_and_the_tools_come_back() {
-        let pool = test_db();
-        conversation(&pool);
-        {
-            let mut conn = pool.get().unwrap();
-            db::ops::conversation::update_mode(&mut conn, "c1", Some(PLAN_MODE), 1).unwrap();
-        }
-        let rebuild = FakeRebuild::giving("you are helpful", &["write_file", "read_file"]);
-        let emit = Recorder::default();
-        let mut state = Loop::in_work();
-        state.mode = plan_mode();
-        state.tool_defs = vec![def("read_file")];
-        state.offered = ["read_file".to_string()].into_iter().collect();
-
-        let effect = exit(
-            &pool,
-            &rebuild,
-            Some(&emit),
-            "c1",
-            plan_mode(),
-            r##"{"plan":"# Plan\n\nStep one."}"##,
-            answer(Some(ApprovalDecision::Approved)),
-        )
-        .await
-        .unwrap();
-        let (_, outcome) = state.apply(effect);
-
-        assert_eq!(outcome, "success");
-        assert_eq!(state.mode.id, WORK_MODE);
-        assert_eq!(state.names(), ["write_file", "read_file"]);
-        // Written out rather than cleared: `exit_to` names a mode, and the row
-        // resolves the same either way.
-        assert_eq!(stored_mode(&pool).as_deref(), Some(WORK_MODE));
-        assert_eq!(*rebuild.asked.lock().unwrap(), [WORK_MODE]);
-        assert_eq!(*emit.0.lock().unwrap(), ["conversation-updated"]);
-
-        let plans = plans(&pool);
-        assert_eq!(plans.len(), 1);
-        assert_eq!(plans[0].status, "approved");
-        assert_eq!(plans[0].content, "# Plan\n\nStep one.");
-    }
-
-    /// Approving writes the artifact and the row together, so a rebuild that
-    /// then refuses leaves an approved plan in a conversation whose tools have
-    /// not moved. Telling the model it is still planning is the honest read of
-    /// that, and it is what stops it from trying to implement.
-    #[tokio::test]
-    async fn an_approved_plan_that_cannot_be_rebuilt_leaves_the_tools_alone() {
-        let pool = test_db();
-        conversation(&pool);
-        let rebuild = FakeRebuild::refusing();
-        let mut state = Loop::in_work();
-        state.mode = plan_mode();
-        state.tool_defs = vec![def("read_file")];
-        state.offered = ["read_file".to_string()].into_iter().collect();
-
-        let effect = exit(
-            &pool,
-            &rebuild,
-            None,
-            "c1",
-            plan_mode(),
-            r#"{"plan":"the plan"}"#,
-            answer(Some(ApprovalDecision::Approved)),
-        )
-        .await
-        .unwrap();
-        let (result, outcome) = state.apply(effect);
-
-        assert_eq!(outcome, "error");
-        assert!(result.contains("still in plan mode"), "{result}");
-        assert_eq!(state.mode.id, PLAN_MODE);
-        assert_eq!(state.names(), ["read_file"]);
-        assert_eq!(plans(&pool)[0].status, "approved", "the artifact write did land");
-    }
-
-    #[tokio::test]
-    async fn a_plan_sent_back_is_kept_on_file_and_the_mode_holds() {
-        let pool = test_db();
-        conversation(&pool);
-        let rebuild = FakeRebuild::giving("work", &["write_file"]);
-        let emit = Recorder::default();
-        let mut state = Loop::in_work();
-        state.mode = plan_mode();
-
-        let effect = exit(
-            &pool,
-            &rebuild,
-            Some(&emit),
-            "c1",
-            plan_mode(),
-            r#"{"plan":"half a plan"}"#,
-            answer(Some(ApprovalDecision::Denied(Some("say more about the tests".into())))),
-        )
-        .await
-        .unwrap();
-        let (result, outcome) = state.apply(effect);
-
-        assert_eq!(outcome, "denied");
-        assert!(result.contains("say more about the tests"));
-        assert_eq!(state.mode.id, PLAN_MODE);
-        assert!(rebuild.asked.lock().unwrap().is_empty());
-        assert!(emit.0.lock().unwrap().is_empty());
-
-        let plans = plans(&pool);
-        assert_eq!(plans[0].status, "rejected");
-        assert_eq!(plans[0].content, "half a plan", "still on file, so it can be revised");
-    }
-
-    /// Recorded first, on purpose: matching on the write and the answer together
-    /// would evaluate both, putting a card in front of the user for a plan that
-    /// was never stored and then throwing their answer away.
-    #[tokio::test]
-    async fn the_plan_is_on_file_before_the_user_is_asked() {
-        let pool = test_db();
-        conversation(&pool);
-        let rebuild = FakeRebuild::giving("work", &["write_file"]);
-        let stored_when_asked = Arc::new(AtomicBool::new(false));
-
-        let seen = stored_when_asked.clone();
-        let pool2 = pool.clone();
-        let ask = async move {
-            seen.store(!plans(&pool2).is_empty(), Ordering::SeqCst);
-            Ok(Some(ApprovalDecision::Approved))
+    async fn exit_plan_accepts_only_an_empty_object_and_submits_without_rebuilding() {
+        let transitions = FakeRebuild::giving("work", &["write_file"]);
+        let request = SubmitPlanRequest {
+            turn_id: "turn-1".into(),
+            assistant_message_id: "message-1".into(),
+            provider_call_id: "call-1".into(),
         };
+        let event = submit(&transitions, "{}", request).await.unwrap();
 
-        exit(&pool, &rebuild, None, "c1", plan_mode(), r#"{"plan":"p"}"#, ask)
-            .await
-            .unwrap();
+        assert_eq!(event.review_id, "review-1");
+        assert_eq!(event.status, "pending");
+        assert!(
+            transitions.asked.lock().unwrap().is_empty(),
+            "review is not an approval waiter"
+        );
+        let submitted = transitions.submitted.lock().unwrap();
+        assert_eq!(submitted.len(), 1);
+        assert_eq!(submitted[0].provider_call_id, "call-1");
+        drop(submitted);
 
-        assert!(stored_when_asked.load(Ordering::SeqCst));
+        for arguments in ["not json", r#"{"plan":"old payload"}"#, r#"{"future":true}"#] {
+            let request = SubmitPlanRequest {
+                turn_id: "turn-2".into(),
+                assistant_message_id: "message-2".into(),
+                provider_call_id: "call-2".into(),
+            };
+            let error = submit(&transitions, arguments, request).await.unwrap_err();
+            assert!(error.contains("invalid exit_plan arguments"), "{arguments}: {error}");
+        }
+        assert_eq!(transitions.submitted.lock().unwrap().len(), 1);
     }
 
-    /// No plan means no card. Asking would show the user an empty proposal and
-    /// spend their attention on the model's mistake.
-    #[tokio::test]
-    async fn an_empty_plan_is_answered_without_asking_anyone() {
-        let pool = test_db();
-        conversation(&pool);
-        let rebuild = FakeRebuild::giving("work", &["write_file"]);
-        let asked = Arc::new(AtomicBool::new(false));
+    #[test]
+    fn update_plan_arguments_are_strict_and_carry_transcript_identity_out_of_band() {
+        let hash = "0".repeat(64);
+        let request = parse_update_plan_arguments(
+            &serde_json::json!({
+                "base_generation": 2,
+                "base_sha256": hash,
+                "patch": "*** Begin Patch\n*** Update File: plan.md\n@@\n-a\n+b\n*** End Patch"
+            })
+            .to_string(),
+            "message-1",
+            "call-1",
+        )
+        .unwrap();
+        assert_eq!(request.base_generation, 2);
+        assert_eq!(request.source_message_id, "message-1");
+        assert_eq!(request.source_call_id, "call-1");
 
-        for arguments in [r#"{"plan":"   "}"#, "{}", "not json"] {
-            let seen = asked.clone();
-            let ask = async move {
-                seen.store(true, Ordering::SeqCst);
-                Ok(Some(ApprovalDecision::Approved))
-            };
-            let effect = exit(&pool, &rebuild, None, "c1", plan_mode(), arguments, ask)
-                .await
-                .unwrap();
-
-            assert_eq!(effect.outcome, "error", "for {arguments}");
-            assert!(!effect.moves());
+        for arguments in [
+            serde_json::json!({"base_generation": -1, "base_sha256": "0".repeat(64), "patch": "x"}),
+            serde_json::json!({"base_generation": 0, "base_sha256": "bad", "patch": "x"}),
+            serde_json::json!({"base_generation": 0, "base_sha256": "0".repeat(64), "patch": " "}),
+            serde_json::json!({"base_generation": 0, "base_sha256": "0".repeat(64), "patch": "x", "future": true}),
+        ] {
+            assert!(parse_update_plan_arguments(&arguments.to_string(), "m", "c").is_err());
         }
-
-        assert!(!asked.load(Ordering::SeqCst));
-        assert!(plans(&pool).is_empty(), "and nothing on file either");
     }
 
     fn system(content: &str) -> ChatMessage {

@@ -6,7 +6,7 @@ import { visibleSettingsTabs } from '@/components/settings/tabs'
 import { activeComposerToken, insertReferenceToken } from '@/lib/composer-intent'
 import { filterComposerCommands, findComposerCommand, type ComposerCommandContext } from '@/lib/composer-commands'
 import { allowedEfforts } from '@/lib/thinking'
-import type { AcpConfigOption, ModelInfo, ProviderCapabilities } from '@/types'
+import type { AcpConfigOptionInfoResponse, ProviderCapabilitiesInfoResponse, ProviderModelInfoResponse } from '@/types'
 import type { ComposerSuggestion } from '@/components/chat/composer-suggestions'
 
 interface InternalSuggestion extends ComposerSuggestion {
@@ -22,17 +22,17 @@ interface ComposerTypeaheadOptions {
   isHosted: boolean
   supportsFast: boolean
   providerId: string | null
-  capabilities: ProviderCapabilities | null
-  acpOptions: AcpConfigOption[]
+  capabilities: ProviderCapabilitiesInfoResponse | null
+  acpOptions: AcpConfigOptionInfoResponse[]
   platform: string | null
 }
 
-function optionValues(option: AcpConfigOption | undefined): Array<{ value: string; name: string }> {
+function optionValues(option: AcpConfigOptionInfoResponse | undefined): Array<{ value: string; name: string }> {
   if (!option || !('options' in option) || !Array.isArray(option.options)) return []
   return option.options.map((entry) => ({ value: entry.value, name: entry.name || entry.value }))
 }
 
-function commandOption(optionId: string, options: AcpConfigOption[]) {
+function commandOption(optionId: string, options: AcpConfigOptionInfoResponse[]) {
   return options.find((option) => option.id === optionId || option.category === optionId)
 }
 
@@ -51,7 +51,7 @@ export function useComposerTypeahead({
   const { t } = useTranslation()
   const token = useMemo(() => activeComposerToken(value, caret), [value, caret])
   const [referenceItems, setReferenceItems] = useState<InternalSuggestion[]>([])
-  const [models, setModels] = useState<ModelInfo[]>([])
+  const [models, setModels] = useState<ProviderModelInfoResponse[]>([])
   const [activeIndex, setActiveIndex] = useState(0)
   const [dismissedAt, setDismissedAt] = useState<string | null>(null)
   const commandContext = useMemo<ComposerCommandContext>(
@@ -66,7 +66,7 @@ export function useComposerTypeahead({
     }
     let alive = true
     void api
-      .fetchProviderModels(providerId)
+      .fetchProviderModels({ providerId, forceRefresh: null })
       .then((next) => {
         if (alive) setModels(next)
       })
@@ -87,9 +87,10 @@ export function useComposerTypeahead({
     let alive = true
     const timer = window.setTimeout(() => {
       void api
-        .workspaceSuggestRefs(token.query, {
-          conversationId: conversationId ?? undefined,
-          projectId: projectId ?? undefined,
+        .workspaceSuggestRefs({
+          conversationId: conversationId ?? null,
+          projectId: projectId ?? null,
+          query: token.query,
           limit: 15,
         })
         .then((entries) => {

@@ -5,14 +5,225 @@
 //! more than one frontend's feature.
 
 use crate::ServicesExt;
+use crate::commands::model_config::RequiredNullable;
 use meridian_core::acp::{self, AcpConfig};
+
+#[cfg(not(target_os = "android"))]
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AcpSessionOpenRequest {
+    pub cwd: String,
+}
+
+#[cfg(not(target_os = "android"))]
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AcpPromptSendRequest {
+    pub conversation_id: String,
+    pub message: String,
+    pub turn_id: RequiredNullable<String>,
+    pub context_refs: RequiredNullable<Vec<meridian_core::workspace::reference::WorkspaceReferenceRequest>>,
+}
+
+#[cfg(not(target_os = "android"))]
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AcpSessionAttachRequest {
+    pub conversation_id: String,
+    pub session_id: String,
+    pub cwd: String,
+}
+
+#[cfg(not(target_os = "android"))]
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AcpSessionListRequest {
+    /// `None` means every project. A present value narrows discovery to that
+    /// directory and its worktrees.
+    pub cwd: RequiredNullable<String>,
+}
+
+#[cfg(not(target_os = "android"))]
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpDiscoveredSessionInfoResponse {
+    pub session_id: String,
+    pub cwd: String,
+    pub title: Option<String>,
+    pub updated_at: Option<String>,
+    pub owned_by: Option<String>,
+}
+
+#[cfg(not(target_os = "android"))]
+impl From<acp::import::DiscoveredSession> for AcpDiscoveredSessionInfoResponse {
+    fn from(session: acp::import::DiscoveredSession) -> Self {
+        Self {
+            session_id: session.session_id,
+            cwd: session.cwd,
+            title: session.title,
+            updated_at: session.updated_at,
+            owned_by: session.owned_by,
+        }
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+pub type AcpDiscoveredSessionListResponse = Vec<AcpDiscoveredSessionInfoResponse>;
+
+#[cfg(not(target_os = "android"))]
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AcpImportSessionRequest {
+    pub session_id: String,
+    pub cwd: String,
+    /// Nullable keys are still required: absence is not another spelling of
+    /// `null` in a first-party request.
+    pub title: RequiredNullable<String>,
+    pub updated_at: RequiredNullable<String>,
+}
+
+#[cfg(not(target_os = "android"))]
+impl From<AcpImportSessionRequest> for acp::import::ImportRequest {
+    fn from(session: AcpImportSessionRequest) -> Self {
+        Self {
+            session_id: session.session_id,
+            cwd: session.cwd,
+            title: session.title.0,
+            updated_at: session.updated_at.0,
+        }
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpImportSessionResponse {
+    pub conversation_id: String,
+    pub truncated: bool,
+    pub messages: usize,
+}
+
+#[cfg(not(target_os = "android"))]
+impl From<acp::import::ImportedSession> for AcpImportSessionResponse {
+    fn from(response: acp::import::ImportedSession) -> Self {
+        Self {
+            conversation_id: response.conversation_id,
+            truncated: response.truncated,
+            messages: response.messages,
+        }
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AcpSessionConfigReadRequest {
+    pub conversation_id: String,
+}
+
+#[cfg(not(target_os = "android"))]
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AcpSessionConfigUpdateRequest {
+    pub conversation_id: String,
+    pub config_id: String,
+    /// ACP defines config values as protocol-owned JSON. The shell keeps that
+    /// dynamic leaf but closes the surrounding first-party request object.
+    pub value: serde_json::Value,
+}
+
+#[cfg(not(target_os = "android"))]
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpConfigOptionValueInfoResponse {
+    pub value: String,
+    pub name: String,
+    pub description: Option<String>,
+}
+
+#[cfg(not(target_os = "android"))]
+impl From<acp::protocol::ConfigOptionValue> for AcpConfigOptionValueInfoResponse {
+    fn from(value: acp::protocol::ConfigOptionValue) -> Self {
+        Self {
+            value: value.value,
+            name: value.name,
+            description: value.description,
+        }
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpConfigOptionInfoResponse {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub category: Option<String>,
+    #[serde(rename = "type")]
+    pub kind: Option<String>,
+    pub current_value: Option<serde_json::Value>,
+    pub options: Vec<AcpConfigOptionValueInfoResponse>,
+}
+
+#[cfg(not(target_os = "android"))]
+impl From<acp::protocol::SessionConfigOption> for AcpConfigOptionInfoResponse {
+    fn from(option: acp::protocol::SessionConfigOption) -> Self {
+        Self {
+            id: option.id,
+            name: option.name,
+            description: option.description,
+            category: option.category,
+            kind: option.kind,
+            current_value: option.current_value,
+            options: option.options.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+pub type AcpConfigOptionListResponse = Vec<AcpConfigOptionInfoResponse>;
+
+#[cfg(not(target_os = "android"))]
+pub type AcpLiveConversationIdsResponse = Vec<String>;
+
+#[derive(Debug, serde::Serialize)]
+pub struct AcpConfigInfoResponse {
+    pub command: String,
+    pub args: Vec<String>,
+}
+
+impl From<AcpConfig> for AcpConfigInfoResponse {
+    fn from(config: AcpConfig) -> Self {
+        Self {
+            command: config.command,
+            args: config.args,
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AcpConfigUpdateRequest {
+    pub command: String,
+    pub args: Vec<String>,
+}
+
+impl From<AcpConfigUpdateRequest> for AcpConfig {
+    fn from(config: AcpConfigUpdateRequest) -> Self {
+        Self {
+            command: config.command,
+            args: config.args,
+        }
+    }
+}
 
 /// Start an adapter in `cwd` and give it a conversation. Returns the
 /// conversation id, which is what everything else here is keyed by.
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
-pub async fn acp_open_session(app: tauri::AppHandle, cwd: String) -> Result<String, String> {
-    let cwd = cwd.trim();
+pub async fn acp_open_session(app: tauri::AppHandle, request: AcpSessionOpenRequest) -> Result<String, String> {
+    let cwd = request.cwd.trim();
     if cwd.is_empty() {
         return Err("choose a folder for the session to work in".into());
     }
@@ -32,16 +243,24 @@ pub async fn acp_open_session(app: tauri::AppHandle, cwd: String) -> Result<Stri
 /// caller learns the turn is over and whether it failed.
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
-pub async fn acp_send(
-    app: tauri::AppHandle,
-    conversation_id: String,
-    message: String,
-    turn_id: Option<String>,
-    context_refs: Option<Vec<meridian_core::workspace::reference::WorkspaceReferenceInput>>,
-) -> Result<(), String> {
+pub async fn acp_send(app: tauri::AppHandle, request: AcpPromptSendRequest) -> Result<(), String> {
+    let AcpPromptSendRequest {
+        conversation_id,
+        message,
+        turn_id,
+        context_refs,
+    } = request;
+    let turn_id = turn_id.0;
     let services = app.services();
+    if meridian_core::agent::queue::has_plan_review_barrier(&services, &conversation_id).await? {
+        return Err(
+            "This conversation is waiting for plan review or its continuation. Finish it before sending another ACP prompt."
+                .into(),
+        );
+    }
     let parsed = meridian_core::workspace::reference::parse_message_references(&message);
-    let references = meridian_core::workspace::reference::reconcile_references(context_refs, parsed)?;
+    let references =
+        meridian_core::workspace::reference::reconcile_references(context_refs.0.unwrap_or_default(), parsed)?;
     let context = if references.is_empty() {
         Vec::new()
     } else {
@@ -56,7 +275,7 @@ pub async fn acp_send(
         })
         .await
         .map_err(|e| e.to_string())??;
-        let file_access = meridian_core::agent::build_file_access(&services.db).await;
+        let file_access = meridian_core::agent::build_file_access(&services.db).await?;
         let tool_context = meridian_core::tools::ToolContext {
             working_directory: Some(cwd),
             shell: meridian_core::tools::ShellType::default_for_platform(),
@@ -91,10 +310,16 @@ pub async fn acp_send(
 #[tauri::command]
 pub async fn acp_list_sessions(
     app: tauri::AppHandle,
-    cwd: Option<String>,
-) -> Result<Vec<acp::import::DiscoveredSession>, String> {
-    let cwd = cwd.map(|c| c.trim().to_string()).filter(|c| !c.is_empty());
-    acp::import::discover(&app.services(), cwd.as_deref()).await
+    request: AcpSessionListRequest,
+) -> Result<AcpDiscoveredSessionListResponse, String> {
+    let cwd = request
+        .cwd
+        .0
+        .map(|cwd| cwd.trim().to_string())
+        .filter(|cwd| !cwd.is_empty());
+    acp::import::discover(&app.services(), cwd.as_deref())
+        .await
+        .map(|sessions| sessions.into_iter().map(Into::into).collect())
 }
 
 /// Take a session over and give it a conversation here.
@@ -108,9 +333,10 @@ pub async fn acp_list_sessions(
 #[tauri::command]
 pub async fn acp_import_session(
     app: tauri::AppHandle,
-    session: acp::import::ImportRequest,
-) -> Result<acp::import::ImportOutcome, String> {
-    acp::import::import(&app.services(), &session).await
+    request: AcpImportSessionRequest,
+) -> Result<AcpImportSessionResponse, String> {
+    let session = request.into();
+    acp::import::import(&app.services(), &session).await.map(Into::into)
 }
 
 /// Point an existing conversation at a session on disk.
@@ -121,13 +347,15 @@ pub async fn acp_import_session(
 /// they came from this same session.
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
-pub async fn acp_attach_session(
-    app: tauri::AppHandle,
-    conversation_id: String,
-    session_id: String,
-    cwd: String,
-) -> Result<(), String> {
-    acp::import::attach(&app.services(), &conversation_id, &session_id, &cwd).await
+pub async fn acp_attach_session(app: tauri::AppHandle, request: AcpSessionAttachRequest) -> Result<(), String> {
+    let services = app.services();
+    if meridian_core::agent::queue::has_plan_review_barrier(&services, &request.conversation_id).await? {
+        return Err(
+            "This conversation is waiting for plan review or its continuation. Finish it before attaching another ACP session."
+                .into(),
+        );
+    }
+    acp::import::attach(&services, &request.conversation_id, &request.session_id, &request.cwd).await
 }
 
 /// Which agent session a conversation follows, and where it works.
@@ -140,14 +368,14 @@ pub async fn acp_attach_session(
 pub async fn acp_conversation_session(
     app: tauri::AppHandle,
     conversation_id: String,
-) -> Result<Option<AcpConversationSession>, String> {
+) -> Result<Option<AcpConversationSessionInfoResponse>, String> {
     let services = app.services();
     let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = meridian_core::util::get_conn(&pool)?;
         meridian_core::db::ops::acp_session::get(&mut conn, &conversation_id)
             .map(|row| {
-                row.map(|row| AcpConversationSession {
+                row.map(|row| AcpConversationSessionInfoResponse {
                     cwd: row.cwd,
                     acp_session_id: row.acp_session_id,
                 })
@@ -160,7 +388,7 @@ pub async fn acp_conversation_session(
 
 #[cfg(not(target_os = "android"))]
 #[derive(serde::Serialize)]
-pub struct AcpConversationSession {
+pub struct AcpConversationSessionInfoResponse {
     pub cwd: String,
     /// `None` is a state rather than a gap: a conversation from before the
     /// table, or one whose adapter came up and never opened a session.
@@ -189,7 +417,7 @@ pub async fn acp_close(app: tauri::AppHandle, conversation_id: String) -> Result
 /// Which conversations have a live adapter behind them right now.
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
-pub async fn acp_live_sessions(app: tauri::AppHandle) -> Result<Vec<String>, String> {
+pub async fn acp_live_sessions(app: tauri::AppHandle) -> Result<AcpLiveConversationIdsResponse, String> {
     Ok(app.services().acp.live_conversations())
 }
 
@@ -204,14 +432,17 @@ pub async fn acp_live_sessions(app: tauri::AppHandle) -> Result<Vec<String>, Str
 #[tauri::command]
 pub async fn acp_session_config(
     app: tauri::AppHandle,
-    conversation_id: String,
-) -> Result<Vec<meridian_core::acp::protocol::SessionConfigOption>, String> {
+    request: AcpSessionConfigReadRequest,
+) -> Result<AcpConfigOptionListResponse, String> {
     Ok(app
         .services()
         .acp
-        .get(&conversation_id)
+        .get(&request.conversation_id)
         .map(|session| session.config_options())
-        .unwrap_or_default())
+        .unwrap_or_default()
+        .into_iter()
+        .map(Into::into)
+        .collect())
 }
 
 /// Change one of them, and hand back the whole set as it now stands.
@@ -223,42 +454,47 @@ pub async fn acp_session_config(
 #[tauri::command]
 pub async fn acp_set_session_config(
     app: tauri::AppHandle,
-    conversation_id: String,
-    config_id: String,
-    value: serde_json::Value,
-) -> Result<Vec<meridian_core::acp::protocol::SessionConfigOption>, String> {
+    request: AcpSessionConfigUpdateRequest,
+) -> Result<AcpConfigOptionListResponse, String> {
     let session = app
         .services()
         .acp
-        .get(&conversation_id)
+        .get(&request.conversation_id)
         .ok_or("this conversation has no running Claude Code session")?;
-    session.set_config_option(&config_id, value).await
+    session
+        .set_config_option(&request.config_id, request.value)
+        .await
+        .map(|options| options.into_iter().map(Into::into).collect())
 }
 
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
-pub async fn acp_get_config(app: tauri::AppHandle) -> Result<AcpConfig, String> {
-    Ok(AcpConfig::load(&app.services().db))
+pub async fn acp_get_config(app: tauri::AppHandle) -> Result<AcpConfigInfoResponse, String> {
+    AcpConfig::load(&app.services().db).map(Into::into)
 }
 
 /// `local`, and this is the one row here where that is load-bearing:
 /// `acp.command` names a binary this app will execute. A remote caller able to
 /// write it has arbitrary code execution on the machine running Meridian, which
 /// is a different order of thing from the self-lockout the other `local` rows
-/// guard. `SERVER_OWNED_PREFIXES` closes the same hole from the `set_preference`
-/// side.
+/// guard. It is deliberately absent from the closed public `PreferenceKey`, so
+/// the typed preference command cannot reach the same row.
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
-pub async fn acp_save_config(app: tauri::AppHandle, config: AcpConfig) -> Result<AcpConfig, String> {
+pub async fn acp_save_config(
+    app: tauri::AppHandle,
+    request: AcpConfigUpdateRequest,
+) -> Result<AcpConfigInfoResponse, String> {
     let services = app.services();
+    let config = AcpConfig::from(request);
     config.save(&services.db)?;
-    Ok(AcpConfig::load(&services.db))
+    AcpConfig::load(&services.db).map(Into::into)
 }
 
 /// What a working adapter says about itself.
 #[cfg(not(target_os = "android"))]
 #[derive(serde::Serialize)]
-pub struct AcpCheck {
+pub struct AcpCheckResponse {
     pub ok: bool,
     /// The adapter's name and version, when it got far enough to say.
     pub agent: Option<String>,
@@ -276,10 +512,10 @@ pub struct AcpCheck {
 /// machine.
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
-pub async fn acp_check_adapter(app: tauri::AppHandle) -> Result<AcpCheck, String> {
-    let config = AcpConfig::load(&app.services().db);
+pub async fn acp_check_adapter(app: tauri::AppHandle) -> Result<AcpCheckResponse, String> {
+    let config = AcpConfig::load(&app.services().db)?;
     match acp::check_adapter(&config).await {
-        Ok(report) => Ok(AcpCheck {
+        Ok(report) => Ok(AcpCheckResponse {
             ok: true,
             agent: report.agent,
             protocol_version: Some(report.protocol_version),
@@ -288,12 +524,199 @@ pub async fn acp_check_adapter(app: tauri::AppHandle) -> Result<AcpCheck, String
         }),
         // A failed check is a successful command: the page wants to draw the
         // reason, not catch an exception.
-        Err(e) => Ok(AcpCheck {
+        Err(e) => Ok(AcpCheckResponse {
             ok: false,
             agent: None,
             protocol_version: None,
             load_session: false,
             error: Some(e),
         }),
+    }
+}
+
+#[cfg(test)]
+mod config_dto_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn acp_config_request_is_a_closed_complete_object() {
+        let complete = json!({"command": "npx", "args": ["-y", "adapter"]});
+        assert!(serde_json::from_value::<AcpConfigUpdateRequest>(complete).is_ok());
+
+        let missing = json!({"command": "npx"});
+        assert!(serde_json::from_value::<AcpConfigUpdateRequest>(missing).is_err());
+
+        let unknown = json!({"command": "npx", "args": [], "shell": true});
+        assert!(serde_json::from_value::<AcpConfigUpdateRequest>(unknown).is_err());
+    }
+
+    #[test]
+    fn acp_session_requests_are_closed_complete_objects() {
+        assert!(
+            serde_json::from_value::<AcpSessionOpenRequest>(json!({
+                "cwd": "C:/work/project"
+            }))
+            .is_ok()
+        );
+        assert!(
+            serde_json::from_value::<AcpSessionOpenRequest>(json!({
+                "cwd": "C:/work/project",
+                "reuse": true
+            }))
+            .is_err()
+        );
+
+        let prompt = json!({
+            "conversationId": "conversation-1",
+            "message": "inspect it",
+            "turnId": null,
+            "contextRefs": null
+        });
+        assert!(serde_json::from_value::<AcpPromptSendRequest>(prompt).is_ok());
+        assert!(
+            serde_json::from_value::<AcpPromptSendRequest>(json!({
+                "conversationId": "conversation-1",
+                "message": "inspect @src/main.rs",
+                "turnId": null,
+                "contextRefs": [{
+                    "path": "src/main.rs",
+                    "lineStart": null
+                }]
+            }))
+            .is_err(),
+            "nested reference range keys must be complete"
+        );
+        assert!(
+            serde_json::from_value::<AcpPromptSendRequest>(json!({
+                "conversationId": "conversation-1",
+                "message": "inspect it"
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<AcpPromptSendRequest>(json!({
+                "conversationId": "conversation-1",
+                "message": "inspect it",
+                "turnId": null,
+                "contextRefs": null,
+                "legacyMode": true
+            }))
+            .is_err()
+        );
+
+        assert!(
+            serde_json::from_value::<AcpSessionAttachRequest>(json!({
+                "conversationId": "conversation-1",
+                "sessionId": "session-1",
+                "cwd": "C:/work/project"
+            }))
+            .is_ok()
+        );
+        assert!(
+            serde_json::from_value::<AcpSessionAttachRequest>(json!({
+                "conversationId": "conversation-1",
+                "sessionId": "session-1",
+                "cwd": "C:/work/project",
+                "copyTranscript": false
+            }))
+            .is_err()
+        );
+
+        let list = json!({"cwd": null});
+        assert!(serde_json::from_value::<AcpSessionListRequest>(list).is_ok());
+        assert!(serde_json::from_value::<AcpSessionListRequest>(json!({})).is_err());
+        assert!(serde_json::from_value::<AcpSessionListRequest>(json!({"cwd": null, "all": true})).is_err());
+
+        let complete = json!({
+            "sessionId": "session-1",
+            "cwd": "C:/work/project",
+            "title": null,
+            "updatedAt": null
+        });
+        assert!(serde_json::from_value::<AcpImportSessionRequest>(complete).is_ok());
+        assert!(
+            serde_json::from_value::<AcpImportSessionRequest>(json!({
+                "sessionId": "session-1",
+                "cwd": "C:/work/project"
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<AcpImportSessionRequest>(json!({
+                "sessionId": "session-1",
+                "cwd": "C:/work/project",
+                "title": null,
+                "updatedAt": null,
+                "owner": null
+            }))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn acp_session_config_requests_are_closed_complete_objects() {
+        assert!(
+            serde_json::from_value::<AcpSessionConfigReadRequest>(json!({
+                "conversationId": "conversation-1"
+            }))
+            .is_ok()
+        );
+        assert!(
+            serde_json::from_value::<AcpSessionConfigReadRequest>(json!({
+                "conversationId": "conversation-1",
+                "cached": true
+            }))
+            .is_err()
+        );
+
+        assert!(
+            serde_json::from_value::<AcpSessionConfigUpdateRequest>(json!({
+                "conversationId": "conversation-1",
+                "configId": "model",
+                "value": "sonnet"
+            }))
+            .is_ok()
+        );
+        assert!(
+            serde_json::from_value::<AcpSessionConfigUpdateRequest>(json!({
+                "conversationId": "conversation-1",
+                "configId": "model"
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<AcpSessionConfigUpdateRequest>(json!({
+                "conversationId": "conversation-1",
+                "configId": "model",
+                "value": "sonnet",
+                "optimistic": true
+            }))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn acp_session_config_response_serializes_nullable_keys_as_null() {
+        let response = AcpConfigOptionInfoResponse {
+            id: "model".into(),
+            name: "Model".into(),
+            description: None,
+            category: None,
+            kind: None,
+            current_value: None,
+            options: vec![AcpConfigOptionValueInfoResponse {
+                value: "sonnet".into(),
+                name: "Sonnet".into(),
+                description: None,
+            }],
+        };
+        let value = serde_json::to_value(response).unwrap();
+
+        assert_eq!(value["description"], serde_json::Value::Null);
+        assert_eq!(value["category"], serde_json::Value::Null);
+        assert_eq!(value["type"], serde_json::Value::Null);
+        assert_eq!(value["currentValue"], serde_json::Value::Null);
+        assert_eq!(value["options"][0]["description"], serde_json::Value::Null);
     }
 }

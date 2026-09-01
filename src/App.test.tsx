@@ -4,7 +4,7 @@ import App from './App'
 import { useConversationStore } from '@/stores/conversation-store'
 import type { InitialTurnDraft } from '@/components/chat/conversation-draft'
 import type { ShellProps } from '@/components/layout/shell-props'
-import type { Project } from '@/types'
+import type { ProjectInfoResponse } from '@/types'
 
 const apiMocks = vi.hoisted(() => ({
   createConversation: vi.fn(),
@@ -58,7 +58,7 @@ const draft: InitialTurnDraft = {
   },
 }
 
-const createdProject: Project = {
+const createdProject: ProjectInfoResponse = {
   id: 'project-new',
   name: 'New project',
   path: 'C:\\code\\new-project',
@@ -207,6 +207,7 @@ describe('creating a conversation from the welcome composer', () => {
 
     expect(result).toBeNull()
     expect(apiMocks.acpOpenSession).toHaveBeenCalledTimes(1)
+    expect(apiMocks.acpOpenSession).toHaveBeenCalledWith({ cwd: 'C:\\code\\hosted' })
     expect(apiMocks.listConversations).toHaveBeenCalledTimes(2)
     expect(useConversationStore.getState().activeId).toBe('conversation-hosted')
     expect(screen.getByTestId('app-shell')).toHaveAttribute('data-page', 'chat')

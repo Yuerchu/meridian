@@ -22,7 +22,7 @@ import {
   TriangleExclamation,
   Xmark,
 } from '@gravity-ui/icons'
-import { Button, Checkbox, CheckboxGroup, Input, Radio, RadioGroup, Spinner } from '@heroui/react'
+import { Button, Checkbox, CheckboxGroup, Chip, Input, Radio, RadioGroup, Spinner } from '@heroui/react'
 import {
   ChatTool,
   ChatToolApproval,
@@ -42,7 +42,8 @@ import { ChatSource, ChatSources } from '@heroui-pro/react/chat-source'
 import { openExternally } from '@/lib/external-link'
 import { MarkdownContent } from './markdown-content'
 import { useConversationStore } from '@/stores/conversation-store'
-import type { AutoReviewVerdict, ToolCallDisplay } from '@/types'
+import { usePlanReviewStore } from '@/stores/plan-review-store'
+import type { AutoReviewVerdictInfoResponse, ToolCallDisplay } from '@/types'
 
 interface AskOption {
   label: string
@@ -301,7 +302,10 @@ function AskUserBlock({ data, onAnswered }: { data: ToolCallDisplay; onAnswered?
   // Held rather than read live, because answering retires the queue entry this
   // comes out of: without the ref the form would swap back to the call's own
   // input the instant send succeeded, taking every selection with it.
-  const pending = useConversationStore((s) => (data.approval_id ? s.attention[data.approval_id]?.arguments : undefined))
+  const pending = useConversationStore((s) => {
+    const attention = data.approval_id ? s.attention[data.approval_id] : undefined
+    return attention?.kind === 'approval' || attention?.kind === 'ask' ? attention.arguments : undefined
+  })
   const form = useRef<string | undefined>(undefined)
   if (pending) form.current = pending
 
@@ -372,7 +376,7 @@ function AskUserBlock({ data, onAnswered }: { data: ToolCallDisplay; onAnswered?
         result[q.id] = formatAnswer(answers[q.id], skippedSet.has(q.id))
       }
       setSending(true)
-      api.respondToAsk(approvalId, JSON.stringify(result)).then(
+      api.respondToAsk({ approvalId, response: JSON.stringify(result) }).then(
         // Same reason as `PendingApproval`: the queue is a separate ledger and
         // learns nothing from an answer given here. A question answered on this
         // form and left in it is offered again as a toast — "go and answer this"
@@ -774,7 +778,7 @@ function PendingApproval({
     )
   }
 
-  const deny = () => decide(() => api.denyToolCall(approvalId, feedback || undefined))
+  const deny = () => decide(() => api.denyToolCall({ approvalId, reason: feedback || null }))
 
   return (
     <div className="space-y-2">
@@ -1018,7 +1022,7 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
       {data.status === 'pending' && approvalId && !sent && (
         <div data-slot="enter-plan-actions" className="border-t border-separator px-4 py-3">
           <ChatToolApproval>
-            <Button variant="outline" onPress={() => decide(() => api.denyToolCall(approvalId))}>
+            <Button variant="outline" onPress={() => decide(() => api.denyToolCall({ approvalId, reason: null }))}>
               <Xmark className="w-3.5 h-3.5" />
               {t('chat.plan.keepBuilding')}
             </Button>
@@ -1076,7 +1080,7 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
   )
 
   const sendBack = useCallback(() => {
-    if (approvalId) decide(() => api.denyToolCall(approvalId, feedback.trim() || undefined))
+    if (approvalId) decide(() => api.denyToolCall({ approvalId, reason: feedback.trim() || null }))
   }, [decide, approvalId, feedback])
 
   return (
@@ -1162,6 +1166,50 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
           <CardOutcome status={data.status} detail={data.result} />
         </div>
       )}
+    </div>
+  )
+}
+
+function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay; reviewId: string }) {
+  const { t } = useTranslation()
+  const openReview = usePlanReviewStore((state) => state.openReview)
+  const summary = usePlanReviewStore((state) => state.summaries[reviewId])
+  const status =
+    summary?.status ??
+    (data.status === 'pending'
+      ? 'pending'
+      : data.status === 'completed'
+        ? 'approved'
+        : data.status === 'denied'
+          ? 'changes_requested'
+          : 'orphaned')
+
+  return (
+    <div
+      data-slot="plan-review-entry"
+      data-status={status}
+      className={cn(
+        'my-3 rounded-2xl bg-surface p-4 text-sm shadow-surface',
+        status === 'pending' && 'ring-1 ring-info/40 ring-inset',
+      )}
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <SquareListUl aria-hidden className="size-4 shrink-0 text-muted" />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium text-foreground">{t('chat.plan.title')}</span>
+            <Chip size="sm" variant="secondary">
+              {t(`chat.plan.status.${status}`)}
+            </Chip>
+          </div>
+          <p className="mt-1 line-clamp-2 text-xs text-muted">
+            {status === 'pending' ? t('chat.plan.reviewReady') : t('chat.plan.reviewHistory')}
+          </p>
+        </div>
+        <Button variant={status === 'pending' ? 'primary' : 'outline'} onPress={() => openReview(reviewId)}>
+          {t('chat.plan.review')}
+        </Button>
+      </div>
     </div>
   )
 }
@@ -1468,7 +1516,7 @@ function OrphanedNotice() {
  * the decision fell back to the card below this one. Saying so is what keeps a
  * misconfigured reviewer from looking like no reviewer at all.
  */
-function AutoReviewNotice({ verdict }: { verdict: AutoReviewVerdict }) {
+function AutoReviewNotice({ verdict }: { verdict: AutoReviewVerdictInfoResponse }) {
   const { t } = useTranslation()
   const denied = verdict.outcome === 'deny'
   const unreadable = verdict.outcome === 'unreadable'
@@ -1599,7 +1647,7 @@ export function ToolCallBlock({
   // is not running, whatever the transcript says — that one is decided by
   // position, which only the caller can see.
   const data: ToolCallDisplay = useMemo(() => {
-    if (raw.status === 'pending' && !raw.approval_id) return { ...raw, status: 'orphaned' }
+    if (raw.status === 'pending' && !raw.approval_id && !raw.plan_review_id) return { ...raw, status: 'orphaned' }
     if (queued && raw.status === 'running') return { ...raw, status: 'queued' }
     return raw
   }, [raw, queued])
@@ -1645,6 +1693,9 @@ export function ToolCallBlock({
   }
 
   if (data.tool_name === 'exit_plan' || data.tool_name === 'ExitPlanMode') {
+    if (data.plan_review_id) {
+      return <PlanReviewEntryBlock data={data} reviewId={data.plan_review_id} />
+    }
     const plan = typeof parsedArgs.plan === 'string' ? parsedArgs.plan.trim() : ''
     if (plan) {
       return <ExitPlanBlock data={data} plan={plan} />

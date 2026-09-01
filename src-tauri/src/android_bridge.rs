@@ -16,15 +16,16 @@ use meridian_core::android_bridge::{MediaPickResult, SafPickResult, media_waiter
 
 // ---- Window insets ----
 
-static CURRENT_INSETS: Mutex<crate::platform::WindowInsets> = Mutex::new(crate::platform::WindowInsets {
-    top: 0.0,
-    right: 0.0,
-    bottom: 0.0,
-    left: 0.0,
-    ime_bottom: 0.0,
-});
+static CURRENT_INSETS: Mutex<crate::platform::WindowInsetsInfoResponse> =
+    Mutex::new(crate::platform::WindowInsetsInfoResponse {
+        top: 0.0,
+        right: 0.0,
+        bottom: 0.0,
+        left: 0.0,
+        ime_bottom: 0.0,
+    });
 
-pub fn current_insets() -> crate::platform::WindowInsets {
+pub fn current_insets() -> crate::platform::WindowInsetsInfoResponse {
     *CURRENT_INSETS.lock().unwrap()
 }
 
@@ -39,7 +40,7 @@ pub extern "system" fn Java_cn_yuxiaoqiu_meridian_MainActivity_nativeOnInsetsCha
     left: jfloat,
     ime_bottom: jfloat,
 ) {
-    let insets = crate::platform::WindowInsets {
+    let insets = crate::platform::WindowInsetsInfoResponse {
         top,
         right,
         bottom,
@@ -49,7 +50,7 @@ pub extern "system" fn Java_cn_yuxiaoqiu_meridian_MainActivity_nativeOnInsetsCha
     *CURRENT_INSETS.lock().unwrap() = insets;
     if let Some(app) = crate::APP_HANDLE.get() {
         use tauri::Emitter;
-        let _ = app.emit("insets-changed", insets);
+        let _ = app.emit("insets-changed", crate::platform::WindowInsetsEvent::from(insets));
     }
 }
 

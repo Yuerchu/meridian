@@ -2,7 +2,12 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 
 import type { DraftTurnSettings } from '@/components/chat/conversation-draft'
 import { useConversationStore } from '@/stores/conversation-store'
-import type { Assistant, Conversation, Provider, ProviderCapabilities } from '@/types'
+import type {
+  AssistantInfoResponse,
+  ConversationInfoResponse,
+  ProviderInfoResponse,
+  ProviderCapabilitiesInfoResponse,
+} from '@/types'
 import { useTurnSettings } from './use-turn-settings'
 
 const mocks = vi.hoisted(() => ({
@@ -20,7 +25,7 @@ vi.mock('@/api', () => ({
   api: mocks,
 }))
 
-const assistants: Assistant[] = [
+const assistants: AssistantInfoResponse[] = [
   {
     id: 'assistant-default',
     name: 'Default',
@@ -32,17 +37,17 @@ const assistants: Assistant[] = [
     temperature: null,
     top_p: null,
     max_tokens: null,
-    is_default: 1,
+    is_default: true,
     sort_order: 0,
     created_at: 1,
     updated_at: 1,
     context_limit: 128_000,
     compact_keep_recent: 8,
     enabled_tools: null,
-    thinking_enabled: 1,
+    thinking_enabled: true,
     thinking_budget: null,
     tool_preset_id: null,
-    auto_compact_enabled: 1,
+    auto_compact_enabled: true,
   },
   {
     id: 'assistant-draft',
@@ -55,27 +60,27 @@ const assistants: Assistant[] = [
     temperature: null,
     top_p: null,
     max_tokens: null,
-    is_default: 0,
+    is_default: false,
     sort_order: 1,
     created_at: 1,
     updated_at: 1,
     context_limit: 128_000,
     compact_keep_recent: 8,
     enabled_tools: null,
-    thinking_enabled: 1,
+    thinking_enabled: true,
     thinking_budget: null,
     tool_preset_id: null,
-    auto_compact_enabled: 1,
+    auto_compact_enabled: true,
   },
 ]
 
-const providers: Provider[] = [
+const providers: ProviderInfoResponse[] = [
   {
     id: 'provider-default',
     name: 'Default',
     provider_type: 'openai',
     base_url: '',
-    is_enabled: 1,
+    is_enabled: true,
     sort_order: 0,
     created_at: 1,
     updated_at: 1,
@@ -89,7 +94,7 @@ const providers: Provider[] = [
     name: 'Draft',
     provider_type: 'openai',
     base_url: '',
-    is_enabled: 1,
+    is_enabled: true,
     sort_order: 1,
     created_at: 1,
     updated_at: 1,
@@ -100,7 +105,7 @@ const providers: Provider[] = [
   },
 ]
 
-const capabilities: ProviderCapabilities = {
+const capabilities: ProviderCapabilitiesInfoResponse = {
   supports_tools: true,
   supports_streaming_tools: true,
   supports_thinking: true,
@@ -108,8 +113,17 @@ const capabilities: ProviderCapabilities = {
   supports_images: true,
   max_context_tokens: 128_000,
   max_output_tokens: 16_000,
+  supports_pdf: false,
+  supports_temperature: true,
+  supports_top_p: true,
+  max_temperature: 2,
+  thinking_style: 'effort_only',
   supported_efforts: ['low', 'medium', 'high'],
+  default_effort: 'medium',
   supports_fast: true,
+  supports_verbosity: false,
+  default_verbosity: null,
+  server_tools: [],
 }
 
 const draft: DraftTurnSettings = {
@@ -124,22 +138,22 @@ const draft: DraftTurnSettings = {
   acceptEdits: true,
 }
 
-function conversation(overrides: Partial<Conversation> = {}): Conversation {
+function conversation(overrides: Partial<ConversationInfoResponse> = {}): ConversationInfoResponse {
   return {
     id: 'conversation-1',
     title: null,
     assistant_id: 'assistant-default',
-    is_pinned: 0,
-    is_archived: 0,
+    is_pinned: false,
+    is_archived: false,
     message_count: 0,
     created_at: 1,
     updated_at: 1,
     project_id: null,
     thinking_level: null,
-    fast_mode: 0,
+    fast_mode: false,
     mode: null,
     head_message_id: null,
-    accept_edits: 0,
+    accept_edits: false,
     agent_kind: null,
     ...overrides,
   }
@@ -215,9 +229,9 @@ describe('useTurnSettings draft mode', () => {
             id: 'conversation-new',
             assistant_id: 'assistant-draft',
             thinking_level: 'high',
-            fast_mode: 1,
+            fast_mode: true,
             mode: 'plan',
-            accept_edits: 1,
+            accept_edits: true,
           }),
         ],
       })
@@ -244,6 +258,6 @@ describe('useTurnSettings draft mode', () => {
 
     act(() => result.current.onSelectMode('plan'))
 
-    await waitFor(() => expect(mocks.setConversationMode).toHaveBeenCalledWith(persisted.id, 'plan'))
+    await waitFor(() => expect(mocks.setConversationMode).toHaveBeenCalledWith({ id: persisted.id, mode: 'plan' }))
   })
 })

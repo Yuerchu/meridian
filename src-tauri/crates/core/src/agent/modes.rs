@@ -10,6 +10,44 @@
 //! exactly what any mode does, without chasing the behaviour through the tool
 //! assembly, the prompt builder and the dispatch loop.
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChatMode {
+    Work,
+    Plan,
+}
+
+impl ChatMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Work => WORK_MODE,
+            Self::Plan => PLAN_MODE,
+        }
+    }
+
+    pub const fn canonical_storage(self) -> Option<&'static str> {
+        match self {
+            Self::Work => None,
+            Self::Plan => Some(PLAN_MODE),
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            WORK_MODE => Ok(Self::Work),
+            PLAN_MODE => Ok(Self::Plan),
+            _ => Err(format!("unknown collaboration mode {value:?}")),
+        }
+    }
+
+    pub const fn spec(self) -> &'static ModeSpec {
+        match self {
+            Self::Work => &WORK,
+            Self::Plan => &PLAN,
+        }
+    }
+}
+
 /// A mode may only ever *narrow* what the assistant can already do. The one
 /// exception is the pair of transition tools, which the assistant cannot have
 /// enabled in advance because they are meaningless outside the modes that own
@@ -21,6 +59,11 @@ pub struct ModeSpec {
     /// Whitelist intersected with the assistant's own tool set. `None` means
     /// the mode does not narrow anything.
     pub tools: Option<&'static [&'static str]>,
+    /// Tools owned by this mode rather than by an assistant configuration.
+    /// They are injected while the mode is active and stripped everywhere
+    /// else. Plan document I/O lives here so every planning assistant reaches
+    /// the same durable draft regardless of its ordinary tool preset.
+    pub owned_tools: &'static [&'static str],
     /// Prepended to the system prompt, ahead of every other block.
     pub instructions: Option<&'static str>,
     /// Tool the model calls to ask to *enter* this mode. Offered while in any
@@ -36,6 +79,8 @@ pub const WORK_MODE: &str = "work";
 pub const PLAN_MODE: &str = "plan";
 pub const ENTER_PLAN_TOOL: &str = "enter_plan";
 pub const EXIT_PLAN_TOOL: &str = "exit_plan";
+pub const READ_PLAN_TOOL: &str = "read_plan";
+pub const UPDATE_PLAN_TOOL: &str = "update_plan";
 
 /// Tools that cannot change anything outside the conversation.
 ///
@@ -49,23 +94,26 @@ pub const EXIT_PLAN_TOOL: &str = "exit_plan";
 /// a test or read `git log` to check that a plan is even feasible, which is
 /// most of what makes a plan worth reading. It can also write files, so the
 /// mode prompt has to carry that constraint instead.
-const READ_ONLY_TOOLS: &[&str] = &[
+const PLAN_TOOLS: &[&str] = &[
     "ask_user",
     "glob",
     "list_directory",
     "list_memories",
     "load_skill",
     "read_file",
+    READ_PLAN_TOOL,
     "recall_memory",
     "run_command",
     "search_files",
     "update_todos",
+    UPDATE_PLAN_TOOL,
     "web_search",
 ];
 
 const WORK: ModeSpec = ModeSpec {
     id: WORK_MODE,
     tools: None,
+    owned_tools: &[],
     instructions: None,
     enter_tool: None,
     exit_tool: None,
@@ -74,7 +122,8 @@ const WORK: ModeSpec = ModeSpec {
 
 const PLAN: ModeSpec = ModeSpec {
     id: PLAN_MODE,
-    tools: Some(READ_ONLY_TOOLS),
+    tools: Some(PLAN_TOOLS),
+    owned_tools: &[READ_PLAN_TOOL, UPDATE_PLAN_TOOL],
     instructions: Some(PLAN_INSTRUCTIONS),
     enter_tool: Some(ENTER_PLAN_TOOL),
     exit_tool: Some(EXIT_PLAN_TOOL),
@@ -83,13 +132,12 @@ const PLAN: ModeSpec = ModeSpec {
 
 pub const MODES: &[&ModeSpec] = &[&WORK, &PLAN];
 
-/// The mode for a stored id. Unknown or absent means work: a conversation
-/// written by an older build, or a mode that has since been removed, must not
-/// end up in a state with no tools.
-pub fn resolve(id: Option<&str>) -> &'static ModeSpec {
+/// The mode for a stored id. Absence is the canonical spelling of work;
+/// anything present must name one of the declared modes exactly.
+pub fn resolve(id: Option<&str>) -> Result<&'static ModeSpec, String> {
     match id {
-        Some(id) => MODES.iter().find(|m| m.id == id).copied().unwrap_or(&WORK),
-        None => &WORK,
+        Some(id) => Ok(ChatMode::parse(id)?.spec()),
+        None => Ok(&WORK),
     }
 }
 
@@ -104,6 +152,11 @@ pub fn by_enter_tool(tool: &str) -> Option<&'static ModeSpec> {
 /// shown a transition it cannot make.
 pub fn transition_tools() -> impl Iterator<Item = &'static str> {
     MODES.iter().flat_map(|m| [m.enter_tool, m.exit_tool]).flatten()
+}
+
+/// Tools supplied by a mode rather than an assistant configuration.
+pub fn owned_tools() -> impl Iterator<Item = &'static str> {
+    MODES.iter().flat_map(|m| m.owned_tools.iter().copied())
 }
 
 /// Where the conversation is, and whether this turn can move it.
@@ -157,8 +210,9 @@ impl ModeSpec {
 
     /// Transitions offered while in this mode: the way out of it, plus the way
     /// into any other mode that would meaningfully change what is possible.
-    pub fn offered_transitions(&self, current_tools: &[String]) -> Vec<&'static str> {
-        let mut out: Vec<&'static str> = self.exit_tool.into_iter().collect();
+    pub fn offered_tools(&self, current_tools: &[String]) -> Vec<&'static str> {
+        let mut out: Vec<&'static str> = self.owned_tools.to_vec();
+        out.extend(self.exit_tool);
         out.extend(
             MODES
                 .iter()
@@ -188,8 +242,13 @@ and do not use it to work around the missing editing tools.
 does is worse than no plan.
 - Ask the user when a decision is genuinely theirs — an ambiguous requirement, a \
 trade-off with no clear winner. Do not ask what the code can tell you.
-- Call `exit_plan` when the plan is ready. It shows the plan to the user for \
-approval; if they send it back with feedback, revise and call it again.
+- Keep the plan in Meridian's private `plan.md`, not in the chat response. Call \
+`read_plan` before changing it and use `update_plan` with a unified patch. The \
+first draft is an `Add File: plan.md`; every revision is an `Update File` patch. \
+Do not recreate or resend the whole document.
+- Call `exit_plan` with no content when the saved `plan.md` is ready. It shows \
+that revision to the user for approval; if they send it back with feedback, \
+revise the file with another patch and call it again.
 - A plan is ready when it names the files to change and what changes in each, \
 points at existing code worth reusing, and says how to tell afterwards that it \
 worked. Leave out anything the implementer can work out for themselves.";
@@ -199,11 +258,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn unknown_and_missing_ids_fall_back_to_work() {
-        assert_eq!(resolve(None).id, WORK_MODE);
-        assert_eq!(resolve(Some("work")).id, WORK_MODE);
-        assert_eq!(resolve(Some("retired-mode")).id, WORK_MODE);
-        assert_eq!(resolve(Some("")).id, WORK_MODE);
+    fn only_missing_or_declared_mode_ids_are_accepted() {
+        assert_eq!(resolve(None).unwrap().id, WORK_MODE);
+        assert_eq!(resolve(Some("work")).unwrap().id, WORK_MODE);
+        assert!(resolve(Some("retired-mode")).is_err());
+        assert!(resolve(Some("")).is_err());
     }
 
     fn tools(names: &[&str]) -> Vec<String> {
@@ -214,11 +273,15 @@ mod tests {
     fn work_offers_the_way_into_plan_and_plan_offers_the_way_out() {
         let editing = tools(&["read_file", "write_file"]);
 
-        let work = resolve(None).offered_transitions(&editing);
+        let work = resolve(None).unwrap().offered_tools(&editing);
         assert_eq!(work, [ENTER_PLAN_TOOL], "no exit from the default mode");
 
-        let plan = resolve(Some("plan")).offered_transitions(&editing);
-        assert_eq!(plan, [EXIT_PLAN_TOOL], "and no way to re-enter the mode you are in");
+        let plan = resolve(Some("plan")).unwrap().offered_tools(&editing);
+        assert_eq!(
+            plan,
+            [READ_PLAN_TOOL, UPDATE_PLAN_TOOL, EXIT_PLAN_TOOL],
+            "the draft tools and no way to re-enter the active mode"
+        );
     }
 
     /// The entry point costs prompt space on every turn, so it only appears
@@ -226,15 +289,15 @@ mod tests {
     #[test]
     fn a_read_only_assistant_is_not_offered_planning() {
         let read_only = tools(&["read_file", "web_search", "ask_user"]);
-        assert!(resolve(None).offered_transitions(&read_only).is_empty());
+        assert!(resolve(None).unwrap().offered_tools(&read_only).is_empty());
 
         let with_shell = tools(&["read_file", "run_command", "delete_file"]);
-        assert_eq!(resolve(None).offered_transitions(&with_shell), [ENTER_PLAN_TOOL]);
+        assert_eq!(resolve(None).unwrap().offered_tools(&with_shell), [ENTER_PLAN_TOOL]);
     }
 
     #[test]
     fn an_assistant_with_no_tools_at_all_is_not_offered_planning() {
-        assert!(resolve(None).offered_transitions(&[]).is_empty());
+        assert!(resolve(None).unwrap().offered_tools(&[]).is_empty());
     }
 
     /// The pairing a bool would have allowed: a narrowed mode with no way out
@@ -281,7 +344,7 @@ mod tests {
             "delete_memory",
         ] {
             assert!(
-                !READ_ONLY_TOOLS.contains(&writer),
+                !PLAN_TOOLS.contains(&writer),
                 "{writer} can change things and must not be in plan mode"
             );
         }
@@ -289,17 +352,14 @@ mod tests {
 
     #[test]
     fn plan_can_leave_itself() {
-        let plan = resolve(Some("plan"));
+        let plan = resolve(Some("plan")).unwrap();
         assert_eq!(plan.exit_tool, Some(EXIT_PLAN_TOOL));
         assert_eq!(plan.exit_to, Some(WORK_MODE));
-        assert!(
-            plan.offered_transitions(&tools(&["read_file"]))
-                .contains(&EXIT_PLAN_TOOL)
-        );
+        assert!(plan.offered_tools(&tools(&["read_file"])).contains(&EXIT_PLAN_TOOL));
         // Neither transition tool is in the whitelist: they are added by the
         // mode itself, since no assistant would have enabled them up front.
-        assert!(!READ_ONLY_TOOLS.contains(&EXIT_PLAN_TOOL));
-        assert!(!READ_ONLY_TOOLS.contains(&ENTER_PLAN_TOOL));
+        assert!(!PLAN_TOOLS.contains(&EXIT_PLAN_TOOL));
+        assert!(!PLAN_TOOLS.contains(&ENTER_PLAN_TOOL));
         assert!(
             MODES.iter().any(|m| Some(m.id) == plan.exit_to),
             "exit_to must name a real mode"

@@ -1,27 +1,29 @@
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::project::{NewProject, Project, ProjectUpdate};
+use crate::db::models::project::{ProjectChangeset, ProjectInsert, ProjectRow};
 #[allow(unused_imports)]
 use crate::db::schema::projects;
 
-pub fn list_projects(conn: &mut SqliteConnection) -> QueryResult<Vec<Project>> {
-    projects::table.order(projects::updated_at.desc()).load::<Project>(conn)
+pub fn list_projects(conn: &mut SqliteConnection) -> QueryResult<Vec<ProjectRow>> {
+    projects::table
+        .order(projects::updated_at.desc())
+        .load::<ProjectRow>(conn)
 }
 
-pub fn get_project(conn: &mut SqliteConnection, id: &str) -> QueryResult<Project> {
-    projects::table.find(id).first::<Project>(conn)
+pub fn get_project(conn: &mut SqliteConnection, id: &str) -> QueryResult<ProjectRow> {
+    projects::table.find(id).first::<ProjectRow>(conn)
 }
 
 pub fn find_project_by_source(
     conn: &mut SqliteConnection,
     source_type: &str,
     source_id: &str,
-) -> QueryResult<Option<Project>> {
+) -> QueryResult<Option<ProjectRow>> {
     projects::table
         .filter(projects::source_type.eq(source_type))
         .filter(projects::source_id.eq(source_id))
-        .first::<Project>(conn)
+        .first::<ProjectRow>(conn)
         .optional()
 }
 
@@ -33,7 +35,7 @@ pub fn find_project_by_source(
 /// another program's idea of its own working directory. Separator, trailing
 /// slash and — on Windows — case all have to stop mattering, and none of that
 /// survives a `WHERE path = ?`.
-pub fn find_project_by_path(conn: &mut SqliteConnection, path: &str) -> QueryResult<Option<Project>> {
+pub fn find_project_by_path(conn: &mut SqliteConnection, path: &str) -> QueryResult<Option<ProjectRow>> {
     let wanted = normalize_path(path);
     if wanted.is_empty() {
         return Ok(None);
@@ -66,14 +68,14 @@ pub(crate) fn normalize_path(path: &str) -> String {
     }
 }
 
-pub fn create_project(conn: &mut SqliteConnection, new: &NewProject) -> QueryResult<Project> {
+pub fn create_project(conn: &mut SqliteConnection, new: &ProjectInsert) -> QueryResult<ProjectRow> {
     diesel::insert_into(projects::table).values(new).execute(conn)?;
-    projects::table.find(new.id).first::<Project>(conn)
+    projects::table.find(new.id).first::<ProjectRow>(conn)
 }
 
-pub fn update_project(conn: &mut SqliteConnection, id: &str, changeset: &ProjectUpdate) -> QueryResult<Project> {
+pub fn update_project(conn: &mut SqliteConnection, id: &str, changeset: &ProjectChangeset) -> QueryResult<ProjectRow> {
     diesel::update(projects::table.find(id)).set(changeset).execute(conn)?;
-    projects::table.find(id).first::<Project>(conn)
+    projects::table.find(id).first::<ProjectRow>(conn)
 }
 
 /// Memories are not reachable by foreign key any more (scope_id is polymorphic),
@@ -95,7 +97,7 @@ mod tests {
     fn project(conn: &mut SqliteConnection, id: &str, path: Option<&str>) {
         create_project(
             conn,
-            &NewProject {
+            &ProjectInsert {
                 id,
                 name: "p",
                 path,

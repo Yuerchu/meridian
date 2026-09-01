@@ -4,12 +4,18 @@ import { Button, Checkbox, Input, Label, ListBox, Select } from '@heroui/react'
 import { ItemCard } from '@heroui-pro/react/item-card'
 import { api } from '@/api'
 import { cn } from '@/lib/utils'
-import type { Assistant, HooksConfig, HooksStatus, ModelInfo, Provider } from '@/types'
+import type {
+  AssistantInfoResponse,
+  HookConfigInfoResponse,
+  HookStatusInfoResponse,
+  ProviderModelInfoResponse,
+  ProviderInfoResponse,
+} from '@/types'
 import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useSettingsDirtyRegistration } from './dirty-guard'
 
-const DEFAULTS: HooksConfig = {
+const DEFAULTS: HookConfigInfoResponse = {
   enabled: false,
   host: '127.0.0.1',
   port: 8765,
@@ -33,7 +39,7 @@ function ModelPicker({
   onChange,
   onDirtyChange,
 }: {
-  providers: Provider[]
+  providers: ProviderInfoResponse[]
   value: string | null
   onChange: (next: string | null) => void
   onDirtyChange?: (dirty: boolean) => void
@@ -45,7 +51,7 @@ function ModelPicker({
   // means picking a provider immediately un-picks it.
   const [providerId, setProviderId] = useState('')
   const [modelId, setModelId] = useState('')
-  const [models, setModels] = useState<ModelInfo[]>([])
+  const [models, setModels] = useState<ProviderModelInfoResponse[]>([])
 
   const composed = providerId && modelId ? `${providerId}:${modelId}` : null
 
@@ -73,7 +79,7 @@ function ModelPicker({
       return
     }
     api
-      .fetchProviderModels(providerId)
+      .fetchProviderModels({ providerId, forceRefresh: null })
       .then(setModels)
       .catch(() => setModels([]))
   }, [providerId])
@@ -179,10 +185,10 @@ function ModelPicker({
  */
 export function HooksSettings() {
   const { t } = useTranslation()
-  const [config, setConfig] = useState<HooksConfig>(DEFAULTS)
-  const [status, setStatus] = useState<HooksStatus | null>(null)
-  const [assistants, setAssistants] = useState<Assistant[]>([])
-  const [providers, setProviders] = useState<Provider[]>([])
+  const [config, setConfig] = useState<HookConfigInfoResponse>(DEFAULTS)
+  const [status, setStatus] = useState<HookStatusInfoResponse | null>(null)
+  const [assistants, setAssistants] = useState<AssistantInfoResponse[]>([])
+  const [providers, setProviders] = useState<ProviderInfoResponse[]>([])
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [revealToken, setRevealToken] = useState(false)

@@ -4,8 +4,8 @@ use futures::stream::StreamExt;
 use serde::Deserialize;
 
 use super::{
-    AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, StreamEvent, ThinkingStyle,
-    TokenUsage, ToolCall, ToolDefinition,
+    AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, MessageContentPart, ProviderError, StreamEvent,
+    ThinkingStyle, TokenUsage, ToolCall, ToolDefinition,
 };
 use crate::client::{HttpTransport, Request, RequestBody, ReqwestTransport};
 
@@ -22,7 +22,7 @@ impl AnthropicProvider {
         }
     }
 
-    fn serialize_messages(messages: &[ChatMessage], model: &str) -> Vec<serde_json::Value> {
+    fn serialize_messages(messages: &[ChatMessage], model: &str) -> Result<Vec<serde_json::Value>, ProviderError> {
         let mut out: Vec<serde_json::Value> = Vec::new();
         let mut pending_tool_results: Vec<serde_json::Value> = Vec::new();
 
@@ -69,7 +69,7 @@ impl AnthropicProvider {
                     content.push(serde_json::json!({"type": "text", "text": m.content}));
                 }
                 for tc in tcs {
-                    let args: serde_json::Value = serde_json::from_str(&tc.arguments).unwrap_or_default();
+                    let args = super::decode_tool_arguments(&tc.arguments, &tc.id).map_err(ProviderError::Parse)?;
                     content.push(serde_json::json!({
                         "type": "tool_use", "id": tc.id, "name": tc.name, "input": args
                     }));
@@ -81,40 +81,48 @@ impl AnthropicProvider {
             // Attribution and caption escaping are applied first, so what gets
             // parsed here is already a speaker-prefixed part list; this branch
             // only translates part shapes into Anthropic's.
-            let rendered = super::render_message(m, super::SenderRendering::Prefix);
-            if rendered.content.starts_with('[')
-                && let Ok(parts) = serde_json::from_str::<Vec<serde_json::Value>>(&rendered.content)
-            {
-                let anthropic_parts: Vec<serde_json::Value> = parts
-                    .iter()
-                    .map(|p| match p.get("type").and_then(|t| t.as_str()) {
-                        Some("image_url") => {
-                            if let Some(url) = p.pointer("/image_url/url").and_then(|u| u.as_str())
-                                && let Some(data_uri) = url.strip_prefix("data:")
+            let rendered = super::render_message(m, super::SenderRendering::Prefix).map_err(ProviderError::Parse)?;
+            if let Some(parts) = super::decode_message_parts(&rendered.content).map_err(ProviderError::Parse)? {
+                let anthropic_parts = parts
+                    .into_iter()
+                    .map(|part| match part {
+                        MessageContentPart::Text { text } => Ok(serde_json::json!({
+                            "type": "text",
+                            "text": text,
+                        })),
+                        MessageContentPart::ImageUrl { image_url } => {
+                            if let Some(data_uri) = image_url.url.strip_prefix("data:")
                                 && let Some((media_type, b64)) = data_uri.split_once(";base64,")
                             {
-                                return serde_json::json!({
+                                return Ok(serde_json::json!({
                                     "type": "image",
                                     "source": { "type": "base64", "media_type": media_type, "data": b64 }
-                                });
+                                }));
                             }
-                            p.clone()
+                            Ok(serde_json::json!({
+                                "type": "image_url",
+                                "image_url": { "url": image_url.url },
+                            }))
                         }
-                        Some("file") => {
-                            if let Some(url) = p.pointer("/file/url").and_then(|u| u.as_str())
-                                && let Some(data_uri) = url.strip_prefix("data:")
+                        MessageContentPart::File { file } => {
+                            if let Some(data_uri) = file.url.strip_prefix("data:")
                                 && let Some((media_type, b64)) = data_uri.split_once(";base64,")
                             {
-                                return serde_json::json!({
+                                return Ok(serde_json::json!({
                                     "type": "document",
                                     "source": { "type": "base64", "media_type": media_type, "data": b64 }
-                                });
+                                }));
                             }
-                            p.clone()
+                            Ok(serde_json::json!({
+                                "type": "file",
+                                "file": { "url": file.url, "mime_type": file.mime_type, "name": file.name },
+                            }))
                         }
-                        _ => p.clone(),
+                        MessageContentPart::Sticker { .. } => Err(ProviderError::Parse(
+                            "unresolved sticker part reached the Anthropic adapter".into(),
+                        )),
                     })
-                    .collect();
+                    .collect::<Result<Vec<_>, _>>()?;
                 out.push(serde_json::json!({"role": m.role, "content": anthropic_parts}));
                 continue;
             }
@@ -125,7 +133,7 @@ impl AnthropicProvider {
             out.push(serde_json::json!({"role": "user", "content": pending_tool_results}));
         }
 
-        out
+        Ok(out)
     }
 
     fn build_request(
@@ -134,7 +142,7 @@ impl AnthropicProvider {
         tools: Option<&[ToolDefinition]>,
         params: &ChatParams,
         stream: bool,
-    ) -> Request {
+    ) -> Result<Request, ProviderError> {
         // The sender note is part of the system prompt by the time it arrives —
         // every format renders the marker now, so explaining it is no longer a
         // per-adapter concern.
@@ -147,7 +155,7 @@ impl AnthropicProvider {
 
         let mut body = serde_json::json!({
             "model": params.model,
-            "messages": Self::serialize_messages(messages, &params.model),
+            "messages": Self::serialize_messages(messages, &params.model)?,
             "stream": stream,
         });
 
@@ -231,7 +239,7 @@ impl AnthropicProvider {
                 .insert("anthropic-beta", "fast-mode-2026-02-01".parse().unwrap());
         }
         req.body = Some(RequestBody::Json(body));
-        req
+        Ok(req)
     }
 }
 
@@ -369,7 +377,7 @@ impl ChatProvider for AnthropicProvider {
     ) -> Result<ChatStream, ProviderError> {
         let tools_opt = if tools.is_empty() { None } else { Some(tools.as_slice()) };
         let transport = ReqwestTransport::shared();
-        let req = self.build_request(&messages, tools_opt, &params, true);
+        let req = self.build_request(&messages, tools_opt, &params, true)?;
         let resp = transport.stream(req).await?;
         let model = params.model.clone();
 
@@ -502,7 +510,7 @@ impl ChatProvider for AnthropicProvider {
 
     async fn chat(&self, messages: Vec<ChatMessage>, params: ChatParams) -> Result<String, ProviderError> {
         let transport = ReqwestTransport::shared();
-        let req = self.build_request(&messages, None, &params, false);
+        let req = self.build_request(&messages, None, &params, false)?;
         let resp = transport.execute(req).await?;
 
         let parsed: serde_json::Value =
@@ -521,7 +529,7 @@ impl ChatProvider for AnthropicProvider {
         params: ChatParams,
     ) -> Result<AgentResponse, ProviderError> {
         let transport = ReqwestTransport::shared();
-        let req = self.build_request(&messages, Some(&tools), &params, false);
+        let req = self.build_request(&messages, Some(&tools), &params, false)?;
         let resp = transport.execute(req).await?;
         let parsed: serde_json::Value =
             serde_json::from_slice(&resp.body).map_err(|e| ProviderError::Parse(e.to_string()))?;
@@ -710,7 +718,7 @@ mod tests {
                 signature: "sig-abc".into(),
             },
         });
-        let out = AnthropicProvider::serialize_messages(&[assistant], "claude-test");
+        let out = AnthropicProvider::serialize_messages(&[assistant], "claude-test").unwrap();
         assert_eq!(out.len(), 1);
         let content = out[0]["content"].as_array().unwrap();
         assert_eq!(content[0]["type"], "thinking");
@@ -719,9 +727,24 @@ mod tests {
     }
 
     #[test]
+    fn malformed_historical_tool_arguments_abort_serialization() {
+        let assistant = ChatMessage::assistant_with_tools(
+            "",
+            None,
+            vec![ToolCall {
+                id: "broken-call".into(),
+                name: "read_file".into(),
+                arguments: "{not-json".into(),
+            }],
+        );
+        let error = AnthropicProvider::serialize_messages(&[assistant], "claude-test").unwrap_err();
+        assert!(matches!(error, ProviderError::Parse(ref message) if message.contains("broken-call")));
+    }
+
+    #[test]
     fn test_serialize_file_becomes_document() {
-        let content = r#"[{"type":"file","file":{"url":"data:application/pdf;base64,QUJD"}}]"#;
-        let out = AnthropicProvider::serialize_messages(&[ChatMessage::user(content)], "claude-test");
+        let content = r#"[{"type":"file","file":{"url":"data:application/pdf;base64,QUJD","mime_type":"application/pdf","name":"doc.pdf"}}]"#;
+        let out = AnthropicProvider::serialize_messages(&[ChatMessage::user(content)], "claude-test").unwrap();
         let parts = out[0]["content"].as_array().unwrap();
         assert_eq!(parts[0]["type"], "document");
         assert_eq!(parts[0]["source"]["media_type"], "application/pdf");
@@ -734,7 +757,7 @@ mod tests {
             ChatMessage::tool_result("call_1", "result one"),
             ChatMessage::tool_result("call_2", "result two"),
         ];
-        let out = AnthropicProvider::serialize_messages(&msgs, "claude-test");
+        let out = AnthropicProvider::serialize_messages(&msgs, "claude-test").unwrap();
         assert_eq!(out.len(), 1, "consecutive tool results must share one user message");
         assert_eq!(out[0]["role"], "user");
         let blocks = out[0]["content"].as_array().unwrap();
@@ -752,9 +775,11 @@ mod tests {
             ..Default::default()
         };
         mutate(&mut params);
-        crate::provider::capabilities::filter_params(&mut params, &caps);
+        crate::provider::capabilities::filter_params(&mut params, &caps).unwrap();
         let provider = AnthropicProvider::new("https://example.test", "k");
-        let req = provider.build_request(&[ChatMessage::user("hi")], None, &params, false);
+        let req = provider
+            .build_request(&[ChatMessage::user("hi")], None, &params, false)
+            .unwrap();
         match req.body {
             Some(RequestBody::Json(v)) => v,
             _ => panic!("expected a JSON body"),
@@ -821,9 +846,11 @@ mod tests {
             fast: true,
             ..Default::default()
         };
-        crate::provider::capabilities::filter_params(&mut params, &caps);
+        crate::provider::capabilities::filter_params(&mut params, &caps).unwrap();
         let provider = AnthropicProvider::new("https://example.test", "k");
-        let req = provider.build_request(&[ChatMessage::user("hi")], None, &params, false);
+        let req = provider
+            .build_request(&[ChatMessage::user("hi")], None, &params, false)
+            .unwrap();
         assert_eq!(req.headers.get("anthropic-beta").unwrap(), "fast-mode-2026-02-01");
         match req.body {
             Some(RequestBody::Json(v)) => assert_eq!(v["speed"], "fast"),
@@ -839,9 +866,11 @@ mod tests {
             fast: true,
             ..Default::default()
         };
-        crate::provider::capabilities::filter_params(&mut params, &caps);
+        crate::provider::capabilities::filter_params(&mut params, &caps).unwrap();
         let provider = AnthropicProvider::new("https://example.test", "k");
-        let req = provider.build_request(&[ChatMessage::user("hi")], None, &params, false);
+        let req = provider
+            .build_request(&[ChatMessage::user("hi")], None, &params, false)
+            .unwrap();
         assert!(req.headers.get("anthropic-beta").is_none());
     }
 }
@@ -872,7 +901,7 @@ mod multimodal_sender_tests {
             },
         );
 
-        let out = AnthropicProvider::serialize_messages(&[msg], "claude-test");
+        let out = AnthropicProvider::serialize_messages(&[msg], "claude-test").unwrap();
         let content = out[0]["content"].as_array().unwrap();
 
         // Exactly one real marker, and it names the actual sender.

@@ -1,18 +1,18 @@
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::tool_category::{NewToolCategory, ToolCategory};
+use crate::db::models::tool_category::{ToolCategoryInsert, ToolCategoryRow};
 use crate::db::schema::tool_categories;
 
-pub fn list_categories(conn: &mut SqliteConnection) -> QueryResult<Vec<ToolCategory>> {
+pub fn list_categories(conn: &mut SqliteConnection) -> QueryResult<Vec<ToolCategoryRow>> {
     tool_categories::table
         .order(tool_categories::sort_order.asc())
-        .load::<ToolCategory>(conn)
+        .load::<ToolCategoryRow>(conn)
 }
 
-pub fn create_category(conn: &mut SqliteConnection, new: &NewToolCategory) -> QueryResult<ToolCategory> {
+pub fn create_category(conn: &mut SqliteConnection, new: &ToolCategoryInsert) -> QueryResult<ToolCategoryRow> {
     diesel::insert_into(tool_categories::table).values(new).execute(conn)?;
-    tool_categories::table.find(new.id).first::<ToolCategory>(conn)
+    tool_categories::table.find(new.id).first::<ToolCategoryRow>(conn)
 }
 
 pub fn count_categories(conn: &mut SqliteConnection) -> QueryResult<i64> {

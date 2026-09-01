@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
-use crate::db::models::message::Message;
-use crate::db::models::message_context_item::MessageContextItem;
+use crate::db::models::message::MessageRow;
+use crate::db::models::message_context_item::MessageContextItemRow;
 use crate::db::ops::message::ActiveContext;
 use crate::provider::{self, ChatMessage, SenderRef};
 
 use super::tokenizer::{TokenBudget, TokenCounter, TokenizerKind};
-use super::tool_calls::{extract_tool_calls_from_blocks, parse_openai_tool_calls};
+use super::tool_calls::parse_stored_tool_calls;
 
 /// Last known nickname per platform user id. Nicknames are not stored on the
 /// message row (they change), so multi-speaker surfaces pass a lookup built
@@ -16,7 +16,11 @@ pub(crate) type SenderNames = HashMap<i64, String>;
 /// Single-speaker shorthand. Production callers all attribute senders now, so
 /// only tests still take this path.
 #[cfg(any(test, feature = "test-support"))]
-pub fn build_messages(system_prompt: &str, context: &ActiveContext, user_message: &str) -> Vec<ChatMessage> {
+pub fn build_messages(
+    system_prompt: &str,
+    context: &ActiveContext,
+    user_message: &str,
+) -> Result<Vec<ChatMessage>, String> {
     build_messages_with_senders(
         system_prompt,
         context,
@@ -39,20 +43,20 @@ pub fn build_messages_with_senders(
     context: &ActiveContext,
     trailing: Vec<ChatMessage>,
     sender_names: &SenderNames,
-) -> Vec<ChatMessage> {
+) -> Result<Vec<ChatMessage>, String> {
     build_messages_with_context_items(system_prompt, context, trailing, sender_names, &HashMap::new())
 }
 
 /// Build provider history while replaying the frozen context items attached to
-/// each user row. Keeping the map separate from `Message` means raw snapshots
+/// each user row. Keeping the map separate from `MessageRow` means raw snapshots
 /// never cross the transcript DTO or audit boundary.
 pub fn build_messages_with_context_items(
     system_prompt: &str,
     context: &ActiveContext,
     trailing: Vec<ChatMessage>,
     sender_names: &SenderNames,
-    context_items: &HashMap<String, Vec<MessageContextItem>>,
-) -> Vec<ChatMessage> {
+    context_items: &HashMap<String, Vec<MessageContextItemRow>>,
+) -> Result<Vec<ChatMessage>, String> {
     let mut msgs = Vec::new();
     if !system_prompt.is_empty() {
         msgs.push(ChatMessage {
@@ -73,7 +77,7 @@ pub fn build_messages_with_context_items(
         msgs.push(ChatMessage::user(&summary.content));
     }
     for m in context.live() {
-        push_history_message(&mut msgs, m, sender_names, context_items.get(&m.id).map(Vec::as_slice));
+        push_history_message(&mut msgs, m, sender_names, context_items.get(&m.id).map(Vec::as_slice))?;
     }
     msgs.extend(trailing);
     // Unconditional, so every caller gets a payload the provider will accept.
@@ -84,7 +88,7 @@ pub fn build_messages_with_context_items(
     // never went out.
     remove_orphan_tool_messages(&mut msgs);
     attach_sender_note(&mut msgs);
-    msgs
+    Ok(msgs)
 }
 
 /// Explain the `<sender>` marker once, in the system prompt, whenever anyone in
@@ -125,12 +129,15 @@ fn sender_ref(user_id: i64, names: &SenderNames) -> SenderRef {
 
 fn push_history_message(
     msgs: &mut Vec<ChatMessage>,
-    m: &Message,
+    m: &MessageRow,
     names: &SenderNames,
-    context_items: Option<&[MessageContextItem]>,
-) {
-    match m.role.as_str() {
-        "user" => {
+    context_items: Option<&[MessageContextItemRow]>,
+) -> Result<(), String> {
+    use crate::db::models::message::MessageRole;
+
+    let role = MessageRole::parse(&m.role).map_err(|error| format!("message {}: {error}", m.id))?;
+    match role {
+        MessageRole::User => {
             // Dictated messages carry a marker the voice_input prompt block
             // explains. Applied to the payload only — the stored row and the
             // UI keep the clean transcript.
@@ -144,24 +151,15 @@ fn push_history_message(
                 None => msgs.push(ChatMessage::user(&content)),
             }
         }
-        "assistant" => {
-            let provider_state = m.provider_state.as_deref().and_then(|raw| {
-                match provider::state::ProviderState::from_storage_json(raw) {
-                    Ok(state) => Some(state),
-                    Err(e) => {
-                        tracing::warn!(message_id = %m.id, error = %e, "ignoring invalid provider state");
-                        None
-                    }
-                }
-            });
-            let tool_calls = if m.schema_version >= 2 {
-                parse_openai_tool_calls(m.tool_calls.as_deref())
-            } else {
-                m.tool_calls
-                    .as_deref()
-                    .map(extract_tool_calls_from_blocks)
-                    .unwrap_or_default()
-            };
+        MessageRole::Assistant => {
+            let provider_state = m
+                .provider_state
+                .as_deref()
+                .map(provider::state::ProviderState::from_storage_json)
+                .transpose()
+                .map_err(|error| format!("message {} has invalid persisted provider_state: {error}", m.id))?;
+            let tool_calls = parse_stored_tool_calls(m.schema_version, m.tool_calls.as_deref())
+                .map_err(|error| format!("message {} has invalid persisted tool_calls: {error}", m.id))?;
             let reasoning = m.reasoning_content.clone();
             if !tool_calls.is_empty() {
                 let mut message = ChatMessage::assistant_with_tools(&m.content, reasoning, tool_calls);
@@ -179,10 +177,12 @@ fn push_history_message(
                 });
             }
         }
-        "tool" => {
-            if let Some(ref call_id) = m.tool_call_id {
-                msgs.push(ChatMessage::tool_result(call_id, &m.content));
-            }
+        MessageRole::Tool => {
+            let call_id = m
+                .tool_call_id
+                .as_deref()
+                .ok_or_else(|| format!("tool message {} is missing tool_call_id", m.id))?;
+            msgs.push(ChatMessage::tool_result(call_id, &m.content));
         }
         // Background we injected on an earlier turn and then froze into the
         // history. The wire role is `user` either way — see
@@ -195,25 +195,29 @@ fn push_history_message(
         // which would render the same but would put the row outside everything
         // that treats injected context as different from conversation —
         // `take_injected_context` above all.
-        "context" => msgs.push(ChatMessage::system_context(&m.content)),
-        _ => {}
+        MessageRole::Context => msgs.push(ChatMessage::system_context(&m.content)),
     }
-    if m.role == "user" {
-        push_message_context(msgs, context_items.unwrap_or_default());
+    if role == MessageRole::User {
+        push_message_context(msgs, context_items.unwrap_or_default())?;
     }
+    Ok(())
 }
 
-fn push_message_context(msgs: &mut Vec<ChatMessage>, items: &[MessageContextItem]) {
-    for rendered in render_message_context_items(items) {
+fn push_message_context(msgs: &mut Vec<ChatMessage>, items: &[MessageContextItemRow]) -> Result<(), String> {
+    for rendered in render_message_context_items(items)? {
         msgs.push(ChatMessage::user_provided_context(&rendered));
     }
+    Ok(())
 }
 
 /// Render the frozen context attached to one user message exactly as native
 /// history replay does. Compaction uses the same projection so a summary does
 /// not silently replace an `@` marker or `!` command with none of the evidence
 /// the original turn received.
-pub(super) fn render_message_context_items(items: &[MessageContextItem]) -> Vec<String> {
+pub(super) fn render_message_context_items(items: &[MessageContextItemRow]) -> Result<Vec<String>, String> {
+    for item in items {
+        crate::workspace::reference::MessageContextKind::parse(&item.kind)?;
+    }
     // A shell retry stores every attempt for diagnosis, but only the final one
     // is evidence for the next model turn. File and directory references all
     // remain in request order.
@@ -226,58 +230,66 @@ pub(super) fn render_message_context_items(items: &[MessageContextItem]) -> Vec<
         .iter()
         .filter(|item| item.kind != "shell_output" || final_shell == Some(item.id.as_str()))
         .map(|item| {
-            crate::workspace::reference::render_context_item(
-                &item.kind,
+            Ok(crate::workspace::reference::render_context_item(
+                crate::workspace::reference::MessageContextKind::parse(&item.kind)?,
                 item.display_path.as_deref(),
                 item.line_start,
                 item.line_end,
                 &item.content,
                 item.truncated != 0,
-            )
+            ))
         })
         .collect()
 }
 
-pub fn resolve_file_uris_in_messages(messages: &mut [ChatMessage], files_root: Option<&std::path::Path>) {
-    let Some(files_root) = files_root else { return };
+fn has_stored_user_content(message: &ChatMessage) -> bool {
+    message.role == "user"
+        && matches!(
+            message.origin,
+            provider::MessageOrigin::User(_) | provider::MessageOrigin::LegacyUser
+        )
+}
+
+pub fn resolve_file_uris_in_messages(
+    messages: &mut [ChatMessage],
+    files_root: Option<&std::path::Path>,
+) -> Result<(), String> {
     for msg in messages.iter_mut() {
         // Only user-authored attachments may be inlined: assistant/tool content
         // is model-influenced and must never trigger local file reads.
-        if msg.role != "user" {
+        if !has_stored_user_content(msg) {
             continue;
         }
-        if !msg.content.starts_with('[') {
-            continue;
-        }
-        let Ok(mut parts) = serde_json::from_str::<Vec<serde_json::Value>>(&msg.content) else {
+        let Some(mut parts) = provider::decode_message_parts(&msg.content)? else {
             continue;
         };
+        let Some(files_root) = files_root else { continue };
         let mut changed = false;
         for part in parts.iter_mut() {
-            let url = part
-                .pointer("/image_url/url")
-                .or_else(|| part.pointer("/file/url"))
-                .and_then(|u| u.as_str())
-                .map(String::from);
+            let url = match part {
+                provider::MessageContentPart::ImageUrl { image_url } => Some(image_url.url.clone()),
+                provider::MessageContentPart::File { file } => Some(file.url.clone()),
+                _ => None,
+            };
             if let Some(ref uri) = url
                 && let Some(path) = crate::files::resolve_attachment_uri(uri, files_root)
             {
                 let mime = mime_guess::from_path(&path).first_or_octet_stream().to_string();
                 if let Ok(data_uri) = crate::files::file_to_base64_data_uri(&path, &mime) {
-                    if let Some(img_url) = part.pointer_mut("/image_url/url") {
-                        *img_url = serde_json::Value::String(data_uri);
-                        changed = true;
-                    } else if let Some(file_url) = part.pointer_mut("/file/url") {
-                        *file_url = serde_json::Value::String(data_uri);
-                        changed = true;
+                    match part {
+                        provider::MessageContentPart::ImageUrl { image_url } => image_url.url = data_uri,
+                        provider::MessageContentPart::File { file } => file.url = data_uri,
+                        _ => unreachable!("the URL came from an attachment part"),
                     }
+                    changed = true;
                 }
             }
         }
-        if changed && let Ok(json) = serde_json::to_string(&parts) {
-            msg.content = json;
+        if changed {
+            msg.content = provider::encode_message_parts(&parts)?;
         }
     }
+    Ok(())
 }
 
 /// Converts Meridian's transcript-only sticker part into provider-supported
@@ -289,33 +301,34 @@ pub fn resolve_sticker_parts_in_messages(
     pool: &crate::db::DbPool,
     data_dir: Option<&std::path::Path>,
     include_current_visual: bool,
-) {
-    let current_user = messages.iter().rposition(|message| {
-        message.role == "user" && !message.origin.is_system_context() && message.content.starts_with('[')
-    });
-    let Ok(mut conn) = pool.get() else { return };
+) -> Result<(), String> {
+    let decoded = messages
+        .iter()
+        .map(|message| {
+            if has_stored_user_content(message) {
+                provider::decode_message_parts(&message.content)
+            } else {
+                Ok(None)
+            }
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let current_user = decoded.iter().rposition(Option::is_some);
+    let Ok(mut conn) = pool.get() else { return Ok(()) };
 
-    for (message_index, message) in messages.iter_mut().enumerate() {
-        if message.role != "user" || !message.content.starts_with('[') {
-            continue;
-        }
-        let Ok(parts) = serde_json::from_str::<Vec<serde_json::Value>>(&message.content) else {
-            continue;
-        };
+    for (message_index, (message, parts)) in messages.iter_mut().zip(decoded).enumerate() {
+        let Some(parts) = parts else { continue };
         let mut changed = false;
         let mut provider_parts = Vec::with_capacity(parts.len() + 1);
         for part in parts {
-            if part.get("type").and_then(|value| value.as_str()) != Some("sticker") {
+            let provider::MessageContentPart::Sticker { sticker_id, .. } = part else {
                 provider_parts.push(part);
                 continue;
-            }
-            changed = true;
-            let Some(sticker_id) = part.get("sticker_id").and_then(|value| value.as_str()) else {
-                provider_parts.push(serde_json::json!({ "type": "text", "text": "[unlabelled sticker]" }));
-                continue;
             };
-            let Ok(sticker) = crate::db::ops::emoji::get_emoji(&mut conn, sticker_id) else {
-                provider_parts.push(serde_json::json!({ "type": "text", "text": "[unavailable sticker]" }));
+            changed = true;
+            let Ok(sticker) = crate::db::ops::emoji::get_emoji(&mut conn, &sticker_id) else {
+                provider_parts.push(provider::MessageContentPart::Text {
+                    text: "[unavailable sticker]".into(),
+                });
                 continue;
             };
             if sticker.semantic_status == "confirmed" {
@@ -324,34 +337,35 @@ pub fn resolve_sticker_parts_in_messages(
                     Some(tags) => format!("[sticker: {}; tags: {}]", sticker.name, tags),
                     None => format!("[sticker: {}]", sticker.name),
                 };
-                provider_parts.push(serde_json::json!({ "type": "text", "text": description }));
+                provider_parts.push(provider::MessageContentPart::Text { text: description });
                 continue;
             }
 
-            provider_parts.push(serde_json::json!({
-                "type": "text",
-                "text": if include_current_visual && current_user == Some(message_index) && !sticker.file_name.is_empty() {
+            provider_parts.push(provider::MessageContentPart::Text {
+                text: if include_current_visual && current_user == Some(message_index) && !sticker.file_name.is_empty()
+                {
                     "[unlabelled sticker attached; infer its visible reaction cautiously]"
                 } else {
                     "[unlabelled sticker]"
                 }
-            }));
+                .into(),
+            });
             if !include_current_visual || current_user != Some(message_index) || sticker.file_name.is_empty() {
                 continue;
             }
             let Some(data_dir) = data_dir else { continue };
             let path = crate::emoji::emoji_path(data_dir, &sticker.pack_id, &sticker.file_name);
             if let Ok(data_uri) = crate::emoji::vision_preview_data_uri(&path) {
-                provider_parts.push(serde_json::json!({
-                    "type": "image_url",
-                    "image_url": { "url": data_uri }
-                }));
+                provider_parts.push(provider::MessageContentPart::ImageUrl {
+                    image_url: provider::MessageContentUrl { url: data_uri },
+                });
             }
         }
-        if changed && let Ok(json) = serde_json::to_string(&provider_parts) {
-            message.content = json;
+        if changed {
+            message.content = provider::encode_message_parts(&provider_parts)?;
         }
     }
+    Ok(())
 }
 
 static DEFAULT_COUNTER: std::sync::OnceLock<TokenCounter> = std::sync::OnceLock::new();
@@ -586,8 +600,8 @@ mod tests {
     use super::*;
     use provider::ToolCall;
 
-    fn msg(id: &str, role: &str, content: &str) -> Message {
-        Message {
+    fn msg(id: &str, role: &str, content: &str) -> MessageRow {
+        MessageRow {
             id: id.into(),
             conversation_id: "c".into(),
             role: role.into(),
@@ -632,7 +646,7 @@ mod tests {
     }
 
     /// A linear conversation with nothing compacted — what these tests are about.
-    fn ctx(history: &[Message]) -> ActiveContext {
+    fn ctx(history: &[MessageRow]) -> ActiveContext {
         ActiveContext {
             path: history.iter().filter(|m| m.is_compact_summary == 0).cloned().collect(),
             summary: None,
@@ -644,7 +658,7 @@ mod tests {
     #[test]
     fn test_build_messages_with_system() {
         let history = vec![msg("1", "user", "hi")];
-        let msgs = build_messages("You are a helper", &ctx(&history), "new question");
+        let msgs = build_messages("You are a helper", &ctx(&history), "new question").unwrap();
         assert_eq!(msgs[0].role, "system");
         assert_eq!(msgs[0].content, "You are a helper");
         assert_eq!(msgs[1].role, "user");
@@ -655,7 +669,7 @@ mod tests {
 
     #[test]
     fn test_build_messages_empty_system() {
-        let msgs = build_messages("", &ctx(&[]), "hello");
+        let msgs = build_messages("", &ctx(&[]), "hello").unwrap();
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0].role, "user");
     }
@@ -682,18 +696,28 @@ mod tests {
         };
         let mut row = msg("1", "assistant", "answer");
         row.provider_state = Some(state.to_storage_json().unwrap());
-        let messages = build_messages("", &ctx(&[row]), "continue");
+        let messages = build_messages("", &ctx(&[row]), "continue").unwrap();
         assert_eq!(messages[0].provider_state.as_ref(), Some(&state));
     }
 
     #[test]
+    fn corrupt_persisted_provider_state_aborts_context_rebuild() {
+        let mut row = msg("broken-state", "assistant", "answer");
+        row.provider_state = Some(r#"{"version":1,"future":true}"#.into());
+
+        let error = build_messages("", &ctx(&[row]), "continue")
+            .err()
+            .expect("corrupt provider state must not be flattened into None");
+        assert!(error.contains("broken-state"), "{error}");
+        assert!(error.contains("invalid persisted provider_state"), "{error}");
+    }
+
+    #[test]
     fn test_build_messages_filters_roles() {
-        let history = vec![
-            msg("1", "user", "q"),
-            msg("2", "tool", "result"),
-            msg("3", "assistant", "a"),
-        ];
-        let msgs = build_messages("sys", &ctx(&history), "new");
+        let mut orphaned_tool_output = msg("2", "tool", "result");
+        orphaned_tool_output.tool_call_id = Some("call-1".into());
+        let history = vec![msg("1", "user", "q"), orphaned_tool_output, msg("3", "assistant", "a")];
+        let msgs = build_messages("sys", &ctx(&history), "new").unwrap();
         assert_eq!(msgs.len(), 4);
         assert_eq!(msgs[0].role, "system");
         assert_eq!(msgs[1].role, "user");
@@ -714,9 +738,20 @@ mod tests {
         assistant.tool_calls =
             Some(r#"[{"id":"call_1","type":"function","function":{"name":"read_file","arguments":"{}"}}]"#.into());
         let history = vec![msg("1", "user", "q"), assistant];
-        let msgs = build_messages("sys", &ctx(&history), "next");
+        let msgs = build_messages("sys", &ctx(&history), "next").unwrap();
         let a = msgs.iter().find(|m| m.role == "assistant").unwrap();
         assert!(a.tool_calls.is_none(), "unanswered tool_calls should be stripped");
+    }
+
+    #[test]
+    fn corrupt_persisted_tool_calls_abort_context_rebuild() {
+        let mut assistant = msg("broken-message", "assistant", "");
+        assistant.tool_calls = Some("not-json".into());
+        let error = build_messages("", &ctx(&[assistant]), "next")
+            .err()
+            .expect("corrupt history must not be flattened into a plain assistant row");
+        assert!(error.contains("broken-message"), "{error}");
+        assert!(error.contains("invalid persisted tool_calls"), "{error}");
     }
 
     #[test]
@@ -724,7 +759,7 @@ mod tests {
         let mut tool = msg("2", "tool", "result");
         tool.tool_call_id = Some("call_1".into());
         let history = vec![msg("1", "user", "q"), tool];
-        let msgs = build_messages("sys", &ctx(&history), "next");
+        let msgs = build_messages("sys", &ctx(&history), "next").unwrap();
         assert!(
             msgs.iter().all(|m| m.role != "tool"),
             "orphan tool row should be dropped"
@@ -742,7 +777,7 @@ mod tests {
         let content = format!(r#"[{{"type":"image_url","image_url":{{"url":"{uri}"}}}}]"#);
 
         let mut msgs = vec![chat_msg("assistant", &content), chat_msg("user", &content)];
-        resolve_file_uris_in_messages(&mut msgs, Some(&root));
+        resolve_file_uris_in_messages(&mut msgs, Some(&root)).unwrap();
         assert!(
             msgs[0].content.contains("file:///"),
             "assistant content must never be inlined"
@@ -757,7 +792,7 @@ mod tests {
         let uri2 = format!("file:///{}", outside.to_string_lossy().replace('\\', "/"));
         let content2 = format!(r#"[{{"type":"image_url","image_url":{{"url":"{uri2}"}}}}]"#);
         let mut msgs2 = vec![chat_msg("user", &content2)];
-        resolve_file_uris_in_messages(&mut msgs2, Some(&root));
+        resolve_file_uris_in_messages(&mut msgs2, Some(&root)).unwrap();
         assert!(
             msgs2[0].content.contains("file:///"),
             "paths outside the root must not inline"
@@ -765,8 +800,15 @@ mod tests {
 
         // No root configured → nothing is inlined at all.
         let mut msgs3 = vec![chat_msg("user", &content)];
-        resolve_file_uris_in_messages(&mut msgs3, None);
+        resolve_file_uris_in_messages(&mut msgs3, None).unwrap();
         assert!(msgs3[0].content.contains("file:///"));
+    }
+
+    #[test]
+    fn malformed_content_parts_abort_attachment_resolution() {
+        let mut messages = vec![ChatMessage::user("[{not-json")];
+        let error = resolve_file_uris_in_messages(&mut messages, None).unwrap_err();
+        assert!(error.contains("invalid persisted message content parts"), "{error}");
     }
 
     #[test]
@@ -775,7 +817,7 @@ mod tests {
         let mut conn = pool.get().unwrap();
         crate::db::ops::emoji_pack::create_pack(
             &mut conn,
-            &crate::db::models::emoji_pack::NewEmojiPack {
+            &crate::db::models::emoji_pack::EmojiPackInsert {
                 id: "p1",
                 name: "pack",
                 description: None,
@@ -789,7 +831,7 @@ mod tests {
             },
         )
         .unwrap();
-        let make = |id, name, status| crate::db::models::emoji::NewEmoji {
+        let make = |id, name, status| crate::db::models::emoji::EmojiInsert {
             id,
             pack_id: "p1",
             name,
@@ -817,7 +859,7 @@ mod tests {
             ChatMessage::assistant("ok"),
             ChatMessage::user(r#"[{"type":"sticker","sticker_id":"known"},{"type":"sticker","sticker_id":"unknown"}]"#),
         ];
-        resolve_sticker_parts_in_messages(&mut messages, &pool, None, true);
+        resolve_sticker_parts_in_messages(&mut messages, &pool, None, true).unwrap();
         assert!(messages[0].content.contains("[unlabelled sticker]"));
         assert!(!messages[0].content.contains("image_url"));
         assert!(messages[2].content.contains("[sticker: wave; tags: reaction]"));
@@ -925,8 +967,8 @@ mod injected_context_tests {
     }
 
     /// A stored row carrying an injection frozen by an earlier turn.
-    fn frozen_row(content: &str, source: &str) -> Message {
-        Message {
+    fn frozen_row(content: &str, source: &str) -> MessageRow {
+        MessageRow {
             id: "m1".into(),
             conversation_id: "c".into(),
             role: "context".into(),
@@ -1003,7 +1045,7 @@ mod injected_context_tests {
         // What the next turn reads back off the history.
         let mut replayed = Vec::new();
         let row = frozen_row(block, "memory|full|100.abc|-|onebot:user:1");
-        push_history_message(&mut replayed, &row, &SenderNames::new(), None);
+        push_history_message(&mut replayed, &row, &SenderNames::new(), None).unwrap();
 
         assert_eq!(replayed.len(), 1);
         assert_eq!(replayed[0].content, fresh.content);
@@ -1013,8 +1055,8 @@ mod injected_context_tests {
         // And on the wire, which is where it actually matters.
         for rendering in [provider::SenderRendering::NameField, provider::SenderRendering::Prefix] {
             assert_eq!(
-                provider::render_message(&replayed[0], rendering).content,
-                provider::render_message(&fresh, rendering).content,
+                provider::render_message(&replayed[0], rendering).unwrap().content,
+                provider::render_message(&fresh, rendering).unwrap().content,
             );
         }
     }
@@ -1030,7 +1072,7 @@ mod injected_context_tests {
             "memory|full|100.abc|-|",
         );
         let mut msgs = Vec::new();
-        push_history_message(&mut msgs, &row, &SenderNames::new(), None);
+        push_history_message(&mut msgs, &row, &SenderNames::new(), None).unwrap();
         msgs.push(ChatMessage::user("hi"));
 
         let taken = take_injected_context(&mut msgs);
@@ -1060,7 +1102,7 @@ mod injected_context_tests {
 
     #[test]
     fn only_the_final_shell_attempt_enters_native_history() {
-        let item = |id: &str, position: i32, content: &str| MessageContextItem {
+        let item = |id: &str, position: i32, content: &str| MessageContextItemRow {
             id: id.into(),
             message_id: "m".into(),
             position,
@@ -1084,7 +1126,8 @@ mod injected_context_tests {
                 item("in-doubt", 0, "result may be in doubt"),
                 item("final", 1, "final result"),
             ],
-        );
+        )
+        .unwrap();
 
         assert_eq!(messages.len(), 1);
         assert!(messages[0].content.contains("final result"));
@@ -1175,7 +1218,7 @@ mod injected_context_tests {
     /// accumulate one copy per compaction.
     #[test]
     fn compaction_summaries_are_not_treated_as_injected() {
-        let history = [crate::db::models::message::Message {
+        let history = [crate::db::models::message::MessageRow {
             id: "s".into(),
             conversation_id: "c".into(),
             role: "user".into(),
@@ -1211,7 +1254,7 @@ mod injected_context_tests {
             anchor_index: None,
             head_id: None,
         };
-        let msgs = build_messages("", &context, "now");
+        let msgs = build_messages("", &context, "now").unwrap();
         assert!(
             !msgs.iter().any(|m| m.origin.is_system_context()),
             "a summary is history's stand-in, not regenerated background"

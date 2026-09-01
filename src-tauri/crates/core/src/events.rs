@@ -17,7 +17,476 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use serde::{Deserialize, Serialize};
 use tracing::debug;
+
+/// The one first-party streaming channel shared by the desktop and remote UI.
+pub const CHAT_STREAM_CHANNEL: &str = "chat-stream";
+pub const CONVERSATION_UPDATED_CHANNEL: &str = "conversation-updated";
+pub const QUEUE_UPDATED_CHANNEL: &str = "queue-updated";
+pub const COMPACT_START_CHANNEL: &str = "compact-start";
+pub const COMPACT_DONE_CHANNEL: &str = "compact-done";
+pub const USER_COMMAND_CHANNEL: &str = "user-command";
+pub const VOICE_MODEL_DOWNLOAD_CHANNEL: &str = "voice-model-download";
+pub const VOICE_MODEL_DOWNLOAD_DONE_CHANNEL: &str = "voice-model-download-done";
+pub const PLAN_REVIEW_REQUESTED_CHANNEL: &str = "plan-review-requested";
+pub const PLAN_REVIEW_UPDATED_CHANNEL: &str = "plan-review-updated";
+
+/// A conversation row changed and every client must re-read it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConversationUpdatedEvent {
+    pub conversation_id: String,
+}
+
+impl ConversationUpdatedEvent {
+    pub fn new(conversation_id: impl Into<String>) -> Self {
+        Self {
+            conversation_id: conversation_id.into(),
+        }
+    }
+}
+
+/// The queue ledger moved. `delivered` is required even when false: omission
+/// used to make an enqueue indistinguishable from a producer on an older wire
+/// shape.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct QueueUpdatedEvent {
+    pub conversation_id: String,
+    pub delivered: bool,
+}
+
+impl QueueUpdatedEvent {
+    pub fn new(conversation_id: impl Into<String>, delivered: bool) -> Self {
+        Self {
+            conversation_id: conversation_id.into(),
+            delivered,
+        }
+    }
+}
+
+/// A plan review changed. The event is deliberately only an invalidation key;
+/// the durable review bundle is read back from SQLite so a missed event or an
+/// app restart cannot become a different state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlanReviewEvent {
+    pub review_id: String,
+    pub conversation_id: String,
+    pub document_id: String,
+    pub revision_id: String,
+    pub turn_id: String,
+    pub status: String,
+    pub lock_version: i64,
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    pub delivery_state: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompactTrigger {
+    Manual,
+    Threshold,
+    ApiError,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompactOutcome {
+    Completed,
+    Fallback,
+    Failed,
+}
+
+/// A compaction pass began. Every producer sends the same three fields; manual
+/// and automatic passes no longer invent channel-specific partial shapes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CompactStartEvent {
+    pub conversation_id: String,
+    pub mid_turn: bool,
+    pub trigger: CompactTrigger,
+}
+
+/// A compaction pass ended. Nullable values are present on the wire as `null`,
+/// not omitted, so a client can distinguish the current contract from an
+/// incomplete payload.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CompactDoneEvent {
+    pub conversation_id: String,
+    pub mid_turn: bool,
+    pub trigger: CompactTrigger,
+    pub outcome: CompactOutcome,
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    pub tokens_reclaimed: Option<u64>,
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    pub error: Option<String>,
+}
+
+/// Progress is tagged even though this channel currently has one variant. A
+/// second phase must therefore be added to both Rust and TypeScript rather than
+/// being inferred from whichever optional fields happen to be present.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum VoiceModelDownloadEvent {
+    Progress {
+        downloaded: u64,
+        #[serde(deserialize_with = "deserialize_required_nullable")]
+        total: Option<u64>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum VoiceModelDownloadDoneEvent {
+    Completed {},
+    Cancelled {},
+    Failed { error: String },
+}
+
+/// Serde normally treats a missing `Option<T>` exactly like an explicit null.
+/// Event contracts do not: nullable keys are still required keys.
+pub fn deserialize_required_nullable<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer)
+}
+
+/// A local tool call's terminal state.
+///
+/// This is a closed contract. A producer cannot put a new spelling on the wire
+/// until the Rust and TypeScript unions have both been updated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolOutcome {
+    Success,
+    Denied,
+    Error,
+}
+
+impl ToolOutcome {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Success => "success",
+            Self::Denied => "denied",
+            Self::Error => "error",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "success" => Ok(Self::Success),
+            "denied" => Ok(Self::Denied),
+            "error" => Ok(Self::Error),
+            _ => Err(format!("unknown tool outcome `{value}`")),
+        }
+    }
+}
+
+/// Why a streamed turn stopped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChatStopReason {
+    EndTurn,
+    Error,
+    LoopDetected,
+    Cancelled,
+    MaxTokens,
+    MaxTurnRequests,
+    Refusal,
+}
+
+impl ChatStopReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::EndTurn => "end_turn",
+            Self::Error => "error",
+            Self::LoopDetected => "loop_detected",
+            Self::Cancelled => "cancelled",
+            Self::MaxTokens => "max_tokens",
+            Self::MaxTurnRequests => "max_turn_requests",
+            Self::Refusal => "refusal",
+        }
+    }
+}
+
+impl TryFrom<&str> for ChatStopReason {
+    type Error = String;
+
+    fn try_from(value: &str) -> Result<Self, String> {
+        match value {
+            "end_turn" => Ok(Self::EndTurn),
+            "error" => Ok(Self::Error),
+            "loop_detected" => Ok(Self::LoopDetected),
+            "cancelled" => Ok(Self::Cancelled),
+            "max_tokens" => Ok(Self::MaxTokens),
+            "max_turn_requests" => Ok(Self::MaxTurnRequests),
+            "refusal" => Ok(Self::Refusal),
+            _ => Err(format!("unknown chat stop reason `{value}`")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ApprovalDelegation {
+    pub parent_call_id: String,
+    pub sub_conversation_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ApprovalRetry {
+    pub reason: String,
+    pub origin_call_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AutoReviewOutcome {
+    Allow,
+    Deny,
+    Unreadable,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AutoReviewRisk {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AutoReviewAuthorization {
+    Unknown,
+    Low,
+    Medium,
+    High,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AutoReviewStage {
+    Quick,
+    Investigate,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AutoReviewEvidence {
+    pub tool: String,
+    pub arguments: String,
+}
+
+/// The public projection of one automatic-review decision.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AutoReviewVerdict {
+    pub outcome: AutoReviewOutcome,
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    pub risk: Option<AutoReviewRisk>,
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    pub authorization: Option<AutoReviewAuthorization>,
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    pub rationale: Option<String>,
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    pub stage: Option<AutoReviewStage>,
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    pub model: Option<String>,
+    pub evidence: Vec<AutoReviewEvidence>,
+}
+
+/// One value accepted by an ACP session option after it crosses into the
+/// first-party event contract. ACP itself may omit descriptions; Meridian
+/// always emits the key and spells absence as `null`.
+#[cfg(not(target_os = "android"))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AcpConfigOptionValueEvent {
+    pub value: String,
+    pub name: String,
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    pub description: Option<String>,
+}
+
+#[cfg(not(target_os = "android"))]
+impl From<crate::acp::protocol::ConfigOptionValue> for AcpConfigOptionValueEvent {
+    fn from(value: crate::acp::protocol::ConfigOptionValue) -> Self {
+        Self {
+            value: value.value,
+            name: value.name,
+            description: value.description,
+        }
+    }
+}
+
+/// A complete first-party projection of an ACP session option. Nullable keys
+/// remain required, so adding, removing, or omitting a field is a contract
+/// change instead of a compatibility fallback.
+#[cfg(not(target_os = "android"))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AcpConfigOptionEvent {
+    pub id: String,
+    pub name: String,
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    pub description: Option<String>,
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    pub category: Option<String>,
+    #[serde(rename = "type", deserialize_with = "deserialize_required_nullable")]
+    pub kind: Option<String>,
+    #[serde(deserialize_with = "deserialize_required_nullable")]
+    pub current_value: Option<serde_json::Value>,
+    pub options: Vec<AcpConfigOptionValueEvent>,
+}
+
+#[cfg(not(target_os = "android"))]
+impl From<crate::acp::protocol::SessionConfigOption> for AcpConfigOptionEvent {
+    fn from(option: crate::acp::protocol::SessionConfigOption) -> Self {
+        Self {
+            id: option.id,
+            name: option.name,
+            description: option.description,
+            category: option.category,
+            kind: option.kind,
+            current_value: option.current_value,
+            options: option.options.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+/// Every payload permitted on [`CHAT_STREAM_CHANNEL`].
+///
+/// Unlike the former `json!` convention, each variant states its required
+/// fields. Deserialisation rejects both unknown variants and unknown fields;
+/// adding either is a coordinated contract change, not a compatibility
+/// fallback.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ChatStreamEvent {
+    Text {
+        content: String,
+        message_id: String,
+        conversation_id: String,
+    },
+    Reasoning {
+        content: String,
+        message_id: String,
+        conversation_id: String,
+    },
+    MessageStart {
+        message_id: String,
+        turn_id: String,
+        conversation_id: String,
+    },
+    UserMessage {
+        content: String,
+        message_id: String,
+        conversation_id: String,
+    },
+    Retry {
+        attempt: u32,
+        max_attempts: u32,
+        delay_ms: u64,
+        message_id: String,
+        conversation_id: String,
+    },
+    Reset {
+        message_id: String,
+        conversation_id: String,
+    },
+    ServerTool {
+        message_id: String,
+        conversation_id: String,
+        call: crate::provider::ServerToolCall,
+    },
+    ToolCall {
+        call_id: String,
+        tool_name: String,
+        arguments: String,
+        message_id: String,
+        conversation_id: String,
+    },
+    ToolCallRevised {
+        call_id: String,
+        tool_name: String,
+        arguments: String,
+        message_id: String,
+        conversation_id: String,
+    },
+    ToolResult {
+        call_id: String,
+        result: String,
+        outcome: ToolOutcome,
+        message_id: String,
+        conversation_id: String,
+    },
+    ToolApprovalReq {
+        approval_id: String,
+        call_id: String,
+        tool_name: String,
+        arguments: String,
+        message_id: String,
+        conversation_id: String,
+        #[serde(deserialize_with = "deserialize_required_nullable")]
+        delegation: Option<ApprovalDelegation>,
+        #[serde(deserialize_with = "deserialize_required_nullable")]
+        retry: Option<ApprovalRetry>,
+    },
+    ToolApprovalExpired {
+        approval_id: String,
+        call_id: String,
+        tool_name: String,
+        message_id: String,
+        conversation_id: String,
+    },
+    SubAgentStarted {
+        conversation_id: String,
+        message_id: String,
+        call_id: String,
+        sub_conversation_id: String,
+        spawned_turn_id: String,
+        kind: crate::agent::sub_agents::SubAgentKind,
+        description: String,
+    },
+    AutoReview {
+        conversation_id: String,
+        turn_id: String,
+        message_id: String,
+        call_id: String,
+        tool_name: String,
+        verdict: AutoReviewVerdict,
+    },
+    #[cfg(not(target_os = "android"))]
+    AcpConfig {
+        conversation_id: String,
+        config_options: Vec<AcpConfigOptionEvent>,
+    },
+    #[cfg(not(target_os = "android"))]
+    AcpUsage {
+        conversation_id: String,
+        used: u64,
+        size: u64,
+    },
+    Stop {
+        reason: ChatStopReason,
+        #[serde(deserialize_with = "deserialize_required_nullable")]
+        message_id: Option<String>,
+        turn_id: String,
+        conversation_id: String,
+        #[serde(deserialize_with = "deserialize_required_nullable")]
+        input_tokens: Option<i32>,
+        #[serde(deserialize_with = "deserialize_required_nullable")]
+        output_tokens: Option<i32>,
+    },
+}
 
 /// One destination for events.
 ///
@@ -106,6 +575,54 @@ impl EventBus {
         }
     }
 
+    /// Deliver one checked first-party stream event.
+    pub fn emit_chat(&self, event: ChatStreamEvent) -> Result<(), String> {
+        self.emit_typed(CHAT_STREAM_CHANNEL, &event)
+    }
+
+    /// Serialize a named DTO before it reaches any sink. This is the escape
+    /// hatch for app-layer DTOs (notably `user-command`) that cannot live in
+    /// the core crate; core-owned channels use the narrower helpers below.
+    pub fn emit_typed<T: Serialize>(&self, channel: &str, event: &T) -> Result<(), String> {
+        let payload = serde_json::to_value(event).map_err(|e| format!("could not serialize {channel} event: {e}"))?;
+        self.emit(channel, payload)
+    }
+
+    pub fn emit_conversation_updated(&self, conversation_id: &str) -> Result<(), String> {
+        self.emit_typed(
+            CONVERSATION_UPDATED_CHANNEL,
+            &ConversationUpdatedEvent::new(conversation_id),
+        )
+    }
+
+    pub fn emit_queue_updated(&self, event: &QueueUpdatedEvent) -> Result<(), String> {
+        self.emit_typed(QUEUE_UPDATED_CHANNEL, event)
+    }
+
+    pub fn emit_compact_start(&self, event: &CompactStartEvent) -> Result<(), String> {
+        self.emit_typed(COMPACT_START_CHANNEL, event)
+    }
+
+    pub fn emit_compact_done(&self, event: &CompactDoneEvent) -> Result<(), String> {
+        self.emit_typed(COMPACT_DONE_CHANNEL, event)
+    }
+
+    pub fn emit_voice_model_download(&self, event: &VoiceModelDownloadEvent) -> Result<(), String> {
+        self.emit_typed(VOICE_MODEL_DOWNLOAD_CHANNEL, event)
+    }
+
+    pub fn emit_voice_model_download_done(&self, event: &VoiceModelDownloadDoneEvent) -> Result<(), String> {
+        self.emit_typed(VOICE_MODEL_DOWNLOAD_DONE_CHANNEL, event)
+    }
+
+    pub fn emit_plan_review_requested(&self, event: &PlanReviewEvent) -> Result<(), String> {
+        self.emit_typed(PLAN_REVIEW_REQUESTED_CHANNEL, event)
+    }
+
+    pub fn emit_plan_review_updated(&self, event: &PlanReviewEvent) -> Result<(), String> {
+        self.emit_typed(PLAN_REVIEW_UPDATED_CHANNEL, event)
+    }
+
     fn lock(&self) -> std::sync::RwLockWriteGuard<'_, Vec<SinkEntry>> {
         self.0.sinks.write().unwrap_or_else(|e| e.into_inner())
     }
@@ -149,12 +666,20 @@ mod tests {
         }
     }
 
+    fn text_event() -> ChatStreamEvent {
+        ChatStreamEvent::Text {
+            content: "hello".into(),
+            message_id: "message-1".into(),
+            conversation_id: "conversation-1".into(),
+        }
+    }
+
     /// A run with nowhere to send its progress is not a failed run. Getting this
     /// wrong would end every turn made without a window open.
     #[test]
     fn a_bus_with_no_sinks_succeeds() {
         let bus = EventBus::new();
-        assert!(bus.emit("chat-stream", serde_json::json!({})).is_ok());
+        assert!(bus.emit_chat(text_event()).is_ok());
     }
 
     /// The desktop rule: its events are the answer, so losing one ends the turn.
@@ -168,7 +693,7 @@ mod tests {
             }),
             true,
         );
-        assert_eq!(bus.emit("chat-stream", serde_json::json!({})), Err("refused".into()));
+        assert_eq!(bus.emit_chat(text_event()), Err("refused".into()));
     }
 
     /// And the opposite rule, which is why `critical` is a property of the
@@ -183,7 +708,7 @@ mod tests {
             }),
             false,
         );
-        assert!(bus.emit("chat-stream", serde_json::json!({})).is_ok());
+        assert!(bus.emit_chat(text_event()).is_ok());
     }
 
     /// One sink refusing must not cost the others the rest of the turn.
@@ -200,7 +725,7 @@ mod tests {
         );
         bus.register(Arc::clone(&good) as Arc<dyn EventSink>, false);
 
-        let _ = bus.emit("conversation-updated", serde_json::json!({}));
+        let _ = bus.emit_conversation_updated("conversation-1");
         assert_eq!(good.seen.lock().unwrap().len(), 1);
     }
 
@@ -212,10 +737,284 @@ mod tests {
         let sink = Arc::new(Recorder::default());
         let id = bus.register(Arc::clone(&sink) as Arc<dyn EventSink>, false);
 
-        let _ = bus.emit("chat-stream", serde_json::json!({}));
+        let _ = bus.emit_chat(text_event());
         bus.unregister(id);
-        let _ = bus.emit("chat-stream", serde_json::json!({}));
+        let _ = bus.emit_chat(text_event());
 
         assert_eq!(sink.seen.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn chat_stream_rejects_unknown_variants_fields_and_missing_fields() {
+        for payload in [
+            serde_json::json!({
+                "type": "future_event",
+                "conversation_id": "conversation-1",
+            }),
+            serde_json::json!({
+                "type": "text",
+                "content": "hello",
+                "message_id": "message-1",
+                "conversation_id": "conversation-1",
+                "future_field": true,
+            }),
+            serde_json::json!({
+                "type": "text",
+                "message_id": "message-1",
+                "conversation_id": "conversation-1",
+            }),
+            serde_json::json!({
+                "type": "server_tool",
+                "message_id": "message-1",
+                "conversation_id": "conversation-1",
+                "call": {
+                    "id": "call-1",
+                    "name": "web_search",
+                    "sources": [],
+                    "completed": false,
+                },
+            }),
+            serde_json::json!({
+                "type": "tool_approval_req",
+                "approval_id": "approval-1",
+                "call_id": "call-1",
+                "tool_name": "run_command",
+                "arguments": "{}",
+                "message_id": "message-1",
+                "conversation_id": "conversation-1",
+            }),
+            serde_json::json!({
+                "type": "auto_review",
+                "conversation_id": "conversation-1",
+                "turn_id": "turn-1",
+                "message_id": "message-1",
+                "call_id": "call-1",
+                "tool_name": "run_command",
+                "verdict": { "outcome": "allow" },
+            }),
+            serde_json::json!({
+                "type": "stop",
+                "reason": "end_turn",
+                "turn_id": "turn-1",
+                "conversation_id": "conversation-1",
+            }),
+        ] {
+            assert!(serde_json::from_value::<ChatStreamEvent>(payload).is_err());
+        }
+    }
+
+    #[test]
+    fn chat_stream_rejects_unknown_fields_in_nested_first_party_dtos() {
+        let payload = serde_json::json!({
+            "type": "server_tool",
+            "message_id": "message-1",
+            "conversation_id": "conversation-1",
+            "call": {
+                "id": "call-1",
+                "name": "web_search",
+                "arguments": null,
+                "sources": [],
+                "completed": false,
+                "future_field": true,
+            },
+        });
+
+        assert!(serde_json::from_value::<ChatStreamEvent>(payload).is_err());
+
+        for payload in [
+            serde_json::json!({
+                "type": "acp_config",
+                "conversation_id": "conversation-1",
+                "config_options": [{
+                    "id": "model",
+                    "name": "Model",
+                    "category": "model",
+                    "type": "select",
+                    "currentValue": "sonnet",
+                    "options": []
+                }]
+            }),
+            serde_json::json!({
+                "type": "acp_config",
+                "conversation_id": "conversation-1",
+                "config_options": [{
+                    "id": "model",
+                    "name": "Model",
+                    "description": null,
+                    "category": "model",
+                    "type": "select",
+                    "currentValue": "sonnet",
+                    "options": [],
+                    "future_field": true
+                }]
+            }),
+        ] {
+            assert!(serde_json::from_value::<ChatStreamEvent>(payload).is_err());
+        }
+    }
+
+    #[cfg(not(target_os = "android"))]
+    #[test]
+    fn acp_config_event_serializes_every_nullable_key() {
+        let payload = serde_json::to_value(ChatStreamEvent::AcpConfig {
+            conversation_id: "conversation-1".into(),
+            config_options: vec![AcpConfigOptionEvent {
+                id: "model".into(),
+                name: "Model".into(),
+                description: None,
+                category: None,
+                kind: None,
+                current_value: None,
+                options: vec![AcpConfigOptionValueEvent {
+                    value: "sonnet".into(),
+                    name: "Sonnet".into(),
+                    description: None,
+                }],
+            }],
+        })
+        .unwrap();
+
+        let option = &payload["config_options"][0];
+        assert_eq!(option["description"], serde_json::Value::Null);
+        assert_eq!(option["category"], serde_json::Value::Null);
+        assert_eq!(option["type"], serde_json::Value::Null);
+        assert_eq!(option["currentValue"], serde_json::Value::Null);
+        assert_eq!(option["options"][0]["description"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn a_stop_has_no_compatibility_or_monetary_side_channel() {
+        let payload = serde_json::to_value(ChatStreamEvent::Stop {
+            reason: ChatStopReason::EndTurn,
+            message_id: Some("message-1".into()),
+            turn_id: "turn-1".into(),
+            conversation_id: "conversation-1".into(),
+            input_tokens: Some(12),
+            output_tokens: Some(3),
+        })
+        .unwrap();
+        assert_eq!(payload["type"], "stop");
+        assert!(payload.get("done").is_none());
+        assert!(payload.get("cost").is_none());
+        assert!(payload.get("cost_breakdown").is_none());
+    }
+
+    #[test]
+    fn non_stream_event_contracts_reject_missing_extra_and_unknown_values() {
+        assert!(
+            serde_json::from_value::<ConversationUpdatedEvent>(serde_json::json!({ "id": "conversation-1" })).is_err()
+        );
+        assert!(
+            serde_json::from_value::<QueueUpdatedEvent>(serde_json::json!({
+                "conversation_id": "conversation-1"
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<QueueUpdatedEvent>(serde_json::json!({
+                "conversation_id": "conversation-1",
+                "delivered": false,
+                "future": true
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<CompactStartEvent>(serde_json::json!({
+                "conversation_id": "conversation-1",
+                "mid_turn": true,
+                "trigger": "future"
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<CompactDoneEvent>(serde_json::json!({
+                "conversation_id": "conversation-1",
+                "mid_turn": true,
+                "trigger": "threshold",
+                "outcome": "completed",
+                "error": null
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<VoiceModelDownloadEvent>(serde_json::json!({
+                "type": "future",
+                "downloaded": 0,
+                "total": null
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<VoiceModelDownloadDoneEvent>(serde_json::json!({
+                "type": "completed",
+                "error": "must not be ignored"
+            }))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn nullable_event_fields_are_present_when_serialized() {
+        let compact = serde_json::to_value(CompactDoneEvent {
+            conversation_id: "conversation-1".into(),
+            mid_turn: false,
+            trigger: CompactTrigger::Manual,
+            outcome: CompactOutcome::Completed,
+            tokens_reclaimed: None,
+            error: None,
+        })
+        .unwrap();
+        assert_eq!(compact["tokens_reclaimed"], serde_json::Value::Null);
+        assert_eq!(compact["error"], serde_json::Value::Null);
+
+        let progress = serde_json::to_value(VoiceModelDownloadEvent::Progress {
+            downloaded: 1,
+            total: None,
+        })
+        .unwrap();
+        assert_eq!(progress["type"], "progress");
+        assert_eq!(progress["total"], serde_json::Value::Null);
+
+        let verdict = serde_json::to_value(AutoReviewVerdict {
+            outcome: AutoReviewOutcome::Unreadable,
+            risk: None,
+            authorization: None,
+            rationale: None,
+            stage: None,
+            model: None,
+            evidence: Vec::new(),
+        })
+        .unwrap();
+        for key in ["risk", "authorization", "rationale", "stage", "model"] {
+            assert_eq!(verdict[key], serde_json::Value::Null, "missing required-null key {key}");
+        }
+        assert_eq!(verdict["evidence"], serde_json::json!([]));
+
+        let approval = serde_json::to_value(ChatStreamEvent::ToolApprovalReq {
+            approval_id: "approval-1".into(),
+            call_id: "call-1".into(),
+            tool_name: "run_command".into(),
+            arguments: "{}".into(),
+            message_id: "message-1".into(),
+            conversation_id: "conversation-1".into(),
+            delegation: None,
+            retry: None,
+        })
+        .unwrap();
+        assert_eq!(approval["delegation"], serde_json::Value::Null);
+        assert_eq!(approval["retry"], serde_json::Value::Null);
+
+        let stop = serde_json::to_value(ChatStreamEvent::Stop {
+            reason: ChatStopReason::Error,
+            message_id: None,
+            turn_id: "turn-1".into(),
+            conversation_id: "conversation-1".into(),
+            input_tokens: None,
+            output_tokens: None,
+        })
+        .unwrap();
+        assert_eq!(stop["message_id"], serde_json::Value::Null);
+        assert_eq!(stop["input_tokens"], serde_json::Value::Null);
+        assert_eq!(stop["output_tokens"], serde_json::Value::Null);
     }
 }

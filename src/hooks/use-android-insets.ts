@@ -1,19 +1,13 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { listen } from '@/lib/transport'
 import { api } from '@/api'
-
-export interface NativeInsets {
-  top: number
-  bottom: number
-  left: number
-  right: number
-  imeBottom: number
-}
+import type { WindowInsetsEvent } from '@/lib/app-event'
+import type { PlatformInfoResponse } from '@/types'
 
 let currentImeBottom = 0
 const imeListeners = new Set<() => void>()
 
-function applyInsets(i: NativeInsets) {
+function applyInsets(i: WindowInsetsEvent) {
   const s = document.documentElement.style
   s.setProperty('--native-inset-top', `${i.top}px`)
   s.setProperty('--native-inset-bottom', `${i.bottom}px`)
@@ -42,7 +36,7 @@ export function useImeBottom(): number {
 }
 
 export function useAndroidInsets() {
-  const [platform, setPlatform] = useState<string | null>(null)
+  const [platform, setPlatform] = useState<PlatformInfoResponse | null>(null)
 
   useEffect(() => {
     let disposed = false
@@ -61,7 +55,7 @@ export function useAndroidInsets() {
     let unlistenInsets: (() => void) | null = null
 
     void (async () => {
-      const unlisten = await listen<NativeInsets>('insets-changed', (e) => applyInsets(e.payload)).catch(() => null)
+      const unlisten = await listen('insets-changed', (e) => applyInsets(e.payload)).catch(() => null)
       if (disposed) {
         unlisten?.()
         return

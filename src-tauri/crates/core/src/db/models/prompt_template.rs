@@ -5,7 +5,7 @@ use crate::db::schema::prompt_templates;
 
 #[derive(Debug, Clone, Queryable, Selectable, Serialize)]
 #[diesel(table_name = prompt_templates)]
-pub struct PromptTemplate {
+pub struct PromptTemplateRow {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
@@ -19,7 +19,7 @@ pub struct PromptTemplate {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = prompt_templates)]
-pub struct NewPromptTemplate<'a> {
+pub struct PromptTemplateInsert<'a> {
     pub id: &'a str,
     pub name: &'a str,
     pub description: Option<&'a str>,
@@ -33,7 +33,7 @@ pub struct NewPromptTemplate<'a> {
 
 #[derive(Debug, AsChangeset, Default)]
 #[diesel(table_name = prompt_templates)]
-pub struct PromptTemplateUpdate {
+pub struct PromptTemplateChangeset {
     pub name: Option<String>,
     pub description: Option<Option<String>>,
     pub category: Option<String>,

@@ -30,11 +30,15 @@ use tokio_util::sync::CancellationToken;
 /// drained by the OneBot runner, so parking a message there while the desktop
 /// holds the conversation would strand it until the next QQ message happened to
 /// come along.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::IntoStaticStr, strum::EnumString)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, strum::IntoStaticStr, strum::EnumString,
+)]
+#[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum TurnOrigin {
     Desktop,
     #[strum(serialize = "onebot")]
+    #[serde(rename = "onebot")]
     OneBot,
     /// A turn a `run_agent` call delegated. It runs in a conversation of its
     /// own, so it contends with nobody — but the distinction is what lets an

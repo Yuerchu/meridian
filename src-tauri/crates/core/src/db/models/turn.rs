@@ -27,6 +27,9 @@ use crate::db::schema::turns;
 #[strum(serialize_all = "snake_case")]
 pub enum TurnStatus {
     Running,
+    /// The model submitted a durable plan review and no task remains alive.
+    /// Startup must preserve this status instead of diagnosing an interruption.
+    WaitingReview,
     Done,
     Cancelled,
     Failed,
@@ -84,7 +87,7 @@ impl TurnPhase {
 /// A turn as stored.
 #[derive(Debug, Clone, Queryable, Selectable, Serialize)]
 #[diesel(table_name = turns)]
-pub struct Turn {
+pub struct TurnRow {
     pub id: String,
     pub conversation_id: String,
     pub origin: String,
@@ -119,22 +122,19 @@ pub struct Turn {
     pub self_id: Option<i64>,
 }
 
-impl Turn {
-    /// The stored status, or `None` for a value this build does not know. An
-    /// unknown status is treated as "no opinion" everywhere it is read, so a
-    /// row written by a later build cannot make a conversation unreadable.
-    pub fn status(&self) -> Option<TurnStatus> {
-        TurnStatus::parse(&self.status).ok()
+impl TurnRow {
+    pub fn status(&self) -> Result<TurnStatus, String> {
+        TurnStatus::parse(&self.status)
     }
 
-    pub fn phase(&self) -> Option<TurnPhase> {
-        self.phase.as_deref().and_then(|p| TurnPhase::parse(p).ok())
+    pub fn phase(&self) -> Result<Option<TurnPhase>, String> {
+        self.phase.as_deref().map(TurnPhase::parse).transpose()
     }
 }
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = turns)]
-pub struct NewTurn<'a> {
+pub struct TurnInsert<'a> {
     pub id: &'a str,
     pub conversation_id: &'a str,
     pub origin: &'a str,

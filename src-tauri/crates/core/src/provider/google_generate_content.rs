@@ -10,8 +10,8 @@ use super::state::{
     GOOGLE_GENERATE_CONTENT_PROTOCOL, GoogleSignatureLocation, ProviderStateAccumulator, ProviderStateUpdate,
 };
 use super::{
-    AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, SenderRendering, StreamEvent,
-    TokenUsage, ToolCall, ToolDefinition,
+    AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, MessageContentPart, ProviderError,
+    SenderRendering, StreamEvent, TokenUsage, ToolCall, ToolDefinition,
 };
 use crate::client::{HttpTransport, Request, RequestBody, ReqwestTransport};
 
@@ -34,8 +34,8 @@ impl GoogleGenerateContentProvider {
         tools: Option<&[ToolDefinition]>,
         params: &ChatParams,
         stream: bool,
-    ) -> Request {
-        let (system, contents) = serialize_contents(messages, &params.model);
+    ) -> Result<Request, ProviderError> {
+        let (system, contents) = serialize_contents(messages, &params.model)?;
         let mut body = serde_json::json!({ "contents": contents });
         if !system.is_empty() {
             body["systemInstruction"] = serde_json::json!({ "parts": [{ "text": system }] });
@@ -82,7 +82,7 @@ impl GoogleGenerateContentProvider {
             .headers
             .insert("x-goog-api-key", super::auth_header_value(&self.api_key));
         request.body = Some(RequestBody::Json(body));
-        request
+        Ok(request)
     }
 }
 
@@ -97,7 +97,10 @@ pub(crate) fn google_api_root(base_url: &str) -> String {
     root.to_string()
 }
 
-fn serialize_contents(messages: &[ChatMessage], model: &str) -> (String, Vec<serde_json::Value>) {
+fn serialize_contents(
+    messages: &[ChatMessage],
+    model: &str,
+) -> Result<(String, Vec<serde_json::Value>), ProviderError> {
     let system = messages
         .iter()
         .filter(|message| message.role == "system")
@@ -139,6 +142,10 @@ fn serialize_contents(messages: &[ChatMessage], model: &str) -> (String, Vec<ser
         if message.role == "assistant"
             && let Some(tool_calls) = message.tool_calls.as_ref()
         {
+            let parsed_arguments = tool_calls
+                .iter()
+                .map(|call| super::decode_tool_arguments(&call.arguments, &call.id).map_err(ProviderError::Parse))
+                .collect::<Result<Vec<_>, _>>()?;
             let signatures = message
                 .provider_state
                 .as_ref()
@@ -162,9 +169,7 @@ fn serialize_contents(messages: &[ChatMessage], model: &str) -> (String, Vec<ser
             }
 
             let mut parts = assistant_text_parts(message, signatures);
-            for (index, call) in tool_calls.iter().enumerate() {
-                let args =
-                    serde_json::from_str(&call.arguments).unwrap_or(serde_json::Value::Object(Default::default()));
+            for (index, (call, args)) in tool_calls.iter().zip(parsed_arguments).enumerate() {
                 let mut part = serde_json::json!({
                     "functionCall": { "name": call.name, "args": args }
                 });
@@ -210,11 +215,11 @@ fn serialize_contents(messages: &[ChatMessage], model: &str) -> (String, Vec<ser
                 .and_then(|state| state.google_signatures_for(GOOGLE_GENERATE_CONTENT_PROTOCOL, model));
             push_content(&mut out, "model", assistant_text_parts(message, signatures));
         } else {
-            let rendered = super::render_message(message, SenderRendering::Prefix);
-            push_content(&mut out, "user", rendered_parts(&rendered.content));
+            let rendered = super::render_message(message, SenderRendering::Prefix).map_err(ProviderError::Parse)?;
+            push_content(&mut out, "user", rendered_parts(&rendered.content)?);
         }
     }
-    (system, out)
+    Ok((system, out))
 }
 
 fn assistant_text_parts(
@@ -249,19 +254,19 @@ fn assistant_text_parts(
     parts
 }
 
-fn rendered_parts(content: &str) -> Vec<serde_json::Value> {
-    let Ok(parts) = serde_json::from_str::<Vec<serde_json::Value>>(content) else {
-        return vec![serde_json::json!({ "text": content })];
+fn rendered_parts(content: &str) -> Result<Vec<serde_json::Value>, ProviderError> {
+    let Some(parts) = super::decode_message_parts(content).map_err(ProviderError::Parse)? else {
+        return Ok(vec![serde_json::json!({ "text": content })]);
     };
     parts
         .into_iter()
-        .map(|part| match part.get("type").and_then(|value| value.as_str()) {
-            Some("text") => serde_json::json!({
-                "text": part.get("text").and_then(|value| value.as_str()).unwrap_or("")
-            }),
-            Some("image_url") => media_part(part.pointer("/image_url/url").and_then(|value| value.as_str())),
-            Some("file") => media_part(part.pointer("/file/url").and_then(|value| value.as_str())),
-            _ => serde_json::json!({ "text": part.to_string() }),
+        .map(|part| match part {
+            MessageContentPart::Text { text } => Ok(serde_json::json!({ "text": text })),
+            MessageContentPart::ImageUrl { image_url } => Ok(media_part(Some(&image_url.url))),
+            MessageContentPart::File { file } => Ok(media_part(Some(&file.url))),
+            MessageContentPart::Sticker { .. } => Err(ProviderError::Parse(
+                "unresolved sticker part reached the Google GenerateContent adapter".into(),
+            )),
         })
         .collect()
 }
@@ -559,7 +564,7 @@ impl ChatProvider for GoogleGenerateContentProvider {
         params: ChatParams,
     ) -> Result<ChatStream, ProviderError> {
         let transport = ReqwestTransport::shared();
-        let request = self.build_request(&messages, Some(&tools), &params, true);
+        let request = self.build_request(&messages, Some(&tools), &params, true)?;
         let response = transport.stream(request).await?;
         let model = params.model.clone();
         let mut parse_state = GeminiParseState::default();
@@ -599,7 +604,7 @@ impl ChatProvider for GoogleGenerateContentProvider {
         params: ChatParams,
     ) -> Result<AgentResponse, ProviderError> {
         let transport = ReqwestTransport::shared();
-        let request = self.build_request(&messages, Some(&tools), &params, false);
+        let request = self.build_request(&messages, Some(&tools), &params, false)?;
         let response = transport.execute(request).await?;
         let parsed: GenerateContentChunk = serde_json::from_slice(&response.body).map_err(|error| {
             embedded_upstream_error(&response.body)
@@ -643,7 +648,9 @@ mod tests {
                 "required": ["query"]
             }),
         }];
-        let request = provider.build_request(&[ChatMessage::user("hi")], Some(&tools), &params, true);
+        let request = provider
+            .build_request(&[ChatMessage::user("hi")], Some(&tools), &params, true)
+            .unwrap();
         assert_eq!(
             request.url,
             "https://relay.example/v1beta/models/gemini-3.7-flash:streamGenerateContent?alt=sse"
@@ -699,9 +706,24 @@ mod tests {
             }),
             ..ChatMessage::assistant("OK")
         };
-        let (_, contents) = serialize_contents(&[message], "gemini-3.7-flash");
+        let (_, contents) = serialize_contents(&[message], "gemini-3.7-flash").unwrap();
         assert_eq!(contents[0]["parts"][1]["text"], "");
         assert_eq!(contents[0]["parts"][1]["thoughtSignature"], "signed-tail");
+    }
+
+    #[test]
+    fn malformed_historical_tool_arguments_abort_serialization() {
+        let assistant = ChatMessage::assistant_with_tools(
+            "",
+            None,
+            vec![ToolCall {
+                id: "broken-call".into(),
+                name: "lookup".into(),
+                arguments: "{not-json".into(),
+            }],
+        );
+        let error = serialize_contents(&[assistant], "gemini-3.7-flash").unwrap_err();
+        assert!(matches!(error, ProviderError::Parse(ref message) if message.contains("broken-call")));
     }
 
     #[test]
@@ -744,7 +766,8 @@ mod tests {
                 ChatMessage::user("continue"),
             ],
             "gemini-3.7-flash",
-        );
+        )
+        .unwrap();
         let result_parts = contents[1]["parts"].as_array().unwrap();
         assert_eq!(result_parts[0]["functionResponse"]["name"], "first");
         assert_eq!(

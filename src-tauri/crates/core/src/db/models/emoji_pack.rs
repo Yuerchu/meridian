@@ -5,7 +5,7 @@ use crate::db::schema::emoji_packs;
 
 #[derive(Debug, Clone, Queryable, Selectable, Serialize)]
 #[diesel(table_name = emoji_packs)]
-pub struct EmojiPack {
+pub struct EmojiPackRow {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
@@ -20,7 +20,7 @@ pub struct EmojiPack {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = emoji_packs)]
-pub struct NewEmojiPack<'a> {
+pub struct EmojiPackInsert<'a> {
     pub id: &'a str,
     pub name: &'a str,
     pub description: Option<&'a str>,

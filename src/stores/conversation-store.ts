@@ -2,21 +2,26 @@ import { create } from 'zustand'
 import { produce } from 'immer'
 import { api } from '@/api'
 import { parseTodoArgs, toDrafts, type TodoArgs } from '@/components/chat/todo-list'
+import { parseJsonText, requireExactKeys, requireKnownKeys, requireRecord } from '@/lib/strict-json'
 import type {
-  AutoReviewVerdict,
-  BranchPoint,
-  CommandTurnOutcome,
-  Conversation,
-  Message,
-  PendingApprovalInfo,
-  Project,
+  AutoReviewVerdictInfoResponse,
+  BranchPointInfoResponse,
+  UserCommandResultResponse,
+  ConversationInfoResponse,
+  MessageInfoResponse,
+  MessageViewModel,
+  PendingApprovalInfoResponse,
+  PlanReviewSummaryInfoResponse,
+  ProjectInfoResponse,
   ContentBlock,
   OpenAIToolCall,
-  SubAgentRunView,
-  TodoListView,
+  SubAgentKind,
+  SubAgentRunInfoResponse,
+  TodoInfoResponse,
   ToolCallDisplay,
-  TurnRecord,
+  TurnInfoResponse,
 } from '@/types'
+import { usePlanReviewStore, type PlanReviewEventInfo } from '@/stores/plan-review-store'
 
 /**
  * Read a checklist out of an `update_todos` call. A list whose steps are all
@@ -24,28 +29,75 @@ import type {
  * one here too.
  */
 function readTodoArgs(args: string): TodoArgs | null {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(args)
-  } catch {
-    return null
-  }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null
-  const todoArgs = parseTodoArgs(parsed as Record<string, unknown>)
-  if (!todoArgs) return null
+  const parsed = requireRecord(parseJsonText(args, 'update_todos arguments'), 'update_todos arguments')
+  const todoArgs = parseTodoArgs(parsed)
+  if (!todoArgs) throw new Error('update_todos arguments do not match the TodoArgs contract')
   return todoArgs.todos.every((t) => t.status === 'completed') ? null : todoArgs
 }
 
 /** The calls a finished assistant row records having made, or `null` while it
  *  is still being written. */
-function storedCalls(column: string | null | undefined): OpenAIToolCall[] | null {
-  if (!column) return null
-  try {
-    const parsed = JSON.parse(column) as OpenAIToolCall[]
-    return Array.isArray(parsed) ? parsed : null
-  } catch {
-    return null
+function storedCalls(column: unknown[] | null | undefined): OpenAIToolCall[] | null {
+  if (column == null) return null
+  if (!Array.isArray(column)) throw new Error('message.tool_calls must be an array')
+  return column.map((value, index) => {
+    const call = requireExactKeys(value, ['id', 'type', 'function'], `message.tool_calls[${index}]`)
+    const fn = requireExactKeys(call.function, ['name', 'arguments'], `message.tool_calls[${index}].function`)
+    if (
+      typeof call.id !== 'string' ||
+      !call.id ||
+      call.type !== 'function' ||
+      typeof fn.name !== 'string' ||
+      !fn.name ||
+      typeof fn.arguments !== 'string'
+    )
+      throw new Error(`message.tool_calls[${index}] has invalid field types`)
+    requireRecord(
+      parseJsonText(fn.arguments, `message.tool_calls[${index}].function.arguments`),
+      `message.tool_calls[${index}].function.arguments`,
+    )
+    return { id: call.id, type: 'function', function: { name: fn.name, arguments: fn.arguments } }
+  })
+}
+
+const AUTO_REVIEW_OUTCOMES = new Set(['allow', 'deny', 'unreadable'])
+const AUTO_REVIEW_RISKS = new Set(['low', 'medium', 'high', 'critical'])
+const AUTO_REVIEW_AUTHORIZATIONS = new Set(['unknown', 'low', 'medium', 'high'])
+const AUTO_REVIEW_STAGES = new Set(['quick', 'investigate'])
+
+function autoReviewVerdict(value: unknown, label: string): AutoReviewVerdictInfoResponse {
+  const verdict = requireExactKeys(
+    value,
+    ['outcome', 'risk', 'authorization', 'rationale', 'stage', 'model', 'evidence'],
+    label,
+  )
+  if (typeof verdict.outcome !== 'string' || !AUTO_REVIEW_OUTCOMES.has(verdict.outcome)) {
+    throw new Error(`${label}.outcome is unknown`)
   }
+  if (verdict.risk !== null && (typeof verdict.risk !== 'string' || !AUTO_REVIEW_RISKS.has(verdict.risk))) {
+    throw new Error(`${label}.risk is unknown`)
+  }
+  if (
+    verdict.authorization !== null &&
+    (typeof verdict.authorization !== 'string' || !AUTO_REVIEW_AUTHORIZATIONS.has(verdict.authorization))
+  )
+    throw new Error(`${label}.authorization is unknown`)
+  if (verdict.stage !== null && (typeof verdict.stage !== 'string' || !AUTO_REVIEW_STAGES.has(verdict.stage))) {
+    throw new Error(`${label}.stage is unknown`)
+  }
+  for (const field of ['rationale', 'model'] as const) {
+    if (verdict[field] !== null && typeof verdict[field] !== 'string') {
+      throw new Error(`${label}.${field} must be a string or null`)
+    }
+  }
+  if (!Array.isArray(verdict.evidence)) throw new Error(`${label}.evidence must be an array`)
+  verdict.evidence.forEach((value, index) => {
+    const evidence = requireExactKeys(value, ['tool', 'arguments'], `${label}.evidence[${index}]`)
+    if (typeof evidence.tool !== 'string' || typeof evidence.arguments !== 'string') {
+      throw new Error(`${label}.evidence[${index}] has invalid field types`)
+    }
+  })
+  return verdict as unknown as AutoReviewVerdictInfoResponse
 }
 
 /**
@@ -58,8 +110,8 @@ function storedCalls(column: string | null | undefined): OpenAIToolCall[] | null
  * match an earlier round's result and read as completed. That is the same
  * disappearing-approval-card bug wearing a different hat.
  */
-function toolRowsByAssistant(msgs: Message[]): Map<string, Message[]> {
-  const out = new Map<string, Message[]>()
+function toolRowsByAssistant(msgs: MessageInfoResponse[]): Map<string, MessageInfoResponse[]> {
+  const out = new Map<string, MessageInfoResponse[]>()
   let current: string | null = null
   for (const m of msgs) {
     if (m.role === 'assistant') {
@@ -82,18 +134,18 @@ function toolRowsByAssistant(msgs: Message[]): Map<string, Message[]> {
  * the call id arrives straight off the wire — so any separator chosen for a
  * composite key is one some provider is free to put inside an id.
  */
-type ApprovalIndex = Map<string, Map<string, PendingApprovalInfo[]>>
+type ApprovalIndex = Map<string, Map<string, PendingApprovalInfoResponse[]>>
 
 /** `bubbled` picks which call id places the card.
  *
  * A delegated run's approval names two: the tool it wants to run, which lives
  * in the sub-agent's conversation, and the `run_agent` call it hangs under
  * here. Indexing it by the former would look for a call this row never made. */
-function indexApprovals(pending: PendingApprovalInfo[], nested: boolean): ApprovalIndex {
+function indexApprovals(pending: PendingApprovalInfoResponse[], nested: boolean): ApprovalIndex {
   const out: ApprovalIndex = new Map()
   for (const p of pending) {
     const key = nested ? p.parent_call_id : p.provider_call_id
-    if (nested !== (p.parent_call_id !== undefined) || !key) continue
+    if (nested !== (p.parent_call_id !== null) || !key) continue
     let byCall = out.get(p.assistant_message_id)
     if (!byCall) {
       byCall = new Map()
@@ -107,8 +159,8 @@ function indexApprovals(pending: PendingApprovalInfo[], nested: boolean): Approv
 }
 
 /** The delegated runs of one conversation, under the call that started each. */
-function indexRuns(runs: SubAgentRunView[]): Map<string, Map<string, SubAgentRunView>> {
-  const out = new Map<string, Map<string, SubAgentRunView>>()
+function indexRuns(runs: SubAgentRunInfoResponse[]): Map<string, Map<string, SubAgentRunInfoResponse>> {
+  const out = new Map<string, Map<string, SubAgentRunInfoResponse>>()
   for (const r of runs) {
     // Both halves or nothing: a run that cannot say which call made it has no
     // card to attach to, and guessing by call id alone puts a second delegation
@@ -124,22 +176,249 @@ function indexRuns(runs: SubAgentRunView[]): Map<string, Map<string, SubAgentRun
   return out
 }
 
+function indexPlanReviews(
+  reviews: PlanReviewSummaryInfoResponse[],
+): Map<string, Map<string, PlanReviewSummaryInfoResponse>> {
+  const out = new Map<string, Map<string, PlanReviewSummaryInfoResponse>>()
+  for (const review of reviews) {
+    let byCall = out.get(review.assistant_message_id)
+    if (!byCall) {
+      byCall = new Map()
+      out.set(review.assistant_message_id, byCall)
+    }
+    byCall.set(review.provider_call_id, review)
+  }
+  return out
+}
+
+function planReviewToolStatus(status: PlanReviewSummaryInfoResponse['status']): ToolCallDisplay['status'] {
+  switch (status) {
+    case 'pending':
+      return 'pending'
+    case 'approved':
+      return 'completed'
+    case 'changes_requested':
+      return 'denied'
+    case 'orphaned':
+      return 'orphaned'
+  }
+}
+
 /** How a tool row says it went. Null is every row written before the column
  *  existed, and every one of those claimed success. */
-function outcomeOf(toolMsg: Message): ToolCallDisplay['status'] {
+function outcomeOf(toolMsg: MessageInfoResponse): ToolCallDisplay['status'] {
   switch (toolMsg.tool_outcome) {
+    case null:
+    case undefined:
+    case 'success':
+      return 'completed'
     case 'denied':
       return 'denied'
     case 'error':
       return 'error'
     default:
-      return 'completed'
+      throw new Error(`unknown message.tool_outcome: ${String(toolMsg.tool_outcome)}`)
   }
 }
 
-/** The ways a turn can have reached an ending. Anything outside this set —
- *  including a status written by a later build — is not evidence that one did. */
+/** The ways a turn can have reached an ending. */
 const ENDED = new Set(['done', 'cancelled', 'failed', 'interrupted'])
+const TURN_STATUSES = new Set(['running', 'waiting_review', ...ENDED])
+const TURN_PHASES = new Set(['streaming', 'awaiting_approval', 'running_tool', 'compacting'])
+const MESSAGE_ROLES = new Set(['user', 'assistant', 'tool', 'context'])
+const MESSAGE_SOURCES = new Set(['voice', 'shell'])
+const TOOL_OUTCOMES = new Set(['success', 'denied', 'error'])
+const SUB_AGENT_KINDS = new Set<SubAgentKind>(['explore', 'agent'])
+
+const MESSAGE_RESPONSE_KEYS = [
+  'id',
+  'conversation_id',
+  'role',
+  'content',
+  'provider_id',
+  'model_id',
+  'input_tokens',
+  'output_tokens',
+  'cache_read_tokens',
+  'cache_write_tokens',
+  'provider_name',
+  'tool_calls',
+  'tool_call_id',
+  'sort_order',
+  'created_at',
+  'reasoning_content',
+  'rating',
+  'is_compact_summary',
+  'sender_id',
+  'parent_id',
+  'compact_anchor_id',
+  'source',
+  'turn_id',
+  'tool_outcome',
+  'auto_review',
+  'context_items',
+] as const
+
+function requireNullableString(value: unknown, label: string): void {
+  if (value !== null && typeof value !== 'string') throw new Error(`${label} must be a string or null`)
+}
+
+function requireNullableNonNegativeInteger(value: unknown, label: string): void {
+  if (value !== null && (!Number.isInteger(value) || (value as number) < 0)) {
+    throw new Error(`${label} must be a non-negative integer or null`)
+  }
+}
+
+function validateContextItems(message: MessageInfoResponse): void {
+  if (!Array.isArray(message.context_items)) throw new Error('message.context_items must be an array')
+  if (message.context_items.length > 0 && message.role !== 'user') {
+    throw new Error('only user messages may carry context_items')
+  }
+  message.context_items.forEach((value, index) => {
+    const item = requireExactKeys(
+      value,
+      [
+        'id',
+        'position',
+        'kind',
+        'display_path',
+        'line_start',
+        'line_end',
+        'byte_count',
+        'line_count',
+        'token_count',
+        'truncated',
+      ],
+      `message.context_items[${index}]`,
+    )
+    if (typeof item.id !== 'string' || !item.id) throw new Error(`message.context_items[${index}].id is invalid`)
+    if (item.position !== index) throw new Error(`message.context_items[${index}].position is not contiguous`)
+    if (!['project_file', 'project_directory', 'shell_output'].includes(String(item.kind))) {
+      throw new Error(`message.context_items[${index}].kind is unknown`)
+    }
+    requireNullableString(item.display_path, `message.context_items[${index}].display_path`)
+    for (const field of ['line_start', 'line_end'] as const) {
+      requireNullableNonNegativeInteger(item[field], `message.context_items[${index}].${field}`)
+      if (typeof item[field] === 'number' && item[field] <= 0) {
+        throw new Error(`message.context_items[${index}].${field} must be positive`)
+      }
+    }
+    for (const field of ['byte_count', 'line_count', 'token_count'] as const) {
+      requireNullableNonNegativeInteger(item[field], `message.context_items[${index}].${field}`)
+      if (item[field] === null) throw new Error(`message.context_items[${index}].${field} is required`)
+    }
+    if (typeof item.truncated !== 'boolean')
+      throw new Error(`message.context_items[${index}].truncated must be boolean`)
+    if (item.kind === 'shell_output') {
+      if (item.display_path !== null || item.line_start !== null || item.line_end !== null) {
+        throw new Error(`message.context_items[${index}] shell output has file metadata`)
+      }
+    } else if (typeof item.display_path !== 'string' || !item.display_path) {
+      throw new Error(`message.context_items[${index}].display_path is required`)
+    } else if (item.kind === 'project_directory' && (item.line_start !== null || item.line_end !== null)) {
+      throw new Error(`message.context_items[${index}] project directory has a line range`)
+    } else if ((item.line_start === null) !== (item.line_end === null)) {
+      throw new Error(`message.context_items[${index}] has a partial line range`)
+    } else if (
+      typeof item.line_start === 'number' &&
+      typeof item.line_end === 'number' &&
+      item.line_end < item.line_start
+    ) {
+      throw new Error(`message.context_items[${index}] has an invalid line range`)
+    }
+  })
+}
+
+function validateSnapshotContracts(
+  messages: MessageInfoResponse[],
+  turns: TurnInfoResponse[],
+  runs: SubAgentRunInfoResponse[],
+): void {
+  for (const message of messages) {
+    requireKnownKeys(message, MESSAGE_RESPONSE_KEYS, 'message')
+    for (const key of MESSAGE_RESPONSE_KEYS) {
+      if (!Object.prototype.hasOwnProperty.call(message, key)) {
+        throw new Error(`message.${key} is required`)
+      }
+    }
+    if (
+      typeof message.id !== 'string' ||
+      !message.id ||
+      typeof message.conversation_id !== 'string' ||
+      !message.conversation_id ||
+      typeof message.content !== 'string'
+    ) {
+      throw new Error('message has invalid required string fields')
+    }
+    if (!MESSAGE_ROLES.has(message.role)) throw new Error(`unknown message role: ${String(message.role)}`)
+    if (typeof message.is_compact_summary !== 'boolean') {
+      throw new Error(`message.is_compact_summary must be boolean`)
+    }
+    for (const field of [
+      'provider_id',
+      'model_id',
+      'provider_name',
+      'tool_call_id',
+      'reasoning_content',
+      'parent_id',
+      'compact_anchor_id',
+      'turn_id',
+    ] as const) {
+      requireNullableString(message[field], `message.${field}`)
+    }
+    for (const field of ['input_tokens', 'output_tokens', 'cache_read_tokens', 'cache_write_tokens'] as const) {
+      requireNullableNonNegativeInteger(message[field], `message.${field}`)
+    }
+    if (!Number.isInteger(message.sort_order) || message.sort_order < 0 || !Number.isFinite(message.created_at)) {
+      throw new Error('message has invalid ordering metadata')
+    }
+    if (message.sender_id !== null && !Number.isSafeInteger(message.sender_id)) {
+      throw new Error('message.sender_id must be a safe integer or null')
+    }
+    if (message.source !== null && !MESSAGE_SOURCES.has(message.source)) {
+      throw new Error(`unknown message source: ${String(message.source)}`)
+    }
+    if (message.source !== null && message.role !== 'user') throw new Error('only user messages may have a source')
+    if (message.rating !== null && message.rating !== -1 && message.rating !== 1) {
+      throw new Error('message.rating must be -1, 1, or null')
+    }
+    if (message.rating !== null && message.role !== 'assistant') {
+      throw new Error('only assistant messages may have a rating')
+    }
+    if (message.tool_outcome !== null && !TOOL_OUTCOMES.has(message.tool_outcome)) {
+      throw new Error(`unknown message.tool_outcome: ${String(message.tool_outcome)}`)
+    }
+    if (message.role === 'tool') {
+      if (!message.tool_call_id) throw new Error('tool message is missing tool_call_id')
+    } else if (message.tool_call_id !== null || message.tool_outcome !== null) {
+      throw new Error('non-tool message has tool result fields')
+    }
+    const calls = storedCalls(message.tool_calls) ?? []
+    if (message.role !== 'assistant' && message.tool_calls !== null) {
+      throw new Error('non-assistant message has tool_calls')
+    }
+    const reviews = parseAutoReview(message.auto_review)
+    if (message.role !== 'assistant' && message.auto_review !== null) {
+      throw new Error('non-assistant message has auto_review')
+    }
+    const callIds = new Set(calls.map((call) => call.id))
+    for (const callId of Object.keys(reviews)) {
+      if (!callIds.has(callId)) throw new Error(`message.auto_review.${callId} names an unknown tool call`)
+    }
+    validateContextItems(message)
+  }
+  for (const turn of turns) {
+    if (!TURN_STATUSES.has(turn.status)) throw new Error(`unknown turn status: ${turn.status}`)
+    if (turn.phase !== null && !TURN_PHASES.has(turn.phase)) throw new Error(`unknown turn phase: ${turn.phase}`)
+  }
+  for (const run of runs) {
+    if (run.status !== null && !TURN_STATUSES.has(run.status))
+      throw new Error(`unknown sub-agent status: ${run.status}`)
+    if (!SUB_AGENT_KINDS.has(run.agent_kind)) {
+      throw new Error(`unknown sub-agent kind: ${run.agent_kind}`)
+    }
+  }
+}
 
 /** A tool call that already has its answer.
  *
@@ -160,18 +439,16 @@ const ANSWERED = new Set<ToolCallDisplay['status']>(['completed', 'denied', 'err
  * card on a tool that is at that moment editing a file.
  *
  * The turn is what tells them apart, and only a turn that positively says it
- * ended earns `orphaned`. Everything else — a record this build cannot find,
- * a status a later one invented — is treated as still going. The two mistakes
- * are not the same size: reading a live call as dead is a wrong answer sitting
- * on screen with no buttons, while reading a dead one as live corrects itself
- * the moment anything reloads.
+ * ended earns `orphaned`. A missing record is still inconclusive; an unknown
+ * status is a broken first-party contract and is rejected.
  *
  * A row with no `turn_id` predates the record entirely and keeps the reading it
  * has always had.
  */
-function unansweredStatus(turnId: string | null | undefined, turns: Map<string, TurnRecord>) {
+function unansweredStatus(turnId: string | null | undefined, turns: Map<string, TurnInfoResponse>) {
   if (!turnId) return 'orphaned' as const
   const status = turns.get(turnId)?.status
+  if (status !== undefined && !TURN_STATUSES.has(status)) throw new Error(`unknown turn status: ${status}`)
   return status !== undefined && ENDED.has(status) ? ('orphaned' as const) : ('running' as const)
 }
 
@@ -188,123 +465,111 @@ function unansweredStatus(turnId: string | null | undefined, turns: Map<string, 
  * nothing can close the window on the other side, where the approval is already
  * gone and the tool row has not landed yet.
  */
-/** The `auto_review` column, keyed by call id. Unreadable JSON means no
- *  verdicts rather than no transcript — a card without its reason is still a
- *  card, and throwing here would take the whole conversation with it. */
-function parseAutoReview(raw: string | null | undefined): Record<string, AutoReviewVerdict> {
-  if (!raw) return {}
-  try {
-    return JSON.parse(raw) as Record<string, AutoReviewVerdict>
-  } catch {
-    return {}
-  }
+/** The strict `auto_review` column, keyed by call id. */
+function parseAutoReview(raw: unknown): Record<string, AutoReviewVerdictInfoResponse> {
+  if (raw == null) return {}
+  const parsed = requireRecord(raw, 'message.auto_review')
+  return Object.fromEntries(
+    Object.entries(parsed).map(([callId, value]) => [
+      callId,
+      autoReviewVerdict(value, `message.auto_review.${callId}`),
+    ]),
+  )
 }
 
 export function hydrateBlocks(
-  msgs: Message[],
-  pending: PendingApprovalInfo[] = [],
-  turns: TurnRecord[] = [],
-  runs: SubAgentRunView[] = [],
-): Message[] {
+  msgs: MessageInfoResponse[],
+  pending: PendingApprovalInfoResponse[] = [],
+  turns: TurnInfoResponse[] = [],
+  runs: SubAgentRunInfoResponse[] = [],
+  planReviews: PlanReviewSummaryInfoResponse[] = [],
+): MessageViewModel[] {
+  validateSnapshotContracts(msgs, turns, runs)
   const answers = toolRowsByAssistant(msgs)
   // Consumed as they match, so two calls sharing an id cannot both claim the
   // same approval.
   const waiting = indexApprovals(pending, false)
   const bubbled = indexApprovals(pending, true)
   const delegated = indexRuns(runs)
+  const reviewedPlans = indexPlanReviews(planReviews)
   const byTurn = new Map(turns.map((t) => [t.id, t]))
 
   return msgs.map((m) => {
     if (m.role !== 'assistant') return m
 
-    if (m.schema_version >= 2) {
-      const blocks: ContentBlock[] = []
-      if (m.reasoning_content) {
-        blocks.push({ type: 'thinking', text: m.reasoning_content })
-      }
-      if (m.content) {
-        blocks.push({ type: 'text', text: m.content })
-      }
-      if (m.tool_calls) {
-        try {
-          const tcs = JSON.parse(m.tool_calls) as OpenAIToolCall[]
-          // Consumed as they match, for the same reason as the approvals.
-          const owned = [...(answers.get(m.id) ?? [])]
-          // One object for the whole row, keyed by call id: several calls on
-          // one reply are reviewed separately. Unparseable means no verdicts
-          // rather than no transcript.
-          const reviewed = parseAutoReview(m.auto_review)
-          for (const tc of tcs) {
-            const answered = owned.findIndex((tm) => tm.tool_call_id === tc.id)
-            const toolMsg = answered >= 0 ? owned.splice(answered, 1)[0] : undefined
-            const stillWaiting = toolMsg ? undefined : waiting.get(m.id)?.get(tc.id)?.shift()
-            // A question raised inside a delegated run, waiting on whoever is
-            // reading this. Independent of the card's own status: `run_agent`
-            // is still running, and that is what the card says.
-            const nested = toolMsg ? undefined : bubbled.get(m.id)?.get(tc.id)?.shift()
-            const run = delegated.get(m.id)?.get(tc.id)
-            blocks.push({
-              type: 'tool_call',
-              data: {
-                call_id: tc.id,
-                tool_name: tc.function.name,
-                arguments: tc.function.arguments,
-                // Answered, waiting, still going, or abandoned — none of which
-                // the transcript alone can tell apart.
-                status: toolMsg
-                  ? outcomeOf(toolMsg)
-                  : stillWaiting
-                    ? stillWaiting.bubbled
-                      ? 'awaiting_parent'
-                      : 'pending'
-                    : unansweredStatus(m.turn_id, byTurn),
-                result: toolMsg?.content,
-                // Left off when the answer has to come from elsewhere, so that
-                // "has an id" and "can be answered here" stay the same thing.
-                approval_id: stillWaiting?.bubbled ? undefined : stillWaiting?.approval_id,
-                retry_reason: stillWaiting?.retry_reason,
-                sub_agent: run?.spawned_turn_id
-                  ? {
-                      conversation_id: run.conversation_id,
-                      turn_id: run.spawned_turn_id,
-                      kind: run.agent_kind ?? undefined,
-                      steps: run.steps,
-                    }
-                  : undefined,
-                nested_approval: nested
-                  ? {
-                      approval_id: nested.approval_id,
-                      call_id: nested.provider_call_id,
-                      tool_name: nested.tool_name,
-                      arguments: nested.arguments,
-                      retry_reason: nested.retry_reason,
-                      sub_conversation_id: nested.sub_conversation_id,
-                    }
-                  : undefined,
-                auto_review: reviewed[tc.id],
-              },
-            })
-            if (toolMsg && outcomeOf(toolMsg) === 'completed' && tc.function.name === 'send_sticker') {
-              const sticker = stickerBlockFrom(tc.function.arguments, toolMsg.content)
-              if (sticker) blocks.push(sticker)
-            }
-          }
-        } catch {
-          /* ignore */
+    const blocks: ContentBlock[] = []
+    if (m.reasoning_content) {
+      blocks.push({ type: 'thinking', text: m.reasoning_content })
+    }
+    if (m.content) {
+      blocks.push({ type: 'text', text: m.content })
+    }
+    if (m.tool_calls) {
+      const tcs = storedCalls(m.tool_calls) ?? []
+      // Consumed as they match, for the same reason as the approvals.
+      const owned = [...(answers.get(m.id) ?? [])]
+      const reviewed = parseAutoReview(m.auto_review)
+      for (const tc of tcs) {
+        const answered = owned.findIndex((tm) => tm.tool_call_id === tc.id)
+        const toolMsg = answered >= 0 ? owned.splice(answered, 1)[0] : undefined
+        const stillWaiting = toolMsg ? undefined : waiting.get(m.id)?.get(tc.id)?.shift()
+        // A question raised inside a delegated run, waiting on whoever is
+        // reading this. Independent of the card's own status: `run_agent`
+        // is still running, and that is what the card says.
+        const nested = toolMsg ? undefined : bubbled.get(m.id)?.get(tc.id)?.shift()
+        const run = delegated.get(m.id)?.get(tc.id)
+        const planReview = reviewedPlans.get(m.id)?.get(tc.id)
+        blocks.push({
+          type: 'tool_call',
+          data: {
+            call_id: tc.id,
+            tool_name: tc.function.name,
+            arguments: tc.function.arguments,
+            // Answered, waiting, still going, or abandoned — none of which
+            // the transcript alone can tell apart.
+            status: toolMsg
+              ? outcomeOf(toolMsg)
+              : planReview
+                ? planReviewToolStatus(planReview.status)
+                : stillWaiting
+                  ? stillWaiting.bubbled
+                    ? 'awaiting_parent'
+                    : 'pending'
+                  : unansweredStatus(m.turn_id, byTurn),
+            result: toolMsg?.content,
+            // Left off when the answer has to come from elsewhere, so that
+            // "has an id" and "can be answered here" stay the same thing.
+            approval_id: stillWaiting?.bubbled ? undefined : stillWaiting?.approval_id,
+            plan_review_id: planReview?.review_id,
+            retry_reason: stillWaiting?.retry_reason ?? undefined,
+            sub_agent: run?.spawned_turn_id
+              ? {
+                  conversation_id: run.conversation_id,
+                  turn_id: run.spawned_turn_id,
+                  kind: run.agent_kind,
+                  steps: run.steps,
+                }
+              : undefined,
+            nested_approval: nested
+              ? {
+                  approval_id: nested.approval_id,
+                  call_id: nested.provider_call_id,
+                  tool_name: nested.tool_name,
+                  arguments: nested.arguments,
+                  retry_reason: nested.retry_reason ?? undefined,
+                  sub_conversation_id: nested.sub_conversation_id ?? undefined,
+                }
+              : undefined,
+            auto_review: reviewed[tc.id],
+          },
+        })
+        if (toolMsg && outcomeOf(toolMsg) === 'completed' && tc.function.name === 'send_sticker') {
+          const sticker = stickerBlockFrom(tc.function.arguments, toolMsg.content)
+          if (sticker) blocks.push(sticker)
         }
       }
-      return { ...m, _blocks: blocks.length > 0 ? blocks : undefined }
     }
-
-    if (m.tool_calls) {
-      try {
-        const blocks = JSON.parse(m.tool_calls) as ContentBlock[]
-        return { ...m, _blocks: blocks }
-      } catch {
-        /* ignore */
-      }
-    }
-    return m
+    return { ...m, _blocks: blocks.length > 0 ? blocks : undefined }
   })
 }
 
@@ -344,13 +609,13 @@ function stickerBlockFrom(
  * `reasoning_content`. That one row reorders on reload; the history above it does
  * not, which is what matters for list identity.
  */
-export function reconcileMessages(prev: Message[], next: Message[]): Message[] {
+export function reconcileMessages(prev: MessageViewModel[], next: MessageViewModel[]): MessageViewModel[] {
   if (prev.length === 0) return next
   const byId = new Map(prev.map((m) => [m.id, m]))
   let identical = prev.length === next.length
   const out = next.map((m, i) => {
     const old = byId.get(m.id)
-    if (old && sameStoredFields(old, m)) {
+    if (old && sameStoredFields(old, m) && samePlanReviewProjection(old, m)) {
       if (prev[i] !== old) identical = false
       return old
     }
@@ -358,6 +623,20 @@ export function reconcileMessages(prev: Message[], next: Message[]): Message[] {
     return old ? keepAnswered(old, m) : m
   })
   return identical ? prev : out
+}
+
+function planReviewProjection(message: MessageViewModel): string[] {
+  return (message._blocks ?? []).flatMap((block) =>
+    block.type === 'tool_call' && block.data.plan_review_id
+      ? [`${block.data.call_id}\0${block.data.plan_review_id}\0${block.data.status}`]
+      : [],
+  )
+}
+
+function samePlanReviewProjection(a: MessageViewModel, b: MessageViewModel): boolean {
+  const left = planReviewProjection(a)
+  const right = planReviewProjection(b)
+  return left.length === right.length && left.every((value, index) => value === right[index])
 }
 
 /**
@@ -381,7 +660,7 @@ export function reconcileMessages(prev: Message[], next: Message[]): Message[] {
  * once a snapshot and a live event have both put one there, and the second must
  * not claim the first's answer.
  */
-function keepAnswered(local: Message, fresh: Message): Message {
+function keepAnswered(local: MessageViewModel, fresh: MessageViewModel): MessageViewModel {
   const answered = (local._blocks ?? []).filter(
     (b): b is Extract<ContentBlock, { type: 'tool_call' }> => b.type === 'tool_call' && ANSWERED.has(b.data.status),
   )
@@ -406,9 +685,13 @@ function keepAnswered(local: Message, fresh: Message): Message {
 /** Compares every persisted column, ignoring the front-end-only `_blocks`. Keys
  *  are read off the snapshot so columns the TS type does not declare yet still
  *  count. */
-function sameStoredFields(a: Message, b: Message): boolean {
-  for (const key of Object.keys(b) as (keyof Message)[]) {
+function sameStoredFields(a: MessageViewModel, b: MessageViewModel): boolean {
+  for (const key of Object.keys(b) as (keyof MessageViewModel)[]) {
     if (key === '_blocks') continue
+    if (key === 'tool_calls' || key === 'auto_review' || key === 'context_items') {
+      if (JSON.stringify(a[key]) !== JSON.stringify(b[key])) return false
+      continue
+    }
     if (a[key] !== b[key]) return false
   }
   return true
@@ -431,7 +714,7 @@ function sameStoredFields(a: Message, b: Message): boolean {
  * and carrying enough to draw the question outside any transcript. It is
  * populated for every conversation, open or not.
  */
-export interface AttentionItem {
+interface ToolAttentionItem {
   conversationId: string
   approvalId: string
   providerCallId: string
@@ -451,6 +734,27 @@ export interface AttentionItem {
   subConversationId?: string
 }
 
+export type PlanReviewAttentionStage = 'review' | 'delivery_queued' | 'delivery_attention'
+
+interface PlanReviewAttentionItem {
+  conversationId: string
+  /** Kept as the common queue key; for this variant it is the review id, not
+   *  an ApprovalWaiter address. */
+  approvalId: string
+  reviewId: string
+  documentId: string
+  revisionId: string
+  turnId: string
+  /** Why this review is in the global queue. A submitted plan needs a review;
+   *  a settled one stays here only while its continuation has not made it back
+   *  to the agent. Kept separate from the conversation barrier because a
+   *  dispatched delivery blocks new work without asking the user to act. */
+  stage: PlanReviewAttentionStage
+  kind: 'plan_review'
+}
+
+export type AttentionItem = ToolAttentionItem | PlanReviewAttentionItem
+
 export function isAskTool(name: string): boolean {
   return name === 'ask_user' || name === 'AskUserQuestion'
 }
@@ -467,8 +771,11 @@ export interface PendingApprovalEntry {
 }
 
 export interface ConversationSession {
-  messages: Message[]
+  messages: MessageViewModel[]
   streaming: boolean
+  /** Authoritative conversation-wide plan barrier from the latest snapshot.
+   *  Unlike a review card, it does not depend on the active transcript path. */
+  planReviewBarrier: boolean
   /** Which run of a turn is streaming here, so a stop event can be told from
    *  someone else's. Null when nothing is running, and also for a turn that
    *  died before it wrote its first message — those send a stop with no id and
@@ -522,7 +829,7 @@ export interface ConversationSession {
   expandedTurns: Record<string, boolean>
   /** Steps on the path with more than one version, keyed by the version
    *  currently shown. Empty until something has been regenerated. */
-  branches: Record<string, BranchPoint>
+  branches: Record<string, BranchPointInfoResponse>
   /** True while a switch is in flight, so the pager cannot be clicked again
    *  before the new path lands. */
   switchingBranch: boolean
@@ -532,13 +839,14 @@ export interface ConversationSession {
    *  rows that look exactly like a turn that ended on a tool call, and only the
    *  backend's live register of what is running can say which. Empty until the
    *  first snapshot lands, which reads as "no opinion" everywhere. */
-  turns: TurnRecord[]
+  turns: TurnInfoResponse[]
 }
 
 function defaultSession(): ConversationSession {
   return {
     messages: [],
     streaming: false,
+    planReviewBarrier: false,
     activeTurnId: null,
     activeShellTurnId: null,
     shellResultKeys: {},
@@ -573,7 +881,47 @@ function retireAttention(state: ConversationStore, approvalId: string) {
   state.attentionOrder = state.attentionOrder.filter((id) => id !== approvalId)
 }
 
-function applyPendingApprovals(session: ConversationSession, pending: PendingApprovalInfo[]) {
+function planReviewAttentionStage(
+  review: Pick<PlanReviewSummaryInfoResponse, 'status' | 'delivery_state'>,
+): PlanReviewAttentionStage | null {
+  if (review.status === 'pending') return 'review'
+  if (review.delivery_state === 'queued') return 'delivery_queued'
+  if (review.delivery_state === 'held' || review.delivery_state === 'in_doubt') return 'delivery_attention'
+  return null
+}
+
+function applyPlanReviewAttention(
+  state: ConversationStore,
+  conversationId: string,
+  reviews: PlanReviewSummaryInfoResponse[],
+) {
+  const current = Object.values(state.attention).filter(
+    (item): item is PlanReviewAttentionItem => item.kind === 'plan_review' && item.conversationId === conversationId,
+  )
+  const required = new Set(
+    reviews.filter((review) => planReviewAttentionStage(review) !== null).map((review) => review.review_id),
+  )
+  for (const item of current) {
+    if (!required.has(item.reviewId)) retireAttention(state, item.approvalId)
+  }
+  for (const review of reviews) {
+    const stage = planReviewAttentionStage(review)
+    if (stage === null) continue
+    state.attention[review.review_id] = {
+      approvalId: review.review_id,
+      reviewId: review.review_id,
+      conversationId: review.conversation_id,
+      documentId: review.document_id,
+      revisionId: review.revision_id,
+      turnId: review.turn_id,
+      stage,
+      kind: 'plan_review',
+    }
+    if (!state.attentionOrder.includes(review.review_id)) state.attentionOrder.push(review.review_id)
+  }
+}
+
+function applyPendingApprovals(session: ConversationSession, pending: PendingApprovalInfoResponse[]) {
   session.pendingApprovals = {}
   session.pendingAsks = {}
   for (const row of pending) {
@@ -581,9 +929,9 @@ function applyPendingApprovals(session: ConversationSession, pending: PendingApp
     const entry: PendingApprovalEntry = {
       providerCallId: row.provider_call_id,
       messageId: row.assistant_message_id,
-      originCallId: row.origin_call_id,
+      originCallId: row.origin_call_id ?? undefined,
       toolName: row.tool_name,
-      retryReason: row.retry_reason,
+      retryReason: row.retry_reason ?? undefined,
     }
     if (isAskTool(row.tool_name)) session.pendingAsks[row.approval_id] = entry
     else session.pendingApprovals[row.approval_id] = entry
@@ -602,8 +950,39 @@ function dropNested(state: ConversationStore, approvalId: string) {
   }
 }
 
-function indexBranches(points: BranchPoint[]): Record<string, BranchPoint> {
-  return Object.fromEntries(points.map((p) => [p.message_id, p]))
+function indexBranches(points: BranchPointInfoResponse[]): Record<string, BranchPointInfoResponse> {
+  const entries = points.map((value, pointIndex) => {
+    const point = requireExactKeys(
+      value,
+      ['message_id', 'index', 'total', 'sibling_ids'],
+      `message tree.branches[${pointIndex}]`,
+    )
+    if (typeof point.message_id !== 'string' || !point.message_id) {
+      throw new Error(`message tree.branches[${pointIndex}].message_id is invalid`)
+    }
+    if (!Number.isInteger(point.index) || !Number.isInteger(point.total) || (point.total as number) < 2) {
+      throw new Error(`message tree.branches[${pointIndex}] has invalid pagination`)
+    }
+    const index = point.index as number
+    const total = point.total as number
+    if (!Array.isArray(point.sibling_ids) || point.sibling_ids.some((id) => typeof id !== 'string' || !id)) {
+      throw new Error(`message tree.branches[${pointIndex}].sibling_ids is invalid`)
+    }
+    if (
+      point.sibling_ids.length !== total ||
+      index < 0 ||
+      index >= total ||
+      point.sibling_ids[index] !== point.message_id ||
+      new Set(point.sibling_ids).size !== point.sibling_ids.length
+    ) {
+      throw new Error(`message tree.branches[${pointIndex}] is inconsistent`)
+    }
+    return [point.message_id, point as unknown as BranchPointInfoResponse] as const
+  })
+  if (new Set(entries.map(([messageId]) => messageId)).size !== entries.length) {
+    throw new Error('message tree.branches contains duplicate message ids')
+  }
+  return Object.fromEntries(entries)
 }
 
 /**
@@ -634,7 +1013,7 @@ function indexBranches(points: BranchPoint[]): Record<string, BranchPoint> {
  * would resolve it by guessing, and hand the wrong turn's stop the power to
  * unlock the composer.
  */
-function adoptLiveTurn(session: ConversationSession, turns: TurnRecord[]): void {
+function adoptLiveTurn(session: ConversationSession, turns: TurnInfoResponse[]): void {
   if (session.streaming) return
   // The most recent, on the off chance there is more than one. The coordinator
   // allows a conversation only one live turn, so this is belt and braces.
@@ -648,7 +1027,7 @@ function adoptLiveTurn(session: ConversationSession, turns: TurnRecord[]): void 
 // A DB snapshot can be stale while a stream is in flight: the streaming assistant
 // row still has empty content in the DB, and a just-sent user bubble may not be
 // persisted yet. Keep the local versions of those instead of overwriting them.
-function mergeSnapshot(session: ConversationSession, snapshot: Message[]): Message[] {
+function mergeSnapshot(session: ConversationSession, snapshot: MessageViewModel[]): MessageViewModel[] {
   if (!session.streaming) return snapshot
   const local = session.messages
   const snapshotIds = new Set(snapshot.map((m) => m.id))
@@ -660,7 +1039,7 @@ function mergeSnapshot(session: ConversationSession, snapshot: Message[]): Messa
     return m
   })
   const persistedUserContents = new Set(snapshot.filter((m) => m.role === 'user').map((m) => m.content))
-  let lastAssistant: Message | undefined
+  let lastAssistant: MessageViewModel | undefined
   for (let i = local.length - 1; i >= 0; i--) {
     if (local[i].role === 'assistant') {
       lastAssistant = local[i]
@@ -678,7 +1057,7 @@ function mergeSnapshot(session: ConversationSession, snapshot: Message[]): Messa
   return merged
 }
 
-function findAssistantMsg(msgs: Message[], messageId?: string): number {
+function findAssistantMsg(msgs: MessageViewModel[], messageId?: string): number {
   if (messageId) {
     const idx = msgs.findIndex((m) => m.id === messageId)
     if (idx >= 0) return idx
@@ -690,9 +1069,9 @@ function findAssistantMsg(msgs: Message[], messageId?: string): number {
 }
 
 export interface ConversationStore {
-  conversations: Conversation[]
+  conversations: ConversationInfoResponse[]
   activeId: string | null
-  projects: Project[]
+  projects: ProjectInfoResponse[]
   activeProjectId: string | null
 
   sessions: Record<string, ConversationSession>
@@ -742,7 +1121,7 @@ export interface ConversationStore {
   openConversation: (id: string) => void
   goBack: () => void
   setActiveProjectId: (id: string | null) => void
-  refreshConversations: () => Promise<Conversation[]>
+  refreshConversations: () => Promise<ConversationInfoResponse[]>
   refreshProjects: () => Promise<void>
   resyncAfterReconnect: () => Promise<void>
 
@@ -766,7 +1145,7 @@ export interface ConversationStore {
   abortTurn: (convId: string, turnId: string, error?: string) => void
   beginShellCommand: (convId: string, turnId: string) => void
   abortShellCommand: (convId: string, turnId: string, error?: string) => void
-  finishShellCommand: (result: CommandTurnOutcome) => void
+  finishShellCommand: (result: UserCommandResultResponse) => void
   handleMessageStart: (convId: string, messageId: string, turnId?: string) => void
   handleUserMessage: (convId: string, messageId: string, content: string) => void
   handleText: (convId: string, messageId: string, content: string) => void
@@ -795,6 +1174,7 @@ export interface ConversationStore {
      *  in the sub-agent's conversation, which this row never called. */
     bubble?: { parentCallId: string; subConversationId?: string },
   ) => void
+  handlePlanReviewEvent: (event: PlanReviewEventInfo) => void
   /** A delegated run now exists. Arrives as soon as its conversation is
    *  written, not when it finishes, because the card has to be able to link to
    *  it and count its steps for the whole time it is running. */
@@ -802,7 +1182,7 @@ export interface ConversationStore {
     convId: string,
     messageId: string,
     callId: string,
-    run: { conversationId: string; turnId: string; kind?: string },
+    run: { conversationId: string; turnId: string; kind: SubAgentKind },
   ) => void
   /** The nested question has an answer, or can no longer get one. Cross-
    *  conversation events cannot do this: the sub-agent's tool result is emitted
@@ -812,7 +1192,7 @@ export interface ConversationStore {
   /** A tool call the automatic reviewer decided instead of the user. Arrives
    *  for calls that were never drawn as pending — nobody was asked — so it is
    *  the only event that will ever say why one of them was refused. */
-  handleAutoReview: (convId: string, messageId: string, callId: string, verdict: AutoReviewVerdict) => void
+  handleAutoReview: (convId: string, messageId: string, callId: string, verdict: AutoReviewVerdictInfoResponse) => void
   /** The answer never landed — the backend has forgotten this request. Drops
    *  the buttons rather than leaving one that cannot work. Takes no
    *  conversation id: the approval id is a UUID, and a tool card does not know
@@ -967,7 +1347,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     // TODO: archived conversations are currently unreachable in the UI. There
     // is no archive/unarchive command either — `is_archived` is only ever read
     // while rendering. Both belong in one change.
-    const conversations: Conversation[] = await api.listConversations()
+    const conversations: ConversationInfoResponse[] = await api.listConversations()
     set({ conversations })
     return conversations
   },
@@ -994,14 +1374,14 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     // or was abandoned when its turn died — identical in the database, and told
     // apart only by the approvals and the turn records that came back with it.
     const [snap, activeShellTurnId] = await Promise.all([
-      api.conversationSnapshot(convId),
+      api.conversationSnapshot({ conversationId: convId }),
       api.activeUserShellTurn(convId),
     ])
     // Reconciled outside produce: comparing against immer drafts would pit proxy
     // references against plain ones.
     const snapshot = reconcileMessages(
       get().sessions[convId]?.messages ?? [],
-      hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns, snap.sub_agent_runs),
+      hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns, snap.sub_agent_runs, snap.plan_reviews),
     )
     let applied = false
     set(
@@ -1015,14 +1395,17 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         // just registered are not in there.
         if (session.generation !== generation) return
         session.messages = mergeSnapshot(session, snapshot)
+        session.planReviewBarrier = snap.plan_review_barrier
         session.branches = indexBranches(snap.tree.branches)
         session.turns = snap.turns
         session.activeShellTurnId = activeShellTurnId
         adoptLiveTurn(session, snap.turns)
         applyPendingApprovals(session, snap.pending_approvals)
+        applyPlanReviewAttention(state, convId, snap.plan_reviews)
         applied = true
       }),
     )
+    if (applied) usePlanReviewStore.getState().rememberSummaries(snap.plan_reviews)
     return applied
   },
 
@@ -1043,12 +1426,13 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       // actually is. Sequential rather than parallel because the second reads
       // what the first wrote — which is also what makes the window here wider
       // than anywhere else, hence the guard below.
-      await api.switchBranch(convId, messageId)
-      const snap = await api.conversationSnapshot(convId)
+      await api.switchBranch({ conversationId: convId, messageId })
+      const snap = await api.conversationSnapshot({ conversationId: convId })
       const snapshot = reconcileMessages(
         get().sessions[convId]?.messages ?? [],
-        hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns, snap.sub_agent_runs),
+        hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns, snap.sub_agent_runs, snap.plan_reviews),
       )
+      let applied = false
       set(
         produce((state: ConversationStore) => {
           const session = state.sessions[convId]
@@ -1064,13 +1448,17 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           // Replaced outright, not merged: what is local belongs to the branch
           // being left, and splicing it in would carry messages across.
           session.messages = snapshot
+          session.planReviewBarrier = snap.plan_review_barrier
           session.branches = indexBranches(snap.tree.branches)
           session.turns = snap.turns
           adoptLiveTurn(session, snap.turns)
           applyPendingApprovals(session, snap.pending_approvals)
+          applyPlanReviewAttention(state, convId, snap.plan_reviews)
           session.expandedTurns = {}
+          applied = true
         }),
       )
+      if (applied) usePlanReviewStore.getState().rememberSummaries(snap.plan_reviews)
     } finally {
       set(
         produce((state: ConversationStore) => {
@@ -1244,8 +1632,15 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           created_at: Date.now(),
           reasoning_content: null,
           rating: null,
-          schema_version: 2,
-          is_compact_summary: 0,
+          is_compact_summary: false,
+          sender_id: null,
+          parent_id: null,
+          compact_anchor_id: null,
+          source: null,
+          turn_id: null,
+          tool_outcome: null,
+          auto_review: null,
+          context_items: [],
         })
       }),
     )
@@ -1285,8 +1680,15 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           created_at: Date.now(),
           reasoning_content: null,
           rating: null,
-          schema_version: 2,
-          is_compact_summary: 0,
+          is_compact_summary: false,
+          sender_id: null,
+          parent_id: null,
+          compact_anchor_id: null,
+          source: null,
+          turn_id: null,
+          tool_outcome: null,
+          auto_review: null,
+          context_items: [],
         })
       }),
     )
@@ -1491,6 +1893,43 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     )
   },
 
+  handlePlanReviewEvent: (event) => {
+    const barrier = Object.values(usePlanReviewStore.getState().summaries).some(
+      (review) =>
+        review.conversation_id === event.conversation_id &&
+        (review.status === 'pending' ||
+          review.delivery_state === 'queued' ||
+          review.delivery_state === 'dispatched' ||
+          review.delivery_state === 'held' ||
+          review.delivery_state === 'in_doubt'),
+    )
+    set(
+      produce((state: ConversationStore) => {
+        const session = state.sessions[event.conversation_id]
+        if (session) {
+          session.generation += 1
+          session.planReviewBarrier = barrier
+        }
+        const stage = planReviewAttentionStage(event)
+        if (stage === null) {
+          retireAttention(state, event.review_id)
+          return
+        }
+        state.attention[event.review_id] = {
+          approvalId: event.review_id,
+          reviewId: event.review_id,
+          conversationId: event.conversation_id,
+          documentId: event.document_id,
+          revisionId: event.revision_id,
+          turnId: event.turn_id,
+          stage,
+          kind: 'plan_review',
+        }
+        if (!state.attentionOrder.includes(event.review_id)) state.attentionOrder.push(event.review_id)
+      }),
+    )
+  },
+
   handleSubAgentStarted: (convId, messageId, callId, run) => {
     set(
       produce((state: ConversationStore) => {
@@ -1541,6 +1980,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         // question here, and a result is the only thing that will ever retire
         // it. Matched on the pair, not the call id — provider call ids repeat.
         for (const [id, item] of Object.entries(state.attention)) {
+          if (item.kind === 'plan_review') continue
           if (item.providerCallId !== callId) continue
           if (item.conversationId === convId && item.messageId === messageId) {
             retireAttention(state, id)
@@ -1720,7 +2160,8 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     // What the answer is allowed to have an opinion about. Anything queued after
     // this line is newer than the register that is about to be read, and being
     // absent from it says nothing.
-    const asked = new Set(get().attentionOrder)
+    const current = get()
+    const asked = new Set(current.attentionOrder.filter((id) => current.attention[id]?.kind !== 'plan_review'))
     const rows = await api.allPendingApprovals().catch(() => null)
     // A queue that cannot be fetched is left as it is. Emptying it here would
     // turn one failed call into a set of questions nobody is told about, and the
@@ -1737,9 +2178,9 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             messageId: row.assistant_message_id,
             toolName: row.tool_name,
             arguments: row.arguments,
-            retryReason: row.retry_reason,
+            retryReason: row.retry_reason ?? undefined,
             kind: isAskTool(row.tool_name) ? 'ask' : 'approval',
-            subConversationId: row.sub_conversation_id,
+            subConversationId: row.sub_conversation_id ?? undefined,
           }
           state.attentionOrder.push(row.approval_id)
         }
@@ -1771,7 +2212,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   loadActiveTodos: async (convId) => {
     // Declared without an initialiser: the catch returns, so the only way to
     // reach the use below is through the successful assignment.
-    let view: TodoListView | null
+    let view: TodoInfoResponse | null
     try {
       view = await api.getActiveTodoList(convId)
     } catch {
@@ -1825,6 +2266,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         // belong to somebody else than.
         if (mine) {
           for (const [id, item] of Object.entries(state.attention)) {
+            if (item.kind === 'plan_review') continue
             if (item.conversationId === convId || item.subConversationId === convId) {
               retireAttention(state, id)
               dropNested(state, id)
@@ -1897,11 +2339,12 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     // records matter here more than anywhere — this is the moment a turn ends,
     // and how it ended is what says whether the calls above are abandoned or
     // were simply never going to be answered by anyone.
-    api.conversationSnapshot(convId).then((snap) => {
+    api.conversationSnapshot({ conversationId: convId }).then((snap) => {
       const snapshot = reconcileMessages(
         get().sessions[convId]?.messages ?? [],
-        hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns, snap.sub_agent_runs),
+        hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns, snap.sub_agent_runs, snap.plan_reviews),
       )
+      let applied = false
       set(
         produce((state: ConversationStore) => {
           const session = state.sessions[convId]
@@ -1910,11 +2353,15 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           // handler will reload, so applying the stale snapshot would clobber it.
           if (session.generation !== generation) return
           session.messages = mergeSnapshot(session, snapshot)
+          session.planReviewBarrier = snap.plan_review_barrier
           session.branches = indexBranches(snap.tree.branches)
           session.turns = snap.turns
           applyPendingApprovals(session, snap.pending_approvals)
+          applyPlanReviewAttention(state, convId, snap.plan_reviews)
+          applied = true
         }),
       )
+      if (applied) usePlanReviewStore.getState().rememberSummaries(snap.plan_reviews)
     })
   },
 
@@ -1939,12 +2386,13 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     }
     const generation = get().sessions[convId]?.generation ?? 0
     api
-      .conversationSnapshot(convId)
+      .conversationSnapshot({ conversationId: convId })
       .then((snap) => {
         const snapshot = reconcileMessages(
           get().sessions[convId]?.messages ?? [],
-          hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns, snap.sub_agent_runs),
+          hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns, snap.sub_agent_runs, snap.plan_reviews),
         )
+        let applied = false
         set(
           produce((state: ConversationStore) => {
             const session = state.sessions[convId]
@@ -1954,10 +2402,14 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             // instead of clobbering, and skip entirely if a newer turn superseded it.
             if (session.generation !== generation) return
             session.messages = mergeSnapshot(session, snapshot)
+            session.planReviewBarrier = snap.plan_review_barrier
             session.branches = indexBranches(snap.tree.branches)
             session.turns = snap.turns
+            applyPlanReviewAttention(state, convId, snap.plan_reviews)
+            applied = true
           }),
         )
+        if (applied) usePlanReviewStore.getState().rememberSummaries(snap.plan_reviews)
       })
       .catch(() => {
         set(

@@ -1,5 +1,26 @@
 import { api } from '@/api'
 import { remoteConnection } from './transport'
+import { requireExactKeys, requireRecord } from './strict-json'
+import type { UploadFileResponse } from '@/types'
+
+export function parseUploadFileResponse(value: unknown): UploadFileResponse {
+  const part = requireRecord(value, 'upload response')
+  if (part.type === 'image_url') {
+    const exact = requireExactKeys(part, ['type', 'image_url'], 'image upload response')
+    const image = requireExactKeys(exact.image_url, ['url'], 'image upload response.image_url')
+    if (typeof image.url !== 'string') throw new Error('image upload response.image_url.url must be a string')
+    return { type: 'image_url', image_url: { url: image.url } }
+  }
+  if (part.type === 'file') {
+    const exact = requireExactKeys(part, ['type', 'file'], 'file upload response')
+    const file = requireExactKeys(exact.file, ['url', 'mime_type', 'name'], 'file upload response.file')
+    if (typeof file.url !== 'string' || typeof file.mime_type !== 'string' || typeof file.name !== 'string') {
+      throw new Error('file upload response.file has invalid field types')
+    }
+    return { type: 'file', file: { url: file.url, mime_type: file.mime_type, name: file.name } }
+  }
+  throw new Error(`unknown upload response type: ${String(part.type)}`)
+}
 
 /**
  * One thing the composer is holding, in whichever of the two forms its picker
@@ -29,10 +50,10 @@ export interface Attachment {
  * keeps that: `use-send-message` reports failures with `String(err)`, and an
  * `Error` there would read as "Error: ..." for one transport and not the other.
  */
-export async function uploadAttachment(conversationId: string, attachment: Attachment): Promise<unknown> {
+export async function uploadAttachment(conversationId: string, attachment: Attachment): Promise<UploadFileResponse> {
   if (!attachment.file) {
     if (attachment.path === undefined) throw `nothing to upload for ${attachment.name}`
-    return api.uploadFile(conversationId, attachment.path)
+    return api.uploadFile({ conversationId, filePath: attachment.path })
   }
 
   if (!remoteConnection) throw `no connection to upload ${attachment.name} over`
@@ -52,8 +73,14 @@ export async function uploadAttachment(conversationId: string, attachment: Attac
     throw 'Meridian is not reachable'
   }
 
-  const body = (await response.json().catch(() => null)) as { ok?: unknown; err?: string } | null
-  if (!body) throw `unreadable upload response (${response.status})`
-  if (body.err !== undefined) throw body.err
-  return body.ok
+  const raw: unknown = await response.json().catch(() => null)
+  if (raw === null) throw `unreadable upload response (${response.status})`
+  const body = requireRecord(raw, 'upload envelope')
+  if ('err' in body) {
+    const error = requireExactKeys(body, ['err'], 'upload error envelope').err
+    if (typeof error !== 'string') throw 'upload error envelope.err must be a string'
+    throw error
+  }
+  const ok = requireExactKeys(body, ['ok'], 'upload success envelope').ok
+  return parseUploadFileResponse(ok)
 }

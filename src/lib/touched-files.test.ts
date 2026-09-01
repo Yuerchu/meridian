@@ -1,5 +1,5 @@
 import { buildFileTree, touchedFiles } from './touched-files'
-import type { ContentBlock, Message, ToolCallDisplay } from '@/types'
+import type { ContentBlock, MessageViewModel, ToolCallDisplay } from '@/types'
 
 function call(
   tool_name: string,
@@ -12,8 +12,8 @@ function call(
   }
 }
 
-const msg = (...blocks: ContentBlock[]): Message =>
-  ({ id: 'm', role: 'assistant', _blocks: blocks }) as unknown as Message
+const msg = (...blocks: ContentBlock[]): MessageViewModel =>
+  ({ id: 'm', role: 'assistant', _blocks: blocks }) as unknown as MessageViewModel
 
 describe('touchedFiles', () => {
   it('reads a path out of each file tool', () => {
@@ -60,10 +60,16 @@ describe('touchedFiles', () => {
     ).toEqual([])
   })
 
-  it('survives arguments that are not an object', () => {
+  it('rejects malformed arguments on a completed call', () => {
     const blocks = [call('write_file', { path: 'a.ts' })]
     ;(blocks[0] as { data: ToolCallDisplay }).data.arguments = '{"path": "a.ts"'
-    expect(touchedFiles([msg(...blocks)])).toEqual([])
+    expect(() => touchedFiles([msg(...blocks)])).toThrow('completed write_file arguments is invalid JSON')
+  })
+
+  it('rejects non-object arguments on a completed call', () => {
+    const blocks = [call('write_file', { path: 'a.ts' })]
+    ;(blocks[0] as { data: ToolCallDisplay }).data.arguments = '[]'
+    expect(() => touchedFiles([msg(...blocks)])).toThrow('completed write_file arguments must be an object')
   })
 
   describe('folding a file down to one verb', () => {

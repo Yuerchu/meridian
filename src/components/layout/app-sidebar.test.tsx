@@ -4,7 +4,7 @@ import { Sidebar } from '@heroui-pro/react/sidebar'
 
 import { AppSidebar } from './app-sidebar'
 import i18n from '@/i18n'
-import type { Conversation, Project } from '@/types'
+import type { ConversationInfoResponse, ProjectInfoResponse } from '@/types'
 
 const apiMocks = vi.hoisted(() => ({ exportConversation: vi.fn() }))
 const dialogMocks = vi.hoisted(() => ({ open: vi.fn(), save: vi.fn() }))
@@ -17,7 +17,7 @@ vi.mock('@tauri-apps/plugin-dialog', () => dialogMocks)
 // here is streaming, and the real one drags the whole conversation store in.
 vi.mock('./conversation-indicator', () => ({ ConversationIndicator: () => null }))
 
-function project(id: string, name: string, sourceType = 'local'): Project {
+function project(id: string, name: string, sourceType = 'local'): ProjectInfoResponse {
   return {
     id,
     name,
@@ -31,22 +31,22 @@ function project(id: string, name: string, sourceType = 'local'): Project {
   }
 }
 
-function conversation(id: string, title: string, projectId: string | null): Conversation {
+function conversation(id: string, title: string, projectId: string | null): ConversationInfoResponse {
   return {
     id,
     title,
     assistant_id: null,
-    is_pinned: 0,
-    is_archived: 0,
+    is_pinned: false,
+    is_archived: false,
     message_count: 1,
     created_at: 0,
     updated_at: 0,
     project_id: projectId,
     thinking_level: null,
-    fast_mode: 0,
+    fast_mode: false,
     mode: null,
     head_message_id: null,
-    accept_edits: 0,
+    accept_edits: false,
   }
 }
 

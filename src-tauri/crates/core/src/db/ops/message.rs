@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::message::{Message, MessageUsage, NewMessage};
+use crate::db::models::message::{MessageInsert, MessageRow, MessageUsage};
 use crate::db::schema::{conversations, messages};
 
 /// Append a message to the end of a conversation's active path.
@@ -22,11 +22,15 @@ use crate::db::schema::{conversations, messages};
 /// the active path — which the user sees as their answer vanishing. Exclusion is
 /// `turn::TurnCoordinator`'s job, one turn per conversation, and it is taken
 /// before anything here is called.
-pub fn append_message(conn: &mut SqliteConnection, new: &NewMessage, parent: Option<&str>) -> QueryResult<Message> {
+pub fn append_message(
+    conn: &mut SqliteConnection,
+    new: &MessageInsert,
+    parent: Option<&str>,
+) -> QueryResult<MessageRow> {
     let row = conn.transaction(|conn| {
         let row = insert_message(
             conn,
-            &NewMessage {
+            &MessageInsert {
                 parent_id: parent,
                 ..copy_of(new)
             },
@@ -54,7 +58,7 @@ pub fn append_message(conn: &mut SqliteConnection, new: &NewMessage, parent: Opt
 /// altogether: they are our own text, and their arguments carry file contents and
 /// command output this table has no business holding a second copy of. A
 /// compaction summary is not something anyone said.
-fn audit_copy(conn: &mut SqliteConnection, row: &Message) {
+fn audit_copy(conn: &mut SqliteConnection, row: &MessageRow) {
     // A `shell` row is a local execution record, not training/audit text. Its
     // command routinely contains tokens and passwords, while the paired output
     // already lives in the deliberately private context-item table.
@@ -80,7 +84,7 @@ fn audit_copy(conn: &mut SqliteConnection, row: &Message) {
 ///
 /// `history` is the caller's already-loaded message list for the conversation,
 /// ordered by `sort_order`.
-pub fn resolve_head(stored_head: Option<&str>, history: &[Message]) -> Option<String> {
+pub fn resolve_head(stored_head: Option<&str>, history: &[MessageRow]) -> Option<String> {
     if let Some(head) = stored_head
         && history.iter().any(|m| m.id == head && m.is_compact_summary == 0)
     {
@@ -101,9 +105,9 @@ pub fn resolve_head(stored_head: Option<&str>, history: &[Message]) -> Option<St
 /// without recomputing it from sort_order.
 pub struct ActiveContext {
     /// Root to head, in order. Excludes summaries and inactive branches.
-    pub path: Vec<Message>,
+    pub path: Vec<MessageRow>,
     /// The summary standing in front of `path`, when one applies.
-    pub summary: Option<Message>,
+    pub summary: Option<MessageRow>,
     /// Where `summary` takes over: everything before this index is represented
     /// by it. `None` when no summary applies.
     pub anchor_index: Option<usize>,
@@ -113,7 +117,7 @@ pub struct ActiveContext {
 impl ActiveContext {
     /// The messages a request actually carries: the tail from the anchor on,
     /// since anything before it is covered by the summary.
-    pub fn live(&self) -> &[Message] {
+    pub fn live(&self) -> &[MessageRow] {
         match self.anchor_index {
             Some(i) => &self.path[i..],
             None => &self.path,
@@ -124,12 +128,12 @@ impl ActiveContext {
 /// Walk the tree from `head` back to a root, then reverse.
 ///
 /// Done in Rust rather than a recursive CTE because the whole conversation is
-/// already loaded: reading a path through SQL would mean giving `Message` a
+/// already loaded: reading a path through SQL would mean giving `MessageRow` a
 /// `QueryableByName` impl and hand-writing every column's type, which is pure
 /// upkeep. The visited set guards against a cycle, which no writer can produce
 /// but corrupted data could.
-fn path_to_head(history: &[Message], head: &str) -> Vec<Message> {
-    let by_id: std::collections::HashMap<&str, &Message> = history
+fn path_to_head(history: &[MessageRow], head: &str) -> Vec<MessageRow> {
+    let by_id: std::collections::HashMap<&str, &MessageRow> = history
         .iter()
         .filter(|m| m.is_compact_summary == 0)
         .map(|m| (m.id.as_str(), m))
@@ -154,7 +158,7 @@ fn path_to_head(history: &[Message], head: &str) -> Vec<Message> {
 /// Load the active path plus whichever summary applies to it.
 ///
 /// `history` is the full conversation, ordered by `sort_order`.
-pub fn active_context(history: &[Message], stored_head: Option<&str>) -> ActiveContext {
+pub fn active_context(history: &[MessageRow], stored_head: Option<&str>) -> ActiveContext {
     let head_id = resolve_head(stored_head, history);
     // No sort_order fallback for an unlinked history. The backfill runs inside
     // the migration transaction and a failure there aborts startup, so a
@@ -170,7 +174,7 @@ pub fn active_context(history: &[Message], stored_head: Option<&str>) -> ActiveC
     // A summary applies only if its anchor is on this path — that is what stops
     // one branch from being handed another branch's summary. With several, the
     // deepest anchor wins, being the most recent compaction of this path.
-    let mut best: Option<(usize, &Message)> = None;
+    let mut best: Option<(usize, &MessageRow)> = None;
     for s in history.iter().filter(|m| m.is_compact_summary == 1) {
         let Some(anchor) = s.compact_anchor_id.as_deref() else {
             continue;
@@ -190,11 +194,11 @@ pub fn active_context(history: &[Message], stored_head: Option<&str>) -> ActiveC
     }
 }
 
-/// `NewMessage` holds borrows, so it cannot derive Clone without tying the copy
+/// `MessageInsert` holds borrows, so it cannot derive Clone without tying the copy
 /// to the original's lifetime. Rebuilding it field by field keeps `append_message`
 /// able to override `parent_id` without forcing every caller to pass it.
-fn copy_of<'a>(n: &NewMessage<'a>) -> NewMessage<'a> {
-    NewMessage {
+fn copy_of<'a>(n: &MessageInsert<'a>) -> MessageInsert<'a> {
+    MessageInsert {
         id: n.id,
         conversation_id: n.conversation_id,
         role: n.role,
@@ -226,24 +230,24 @@ fn copy_of<'a>(n: &NewMessage<'a>) -> NewMessage<'a> {
 
 /// Selected by name rather than by position.
 ///
-/// `load::<Message>` maps columns to fields in declaration order, so two
+/// `load::<MessageRow>` maps columns to fields in declaration order, so two
 /// adjacent columns of the same type are held apart by nothing but the order of
 /// two files agreeing. `messages` now has `cache_read_tokens` and
 /// `cache_write_tokens` side by side, both `Nullable<Integer>`: transposing them
 /// in either `schema.rs` or the struct would compile, pass every test, and
 /// quietly report each cache write as a read for the rest of the table's life.
 /// `as_select()` makes that a compile error instead.
-pub fn list_messages(conn: &mut SqliteConnection, conversation_id: &str) -> QueryResult<Vec<Message>> {
+pub fn list_messages(conn: &mut SqliteConnection, conversation_id: &str) -> QueryResult<Vec<MessageRow>> {
     messages::table
         .filter(messages::conversation_id.eq(conversation_id))
         .order(messages::sort_order.asc())
-        .select(Message::as_select())
+        .select(MessageRow::as_select())
         .load(conn)
 }
 
-pub fn insert_message(conn: &mut SqliteConnection, new: &NewMessage) -> QueryResult<Message> {
+pub fn insert_message(conn: &mut SqliteConnection, new: &MessageInsert) -> QueryResult<MessageRow> {
     diesel::insert_into(messages::table).values(new).execute(conn)?;
-    messages::table.find(new.id).first::<Message>(conn)
+    messages::table.find(new.id).first::<MessageRow>(conn)
 }
 
 // `update_content` was here, and went with the `update_message_content`
@@ -252,8 +256,8 @@ pub fn insert_message(conn: &mut SqliteConnection, new: &NewMessage) -> QueryRes
 // the lease that keeps a running turn from having the ground moved under it.
 
 /// One row by id. Selected by name, for the reason `list_messages` is.
-pub fn get_message(conn: &mut SqliteConnection, id: &str) -> QueryResult<Message> {
-    messages::table.find(id).select(Message::as_select()).first(conn)
+pub fn get_message(conn: &mut SqliteConnection, id: &str) -> QueryResult<MessageRow> {
+    messages::table.find(id).select(MessageRow::as_select()).first(conn)
 }
 
 pub fn update_assistant_message(
@@ -324,7 +328,12 @@ pub fn revise_tool_call(
         .load(conn)?;
 
     for (id, json) in rows {
-        let mut calls = crate::agent::tool_calls::parse_openai_tool_calls(json.as_deref());
+        let mut calls = crate::agent::tool_calls::parse_openai_tool_calls(json.as_deref()).map_err(|error| {
+            diesel::result::Error::DeserializationError(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("message {id} has invalid persisted tool_calls: {error}"),
+            )))
+        })?;
         let Some(call) = calls.iter_mut().find(|c| c.id == call_id) else {
             continue;
         };
@@ -361,8 +370,16 @@ pub fn record_auto_review(
     conn: &mut SqliteConnection,
     message_id: &str,
     call_id: &str,
-    verdict: &serde_json::Value,
+    verdict: &crate::events::AutoReviewVerdict,
 ) -> QueryResult<()> {
+    if call_id.is_empty() {
+        return Err(diesel::result::Error::SerializationError(Box::new(
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "auto-review call id must not be empty",
+            ),
+        )));
+    }
     let existing: Option<String> = messages::table
         .find(message_id)
         .select(messages::auto_review)
@@ -370,15 +387,15 @@ pub fn record_auto_review(
         .optional()?
         .flatten();
 
-    let mut all = existing
-        .as_deref()
-        .and_then(|raw| serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(raw).ok())
-        .unwrap_or_default();
+    let mut all = match existing.as_deref() {
+        Some(raw) => serde_json::from_str::<std::collections::BTreeMap<String, crate::events::AutoReviewVerdict>>(raw)
+            .map_err(|error| diesel::result::Error::DeserializationError(Box::new(error)))?,
+        None => std::collections::BTreeMap::new(),
+    };
     all.insert(call_id.to_string(), verdict.clone());
 
-    let Ok(encoded) = serde_json::to_string(&all) else {
-        return Ok(());
-    };
+    let encoded =
+        serde_json::to_string(&all).map_err(|error| diesel::result::Error::SerializationError(Box::new(error)))?;
     diesel::update(messages::table.find(message_id))
         .set(messages::auto_review.eq(Some(encoded)))
         .execute(conn)?;
@@ -474,7 +491,7 @@ pub fn delete_subtree(
         let history = messages::table
             .filter(messages::conversation_id.eq(conversation_id))
             .order(messages::sort_order.asc())
-            .load::<Message>(conn)?;
+            .load::<MessageRow>(conn)?;
         let new_head = parent
             .filter(|p| history.iter().any(|m| &m.id == p))
             .map(|p| deepest_descendant(&history, &p))
@@ -489,7 +506,7 @@ pub fn delete_subtree(
 }
 
 /// A point on the active path where the conversation was answered more than once.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone)]
 pub struct BranchPoint {
     /// The version of this step currently on the path.
     pub message_id: String,
@@ -515,7 +532,7 @@ pub struct BranchPoint {
 /// hanging off the context row while the old one hangs off its parent, the two
 /// stop being siblings, and the version pager silently disappears from a
 /// message that certainly has more than one version.
-fn effective_parent(by_id: &HashMap<&str, &Message>, m: &Message) -> Option<String> {
+fn effective_parent(by_id: &HashMap<&str, &MessageRow>, m: &MessageRow) -> Option<String> {
     let mut cursor = m.parent_id.clone();
     while let Some(id) = cursor {
         // A parent that is not in `history` is as far as this can go.
@@ -539,12 +556,12 @@ fn effective_parent(by_id: &HashMap<&str, &Message>, m: &Message) -> Option<Stri
 /// 622 rows, 10s at 2000, on every mount of the transcript and up to four times
 /// per snapshot attempt. Importing a terminal session is what made a
 /// conversation that size reachable in one click.
-pub fn branch_points(history: &[Message], path: &[Message]) -> Vec<BranchPoint> {
-    let by_id: HashMap<&str, &Message> = history.iter().map(|m| (m.id.as_str(), m)).collect();
+pub fn branch_points(history: &[MessageRow], path: &[MessageRow]) -> Vec<BranchPoint> {
+    let by_id: HashMap<&str, &MessageRow> = history.iter().map(|m| (m.id.as_str(), m)).collect();
 
     // Keyed on the effective parent, `None` for the roots — editing the opening
     // message produces a second one, which is a version of the same step.
-    let mut families: HashMap<Option<String>, Vec<&Message>> = HashMap::new();
+    let mut families: HashMap<Option<String>, Vec<&MessageRow>> = HashMap::new();
     for m in history
         .iter()
         .filter(|s| s.is_compact_summary == 0 && s.role != "context")
@@ -591,7 +608,7 @@ pub fn switch_branch(
         let history = messages::table
             .filter(messages::conversation_id.eq(conversation_id))
             .order(messages::sort_order.asc())
-            .load::<Message>(conn)?;
+            .load::<MessageRow>(conn)?;
         if !history.iter().any(|m| m.id == message_id && m.is_compact_summary == 0) {
             return Err(diesel::result::Error::NotFound);
         }
@@ -606,7 +623,7 @@ pub fn switch_branch(
 /// Follow the newest child at each step. Used when the head has to move onto a
 /// branch: "where that branch was last written" is the position a reader expects
 /// to land on.
-pub fn deepest_descendant(history: &[Message], from: &str) -> String {
+pub fn deepest_descendant(history: &[MessageRow], from: &str) -> String {
     let mut current = from.to_string();
     loop {
         let next = history
@@ -627,8 +644,8 @@ mod tests {
     use crate::db::ops::conversation::{create_conversation, get_conversation};
     use crate::db::test_db;
 
-    fn row<'a>(id: &'a str, conv: &'a str, role: &'a str) -> NewMessage<'a> {
-        NewMessage {
+    fn row<'a>(id: &'a str, conv: &'a str, role: &'a str) -> MessageInsert<'a> {
+        MessageInsert {
             id,
             conversation_id: conv,
             role,
@@ -656,6 +673,98 @@ mod tests {
             server_tool_calls: None,
             provider_name: None,
         }
+    }
+
+    fn auto_review_verdict() -> crate::events::AutoReviewVerdict {
+        crate::events::AutoReviewVerdict {
+            outcome: crate::events::AutoReviewOutcome::Allow,
+            risk: None,
+            authorization: None,
+            rationale: None,
+            stage: None,
+            model: None,
+            evidence: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn record_auto_review_rejects_corrupt_stored_json_without_overwriting_it() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        append_message(&mut conn, &row("m1", "c1", "assistant"), None).unwrap();
+        diesel::update(messages::table.find("m1"))
+            .set(messages::auto_review.eq(Some("not json")))
+            .execute(&mut conn)
+            .unwrap();
+
+        let result = record_auto_review(&mut conn, "m1", "call-1", &auto_review_verdict());
+
+        assert!(result.is_err());
+        let stored = get_message(&mut conn, "m1").unwrap();
+        assert_eq!(stored.auto_review.as_deref(), Some("not json"));
+    }
+
+    #[test]
+    fn record_auto_review_rejects_noncanonical_nested_verdicts_without_overwriting_them() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        append_message(&mut conn, &row("m1", "c1", "assistant"), None).unwrap();
+
+        for raw in [
+            r#"{"old":{"outcome":"allow"}}"#,
+            r#"{"old":{"outcome":"allow","risk":null,"authorization":null,"rationale":null,"stage":null,"model":null,"evidence":[],"future":true}}"#,
+        ] {
+            diesel::update(messages::table.find("m1"))
+                .set(messages::auto_review.eq(Some(raw)))
+                .execute(&mut conn)
+                .unwrap();
+
+            let result = record_auto_review(&mut conn, "m1", "call-1", &auto_review_verdict());
+
+            assert!(result.is_err());
+            let stored = get_message(&mut conn, "m1").unwrap();
+            assert_eq!(stored.auto_review.as_deref(), Some(raw));
+        }
+    }
+
+    #[test]
+    fn record_auto_review_writes_the_typed_required_null_shape() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        append_message(&mut conn, &row("m1", "c1", "assistant"), None).unwrap();
+
+        record_auto_review(&mut conn, "m1", "call-1", &auto_review_verdict()).unwrap();
+
+        let stored = get_message(&mut conn, "m1").unwrap().auto_review.unwrap();
+        let value: serde_json::Value = serde_json::from_str(&stored).unwrap();
+        assert_eq!(
+            value["call-1"],
+            serde_json::json!({
+                "outcome": "allow",
+                "risk": null,
+                "authorization": null,
+                "rationale": null,
+                "stage": null,
+                "model": null,
+                "evidence": [],
+            })
+        );
+    }
+
+    #[test]
+    fn record_auto_review_rejects_an_empty_call_id() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        append_message(&mut conn, &row("m1", "c1", "assistant"), None).unwrap();
+
+        let result = record_auto_review(&mut conn, "m1", "", &auto_review_verdict());
+
+        assert!(result.is_err());
+        assert!(get_message(&mut conn, "m1").unwrap().auto_review.is_none());
     }
 
     /// Editing a message on a turn that also froze a memory block must still
@@ -724,12 +833,12 @@ mod tests {
     /// `copy_of` is written by hand, field by field, with no `..` spread to
     /// carry anything along — that is what lets `append_message` override
     /// `parent_id` without every caller having to pass one. The cost is that a
-    /// column added to `NewMessage` produces a missing-field error inside
+    /// column added to `MessageInsert` produces a missing-field error inside
     /// `copy_of`, and the shortest way to silence that error is to write
     /// `None`. Which compiles, and drops the value on every insert, and breaks
     /// no other test in the suite.
     ///
-    /// The `Message` below is destructured rather than read field by field on
+    /// The `MessageRow` below is destructured rather than read field by field on
     /// purpose. An exhaustive pattern with no `..` fails to compile when a
     /// column is added, so this test cannot silently stop covering the table —
     /// which is the only property that makes it worth having.
@@ -746,7 +855,7 @@ mod tests {
         create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
         let root = append_message(&mut conn, &row("root", "c1", "user"), None).unwrap();
 
-        let full = NewMessage {
+        let full = MessageInsert {
             id: "m1",
             conversation_id: "c1",
             role: "assistant",
@@ -789,7 +898,7 @@ mod tests {
             .find(|m| m.id == "m1")
             .expect("the row that was just written");
 
-        let Message {
+        let MessageRow {
             id,
             conversation_id,
             role,

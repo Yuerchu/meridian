@@ -6,12 +6,12 @@ import { PromptInput } from '@heroui-pro/react/prompt-input'
 
 import { isCoarsePointer } from '@/hooks/use-coarse-pointer'
 import { queueState } from '@/hooks/use-prompt-queue'
-import type { QueueDelivery, QueuedPrompt } from '@/types'
+import type { QueueDelivery, QueuedPromptInfoResponse } from '@/types'
 import { TodoBarView } from './todo-bar'
 import type { TodoArgs } from './todo-list'
 
 interface PromptQueueProps {
-  items: QueuedPrompt[]
+  items: QueuedPromptInfoResponse[]
   /** Checklist the turn is currently working through, if any. */
   currentTodos?: TodoArgs | null
   /** The turn is still running, so a generic current row is worth drawing when
@@ -20,7 +20,7 @@ interface PromptQueueProps {
   /** The whole queue is stopped, waiting for a person. */
   held: boolean
   onRemove: (id: string) => void
-  onReorder: (next: QueuedPrompt[]) => void
+  onReorder: (next: QueuedPromptInfoResponse[]) => void
   onSetDelivery: (id: string, delivery: QueueDelivery) => void
   onRelease: () => void
 }
@@ -86,7 +86,7 @@ export function PromptQueue({
     </div>
   ) : null
 
-  const movable = (item: QueuedPrompt) => {
+  const movable = (item: QueuedPromptInfoResponse) => {
     const state = queueState(item)
     return state !== 'in_doubt' && state !== 'settled' && state !== 'held'
   }

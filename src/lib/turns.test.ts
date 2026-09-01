@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { buildTurns, formatDuration, hasCollapsibleProcess, markQueued } from '@/lib/turns'
 import { reconcileTurns } from '@/hooks/use-turns'
-import type { ContentBlock, Message, ToolCallDisplay } from '@/types'
+import type { ContentBlock, MessageViewModel, ToolCallDisplay } from '@/types'
 
 let seq = 0
 
-function msg(role: Message['role'], over: Partial<Message> = {}): Message {
+function msg(role: MessageViewModel['role'], over: Partial<MessageViewModel> = {}): MessageViewModel {
   seq += 1
   return {
     id: `m${seq}`,
@@ -22,8 +22,18 @@ function msg(role: Message['role'], over: Partial<Message> = {}): Message {
     created_at: 0,
     reasoning_content: null,
     rating: null,
-    schema_version: 2,
-    is_compact_summary: 0,
+    is_compact_summary: false,
+    cache_read_tokens: null,
+    cache_write_tokens: null,
+    provider_name: null,
+    sender_id: null,
+    parent_id: null,
+    compact_anchor_id: null,
+    source: null,
+    turn_id: null,
+    tool_outcome: null,
+    auto_review: null,
+    context_items: [],
     ...over,
   }
 }

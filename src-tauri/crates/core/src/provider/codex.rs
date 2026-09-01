@@ -65,8 +65,8 @@ impl CodexProvider {
         tools: Option<&[ToolDefinition]>,
         params: &ChatParams,
         stream: bool,
-    ) -> Request {
-        let (instructions, input) = serialize_codex_input(messages, &params.model);
+    ) -> Result<Request, ProviderError> {
+        let (instructions, input) = serialize_codex_input(messages, &params.model)?;
 
         let mut body = serde_json::json!({
             "model": params.model,
@@ -136,7 +136,7 @@ impl CodexProvider {
             insert_header(&mut req, "x-openai-fedramp", "true");
         }
         req.body = Some(RequestBody::Json(body));
-        req
+        Ok(req)
     }
 
     /// Send, and if the session was refused once, renew it and send again.
@@ -186,7 +186,10 @@ fn to_provider_error(e: AuthError) -> ProviderError {
 ///
 /// Forked from `openai_responses::serialize_responses_input`; the difference is
 /// the reasoning, which that one has no reason to carry.
-fn serialize_codex_input(messages: &[ChatMessage], model: &str) -> (Option<String>, Vec<serde_json::Value>) {
+fn serialize_codex_input(
+    messages: &[ChatMessage],
+    model: &str,
+) -> Result<(Option<String>, Vec<serde_json::Value>), ProviderError> {
     let mut instructions: Option<String> = None;
     let mut input = Vec::new();
 
@@ -202,7 +205,8 @@ fn serialize_codex_input(messages: &[ChatMessage], model: &str) -> (Option<Strin
             "user" => {
                 // Responses input items have no `name` field, so the speaker
                 // goes in as a prefix.
-                let rendered = super::render_message(m, super::SenderRendering::Prefix);
+                let rendered =
+                    super::render_message(m, super::SenderRendering::Prefix).map_err(ProviderError::Parse)?;
                 input.push(serde_json::json!({
                     "type": "message",
                     "role": "user",
@@ -287,7 +291,7 @@ fn serialize_codex_input(messages: &[ChatMessage], model: &str) -> (Option<Strin
         }
     }
 
-    (instructions, input)
+    Ok((instructions, input))
 }
 
 /// Turn a completed `reasoning` output item into state to be stored.
@@ -330,7 +334,7 @@ impl ChatProvider for CodexProvider {
         let resp = self
             .send(|bearer| {
                 let req = self.build_request(&bearer, &messages, Some(&tools), &params, true);
-                async move { self.transport.stream(req).await.map_err(ProviderError::from) }
+                async move { self.transport.stream(req?).await.map_err(ProviderError::from) }
             })
             .await?;
 
@@ -365,7 +369,7 @@ impl ChatProvider for CodexProvider {
         let resp = self
             .send(|bearer| {
                 let req = self.build_request(&bearer, &messages, None, &params, false);
-                async move { self.transport.execute(req).await.map_err(ProviderError::from) }
+                async move { self.transport.execute(req?).await.map_err(ProviderError::from) }
             })
             .await?;
 
@@ -458,7 +462,7 @@ mod tests {
             "done",
             Some(reasoning_state("gpt-5.6", vec![(2, "second"), (0, "first")])),
         )];
-        let (_, input) = serialize_codex_input(&messages, "gpt-5.6");
+        let (_, input) = serialize_codex_input(&messages, "gpt-5.6").unwrap();
 
         let kinds: Vec<_> = input.iter().map(|i| i["type"].as_str().unwrap()).collect();
         assert_eq!(kinds, vec!["reasoning", "message", "reasoning"]);
@@ -486,7 +490,7 @@ mod tests {
                 arguments: "{}".into(),
             },
         ]);
-        let (_, input) = serialize_codex_input(&[msg], "gpt-5.6");
+        let (_, input) = serialize_codex_input(&[msg], "gpt-5.6").unwrap();
 
         let kinds: Vec<_> = input.iter().map(|i| i["type"].as_str().unwrap()).collect();
         assert_eq!(kinds, vec!["reasoning", "function_call", "reasoning", "function_call"]);
@@ -501,7 +505,7 @@ mod tests {
     #[test]
     fn a_position_past_the_sequence_appends_rather_than_losing_the_item() {
         let messages = vec![assistant("done", Some(reasoning_state("gpt-5.6", vec![(7, "stray")])))];
-        let (_, input) = serialize_codex_input(&messages, "gpt-5.6");
+        let (_, input) = serialize_codex_input(&messages, "gpt-5.6").unwrap();
         let kinds: Vec<_> = input.iter().map(|i| i["type"].as_str().unwrap()).collect();
         assert_eq!(kinds, vec!["message", "reasoning"]);
     }
@@ -511,7 +515,7 @@ mod tests {
     #[test]
     fn another_models_reasoning_is_left_out() {
         let messages = vec![assistant("done", Some(reasoning_state("gpt-5.4", vec![(0, "old")])))];
-        let (_, input) = serialize_codex_input(&messages, "gpt-5.6");
+        let (_, input) = serialize_codex_input(&messages, "gpt-5.6").unwrap();
         assert_eq!(input.len(), 1);
         assert_eq!(input[0]["type"], "message");
     }
@@ -527,7 +531,7 @@ mod tests {
                 item_json: "{not json".into(),
             });
         }
-        let (_, input) = serialize_codex_input(&[assistant("done", Some(state))], "gpt-5.6");
+        let (_, input) = serialize_codex_input(&[assistant("done", Some(state))], "gpt-5.6").unwrap();
         let kinds: Vec<_> = input.iter().map(|i| i["type"].as_str().unwrap()).collect();
         assert_eq!(kinds, vec!["reasoning", "message"]);
     }
@@ -544,7 +548,9 @@ mod tests {
             fast: true,
             ..Default::default()
         };
-        let req = provider.build_request(&test_bearer(false), &[], None, &params, true);
+        let req = provider
+            .build_request(&test_bearer(false), &[], None, &params, true)
+            .unwrap();
         let Some(RequestBody::Json(body)) = req.body else {
             panic!("expected a JSON body")
         };
@@ -563,7 +569,9 @@ mod tests {
     #[test]
     fn the_request_identifies_this_app_and_the_account() {
         let provider = CodexProvider::new("https://example.invalid", test_manager());
-        let req = provider.build_request(&test_bearer(false), &[], None, &ChatParams::default(), true);
+        let req = provider
+            .build_request(&test_bearer(false), &[], None, &ChatParams::default(), true)
+            .unwrap();
 
         assert_eq!(req.headers["chatgpt-account-id"], "acct-1");
         assert_eq!(req.headers["originator"], ORIGINATOR);
@@ -579,7 +587,9 @@ mod tests {
     #[test]
     fn a_fedramp_workspace_is_routed_with_a_header() {
         let provider = CodexProvider::new("https://example.invalid", test_manager());
-        let req = provider.build_request(&test_bearer(true), &[], None, &ChatParams::default(), true);
+        let req = provider
+            .build_request(&test_bearer(true), &[], None, &ChatParams::default(), true)
+            .unwrap();
         assert_eq!(req.headers["x-openai-fedramp"], "true");
     }
 
@@ -588,8 +598,12 @@ mod tests {
     #[test]
     fn the_session_is_stable_across_requests() {
         let provider = CodexProvider::new("https://example.invalid", test_manager());
-        let first = provider.build_request(&test_bearer(false), &[], None, &ChatParams::default(), true);
-        let second = provider.build_request(&test_bearer(false), &[], None, &ChatParams::default(), true);
+        let first = provider
+            .build_request(&test_bearer(false), &[], None, &ChatParams::default(), true)
+            .unwrap();
+        let second = provider
+            .build_request(&test_bearer(false), &[], None, &ChatParams::default(), true)
+            .unwrap();
         assert_eq!(first.headers["session_id"], second.headers["session_id"]);
     }
 

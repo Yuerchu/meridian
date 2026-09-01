@@ -5,7 +5,7 @@ use crate::db::schema::conversations;
 
 #[derive(Debug, Clone, Queryable, Selectable, Serialize)]
 #[diesel(table_name = conversations)]
-pub struct Conversation {
+pub struct ConversationRow {
     pub id: String,
     pub title: Option<String>,
     pub assistant_id: Option<String>,
@@ -44,8 +44,8 @@ pub struct Conversation {
     /// because follow-up chat in here writes turns too and "the latest one"
     /// would let an unrelated conversation decide what the card says.
     pub spawned_turn_id: Option<String>,
-    /// `explore` or `agent`. Unknown values degrade rather than fail, like every
-    /// other enum stored here.
+    /// A closed first-party conversation kind. Persistence keeps the raw text,
+    /// but every public response parses it and rejects unknown values.
     pub agent_kind: Option<String>,
     /// What the sub-agent actually ran on. `None` for ordinary conversations,
     /// whose model lives in frontend state and never reaches the database. Set
@@ -56,7 +56,7 @@ pub struct Conversation {
     pub agent_model_id: Option<String>,
 }
 
-impl Conversation {
+impl ConversationRow {
     /// The assistant this conversation actually runs on.
     ///
     /// An ordinary conversation runs on whatever the assistant says; its model
@@ -73,8 +73,8 @@ impl Conversation {
     /// here would make the swap look done while changing nothing that matters.
     pub fn pin_model(
         &self,
-        assistant: Option<crate::db::models::assistant::Assistant>,
-    ) -> Option<crate::db::models::assistant::Assistant> {
+        assistant: Option<crate::db::models::assistant::AssistantRow>,
+    ) -> Option<crate::db::models::assistant::AssistantRow> {
         let (provider, model) = match (&self.agent_provider_id, &self.agent_model_id) {
             (Some(p), Some(m)) if !p.trim().is_empty() && !m.trim().is_empty() => (p, m),
             _ => return assistant,
@@ -93,7 +93,7 @@ impl Conversation {
 /// The turn is carried whole rather than reduced to a status string because the
 /// coordinator has the last word on whether a `running` row is still running,
 /// and that judgement belongs to the command layer — the same split
-/// `TurnView` makes.
+/// `TurnInfoResponse` makes.
 #[derive(Debug, Clone)]
 pub struct SubAgentRun {
     pub conversation_id: String,
@@ -104,16 +104,16 @@ pub struct SubAgentRun {
     pub spawned_turn_id: Option<String>,
     pub agent_kind: Option<String>,
     pub title: Option<String>,
-    /// Assistant iterations in the delegated run — how many times the model was
+    /// AssistantRow iterations in the delegated run — how many times the model was
     /// asked, not how many tools it called.
     pub steps: i64,
     /// The row named by `spawned_turn_id`, if it is still there.
-    pub turn: Option<crate::db::models::turn::Turn>,
+    pub turn: Option<crate::db::models::turn::TurnRow>,
 }
 
 #[derive(Debug, Default, Insertable)]
 #[diesel(table_name = conversations)]
-pub struct NewConversation<'a> {
+pub struct ConversationInsert<'a> {
     pub id: &'a str,
     pub title: Option<&'a str>,
     pub assistant_id: Option<&'a str>,

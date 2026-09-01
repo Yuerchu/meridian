@@ -1,7 +1,8 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 
 import type { InitialTurnDraft } from './conversation-draft'
-import type { CommandTurnOutcome, Message } from '@/types'
+import type { MessageViewModel, UserCommandResultResponse, UserCommandRunRequest } from '@/types'
+import { usePlanReviewStore } from '@/stores/plan-review-store'
 import { ChatView } from './chat-view'
 
 const mocks = vi.hoisted(() => {
@@ -13,8 +14,9 @@ const mocks = vi.hoisted(() => {
   const enqueue = vi.fn(() => Promise.resolve({}))
   const sessions = {
     'conversation-1': {
-      messages: [] as Message[],
+      messages: [] as MessageViewModel[],
       streaming: false,
+      planReviewBarrier: false,
       activeShellTurnId: null as string | null,
       shellResultKeys: {},
       compacting: false,
@@ -27,7 +29,7 @@ const mocks = vi.hoisted(() => {
   const abortShellCommand = vi.fn((conversationId: 'conversation-1', turnId: string) => {
     if (sessions[conversationId].activeShellTurnId === turnId) sessions[conversationId].activeShellTurnId = null
   })
-  const finishShellCommand = vi.fn((result: CommandTurnOutcome) => {
+  const finishShellCommand = vi.fn((result: UserCommandResultResponse) => {
     if (sessions['conversation-1'].activeShellTurnId === result.turn_id) {
       sessions['conversation-1'].activeShellTurnId = null
     }
@@ -78,6 +80,7 @@ const mocks = vi.hoisted(() => {
     setError: vi.fn(),
     setCompacting: vi.fn(),
     inputBarProps: vi.fn(),
+    starterProps: vi.fn(),
   }
 })
 
@@ -140,7 +143,9 @@ vi.mock('@/hooks/use-prompt-queue', () => ({
 vi.mock('@/hooks/use-sender-names', () => ({ useSenderNames: () => ({}) }))
 vi.mock('./emoji-renderer', () => ({ useEmojiMap: () => ({}) }))
 
-vi.mock('./chat-transcript', () => ({ ChatTranscript: () => <div /> }))
+vi.mock('./chat-transcript', () => ({
+  ChatTranscript: ({ emptyState }: { emptyState?: React.ReactNode }) => <div>{emptyState}</div>,
+}))
 vi.mock('./compacted-region', () => ({ CompactedRegion: () => <div /> }))
 vi.mock('./transcript-status', () => ({ TranscriptStatus: () => <div /> }))
 vi.mock('./input-bar', () => ({
@@ -151,7 +156,12 @@ vi.mock('./input-bar', () => ({
 }))
 vi.mock('./prompt-queue', () => ({ PromptQueue: () => <div /> }))
 vi.mock('./todo-bar', () => ({ TodoBar: () => <div /> }))
-vi.mock('./empty-state', () => ({ StarterPrompts: () => <div /> }))
+vi.mock('./empty-state', () => ({
+  StarterPrompts: (props: unknown) => {
+    mocks.starterProps(props)
+    return <div />
+  },
+}))
 
 interface CapturedInputBarProps {
   value: string
@@ -161,10 +171,20 @@ interface CapturedInputBarProps {
   streaming: boolean
 }
 
+interface CapturedStarterProps {
+  disabled: boolean
+}
+
 function latestInputBar(): CapturedInputBarProps {
   const call = mocks.inputBarProps.mock.calls.at(-1)
   if (!call) throw new Error('InputBar has not rendered')
   return call[0] as CapturedInputBarProps
+}
+
+function latestStarterPrompts(): CapturedStarterProps {
+  const call = mocks.starterProps.mock.calls.at(-1)
+  if (!call) throw new Error('StarterPrompts has not rendered')
+  return call[0] as CapturedStarterProps
 }
 
 describe('ChatView initial draft', () => {
@@ -173,8 +193,76 @@ describe('ChatView initial draft', () => {
     mocks.loadMessages.mockResolvedValue(true)
     mocks.sessions['conversation-1'].messages = []
     mocks.sessions['conversation-1'].streaming = false
+    mocks.sessions['conversation-1'].planReviewBarrier = false
     mocks.sessions['conversation-1'].activeShellTurnId = null
     mocks.confirm.mockResolvedValue(false)
+    usePlanReviewStore.setState({ activeReviewId: null, summaries: {} })
+  })
+
+  it.each([
+    ['pending review', 'pending', null],
+    ['queued continuation', 'approved', 'queued'],
+    ['held continuation', 'changes_requested', 'held'],
+    ['in-doubt continuation', 'approved', 'in_doubt'],
+  ] as const)('blocks the composer and starter prompts for a durable %s barrier', (_label, status, deliveryState) => {
+    usePlanReviewStore.setState({
+      summaries: {
+        'review-1': {
+          review_id: 'review-1',
+          conversation_id: 'conversation-1',
+          document_id: 'document-1',
+          revision_id: 'revision-1',
+          assistant_message_id: 'message-1',
+          provider_call_id: 'call-1',
+          turn_id: 'turn-1',
+          status,
+          delivery_state: deliveryState,
+          lock_version: 0,
+        },
+      },
+    })
+
+    render(<ChatView conversationId="conversation-1" />)
+
+    expect(latestInputBar().disabled).toBe(true)
+    expect(latestInputBar().streaming).toBe(false)
+    expect(latestStarterPrompts().disabled).toBe(true)
+    expect(screen.getByRole('button', { name: /Review plan|审阅计划|chat.plan.review/ })).toBeInTheDocument()
+  })
+
+  it('unblocks after continuation delivery is acknowledged', () => {
+    usePlanReviewStore.setState({
+      summaries: {
+        'review-1': {
+          review_id: 'review-1',
+          conversation_id: 'conversation-1',
+          document_id: 'document-1',
+          revision_id: 'revision-1',
+          assistant_message_id: 'message-1',
+          provider_call_id: 'call-1',
+          turn_id: 'turn-1',
+          status: 'approved',
+          delivery_state: 'acknowledged',
+          lock_version: 0,
+        },
+      },
+    })
+
+    render(<ChatView conversationId="conversation-1" />)
+
+    expect(latestInputBar().disabled).toBe(false)
+    expect(latestStarterPrompts().disabled).toBe(false)
+  })
+
+  it('blocks from the conversation-wide snapshot barrier without relying on an exit-plan card', () => {
+    mocks.sessions['conversation-1'].planReviewBarrier = true
+
+    render(<ChatView conversationId="conversation-1" />)
+
+    expect(latestInputBar().disabled).toBe(true)
+    expect(latestStarterPrompts().disabled).toBe(true)
+    expect(screen.getByText(/Review the pending plan|chat.plan.reviewBlocked/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Review plan|chat.plan.review/ })).not.toBeInTheDocument()
   })
 
   it('delivers the complete first turn exactly once', async () => {
@@ -322,7 +410,9 @@ describe('ChatView composer dispatch', () => {
     await waitFor(() => expect(latestInputBar().value).toBe('Review @src/api.ts'))
     act(() => latestInputBar().onSubmit())
 
-    expect(mocks.enqueue).toHaveBeenCalledWith('Review @src/api.ts', 'follow_up', [{ path: 'src/api.ts' }])
+    expect(mocks.enqueue).toHaveBeenCalledWith('Review @src/api.ts', 'follow_up', [
+      { path: 'src/api.ts', lineStart: null, lineEnd: null },
+    ])
   })
 
   it('guards an awaited slash command and preserves a newer draft', async () => {
@@ -353,7 +443,7 @@ describe('ChatView composer dispatch', () => {
   })
 
   it('runs a shell command once and identifies the command and cwd in the retry confirmation', async () => {
-    const sandboxDenied: CommandTurnOutcome = {
+    const sandboxDenied: UserCommandResultResponse = {
       conversation_id: 'conversation-1',
       turn_id: 'turn-shell',
       message_id: 'message-shell',
@@ -383,7 +473,12 @@ describe('ChatView composer dispatch', () => {
 
     await waitFor(() => expect(mocks.confirm).toHaveBeenCalledTimes(1))
     expect(mocks.runUserCommand).toHaveBeenCalledTimes(1)
-    expect(mocks.runUserCommand).toHaveBeenCalledWith('conversation-1', 'echo hello', expect.any(String))
+    expect(mocks.runUserCommand).toHaveBeenCalledWith({
+      conversationId: 'conversation-1',
+      command: 'echo hello',
+      turnId: expect.any(String),
+      retryWithoutSandbox: null,
+    })
 
     render(mocks.confirm.mock.calls[0][0].body)
     expect(screen.getByText('echo hello')).toBeInTheDocument()
@@ -408,23 +503,23 @@ describe('ChatView composer dispatch', () => {
     )
     await waitFor(() => expect(mocks.loadMessages).toHaveBeenCalledTimes(2))
 
-    const firstTurnId = mocks.runUserCommand.mock.calls[0][2]
+    const firstTurnId = mocks.runUserCommand.mock.calls[0][0].turnId
     act(() => latestInputBar().onSubmit())
 
     await waitFor(() => expect(mocks.runUserCommand).toHaveBeenCalledTimes(2))
-    expect(mocks.runUserCommand.mock.calls[1][2]).toBe(firstTurnId)
+    expect(mocks.runUserCommand.mock.calls[1][0].turnId).toBe(firstTurnId)
   })
 
   it('does not restore a runnable draft when a lost response left a durable shell row', async () => {
     let attemptedTurn = ''
-    mocks.runUserCommand.mockImplementation((_conversationId, _command, turnId: string) => {
-      attemptedTurn = turnId
+    mocks.runUserCommand.mockImplementation((request: UserCommandRunRequest) => {
+      attemptedTurn = request.turnId
       return Promise.reject(new Error('response lost'))
     })
     render(<ChatView conversationId="conversation-1" />)
     await waitFor(() => expect(mocks.inputBarProps).toHaveBeenCalled())
     mocks.loadMessages.mockImplementation(async () => {
-      mocks.sessions['conversation-1'].messages = [{ source: 'shell', turn_id: attemptedTurn } as Message]
+      mocks.sessions['conversation-1'].messages = [{ source: 'shell', turn_id: attemptedTurn } as MessageViewModel]
       return true
     })
 

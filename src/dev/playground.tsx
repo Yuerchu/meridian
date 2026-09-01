@@ -59,12 +59,12 @@ import { useAppTheme } from '@/lib/theme'
 import type {
   ChatMode,
   ContentBlock,
-  Conversation,
-  Message,
-  Project,
-  ProviderCapabilities,
+  ConversationInfoResponse,
+  MessageViewModel,
+  ProjectInfoResponse,
+  ProviderCapabilitiesInfoResponse,
   ThinkingLevel,
-  QueuedPrompt,
+  QueuedPromptInfoResponse,
   ToolCallDisplay,
 } from '@/types'
 
@@ -89,17 +89,26 @@ function tool(over: Partial<ToolCallDisplay> & Pick<ToolCallDisplay, 'tool_name'
   }
 }
 
-function caps(over: Partial<ProviderCapabilities> = {}): ProviderCapabilities {
+function caps(over: Partial<ProviderCapabilitiesInfoResponse> = {}): ProviderCapabilitiesInfoResponse {
   return {
     supports_tools: true,
     supports_streaming_tools: true,
     supports_thinking: true,
+    supports_thinking_off: true,
     supports_images: true,
     max_context_tokens: 272_000,
     max_output_tokens: 128_000,
+    supports_pdf: true,
+    supports_temperature: true,
+    supports_top_p: true,
+    max_temperature: 2,
+    thinking_style: 'effort_only',
     supported_efforts: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
     default_effort: 'medium',
     supports_fast: false,
+    supports_verbosity: false,
+    default_verbosity: null,
+    server_tools: [],
     ...over,
   }
 }
@@ -151,7 +160,7 @@ const MANY_STEPS: TurnStep[] = Array.from({ length: 40 }, (_, i) =>
 /** Fixed so the relative timestamps below stay on "刚刚" between reloads. */
 const PG_NOW = Date.now()
 
-function msg(over: Partial<Message> & Pick<Message, 'id' | 'role' | 'content'>): Message {
+function msg(over: Partial<MessageViewModel> & Pick<MessageViewModel, 'id' | 'role' | 'content'>): MessageViewModel {
   return {
     conversation_id: 'pg',
     provider_id: 'openai',
@@ -167,8 +176,15 @@ function msg(over: Partial<Message> & Pick<Message, 'id' | 'role' | 'content'>):
     created_at: PG_NOW,
     reasoning_content: null,
     rating: null,
-    schema_version: 1,
-    is_compact_summary: 0,
+    is_compact_summary: false,
+    sender_id: null,
+    parent_id: null,
+    compact_anchor_id: null,
+    source: null,
+    turn_id: null,
+    tool_outcome: null,
+    auto_review: null,
+    context_items: [],
     ...over,
   }
 }
@@ -460,7 +476,7 @@ const todoStep = (content: string, activeForm: string, status: string) => ({
   status,
 })
 
-function queued(id: string, delivery: QueuedPrompt['delivery'], content: string): QueuedPrompt {
+function queued(id: string, delivery: QueuedPromptInfoResponse['delivery'], content: string): QueuedPromptInfoResponse {
   return {
     id,
     conversation_id: 'pg',
@@ -1303,33 +1319,37 @@ const CHANGED_FILES: TouchedFile[] = [
   { path: 'README.md', op: 'modify', count: 1 },
 ]
 
-function paletteRow(id: string, title: string | null, over: Partial<Conversation> = {}): Conversation {
+function paletteRow(
+  id: string,
+  title: string | null,
+  over: Partial<ConversationInfoResponse> = {},
+): ConversationInfoResponse {
   return {
     id,
     title,
     project_id: null,
-    is_pinned: 0,
-    is_archived: 0,
+    is_pinned: false,
+    is_archived: false,
     message_count: 3,
     created_at: 0,
     updated_at: 0,
     assistant_id: null,
     thinking_level: null,
-    fast_mode: 0,
+    fast_mode: false,
     mode: null,
     head_message_id: null,
     ...over,
-  } as Conversation
+  } as ConversationInfoResponse
 }
 
-const PALETTE_ROWS: Conversation[] = [
+const PALETTE_ROWS: ConversationInfoResponse[] = [
   paletteRow('a', '英语学习入门指南'),
   paletteRow('b', null),
   paletteRow('c', '重构 tauri 命令注册表并把所有工具调用迁移到新的审批模型上'),
-  paletteRow('d', '已归档的会话', { is_archived: 1 }),
+  paletteRow('d', '已归档的会话', { is_archived: true }),
 ]
 
-const PALETTE_PROJECTS: Project[] = [
+const PALETTE_PROJECTS: ProjectInfoResponse[] = [
   {
     id: 'p1',
     name: 'meridian',

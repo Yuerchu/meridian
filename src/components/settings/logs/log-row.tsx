@@ -4,7 +4,7 @@ import { Check, Copy } from '@gravity-ui/icons'
 import { Button } from '@heroui/react'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { cn } from '@/lib/utils'
-import type { LogEntry } from '@/types'
+import type { LogEntryInfoResponse } from '@/types'
 import { LogLevelBadge } from './log-level-badge'
 
 /** Renders a field value without the quotes JSON would add around a string. */
@@ -42,7 +42,7 @@ function formatLocalTime(tsMs: number, locale: string): string {
   return sameDay ? formatters.time.format(d) : formatters.dateTime.format(d)
 }
 
-function LogRowImpl({ entry }: { entry: LogEntry }) {
+function LogRowImpl({ entry }: { entry: LogEntryInfoResponse }) {
   const { t, i18n } = useTranslation()
   const [copied, markCopied] = useTemporaryFlag()
 
@@ -79,15 +79,7 @@ function LogRowImpl({ entry }: { entry: LogEntry }) {
           <LogLevelBadge level={entry.level} />
           <span className="truncate font-mono text-xs text-muted">{entry.target}</span>
         </div>
-        <p className="text-sm break-words text-foreground">
-          {entry.raw ? (
-            <span className="text-muted italic">
-              {t('settings.about.logs.unparseable')}: {entry.raw}
-            </span>
-          ) : (
-            entry.msg
-          )}
-        </p>
+        <p className="text-sm break-words text-foreground">{entry.msg}</p>
         {fields.length > 0 && (
           <div data-slot="log-row-fields" className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-xs text-muted">
             {fields.map(([key, value]) => (

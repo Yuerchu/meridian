@@ -6,17 +6,13 @@ import { TrashBin } from '@gravity-ui/icons'
 import { Button, Card, Description, Input, Label, ProgressCircle, Spinner, TextField } from '@heroui/react'
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
+import type { VoiceModelDownloadEvent } from '@/lib/app-event'
 import { usePlatform } from '@/hooks/use-platform'
-import type { VoiceModelStatus } from '@/types'
+import type { VoiceFilterLevel, VoiceModelStatusInfoResponse } from '@/types'
 import { SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
 import { useConfirm } from '@/hooks/use-confirm'
 
 const FILTER_LEVELS = ['off', 'standard', 'aggressive'] as const
-
-interface DownloadProgress {
-  downloaded: number
-  total: number | null
-}
 
 function formatSize(bytes: number, number: Intl.NumberFormat): string {
   return `${number.format(bytes / 1024 / 1024)} MB`
@@ -25,11 +21,11 @@ function formatSize(bytes: number, number: Intl.NumberFormat): string {
 export function VoiceSettings() {
   const { t, i18n } = useTranslation()
   const isAndroid = usePlatform() === 'android'
-  const [status, setStatus] = useState<VoiceModelStatus | null>(null)
+  const [status, setStatus] = useState<VoiceModelStatusInfoResponse | null>(null)
   const [statusLoading, setStatusLoading] = useState(true)
-  const [progress, setProgress] = useState<DownloadProgress | null>(null)
+  const [progress, setProgress] = useState<VoiceModelDownloadEvent | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [filterLevel, setFilterLevel] = useState('standard')
+  const [filterLevel, setFilterLevel] = useState<VoiceFilterLevel>('standard')
   const [mirrorUrl, setMirrorUrl] = useState('')
   const [importing, setImporting] = useState(false)
   const { confirm, confirmDialog } = useConfirm()
@@ -48,21 +44,31 @@ export function VoiceSettings() {
     void refreshStatus()
       .catch((reason) => setError(String(reason)))
       .finally(() => setStatusLoading(false))
-    void api.getPreference('voice.filter_level').then((v) => {
-      if (v && !disposed) setFilterLevel(v)
-    })
-    void api.getPreference('voice.download_url').then((v) => {
-      if (v && !disposed) setMirrorUrl(v)
-    })
+    void api
+      .getPreference({ key: 'voice.filter_level' })
+      .then(({ value }) => {
+        if (value && !disposed) setFilterLevel(value)
+      })
+      .catch((reason) => {
+        if (!disposed) setError(String(reason))
+      })
+    void api
+      .getPreference({ key: 'voice.download_url' })
+      .then(({ value }) => {
+        if (value && !disposed) setMirrorUrl(value)
+      })
+      .catch((reason) => {
+        if (!disposed) setError(String(reason))
+      })
 
-    const unlistenProgress = listen<DownloadProgress>('voice-model-download', (e) => {
+    const unlistenProgress = listen('voice-model-download', (e) => {
       if (!disposed) setProgress(e.payload)
     })
-    const unlistenDone = listen<{ ok: boolean; error?: string }>('voice-model-download-done', (e) => {
+    const unlistenDone = listen('voice-model-download-done', (e) => {
       if (disposed) return
       setProgress(null)
-      if (!e.payload.ok && e.payload.error !== 'cancelled') {
-        setError(e.payload.error ?? 'Download failed')
+      if (e.payload.type === 'failed') {
+        setError(e.payload.error)
       }
       void refreshStatus().catch(console.error)
     })
@@ -75,9 +81,9 @@ export function VoiceSettings() {
 
   const handleDownload = async () => {
     setError(null)
-    setProgress({ downloaded: 0, total: null })
+    setProgress({ type: 'progress', downloaded: 0, total: null })
     try {
-      await api.voiceDownloadModel(mirrorUrl.trim() || undefined)
+      await api.voiceDownloadModel({ url: mirrorUrl.trim() || null })
     } catch (e) {
       setProgress(null)
       setError(String(e))
@@ -103,7 +109,7 @@ export function VoiceSettings() {
     setError(null)
     setImporting(true)
     try {
-      setStatus(await api.voiceImportModel(file))
+      setStatus(await api.voiceImportModel({ archivePath: file }))
     } catch (e) {
       setError(String(e))
     } finally {
@@ -122,14 +128,18 @@ export function VoiceSettings() {
     }
   }
 
-  const handleFilterChange = (value: string) => {
+  const handleFilterChange = (value: VoiceFilterLevel) => {
     setFilterLevel(value)
-    api.setPreference('voice.filter_level', value)
+    api.setPreference({ key: 'voice.filter_level', value })
   }
 
   const handleMirrorChange = (value: string) => {
     setMirrorUrl(value)
-    api.setPreference('voice.download_url', value)
+  }
+
+  const persistMirror = () => {
+    const value = mirrorUrl.trim() || null
+    api.setPreference({ key: 'voice.download_url', value }).catch((reason) => setError(String(reason)))
   }
 
   const downloading = progress !== null
@@ -236,6 +246,7 @@ export function VoiceSettings() {
           inputMode="url"
           spellCheck={false}
           onChange={(e) => handleMirrorChange(e.target.value)}
+          onBlur={persistMirror}
           placeholder={t('settings.voice.mirrorPlaceholder')}
           className="w-full"
           disabled={downloading}

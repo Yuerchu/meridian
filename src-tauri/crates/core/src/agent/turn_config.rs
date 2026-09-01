@@ -11,8 +11,8 @@ use std::collections::HashSet;
 
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::assistant::Assistant;
-use crate::provider::ToolDefinition;
+use crate::db::models::assistant::AssistantRow;
+use crate::provider::{ServerToolKind, ToolDefinition};
 use crate::tools::ToolRegistry;
 
 use super::modes::Modes;
@@ -42,8 +42,8 @@ impl ToolExposure {
     }
 }
 
-pub struct TurnConfigInput {
-    pub assistant: Option<Assistant>,
+pub struct TurnConfigResolveRequest {
+    pub assistant: Option<AssistantRow>,
     pub conversation_id: String,
     pub project_id: Option<String>,
     /// Where the conversation is, and whether this runner can move it. The
@@ -64,7 +64,7 @@ pub struct TurnConfigInput {
     /// Provider-side tools this turn is asking the upstream to run, already
     /// narrowed by `resolve_turn_params`. Each one that supersedes a local tool
     /// takes it out of the set below.
-    pub server_tools: Vec<String>,
+    pub server_tools: Vec<ServerToolKind>,
     /// The assistant's own prompt, template variables already resolved.
     pub persona: String,
     /// Slotted in after the persona: project instructions, file access notes.
@@ -82,8 +82,12 @@ pub struct TurnConfig {
     pub offered: HashSet<String>,
 }
 
-pub fn resolve(conn: &mut SqliteConnection, registry: &ToolRegistry, input: TurnConfigInput) -> TurnConfig {
-    let TurnConfigInput {
+pub fn resolve(
+    conn: &mut SqliteConnection,
+    registry: &ToolRegistry,
+    input: TurnConfigResolveRequest,
+) -> Result<TurnConfig, String> {
+    let TurnConfigResolveRequest {
         assistant,
         conversation_id,
         project_id,
@@ -97,7 +101,7 @@ pub fn resolve(conn: &mut SqliteConnection, registry: &ToolRegistry, input: Turn
     } = input;
 
     let tool_defs = if exposure != ToolExposure::None {
-        let enabled = enabled_tools(conn, assistant.as_ref());
+        let enabled = enabled_tools(conn, assistant.as_ref())?;
         let mut defs = super::tool_defs::collect(registry, mcp_defs, enabled.as_deref());
         // Sticker availability is data, not an assistant preset. Keep the two
         // fixed-schema tools present whenever this assistant has a confirmed
@@ -148,7 +152,7 @@ pub fn resolve(conn: &mut SqliteConnection, registry: &ToolRegistry, input: Turn
         // strictly better where it exists: no key, no card, and the results
         // never come back through our context window.
         for server_tool in &server_tools {
-            if let Some(local) = crate::provider::superseded_local_tool(server_tool) {
+            if let Some(local) = crate::provider::superseded_local_tool(*server_tool) {
                 defs.retain(|definition| definition.name != local);
             }
         }
@@ -201,17 +205,36 @@ pub fn resolve(conn: &mut SqliteConnection, registry: &ToolRegistry, input: Turn
     // a plan it agreed to or forgets the checklist — read as "it went off the
     // rails again" rather than as an error. `Ok(None)` is the ordinary case and
     // stays quiet.
-    match crate::db::ops::plan::get_active(conn, &conversation_id) {
-        Ok(Some(plan)) => {
-            if let Some(block) = crate::db::ops::plan::format_plan_block(&plan) {
-                prompt.push_str(&block);
+    let has_versioned_plan =
+        match crate::db::ops::plan_review::get_approved_revision_for_conversation(conn, &conversation_id) {
+            Ok(Some(revision)) => {
+                if let Some(block) = crate::db::ops::plan_review::format_approved_plan_block(&revision) {
+                    prompt.push_str(&block);
+                }
+                true
             }
+            Ok(None) => false,
+            Err(error) => {
+                tracing::warn!(
+                    conversation_id = %conversation_id, block = "plan", error = %error,
+                    "could not read the versioned approved plan; trying the legacy artifact"
+                );
+                false
+            }
+        };
+    if !has_versioned_plan {
+        match crate::db::ops::plan::get_active(conn, &conversation_id) {
+            Ok(Some(plan)) => {
+                if let Some(block) = crate::db::ops::plan::format_plan_block(&plan) {
+                    prompt.push_str(&block);
+                }
+            }
+            Ok(None) => {}
+            Err(e) => tracing::warn!(
+                conversation_id = %conversation_id, block = "plan", error = %e,
+                "could not read the active plan; it will be missing from this turn"
+            ),
         }
-        Ok(None) => {}
-        Err(e) => tracing::warn!(
-            conversation_id = %conversation_id, block = "plan", error = %e,
-            "could not read the active plan; it will be missing from this turn"
-        ),
     }
     match crate::db::ops::todo::get_active_view(conn, &conversation_id) {
         Ok(Some(view)) => {
@@ -227,52 +250,45 @@ pub fn resolve(conn: &mut SqliteConnection, registry: &ToolRegistry, input: Turn
     }
 
     let offered = tool_defs.iter().map(|d| d.name.clone()).collect();
-    TurnConfig {
+    Ok(TurnConfig {
         tool_defs,
         system_prompt: prompt,
         offered,
-    }
+    })
 }
 
 /// Tool filtering as configured on the assistant: preset wins over an explicit
 /// list, and neither means every tool is allowed.
 ///
-/// An assistant that names a preset gets an empty set if that preset cannot be
-/// read, not the full toolset. Since this list now also decides what may
-/// *execute*, failing open would turn a deleted preset or a corrupt
-/// `tool_names` into a silent grant of `write_file` and `run_command` to an
-/// assistant the user had deliberately restricted.
-fn enabled_tools(conn: &mut SqliteConnection, assistant: Option<&Assistant>) -> Option<Vec<String>> {
-    let assistant = assistant?;
+/// A missing preset row or malformed JSON is a broken stored contract, not an
+/// empty allow-list. Returning an error keeps the failure visible at every
+/// runner instead of quietly changing what an assistant may do.
+fn enabled_tools(conn: &mut SqliteConnection, assistant: Option<&AssistantRow>) -> Result<Option<Vec<String>>, String> {
+    let Some(assistant) = assistant else {
+        return Ok(None);
+    };
     if let Some(preset_id) = assistant.tool_preset_id.as_ref() {
-        let preset = crate::db::ops::tool_preset::get_preset(conn, preset_id).ok();
-        let names = preset
-            .as_ref()
-            .and_then(|p| serde_json::from_str::<Vec<String>>(&p.tool_names).ok());
-        if names.is_none() {
-            // Failing closed is deliberate, but from the outside "the preset row
-            // is unreadable" and "this model cannot use tools" look identical:
-            // the assistant simply stops using tools. Only this line separates
-            // them.
-            tracing::warn!(
-                assistant_id = %assistant.id,
-                tool_preset_id = %preset_id,
-                reason = if preset.is_none() { "preset_missing" } else { "tool_names_unparseable" },
-                "tool preset could not be read; the assistant gets no tools this turn"
-            );
-        }
-        return Some(names.unwrap_or_default());
+        let preset = crate::db::ops::tool_preset::get_preset(conn, preset_id).map_err(|error| {
+            format!(
+                "assistant {} references unreadable tool preset {preset_id}: {error}",
+                assistant.id
+            )
+        })?;
+        let names = serde_json::from_str::<Vec<String>>(&preset.tool_names)
+            .map_err(|error| format!("tool preset {preset_id} has invalid tool_names JSON: {error}"))?;
+        return Ok(Some(names));
     }
-    assistant
-        .enabled_tools
-        .as_ref()
-        .and_then(|json| serde_json::from_str(json).ok())
+    assistant.enabled_tools.as_ref().map_or(Ok(None), |json| {
+        serde_json::from_str::<Vec<String>>(json)
+            .map(Some)
+            .map_err(|error| format!("assistant {} has invalid enabled_tools JSON: {error}", assistant.id))
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::models::tool_preset::NewToolPreset;
+    use crate::db::models::tool_preset::ToolPresetInsert;
     use crate::db::{DbPool, test_db};
     use diesel::prelude::*;
 
@@ -295,8 +311,8 @@ mod tests {
             .unwrap();
     }
 
-    fn assistant_with(preset: Option<&str>, enabled: Option<&str>) -> Assistant {
-        Assistant {
+    fn assistant_with(preset: Option<&str>, enabled: Option<&str>) -> AssistantRow {
+        AssistantRow {
             id: "a1".into(),
             name: "A".into(),
             description: None,
@@ -324,7 +340,7 @@ mod tests {
     fn seed_preset(conn: &mut SqliteConnection, id: &str, tools: &str) {
         crate::db::ops::tool_preset::create_preset(
             conn,
-            &NewToolPreset {
+            &ToolPresetInsert {
                 id,
                 name: id,
                 description: None,
@@ -342,11 +358,11 @@ mod tests {
     /// A desktop-shaped runner: it has a transitions port, so it is offered the
     /// way between modes.
     fn switchable(id: Option<&str>) -> Modes {
-        Modes::Switchable(super::super::modes::resolve(id))
+        Modes::Switchable(super::super::modes::resolve(id).unwrap())
     }
 
-    fn input(mode: Modes, assistant: Option<Assistant>) -> TurnConfigInput {
-        TurnConfigInput {
+    fn input(mode: Modes, assistant: Option<AssistantRow>) -> TurnConfigResolveRequest {
+        TurnConfigResolveRequest {
             assistant,
             conversation_id: "c1".into(),
             project_id: None,
@@ -369,11 +385,15 @@ mod tests {
         (pool, registry())
     }
 
+    fn resolve_ok(conn: &mut SqliteConnection, registry: &ToolRegistry, input: TurnConfigResolveRequest) -> TurnConfig {
+        resolve(conn, registry, input).unwrap()
+    }
+
     #[test]
     fn no_assistant_means_every_tool() {
         let (pool, reg) = setup();
         let mut conn = pool.get().unwrap();
-        let cfg = resolve(&mut conn, &reg, input(switchable(None), None));
+        let cfg = resolve_ok(&mut conn, &reg, input(switchable(None), None));
 
         assert!(cfg.offered.contains("read_file"));
         assert!(cfg.offered.contains("write_file"));
@@ -390,7 +410,7 @@ mod tests {
         seed_preset(&mut conn, "p1", r#"["read_file","glob"]"#);
 
         let assistant = assistant_with(Some("p1"), Some(r#"["write_file","run_command"]"#));
-        let cfg = resolve(&mut conn, &reg, input(switchable(None), Some(assistant)));
+        let cfg = resolve_ok(&mut conn, &reg, input(switchable(None), Some(assistant)));
 
         assert!(cfg.offered.contains("read_file"));
         assert!(cfg.offered.contains("glob"));
@@ -401,46 +421,43 @@ mod tests {
         assert!(!cfg.offered.contains("run_command"));
     }
 
-    /// `offered` is what authorises execution, so a preset that cannot be read
-    /// must not degrade into "everything allowed". Mode transitions are the one
-    /// exception and are checked separately below.
+    /// A dangling preset id is persisted corruption. It must stop the turn, not
+    /// impersonate either "all tools" or an intentionally empty preset.
     #[test]
-    fn an_unreadable_preset_grants_no_working_tools() {
+    fn a_missing_preset_is_an_error() {
         let (pool, reg) = setup();
         let mut conn = pool.get().unwrap();
-        // Names a preset that was deleted, leaving a dangling reference.
         let assistant = assistant_with(Some("gone"), None);
-        let cfg = resolve(&mut conn, &reg, input(switchable(None), Some(assistant)));
+        let error = resolve(&mut conn, &reg, input(switchable(None), Some(assistant)))
+            .err()
+            .expect("dangling preset must fail");
 
-        assert!(!cfg.offered.contains("write_file"), "fails closed, not open");
-        assert!(!cfg.offered.contains("read_file"));
-        assert!(!cfg.offered.contains("run_command"));
+        assert!(error.contains("unreadable tool preset"), "{error}");
     }
 
     #[test]
-    fn a_corrupt_preset_payload_also_grants_no_working_tools() {
+    fn a_corrupt_preset_payload_is_an_error() {
         let (pool, reg) = setup();
         let mut conn = pool.get().unwrap();
         seed_preset(&mut conn, "broken", "not json at all");
         let assistant = assistant_with(Some("broken"), None);
-        let cfg = resolve(&mut conn, &reg, input(switchable(None), Some(assistant)));
+        let error = resolve(&mut conn, &reg, input(switchable(None), Some(assistant)))
+            .err()
+            .expect("malformed preset JSON must fail");
 
-        assert!(!cfg.offered.contains("write_file"));
-        assert!(!cfg.offered.contains("read_file"));
+        assert!(error.contains("invalid tool_names JSON"), "{error}");
     }
 
-    /// Transitions are not working tools and must survive whatever the
-    /// assistant's configuration does. A broken preset that also swallowed
-    /// `exit_plan` would strand the conversation in plan mode with no way out.
     #[test]
-    fn a_broken_configuration_can_still_leave_plan_mode() {
+    fn malformed_enabled_tools_is_an_error() {
         let (pool, reg) = setup();
         let mut conn = pool.get().unwrap();
-        let assistant = assistant_with(Some("gone"), None);
-        let cfg = resolve(&mut conn, &reg, input(switchable(Some("plan")), Some(assistant)));
+        let assistant = assistant_with(None, Some("not json"));
+        let error = resolve(&mut conn, &reg, input(switchable(None), Some(assistant)))
+            .err()
+            .expect("malformed assistant JSON must fail");
 
-        assert!(cfg.offered.contains("exit_plan"), "must never be stranded");
-        assert!(!cfg.offered.contains("read_file"), "but gains nothing else");
+        assert!(error.contains("invalid enabled_tools JSON"), "{error}");
     }
 
     #[test]
@@ -448,7 +465,7 @@ mod tests {
         let (pool, reg) = setup();
         let mut conn = pool.get().unwrap();
         let assistant = assistant_with(None, Some(r#"["read_file"]"#));
-        let cfg = resolve(&mut conn, &reg, input(switchable(None), Some(assistant)));
+        let cfg = resolve_ok(&mut conn, &reg, input(switchable(None), Some(assistant)));
 
         assert!(cfg.offered.contains("read_file"));
         assert!(!cfg.offered.contains("write_file"));
@@ -462,7 +479,7 @@ mod tests {
         let (pool, reg) = setup();
         let mut conn = pool.get().unwrap();
         let assistant = assistant_with(None, Some(r#"["read_file","write_file"]"#));
-        let cfg = resolve(&mut conn, &reg, input(switchable(None), Some(assistant)));
+        let cfg = resolve_ok(&mut conn, &reg, input(switchable(None), Some(assistant)));
 
         assert!(cfg.offered.contains("enter_plan"));
     }
@@ -474,7 +491,7 @@ mod tests {
     fn work_mode_never_authorises_the_exit_tool() {
         let (pool, reg) = setup();
         let mut conn = pool.get().unwrap();
-        let cfg = resolve(&mut conn, &reg, input(switchable(None), None));
+        let cfg = resolve_ok(&mut conn, &reg, input(switchable(None), None));
 
         assert!(!cfg.offered.contains("exit_plan"));
         assert!(!cfg.tool_defs.iter().any(|d| d.name == "exit_plan"), "not even visible");
@@ -484,7 +501,7 @@ mod tests {
     fn plan_mode_narrows_and_adds_its_exit_tool() {
         let (pool, reg) = setup();
         let mut conn = pool.get().unwrap();
-        let cfg = resolve(&mut conn, &reg, input(switchable(Some("plan")), None));
+        let cfg = resolve_ok(&mut conn, &reg, input(switchable(Some("plan")), None));
 
         assert!(cfg.offered.contains("read_file"));
         assert!(cfg.offered.contains("exit_plan"));
@@ -503,7 +520,7 @@ mod tests {
         let mut conn = pool.get().unwrap();
         let mut i = input(switchable(None), None);
         i.exposure = ToolExposure::None;
-        let cfg = resolve(&mut conn, &reg, i);
+        let cfg = resolve_ok(&mut conn, &reg, i);
 
         assert!(cfg.offered.is_empty(), "got: {:?}", cfg.offered);
         assert!(cfg.tool_defs.is_empty());
@@ -515,7 +532,7 @@ mod tests {
     fn a_headless_turn_is_not_offered_the_way_into_plan() {
         let (pool, reg) = setup();
         let mut conn = pool.get().unwrap();
-        let cfg = resolve(&mut conn, &reg, input(Modes::Fixed, None));
+        let cfg = resolve_ok(&mut conn, &reg, input(Modes::Fixed, None));
 
         assert!(cfg.offered.contains("write_file"), "it still gets its tools");
         assert!(!cfg.offered.contains("enter_plan"));
@@ -527,7 +544,7 @@ mod tests {
         let (pool, reg) = setup();
         let mut conn = pool.get().unwrap();
         let assistant = assistant_with(None, Some(r#"["read_file"]"#));
-        let cfg = resolve(&mut conn, &reg, input(switchable(Some("plan")), Some(assistant)));
+        let cfg = resolve_ok(&mut conn, &reg, input(switchable(Some("plan")), Some(assistant)));
 
         assert!(cfg.offered.contains("read_file"));
         assert!(cfg.offered.contains("exit_plan"), "the exit tool is the one exception");
@@ -546,7 +563,7 @@ mod tests {
         let mut conn = pool.get().unwrap();
         let mut i = input(Modes::Fixed, None);
         i.exposure = ToolExposure::Only(&["web_search"]);
-        let cfg = resolve(&mut conn, &reg, i);
+        let cfg = resolve_ok(&mut conn, &reg, i);
 
         assert!(cfg.offered.contains("web_search"));
         assert!(!cfg.offered.contains("read_file"), "nothing that names a path");
@@ -563,7 +580,7 @@ mod tests {
         let assistant = assistant_with(None, Some(r#"["read_file"]"#));
         let mut i = input(Modes::Fixed, Some(assistant));
         i.exposure = ToolExposure::Only(&["web_search"]);
-        let cfg = resolve(&mut conn, &reg, i);
+        let cfg = resolve_ok(&mut conn, &reg, i);
 
         assert!(
             cfg.offered.is_empty(),
@@ -582,12 +599,12 @@ mod tests {
         let (pool, reg) = setup();
         let mut conn = pool.get().unwrap();
 
-        let with_local = resolve(&mut conn, &reg, input(switchable(None), None));
+        let with_local = resolve_ok(&mut conn, &reg, input(switchable(None), None));
         assert!(with_local.offered.contains("web_search"), "the baseline");
 
         let mut i = input(switchable(None), None);
-        i.server_tools = vec!["web_search".into()];
-        let cfg = resolve(&mut conn, &reg, i);
+        i.server_tools = vec![ServerToolKind::WebSearch];
+        let cfg = resolve_ok(&mut conn, &reg, i);
 
         assert!(!cfg.offered.contains("web_search"));
         assert!(
@@ -606,8 +623,8 @@ mod tests {
         let (pool, reg) = setup();
         let mut conn = pool.get().unwrap();
         let mut i = input(switchable(None), None);
-        i.server_tools = vec!["x_search".into(), "code_execution".into()];
-        let cfg = resolve(&mut conn, &reg, i);
+        i.server_tools = vec![ServerToolKind::XSearch, ServerToolKind::CodeExecution];
+        let cfg = resolve_ok(&mut conn, &reg, i);
 
         assert!(cfg.offered.contains("web_search"));
         assert!(cfg.offered.contains("read_file"));
@@ -619,7 +636,7 @@ mod tests {
         let mut conn = pool.get().unwrap();
         let mut i = input(switchable(None), None);
         i.exposure = ToolExposure::None;
-        let cfg = resolve(&mut conn, &reg, i);
+        let cfg = resolve_ok(&mut conn, &reg, i);
 
         assert!(cfg.tool_defs.is_empty());
         assert!(cfg.offered.is_empty());
@@ -634,7 +651,7 @@ mod tests {
             &mut conn,
             "c1",
             "Ship it",
-            &[crate::db::ops::todo::TodoItemInput {
+            &[crate::db::ops::todo::TodoItemSpec {
                 content: "step".into(),
                 active_form: "stepping".into(),
                 status: crate::db::models::todo::ItemStatus::InProgress,
@@ -647,7 +664,7 @@ mod tests {
 
         let mut i = input(switchable(None), None);
         i.context_blocks = vec!["\n\n# Project instructions\nBe brief.".into()];
-        let cfg = resolve(&mut conn, &reg, i);
+        let cfg = resolve_ok(&mut conn, &reg, i);
 
         let persona = cfg.system_prompt.find("You are a test.").unwrap();
         let instructions = cfg.system_prompt.find("# Project instructions").unwrap();
@@ -656,6 +673,68 @@ mod tests {
         // Plan before checklist: the checklist churns several times a turn and
         // would otherwise push the stable plan out of the cached prefix.
         assert!(persona < instructions && instructions < plan_at && plan_at < todo);
+    }
+
+    #[test]
+    fn a_versioned_approval_wins_over_the_legacy_plan_fallback() {
+        let (pool, reg) = setup();
+        let mut conn = pool.get().unwrap();
+        let legacy = crate::db::ops::plan::record_plan(&mut conn, "c1", "legacy plan", 10).unwrap();
+        crate::db::ops::plan::approve(&mut conn, &legacy.id, 11).unwrap();
+
+        let document = crate::db::ops::plan_review::create_or_resume_document(&mut conn, "c1", 12).unwrap();
+        let appended = crate::db::ops::plan_review::append_assistant_revision(
+            &mut conn,
+            &crate::db::ops::plan_review::PlanRevisionAppend {
+                document_id: &document.id,
+                expected_generation: 0,
+                expected_head_sha256: None,
+                content_markdown: "versioned plan",
+                patch: "*** Add File: plan.md",
+                source_message_id: None,
+                source_call_id: None,
+                responding_to_suggestion_revision_id: None,
+                now: 13,
+            },
+        )
+        .unwrap();
+        crate::db::ops::plan_review::mark_materialization_applied(&mut conn, &appended.materialization.id, 14).unwrap();
+        let review = crate::db::ops::plan_review::submit_native_head_for_review(
+            &mut conn,
+            &crate::db::ops::plan_review::PlanReviewSubmit {
+                document_id: &document.id,
+                expected_generation: 1,
+                expected_head_sha256: &appended.revision.content_sha256,
+                turn_id: None,
+                assistant_message_id: None,
+                provider_call_id: None,
+                provider_kind: crate::db::models::plan_review::PlanReviewProviderKind::Native,
+                now: 15,
+            },
+            &crate::db::models::plan_review::NativePlanReviewRuntimeConfig::fixture(),
+        )
+        .unwrap();
+        crate::db::ops::plan_review::decide_review(
+            &mut conn,
+            &crate::db::ops::plan_review::PlanReviewDecision {
+                review_id: &review.review.id,
+                decision_id: "approve-versioned",
+                expected_lock_version: 0,
+                expected_draft_generation: 0,
+                expected_draft_sha256: &review.draft.draft_sha256,
+                action: crate::db::ops::plan_review::PlanReviewDecisionAction::Approve,
+                decision_summary: None,
+                delivery_target: None,
+                target_session_id: None,
+                target_turn_id: None,
+                now: 16,
+            },
+        )
+        .unwrap();
+
+        let cfg = resolve_ok(&mut conn, &reg, input(switchable(None), None));
+        assert!(cfg.system_prompt.contains("versioned plan"));
+        assert!(!cfg.system_prompt.contains("legacy plan"));
     }
 
     #[test]
@@ -668,7 +747,7 @@ mod tests {
             &mut conn,
             "c1",
             "Ship it",
-            &[crate::db::ops::todo::TodoItemInput {
+            &[crate::db::ops::todo::TodoItemSpec {
                 content: "step".into(),
                 active_form: "stepping".into(),
                 status: crate::db::models::todo::ItemStatus::Pending,
@@ -677,8 +756,8 @@ mod tests {
         )
         .unwrap();
 
-        let a = resolve(&mut conn, &reg, input(switchable(None), None));
-        let b = resolve(&mut conn, &reg, input(switchable(None), None));
+        let a = resolve_ok(&mut conn, &reg, input(switchable(None), None));
+        let b = resolve_ok(&mut conn, &reg, input(switchable(None), None));
         assert_eq!(a.system_prompt, b.system_prompt);
         assert!(a.system_prompt.contains("<todo_list>"));
     }
@@ -694,7 +773,7 @@ mod tests {
         let block = crate::voice::prompt::voice_context_block(&[], true).unwrap();
         let mut i = input(switchable(None), None);
         i.context_blocks = vec![block];
-        let cfg = resolve(&mut conn, &reg, i);
+        let cfg = resolve_ok(&mut conn, &reg, i);
         assert!(cfg.system_prompt.contains("<voice_input>"));
 
         // And a typed-only conversation adds nothing.

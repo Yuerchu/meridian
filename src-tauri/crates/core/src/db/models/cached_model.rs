@@ -5,7 +5,7 @@ use crate::db::schema::cached_models;
 
 #[derive(Debug, Clone, Queryable, Selectable, Serialize)]
 #[diesel(table_name = cached_models)]
-pub struct CachedModel {
+pub struct CachedModelRow {
     pub id: Option<i32>,
     pub provider_id: String,
     pub model_id: String,
@@ -15,7 +15,7 @@ pub struct CachedModel {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = cached_models)]
-pub struct NewCachedModel<'a> {
+pub struct CachedModelInsert<'a> {
     pub provider_id: &'a str,
     pub model_id: &'a str,
     pub model_name: &'a str,

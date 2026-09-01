@@ -20,6 +20,10 @@
     "schema:check:staged": "node scripts/check-db-schema.mjs --staged",
     "catalog:check": "node scripts/check-provider-catalog.mjs",
     "catalog:check:staged": "node scripts/check-provider-catalog.mjs --staged",
+    "responses:generate": "node scripts/generate-invoke-response-schema.mjs",
+    "responses:check": "node scripts/generate-invoke-response-schema.mjs --check",
+    "contracts:check": "node scripts/check-model-contracts.mjs",
+    "contracts:check:staged": "node scripts/check-model-contracts.mjs --staged",
     "prepare": "husky"
   },
   "lint-staged": {

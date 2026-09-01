@@ -25,18 +25,18 @@ import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { allowedEfforts } from '@/lib/thinking'
 import type {
-  Assistant,
+  AssistantInfoResponse,
   ChatMode,
-  Provider,
-  ProviderCapabilities,
-  ModelInfo,
+  ProviderInfoResponse,
+  ProviderCapabilitiesInfoResponse,
+  ProviderModelInfoResponse,
   ThinkingEffort,
   ThinkingLevel,
 } from '@/types'
 
 interface ToolbarProps {
-  assistants: Assistant[]
-  providers: Provider[]
+  assistants: AssistantInfoResponse[]
+  providers: ProviderInfoResponse[]
   currentAssistantId: string | null
   currentModelId: string | null
   currentProviderId: string | null
@@ -50,7 +50,7 @@ interface ToolbarProps {
   onSelectMode: (mode: ChatMode) => void
   acceptEdits: boolean
   onToggleAcceptEdits: (next: boolean) => void
-  capabilities?: ProviderCapabilities | null
+  capabilities?: ProviderCapabilitiesInfoResponse | null
 }
 
 const CHAT_MODES: Array<{ id: ChatMode; icon: typeof Hammer; labelKey: string; descKey: string }> = [
@@ -59,8 +59,8 @@ const CHAT_MODES: Array<{ id: ChatMode; icon: typeof Hammer; labelKey: string; d
 ]
 
 interface GroupedModels {
-  provider: Provider
-  models: ModelInfo[]
+  provider: ProviderInfoResponse
+  models: ProviderModelInfoResponse[]
 }
 
 const THINKING_LEVELS: Array<{ id: ThinkingLevel; labelKey: string; descKey: string }> = [
@@ -79,7 +79,7 @@ const THINKING_LEVELS: Array<{ id: ThinkingLevel; labelKey: string; descKey: str
  * whatever effort tiers the model advertises. Unknown capabilities fall back to the full ladder
  * (see `allowedEfforts`).
  */
-function levelsFor(capabilities: ProviderCapabilities | null | undefined) {
+function levelsFor(capabilities: ProviderCapabilitiesInfoResponse | null | undefined) {
   const allowed = allowedEfforts(capabilities ?? null)
   return THINKING_LEVELS.filter(
     (l) =>
@@ -164,7 +164,7 @@ export function MobileOptionsMenu({
         .filter((p) => p.is_enabled)
         .map(async (p) => ({
           provider: p,
-          models: await api.fetchProviderModels(p.id, false),
+          models: await api.fetchProviderModels({ providerId: p.id, forceRefresh: false }),
         })),
     ).then((results) => {
       setGroups(
@@ -370,7 +370,7 @@ export function MobileOptionsMenu({
                           close()
                         }}
                       >
-                        {a.is_default === 1 && (
+                        {a.is_default && (
                           <StarFill
                             // eslint-disable-next-line no-restricted-syntax -- CLAUDE.md whitelist: gold-star semantics
                             className="w-3.5 h-3.5 text-amber-500 flex-shrink-0"
@@ -410,7 +410,7 @@ export function MobileOptionsMenu({
                             .filter((p) => p.is_enabled)
                             .map(async (p) => ({
                               provider: p,
-                              models: await api.fetchProviderModels(p.id, true),
+                              models: await api.fetchProviderModels({ providerId: p.id, forceRefresh: true }),
                             })),
                         ).then((results) => {
                           setGroups(

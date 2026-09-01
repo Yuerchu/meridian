@@ -1,4 +1,4 @@
-use super::{ChatParams, ProviderCapabilities, ThinkingStyle};
+use super::{ChatParams, ProviderCapabilities, ServerToolKind, ThinkingStyle};
 use serde::Deserialize;
 use std::sync::LazyLock;
 
@@ -6,21 +6,78 @@ use std::sync::LazyLock;
 /// this list; per-model subsets live in the catalog.
 pub const EFFORT_LADDER: &[&str] = &["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 
+/// A concrete per-conversation/per-turn reasoning choice. Inheritance is
+/// represented by `None` at the request and persistence boundaries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StoredThinkingLevel {
+    Off,
+    Minimal,
+    Low,
+    Medium,
+    High,
+    Xhigh,
+    Max,
+}
+
+impl StoredThinkingLevel {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Minimal => "minimal",
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::Xhigh => "xhigh",
+            Self::Max => "max",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "off" => Ok(Self::Off),
+            "minimal" => Ok(Self::Minimal),
+            "low" => Ok(Self::Low),
+            "medium" => Ok(Self::Medium),
+            "high" => Ok(Self::High),
+            "xhigh" => Ok(Self::Xhigh),
+            "max" => Ok(Self::Max),
+            _ => Err(format!("unknown thinking level {value:?}")),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Catalog
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Catalog {
+    #[serde(rename = "version")]
+    _version: u32,
+    #[serde(rename = "_comment")]
+    _comment: Vec<String>,
     models: Vec<CatalogEntry>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum CatalogComment {
+    Text(String),
+    Lines(Vec<String>),
 }
 
 /// A patch over the provider default. Every capability is `Option` so an entry
 /// only states what differs; omitted fields inherit.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CatalogEntry {
     provider: String,
     prefix: String,
+    #[serde(rename = "_comment")]
+    _comment: Option<CatalogComment>,
     supports_tools: Option<bool>,
     supports_streaming_tools: Option<bool>,
     supports_thinking: Option<bool>,
@@ -33,18 +90,21 @@ struct CatalogEntry {
     max_output_tokens: Option<u32>,
     max_temperature: Option<f32>,
     thinking_style: Option<ThinkingStyle>,
-    supported_efforts: Option<Vec<String>>,
-    default_effort: Option<String>,
+    supported_efforts: Option<Vec<CapabilityEffort>>,
+    default_effort: Option<CapabilityEffort>,
     supports_fast: Option<bool>,
     supports_verbosity: Option<bool>,
-    default_verbosity: Option<String>,
-    server_tools: Option<Vec<String>>,
+    default_verbosity: Option<CapabilityVerbosity>,
+    server_tools: Option<Vec<ServerToolKind>>,
 }
 
 static CATALOG: LazyLock<Catalog> = LazyLock::new(|| {
     // Parsed once at first use. A malformed catalog is a build-time authoring
     // error, not something to degrade around at runtime.
-    serde_json::from_str(include_str!("model_catalog.json")).expect("model_catalog.json is malformed")
+    let catalog: Catalog =
+        serde_json::from_str(include_str!("model_catalog.json")).expect("model_catalog.json is malformed");
+    assert_eq!(catalog._version, 1, "unsupported model_catalog.json version");
+    catalog
 });
 
 fn apply(base: &mut ProviderCapabilities, entry: &CatalogEntry) {
@@ -85,10 +145,10 @@ fn apply(base: &mut ProviderCapabilities, entry: &CatalogEntry) {
         base.thinking_style = v;
     }
     if let Some(ref v) = entry.supported_efforts {
-        base.supported_efforts = v.clone();
+        base.supported_efforts = v.iter().map(|effort| effort.as_str().to_string()).collect();
     }
-    if let Some(ref v) = entry.default_effort {
-        base.default_effort = Some(v.clone());
+    if let Some(v) = entry.default_effort {
+        base.default_effort = Some(v.as_str().to_string());
     }
     if let Some(v) = entry.supports_fast {
         base.supports_fast = v;
@@ -96,8 +156,8 @@ fn apply(base: &mut ProviderCapabilities, entry: &CatalogEntry) {
     if let Some(v) = entry.supports_verbosity {
         base.supports_verbosity = v;
     }
-    if let Some(ref v) = entry.default_verbosity {
-        base.default_verbosity = Some(v.clone());
+    if let Some(v) = entry.default_verbosity {
+        base.default_verbosity = Some(v.as_str().to_string());
     }
     if let Some(ref v) = entry.server_tools {
         base.server_tools = v.clone();
@@ -267,6 +327,16 @@ pub fn resolve_on(
     transport_profile: Option<&str>,
     model: &str,
 ) -> ProviderCapabilities {
+    super::registry::ProviderType::parse(provider_type)
+        .unwrap_or_else(|error| panic!("capability resolver received an invalid provider contract: {error}"));
+    if let Some(api_format) = api_format {
+        super::registry::ApiFormat::parse(api_format)
+            .unwrap_or_else(|error| panic!("capability resolver received an invalid API contract: {error}"));
+    }
+    if let Some(transport_profile) = transport_profile {
+        super::registry::TransportProfile::parse(transport_profile)
+            .unwrap_or_else(|error| panic!("capability resolver received an invalid transport contract: {error}"));
+    }
     let mut caps = resolve_inner(provider_type, api_format, model);
 
     // The Codex backend ignores sampling parameters and has no priority tier to
@@ -313,7 +383,6 @@ fn resolve_inner(provider_type: &str, api_format: Option<&str>, model: &str) -> 
     if let Some(entry) = find_longest_prefix_match(catalog_provider, model) {
         apply(&mut caps, entry);
     }
-    caps.supports_reasoning_effort = !caps.supported_efforts.is_empty();
     caps
 }
 
@@ -330,157 +399,243 @@ fn resolve_inner(provider_type: &str, api_format: Option<&str>, model: &str) -> 
 /// (`web_search_preview`) and a wrong name here is a 400 on every request. A
 /// model that needs one it does not inherit can be given it in
 /// `capability_overrides`.
-fn server_tools_for(provider_type: &str, api_format: Option<&str>) -> Vec<String> {
+fn server_tools_for(provider_type: &str, api_format: Option<&str>) -> Vec<ServerToolKind> {
     if api_format != Some("responses") {
         return Vec::new();
     }
-    let names: &[&str] = match provider_type {
+    let tools: &[ServerToolKind] = match provider_type {
         "xai" => &[
-            crate::provider::SERVER_TOOL_WEB_SEARCH,
-            crate::provider::SERVER_TOOL_X_SEARCH,
-            crate::provider::SERVER_TOOL_CODE_EXECUTION,
+            ServerToolKind::WebSearch,
+            ServerToolKind::XSearch,
+            ServerToolKind::CodeExecution,
         ],
         // Its compatibility table lists `function` and `web_search` as the
         // supported tool types and says everything else is ignored.
-        "deepseek" => &[crate::provider::SERVER_TOOL_WEB_SEARCH],
+        "deepseek" => &[ServerToolKind::WebSearch],
         _ => &[],
     };
-    names.iter().map(|name| (*name).to_string()).collect()
+    tools.to_vec()
 }
 
-/// Merge a user-authored JSON patch from `model_configs.capability_overrides`.
-/// Malformed or unknown content is ignored rather than fatal: a bad override
-/// should degrade to catalog behaviour, not brick the model.
-pub fn apply_overrides(caps: &mut ProviderCapabilities, overrides: Option<&str>) {
-    let Some(raw) = overrides else { return };
-    let Ok(serde_json::Value::Object(map)) = serde_json::from_str::<serde_json::Value>(raw) else {
-        // The user hand-writes this in model settings. A stray comma saves
-        // fine, shows fine, and does nothing at all — with no way to tell that
-        // from an override that simply had no effect.
-        tracing::warn!(
-            raw_len = raw.len(),
-            "capability_overrides is not a JSON object; ignoring it entirely"
-        );
-        return;
-    };
-    let as_bool = |v: &serde_json::Value| v.as_bool();
-    for (key, value) in &map {
-        match key.as_str() {
-            "supports_tools" => {
-                if let Some(v) = as_bool(value) {
-                    caps.supports_tools = v
-                }
-            }
-            "supports_streaming_tools" => {
-                if let Some(v) = as_bool(value) {
-                    caps.supports_streaming_tools = v
-                }
-            }
-            "supports_thinking" => {
-                if let Some(v) = as_bool(value) {
-                    caps.supports_thinking = v
-                }
-            }
-            "supports_thinking_off" => {
-                if let Some(v) = as_bool(value) {
-                    caps.supports_thinking_off = v
-                }
-            }
-            "supports_images" => {
-                if let Some(v) = as_bool(value) {
-                    caps.supports_images = v
-                }
-            }
-            "supports_pdf" => {
-                if let Some(v) = as_bool(value) {
-                    caps.supports_pdf = v
-                }
-            }
-            "supports_temperature" => {
-                if let Some(v) = as_bool(value) {
-                    caps.supports_temperature = v
-                }
-            }
-            "supports_top_p" => {
-                if let Some(v) = as_bool(value) {
-                    caps.supports_top_p = v
-                }
-            }
-            "supports_fast" => {
-                if let Some(v) = as_bool(value) {
-                    caps.supports_fast = v
-                }
-            }
-            "supports_verbosity" => {
-                if let Some(v) = as_bool(value) {
-                    caps.supports_verbosity = v
-                }
-            }
-            "thinking_style" => {
-                if let Ok(style) = serde_json::from_value::<ThinkingStyle>(value.clone()) {
-                    caps.thinking_style = style;
-                }
-            }
-            "supported_efforts" => {
-                if let Some(arr) = value.as_array() {
-                    // Rebuild through the ladder so the stored order can't break
-                    // the median coercion, and unknown tiers are dropped.
-                    caps.supported_efforts = EFFORT_LADDER
-                        .iter()
-                        .filter(|tier| arr.iter().any(|v| v.as_str() == Some(**tier)))
-                        .map(|tier| (*tier).to_string())
-                        .collect();
-                }
-            }
-            "server_tools" => {
-                if let Some(arr) = value.as_array() {
-                    caps.server_tools = arr.iter().filter_map(|v| v.as_str()).map(str::to_string).collect();
-                }
-            }
-            "default_effort" => caps.default_effort = value.as_str().map(str::to_string),
-            "default_verbosity" => caps.default_verbosity = value.as_str().map(str::to_string),
-            "max_context_tokens" => caps.max_context_tokens = value.as_u64().map(|v| v as u32),
-            "max_output_tokens" => caps.max_output_tokens = value.as_u64().map(|v| v as u32),
-            "max_temperature" => caps.max_temperature = value.as_f64().map(|v| v as f32),
-            _ => {}
+#[derive(Debug)]
+enum OverrideField<T> {
+    Unset,
+    Set(T),
+}
+
+impl<T> Default for OverrideField<T> {
+    fn default() -> Self {
+        Self::Unset
+    }
+}
+
+impl<'de, T> Deserialize<'de> for OverrideField<T>
+where
+    T: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        T::deserialize(deserializer).map(Self::Set)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum CapabilityEffort {
+    Minimal,
+    Low,
+    Medium,
+    High,
+    Xhigh,
+    Max,
+}
+
+impl CapabilityEffort {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Minimal => "minimal",
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::Xhigh => "xhigh",
+            Self::Max => "max",
         }
     }
-    caps.supports_reasoning_effort = !caps.supported_efforts.is_empty();
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum CapabilityVerbosity {
+    Low,
+    Medium,
+    High,
+}
+
+impl CapabilityVerbosity {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+        }
+    }
+}
+
+/// The complete user-owned contract stored in
+/// `model_configs.capability_overrides`.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ProviderCapabilityOverrides {
+    supports_tools: OverrideField<bool>,
+    supports_streaming_tools: OverrideField<bool>,
+    supports_thinking: OverrideField<bool>,
+    supports_thinking_off: OverrideField<bool>,
+    supports_images: OverrideField<bool>,
+    supports_pdf: OverrideField<bool>,
+    supports_temperature: OverrideField<bool>,
+    supports_top_p: OverrideField<bool>,
+    supports_fast: OverrideField<bool>,
+    supports_verbosity: OverrideField<bool>,
+    thinking_style: OverrideField<ThinkingStyle>,
+    supported_efforts: OverrideField<Vec<CapabilityEffort>>,
+    server_tools: OverrideField<Vec<ServerToolKind>>,
+    default_effort: OverrideField<Option<CapabilityEffort>>,
+    default_verbosity: OverrideField<Option<CapabilityVerbosity>>,
+    max_context_tokens: OverrideField<Option<u32>>,
+    max_output_tokens: OverrideField<Option<u32>>,
+    max_temperature: OverrideField<Option<f32>>,
+}
+
+impl ProviderCapabilityOverrides {
+    pub fn parse(raw: &str) -> Result<Self, String> {
+        let parsed: Self =
+            serde_json::from_str(raw).map_err(|error| format!("invalid capability_overrides: {error}"))?;
+        parsed.validate()?;
+        Ok(parsed)
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        if let OverrideField::Set(efforts) = &self.supported_efforts {
+            let unique: std::collections::BTreeSet<CapabilityEffort> = efforts.iter().copied().collect();
+            if unique.len() != efforts.len() {
+                return Err("capability_overrides.supported_efforts cannot contain duplicates".into());
+            }
+        }
+        if let OverrideField::Set(tools) = &self.server_tools {
+            let unique: std::collections::BTreeSet<ServerToolKind> = tools.iter().copied().collect();
+            if unique.len() != tools.len() {
+                return Err("capability_overrides.server_tools cannot contain duplicates".into());
+            }
+        }
+        for (field, value) in [
+            ("max_context_tokens", &self.max_context_tokens),
+            ("max_output_tokens", &self.max_output_tokens),
+        ] {
+            if matches!(value, OverrideField::Set(Some(0))) {
+                return Err(format!("capability_overrides.{field} must be positive or null"));
+            }
+        }
+        if let OverrideField::Set(Some(value)) = self.max_temperature
+            && value < 0.0
+        {
+            return Err("capability_overrides.max_temperature must be non-negative or null".into());
+        }
+        Ok(())
+    }
+}
+
+pub fn validate_overrides(overrides: Option<&str>) -> Result<(), String> {
+    overrides
+        .map(ProviderCapabilityOverrides::parse)
+        .transpose()
+        .map(|_| ())
+}
+
+/// Parse and atomically apply a user-authored capability override. Invalid
+/// content leaves the catalog-derived capability set untouched.
+pub fn apply_overrides(caps: &mut ProviderCapabilities, overrides: Option<&str>) -> Result<(), String> {
+    let Some(raw) = overrides else { return Ok(()) };
+    let patch = ProviderCapabilityOverrides::parse(raw)?;
+    let mut updated = caps.clone();
+
+    macro_rules! apply_value {
+        ($field:ident) => {
+            if let OverrideField::Set(value) = patch.$field {
+                updated.$field = value;
+            }
+        };
+    }
+    apply_value!(supports_tools);
+    apply_value!(supports_streaming_tools);
+    apply_value!(supports_thinking);
+    apply_value!(supports_thinking_off);
+    apply_value!(supports_images);
+    apply_value!(supports_pdf);
+    apply_value!(supports_temperature);
+    apply_value!(supports_top_p);
+    apply_value!(supports_fast);
+    apply_value!(supports_verbosity);
+    apply_value!(thinking_style);
+    apply_value!(server_tools);
+    apply_value!(max_context_tokens);
+    apply_value!(max_output_tokens);
+    apply_value!(max_temperature);
+
+    if let OverrideField::Set(mut efforts) = patch.supported_efforts {
+        efforts.sort_unstable();
+        updated.supported_efforts = efforts.into_iter().map(|effort| effort.as_str().to_string()).collect();
+    }
+    if let OverrideField::Set(effort) = patch.default_effort {
+        updated.default_effort = effort.map(|value| value.as_str().to_string());
+    }
+    if let OverrideField::Set(verbosity) = patch.default_verbosity {
+        updated.default_verbosity = verbosity.map(|value| value.as_str().to_string());
+    }
+    if let Some(default) = updated.default_effort.as_deref()
+        && !updated.supported_efforts.iter().any(|effort| effort == default)
+    {
+        return Err(format!(
+            "capability_overrides.default_effort '{default}' is not present in supported_efforts"
+        ));
+    }
+    *caps = updated;
+    Ok(())
 }
 
 /// Resolve the effective thinking triple from an assistant's stored defaults
 /// plus an optional per-request tier. Shared by the chat command and the OneBot
 /// agent so the two entry points cannot drift apart.
 ///
-/// An unrecognised tier falls back to the assistant default rather than being
-/// forwarded verbatim -- passing a tier no provider accepts is a 400.
+/// A request may omit the level to use the assistant default. Any present
+/// value is a closed first-party contract and must be recognised exactly.
 pub fn resolve_thinking(
     assistant_enabled: bool,
     assistant_budget: Option<i32>,
     requested_level: Option<&str>,
-) -> (bool, Option<i32>, Option<String>) {
-    match requested_level {
-        Some("off") => (false, None, None),
-        Some(level) if EFFORT_LADDER.contains(&level) => (true, assistant_budget, Some(level.to_string())),
-        _ => (assistant_enabled, assistant_budget, None),
-    }
+) -> Result<(bool, Option<i32>, Option<String>), String> {
+    Ok(match requested_level {
+        None => (assistant_enabled, assistant_budget, None),
+        Some(level) => match StoredThinkingLevel::parse(level)? {
+            StoredThinkingLevel::Off => (false, None, None),
+            effort => (true, assistant_budget, Some(effort.as_str().to_string())),
+        },
+    })
 }
 
-/// Coerce an effort tier onto what this model actually accepts. An unsupported
-/// tier lands on the median of the whitelist rather than being dropped, so
-/// switching models degrades the request instead of silently disabling
-/// reasoning (mirrors Codex `session/turn_context.rs`).
-pub fn nearest_supported_effort(current: &str, supported: &[String]) -> Option<String> {
-    if supported.is_empty() {
-        return None;
+pub fn filter_params(params: &mut ChatParams, caps: &ProviderCapabilities) -> Result<(), String> {
+    if let Some(effort) = params.thinking_effort.as_deref() {
+        if !EFFORT_LADDER[1..].contains(&effort) {
+            return Err(format!("unknown thinking effort '{effort}'"));
+        }
+        if !caps.supports_thinking || !caps.supported_efforts.iter().any(|item| item == effort) {
+            return Err(format!(
+                "thinking effort '{effort}' is not supported by model '{}'",
+                params.model
+            ));
+        }
     }
-    if supported.iter().any(|e| e == current) {
-        return Some(current.to_string());
-    }
-    supported.get(supported.len().saturating_sub(1) / 2).cloned()
-}
-
-pub fn filter_params(params: &mut ChatParams, caps: &ProviderCapabilities) {
     params.thinking_style = caps.thinking_style;
     if !caps.supports_temperature {
         params.temperature = None;
@@ -507,22 +662,6 @@ pub fn filter_params(params: &mut ChatParams, caps: &ProviderCapabilities) {
         params.thinking_enabled = true;
         params.thinking_budget = None;
         params.thinking_effort = None;
-    }
-    let requested_effort = params.thinking_effort.clone();
-    params.thinking_effort = params
-        .thinking_effort
-        .as_deref()
-        .and_then(|effort| nearest_supported_effort(effort, &caps.supported_efforts));
-    if requested_effort != params.thinking_effort {
-        // Picking "max" and silently getting "medium" is a user-visible state
-        // change: the interface and the request disagree, and the complaint
-        // arrives as "the highest tier does nothing".
-        tracing::info!(
-            model = %params.model,
-            requested = requested_effort.as_deref().unwrap_or(""),
-            effective = params.thinking_effort.as_deref().unwrap_or(""),
-            "thinking effort coerced to a tier this model accepts"
-        );
     }
     // budget_tokens is rejected outright by adaptive/always-on models, and is
     // meaningless where effort is the only knob.
@@ -553,6 +692,7 @@ pub fn filter_params(params: &mut ChatParams, caps: &ProviderCapabilities) {
     {
         params.temperature = Some(max_temp as f64);
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -562,6 +702,46 @@ mod tests {
     #[test]
     fn catalog_parses() {
         assert!(!CATALOG.models.is_empty());
+    }
+
+    #[test]
+    fn catalog_effort_and_verbosity_values_are_closed() {
+        for raw in [
+            r#"{"provider":"openai","prefix":"strict-test","supported_efforts":["future"]}"#,
+            r#"{"provider":"openai","prefix":"strict-test","supported_efforts":["none"]}"#,
+            r#"{"provider":"openai","prefix":"strict-test","default_effort":"future"}"#,
+            r#"{"provider":"openai","prefix":"strict-test","default_effort":"High"}"#,
+            r#"{"provider":"openai","prefix":"strict-test","default_verbosity":"verbose"}"#,
+        ] {
+            assert!(
+                serde_json::from_str::<CatalogEntry>(raw).is_err(),
+                "accepted unknown catalog value in {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn catalog_enums_project_to_the_public_string_contract_without_loss() {
+        let entry: CatalogEntry = serde_json::from_str(
+            r#"{
+                "provider":"openai",
+                "prefix":"strict-test",
+                "supported_efforts":["minimal","low","medium","high","xhigh","max"],
+                "default_effort":"xhigh",
+                "default_verbosity":"high"
+            }"#,
+        )
+        .unwrap();
+        let mut caps = ProviderCapabilities::default();
+
+        apply(&mut caps, &entry);
+
+        assert_eq!(
+            caps.supported_efforts,
+            vec!["minimal", "low", "medium", "high", "xhigh", "max"]
+        );
+        assert_eq!(caps.default_effort.as_deref(), Some("xhigh"));
+        assert_eq!(caps.default_verbosity.as_deref(), Some("high"));
     }
 
     /// The Codex backend ignores sampling parameters and sells no priority
@@ -629,7 +809,7 @@ mod tests {
     fn openai_o3_no_temperature() {
         let caps = resolve("openai", None, "o3-2025-04-16");
         assert!(caps.supports_thinking);
-        assert!(caps.supports_reasoning_effort);
+        assert!(!caps.supported_efforts.is_empty());
         assert!(!caps.supports_temperature);
         assert!(!caps.supports_top_p);
     }
@@ -669,7 +849,7 @@ mod tests {
             top_p: Some(0.9),
             ..Default::default()
         };
-        filter_params(&mut params, &caps);
+        filter_params(&mut params, &caps).unwrap();
         assert!(params.thinking_enabled);
         assert_eq!(params.thinking_effort, None);
         assert_eq!(params.temperature, None);
@@ -688,7 +868,7 @@ mod tests {
     fn deepseek_v4_pro_capabilities() {
         let caps = resolve("deepseek", None, "deepseek-v4-pro");
         assert!(caps.supports_thinking);
-        assert!(caps.supports_reasoning_effort);
+        assert!(!caps.supported_efforts.is_empty());
         assert!(!caps.supports_temperature);
         assert!(!caps.supports_top_p);
         assert_eq!(caps.max_context_tokens, Some(128_000));
@@ -698,7 +878,7 @@ mod tests {
     fn deepseek_v4_flash_capabilities() {
         let caps = resolve("deepseek", None, "deepseek-v4-flash");
         assert!(caps.supports_thinking);
-        assert!(caps.supports_reasoning_effort);
+        assert!(!caps.supported_efforts.is_empty());
         assert!(!caps.supports_temperature);
     }
 
@@ -706,7 +886,7 @@ mod tests {
     fn deepseek_unknown_model_gets_default() {
         let caps = resolve("deepseek", None, "deepseek-future-model");
         assert!(caps.supports_thinking);
-        assert!(caps.supports_reasoning_effort);
+        assert!(!caps.supported_efforts.is_empty());
         assert!(!caps.supports_temperature);
     }
 
@@ -736,16 +916,16 @@ mod tests {
             temperature: Some(0.7),
             ..Default::default()
         };
-        filter_params(&mut params, &caps);
+        filter_params(&mut params, &caps).unwrap();
         assert!(params.thinking_enabled);
         assert_eq!(params.thinking_effort, None);
         assert_eq!(params.temperature, Some(0.7), "sampling is fine on Grok");
     }
 
-    /// 4.5 accepts `xhigh` but treats it as `high`, so offering it would be a
-    /// tier that silently does nothing. It has to land on the median instead.
+    /// 4.5 does not expose `xhigh`; passing it is a contract error instead of
+    /// silently selecting a different effort.
     #[test]
-    fn grok_4_5_coerces_xhigh_rather_than_offering_it() {
+    fn grok_4_5_rejects_xhigh() {
         let caps = resolve("xai", None, "grok-4.5");
         assert_eq!(caps.supported_efforts, vec!["low", "medium", "high"]);
         let mut params = ChatParams {
@@ -754,8 +934,7 @@ mod tests {
             thinking_effort: Some("xhigh".into()),
             ..Default::default()
         };
-        filter_params(&mut params, &caps);
-        assert_eq!(params.thinking_effort, Some("medium".into()));
+        assert!(filter_params(&mut params, &caps).is_err());
     }
 
     /// The aliases and the real id are the same model, and both are things a
@@ -775,7 +954,7 @@ mod tests {
     fn an_uncatalogued_grok_keeps_reasoning_and_the_smallest_window() {
         let caps = resolve("xai", None, "grok-5-something");
         assert!(caps.supports_thinking);
-        assert!(caps.supports_reasoning_effort);
+        assert!(!caps.supported_efforts.is_empty());
         assert_eq!(caps.max_context_tokens, Some(256_000));
     }
 
@@ -785,7 +964,14 @@ mod tests {
     #[test]
     fn server_tools_are_a_responses_api_thing_only() {
         let responses = resolve("xai", Some("responses"), "grok-4.6");
-        assert_eq!(responses.server_tools, vec!["web_search", "x_search", "code_execution"]);
+        assert_eq!(
+            responses.server_tools,
+            vec![
+                ServerToolKind::WebSearch,
+                ServerToolKind::XSearch,
+                ServerToolKind::CodeExecution,
+            ]
+        );
 
         for format in [Some("chat_completions"), None] {
             assert!(
@@ -800,7 +986,7 @@ mod tests {
     #[test]
     fn deepseek_offers_only_the_one_it_documents() {
         let caps = resolve("deepseek", Some("responses"), "deepseek-v4-flash");
-        assert_eq!(caps.server_tools, vec!["web_search"]);
+        assert_eq!(caps.server_tools, vec![ServerToolKind::WebSearch]);
     }
 
     /// A provider nobody has measured gets none, rather than a guess. A wrong
@@ -820,10 +1006,10 @@ mod tests {
     #[test]
     fn an_override_can_reshape_the_server_tool_list() {
         let mut caps = resolve("xai", Some("responses"), "grok-4.6");
-        apply_overrides(&mut caps, Some(r#"{"server_tools":["web_search"]}"#));
-        assert_eq!(caps.server_tools, vec!["web_search"]);
+        apply_overrides(&mut caps, Some(r#"{"server_tools":["web_search"]}"#)).unwrap();
+        assert_eq!(caps.server_tools, vec![ServerToolKind::WebSearch]);
 
-        apply_overrides(&mut caps, Some(r#"{"server_tools":[]}"#));
+        apply_overrides(&mut caps, Some(r#"{"server_tools":[]}"#)).unwrap();
         assert!(caps.server_tools.is_empty());
     }
 
@@ -848,7 +1034,7 @@ mod tests {
             thinking_effort: Some("high".into()),
             ..Default::default()
         };
-        filter_params(&mut params, &caps);
+        filter_params(&mut params, &caps).unwrap();
         assert!(params.temperature.is_none());
         assert!(params.top_p.is_none());
         assert!(params.thinking_enabled);
@@ -866,11 +1052,8 @@ mod tests {
             thinking_effort: Some("high".into()),
             ..Default::default()
         };
-        filter_params(&mut params, &caps);
-        assert_eq!(params.temperature, Some(0.7));
-        assert!(!params.thinking_enabled);
-        assert!(params.thinking_budget.is_none());
-        assert!(params.thinking_effort.is_none());
+        let error = filter_params(&mut params, &caps).unwrap_err();
+        assert!(error.contains("not supported by model 'gpt-4o'"));
     }
 
     #[test]
@@ -881,7 +1064,7 @@ mod tests {
             temperature: Some(1.5),
             ..Default::default()
         };
-        filter_params(&mut params, &caps);
+        filter_params(&mut params, &caps).unwrap();
         assert_eq!(params.temperature, Some(1.0));
     }
 
@@ -955,7 +1138,6 @@ mod tests {
         let caps = resolve("anthropic", None, "claude-haiku-4-5");
         assert!(caps.supports_thinking);
         assert!(caps.supported_efforts.is_empty());
-        assert!(!caps.supports_reasoning_effort);
     }
 
     #[test]
@@ -969,7 +1151,7 @@ mod tests {
             thinking_effort: Some("xhigh".into()),
             ..Default::default()
         };
-        filter_params(&mut params, &caps);
+        filter_params(&mut params, &caps).unwrap();
         assert!(params.temperature.is_none(), "sampling params are a 400 on Opus 4.7+");
         assert!(
             params.thinking_budget.is_none(),
@@ -987,14 +1169,14 @@ mod tests {
             thinking_budget: Some(10_000),
             ..Default::default()
         };
-        filter_params(&mut params, &caps);
+        filter_params(&mut params, &caps).unwrap();
         assert_eq!(params.thinking_budget, Some(10_000));
     }
 
     #[test]
-    fn unsupported_effort_falls_back_to_median() {
-        // gpt-5.2 tops out at xhigh; "max" must land on the median rather than
-        // being dropped or passed through to a 400.
+    fn unsupported_effort_is_rejected() {
+        // gpt-5.2 tops out at xhigh; "max" must not be changed behind the
+        // caller's back or passed through to a provider 400.
         let caps = resolve("openai", Some("responses"), "gpt-5.2");
         let mut params = ChatParams {
             model: "gpt-5.2".into(),
@@ -1002,22 +1184,7 @@ mod tests {
             thinking_effort: Some("max".into()),
             ..Default::default()
         };
-        filter_params(&mut params, &caps);
-        assert_eq!(params.thinking_effort, Some("medium".into()));
-    }
-
-    #[test]
-    fn nearest_supported_effort_cases() {
-        let full: Vec<String> = ["low", "medium", "high", "xhigh", "max"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        assert_eq!(nearest_supported_effort("xhigh", &full), Some("xhigh".into()));
-        assert_eq!(nearest_supported_effort("minimal", &full), Some("high".into()));
-        assert_eq!(nearest_supported_effort("high", &[]), None);
-
-        let three: Vec<String> = ["low", "medium", "high"].iter().map(|s| s.to_string()).collect();
-        assert_eq!(nearest_supported_effort("max", &three), Some("medium".into()));
+        assert!(filter_params(&mut params, &caps).is_err());
     }
 
     #[test]
@@ -1028,7 +1195,7 @@ mod tests {
             fast: true,
             ..Default::default()
         };
-        filter_params(&mut params, &caps);
+        filter_params(&mut params, &caps).unwrap();
         assert!(!params.fast);
     }
 
@@ -1039,7 +1206,7 @@ mod tests {
             model: "gpt-5.6-sol".into(),
             ..Default::default()
         };
-        filter_params(&mut params, &caps);
+        filter_params(&mut params, &caps).unwrap();
         assert_eq!(params.verbosity, Some("low".into()));
 
         let caps = resolve("anthropic", None, "claude-opus-4-8");
@@ -1048,7 +1215,7 @@ mod tests {
             verbosity: Some("high".into()),
             ..Default::default()
         };
-        filter_params(&mut params, &caps);
+        filter_params(&mut params, &caps).unwrap();
         assert!(params.verbosity.is_none(), "Anthropic has no verbosity parameter");
     }
 
@@ -1065,7 +1232,7 @@ mod tests {
     fn responses_format_gets_reasoning_defaults() {
         let caps = resolve("openai", Some("responses"), "some-unknown-reasoning-model");
         assert!(caps.supports_thinking);
-        assert!(caps.supports_reasoning_effort);
+        assert!(!caps.supported_efforts.is_empty());
         assert_eq!(caps.thinking_style, ThinkingStyle::EffortOnly);
     }
 
@@ -1076,20 +1243,56 @@ mod tests {
         apply_overrides(
             &mut caps,
             Some(r#"{"supported_efforts":["high","low"],"supports_fast":true}"#),
-        );
+        )
+        .unwrap();
         // Rebuilt through the ladder, so ascending order regardless of input order.
         assert_eq!(caps.supported_efforts, vec!["low", "high"]);
-        assert!(caps.supports_reasoning_effort);
         assert!(caps.supports_fast);
     }
 
     #[test]
-    fn malformed_overrides_are_ignored() {
+    fn thinking_request_rejects_unknown_and_non_request_levels() {
+        assert_eq!(
+            resolve_thinking(true, Some(1024), None).unwrap(),
+            (true, Some(1024), None)
+        );
+        assert_eq!(
+            resolve_thinking(true, Some(1024), Some("off")).unwrap(),
+            (false, None, None)
+        );
+        assert_eq!(
+            resolve_thinking(false, Some(1024), Some("high")).unwrap(),
+            (true, Some(1024), Some("high".into()))
+        );
+        for level in ["default", "none", "future", " high"] {
+            assert!(
+                resolve_thinking(true, Some(1024), Some(level)).is_err(),
+                "accepted {level}"
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_and_unknown_overrides_are_rejected_atomically() {
         let mut caps = resolve("anthropic", None, "claude-opus-4-8");
-        let before = caps.supported_efforts.clone();
-        apply_overrides(&mut caps, Some("not json at all"));
-        apply_overrides(&mut caps, Some("[1,2,3]"));
-        apply_overrides(&mut caps, None);
-        assert_eq!(caps.supported_efforts, before);
+        let before = caps.clone();
+        for raw in [
+            "not json at all",
+            "[1,2,3]",
+            r#"{"future_capability":true}"#,
+            r#"{"supports_tools":"yes"}"#,
+            r#"{"supports_tools":null}"#,
+            r#"{"supported_efforts":["low","future"]}"#,
+            r#"{"supported_efforts":["low",7]}"#,
+            r#"{"supported_efforts":["low","low"]}"#,
+            r#"{"server_tools":["web_search",7]}"#,
+            r#"{"server_tools":["future_search"]}"#,
+        ] {
+            assert!(apply_overrides(&mut caps, Some(raw)).is_err(), "accepted {raw}");
+            assert_eq!(caps.supports_tools, before.supports_tools);
+            assert_eq!(caps.supported_efforts, before.supported_efforts);
+            assert_eq!(caps.server_tools, before.server_tools);
+        }
+        apply_overrides(&mut caps, None).unwrap();
     }
 }

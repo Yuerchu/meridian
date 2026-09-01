@@ -21,6 +21,7 @@
 use std::sync::Arc;
 
 use crate::agent::{CompactCircuitBreaker, TokenBudget, microcompact, mid_turn_compact, trim_to_context_limit};
+use crate::events::{CompactDoneEvent, CompactOutcome, CompactStartEvent, CompactTrigger};
 use crate::provider::{ChatMessage, ChatParams, ChatProvider};
 
 use super::Emit;
@@ -83,18 +84,31 @@ impl Compacting<'_> {
         );
     }
 
-    fn announce(&self, channel: &str, extra: serde_json::Value) {
+    fn announce_start(&self, trigger: CompactTrigger) {
         let Some(emit) = self.emit else { return };
-        let mut payload = serde_json::json!({
-            "conversation_id": self.conversation_id,
-            "mid_turn": true,
+        let _ = emit.emit_compact_start(CompactStartEvent {
+            conversation_id: self.conversation_id.to_string(),
+            mid_turn: true,
+            trigger,
         });
-        if let (Some(p), Some(e)) = (payload.as_object_mut(), extra.as_object()) {
-            for (k, v) in e {
-                p.insert(k.clone(), v.clone());
-            }
-        }
-        let _ = emit.emit(channel, payload);
+    }
+
+    fn announce_done(
+        &self,
+        trigger: CompactTrigger,
+        outcome: CompactOutcome,
+        tokens_reclaimed: Option<usize>,
+        error: Option<String>,
+    ) {
+        let Some(emit) = self.emit else { return };
+        let _ = emit.emit_compact_done(CompactDoneEvent {
+            conversation_id: self.conversation_id.to_string(),
+            mid_turn: true,
+            trigger,
+            outcome,
+            tokens_reclaimed: tokens_reclaimed.map(|tokens| tokens as u64),
+            error,
+        });
     }
 }
 
@@ -139,20 +153,21 @@ impl CompactionPolicy {
                     c.report("api_error", before, "trim");
                     return;
                 }
-                c.announce("compact-start", serde_json::json!({ "trigger": "api_error" }));
-                let rung = match mid_turn_compact(c.messages, c.budget, c.provider, c.params, c.keep_recent).await {
-                    Ok(_) => {
-                        breaker.record_success();
-                        c.budget.update_estimate(c.messages);
-                        "summary"
-                    }
-                    Err(_) => {
-                        breaker.record_failure();
-                        c.trim();
-                        "trim"
-                    }
-                };
-                c.announce("compact-done", serde_json::json!({ "trigger": "api_error" }));
+                c.announce_start(CompactTrigger::ApiError);
+                let (rung, outcome, error) =
+                    match mid_turn_compact(c.messages, c.budget, c.provider, c.params, c.keep_recent).await {
+                        Ok(_) => {
+                            breaker.record_success();
+                            c.budget.update_estimate(c.messages);
+                            ("summary", CompactOutcome::Completed, None)
+                        }
+                        Err(error) => {
+                            breaker.record_failure();
+                            c.trim();
+                            ("trim", CompactOutcome::Fallback, Some(error.to_string()))
+                        }
+                    };
+                c.announce_done(CompactTrigger::ApiError, outcome, None, error);
                 c.report("api_error", before, rung);
             }
         }
@@ -184,18 +199,18 @@ impl CompactionPolicy {
                 if !(*enabled && breaker.can_compact()) {
                     return;
                 }
-                c.announce("compact-start", serde_json::json!({ "trigger": "threshold" }));
+                c.announce_start(CompactTrigger::Threshold);
                 let reclaimed = c.cheap_pass();
                 if !c.budget.needs_compact() {
                     // Said even when the cheap pass freed nothing, because the
                     // start went out and a window left holding it would show a
                     // compaction that never ends.
-                    let extra = if reclaimed > 0 {
-                        serde_json::json!({ "tokens_reclaimed": reclaimed })
-                    } else {
-                        serde_json::json!({})
-                    };
-                    c.announce("compact-done", extra);
+                    c.announce_done(
+                        CompactTrigger::Threshold,
+                        CompactOutcome::Completed,
+                        Some(reclaimed),
+                        None,
+                    );
                     c.report("threshold", before, "microcompact");
                     return;
                 }
@@ -203,9 +218,11 @@ impl CompactionPolicy {
                     Ok(more) => {
                         breaker.record_success();
                         c.budget.update_estimate(c.messages);
-                        c.announce(
-                            "compact-done",
-                            serde_json::json!({ "tokens_reclaimed": reclaimed + more }),
+                        c.announce_done(
+                            CompactTrigger::Threshold,
+                            CompactOutcome::Completed,
+                            Some(reclaimed + more),
+                            None,
                         );
                         c.report("threshold", before, "summary");
                     }
@@ -214,9 +231,11 @@ impl CompactionPolicy {
                         breaker.record_failure();
                         c.trim();
                         c.budget.update_estimate(c.messages);
-                        c.announce(
-                            "compact-done",
-                            serde_json::json!({ "fallback": true, "error": e.to_string() }),
+                        c.announce_done(
+                            CompactTrigger::Threshold,
+                            CompactOutcome::Fallback,
+                            Some(reclaimed),
+                            Some(e.to_string()),
                         );
                         c.report("threshold", before, "trim");
                     }

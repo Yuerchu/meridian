@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { EmojiSettings } from './emoji-settings'
 import i18n from '@/i18n'
 import { api } from '@/api'
-import type { Emoji, EmojiPack } from '@/types'
+import type { EmojiInfoResponse, EmojiPackInfoResponse } from '@/types'
 
 vi.mock('@/api', () => ({
   api: {
@@ -21,12 +21,12 @@ vi.mock('@/api', () => ({
 
 const mockApi = vi.mocked(api)
 
-const PACK: EmojiPack = {
+const PACK: EmojiPackInfoResponse = {
   id: 'pack-1',
   name: 'Collected',
   description: null,
   cover_image: null,
-  is_builtin: 0,
+  is_builtin: false,
   sort_order: 0,
   created_at: 0,
   updated_at: 0,
@@ -34,7 +34,7 @@ const PACK: EmojiPack = {
   source_account_id: '1',
 }
 
-function makeEmoji(over: Partial<Emoji> & Pick<Emoji, 'id'>): Emoji {
+function makeEmoji(over: Partial<EmojiInfoResponse> & Pick<EmojiInfoResponse, 'id'>): EmojiInfoResponse {
   return {
     pack_id: 'pack-1',
     name: 'sticker.gif',
@@ -45,7 +45,6 @@ function makeEmoji(over: Partial<Emoji> & Pick<Emoji, 'id'>): Emoji {
     created_at: 0,
     source: 'onebot_image',
     source_key: null,
-    native_payload: null,
     semantic_status: 'pending',
     suggested_name: null,
     suggested_tags: null,
@@ -71,8 +70,8 @@ describe('EmojiSettings', () => {
     vi.clearAllMocks()
     mockApi.listEmojiPacks.mockResolvedValue([PACK])
     mockApi.getEmojiFileUrl.mockResolvedValue('blob:sticker')
-    mockApi.confirmStickerSemantics.mockImplementation((id, name, tags) =>
-      Promise.resolve(makeEmoji({ id, name, tags: tags ?? null, semantic_status: 'confirmed' })),
+    mockApi.confirmStickerSemantics.mockImplementation(({ id, name, tags }) =>
+      Promise.resolve(makeEmoji({ id, name, tags, semantic_status: 'confirmed' })),
     )
   })
 
@@ -94,7 +93,13 @@ describe('EmojiSettings', () => {
     await user.clear(field)
     await user.type(field, 'new name{Enter}')
 
-    await waitFor(() => expect(mockApi.confirmStickerSemantics).toHaveBeenCalledWith('e1', 'new name', 'cat,angry'))
+    await waitFor(() =>
+      expect(mockApi.confirmStickerSemantics).toHaveBeenCalledWith({
+        id: 'e1',
+        name: 'new name',
+        tags: 'cat,angry',
+      }),
+    )
   })
 
   it('keeps the name when only the tags are edited', async () => {
@@ -110,7 +115,13 @@ describe('EmojiSettings', () => {
     await user.clear(field)
     await user.type(field, 'cat,angry{Enter}')
 
-    await waitFor(() => expect(mockApi.confirmStickerSemantics).toHaveBeenCalledWith('e1', 'old name', 'cat,angry'))
+    await waitFor(() =>
+      expect(mockApi.confirmStickerSemantics).toHaveBeenCalledWith({
+        id: 'e1',
+        name: 'old name',
+        tags: 'cat,angry',
+      }),
+    )
   })
 
   /**
@@ -136,7 +147,11 @@ describe('EmojiSettings', () => {
     await user.click(screen.getByRole('button', { name: 'Confirm' }))
 
     await waitFor(() =>
-      expect(mockApi.confirmStickerSemantics).toHaveBeenCalledWith('e1', 'shyly hiding', 'shy,hiding'),
+      expect(mockApi.confirmStickerSemantics).toHaveBeenCalledWith({
+        id: 'e1',
+        name: 'shyly hiding',
+        tags: 'shy,hiding',
+      }),
     )
   })
 

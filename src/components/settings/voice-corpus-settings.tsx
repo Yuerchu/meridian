@@ -6,25 +6,10 @@ import { Button, Checkbox, Description, Input, Label, Separator, Spinner, TextFi
 import { ItemCard } from '@heroui-pro/react/item-card'
 import { ItemCardGroup } from '@heroui-pro/react/item-card-group'
 import { api } from '@/api'
+import type { VoiceCorpusDeleteResponse, VoiceCorpusSessionInfoResponse } from '@/types'
 import { can } from '@/lib/capabilities'
 import { SettingsHeader, SettingsPane } from './primitives'
 import { useConfirm } from '@/hooks/use-confirm'
-
-interface DeleteReport {
-  clips: number
-  files: number
-  bytes: number
-  failures: string[]
-}
-
-interface CorpusSession {
-  handle: string
-  kind: 'group' | 'private'
-  clips: number
-  bytes: number
-  untranscribed: number
-  last_captured_at: number
-}
 
 function formatSize(bytes: number, number: Intl.NumberFormat): string {
   if (bytes < 1024 * 1024) return `${number.format(bytes / 1024)} KB`
@@ -42,7 +27,7 @@ function formatSize(bytes: number, number: Intl.NumberFormat): string {
  */
 export function VoiceCorpusSettings() {
   const { t, i18n } = useTranslation()
-  const [sessions, setSessions] = useState<CorpusSession[]>([])
+  const [sessions, setSessions] = useState<VoiceCorpusSessionInfoResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [senderInput, setSenderInput] = useState('')
   const [includeSender, setIncludeSender] = useState(false)
@@ -89,15 +74,15 @@ export function VoiceCorpusSettings() {
   // Failures are listed rather than folded into the count: the files and the
   // rows can fail independently, and one number cannot say which half. Reading
   // only `clips` reports a delete that left the audio on disk as a clean one.
-  const deleteMessage = (report: DeleteReport, key: 'deleted' | 'forgot') =>
+  const deleteMessage = (report: VoiceCorpusDeleteResponse, key: 'deleted' | 'forgot') =>
     report.failures.length > 0
       ? t('settings.voiceCorpus.deletedWithFailures', { clips: report.clips, failures: report.failures.length })
       : t(`settings.voiceCorpus.${key}`, { clips: report.clips })
 
-  const deleteSession = async (session: CorpusSession) => {
+  const deleteSession = async (session: VoiceCorpusSessionInfoResponse) => {
     if (!(await confirm({ body: t('settings.voiceCorpus.deleteSessionConfirm', { handle: session.handle }) }))) return
     await run(async () =>
-      deleteMessage(await api.deleteVoiceCorpus({ kind: 'session', handle: session.handle }), 'deleted'),
+      deleteMessage(await api.deleteVoiceCorpus({ selector: { kind: 'session', handle: session.handle } }), 'deleted'),
     )
   }
 
@@ -109,7 +94,7 @@ export function VoiceCorpusSettings() {
       // this button means both — but sent as two calls the barrier comes down
       // between them while the opt-out is not yet in force, so anything
       // recorded in the gap is a recording nothing will go back for.
-      const report = await api.forgetVoiceSender(id)
+      const report = await api.forgetVoiceSender({ senderId: id })
       setSenderInput('')
       return deleteMessage(report, 'forgot')
     })
@@ -119,7 +104,11 @@ export function VoiceCorpusSettings() {
     run(async () => {
       const dir = await save({ title: t('settings.voiceCorpus.export'), defaultPath: 'voice-corpus' })
       if (!dir) return null
-      const report = await api.exportVoiceCorpus(dir, includeSender, includeUntranscribed)
+      const report = await api.exportVoiceCorpus({
+        outputDir: dir,
+        includeSender,
+        includeUntranscribed,
+      })
       return t('settings.voiceCorpus.exported', { clips: report.clips, skipped: report.skipped })
     })
 

@@ -7,7 +7,7 @@ import { TurnItem } from './turn-item'
 import type { EmojiMap } from './emoji-renderer'
 import type { SenderNames } from '@/hooks/use-sender-names'
 import type { Turn } from '@/lib/turns'
-import type { Message } from '@/types'
+import type { MessageViewModel } from '@/types'
 
 export interface CompactedRegionProps {
   /** Turns that fall before the compaction boundary. Empty means nothing to show. */
@@ -15,7 +15,7 @@ export interface CompactedRegionProps {
   conversationId: string
   /** Messages behind those turns — what the "N messages" counters name. */
   compactedCount: number
-  compactSummary?: Message
+  compactSummary?: MessageViewModel
   onDelete?: (id: string) => void
   isOneBot?: boolean
   emojiMap?: EmojiMap

@@ -1,4 +1,4 @@
-import type { ProviderCapabilities, ThinkingEffort, ThinkingLevel } from '@/types'
+import type { ProviderCapabilitiesInfoResponse, ThinkingEffort, ThinkingLevel } from '@/types'
 
 /**
  * Every effort tier, ascending. Mirrors EFFORT_LADDER in the Rust catalog
@@ -9,31 +9,27 @@ export const EFFORT_LADDER: readonly ThinkingEffort[] = ['minimal', 'low', 'medi
 /**
  * The effort tiers the current model advertises.
  *
- * Returns the full ladder when capabilities are unknown -- either not loaded
- * yet, or served by a backend that predates `supported_efforts`. Showing too
- * many tiers is recoverable because the backend coerces anything unsupported
- * before it reaches the wire; showing too few would hide a tier the model
- * actually supports.
+ * Returns the full ladder only while capabilities have not loaded. Once loaded,
+ * `supported_efforts` is a required part of the versioned backend contract.
  */
-export function allowedEfforts(caps: ProviderCapabilities | null): readonly ThinkingEffort[] {
-  if (!caps || caps.supported_efforts === undefined) return EFFORT_LADDER
+export function allowedEfforts(caps: ProviderCapabilitiesInfoResponse | null): readonly ThinkingEffort[] {
+  if (!caps) return EFFORT_LADDER
   const advertised = new Set(caps.supported_efforts)
   return EFFORT_LADDER.filter((tier) => advertised.has(tier))
 }
 
-/**
- * Coerce a tier onto what the model accepts, landing on the median of the
- * whitelist rather than dropping to the default. Used when switching models so
- * a request degrades instead of silently losing its reasoning setting.
- *
- * `default` always passes through. `off` degrades to `default` for models whose
- * protocol has no off switch.
- */
-export function coerceThinkingLevel(current: ThinkingLevel, caps: ProviderCapabilities | null): ThinkingLevel {
+/** Validate an explicit tier without substituting a different request. */
+export function requireSupportedThinkingLevel(
+  current: ThinkingLevel,
+  caps: ProviderCapabilitiesInfoResponse | null,
+): ThinkingLevel {
+  if (!caps) return current
   if (current === 'default') return current
-  if (current === 'off') return caps?.supports_thinking_off === false ? 'default' : current
+  if (current === 'off') {
+    if (!caps.supports_thinking_off) throw new Error('the selected model does not support disabling thinking')
+    return current
+  }
   const allowed = allowedEfforts(caps)
-  if (allowed.length === 0) return 'default'
   if (allowed.includes(current)) return current
-  return allowed[Math.floor((allowed.length - 1) / 2)]
+  throw new Error(`the selected model does not support thinking effort '${current}'`)
 }

@@ -82,14 +82,27 @@ pub enum GoogleSignatureLocation {
 
 /// The only representation allowed to cross the persistence boundary.
 #[derive(Serialize, Deserialize)]
-struct StoredProviderStateV1 {
-    version: u32,
-    producer: StoredProviderStateProducer,
-    #[serde(flatten)]
-    payload: StoredProviderStatePayload,
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum StoredProviderStateV1 {
+    GoogleThoughtSignatures {
+        version: u32,
+        producer: StoredProviderStateProducer,
+        payload: StoredGoogleThoughtSignaturesPayload,
+    },
+    AnthropicThinkingSignature {
+        version: u32,
+        producer: StoredProviderStateProducer,
+        payload: StoredAnthropicThinkingSignaturePayload,
+    },
+    CodexReasoning {
+        version: u32,
+        producer: StoredProviderStateProducer,
+        payload: StoredCodexReasoningPayload,
+    },
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct StoredProviderStateProducer {
     vendor: String,
     protocol: String,
@@ -97,43 +110,86 @@ struct StoredProviderStateProducer {
 }
 
 #[derive(Serialize, Deserialize)]
-#[serde(tag = "kind", content = "payload", rename_all = "snake_case")]
-enum StoredProviderStatePayload {
-    GoogleThoughtSignatures {
-        signatures: Vec<StoredGoogleThoughtSignature>,
-    },
-    AnthropicThinkingSignature {
-        signature: String,
-    },
-    CodexReasoning {
-        items: Vec<StoredCodexReasoningItem>,
-    },
+#[serde(deny_unknown_fields)]
+struct StoredGoogleThoughtSignaturesPayload {
+    signatures: Vec<StoredGoogleThoughtSignature>,
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StoredAnthropicThinkingSignaturePayload {
+    signature: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StoredCodexReasoningPayload {
+    items: Vec<StoredCodexReasoningItem>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct StoredCodexReasoningItem {
     position: usize,
     item_json: String,
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct StoredGoogleThoughtSignature {
     location: StoredGoogleSignatureLocation,
     signature: String,
 }
 
 #[derive(Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(untagged)]
 enum StoredGoogleSignatureLocation {
+    Message(StoredGoogleMessageLocation),
+    ContentPart(StoredGoogleContentPartLocation),
+    ToolCall(StoredGoogleToolCallLocation),
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StoredGoogleMessageLocation {
+    #[serde(rename = "type")]
+    kind: StoredGoogleMessageLocationKind,
+}
+
+#[derive(Serialize, Deserialize)]
+enum StoredGoogleMessageLocationKind {
+    #[serde(rename = "message")]
     Message,
-    ContentPart {
-        index: usize,
-    },
-    ToolCall {
-        index: usize,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        call_id: Option<String>,
-    },
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StoredGoogleContentPartLocation {
+    #[serde(rename = "type")]
+    kind: StoredGoogleContentPartLocationKind,
+    index: usize,
+}
+
+#[derive(Serialize, Deserialize)]
+enum StoredGoogleContentPartLocationKind {
+    #[serde(rename = "content_part")]
+    ContentPart,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StoredGoogleToolCallLocation {
+    #[serde(rename = "type")]
+    kind: StoredGoogleToolCallLocationKind,
+    index: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    call_id: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+enum StoredGoogleToolCallLocationKind {
+    #[serde(rename = "tool_call")]
+    ToolCall,
 }
 
 /// Typed provider-state changes emitted by streaming wire adapters.
@@ -256,78 +312,110 @@ impl ProviderState {
 
 impl From<&ProviderState> for StoredProviderStateV1 {
     fn from(state: &ProviderState) -> Self {
-        let payload = match &state.payload {
+        let producer = || StoredProviderStateProducer {
+            vendor: state.producer.vendor.clone(),
+            protocol: state.producer.protocol.clone(),
+            model: state.producer.model.clone(),
+        };
+        match &state.payload {
             ProviderStatePayload::GoogleThoughtSignatures { signatures } => {
-                StoredProviderStatePayload::GoogleThoughtSignatures {
-                    signatures: signatures
-                        .iter()
-                        .map(|item| StoredGoogleThoughtSignature {
-                            location: StoredGoogleSignatureLocation::from(&item.location),
-                            signature: item.signature.clone(),
-                        })
-                        .collect(),
+                StoredProviderStateV1::GoogleThoughtSignatures {
+                    version: state.version,
+                    producer: producer(),
+                    payload: StoredGoogleThoughtSignaturesPayload {
+                        signatures: signatures
+                            .iter()
+                            .map(|item| StoredGoogleThoughtSignature {
+                                location: StoredGoogleSignatureLocation::from(&item.location),
+                                signature: item.signature.clone(),
+                            })
+                            .collect(),
+                    },
                 }
             }
             ProviderStatePayload::AnthropicThinkingSignature { signature } => {
-                StoredProviderStatePayload::AnthropicThinkingSignature {
-                    signature: signature.clone(),
+                StoredProviderStateV1::AnthropicThinkingSignature {
+                    version: state.version,
+                    producer: producer(),
+                    payload: StoredAnthropicThinkingSignaturePayload {
+                        signature: signature.clone(),
+                    },
                 }
             }
-            ProviderStatePayload::CodexReasoning { items } => StoredProviderStatePayload::CodexReasoning {
-                items: items
-                    .iter()
-                    .map(|item| StoredCodexReasoningItem {
-                        position: item.position,
-                        item_json: item.item_json.clone(),
-                    })
-                    .collect(),
+            ProviderStatePayload::CodexReasoning { items } => StoredProviderStateV1::CodexReasoning {
+                version: state.version,
+                producer: producer(),
+                payload: StoredCodexReasoningPayload {
+                    items: items
+                        .iter()
+                        .map(|item| StoredCodexReasoningItem {
+                            position: item.position,
+                            item_json: item.item_json.clone(),
+                        })
+                        .collect(),
+                },
             },
-        };
-        Self {
-            version: state.version,
-            producer: StoredProviderStateProducer {
-                vendor: state.producer.vendor.clone(),
-                protocol: state.producer.protocol.clone(),
-                model: state.producer.model.clone(),
-            },
-            payload,
         }
     }
 }
 
 impl From<StoredProviderStateV1> for ProviderState {
     fn from(stored: StoredProviderStateV1) -> Self {
-        let payload = match stored.payload {
-            StoredProviderStatePayload::GoogleThoughtSignatures { signatures } => {
+        let (version, producer, payload) = match stored {
+            StoredProviderStateV1::GoogleThoughtSignatures {
+                version,
+                producer,
+                payload,
+            } => (
+                version,
+                producer,
                 ProviderStatePayload::GoogleThoughtSignatures {
-                    signatures: signatures
+                    signatures: payload
+                        .signatures
                         .into_iter()
                         .map(|item| GoogleThoughtSignature {
                             location: GoogleSignatureLocation::from(item.location),
                             signature: item.signature,
                         })
                         .collect(),
-                }
-            }
-            StoredProviderStatePayload::AnthropicThinkingSignature { signature } => {
-                ProviderStatePayload::AnthropicThinkingSignature { signature }
-            }
-            StoredProviderStatePayload::CodexReasoning { items } => ProviderStatePayload::CodexReasoning {
-                items: items
-                    .into_iter()
-                    .map(|item| CodexReasoningItem {
-                        position: item.position,
-                        item_json: item.item_json,
-                    })
-                    .collect(),
-            },
+                },
+            ),
+            StoredProviderStateV1::AnthropicThinkingSignature {
+                version,
+                producer,
+                payload,
+            } => (
+                version,
+                producer,
+                ProviderStatePayload::AnthropicThinkingSignature {
+                    signature: payload.signature,
+                },
+            ),
+            StoredProviderStateV1::CodexReasoning {
+                version,
+                producer,
+                payload,
+            } => (
+                version,
+                producer,
+                ProviderStatePayload::CodexReasoning {
+                    items: payload
+                        .items
+                        .into_iter()
+                        .map(|item| CodexReasoningItem {
+                            position: item.position,
+                            item_json: item.item_json,
+                        })
+                        .collect(),
+                },
+            ),
         };
         Self {
-            version: stored.version,
+            version,
             producer: ProviderStateProducer {
-                vendor: stored.producer.vendor,
-                protocol: stored.producer.protocol,
-                model: stored.producer.model,
+                vendor: producer.vendor,
+                protocol: producer.protocol,
+                model: producer.model,
             },
             payload,
         }
@@ -337,12 +425,18 @@ impl From<StoredProviderStateV1> for ProviderState {
 impl From<&GoogleSignatureLocation> for StoredGoogleSignatureLocation {
     fn from(location: &GoogleSignatureLocation) -> Self {
         match location {
-            GoogleSignatureLocation::Message => Self::Message,
-            GoogleSignatureLocation::ContentPart { index } => Self::ContentPart { index: *index },
-            GoogleSignatureLocation::ToolCall { index, call_id } => Self::ToolCall {
+            GoogleSignatureLocation::Message => Self::Message(StoredGoogleMessageLocation {
+                kind: StoredGoogleMessageLocationKind::Message,
+            }),
+            GoogleSignatureLocation::ContentPart { index } => Self::ContentPart(StoredGoogleContentPartLocation {
+                kind: StoredGoogleContentPartLocationKind::ContentPart,
+                index: *index,
+            }),
+            GoogleSignatureLocation::ToolCall { index, call_id } => Self::ToolCall(StoredGoogleToolCallLocation {
+                kind: StoredGoogleToolCallLocationKind::ToolCall,
                 index: *index,
                 call_id: call_id.clone(),
-            },
+            }),
         }
     }
 }
@@ -350,9 +444,12 @@ impl From<&GoogleSignatureLocation> for StoredGoogleSignatureLocation {
 impl From<StoredGoogleSignatureLocation> for GoogleSignatureLocation {
     fn from(location: StoredGoogleSignatureLocation) -> Self {
         match location {
-            StoredGoogleSignatureLocation::Message => Self::Message,
-            StoredGoogleSignatureLocation::ContentPart { index } => Self::ContentPart { index },
-            StoredGoogleSignatureLocation::ToolCall { index, call_id } => Self::ToolCall { index, call_id },
+            StoredGoogleSignatureLocation::Message(_) => Self::Message,
+            StoredGoogleSignatureLocation::ContentPart(location) => Self::ContentPart { index: location.index },
+            StoredGoogleSignatureLocation::ToolCall(location) => Self::ToolCall {
+                index: location.index,
+                call_id: location.call_id,
+            },
         }
     }
 }
@@ -547,6 +644,65 @@ mod tests {
     fn unknown_storage_version_is_rejected() {
         let raw = r#"{"version":2,"producer":{"vendor":"anthropic","protocol":"messages","model":"m"},"kind":"anthropic_thinking_signature","payload":{"signature":"sig"}}"#;
         assert!(ProviderState::from_storage_json(raw).unwrap_err().contains("version"));
+    }
+
+    fn valid_stored_google_state() -> serde_json::Value {
+        serde_json::json!({
+            "version": 1,
+            "producer": {
+                "vendor": "google",
+                "protocol": GOOGLE_OPENAI_CHAT_PROTOCOL,
+                "model": "gemini-3.7-flash"
+            },
+            "kind": "google_thought_signatures",
+            "payload": {
+                "signatures": [{
+                    "location": { "type": "message" },
+                    "signature": "sig"
+                }]
+            }
+        })
+    }
+
+    fn rejects_stored_value(value: serde_json::Value) {
+        let raw = serde_json::to_string(&value).unwrap();
+        assert!(ProviderState::from_storage_json(&raw).is_err(), "{raw}");
+    }
+
+    #[test]
+    fn unknown_top_level_provider_state_fields_are_rejected() {
+        let mut value = valid_stored_google_state();
+        value["future"] = serde_json::json!(true);
+        rejects_stored_value(value);
+    }
+
+    #[test]
+    fn unknown_nested_provider_state_fields_are_rejected() {
+        let mut producer = valid_stored_google_state();
+        producer["producer"]["future"] = serde_json::json!(true);
+        rejects_stored_value(producer);
+
+        let mut payload = valid_stored_google_state();
+        payload["payload"]["future"] = serde_json::json!(true);
+        rejects_stored_value(payload);
+
+        let mut signature = valid_stored_google_state();
+        signature["payload"]["signatures"][0]["future"] = serde_json::json!(true);
+        rejects_stored_value(signature);
+
+        let mut location = valid_stored_google_state();
+        location["payload"]["signatures"][0]["location"]["future"] = serde_json::json!(true);
+        rejects_stored_value(location);
+    }
+
+    #[test]
+    fn unknown_codex_item_fields_are_rejected() {
+        let mut acc = ProviderStateAccumulator::default();
+        acc.apply(codex_item(0, "rs_strict")).unwrap();
+        let mut value: serde_json::Value =
+            serde_json::from_str(&acc.finish().unwrap().to_storage_json().unwrap()).unwrap();
+        value["payload"]["items"][0]["future"] = serde_json::json!(true);
+        rejects_stored_value(value);
     }
 
     #[test]

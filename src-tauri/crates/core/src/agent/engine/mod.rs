@@ -36,7 +36,7 @@ pub use ports::{
 pub(crate) use stream::consume_stream;
 pub(crate) use transcript::{append_steering, append_tool_result, begin_assistant, complete_assistant};
 pub use transcript::{in_phase, write_steering};
-pub use transitions::Transitions;
+pub use transitions::{PlanReadResult, PlanUpdateResult, SubmitPlanRequest, Transitions, UpdatePlanRequest};
 pub use turn::{ApprovalRule, TurnOutcome, TurnProgress, TurnServices, TurnSetup, WithheldWording, run_turn};
 
 /// Where a turn's progress goes while it is still happening.
@@ -57,4 +57,39 @@ pub use turn::{ApprovalRule, TurnOutcome, TurnProgress, TurnServices, TurnSetup,
 /// `None` is the third case, and means neither: emit nothing at all.
 pub trait Emit: Send + Sync {
     fn emit(&self, channel: &str, payload: serde_json::Value) -> Result<(), String>;
+
+    fn emit_chat(&self, event: crate::events::ChatStreamEvent) -> Result<(), String> {
+        let payload = serde_json::to_value(event).map_err(|e| format!("could not serialize chat stream event: {e}"))?;
+        self.emit(crate::events::CHAT_STREAM_CHANNEL, payload)
+    }
+
+    fn emit_conversation_updated(&self, conversation_id: &str) -> Result<(), String> {
+        let payload = serde_json::to_value(crate::events::ConversationUpdatedEvent::new(conversation_id))
+            .map_err(|e| format!("could not serialize conversation-updated event: {e}"))?;
+        self.emit(crate::events::CONVERSATION_UPDATED_CHANNEL, payload)
+    }
+
+    fn emit_compact_start(&self, event: crate::events::CompactStartEvent) -> Result<(), String> {
+        let payload =
+            serde_json::to_value(event).map_err(|e| format!("could not serialize compact-start event: {e}"))?;
+        self.emit(crate::events::COMPACT_START_CHANNEL, payload)
+    }
+
+    fn emit_compact_done(&self, event: crate::events::CompactDoneEvent) -> Result<(), String> {
+        let payload =
+            serde_json::to_value(event).map_err(|e| format!("could not serialize compact-done event: {e}"))?;
+        self.emit(crate::events::COMPACT_DONE_CHANNEL, payload)
+    }
+
+    fn emit_plan_review_requested(&self, event: crate::events::PlanReviewEvent) -> Result<(), String> {
+        let payload =
+            serde_json::to_value(event).map_err(|e| format!("could not serialize plan-review-requested event: {e}"))?;
+        self.emit(crate::events::PLAN_REVIEW_REQUESTED_CHANNEL, payload)
+    }
+
+    fn emit_plan_review_updated(&self, event: crate::events::PlanReviewEvent) -> Result<(), String> {
+        let payload =
+            serde_json::to_value(event).map_err(|e| format!("could not serialize plan-review-updated event: {e}"))?;
+        self.emit(crate::events::PLAN_REVIEW_UPDATED_CHANNEL, payload)
+    }
 }

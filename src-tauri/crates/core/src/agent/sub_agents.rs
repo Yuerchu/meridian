@@ -6,6 +6,7 @@
 
 use diesel::sqlite::SqliteConnection;
 
+use crate::decimal::Decimal;
 use crate::provider::capabilities;
 
 /// The tool that delegates. Handled by the loop, like `ask_user` and the mode
@@ -19,7 +20,10 @@ pub const RUN_AGENT_TOOL: &str = "run_agent";
 /// because its tool set cannot change anything; `Agent` inherits whatever the
 /// main assistant may do, including the user's standing yes to edits. A third
 /// kind is a settings feature, not a loop feature.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::IntoStaticStr, strum::EnumString)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, strum::IntoStaticStr, strum::EnumString,
+)]
+#[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum SubAgentKind {
     Explore,
@@ -33,7 +37,7 @@ impl SubAgentKind {
         self.into()
     }
 
-    pub(crate) fn parse(value: &str) -> Result<Self, String> {
+    pub fn parse(value: &str) -> Result<Self, String> {
         value.parse().map_err(|_| {
             format!(
                 "unknown agent '{value}'. Use \"explore\" for read-only investigation \
@@ -46,12 +50,9 @@ impl SubAgentKind {
 /// One model a sub-agent may be given, with the facts a model needs to choose
 /// between them.
 ///
-/// Prices are `Option` here even though the column is not: `model_configs`
-/// stores `REAL NOT NULL DEFAULT 0`, and the settings page writes `0` for a
-/// field nobody filled in, so zero cannot be told apart from free. Reading
-/// `<= 0` as "not configured" is the only honest option, and it must not sort
-/// first — a model that picks by price would otherwise always pick whichever
-/// one nobody had got round to describing.
+/// Prices remain optional so an unconfigured model is distinct from an
+/// explicitly free model. Amounts are exact decimals all the way into the
+/// model-facing catalog.
 #[derive(Clone)]
 pub struct AgentModel {
     pub provider_id: String,
@@ -62,8 +63,8 @@ pub struct AgentModel {
     /// anything new being built for it.
     pub display_name: Option<String>,
     pub context_window: Option<u32>,
-    pub input_price: Option<f64>,
-    pub output_price: Option<f64>,
+    pub input_price: Option<Decimal>,
+    pub output_price: Option<Decimal>,
     pub supports_thinking: bool,
 }
 
@@ -91,8 +92,8 @@ impl AgentModel {
         if self.supports_thinking {
             facts.push("reasoning".to_string());
         }
-        match (self.input_price, self.output_price) {
-            (Some(i), Some(o)) => facts.push(format!("${i:.2}/${o:.2} per Mtok")),
+        match (&self.input_price, &self.output_price) {
+            (Some(i), Some(o)) => facts.push(format!("${i}/${o} per Mtok")),
             _ => facts.push("no price configured".to_string()),
         }
         line.push_str(" — ");
@@ -134,18 +135,23 @@ impl SubAgentCatalog {
 /// picker, the per-model rows behind the pricing settings, and the capability
 /// table. Models that cannot call tools are left out — a sub-agent without
 /// tools is a single completion, which is a different feature.
-pub fn catalog(conn: &mut SqliteConnection) -> SubAgentCatalog {
-    let providers = crate::db::ops::provider::list_providers(conn).unwrap_or_default();
+pub fn catalog(conn: &mut SqliteConnection) -> Result<SubAgentCatalog, String> {
+    let providers = crate::db::ops::provider::list_providers(conn).map_err(|error| error.to_string())?;
     let mut models: Vec<AgentModel> = Vec::new();
 
     for p in providers.into_iter().filter(|p| p.is_enabled != 0) {
-        let cached = crate::db::ops::cached_model::list_by_provider(conn, &p.id).unwrap_or_default();
-        let configs = crate::db::ops::model_config::list_by_provider(conn, &p.id).unwrap_or_default();
+        let cached = crate::db::ops::cached_model::list_by_provider(conn, &p.id).map_err(|error| error.to_string())?;
+        let configs = crate::db::ops::model_config::list_by_provider(conn, &p.id).map_err(|error| error.to_string())?;
 
         for c in cached {
             let cfg = configs.iter().find(|m| m.model_id == c.model_id);
-            let mut caps = capabilities::resolve(&p.provider_type, Some(&p.api_format), &c.model_id);
-            capabilities::apply_overrides(&mut caps, cfg.and_then(|m| m.capability_overrides.as_deref()));
+            let mut caps = crate::provider::registry::get_capabilities(
+                &p.provider_type,
+                &p.api_format,
+                &p.transport_profile,
+                &c.model_id,
+            )?;
+            capabilities::apply_overrides(&mut caps, cfg.and_then(|m| m.capability_overrides.as_deref()))?;
             if !caps.supports_tools {
                 continue;
             }
@@ -158,8 +164,8 @@ pub fn catalog(conn: &mut SqliteConnection) -> SubAgentCatalog {
                     .map(|m| m.context_window as u32)
                     .filter(|w| *w > 0)
                     .or(caps.max_context_tokens),
-                input_price: cfg.map(|m| m.input_price).filter(|v| *v > 0.0),
-                output_price: cfg.map(|m| m.output_price).filter(|v| *v > 0.0),
+                input_price: cfg.and_then(|m| m.input_price.clone()),
+                output_price: cfg.and_then(|m| m.output_price.clone()),
                 supports_thinking: caps.supports_thinking,
             });
         }
@@ -167,28 +173,32 @@ pub fn catalog(conn: &mut SqliteConnection) -> SubAgentCatalog {
 
     // Cheapest first, and everything with no price at the very end rather than
     // at the front where a missing number would read as zero.
-    models.sort_by(|a, b| match (a.input_price, b.input_price) {
-        (Some(x), Some(y)) => x.partial_cmp(&y).unwrap_or(std::cmp::Ordering::Equal),
+    models.sort_by(|a, b| match (&a.input_price, &b.input_price) {
+        (Some(x), Some(y)) => x.cmp(y),
         (Some(_), None) => std::cmp::Ordering::Less,
         (None, Some(_)) => std::cmp::Ordering::Greater,
         (None, None) => a.qualified().cmp(&b.qualified()),
     });
 
-    SubAgentCatalog { models }
+    Ok(SubAgentCatalog { models })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn model(id: &str, price: Option<f64>) -> AgentModel {
+    fn decimal(raw: &str) -> Decimal {
+        raw.parse().unwrap()
+    }
+
+    fn model(id: &str, price: Option<Decimal>) -> AgentModel {
         AgentModel {
             provider_id: "p".into(),
             provider_name: "P".into(),
             model_id: id.into(),
             display_name: None,
             context_window: Some(64_000),
-            input_price: price,
+            input_price: price.clone(),
             output_price: price,
             supports_thinking: false,
         }
@@ -203,12 +213,12 @@ mod tests {
         let catalog = SubAgentCatalog {
             models: {
                 let mut m = vec![
-                    model("expensive", Some(3.0)),
+                    model("expensive", Some(decimal("3"))),
                     model("free", None),
-                    model("cheap", Some(0.14)),
+                    model("cheap", Some(decimal("0.14"))),
                 ];
-                m.sort_by(|a, b| match (a.input_price, b.input_price) {
-                    (Some(x), Some(y)) => x.partial_cmp(&y).unwrap(),
+                m.sort_by(|a, b| match (&a.input_price, &b.input_price) {
+                    (Some(x), Some(y)) => x.cmp(y),
                     (Some(_), None) => std::cmp::Ordering::Less,
                     (None, Some(_)) => std::cmp::Ordering::Greater,
                     (None, None) => std::cmp::Ordering::Equal,
@@ -227,11 +237,11 @@ mod tests {
     /// The one place a user's own words reach the model that is choosing.
     #[test]
     fn a_display_name_travels_and_an_empty_one_leaves_no_brackets() {
-        let mut named = model("m", Some(1.0));
+        let mut named = model("m", Some(decimal("1")));
         named.display_name = Some("cheap, good for bulk edits".into());
         assert!(named.describe().contains("(cheap, good for bulk edits)"));
 
-        let mut blank = model("m", Some(1.0));
+        let mut blank = model("m", Some(decimal("1")));
         blank.display_name = Some("   ".into());
         assert!(!blank.describe().contains("()"), "{}", blank.describe());
     }

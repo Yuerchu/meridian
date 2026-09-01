@@ -3,7 +3,7 @@ use diesel::prelude::*;
 
 #[derive(Debug, Clone, Queryable, Selectable)]
 #[diesel(table_name = queued_prompt_context_items)]
-pub struct QueuedPromptContextItem {
+pub struct QueuedPromptContextItemRow {
     pub id: String,
     pub queue_id: String,
     pub position: i32,
@@ -21,11 +21,13 @@ pub struct QueuedPromptContextItem {
     pub created_at: i64,
 }
 
-impl From<QueuedPromptContextItem> for crate::workspace::reference::PreparedContextItem {
-    fn from(item: QueuedPromptContextItem) -> Self {
-        Self {
+impl TryFrom<QueuedPromptContextItemRow> for crate::workspace::reference::PreparedContextItem {
+    type Error = String;
+
+    fn try_from(item: QueuedPromptContextItemRow) -> Result<Self, Self::Error> {
+        Ok(Self {
             id: item.id,
-            kind: item.kind,
+            kind: crate::workspace::reference::WorkspaceReferenceKind::parse(&item.kind)?,
             content: item.content,
             display_path: item.display_path,
             line_start: item.line_start,
@@ -36,13 +38,13 @@ impl From<QueuedPromptContextItem> for crate::workspace::reference::PreparedCont
             token_count: item.token_count,
             truncated: item.truncated,
             metadata: item.metadata,
-        }
+        })
     }
 }
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = queued_prompt_context_items)]
-pub struct NewQueuedPromptContextItem<'a> {
+pub struct QueuedPromptContextItemInsert<'a> {
     pub id: &'a str,
     pub queue_id: &'a str,
     pub position: i32,

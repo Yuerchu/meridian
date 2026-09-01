@@ -5,20 +5,28 @@ import { Button, Input, Label, Spinner, Switch, TextArea, TextField, Tooltip } f
 import { EmptyState } from '@heroui-pro/react/empty-state'
 import { ListView } from '@heroui-pro/react/list-view'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
+import {
+  parseJsonText,
+  parseStringArrayText,
+  parseStringRecordText,
+  requireExactKeys,
+  requireKnownKeys,
+  requireRecord,
+} from '@/lib/strict-json'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
-import type { McpServer, McpToolDef } from '@/types'
+import type { McpServerInfoResponse, McpServerToolInfoResponse, McpTransport } from '@/types'
 import { MasterDetail } from './master-detail'
 import { SettingsSkeleton } from './primitives'
 import { useMasterDetail } from './use-master-detail'
 import { useSettingsDirtyRegistration } from './dirty-guard'
 
 interface McpServersJson {
-  mcpServers?: Record<
+  mcpServers: Record<
     string,
     {
-      type?: string
+      type?: McpTransport
       command?: string
       args?: string[]
       env?: Record<string, string>
@@ -30,15 +38,48 @@ interface McpServersJson {
 
 function parseImportJson(raw: string): McpServersJson | null {
   try {
-    const parsed = JSON.parse(raw)
-    if (parsed.mcpServers && typeof parsed.mcpServers === 'object') return parsed
-    if (typeof parsed === 'object' && !Array.isArray(parsed)) {
-      const keys = Object.keys(parsed)
-      if (keys.length > 0 && keys.every((k) => typeof parsed[k] === 'object')) {
-        return { mcpServers: parsed }
+    const root = requireExactKeys(parseJsonText(raw, 'MCP import'), ['mcpServers'], 'MCP import')
+    const entries = requireRecord(root.mcpServers, 'MCP import.mcpServers')
+    const mcpServers: McpServersJson['mcpServers'] = {}
+    for (const [name, rawEntry] of Object.entries(entries)) {
+      const entry = requireKnownKeys(
+        rawEntry,
+        ['type', 'command', 'args', 'env', 'url', 'headers'],
+        `MCP server ${name}`,
+      )
+      const type = entry.type
+      if (type !== undefined && type !== 'stdio' && type !== 'streamablehttp') {
+        throw new Error(`MCP server ${name}.type is unknown`)
+      }
+      for (const key of ['command', 'url'] as const) {
+        if (entry[key] !== undefined && typeof entry[key] !== 'string') {
+          throw new Error(`MCP server ${name}.${key} must be a string`)
+        }
+      }
+      if (
+        entry.args !== undefined &&
+        (!Array.isArray(entry.args) || entry.args.some((value) => typeof value !== 'string'))
+      ) {
+        throw new Error(`MCP server ${name}.args must be a string array`)
+      }
+      const readStringRecord = (field: 'env' | 'headers') => {
+        if (entry[field] === undefined) return undefined
+        const value = requireRecord(entry[field], `MCP server ${name}.${field}`)
+        if (Object.values(value).some((item) => typeof item !== 'string')) {
+          throw new Error(`MCP server ${name}.${field} must contain only string values`)
+        }
+        return value as Record<string, string>
+      }
+      mcpServers[name] = {
+        type,
+        command: entry.command as string | undefined,
+        args: entry.args as string[] | undefined,
+        env: readStringRecord('env'),
+        url: entry.url as string | undefined,
+        headers: readStringRecord('headers'),
       }
     }
-    return null
+    return { mcpServers }
   } catch {
     return null
   }
@@ -103,7 +144,7 @@ function McpServerEditor({
   onDelete,
   onDirtyChange,
 }: {
-  server: McpServer
+  server: McpServerInfoResponse
   onUpdate: () => void
   onDelete: (id: string) => void
   onDirtyChange?: (id: string, dirty: boolean) => void
@@ -112,16 +153,16 @@ function McpServerEditor({
   const [name, setName] = useState(server.name)
   const [transportType, setTransportType] = useState(server.transport_type)
   const [command, setCommand] = useState(server.command ?? '')
-  const [args, setArgs] = useState(server.args ?? '[]')
-  const [env, setEnv] = useState(server.env ?? '{}')
+  const [args, setArgs] = useState(() => JSON.stringify(server.args ?? [], null, 2))
+  const [env, setEnv] = useState(() => JSON.stringify(server.env ?? {}, null, 2))
   const [url, setUrl] = useState(server.url ?? '')
-  const [headers, setHeaders] = useState(server.headers ?? '{}')
+  const [headers, setHeaders] = useState(() => JSON.stringify(server.headers ?? {}, null, 2))
   const [saved, markSaved] = useTemporaryFlag(1500)
   const [connected, setConnected] = useState(false)
   const [connecting, setConnecting] = useState(false)
   /** Whether this one comes up on its own at launch — `is_enabled` in the row. */
-  const [autoConnect, setAutoConnect] = useState(server.is_enabled === 1)
-  const [tools, setTools] = useState<McpToolDef[]>([])
+  const [autoConnect, setAutoConnect] = useState(server.is_enabled)
+  const [tools, setTools] = useState<McpServerToolInfoResponse[]>([])
   const [error, setError] = useState<string | null>(null)
   const [statusLoading, setStatusLoading] = useState(true)
   const [savedDraft, setSavedDraft] = useState(() =>
@@ -129,10 +170,10 @@ function McpServerEditor({
       name: server.name,
       transportType: server.transport_type,
       command: server.command ?? '',
-      args: server.args ?? '[]',
-      env: server.env ?? '{}',
+      args: JSON.stringify(server.args ?? [], null, 2),
+      env: JSON.stringify(server.env ?? {}, null, 2),
       url: server.url ?? '',
-      headers: server.headers ?? '{}',
+      headers: JSON.stringify(server.headers ?? {}, null, 2),
     }),
   )
   const draft = JSON.stringify({ name, transportType, command, args, env, url, headers })
@@ -166,27 +207,33 @@ function McpServerEditor({
   }, [server.id])
 
   const handleSave = useCallback(async () => {
-    const updates: Parameters<typeof api.updateMcpServer>[1] = {
+    const request: Parameters<typeof api.updateMcpServer>[0] = {
+      id: server.id,
       name,
       transportType,
     }
-    if (transportType === 'stdio') {
-      updates.command = command || null
-      updates.args = args
-      updates.env = env
-      updates.url = null
-      updates.headers = null
-    } else {
-      updates.url = url || null
-      updates.headers = headers
-      updates.command = null
-      updates.args = null
-      updates.env = null
+    try {
+      if (transportType === 'stdio') {
+        request.command = command || null
+        request.args = parseStringArrayText(args, 'args')
+        request.env = parseStringRecordText(env, 'env')
+        request.url = null
+        request.headers = null
+      } else {
+        request.url = url || null
+        request.headers = parseStringRecordText(headers, 'headers')
+        request.command = null
+        request.args = null
+        request.env = null
+      }
+      setError(null)
+      await api.updateMcpServer(request)
+      setSavedDraft(draft)
+      markSaved()
+      onUpdate()
+    } catch (reason) {
+      setError(String(reason))
     }
-    await api.updateMcpServer(server.id, updates)
-    setSavedDraft(draft)
-    markSaved()
-    onUpdate()
   }, [server.id, name, transportType, command, args, env, url, headers, draft, onUpdate, markSaved])
 
   const handleConnect = useCallback(async () => {
@@ -215,7 +262,7 @@ function McpServerEditor({
       const previous = autoConnect
       setAutoConnect(next)
       try {
-        await api.updateMcpServer(server.id, { isEnabled: next ? 1 : 0 })
+        await api.updateMcpServer({ id: server.id, isEnabled: next })
         onUpdate()
       } catch (e) {
         // Rolled back rather than kept locally: a switch that says a server will
@@ -417,7 +464,7 @@ export function McpSettings() {
   // first open, and there is nothing to fall back to.
   const nav = useMasterDetail<'import'>({ beforeLeave: requestLeave })
   const { selectedId, openItem, openAux, select, back } = nav
-  const [servers, setServers] = useState<McpServer[]>([])
+  const [servers, setServers] = useState<McpServerInfoResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const showImport = nav.aux === 'import'
@@ -439,7 +486,15 @@ export function McpSettings() {
 
   const handleAdd = useCallback(async () => {
     if (!(await requestLeave())) return
-    const server = await api.createMcpServer('New Server', 'stdio')
+    const server = await api.createMcpServer({
+      name: 'New Server',
+      transportType: 'stdio',
+      command: null,
+      args: null,
+      env: null,
+      url: null,
+      headers: null,
+    })
     await refresh()
     select(server.id)
   }, [refresh, requestLeave, select])
@@ -456,16 +511,17 @@ export function McpSettings() {
 
   const handleImport = useCallback(
     async (data: McpServersJson) => {
-      if (!data.mcpServers) return
       let lastId: string | null = null
       for (const [name, cfg] of Object.entries(data.mcpServers)) {
         const type = cfg.type ?? (cfg.url ? 'streamablehttp' : 'stdio')
-        const server = await api.createMcpServer(name, type, {
-          command: cfg.command,
-          args: cfg.args ? JSON.stringify(cfg.args) : undefined,
-          env: cfg.env ? JSON.stringify(cfg.env) : undefined,
-          url: cfg.url,
-          headers: cfg.headers ? JSON.stringify(cfg.headers) : undefined,
+        const server = await api.createMcpServer({
+          name,
+          transportType: type,
+          command: cfg.command ?? null,
+          args: cfg.args ?? null,
+          env: cfg.env ?? null,
+          url: cfg.url ?? null,
+          headers: cfg.headers ?? null,
         })
         lastId = server.id
       }

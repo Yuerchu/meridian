@@ -5,7 +5,7 @@ use crate::db::schema::tool_categories;
 
 #[derive(Debug, Clone, Queryable, Selectable, Serialize)]
 #[diesel(table_name = tool_categories)]
-pub struct ToolCategory {
+pub struct ToolCategoryRow {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
@@ -16,7 +16,7 @@ pub struct ToolCategory {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = tool_categories)]
-pub struct NewToolCategory<'a> {
+pub struct ToolCategoryInsert<'a> {
     pub id: &'a str,
     pub name: &'a str,
     pub description: Option<&'a str>,

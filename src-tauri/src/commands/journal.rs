@@ -7,8 +7,103 @@ use std::io::Read;
 use std::path::PathBuf;
 
 use crate::ServicesExt;
+use crate::commands::entity_response::JournalVersionListResponse;
 use meridian_core::db;
-use meridian_core::journal::blame::BlameResult;
+use meridian_core::journal::blame::{BlameKind, BlameResult, BlameSpan};
+use meridian_core::turn::TurnOrigin;
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct JournalBlameRequest {
+    conversation_id: String,
+    rel_path: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct JournalFileHistoryRequest {
+    conversation_id: String,
+    rel_path: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct JournalVersionContentRequest {
+    version_id: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum JournalBlameKind {
+    Conversation,
+    Inferred,
+    External,
+    Preexisting,
+}
+
+impl From<BlameKind> for JournalBlameKind {
+    fn from(value: BlameKind) -> Self {
+        match value {
+            BlameKind::Conversation => Self::Conversation,
+            BlameKind::Inferred => Self::Inferred,
+            BlameKind::External => Self::External,
+            BlameKind::Preexisting => Self::Preexisting,
+        }
+    }
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct JournalBlameSpanInfoResponse {
+    pub start_line: u32,
+    pub end_line: u32,
+    pub kind: JournalBlameKind,
+    pub conversation_id: Option<String>,
+    pub turn_id: Option<String>,
+    pub origin: Option<TurnOrigin>,
+    pub model_id: Option<String>,
+    pub tool_name: Option<String>,
+    pub timestamp: Option<i64>,
+}
+
+impl From<BlameSpan> for JournalBlameSpanInfoResponse {
+    fn from(value: BlameSpan) -> Self {
+        Self {
+            start_line: value.start_line,
+            end_line: value.end_line,
+            kind: value.kind.into(),
+            conversation_id: value.conversation_id,
+            turn_id: value.turn_id,
+            origin: value.origin,
+            model_id: value.model_id,
+            tool_name: value.tool_name,
+            timestamp: value.timestamp,
+        }
+    }
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct JournalBlameResponse {
+    pub current_sha: String,
+    pub head_sha: Option<String>,
+    pub truncated: bool,
+    pub spans: Vec<JournalBlameSpanInfoResponse>,
+}
+
+impl From<BlameResult> for JournalBlameResponse {
+    fn from(value: BlameResult) -> Self {
+        Self {
+            current_sha: value.current_sha,
+            head_sha: value.head_sha,
+            truncated: value.truncated,
+            spans: value.spans.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct JournalVersionContentResponse {
+    pub content: String,
+}
 
 /// Nothing past the journal's own snapshot cap has a chain to blame — the
 /// capture side skipped it — so reading more than this buys memory pressure
@@ -30,9 +125,12 @@ const MAX_BLAME_BYTES: u64 = meridian_core::journal::capture::MAX_SNAPSHOT_BYTES
 #[tauri::command]
 pub async fn journal_blame(
     app: tauri::AppHandle,
-    conversation_id: String,
-    rel_path: String,
-) -> Result<BlameResult, String> {
+    request: JournalBlameRequest,
+) -> Result<JournalBlameResponse, String> {
+    let JournalBlameRequest {
+        conversation_id,
+        rel_path,
+    } = request;
     let root = super::workspace::require_root(&app, conversation_id).await?;
     let services = app.services();
     let pool = services.db.clone();
@@ -69,15 +167,19 @@ pub async fn journal_blame(
     })
     .await
     .map_err(|e| e.to_string())?
+    .map(Into::into)
 }
 
 /// Every journalled version of one file, oldest first.
 #[tauri::command]
 pub async fn journal_file_history(
     app: tauri::AppHandle,
-    conversation_id: String,
-    rel_path: String,
-) -> Result<Vec<db::models::journal::JournalVersion>, String> {
+    request: JournalFileHistoryRequest,
+) -> Result<JournalVersionListResponse, String> {
+    let JournalFileHistoryRequest {
+        conversation_id,
+        rel_path,
+    } = request;
     let root = super::workspace::require_root(&app, conversation_id).await?;
     let services = app.services();
     let pool = services.db.clone();
@@ -90,7 +192,11 @@ pub async fn journal_file_history(
         let Some(file) = db::ops::journal::file_by_path(&mut conn, &norm).map_err(|e| e.to_string())? else {
             return Ok(Vec::new());
         };
-        db::ops::journal::chain(&mut conn, &file.id).map_err(|e| e.to_string())
+        db::ops::journal::chain(&mut conn, &file.id)
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .map(TryInto::try_into)
+            .collect()
     })
     .await
     .map_err(|e| e.to_string())?
@@ -100,7 +206,11 @@ pub async fn journal_file_history(
 /// empty strings: a deleted version has no content and a lost blob is a lost
 /// blob, and the viewer says different things for the two.
 #[tauri::command]
-pub async fn journal_version_content(app: tauri::AppHandle, version_id: String) -> Result<String, String> {
+pub async fn journal_version_content(
+    app: tauri::AppHandle,
+    request: JournalVersionContentRequest,
+) -> Result<JournalVersionContentResponse, String> {
+    let version_id = request.version_id;
     let services = app.services();
     let pool = services.db.clone();
     let blob_root: PathBuf = meridian_core::journal::journal_root(&services.paths.data_dir);
@@ -113,8 +223,52 @@ pub async fn journal_version_content(app: tauri::AppHandle, version_id: String) 
         let sha = version
             .new_sha
             .ok_or("this version is a deletion; it left no content")?;
-        meridian_core::journal::blobs::load(&blob_root, &sha).map_err(|e| format!("snapshot unavailable: {e}"))
+        meridian_core::journal::blobs::load(&blob_root, &sha)
+            .map(|content| JournalVersionContentResponse { content })
+            .map_err(|e| format!("snapshot unavailable: {e}"))
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn journal_blame_request_rejects_unknown_fields() {
+        assert!(
+            serde_json::from_value::<JournalBlameRequest>(serde_json::json!({
+                "conversationId": "conversation-1",
+                "relPath": "src/main.rs",
+                "future": true
+            }))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn journal_blame_maps_the_core_result_explicitly() {
+        let response = JournalBlameResponse::from(BlameResult {
+            current_sha: "current".into(),
+            head_sha: Some("head".into()),
+            truncated: true,
+            spans: vec![BlameSpan {
+                start_line: 1,
+                end_line: 2,
+                kind: BlameKind::Inferred,
+                conversation_id: Some("conversation-1".into()),
+                turn_id: None,
+                origin: None,
+                model_id: None,
+                tool_name: Some("run_command".into()),
+                timestamp: Some(42),
+            }],
+        });
+
+        assert_eq!(response.spans[0].kind, JournalBlameKind::Inferred);
+        let value = serde_json::to_value(response).unwrap();
+        assert_eq!(value["spans"][0]["kind"], "inferred");
+        assert_eq!(value["spans"][0]["tool_name"], "run_command");
+    }
 }

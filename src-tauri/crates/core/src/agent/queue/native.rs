@@ -14,7 +14,7 @@ use diesel::sqlite::SqliteConnection;
 
 use crate::agent::engine::{Steered, SteeredOrigin, Steering};
 use crate::db::DbPool;
-use crate::db::models::message::NewMessage;
+use crate::db::models::message::MessageInsert;
 use crate::db::models::queue::Delivery;
 use crate::events::EventBus;
 use crate::services::Services;
@@ -199,7 +199,7 @@ fn take_one(
             .and_then(|c| c.head_message_id);
         let message_id = uuid::Uuid::new_v4().to_string();
 
-        let row = NewMessage {
+        let row = MessageInsert {
             id: &message_id,
             conversation_id,
             role: "user",

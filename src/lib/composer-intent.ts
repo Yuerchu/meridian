@@ -1,4 +1,4 @@
-import type { WorkspaceReferenceInput } from '@/types'
+import type { WorkspaceReferenceRequest } from '@/types'
 
 export interface ComposerReference {
   /** The spelling in the draft, including the leading `@`. */
@@ -139,11 +139,11 @@ export function activeComposerToken(value: string, caret: number): ActiveCompose
   }
 }
 
-export function referenceInputs(references: ComposerReference[]): WorkspaceReferenceInput[] {
+export function referenceInputs(references: ComposerReference[]): WorkspaceReferenceRequest[] {
   return references.map((reference) => ({
     path: reference.path,
-    line_start: reference.lineStart,
-    line_end: reference.lineEnd,
+    lineStart: reference.lineStart ?? null,
+    lineEnd: reference.lineEnd ?? null,
   }))
 }
 

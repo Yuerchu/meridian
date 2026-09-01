@@ -16,7 +16,9 @@
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::journal::{JournalFile, JournalVersion, NewJournalBlob, NewJournalFile, NewJournalVersion};
+use crate::db::models::journal::{
+    JournalBlobInsert, JournalFileInsert, JournalFileRow, JournalVersionInsert, JournalVersionRow,
+};
 use crate::db::schema::{journal_blobs, journal_files, journal_versions};
 use crate::journal::blobs::StoredBlob;
 
@@ -91,7 +93,7 @@ pub fn reconcile_external(
         if let Some(blob) = observed {
             ensure_blob(conn, blob, now)?;
         }
-        let row = NewJournalVersion {
+        let row = JournalVersionInsert {
             id: &uuid::Uuid::new_v4().to_string(),
             file_id: &file.id,
             seq,
@@ -158,7 +160,7 @@ pub fn append_command_observed(
         for blob in [pre, post].into_iter().flatten() {
             ensure_blob(conn, blob, now)?;
         }
-        let row = NewJournalVersion {
+        let row = JournalVersionInsert {
             id: &uuid::Uuid::new_v4().to_string(),
             file_id: &file.id,
             seq,
@@ -206,7 +208,7 @@ pub fn append_version(conn: &mut SqliteConnection, norm_path: &str, v: &AppendVe
             // version, attributed to nobody — inserting it *before* the real
             // row is what keeps the real row's delta exactly the delta its
             // conversation performed.
-            let external = NewJournalVersion {
+            let external = JournalVersionInsert {
                 id: &uuid::Uuid::new_v4().to_string(),
                 file_id: &file.id,
                 seq,
@@ -231,7 +233,7 @@ pub fn append_version(conn: &mut SqliteConnection, norm_path: &str, v: &AppendVe
         }
 
         let version_id = uuid::Uuid::new_v4().to_string();
-        let row = NewJournalVersion {
+        let row = JournalVersionInsert {
             id: &version_id,
             file_id: &file.id,
             seq,
@@ -267,7 +269,7 @@ pub fn append_version(conn: &mut SqliteConnection, norm_path: &str, v: &AppendVe
 
 fn ensure_blob(conn: &mut SqliteConnection, blob: &StoredBlob, now: i64) -> QueryResult<()> {
     diesel::insert_or_ignore_into(journal_blobs::table)
-        .values(&NewJournalBlob {
+        .values(&JournalBlobInsert {
             sha256: &blob.sha256,
             byte_len: blob.byte_len,
             line_count: blob.line_count,
@@ -277,11 +279,16 @@ fn ensure_blob(conn: &mut SqliteConnection, blob: &StoredBlob, now: i64) -> Quer
     Ok(())
 }
 
-fn ensure_file(conn: &mut SqliteConnection, norm_path: &str, display_path: &str, now: i64) -> QueryResult<JournalFile> {
+fn ensure_file(
+    conn: &mut SqliteConnection,
+    norm_path: &str,
+    display_path: &str,
+    now: i64,
+) -> QueryResult<JournalFileRow> {
     if let Some(existing) = file_by_path(conn, norm_path)? {
         return Ok(existing);
     }
-    let row = NewJournalFile {
+    let row = JournalFileInsert {
         id: &uuid::Uuid::new_v4().to_string(),
         norm_path,
         display_path,
@@ -292,39 +299,39 @@ fn ensure_file(conn: &mut SqliteConnection, norm_path: &str, display_path: &str,
     journal_files::table.find(row.id).first(conn)
 }
 
-pub fn file_by_path(conn: &mut SqliteConnection, norm_path: &str) -> QueryResult<Option<JournalFile>> {
+pub fn file_by_path(conn: &mut SqliteConnection, norm_path: &str) -> QueryResult<Option<JournalFileRow>> {
     journal_files::table
         .filter(journal_files::norm_path.eq(norm_path))
-        .select(JournalFile::as_select())
+        .select(JournalFileRow::as_select())
         .first(conn)
         .optional()
 }
 
 /// The newest version of a file's chain, if the file has one.
-pub fn head_version(conn: &mut SqliteConnection, file_id: &str) -> QueryResult<Option<JournalVersion>> {
+pub fn head_version(conn: &mut SqliteConnection, file_id: &str) -> QueryResult<Option<JournalVersionRow>> {
     journal_versions::table
         .filter(journal_versions::file_id.eq(file_id))
         .order(journal_versions::seq.desc())
-        .select(JournalVersion::as_select())
+        .select(JournalVersionRow::as_select())
         .first(conn)
         .optional()
 }
 
 /// The whole chain, oldest first — the order blame walks it.
-pub fn chain(conn: &mut SqliteConnection, file_id: &str) -> QueryResult<Vec<JournalVersion>> {
+pub fn chain(conn: &mut SqliteConnection, file_id: &str) -> QueryResult<Vec<JournalVersionRow>> {
     journal_versions::table
         .filter(journal_versions::file_id.eq(file_id))
         .order(journal_versions::seq.asc())
-        .select(JournalVersion::as_select())
+        .select(JournalVersionRow::as_select())
         .load(conn)
 }
 
 /// One version by id — how blame follows a `moved_from_version_id` into the
 /// chain a rename came from.
-pub fn version_by_id(conn: &mut SqliteConnection, id: &str) -> QueryResult<Option<JournalVersion>> {
+pub fn version_by_id(conn: &mut SqliteConnection, id: &str) -> QueryResult<Option<JournalVersionRow>> {
     journal_versions::table
         .find(id)
-        .select(JournalVersion::as_select())
+        .select(JournalVersionRow::as_select())
         .first(conn)
         .optional()
 }
@@ -345,7 +352,7 @@ pub fn chains_under_prefix(
     conn: &mut SqliteConnection,
     prefix: &str,
     limit: usize,
-) -> QueryResult<Vec<(JournalFile, Option<String>)>> {
+) -> QueryResult<Vec<(JournalFileRow, Option<String>)>> {
     chains_query(conn, prefix, limit, false)
 }
 
@@ -354,9 +361,9 @@ fn chains_query(
     prefix: &str,
     limit: usize,
     live_only: bool,
-) -> QueryResult<Vec<(JournalFile, Option<String>)>> {
+) -> QueryResult<Vec<(JournalFileRow, Option<String>)>> {
     #[derive(diesel::QueryableByName)]
-    struct Row {
+    struct JournalChainRow {
         #[diesel(sql_type = diesel::sql_types::Text)]
         id: String,
         #[diesel(sql_type = diesel::sql_types::Text)]
@@ -391,7 +398,7 @@ fn chains_query(
          ORDER BY f.updated_at DESC
          LIMIT ?2"
     };
-    let rows: Vec<Row> = diesel::sql_query(sql)
+    let rows: Vec<JournalChainRow> = diesel::sql_query(sql)
         .bind::<diesel::sql_types::Text, _>(format!("{}%", like_escape(prefix)))
         // Clamped: `usize::MAX as i64` is -1, which SQLite reads as LIMIT
         // *removed* — accidentally the intent, but not a spelling to rely on.
@@ -403,7 +410,7 @@ fn chains_query(
         .filter(|r| r.norm_path.starts_with(prefix))
         .map(|r| {
             (
-                JournalFile {
+                JournalFileRow {
                     id: r.id,
                     norm_path: r.norm_path,
                     display_path: r.display_path,
@@ -423,7 +430,7 @@ pub fn tracked_files(
     conn: &mut SqliteConnection,
     prefix: &str,
     limit: usize,
-) -> QueryResult<Vec<(JournalFile, String)>> {
+) -> QueryResult<Vec<(JournalFileRow, String)>> {
     Ok(chains_query(conn, prefix, limit, true)?
         .into_iter()
         .filter_map(|(f, head)| head.map(|sha| (f, sha)))
@@ -431,12 +438,15 @@ pub fn tracked_files(
 }
 
 /// Everything a turn wrote, for rewind previews and the turn's own summary.
-pub fn versions_of_turn(conn: &mut SqliteConnection, turn_id: &str) -> QueryResult<Vec<(JournalFile, JournalVersion)>> {
+pub fn versions_of_turn(
+    conn: &mut SqliteConnection,
+    turn_id: &str,
+) -> QueryResult<Vec<(JournalFileRow, JournalVersionRow)>> {
     journal_versions::table
         .inner_join(journal_files::table)
         .filter(journal_versions::turn_id.eq(turn_id))
         .order((journal_files::norm_path.asc(), journal_versions::seq.asc()))
-        .select((JournalFile::as_select(), JournalVersion::as_select()))
+        .select((JournalFileRow::as_select(), JournalVersionRow::as_select()))
         .load(conn)
 }
 
@@ -571,7 +581,7 @@ mod tests {
         let a = blob("v1");
         let out = append(&mut conn, "c:/p/a.rs", None, Some(&a), Some("conv"), 1);
 
-        let bad = NewJournalVersion {
+        let bad = JournalVersionInsert {
             id: "bad",
             file_id: &out.file_id,
             seq: 99,
@@ -721,7 +731,7 @@ mod tests {
         append(&mut conn, "c:/p/a.rs", None, Some(&a), Some("conv"), 1);
         // `b` gets a row but no version referencing it.
         diesel::insert_or_ignore_into(journal_blobs::table)
-            .values(&NewJournalBlob {
+            .values(&JournalBlobInsert {
                 sha256: &b.sha256,
                 byte_len: b.byte_len,
                 line_count: b.line_count,

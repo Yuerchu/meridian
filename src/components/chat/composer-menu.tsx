@@ -21,11 +21,11 @@ import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { allowedEfforts } from '@/lib/thinking'
 import type {
-  Assistant,
+  AssistantInfoResponse,
   ChatMode,
-  Provider,
-  ProviderCapabilities,
-  ModelInfo,
+  ProviderInfoResponse,
+  ProviderCapabilitiesInfoResponse,
+  ProviderModelInfoResponse,
   ThinkingEffort,
   ThinkingLevel,
 } from '@/types'
@@ -88,8 +88,8 @@ interface Entry {
 }
 
 export interface ComposerMenuProps {
-  assistants: Assistant[]
-  providers: Provider[]
+  assistants: AssistantInfoResponse[]
+  providers: ProviderInfoResponse[]
   currentAssistantId: string | null
   currentModelId: string | null
   currentProviderId: string | null
@@ -103,7 +103,7 @@ export interface ComposerMenuProps {
   onSelectMode: (mode: ChatMode) => void
   acceptEdits: boolean
   onToggleAcceptEdits: (next: boolean) => void
-  capabilities?: ProviderCapabilities | null
+  capabilities?: ProviderCapabilitiesInfoResponse | null
   onPickFile?: () => void
 }
 
@@ -115,8 +115,8 @@ const CHAT_MODES: Array<{ id: ChatMode; icon: typeof Hammer; labelKey: string; d
 const THINKING_LEVELS: ThinkingLevel[] = ['default', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh']
 
 interface GroupedModels {
-  provider: Provider
-  models: ModelInfo[]
+  provider: ProviderInfoResponse
+  models: ProviderModelInfoResponse[]
 }
 
 export function ComposerMenu(props: ComposerMenuProps) {
@@ -142,7 +142,10 @@ export function ComposerMenu(props: ComposerMenuProps) {
     Promise.allSettled(
       props.providers
         .filter((p) => p.is_enabled)
-        .map(async (p) => ({ provider: p, models: await api.fetchProviderModels(p.id, false) })),
+        .map(async (p) => ({
+          provider: p,
+          models: await api.fetchProviderModels({ providerId: p.id, forceRefresh: false }),
+        })),
     ).then((results) => {
       setGroups(
         results

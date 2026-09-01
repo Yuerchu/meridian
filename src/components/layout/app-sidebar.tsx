@@ -41,7 +41,7 @@ import { ClaudeSessionPicker } from './claude-session-picker'
 
 import { can } from '@/lib/capabilities'
 import { isRemote } from '@/lib/transport'
-import type { Conversation, Project } from '@/types'
+import type { ConversationInfoResponse, ProjectInfoResponse } from '@/types'
 import type { Page } from './shell-props'
 // Not from the settings barrel: this is a value import, and the barrel would
 // pull the whole lazily-loaded settings chunk into the main bundle.
@@ -66,7 +66,7 @@ import { RowActionsMenu } from './row-actions-menu'
 import { useConversationActions, useProjectActions, type RowAction } from './row-actions'
 
 interface AppSidebarProps {
-  conversations: Conversation[]
+  conversations: ConversationInfoResponse[]
   activeId: string | null
   onSelect: (id: string) => void
   onCreate: () => void | Promise<void>
@@ -80,7 +80,7 @@ interface AppSidebarProps {
   onCloseSettings: () => void
   settingsTab: SettingsTab
   onSettingsTabChange: (tab: SettingsTab) => void
-  projects: Project[]
+  projects: ProjectInfoResponse[]
   activeProjectId: string | null
   onSelectProject: (id: string | null) => void
   onCreateProject: (name: string, path: string) => void | Promise<void>
@@ -401,9 +401,9 @@ interface MenuHit {
  * has to be the order the list arrived in — pinned first, then by recency — and
  * a second query per project would sort each one independently of the whole.
  */
-function groupByProject(conversations: Conversation[]) {
-  const filed = new Map<string, Conversation[]>()
-  const loose: Conversation[] = []
+function groupByProject(conversations: ConversationInfoResponse[]) {
+  const filed = new Map<string, ConversationInfoResponse[]>()
+  const loose: ConversationInfoResponse[] = []
   for (const conversation of conversations) {
     if (!conversation.project_id) {
       loose.push(conversation)
@@ -759,7 +759,7 @@ export function AppSidebar({
    * business, and Pro indents it off `aria-level` rather than off anything
    * written here.
    */
-  const conversationItem = (prefix: string, conv: Conversation) => {
+  const conversationItem = (prefix: string, conv: ConversationInfoResponse) => {
     const title = conv.title ?? t('sidebar.newChat')
     return (
       <Sidebar.MenuItem
@@ -791,7 +791,7 @@ export function AppSidebar({
         <Sidebar.MenuChip>
           {/* Pinned rows were sorted to the top and said nothing about why they
               were there. */}
-          {conv.is_pinned === 1 && <Pin aria-label={t('contextMenu.pin')} className="size-3 text-muted" />}
+          {conv.is_pinned && <Pin aria-label={t('contextMenu.pin')} className="size-3 text-muted" />}
           <ConversationIndicator conversationId={conv.id} activeId={activeId} transcriptInert={page === 'settings'} />
         </Sidebar.MenuChip>
         <RowActionsMenu label={title} actions={conversationActions(conv)} />

@@ -22,12 +22,20 @@ pub struct AcpSessionRow {
     pub updated_at: i64,
 }
 
-#[derive(Debug, Insertable, AsChangeset)]
+#[derive(Debug, Insertable)]
 #[diesel(table_name = acp_sessions)]
-pub struct NewAcpSession<'a> {
+pub struct AcpSessionInsert<'a> {
     pub conversation_id: &'a str,
     pub acp_session_id: Option<&'a str>,
     pub cwd: &'a str,
     pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, AsChangeset)]
+#[diesel(table_name = acp_sessions)]
+pub struct AcpSessionChangeset<'a> {
+    pub acp_session_id: Option<&'a str>,
+    pub cwd: &'a str,
     pub updated_at: i64,
 }

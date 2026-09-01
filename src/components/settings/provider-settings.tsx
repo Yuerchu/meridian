@@ -7,6 +7,8 @@ import { DataGrid, type DataGridColumn } from '@heroui-pro/react/data-grid'
 import { ListView } from '@heroui-pro/react/list-view'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { ModelIcon } from '@/components/ui/model-icon'
+import { formatCurrencyAmount, formatDecimalAmount } from '@/lib/cost-format'
+import { assertDecimal38_18, compareDecimals, decimal, decimal38_18 } from '@/lib/decimal'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
@@ -16,16 +18,21 @@ import { useMasterDetail } from './use-master-detail'
 import { useSettingsDirtyRegistration } from './dirty-guard'
 import { EFFORT_LADDER } from '@/lib/thinking'
 import type {
-  CodexAuthStatus,
-  ModelConfig,
-  ModelConfigInput,
+  CodexAuthStatusResponse,
+  DecimalString,
+  ModelConfigInfoResponse,
+  ModelConfigUpsertRequest,
   PriceTier,
-  Provider,
-  ProviderAuthOption,
-  ProviderBalance,
-  ProviderCatalogEntry,
-  ModelInfo,
-  ProviderCapabilities,
+  ProviderInfoResponse,
+  ProviderBalanceInfoResponse,
+  ProviderCatalogAuthOptionInfoResponse,
+  ProviderCapabilityOverrides,
+  ProviderCatalogEntryInfoResponse,
+  ProviderCapabilitiesInfoResponse,
+  ProviderModelInfoResponse,
+  ProviderApiFormat,
+  ProviderType,
+  ServerToolKind,
   ThinkingEffort,
 } from '@/types'
 
@@ -48,15 +55,15 @@ type Tri = 'auto' | 'on' | 'off'
  * below falls back to what the row already holds, so the panel keeps working
  * without prefills instead of refusing to render.
  */
-function loadProviderCatalog(): Promise<ProviderCatalogEntry[]> {
+function loadProviderCatalog(): Promise<ProviderCatalogEntryInfoResponse[]> {
   return api.listProviderCatalog().catch((err) => {
     console.error('Failed to load the provider catalog:', err)
     return []
   })
 }
 
-function useProviderCatalog(): ProviderCatalogEntry[] {
-  const [catalog, setCatalog] = useState<ProviderCatalogEntry[]>([])
+function useProviderCatalog(): ProviderCatalogEntryInfoResponse[] {
+  const [catalog, setCatalog] = useState<ProviderCatalogEntryInfoResponse[]>([])
   useEffect(() => {
     let cancelled = false
     void loadProviderCatalog().then((entries) => {
@@ -78,19 +85,35 @@ function useProviderCatalog(): ProviderCatalogEntry[] {
  * with. Once several vendors share one type this needs the id as well, and the
  * select needs to offer entries rather than types; that is the same change.
  */
-function entryByType(catalog: ProviderCatalogEntry[], providerType: string): ProviderCatalogEntry | undefined {
+function entryByType(
+  catalog: ProviderCatalogEntryInfoResponse[],
+  providerType: ProviderType,
+): ProviderCatalogEntryInfoResponse | undefined {
   return catalog.find((e) => e.provider_type === providerType)
 }
 
+const PROVIDER_TYPES = new Set<ProviderType>(['openai', 'anthropic', 'deepseek', 'xai', 'google'])
+
+function requireProviderType(value: string): ProviderType {
+  if (!PROVIDER_TYPES.has(value as ProviderType)) throw new Error(`unknown provider type ${JSON.stringify(value)}`)
+  return value as ProviderType
+}
+
 /**
- * The sign-in option a row is currently under, or the entry's default.
+ * The sign-in option a persisted row is currently under.
  *
- * Keyed by `credential_kind` because that is what the row stores; a kind the
- * entry does not list (the type was just changed) falls back to the default,
- * which is also what the backend writes for a fresh row.
+ * Keyed by `credential_kind` because that is what the row stores. Once an
+ * entry is known, a missing match is corrupt first-party state rather than a
+ * request to reinterpret the row under a different login.
  */
-function authFor(entry: ProviderCatalogEntry | undefined, credentialKind: string): ProviderAuthOption | undefined {
-  return entry?.auth.find((a) => a.credential_kind === credentialKind) ?? entry?.auth[0]
+function authFor(
+  entry: ProviderCatalogEntryInfoResponse | undefined,
+  credentialKind: string,
+): ProviderCatalogAuthOptionInfoResponse | undefined {
+  if (!entry) return undefined
+  const auth = entry.auth.find((candidate) => candidate.credential_kind === credentialKind)
+  if (!auth) throw new Error(`unknown credential kind ${JSON.stringify(credentialKind)} for catalog entry ${entry.id}`)
+  return auth
 }
 
 /**
@@ -103,7 +126,7 @@ function authFor(entry: ProviderCatalogEntry | undefined, credentialKind: string
  * because the Codex login speaks `responses` alone while the key next to it
  * speaks both.
  */
-function formatsFor(auth: ProviderAuthOption | undefined): string[] {
+function formatsFor(auth: ProviderCatalogAuthOptionInfoResponse | undefined): ProviderApiFormat[] {
   return auth?.api_formats ?? []
 }
 
@@ -115,10 +138,25 @@ function formatsFor(auth: ProviderAuthOption | undefined): string[] {
  * to map both dialects to one address — so the special case disappears rather
  * than being handled.
  */
-function defaultUrlFor(auth: ProviderAuthOption | undefined, apiFormat: string): string | undefined {
+function defaultUrlFor(
+  auth: ProviderCatalogAuthOptionInfoResponse | undefined,
+  apiFormat: ProviderApiFormat,
+): string | undefined {
   const urls = auth?.default_base_url
   if (!urls) return undefined
   return urls[apiFormat] ?? Object.values(urls)[0]
+}
+
+function parseProviderApiFormat(value: string): ProviderApiFormat {
+  switch (value) {
+    case 'chat_completions':
+    case 'responses':
+    case 'gemini_generate_content':
+    case 'gemma_tool':
+      return value
+    default:
+      throw new Error(`unknown provider API format: ${value}`)
+  }
 }
 
 const URL_PLACEHOLDERS: Record<string, string> = {
@@ -127,21 +165,24 @@ const URL_PLACEHOLDERS: Record<string, string> = {
 }
 
 /** Whether this row signs in with a ChatGPT session rather than a key. */
-function usesChatGptLogin(provider: Provider): boolean {
+function usesChatGptLogin(provider: ProviderInfoResponse): boolean {
   return provider.credential_kind === 'codex_cli' || provider.credential_kind === 'chatgpt_oauth'
 }
 
 /**
- * Display names for the sign-in kinds. A map rather than a template key so the
- * locale test can see every key statically; the kinds are already a closed set
- * — each one exists only once `resolve_credential` has a match arm for it — so
- * a line here is part of the same addition, and an unknown kind falls back to
- * the option's own id rather than a missing-key marker.
+ * Display names for the closed sign-in-kind set. Adding one requires adding
+ * its backend resolver and its UI label in the same change.
  */
 const AUTH_METHOD_LABELS: Record<string, string> = {
   api_key: 'settings.provider.authMethodApiKey',
   codex_cli: 'settings.provider.authMethodCodexCli',
   chatgpt_oauth: 'settings.provider.authMethodChatGptOauth',
+}
+
+function authMethodLabel(credentialKind: string): string {
+  const label = AUTH_METHOD_LABELS[credentialKind]
+  if (!label) throw new Error(`unknown provider credential kind ${JSON.stringify(credentialKind)}`)
+  return label
 }
 
 /**
@@ -154,7 +195,7 @@ const AUTH_METHOD_LABELS: Record<string, string> = {
  */
 function CodexAccount() {
   const { t } = useTranslation()
-  const [status, setStatus] = useState<CodexAuthStatus | null>(null)
+  const [status, setStatus] = useState<CodexAuthStatusResponse | null>(null)
   const [checking, setChecking] = useState(true)
 
   const check = useCallback(async () => {
@@ -225,25 +266,12 @@ function CodexAccount() {
   )
 }
 
-function triFrom(value: unknown): Tri {
-  // Anything that isn't a real boolean (missing key, or a hand-edited override
-  // holding junk) reads as "inherit".
-  return typeof value === 'boolean' ? (value ? 'on' : 'off') : 'auto'
+function triFrom(value: boolean | undefined): Tri {
+  return value === undefined ? 'auto' : value ? 'on' : 'off'
 }
 
 function triTo(tri: Tri): boolean | undefined {
   return tri === 'auto' ? undefined : tri === 'on'
-}
-
-/** Malformed overrides degrade to catalog behaviour on both ends, never throw. */
-function parseOverrides(raw: string | null | undefined): Record<string, unknown> {
-  if (!raw) return {}
-  try {
-    const parsed: unknown = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {}
-  } catch {
-    return {}
-  }
 }
 
 /**
@@ -262,17 +290,6 @@ function safeThreshold(contextWindow: number, maxOutput: number | null): number 
   return Math.max(contextWindow - reserve - headroom, Math.floor(contextWindow / 2))
 }
 
-/** A stored JSON array of names, or nothing at all if it will not parse. */
-function nameList(raw: string | null | undefined): string[] {
-  if (!raw) return []
-  try {
-    const parsed: unknown = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed.filter((name): name is string => typeof name === 'string') : []
-  } catch {
-    return []
-  }
-}
-
 /**
  * One tier as the form holds it.
  *
@@ -283,52 +300,79 @@ function nameList(raw: string | null | undefined): string[] {
 type TierDraft = { threshold: string; input: string; output: string; cacheRead: string; cacheWrite: string }
 
 const BLANK_TIER: TierDraft = { threshold: '', input: '', output: '', cacheRead: '', cacheWrite: '' }
+const ZERO_DECIMAL = decimal('0')
 
-function tiersFrom(raw: string | null | undefined): TierDraft[] {
-  if (!raw) return []
-  try {
-    const parsed: unknown = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return (parsed as PriceTier[])
-      .filter((tier) => !!tier && typeof tier === 'object')
-      .map((tier) => ({
-        threshold: tier.min_prompt_tokens?.toString() ?? '',
-        input: tier.input?.toString() ?? '',
-        output: tier.output?.toString() ?? '',
-        cacheRead: tier.cache_read == null ? '' : tier.cache_read.toString(),
-        cacheWrite: tier.cache_write == null ? '' : tier.cache_write.toString(),
-      }))
-  } catch {
-    return []
+function optionalPrice(value: string): DecimalString | null {
+  const trimmed = value.trim()
+  return trimmed === '' ? null : decimal38_18(trimmed)
+}
+
+function tierThreshold(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
+    throw new TypeError('Price-tier threshold must be a positive safe integer')
   }
+  return value
+}
+
+function tierRate(value: unknown, name: string): DecimalString {
+  if (typeof value !== 'string') throw new TypeError(`Price-tier ${name} must be a decimal string`)
+  return assertDecimal38_18(value)
+}
+
+function tiersFrom(raw: PriceTier[]): TierDraft[] {
+  if (!Array.isArray(raw)) throw new TypeError('Price tiers must be an array')
+  return raw.map((candidate, index) => {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+      throw new TypeError(`Price tier ${index + 1} must be an object`)
+    }
+    const tier = candidate as unknown as Record<string, unknown>
+    for (const key of ['min_prompt_tokens', 'input_price', 'output_price']) {
+      if (!Object.prototype.hasOwnProperty.call(tier, key)) {
+        throw new TypeError(`Price tier ${index + 1} is missing field ${key}`)
+      }
+    }
+    const unknownKey = Object.keys(tier).find(
+      (key) =>
+        !['min_prompt_tokens', 'input_price', 'output_price', 'cache_read_price', 'cache_write_price'].includes(key),
+    )
+    if (unknownKey) throw new TypeError(`Price tier ${index + 1} has unknown field ${unknownKey}`)
+    return {
+      threshold: tierThreshold(tier.min_prompt_tokens).toString(),
+      input: tierRate(tier.input_price, 'input_price'),
+      output: tierRate(tier.output_price, 'output_price'),
+      cacheRead: tier.cache_read_price == null ? '' : tierRate(tier.cache_read_price, 'cache_read_price'),
+      cacheWrite: tier.cache_write_price == null ? '' : tierRate(tier.cache_write_price, 'cache_write_price'),
+    }
+  })
 }
 
 /**
- * Drop the rows that say nothing and sort what is left.
+ * Validate every explicit row and sort the typed DTO sent over IPC.
  *
- * A tier needs a threshold above zero and both rates: one at zero would read as
- * "free above 200k" rather than as the half-filled row it is, and the backend
- * discards a zero threshold anyway. Sorted here as well as in `parse_tiers`
- * because the stored order is what a human reads back.
+ * A tier needs a threshold above zero and both rates. Half-filled rows are
+ * rejected instead of being silently dropped. Sorting here gives the backend
+ * one canonical order and is the order a human reads back.
  */
-function tiersTo(drafts: TierDraft[]): string | null {
-  const tiers = drafts
-    .map((draft) => ({
-      min_prompt_tokens: parseInt(draft.threshold),
-      input: parseFloat(draft.input),
-      output: parseFloat(draft.output),
-      cache_read: draft.cacheRead ? parseFloat(draft.cacheRead) : null,
-      cache_write: draft.cacheWrite ? parseFloat(draft.cacheWrite) : null,
-    }))
-    .filter(
-      (tier) =>
-        Number.isFinite(tier.min_prompt_tokens) &&
-        tier.min_prompt_tokens > 0 &&
-        Number.isFinite(tier.input) &&
-        Number.isFinite(tier.output),
-    )
-    .sort((a, b) => a.min_prompt_tokens - b.min_prompt_tokens)
-  return tiers.length > 0 ? JSON.stringify(tiers) : null
+function tiersTo(drafts: TierDraft[]): PriceTier[] {
+  const tiers: PriceTier[] = drafts.map((draft, index) => {
+    const threshold = draft.threshold.trim()
+    if (!/^[1-9]\d*$/.test(threshold)) {
+      throw new TypeError(`Price tier ${index + 1} needs a positive integer threshold`)
+    }
+    const minPromptTokens = Number(threshold)
+    if (!Number.isSafeInteger(minPromptTokens)) {
+      throw new RangeError(`Price tier ${index + 1} threshold is too large`)
+    }
+    return {
+      min_prompt_tokens: minPromptTokens,
+      input_price: decimal38_18(draft.input.trim()),
+      output_price: decimal38_18(draft.output.trim()),
+      cache_read_price: optionalPrice(draft.cacheRead),
+      cache_write_price: optionalPrice(draft.cacheWrite),
+    }
+  })
+  tiers.sort((a, b) => a.min_prompt_tokens - b.min_prompt_tokens)
+  return tiers
 }
 
 /**
@@ -469,17 +513,17 @@ function ModelConfigEditor({
    *  dialect changes, which is what decides whether this model has any
    *  provider-side tools at all. */
   apiFormat: string
-  existing?: ModelConfig
-  onSave: (input: ModelConfigInput) => Promise<void>
+  existing?: ModelConfigInfoResponse
+  onSave: (input: ModelConfigUpsertRequest) => Promise<void>
   onDelete?: () => void
   onDirtyChange?: (dirty: boolean) => void
 }) {
   const { t } = useTranslation()
-  const [caps, setCaps] = useState<ProviderCapabilities | null>(null)
+  const [caps, setCaps] = useState<ProviderCapabilitiesInfoResponse | null>(null)
 
   useEffect(() => {
     api
-      .getProviderCapabilities(providerId, modelId)
+      .getProviderCapabilities({ providerId, modelId })
       .then(setCaps)
       .catch(() => {})
   }, [providerId, modelId, apiFormat])
@@ -491,13 +535,30 @@ function ModelConfigEditor({
   const [contextWindow, setContextWindow] = useState(defaultCtx.toString())
   const [compactThreshold, setCompactThreshold] = useState(defaultThreshold.toString())
   const [maxOutput, setMaxOutput] = useState(defaultMaxOut?.toString() ?? '')
-  const [inputPrice, setInputPrice] = useState(existing?.input_price?.toString() ?? '0')
-  const [outputPrice, setOutputPrice] = useState(existing?.output_price?.toString() ?? '0')
-  const [cachePrice, setCachePrice] = useState(existing?.cache_price?.toString() ?? '')
-  const [cacheWritePrice, setCacheWritePrice] = useState(existing?.cache_write_price?.toString() ?? '')
-  const [tiers, setTiers] = useState<TierDraft[]>(() => tiersFrom(existing?.price_tiers))
-  const [serverTools, setServerTools] = useState<string[]>(() => nameList(existing?.server_tools))
-  const [serverToolPrice, setServerToolPrice] = useState(existing?.server_tool_price?.toString() ?? '')
+  const [inputPrice, setInputPrice] = useState(
+    existing?.input_price == null ? '' : assertDecimal38_18(existing.input_price),
+  )
+  const [outputPrice, setOutputPrice] = useState(
+    existing?.output_price == null ? '' : assertDecimal38_18(existing.output_price),
+  )
+  const [cachePrice, setCachePrice] = useState(
+    existing?.cache_read_price == null ? '' : assertDecimal38_18(existing.cache_read_price),
+  )
+  const [cacheWritePrice, setCacheWritePrice] = useState(
+    existing?.cache_write_price == null ? '' : assertDecimal38_18(existing.cache_write_price),
+  )
+  const [initialTiers] = useState(() => {
+    try {
+      return { values: tiersFrom(existing?.pricing_tiers ?? []), error: null as string | null }
+    } catch (error) {
+      return { values: [] as TierDraft[], error: error instanceof Error ? error.message : String(error) }
+    }
+  })
+  const [tiers, setTiers] = useState<TierDraft[]>(initialTiers.values)
+  const [serverTools, setServerTools] = useState<ServerToolKind[]>(() => existing?.server_tools ?? [])
+  const [serverToolPrice, setServerToolPrice] = useState(
+    existing?.server_tool_price == null ? '' : assertDecimal38_18(existing.server_tool_price),
+  )
   // Open when there is something in it, so a tiered model does not look
   // single-priced until someone thinks to expand a collapsed section.
   const [showTiers, setShowTiers] = useState(tiers.length > 0)
@@ -512,6 +573,7 @@ function ModelConfigEditor({
   const [capThinking, setCapThinking] = useState<Tri>('auto')
   const [capFast, setCapFast] = useState<Tri>('auto')
   const [dirty, setDirty] = useState(false)
+  const [priceError, setPriceError] = useState<string | null>(initialTiers.error)
 
   useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange])
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange])
@@ -528,48 +590,71 @@ function ModelConfigEditor({
   // a diff of reality rather than a blank slate.
   useEffect(() => {
     if (!caps) return
-    const saved = parseOverrides(existing?.capability_overrides)
-    setEfforts(EFFORT_LADDER.filter((e) => (caps.supported_efforts ?? EFFORT_LADDER).includes(e)))
+    const saved = existing?.capability_overrides ?? {}
+    setEfforts(EFFORT_LADDER.filter((e) => caps.supported_efforts.includes(e)))
     effortsDirty.current = saved.supported_efforts !== undefined
     setCapThinking(triFrom(saved.supports_thinking))
     setCapFast(triFrom(saved.supports_fast))
   }, [caps, existing])
 
-  const buildOverrides = (): string | null => {
-    // Merge into whatever is stored so keys this editor doesn't know about
-    // survive a round-trip.
-    const next: Record<string, unknown> = { ...parseOverrides(existing?.capability_overrides) }
-    const put = (key: string, value: unknown) => {
-      if (value === undefined) delete next[key]
-      else next[key] = value
-    }
-    put('supported_efforts', effortsDirty.current ? efforts : undefined)
-    put('supports_thinking', triTo(capThinking))
-    put('supports_fast', triTo(capFast))
-    return Object.keys(next).length > 0 ? JSON.stringify(next) : null
+  const buildOverrides = (): ProviderCapabilityOverrides | null => {
+    const next: ProviderCapabilityOverrides = { ...(existing?.capability_overrides ?? {}) }
+    if (effortsDirty.current) next.supported_efforts = efforts
+    else delete next.supported_efforts
+    const thinking = triTo(capThinking)
+    if (thinking === undefined) delete next.supports_thinking
+    else next.supports_thinking = thinking
+    const fast = triTo(capFast)
+    if (fast === undefined) delete next.supports_fast
+    else next.supports_fast = fast
+    return Object.keys(next).length > 0 ? next : null
   }
 
   const resetOverrides = () => {
     effortsDirty.current = false
     setCapThinking('auto')
     setCapFast('auto')
-    if (caps) setEfforts(EFFORT_LADDER.filter((e) => (caps.supported_efforts ?? EFFORT_LADDER).includes(e)))
+    if (caps) setEfforts(EFFORT_LADDER.filter((e) => caps.supported_efforts.includes(e)))
     setDirty(true)
   }
 
   const handleSave = async () => {
+    let prices: Pick<
+      ModelConfigUpsertRequest,
+      'input_price' | 'output_price' | 'cache_read_price' | 'cache_write_price' | 'pricing_tiers' | 'server_tool_price'
+    >
+    try {
+      const input = optionalPrice(inputPrice)
+      const output = optionalPrice(outputPrice)
+      if ((input == null) !== (output == null)) {
+        throw new TypeError('Input and output prices must either both be set or both be blank')
+      }
+      const priceTiers = tiersTo(tiers)
+      if (priceTiers.length > 0 && input == null) {
+        throw new TypeError('Price tiers require input and output prices')
+      }
+      prices = {
+        input_price: input,
+        output_price: output,
+        cache_read_price: optionalPrice(cachePrice),
+        cache_write_price: optionalPrice(cacheWritePrice),
+        pricing_tiers: priceTiers,
+        server_tool_price: optionalPrice(serverToolPrice),
+      }
+    } catch (error) {
+      setPriceError(error instanceof Error ? error.message : String(error))
+      return
+    }
+    setPriceError(null)
     await onSave({
       provider_id: providerId,
       model_id: modelId,
+      display_name: existing?.display_name ?? null,
       context_window: parseInt(contextWindow) || 128000,
       compact_threshold: parseInt(compactThreshold) || 100000,
       max_output_tokens: maxOutput ? parseInt(maxOutput) : null,
-      input_price: parseFloat(inputPrice) || 0,
-      output_price: parseFloat(outputPrice) || 0,
-      cache_price: cachePrice ? parseFloat(cachePrice) : null,
-      cache_write_price: cacheWritePrice ? parseFloat(cacheWritePrice) : null,
+      ...prices,
       capability_overrides: buildOverrides(),
-      price_tiers: tiersTo(tiers),
       // What the user asked for, not what is currently supported. Filtering here
       // against `caps` looked like defence and was a way to lose the setting:
       // capabilities load asynchronously, so a save while that request was still
@@ -577,8 +662,7 @@ function ModelConfigEditor({
       // switch the user had just turned on. The narrowing that matters happens
       // per turn in `resolve_turn_params`, where the model's support is known
       // for certain and a stale name costs nothing.
-      server_tools: serverTools.length > 0 ? JSON.stringify(serverTools) : null,
-      server_tool_price: serverToolPrice ? parseFloat(serverToolPrice) : null,
+      server_tools: serverTools.length > 0 ? serverTools : null,
     })
     setDirty(false)
   }
@@ -838,6 +922,11 @@ function ModelConfigEditor({
           </Disclosure.Body>
         </Disclosure.Content>
       </Disclosure>
+      {priceError && (
+        <p role="alert" className="text-xs text-danger">
+          {priceError}
+        </p>
+      )}
       <div className="flex items-center gap-2 pt-1">
         <Button size="sm" className="h-7 pointer-coarse:h-10 text-xs" onPress={() => void handleSave()}>
           {t('common.save')}
@@ -858,7 +947,7 @@ function ProviderEditor({
   onDelete,
   onDirtyChange,
 }: {
-  provider: Provider
+  provider: ProviderInfoResponse
   onUpdate: () => void
   /// Awaited so the button can show progress until the list has reloaded.
   onDelete: (id: string) => Promise<void>
@@ -867,25 +956,9 @@ function ProviderEditor({
   const { t, i18n } = useTranslation()
   const modelEditorId = useId()
   const locale = i18n.resolvedLanguage ?? i18n.language
-  const balanceNumber = useMemo(
-    () => new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-    [locale],
-  )
   const formatBalance = useCallback(
-    (value: number, currency: string) => {
-      try {
-        return new Intl.NumberFormat(locale, {
-          style: 'currency',
-          currency,
-          currencyDisplay: 'code',
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        }).format(value)
-      } catch {
-        return `${currency} ${balanceNumber.format(value)}`
-      }
-    },
-    [balanceNumber, locale],
+    (value: DecimalString, currency: string) => formatCurrencyAmount(value, currency, locale),
+    [locale],
   )
   const catalog = useProviderCatalog()
   const [name, setName] = useState(provider.name)
@@ -908,13 +981,13 @@ function ProviderEditor({
   const [savingKey, setSavingKey] = useState(false)
   const [keySaved, markKeySaved] = useTemporaryFlag()
   const [saved, markSaved] = useTemporaryFlag()
-  const [models, setModels] = useState<ModelInfo[]>([])
+  const [models, setModels] = useState<ProviderModelInfoResponse[]>([])
   const [fetchingModels, setFetchingModels] = useState(false)
   const [modelsError, setModelsError] = useState<string | null>(null)
-  const [balance, setBalance] = useState<ProviderBalance | null>(null)
+  const [balance, setBalance] = useState<ProviderBalanceInfoResponse | null>(null)
   const [fetchingBalance, setFetchingBalance] = useState(false)
   const [balanceError, setBalanceError] = useState<string | null>(null)
-  const [modelConfigs, setModelConfigs] = useState<Map<string, ModelConfig>>(new Map())
+  const [modelConfigs, setModelConfigs] = useState<Map<string, ModelConfigInfoResponse>>(new Map())
   const [editingModelId, setEditingModelId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [modelConfigDirty, setModelConfigDirty] = useState(false)
@@ -961,9 +1034,9 @@ function ProviderEditor({
   }, [provider.id])
 
   // The sign-in option the form is under right now: the row's stored kind
-  // resolved against the entry the (possibly just-changed) type names. A type
-  // whose entry does not list the stored kind falls back to that entry's
-  // default, which is what saving will also write.
+  // resolved against the entry the persisted type names. A type transition
+  // chooses a new login explicitly in `handleProviderTypeChange`; persisted
+  // mismatches are rejected here.
   const activeAuth = authFor(entryByType(catalog, providerType), provider.credential_kind)
 
   const handleSave = useCallback(async () => {
@@ -971,7 +1044,8 @@ function ProviderEditor({
     // offer — a Codex login on an Anthropic row answers to no adapter. The
     // save restates the resolved option's credentials so the row cannot hold
     // that combination; when nothing changed this writes back what is there.
-    await api.updateProvider(provider.id, {
+    await api.updateProvider({
+      id: provider.id,
       name,
       providerType,
       baseUrl,
@@ -985,9 +1059,12 @@ function ProviderEditor({
   }, [provider.id, name, providerType, baseUrl, apiFormat, activeAuth, onUpdate, markSaved])
 
   const handleProviderTypeChange = useCallback(
-    (next: string) => {
+    (raw: string) => {
+      const next = requireProviderType(raw)
       const nextEntry = entryByType(catalog, next)
-      const nextAuth = authFor(nextEntry, provider.credential_kind)
+      const nextAuth =
+        nextEntry?.auth.find((candidate) => candidate.credential_kind === provider.credential_kind) ??
+        nextEntry?.auth[0]
       // The dialect a vendor is best reached on. Catalog order is editorial, so
       // the first one listed is the recommendation.
       const nextFormat = formatsFor(nextAuth)[0] ?? 'chat_completions'
@@ -1006,7 +1083,8 @@ function ProviderEditor({
   )
 
   const handleApiFormatChange = useCallback(
-    (next: string) => {
+    (raw: string) => {
+      const next = parseProviderApiFormat(raw)
       // Used to be a Google-only branch. It is general now because the address
       // living per-dialect is just what the data says — for every other vendor
       // both dialects map to one address, so this is a no-op there.
@@ -1037,7 +1115,8 @@ function ProviderEditor({
       setApiFormat(nextFormat)
       setBaseUrl(nextUrl)
       try {
-        await api.updateProvider(provider.id, {
+        await api.updateProvider({
+          id: provider.id,
           credentialKind: next.credential_kind,
           transportProfile: next.transport_profile,
           apiFormat: nextFormat,
@@ -1058,7 +1137,7 @@ function ProviderEditor({
     if (!apiKey.trim()) return
     setSavingKey(true)
     try {
-      await api.setProviderKey(provider.id, apiKey.trim())
+      await api.setProviderKey({ providerId: provider.id, apiKey: apiKey.trim() })
       setKeyStatus('set')
       setApiKey('')
       markKeySaved()
@@ -1099,7 +1178,7 @@ function ProviderEditor({
   const loadModelConfigs = useCallback(async () => {
     try {
       const configs = await api.listModelConfigs(provider.id)
-      const map = new Map<string, ModelConfig>()
+      const map = new Map<string, ModelConfigInfoResponse>()
       for (const c of configs) map.set(c.model_id, c)
       setModelConfigs(map)
     } catch {
@@ -1111,7 +1190,7 @@ function ProviderEditor({
     setFetchingModels(true)
     setModelsError(null)
     try {
-      const list = await api.fetchProviderModels(provider.id, true)
+      const list = await api.fetchProviderModels({ providerId: provider.id, forceRefresh: true })
       setModels(list)
       await loadModelConfigs()
     } catch (err) {
@@ -1125,7 +1204,7 @@ function ProviderEditor({
   }, [loadModelConfigs])
 
   const handleSaveModelConfig = useCallback(
-    async (input: ModelConfigInput) => {
+    async (input: ModelConfigUpsertRequest) => {
       await api.saveModelConfig(input)
       await loadModelConfigs()
       setEditingModelId(null)
@@ -1164,12 +1243,12 @@ function ProviderEditor({
     catalog.length > 0
       ? catalog.map((e) => ({ value: e.provider_type, label: e.name }))
       : [{ value: providerType, label: providerType }]
-  const formatOptions = [
+  const formatOptions: { value: ProviderApiFormat; label: string }[] = [
     { value: 'responses', label: t('settings.provider.apiFormatResponses') },
     { value: 'chat_completions', label: t('settings.provider.apiFormatChatCompletions') },
     { value: 'gemma_tool', label: t('settings.provider.apiFormatGemmaTool') },
   ]
-  const googleFormatOptions = [
+  const googleFormatOptions: { value: ProviderApiFormat; label: string }[] = [
     { value: 'gemini_generate_content', label: t('settings.provider.apiFormatGeminiGenerateContent') },
     { value: 'chat_completions', label: t('settings.provider.apiFormatOpenAICompatible') },
   ]
@@ -1180,7 +1259,7 @@ function ProviderEditor({
         : t('settings.provider.apiFormatOpenAICompatibleHint')
       : undefined
 
-  const modelColumns = useMemo<DataGridColumn<ModelInfo>[]>(
+  const modelColumns = useMemo<DataGridColumn<ProviderModelInfoResponse>[]>(
     () => [
       {
         id: 'model',
@@ -1204,7 +1283,8 @@ function ProviderEditor({
         cell: (model) => {
           const config = modelConfigs.get(model.id)
           if (!config) return <span className="text-muted">{t('settings.provider.modelNotConfigured')}</span>
-          return config.input_price > 0 || config.output_price > 0 ? (
+          return (config.input_price != null && compareDecimals(config.input_price, ZERO_DECIMAL) > 0) ||
+            (config.output_price != null && compareDecimals(config.output_price, ZERO_DECIMAL) > 0) ? (
             <span className="inline-flex items-center gap-1.5 text-success-soft-foreground">
               <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-success" />
               {t('settings.provider.modelPriced')}
@@ -1280,7 +1360,7 @@ function ProviderEditor({
           value={activeAuth?.id ?? ''}
           options={(entryByType(catalog, providerType)?.auth ?? []).map((a) => ({
             value: a.id,
-            label: AUTH_METHOD_LABELS[a.credential_kind] ? t(AUTH_METHOD_LABELS[a.credential_kind]) : a.id,
+            label: t(authMethodLabel(a.credential_kind)),
           }))}
           onChange={handleAuthOptionChange}
           description={usesChatGptLogin(provider) ? t('settings.provider.authMethodCodexHint') : undefined}
@@ -1401,14 +1481,14 @@ function ProviderEditor({
               )}
               {balance.accounts.map((account) => (
                 <div key={account.currency} className="flex items-baseline justify-between gap-2">
-                  <span className="text-sm">{formatBalance(account.total, account.currency)}</span>
+                  <span className="text-sm">{formatBalance(account.total_balance, account.currency)}</span>
                   {/* The split is the point: a total held up by expiring
                       promotional credit is closer to empty than it looks. */}
-                  {account.topped_up != null && account.granted != null && (
+                  {account.topped_up_balance != null && account.granted_balance != null && (
                     <span className="text-xs text-muted">
                       {t('settings.provider.balanceSplit', {
-                        toppedUp: balanceNumber.format(account.topped_up),
-                        granted: balanceNumber.format(account.granted),
+                        toppedUp: formatDecimalAmount(account.topped_up_balance, locale, 2, 2),
+                        granted: formatDecimalAmount(account.granted_balance, locale, 2, 2),
                       })}
                     </span>
                   )}
@@ -1447,7 +1527,7 @@ function ProviderEditor({
         )}
         {models.length > 0 && (
           <div data-slot="provider-model-list" className="space-y-2">
-            <DataGrid<ModelInfo>
+            <DataGrid<ProviderModelInfoResponse>
               aria-label={t('settings.provider.models')}
               variant="secondary"
               columns={modelColumns}
@@ -1509,7 +1589,7 @@ export function ProviderSettings() {
   useSettingsDirtyRegistration('provider', 'provider-editor', dirtyProviderId !== null)
   const nav = useMasterDetail({ beforeLeave: requestLeave })
   const { isNarrow, selectedId } = nav
-  const [providers, setProviders] = useState<Provider[]>([])
+  const [providers, setProviders] = useState<ProviderInfoResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const initialized = useRef(false)
@@ -1552,14 +1632,14 @@ export function ProviderSettings() {
     const entry = (await loadProviderCatalog())[0]
     const auth = entry?.auth[0]
     const format = auth?.api_formats[0] ?? 'chat_completions'
-    const p = await api.createProvider(
-      entry?.name ?? 'New Provider',
-      entry?.provider_type ?? 'openai',
-      defaultUrlFor(auth, format) ?? '',
-      format,
-      entry?.id,
-      auth?.id,
-    )
+    const p = await api.createProvider({
+      name: entry?.name ?? 'New Provider',
+      providerType: entry?.provider_type ?? 'openai',
+      baseUrl: defaultUrlFor(auth, format) ?? '',
+      apiFormat: format,
+      catalogId: entry?.id ?? null,
+      authOption: auth?.id ?? null,
+    })
     await refresh()
     nav.select(p.id)
   }, [refresh, nav, requestLeave])

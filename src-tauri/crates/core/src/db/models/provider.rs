@@ -5,7 +5,7 @@ use crate::db::schema::providers;
 
 #[derive(Debug, Clone, Queryable, Selectable, Serialize)]
 #[diesel(table_name = providers)]
-pub struct Provider {
+pub struct ProviderRow {
     pub id: String,
     pub name: String,
     pub provider_type: String,
@@ -39,7 +39,7 @@ pub struct Provider {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = providers)]
-pub struct NewProvider<'a> {
+pub struct ProviderInsert<'a> {
     pub id: &'a str,
     pub name: &'a str,
     pub provider_type: &'a str,
@@ -60,7 +60,7 @@ pub struct NewProvider<'a> {
 /// about the address, so editing the address must not silently retract it.
 #[derive(Debug, Default, AsChangeset)]
 #[diesel(table_name = providers)]
-pub struct ProviderUpdate {
+pub struct ProviderChangeset {
     pub name: Option<String>,
     pub provider_type: Option<String>,
     pub base_url: Option<String>,

@@ -1,22 +1,22 @@
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::skill::{NewSkill, Skill, SkillUpdate};
+use crate::db::models::skill::{SkillChangeset, SkillInsert, SkillRow};
 use crate::db::schema::skills;
 
-pub fn list_skills(conn: &mut SqliteConnection) -> QueryResult<Vec<Skill>> {
-    skills::table.order(skills::dir_name.asc()).load::<Skill>(conn)
+pub fn list_skills(conn: &mut SqliteConnection) -> QueryResult<Vec<SkillRow>> {
+    skills::table.order(skills::dir_name.asc()).load::<SkillRow>(conn)
 }
 
-pub fn get_skill(conn: &mut SqliteConnection, dir_name: &str) -> QueryResult<Skill> {
-    skills::table.find(dir_name).first::<Skill>(conn)
+pub fn get_skill(conn: &mut SqliteConnection, dir_name: &str) -> QueryResult<SkillRow> {
+    skills::table.find(dir_name).first::<SkillRow>(conn)
 }
 
 /// Insert or refresh the index row for a scanned skill directory. The filesystem
 /// is the source of truth, so a rescan overwrites the parsed fields but leaves
 /// user-controlled state (`is_enabled`) alone.
-pub fn upsert_skill(conn: &mut SqliteConnection, new: &NewSkill) -> QueryResult<Skill> {
-    let existing = skills::table.find(new.dir_name).first::<Skill>(conn).optional()?;
+pub fn upsert_skill(conn: &mut SqliteConnection, new: &SkillInsert) -> QueryResult<SkillRow> {
+    let existing = skills::table.find(new.dir_name).first::<SkillRow>(conn).optional()?;
     match existing {
         Some(_) => {
             diesel::update(skills::table.find(new.dir_name))
@@ -36,14 +36,14 @@ pub fn upsert_skill(conn: &mut SqliteConnection, new: &NewSkill) -> QueryResult<
             diesel::insert_into(skills::table).values(new).execute(conn)?;
         }
     }
-    skills::table.find(new.dir_name).first::<Skill>(conn)
+    skills::table.find(new.dir_name).first::<SkillRow>(conn)
 }
 
-pub fn update_skill(conn: &mut SqliteConnection, dir_name: &str, changeset: &SkillUpdate) -> QueryResult<Skill> {
+pub fn update_skill(conn: &mut SqliteConnection, dir_name: &str, changeset: &SkillChangeset) -> QueryResult<SkillRow> {
     diesel::update(skills::table.find(dir_name))
         .set(changeset)
         .execute(conn)?;
-    skills::table.find(dir_name).first::<Skill>(conn)
+    skills::table.find(dir_name).first::<SkillRow>(conn)
 }
 
 pub fn delete_skill(conn: &mut SqliteConnection, dir_name: &str) -> QueryResult<()> {
@@ -73,8 +73,8 @@ mod tests {
     use super::*;
     use crate::db::test_db;
 
-    fn make_skill<'a>(dir_name: &'a str, llm_name: &'a str) -> NewSkill<'a> {
-        NewSkill {
+    fn make_skill<'a>(dir_name: &'a str, llm_name: &'a str) -> SkillInsert<'a> {
+        SkillInsert {
             dir_name,
             llm_name,
             llm_description: "Does a thing",
@@ -114,7 +114,7 @@ mod tests {
         update_skill(
             &mut conn,
             "s",
-            &SkillUpdate {
+            &SkillChangeset {
                 is_enabled: Some(0),
                 ..Default::default()
             },

@@ -14,6 +14,7 @@ import { useBackGesture, useHistoryLevel } from '@/hooks/use-history-level'
 import { useHotkey } from '@/hooks/use-hotkey'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
+import { usePlanReviewStore } from '@/stores/plan-review-store'
 import { ApprovalToastRegion } from './approval-toasts'
 import { AppSidebar } from './app-sidebar'
 import { CommandPalette } from './command-palette'
@@ -21,6 +22,9 @@ import { RemoteStatus } from './remote-status'
 import type { ShellProps } from './shell-props'
 
 const SettingsPage = lazy(() => import('@/components/settings'))
+const PlanReviewPage = lazy(() =>
+  import('@/components/plan-review/plan-review-page').then((module) => ({ default: module.PlanReviewPage })),
+)
 
 /**
  * The whole application frame, on every platform.
@@ -91,6 +95,8 @@ export function AppShell(props: ShellProps) {
   const platform = usePlatform()
   const pageHeadingRef = useRef<HTMLHeadingElement>(null)
   const previousPageRef = useRef(page)
+  const activeReviewId = usePlanReviewStore((state) => state.activeReviewId)
+  const closePlanReview = usePlanReviewStore((state) => state.closeReview)
 
   useEffect(() => {
     if (previousPageRef.current === page) return
@@ -141,10 +147,11 @@ export function AppShell(props: ShellProps) {
         if (!(await requestLeaveSettings())) return false
         clearSettingsTabDirty(settingsTab)
       }
+      closePlanReview()
       onSelect(id)
       return true
     },
-    [onSelect, page, requestLeaveSettings, settingsTab],
+    [closePlanReview, onSelect, page, requestLeaveSettings, settingsTab],
   )
 
   useBackGesture()
@@ -159,6 +166,7 @@ export function AppShell(props: ShellProps) {
       requestAnimationFrame(() => setSettingsHistoryClaimed(true))
     })
   })
+  useHistoryLevel(activeReviewId !== null, closePlanReview)
 
   const commandShortcut = platform === null ? 'Ctrl/⌘ K' : platform === 'macos' || platform === 'ios' ? '⌘ K' : 'Ctrl K'
   const createConversation = async () => {
@@ -168,6 +176,7 @@ export function AppShell(props: ShellProps) {
     }
     setActionError(null)
     try {
+      closePlanReview()
       await onCreate()
       if (leavesSettings) clearSettingsTabDirty(settingsTab)
     } catch (error) {
@@ -206,7 +215,10 @@ export function AppShell(props: ShellProps) {
           onCreate={createConversation}
           onDelete={onDelete}
           page={page}
-          onOpenSettings={onOpenSettings}
+          onOpenSettings={() => {
+            closePlanReview()
+            onOpenSettings()
+          }}
           onCloseSettings={() => void closeSettings()}
           settingsTab={settingsTab}
           onSettingsTabChange={(tab) => void changeSettingsTab(tab)}
@@ -255,7 +267,7 @@ export function AppShell(props: ShellProps) {
               between them and leave a gap in the middle of the pair. */}
             <div className="ml-auto flex shrink-0 items-center gap-1">
               {/* Only where the panel it toggles can open. */}
-              {activeId && !isMobile && page !== 'settings' && (
+              {activeId && !isMobile && page !== 'settings' && !activeReviewId && (
                 <Tooltip>
                   <Button
                     isIconOnly
@@ -319,7 +331,7 @@ export function AppShell(props: ShellProps) {
             top. Inert keeps the layout exactly where it was while taking the
             subtree out of reach of focus and pointers. */}
           <main id="main-content" tabIndex={-1} className="relative flex-1 min-h-0 overflow-hidden">
-            <div className="flex h-full flex-col" inert={page === 'settings' || undefined}>
+            <div className="flex h-full flex-col" inert={page === 'settings' || activeReviewId !== null || undefined}>
               {/* The split lives inside the chat branch, not around it: `<main>`
                 is the positioned box the settings layer covers, and a group
                 that enclosed both would have the settings page inside a panel
@@ -395,6 +407,13 @@ export function AppShell(props: ShellProps) {
                 </Suspense>
               </div>
             )}
+            {activeReviewId && (
+              <div data-slot="plan-review-layer" className="absolute inset-0 z-30 bg-surface">
+                <Suspense fallback={null}>
+                  <PlanReviewPage key={activeReviewId} reviewId={activeReviewId} onClose={closePlanReview} />
+                </Suspense>
+              </div>
+            )}
           </main>
         </Sidebar.Main>
 
@@ -402,7 +421,10 @@ export function AppShell(props: ShellProps) {
           what it draws is about no particular pane. It sits above the settings
           layer by z-index, which is right — a conversation stopping on a
           permission prompt is not something being in settings should hide. */}
-        <ApprovalToastRegion onSelect={(id) => void selectConversation(id)} transcriptInert={page === 'settings'} />
+        <ApprovalToastRegion
+          onSelect={(id) => void selectConversation(id)}
+          transcriptInert={page === 'settings' || activeReviewId !== null}
+        />
 
         <CommandPalette
           isOpen={paletteOpen}
@@ -412,6 +434,7 @@ export function AppShell(props: ShellProps) {
           onSelectConversation={(id) => void selectConversation(id)}
           onSelectProject={onSelectProject}
           onOpenSettingsTab={(tab) => {
+            closePlanReview()
             void changeSettingsTab(tab).then((changed) => {
               if (changed) onOpenSettings()
             })

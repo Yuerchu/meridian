@@ -70,7 +70,7 @@ export function RemoteClientSettings() {
       return
     }
     try {
-      await api.setSecret('REMOTE_TOKEN', token.trim())
+      await api.setSecret({ key: 'REMOTE_TOKEN', value: token.trim() })
     } catch (err) {
       setError(String(err))
       return

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { api } from '@/api'
 import { listen } from '@/lib/transport'
-import type { AcpConfigOption } from '@/types'
+import type { AcpConfigOptionInfoResponse } from '@/types'
 
 /**
  * The knobs a hosted Claude Code session exposes, and how to turn them.
@@ -33,7 +33,7 @@ export interface AcpUsage {
 }
 
 export function useAcpConfig(conversationId: string, isHosted: boolean) {
-  const [options, setOptions] = useState<AcpConfigOption[]>([])
+  const [options, setOptions] = useState<AcpConfigOptionInfoResponse[]>([])
   const [usage, setUsage] = useState<AcpUsage | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -48,7 +48,7 @@ export function useAcpConfig(conversationId: string, isHosted: boolean) {
     // restart is every one of them until the first message wakes it. What
     // fills it then is the announcement below, not this.
     api
-      .acpSessionConfig(conversationId)
+      .acpSessionConfig({ conversationId })
       .then((next) => {
         if (alive) setOptions(next)
       })
@@ -74,21 +74,15 @@ export function useAcpConfig(conversationId: string, isHosted: boolean) {
     if (!isHosted) return
     let alive = true
     const unlisten = listen('chat-stream', (event) => {
-      const payload = event.payload as {
-        type?: string
-        conversation_id?: string
-        config_options?: AcpConfigOption[]
-        used?: number
-        size?: number
-      }
-      if (!alive || payload?.conversation_id !== conversationId) return
-      if (payload.type === 'acp_config' && payload.config_options) {
+      const payload = event.payload
+      if (!alive || payload.conversation_id !== conversationId) return
+      if (payload.type === 'acp_config') {
         setOptions(payload.config_options)
       }
       // A window of zero is the agent saying nothing useful rather than saying
       // the context is empty, and dividing by it is how a gauge shows NaN%.
-      if (payload.type === 'acp_usage' && typeof payload.used === 'number' && (payload.size ?? 0) > 0) {
-        setUsage({ used: payload.used, size: payload.size as number })
+      if (payload.type === 'acp_usage' && payload.size > 0) {
+        setUsage({ used: payload.used, size: payload.size })
       }
     })
     return () => {
@@ -102,7 +96,7 @@ export function useAcpConfig(conversationId: string, isHosted: boolean) {
       setBusy(true)
       try {
         // The whole set comes back, because changing one reshapes others.
-        setOptions(await api.acpSetSessionConfig(conversationId, configId, value))
+        setOptions(await api.acpSetSessionConfig({ conversationId, configId, value }))
       } finally {
         setBusy(false)
       }
@@ -114,12 +108,15 @@ export function useAcpConfig(conversationId: string, isHosted: boolean) {
 }
 
 /** The option the agent calls `what`, by category or — when it omits one — by id. */
-export function findOption(options: AcpConfigOption[], what: string): AcpConfigOption | undefined {
+export function findOption(
+  options: AcpConfigOptionInfoResponse[],
+  what: string,
+): AcpConfigOptionInfoResponse | undefined {
   return options.find((o) => (o.category ? o.category.toLowerCase() === what : o.id.toLowerCase() === what))
 }
 
 /** Only a `select` has something to pick from. A toggle is carried but not drawn. */
-export function isSelect(option: AcpConfigOption | undefined): boolean {
+export function isSelect(option: AcpConfigOptionInfoResponse | undefined): boolean {
   if (!option) return false
   return option.type === 'select' || (option.type == null && option.options.length > 0)
 }

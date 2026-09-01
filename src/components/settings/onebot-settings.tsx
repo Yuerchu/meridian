@@ -5,53 +5,14 @@ import { api } from '@/api'
 import { Button, Checkbox, Description, Input, Label, TextField } from '@heroui/react'
 import { ItemCard } from '@heroui-pro/react/item-card'
 import { cn } from '@/lib/utils'
-import type { Assistant } from '@/types'
+import { assertDecimal38_18, decimal38_18 } from '@/lib/decimal'
+import type { AssistantInfoResponse, DecimalString, OneBotConfigInfoResponse, OneBotStatusInfoResponse } from '@/types'
 import { SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
 import { useSettingsDirtyRegistration } from './dirty-guard'
 
-interface OneBotConfig {
-  enabled: boolean
-  host: string
-  port: number
-  access_token: string | null
-  assistant_id: string | null
-  admin_users: number[]
-  ack_emoji_id: string
-  /**
-   * Null switches the balance watcher off, which is the default — it makes
-   * periodic requests with the user's API keys. Zero keeps it but drops the
-   * early warning: the admins hear only when an upstream reports the account
-   * unusable.
-   */
-  balance_alert_threshold: number | null
-  /**
-   * Which `(bot account, session)` pairs keep the voice notes people send.
-   *
-   * Written `<bot>@group:123`. The account is part of it rather than a
-   * footnote: two bots each pulled into the same group are two independent
-   * consents, and one of them being allowed to keep audio says nothing about
-   * the other.
-   *
-   * Empty is the default and means nothing is kept anywhere.
-   */
-  voice_capture_sessions: string[]
-  voice_send_enabled: boolean
-  voice_send_groups: string[]
-  voice_tts_model: string
-  voice_tts_reference_id: string
-}
-
-interface OneBotStatus {
-  enabled: boolean
-  running: boolean
-  connected_clients: number
-  host: string
-  port: number
-}
-
 export function OneBotSettings() {
   const { t } = useTranslation()
-  const [config, setConfig] = useState<OneBotConfig>({
+  const [config, setConfig] = useState<OneBotConfigInfoResponse>({
     enabled: false,
     host: '127.0.0.1',
     port: 6700,
@@ -66,8 +27,8 @@ export function OneBotSettings() {
     voice_tts_model: '',
     voice_tts_reference_id: '',
   })
-  const [status, setStatus] = useState<OneBotStatus | null>(null)
-  const [assistants, setAssistants] = useState<Assistant[]>([])
+  const [status, setStatus] = useState<OneBotStatusInfoResponse | null>(null)
+  const [assistants, setAssistants] = useState<AssistantInfoResponse[]>([])
   const [adminInput, setAdminInput] = useState('')
   // Held as text like the admin list, so a half-typed "1." is representable.
   // Empty is a real setting here — it switches the watcher off.
@@ -111,9 +72,9 @@ export function OneBotSettings() {
       ])
       const nextPort = cfg.port.toString()
       const nextAdmin = cfg.admin_users.join(', ')
-      const nextBalance = cfg.balance_alert_threshold?.toString() ?? ''
-      const nextCapture = (cfg.voice_capture_sessions ?? []).join(', ')
-      const nextSend = (cfg.voice_send_groups ?? []).join(', ')
+      const nextBalance = cfg.balance_alert_threshold == null ? '' : assertDecimal38_18(cfg.balance_alert_threshold)
+      const nextCapture = cfg.voice_capture_sessions.join(', ')
+      const nextSend = cfg.voice_send_groups.join(', ')
       setConfig(cfg)
       setStatus(sts)
       setAssistants(assts)
@@ -172,7 +133,15 @@ export function OneBotSettings() {
     const adminEntries = splitEntries(adminInput)
     const adminUsers = adminEntries.map(Number)
     const balanceText = balanceInput.trim()
-    const threshold = balanceText === '' ? null : Number(balanceText)
+    let threshold: DecimalString | null = null
+    if (balanceText !== '') {
+      try {
+        threshold = decimal38_18(balanceText)
+      } catch {
+        setError(t('settings.onebot.invalidBalance'))
+        return false
+      }
+    }
     const voiceCaptureSessions = splitEntries(voiceCaptureInput)
     const voiceSendGroups = splitEntries(voiceSendInput)
 
@@ -182,10 +151,6 @@ export function OneBotSettings() {
     }
     if (adminUsers.some((value) => !Number.isSafeInteger(value) || value <= 0)) {
       setError(t('settings.onebot.invalidAdmins'))
-      return false
-    }
-    if (threshold !== null && (!Number.isFinite(threshold) || threshold < 0)) {
-      setError(t('settings.onebot.invalidBalance'))
       return false
     }
     if (voiceCaptureSessions.some((value) => !/^\d+@(group|private):\d+$/.test(value))) {
@@ -203,7 +168,7 @@ export function OneBotSettings() {
       // that the policy refresh below sees it — readiness counts the key as one
       // of its four parts, and watching preferences alone would miss it.
       if (fishKey.trim()) {
-        await api.setServiceKey('FISH_AUDIO', fishKey.trim())
+        await api.setServiceKey({ service: 'FISH_AUDIO', key: fishKey.trim() })
         setFishKey('')
         setFishKeySet(true)
       }
@@ -220,7 +185,7 @@ export function OneBotSettings() {
       setConfig(newConfig)
       const nextPort = port.toString()
       const nextAdmin = adminUsers.join(', ')
-      const nextBalance = threshold?.toString() ?? ''
+      const nextBalance = threshold ?? ''
       const nextCapture = voiceCaptureSessions.join(', ')
       const nextSend = voiceSendGroups.join(', ')
       setPortInput(nextPort)

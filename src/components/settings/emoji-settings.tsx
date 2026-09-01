@@ -11,11 +11,11 @@ import { can } from '@/lib/capabilities'
 import { useConfirm } from '@/hooks/use-confirm'
 import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
-import type { Emoji, EmojiPack } from '@/types'
+import type { EmojiInfoResponse, EmojiPackInfoResponse } from '@/types'
 
 interface PackDetail {
-  pack: EmojiPack
-  emojis: Emoji[]
+  pack: EmojiPackInfoResponse
+  emojis: EmojiInfoResponse[]
   urls: Record<string, string>
 }
 
@@ -29,9 +29,9 @@ const NO_SELECTION: DataGridSelection = new Set<string>()
  * rows that need a person are the ones that must not be scrolled to. This is
  * the initial order only: clicking a column header hands sorting to the grid.
  */
-const REVIEW_ORDER: Record<Emoji['semantic_status'], number> = { pending: 0, suggested: 1, confirmed: 2 }
+const REVIEW_ORDER: Record<EmojiInfoResponse['semantic_status'], number> = { pending: 0, suggested: 1, confirmed: 2 }
 
-function orderForReview(emojis: Emoji[]): Emoji[] {
+function orderForReview(emojis: EmojiInfoResponse[]): EmojiInfoResponse[] {
   return [...emojis].sort(
     (a, b) => REVIEW_ORDER[a.semantic_status] - REVIEW_ORDER[b.semantic_status] || a.sort_order - b.sort_order,
   )
@@ -46,11 +46,11 @@ function orderForReview(emojis: Emoji[]): Emoji[] {
  * moves the guess into the real columns and clears the pair, so past that point
  * the two agree.
  */
-function shownName(emoji: Emoji): string {
+function shownName(emoji: EmojiInfoResponse): string {
   return emoji.semantic_status === 'confirmed' ? emoji.name : (emoji.suggested_name ?? emoji.name)
 }
 
-function shownTags(emoji: Emoji): string {
+function shownTags(emoji: EmojiInfoResponse): string {
   return (emoji.semantic_status === 'confirmed' ? emoji.tags : (emoji.suggested_tags ?? emoji.tags)) ?? ''
 }
 
@@ -136,10 +136,10 @@ function RowActions({
   onConfirm,
   onDelete,
 }: {
-  emoji: Emoji
+  emoji: EmojiInfoResponse
   canDelete: boolean
   onSuggest: (id: string) => Promise<void>
-  onConfirm: (emoji: Emoji) => Promise<void>
+  onConfirm: (emoji: EmojiInfoResponse) => Promise<void>
   onDelete: (id: string) => void
 }) {
   const { t } = useTranslation()
@@ -212,18 +212,18 @@ function StickerGrid({
   detail: PackDetail
   selectedKeys: DataGridSelection
   onSelectionChange: (keys: DataGridSelection) => void
-  onSaveSemantics: (emoji: Emoji, patch: { name?: string; tags?: string }) => Promise<void>
-  onSuggest: (id: string) => Promise<Emoji>
+  onSaveSemantics: (emoji: EmojiInfoResponse, patch: { name?: string; tags?: string }) => Promise<void>
+  onSuggest: (id: string) => Promise<EmojiInfoResponse>
   onDeleteEmoji: (id: string) => void
 }) {
   const { t } = useTranslation()
   const [error, setError] = useState<string | null>(null)
-  const canDelete = detail.pack.is_builtin === 0
+  const canDelete = !detail.pack.is_builtin
   const { urls } = detail
 
   // A cell has nowhere to put a failure, so both writes report here instead.
   const save = useCallback(
-    (emoji: Emoji, patch: { name?: string; tags?: string }) => {
+    (emoji: EmojiInfoResponse, patch: { name?: string; tags?: string }) => {
       setError(null)
       return onSaveSemantics(emoji, patch).catch((reason: unknown) => setError(String(reason)))
     },
@@ -241,7 +241,7 @@ function StickerGrid({
     [onSuggest],
   )
 
-  const columns = useMemo<DataGridColumn<Emoji>[]>(
+  const columns = useMemo<DataGridColumn<EmojiInfoResponse>[]>(
     () => [
       {
         id: 'sticker',
@@ -331,7 +331,7 @@ function StickerGrid({
 
   return (
     <div className="space-y-2">
-      <DataGrid<Emoji>
+      <DataGrid<EmojiInfoResponse>
         aria-label={t('settings.emoji.gridLabel', { pack: detail.pack.name })}
         variant="secondary"
         columns={columns}
@@ -380,8 +380,8 @@ function PackCard({
   onDelete?: () => void
   onImport?: () => void
   onDeleteEmoji: (id: string) => void
-  onSaveSemantics: (emoji: Emoji, patch: { name?: string; tags?: string }) => Promise<void>
-  onSuggest: (id: string) => Promise<Emoji>
+  onSaveSemantics: (emoji: EmojiInfoResponse, patch: { name?: string; tags?: string }) => Promise<void>
+  onSuggest: (id: string) => Promise<EmojiInfoResponse>
 }) {
   const { t } = useTranslation()
   const pending = detail.emojis.filter((emoji) => emoji.semantic_status !== 'confirmed').length
@@ -402,9 +402,7 @@ function PackCard({
               <span className="flex-1 truncate">{detail.pack.name}</span>
               <span className="text-xs text-muted">{detail.emojis.length}</span>
               {pending > 0 && <Chip color="warning">{t('settings.emoji.pendingCount', { count: pending })}</Chip>}
-              {detail.pack.is_builtin === 1 && (
-                <Chip className="shrink-0 text-muted">{t('settings.template.builtin')}</Chip>
-              )}
+              {detail.pack.is_builtin && <Chip className="shrink-0 text-muted">{t('settings.template.builtin')}</Chip>}
               <Disclosure.Indicator className="size-4 shrink-0 text-muted" />
             </Disclosure.Trigger>
           </Disclosure.Heading>
@@ -442,7 +440,7 @@ function PackCard({
                         {t('settings.emoji.import')}
                       </Button>
                     )}
-                    {onDelete && detail.pack.is_builtin === 0 && (
+                    {onDelete && !detail.pack.is_builtin && (
                       <Button variant="ghost" className="ml-auto text-danger hover:text-danger" onClick={onDelete}>
                         <TrashBin className="w-3.5 h-3.5" />
                         {t('common.delete')}
@@ -506,7 +504,7 @@ export function EmojiSettings() {
 
   const handleCreate = useCallback(async () => {
     if (!newPackName.trim()) return
-    await api.createEmojiPack(newPackName.trim())
+    await api.createEmojiPack({ name: newPackName.trim(), description: null })
     setNewPackName('')
     await refresh()
   }, [newPackName, refresh])
@@ -531,7 +529,7 @@ export function EmojiSettings() {
       if (!files) return
       const paths = Array.isArray(files) ? files : [files]
       if (paths.length === 0) return
-      await api.importEmojis(packId, paths)
+      await api.importEmojis({ packId, filePaths: paths })
       await refresh()
     },
     [refresh],
@@ -566,11 +564,11 @@ export function EmojiSettings() {
    * only move half of it and leave the row unconfirmed.
    */
   const handleSaveSemantics = useCallback(
-    async (emoji: Emoji, patch: { name?: string; tags?: string }) => {
+    async (emoji: EmojiInfoResponse, patch: { name?: string; tags?: string }) => {
       const name = (patch.name ?? shownName(emoji)).trim()
       if (!name) return
       const tags = (patch.tags ?? shownTags(emoji)).trim()
-      await api.confirmStickerSemantics(emoji.id, name, tags || undefined)
+      await api.confirmStickerSemantics({ id: emoji.id, name, tags: tags || null })
       await refresh()
     },
     [refresh],

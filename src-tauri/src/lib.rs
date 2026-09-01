@@ -91,7 +91,17 @@ pub fn run() {
             let events = events::EventBus::new();
             events.register(Arc::new(WindowSink(app.handle().clone())), true);
 
-            let services = bootstrap::bootstrap(data_dir, events);
+            let services = bootstrap::bootstrap(data_dir, events)
+                .map_err(|error| std::io::Error::other(format!("bootstrap failed: {error}")))?;
+            #[cfg(not(target_os = "android"))]
+            let onebot_config = meridian_core::onebot::load_config(&services.db)
+                .map_err(|error| std::io::Error::other(format!("invalid stored OneBot config: {error}")))?;
+            #[cfg(not(target_os = "android"))]
+            let hooks_config = meridian_core::hooks::load_config(&services.db)
+                .map_err(|error| std::io::Error::other(format!("invalid stored hooks config: {error}")))?;
+            #[cfg(not(target_os = "android"))]
+            let remote_config = remote::load_config(&services.db)
+                .map_err(|error| std::io::Error::other(format!("invalid stored remote config: {error}")))?;
             // The one thing core needs from up here: how to run a turn. The
             // prompt queue lives below the line and has to be able to start
             // one, and `commands::chat` is a Tauri command. Set before anything
@@ -100,6 +110,11 @@ pub fn run() {
                 .turn_starter
                 .set(Arc::new(commands::chat::DesktopTurns(services.clone())));
             app.manage(services.clone());
+
+            {
+                let services = services.clone();
+                tauri::async_runtime::spawn(bootstrap::resume_completed_plan_review_queues(services));
+            }
 
             #[cfg(target_os = "android")]
             {
@@ -113,7 +128,7 @@ pub fn run() {
                 let services = services.clone();
                 let handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
-                    handle.manage(meridian_core::onebot::maybe_start(services).await);
+                    handle.manage(meridian_core::onebot::maybe_start(services, onebot_config).await);
                 });
             }
 
@@ -122,7 +137,7 @@ pub fn run() {
                 let services = services.clone();
                 let handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
-                    handle.manage(meridian_core::hooks::maybe_start(services).await);
+                    handle.manage(meridian_core::hooks::maybe_start(services, hooks_config).await);
                 });
             }
 
@@ -131,7 +146,7 @@ pub fn run() {
                 let services = services.clone();
                 let handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
-                    handle.manage(remote::maybe_start(services, handle.clone()).await);
+                    handle.manage(remote::maybe_start(services, remote_config, handle.clone()).await);
                 });
             }
 

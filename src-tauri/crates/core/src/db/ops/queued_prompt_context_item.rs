@@ -1,7 +1,7 @@
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::queued_prompt_context_item::{NewQueuedPromptContextItem, QueuedPromptContextItem};
+use crate::db::models::queued_prompt_context_item::{QueuedPromptContextItemInsert, QueuedPromptContextItemRow};
 use crate::db::schema::queued_prompt_context_items;
 
 pub fn insert_prepared(
@@ -16,11 +16,11 @@ pub fn insert_prepared(
     let rows = items
         .iter()
         .enumerate()
-        .map(|(position, item)| NewQueuedPromptContextItem {
+        .map(|(position, item)| QueuedPromptContextItemInsert {
             id: &item.id,
             queue_id,
             position: position as i32,
-            kind: &item.kind,
+            kind: item.kind.as_str(),
             content: &item.content,
             display_path: item.display_path.as_deref(),
             line_start: item.line_start,
@@ -46,9 +46,15 @@ pub fn list_prepared(
     queued_prompt_context_items::table
         .filter(queued_prompt_context_items::queue_id.eq(queue_id))
         .order(queued_prompt_context_items::position.asc())
-        .select(QueuedPromptContextItem::as_select())
-        .load::<QueuedPromptContextItem>(conn)
-        .map(|rows| rows.into_iter().map(Into::into).collect())
+        .select(QueuedPromptContextItemRow::as_select())
+        .load::<QueuedPromptContextItemRow>(conn)?
+        .into_iter()
+        .map(|row| {
+            row.try_into().map_err(|error: String| {
+                diesel::result::Error::DeserializationError(Box::new(std::io::Error::other(error)))
+            })
+        })
+        .collect()
 }
 
 pub fn delete_for_queue(conn: &mut SqliteConnection, queue_id: &str) -> QueryResult<usize> {
@@ -64,7 +70,7 @@ mod tests {
     fn prepared(content: &str) -> crate::workspace::reference::PreparedContextItem {
         crate::workspace::reference::PreparedContextItem {
             id: "ctx1".into(),
-            kind: "project_file".into(),
+            kind: crate::workspace::reference::WorkspaceReferenceKind::ProjectFile,
             content: content.into(),
             display_path: Some("src/lib.rs".into()),
             line_start: None,

@@ -1,13 +1,15 @@
 import { invoke as tauriInvoke } from '@tauri-apps/api/core'
 import { listen as tauriListen, type UnlistenFn } from '@tauri-apps/api/event'
+import { parseAppEventPayload, type AppEventChannel, type AppEventPayloadMap } from '@/lib/app-event'
+import { assertInvokeResponse } from '@/lib/invoke-response-schema'
 
 /**
  * How the frontend reaches a backend, wherever that backend is.
  *
  * Everything above this file was written against Tauri's `invoke` and `listen`
  * and does not need to know there is now a second answer. `api.ts` imports
- * these two names instead of the ones from `@tauri-apps`, and the 150-odd
- * methods below it are untouched.
+ * these two names instead of the ones from `@tauri-apps`, and all methods
+ * below it are untouched.
  *
  * The signatures deliberately match Tauri's, including `listen` handing the
  * handler an object with a `payload` rather than the payload itself. Matching a
@@ -54,11 +56,29 @@ const LOCAL_COMMANDS = new Set([
 /** Channels emitted by this device rather than by whatever it is connected to. */
 const LOCAL_CHANNELS = new Set(['insets-changed'])
 
+/** Every channel the current desktop protocol can put on the remote socket. */
+const REMOTE_CHANNELS = new Set([
+  'chat-stream',
+  'compact-done',
+  'compact-start',
+  'conversation-updated',
+  'plan-review-requested',
+  'plan-review-updated',
+  'queue-updated',
+  'user-command',
+  'voice-model-download',
+  'voice-model-download-done',
+])
+
 /** Where the remote token lives on the client. */
 const TOKEN_SECRET = 'REMOTE_TOKEN'
 
 export const tauriTransport: Transport = {
-  invoke: tauriInvoke,
+  invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+    const value: unknown = args === undefined ? await tauriInvoke<unknown>(cmd) : await tauriInvoke<unknown>(cmd, args)
+    assertInvokeResponse<T>(cmd, args, value)
+    return value
+  },
   listen: (channel, handler) => tauriListen(channel, handler),
 }
 
@@ -70,6 +90,19 @@ export interface RemoteConfig {
 
 const CONFIG_KEY = 'meridian.remote'
 
+function exactObject(value: unknown, keys: readonly string[], label: string): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`)
+  }
+  const object = value as Record<string, unknown>
+  const actual = Object.keys(object).sort()
+  const expected = [...keys].sort()
+  if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
+    throw new Error(`${label} must contain exactly: ${expected.join(', ')}`)
+  }
+  return object
+}
+
 /**
  * Read the connection settings.
  *
@@ -78,20 +111,34 @@ const CONFIG_KEY = 'meridian.remote'
  * anything needed in order to connect cannot live there.
  */
 export function readRemoteConfig(): RemoteConfig | null {
+  const raw = localStorage.getItem(CONFIG_KEY)
+  if (raw === null) return null
+  let parsed: unknown
   try {
-    const raw = localStorage.getItem(CONFIG_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as Partial<RemoteConfig>
-    if (!parsed.host || !parsed.port) return null
-    return { host: parsed.host, port: parsed.port }
-  } catch {
-    return null
+    parsed = JSON.parse(raw)
+  } catch (error) {
+    throw Object.assign(new Error(`invalid ${CONFIG_KEY} JSON: ${String(error)}`), { cause: error })
   }
+  const object = exactObject(parsed, ['host', 'port'], CONFIG_KEY)
+  if (typeof object.host !== 'string' || object.host.length === 0 || object.host.trim() !== object.host) {
+    throw new Error(`${CONFIG_KEY}.host must be a non-empty string without surrounding whitespace`)
+  }
+  if (!Number.isInteger(object.port) || (object.port as number) < 1 || (object.port as number) > 65_535) {
+    throw new Error(`${CONFIG_KEY}.port must be an integer from 1 through 65535`)
+  }
+  return { host: object.host, port: object.port as number }
 }
 
 export function writeRemoteConfig(config: RemoteConfig | null): void {
-  if (config) localStorage.setItem(CONFIG_KEY, JSON.stringify(config))
-  else localStorage.removeItem(CONFIG_KEY)
+  if (config) {
+    if (config.host.length === 0 || config.host.trim() !== config.host) {
+      throw new Error(`${CONFIG_KEY}.host must be a non-empty string without surrounding whitespace`)
+    }
+    if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65_535) {
+      throw new Error(`${CONFIG_KEY}.port must be an integer from 1 through 65535`)
+    }
+    localStorage.setItem(CONFIG_KEY, JSON.stringify(config))
+  } else localStorage.removeItem(CONFIG_KEY)
 }
 
 /**
@@ -102,7 +149,7 @@ export function writeRemoteConfig(config: RemoteConfig | null): void {
  * ignore. Kept here rather than in the settings panel because it is a fact
  * about this file's protocol.
  */
-export const CLIENT_API_REV = 2
+export const CLIENT_API_REV = 3
 
 /**
  * What `/healthz` said, reduced to the decision the user is waiting on.
@@ -135,23 +182,28 @@ export async function probeRemote(host: string, port: number, signal?: AbortSign
     return { ok: false, reason: 'unreachable' }
   }
 
-  const health = body as { app?: unknown; version?: unknown; apiRev?: unknown; minClientRev?: unknown } | null
-  if (
-    !health ||
-    health.app !== 'meridian' ||
-    typeof health.apiRev !== 'number' ||
-    typeof health.minClientRev !== 'number'
-  ) {
+  let health: Record<string, unknown>
+  try {
+    health = exactObject(body, ['app', 'version', 'apiRev', 'minClientRev'], 'remote health response')
+  } catch {
     return { ok: false, reason: 'malformed' }
   }
+  if (
+    health.app !== 'meridian' ||
+    typeof health.version !== 'string' ||
+    !Number.isInteger(health.apiRev) ||
+    !Number.isInteger(health.minClientRev)
+  )
+    return { ok: false, reason: 'malformed' }
 
-  const { apiRev, minClientRev } = health
-  // The band the two ends agree on. Below it this build predates something the
-  // desktop now requires; above it the desktop predates something this build
-  // assumes is there.
-  if (CLIENT_API_REV < minClientRev) return { ok: false, reason: 'client-too-old', apiRev, minClientRev }
+  const apiRev = health.apiRev as number
+  const minClientRev = health.minClientRev as number
+  if (apiRev > CLIENT_API_REV || minClientRev > CLIENT_API_REV) {
+    return { ok: false, reason: 'client-too-old', apiRev, minClientRev }
+  }
   if (apiRev < CLIENT_API_REV) return { ok: false, reason: 'server-too-old', apiRev, minClientRev }
-  return { ok: true, version: typeof health.version === 'string' ? health.version : '', apiRev }
+  if (minClientRev !== CLIENT_API_REV) return { ok: false, reason: 'malformed' }
+  return { ok: true, version: health.version as string, apiRev }
 }
 
 /** What the connection is doing, for the one indicator that shows it. */
@@ -176,7 +228,9 @@ class RemoteTransport implements Transport {
   constructor(config: RemoteConfig) {
     this.base = `http://${config.host}:${config.port}`
     this.wsUrl = `ws://${config.host}:${config.port}/events`
-    this.token = tauriTransport.invoke<string | null>('get_secret', { key: TOKEN_SECRET }).then((t) => t ?? '')
+    this.token = tauriTransport
+      .invoke<string | null>('get_secret', { request: { key: TOKEN_SECRET } })
+      .then((token) => token ?? '')
     this.connect()
   }
 
@@ -197,12 +251,33 @@ class RemoteTransport implements Transport {
       throw new Error('Meridian is not reachable')
     }
 
-    const body = (await response.json().catch(() => null)) as { ok?: unknown; err?: string } | null
-    if (!body) throw new Error(`unreadable response (${response.status})`)
-    // Rejected with a string, which is what Tauri's `invoke` does for an
-    // `Err(String)` — every existing `catch (err) { String(err) }` keeps working.
-    if (body.err !== undefined) throw body.err
-    return body.ok as T
+    let rawBody: unknown
+    try {
+      rawBody = await response.json()
+    } catch (error) {
+      throw Object.assign(new Error(`unreadable response (${response.status})`), { cause: error })
+    }
+    try {
+      const body = exactObject(rawBody, ['ok'], 'remote invoke response')
+      const value = body.ok
+      assertInvokeResponse<T>(cmd, args, value)
+      return value
+    } catch (okError) {
+      let errorBody: Record<string, unknown>
+      try {
+        errorBody = exactObject(rawBody, ['err'], 'remote invoke response')
+      } catch {
+        throw Object.assign(new Error(`malformed response (${response.status}): ${String(okError)}`), {
+          cause: okError,
+        })
+      }
+      if (typeof errorBody.err !== 'string') {
+        throw Object.assign(new Error('remote invoke err must be a string'), { cause: okError })
+      }
+      // Rejected with a string, which is what Tauri's `invoke` does for an
+      // `Err(String)` — every existing `catch (err) { String(err) }` keeps working.
+      throw errorBody.err
+    }
   }
 
   listen<T>(channel: string, handler: (event: { payload: T }) => void): Promise<UnlistenFn> {
@@ -263,16 +338,30 @@ class RemoteTransport implements Transport {
     }
 
     socket.onmessage = (event) => {
-      let frame: { channel?: string; payload?: unknown }
+      let frame: Record<string, unknown>
       try {
-        frame = JSON.parse(String(event.data))
-      } catch {
+        frame = exactObject(JSON.parse(String(event.data)), ['channel', 'payload'], 'remote event frame')
+        if (typeof frame.channel !== 'string' || frame.channel.length === 0) {
+          throw new Error('remote event frame.channel must be a non-empty string')
+        }
+      } catch (error) {
+        console.warn(`remote: rejected malformed event frame: ${String(error)}`)
+        socket.close()
         return
       }
-      if (!frame.channel) return
 
       if (frame.channel === 'remote-ready') {
-        const payload = frame.payload as { assetTicket?: string; apiRev?: number } | undefined
+        let payload: Record<string, unknown>
+        try {
+          payload = exactObject(frame.payload, ['apiRev', 'assetTicket'], 'remote-ready payload')
+          if (!Number.isInteger(payload.apiRev) || typeof payload.assetTicket !== 'string' || !payload.assetTicket) {
+            throw new Error('remote-ready payload has invalid field types')
+          }
+        } catch (error) {
+          console.warn(`remote: rejected malformed ready frame: ${String(error)}`)
+          socket.close()
+          return
+        }
         // The socket carries the revision too, and this is the only place it
         // gets re-read. `probeRemote` checks it once, at the moment somebody
         // types an address; a reconnect days later can land on a desktop that
@@ -282,7 +371,7 @@ class RemoteTransport implements Transport {
         // old. The retry loop keeps running on its ordinary backoff, because
         // the thing that fixes this — upgrading the desktop — looks exactly
         // like a reconnect from here.
-        if (typeof payload?.apiRev === 'number' && payload.apiRev < CLIENT_API_REV) {
+        if (payload.apiRev !== CLIENT_API_REV) {
           console.warn(
             `remote: this desktop speaks api rev ${payload.apiRev}, this client expects ${CLIENT_API_REV}; ` +
               'staying offline until it is updated',
@@ -290,7 +379,7 @@ class RemoteTransport implements Transport {
           socket.close()
           return
         }
-        this.assetTicket = payload?.assetTicket ?? null
+        this.assetTicket = payload.assetTicket as string
         const reconnected = this.attempt > 0
         this.attempt = 0
         this.setState('connected')
@@ -301,7 +390,21 @@ class RemoteTransport implements Transport {
         return
       }
 
-      this.dispatch(frame.channel, frame.payload)
+      if (!REMOTE_CHANNELS.has(frame.channel)) {
+        console.warn(`remote: rejected unknown event channel ${frame.channel}`)
+        socket.close()
+        return
+      }
+
+      let payload: unknown
+      try {
+        payload = parseAppEventPayload(frame.channel, frame.payload)
+      } catch (error) {
+        console.warn(`remote: rejected malformed ${frame.channel} payload: ${String(error)}`)
+        socket.close()
+        return
+      }
+      this.dispatch(frame.channel, payload)
     }
 
     socket.onclose = () => {
@@ -362,4 +465,12 @@ export function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<
   return args === undefined ? transport.invoke<T>(cmd) : transport.invoke<T>(cmd, args)
 }
 
-export const listen: Transport['listen'] = (channel, handler) => transport.listen(channel, handler)
+export function listen<C extends AppEventChannel>(
+  channel: C,
+  handler: (event: { payload: AppEventPayloadMap[C] }) => void,
+): Promise<UnlistenFn> {
+  return transport.listen<unknown>(channel, (event) => {
+    const payload = parseAppEventPayload(channel, event.payload)
+    handler({ payload })
+  })
+}

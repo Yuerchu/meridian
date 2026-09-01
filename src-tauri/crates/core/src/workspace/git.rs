@@ -45,9 +45,19 @@ pub enum GitStatus {
 #[derive(Debug, Clone, Serialize)]
 pub struct StatusEntry {
     pub path: String,
-    /// `modified` / `added` / `deleted` / `renamed` / `untracked` / `conflicted`.
-    pub status: String,
+    pub status: GitFileStatus,
     pub renamed_from: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GitFileStatus {
+    Modified,
+    Added,
+    Deleted,
+    Renamed,
+    Untracked,
+    Conflicted,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -320,7 +330,7 @@ fn parse_porcelain_v2(raw: &str) -> (Option<String>, Vec<StatusEntry>) {
                 if let Some((xy, path)) = split_fields(rest, 7) {
                     files.push(StatusEntry {
                         path: path.to_string(),
-                        status: status_of(xy).to_string(),
+                        status: status_of(xy),
                         renamed_from: None,
                     });
                 }
@@ -331,7 +341,7 @@ fn parse_porcelain_v2(raw: &str) -> (Option<String>, Vec<StatusEntry>) {
                     let renamed_from = fields.next().map(str::to_string);
                     files.push(StatusEntry {
                         path: path.to_string(),
-                        status: "renamed".to_string(),
+                        status: GitFileStatus::Renamed,
                         renamed_from,
                     });
                 }
@@ -341,14 +351,14 @@ fn parse_porcelain_v2(raw: &str) -> (Option<String>, Vec<StatusEntry>) {
                 if let Some((_, path)) = split_fields(rest, 9) {
                     files.push(StatusEntry {
                         path: path.to_string(),
-                        status: "conflicted".to_string(),
+                        status: GitFileStatus::Conflicted,
                         renamed_from: None,
                     });
                 }
             }
             "?" => files.push(StatusEntry {
                 path: rest.to_string(),
-                status: "untracked".to_string(),
+                status: GitFileStatus::Untracked,
                 renamed_from: None,
             }),
             // "!" (ignored) is not requested; headers were handled above.
@@ -377,20 +387,28 @@ fn split_fields(rest: &str, skip: usize) -> Option<(&str, &str)> {
 
 /// One word for an XY pair. The panel does not distinguish staged from
 /// unstaged — the diff is against HEAD, so neither does the letter.
-fn status_of(xy: &str) -> &'static str {
+fn status_of(xy: &str) -> GitFileStatus {
     let has = |c: char| xy.contains(c);
     if has('D') {
-        "deleted"
+        GitFileStatus::Deleted
     } else if has('A') {
-        "added"
+        GitFileStatus::Added
     } else {
-        "modified"
+        GitFileStatus::Modified
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn file_status_uses_the_closed_wire_vocabulary() {
+        assert_eq!(
+            serde_json::to_string(&GitFileStatus::Conflicted).unwrap(),
+            r#""conflicted""#
+        );
+    }
 
     /// A modified file, an added one, a deletion and an untracked one, as git
     /// actually emits them with `-z`.
@@ -406,14 +424,14 @@ mod tests {
         );
         let (branch, files) = parse_porcelain_v2(raw);
         assert_eq!(branch.as_deref(), Some("main"));
-        let got: Vec<(&str, &str)> = files.iter().map(|f| (f.path.as_str(), f.status.as_str())).collect();
+        let got: Vec<(&str, GitFileStatus)> = files.iter().map(|f| (f.path.as_str(), f.status)).collect();
         assert_eq!(
             got,
             vec![
-                ("src/lib.rs", "modified"),
-                ("src/new.rs", "added"),
-                ("gone.txt", "deleted"),
-                ("notes.md", "untracked"),
+                ("src/lib.rs", GitFileStatus::Modified),
+                ("src/new.rs", GitFileStatus::Added),
+                ("gone.txt", GitFileStatus::Deleted),
+                ("notes.md", GitFileStatus::Untracked),
             ]
         );
     }
@@ -431,7 +449,7 @@ mod tests {
         let (_, files) = parse_porcelain_v2(raw);
         assert_eq!(files.len(), 2);
         assert_eq!(files[0].path, "new/name.rs");
-        assert_eq!(files[0].status, "renamed");
+        assert_eq!(files[0].status, GitFileStatus::Renamed);
         assert_eq!(files[0].renamed_from.as_deref(), Some("old/name.rs"));
         assert_eq!(files[1].path, "after.md");
     }
@@ -451,7 +469,7 @@ mod tests {
     fn relativize_rebases_and_drops() {
         let entry = |path: &str, from: Option<&str>| StatusEntry {
             path: path.into(),
-            status: "modified".into(),
+            status: GitFileStatus::Modified,
             renamed_from: from.map(String::from),
         };
         let inside = relativize(entry("sub/dir/a.rs", None), "sub/dir/").unwrap();
@@ -571,7 +589,7 @@ mod tests {
     fn conflicts_are_named() {
         let raw = "u UU N... 100644 100644 100644 100644 a b c both.rs\0";
         let (_, files) = parse_porcelain_v2(raw);
-        assert_eq!(files[0].status, "conflicted");
+        assert_eq!(files[0].status, GitFileStatus::Conflicted);
         assert_eq!(files[0].path, "both.rs");
     }
 }

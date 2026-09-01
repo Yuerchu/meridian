@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::ServicesExt;
+use crate::commands::model_config::RequiredNullable;
 use meridian_core::agent::engine;
 use meridian_core::agent::turn_record;
 use meridian_core::agent::{
@@ -11,9 +12,12 @@ use meridian_core::agent::{
 };
 use meridian_core::db;
 use meridian_core::db::DbPool;
-use meridian_core::db::models::assistant::Assistant;
-use meridian_core::db::models::message::NewMessage;
+use meridian_core::db::models::assistant::AssistantRow;
+use meridian_core::db::models::message::MessageInsert;
 use meridian_core::db::models::turn::{ERROR_LOOP_DETECTED, TurnPhase, TurnStatus};
+use meridian_core::events::{
+    ChatStopReason, ChatStreamEvent, CompactDoneEvent, CompactOutcome, CompactStartEvent, CompactTrigger,
+};
 use meridian_core::provider;
 use meridian_core::provider::{ChatMessage, ChatParams};
 use meridian_core::services::Services;
@@ -32,7 +36,7 @@ struct PlanTransitions {
     services: Services,
     pool: DbPool,
     registry: Arc<tools::ToolRegistry>,
-    assistant: Option<Assistant>,
+    assistant: Option<AssistantRow>,
     conversation_id: String,
     project_id: Option<String>,
     persona: String,
@@ -48,13 +52,25 @@ struct PlanTransitions {
     /// And once more. This rebuilds the tool set, so a suppression applied only
     /// where the turn was set up is undone by the first mode switch — handing
     /// back a local `web_search` to sit beside the provider-side one.
-    server_tools: Vec<String>,
+    server_tools: Vec<provider::ServerToolKind>,
+    /// Frozen effective destination/preferences for the durable continuation.
+    /// The review can outlive this process and conversation defaults may change
+    /// before it is decided, so none of these may be re-resolved at approval.
+    native_runtime: db::models::plan_review::NativePlanReviewRuntimeConfig,
+}
+
+fn select_turn_setting<T>(origin: TurnOrigin, explicit: Option<T>, conversation_default: Option<T>) -> Option<T> {
+    if origin == TurnOrigin::PlanReview {
+        explicit
+    } else {
+        explicit.or(conversation_default)
+    }
 }
 
 async fn load_message_context_items(
     pool: &DbPool,
     context: &db::ops::message::ActiveContext,
-) -> Result<std::collections::HashMap<String, Vec<db::models::message_context_item::MessageContextItem>>, String> {
+) -> Result<std::collections::HashMap<String, Vec<db::models::message_context_item::MessageContextItemRow>>, String> {
     let ids = context
         .path
         .iter()
@@ -83,7 +99,7 @@ fn trailing_with_user_context(
         .unwrap_or(trailing.len().saturating_sub(1));
     let injected = context.iter().map(|item| {
         ChatMessage::user_provided_context(&meridian_core::workspace::reference::render_context_item(
-            &item.kind,
+            item.kind.into(),
             item.display_path.as_deref(),
             item.line_start,
             item.line_end,
@@ -129,7 +145,7 @@ impl meridian_core::agent::engine::Transitions for PlanTransitions {
         let mcp_defs = self.services.mcp.tool_definitions().as_ref().clone();
         let pool = self.pool.clone();
         let registry = self.registry.clone();
-        let input = meridian_core::agent::turn_config::TurnConfigInput {
+        let input = meridian_core::agent::turn_config::TurnConfigResolveRequest {
             assistant: self.assistant.clone(),
             server_tools: self.server_tools.clone(),
             conversation_id: self.conversation_id.clone(),
@@ -145,10 +161,183 @@ impl meridian_core::agent::engine::Transitions for PlanTransitions {
         };
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
-            Ok::<_, String>(meridian_core::agent::turn_config::resolve(&mut conn, &registry, input))
+            meridian_core::agent::turn_config::resolve(&mut conn, &registry, input)
         })
         .await
         .map_err(|e| e.to_string())
+    }
+
+    async fn read_plan(&self) -> Result<meridian_core::agent::engine::PlanReadResult, String> {
+        use meridian_core::db::models::plan_review::PlanMaterializationState;
+
+        let pool = self.pool.clone();
+        let conversation_id = self.conversation_id.clone();
+        let files = self.services.plan_files.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool)?;
+            let now = now_ms();
+            let document = db::ops::plan_review::create_or_resume_document(&mut conn, &conversation_id, now)
+                .map_err(|error| error.to_string())?;
+            let report = files
+                .reconcile_document(&mut conn, &document.id, now)
+                .map_err(|error| error.to_string())?;
+            let head =
+                db::ops::plan_review::get_head_revision(&mut conn, &document.id).map_err(|error| error.to_string())?;
+            let state = match report.conflict {
+                Some(_) => PlanMaterializationState::Conflict,
+                None => db::ops::plan_review::latest_materialization(&mut conn, &document.id)
+                    .map_err(|error| error.to_string())?
+                    .map(|row| row.state())
+                    .transpose()?
+                    .unwrap_or(PlanMaterializationState::Applied),
+            };
+            let (content, sha256) = match head {
+                Some(revision) => (revision.content_markdown, revision.content_sha256),
+                None => {
+                    let content = String::new();
+                    let sha256 = db::ops::plan_review::markdown_sha256(&content);
+                    (content, sha256)
+                }
+            };
+            Ok(meridian_core::agent::engine::PlanReadResult {
+                content,
+                generation: document.working_generation,
+                sha256,
+                file_sync_state: state,
+            })
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    }
+
+    async fn update_plan(
+        &self,
+        request: meridian_core::agent::engine::UpdatePlanRequest,
+    ) -> Result<meridian_core::agent::engine::PlanUpdateResult, String> {
+        let pool = self.pool.clone();
+        let conversation_id = self.conversation_id.clone();
+        let files = self.services.plan_files.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool)?;
+            let now = now_ms();
+            let document = db::ops::plan_review::create_or_resume_document(&mut conn, &conversation_id, now)
+                .map_err(|error| error.to_string())?;
+            let report = files
+                .reconcile_document(&mut conn, &document.id, now)
+                .map_err(|error| error.to_string())?;
+            if report.conflict.is_some() {
+                return Err("plan.md is in conflict; restore the database copy before updating it".into());
+            }
+            let head = db::ops::plan_review::get_head_revision(&mut conn, &document.id)
+                .map_err(|error| error.to_string())?;
+            let current_sha = head
+                .as_ref()
+                .map(|revision| revision.content_sha256.clone())
+                .unwrap_or_else(|| db::ops::plan_review::markdown_sha256(""));
+            if document.working_generation != request.base_generation || current_sha != request.base_sha256 {
+                return Err(format!(
+                    "stale plan base: current generation is {} and current SHA-256 is {}; call read_plan and regenerate the patch",
+                    document.working_generation, current_sha
+                ));
+            }
+            let content = meridian_core::tools::apply_patch::apply_plan_patch(
+                head.as_ref().map(|revision| revision.content_markdown.as_str()),
+                &request.patch,
+            )?;
+            let responding_to_suggestion_revision_id = db::ops::plan_review::list_reviews(&mut conn, &document.id)
+                .map_err(|error| error.to_string())?
+                .into_iter()
+                .rev()
+                .find_map(|review| {
+                    (review.state
+                        == meridian_core::db::models::plan_review::PlanReviewState::ChangesRequested.as_str()
+                        && head
+                            .as_ref()
+                            .is_some_and(|current| current.id == review.submitted_revision_id))
+                        .then_some(review.suggestion_revision_id)
+                        .flatten()
+                });
+            let appended = db::ops::plan_review::append_assistant_revision(
+                &mut conn,
+                &db::ops::plan_review::PlanRevisionAppend {
+                    document_id: &document.id,
+                    expected_generation: request.base_generation,
+                    expected_head_sha256: head.as_ref().map(|revision| revision.content_sha256.as_str()),
+                    content_markdown: &content,
+                    patch: &request.patch,
+                    source_message_id: Some(&request.source_message_id),
+                    source_call_id: Some(&request.source_call_id),
+                    responding_to_suggestion_revision_id: responding_to_suggestion_revision_id.as_deref(),
+                    now,
+                },
+            )
+            .map_err(|error| error.to_string())?;
+            let materialized = files
+                .reconcile_document(&mut conn, &document.id, now_ms())
+                .map_err(|error| error.to_string())?;
+            if let Some(conflict) = materialized.conflict {
+                return Err(conflict.error.unwrap_or_else(|| "plan.md materialization conflicted".into()));
+            }
+            Ok(meridian_core::agent::engine::PlanUpdateResult {
+                generation: appended.document.working_generation,
+                sha256: appended.revision.content_sha256,
+                applied_diff: request.patch,
+            })
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    }
+
+    async fn submit_plan(
+        &self,
+        request: meridian_core::agent::engine::SubmitPlanRequest,
+    ) -> Result<meridian_core::events::PlanReviewEvent, String> {
+        let pool = self.pool.clone();
+        let conversation_id = self.conversation_id.clone();
+        let files = self.services.plan_files.clone();
+        let native_runtime = self.native_runtime.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool)?;
+            let now = now_ms();
+            let document = db::ops::plan_review::create_or_resume_document(&mut conn, &conversation_id, now)
+                .map_err(|error| error.to_string())?;
+            let report = files
+                .reconcile_document(&mut conn, &document.id, now)
+                .map_err(|error| error.to_string())?;
+            if report.conflict.is_some() {
+                return Err("plan.md is in conflict and cannot be submitted".into());
+            }
+            let head = db::ops::plan_review::get_head_revision(&mut conn, &document.id)
+                .map_err(|error| error.to_string())?
+                .ok_or_else(|| "plan.md has no saved revision; create it with update_plan first".to_string())?;
+            let bundle = db::ops::plan_review::submit_native_head_for_review(
+                &mut conn,
+                &db::ops::plan_review::PlanReviewSubmit {
+                    document_id: &document.id,
+                    expected_generation: document.working_generation,
+                    expected_head_sha256: &head.content_sha256,
+                    turn_id: Some(&request.turn_id),
+                    assistant_message_id: Some(&request.assistant_message_id),
+                    provider_call_id: Some(&request.provider_call_id),
+                    provider_kind: meridian_core::db::models::plan_review::PlanReviewProviderKind::Native,
+                    now,
+                },
+                &native_runtime,
+            )
+            .map_err(|error| error.to_string())?;
+            Ok(meridian_core::events::PlanReviewEvent {
+                review_id: bundle.review.id,
+                conversation_id,
+                document_id: bundle.document.id,
+                revision_id: bundle.submitted_revision.id,
+                turn_id: request.turn_id,
+                status: bundle.review.state,
+                lock_version: bundle.review.lock_version,
+                delivery_state: None,
+            })
+        })
+        .await
+        .map_err(|error| error.to_string())?
     }
 }
 
@@ -168,6 +357,7 @@ struct TurnGuard<'a> {
     services: &'a Services,
     conversation_id: &'a str,
     turn_id: String,
+    origin: TurnOrigin,
     /// The row being written. Absent until the first iteration creates one —
     /// the early returns before that still owe a terminal stop, they just have
     /// no message to attach it to, and the front end would otherwise sit on the
@@ -190,7 +380,7 @@ impl TurnGuard<'_> {
     /// `Err` means the id is already on record, and the caller must not go on
     /// to close that turn out.
     async fn open_record(&self, pool: &DbPool) -> Result<(), String> {
-        turn_record::begin(pool, &self.turn_id, self.conversation_id, TurnOrigin::Desktop, None).await
+        turn_record::begin(pool, &self.turn_id, self.conversation_id, self.origin, None).await
     }
 
     /// Hand the conversation back. Called just before the turn's own stop event
@@ -228,15 +418,14 @@ impl Drop for TurnGuard<'_> {
         // stream ends must not be told the conversation is busy.
         self.lease.take();
         if self.armed {
-            let _ = self.services.events.emit(
-                "chat-stream",
-                serde_json::json!({
-                    "type": "stop", "reason": "error", "done": true,
-                    "message_id": self.message_id,
-                    "turn_id": self.turn_id,
-                    "conversation_id": self.conversation_id,
-                }),
-            );
+            let _ = self.services.events.emit_chat(ChatStreamEvent::Stop {
+                reason: ChatStopReason::Error,
+                message_id: self.message_id.clone(),
+                turn_id: self.turn_id.clone(),
+                conversation_id: self.conversation_id.to_string(),
+                input_tokens: None,
+                output_tokens: None,
+            });
         }
     }
 }
@@ -251,8 +440,19 @@ impl Drop for TurnGuard<'_> {
 ///
 /// Succeeds either way. A stop aimed at a turn that already ended is not a
 /// failure the user needs to see; the front end clears its own state regardless.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ChatStopRequest {
+    pub conversation_id: String,
+    pub turn_id: RequiredNullable<String>,
+}
+
 #[tauri::command]
-pub async fn stop_chat(app: tauri::AppHandle, conversation_id: String, turn_id: Option<String>) -> Result<(), String> {
+pub async fn stop_chat(app: tauri::AppHandle, request: ChatStopRequest) -> Result<(), String> {
+    let ChatStopRequest {
+        conversation_id,
+        turn_id: RequiredNullable(turn_id),
+    } = request;
     let services = app.services();
     let cancelled = services.turns.cancel(&conversation_id, turn_id.as_deref());
     if !cancelled {
@@ -263,6 +463,81 @@ pub async fn stop_chat(app: tauri::AppHandle, conversation_id: String, turn_id: 
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod command_contract_tests {
+    use super::{ChatRequest, ChatStopRequest, select_turn_setting};
+    use meridian_core::turn::TurnOrigin;
+    use serde_json::json;
+
+    fn chat_request() -> serde_json::Value {
+        json!({
+            "conversationId": "conversation-1",
+            "message": "hello",
+            "turnId": null,
+            "replaces": null,
+            "modelOverride": null,
+            "providerOverride": null,
+            "thinkingLevel": null,
+            "assistantId": null,
+            "fast": null,
+            "mode": null,
+            "voice": null,
+            "contextRefs": null
+        })
+    }
+
+    #[test]
+    fn chat_request_requires_every_nullable_key_and_rejects_unknown_fields() {
+        serde_json::from_value::<ChatRequest>(chat_request()).unwrap();
+
+        let mut missing = chat_request();
+        missing.as_object_mut().unwrap().remove("mode");
+        assert!(serde_json::from_value::<ChatRequest>(missing).is_err());
+
+        let mut unknown = chat_request();
+        unknown["futureField"] = json!(true);
+        assert!(serde_json::from_value::<ChatRequest>(unknown).is_err());
+
+        let mut invalid_mode = chat_request();
+        invalid_mode["mode"] = json!("future_mode");
+        assert!(serde_json::from_value::<ChatRequest>(invalid_mode).is_err());
+
+        let mut incomplete_reference = chat_request();
+        incomplete_reference["contextRefs"] = json!([{
+            "path": "src/main.rs",
+            "lineStart": null
+        }]);
+        assert!(serde_json::from_value::<ChatRequest>(incomplete_reference).is_err());
+    }
+
+    #[test]
+    fn chat_stop_request_requires_explicit_nullable_turn_id() {
+        serde_json::from_value::<ChatStopRequest>(json!({
+            "conversationId": "conversation-1",
+            "turnId": null
+        }))
+        .unwrap();
+        assert!(
+            serde_json::from_value::<ChatStopRequest>(json!({
+                "conversationId": "conversation-1"
+            }))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn plan_review_continuation_preserves_explicit_null_instead_of_reinheriting() {
+        assert_eq!(
+            select_turn_setting(TurnOrigin::PlanReview, None::<String>, Some("new-default".into())),
+            None
+        );
+        assert_eq!(
+            select_turn_setting(TurnOrigin::Desktop, None, Some("new-default".to_string())),
+            Some("new-default".to_string())
+        );
+    }
 }
 
 /// The queue's way into an ordinary turn.
@@ -279,7 +554,7 @@ impl meridian_core::services::StartTurn for DesktopTurns {
     async fn start(
         &self,
         conversation_id: &str,
-        queued: &meridian_core::db::models::queue::QueuedPrompt,
+        queued: &meridian_core::db::models::queue::QueuedPromptRow,
     ) -> Result<(), String> {
         let pool = self.0.db.clone();
         let queue_id = queued.id.clone();
@@ -310,9 +585,28 @@ impl meridian_core::services::StartTurn for DesktopTurns {
             None,
             Some(queued_context),
             Some(queued.id.clone()),
+            None,
+            TurnOrigin::Desktop,
         )
         .await
     }
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ChatRequest {
+    pub conversation_id: String,
+    pub message: RequiredNullable<String>,
+    pub turn_id: RequiredNullable<String>,
+    pub replaces: RequiredNullable<String>,
+    pub model_override: RequiredNullable<String>,
+    pub provider_override: RequiredNullable<String>,
+    pub thinking_level: RequiredNullable<meridian_core::provider::capabilities::StoredThinkingLevel>,
+    pub assistant_id: RequiredNullable<String>,
+    pub fast: RequiredNullable<bool>,
+    pub mode: RequiredNullable<meridian_core::agent::modes::ChatMode>,
+    pub voice: RequiredNullable<bool>,
+    pub context_refs: RequiredNullable<Vec<meridian_core::workspace::reference::WorkspaceReferenceRequest>>,
 }
 
 #[tauri::command]
@@ -322,7 +616,7 @@ impl meridian_core::services::StartTurn for DesktopTurns {
 #[tracing::instrument(
     skip_all,
     fields(
-        conversation_id = %conversation_id,
+        conversation_id = %request.conversation_id,
         model = tracing::field::Empty,
         provider_type = tracing::field::Empty,
         api_format = tracing::field::Empty
@@ -345,25 +639,24 @@ impl meridian_core::services::StartTurn for DesktopTurns {
 ///
 /// The named message is never modified or removed; it stays reachable as a
 /// sibling of what this turn writes.
-#[allow(clippy::too_many_arguments)]
 ///
 /// `turn_id` is the front end's, minted before it sent. See
 /// `TurnCoordinator::try_acquire_turn_as` for why it is not minted here.
-pub async fn chat(
-    app: tauri::AppHandle,
-    conversation_id: String,
-    message: Option<String>,
-    turn_id: Option<String>,
-    replaces: Option<String>,
-    model_override: Option<String>,
-    provider_override: Option<String>,
-    thinking_level: Option<String>,
-    assistant_id: Option<String>,
-    fast: Option<bool>,
-    mode: Option<String>,
-    voice: Option<bool>,
-    context_refs: Option<Vec<meridian_core::workspace::reference::WorkspaceReferenceInput>>,
-) -> Result<(), String> {
+pub async fn chat(app: tauri::AppHandle, request: ChatRequest) -> Result<(), String> {
+    let ChatRequest {
+        conversation_id,
+        message: RequiredNullable(message),
+        turn_id: RequiredNullable(turn_id),
+        replaces: RequiredNullable(replaces),
+        model_override: RequiredNullable(model_override),
+        provider_override: RequiredNullable(provider_override),
+        thinking_level: RequiredNullable(thinking_level),
+        assistant_id: RequiredNullable(assistant_id),
+        fast: RequiredNullable(fast),
+        mode: RequiredNullable(mode),
+        voice: RequiredNullable(voice),
+        context_refs: RequiredNullable(context_refs),
+    } = request;
     // Decided here rather than inside, so the failure path below can name the
     // turn it is closing without depending on how far the run got.
     //
@@ -377,6 +670,7 @@ pub async fn chat(
             .to_string(),
         None => uuid::Uuid::new_v4().to_string(),
     };
+    crate::commands::plan_review::ensure_conversation_not_waiting_review(&app.services().db, &conversation_id).await?;
     run_turn(
         app.services(),
         conversation_id,
@@ -385,14 +679,16 @@ pub async fn chat(
         replaces,
         model_override,
         provider_override,
-        thinking_level,
+        thinking_level.map(|level| level.as_str().to_string()),
         assistant_id,
         fast,
-        mode,
+        mode.map(|mode| mode.as_str().to_string()),
         voice,
         context_refs,
         None,
         None,
+        None,
+        TurnOrigin::Desktop,
     )
     .await
 }
@@ -420,11 +716,17 @@ pub async fn run_turn(
     fast: Option<bool>,
     mode: Option<String>,
     voice: Option<bool>,
-    context_refs: Option<Vec<meridian_core::workspace::reference::WorkspaceReferenceInput>>,
+    context_refs: Option<Vec<meridian_core::workspace::reference::WorkspaceReferenceRequest>>,
     queued_context: Option<Vec<meridian_core::workspace::reference::PreparedContextItem>>,
     queued: Option<String>,
+    accept_edits_override: Option<bool>,
+    origin: TurnOrigin,
 ) -> Result<(), String> {
     let pool = services.db.clone();
+
+    if origin != TurnOrigin::PlanReview {
+        crate::commands::plan_review::ensure_conversation_not_waiting_review(&pool, &conversation_id).await?;
+    }
 
     // Nothing is awaited between taking this and handing it to the guard that
     // gives it back, so there is no point at which the task can be dropped
@@ -432,8 +734,17 @@ pub async fn run_turn(
     let lease = services
         .turns
         .clone()
-        .try_acquire_turn_as(&conversation_id, TurnOrigin::Desktop, turn_id.clone())
+        .try_acquire_turn_as(&conversation_id, origin, turn_id.clone())
         .map_err(|busy| busy.to_string())?;
+
+    // The fast check above can race a planning turn that commits its review
+    // and releases the lease between our read and acquisition. Once this lease
+    // is held no other ordinary turn can create a new review, so this second
+    // durable read closes that gap. Plan-review continuations are the one
+    // authorised path across their own barrier.
+    if origin != TurnOrigin::PlanReview {
+        crate::commands::plan_review::ensure_conversation_not_waiting_review(&pool, &conversation_id).await?;
+    }
 
     // Set once the turn's row exists, and read below to decide whether closing
     // it out is this call's business. A duplicate id is refused *after* the
@@ -463,6 +774,8 @@ pub async fn run_turn(
         context_refs,
         queued_context,
         queued,
+        accept_edits_override,
+        origin,
     )
     .await
     .inspect_err(|e| tracing::error!(error = %e, "turn failed"));
@@ -480,8 +793,75 @@ pub async fn run_turn(
     // After the record is closed, and reading it back rather than being told:
     // this function has a dozen ways out and the queue's answer depends on
     // which of them a turn took. The row is the one place that already knows.
-    meridian_core::agent::queue::after_recorded_turn(&services, &conversation_id, &turn_id).await;
+    meridian_core::agent::queue::after_recorded_turn(&services, &conversation_id, &turn_id).await?;
     result
+}
+
+/// Resume a native conversation from the durable `exit_plan` tool result.
+/// The result row is committed by the review command before this is called, so
+/// no synthetic user message is added and the provider sees the same tool-call
+/// continuation it would have seen had the review happened in-process.
+pub async fn run_plan_review_continuation(
+    services: Services,
+    conversation_id: String,
+    turn_id: String,
+    mode: &'static str,
+    runtime: db::models::plan_review::NativePlanReviewRuntimeConfig,
+) -> Result<(), String> {
+    verify_plan_review_workspace(&services.db, &conversation_id, &runtime).await?;
+    let thinking_level = runtime.thinking_level.map(|level| level.as_str().to_string());
+    run_turn(
+        services,
+        conversation_id,
+        None,
+        turn_id,
+        None,
+        Some(runtime.model),
+        Some(runtime.provider_id),
+        thinking_level,
+        runtime.assistant_id,
+        Some(runtime.fast),
+        Some(mode.to_string()),
+        None,
+        None,
+        None,
+        None,
+        Some(runtime.accept_edits),
+        TurnOrigin::PlanReview,
+    )
+    .await
+}
+
+pub(crate) async fn verify_plan_review_workspace(
+    pool: &DbPool,
+    conversation_id: &str,
+    runtime: &db::models::plan_review::NativePlanReviewRuntimeConfig,
+) -> Result<(), String> {
+    let pool = pool.clone();
+    let conversation_id = conversation_id.to_string();
+    let expected_project_id = runtime.project_id.clone();
+    let expected_project_path = runtime.project_path.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = get_conn(&pool)?;
+        let conversation =
+            db::ops::conversation::get_conversation(&mut conn, &conversation_id).map_err(|e| e.to_string())?;
+        let current_project_id = conversation.project_id.clone();
+        let current_project_path = current_project_id
+            .as_deref()
+            .map(|project_id| db::ops::project::get_project(&mut conn, project_id))
+            .transpose()
+            .map_err(|e| e.to_string())?
+            .and_then(|project| project.path);
+        if current_project_id != expected_project_id || current_project_path != expected_project_path {
+            return Err(
+                "The conversation workspace changed after this plan was submitted. Restore the original project/path or request a new plan before continuing."
+                    .into(),
+            );
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -505,9 +885,11 @@ async fn chat_inner(
     fast: Option<bool>,
     mode: Option<String>,
     voice: Option<bool>,
-    context_refs: Option<Vec<meridian_core::workspace::reference::WorkspaceReferenceInput>>,
+    context_refs: Option<Vec<meridian_core::workspace::reference::WorkspaceReferenceRequest>>,
     queued_context: Option<Vec<meridian_core::workspace::reference::PreparedContextItem>>,
     queued: Option<String>,
+    accept_edits_override: Option<bool>,
+    origin: TurnOrigin,
 ) -> Result<(), String> {
     let secrets = &services.secrets;
     let pool = services.db.clone();
@@ -526,6 +908,7 @@ async fn chat_inner(
         services: &services,
         conversation_id: &conversation_id,
         turn_id: turn_id.clone(),
+        origin,
         message_id: None,
         armed: true,
         lease: Some(lease),
@@ -552,7 +935,7 @@ async fn chat_inner(
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
             let conv = db::ops::conversation::get_conversation(&mut conn, &conv_id).map_err(|e| e.to_string())?;
-            let effective_aid = aid_override.as_deref().or(conv.assistant_id.as_deref());
+            let effective_aid = select_turn_setting(origin, aid_override.as_deref(), conv.assistant_id.as_deref());
             // Pinned before anything derives from it. A delegated run stays
             // writable after it ends, and a follow-up has to go to the model the
             // transcript was written by — one conversation spanning two models
@@ -654,16 +1037,16 @@ async fn chat_inner(
         &resolved.provider_type,
         &resolved.base_url,
         &resolved.credential,
-        Some(&resolved.api_format),
-        Some(&resolved.transport_profile),
-    );
+        &resolved.api_format,
+        &resolved.transport_profile,
+    )?;
 
     // Needed before the tool set is assembled, unlike the other two prefs which
     // only matter once the request parameters are built.
     let conv_mode = conv_prefs.2.clone();
 
     // Build messages with history (resolve template variables in system prompt)
-    let file_access = build_file_access(&pool).await;
+    let file_access = build_file_access(&pool).await?;
     let raw_prompt = assistant.as_ref().map(|a| a.system_prompt.as_str()).unwrap_or("");
     // Decorative: an unreadable preference costs the assistant the user's name,
     // nothing more. Logged rather than swallowed so a pool timeout is still
@@ -724,7 +1107,7 @@ async fn chat_inner(
     // request, since this turn may die on the way out or be refused over SSE
     // by a provider that already answered 200.
     let interrupted =
-        meridian_core::agent::interrupted::load_block(&pool, &services.turns, &conversation_id, &turn_id).await;
+        meridian_core::agent::interrupted::load_block(&pool, &services.turns, &conversation_id, &turn_id).await?;
     let instruction_block = {
         let budget = instruction_budget(context_limit);
         if budget > 0 {
@@ -743,7 +1126,7 @@ async fn chat_inner(
     // mid-call — which is exactly what used to stop every other conversation
     // from starting a turn.
     let mcp_defs = services.mcp.tool_definitions().as_ref().clone();
-    let mode = meridian_core::agent::modes::resolve(mode.as_deref().or(conv_mode.as_deref()));
+    let mode = meridian_core::agent::modes::resolve(mode.as_deref().or(conv_mode.as_deref()))?;
     // Kept so the turn can be re-resolved in place if the user approves a plan
     // mid-flight; everything else the resolver needs is still in scope.
     let persona = system_prompt_resolved;
@@ -765,9 +1148,14 @@ async fn chat_inner(
     // Precedence: per-request override > conversation preference > assistant default.
     // Read once at the top of the turn: a mid-turn flip should not retroactively
     // widen calls the user is already looking at an approval card for.
-    let accept_edits = conv_prefs.3;
+    let accept_edits = accept_edits_override.unwrap_or(conv_prefs.3);
     let (conv_thinking_level, conv_fast_mode, _, _) = conv_prefs;
-    let effective_level = thinking_level.as_deref().or(conv_thinking_level.as_deref());
+    let effective_level = select_turn_setting(origin, thinking_level, conv_thinking_level);
+    let effective_stored_level = effective_level
+        .as_deref()
+        .map(meridian_core::provider::capabilities::StoredThinkingLevel::parse)
+        .transpose()?;
+    let effective_fast = fast.unwrap_or(conv_fast_mode);
     // Ahead of the tool set, and ahead of the compaction check: the summariser
     // and the turn it summarises have to send parameters filtered against the
     // same model, and what the model can be sent at all — whether it takes a
@@ -785,12 +1173,12 @@ async fn chat_inner(
         let af = resolved.api_format.clone();
         let tp = resolved.transport_profile.clone();
         let mid = model.clone();
-        let level = effective_level.map(|s| s.to_string());
-        let fast = fast.unwrap_or(conv_fast_mode);
+        let level = effective_level.clone();
+        let fast = effective_fast;
         tokio::task::spawn_blocking(move || {
             meridian_core::agent::resolve_turn_params(
                 &pool2,
-                meridian_core::agent::TurnParamsInput {
+                meridian_core::agent::TurnParamsResolveRequest {
                     assistant: assistant2.as_ref(),
                     provider_id: pid.as_deref(),
                     provider_type: &pt,
@@ -842,8 +1230,8 @@ async fn chat_inner(
         let server_tools = turn_server_tools.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool2)?;
-            let catalog = meridian_core::agent::sub_agents::catalog(&mut conn);
-            let input = meridian_core::agent::turn_config::TurnConfigInput {
+            let catalog = meridian_core::agent::sub_agents::catalog(&mut conn)?;
+            let input = meridian_core::agent::turn_config::TurnConfigResolveRequest {
                 assistant: assistant2,
                 server_tools,
                 conversation_id: conv_id,
@@ -855,10 +1243,8 @@ async fn chat_inner(
                 persona: persona2,
                 context_blocks: blocks,
             };
-            Ok::<_, String>((
-                meridian_core::agent::turn_config::resolve(&mut conn, &registry, input),
-                catalog,
-            ))
+            let turn = meridian_core::agent::turn_config::resolve(&mut conn, &registry, input)?;
+            Ok::<_, String>((turn, catalog))
         })
         .await
         .map_err(|e| e.to_string())??
@@ -880,11 +1266,10 @@ async fn chat_inner(
         turn_params.compact_threshold,
     );
 
-    // The backend resolves the token again even when the composer supplied a
-    // structured copy. The latter protects cursor/quote handling; the former
-    // ensures a stale or forged DTO cannot attach a path the message did not
-    // name. Old clients and queued prompts omit the DTO and use this parser
-    // directly.
+    // The backend resolves the token again to validate the structured copy.
+    // This ensures a stale or forged DTO cannot attach a path the message did
+    // not name. A required explicit null means no selected references; it does
+    // not activate a parser fallback.
     let prepared_context = match queued_context {
         Some(frozen) => frozen,
         None => {
@@ -892,7 +1277,10 @@ async fn chat_inner(
                 .as_deref()
                 .map(meridian_core::workspace::reference::parse_message_references)
                 .unwrap_or_default();
-            let effective_refs = meridian_core::workspace::reference::reconcile_references(context_refs, parsed_refs)?;
+            let effective_refs = meridian_core::workspace::reference::reconcile_references(
+                context_refs.unwrap_or_default(),
+                parsed_refs,
+            )?;
             if message.is_none() && !effective_refs.is_empty() {
                 return Err("regeneration cannot introduce new workspace references".into());
             }
@@ -933,7 +1321,7 @@ async fn chat_inner(
         // against the path compaction leaves behind — see below.
         let probe =
             meridian_core::agent::plan_injection_async(&pool, memory_request.clone(), ctx.live().to_vec(), now_ms())
-                .await;
+                .await?;
         let pre_msgs = build_messages_with_context_items(
             system_prompt.trim(),
             &ctx,
@@ -946,19 +1334,16 @@ async fn chat_inner(
             ),
             &Default::default(),
             &stored_context_items,
-        );
+        )?;
         budget.update_estimate(&pre_msgs);
         if budget.needs_compact() && ctx.path.len() > keep_recent * 2 + 2 {
             services
                 .events
-                .emit(
-                    "compact-start",
-                    serde_json::json!({
-                        "conversation_id": &conversation_id,
-                        "mid_turn": false,
-                        "trigger": "threshold",
-                    }),
-                )
+                .emit_compact_start(&CompactStartEvent {
+                    conversation_id: conversation_id.clone(),
+                    mid_turn: false,
+                    trigger: CompactTrigger::Threshold,
+                })
                 .ok();
             // Compaction deletes the old summary before writing the new one and
             // the two are not one transaction, so dying in here is its own kind
@@ -980,13 +1365,14 @@ async fn chat_inner(
                     circuit_breaker.record_success();
                     services
                         .events
-                        .emit(
-                            "compact-done",
-                            serde_json::json!({
-                                "conversation_id": &conversation_id,
-                                "mid_turn": false,
-                            }),
-                        )
+                        .emit_compact_done(&CompactDoneEvent {
+                            conversation_id: conversation_id.clone(),
+                            mid_turn: false,
+                            trigger: CompactTrigger::Threshold,
+                            outcome: CompactOutcome::Completed,
+                            tokens_reclaimed: None,
+                            error: None,
+                        })
                         .ok();
                 }
                 Err(e) => {
@@ -997,14 +1383,14 @@ async fn chat_inner(
                     // the context indicator sits pinned at its limit.
                     services
                         .events
-                        .emit(
-                            "compact-done",
-                            serde_json::json!({
-                                "conversation_id": &conversation_id,
-                                "mid_turn": false,
-                                "error": e,
-                            }),
-                        )
+                        .emit_compact_done(&CompactDoneEvent {
+                            conversation_id: conversation_id.clone(),
+                            mid_turn: false,
+                            trigger: CompactTrigger::Threshold,
+                            outcome: CompactOutcome::Failed,
+                            tokens_reclaimed: None,
+                            error: Some(e),
+                        })
                         .ok();
                 }
             }
@@ -1045,7 +1431,7 @@ async fn chat_inner(
     // is exactly the signal that everything has to be re-sent, getting this
     // ordering wrong is silent rather than loud.
     let t0 = now_ms();
-    let injection = meridian_core::agent::plan_injection_async(&pool, memory_request, ctx.live().to_vec(), t0).await;
+    let injection = meridian_core::agent::plan_injection_async(&pool, memory_request, ctx.live().to_vec(), t0).await?;
     let injected = injection.as_ref().and_then(|i| i.text.clone());
 
     let mut chat_messages = build_messages_with_context_items(
@@ -1060,15 +1446,15 @@ async fn chat_inner(
         ),
         &Default::default(),
         &stored_context_items,
-    );
+    )?;
     resolve_sticker_parts_in_messages(
         &mut chat_messages,
         &pool,
         Some(services.paths.data_dir.as_path()),
         supports_images,
-    );
+    )?;
     let files_root = Some(meridian_core::files::files_dir(&services.paths.data_dir));
-    resolve_file_uris_in_messages(&mut chat_messages, files_root.as_deref());
+    resolve_file_uris_in_messages(&mut chat_messages, files_root.as_deref())?;
     microcompact(&mut chat_messages, &budget, keep_recent);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
 
@@ -1125,7 +1511,7 @@ async fn chat_inner(
             conn.transaction::<_, diesel::result::Error, _>(|conn| {
                 db::ops::message::append_message(
                     conn,
-                    &NewMessage {
+                    &MessageInsert {
                         id: &msg_id,
                         conversation_id: &conv_id,
                         role: "user",
@@ -1162,11 +1548,11 @@ async fn chat_inner(
                     .iter()
                     .enumerate()
                     .map(
-                        |(position, item)| db::models::message_context_item::NewMessageContextItem {
+                        |(position, item)| db::models::message_context_item::MessageContextItemInsert {
                             id: &item.id,
                             message_id: &msg_id,
                             position: position as i32,
-                            kind: &item.kind,
+                            kind: item.kind.as_str(),
                             content: &item.content,
                             display_path: item.display_path.as_deref(),
                             line_start: item.line_start,
@@ -1219,17 +1605,17 @@ async fn chat_inner(
     }
 
     // Shell preference
-    let (shell_type, sandbox_pref, sleep_pref) =
+    let (shell_type, sandbox_pref) =
         {
             let pool2 = pool.clone();
             tokio::task::spawn_blocking(move || {
             let mut conn = match pool2.get() {
                 Ok(c) => c,
                 Err(e) => {
-                    // The sandbox and sleep fallbacks are fail-safe — absent
-                    // means enabled. The shell is not: the turn would run
-                    // commands through the platform default instead of the one
-                    // the user picked, with nothing on screen to say so.
+                    // The sandbox fallback is fail-safe — absent means enabled.
+                    // The shell is not: the turn would run commands through the
+                    // platform default instead of the one the user picked, with
+                    // nothing on screen to say so.
                     tracing::warn!(
                         error = %e,
                         shell = ?tools::ShellType::default_for_platform(),
@@ -1240,16 +1626,30 @@ async fn chat_inner(
             };
             let shell = db::ops::preference::get_preference(&mut conn, "shell").ok().flatten();
             let sandbox = db::ops::preference::get_preference(&mut conn, "sandbox.enabled").ok().flatten();
-            let sleep = db::ops::preference::get_preference(&mut conn, "sleep_inhibitor.enabled").ok().flatten();
-            Some((shell, sandbox, sleep))
-        }).await.ok().flatten().unwrap_or((None, None, None))
+            Some((shell, sandbox))
+        })
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or((None, None))
         };
+    let sleep_enabled = {
+        let pool2 = pool.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool2)?;
+            let stored = db::ops::preference::get_preference(&mut conn, "sleep_inhibitor.enabled")
+                .map_err(|error| error.to_string())?;
+            db::ops::preference::parse_bool_preference("sleep_inhibitor.enabled", stored.as_deref(), true)
+        })
+        .await
+        .map_err(|error| error.to_string())??
+    };
     // The same preference key, with more values in it. A second key would be
     // one that could disagree with the first, and there is no reading of
     // "enabled = false, mode = container" that is not a bug.
     // Missing still means enabled: sandbox-by-default on Windows.
     // Keep the machine awake for the rest of the turn (RAII; missing pref = enabled).
-    let _sleep_guard = (sleep_pref.as_deref() != Some("false")).then(|| services.sleep.begin_turn());
+    let _sleep_guard = sleep_enabled.then(|| services.sleep.begin_turn());
     let tool_secrets = {
         let pool2 = pool.clone();
         let secrets2 = secrets.clone();
@@ -1264,7 +1664,7 @@ async fn chat_inner(
     // costs them a message and tells them what is wrong.
     #[cfg(not(target_os = "android"))]
     let sandbox_policy = meridian_core::sandbox::resolve_sandbox_policy(
-        meridian_core::sandbox::ExecutionMode::parse(sandbox_pref.as_deref()),
+        meridian_core::sandbox::ExecutionMode::parse(sandbox_pref.as_deref())?,
         project_path.as_deref(),
         &conversation_id,
         Some(services.containers.clone()),
@@ -1291,9 +1691,10 @@ async fn chat_inner(
     #[cfg(target_os = "android")]
     let journal = None;
     let tool_context = tools::ToolContext {
-        working_directory: project_path,
+        working_directory: project_path.clone(),
         shell: shell_type
-            .map(|s| tools::ShellType::from_str(&s))
+            .map(|value| tools::ShellType::parse(&value))
+            .transpose()?
             .unwrap_or_else(tools::ShellType::default_for_platform),
         file_access,
         // Cloned rather than moved: approving a plan mid-turn re-resolves the
@@ -1322,6 +1723,16 @@ async fn chat_inner(
         supports_tools,
         sub_agents: sub_agent_catalog,
         server_tools: turn_server_tools.clone(),
+        native_runtime: db::models::plan_review::NativePlanReviewRuntimeConfig {
+            provider_id: resolved.provider_id.clone(),
+            model: model.clone(),
+            assistant_id: assistant.as_ref().map(|assistant| assistant.id.clone()),
+            thinking_level: effective_stored_level,
+            fast: effective_fast,
+            project_id: project_id.clone(),
+            project_path: project_path.clone(),
+            accept_edits,
+        },
     };
 
     // Assembled here rather than per call: by the time a `run_agent` arrives,
@@ -1375,7 +1786,7 @@ async fn chat_inner(
             multi_party: false,
             unattended: false,
         },
-    );
+    )?;
     // Outermost, so it sees the reviewer's own refusals as well as the ones the
     // user gave. Underneath it, the denials cheapest to repeat — the ones
     // nothing stopped to ask about — would be exactly the ones it missed.
@@ -1431,7 +1842,10 @@ async fn chat_inner(
             // on their own size.
             pricing: model_config
                 .as_ref()
-                .and_then(meridian_core::agent::pricing::TurnPricing::of),
+                .map(meridian_core::agent::pricing::TurnPricing::of)
+                .transpose()
+                .map_err(|error| error.to_string())?
+                .flatten(),
         },
         engine::TurnPorts {
             emit: Some(&emitter),
@@ -1460,17 +1874,8 @@ async fn chat_inner(
     let total_input_tokens = outcome.progress.input_tokens;
     let total_output_tokens = outcome.progress.output_tokens;
     let turn_aborted = outcome.progress.aborted;
+    let waiting_review = outcome.progress.waiting_review.clone();
     let last_assistant_text = outcome.reply?;
-
-    // Summed round by round inside the turn rather than computed here from the
-    // totals. Those totals cannot answer it on a model that prices by prompt
-    // size: five 50k requests and one 250k request leave the same numbers behind
-    // and are billed at different rates, and only the loop saw which this was.
-    //
-    // `None` means no cost could be worked out: an unpriced model, or a turn
-    // where no round reported usage. Either way the field is left off rather
-    // than sent as a confident zero.
-    let cost_info = outcome.progress.cost.clone();
 
     // This is the only place that knows how the loop was left, and the three
     // ways out are genuinely different: the loop guard cutting a repeating
@@ -1478,41 +1883,40 @@ async fn chat_inner(
     // and neither is a clean ending. Recording the first as `done` would have
     // the row claim a completed turn while its own stop event says it was
     // aborted.
-    let (status, error) = if turn_aborted {
+    let (status, error) = if waiting_review.is_some() {
+        (TurnStatus::WaitingReview, None)
+    } else if turn_aborted {
         (TurnStatus::Failed, Some(ERROR_LOOP_DETECTED))
     } else if cancel.is_cancelled() {
         (TurnStatus::Cancelled, None)
     } else {
         (TurnStatus::Done, None)
     };
-    turn_record::finish(&pool, &turn_id, status, error).await;
-
-    let stop_reason = if turn_aborted { "loop_detected" } else { "end_turn" };
-    let mut stop_payload = serde_json::json!({
-        "type": "stop", "reason": stop_reason, "done": true,
-        "message_id": &assistant_msg_id,
-        "turn_id": &turn_id,
-        "conversation_id": &conversation_id,
-        "input_tokens": total_input_tokens, "output_tokens": total_output_tokens,
-    });
-    if let Some(cost) = cost_info {
-        stop_payload["cost"] = serde_json::json!(cost.total_cost);
-        stop_payload["cost_breakdown"] = serde_json::json!({
-            "input": cost.input_cost,
-            "output": cost.output_cost,
-            "cache": cost.cache_cost,
-            // Its own slot: on a searching turn this is a third of the bill and
-            // divides by nothing the other three do.
-            "tools": cost.tool_cost,
-        });
+    if waiting_review.is_none() {
+        turn_record::finish(&pool, &turn_id, status, error).await;
     }
+
+    let stop_reason = if turn_aborted {
+        ChatStopReason::LoopDetected
+    } else if cancel.is_cancelled() {
+        ChatStopReason::Cancelled
+    } else {
+        ChatStopReason::EndTurn
+    };
     // Released ahead of the event it announces, not after it.
     stop_guard.release();
-    services.events.emit("chat-stream", stop_payload)?;
+    services.events.emit_chat(ChatStreamEvent::Stop {
+        reason: stop_reason,
+        message_id: Some(assistant_msg_id.clone()),
+        turn_id: turn_id.clone(),
+        conversation_id: conversation_id.clone(),
+        input_tokens: Some(total_input_tokens),
+        output_tokens: Some(total_output_tokens),
+    })?;
     stop_guard.disarm();
 
     // Auto-generate title if first message
-    if conv_title.is_none() {
+    if conv_title.is_none() && waiting_review.is_none() {
         // Regenerating carries no new message, so the question comes back off the
         // path this turn answered.
         let titled_question = message
@@ -1582,15 +1986,7 @@ async fn chat_inner(
                     }
                 })
                 .await;
-                services
-                    .events
-                    .emit(
-                        "conversation-updated",
-                        serde_json::json!({
-                            "id": conversation_id,
-                        }),
-                    )
-                    .ok();
+                services.events.emit_conversation_updated(&conversation_id).ok();
             }
         }
     }

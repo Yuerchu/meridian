@@ -5,7 +5,7 @@
 //! correction happens here instead: the chat model is told which messages were
 //! dictated and asked to resolve homophones against project memory.
 
-use crate::db::models::message::Message;
+use crate::db::models::message::MessageRow;
 
 /// Returns the voice-input guidance block, or `None` for conversations that
 /// have never seen voice input — typing users pay zero prompt tokens.
@@ -15,7 +15,7 @@ use crate::db::models::message::Message;
 /// passes `current_turn_is_voice` because the incoming message is not on the
 /// path yet at resolve time; the estimator catches up one call later, a
 /// one-block transient the estimate can tolerate.
-pub fn voice_context_block(path: &[Message], current_turn_is_voice: bool) -> Option<String> {
+pub fn voice_context_block(path: &[MessageRow], current_turn_is_voice: bool) -> Option<String> {
     let has_voice = current_turn_is_voice || path.iter().any(|m| m.source.as_deref() == Some("voice"));
     if !has_voice {
         return None;
@@ -46,8 +46,8 @@ pub fn voice_context_block(path: &[Message], current_turn_is_voice: bool) -> Opt
 mod tests {
     use super::*;
 
-    fn msg(source: Option<&str>) -> Message {
-        Message {
+    fn msg(source: Option<&str>) -> MessageRow {
+        MessageRow {
             id: "m".into(),
             conversation_id: "c".into(),
             role: "user".into(),

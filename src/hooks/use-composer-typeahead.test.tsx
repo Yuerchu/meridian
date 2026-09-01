@@ -1,11 +1,11 @@
 import { renderHook } from '@testing-library/react'
 
-import type { AcpConfigOption } from '@/types'
+import type { AcpConfigOptionInfoResponse } from '@/types'
 import { useComposerTypeahead } from './use-composer-typeahead'
 
 describe('useComposerTypeahead', () => {
   it('uses the ACP thought_level category when the hosted effort option has an adapter-specific id', () => {
-    const option: AcpConfigOption = {
+    const option: AcpConfigOptionInfoResponse = {
       id: 'claude.reasoning',
       name: 'Reasoning',
       category: 'thought_level',

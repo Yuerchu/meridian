@@ -29,8 +29,8 @@ impl OpenAIResponsesProvider {
         tools: Option<&[ToolDefinition]>,
         params: &ChatParams,
         stream: bool,
-    ) -> Request {
-        let (instructions, input) = serialize_responses_input(messages);
+    ) -> Result<Request, ProviderError> {
+        let (instructions, input) = serialize_responses_input(messages)?;
 
         let mut body = serde_json::json!({
             "model": params.model,
@@ -97,11 +97,13 @@ impl OpenAIResponsesProvider {
             super::auth_header_value(&format!("Bearer {}", self.api_key)),
         );
         req.body = Some(RequestBody::Json(body));
-        req
+        Ok(req)
     }
 }
 
-fn serialize_responses_input(messages: &[ChatMessage]) -> (Option<String>, Vec<serde_json::Value>) {
+fn serialize_responses_input(
+    messages: &[ChatMessage],
+) -> Result<(Option<String>, Vec<serde_json::Value>), ProviderError> {
     let mut instructions: Option<String> = None;
     let mut input = Vec::new();
 
@@ -118,7 +120,8 @@ fn serialize_responses_input(messages: &[ChatMessage]) -> (Option<String>, Vec<s
             "user" => {
                 // Responses input items have no `name` field (unlike
                 // chat-completions), so the speaker goes in as a prefix.
-                let rendered = super::render_message(m, super::SenderRendering::Prefix);
+                let rendered =
+                    super::render_message(m, super::SenderRendering::Prefix).map_err(ProviderError::Parse)?;
                 input.push(serde_json::json!({
                     "type": "message",
                     "role": "user",
@@ -159,7 +162,7 @@ fn serialize_responses_input(messages: &[ChatMessage]) -> (Option<String>, Vec<s
 
     // The sender note arrives inside the system prompt; every format renders the
     // marker now, so explaining it is no longer a per-adapter concern.
-    (instructions, input)
+    Ok((instructions, input))
 }
 
 #[derive(Default)]
@@ -559,7 +562,7 @@ impl ChatProvider for OpenAIResponsesProvider {
     ) -> Result<ChatStream, ProviderError> {
         let tools_opt = if tools.is_empty() { None } else { Some(tools.as_slice()) };
         let transport = ReqwestTransport::shared();
-        let req = self.build_request(&messages, tools_opt, &params, true);
+        let req = self.build_request(&messages, tools_opt, &params, true)?;
         let resp = transport.stream(req).await?;
 
         let mut state = StreamState::default();
@@ -581,7 +584,7 @@ impl ChatProvider for OpenAIResponsesProvider {
 
     async fn chat(&self, messages: Vec<ChatMessage>, params: ChatParams) -> Result<String, ProviderError> {
         let transport = ReqwestTransport::shared();
-        let req = self.build_request(&messages, None, &params, false);
+        let req = self.build_request(&messages, None, &params, false)?;
         let resp = transport.execute(req).await?;
 
         let parsed: serde_json::Value =
@@ -618,7 +621,7 @@ impl ChatProvider for OpenAIResponsesProvider {
         params: ChatParams,
     ) -> Result<AgentResponse, ProviderError> {
         let transport = ReqwestTransport::shared();
-        let req = self.build_request(&messages, Some(&tools), &params, false);
+        let req = self.build_request(&messages, Some(&tools), &params, false)?;
         let resp = transport.execute(req).await?;
 
         let parsed: serde_json::Value =
@@ -688,6 +691,7 @@ impl ChatProvider for OpenAIResponsesProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::provider::ServerToolKind;
 
     fn body_for(model: &str, mutate: impl FnOnce(&mut ChatParams)) -> serde_json::Value {
         let caps = crate::provider::capabilities::resolve("openai", Some("responses"), model);
@@ -696,9 +700,11 @@ mod tests {
             ..Default::default()
         };
         mutate(&mut params);
-        crate::provider::capabilities::filter_params(&mut params, &caps);
+        crate::provider::capabilities::filter_params(&mut params, &caps).unwrap();
         let provider = OpenAIResponsesProvider::new("https://example.test", "k");
-        let req = provider.build_request(&[ChatMessage::user("hi")], None, &params, false);
+        let req = provider
+            .build_request(&[ChatMessage::user("hi")], None, &params, false)
+            .unwrap();
         match req.body {
             Some(RequestBody::Json(v)) => v,
             _ => panic!("expected a JSON body"),
@@ -719,11 +725,16 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_effort_is_coerced_before_the_wire() {
-        // gpt-5.2 tops out at xhigh; "max" must not reach the API.
-        let body = body_for("gpt-5.2", |p| p.thinking_effort = Some("max".into()));
-        assert_eq!(body["reasoning"]["effort"], "medium");
-        assert!(body.get("service_tier").is_none(), "gpt-5.2 has no fast tier");
+    fn unsupported_effort_is_rejected_before_the_wire() {
+        let caps = crate::provider::capabilities::resolve("openai", Some("responses"), "gpt-5.2");
+        let mut params = ChatParams {
+            model: "gpt-5.2".into(),
+            thinking_effort: Some("max".into()),
+            ..Default::default()
+        };
+
+        let error = crate::provider::capabilities::filter_params(&mut params, &caps).unwrap_err();
+        assert!(error.contains("not supported by model 'gpt-5.2'"), "{error}");
     }
 
     /// Server-side tools share the array with our own, and go first — the tool
@@ -734,7 +745,7 @@ mod tests {
         let provider = OpenAIResponsesProvider::new("https://api.x.ai/v1", "k");
         let params = ChatParams {
             model: "grok-4.6".into(),
-            server_tools: vec!["web_search".into(), "x_search".into()],
+            server_tools: vec![ServerToolKind::WebSearch, ServerToolKind::XSearch],
             cache_key: Some("conv-9".into()),
             ..Default::default()
         };
@@ -743,7 +754,9 @@ mod tests {
             description: "read".into(),
             parameters: serde_json::json!({"type": "object"}),
         }];
-        let req = provider.build_request(&[ChatMessage::user("hi")], Some(&defs), &params, true);
+        let req = provider
+            .build_request(&[ChatMessage::user("hi")], Some(&defs), &params, true)
+            .unwrap();
         let Some(RequestBody::Json(body)) = req.body else {
             panic!("JSON body")
         };
@@ -765,10 +778,12 @@ mod tests {
         let provider = OpenAIResponsesProvider::new("https://api.x.ai/v1", "k");
         let params = ChatParams {
             model: "grok-4.6".into(),
-            server_tools: vec!["web_search".into()],
+            server_tools: vec![ServerToolKind::WebSearch],
             ..Default::default()
         };
-        let req = provider.build_request(&[ChatMessage::user("hi")], None, &params, true);
+        let req = provider
+            .build_request(&[ChatMessage::user("hi")], None, &params, true)
+            .unwrap();
         let Some(RequestBody::Json(body)) = req.body else {
             panic!("JSON body")
         };

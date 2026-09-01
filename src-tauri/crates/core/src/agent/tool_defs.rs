@@ -5,7 +5,7 @@
 //! assembly here is what makes the manual a single source of truth: a tool that
 //! disappears from the registry disappears from the manual with it.
 
-use crate::db::models::skill::Skill;
+use crate::db::models::skill::SkillRow;
 use crate::provider::ToolDefinition;
 use crate::tools::ToolRegistry;
 
@@ -30,7 +30,7 @@ pub(crate) fn apply_mode(defs: &mut Vec<ToolDefinition>, modes: Modes, registry:
     let mode = modes.spec();
     // Transition tools belong to the mode that declares them, and which ones
     // apply depends entirely on where the conversation currently is. Stripping
-    // all of them first means the answer comes from `offered_transitions` alone
+    // all of them first means the answer comes from `offered_tools` alone
     // -- no ordinary conversation is shown `exit_plan`, and no planning
     // conversation is shown a second way in.
     // Computed from the working tools only, so a transition tool left over in
@@ -38,19 +38,21 @@ pub(crate) fn apply_mode(defs: &mut Vec<ToolDefinition>, modes: Modes, registry:
     let working: Vec<String> = defs
         .iter()
         .map(|d| d.name.clone())
-        .filter(|n| !super::modes::transition_tools().any(|t| t == n))
+        .filter(|n| !super::modes::transition_tools().any(|t| t == n) && !super::modes::owned_tools().any(|t| t == n))
         .collect();
     // A runner that cannot switch modes is offered neither way. Left in, the
     // model calls one and gets back the registry tool's refusal to be called
     // outside the loop -- as a tool result, in its own transcript.
     let offered = if modes.switchable() {
-        mode.offered_transitions(&working)
+        mode.offered_tools(&working)
     } else {
         Vec::new()
     };
     defs.retain(|d| {
         let name = d.name.as_str();
-        !super::modes::transition_tools().any(|t| t == name) || offered.contains(&name)
+        let mode_tool =
+            super::modes::transition_tools().any(|t| t == name) || super::modes::owned_tools().any(|t| t == name);
+        !mode_tool || offered.contains(&name)
     });
 
     if let Some(allowed) = mode.tools {
@@ -92,7 +94,7 @@ pub(crate) fn collect(
 /// The enum is why this matters — without it a model will confidently invent
 /// skill names. With no skills bound the tool is dropped entirely rather than
 /// offered with an empty menu.
-pub(crate) fn apply_skill_catalog(defs: &mut Vec<ToolDefinition>, skills: &[Skill]) {
+pub(crate) fn apply_skill_catalog(defs: &mut Vec<ToolDefinition>, skills: &[SkillRow]) {
     let Some(idx) = defs.iter().position(|d| d.name == LOAD_SKILL_TOOL) else {
         return;
     };
@@ -100,7 +102,7 @@ pub(crate) fn apply_skill_catalog(defs: &mut Vec<ToolDefinition>, skills: &[Skil
     // Names come off disk and so bypassed every Rust-side check; validate here,
     // at the boundary where they turn into a provider payload. An illegal name
     // reaching the API fails the whole completion, not just this tool.
-    let usable: Vec<&Skill> = skills
+    let usable: Vec<&SkillRow> = skills
         .iter()
         .filter(|s| is_valid_slug(&s.llm_name))
         .take(MAX_AVAILABLE_SKILLS)
@@ -187,8 +189,8 @@ pub(crate) fn apply_sub_agent_catalog(defs: &mut Vec<ToolDefinition>, catalog: O
 mod tests {
     use super::*;
 
-    fn skill(dir: &str, name: &str, desc: &str) -> Skill {
-        Skill {
+    fn skill(dir: &str, name: &str, desc: &str) -> SkillRow {
+        SkillRow {
             dir_name: dir.into(),
             llm_name: name.into(),
             llm_description: desc.into(),
@@ -261,8 +263,8 @@ mod tests {
                     model_id: (*n).into(),
                     display_name: None,
                     context_window: Some(64_000),
-                    input_price: Some(0.5),
-                    output_price: Some(1.0),
+                    input_price: Some("0.5".parse().unwrap()),
+                    output_price: Some("1".parse().unwrap()),
                     supports_thinking: false,
                 })
                 .collect(),
@@ -323,7 +325,7 @@ mod tests {
         let mut defs = named(&["read_file", "write_file", "run_command"]);
         apply_mode(
             &mut defs,
-            Modes::Switchable(super::super::modes::resolve(None)),
+            Modes::Switchable(super::super::modes::resolve(None).unwrap()),
             &registry(),
         );
         assert_eq!(
@@ -337,13 +339,15 @@ mod tests {
         let mut defs = named(&["read_file", "write_file", "apply_patch", "run_command", "save_memory"]);
         apply_mode(
             &mut defs,
-            Modes::Switchable(super::super::modes::resolve(Some("plan"))),
+            Modes::Switchable(super::super::modes::resolve(Some("plan")).unwrap()),
             &registry(),
         );
 
         let names = names_of(&defs);
         assert!(names.contains(&"read_file".to_string()));
         assert!(names.contains(&"run_command".to_string()));
+        assert!(names.contains(&"read_plan".to_string()));
+        assert!(names.contains(&"update_plan".to_string()));
         assert!(!names.contains(&"write_file".to_string()));
         assert!(!names.contains(&"apply_patch".to_string()));
         assert!(!names.contains(&"save_memory".to_string()));
@@ -354,13 +358,16 @@ mod tests {
         let mut defs = named(&["read_file"]);
         apply_mode(
             &mut defs,
-            Modes::Switchable(super::super::modes::resolve(Some("plan"))),
+            Modes::Switchable(super::super::modes::resolve(Some("plan")).unwrap()),
             &registry(),
         );
         let exit = defs.iter().find(|d| d.name == "exit_plan").expect("exit tool injected");
         // Pulled from the registry, so the schema the model sees is the real one.
         assert!(!exit.description.is_empty());
-        assert!(exit.parameters.get("properties").is_some());
+        assert_eq!(exit.parameters["properties"], serde_json::json!({}));
+        assert_eq!(exit.parameters["additionalProperties"], false);
+        assert!(defs.iter().any(|d| d.name == "read_plan"));
+        assert!(defs.iter().any(|d| d.name == "update_plan"));
     }
 
     #[test]
@@ -370,7 +377,7 @@ mod tests {
         let mut defs = named(&["read_file", "exit_plan"]);
         apply_mode(
             &mut defs,
-            Modes::Switchable(super::super::modes::resolve(None)),
+            Modes::Switchable(super::super::modes::resolve(None).unwrap()),
             &registry(),
         );
         // No `enter_plan` either: read_file alone is already read-only, so
@@ -394,7 +401,7 @@ mod tests {
         let mut read_only = named(&["read_file", "web_search"]);
         apply_mode(
             &mut read_only,
-            Modes::Switchable(super::super::modes::resolve(None)),
+            Modes::Switchable(super::super::modes::resolve(None).unwrap()),
             &registry(),
         );
         assert_eq!(names_of(&read_only), ["read_file", "web_search"]);
@@ -402,7 +409,7 @@ mod tests {
         let mut can_edit = named(&["read_file", "write_file"]);
         apply_mode(
             &mut can_edit,
-            Modes::Switchable(super::super::modes::resolve(None)),
+            Modes::Switchable(super::super::modes::resolve(None).unwrap()),
             &registry(),
         );
         assert!(names_of(&can_edit).contains(&"enter_plan".to_string()));
@@ -413,7 +420,7 @@ mod tests {
         let mut defs = named(&["read_file", "enter_plan"]);
         apply_mode(
             &mut defs,
-            Modes::Switchable(super::super::modes::resolve(Some("plan"))),
+            Modes::Switchable(super::super::modes::resolve(Some("plan")).unwrap()),
             &registry(),
         );
         let names = names_of(&defs);
@@ -428,7 +435,7 @@ mod tests {
         let mut defs = named(&["read_file", "glob"]);
         apply_mode(
             &mut defs,
-            Modes::Switchable(super::super::modes::resolve(Some("plan"))),
+            Modes::Switchable(super::super::modes::resolve(Some("plan")).unwrap()),
             &registry(),
         );
 
@@ -441,7 +448,11 @@ mod tests {
             !names.contains(&"web_search".to_string()),
             "not enabled by the assistant"
         );
-        assert_eq!(names.len(), 3, "read_file, glob and the injected exit tool");
+        assert_eq!(
+            names.len(),
+            5,
+            "read_file, glob, the two plan document tools and the injected exit tool"
+        );
     }
 
     #[test]
@@ -449,7 +460,7 @@ mod tests {
         let mut defs = named(&["read_file", "exit_plan"]);
         apply_mode(
             &mut defs,
-            Modes::Switchable(super::super::modes::resolve(Some("plan"))),
+            Modes::Switchable(super::super::modes::resolve(Some("plan")).unwrap()),
             &registry(),
         );
         assert_eq!(defs.iter().filter(|d| d.name == "exit_plan").count(), 1);
@@ -546,7 +557,7 @@ mod tests {
 
     #[test]
     fn catalog_is_capped() {
-        let skills: Vec<Skill> = (0..MAX_AVAILABLE_SKILLS + 20)
+        let skills: Vec<SkillRow> = (0..MAX_AVAILABLE_SKILLS + 20)
             .map(|i| skill(&format!("s-{i:03}"), &format!("s-{i:03}"), "d"))
             .collect();
         let mut defs = defs_with_load_skill();

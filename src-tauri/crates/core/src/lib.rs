@@ -17,6 +17,7 @@ pub mod codex_auth;
 #[cfg(not(target_os = "android"))]
 pub mod container;
 pub mod db;
+pub mod decimal;
 pub mod emoji;
 pub mod events;
 pub mod files;
@@ -31,6 +32,7 @@ pub mod logging;
 pub mod mcp;
 #[cfg(not(target_os = "android"))]
 pub mod onebot;
+pub mod plan_files;
 pub mod provider;
 #[cfg(not(target_os = "android"))]
 pub mod sandbox;

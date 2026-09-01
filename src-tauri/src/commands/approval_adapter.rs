@@ -12,6 +12,7 @@ use tokio_util::sync::CancellationToken;
 
 use meridian_core::agent::engine::{self, ApprovalDecision};
 use meridian_core::db::models::turn::TurnPhase;
+use meridian_core::events::{ApprovalDelegation, ApprovalRetry, ChatStreamEvent};
 use meridian_core::provider;
 use meridian_core::services::Services;
 use meridian_core::state::Bubble;
@@ -73,7 +74,7 @@ impl DesktopApprovals {
         // Worked out once, here, rather than by the waiter. Both would produce
         // the same number, but only one of them can be *the* answer to "when
         // does this stop standing" — and the listing paths read the stored one.
-        let ttl = meridian_core::approval::ttl(services);
+        let ttl = meridian_core::approval::ttl(services)?;
         // Registered before the event goes out, so a decision can never arrive
         // before there is somewhere to put it.
         {
@@ -98,30 +99,31 @@ impl DesktopApprovals {
         // Routed to whoever is watching. For a delegated run that is the parent:
         // the sub-agent's conversation may not even be open, and a question
         // nobody sees is a turn that stalls until it is cancelled.
-        let mut payload = serde_json::json!({
-            "type": "tool_approval_req",
-            "approval_id": approval_id,
-            "call_id": tc.id,
-            "tool_name": tc.name,
-            "arguments": tc.arguments,
-            "message_id": self.bubble.as_ref().map_or(message_id, |b| &b.assistant_message_id),
-            "conversation_id":
-                self.bubble.as_ref().map_or(&self.conversation_id, |b| &b.conversation_id),
-        });
-        // Which `run_agent` card to hang it under, and where the run itself can
-        // be watched. Their presence is what tells the card this is a delegated
-        // call rather than one of its own.
-        if let Some(b) = &self.bubble {
-            payload["parent_call_id"] = serde_json::json!(b.parent_call_id);
-            payload["sub_conversation_id"] = serde_json::json!(b.sub_conversation_id);
-        }
-        // The reason's presence is the flag; a separate boolean beside it could
-        // only ever disagree with it.
-        if let Some(reason) = retry_reason {
-            payload["retry_reason"] = serde_json::json!(reason);
-            payload["origin_call_id"] = serde_json::json!(tc.id);
-        }
-        if let Err(e) = services.events.emit("chat-stream", payload) {
+        let event = ChatStreamEvent::ToolApprovalReq {
+            approval_id: approval_id.clone(),
+            call_id: tc.id.clone(),
+            tool_name: tc.name.clone(),
+            arguments: tc.arguments.clone(),
+            message_id: self
+                .bubble
+                .as_ref()
+                .map_or_else(|| message_id.to_string(), |b| b.assistant_message_id.clone()),
+            conversation_id: self
+                .bubble
+                .as_ref()
+                .map_or_else(|| self.conversation_id.clone(), |b| b.conversation_id.clone()),
+            // One nested value makes the two fields inseparable: a delegated
+            // approval cannot name its parent without naming the child too.
+            delegation: self.bubble.as_ref().map(|b| ApprovalDelegation {
+                parent_call_id: b.parent_call_id.clone(),
+                sub_conversation_id: b.sub_conversation_id.clone(),
+            }),
+            retry: retry_reason.map(|reason| ApprovalRetry {
+                reason: reason.to_string(),
+                origin_call_id: tc.id.clone(),
+            }),
+        };
+        if let Err(e) = services.events.emit_chat(event) {
             // Nobody will ever answer a card that was never drawn; don't leave
             // the entry behind for the turn guard to find.
             services.approvals.claim(&approval_id);

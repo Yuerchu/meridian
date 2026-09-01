@@ -3,10 +3,11 @@ import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { TurnItem } from './turn-item'
 import { expectCollapsed, expectExpanded } from '@/test/disclosure'
+import { decimal } from '@/lib/decimal'
 import { buildTurns } from '@/lib/turns'
 import { useConversationStore } from '@/stores/conversation-store'
 import i18n from '@/i18n'
-import type { ContentBlock, Message, ToolCallDisplay, TurnUsageSummary } from '@/types'
+import type { ContentBlock, MessageViewModel, ToolCallDisplay, TurnUsageInfoResponse } from '@/types'
 
 // Resolved rather than bare: the cards attach a `.catch` to turn a rejected
 // decision into an orphaned card, and `undefined.catch` would throw.
@@ -21,7 +22,7 @@ vi.mock('@/api', () => ({
 const CONV = 'conv-1'
 let seq = 0
 
-function msg(role: Message['role'], over: Partial<Message> = {}): Message {
+function msg(role: MessageViewModel['role'], over: Partial<MessageViewModel> = {}): MessageViewModel {
   seq += 1
   return {
     id: `m${seq}`,
@@ -38,8 +39,18 @@ function msg(role: Message['role'], over: Partial<Message> = {}): Message {
     created_at: 0,
     reasoning_content: null,
     rating: null,
-    schema_version: 2,
-    is_compact_summary: 0,
+    is_compact_summary: false,
+    cache_read_tokens: null,
+    cache_write_tokens: null,
+    provider_name: null,
+    sender_id: null,
+    parent_id: null,
+    compact_anchor_id: null,
+    source: null,
+    turn_id: null,
+    tool_outcome: null,
+    auto_review: null,
+    context_items: [],
     ...over,
   }
 }
@@ -58,7 +69,7 @@ const toolBlock = (name: string, status: ToolCallDisplay['status'] = 'completed'
   },
 })
 
-function usage(over: Partial<TurnUsageSummary> = {}): TurnUsageSummary {
+function usage(over: Partial<TurnUsageInfoResponse> = {}): TurnUsageInfoResponse {
   return {
     messages: 1,
     missing_token_usage_messages: 0,
@@ -68,11 +79,11 @@ function usage(over: Partial<TurnUsageSummary> = {}): TurnUsageSummary {
     cache_read_tokens: 40,
     cache_write_tokens: 0,
     server_tool_calls: 1,
-    input_cost: 0.2,
-    output_cost: 0.3,
-    cache_cost: 0.04,
-    tool_cost: 0.005,
-    total_cost: 0.545,
+    input_cost: decimal('0.2'),
+    output_cost: decimal('0.3'),
+    cache_cost: decimal('0.04'),
+    tool_cost: decimal('0.005'),
+    total_cost: decimal('0.545'),
     unpriced_token_messages: 0,
     unpriced_input_messages: 0,
     unpriced_output_messages: 0,
@@ -243,7 +254,7 @@ describe('TurnItem', () => {
           usage({
             pricing_status: 'lower_bound',
             tool_cost: null,
-            total_cost: 0.54,
+            total_cost: decimal('0.54'),
             unpriced_tool_messages: 1,
             unpriced_messages: 1,
           }),
@@ -279,7 +290,7 @@ describe('TurnItem', () => {
           usage({
             pricing_status: 'estimated',
             tool_cost: null,
-            total_cost: 0.54,
+            total_cost: decimal('0.54'),
             estimated_token_messages: 1,
             estimated_messages: 1,
             unpriced_tool_messages: 1,
@@ -367,11 +378,11 @@ describe('TurnItem', () => {
           usage({
             input_tokens: 0,
             output_tokens: 0,
-            input_cost: 0,
-            output_cost: 0,
-            cache_cost: 0,
-            tool_cost: 0,
-            total_cost: 0,
+            input_cost: decimal('0'),
+            output_cost: decimal('0'),
+            cache_cost: decimal('0'),
+            tool_cost: decimal('0'),
+            total_cost: decimal('0'),
           }),
         ],
         [
@@ -485,10 +496,10 @@ describe('TurnItem', () => {
             missing_token_usage_messages: 0,
             incomplete_token_usage_messages: 1,
             input_cost: null,
-            cache_cost: 9,
-            output_cost: 2,
-            tool_cost: 0,
-            total_cost: 11,
+            cache_cost: decimal('9'),
+            output_cost: decimal('2'),
+            tool_cost: decimal('0'),
+            total_cost: decimal('11'),
             unpriced_token_messages: 1,
             unpriced_input_messages: 1,
             unpriced_output_messages: 0,

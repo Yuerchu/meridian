@@ -24,12 +24,18 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Catalog {
+    #[serde(rename = "version")]
+    _version: u32,
+    #[serde(rename = "_comment")]
+    _comment: Vec<String>,
     providers: Vec<CatalogEntry>,
 }
 
 /// One vendor.
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct CatalogEntry {
     /// Stable identity, and what a provider row's `catalog_id` points at.
     ///
@@ -44,26 +50,28 @@ pub struct CatalogEntry {
     pub name: String,
     pub icon: String,
     /// Whether this vendor publishes an account balance at all.
-    #[serde(default)]
     pub balance: bool,
-    #[serde(default)]
     pub websites: Websites,
     /// The ways of signing in, each carrying the endpoint and dialect that come
     /// with it. See [`AuthOption`].
     pub auth: Vec<AuthOption>,
     /// Preset model list, grouped for display. Empty means "ask the provider",
     /// which is what every vendor with a working `/models` does.
-    #[serde(default)]
     pub models: Vec<ModelGroup>,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Websites {
+    #[serde(deserialize_with = "crate::events::deserialize_required_nullable")]
     pub official: Option<String>,
     /// Where the user goes to obtain a key — the one link a settings panel
     /// actually needs.
+    #[serde(deserialize_with = "crate::events::deserialize_required_nullable")]
     pub api_key: Option<String>,
+    #[serde(deserialize_with = "crate::events::deserialize_required_nullable")]
     pub docs: Option<String>,
+    #[serde(deserialize_with = "crate::events::deserialize_required_nullable")]
     pub models: Option<String>,
 }
 
@@ -76,6 +84,7 @@ pub struct Websites {
 /// hardcoding "when Codex is chosen, switch the URL" into the settings panel —
 /// is exactly the vendor-specific branching this catalog exists to delete.
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct AuthOption {
     pub id: String,
     /// Where the credential comes from. Deliberately *not* an input to adapter
@@ -90,7 +99,6 @@ pub struct AuthOption {
     /// selector.
     pub api_formats: Vec<String>,
     /// Prefilled base URL per dialect. Every key must appear in `api_formats`.
-    #[serde(default)]
     pub default_base_url: HashMap<String, String>,
 }
 
@@ -100,6 +108,7 @@ pub struct AuthOption {
 /// is how `gpt-5` and `gpt-5.1` end up in two groups while `gpt-5-mini` joins
 /// the first — an artefact of the separator, not a statement about the models.
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ModelGroup {
     pub family: String,
     pub ids: Vec<String>,
@@ -109,7 +118,10 @@ static CATALOG: LazyLock<Catalog> = LazyLock::new(|| {
     // Parsed once at first use. A malformed catalog is an authoring error the
     // checker should have caught, not something to degrade around at runtime —
     // same stance as `model_catalog.json`.
-    serde_json::from_str(include_str!("provider_catalog.json")).expect("provider_catalog.json is malformed")
+    let catalog: Catalog =
+        serde_json::from_str(include_str!("provider_catalog.json")).expect("provider_catalog.json is malformed");
+    assert_eq!(catalog._version, 1, "unsupported provider_catalog.json version");
+    catalog
 });
 
 /// Every vendor, in the order the file lists them (which is the order a picker
@@ -215,6 +227,35 @@ mod tests {
         }
     }
 
+    #[test]
+    fn catalog_does_not_invent_missing_fields() {
+        let complete: serde_json::Value =
+            serde_json::from_str(include_str!("provider_catalog.json")).expect("catalog fixture");
+
+        for field in ["balance", "websites", "models"] {
+            let mut missing = complete.clone();
+            missing["providers"][0].as_object_mut().unwrap().remove(field);
+            assert!(
+                serde_json::from_value::<Catalog>(missing).is_err(),
+                "providers[].{field} must be present"
+            );
+        }
+
+        let mut missing_website_key = complete.clone();
+        missing_website_key["providers"][0]["websites"]
+            .as_object_mut()
+            .unwrap()
+            .remove("official");
+        assert!(serde_json::from_value::<Catalog>(missing_website_key).is_err());
+
+        let mut missing_base_urls = complete;
+        missing_base_urls["providers"][0]["auth"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("default_base_url");
+        assert!(serde_json::from_value::<Catalog>(missing_base_urls).is_err());
+    }
+
     /// The five vendors the settings panel hardcoded before this file existed.
     /// They are what PR2a-2 will read instead, so losing one is a regression in
     /// the UI rather than in the data.
@@ -309,6 +350,13 @@ mod tests {
         for entry in entries() {
             for option in &entry.auth {
                 for format in &option.api_formats {
+                    super::super::registry::validate_stored_contract(
+                        &entry.provider_type,
+                        format,
+                        &option.transport_profile,
+                        &option.credential_kind,
+                    )
+                    .unwrap_or_else(|error| panic!("{}/{} has an invalid contract: {error}", entry.id, option.id));
                     assert!(
                         option.base_url_for(format).is_some(),
                         "{}/{} declares {format} without a URL",

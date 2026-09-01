@@ -692,46 +692,62 @@ fn find_split_point(text: &str, max_len: usize) -> usize {
 /// and are the only thing anyone has to go on, so a truncated dump beats
 /// silence: the alternative is a question the user is given no way to answer,
 /// waiting out its minute.
-pub fn ask_user_prompt(arguments: &str) -> String {
+pub fn ask_user_prompt(arguments: &str) -> Result<String, String> {
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Arguments {
+        questions: Vec<Question>,
+    }
+
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Question {
+        id: String,
+        question: String,
+        options: Option<Vec<OptionItem>>,
+        multi_select: Option<bool>,
+    }
+
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct OptionItem {
+        label: String,
+        description: Option<String>,
+    }
+
     const FOOTER: &str = "\n引用本条消息作答（60秒超时）";
-    let questions = serde_json::from_str::<serde_json::Value>(arguments)
-        .ok()
-        .and_then(|v| v.get("questions").and_then(|q| q.as_array()).cloned())
-        .unwrap_or_default();
+    let parsed: Arguments =
+        serde_json::from_str(arguments).map_err(|error| format!("invalid ask_user arguments: {error}"))?;
+    if !(1..=4).contains(&parsed.questions.len()) {
+        return Err("ask_user.questions must contain between 1 and 4 questions".into());
+    }
 
     let mut out = String::from("❓ 助手有个问题:\n");
-    let mut asked = 0;
-    for q in &questions {
-        let Some(text) = q.get("question").and_then(|t| t.as_str()) else {
-            continue;
-        };
-        asked += 1;
-        out.push_str(&format!("\n{text}\n"));
-        for (i, opt) in q
-            .get("options")
-            .and_then(|o| o.as_array())
-            .map(Vec::as_slice)
-            .unwrap_or_default()
-            .iter()
-            .enumerate()
-        {
-            let Some(label) = opt.get("label").and_then(|l| l.as_str()) else {
-                continue;
-            };
-            match opt.get("description").and_then(|d| d.as_str()) {
-                Some(desc) if !desc.is_empty() => out.push_str(&format!("  {}. {label} — {desc}\n", i + 1)),
-                _ => out.push_str(&format!("  {}. {label}\n", i + 1)),
+    for question in parsed.questions {
+        if question.id.trim().is_empty() || question.question.trim().is_empty() {
+            return Err("ask_user question id and text must not be empty".into());
+        }
+        let _multi_select = question.multi_select.unwrap_or(false);
+        out.push_str(&format!("\n{}\n", question.question));
+        if let Some(options) = question.options {
+            if !(2..=4).contains(&options.len()) {
+                return Err("ask_user question options must contain between 2 and 4 choices".into());
+            }
+            for (index, option) in options.into_iter().enumerate() {
+                if option.label.trim().is_empty() {
+                    return Err("ask_user option labels must not be empty".into());
+                }
+                match option.description.as_deref() {
+                    Some(description) if !description.is_empty() => {
+                        out.push_str(&format!("  {}. {} — {description}\n", index + 1, option.label));
+                    }
+                    _ => out.push_str(&format!("  {}. {}\n", index + 1, option.label)),
+                }
             }
         }
     }
-    if asked == 0 {
-        out.push_str(&format!(
-            "\n{}\n",
-            crate::util::take_bytes_at_char_boundary(arguments, 500)
-        ));
-    }
     out.push_str(FOOTER);
-    out
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -1152,7 +1168,8 @@ mod tests {
                 {"label":"压缩","description":"上下文爆了"},
                 {"label":"审批"}
             ]}]}"#,
-        );
+        )
+        .unwrap();
 
         assert!(prompt.contains("先修哪个?"), "{prompt}");
         assert!(prompt.contains("1. 压缩 — 上下文爆了"), "{prompt}");
@@ -1161,14 +1178,16 @@ mod tests {
         assert!(prompt.contains("引用本条消息作答"), "{prompt}");
     }
 
-    /// The arguments come from a model. A prompt that refused to render would
-    /// leave a question nobody can answer, waiting out its minute in silence.
     #[test]
-    fn a_malformed_question_still_produces_a_prompt() {
-        for args in ["", "{", r#"{"questions":[]}"#, r#"{"questions":"soon"}"#] {
-            let prompt = ask_user_prompt(args);
-            assert!(prompt.contains("引用本条消息作答"), "{args:?} -> {prompt}");
-            assert!(prompt.len() > "❓ 助手有个问题:".len(), "{args:?} -> {prompt}");
+    fn malformed_or_future_question_shapes_are_rejected() {
+        for args in [
+            "",
+            "{",
+            r#"{"questions":[]}"#,
+            r#"{"questions":"soon"}"#,
+            r#"{"questions":[{"id":"q","question":"now?","future":true}]}"#,
+        ] {
+            assert!(ask_user_prompt(args).is_err(), "accepted {args:?}");
         }
     }
 

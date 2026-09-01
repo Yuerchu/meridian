@@ -17,7 +17,7 @@ use serde::Deserialize;
 
 use crate::db::DbPool;
 use crate::db::models::memory::{
-    GLOBAL_SCOPE_ID, MemoryScope, NewMemory, NewMemoryProposal, Origin, ProposalStatus, Visibility,
+    GLOBAL_SCOPE_ID, MemoryInsert, MemoryProposalInsert, MemoryScope, Origin, ProposalStatus, Visibility,
     onebot_user_scope_id,
 };
 use crate::db::ops::memory::VisibilityCtx;
@@ -181,7 +181,7 @@ pub fn commit(
             .copied();
         let p = crate::db::ops::memory::create_proposal(
             conn,
-            &NewMemoryProposal {
+            &MemoryProposalInsert {
                 key: &candidate.key,
                 content: &candidate.content,
                 memory_type,
@@ -216,7 +216,7 @@ pub fn commit(
     let id = uuid::Uuid::new_v4().to_string();
     crate::db::ops::memory::upsert_memory(
         conn,
-        &NewMemory {
+        &MemoryInsert {
             id: &id,
             scope_type: scope.as_str(),
             scope_id: &scope_id,
@@ -283,7 +283,7 @@ pub fn approve_proposal(
         let mem_id = uuid::Uuid::new_v4().to_string();
         crate::db::ops::memory::upsert_memory(
             conn,
-            &NewMemory {
+            &MemoryInsert {
                 id: &mem_id,
                 scope_type: MemoryScope::OnebotGlobal.as_str(),
                 scope_id: GLOBAL_SCOPE_ID,
@@ -629,7 +629,7 @@ mod tests {
         for i in 0..crate::db::models::memory::MAX_ONEBOT_GLOBAL_MEMORIES {
             crate::db::ops::memory::upsert_memory(
                 conn,
-                &NewMemory {
+                &MemoryInsert {
                     id: &format!("g{i}"),
                     scope_type: MemoryScope::OnebotGlobal.as_str(),
                     scope_id: GLOBAL_SCOPE_ID,
@@ -731,7 +731,7 @@ mod dispatch_tests {
         let conn = &mut pool.get().unwrap();
         let p = crate::db::ops::memory::create_proposal(
             conn,
-            &NewMemoryProposal {
+            &MemoryProposalInsert {
                 key: "tone",
                 content: "be brief",
                 memory_type: "instruction",

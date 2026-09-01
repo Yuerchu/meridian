@@ -5,7 +5,7 @@ use crate::db::schema::assistants;
 
 #[derive(Debug, Clone, Queryable, Selectable, Serialize)]
 #[diesel(table_name = assistants)]
-pub struct Assistant {
+pub struct AssistantRow {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
@@ -31,7 +31,7 @@ pub struct Assistant {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = assistants)]
-pub struct NewAssistant<'a> {
+pub struct AssistantInsert<'a> {
     pub id: &'a str,
     pub name: &'a str,
     pub description: Option<&'a str>,
@@ -57,7 +57,7 @@ pub struct NewAssistant<'a> {
 
 #[derive(Debug, AsChangeset, Default)]
 #[diesel(table_name = assistants)]
-pub struct AssistantUpdate {
+pub struct AssistantChangeset {
     pub name: Option<String>,
     pub description: Option<Option<String>>,
     pub avatar: Option<Option<String>>,

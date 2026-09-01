@@ -3,14 +3,17 @@ import { useTranslation } from 'react-i18next'
 import { api } from '@/api'
 import { SettingsHeader } from './primitives'
 import { ProviderModelPicker } from './provider-model-picker'
-import type { ModelInfo, Provider } from '@/types'
+import type { ProviderInfoResponse, ProviderModelInfoResponse } from '@/types'
 
 /** The two built-in kinds. A third one is a settings feature, not a loop one. */
 const KINDS = ['explore', 'agent'] as const
 type Kind = (typeof KINDS)[number]
 
 /** Matches `default_model_preference` in `commands/sub_agent.rs`. */
-const preferenceKey = (kind: Kind) => `sub_agent.${kind}.model`
+const PREFERENCE_KEYS = {
+  explore: 'sub_agent.explore.model',
+  agent: 'sub_agent.agent.model',
+} as const
 
 /**
  * One kind's default model.
@@ -20,27 +23,24 @@ const preferenceKey = (kind: Kind) => `sub_agent.${kind}.model`
  * preference rather than two is what keeps "what the settings page saved" and
  * "what the tool accepts" from drifting apart.
  */
-function KindRow({ kind, providers }: { kind: Kind; providers: Provider[] }) {
+function KindRow({ kind, providers }: { kind: Kind; providers: ProviderInfoResponse[] }) {
   const { t } = useTranslation()
   const [providerId, setProviderId] = useState('')
   const [modelId, setModelId] = useState('')
-  const [models, setModels] = useState<ModelInfo[]>([])
+  const [models, setModels] = useState<ProviderModelInfoResponse[]>([])
 
   useEffect(() => {
-    api.getPreference(preferenceKey(kind)).then((v) => {
-      // Split on the first colon only: a model id may well contain one
-      // (`qwen:7b`), and the backend's `split_once` reads it the same way.
-      const at = v ? v.indexOf(':') : -1
-      if (!v || at < 0) return
-      setProviderId(v.slice(0, at))
-      setModelId(v.slice(at + 1))
+    api.getPreference({ key: PREFERENCE_KEYS[kind] }).then(({ value }) => {
+      if (!value) return
+      setProviderId(value.provider_id)
+      setModelId(value.model_id)
     })
   }, [kind])
 
   useEffect(() => {
     if (providerId) {
       api
-        .fetchProviderModels(providerId)
+        .fetchProviderModels({ providerId, forceRefresh: null })
         .then(setModels)
         .catch(() => setModels([]))
     } else {
@@ -48,11 +48,13 @@ function KindRow({ kind, providers }: { kind: Kind; providers: Provider[] }) {
     }
   }, [providerId])
 
-  // An incomplete pair is stored as empty rather than as half a name: the
-  // backend reads a blank preference as "follow the parent", which is the only
-  // thing a provider with no model chosen could honestly mean.
+  // An incomplete pair deletes the row: null is the one wire spelling of
+  // "follow the parent", and a half-selected model never reaches storage.
   function persist(provider: string, model: string) {
-    api.setPreference(preferenceKey(kind), provider && model ? `${provider}:${model}` : '')
+    api.setPreference({
+      key: PREFERENCE_KEYS[kind],
+      value: provider && model ? { providerId: provider, modelId: model } : null,
+    })
   }
 
   return (
@@ -87,7 +89,7 @@ function KindRow({ kind, providers }: { kind: Kind; providers: Provider[] }) {
  * assistant the user can open and edit, and giving it a row would mean it shows
  * up in every list that offers one.
  */
-export function SubAgentSettings({ providers }: { providers: Provider[] }) {
+export function SubAgentSettings({ providers }: { providers: ProviderInfoResponse[] }) {
   const { t } = useTranslation()
 
   return (

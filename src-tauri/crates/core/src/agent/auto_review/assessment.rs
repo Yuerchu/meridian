@@ -21,7 +21,7 @@ use serde::Deserialize;
 use crate::util::extract_last_json_object;
 
 /// How much damage the action could do, taken on its own.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RiskLevel {
     Low,
@@ -31,7 +31,7 @@ pub enum RiskLevel {
 }
 
 /// How well the user actually asked for *this* action against *this* target.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AuthLevel {
     Unknown,
@@ -41,7 +41,7 @@ pub enum AuthLevel {
 }
 
 /// The reviewer's verdict on the one action it was shown.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Outcome {
     Allow,
@@ -83,29 +83,20 @@ pub enum Read {
 /// `{"outcome":"allow"}` alone for an action the reviewer considers routine,
 /// which is most of them and where nearly all of the token savings live.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Wire {
-    outcome: String,
+    outcome: Outcome,
     #[serde(default)]
-    risk_level: Option<String>,
+    risk_level: Option<RiskLevel>,
     #[serde(default)]
-    user_authorization: Option<String>,
+    user_authorization: Option<AuthLevel>,
     #[serde(default)]
     rationale: Option<String>,
 }
 
-/// Unknown enum values are read at their most cautious rather than rejected.
-///
-/// A reviewer that writes `"severe"` has still communicated something, and the
-/// safe reading of a word we do not know is the worst one it could have meant.
-/// `outcome` is the exception below: it is the field the whole contract rests
-/// on, and guessing there would invent a decision nobody made.
-fn risk_of(raw: Option<&str>, outcome: Outcome) -> RiskLevel {
-    match raw.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
-        Some("low") => RiskLevel::Low,
-        Some("medium") => RiskLevel::Medium,
-        Some("high") => RiskLevel::High,
-        Some("critical") => RiskLevel::Critical,
-        Some(_) => RiskLevel::Critical,
+fn risk_of(value: Option<RiskLevel>, outcome: Outcome) -> RiskLevel {
+    match value {
+        Some(risk) => risk,
         // Omitted. The short form is only sanctioned for `allow`, so absence
         // there means routine; absence beside a `deny` means the reviewer
         // refused something without saying how badly, which is not `low`.
@@ -116,16 +107,8 @@ fn risk_of(raw: Option<&str>, outcome: Outcome) -> RiskLevel {
     }
 }
 
-fn auth_of(raw: Option<&str>) -> AuthLevel {
-    match raw.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
-        Some("high") => AuthLevel::High,
-        Some("medium") => AuthLevel::Medium,
-        Some("low") => AuthLevel::Low,
-        Some("unknown") => AuthLevel::Unknown,
-        // Same rule as above, and `unknown` is already the cautious end of this
-        // scale — it is what "nobody asked for this" is spelled as.
-        Some(_) | None => AuthLevel::Unknown,
-    }
+fn auth_of(value: Option<AuthLevel>) -> AuthLevel {
+    value.unwrap_or(AuthLevel::Unknown)
 }
 
 /// Read the reviewer's answer.
@@ -134,25 +117,21 @@ fn auth_of(raw: Option<&str>) -> AuthLevel {
 /// `hooks::verdict` takes it: a reviewer quoting the arguments it is judging
 /// puts a `{` on screen well before it puts its own verdict there.
 pub fn parse(reply: &str) -> Read {
-    let Some(raw) = extract_last_json_object(reply, |c| serde_json::from_str::<Wire>(c).is_ok()) else {
+    // Stop at the last object that claims to be an assessment even when it is
+    // malformed. Falling back to an earlier quoted example would invent a
+    // decision after the reviewer had actually violated the contract.
+    let Some(raw) = extract_last_json_object(reply, |candidate| {
+        serde_json::from_str::<serde_json::Value>(candidate)
+            .ok()
+            .is_some_and(|value| value.get("outcome").is_some())
+    }) else {
         return Read::Unreadable("审查回复里没有可用的裁决对象");
     };
-    // The predicate above already proved this parses.
     let Ok(wire) = serde_json::from_str::<Wire>(&raw) else {
         return Read::Unreadable("审查回复里没有可用的裁决对象");
     };
 
-    let outcome = match wire.outcome.trim().to_ascii_lowercase().as_str() {
-        "allow" => Outcome::Allow,
-        "deny" => Outcome::Deny,
-        // The one field with no safe guess. "block", "reject", "maybe" — every
-        // one of them is a reviewer that did not follow the contract, and
-        // reading any of them as a decision would put words in its mouth.
-        other => {
-            tracing::warn!(outcome = %other, "auto review returned an outcome that is neither allow nor deny");
-            return Read::Unreadable("审查裁决里的 outcome 不是 allow 或 deny");
-        }
-    };
+    let outcome = wire.outcome;
 
     let rationale = wire
         .rationale
@@ -168,8 +147,8 @@ pub fn parse(reply: &str) -> Read {
         .to_string();
 
     Read::Verdict(Assessment {
-        risk: risk_of(wire.risk_level.as_deref(), outcome),
-        authorization: auth_of(wire.user_authorization.as_deref()),
+        risk: risk_of(wire.risk_level, outcome),
+        authorization: auth_of(wire.user_authorization),
         outcome,
         rationale,
     })
@@ -227,14 +206,26 @@ mod tests {
         assert!(!a.rationale.is_empty(), "a denial must always carry something to show");
     }
 
-    /// A word we do not know is read as the worst thing it could have meant,
-    /// on every field except the one the contract rests on.
+    /// Enum spellings and fields are a closed contract. Guessing at either
+    /// would turn a malformed review into a decision nobody made.
     #[test]
-    fn an_unknown_risk_word_is_read_at_its_worst() {
-        let a = verdict(r#"{"outcome":"allow","risk_level":"severe","user_authorization":"probably"}"#);
-        assert_eq!(a.risk, RiskLevel::Critical);
-        assert_eq!(a.authorization, AuthLevel::Unknown);
-        assert!(!a.settled(), "critical risk is never settled by the first pass");
+    fn unknown_values_and_fields_are_unreadable() {
+        for reply in [
+            r#"{"outcome":"allow","risk_level":"severe"}"#,
+            r#"{"outcome":"allow","user_authorization":"probably"}"#,
+            r#"{"outcome":"allow","future_field":true}"#,
+        ] {
+            assert!(!unreadable(reply).is_empty(), "reply = {reply:?}");
+        }
+    }
+
+    #[test]
+    fn an_invalid_final_assessment_does_not_fall_back_to_a_quoted_example() {
+        let reply = concat!(
+            "示例是 `{\"outcome\":\"allow\"}`。\n",
+            "```json\n{\"outcome\":\"allow\",\"future_field\":true}\n```\n",
+        );
+        assert!(!unreadable(reply).is_empty());
     }
 
     /// The property the whole module exists for: an answer nobody can read is

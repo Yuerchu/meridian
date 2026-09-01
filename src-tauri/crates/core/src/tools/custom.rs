@@ -17,24 +17,17 @@ pub struct CustomToolExecutor {
 }
 
 impl CustomToolExecutor {
-    pub fn from_db(tool: &crate::db::models::custom_tool::CustomTool) -> Self {
-        let schema: Value = serde_json::from_str(&tool.parameters_schema).unwrap_or_else(|e| {
-            // An empty schema means the model is never told what to pass, so the
-            // tool "just keeps failing" with no indication that its definition is
-            // the problem.
-            tracing::warn!(
-                tool = %tool.name,
-                error = %e,
-                "custom tool has an unparseable parameter schema; offering it with no parameters"
-            );
-            serde_json::json!({"type": "object", "properties": {}})
-        });
-        let perm = match tool.permission.as_str() {
-            "always" => Permission::Always,
-            "never" => Permission::Never,
-            _ => Permission::Ask,
-        };
-        Self {
+    pub fn from_db(tool: &crate::db::models::custom_tool::CustomToolRow) -> Result<Self, String> {
+        let schema: Value = serde_json::from_str(&tool.parameters_schema)
+            .map_err(|error| format!("custom tool {} has invalid parameters_schema JSON: {error}", tool.name))?;
+        if !schema.is_object() {
+            return Err(format!(
+                "custom tool {} parameters_schema must be a JSON object",
+                tool.name
+            ));
+        }
+        let perm = Permission::parse(&tool.permission)?;
+        Ok(Self {
             tool_name: tool.name.clone(),
             tool_description: tool.description.clone(),
             schema,
@@ -43,7 +36,58 @@ impl CustomToolExecutor {
             tool_working_directory: tool.working_directory.clone(),
             timeout: Duration::from_millis(tool.timeout_ms.unwrap_or(30000) as u64),
             perm,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::models::custom_tool::CustomToolRow;
+
+    fn row(schema: &str) -> CustomToolRow {
+        CustomToolRow {
+            id: "t1".into(),
+            name: "strict_tool".into(),
+            description: "test".into(),
+            category_id: None,
+            parameters_schema: schema.into(),
+            command: "true".into(),
+            args_template: None,
+            working_directory: None,
+            timeout_ms: None,
+            permission: "ask".into(),
+            is_enabled: 1,
+            sort_order: 0,
+            created_at: 1,
+            updated_at: 1,
         }
+    }
+
+    #[test]
+    fn stored_parameter_schema_must_be_valid_json() {
+        let error = CustomToolExecutor::from_db(&row("not json"))
+            .err()
+            .expect("malformed schema must fail");
+        assert!(error.contains("invalid parameters_schema JSON"), "{error}");
+    }
+
+    #[test]
+    fn stored_parameter_schema_must_be_an_object() {
+        let error = CustomToolExecutor::from_db(&row("[]"))
+            .err()
+            .expect("non-object schema must fail");
+        assert!(error.contains("must be a JSON object"), "{error}");
+    }
+
+    #[test]
+    fn stored_permission_must_be_declared() {
+        let mut stored = row(r#"{"type":"object"}"#);
+        stored.permission = "future".into();
+        let error = CustomToolExecutor::from_db(&stored)
+            .err()
+            .expect("unknown permission must fail");
+        assert!(error.contains("unknown tool permission"), "{error}");
     }
 }
 

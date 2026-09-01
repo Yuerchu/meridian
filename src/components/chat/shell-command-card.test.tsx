@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 
 import { useConversationStore } from '@/stores/conversation-store'
-import type { CommandTurnOutcome, Message } from '@/types'
+import type { MessageViewModel, UserCommandResultResponse } from '@/types'
 
 const getUserCommandResult = vi.hoisted(() => vi.fn())
 
@@ -16,9 +16,9 @@ const message = {
   content: '!pnpm test',
   source: 'shell',
   turn_id: 'turn-1',
-} as Message
+} as MessageViewModel
 
-const result: CommandTurnOutcome = {
+const result: UserCommandResultResponse = {
   conversation_id: 'conversation-1',
   turn_id: 'turn-1',
   message_id: 'message-1',
@@ -50,7 +50,12 @@ it('rehydrates a structured command result without reading raw transcript contex
   expect(screen.getByText('pnpm test')).toBeInTheDocument()
   expect(await screen.findByText('12 tests passed')).toBeInTheDocument()
   expect(screen.getByText('C:/repo')).toBeInTheDocument()
-  await waitFor(() => expect(getUserCommandResult).toHaveBeenCalledWith('conversation-1', 'message-1'))
+  await waitFor(() =>
+    expect(getUserCommandResult).toHaveBeenCalledWith({
+      conversationId: 'conversation-1',
+      messageId: 'message-1',
+    }),
+  )
 })
 
 it('waits for the matching finish event and then refreshes an in-flight card', async () => {

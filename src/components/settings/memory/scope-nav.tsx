@@ -6,7 +6,7 @@ import { Button, Card } from '@heroui/react'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useRelativeTime } from '@/hooks/use-relative-time'
 import { cn } from '@/lib/utils'
-import type { MemorySubject, Project } from '@/types'
+import type { MemorySubjectInfoResponse, ProjectInfoResponse } from '@/types'
 import type { ScopeFilter } from './use-memory-browser'
 
 /** How many projects or people a branch shows before offering the rest. */
@@ -16,8 +16,8 @@ interface ScopeNavProps {
   filter: ScopeFilter
   onFilterChange: (f: ScopeFilter) => void
   counts: { all: number; clientGlobal: number; global: number; chats: number; people: number }
-  projects: Project[]
-  subjects: MemorySubject[]
+  projects: ProjectInfoResponse[]
+  subjects: MemorySubjectInfoResponse[]
   onChanged: () => void
 }
 
@@ -169,7 +169,7 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
               })}
             </Card.Description>
           </Card.Header>
-          {selectedPerson.opted_out !== 0 && (
+          {selectedPerson.opted_out && (
             <div className="text-xs text-warning-soft-foreground">{t('settings.memory.person.optedOut')}</div>
           )}
 
@@ -177,13 +177,17 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
             variant="ghost"
             className="w-full justify-start font-normal"
             onClick={async () => {
-              await api.setMemorySubjectFlags(selectedPerson.scope_id, selectedPerson.is_pinned === 0, undefined)
+              await api.setMemorySubjectFlags({
+                subjectScopeId: selectedPerson.scope_id,
+                isPinned: !selectedPerson.is_pinned,
+                optedOut: null,
+              })
               onChanged()
             }}
             data-slot="memory-pin-toggle"
           >
-            <Pin className={selectedPerson.is_pinned !== 0 ? 'text-foreground' : 'text-muted'} />
-            {selectedPerson.is_pinned !== 0 ? t('settings.memory.unpin') : t('settings.memory.pin')}
+            <Pin className={selectedPerson.is_pinned ? 'text-foreground' : 'text-muted'} />
+            {selectedPerson.is_pinned ? t('settings.memory.unpin') : t('settings.memory.pin')}
           </Button>
 
           <Button

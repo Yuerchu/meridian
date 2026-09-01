@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 
 use super::{Permission, Tool, ToolContext};
 use crate::db::models::todo::ItemStatus;
-use crate::db::ops::todo::TodoItemInput;
+use crate::db::ops::todo::TodoItemSpec;
 
 const MAX_ITEMS: usize = 50;
 const MAX_CONTENT_LEN: usize = 200;
@@ -25,7 +25,7 @@ fn get_pool_and_conversation(context: &ToolContext) -> Result<(crate::db::DbPool
 /// Pull one step out of the model's payload, rejecting anything the checklist
 /// cannot represent. Errors here go straight back to the model, so they name
 /// the offending position and say what a valid entry looks like.
-fn parse_item(idx: usize, raw: &Value) -> Result<TodoItemInput, String> {
+fn parse_item(idx: usize, raw: &Value) -> Result<TodoItemSpec, String> {
     let position = idx + 1;
     let obj = raw
         .as_object()
@@ -56,7 +56,7 @@ fn parse_item(idx: usize, raw: &Value) -> Result<TodoItemInput, String> {
         .ok_or_else(|| format!("todos[{position}] is missing 'status'"))?;
     let status = ItemStatus::parse(status).map_err(|e| format!("todos[{position}]: {e}"))?;
 
-    Ok(TodoItemInput {
+    Ok(TodoItemSpec {
         content,
         active_form,
         status,
@@ -176,8 +176,14 @@ impl Tool for UpdateTodosTool {
         tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
             let now = crate::util::now_ms();
-            let view = crate::db::ops::todo::replace_active_list(&mut conn, &conversation_id, &title, &items, now)
-                .map_err(|e| e.to_string())?;
+            let (view, retired_plans) = crate::db::ops::todo::replace_active_list_with_plan_completion(
+                &mut conn,
+                &conversation_id,
+                &title,
+                &items,
+                now,
+            )
+            .map_err(|e| e.to_string())?;
 
             let total = view.items.len();
             let done = view
@@ -187,14 +193,7 @@ impl Tool for UpdateTodosTool {
                 .count();
 
             if done == total {
-                // Finishing the checklist is what retires the plan it was
-                // implementing. Without this the approved plan keeps being
-                // injected into every later turn, long after the conversation
-                // has moved on — and there is no other signal that the work
-                // described by a plan is over.
-                let retired = crate::db::ops::plan::complete_active(&mut conn, &conversation_id, now)
-                    .map_err(|e| e.to_string())?;
-                let plan_note = if retired > 0 {
+                let plan_note = if retired_plans > 0 {
                     " The approved plan is complete and no longer in force."
                 } else {
                     ""

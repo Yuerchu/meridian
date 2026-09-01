@@ -12,7 +12,7 @@ use crate::db::schema::skills;
 /// and is what reaches the model.
 #[derive(Debug, Clone, Queryable, Selectable, Serialize)]
 #[diesel(table_name = skills)]
-pub struct Skill {
+pub struct SkillRow {
     pub dir_name: String,
     pub llm_name: String,
     pub llm_description: String,
@@ -29,7 +29,7 @@ pub struct Skill {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = skills)]
-pub struct NewSkill<'a> {
+pub struct SkillInsert<'a> {
     pub dir_name: &'a str,
     pub llm_name: &'a str,
     pub llm_description: &'a str,
@@ -45,7 +45,7 @@ pub struct NewSkill<'a> {
 
 #[derive(Debug, AsChangeset, Default)]
 #[diesel(table_name = skills)]
-pub struct SkillUpdate {
+pub struct SkillChangeset {
     pub llm_name: Option<String>,
     pub llm_description: Option<String>,
     pub display_name: Option<String>,

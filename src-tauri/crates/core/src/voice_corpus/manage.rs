@@ -6,19 +6,16 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
-
 use crate::db::DbPool;
-use crate::db::models::voice_corpus::VoiceBlob;
+use crate::db::models::voice_corpus::{VoiceBlobRow, VoiceCorpusSourceType};
 use crate::db::ops::voice_corpus as ops;
 
 /// 要动哪些语料。
 ///
-/// **显式的 tagged union，没有"缺省即全部"。** `Option<String>` 那种写法经
-/// dispatcher 反序列化时，漏传一个参数就是 `None`，而 `None` 是"全部"——一次
-/// 远程调用的手滑会抹掉所有声纹语料。这里少了字段就是反序列化失败。
-#[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+/// 没有"缺省即全部"：调用方必须显式构造其中一个目标。shell 的
+/// `VoiceCorpusDeleteSelector` 是严格的 tagged union，缺字段或未知字段会在进入
+/// core 之前反序列化失败。
+#[derive(Debug, Clone)]
 pub enum CorpusSelector {
     /// 一个会话，用它的**假名**指认。
     ///
@@ -40,18 +37,14 @@ pub const DELETE_ALL_CONFIRMATION: &str = "DELETE ALL VOICE";
 /// 没有反查表：假名是 HMAC，所以把还在库里的每个会话算一遍再比对就够了。
 /// 认不出来是错误而不是"什么都不删"——一个说了删却什么都没删的按钮，比一个
 /// 报错的按钮糟。
-fn resolve_handle(pool: &DbPool, handle: &str) -> Result<(i64, &'static str, String), String> {
+fn resolve_handle(pool: &DbPool, handle: &str) -> Result<(i64, VoiceCorpusSourceType, String), String> {
     let key = crate::voice_corpus::storage_key(pool)?;
     let mut conn = crate::util::get_conn(pool)?;
     for total in ops::session_totals(&mut conn).map_err(|e| e.to_string())? {
+        let source_type = VoiceCorpusSourceType::parse(&total.source_type)?;
         let pseudonym =
-            crate::voice_corpus::session_pseudonym(&key, total.bot_self_id, &total.source_type, &total.source_id);
+            crate::voice_corpus::session_pseudonym(&key, total.bot_self_id, source_type.as_str(), &total.source_id);
         if pseudonym == handle {
-            let source_type = if total.source_type == "onebot_group" {
-                "onebot_group"
-            } else {
-                "onebot_private"
-            };
             return Ok((total.bot_self_id, source_type, total.source_id));
         }
     }
@@ -75,10 +68,14 @@ pub type SessionTotal = ops::SessionTotal;
 
 pub fn list_sessions(pool: &DbPool) -> Result<Vec<SessionTotal>, String> {
     let mut conn = crate::util::get_conn(pool)?;
-    ops::session_totals(&mut conn).map_err(|e| e.to_string())
+    let totals = ops::session_totals(&mut conn).map_err(|e| e.to_string())?;
+    for total in &totals {
+        VoiceCorpusSourceType::parse(&total.source_type)?;
+    }
+    Ok(totals)
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default)]
 pub struct DeleteReport {
     pub clips: usize,
     pub files: usize,
@@ -131,7 +128,7 @@ pub async fn delete(
         Some((bot_self_id, source_type, source_id)) => {
             vec![crate::voice_corpus::CaptureScope::new(
                 *bot_self_id,
-                session_key(source_type, source_id),
+                session_key(*source_type, source_id),
             )]
         }
         None => coordinator.granted_scopes(),
@@ -152,7 +149,7 @@ fn delete_blocking(
     pool: &DbPool,
     app_data_dir: &Path,
     selector: CorpusSelector,
-    resolved: Option<(i64, &'static str, String)>,
+    resolved: Option<(i64, VoiceCorpusSourceType, String)>,
 ) -> Result<DeleteReport, String> {
     let key = crate::voice_corpus::storage_key(pool)?;
     let mut conn = crate::util::get_conn(pool)?;
@@ -161,7 +158,7 @@ fn delete_blocking(
     let clips = match &selector {
         CorpusSelector::Session { .. } => {
             let (bot_self_id, source_type, source_id) = resolved.ok_or("the session was never resolved")?;
-            ops::delete_clips_by_session(&mut conn, bot_self_id, source_type, &source_id)
+            ops::delete_clips_by_session(&mut conn, bot_self_id, source_type.as_str(), &source_id)
         }
         CorpusSelector::Sender { id } => ops::delete_clips_by_sender(&mut conn, id),
         CorpusSelector::All { .. } => ops::delete_all_clips(&mut conn),
@@ -255,7 +252,7 @@ where
     .await
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 pub struct ExportReport {
     pub clips: usize,
     /// 没有转写而被跳过的条数。**要露出来**：默认不导出它们是一个决定，
@@ -354,17 +351,16 @@ pub fn export(
     Ok(report)
 }
 
-fn blob_path(app_data_dir: &Path, key: &[u8], blob: &VoiceBlob) -> PathBuf {
+fn blob_path(app_data_dir: &Path, key: &[u8], blob: &VoiceBlobRow) -> PathBuf {
     let pseudonym = crate::voice_corpus::session_pseudonym(key, blob.bot_self_id, &blob.source_type, &blob.source_id);
     crate::voice_corpus::session_dir(app_data_dir, &pseudonym).join(&blob.file_name)
 }
 
-/// `("onebot_group", "123")` -> `group:123`，白名单里写的那个形式。
-fn session_key(source_type: &str, source_id: &str) -> String {
-    let kind = if source_type == "onebot_group" {
-        "group"
-    } else {
-        "private"
+/// `(OnebotGroup, "123")` -> `group:123`，白名单里写的那个形式。
+fn session_key(source_type: VoiceCorpusSourceType, source_id: &str) -> String {
+    let kind = match source_type {
+        VoiceCorpusSourceType::OnebotGroup => "group",
+        VoiceCorpusSourceType::OnebotPrivate => "private",
     };
     format!("{kind}:{source_id}")
 }
@@ -372,10 +368,11 @@ fn session_key(source_type: &str, source_id: &str) -> String {
 /// 一次安装内稳定的假名，跨安装不可关联。给设置页显示用。
 pub fn session_label(pool: &DbPool, total: &SessionTotal) -> Result<String, String> {
     let key = crate::voice_corpus::storage_key(pool)?;
+    let source_type = VoiceCorpusSourceType::parse(&total.source_type)?;
     Ok(crate::voice_corpus::session_pseudonym(
         &key,
         total.bot_self_id,
-        &total.source_type,
+        source_type.as_str(),
         &total.source_id,
     ))
 }
@@ -389,14 +386,14 @@ pub fn untranscribed_counts(pool: &DbPool) -> Result<HashMap<String, i64>, Strin
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::models::voice_corpus::{NewVoiceBlob, blob_status};
+    use crate::db::models::voice_corpus::{VoiceBlobInsert, blob_status};
     use crate::db::test_db;
     use diesel::prelude::*;
 
-    fn ready(conn: &mut diesel::SqliteConnection, id: &str, session: &str) -> VoiceBlob {
+    fn ready(conn: &mut diesel::SqliteConnection, id: &str, session: &str) -> VoiceBlobRow {
         use crate::db::schema::voice_blobs;
         diesel::insert_into(voice_blobs::table)
-            .values(&NewVoiceBlob {
+            .values(&VoiceBlobInsert {
                 id,
                 bot_self_id: 1,
                 source_type: "onebot_group",
@@ -416,25 +413,42 @@ mod tests {
             .unwrap();
         voice_blobs::table
             .find(id)
-            .select(VoiceBlob::as_select())
+            .select(VoiceBlobRow::as_select())
             .first(conn)
             .unwrap()
     }
 
-    /// 缺字段必须是**反序列化失败**，不能落到 `All`——那是一次手滑抹掉全部
-    /// 语料的路径。
     #[test]
-    fn a_selector_missing_its_fields_does_not_become_delete_everything() {
-        assert!(serde_json::from_value::<CorpusSelector>(serde_json::json!({})).is_err());
-        assert!(serde_json::from_value::<CorpusSelector>(serde_json::json!({ "kind": "all" })).is_err());
-        assert!(
-            serde_json::from_value::<CorpusSelector>(serde_json::json!({ "kind": "bot_session" })).is_err(),
-            "半个 selector 也不行"
-        );
+    fn session_keys_only_accept_closed_source_types() {
+        assert_eq!(session_key(VoiceCorpusSourceType::OnebotGroup, "123"), "group:123");
+        assert_eq!(session_key(VoiceCorpusSourceType::OnebotPrivate, "456"), "private:456");
 
-        let ok: CorpusSelector =
-            serde_json::from_value(serde_json::json!({ "kind": "sender", "id": "alice" })).unwrap();
-        assert!(matches!(ok, CorpusSelector::Sender { .. }));
+        let error = VoiceCorpusSourceType::parse("onebot_channel").unwrap_err();
+        assert!(error.contains("unknown voice corpus source_type"), "{error}");
+    }
+
+    #[test]
+    fn management_rejects_an_unknown_persisted_source_type() {
+        let pool = test_db();
+        {
+            let mut conn = pool.get().unwrap();
+            let blob = ready(&mut conn, "a", "123");
+            ops::record_clip(&mut conn, &blob, "c1", "alice", Some(1), 0, None, None, 1).unwrap();
+
+            use crate::db::schema::voice_blobs;
+            diesel::update(voice_blobs::table.find("a"))
+                .set(voice_blobs::source_type.eq("onebot_channel"))
+                .execute(&mut conn)
+                .unwrap();
+        }
+
+        let error = list_sessions(&pool).unwrap_err();
+        assert!(error.contains("unknown voice corpus source_type"), "{error}");
+
+        let key = crate::voice_corpus::storage_key(&pool).unwrap();
+        let handle = crate::voice_corpus::session_pseudonym(&key, 1, "onebot_channel", "123");
+        let error = resolve_handle(&pool, &handle).unwrap_err();
+        assert!(error.contains("unknown voice corpus source_type"), "{error}");
     }
 
     /// 导出默认跳过没有转写的，而且**把跳过的条数说出来**。
@@ -454,9 +468,9 @@ mod tests {
         for id in ["a", "b"] {
             let mut conn = pool.get().unwrap();
             use crate::db::schema::voice_blobs;
-            let blob: VoiceBlob = voice_blobs::table
+            let blob: VoiceBlobRow = voice_blobs::table
                 .find(id)
-                .select(VoiceBlob::as_select())
+                .select(VoiceBlobRow::as_select())
                 .first(&mut conn)
                 .unwrap();
             let path = blob_path(dir.path(), &key, &blob);
@@ -504,9 +518,9 @@ mod tests {
         let key = crate::voice_corpus::storage_key(&pool).unwrap();
         let mut conn = pool.get().unwrap();
         use crate::db::schema::voice_blobs;
-        let blob: VoiceBlob = voice_blobs::table
+        let blob: VoiceBlobRow = voice_blobs::table
             .find("a")
-            .select(VoiceBlob::as_select())
+            .select(VoiceBlobRow::as_select())
             .first(&mut conn)
             .unwrap();
         drop(conn);

@@ -94,8 +94,11 @@ fn clamp_rounds(rounds: u32) -> u32 {
 }
 /// The file the plugin reads to find this server.
 const HANDSHAKE: &str = "plan-gate.json";
+/// The inbound request contract. Version 2 requires every key to be present,
+/// including keys whose value may be JSON `null`.
+const HOOK_PROTOCOL_VERSION: u32 = 2;
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone)]
 pub struct HookConfig {
     pub enabled: bool,
     pub host: String,
@@ -143,37 +146,73 @@ pub struct HookStatus {
     pub handshake_path: Option<String>,
 }
 
-pub fn load_config(pool: &DbPool) -> HookConfig {
-    let Ok(mut conn) = pool.get() else {
-        return HookConfig::default();
+fn parse_stored_bool(key: &str, raw: Option<String>, default: bool) -> Result<bool, String> {
+    match raw.as_deref() {
+        None => Ok(default),
+        Some("true") => Ok(true),
+        Some("false") => Ok(false),
+        Some(value) => Err(format!("preference {key} must be 'true' or 'false', got {value:?}")),
+    }
+}
+
+fn parse_stored_u16(key: &str, raw: Option<String>, default: u16) -> Result<u16, String> {
+    let Some(raw) = raw else {
+        return Ok(default);
     };
-    let mut get = |key: &str| -> Option<String> {
+    let value = raw
+        .parse::<u16>()
+        .map_err(|error| format!("preference {key} has invalid integer {raw:?}: {error}"))?;
+    if value.to_string() != raw {
+        return Err(format!(
+            "preference {key} must use canonical decimal digits, got {raw:?}"
+        ));
+    }
+    Ok(value)
+}
+
+fn parse_stored_u32(key: &str, raw: Option<String>, default: u32) -> Result<u32, String> {
+    let Some(raw) = raw else {
+        return Ok(default);
+    };
+    let value = raw
+        .parse::<u32>()
+        .map_err(|error| format!("preference {key} has invalid integer {raw:?}: {error}"))?;
+    if value.to_string() != raw {
+        return Err(format!(
+            "preference {key} must use canonical decimal digits, got {raw:?}"
+        ));
+    }
+    Ok(value)
+}
+
+pub fn load_config(pool: &DbPool) -> Result<HookConfig, String> {
+    let mut conn = get_conn(pool)?;
+    let mut get = |key: &str| -> Result<Option<String>, String> {
         crate::db::ops::preference::get_preference(&mut conn, key)
-            .ok()
-            .flatten()
+            .map_err(|error| format!("failed to read preference {key}: {error}"))
     };
 
-    HookConfig {
-        enabled: get("hooks.enabled").as_deref() == Some("true"),
-        host: get("hooks.host").unwrap_or_else(|| "127.0.0.1".into()),
-        port: get("hooks.port").and_then(|s| s.parse().ok()).unwrap_or(DEFAULT_PORT),
-        token: get("hooks.token").filter(|s| !s.is_empty()),
-        review_model: get("hooks.plan_review.model").filter(|s| !s.is_empty()),
-        assistant_id: get("hooks.plan_review.assistant_id").filter(|s| !s.is_empty()),
+    Ok(HookConfig {
+        enabled: parse_stored_bool("hooks.enabled", get("hooks.enabled")?, false)?,
+        host: get("hooks.host")?.unwrap_or_else(|| "127.0.0.1".into()),
+        port: parse_stored_u16("hooks.port", get("hooks.port")?, DEFAULT_PORT)?,
+        token: get("hooks.token")?.filter(|s| !s.is_empty()),
+        review_model: get("hooks.plan_review.model")?.filter(|s| !s.is_empty()),
+        assistant_id: get("hooks.plan_review.assistant_id")?.filter(|s| !s.is_empty()),
         // Clamped on the way in as well as on the way out, so a value stored
         // before the ceiling existed corrects itself on the next load instead
         // of waiting for someone to open the settings page and press save.
-        timeout_secs: clamp_timeout(
-            get("hooks.plan_review.timeout_secs")
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(DEFAULT_TIMEOUT_SECS),
-        ),
-        max_rounds: clamp_rounds(
-            get("hooks.plan_review.max_rounds")
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(DEFAULT_MAX_ROUNDS),
-        ),
-    }
+        timeout_secs: clamp_timeout(parse_stored_u32(
+            "hooks.plan_review.timeout_secs",
+            get("hooks.plan_review.timeout_secs")?,
+            DEFAULT_TIMEOUT_SECS,
+        )?),
+        max_rounds: clamp_rounds(parse_stored_u32(
+            "hooks.plan_review.max_rounds",
+            get("hooks.plan_review.max_rounds")?,
+            DEFAULT_MAX_ROUNDS,
+        )?),
+    })
 }
 
 pub fn save_config(pool: &DbPool, config: &HookConfig) -> Result<(), String> {
@@ -324,7 +363,7 @@ impl HookServer {
 
 fn write_handshake(path: &std::path::Path, config: &HookConfig, generation: u64) {
     let body = serde_json::json!({
-        "version": 1,
+        "version": HOOK_PROTOCOL_VERSION,
         "host": config.host,
         "port": config.port,
         "token": config.token.as_deref().unwrap_or(""),
@@ -387,8 +426,7 @@ fn remove_handshake_if_ours(path: &std::path::Path, generation: u64) {
 /// Returned rather than registered here: the caller is the shell, and where the
 /// IPC commands look this up is its business. Nothing inside `HookServer` knows
 /// a window exists, and this is the last place that could have.
-pub async fn maybe_start(services: Services) -> AppHooks {
-    let config = load_config(&services.db);
+pub async fn maybe_start(services: Services, config: HookConfig) -> AppHooks {
     let enabled = config.enabled;
 
     let server = HookServer::new(services, config);
@@ -409,11 +447,67 @@ pub struct AppHooks(pub Arc<Mutex<HookServer>>);
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::test_db;
+    use diesel::RunQueryDsl;
+
+    fn set_preference(pool: &DbPool, key: &str, value: &str) {
+        let mut conn = pool.get().unwrap();
+        crate::db::ops::preference::set_preference(&mut conn, key, value, 1).unwrap();
+    }
+
+    #[test]
+    fn absent_hook_preferences_keep_the_documented_defaults() {
+        let config = load_config(&test_db()).unwrap();
+        let expected = HookConfig::default();
+
+        assert_eq!(config.enabled, expected.enabled);
+        assert_eq!(config.host, expected.host);
+        assert_eq!(config.port, expected.port);
+        assert_eq!(config.timeout_secs, expected.timeout_secs);
+        assert_eq!(config.max_rounds, expected.max_rounds);
+    }
+
+    #[test]
+    fn malformed_hook_preferences_are_not_defaulted() {
+        for (key, value) in [
+            ("hooks.enabled", "yes"),
+            ("hooks.port", "08765"),
+            ("hooks.plan_review.timeout_secs", "ten"),
+            ("hooks.plan_review.max_rounds", "-1"),
+        ] {
+            let pool = test_db();
+            set_preference(&pool, key, value);
+            let error = load_config(&pool).err().expect("malformed stored preference must fail");
+            assert!(error.contains(key), "{key}: {error}");
+        }
+    }
+
+    #[test]
+    fn hook_preference_read_errors_are_not_defaulted() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        diesel::sql_query("DROP TABLE preferences").execute(&mut conn).unwrap();
+        drop(conn);
+
+        let error = load_config(&pool)
+            .err()
+            .expect("database errors must fail config loading");
+        assert!(error.contains("hooks.enabled"), "{error}");
+    }
 
     fn handshake_with(dir: &std::path::Path, generation: u64) -> std::path::PathBuf {
         let path = dir.join(HANDSHAKE);
         write_handshake(&path, &HookConfig::default(), generation);
         path
+    }
+
+    #[test]
+    fn the_handshake_advertises_the_strict_protocol_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = handshake_with(dir.path(), 1);
+        let body: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+
+        assert_eq!(body["version"], HOOK_PROTOCOL_VERSION);
     }
 
     #[test]

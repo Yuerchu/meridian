@@ -155,7 +155,10 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, enabled }: Options) 
     }
 
     try {
-      const result = await api.voiceTranscribePcm(captured.sampleRate, encodePcm16Base64(captured.samples))
+      const result = await api.voiceTranscribePcm({
+        sampleRate: captured.sampleRate,
+        pcm: encodePcm16Base64(captured.samples),
+      })
       if (result.status === 'ok') onSend(result.text)
       else onNotice(result.status)
     } catch (e) {

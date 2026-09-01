@@ -95,6 +95,7 @@ use tokio::sync::oneshot;
 
 use crate::agent::engine::{self, ApprovalDecision};
 use crate::db::models::turn::TurnPhase;
+use crate::events::ChatStreamEvent;
 use crate::services::Services;
 use crate::state::PendingApproval;
 
@@ -563,10 +564,9 @@ fn prepare(params: CreateElicitationParams) -> Result<(Form, String), &'static s
 
 /// Put an `elicitation/create` in front of the user and wait.
 ///
-/// Always returns a valid reply, for the same reason
-/// [`approvals::ask`](super::approvals::ask) does: the agent is parked on this
-/// call and an error would leave it deciding for itself what a failure to ask
-/// means.
+/// Runtime uncertainty returns a valid reply, for the same reason
+/// [`approvals::ask`](super::approvals::ask) does. A broken first-party approval
+/// preference is returned as an error rather than silently changing the TTL.
 ///
 /// **The uncertain cases resolve to `decline`, not `cancel`, and that is the
 /// opposite of the permission path.** A permission that cannot be asked about
@@ -580,12 +580,12 @@ pub async fn ask(
     conversation_id: &str,
     turn: &TurnContext,
     params: CreateElicitationParams,
-) -> serde_json::Value {
+) -> Result<serde_json::Value, String> {
     let (form, call_id) = match prepare(params) {
         Ok(ready) => ready,
         Err(why) => {
             tracing::warn!(why, "could not draw an ACP elicitation");
-            return protocol::elicitation_declined();
+            return Ok(protocol::elicitation_declined());
         }
     };
 
@@ -595,7 +595,7 @@ pub async fn ask(
 
     // Worked out once, here, rather than by the waiter — see the note in
     // `acp::approvals::ask`.
-    let ttl = crate::approval::ttl(services);
+    let ttl = crate::approval::ttl(services)?;
 
     // Registered before the event goes out, so an answer cannot arrive before
     // there is somewhere to put it.
@@ -616,19 +616,20 @@ pub async fn ask(
         },
     );
 
-    let payload = serde_json::json!({
-        "type": "tool_approval_req",
-        "approval_id": approval_id,
-        "call_id": call_id,
-        "tool_name": ASK_TOOL,
-        "arguments": arguments,
-        "message_id": turn.assistant_message_id,
-        "conversation_id": conversation_id,
-    });
-    if let Err(e) = services.events.emit("chat-stream", payload) {
+    let event = ChatStreamEvent::ToolApprovalReq {
+        approval_id: approval_id.clone(),
+        call_id,
+        tool_name: ASK_TOOL.to_string(),
+        arguments,
+        message_id: turn.assistant_message_id.clone(),
+        conversation_id: conversation_id.to_string(),
+        delegation: None,
+        retry: None,
+    };
+    if let Err(e) = services.events.emit_chat(event) {
         services.approvals.claim(&approval_id);
         tracing::warn!(error = %e, "could not draw an ACP elicitation form");
-        return protocol::elicitation_declined();
+        return Ok(protocol::elicitation_declined());
     }
 
     let pool = services.db.clone();
@@ -641,7 +642,7 @@ pub async fn ask(
     )
     .await;
 
-    match decision {
+    Ok(match decision {
         Some(ApprovalDecision::Response(answers)) => match serde_json::from_str(&answers) {
             Ok(answers) => match form.content_from(&answers) {
                 Some(content) => protocol::elicitation_accepted(content),
@@ -660,7 +661,7 @@ pub async fn ask(
         // The turn ended under the form. Nothing is owed and nothing can be
         // answered into it.
         None => protocol::elicitation_cancelled(),
-    }
+    })
 }
 
 #[cfg(test)]

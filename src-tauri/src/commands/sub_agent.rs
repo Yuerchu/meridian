@@ -19,10 +19,11 @@ use meridian_core::agent::sub_agents::SubAgentKind;
 use meridian_core::agent::turn_record;
 use meridian_core::db;
 use meridian_core::db::DbPool;
-use meridian_core::db::models::assistant::Assistant;
-use meridian_core::db::models::conversation::NewConversation;
-use meridian_core::db::models::message::NewMessage;
+use meridian_core::db::models::assistant::AssistantRow;
+use meridian_core::db::models::conversation::ConversationInsert;
+use meridian_core::db::models::message::MessageInsert;
 use meridian_core::db::models::turn::{ERROR_LOOP_DETECTED, TurnStatus};
+use meridian_core::events::{ChatStopReason, ChatStreamEvent};
 use meridian_core::secrets::SecretsManager;
 use meridian_core::services::Services;
 use meridian_core::state::SubAgentInbox;
@@ -52,6 +53,13 @@ fn default_model_preference(kind: SubAgentKind) -> String {
     format!("sub_agent.{}.model", kind.as_str())
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConversationSteerRequest {
+    conversation_id: String,
+    text: String,
+}
+
 /// Say something to a run that is already going.
 ///
 /// Not a turn: it starts nothing, takes no lease and writes no row here. The
@@ -65,7 +73,8 @@ fn default_model_preference(kind: SubAgentKind) -> String {
 /// should not turn up in the transcript as though it had been received. The
 /// caller has it and can say so.
 #[tauri::command]
-pub async fn steer_conversation(app: tauri::AppHandle, conversation_id: String, text: String) -> Result<(), String> {
+pub async fn steer_conversation(app: tauri::AppHandle, request: ConversationSteerRequest) -> Result<(), String> {
+    let ConversationSteerRequest { conversation_id, text } = request;
     if text.trim().is_empty() {
         return Err("There is nothing to send.".to_string());
     }
@@ -94,7 +103,7 @@ pub(crate) struct DesktopSubAgents {
     /// The turn that delegated. Its cancellation has to reach the child, so the
     /// child is entered under a token derived from this one.
     pub parent_cancel: CancellationToken,
-    pub assistant: Option<Assistant>,
+    pub assistant: Option<AssistantRow>,
     pub project_id: Option<String>,
     /// The parent's, cloned per run with the conversation and the cancellation
     /// swapped. Same derivation as `without_sandbox`, and for the same reason:
@@ -159,19 +168,15 @@ impl DesktopSubAgents {
         // conversation to link to and no turn to count steps against for however
         // long the sub-agent takes, which is the whole time the user is looking
         // at it.
-        let _ = self.services.events.emit(
-            "chat-stream",
-            serde_json::json!({
-                "type": "sub_agent_started",
-                "conversation_id": &self.parent_conversation_id,
-                "message_id": &spec.parent_message_id,
-                "call_id": &spec.parent_call_id,
-                "sub_conversation_id": &sub_conversation_id,
-                "spawned_turn_id": &turn_id,
-                "kind": spec.kind.as_str(),
-                "description": &spec.description,
-            }),
-        );
+        let _ = self.services.events.emit_chat(ChatStreamEvent::SubAgentStarted {
+            conversation_id: self.parent_conversation_id.clone(),
+            message_id: spec.parent_message_id.clone(),
+            call_id: spec.parent_call_id.clone(),
+            sub_conversation_id: sub_conversation_id.clone(),
+            spawned_turn_id: turn_id.clone(),
+            kind: spec.kind,
+            description: spec.description.clone(),
+        });
 
         let outcome = self
             .run_loop(
@@ -210,17 +215,14 @@ impl DesktopSubAgents {
         // Sent even when no assistant row was ever written. Anyone with the
         // child's conversation open is sitting on the streaming flag the
         // snapshot's `adoptLiveTurn` set for them, and with no stop it stays set.
-        let _ = self.services.events.emit(
-            "chat-stream",
-            serde_json::json!({
-                "type": "stop", "reason": outcome.stop_reason(), "done": true,
-                "message_id": outcome.progress.message_id,
-                "turn_id": &turn_id,
-                "conversation_id": &sub_conversation_id,
-                "input_tokens": outcome.progress.input_tokens,
-                "output_tokens": outcome.progress.output_tokens,
-            }),
-        );
+        let _ = self.services.events.emit_chat(ChatStreamEvent::Stop {
+            reason: outcome.chat_stop_reason(),
+            message_id: outcome.progress.message_id.clone(),
+            turn_id: turn_id.clone(),
+            conversation_id: sub_conversation_id.clone(),
+            input_tokens: Some(outcome.progress.input_tokens),
+            output_tokens: Some(outcome.progress.output_tokens),
+        });
         guard.disarm();
         guard.release();
 
@@ -282,7 +284,7 @@ impl DesktopSubAgents {
     async fn resolve_model(
         &self,
         spec: &SubAgentSpec,
-    ) -> Result<(Assistant, meridian_core::agent::TurnParams), String> {
+    ) -> Result<(AssistantRow, meridian_core::agent::TurnParams), String> {
         let base = self
             .assistant
             .clone()
@@ -313,7 +315,7 @@ impl DesktopSubAgents {
         Ok((assistant, params))
     }
 
-    async fn resolve_params(&self, assistant: &Assistant) -> Result<meridian_core::agent::TurnParams, String> {
+    async fn resolve_params(&self, assistant: &AssistantRow) -> Result<meridian_core::agent::TurnParams, String> {
         let pool = self.pool.clone();
         let secrets = self.secrets.clone();
         let configured_max = self.assistant.as_ref().and_then(|a| a.max_tokens);
@@ -331,7 +333,7 @@ impl DesktopSubAgents {
         let mut params = tokio::task::spawn_blocking(move || {
             meridian_core::agent::resolve_turn_params(
                 &pool,
-                meridian_core::agent::TurnParamsInput {
+                meridian_core::agent::TurnParamsResolveRequest {
                     assistant: Some(&assistant),
                     provider_id: provider_id.as_deref(),
                     provider_type: &resolved.provider_type,
@@ -364,7 +366,7 @@ impl DesktopSubAgents {
         sub_conversation_id: &str,
         turn_id: &str,
         spec: &SubAgentSpec,
-        assistant: &Assistant,
+        assistant: &AssistantRow,
     ) -> Result<String, String> {
         let pool = self.pool.clone();
         let (conv_id, turn_id) = (sub_conversation_id.to_string(), turn_id.to_string());
@@ -386,7 +388,7 @@ impl DesktopSubAgents {
             conn.transaction::<_, diesel::result::Error, _>(|conn| {
                 db::ops::conversation::insert(
                     conn,
-                    NewConversation {
+                    ConversationInsert {
                         id: &conv_id,
                         title: Some(&title),
                         assistant_id: Some(&assistant_id),
@@ -406,7 +408,7 @@ impl DesktopSubAgents {
                 )?;
                 db::ops::message::append_message(
                     conn,
-                    &NewMessage {
+                    &MessageInsert {
                         id: &message_id,
                         conversation_id: &conv_id,
                         role: "user",
@@ -456,7 +458,7 @@ impl DesktopSubAgents {
     async fn run_loop(
         &self,
         spec: &SubAgentSpec,
-        assistant: &Assistant,
+        assistant: &AssistantRow,
         turn_params: &meridian_core::agent::TurnParams,
         sub_conversation_id: &str,
         turn_id: &str,
@@ -474,7 +476,7 @@ impl DesktopSubAgents {
             Err(e) => return engine::TurnOutcome::failed(e),
         };
 
-        let chat_messages = meridian_core::agent::build_messages_with_senders(
+        let chat_messages = match meridian_core::agent::build_messages_with_senders(
             config.system_prompt.trim(),
             &db::ops::message::ActiveContext {
                 path: Vec::new(),
@@ -484,7 +486,10 @@ impl DesktopSubAgents {
             },
             meridian_core::agent::trailing_with_memory(None, None, &spec.prompt, None),
             &Default::default(),
-        );
+        ) {
+            Ok(messages) => messages,
+            Err(error) => return engine::TurnOutcome::failed(error),
+        };
 
         let mut budget = meridian_core::agent::TokenBudget::new(
             &provider.1.provider_type,
@@ -602,7 +607,7 @@ impl DesktopSubAgents {
 
     async fn build_config(
         &self,
-        assistant: &Assistant,
+        assistant: &AssistantRow,
         sub_conversation_id: &str,
         turn_params: &meridian_core::agent::TurnParams,
     ) -> Result<meridian_core::agent::turn_config::TurnConfig, String> {
@@ -614,7 +619,7 @@ impl DesktopSubAgents {
         } else {
             self.mcp.tool_definitions().as_ref().clone()
         };
-        let input = meridian_core::agent::turn_config::TurnConfigInput {
+        let input = meridian_core::agent::turn_config::TurnConfigResolveRequest {
             assistant: Some(assistant.clone()),
             server_tools: turn_params.params.server_tools.clone(),
             conversation_id: sub_conversation_id.to_string(),
@@ -635,7 +640,7 @@ impl DesktopSubAgents {
         let registry = self.registry.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
-            Ok::<_, String>(meridian_core::agent::turn_config::resolve(&mut conn, &registry, input))
+            meridian_core::agent::turn_config::resolve(&mut conn, &registry, input)
         })
         .await
         .map_err(|e| e.to_string())?
@@ -644,7 +649,7 @@ impl DesktopSubAgents {
     /// The provider instance, and the provider type the token counter needs.
     async fn build_provider(
         &self,
-        assistant: &Assistant,
+        assistant: &AssistantRow,
     ) -> Result<
         (
             Box<dyn meridian_core::provider::ChatProvider>,
@@ -664,9 +669,9 @@ impl DesktopSubAgents {
             &resolved.provider_type,
             &resolved.base_url,
             &resolved.credential,
-            Some(&resolved.api_format),
-            Some(&resolved.transport_profile),
-        );
+            &resolved.api_format,
+            &resolved.transport_profile,
+        )?;
         // The whole resolution travels back, not just the type: the rows this run
         // writes record which upstream answered, and a sub-agent can be pointed
         // at a different one than its parent.
@@ -691,12 +696,12 @@ impl DesktopSubAgents {
 ///   assistant uses a preset containing write tools would hand them to an agent
 ///   whose whole definition is that it cannot change anything.
 fn effective_assistant(
-    base: Assistant,
+    base: AssistantRow,
     kind: SubAgentKind,
     provider_id: Option<String>,
     model_id: Option<String>,
-) -> Assistant {
-    let mut a = Assistant {
+) -> AssistantRow {
+    let mut a = AssistantRow {
         provider_id,
         model_id,
         context_limit: 0,
@@ -808,15 +813,14 @@ impl Drop for ChildTurnGuard {
         // occupied.
         self.lease.take();
         if self.armed {
-            let _ = self.services.events.emit(
-                "chat-stream",
-                serde_json::json!({
-                    "type": "stop", "reason": "error", "done": true,
-                    "message_id": self.message_id,
-                    "turn_id": self.turn_id,
-                    "conversation_id": self.conversation_id,
-                }),
-            );
+            let _ = self.services.events.emit_chat(ChatStreamEvent::Stop {
+                reason: ChatStopReason::Error,
+                message_id: self.message_id.clone(),
+                turn_id: self.turn_id.clone(),
+                conversation_id: self.conversation_id.clone(),
+                input_tokens: None,
+                output_tokens: None,
+            });
         }
     }
 }
@@ -825,11 +829,31 @@ impl Drop for ChildTurnGuard {
 mod tests {
     use super::*;
     use meridian_core::agent::modes::Modes;
-    use meridian_core::agent::turn_config::{TurnConfigInput, resolve};
+    use meridian_core::agent::turn_config::{TurnConfigResolveRequest, resolve};
     use meridian_core::db::test_db;
 
-    fn parent(preset: Option<&str>, enabled: Option<&str>) -> Assistant {
-        Assistant {
+    #[test]
+    fn conversation_steer_request_is_named_and_strict() {
+        let request: ConversationSteerRequest = serde_json::from_value(serde_json::json!({
+            "conversationId": "conversation-1",
+            "text": "check the failing test",
+        }))
+        .expect("valid steer request");
+        assert_eq!(request.conversation_id, "conversation-1");
+        assert_eq!(request.text, "check the failing test");
+
+        assert!(
+            serde_json::from_value::<ConversationSteerRequest>(serde_json::json!({
+                "conversationId": "conversation-1",
+                "text": "check the failing test",
+                "urgent": true,
+            }))
+            .is_err()
+        );
+    }
+
+    fn parent(preset: Option<&str>, enabled: Option<&str>) -> AssistantRow {
+        AssistantRow {
             id: "a1".into(),
             name: "A".into(),
             description: None,
@@ -861,14 +885,14 @@ mod tests {
         )
     }
 
-    fn config_for(child: Assistant) -> meridian_core::agent::turn_config::TurnConfig {
+    fn config_for(child: AssistantRow) -> meridian_core::agent::turn_config::TurnConfig {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         meridian_core::db::ops::conversation::create_conversation(&mut conn, "sub-1", None, None, None, 1).unwrap();
         resolve(
             &mut conn,
             &registry(),
-            TurnConfigInput {
+            TurnConfigResolveRequest {
                 assistant: Some(child),
                 server_tools: Vec::new(),
                 conversation_id: "sub-1".into(),
@@ -881,6 +905,7 @@ mod tests {
                 context_blocks: Vec::new(),
             },
         )
+        .unwrap()
     }
 
     /// The parent's numbers describe the parent's model. Carried over, a

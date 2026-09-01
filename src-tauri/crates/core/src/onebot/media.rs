@@ -228,12 +228,8 @@ async fn resolve_supports_images(
         let model = override_model
             .or_else(|| assistant.as_ref().and_then(|a| a.model_id.clone()))
             .unwrap_or(resolved_model);
-        let caps = crate::provider::registry::get_capabilities(
-            &provider_type,
-            Some(&api_format),
-            Some(&transport_profile),
-            &model,
-        );
+        let caps = crate::provider::registry::get_capabilities(&provider_type, &api_format, &transport_profile, &model)
+            .ok()?;
         Some(caps.supports_images)
     })
     .await

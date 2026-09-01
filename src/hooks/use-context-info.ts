@@ -1,19 +1,19 @@
 import { useEffect, useState } from 'react'
 import { api } from '@/api'
-import type { Assistant } from '@/types'
+import type { AssistantInfoResponse, CompactCircuitBreakerState, ConversationAgentKind } from '@/types'
 
-export interface ContextInfo {
+export interface ContextUsageView {
   messageCount: number
   estimatedTokens: number
   contextLimit: number
   autoCompactEnabled: boolean
   autoCompactThreshold: number
-  compactBreaker: string
+  compactBreaker: CompactCircuitBreakerState
   /** The model the window is being measured against, which is the turn's own
    *  rather than the assistant's once a conversation has pinned one. */
   model: string
-  /** Set only for a delegated run, and names which kind it is. */
-  agentKind?: string
+  /** Names a delegated run's kind; null for an ordinary conversation. */
+  agentKind: ConversationAgentKind | null
 }
 
 /** What the transcript looks like from the backend's side: how full it is, and
@@ -21,21 +21,22 @@ export interface ContextInfo {
 export function useContextInfo(
   conversationId: string,
   deps: {
-    assistant: Assistant | undefined
+    assistant: AssistantInfoResponse | undefined
     messageCount: number
     compactBoundary: number | null
     compacting: boolean
   },
-): ContextInfo {
+): ContextUsageView {
   const { assistant, messageCount, compactBoundary, compacting } = deps
-  const [contextInfo, setContextInfo] = useState<ContextInfo>({
+  const [contextInfo, setContextInfo] = useState<ContextUsageView>({
     messageCount: 0,
     estimatedTokens: 0,
     contextLimit: assistant?.context_limit ?? 128000,
-    autoCompactEnabled: assistant?.auto_compact_enabled === 1,
+    autoCompactEnabled: assistant?.auto_compact_enabled ?? false,
     autoCompactThreshold: 0,
     compactBreaker: 'closed',
     model: '',
+    agentKind: null,
   })
 
   useEffect(() => {

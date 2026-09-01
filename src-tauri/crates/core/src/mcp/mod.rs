@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
-use crate::db::models::mcp_server::McpServer;
+use crate::db::models::mcp_server::{McpServerRow, McpTransport as McpTransportKind};
 use crate::provider::ToolDefinition;
 use actor::{ActorHandle, ActorObituary};
 use protocol::{McpCallToolResult, McpToolsListResult};
@@ -273,7 +273,7 @@ impl McpRegistry {
     /// waits on the first rather than starting a second process. Returning
     /// `Ok(())` immediately instead would tell the settings page a connection
     /// was established while the handshake was still running.
-    pub async fn connect(self: &Arc<Self>, server: &McpServer) -> Result<(), String> {
+    pub async fn connect(self: &Arc<Self>, server: &McpServerRow) -> Result<(), String> {
         enum Start {
             /// Someone else is already doing this; wait for their answer.
             Join(watch::Receiver<ConnectResult>),
@@ -377,7 +377,7 @@ impl McpRegistry {
     }
 
     /// Build the transport and complete the handshake. Runs with no lock held.
-    async fn dial(&self, server: &McpServer) -> Result<(Box<dyn McpTransport>, Vec<protocol::McpToolInfo>), String> {
+    async fn dial(&self, server: &McpServerRow) -> Result<(Box<dyn McpTransport>, Vec<protocol::McpToolInfo>), String> {
         let started = std::time::Instant::now();
         let fail = |stage: &'static str, error: String| -> String {
             tracing::warn!(
@@ -396,35 +396,37 @@ impl McpRegistry {
         #[cfg(not(test))]
         let staged: Option<Box<dyn McpTransport>> = None;
 
+        let transport_type = McpTransportKind::parse(&server.transport_type).map_err(|error| fail("config", error))?;
         let mut transport: Box<dyn McpTransport> = match staged {
             Some(t) => t,
-            None => match server.transport_type.as_str() {
-                "stdio" => {
+            None => match transport_type {
+                McpTransportKind::Stdio => {
                     let command = server
                         .command
                         .as_deref()
                         .ok_or_else(|| fail("config", "missing command".into()))?;
-                    let args = parse_config_field::<Vec<String>>(server.args.as_deref(), "args", &server.id);
+                    let args = parse_config_field::<Vec<String>>(server.args.as_deref(), "args")
+                        .map_err(|error| fail("config", error))?;
                     // A malformed env is the worst of the three: the server starts
                     // without its token and fails every call with a 401 that looks
                     // like the user's key is wrong.
-                    let env = parse_config_field::<HashMap<String, String>>(server.env.as_deref(), "env", &server.id);
+                    let env = parse_config_field::<HashMap<String, String>>(server.env.as_deref(), "env")
+                        .map_err(|error| fail("config", error))?;
                     Box::new(
                         StdioTransport::spawn(command, &args, &env, None)
                             .await
                             .map_err(|e| fail("spawn", e))?,
                     )
                 }
-                "streamablehttp" => {
+                McpTransportKind::StreamableHttp => {
                     let url = server
                         .url
                         .as_deref()
                         .ok_or_else(|| fail("config", "missing URL".into()))?;
-                    let headers =
-                        parse_config_field::<HashMap<String, String>>(server.headers.as_deref(), "headers", &server.id);
+                    let headers = parse_config_field::<HashMap<String, String>>(server.headers.as_deref(), "headers")
+                        .map_err(|error| fail("config", error))?;
                     Box::new(StreamableHttpTransport::new(url, &headers).map_err(|e| fail("connect", e))?)
                 }
-                other => return Err(fail("config", format!("unsupported transport: {other}"))),
             },
         };
 
@@ -467,7 +469,7 @@ impl McpRegistry {
     /// happened while we were dialling, and this transport is already stale.
     fn commit(
         self: &Arc<Self>,
-        server: &McpServer,
+        server: &McpServerRow,
         generation: u64,
         transport: Box<dyn McpTransport>,
         tools: Vec<protocol::McpToolInfo>,
@@ -785,29 +787,18 @@ impl ActorObituary for McpRegistry {
     }
 }
 
-/// Parse one JSON-encoded config field, falling back to the default.
+/// Parse one JSON-encoded config field. Absence means an empty collection;
+/// malformed persisted JSON is a configuration error.
 ///
 /// The value is never logged: `env` and `headers` are exactly where tokens
 /// live. serde's message carries a position, not the contents.
 fn parse_config_field<T: Default + serde::de::DeserializeOwned>(
     raw: Option<&str>,
     field: &'static str,
-    server_id: &str,
-) -> T {
+) -> Result<T, String> {
     let Some(raw) = raw.filter(|s| !s.trim().is_empty()) else {
-        return T::default();
+        return Ok(T::default());
     };
-    match serde_json::from_str(raw) {
-        Ok(value) => value,
-        Err(e) => {
-            tracing::warn!(
-                server_id = %server_id,
-                field,
-                line = e.line(),
-                column = e.column(),
-                "malformed MCP server config; continuing without it"
-            );
-            T::default()
-        }
-    }
+    serde_json::from_str(raw)
+        .map_err(|error| format!("invalid MCP {field} JSON at {}:{}", error.line(), error.column()))
 }

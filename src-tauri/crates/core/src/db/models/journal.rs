@@ -37,7 +37,7 @@ pub mod version_source {
 
 #[derive(Debug, Clone, Queryable, Selectable, Identifiable, Serialize)]
 #[diesel(table_name = journal_files)]
-pub struct JournalFile {
+pub struct JournalFileRow {
     pub id: String,
     /// Canonical, normalised, case-folded on Windows — a matching key, not a
     /// display string.
@@ -49,7 +49,7 @@ pub struct JournalFile {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = journal_files)]
-pub struct NewJournalFile<'a> {
+pub struct JournalFileInsert<'a> {
     pub id: &'a str,
     pub norm_path: &'a str,
     pub display_path: &'a str,
@@ -59,7 +59,7 @@ pub struct NewJournalFile<'a> {
 
 #[derive(Debug, Clone, Queryable, Selectable, Serialize)]
 #[diesel(table_name = journal_blobs)]
-pub struct JournalBlob {
+pub struct JournalBlobRow {
     pub sha256: String,
     pub byte_len: i64,
     pub line_count: i32,
@@ -68,7 +68,7 @@ pub struct JournalBlob {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = journal_blobs)]
-pub struct NewJournalBlob<'a> {
+pub struct JournalBlobInsert<'a> {
     pub sha256: &'a str,
     pub byte_len: i64,
     pub line_count: i32,
@@ -77,7 +77,7 @@ pub struct NewJournalBlob<'a> {
 
 #[derive(Debug, Clone, Queryable, Selectable, Identifiable, Serialize)]
 #[diesel(table_name = journal_versions)]
-pub struct JournalVersion {
+pub struct JournalVersionRow {
     pub id: String,
     pub file_id: String,
     pub seq: i64,
@@ -105,7 +105,7 @@ pub struct JournalVersion {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = journal_versions)]
-pub struct NewJournalVersion<'a> {
+pub struct JournalVersionInsert<'a> {
     pub id: &'a str,
     pub file_id: &'a str,
     pub seq: i64,

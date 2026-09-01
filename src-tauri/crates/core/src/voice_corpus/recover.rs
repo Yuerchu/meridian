@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use crate::db::DbPool;
-use crate::db::models::voice_corpus::VoiceBlob;
+use crate::db::models::voice_corpus::VoiceBlobRow;
 use crate::db::ops::voice_corpus as ops;
 
 /// 收拾的结果，只用来记一行日志。
@@ -98,7 +98,7 @@ pub fn run(pool: &DbPool, app_data_dir: &Path, writable: bool) -> Result<Recover
     Ok(out)
 }
 
-fn blob_path(app_data_dir: &Path, key: &[u8], blob: &VoiceBlob) -> std::path::PathBuf {
+fn blob_path(app_data_dir: &Path, key: &[u8], blob: &VoiceBlobRow) -> std::path::PathBuf {
     let pseudonym = super::session_pseudonym(key, blob.bot_self_id, &blob.source_type, &blob.source_id);
     super::session_dir(app_data_dir, &pseudonym).join(&blob.file_name)
 }
@@ -111,7 +111,7 @@ fn sweep_stray_files(conn: &mut diesel::SqliteConnection, app_data_dir: &Path, k
     use diesel::prelude::*;
 
     let known: HashSet<std::path::PathBuf> = crate::db::schema::voice_blobs::table
-        .select(crate::db::models::voice_corpus::VoiceBlob::as_select())
+        .select(crate::db::models::voice_corpus::VoiceBlobRow::as_select())
         .load(conn)
         .map_err(|e| e.to_string())?
         .iter()
@@ -149,13 +149,13 @@ mod tests {
 
     /// 行**照着字节来**：sha 和大小都从 `bytes` 算，所以 fixture 本身是自洽的,
     /// 一条测试要制造"对不上"就得明确地去改磁盘。
-    fn blob(conn: &mut diesel::SqliteConnection, id: &str, status: &str, bytes: &[u8]) -> VoiceBlob {
-        use crate::db::models::voice_corpus::NewVoiceBlob;
+    fn blob(conn: &mut diesel::SqliteConnection, id: &str, status: &str, bytes: &[u8]) -> VoiceBlobRow {
+        use crate::db::models::voice_corpus::VoiceBlobInsert;
         use crate::db::schema::voice_blobs;
         use diesel::prelude::*;
         let pending = status == blob_status::PENDING;
         diesel::insert_into(voice_blobs::table)
-            .values(&NewVoiceBlob {
+            .values(&VoiceBlobInsert {
                 id,
                 bot_self_id: 1,
                 source_type: "onebot_group",
@@ -175,7 +175,7 @@ mod tests {
             .unwrap();
         voice_blobs::table
             .find(id)
-            .select(VoiceBlob::as_select())
+            .select(VoiceBlobRow::as_select())
             .first(conn)
             .unwrap()
     }
@@ -189,7 +189,7 @@ mod tests {
         })
     }
 
-    fn write_blob_file(dir: &Path, pool: &DbPool, b: &VoiceBlob, bytes: &[u8]) {
+    fn write_blob_file(dir: &Path, pool: &DbPool, b: &VoiceBlobRow, bytes: &[u8]) {
         let key = super::super::storage_key(pool).unwrap();
         let path = blob_path(dir, &key, b);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();

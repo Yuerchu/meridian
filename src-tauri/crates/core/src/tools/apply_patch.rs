@@ -136,12 +136,7 @@ impl Tool for ApplyPatchTool {
                     deleted.push(path.clone());
                 }
                 FileOp::Update(update) => {
-                    let apply = |original: &str| -> Result<String, String> {
-                        match &update.body {
-                            UpdateBody::Numbered(hunks) => apply_hunks(original, hunks),
-                            UpdateBody::Contextual(chunks) => apply_context_chunks(original, chunks, &update.path),
-                        }
-                    };
+                    let apply = |original: &str| apply_file_update(original, update);
 
                     // An in-place update is the one shape that can run on a
                     // single handle: what the hunks matched against is what
@@ -314,6 +309,69 @@ fn parse_patch(patch: &str) -> Result<Vec<FileOp>, String> {
         ));
     }
     Ok(ops)
+}
+
+/// Apply the restricted patch language used by plan mode to an in-memory
+/// `plan.md`. This shares both parsers and both applicators with the ordinary
+/// filesystem tool, but admits exactly one operation against exactly one
+/// logical path. The caller persists the returned snapshot and materializes
+/// the private file atomically.
+pub fn apply_plan_patch(current: Option<&str>, patch: &str) -> Result<String, String> {
+    let mut ops = parse_patch(patch)?;
+    if ops.len() != 1 {
+        return Err("a plan update must contain exactly one file operation for plan.md".into());
+    }
+
+    let next = match ops.remove(0) {
+        FileOp::Add { path, content } => {
+            require_plan_path(&path)?;
+            if current.is_some() {
+                return Err("plan.md already exists; revise it with an Update File patch".into());
+            }
+            content
+        }
+        FileOp::Delete { .. } => return Err("plan.md cannot be deleted".into()),
+        FileOp::Update(update) => {
+            require_plan_path(&update.path)?;
+            if update.move_to.is_some() {
+                return Err("plan.md cannot be moved".into());
+            }
+            if update.is_new_file {
+                if current.is_some() {
+                    return Err("plan.md already exists; the /dev/null form is only valid for the first draft".into());
+                }
+                apply_file_update("", &update)?
+            } else {
+                let original = current.ok_or(
+                    "plan.md does not exist; create the first draft with Add File: plan.md or a /dev/null diff",
+                )?;
+                apply_file_update(original, &update)?
+            }
+        }
+    };
+
+    if next.trim().is_empty() {
+        return Err("the resulting plan.md is empty".into());
+    }
+    if current == Some(next.as_str()) {
+        return Err("the patch makes no changes to plan.md".into());
+    }
+    Ok(next)
+}
+
+fn require_plan_path(path: &str) -> Result<(), String> {
+    if path.replace('\\', "/") == "plan.md" {
+        Ok(())
+    } else {
+        Err(format!("plan mode patches may only target plan.md, not {path:?}"))
+    }
+}
+
+fn apply_file_update(original: &str, update: &FileUpdate) -> Result<String, String> {
+    match &update.body {
+        UpdateBody::Numbered(hunks) => apply_hunks(original, hunks),
+        UpdateBody::Contextual(chunks) => apply_context_chunks(original, chunks, &update.path),
+    }
 }
 
 fn preview80(s: &str) -> String {
@@ -840,6 +898,42 @@ fn apply_hunks(original: &str, hunks: &[Hunk]) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plan_patch_requires_an_add_then_updates_the_same_virtual_file() {
+        let first = apply_plan_patch(
+            None,
+            "*** Begin Patch\n*** Add File: plan.md\n+# 计划\n+\n+处理 😀\n*** End Patch\n",
+        )
+        .unwrap();
+        assert_eq!(first, "# 计划\n\n处理 😀\n");
+
+        let second = apply_plan_patch(
+            Some(&first),
+            "*** Begin Patch\n*** Update File: plan.md\n@@\n-处理 😀\n+处理 😀 并测试\n*** End Patch\n",
+        )
+        .unwrap();
+        assert_eq!(second, "# 计划\n\n处理 😀 并测试\n");
+    }
+
+    #[test]
+    fn plan_patch_rejects_other_files_destructive_ops_and_noops() {
+        let current = "# Plan\n";
+        for patch in [
+            "*** Begin Patch\n*** Update File: other.md\n@@\n-x\n+y\n*** End Patch\n",
+            "*** Begin Patch\n*** Delete File: plan.md\n*** End Patch\n",
+            "*** Begin Patch\n*** Update File: plan.md\n@@\n # Plan\n*** End Patch\n",
+        ] {
+            assert!(apply_plan_patch(Some(current), patch).is_err(), "accepted {patch}");
+        }
+    }
+
+    #[test]
+    fn plan_patch_preserves_crlf() {
+        let current = "# Plan\r\n\r\nOne\r\n";
+        let patch = "--- a/plan.md\n+++ b/plan.md\n@@ -1,3 +1,3 @@\n # Plan\n \n-One\n+Two\n";
+        assert_eq!(apply_plan_patch(Some(current), patch).unwrap(), "# Plan\r\n\r\nTwo\r\n");
+    }
 
     #[test]
     fn test_apply_hunks_context_and_add() {

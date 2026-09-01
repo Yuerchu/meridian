@@ -1,9 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ProviderSettings } from './provider-settings'
 import i18n from '@/i18n'
 import { api } from '@/api'
-import type { Provider, ProviderCatalogEntry } from '@/types'
+import { decimal } from '@/lib/decimal'
+import type { ProviderCatalogEntryInfoResponse, ProviderInfoResponse } from '@/types'
 import { resizeViewportTo } from '@/test/viewport'
 import { setContainerWidth } from '@/test/resize'
 
@@ -27,13 +28,13 @@ vi.mock('@/api', () => ({
 
 const mockApi = vi.mocked(api)
 
-function makeProvider(id: string, name: string): Provider {
+function makeProvider(id: string, name: string): ProviderInfoResponse {
   return {
     id,
     name,
     provider_type: 'openai',
     base_url: 'https://api.openai.com/v1',
-    is_enabled: 1,
+    is_enabled: true,
     sort_order: 0,
     created_at: 0,
     updated_at: 0,
@@ -50,14 +51,14 @@ function makeProvider(id: string, name: string): Provider {
  * one: these tests are about the panel's behaviour given a catalog, not about
  * what today's catalog happens to contain.
  */
-const CATALOG: ProviderCatalogEntry[] = [
+const CATALOG: ProviderCatalogEntryInfoResponse[] = [
   {
     id: 'openai',
     provider_type: 'openai',
     name: 'OpenAI',
     icon: 'openai',
     balance: false,
-    websites: {},
+    websites: { official: null, api_key: null, docs: null, models: null },
     auth: [
       {
         id: 'api_key',
@@ -69,6 +70,13 @@ const CATALOG: ProviderCatalogEntry[] = [
           responses: 'https://api.openai.com/v1',
         },
       },
+      {
+        id: 'codex_cli',
+        credential_kind: 'codex_cli',
+        transport_profile: 'chatgpt_codex',
+        api_formats: ['responses'],
+        default_base_url: { responses: 'https://chatgpt.com/backend-api/codex' },
+      },
     ],
     models: [],
   },
@@ -78,7 +86,7 @@ const CATALOG: ProviderCatalogEntry[] = [
     name: 'Google Gemini',
     icon: 'google',
     balance: false,
-    websites: {},
+    websites: { official: null, api_key: null, docs: null, models: null },
     auth: [
       {
         id: 'api_key',
@@ -189,14 +197,14 @@ describe('ProviderSettings list/detail navigation', () => {
     render(<ProviderSettings />)
     await screen.findByText('Provider One')
     await user.click(screen.getByRole('button', { name: i18n.t('settings.provider.addProvider') }))
-    expect(mockApi.createProvider).toHaveBeenCalledWith(
-      'OpenAI',
-      'openai',
-      'https://api.openai.com/v1',
-      'chat_completions',
-      'openai',
-      'api_key',
-    )
+    expect(mockApi.createProvider).toHaveBeenCalledWith({
+      name: 'OpenAI',
+      providerType: 'openai',
+      baseUrl: 'https://api.openai.com/v1',
+      apiFormat: 'chat_completions',
+      catalogId: 'openai',
+      authOption: 'api_key',
+    })
   })
 
   // A single dialect means there is nothing to choose. This used to be the
@@ -261,7 +269,7 @@ describe('ProviderSettings list/detail navigation', () => {
     const fetchButton = screen.getByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) })
     expect(fetchButton).not.toBeDisabled()
     await user.click(fetchButton)
-    expect(mockApi.fetchProviderModels).toHaveBeenCalledWith('codex-1', true)
+    expect(mockApi.fetchProviderModels).toHaveBeenCalledWith({ providerId: 'codex-1', forceRefresh: true })
   })
 
   it('renders fetched models as a data grid and keeps model configuration accessible', async () => {
@@ -282,14 +290,14 @@ describe('ProviderSettings list/detail navigation', () => {
         context_window: 128000,
         compact_threshold: 100000,
         max_output_tokens: null,
-        input_price: 1.25,
-        output_price: 10,
-        cache_price: null,
+        input_price: decimal('1.25'),
+        output_price: decimal('10'),
+        cache_read_price: null,
         cache_write_price: null,
         created_at: 0,
         updated_at: 0,
         capability_overrides: null,
-        price_tiers: null,
+        pricing_tiers: [],
         server_tools: null,
         server_tool_price: null,
       },
@@ -301,14 +309,14 @@ describe('ProviderSettings list/detail navigation', () => {
         context_window: 128000,
         compact_threshold: 100000,
         max_output_tokens: null,
-        input_price: 0,
-        output_price: 0,
-        cache_price: null,
+        input_price: decimal('0'),
+        output_price: decimal('0'),
+        cache_read_price: null,
         cache_write_price: null,
         created_at: 0,
         updated_at: 0,
         capability_overrides: null,
-        price_tiers: null,
+        pricing_tiers: [],
         server_tools: null,
         server_tool_price: null,
       },
@@ -362,6 +370,133 @@ describe('ProviderSettings list/detail navigation', () => {
     expect(await screen.findByRole('textbox', { name: i18n.t('settings.model.contextWindow') })).toHaveValue('128000')
   })
 
+  it('sends canonical decimal strings and typed price tiers to IPC', async () => {
+    mockViewport(false)
+    const user = userEvent.setup()
+    mockApi.getProviderKeyExists.mockResolvedValue(true)
+    mockApi.fetchProviderModels.mockResolvedValue([{ id: 'priced-model', name: 'Priced model' }])
+    mockApi.saveModelConfig.mockResolvedValue(undefined as never)
+    render(<ProviderSettings />)
+
+    await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
+    const grid = await screen.findByRole('grid', { name: i18n.t('settings.provider.models') })
+    await user.click(
+      within(grid).getByRole('button', {
+        name: i18n.t('settings.provider.editModelConfig', { model: 'Priced model' }),
+      }),
+    )
+
+    const inputPrice = screen.getByRole('textbox', { name: i18n.t('settings.model.inputPrice') })
+    const outputPrice = screen.getByRole('textbox', { name: i18n.t('settings.model.outputPrice') })
+    const cachePrice = screen.getByRole('textbox', { name: i18n.t('settings.model.cachePrice') })
+    fireEvent.change(inputPrice, { target: { value: '0001.2300' } })
+    fireEvent.change(outputPrice, { target: { value: '2.5000' } })
+    fireEvent.change(cachePrice, { target: { value: '0.1250' } })
+
+    await user.click(screen.getByRole('button', { name: i18n.t('settings.model.priceTiers') }))
+    await user.click(await screen.findByRole('button', { name: i18n.t('settings.model.addTier') }))
+    const tierThreshold = screen.getByRole('textbox', { name: i18n.t('settings.model.tierThreshold') })
+    const tierInput = screen.getAllByRole('textbox', { name: i18n.t('settings.model.inputPrice') })[1]
+    const tierOutput = screen.getAllByRole('textbox', { name: i18n.t('settings.model.outputPrice') })[1]
+    fireEvent.change(tierThreshold, { target: { value: '200000' } })
+    fireEvent.change(tierInput, { target: { value: '04.2500' } })
+    fireEvent.change(tierOutput, { target: { value: '12.500' } })
+
+    const saveButtons = screen.getAllByRole('button', { name: i18n.t('common.save') })
+    await user.click(saveButtons[saveButtons.length - 1])
+
+    await waitFor(() =>
+      expect(mockApi.saveModelConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider_id: 'p1',
+          model_id: 'priced-model',
+          input_price: '1.23',
+          output_price: '2.5',
+          cache_read_price: '0.125',
+          cache_write_price: null,
+          pricing_tiers: [
+            {
+              min_prompt_tokens: 200000,
+              input_price: '4.25',
+              output_price: '12.5',
+              cache_read_price: null,
+              cache_write_price: null,
+            },
+          ],
+          server_tool_price: null,
+        }),
+      ),
+    )
+  })
+
+  it('keeps model capability overrides and server tools structured across IPC', async () => {
+    mockViewport(false)
+    const user = userEvent.setup()
+    mockApi.getProviderKeyExists.mockResolvedValue(true)
+    mockApi.fetchProviderModels.mockResolvedValue([{ id: 'structured-model', name: 'Structured model' }])
+    mockApi.listModelConfigs.mockResolvedValue([
+      {
+        id: 'structured-config',
+        provider_id: 'p1',
+        model_id: 'structured-model',
+        display_name: null,
+        context_window: 128000,
+        compact_threshold: 100000,
+        max_output_tokens: null,
+        input_price: null,
+        output_price: null,
+        cache_read_price: null,
+        cache_write_price: null,
+        created_at: 0,
+        updated_at: 0,
+        capability_overrides: { supports_thinking: false, default_effort: null },
+        pricing_tiers: [],
+        server_tools: ['web_search'],
+        server_tool_price: null,
+      },
+    ])
+    mockApi.getProviderCapabilities.mockResolvedValue({
+      supports_tools: true,
+      supports_streaming_tools: true,
+      supports_thinking: true,
+      supports_thinking_off: true,
+      supports_images: false,
+      max_context_tokens: 128000,
+      max_output_tokens: 32000,
+      supports_pdf: false,
+      supports_temperature: true,
+      supports_top_p: true,
+      max_temperature: 2,
+      thinking_style: 'effort_only',
+      supported_efforts: ['low', 'medium', 'high'],
+      default_effort: 'medium',
+      supports_fast: false,
+      supports_verbosity: false,
+      default_verbosity: null,
+      server_tools: ['web_search'],
+    })
+    mockApi.saveModelConfig.mockResolvedValue(undefined as never)
+    render(<ProviderSettings />)
+
+    await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
+    const grid = await screen.findByRole('grid', { name: i18n.t('settings.provider.models') })
+    await user.click(
+      within(grid).getByRole('button', {
+        name: i18n.t('settings.provider.editModelConfig', { model: 'Structured model' }),
+      }),
+    )
+    const saveButtons = screen.getAllByRole('button', { name: i18n.t('common.save') })
+    await user.click(saveButtons[saveButtons.length - 1])
+    await waitFor(() =>
+      expect(mockApi.saveModelConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          capability_overrides: { supports_thinking: false, default_effort: null },
+          server_tools: ['web_search'],
+        }),
+      ),
+    )
+  })
+
   /** An API-key provider keeps the field it has always had. */
   it('an API-key provider still gets a key field', async () => {
     mockViewport(false)
@@ -402,8 +537,8 @@ describe('ProviderSettings list/detail navigation', () => {
     await user.click(await screen.findByRole('option', { name: i18n.t('settings.provider.authMethodCodexCli') }))
 
     expect(mockApi.updateProvider).toHaveBeenCalledWith(
-      'p1',
       expect.objectContaining({
+        id: 'p1',
         credentialKind: 'codex_cli',
         transportProfile: 'chatgpt_codex',
         apiFormat: 'responses',

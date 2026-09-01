@@ -12,6 +12,7 @@ import { RemoteClientSettings } from './remote-client-settings'
 import { SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
 import { useSettingsDirtyRegistration } from './dirty-guard'
 import { useConfirm } from '@/hooks/use-confirm'
+import type { SandboxMode, SearchProvider, ShellType } from '@/types'
 
 const LANGUAGE_OPTIONS = LANGUAGES.map((lang) => ({ value: lang.code, label: lang.label }))
 
@@ -19,20 +20,20 @@ const SHELLS = [
   { value: 'bash', label: 'Bash (Git Bash)' },
   { value: 'powershell', label: 'PowerShell' },
   { value: 'cmd', label: 'CMD' },
-]
+] as const
 
 const SEARCH_PROVIDERS = [
   { value: 'tavily', label: 'Tavily', keyService: 'TAVILY' },
   { value: 'zhipu', label: '智谱 (Zhipu)', keyService: 'ZHIPU_SEARCH' },
-]
+] as const
 
 export function GeneralSettings() {
   const { t, i18n } = useTranslation()
   const platform = usePlatform()
   const { theme, setTheme } = useAppTheme()
-  const [shell, setShell] = useState('bash')
-  const [sandboxMode, setSandboxMode] = useState('auto')
-  const [searchProvider, setSearchProvider] = useState('tavily')
+  const [shell, setShell] = useState<ShellType>('bash')
+  const [sandboxMode, setSandboxMode] = useState<SandboxMode>('auto')
+  const [searchProvider, setSearchProvider] = useState<SearchProvider>('tavily')
   const [searchApiKey, setSearchApiKey] = useState('')
   const [searchKeyExists, setSearchKeyExists] = useState(false)
   const [searchKeySaved, markSearchKeySaved, clearSearchKeySaved] = useTemporaryFlag()
@@ -42,20 +43,16 @@ export function GeneralSettings() {
   useSettingsDirtyRegistration('general', 'search-api-key', searchApiKey.trim().length > 0)
 
   useEffect(() => {
-    api.getPreference('shell').then((v) => {
-      if (v) setShell(v)
+    api.getPreference({ key: 'shell' }).then(({ value }) => {
+      if (value) setShell(value)
     })
-    // One key, more values. `auto` is what an unset or unreadable preference has
-    // always meant: whatever this platform confines commands with, and nothing
-    // where it has none.
-    api.getPreference('sandbox.enabled').then((v) => {
-      const raw = (v ?? '').trim()
-      if (raw === 'false' || raw === 'off') setSandboxMode('off')
-      else if (raw === 'container' || raw === 'docker') setSandboxMode('container')
-      else setSandboxMode('auto')
+    // `auto` is the canonical missing-value default: whatever this platform
+    // confines commands with, and nothing where it has none.
+    api.getPreference({ key: 'sandbox.enabled' }).then(({ value }) => {
+      setSandboxMode(value ?? 'auto')
     })
-    api.getPreference('search_provider').then((v) => {
-      if (v && !searchProviderTouched.current) setSearchProvider(v)
+    api.getPreference({ key: 'search_provider' }).then(({ value }) => {
+      if (value && !searchProviderTouched.current) setSearchProvider(value)
     })
   }, [])
 
@@ -68,9 +65,9 @@ export function GeneralSettings() {
     clearSearchKeySaved()
   }, [searchProvider, clearSearchKeySaved])
 
-  const handleShellChange = (value: string) => {
+  const handleShellChange = (value: ShellType) => {
     setShell(value)
-    api.setPreference('shell', value)
+    api.setPreference({ key: 'shell', value })
   }
 
   // Unlike the settings below, the theme is not a Tauri preference: it has to be
@@ -86,24 +83,24 @@ export function GeneralSettings() {
     { value: 'auto', label: t('settings.general.sandboxOn') },
     { value: 'container', label: t('settings.general.sandboxContainer') },
     { value: 'off', label: t('settings.general.sandboxOff') },
-  ]
+  ] as const
 
   // Written verbatim rather than mapped back to a boolean: the backend parses
   // the same three words, and a mapping here would be a second place for them
   // to be decided.
-  const handleSandboxChange = (value: string) => {
+  const handleSandboxChange = (value: SandboxMode) => {
     setSandboxMode(value)
-    api.setPreference('sandbox.enabled', value)
+    api.setPreference({ key: 'sandbox.enabled', value })
   }
 
-  const handleSearchProviderChange = async (value: string) => {
+  const handleSearchProviderChange = async (value: SearchProvider) => {
     if (value === searchProvider) return
     if (searchApiKey.trim() && !(await confirm({ body: t('settings.unsavedChanges'), status: 'warning' }))) {
       return
     }
     searchProviderTouched.current = true
     setSearchProvider(value)
-    await api.setPreference('search_provider', value)
+    await api.setPreference({ key: 'search_provider', value })
   }
 
   const handleSaveSearchKey = async () => {
@@ -112,7 +109,7 @@ export function GeneralSettings() {
     if (!provider) return
     setSearchKeyError(null)
     try {
-      await api.setServiceKey(provider.keyService, searchApiKey.trim())
+      await api.setServiceKey({ service: provider.keyService, key: searchApiKey.trim() })
       setSearchKeyExists(true)
       setSearchApiKey('')
       markSearchKeySaved()

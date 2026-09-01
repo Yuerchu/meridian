@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { Plus, TrashBin, Xmark, Check } from '@gravity-ui/icons'
 import { api } from '@/api'
+import type { MemoryType } from '@/types'
 import { Button, Card, DisclosureGroup, Input, Label, TextArea, TextField } from '@heroui/react'
 import { EmptyState } from '@heroui-pro/react/empty-state'
 import { ActionBar } from '@heroui-pro/react/action-bar'
@@ -20,7 +21,7 @@ export function MemorySettings() {
   const [showAdd, setShowAdd] = useState(false)
   const [newKey, setNewKey] = useState('')
   const [newContent, setNewContent] = useState('')
-  const [newType, setNewType] = useState('general')
+  const [newType, setNewType] = useState<MemoryType>('general')
   const { confirm, confirmDialog } = useConfirm()
 
   const typeOptions = (browser.enums?.memory_types ?? ['general']).map((v) => ({
@@ -46,9 +47,11 @@ export function MemorySettings() {
     await api.saveMemoryScoped({
       scope: targetScope,
       projectId: targetScope === 'project' ? targetProjectId : null,
+      subjectScopeId: null,
       key: newKey.trim(),
       content: newContent.trim(),
       memoryType: newType,
+      ownerOnly: false,
     })
     setNewKey('')
     setNewContent('')

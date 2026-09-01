@@ -440,7 +440,7 @@ impl Drop for SessionTurn {
 /// await. Without it the guard could only ever be used by value, which rules
 /// out doing anything asynchronous through it — including opening the turn's
 /// record, which has to happen *after* the guard exists.
-pub type StopSink = Box<dyn Fn(serde_json::Value) + Send + Sync>;
+pub type StopSink = Box<dyn Fn(crate::events::ChatStreamEvent) + Send + Sync>;
 
 /// A turn while it is running, and the announcement it owes when it stops.
 ///
@@ -534,9 +534,9 @@ impl RunningTurn {
         }
     }
 
-    fn announce(&self, reason: &str) {
+    fn announce(&self, reason: crate::events::ChatStopReason) {
         let Some(sink) = self.sink.as_ref() else { return };
-        sink(agent::turn_stop_payload(
+        sink(agent::turn_stop_event(
             &self.conversation_id,
             &self.turn_id,
             self.message_id.as_deref(),
@@ -549,7 +549,7 @@ impl RunningTurn {
     /// End a round. `None` means the turn is over and has been announced;
     /// `Some(items)` means it continues with those messages, and nothing has
     /// been announced because nothing has ended.
-    pub fn end_round(&mut self, reason: &str) -> Option<Vec<InboxItem>> {
+    pub fn end_round(&mut self, reason: crate::events::ChatStopReason) -> Option<Vec<InboxItem>> {
         let turn = self.turn.take().expect("a turn can only be ended once");
         // Ahead of the release, as on the desktop side: an answer arriving
         // after this has nobody to reach, and leaving the entry behind would
@@ -578,7 +578,7 @@ impl Drop for RunningTurn {
         // permission to send, and the conversation has to actually be free by
         // the time it goes out.
         drop(turn);
-        self.announce("error");
+        self.announce(crate::events::ChatStopReason::Error);
     }
 }
 
@@ -981,7 +981,7 @@ pub async fn call_api_with_timeout(
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone)]
 pub struct OneBotConfig {
     pub enabled: bool,
     pub host: String,
@@ -990,7 +990,6 @@ pub struct OneBotConfig {
     pub assistant_id: Option<String>,
     pub admin_users: Vec<i64>,
     /// QQ emoji id used to acknowledge group messages; empty or "0" disables.
-    #[serde(default = "default_ack_emoji")]
     pub ack_emoji_id: String,
     /// Tell the admins when a provider's credit falls below this.
     ///
@@ -1002,8 +1001,7 @@ pub struct OneBotConfig {
     ///
     /// Compared per currency rather than against a sum; see
     /// `ProviderBalance::is_low`.
-    #[serde(default)]
-    pub balance_alert_threshold: Option<f64>,
+    pub balance_alert_threshold: Option<crate::decimal::Decimal>,
     /// 要留存入站语音的 `(bot 账号, 会话)`，写作 `<bot>@group:123`。
     ///
     /// 空是默认，意思是一个都不留。存的是真人声纹，所以这是**许可名单而不是
@@ -1011,27 +1009,22 @@ pub struct OneBotConfig {
     ///
     /// 账号要写进去而不只是会话：两个 bot 各自被拉进同一个群，是两次独立的
     /// 同意。
-    #[serde(default)]
     pub voice_capture_sessions: Vec<String>,
     /// 模型可不可以用语音回复。
     ///
     /// **默认关**：它要一个 Fish Audio 的 key 和一个音色，没配齐就把工具端上去
     /// 只会让模型反复调用一个必然失败的东西。
-    #[serde(default)]
     pub voice_send_enabled: bool,
     /// 允许 bot 发语音的群，写作 `<bot>@group:123`。
     ///
     /// 私聊默认就开（一个对手方，屋主就是听的人），所以这里只列群——群是一间
     /// 屋子，发不发语音是屋主的决定。**与采集白名单是两份**：一个授权保存真人
     /// 声纹，一个授权 bot 说话。
-    #[serde(default)]
     pub voice_send_groups: Vec<String>,
     /// Fish Audio 的型号。**默认空**——`s2.1-pro-free` 的官方免费期到
     /// 2026-08-31，把它设成永久默认就是给一个到期日安排一次集体失效。
-    #[serde(default)]
     pub voice_tts_model: String,
     /// 固定音色。机器人的嗓音是身份，不是每次调用的选项。
-    #[serde(default)]
     pub voice_tts_reference_id: String,
 }
 
@@ -1068,44 +1061,121 @@ pub struct OneBotStatus {
     pub port: u16,
 }
 
-pub fn load_config(pool: &DbPool) -> OneBotConfig {
-    let mut conn = match pool.get() {
-        Ok(c) => c,
-        Err(_) => return OneBotConfig::default(),
-    };
+fn parse_stored_bool(key: &str, raw: Option<String>, default: bool) -> Result<bool, String> {
+    match raw.as_deref() {
+        None => Ok(default),
+        Some("true") => Ok(true),
+        Some("false") => Ok(false),
+        Some(value) => Err(format!("preference {key} must be 'true' or 'false', got {value:?}")),
+    }
+}
 
-    let mut get = |key: &str| -> Option<String> {
+fn parse_stored_port(key: &str, raw: Option<String>, default: u16) -> Result<u16, String> {
+    let Some(raw) = raw else {
+        return Ok(default);
+    };
+    let port = raw
+        .parse::<u16>()
+        .map_err(|error| format!("preference {key} has invalid port {raw:?}: {error}"))?;
+    if port.to_string() != raw {
+        return Err(format!(
+            "preference {key} must use canonical decimal digits, got {raw:?}"
+        ));
+    }
+    Ok(port)
+}
+
+fn parse_stored_json<T>(key: &str, raw: Option<String>) -> Result<T, String>
+where
+    T: serde::de::DeserializeOwned + Default,
+{
+    match raw {
+        Some(raw) => serde_json::from_str(&raw).map_err(|error| format!("preference {key} has invalid JSON: {error}")),
+        None => Ok(T::default()),
+    }
+}
+
+fn validate_scope_list(key: &str, values: &[String], groups_only: bool) -> Result<(), String> {
+    for raw in values {
+        let (bot, session) = raw
+            .split_once('@')
+            .ok_or_else(|| format!("preference {key} contains invalid scope {raw:?}"))?;
+        let bot_id = bot
+            .parse::<i64>()
+            .map_err(|error| format!("preference {key} contains invalid bot id in {raw:?}: {error}"))?;
+        let (kind, source) = session
+            .split_once(':')
+            .ok_or_else(|| format!("preference {key} contains invalid session in {raw:?}"))?;
+        if !matches!(kind, "group" | "private") || groups_only && kind != "group" {
+            return Err(format!("preference {key} contains unsupported session kind in {raw:?}"));
+        }
+        let source_id = source
+            .parse::<i64>()
+            .map_err(|error| format!("preference {key} contains invalid session id in {raw:?}: {error}"))?;
+        let canonical = format!("{bot_id}@{kind}:{source_id}");
+        if canonical != *raw {
+            return Err(format!("preference {key} contains non-canonical scope {raw:?}"));
+        }
+    }
+    Ok(())
+}
+
+fn parse_stored_decimal(key: &str, raw: Option<String>) -> Result<Option<crate::decimal::Decimal>, String> {
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    if raw.is_empty() {
+        return Err(format!(
+            "preference {key} must be absent or contain a canonical decimal"
+        ));
+    }
+    let value = raw
+        .parse::<crate::decimal::Decimal>()
+        .map_err(|error| format!("preference {key} has invalid decimal {raw:?}: {error}"))?;
+    if value.to_string() != raw {
+        return Err(format!("preference {key} has non-canonical decimal {raw:?}"));
+    }
+    value
+        .require_non_negative(key)
+        .map(Some)
+        .map_err(|error| error.to_string())
+}
+
+pub fn load_config(pool: &DbPool) -> Result<OneBotConfig, String> {
+    let mut conn = get_conn(pool)?;
+    let mut get = |key: &str| -> Result<Option<String>, String> {
         crate::db::ops::preference::get_preference(&mut conn, key)
-            .ok()
-            .flatten()
+            .map_err(|error| format!("failed to read preference {key}: {error}"))
     };
 
-    OneBotConfig {
-        enabled: get("onebot.enabled").as_deref() == Some("true"),
-        host: get("onebot.host").unwrap_or_else(|| "127.0.0.1".into()),
-        port: get("onebot.port").and_then(|s| s.parse().ok()).unwrap_or(6700),
-        access_token: get("onebot.access_token").filter(|s| !s.is_empty()),
-        assistant_id: get("onebot.assistant_id").filter(|s| !s.is_empty()),
-        admin_users: get("onebot.admin_users")
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default(),
-        ack_emoji_id: get("onebot.ack_emoji_id").unwrap_or_else(default_ack_emoji),
+    let voice_capture_sessions: Vec<String> =
+        parse_stored_json("onebot.voice_capture_sessions", get("onebot.voice_capture_sessions")?)?;
+    validate_scope_list("onebot.voice_capture_sessions", &voice_capture_sessions, false)?;
+    let voice_send_groups: Vec<String> =
+        parse_stored_json("onebot.voice_send_groups", get("onebot.voice_send_groups")?)?;
+    validate_scope_list("onebot.voice_send_groups", &voice_send_groups, true)?;
+
+    Ok(OneBotConfig {
+        enabled: parse_stored_bool("onebot.enabled", get("onebot.enabled")?, false)?,
+        host: get("onebot.host")?.unwrap_or_else(|| "127.0.0.1".into()),
+        port: parse_stored_port("onebot.port", get("onebot.port")?, 6700)?,
+        access_token: get("onebot.access_token")?.filter(|s| !s.is_empty()),
+        assistant_id: get("onebot.assistant_id")?.filter(|s| !s.is_empty()),
+        admin_users: parse_stored_json("onebot.admin_users", get("onebot.admin_users")?)?,
+        ack_emoji_id: get("onebot.ack_emoji_id")?.unwrap_or_else(default_ack_emoji),
         // Empty means off, which is why this is not `unwrap_or(0.0)`: zero is a
         // meaningful setting here — watch, but only alert when the upstream says
         // the account has stopped working.
-        balance_alert_threshold: get("onebot.balance_alert_threshold")
-            .filter(|s| !s.trim().is_empty())
-            .and_then(|s| s.trim().parse().ok()),
-        voice_capture_sessions: get("onebot.voice_capture_sessions")
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default(),
-        voice_send_enabled: get("onebot.voice_send_enabled").as_deref() == Some("true"),
-        voice_send_groups: get("onebot.voice_send_groups")
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default(),
-        voice_tts_model: get("onebot.voice_tts_model").unwrap_or_default(),
-        voice_tts_reference_id: get("onebot.voice_tts_reference_id").unwrap_or_default(),
-    }
+        balance_alert_threshold: parse_stored_decimal(
+            "onebot.balance_alert_threshold",
+            get("onebot.balance_alert_threshold")?,
+        )?,
+        voice_capture_sessions,
+        voice_send_enabled: parse_stored_bool("onebot.voice_send_enabled", get("onebot.voice_send_enabled")?, false)?,
+        voice_send_groups,
+        voice_tts_model: get("onebot.voice_tts_model")?.unwrap_or_default(),
+        voice_tts_reference_id: get("onebot.voice_tts_reference_id")?.unwrap_or_default(),
+    })
 }
 
 /// 写下整份配置。
@@ -1116,10 +1186,35 @@ pub fn load_config(pool: &DbPool) -> OneBotConfig {
 pub fn save_config(pool: &DbPool, config: &OneBotConfig) -> Result<(), String> {
     use diesel::connection::Connection;
 
+    validate_scope_list("onebot.voice_capture_sessions", &config.voice_capture_sessions, false)?;
+    validate_scope_list("onebot.voice_send_groups", &config.voice_send_groups, true)?;
+    if config
+        .balance_alert_threshold
+        .as_ref()
+        .is_some_and(|value| value.is_negative())
+    {
+        return Err("onebot.balance_alert_threshold must be non-negative".into());
+    }
     let mut conn = get_conn(pool)?;
     let now = now_ms();
+    let admin_users = serde_json::to_string(&config.admin_users)
+        .map_err(|error| format!("could not serialize onebot.admin_users: {error}"))?;
+    let voice_capture_sessions = serde_json::to_string(&config.voice_capture_sessions)
+        .map_err(|error| format!("could not serialize onebot.voice_capture_sessions: {error}"))?;
+    let voice_send_groups = serde_json::to_string(&config.voice_send_groups)
+        .map_err(|error| format!("could not serialize onebot.voice_send_groups: {error}"))?;
 
     conn.transaction::<_, diesel::result::Error, _>(|conn| {
+        match config.balance_alert_threshold.as_ref() {
+            Some(value) => crate::db::ops::preference::set_preference(
+                conn,
+                "onebot.balance_alert_threshold",
+                &value.to_string(),
+                now,
+            )?,
+            None => crate::db::ops::preference::delete_preference(conn, "onebot.balance_alert_threshold")?,
+        }
+
         let mut set =
             |key: &str, val: &str| crate::db::ops::preference::set_preference(conn, key, val, now).map(|_| ());
 
@@ -1128,30 +1223,14 @@ pub fn save_config(pool: &DbPool, config: &OneBotConfig) -> Result<(), String> {
         set("onebot.port", &config.port.to_string())?;
         set("onebot.access_token", config.access_token.as_deref().unwrap_or(""))?;
         set("onebot.assistant_id", config.assistant_id.as_deref().unwrap_or(""))?;
-        set(
-            "onebot.admin_users",
-            &serde_json::to_string(&config.admin_users).unwrap_or_default(),
-        )?;
+        set("onebot.admin_users", &admin_users)?;
         set("onebot.ack_emoji_id", &config.ack_emoji_id)?;
-        set(
-            "onebot.balance_alert_threshold",
-            &config
-                .balance_alert_threshold
-                .map(|v| v.to_string())
-                .unwrap_or_default(),
-        )?;
-        set(
-            "onebot.voice_capture_sessions",
-            &serde_json::to_string(&config.voice_capture_sessions).unwrap_or_default(),
-        )?;
+        set("onebot.voice_capture_sessions", &voice_capture_sessions)?;
         set(
             "onebot.voice_send_enabled",
             if config.voice_send_enabled { "true" } else { "false" },
         )?;
-        set(
-            "onebot.voice_send_groups",
-            &serde_json::to_string(&config.voice_send_groups).unwrap_or_default(),
-        )?;
+        set("onebot.voice_send_groups", &voice_send_groups)?;
         set("onebot.voice_tts_model", &config.voice_tts_model)?;
         set("onebot.voice_tts_reference_id", &config.voice_tts_reference_id)?;
         Ok(())
@@ -1161,18 +1240,17 @@ pub fn save_config(pool: &DbPool, config: &OneBotConfig) -> Result<(), String> {
 
 /// 把配置里那一行行文本解析成授权范围。
 ///
-/// 解析不了的条目**丢掉并记一条日志**，不是当成通配。这是许可名单，一个看不懂
-/// 的条目授权不了任何东西。
-fn capture_scopes(config: &OneBotConfig) -> std::collections::HashSet<crate::voice_corpus::CaptureScope> {
+/// 配置在读取和保存时都已经校验；这里仍返回错误，避免未来新增调用方绕过边界后
+/// 把坏条目静默丢掉。
+fn capture_scopes(
+    config: &OneBotConfig,
+) -> Result<std::collections::HashSet<crate::voice_corpus::CaptureScope>, String> {
     config
         .voice_capture_sessions
         .iter()
-        .filter_map(|raw| {
-            let scope = crate::voice_corpus::CaptureScope::parse(raw);
-            if scope.is_none() {
-                tracing::warn!(entry = %raw, "voice capture allowlist: unreadable entry, ignored");
-            }
-            scope
+        .map(|raw| {
+            crate::voice_corpus::CaptureScope::parse(raw)
+                .ok_or_else(|| format!("onebot.voice_capture_sessions contains invalid scope {raw:?}"))
         })
         .collect()
 }
@@ -1183,7 +1261,7 @@ fn capture_scopes(config: &OneBotConfig) -> std::collections::HashSet<crate::voi
 /// 正常语义，也是唯一能简单推理的：取消一个正在下载的任务，要么留下半个文件，
 /// 要么要一整套取消传播。
 pub async fn refresh_voice_policy(services: &Services, config: &OneBotConfig) -> Result<(), String> {
-    let scopes = capture_scopes(config);
+    let scopes = capture_scopes(config)?;
     let pool = services.db.clone();
     let secrets = services.secrets.clone();
     // keyring 是阻塞 IO，和 opt-out 的查询一起挪到 blocking 线程上。
@@ -1225,8 +1303,11 @@ pub async fn refresh_voice_policy(services: &Services, config: &OneBotConfig) ->
     let groups = config
         .voice_send_groups
         .iter()
-        .filter_map(|raw| crate::voice_corpus::CaptureScope::parse(raw))
-        .collect();
+        .map(|raw| {
+            crate::voice_corpus::CaptureScope::parse(raw)
+                .ok_or_else(|| format!("onebot.voice_send_groups contains invalid scope {raw:?}"))
+        })
+        .collect::<Result<_, _>>()?;
     services.corpus.apply_send_policy(groups, readiness);
     Ok(())
 }
@@ -1736,9 +1817,7 @@ async fn handle_connection(
 /// Returned rather than registered here: the caller is the shell, and where the
 /// IPC commands look this up is its business. Nothing inside `OneBotServer`
 /// knows a window exists, and this is the last place that could have.
-pub async fn maybe_start(services: Services) -> AppOneBot {
-    let config = load_config(&services.db);
-
+pub async fn maybe_start(services: Services, config: OneBotConfig) -> AppOneBot {
     if !config.enabled {
         tracing::info!("OneBot server disabled, skipping auto-start");
         let server = OneBotServer::new(services, config);
@@ -1757,7 +1836,50 @@ pub struct AppOneBot(pub Arc<Mutex<OneBotServer>>);
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::test_db;
     use crate::turn::{Busy, TurnOrigin};
+
+    #[test]
+    fn stored_onebot_config_rejects_malformed_values() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        crate::db::ops::preference::set_preference(&mut conn, "onebot.admin_users", "not json", 1).unwrap();
+        drop(conn);
+
+        let error = load_config(&pool)
+            .err()
+            .expect("malformed stored JSON must fail config loading");
+        assert!(error.contains("onebot.admin_users"), "{error}");
+    }
+
+    #[test]
+    fn stored_onebot_scalars_use_exact_wire_spellings() {
+        assert!(parse_stored_bool("onebot.enabled", Some("1".into()), false).is_err());
+        assert!(parse_stored_port("onebot.port", Some("06700".into()), 6700).is_err());
+        assert!(parse_stored_decimal("onebot.balance_alert_threshold", Some("1.0".into()),).is_err());
+        assert!(parse_stored_decimal("onebot.balance_alert_threshold", Some("-1".into()),).is_err());
+        assert!(parse_stored_decimal("onebot.balance_alert_threshold", Some(String::new()),).is_err());
+
+        let mut config = OneBotConfig {
+            balance_alert_threshold: Some("-1".parse().unwrap()),
+            ..Default::default()
+        };
+        let pool = test_db();
+        assert!(save_config(&pool, &config).is_err());
+        config.balance_alert_threshold = Some("0".parse().unwrap());
+        assert!(save_config(&pool, &config).is_ok());
+        config.balance_alert_threshold = None;
+        assert!(save_config(&pool, &config).is_ok());
+        let mut conn = pool.get().unwrap();
+        assert_eq!(
+            crate::db::ops::preference::get_preference(&mut conn, "onebot.balance_alert_threshold").unwrap(),
+            None
+        );
+
+        assert!(validate_scope_list("onebot.voice_capture_sessions", &["7@group:8".into()], false).is_ok());
+        assert!(validate_scope_list("onebot.voice_capture_sessions", &["7@room:8".into()], false).is_err());
+        assert!(validate_scope_list("onebot.voice_send_groups", &["7@private:8".into()], true).is_err());
+    }
 
     fn item(kind: InboxKind, at: i64) -> InboxItem {
         InboxItem {
@@ -2067,11 +2189,12 @@ mod tests {
             let coordinator = Arc::clone(&f.coordinator);
             let session = key.to_string();
             let conversation = conv.to_string();
-            let sink: StopSink = Box::new(move |payload| {
+            let sink: StopSink = Box::new(move |event| {
                 // Read from inside the announcement: after it returns, the two
                 // orderings are indistinguishable.
                 let session_free = !states.lock().get(&session).is_some_and(|s| s.turn_active);
                 let conversation_free = coordinator.try_acquire_turn(&conversation, TurnOrigin::Desktop).is_ok();
+                let payload = serde_json::to_value(event).expect("stop event must serialize");
                 recorded
                     .lock()
                     .unwrap()
@@ -2145,7 +2268,10 @@ mod tests {
         let turn = f.started(&key, "conv-1", 1000);
         let (watch, mut running) = Watcher::attach(&f, &key, turn, "conv-1");
 
-        assert!(running.end_round("end_turn").is_none(), "nothing was queued");
+        assert!(
+            running.end_round(crate::events::ChatStopReason::EndTurn).is_none(),
+            "nothing was queued"
+        );
         assert_eq!(watch.stops().len(), 1);
 
         drop(running);
@@ -2170,7 +2296,7 @@ mod tests {
             .push(item(InboxKind::UserMessage, now_ms()));
 
         assert!(
-            running.end_round("end_turn").is_some(),
+            running.end_round(crate::events::ChatStopReason::EndTurn).is_some(),
             "a queued message continues the turn"
         );
         assert!(
@@ -2249,7 +2375,7 @@ mod tests {
         let (_watch, mut running) = Watcher::attach(&f, &key, turn, "conv-1");
         f.park_approval(&key, &turn_id);
 
-        assert!(running.end_round("end_turn").is_none());
+        assert!(running.end_round(crate::events::ChatStopReason::EndTurn).is_none());
 
         assert!(f.approvals.lock().is_empty());
     }
@@ -2297,14 +2423,14 @@ mod tests {
             steps: 1,
             ..Default::default()
         });
-        assert!(running.end_round("end_turn").is_some());
+        assert!(running.end_round(crate::events::ChatStopReason::EndTurn).is_some());
         // The follow-up round never wrote a row, so the first round's stands.
         running.record(agent::TurnProgress {
             input_tokens: 5,
             output_tokens: 2,
             ..Default::default()
         });
-        assert!(running.end_round("end_turn").is_none());
+        assert!(running.end_round(crate::events::ChatStopReason::EndTurn).is_none());
 
         let stops = watch.stops();
         assert_eq!(stops.len(), 1);

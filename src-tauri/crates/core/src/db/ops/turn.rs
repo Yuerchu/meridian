@@ -14,7 +14,7 @@
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::turn::{NewTurn, Turn, TurnPhase, TurnStatus};
+use crate::db::models::turn::{TurnInsert, TurnPhase, TurnRow, TurnStatus};
 use crate::db::schema::turns;
 use crate::turn::TurnOrigin;
 
@@ -34,7 +34,7 @@ pub fn begin(
     now: i64,
 ) -> QueryResult<usize> {
     diesel::insert_into(turns::table)
-        .values(&NewTurn {
+        .values(&TurnInsert {
             id,
             conversation_id,
             origin: origin.as_str(),
@@ -65,6 +65,50 @@ pub fn set_phase(
             turns::updated_at.eq(now),
         ))
         .execute(conn)
+}
+
+/// Release a turn at the durable human-review boundary.
+///
+/// Unlike a running turn, this state survives process death honestly: the
+/// review row contains everything needed to continue, and no task or lease is
+/// expected to remain alive. `ended_at` stays NULL because the tool call has
+/// not received its decision yet.
+pub fn wait_for_review(conn: &mut SqliteConnection, id: &str, now: i64) -> QueryResult<usize> {
+    diesel::update(running(id))
+        .set((
+            turns::status.eq(TurnStatus::WaitingReview.as_str()),
+            turns::phase.eq(Some(TurnPhase::AwaitingApproval.as_str())),
+            turns::phase_tool.eq(Some("exit_plan")),
+            turns::updated_at.eq(now),
+        ))
+        .execute(conn)
+}
+
+/// Settle a durable review boundary after its transcript tool result has been
+/// committed. Callers may wrap both writes in one outer transaction.
+pub fn finish_waiting_review(
+    conn: &mut SqliteConnection,
+    id: &str,
+    status: TurnStatus,
+    error: Option<&str>,
+    now: i64,
+) -> QueryResult<usize> {
+    assert!(
+        matches!(status, TurnStatus::Done | TurnStatus::Cancelled | TurnStatus::Failed),
+        "a waiting review may only move to a terminal status"
+    );
+    diesel::update(
+        turns::table
+            .find(id)
+            .filter(turns::status.eq(TurnStatus::WaitingReview.as_str())),
+    )
+    .set((
+        turns::status.eq(status.as_str()),
+        turns::error.eq(error),
+        turns::ended_at.eq(Some(now)),
+        turns::updated_at.eq(now),
+    ))
+    .execute(conn)
 }
 
 /// Close a turn out. Only the paths that actually reach an ending call this —
@@ -137,7 +181,7 @@ pub fn unreported_for_conversation(
         .filter(turns::status.eq_any([TurnStatus::Running.as_str(), TurnStatus::Interrupted.as_str()]))
         .order((turns::started_at.desc(), insertion_order().desc()))
         .limit(limit)
-        .load::<Turn>(conn)?
+        .load::<TurnRow>(conn)?
         .into_iter()
         .map(|turn| InterruptedCandidate {
             turn,
@@ -170,7 +214,7 @@ pub fn unreported_for_conversation(
             .filter(turns::status.eq_any([TurnStatus::Running.as_str(), TurnStatus::Interrupted.as_str()]))
             .order((turns::started_at.desc(), insertion_order().desc()))
             .limit(limit)
-            .load::<Turn>(conn)?;
+            .load::<TurnRow>(conn)?;
         out.extend(delegated.into_iter().map(|turn| {
             let child_title = children
                 .iter()
@@ -213,7 +257,7 @@ pub enum Ledger {
 
 /// A turn that may still owe an explanation, and who it owes it to.
 pub struct InterruptedCandidate {
-    pub turn: Turn,
+    pub turn: TurnRow,
     pub ledger: Ledger,
     /// The sub-agent's title — the description the parent gave when it
     /// delegated. Joined here rather than looked up while wording the report:
@@ -260,11 +304,11 @@ fn insertion_order() -> diesel::expression::SqlLiteral<diesel::sql_types::BigInt
 
 /// Every turn of a conversation, oldest first. For the transcript snapshot,
 /// which is what lets the UI say which turn was cut off rather than guessing.
-pub fn list_for_conversation(conn: &mut SqliteConnection, conversation_id: &str) -> QueryResult<Vec<Turn>> {
+pub fn list_for_conversation(conn: &mut SqliteConnection, conversation_id: &str) -> QueryResult<Vec<TurnRow>> {
     turns::table
         .filter(turns::conversation_id.eq(conversation_id))
         .order((turns::started_at.asc(), insertion_order().asc()))
-        .load::<Turn>(conn)
+        .load::<TurnRow>(conn)
 }
 
 /// One turn's record, for a caller that has the id and wants the verdict.
@@ -272,8 +316,8 @@ pub fn list_for_conversation(conn: &mut SqliteConnection, conversation_id: &str)
 /// `None` for an id with no row, which is not an error: a turn can fail before
 /// it has written one, and the callers here treat "no record" and "did not
 /// reach an ending" the same way.
-pub fn get(conn: &mut SqliteConnection, turn_id: &str) -> QueryResult<Option<Turn>> {
-    turns::table.find(turn_id).first::<Turn>(conn).optional()
+pub fn get(conn: &mut SqliteConnection, turn_id: &str) -> QueryResult<Option<TurnRow>> {
+    turns::table.find(turn_id).first::<TurnRow>(conn).optional()
 }
 
 /// Mark every turn still recorded as running as interrupted, and report how
@@ -339,8 +383,8 @@ mod tests {
         create_conversation(conn, id, Some("t"), None, None, 1000).unwrap();
     }
 
-    fn get(conn: &mut SqliteConnection, id: &str) -> Turn {
-        turns::table.find(id).first::<Turn>(conn).unwrap()
+    fn get(conn: &mut SqliteConnection, id: &str) -> TurnRow {
+        turns::table.find(id).first::<TurnRow>(conn).unwrap()
     }
 
     #[test]
@@ -352,8 +396,8 @@ mod tests {
         begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
 
         let t = get(&mut conn, "t1");
-        assert_eq!(t.status(), Some(TurnStatus::Running));
-        assert_eq!(t.phase(), Some(TurnPhase::Streaming));
+        assert_eq!(t.status().unwrap(), TurnStatus::Running);
+        assert_eq!(t.phase().unwrap(), Some(TurnPhase::Streaming));
         assert_eq!(t.origin, "desktop");
         assert!(t.ended_at.is_none());
     }
@@ -369,16 +413,16 @@ mod tests {
 
         set_phase(&mut conn, "t1", TurnPhase::AwaitingApproval, Some("run_command"), 1001).unwrap();
         let t = get(&mut conn, "t1");
-        assert_eq!(t.phase(), Some(TurnPhase::AwaitingApproval));
+        assert_eq!(t.phase().unwrap(), Some(TurnPhase::AwaitingApproval));
         assert_eq!(t.phase_tool.as_deref(), Some("run_command"));
 
         set_phase(&mut conn, "t1", TurnPhase::RunningTool, Some("run_command"), 1002).unwrap();
-        assert_eq!(get(&mut conn, "t1").phase(), Some(TurnPhase::RunningTool));
+        assert_eq!(get(&mut conn, "t1").phase().unwrap(), Some(TurnPhase::RunningTool));
 
         // Back to the model, and the tool is no longer what it is doing.
         set_phase(&mut conn, "t1", TurnPhase::Streaming, None, 1003).unwrap();
         let t = get(&mut conn, "t1");
-        assert_eq!(t.phase(), Some(TurnPhase::Streaming));
+        assert_eq!(t.phase().unwrap(), Some(TurnPhase::Streaming));
         assert!(
             t.phase_tool.is_none(),
             "a phase that names no tool must not keep the last one"
@@ -399,10 +443,10 @@ mod tests {
         assert_eq!(reconcile_interrupted(&mut conn, 2000).unwrap(), 1);
 
         let t = get(&mut conn, "t1");
-        assert_eq!(t.status(), Some(TurnStatus::Interrupted));
+        assert_eq!(t.status().unwrap(), TurnStatus::Interrupted);
         assert_eq!(t.ended_at, Some(2000));
         assert_eq!(
-            t.phase(),
+            t.phase().unwrap(),
             Some(TurnPhase::RunningTool),
             "the phase is the diagnosis; reconciliation must not erase it",
         );
@@ -464,10 +508,10 @@ mod tests {
 
         assert_eq!(reconcile_interrupted(&mut conn, 2000).unwrap(), 1);
 
-        assert_eq!(get(&mut conn, "done").status(), Some(TurnStatus::Done));
-        assert_eq!(get(&mut conn, "cancelled").status(), Some(TurnStatus::Cancelled));
-        assert_eq!(get(&mut conn, "failed").status(), Some(TurnStatus::Failed));
-        assert_eq!(get(&mut conn, "live").status(), Some(TurnStatus::Interrupted));
+        assert_eq!(get(&mut conn, "done").status().unwrap(), TurnStatus::Done);
+        assert_eq!(get(&mut conn, "cancelled").status().unwrap(), TurnStatus::Cancelled);
+        assert_eq!(get(&mut conn, "failed").status().unwrap(), TurnStatus::Failed);
+        assert_eq!(get(&mut conn, "live").status().unwrap(), TurnStatus::Interrupted);
         // Nothing to do the second time.
         assert_eq!(reconcile_interrupted(&mut conn, 2001).unwrap(), 0);
     }
@@ -482,7 +526,7 @@ mod tests {
         finish(&mut conn, "t1", TurnStatus::Failed, Some("API Key not set"), 1500).unwrap();
 
         let t = get(&mut conn, "t1");
-        assert_eq!(t.status(), Some(TurnStatus::Failed));
+        assert_eq!(t.status().unwrap(), TurnStatus::Failed);
         assert_eq!(t.error.as_deref(), Some("API Key not set"));
     }
 
@@ -590,7 +634,7 @@ mod tests {
         // Reconciliation is about how a turn ended, and does not un-tell it.
         reconcile_interrupted(&mut conn, 9500).unwrap();
         assert_eq!(get(&mut conn, "t1").reported_at, Some(5000));
-        assert_eq!(get(&mut conn, "t1").status(), Some(TurnStatus::Interrupted));
+        assert_eq!(get(&mut conn, "t1").status().unwrap(), TurnStatus::Interrupted);
     }
 
     /// Turns belong to their conversation and go with it.
@@ -648,7 +692,7 @@ mod tests {
         );
 
         let t = get(&mut conn, "t1");
-        assert_eq!(t.status(), Some(TurnStatus::Done));
+        assert_eq!(t.status().unwrap(), TurnStatus::Done);
         assert_eq!(t.ended_at, Some(1500));
         assert!(t.error.is_none());
     }
@@ -672,7 +716,7 @@ mod tests {
         .unwrap();
 
         let t = get(&mut conn, "t1");
-        assert_eq!(t.status(), Some(TurnStatus::Failed));
+        assert_eq!(t.status().unwrap(), TurnStatus::Failed);
         assert_eq!(t.error.as_deref(), Some("loop_detected"));
     }
 
@@ -732,17 +776,16 @@ mod tests {
         );
         // And the finished turn is exactly as it was.
         let t = get(&mut conn, "t1");
-        assert_eq!(t.status(), Some(TurnStatus::Done));
+        assert_eq!(t.status().unwrap(), TurnStatus::Done);
         assert_eq!(t.started_at, 1000);
         assert_eq!(t.ended_at, Some(1500));
         assert_eq!(list_for_conversation(&mut conn, "c1").unwrap().len(), 1);
     }
 
-    /// A status this build does not know reads as "no opinion" rather than
-    /// making the conversation unreadable — the same rule the collaboration
-    /// mode follows.
+    /// A status this build does not know is a contract error rather than a
+    /// value silently reinterpreted as no status.
     #[test]
-    fn an_unknown_status_does_not_poison_the_row() {
+    fn an_unknown_status_is_rejected() {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         conv(&mut conn, "c1");
@@ -753,8 +796,23 @@ mod tests {
             .unwrap();
 
         let t = get(&mut conn, "t1");
-        assert_eq!(t.status(), None);
+        assert_eq!(t.status(), Err("unknown turn status 'from_the_future'".into()));
         // And it is not swept up as if it were running.
         assert_eq!(reconcile_interrupted(&mut conn, 2000).unwrap(), 0);
+    }
+
+    #[test]
+    fn an_unknown_phase_is_rejected() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        conv(&mut conn, "c1");
+        begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
+        diesel::update(turns::table.find("t1"))
+            .set(turns::phase.eq("from_the_future"))
+            .execute(&mut conn)
+            .unwrap();
+
+        let turn = get(&mut conn, "t1");
+        assert_eq!(turn.phase(), Err("unknown turn phase 'from_the_future'".into()));
     }
 }

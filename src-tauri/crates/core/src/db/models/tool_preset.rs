@@ -5,7 +5,7 @@ use crate::db::schema::tool_presets;
 
 #[derive(Debug, Clone, Queryable, Selectable, Serialize)]
 #[diesel(table_name = tool_presets)]
-pub struct ToolPreset {
+pub struct ToolPresetRow {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
@@ -19,7 +19,7 @@ pub struct ToolPreset {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = tool_presets)]
-pub struct NewToolPreset<'a> {
+pub struct ToolPresetInsert<'a> {
     pub id: &'a str,
     pub name: &'a str,
     pub description: Option<&'a str>,
@@ -33,7 +33,7 @@ pub struct NewToolPreset<'a> {
 
 #[derive(Debug, AsChangeset, Default)]
 #[diesel(table_name = tool_presets)]
-pub struct ToolPresetUpdate {
+pub struct ToolPresetChangeset {
     pub name: Option<String>,
     pub description: Option<Option<String>>,
     pub icon: Option<Option<String>>,

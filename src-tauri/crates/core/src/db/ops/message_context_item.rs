@@ -3,10 +3,10 @@ use std::collections::HashMap;
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::message_context_item::{MessageContextItem, NewMessageContextItem};
+use crate::db::models::message_context_item::{MessageContextItemInsert, MessageContextItemRow};
 use crate::db::schema::message_context_items;
 
-pub fn insert_many(conn: &mut SqliteConnection, items: &[NewMessageContextItem<'_>]) -> QueryResult<usize> {
+pub fn insert_many(conn: &mut SqliteConnection, items: &[MessageContextItemInsert<'_>]) -> QueryResult<usize> {
     if items.is_empty() {
         return Ok(0);
     }
@@ -15,18 +15,18 @@ pub fn insert_many(conn: &mut SqliteConnection, items: &[NewMessageContextItem<'
         .execute(conn)
 }
 
-pub fn list_for_message(conn: &mut SqliteConnection, message_id: &str) -> QueryResult<Vec<MessageContextItem>> {
+pub fn list_for_message(conn: &mut SqliteConnection, message_id: &str) -> QueryResult<Vec<MessageContextItemRow>> {
     message_context_items::table
         .filter(message_context_items::message_id.eq(message_id))
         .order(message_context_items::position.asc())
-        .select(MessageContextItem::as_select())
+        .select(MessageContextItemRow::as_select())
         .load(conn)
 }
 
 pub fn list_for_messages(
     conn: &mut SqliteConnection,
     message_ids: &[String],
-) -> QueryResult<HashMap<String, Vec<MessageContextItem>>> {
+) -> QueryResult<HashMap<String, Vec<MessageContextItemRow>>> {
     if message_ids.is_empty() {
         return Ok(HashMap::new());
     }
@@ -36,9 +36,9 @@ pub fn list_for_messages(
             message_context_items::message_id.asc(),
             message_context_items::position.asc(),
         ))
-        .select(MessageContextItem::as_select())
-        .load::<MessageContextItem>(conn)?;
-    let mut by_message: HashMap<String, Vec<MessageContextItem>> = HashMap::new();
+        .select(MessageContextItemRow::as_select())
+        .load::<MessageContextItemRow>(conn)?;
+    let mut by_message: HashMap<String, Vec<MessageContextItemRow>> = HashMap::new();
     for row in rows {
         by_message.entry(row.message_id.clone()).or_default().push(row);
     }
@@ -48,14 +48,14 @@ pub fn list_for_messages(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::models::message::NewMessage;
+    use crate::db::models::message::MessageInsert;
     use crate::db::ops::message::append_message;
 
     fn seed_message(conn: &mut SqliteConnection, id: &str) {
         crate::db::ops::conversation::create_conversation(conn, "c1", None, None, None, 1).unwrap();
         append_message(
             conn,
-            &NewMessage {
+            &MessageInsert {
                 id,
                 conversation_id: "c1",
                 role: "user",
@@ -93,7 +93,7 @@ mod tests {
         let pool = crate::db::test_db();
         let mut conn = pool.get().unwrap();
         seed_message(&mut conn, "m1");
-        let make = |id, position| NewMessageContextItem {
+        let make = |id, position| MessageContextItemInsert {
             id,
             message_id: "m1",
             position,

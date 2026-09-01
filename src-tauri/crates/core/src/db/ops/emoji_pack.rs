@@ -1,23 +1,23 @@
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::assistant_emoji_pack::NewAssistantEmojiPack;
-use crate::db::models::emoji_pack::{EmojiPack, NewEmojiPack};
+use crate::db::models::assistant_emoji_pack::AssistantEmojiPackInsert;
+use crate::db::models::emoji_pack::{EmojiPackInsert, EmojiPackRow};
 use crate::db::schema::{assistant_emoji_packs, emoji_packs};
 
-pub fn list_packs(conn: &mut SqliteConnection) -> QueryResult<Vec<EmojiPack>> {
+pub fn list_packs(conn: &mut SqliteConnection) -> QueryResult<Vec<EmojiPackRow>> {
     emoji_packs::table
         .order(emoji_packs::sort_order.asc())
-        .load::<EmojiPack>(conn)
+        .load::<EmojiPackRow>(conn)
 }
 
-pub fn get_pack(conn: &mut SqliteConnection, id: &str) -> QueryResult<EmojiPack> {
-    emoji_packs::table.find(id).first::<EmojiPack>(conn)
+pub fn get_pack(conn: &mut SqliteConnection, id: &str) -> QueryResult<EmojiPackRow> {
+    emoji_packs::table.find(id).first::<EmojiPackRow>(conn)
 }
 
-pub fn create_pack(conn: &mut SqliteConnection, new: &NewEmojiPack) -> QueryResult<EmojiPack> {
+pub fn create_pack(conn: &mut SqliteConnection, new: &EmojiPackInsert) -> QueryResult<EmojiPackRow> {
     diesel::insert_into(emoji_packs::table).values(new).execute(conn)?;
-    emoji_packs::table.find(new.id).first::<EmojiPack>(conn)
+    emoji_packs::table.find(new.id).first::<EmojiPackRow>(conn)
 }
 
 pub fn delete_pack(conn: &mut SqliteConnection, id: &str) -> QueryResult<()> {
@@ -25,18 +25,18 @@ pub fn delete_pack(conn: &mut SqliteConnection, id: &str) -> QueryResult<()> {
     Ok(())
 }
 
-pub fn list_packs_for_assistant(conn: &mut SqliteConnection, assistant_id: &str) -> QueryResult<Vec<EmojiPack>> {
+pub fn list_packs_for_assistant(conn: &mut SqliteConnection, assistant_id: &str) -> QueryResult<Vec<EmojiPackRow>> {
     emoji_packs::table
         .inner_join(assistant_emoji_packs::table.on(assistant_emoji_packs::pack_id.eq(emoji_packs::id)))
         .filter(assistant_emoji_packs::assistant_id.eq(assistant_id))
-        .select(EmojiPack::as_select())
+        .select(EmojiPackRow::as_select())
         .order(emoji_packs::sort_order.asc())
-        .load::<EmojiPack>(conn)
+        .load::<EmojiPackRow>(conn)
 }
 
 pub fn assign_pack(conn: &mut SqliteConnection, assistant_id: &str, pack_id: &str, now: i64) -> QueryResult<()> {
     diesel::insert_or_ignore_into(assistant_emoji_packs::table)
-        .values(&NewAssistantEmojiPack {
+        .values(&AssistantEmojiPackInsert {
             assistant_id,
             pack_id,
             created_at: now,
@@ -62,10 +62,10 @@ pub fn list_assigned_pack_ids(conn: &mut SqliteConnection, assistant_id: &str) -
         .load::<String>(conn)
 }
 
-pub fn get_by_source_account(conn: &mut SqliteConnection, account_id: &str) -> QueryResult<Option<EmojiPack>> {
+pub fn get_by_source_account(conn: &mut SqliteConnection, account_id: &str) -> QueryResult<Option<EmojiPackRow>> {
     emoji_packs::table
         .filter(emoji_packs::kind.eq("onebot"))
         .filter(emoji_packs::source_account_id.eq(account_id))
-        .first::<EmojiPack>(conn)
+        .first::<EmojiPackRow>(conn)
         .optional()
 }

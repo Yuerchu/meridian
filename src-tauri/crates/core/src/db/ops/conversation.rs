@@ -1,8 +1,8 @@
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::conversation::{Conversation, NewConversation, SubAgentRun};
-use crate::db::models::turn::Turn;
+use crate::db::models::conversation::{ConversationInsert, ConversationRow, SubAgentRun};
+use crate::db::models::turn::TurnRow;
 use crate::db::schema::conversations;
 
 /// The user's own conversations, newest first.
@@ -19,17 +19,17 @@ pub fn all_ids(conn: &mut SqliteConnection) -> QueryResult<Vec<String>> {
     conversations::table.select(conversations::id).load(conn)
 }
 
-pub fn list_conversations(conn: &mut SqliteConnection, archived: bool) -> QueryResult<Vec<Conversation>> {
+pub fn list_conversations(conn: &mut SqliteConnection, archived: bool) -> QueryResult<Vec<ConversationRow>> {
     let archived_val = if archived { 1 } else { 0 };
     conversations::table
         .filter(conversations::is_archived.eq(archived_val))
         .filter(conversations::parent_conversation_id.is_null())
         .order((conversations::is_pinned.desc(), conversations::updated_at.desc()))
-        .load::<Conversation>(conn)
+        .load::<ConversationRow>(conn)
 }
 
-pub fn get_conversation(conn: &mut SqliteConnection, id: &str) -> QueryResult<Conversation> {
-    conversations::table.find(id).first::<Conversation>(conn)
+pub fn get_conversation(conn: &mut SqliteConnection, id: &str) -> QueryResult<ConversationRow> {
+    conversations::table.find(id).first::<ConversationRow>(conn)
 }
 
 pub fn create_conversation(
@@ -39,8 +39,8 @@ pub fn create_conversation(
     assistant_id: Option<&str>,
     project_id: Option<&str>,
     now: i64,
-) -> QueryResult<Conversation> {
-    let new = NewConversation {
+) -> QueryResult<ConversationRow> {
+    let new = ConversationInsert {
         id,
         title,
         assistant_id,
@@ -57,24 +57,37 @@ pub fn create_conversation(
 /// Insert a prepared row. Split out so a sub-agent can fill the spawned-by
 /// columns without `create_conversation` growing seven more parameters that
 /// every ordinary caller would pass `None` to.
-pub fn insert(conn: &mut SqliteConnection, new: NewConversation<'_>) -> QueryResult<Conversation> {
+pub fn insert(conn: &mut SqliteConnection, new: ConversationInsert<'_>) -> QueryResult<ConversationRow> {
     let id = new.id.to_string();
     diesel::insert_into(conversations::table).values(&new).execute(conn)?;
-    conversations::table.find(&id).first::<Conversation>(conn)
+    conversations::table.find(&id).first::<ConversationRow>(conn)
 }
 
 pub fn list_conversations_by_project(
     conn: &mut SqliteConnection,
     project_id: &str,
     archived: bool,
-) -> QueryResult<Vec<Conversation>> {
+) -> QueryResult<Vec<ConversationRow>> {
     let archived_val = if archived { 1 } else { 0 };
     conversations::table
         .filter(conversations::project_id.eq(project_id))
         .filter(conversations::is_archived.eq(archived_val))
         .filter(conversations::parent_conversation_id.is_null())
         .order((conversations::is_pinned.desc(), conversations::updated_at.desc()))
-        .load::<Conversation>(conn)
+        .load::<ConversationRow>(conn)
+}
+
+/// Every conversation whose runtime workspace is derived from this project.
+///
+/// Unlike the sidebar query above this includes archived and delegated rows:
+/// changing or deleting the project changes their next turn's working
+/// directory too, and an active turn/review on either kind must block it.
+pub fn ids_by_project(conn: &mut SqliteConnection, project_id: &str) -> QueryResult<Vec<String>> {
+    conversations::table
+        .filter(conversations::project_id.eq(project_id))
+        .select(conversations::id)
+        .order(conversations::id.asc())
+        .load(conn)
 }
 
 pub fn update_title(conn: &mut SqliteConnection, id: &str, title: &str, now: i64) -> QueryResult<()> {
@@ -99,8 +112,8 @@ pub fn update_assistant(
     Ok(())
 }
 
-pub fn toggle_pin(conn: &mut SqliteConnection, id: &str, now: i64) -> QueryResult<Conversation> {
-    let conv = conversations::table.find(id).first::<Conversation>(conn)?;
+pub fn toggle_pin(conn: &mut SqliteConnection, id: &str, now: i64) -> QueryResult<ConversationRow> {
+    let conv = conversations::table.find(id).first::<ConversationRow>(conn)?;
     let new_pinned = if conv.is_pinned == 0 { 1 } else { 0 };
     diesel::update(conversations::table.find(id))
         .set((
@@ -108,7 +121,7 @@ pub fn toggle_pin(conn: &mut SqliteConnection, id: &str, now: i64) -> QueryResul
             conversations::updated_at.eq(now),
         ))
         .execute(conn)?;
-    conversations::table.find(id).first::<Conversation>(conn)
+    conversations::table.find(id).first::<ConversationRow>(conn)
 }
 
 pub fn archive_conversation(conn: &mut SqliteConnection, id: &str, now: i64) -> QueryResult<()> {
@@ -195,7 +208,7 @@ pub fn sub_agent_conversation_ids(conn: &mut SqliteConnection, parent_id: &str) 
 
 /// One conversation that says the query somewhere in its transcript, with a
 /// snippet around the newest mention.
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug)]
 pub struct TranscriptHit {
     pub conversation_id: String,
     pub title: Option<String>,
@@ -206,7 +219,7 @@ pub struct TranscriptHit {
 }
 
 #[derive(diesel::QueryableByName)]
-struct RawTranscriptHit {
+struct RawTranscriptHitRow {
     #[diesel(sql_type = diesel::sql_types::Text)]
     id: String,
     #[diesel(sql_type = diesel::sql_types::Text)]
@@ -283,7 +296,7 @@ pub fn search_transcripts(conn: &mut SqliteConnection, query: &str, limit: usize
     let mut hits = Vec::new();
     let mut cursor: Option<(i64, String)> = None;
     loop {
-        let raw: Vec<RawTranscriptHit> = match &cursor {
+        let raw: Vec<RawTranscriptHitRow> = match &cursor {
             None => diesel::sql_query(&first_page)
                 .bind::<diesel::sql_types::Text, _>(&pattern)
                 .bind::<diesel::sql_types::BigInt, _>(SEARCH_PAGE)
@@ -440,10 +453,10 @@ mod search_tests {
     }
 
     fn say(conn: &mut SqliteConnection, id: &str, conv: &str, role: &str, content: &str, at: i64) {
-        use crate::db::models::message::NewMessage;
+        use crate::db::models::message::MessageInsert;
         crate::db::ops::message::append_message(
             conn,
-            &NewMessage {
+            &MessageInsert {
                 id,
                 conversation_id: conv,
                 role,
@@ -511,7 +524,7 @@ mod search_tests {
         create_conversation(&mut conn, "parent", None, None, None, 1).unwrap();
         insert(
             &mut conn,
-            NewConversation {
+            ConversationInsert {
                 id: "sub",
                 parent_conversation_id: Some("parent"),
                 created_at: 1,
@@ -625,7 +638,7 @@ mod search_tests {
         let mut conn = pool.get().unwrap();
         crate::db::ops::project::create_project(
             &mut conn,
-            &crate::db::models::project::NewProject {
+            &crate::db::models::project::ProjectInsert {
                 id: "p1",
                 name: "P",
                 path: None,
@@ -687,7 +700,7 @@ pub fn sub_agent_runs(conn: &mut SqliteConnection, parent_id: &str) -> QueryResu
 
     let turn_ids: Vec<String> = rows.iter().filter_map(|r| r.3.clone()).collect();
 
-    // Assistant rows, not every row and not tool calls: the loop writes one
+    // AssistantRow rows, not every row and not tool calls: the loop writes one
     // assistant row per iteration, so this counts how many times the model was
     // asked. Tool rows and steering rows would inflate it, and a round that
     // called three tools is still one step.
@@ -698,9 +711,9 @@ pub fn sub_agent_runs(conn: &mut SqliteConnection, parent_id: &str) -> QueryResu
         .select((messages::turn_id, diesel::dsl::count_star()))
         .load(conn)?;
 
-    let turns: Vec<Turn> = turns::table
+    let turns: Vec<TurnRow> = turns::table
         .filter(turns::id.eq_any(&turn_ids))
-        .select(Turn::as_select())
+        .select(TurnRow::as_select())
         .load(conn)?;
 
     Ok(rows
@@ -817,7 +830,7 @@ mod tests {
             .unwrap();
         insert(
             conn,
-            NewConversation {
+            ConversationInsert {
                 id,
                 title: Some("look something up"),
                 is_pinned: 0,
@@ -838,10 +851,10 @@ mod tests {
     }
 
     fn assistant_row(conn: &mut SqliteConnection, id: &str, conv: &str, turn_id: &str) {
-        use crate::db::models::message::NewMessage;
+        use crate::db::models::message::MessageInsert;
         crate::db::ops::message::append_message(
             conn,
-            &NewMessage {
+            &MessageInsert {
                 id,
                 conversation_id: conv,
                 role: "assistant",
@@ -883,7 +896,7 @@ mod tests {
         let mut conn = pool.get().unwrap();
         crate::db::ops::project::create_project(
             &mut conn,
-            &crate::db::models::project::NewProject {
+            &crate::db::models::project::ProjectInsert {
                 id: "p1",
                 name: "P",
                 path: None,
@@ -1024,7 +1037,7 @@ mod tests {
             .execute(&mut conn)
             .unwrap();
 
-        let big = crate::db::models::assistant::Assistant {
+        let big = crate::db::models::assistant::AssistantRow {
             provider_id: Some("anthropic".into()),
             model_id: Some("mythos".into()),
             context_limit: 200_000,
@@ -1049,8 +1062,8 @@ mod tests {
         assert_eq!(pinned.context_limit, 0, "the window comes from the model now");
     }
 
-    fn assistant() -> crate::db::models::assistant::Assistant {
-        crate::db::models::assistant::Assistant {
+    fn assistant() -> crate::db::models::assistant::AssistantRow {
+        crate::db::models::assistant::AssistantRow {
             id: "a1".into(),
             name: "A".into(),
             description: None,

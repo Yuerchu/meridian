@@ -25,34 +25,53 @@
 use std::path::Path;
 
 use diesel::sqlite::SqliteConnection;
-use serde::Serialize;
 use similar::{ChangeTag, TextDiff};
 
-use crate::db::models::journal::JournalVersion;
+use crate::db::models::journal::JournalVersionRow;
 use crate::db::ops::journal as ops;
 use crate::journal::blobs;
+use crate::turn::TurnOrigin;
 
 /// How many rename links a single blame may follow. A chain of moves this
 /// deep does not occur in practice; the guard exists so a cyclic or
 /// pathological pointer costs a truncated answer instead of a hang.
 const MAX_RENAME_DEPTH: u32 = 16;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlameKind {
+    Conversation,
+    Inferred,
+    External,
+    Preexisting,
+}
+
+impl BlameKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Conversation => "conversation",
+            Self::Inferred => "inferred",
+            Self::External => "external",
+            Self::Preexisting => "preexisting",
+        }
+    }
+}
+
 /// One contiguous run of lines with one origin. 1-based, inclusive.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BlameSpan {
     pub start_line: u32,
     pub end_line: u32,
     /// `conversation` | `inferred` | `external` | `preexisting`.
-    pub kind: String,
+    pub kind: BlameKind,
     pub conversation_id: Option<String>,
     pub turn_id: Option<String>,
-    pub origin: Option<String>,
+    pub origin: Option<TurnOrigin>,
     pub model_id: Option<String>,
     pub tool_name: Option<String>,
     pub timestamp: Option<i64>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct BlameResult {
     /// What the file on disk hashed to when this answer was computed. A
     /// caller re-fetching later compares against it to know the answer aged.
@@ -78,32 +97,37 @@ enum Origin {
 
 #[derive(Debug)]
 struct Attribution {
-    kind: &'static str,
+    kind: BlameKind,
     conversation_id: Option<String>,
     turn_id: Option<String>,
-    origin: Option<String>,
+    origin: Option<TurnOrigin>,
     model_id: Option<String>,
     tool_name: Option<String>,
     timestamp: i64,
 }
 
 impl Origin {
-    fn of(v: &JournalVersion) -> Origin {
+    fn of(v: &JournalVersionRow) -> Result<Origin, String> {
+        use crate::db::models::journal::version_source;
         match v.source.as_str() {
-            "external" => Origin::External,
-            source => Origin::Version(std::rc::Rc::new(Attribution {
-                kind: if source == "inferred" {
-                    "inferred"
+            version_source::EXTERNAL => Ok(Origin::External),
+            source @ (version_source::NATIVE
+            | version_source::HOSTED
+            | version_source::INFERRED
+            | version_source::REWIND) => Ok(Origin::Version(std::rc::Rc::new(Attribution {
+                kind: if source == version_source::INFERRED {
+                    BlameKind::Inferred
                 } else {
-                    "conversation"
+                    BlameKind::Conversation
                 },
                 conversation_id: v.conversation_id.clone(),
                 turn_id: v.turn_id.clone(),
-                origin: v.origin.clone(),
+                origin: v.origin.as_deref().map(TurnOrigin::parse).transpose()?,
                 model_id: v.model_id.clone(),
                 tool_name: v.tool_name.clone(),
                 timestamp: v.created_at,
-            })),
+            }))),
+            source => Err(format!("unknown journal version source '{source}'")),
         }
     }
 }
@@ -189,7 +213,7 @@ pub fn blame(
 fn walk(
     conn: &mut SqliteConnection,
     blob_root: &Path,
-    versions: &[JournalVersion],
+    versions: &[JournalVersionRow],
     cancel: &tokio_util::sync::CancellationToken,
     depth: u32,
 ) -> Result<State, String> {
@@ -284,7 +308,7 @@ fn walk(
             base_lost = false;
             State::all(new_content, Origin::External, true)
         } else {
-            advance(state, new_content, Origin::of(v))
+            advance(state, new_content, Origin::of(v)?)
         };
     }
     Ok(state)
@@ -307,7 +331,7 @@ fn rename_base(
     let full = ops::chain(conn, &from.file_id).ok()?;
     // Up to the rename_from itself. Its own row records the file *leaving*
     // (new = None), so the content the move carried is the version before it.
-    let upto: Vec<JournalVersion> = full.into_iter().take_while(|x| x.seq < from.seq).collect();
+    let upto: Vec<JournalVersionRow> = full.into_iter().take_while(|x| x.seq < from.seq).collect();
 
     // A file whose *first* journal event is being moved has no rows below the
     // rename_from — the moved content lives only in that row's observed_old.
@@ -367,12 +391,12 @@ fn spans_of(state: &State) -> Vec<BlameSpan> {
             continue;
         }
         spans.push(match origin {
-            Origin::Preexisting => plain_span(line, "preexisting"),
-            Origin::External => plain_span(line, "external"),
+            Origin::Preexisting => plain_span(line, BlameKind::Preexisting),
+            Origin::External => plain_span(line, BlameKind::External),
             Origin::Version(a) => BlameSpan {
                 start_line: line,
                 end_line: line,
-                kind: a.kind.to_string(),
+                kind: a.kind,
                 conversation_id: a.conversation_id.clone(),
                 turn_id: a.turn_id.clone(),
                 origin: a.origin.clone(),
@@ -385,11 +409,11 @@ fn spans_of(state: &State) -> Vec<BlameSpan> {
     spans
 }
 
-fn plain_span(line: u32, kind: &str) -> BlameSpan {
+fn plain_span(line: u32, kind: BlameKind) -> BlameSpan {
     BlameSpan {
         start_line: line,
         end_line: line,
-        kind: kind.to_string(),
+        kind,
         conversation_id: None,
         turn_id: None,
         origin: None,

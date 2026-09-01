@@ -18,13 +18,12 @@
 //! Tauri's IPC takes camelCase argument names and matches them to snake_case
 //! parameters. The frontend was written against that and sends `filePath` for a
 //! `file_path`, so this has to do the same conversion or every call with a
-//! multi-word argument would arrive empty. It looks for both spellings: the
-//! camelCase one first, because that is what the client actually sends, and the
-//! original as a fallback so a hand-written request works too.
+//! multi-word argument would arrive empty. camelCase is the only wire spelling;
+//! snake_case aliases and unknown fields are rejected as contract errors.
 
 use serde::de::DeserializeOwned;
 
-/// Pull one argument out of the payload, under either spelling.
+/// Pull one argument out of a payload that has already passed `validate_args`.
 ///
 /// A missing argument is deserialised from `null` rather than refused outright,
 /// so an `Option<T>` parameter the client omitted arrives as `None` — which is
@@ -32,12 +31,19 @@ use serde::de::DeserializeOwned;
 /// expects.
 pub(crate) fn arg<T: DeserializeOwned>(args: &serde_json::Value, name: &str) -> Result<T, String> {
     let camel = to_camel_case(name);
-    let value = args
-        .get(&camel)
-        .or_else(|| args.get(name))
-        .cloned()
-        .unwrap_or(serde_json::Value::Null);
+    let value = args.get(&camel).cloned().unwrap_or(serde_json::Value::Null);
     serde_json::from_value(value).map_err(|e| format!("argument `{name}`: {e}"))
+}
+
+fn validate_args(args: &serde_json::Value, names: &[&str]) -> Result<(), String> {
+    let object = args
+        .as_object()
+        .ok_or_else(|| "command arguments must be a JSON object".to_owned())?;
+    let allowed: std::collections::HashSet<String> = names.iter().map(|name| to_camel_case(name)).collect();
+    if let Some(name) = object.keys().find(|name| !allowed.contains(*name)) {
+        return Err(format!("unknown command argument `{name}`"));
+    }
+    Ok(())
 }
 
 fn to_camel_case(snake: &str) -> String {
@@ -56,52 +62,30 @@ fn to_camel_case(snake: &str) -> String {
     out
 }
 
-/// Preference keys that belong to a server rather than to the user.
-///
-/// `save_listen_config`, `start_hooks`, `save_onebot_config` and the rest are
-/// marked `local` because a remote caller reconfiguring the server that is
-/// answering it is sawing off the branch it sits on. But those commands are
-/// only one way to reach that state: all three servers keep their configuration
-/// in `preferences`, and `set_preference` is a generic key-value write. Marking
-/// the specific commands and leaving the generic one open would mean the rule
-/// held only for callers who did not think to go round it.
-///
-/// Two of these are worse than self-lockout. `hooks.token` and
-/// `onebot.access_token` are other servers' credentials, and
-/// `onebot.admin_users` decides who counts as an admin in QQ — writing it is
-/// privilege escalation against a *third party*, not a setting the owner is
-/// entitled to change about their own session.
-///
-/// `autoreview.` is here for the escalation reason rather than the self-lockout
-/// one. Those keys decide which model answers approvals and what it is told;
-/// pointing `autoreview.model` at something that waves everything through, or
-/// appending one line to `autoreview.allow_rules`, converts write access to a
-/// settings key into permission to run anything on the host. It is the only
-/// prefix whose *values* grant capability rather than configure a listener.
-const SERVER_OWNED_PREFIXES: &[&str] = &[
-    "remote.",
-    "hooks.",
-    "onebot.",
-    "autoreview.",
-    "acp.",
-    // Whether commands run inside the OS sandbox. Turning it off is permission
-    // to write outside the project, same class as `autoreview.allow_rules`.
-    "sandbox.",
-];
-
-/// Refuse the generic key-value commands when the key is a server's own.
+/// Refuse a typed preference command when the selected key is the server's own.
 ///
 /// Sits in front of the whole table rather than in `commands::preference`,
 /// because the restriction is about *where the request came from* and the
-/// command itself has no idea. The window goes on being able to write anything.
+/// command itself has no idea. Keys for listener credentials, OneBot admins or
+/// ACP binaries are absent from `PreferenceKey` altogether; auto-review and
+/// sandbox remain readable by the local settings UI but not over a socket.
 fn guard_preference(cmd: &str, args: &serde_json::Value) -> Result<(), String> {
     if !matches!(cmd, "get_preference" | "set_preference") {
         return Ok(());
     }
-    let key: String = arg(args, "key").unwrap_or_default();
-    if SERVER_OWNED_PREFIXES.iter().any(|prefix| key.starts_with(prefix)) {
+    let request = args
+        .get("request")
+        .ok_or_else(|| format!("{cmd} requires a request object"))?;
+    let raw_key = request
+        .get("key")
+        .cloned()
+        .ok_or_else(|| format!("{cmd} request requires key"))?;
+    let key: crate::commands::preference::PreferenceKey =
+        serde_json::from_value(raw_key).map_err(|error| format!("invalid preference key: {error}"))?;
+    if key.is_server_owned() {
         return Err(format!(
-            "`{key}` configures a server on the machine running Meridian; change it there"
+            "`{}` configures the machine running Meridian; change it there",
+            key.as_str()
         ));
     }
     Ok(())
@@ -117,8 +101,9 @@ fn guard_provider_update(cmd: &str, args: &serde_json::Value) -> Result<(), Stri
     if cmd != "update_provider" {
         return Ok(());
     }
+    let request = args.get("request").ok_or("update_provider requires a request object")?;
     for name in ["base_url", "provider_type", "api_format"] {
-        if field_is_set(args, name) {
+        if field_is_set(request, name) {
             return Err(format!(
                 "`{name}` configures where this machine sends its API keys; change it there"
             ));
@@ -129,7 +114,7 @@ fn guard_provider_update(cmd: &str, args: &serde_json::Value) -> Result<(), Stri
 
 fn field_is_set(args: &serde_json::Value, name: &str) -> bool {
     let camel = to_camel_case(name);
-    match args.get(&camel).or_else(|| args.get(name)) {
+    match args.get(&camel) {
         None | Some(serde_json::Value::Null) => false,
         Some(_) => true,
     }
@@ -174,20 +159,25 @@ fn sanitize_remote_output(cmd: &str, mut value: serde_json::Value) -> serde_json
 /// compile, and a local-only row must not name its function at all.
 macro_rules! dispatch_call {
     (async, $app:expr, $args:expr, ($($module:ident)::+), $name:ident, ($($arg:ident : $ty:ty),* $(,)?)) => {{
+        validate_args($args, &[$(stringify!($arg)),*])?;
         $( let $arg: $ty = arg($args, stringify!($arg))?; )*
         let out = crate::$($module)::+::$name($app.clone(), $($arg),*).await?;
         serde_json::to_value(out).map_err(|e| e.to_string())
     }};
     (sync, $app:expr, $args:expr, ($($module:ident)::+), $name:ident, ($($arg:ident : $ty:ty),* $(,)?)) => {{
+        validate_args($args, &[$(stringify!($arg)),*])?;
         $( let $arg: $ty = arg($args, stringify!($arg))?; )*
         let out = crate::$($module)::+::$name($app.clone(), $($arg),*)?;
         serde_json::to_value(out).map_err(|e| e.to_string())
     }};
     (local, $app:expr, $args:expr, ($($module:ident)::+), $name:ident, ($($arg:ident : $ty:ty),* $(,)?)) => {
-        Err(format!(
-            "`{}` is only available on the machine running Meridian",
-            stringify!($name)
-        ))
+        {
+            validate_args($args, &[$(stringify!($arg)),*])?;
+            Err(format!(
+                "`{}` is only available on the machine running Meridian",
+                stringify!($name)
+            ))
+        }
     };
 }
 
@@ -279,11 +269,18 @@ mod tests {
         assert_eq!(arg::<String>(&args, "conversation_id").unwrap(), "c-1");
     }
 
-    /// And what a hand-written request would send.
+    /// The old snake_case wire spelling is not a compatibility alias.
     #[test]
-    fn the_original_spelling_still_works() {
+    fn snake_case_arguments_are_rejected() {
         let args = serde_json::json!({ "conversation_id": "c-1" });
-        assert_eq!(arg::<String>(&args, "conversation_id").unwrap(), "c-1");
+        assert!(validate_args(&args, &["conversation_id"]).is_err());
+    }
+
+    #[test]
+    fn unknown_arguments_are_rejected() {
+        let args = serde_json::json!({ "conversationId": "c-1", "futureField": true });
+        assert!(validate_args(&args, &["conversation_id"]).is_err());
+        assert!(validate_args(&serde_json::json!({ "conversationId": "c-1" }), &["conversation_id"]).is_ok());
     }
 
     /// An omitted optional argument is `None`, not an error -- half the command
@@ -308,6 +305,7 @@ mod tests {
     #[test]
     fn a_server_owned_preference_cannot_be_reached_generically() {
         for key in [
+            // These are not members of the closed public key enum at all.
             "remote.enabled",
             "remote.token",
             "remote.port",
@@ -322,7 +320,7 @@ mod tests {
             "autoreview.enabled",
             "sandbox.enabled",
         ] {
-            let args = serde_json::json!({ "key": key });
+            let args = serde_json::json!({ "request": { "key": key } });
             assert!(
                 guard_preference("set_preference", &args).is_err(),
                 "writing `{key}` should be refused"
@@ -339,11 +337,27 @@ mod tests {
     /// this command is for, and a remote client is the owner's own device.
     #[test]
     fn ordinary_preferences_are_untouched() {
-        for key in ["ui.theme", "logging.level", "voice.filter_level"] {
-            let args = serde_json::json!({ "key": key });
+        for key in [
+            "shell",
+            "search_provider",
+            "voice.filter_level",
+            "voice.download_url",
+            "android.manage_storage_enabled",
+            "approvals.ttl_minutes",
+            "sub_agent.explore.model",
+            "sub_agent.agent.model",
+        ] {
+            let args = serde_json::json!({ "request": { "key": key } });
             assert!(guard_preference("set_preference", &args).is_ok(), "`{key}` should pass");
             assert!(guard_preference("get_preference", &args).is_ok(), "`{key}` should pass");
         }
+    }
+
+    #[test]
+    fn legacy_flat_preference_arguments_are_rejected() {
+        let args = serde_json::json!({ "key": "shell", "value": "bash" });
+        assert!(guard_preference("get_preference", &args).is_err());
+        assert!(guard_preference("set_preference", &args).is_err());
     }
 
     /// The guard is keyed on the command, not on the argument: a command that
@@ -359,19 +373,26 @@ mod tests {
     fn a_remote_caller_cannot_repoint_a_provider() {
         for (field, value) in [
             ("baseUrl", serde_json::json!("https://evil.example")),
-            ("base_url", serde_json::json!("https://evil.example")),
             ("providerType", serde_json::json!("openai")),
             ("apiFormat", serde_json::json!("responses")),
         ] {
-            let args = serde_json::json!({ field: value });
+            let args = serde_json::json!({ "request": { field: value } });
             assert!(
                 guard_provider_update("update_provider", &args).is_err(),
                 "{field} should be refused"
             );
         }
-        let rename = serde_json::json!({ "name": "Work", "baseUrl": null, "providerType": null });
+        // snake_case is not a second spelling the guard recognises. The exact
+        // command-argument validator rejects it before dispatch instead.
+        let snake = serde_json::json!({ "request": { "base_url": "https://evil.example" } });
+        assert!(guard_provider_update("update_provider", &snake).is_ok());
+        let request = snake.get("request").unwrap();
+        assert!(validate_args(request, &["base_url"]).is_err());
+        let rename = serde_json::json!({
+            "request": { "id": "p1", "name": "Work", "baseUrl": null, "providerType": null }
+        });
         assert!(guard_provider_update("update_provider", &rename).is_ok());
-        assert!(guard_provider_update("chat", &serde_json::json!({ "baseUrl": "https://x" })).is_ok());
+        assert!(guard_provider_update("chat", &serde_json::json!({ "request": { "baseUrl": "https://x" } })).is_ok());
     }
 
     #[test]
@@ -408,6 +429,28 @@ mod tests {
         let mut seen = std::collections::HashSet::new();
         for name in COMMAND_NAMES {
             assert!(seen.insert(*name), "`{name}` appears twice in the command table");
+        }
+    }
+
+    #[test]
+    fn every_plan_review_command_is_registered_for_remote_dispatch() {
+        let expected = [
+            "get_plan_review",
+            "list_plan_revisions",
+            "save_plan_review_draft",
+            "discard_plan_review_draft",
+            "decide_plan_review",
+            "get_plan_review_delivery",
+            "continue_plan_review_delivery",
+            "resolve_plan_file_conflict",
+        ];
+        for name in expected {
+            assert!(
+                COMMAND_NAMES.contains(&name),
+                "{name} is missing from the command table"
+            );
+            let index = COMMAND_NAMES.iter().position(|candidate| *candidate == name).unwrap();
+            assert_eq!(LOCAL_ONLY[index], "", "{name} must be reachable by remote clients");
         }
     }
 

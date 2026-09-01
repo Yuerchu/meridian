@@ -73,6 +73,10 @@ pub struct ServicesInner {
     pub sleep: AppSleepInhibitor,
     pub events: EventBus,
     pub paths: Paths,
+    /// Crash-safe app-private `plan.md` materialisation shared by every runner.
+    /// The shared value owns the per-document locks; constructing one per turn
+    /// would only serialize each turn with itself.
+    pub plan_files: Arc<crate::plan_files::PlanFileStore>,
     /// Hosted coding-agent sessions. Absent on Android, where a session — a
     /// child process — cannot exist.
     #[cfg(not(target_os = "android"))]
@@ -124,8 +128,11 @@ pub trait StartTurn: Send + Sync {
     /// The queue item's id travels with it so the runner can spend it in the
     /// same transaction that writes its row — the rule the whole ledger rests
     /// on, and one only the runner is in a position to keep.
-    async fn start(&self, conversation_id: &str, queued: &crate::db::models::queue::QueuedPrompt)
-    -> Result<(), String>;
+    async fn start(
+        &self,
+        conversation_id: &str,
+        queued: &crate::db::models::queue::QueuedPromptRow,
+    ) -> Result<(), String>;
 }
 
 impl Services {
@@ -174,6 +181,7 @@ pub fn bare_services(dir: &std::path::Path) -> Services {
             data_dir: dir.to_path_buf(),
             skills_root: dir.join("skills"),
         },
+        plan_files: Arc::new(crate::plan_files::PlanFileStore::new(dir)),
         #[cfg(not(target_os = "android"))]
         acp: crate::acp::AcpRegistry::new(),
         #[cfg(not(target_os = "android"))]

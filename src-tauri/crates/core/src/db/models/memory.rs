@@ -55,8 +55,8 @@ impl MemoryScope {
         self.into()
     }
 
-    pub fn parse(s: &str) -> Option<Self> {
-        s.parse().ok()
+    pub fn parse(value: &str) -> Result<Self, String> {
+        value.parse().map_err(|_| format!("unknown memory scope `{value}`"))
     }
 
     pub fn all() -> Vec<&'static str> {
@@ -66,7 +66,9 @@ impl MemoryScope {
 
 /// The surface a memory was learned on. Gates injection: what was learned in a
 /// private chat must never surface in a group.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, Serialize, Deserialize, strum::IntoStaticStr)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, EnumIter, Serialize, Deserialize, strum::IntoStaticStr, strum::EnumString,
+)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum Origin {
@@ -87,6 +89,10 @@ impl Origin {
 
     pub fn all() -> Vec<&'static str> {
         Self::iter().map(|v| v.as_str()).collect()
+    }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        value.parse().map_err(|_| format!("unknown memory origin `{value}`"))
     }
 
     /// Origins that may be injected into a group conversation. Deliberately
@@ -115,8 +121,10 @@ impl Visibility {
         self.into()
     }
 
-    pub fn parse(s: &str) -> Option<Self> {
-        s.parse().ok()
+    pub fn parse(value: &str) -> Result<Self, String> {
+        value
+            .parse()
+            .map_err(|_| format!("unknown memory visibility `{value}`"))
     }
 
     pub fn all() -> Vec<&'static str> {
@@ -124,7 +132,9 @@ impl Visibility {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, Serialize, Deserialize, strum::IntoStaticStr)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, EnumIter, Serialize, Deserialize, strum::IntoStaticStr, strum::EnumString,
+)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum MemoryType {
@@ -143,16 +153,23 @@ impl MemoryType {
     pub fn all() -> Vec<&'static str> {
         Self::iter().map(|v| v.as_str()).collect()
     }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        value.parse().map_err(|_| format!("unknown memory type `{value}`"))
+    }
 }
 
 /// Why a row was soft-deleted. Surfaced in the trash view so the operator can
 /// tell "the bot forgot this person" apart from "someone deleted it".
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, Serialize, Deserialize, strum::IntoStaticStr)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, EnumIter, Serialize, Deserialize, strum::IntoStaticStr, strum::EnumString,
+)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum DeletedBy {
     /// The subject removed their own memory.
     #[strum(serialize = "self")]
+    #[serde(rename = "self")]
     SelfRemoved,
     Admin,
     Lru,
@@ -161,6 +178,12 @@ pub enum DeletedBy {
 impl DeletedBy {
     pub fn as_str(&self) -> &'static str {
         self.into()
+    }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        value
+            .parse()
+            .map_err(|_| format!("unknown memory deletion actor `{value}`"))
     }
 }
 
@@ -194,7 +217,7 @@ pub fn parse_onebot_user_scope_id(scope_id: &str) -> Option<i64> {
 
 #[derive(Debug, Clone, Queryable, Selectable, Serialize)]
 #[diesel(table_name = memories)]
-pub struct Memory {
+pub struct MemoryRow {
     pub id: String,
     pub scope_type: String,
     pub scope_id: String,
@@ -211,19 +234,19 @@ pub struct Memory {
     pub updated_at: i64,
 }
 
-impl Memory {
-    pub fn visibility(&self) -> Visibility {
-        Visibility::parse(&self.visibility).unwrap_or(Visibility::Normal)
+impl MemoryRow {
+    pub fn visibility(&self) -> Result<Visibility, String> {
+        Visibility::parse(&self.visibility)
     }
 
-    pub fn is_owner_only(&self) -> bool {
-        self.visibility() == Visibility::OwnerOnly
+    pub fn is_owner_only(&self) -> Result<bool, String> {
+        self.visibility().map(|visibility| visibility == Visibility::OwnerOnly)
     }
 }
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = memories)]
-pub struct NewMemory<'a> {
+pub struct MemoryInsert<'a> {
     pub id: &'a str,
     pub scope_type: &'a str,
     pub scope_id: &'a str,
@@ -240,7 +263,7 @@ pub struct NewMemory<'a> {
 
 #[derive(Debug, Default, AsChangeset)]
 #[diesel(table_name = memories)]
-pub struct MemoryUpdate {
+pub struct MemoryChangeset {
     pub content: Option<String>,
     pub memory_type: Option<String>,
     pub visibility: Option<String>,
@@ -249,7 +272,7 @@ pub struct MemoryUpdate {
 
 #[derive(Debug, Clone, Queryable, Selectable, Serialize)]
 #[diesel(table_name = memory_subjects)]
-pub struct MemorySubject {
+pub struct MemorySubjectRow {
     pub scope_id: String,
     pub display_name: Option<String>,
     pub last_seen_at: i64,
@@ -259,7 +282,7 @@ pub struct MemorySubject {
     pub opted_out: i32,
 }
 
-impl MemorySubject {
+impl MemorySubjectRow {
     pub fn user_id(&self) -> Option<i64> {
         parse_onebot_user_scope_id(&self.scope_id)
     }
@@ -271,7 +294,7 @@ impl MemorySubject {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = memory_subjects)]
-pub struct NewMemorySubject<'a> {
+pub struct MemorySubjectInsert<'a> {
     pub scope_id: &'a str,
     pub display_name: Option<&'a str>,
     pub last_seen_at: i64,
@@ -283,7 +306,7 @@ pub struct NewMemorySubject<'a> {
 
 #[derive(Debug, Clone, Queryable, Selectable, Serialize)]
 #[diesel(table_name = memory_proposals)]
-pub struct MemoryProposal {
+pub struct MemoryProposalRow {
     pub id: i32,
     pub key: String,
     pub content: String,
@@ -299,7 +322,7 @@ pub struct MemoryProposal {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = memory_proposals)]
-pub struct NewMemoryProposal<'a> {
+pub struct MemoryProposalInsert<'a> {
     pub key: &'a str,
     pub content: &'a str,
     pub memory_type: &'a str,

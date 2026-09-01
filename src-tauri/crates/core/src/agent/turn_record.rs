@@ -130,7 +130,7 @@ mod tests {
         crate::db::ops::conversation::create_conversation(&mut conn, id, Some("t"), None, None, 1).unwrap();
     }
 
-    fn stored(pool: &DbPool, id: &str) -> crate::db::models::turn::Turn {
+    fn stored(pool: &DbPool, id: &str) -> crate::db::models::turn::TurnRow {
         use diesel::prelude::*;
         let mut conn = pool.get().unwrap();
         crate::db::schema::turns::table.find(id).first(&mut conn).unwrap()

@@ -56,6 +56,12 @@ struct Conn {
     tx: mpsc::Sender<String>,
 }
 
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AuthFrame {
+    token: String,
+}
+
 impl WsFanout {
     fn add(&self, tx: mpsc::Sender<String>) -> u64 {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
@@ -121,10 +127,9 @@ async fn authenticate(socket: &mut WebSocket, config: &super::ListenConfig) -> b
         // Timed out, closed, or opened with something that is not text.
         _ => return false,
     };
-    let presented = serde_json::from_str::<serde_json::Value>(&first)
-        .ok()
-        .and_then(|v| v.get("token").and_then(|t| t.as_str()).map(str::to_string))
-        .unwrap_or_default();
+    let Ok(AuthFrame { token: presented }) = serde_json::from_str::<AuthFrame>(&first) else {
+        return false;
+    };
 
     super::http::token_ok(config, &presented)
 }
@@ -226,6 +231,14 @@ mod tests {
         let frame: serde_json::Value = serde_json::from_str(&rx.try_recv().unwrap()).unwrap();
         assert_eq!(frame["channel"], "chat-stream");
         assert_eq!(frame["payload"]["type"], "delta");
+    }
+
+    #[test]
+    fn auth_frame_rejects_unknown_missing_and_non_string_fields() {
+        assert!(serde_json::from_str::<AuthFrame>(r#"{"token":"secret"}"#).is_ok());
+        assert!(serde_json::from_str::<AuthFrame>(r#"{}"#).is_err());
+        assert!(serde_json::from_str::<AuthFrame>(r#"{"token":1}"#).is_err());
+        assert!(serde_json::from_str::<AuthFrame>(r#"{"token":"secret","future":true}"#).is_err());
     }
 
     /// The rule the whole module is shaped around: a device that stopped

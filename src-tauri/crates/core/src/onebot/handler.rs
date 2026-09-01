@@ -432,7 +432,7 @@ fn make_approval_fn(
                     truncate_args(&tc.arguments, 500),
                     truncate_args(&reason, 300),
                 ),
-                (None, super::agent::AskKind::Question) => super::format::ask_user_prompt(&tc.arguments),
+                (None, super::agent::AskKind::Question) => super::format::ask_user_prompt(&tc.arguments)?,
                 (None, super::agent::AskKind::Permission) => format!(
                     "🔧 工具调用请求:\n工具: {}\n参数: {}\n\n引用本条消息回复 Y 批准，其他内容拒绝并作为理由转达（60秒超时）",
                     tc.name,
@@ -481,20 +481,22 @@ fn make_approval_fn(
                 },
             );
 
-            match tokio::time::timeout(std::time::Duration::from_secs(60), rx).await {
-                Ok(Ok(said)) => Some(said),
-                _ => {
-                    // Timed out, or the sender was dropped — which is what the
-                    // turn guard does on its way out. Either way the entry is
-                    // ours to remove, and only if it is still ours: a later
-                    // call for this session may have replaced it.
-                    let mut approvals = state.pending_approvals.lock();
-                    if approvals.get(&session_str).is_some_and(|p| p.turn_id == turn_id) {
-                        approvals.remove(&session_str);
+            Ok(
+                match tokio::time::timeout(std::time::Duration::from_secs(60), rx).await {
+                    Ok(Ok(said)) => Some(said),
+                    _ => {
+                        // Timed out, or the sender was dropped — which is what the
+                        // turn guard does on its way out. Either way the entry is
+                        // ours to remove, and only if it is still ours: a later
+                        // call for this session may have replaced it.
+                        let mut approvals = state.pending_approvals.lock();
+                        if approvals.get(&session_str).is_some_and(|p| p.turn_id == turn_id) {
+                            approvals.remove(&session_str);
+                        }
+                        None
                     }
-                    None
-                }
-            }
+                },
+            )
         })
     })
 }
@@ -627,8 +629,8 @@ pub(super) async fn run_agent_turn(
         conversation_id.clone(),
         Some({
             let events = state.services.events.clone();
-            Box::new(move |payload| {
-                let _ = events.emit("chat-stream", payload);
+            Box::new(move |event| {
+                let _ = events.emit_chat(event);
             }) as super::StopSink
         }),
     );
@@ -694,12 +696,13 @@ pub(super) async fn run_agent_turn(
         )
         .await;
 
-        let _ = state
-            .services
-            .events
-            .emit("conversation-updated", serde_json::json!({"id": conversation_id}));
+        let _ = state.services.events.emit_conversation_updated(&conversation_id);
 
-        let stop_reason = outcome.stop_reason();
+        let stop_reason = if cancel.is_cancelled() {
+            crate::events::ChatStopReason::Cancelled
+        } else {
+            outcome.chat_stop_reason()
+        };
         // Kept before the reply is consumed into a chat message: the turn's
         // record is the only place this survives, and it was being dropped.
         let failure = outcome.reply.as_ref().err().cloned();
@@ -748,12 +751,15 @@ pub(super) async fn run_agent_turn(
                 // guard cutting a repeating model short is not a completed
                 // turn, whatever the reply looked like.
                 let (status, error) = match stop_reason {
-                    "error" => (TurnStatus::Failed, failure.as_deref()),
-                    "loop_detected" => (TurnStatus::Failed, Some(ERROR_LOOP_DETECTED)),
+                    crate::events::ChatStopReason::Error => (TurnStatus::Failed, failure.as_deref()),
+                    crate::events::ChatStopReason::LoopDetected => (TurnStatus::Failed, Some(ERROR_LOOP_DETECTED)),
                     // A desktop Stop on a QQ conversation reaches this token;
                     // the turn was decided against, not lost.
-                    _ if cancel.is_cancelled() => (TurnStatus::Cancelled, None),
-                    _ => (TurnStatus::Done, None),
+                    crate::events::ChatStopReason::Cancelled => (TurnStatus::Cancelled, None),
+                    crate::events::ChatStopReason::EndTurn
+                    | crate::events::ChatStopReason::MaxTokens
+                    | crate::events::ChatStopReason::MaxTurnRequests
+                    | crate::events::ChatStopReason::Refusal => (TurnStatus::Done, None),
                 };
                 crate::agent::turn_record::finish(&state.services.db, &turn_id, status, error).await;
                 return actions;
@@ -1185,7 +1191,7 @@ async fn present_listing(
     session_key: &SessionKey,
     user_id: i64,
     kind: super::MemoryListingKind,
-    rows: &[crate::db::models::memory::Memory],
+    rows: &[crate::db::models::memory::MemoryRow],
     header: &str,
     footer: &str,
 ) -> String {
@@ -1537,7 +1543,16 @@ async fn dispatch_memory(
             // an embarrassing story about one person as a piece of shared slang,
             // and leaving removal to the operator only would reopen the hole
             // that per-person deletion exists to close.
-            let rows: Vec<_> = rows.into_iter().filter(|m| !m.is_owner_only()).collect();
+            let rows = rows.into_iter().try_fold(Vec::new(), |mut visible, memory| {
+                if !memory.is_owner_only()? {
+                    visible.push(memory);
+                }
+                Ok::<_, String>(visible)
+            });
+            let rows = match rows {
+                Ok(rows) => rows,
+                Err(error) => return build_reply(event, &format!("读取记忆失败：{error}"), reply_to),
+            };
             let header = if rows.is_empty() {
                 "本群还没有记忆。".to_string()
             } else {
@@ -1596,7 +1611,7 @@ async fn dispatch_memory(
                 let id = uuid::Uuid::new_v4().to_string();
                 mem_ops::upsert_memory(
                     &mut conn,
-                    &crate::db::models::memory::NewMemory {
+                    &crate::db::models::memory::MemoryInsert {
                         id: &id,
                         scope_type: MemoryScope::OnebotUser.as_str(),
                         scope_id: &target_scope,
@@ -1666,7 +1681,7 @@ async fn dispatch_memory(
                 let id = uuid::Uuid::new_v4().to_string();
                 mem_ops::upsert_memory(
                     &mut conn,
-                    &crate::db::models::memory::NewMemory {
+                    &crate::db::models::memory::MemoryInsert {
                         id: &id,
                         scope_type: MemoryScope::OnebotGlobal.as_str(),
                         scope_id: gid,
@@ -1857,6 +1872,14 @@ async fn dispatch_compact(
 
     let pool = &state.services.db;
     let secrets = &state.services.secrets;
+    match crate::agent::queue::has_plan_review_barrier(&state.services, &conversation_id).await {
+        Ok(false) => {}
+        Ok(true) => return build_reply(event, "这个对话正在等待计划审阅，请先在电脑端完成审阅。", reply_to),
+        Err(error) => {
+            tracing::warn!(%error, %conversation_id, "could not verify the plan-review barrier before OneBot compaction");
+            return build_reply(event, "无法确认计划审阅状态，暂未压缩对话。", reply_to);
+        }
+    }
     let (assistant, keep_recent) = {
         let pool = pool.clone();
         let conv_id = conversation_id.clone();

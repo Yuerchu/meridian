@@ -1,5 +1,5 @@
 use diesel::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::db::schema::queued_prompts;
 
@@ -14,7 +14,7 @@ use crate::db::schema::queued_prompts;
 /// Claude Code offers only the second. Having only that one means every thought
 /// you queue while something long runs interrupts it, which is the opposite of
 /// what queueing is usually for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, strum::IntoStaticStr, strum::EnumString)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, strum::IntoStaticStr, strum::EnumString)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum Delivery {
@@ -27,11 +27,10 @@ impl Delivery {
         self.into()
     }
 
-    /// Unknown values read as `FollowUp`, which is the one that waits. A row
-    /// written by a later build naming a mode this one does not have must not
-    /// become an interruption by accident.
-    pub fn parse_or_wait(value: &str) -> Self {
-        value.parse().unwrap_or(Delivery::FollowUp)
+    pub fn parse(value: &str) -> Result<Self, String> {
+        value
+            .parse()
+            .map_err(|_| format!("unknown queue delivery mode `{value}`"))
     }
 }
 
@@ -57,7 +56,7 @@ pub enum QueueState {
 
 #[derive(Debug, Clone, Queryable, Selectable, Identifiable, Serialize)]
 #[diesel(table_name = queued_prompts)]
-pub struct QueuedPrompt {
+pub struct QueuedPromptRow {
     pub id: String,
     pub conversation_id: String,
     pub content: String,
@@ -72,9 +71,9 @@ pub struct QueuedPrompt {
     pub reported_at: Option<i64>,
 }
 
-impl QueuedPrompt {
-    pub fn delivery(&self) -> Delivery {
-        Delivery::parse_or_wait(&self.delivery)
+impl QueuedPromptRow {
+    pub fn delivery(&self) -> Result<Delivery, String> {
+        Delivery::parse(&self.delivery)
     }
 
     /// Ordered so the answer cannot be ambiguous: settled outranks everything
@@ -95,7 +94,7 @@ impl QueuedPrompt {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = queued_prompts)]
-pub struct NewQueuedPrompt<'a> {
+pub struct QueuedPromptInsert<'a> {
     pub id: &'a str,
     pub conversation_id: &'a str,
     pub content: &'a str,

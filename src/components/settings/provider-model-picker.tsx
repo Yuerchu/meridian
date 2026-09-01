@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { Input, Label, TextField } from '@heroui/react'
 
 import { SettingsSelect } from './primitives'
-import type { ModelInfo, Provider } from '@/types'
+import type { ProviderInfoResponse, ProviderModelInfoResponse } from '@/types'
 
 /** Stands for "whatever the caller falls back to" in the provider list. */
 const NO_PROVIDER = '_default'
@@ -12,9 +12,9 @@ const NO_MODEL = '_none'
 type NameProps = { label: React.ReactNode; ariaLabel?: never } | { label?: never; ariaLabel: string }
 
 interface ProviderModelPickerProps {
-  providers: Provider[]
+  providers: ProviderInfoResponse[]
   /** Empty until a provider is chosen, and empty again if the fetch failed. */
-  models: ModelInfo[]
+  models: ProviderModelInfoResponse[]
   providerId: string
   modelId: string
   /**

@@ -106,10 +106,13 @@ describe('file preview source', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Open preview' }))
     await waitFor(() =>
-      expect(workspaceResolveRef).toHaveBeenCalledWith(
-        { path: 'src/example.ts' },
-        { conversationId: 'conversation-1' },
-      ),
+      expect(workspaceResolveRef).toHaveBeenCalledWith({
+        conversationId: 'conversation-1',
+        projectId: null,
+        path: 'src/example.ts',
+        lineStart: null,
+        lineEnd: null,
+      }),
     )
 
     await waitFor(() => expect(document.querySelector('[data-preview-line="1"]')).toBeInTheDocument())
