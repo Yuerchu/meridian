@@ -17,6 +17,7 @@ import { HostedAgentGlyph } from '@/components/ui/agent-icon'
 import { cn } from '@/lib/utils'
 import { ActionButton } from '@/components/ui/action-button'
 import { useConfirm } from '@/hooks/use-confirm'
+import { ConversationRefChips } from './conversation-ref-chips'
 import { CopyButton, MarkdownContent } from './markdown-content'
 import { Avatar, TextArea } from '@heroui/react'
 import {
@@ -597,6 +598,7 @@ export const MessageItem = React.memo(function MessageItem({
         <ContextMenuTrigger render={<MessageUser className="pointer-coarse:select-none" />}>
           <>
             {speaker && <MessageHeader className="justify-end text-muted font-normal">{speaker}</MessageHeader>}
+            <ConversationRefChips items={message.context_items} />
             {hasAttachments && (
               <ChatAttachmentGroup className="max-w-[80%] justify-end">
                 {contentParts!

@@ -3345,7 +3345,7 @@ mod tests {
     fn current_workspace_snapshot_rides_the_acp_prompt_without_a_live_at_trigger() {
         let context = crate::workspace::reference::PreparedContextItem {
             id: "ctx".into(),
-            kind: crate::workspace::reference::WorkspaceReferenceKind::ProjectFile,
+            kind: crate::workspace::reference::MessageContextKind::ProjectFile,
             content: "frozen bytes".into(),
             display_path: Some("src/lib.rs".into()),
             line_start: None,

@@ -397,7 +397,7 @@ pub async fn workspace_resolve_ref(
     let mut prepared = workspace::reference::prepare_references(&context, &[reference], &counter, 100_000).await?;
     prepared
         .pop()
-        .map(|item| item.preview())
+        .and_then(|item| item.preview())
         .map(Into::into)
         .ok_or_else(|| "reference did not produce a snapshot".to_string())
 }

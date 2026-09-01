@@ -27,7 +27,7 @@ impl TryFrom<QueuedPromptContextItemRow> for crate::workspace::reference::Prepar
     fn try_from(item: QueuedPromptContextItemRow) -> Result<Self, Self::Error> {
         Ok(Self {
             id: item.id,
-            kind: crate::workspace::reference::WorkspaceReferenceKind::parse(&item.kind)?,
+            kind: crate::workspace::reference::MessageContextKind::parse(&item.kind)?,
             content: item.content,
             display_path: item.display_path,
             line_start: item.line_start,

@@ -337,6 +337,40 @@ describe('hydrateBlocks', () => {
     expect(() => hydrateBlocks([extendedContext])).toThrow(/must contain exactly/)
   })
 
+  it('accepts a conversation reference descriptor and holds its shape', () => {
+    const descriptor = {
+      id: 'ctx',
+      position: 0,
+      kind: 'conversation',
+      display_path: '被引线程',
+      line_start: null,
+      line_end: null,
+      byte_count: 1,
+      line_count: 1,
+      token_count: 1,
+      truncated: false,
+    }
+    expect(() => hydrateBlocks([msg('u', { role: 'user', context_items: [descriptor] })])).not.toThrow()
+
+    // The title is load-bearing (the chip and the hosted prompt both read it),
+    // and a line range means nothing on a thread.
+    const untitled = { ...descriptor, display_path: null }
+    expect(() =>
+      hydrateBlocks([
+        msg('u', {
+          role: 'user',
+          context_items: [untitled as unknown as MessageInfoResponse['context_items'][number]],
+        }),
+      ]),
+    ).toThrow(/display_path is required/)
+    const ranged = { ...descriptor, line_start: 1, line_end: 2 }
+    expect(() =>
+      hydrateBlocks([
+        msg('u', { role: 'user', context_items: [ranged as unknown as MessageInfoResponse['context_items'][number]] }),
+      ]),
+    ).toThrow(/conversation reference has a line range/)
+  })
+
   it('rejects unknown turn phases and sub-agent kinds', () => {
     const unknownPhase = { ...turnRecord('t1', 'running'), phase: 'future_phase' } as unknown as TurnInfoResponse
     expect(() => hydrateBlocks([], [], [unknownPhase])).toThrow(/unknown turn phase/)

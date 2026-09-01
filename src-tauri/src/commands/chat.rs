@@ -484,7 +484,8 @@ mod command_contract_tests {
             "fast": null,
             "mode": null,
             "voice": null,
-            "contextRefs": null
+            "contextRefs": null,
+            "conversationRefs": null
         })
     }
 
@@ -583,6 +584,9 @@ impl meridian_core::services::StartTurn for DesktopTurns {
             None,
             None,
             None,
+            // The queue froze both kinds of reference at enqueue time, so the
+            // ids that produced them are not resupplied here.
+            None,
             Some(queued_context),
             Some(queued.id.clone()),
             None,
@@ -607,6 +611,11 @@ pub struct ChatRequest {
     pub mode: RequiredNullable<meridian_core::agent::modes::ChatMode>,
     pub voice: RequiredNullable<bool>,
     pub context_refs: RequiredNullable<Vec<meridian_core::workspace::reference::WorkspaceReferenceRequest>>,
+    /// Conversations the user dragged into the composer, as bare ids. Not part
+    /// of `context_refs`: a dragged thread has no `@` marker in the visible
+    /// text, so the reconcile-against-the-message contract cannot apply — the
+    /// backend validates these on their own terms instead.
+    pub conversation_refs: RequiredNullable<Vec<String>>,
 }
 
 #[tauri::command]
@@ -656,6 +665,7 @@ pub async fn chat(app: tauri::AppHandle, request: ChatRequest) -> Result<(), Str
         mode: RequiredNullable(mode),
         voice: RequiredNullable(voice),
         context_refs: RequiredNullable(context_refs),
+        conversation_refs: RequiredNullable(conversation_refs),
     } = request;
     // Decided here rather than inside, so the failure path below can name the
     // turn it is closing without depending on how far the run got.
@@ -685,6 +695,7 @@ pub async fn chat(app: tauri::AppHandle, request: ChatRequest) -> Result<(), Str
         mode.map(|mode| mode.as_str().to_string()),
         voice,
         context_refs,
+        conversation_refs,
         None,
         None,
         None,
@@ -717,6 +728,7 @@ pub async fn run_turn(
     mode: Option<String>,
     voice: Option<bool>,
     context_refs: Option<Vec<meridian_core::workspace::reference::WorkspaceReferenceRequest>>,
+    conversation_refs: Option<Vec<String>>,
     queued_context: Option<Vec<meridian_core::workspace::reference::PreparedContextItem>>,
     queued: Option<String>,
     accept_edits_override: Option<bool>,
@@ -772,6 +784,7 @@ pub async fn run_turn(
         mode,
         voice,
         context_refs,
+        conversation_refs,
         queued_context,
         queued,
         accept_edits_override,
@@ -822,6 +835,7 @@ pub async fn run_plan_review_continuation(
         runtime.assistant_id,
         Some(runtime.fast),
         Some(mode.to_string()),
+        None,
         None,
         None,
         None,
@@ -886,6 +900,7 @@ async fn chat_inner(
     mode: Option<String>,
     voice: Option<bool>,
     context_refs: Option<Vec<meridian_core::workspace::reference::WorkspaceReferenceRequest>>,
+    conversation_refs: Option<Vec<String>>,
     queued_context: Option<Vec<meridian_core::workspace::reference::PreparedContextItem>>,
     queued: Option<String>,
     accept_edits_override: Option<bool>,
@@ -1284,7 +1299,7 @@ async fn chat_inner(
             if message.is_none() && !effective_refs.is_empty() {
                 return Err("regeneration cannot introduce new workspace references".into());
             }
-            if effective_refs.is_empty() {
+            let mut items = if effective_refs.is_empty() {
                 Vec::new()
             } else {
                 let reference_context =
@@ -1296,7 +1311,77 @@ async fn chat_inner(
                     context_limit,
                 )
                 .await?
+            };
+            // Dragged-in conversations freeze through the same carrier, spending
+            // what the workspace references left of the same per-turn budget.
+            let conv_refs = conversation_refs.unwrap_or_default();
+            if !conv_refs.is_empty() {
+                // The symmetric twin of the workspace check above: a regenerate
+                // has no new user message for a new reference to belong to.
+                if message.is_none() {
+                    return Err("regeneration cannot introduce new conversation references".into());
+                }
+                let spent: usize = items.iter().map(|item| item.token_count.max(0) as usize).sum();
+                let budget_left =
+                    meridian_core::workspace::reference::turn_context_token_limit(context_limit).saturating_sub(spent);
+                let pool2 = pool.clone();
+                let current = conversation_id.clone();
+                let frozen = tokio::task::spawn_blocking(move || {
+                    let mut conn = get_conn(&pool2)?;
+                    meridian_core::agent::conversation_excerpt::freeze_conversation_refs(
+                        &mut conn,
+                        &current,
+                        &conv_refs,
+                        budget_left,
+                    )
+                })
+                .await
+                .map_err(|e| e.to_string())??;
+                items.extend(frozen);
+            } else if message.is_some()
+                && let Some(replaced) = replaces.as_deref()
+            {
+                // An edit re-extracts `@` from the new text, but a dragged-in
+                // conversation left no marker there to re-extract — without
+                // this, editing a message would silently drop its references.
+                // The frozen bytes are copied from the message being replaced,
+                // so the replay stays word-for-word; a re-freeze would show the
+                // thread as it is now, which is not what the edited question
+                // was asked about.
+                let pool2 = pool.clone();
+                let replaced = replaced.to_string();
+                let copied = tokio::task::spawn_blocking(move || {
+                    let mut conn = get_conn(&pool2)?;
+                    let rows = db::ops::message_context_item::list_for_message(&mut conn, &replaced)
+                        .map_err(|e| e.to_string())?;
+                    Ok::<_, String>(
+                        rows.into_iter()
+                            .filter(|row| {
+                                row.kind
+                                    == meridian_core::workspace::reference::MessageContextKind::Conversation.as_str()
+                            })
+                            .map(|row| meridian_core::workspace::reference::PreparedContextItem {
+                                id: uuid::Uuid::new_v4().to_string(),
+                                kind: meridian_core::workspace::reference::MessageContextKind::Conversation,
+                                content: row.content,
+                                display_path: row.display_path,
+                                line_start: row.line_start,
+                                line_end: row.line_end,
+                                content_hash: row.content_hash,
+                                byte_count: row.byte_count,
+                                line_count: row.line_count,
+                                token_count: row.token_count,
+                                truncated: row.truncated,
+                                metadata: row.metadata,
+                            })
+                            .collect::<Vec<_>>(),
+                    )
+                })
+                .await
+                .map_err(|e| e.to_string())??;
+                items.extend(copied);
             }
+            items
         }
     };
 

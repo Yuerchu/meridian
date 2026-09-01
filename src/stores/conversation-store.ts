@@ -293,7 +293,7 @@ function validateContextItems(message: MessageInfoResponse): void {
     )
     if (typeof item.id !== 'string' || !item.id) throw new Error(`message.context_items[${index}].id is invalid`)
     if (item.position !== index) throw new Error(`message.context_items[${index}].position is not contiguous`)
-    if (!['project_file', 'project_directory', 'shell_output'].includes(String(item.kind))) {
+    if (!['project_file', 'project_directory', 'shell_output', 'conversation'].includes(String(item.kind))) {
       throw new Error(`message.context_items[${index}].kind is unknown`)
     }
     requireNullableString(item.display_path, `message.context_items[${index}].display_path`)
@@ -314,7 +314,10 @@ function validateContextItems(message: MessageInfoResponse): void {
         throw new Error(`message.context_items[${index}] shell output has file metadata`)
       }
     } else if (typeof item.display_path !== 'string' || !item.display_path) {
+      // For a conversation item, `display_path` carries the thread's title.
       throw new Error(`message.context_items[${index}].display_path is required`)
+    } else if (item.kind === 'conversation' && (item.line_start !== null || item.line_end !== null)) {
+      throw new Error(`message.context_items[${index}] conversation reference has a line range`)
     } else if (item.kind === 'project_directory' && (item.line_start !== null || item.line_end !== null)) {
       throw new Error(`message.context_items[${index}] project directory has a line range`)
     } else if ((item.line_start === null) !== (item.line_end === null)) {

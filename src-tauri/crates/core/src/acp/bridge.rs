@@ -281,6 +281,13 @@ fn tools_for(conversation_id: &str, project_id: Option<&str>, logs_dir: std::pat
         Arc::new(crate::tools::usage::ConversationUsageTool::new(
             conversation_id.to_string(),
         )),
+        // Read-only, bounded, idempotent — the bar every tool here has to
+        // clear. Its narrowing is its own grant set (only conversations the
+        // user attached to this one may be read), and the pinned constructor
+        // is what stops a context mix-up from widening whose grants those are.
+        Arc::new(crate::tools::read_conversation::ReadConversationTool::pinned(
+            conversation_id.to_string(),
+        )),
     ];
     if let Some(project_id) = project_id {
         for inner in [
@@ -828,13 +835,19 @@ mod tests {
     /// asserted whole rather than by exclusion, so adding a tool has to come
     /// past this test.
     #[test]
-    fn the_bridge_lends_four_read_only_tools_and_no_others() {
+    fn the_bridge_lends_five_read_only_tools_and_no_others() {
         let tools = tools_for("c-1", Some("p-1"), "logs".into());
         let mut found = names(&tools);
         found.sort_unstable();
         assert_eq!(
             found,
-            ["conversation_usage", "list_memories", "read_app_logs", "recall_memory"]
+            [
+                "conversation_usage",
+                "list_memories",
+                "read_app_logs",
+                "read_conversation",
+                "recall_memory"
+            ]
         );
         for tool in &tools {
             assert!(
