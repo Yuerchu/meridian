@@ -1139,6 +1139,10 @@ export interface SubAgentRunDisplay {
   /** Assistant iterations — how many times the model was asked. From the
    *  snapshot; while the run is live the store's own counter is ahead of it. */
   steps: number
+  /** How the run's turn ended, as the backend has it — `running` while it is
+   *  going, `null` for a run whose turn row is gone. The card reads its verdict
+   *  off this and parses the result's opening sentence only as a fallback. */
+  status: TurnStatus | null
 }
 
 export interface ConversationSteerRequest {

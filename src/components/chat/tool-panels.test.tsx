@@ -1,0 +1,297 @@
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { Button } from '@heroui/react'
+import { ToolCallBlock } from './tool-call-block'
+import {
+  ChatTool,
+  ChatToolApproval,
+  ChatToolContent,
+  ChatToolPanelBody,
+  ChatToolPresentationProvider,
+  ChatToolTrigger,
+} from '@/components/ui/chat-tool'
+import { BubbleKeyboard } from '@/components/ui/bubble-keyboard'
+import { resetEditLocations } from '@/hooks/use-edit-location'
+import i18n from '@/i18n'
+import { api } from '@/api'
+import { useConversationStore } from '@/stores/conversation-store'
+import type { ToolCallDisplay } from '@/types'
+
+vi.mock('@tauri-apps/plugin-shell', () => ({ open: vi.fn(() => Promise.resolve()) }))
+
+vi.mock('@/api', () => ({
+  api: {
+    approveToolCall: vi.fn().mockResolvedValue(undefined),
+    denyToolCall: vi.fn().mockResolvedValue(undefined),
+    respondToAsk: vi.fn().mockResolvedValue(undefined),
+    workspaceResolveRef: vi.fn(),
+    conversationSnapshot: vi.fn(),
+  },
+}))
+
+function call(toolName: string, args: unknown, status: ToolCallDisplay['status'], over: Partial<ToolCallDisplay> = {}) {
+  return {
+    call_id: `call-${toolName}-${status}`,
+    tool_name: toolName,
+    arguments: JSON.stringify(args),
+    status,
+    ...(status === 'pending' ? { approval_id: 'appr-1' } : {}),
+    ...over,
+  } satisfies ToolCallDisplay
+}
+
+function onKeyboard(ui: React.ReactNode) {
+  return render(
+    <ChatToolPresentationProvider value="keyboard">
+      <BubbleKeyboard>{ui}</BubbleKeyboard>
+    </ChatToolPresentationProvider>,
+  )
+}
+
+const panel = (container: HTMLElement) => container.querySelector<HTMLElement>('[data-slot="chat-tool-panel"]')!
+
+describe('tool panels', () => {
+  beforeAll(async () => {
+    await i18n.changeLanguage('en')
+  })
+
+  beforeEach(() => {
+    resetEditLocations()
+    vi.mocked(api.workspaceResolveRef).mockReset()
+    vi.mocked(api.conversationSnapshot).mockReset()
+    useConversationStore.setState({ sessions: {}, activeId: 'conv' })
+    useConversationStore.getState().ensureSession('conv')
+  })
+
+  /// The screenshot that started this: a pending command drawn as
+  /// `{"command": "cd \"...\" && ...", "description": "..."}`.
+  it('draws a command as code and its output in parts, never as JSON', async () => {
+    const { container } = onKeyboard(
+      <ToolCallBlock
+        data={call('run_command', { command: 'ls -la', description: 'List the directory' }, 'completed', {
+          result: 'total 0\n[stderr] warning: slow disk\n[exit code: 2]',
+        })}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Run Command/ }))
+    const p = panel(container)
+    expect(p.querySelector('[data-slot="chat-tool-args"]')).toBeNull()
+    expect(p.textContent).not.toContain('"command"')
+    expect(p.querySelector('[data-slot="command-code"]')).toHaveTextContent('ls -la')
+    expect(p.querySelector('[data-slot="command-output"]')).toHaveTextContent('total 0')
+    expect(p.querySelector('[data-slot="command-stderr"]')).toHaveTextContent('warning: slow disk')
+    // The trailer is a chip, not a line of the output.
+    expect(p.textContent).not.toContain('[exit code')
+    expect(within(p).getByText('exit 2')).toBeVisible()
+    // What the command is for, at the top, since the command itself is below.
+    expect(p.querySelector('[data-slot="chat-tool-panel-title"]')).toHaveTextContent('List the directory')
+  })
+
+  /// A hosted agent's shell writes no trailer, and "no exit code" is not
+  /// "exit 0".
+  it('claims no exit code when the shell wrote none', async () => {
+    const { container } = onKeyboard(
+      <ToolCallBlock data={call('Bash', { command: 'echo hi' }, 'completed', { result: 'hi' })} />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Run Command/ }))
+    expect(panel(container).textContent).not.toMatch(/exit \d/)
+  })
+
+  /// The other screenshot: `C:/Users/Administrator/Documents/Code/foxline-pro-
+  /// backend-server/.claude/worktrees/feat-ttapi-suno-…` on a write waiting to
+  /// be approved.
+  it('shows a key waiting on a decision its whole path, unclamped', () => {
+    const path = '/home/me/Documents/Code/foxline-pro-backend-server/.claude/worktrees/feat-ttapi/ttapi/__init__.py'
+    const { container } = onKeyboard(<ToolCallBlock data={call('write_file', { path, content: 'x' }, 'pending')} />)
+    const key = container.querySelector<HTMLElement>('[data-slot="chat-tool-trigger"]')!
+    const arg = key.querySelector<HTMLElement>('[data-slot="tool-arg"]')!
+    expect(arg).toHaveTextContent(path)
+    expect(arg.className).not.toMatch(/line-clamp/)
+    expect(arg.querySelector('[data-slot="path-dir"]')!.className).not.toMatch(/truncate/)
+    expect(arg.querySelector('[data-slot="path-name"]')).toHaveTextContent('__init__.py')
+  })
+
+  it('keeps an ordinary key to one line with the file name intact', async () => {
+    const path = '/home/me/very/deep/directory/structure/for/this/test/turn.rs'
+    const { container } = onKeyboard(
+      <ToolCallBlock data={call('read_file', { path }, 'completed', { result: 'fn' })} />,
+    )
+    const arg = container.querySelector<HTMLElement>('[data-slot="tool-arg"]')!
+    expect(arg.querySelector('[data-slot="path-dir"]')!.className).toMatch(/truncate/)
+    expect(arg.querySelector('[data-slot="path-name"]')).toHaveTextContent('turn.rs')
+    // The panel is where the whole path is, since the key could not hold it.
+    await userEvent.click(screen.getByRole('button', { name: /Read File/ }))
+    expect(panel(container).querySelector('[data-slot="chat-tool-panel-title"]')).toHaveTextContent(path)
+  })
+
+  it('numbers a whole-file write from one and puts its stats in the header', () => {
+    const { container } = onKeyboard(
+      <ToolCallBlock
+        data={call('write_file', { path: 'notes/todo.md', content: '# Todo\n- one\n- two\n' }, 'pending')}
+      />,
+    )
+    const p = panel(container)
+    // One file, one header: the panel's. No second header naming it again.
+    expect(p.querySelector('[data-slot="file-diff-header"]')).toBeNull()
+    expect(p.querySelector('[data-slot="chat-tool-panel-end"]')).toHaveTextContent('+3')
+    const gutters = Array.from(p.querySelectorAll('[data-slot="file-diff-gutter"]')).map((g) => g.textContent?.trim())
+    expect(gutters).toEqual(['1', '2', '3'])
+  })
+
+  /// The edit names a string, not a line. The file says where the string is.
+  it('places a pending edit by reading the file it is about to change', async () => {
+    vi.mocked(api.workspaceResolveRef).mockResolvedValue({
+      kind: 'project_file',
+      path: 'src/app.py',
+      content: 'import os\r\n\r\ndef main():\r\n    return 1\r\n',
+      line_start: null,
+      line_end: null,
+      byte_count: 40,
+      line_count: 4,
+      token_count: 10,
+      truncated: false,
+    })
+    const { container } = onKeyboard(
+      <ToolCallBlock
+        data={call(
+          'edit_file',
+          { file_path: 'src/app.py', old_string: 'def main():', new_string: 'def main() -> int:' },
+          'pending',
+        )}
+      />,
+    )
+    await waitFor(() => {
+      const gutters = Array.from(panel(container).querySelectorAll('[data-slot="file-diff-gutter"]'))
+      expect(gutters.length).toBeGreaterThan(0)
+    })
+    const first = panel(container).querySelector(
+      '[data-slot="file-diff-line"][data-kind="remove"] [data-slot="file-diff-gutter"]',
+    )!
+    expect(first.textContent?.trim()).toBe('3')
+    expect(api.workspaceResolveRef).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: 'conv', path: 'src/app.py', lineStart: null, lineEnd: null }),
+    )
+  })
+
+  /// After the edit ran the file has changed; a number read off it now would
+  /// be a guess wearing a gutter.
+  it('asks for no file once the edit has run, and draws no numbers', async () => {
+    const { container } = onKeyboard(
+      <ToolCallBlock
+        data={call('edit_file', { file_path: 'src/app.py', old_string: 'a', new_string: 'b' }, 'completed', {
+          result: 'Replaced 1 occurrence(s) in src/app.py',
+        })}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Edit File/ }))
+    expect(api.workspaceResolveRef).not.toHaveBeenCalled()
+    expect(panel(container).querySelector('[data-slot="file-diff-gutter"]')).toBeNull()
+    // The confirmation is the footer's sentence, not a block of result text.
+    expect(panel(container).querySelector('[data-slot="chat-tool-panel-footer"]')).toHaveTextContent(
+      'Replaced 1 occurrence(s) in src/app.py',
+    )
+    expect(panel(container).querySelector('[data-slot="generic-result"]')).toBeNull()
+  })
+
+  it('lists glob matches as paths, with the cap as a footnote', async () => {
+    const { container } = onKeyboard(
+      <ToolCallBlock
+        data={call('glob', { pattern: '**/*.ts' }, 'completed', {
+          result: 'src/a.ts\nsrc/lib/b.ts\n\n(showing first 1000 matches)',
+        })}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Glob Files/ }))
+    const list = panel(container).querySelector('[data-slot="glob-result"]')!
+    expect(list.querySelectorAll('[data-slot="path-label"]')).toHaveLength(2)
+    expect(list).toHaveTextContent('b.ts')
+    expect(panel(container).querySelector('[data-slot="tool-footnote"]')).toHaveTextContent('first 1000')
+    expect(panel(container).textContent).not.toContain('(showing first')
+  })
+
+  it('reads a directory listing into rows', async () => {
+    const { container } = onKeyboard(
+      <ToolCallBlock
+        data={call('list_directory', { path: 'src' }, 'completed', {
+          result: 'dir          -  lib\nfile    1.2 KB  main.rs',
+        })}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /List Directory/ }))
+    const rows = panel(container).querySelectorAll('[data-slot="directory-result"] > div')
+    expect(rows).toHaveLength(2)
+    expect(rows[1]).toHaveTextContent('main.rs')
+    expect(rows[1]).toHaveTextContent('1.2 KB')
+  })
+
+  /// The third screenshot: a `<pre>` of the briefing, a ghost button, and
+  /// the report as one unbroken block starting "Sub-agent finished after 33
+  /// steps."
+  it('draws a delegated run with its verdict, its report as prose and the stranded note', async () => {
+    const note =
+      'The user sent 1 message(s) to the sub-agent after it had stopped reading, so it never saw them. They are in its transcript. Read them before acting on the answer above.'
+    const { container } = onKeyboard(
+      <ToolCallBlock
+        data={call(
+          'run_agent',
+          { agent: 'explore', description: 'Audit the cache', prompt: 'Read **everything**.' },
+          'completed',
+          {
+            result: `Sub-agent finished after 3 steps.\n\n## Findings\n\n- nothing\n\n${note}`,
+            sub_agent: { conversation_id: 'sub-1', turn_id: 'run-1', kind: 'explore', steps: 3, status: 'done' },
+          },
+        )}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Explore/ }))
+    const p = panel(container)
+    expect(p.querySelector('[data-slot="sub-agent-status"]')).toHaveAttribute('data-outcome', 'done')
+    expect(p.textContent).not.toContain('Sub-agent finished after')
+    expect(within(p).getByRole('heading', { name: 'Findings' })).toBeVisible()
+    expect(p.querySelector('[data-slot="sub-agent-stranded"]')).toHaveTextContent(note)
+    expect(p.querySelector('[data-slot="sub-agent-task"]')).toHaveTextContent('Read everything.')
+    expect(p.querySelector('pre')).toBeNull()
+    expect(within(p).getByRole('button', { name: /Open its conversation/ })).toBeVisible()
+  })
+
+  it('loads the run’s own conversation for the steps, only once asked', async () => {
+    vi.mocked(api.conversationSnapshot).mockRejectedValue(new Error('offline'))
+    const { container } = onKeyboard(
+      <ToolCallBlock
+        data={call('run_agent', { agent: 'agent', description: 'Fix it', prompt: 'p' }, 'completed', {
+          result: 'Sub-agent finished after 2 steps.\n\nDone.',
+          sub_agent: { conversation_id: 'sub-9', turn_id: 'run-9', kind: 'agent', steps: 2, status: 'done' },
+        })}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Agent/ }))
+    expect(api.conversationSnapshot).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: /Steps/ }))
+    expect(api.conversationSnapshot).toHaveBeenCalledWith({ conversationId: 'sub-9' })
+    expect(await within(panel(container)).findByText(/could not be loaded: offline/)).toBeVisible()
+  })
+
+  it('puts the decision row in the panel’s footer, wherever it was rendered', () => {
+    const { container } = onKeyboard(
+      <ChatTool state="requires-action" defaultExpanded>
+        <ChatToolTrigger>Write file</ChatToolTrigger>
+        <ChatToolContent>
+          <ChatToolPanelBody>
+            <div>
+              <ChatToolApproval>
+                <Button>Deny</Button>
+                <Button>Allow</Button>
+              </ChatToolApproval>
+            </div>
+          </ChatToolPanelBody>
+        </ChatToolContent>
+      </ChatTool>,
+    )
+    const p = panel(container)
+    const footer = p.querySelector('[data-slot="chat-tool-panel-footer"]')!
+    expect(footer).toContainElement(p.querySelector('[data-slot="chat-tool-approval-actions"]'))
+    expect(
+      p.querySelector('[data-slot="chat-tool-panel-body"]')!.querySelector('[data-slot="chat-tool-approval"]'),
+    ).toBeNull()
+  })
+})

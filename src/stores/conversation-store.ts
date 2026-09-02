@@ -551,6 +551,7 @@ export function hydrateBlocks(
                   turn_id: run.spawned_turn_id,
                   kind: run.agent_kind,
                   steps: run.steps,
+                  status: run.status,
                 }
               : undefined,
             nested_approval: nested
@@ -1963,6 +1964,9 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             turn_id: run.turnId,
             kind: run.kind,
             steps: 0,
+            // Just started, so running; the snapshot after the turn replaces
+            // this with what the backend recorded.
+            status: 'running',
           }
         }
       }),

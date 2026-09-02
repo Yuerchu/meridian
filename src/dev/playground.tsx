@@ -572,6 +572,38 @@ function Gallery() {
             />
             <ToolCallBlock
               data={tool({
+                tool_name: 'run_command',
+                status: 'completed',
+                call_id: 'pg-run-stderr',
+                arguments: JSON.stringify({
+                  command:
+                    'cd "C:/Users/dev/project" && "C:/Users/dev/project/.venv/Scripts/basedpyright.exe" sqlmodels/generators/ 2>&1 | grep -E "error" | head -10',
+                  description: 'basedpyright 检查 generator 层',
+                }),
+                result:
+                  'sqlmodels/generators/file/audio/ttapi/__init__.py:12:5 - error: "TtAPI" is not exported\n[stderr] warning: 3 files skipped\n[exit code: 1]',
+              })}
+            />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'glob',
+                status: 'completed',
+                arguments: JSON.stringify({ pattern: 'src/lib/plan-*.ts' }),
+                result:
+                  'src/lib/plan-markdown.ts\nsrc/lib/plan-paste.ts\nsrc/lib/plan-review-draft.ts\n\n(showing first 1000 matches)',
+              })}
+            />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'list_directory',
+                status: 'completed',
+                arguments: JSON.stringify({ path: 'src/lib' }),
+                result:
+                  'dir          -  __tests__\nfile    4.1 KB  paths.ts\nfile   12.8 KB  tool-output.ts\nlink      24 B  latest',
+              })}
+            />
+            <ToolCallBlock
+              data={tool({
                 tool_name: 'save_memory',
                 status: 'completed',
                 arguments: JSON.stringify({ key: 'user_preference' }),
@@ -682,7 +714,13 @@ function Gallery() {
                 status: 'running',
                 call_id: 'pg-run-agent-live',
                 arguments: RUN_AGENT_ARGS,
-                sub_agent: { conversation_id: 'pg-sub-1', turn_id: 'pg-run-1', kind: 'agent', steps: 4 },
+                sub_agent: {
+                  conversation_id: 'pg-sub-1',
+                  turn_id: 'pg-run-1',
+                  kind: 'agent',
+                  steps: 4,
+                  status: 'running',
+                },
               })}
             />
             {/* 它要权限。问题画在这里，因为没人在看它自己那条会话。 */}
@@ -692,7 +730,13 @@ function Gallery() {
                 status: 'running',
                 call_id: 'pg-run-agent-asking',
                 arguments: RUN_AGENT_ARGS,
-                sub_agent: { conversation_id: 'pg-sub-1', turn_id: 'pg-run-2', kind: 'agent', steps: 2 },
+                sub_agent: {
+                  conversation_id: 'pg-sub-1',
+                  turn_id: 'pg-run-2',
+                  kind: 'agent',
+                  steps: 2,
+                  status: 'running',
+                },
                 nested_approval: {
                   approval_id: 'pg-nested',
                   call_id: 'pg-child-call',
@@ -713,8 +757,25 @@ function Gallery() {
                   description: '找出 SSE 解析在哪一层',
                   prompt: '在 src-tauri/src/provider 下找到 SSE 事件变成 ChatChunk 的位置，报告文件与行号。',
                 }),
-                sub_agent: { conversation_id: 'pg-sub-2', turn_id: 'pg-run-3', kind: 'explore', steps: 3 },
-                result: 'openai_compat.rs:187 起，eventsource-stream 的 Event 在这里变成 ChatChunk。',
+                sub_agent: {
+                  conversation_id: 'pg-sub-2',
+                  turn_id: 'pg-run-3',
+                  kind: 'explore',
+                  steps: 3,
+                  status: 'done',
+                },
+                result: [
+                  'Sub-agent finished after 3 steps.',
+                  '',
+                  '## 结论',
+                  '',
+                  '`openai_compat.rs:187` 起，eventsource-stream 的 `Event` 在这里变成 `ChatChunk`。',
+                  '',
+                  '- 解析入口：`provider/openai_compat.rs:187-240`',
+                  '- 工具调用增量：`provider/openai_responses.rs:400-520`',
+                  '',
+                  'The user sent 1 message(s) to the sub-agent after it had stopped reading, so it never saw them. They are in its transcript. Read them before acting on the answer above.',
+                ].join('\n'),
               })}
             />
             {/* 派出去了，然后进程没了。 */}
@@ -724,7 +785,13 @@ function Gallery() {
                 status: 'orphaned',
                 call_id: 'pg-run-agent-dead',
                 arguments: RUN_AGENT_ARGS,
-                sub_agent: { conversation_id: 'pg-sub-3', turn_id: 'pg-run-4', kind: 'agent', steps: 1 },
+                sub_agent: {
+                  conversation_id: 'pg-sub-3',
+                  turn_id: 'pg-run-4',
+                  kind: 'agent',
+                  steps: 1,
+                  status: 'interrupted',
+                },
               })}
             />
             {/* 子会话里看同一次调用：确实在等人，但不是等看这条 transcript 的人。 */}

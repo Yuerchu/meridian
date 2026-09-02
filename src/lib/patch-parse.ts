@@ -14,6 +14,11 @@ export type DiffLineKind = 'add' | 'remove' | 'context' | 'hunk'
 export interface DiffLine {
   kind: DiffLineKind
   text: string
+  /** Where the line sits in the file before the change. A removed or context
+   *  line has one; an added line does not. Absent when nothing knows. */
+  oldNo?: number
+  /** Where the line sits in the file after the change. */
+  newNo?: number
 }
 
 export interface FileDiff {
@@ -23,6 +28,56 @@ export interface FileDiff {
   /** Where a moved file came from. `path` is always the destination. */
   movedFrom?: string
   lines: DiffLine[]
+}
+
+const HUNK_HEADER = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/
+
+/**
+ * Line numbers for a diff, from a known starting point.
+ *
+ * Only ever called with a start somebody actually knows: `1` for a file being
+ * written whole, the hunk headers of a unified patch, the line a
+ * `read_file`-style probe found `old_string` on. A guessed start would draw a
+ * gutter of confident wrong numbers, which is worse than no gutter — so the
+ * card leaves the numbers off rather than call this with a guess.
+ *
+ * A hunk header inside the lines resets both counters to what it declares,
+ * which is what makes one call cover a multi-hunk patch. The loose parser keeps
+ * headers as the model wrote them, so the regex accepts `@@ -1 +1 @@` without
+ * counts and ignores anything trailing the second `@@`. A Codex-style header
+ * (`@@ ctx`) carries no numbers and leaves the counters where they were.
+ */
+export function numberDiffLines(lines: DiffLine[], start: { oldStart: number; newStart: number }): DiffLine[] {
+  let oldNo = start.oldStart
+  let newNo = start.newStart
+  return lines.map((line) => {
+    switch (line.kind) {
+      case 'hunk': {
+        const m = HUNK_HEADER.exec(line.text)
+        if (m) {
+          oldNo = Number(m[1])
+          newNo = Number(m[2])
+        }
+        return { ...line }
+      }
+      case 'add':
+        return { ...line, newNo: newNo++ }
+      case 'remove':
+        return { ...line, oldNo: oldNo++ }
+      default:
+        return { ...line, oldNo: oldNo++, newNo: newNo++ }
+    }
+  })
+}
+
+/** The first hunk header's start, when the patch declares one. */
+export function firstHunkStart(lines: DiffLine[]): { oldStart: number; newStart: number } | null {
+  for (const line of lines) {
+    if (line.kind !== 'hunk') continue
+    const m = HUNK_HEADER.exec(line.text)
+    return m ? { oldStart: Number(m[1]), newStart: Number(m[2]) } : null
+  }
+  return null
 }
 
 export function splitDiffText(s: string): string[] {
