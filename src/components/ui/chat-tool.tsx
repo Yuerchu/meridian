@@ -424,7 +424,7 @@ function ChatToolContent({ className, children, ...props }: React.ComponentProps
                   a portal target that appears a render late is one the first
                   occupant cannot reach. */}
               {occupants > 0 && (
-                <Widget.Footer data-slot="chat-tool-panel-footer" className="flex-col items-stretch gap-2 pt-0">
+                <Widget.Footer data-slot="chat-tool-panel-footer" className="flex-col items-stretch gap-2 pt-2.5 pb-3">
                   <div ref={adoptFooter} className="contents" />
                 </Widget.Footer>
               )}
@@ -543,10 +543,15 @@ function ChatToolPanelBody({ className, children, ...props }: React.ComponentPro
       </div>
     )
   }
+  // Flush with the header and the footer, not inset: Widget's own content
+  // area floats a rounded box inside the shell with a margin all round, which
+  // for a dashboard chart reads as elevation and for a diff under its file
+  // name read as the title having come loose from what it titles. One box —
+  // the band above names it, the band below says how it went.
   return (
     <Widget.Content
       data-slot="chat-tool-panel-body"
-      className={cn('flex min-w-0 flex-col gap-2 overflow-hidden p-0', className)}
+      className={cn('m-0 flex min-w-0 flex-col gap-2 overflow-hidden rounded-none p-0 shadow-none', className)}
       {...props}
     >
       {children}
