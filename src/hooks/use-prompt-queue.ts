@@ -74,12 +74,18 @@ export function usePromptQueue(conversationId: string, enabled: boolean) {
   }, [conversationId, enabled])
 
   const enqueue = useCallback(
-    async (content: string, delivery: QueueDelivery, contextRefs?: WorkspaceReferenceRequest[]) => {
+    async (
+      content: string,
+      delivery: QueueDelivery,
+      contextRefs?: WorkspaceReferenceRequest[],
+      conversationRefs?: string[],
+    ) => {
       const item = await api.queueEnqueue({
         conversationId,
         content,
         delivery,
         contextRefs: contextRefs ?? null,
+        conversationRefs: conversationRefs ?? null,
       })
       // Optimistic only in the sense that it saves a round trip; the event that
       // follows replaces the list wholesale, including this row.

@@ -116,6 +116,7 @@ pub enum MessageContextKind {
     ProjectFile,
     ProjectDirectory,
     ShellOutput,
+    Conversation,
 }
 
 impl From<CoreMessageContextKind> for MessageContextKind {
@@ -124,6 +125,7 @@ impl From<CoreMessageContextKind> for MessageContextKind {
             CoreMessageContextKind::ProjectFile => Self::ProjectFile,
             CoreMessageContextKind::ProjectDirectory => Self::ProjectDirectory,
             CoreMessageContextKind::ShellOutput => Self::ShellOutput,
+            CoreMessageContextKind::Conversation => Self::Conversation,
         }
     }
 }
@@ -235,6 +237,16 @@ impl TryFrom<db::models::message_context_item::MessageContextItemRow> for Messag
             CoreMessageContextKind::ShellOutput => {
                 if row.display_path.is_some() || row.line_start.is_some() || row.line_end.is_some() {
                     return Err(format!("shell output context item {} has file metadata", row.id));
+                }
+            }
+            CoreMessageContextKind::Conversation => {
+                // `display_path` carries the referenced conversation's title —
+                // the hosted prompt path and the transcript chip both read it.
+                if row.display_path.as_deref().is_none_or(str::is_empty) {
+                    return Err(format!("conversation context item {} has no title", row.id));
+                }
+                if row.line_start.is_some() || row.line_end.is_some() {
+                    return Err(format!("conversation context item {} has a line range", row.id));
                 }
             }
         }

@@ -2618,6 +2618,10 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         {
           "kind": "literal",
           "value": "shell_output"
+        },
+        {
+          "kind": "literal",
+          "value": "conversation"
         }
       ]
     },
@@ -6672,11 +6676,11 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "variants": [
         {
           "kind": "literal",
-          "value": "external"
+          "value": "conversation"
         },
         {
           "kind": "literal",
-          "value": "conversation"
+          "value": "external"
         },
         {
           "kind": "literal",

@@ -23,6 +23,9 @@ pub struct AcpPromptSendRequest {
     pub message: String,
     pub turn_id: RequiredNullable<String>,
     pub context_refs: RequiredNullable<Vec<meridian_core::workspace::reference::WorkspaceReferenceRequest>>,
+    /// Conversations dragged into the composer, as ids — validated on their
+    /// own terms, since a drag leaves no `@` marker for reconcile to hold.
+    pub conversation_refs: RequiredNullable<Vec<String>>,
 }
 
 #[cfg(not(target_os = "android"))]
@@ -249,6 +252,7 @@ pub async fn acp_send(app: tauri::AppHandle, request: AcpPromptSendRequest) -> R
         message,
         turn_id,
         context_refs,
+        conversation_refs,
     } = request;
     let turn_id = turn_id.0;
     let services = app.services();
@@ -292,6 +296,31 @@ pub async fn acp_send(app: tauri::AppHandle, request: AcpPromptSendRequest) -> R
         };
         let counter = meridian_core::agent::TokenCounter::new(meridian_core::agent::TokenizerKind::Cl100kBase);
         meridian_core::workspace::reference::prepare_references(&tool_context, &references, &counter, 128_000).await?
+    };
+    // Dragged-in conversations, through the same freeze the native turn uses,
+    // against what the workspace references left of the same budget.
+    let conv_refs = conversation_refs.0.unwrap_or_default();
+    let context = if conv_refs.is_empty() {
+        context
+    } else {
+        let mut context = context;
+        let spent: usize = context.iter().map(|item| item.token_count.max(0) as usize).sum();
+        let budget_left = meridian_core::workspace::reference::turn_context_token_limit(128_000).saturating_sub(spent);
+        let pool = services.db.clone();
+        let current = conversation_id.clone();
+        let frozen = tokio::task::spawn_blocking(move || {
+            let mut conn = meridian_core::util::get_conn(&pool)?;
+            meridian_core::agent::conversation_excerpt::freeze_conversation_refs(
+                &mut conn,
+                &current,
+                &conv_refs,
+                budget_left,
+            )
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        context.extend(frozen);
+        context
     };
     // Reopens a conversation whose adapter died with the last run of the app.
     // The transcript is still here; the agent's memory of it is not.
@@ -571,7 +600,8 @@ mod config_dto_tests {
             "conversationId": "conversation-1",
             "message": "inspect it",
             "turnId": null,
-            "contextRefs": null
+            "contextRefs": null,
+            "conversationRefs": null
         });
         assert!(serde_json::from_value::<AcpPromptSendRequest>(prompt).is_ok());
         assert!(
@@ -582,7 +612,8 @@ mod config_dto_tests {
                 "contextRefs": [{
                     "path": "src/main.rs",
                     "lineStart": null
-                }]
+                }],
+                "conversationRefs": null
             }))
             .is_err(),
             "nested reference range keys must be complete"
@@ -600,6 +631,7 @@ mod config_dto_tests {
                 "message": "inspect it",
                 "turnId": null,
                 "contextRefs": null,
+                "conversationRefs": null,
                 "legacyMode": true
             }))
             .is_err()

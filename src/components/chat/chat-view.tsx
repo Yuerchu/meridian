@@ -1,6 +1,10 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@heroui/react'
+import { DropZone } from 'react-aria-components'
+import type { DropItem } from 'react-aria-components'
+import { Button, Chip } from '@heroui/react'
+import { Comments, Xmark } from '@gravity-ui/icons'
+import { acceptsConversationDrop, CONVERSATION_DRAG_TYPE } from '@/components/layout/sidebar-dnd'
 import { EmptyState as ProEmptyState } from '@heroui-pro/react/empty-state'
 import { api } from '@/api'
 import { ChatTranscript } from './chat-transcript'
@@ -104,6 +108,8 @@ function ChatViewInner({
   const shellRetriesRef = useRef<ShellSubmission[]>([])
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [pendingSticker, setPendingSticker] = useState<PendingSticker | null>(null)
+  /** Conversations dragged in from the sidebar, pending on the next message. */
+  const [conversationRefs, setConversationRefs] = useState<{ id: string; title: string }[]>([])
   // What the *next* queued message will be, not a property of any row. Defaults
   // to the mode that waits: an interjection cuts into work that is already
   // going, which is not a thing to do by accident.
@@ -607,6 +613,29 @@ function ChatViewInner({
     reviewBlocked,
   ])
 
+  /**
+   * A conversation row dropped anywhere on the chat column becomes a pending
+   * reference chip. The sidebar's rows are the only drag source for this type,
+   * and the drop is a 'copy' — nothing moves; the thread is being cited.
+   */
+  const handleConversationDrop = useCallback(
+    async (items: DropItem[]) => {
+      for (const item of items) {
+        if (item.kind !== 'text' || !item.types.has(CONVERSATION_DRAG_TYPE)) continue
+        const id = await item.getText(CONVERSATION_DRAG_TYPE)
+        if (!id) continue
+        if (id === conversationId) {
+          storeSetError(conversationId, t('chat.convRef.self'))
+          continue
+        }
+        const title =
+          useConversationStore.getState().conversations.find((c) => c.id === id)?.title ?? t('sidebar.newChat')
+        setConversationRefs((prev) => (prev.some((ref) => ref.id === id) ? prev : [...prev, { id, title }]))
+      }
+    },
+    [conversationId, storeSetError, t],
+  )
+
   const handleSubmit = useCallback(() => {
     if (reviewBlocked) {
       storeSetError(conversationId, t('chat.plan.reviewBlocked'))
@@ -624,19 +653,23 @@ function ChatViewInner({
     const intent = parseComposerIntent(input)
     const text = intent.kind === 'prompt' ? intent.text.trim() : input.trim()
     const references = intent.kind === 'prompt' ? referenceInputs(intent.references) : []
-    const hasWorkspaceReferences = references.length > 0
+    const refIds = conversationRefs.map((ref) => ref.id)
+    // Both kinds freeze at a turn boundary, so both are refused where there is
+    // no new boundary to attach them to (interject, steer).
+    const hasWorkspaceReferences = references.length > 0 || refIds.length > 0
     if (!text && !pendingSticker) return
 
     // Commands are local control input. Resolve them before queue/steer so a
     // typo cannot become a delayed model prompt and an idle-only command never
-    // claims to have been queued.
-    if (intent.kind === 'slash' && !pendingSticker && attachedFiles.length === 0) {
+    // claims to have been queued. A pending conversation reference keeps them
+    // out too — a slash command starts no turn the reference could ride.
+    if (intent.kind === 'slash' && !pendingSticker && attachedFiles.length === 0 && refIds.length === 0) {
       void executeSlashCommand(intent.name, intent.args, input).catch((err) =>
         storeSetError(conversationId, String(err)),
       )
       return
     }
-    if (intent.kind === 'shell' && !pendingSticker && attachedFiles.length === 0) {
+    if (intent.kind === 'shell' && !pendingSticker && attachedFiles.length === 0 && refIds.length === 0) {
       void executeShellCommand(intent.command, input)
       return
     }
@@ -652,8 +685,11 @@ function ChatViewInner({
         return
       }
       void queue
-        .enqueue(text, queueDelivery, references)
-        .then(() => setInput(''))
+        .enqueue(text, queueDelivery, references, refIds)
+        .then(() => {
+          setInput('')
+          setConversationRefs([])
+        })
         .catch((error) => storeSetError(conversationId, String(error)))
       return
     }
@@ -681,12 +717,14 @@ function ChatViewInner({
       ? { type: 'sticker' as const, sticker_id: pendingSticker.emoji.id, name: pendingSticker.emoji.name }
       : undefined
     setPendingSticker(null)
-    sendMessage(text, true, files.length > 0 ? files : undefined, undefined, undefined, sticker, references)
+    setConversationRefs([])
+    sendMessage(text, true, files.length > 0 ? files : undefined, undefined, undefined, sticker, references, refIds)
   }, [
     input,
     sendMessage,
     attachedFiles,
     pendingSticker,
+    conversationRefs,
     executeSlashCommand,
     executeShellCommand,
     storeSetError,
@@ -703,7 +741,16 @@ function ChatViewInner({
   ])
 
   return (
-    <div className="flex flex-col h-full">
+    // A DropZone rather than a div, so a conversation dragged off the sidebar
+    // can land anywhere on the chat column. It registers with the same drag
+    // manager React Aria's tree hooks use, keyboard drags included; drags that
+    // are not conversations are refused and never highlight it.
+    <DropZone
+      aria-label={t('chat.convRef.dropLabel')}
+      getDropOperation={(types) => (acceptsConversationDrop(types) ? 'copy' : 'cancel')}
+      onDrop={(e) => void handleConversationDrop(e.items)}
+      className="flex flex-col h-full data-[drop-target]:ring-2 data-[drop-target]:ring-accent data-[drop-target]:ring-inset"
+    >
       <ChatTranscript
         turns={activeTurns}
         conversationId={conversationId}
@@ -762,6 +809,34 @@ function ChatViewInner({
           queued message look nested under the checklist — interject and
           follow-up alike. Alone, the bar keeps its own card. */}
       {queue.items.length === 0 && <TodoBar conversationId={conversationId} />}
+
+      {/* Pending conversation references, above the composer the way queued
+          rows are: they belong to the next message, not to the one being
+          typed. Pressing a chip removes it. */}
+      {conversationRefs.length > 0 && (
+        <div
+          role="group"
+          aria-label={t('chat.convRef.pending')}
+          className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-border px-4 py-2"
+        >
+          {conversationRefs.map((ref) => (
+            <Chip key={ref.id} size="sm" variant="soft" className="pr-0.5">
+              <Comments className="size-3.5" aria-hidden />
+              <span className="max-w-48 truncate">{ref.title}</span>
+              <Button
+                isIconOnly
+                size="sm"
+                variant="ghost"
+                aria-label={t('chat.convRef.remove', { name: ref.title })}
+                onPress={() => setConversationRefs((prev) => prev.filter((r) => r.id !== ref.id))}
+                className="touch-hitbox size-5 min-w-0 rounded-full"
+              >
+                <Xmark className="size-3" />
+              </Button>
+            </Chip>
+          ))}
+        </div>
+      )}
 
       {reviewBlocked && (
         <div className="flex shrink-0 items-center gap-3 border-t border-border bg-accent-soft px-4 py-2 text-xs text-accent">
@@ -827,7 +902,7 @@ function ChatViewInner({
         onRemoveSticker={() => setPendingSticker(null)}
       />
       {confirmDialog}
-    </div>
+    </DropZone>
   )
 }
 

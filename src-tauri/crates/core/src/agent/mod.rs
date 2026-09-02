@@ -3,6 +3,7 @@ mod base_prompt;
 pub mod call_identity;
 mod compact;
 mod context;
+pub mod conversation_excerpt;
 pub mod denied;
 pub(crate) mod diagnostics;
 pub mod engine;

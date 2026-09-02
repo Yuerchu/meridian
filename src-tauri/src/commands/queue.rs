@@ -20,6 +20,9 @@ pub struct QueuedPromptCreateRequest {
     content: String,
     delivery: Delivery,
     context_refs: RequiredNullable<Vec<meridian_core::workspace::reference::WorkspaceReferenceRequest>>,
+    /// Conversations dragged into the composer, frozen at enqueue time like
+    /// the workspace references above.
+    conversation_refs: RequiredNullable<Vec<String>>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -112,6 +115,7 @@ pub async fn queue_enqueue(
         content,
         delivery,
         context_refs: RequiredNullable(context_refs),
+        conversation_refs: RequiredNullable(conversation_refs),
     } = request;
     let content = content.trim().to_string();
     if content.is_empty() {
@@ -126,6 +130,13 @@ pub async fn queue_enqueue(
         meridian_core::workspace::reference::reconcile_references(context_refs.unwrap_or_default(), parsed)?;
     if !references.is_empty() && delivery == Delivery::Interject {
         return Err("workspace references can only be queued as follow-up messages".into());
+    }
+    let conv_refs = conversation_refs.unwrap_or_default();
+    // The same boundary for the same reason: an interjection lands inside a
+    // running turn, which is not a turn boundary a frozen reference can attach
+    // to.
+    if !conv_refs.is_empty() && delivery == Delivery::Interject {
+        return Err("conversation references can only be queued as follow-up messages".into());
     }
     let prepared = if references.is_empty() {
         Vec::new()
@@ -157,6 +168,30 @@ pub async fn queue_enqueue(
         };
         let counter = meridian_core::agent::TokenCounter::new(meridian_core::agent::TokenizerKind::Cl100kBase);
         meridian_core::workspace::reference::prepare_references(&context, &references, &counter, 128_000).await?
+    };
+    // Frozen at enqueue time beside the workspace snapshots — the thread may
+    // move on before this message runs, and what the user saw when they
+    // dragged it in is what the message should carry.
+    let prepared = if conv_refs.is_empty() {
+        prepared
+    } else {
+        let mut prepared = prepared;
+        let spent: usize = prepared.iter().map(|item| item.token_count.max(0) as usize).sum();
+        let budget_left = meridian_core::workspace::reference::turn_context_token_limit(128_000).saturating_sub(spent);
+        let pool_for_refs = services.db.clone();
+        let current = conversation_id.clone();
+        let frozen = blocking(move || {
+            let mut conn = get_conn(&pool_for_refs)?;
+            meridian_core::agent::conversation_excerpt::freeze_conversation_refs(
+                &mut conn,
+                &current,
+                &conv_refs,
+                budget_left,
+            )
+        })
+        .await?;
+        prepared.extend(frozen);
+        prepared
     };
 
     let item = blocking(move || {
@@ -386,6 +421,7 @@ mod tests {
             "content": "continue",
             "delivery": "follow_up",
             "contextRefs": null,
+            "conversationRefs": null,
         }))
         .expect("valid request");
 
@@ -395,6 +431,7 @@ mod tests {
                 "conversationId": "conversation-1",
                 "content": "continue",
                 "delivery": "follow_up",
+                "conversationRefs": null,
             }))
             .is_err(),
             "nullable contextRefs must still be present",
@@ -403,8 +440,19 @@ mod tests {
             serde_json::from_value::<QueuedPromptCreateRequest>(serde_json::json!({
                 "conversationId": "conversation-1",
                 "content": "continue",
+                "delivery": "follow_up",
+                "contextRefs": null,
+            }))
+            .is_err(),
+            "nullable conversationRefs must still be present",
+        );
+        assert!(
+            serde_json::from_value::<QueuedPromptCreateRequest>(serde_json::json!({
+                "conversationId": "conversation-1",
+                "content": "continue",
                 "delivery": "later",
                 "contextRefs": null,
+                "conversationRefs": null,
             }))
             .is_err()
         );
@@ -417,7 +465,8 @@ mod tests {
                 "contextRefs": [{
                     "path": "src/main.rs",
                     "lineStart": null
-                }]
+                }],
+                "conversationRefs": null,
             }))
             .is_err(),
             "nested reference range keys must be complete"

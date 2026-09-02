@@ -31,6 +31,7 @@ export interface SendMessage {
     voice?: boolean,
     sticker?: StickerContentPart,
     contextRefs?: WorkspaceReferenceRequest[],
+    conversationRefs?: string[],
   ) => Promise<void>
   /** Says something to the run already going; false when nobody was reading. */
   steerMessage: (text: string) => Promise<boolean>
@@ -125,6 +126,7 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
       voice?: boolean,
       sticker?: StickerContentPart,
       contextRefs: WorkspaceReferenceRequest[] = [],
+      conversationRefs: string[] = [],
     ) => {
       // A null message means "regenerate", which needs no text of its own.
       if ((text === null ? !replaces : !text.trim() && !sticker) || streaming || submittingRef.current) return
@@ -198,6 +200,7 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
             message: messageContent ?? '',
             turnId,
             contextRefs: contextRefs ?? null,
+            conversationRefs,
           })
         : api.chat({
             conversationId,
@@ -212,6 +215,10 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
             mode,
             voice: voice ? true : null,
             contextRefs,
+            // An edit deliberately sends none: the backend copies the frozen
+            // conversation items off the message being replaced instead, so
+            // the replayed question keeps exactly what it was asked about.
+            conversationRefs,
           })
 
       dispatched.catch((err) => {

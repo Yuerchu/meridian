@@ -523,7 +523,10 @@ function ConversationGroup({
   const { dragAndDropHooks } = useDragAndDrop({
     isDisabled: dndDisabled,
     getItems: dragConversations,
-    getAllowedDropOperations: () => ['move'],
+    // 'move' first — the in-sidebar drops keep their refiling semantics — and
+    // 'copy' beside it so the chat column's DropZone can accept the same drag
+    // as a citation. A drop target picks the first operation both sides allow.
+    getAllowedDropOperations: () => ['move', 'copy'],
     acceptedDragTypes: [CONVERSATION_DRAG_TYPE],
     shouldAcceptItemDrop: () => true,
     onItemDrop: (e) => void moveDropped(e.items, projectId),

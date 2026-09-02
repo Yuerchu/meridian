@@ -486,7 +486,7 @@ export interface WorkspaceReferenceSuggestionInfoResponse {
 }
 
 export type WorkspaceReferenceKind = 'project_file' | 'project_directory'
-export type MessageContextKind = WorkspaceReferenceKind | 'shell_output'
+export type MessageContextKind = WorkspaceReferenceKind | 'shell_output' | 'conversation'
 
 export interface WorkspaceReferenceResolveRequest {
   conversationId: string | null
@@ -556,6 +556,10 @@ export interface ChatRequest {
   mode: ChatMode | null
   voice: boolean | null
   contextRefs: WorkspaceReferenceRequest[] | null
+  /** Conversations dragged into the composer, as ids. Separate from
+   *  `contextRefs`: a drag leaves no `@` marker in the text for the backend's
+   *  reconcile step, so these are validated on their own terms. */
+  conversationRefs: string[] | null
 }
 
 export interface ChatStopRequest {
@@ -856,6 +860,7 @@ export interface AcpPromptSendRequest {
   message: string
   turnId: string | null
   contextRefs: WorkspaceReferenceRequest[] | null
+  conversationRefs: string[] | null
 }
 
 export interface AcpSessionAttachRequest {
@@ -981,6 +986,7 @@ export interface QueuedPromptCreateRequest {
   content: string
   delivery: QueueDelivery
   contextRefs: WorkspaceReferenceRequest[] | null
+  conversationRefs: string[] | null
 }
 
 export interface QueuedPromptDeliveryUpdateRequest {

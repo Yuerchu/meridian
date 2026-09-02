@@ -72,14 +72,28 @@ pub enum MessageContextKind {
     ProjectFile,
     ProjectDirectory,
     ShellOutput,
+    /// Another conversation, dragged into the composer. Frozen as an excerpt
+    /// of its active path; `display_path` carries its title and `metadata`
+    /// carries its id.
+    Conversation,
 }
 
 impl MessageContextKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ProjectFile => "project_file",
+            Self::ProjectDirectory => "project_directory",
+            Self::ShellOutput => "shell_output",
+            Self::Conversation => "conversation",
+        }
+    }
+
     pub fn parse(value: &str) -> Result<Self, String> {
         match value {
             "project_file" => Ok(Self::ProjectFile),
             "project_directory" => Ok(Self::ProjectDirectory),
             "shell_output" => Ok(Self::ShellOutput),
+            "conversation" => Ok(Self::Conversation),
             _ => Err(format!("unknown message context kind {value:?}")),
         }
     }
@@ -117,10 +131,15 @@ pub struct WorkspaceReferenceProbe {
 }
 
 /// Owned until the user row and all of its context can be committed together.
+///
+/// `kind` is the persisted vocabulary, not the workspace one: conversation
+/// excerpts are frozen through the same carrier as `@` references so they
+/// share the queue's freeze cycle and the transaction that lands them, while
+/// never being a workspace reference themselves.
 #[derive(Debug, Clone)]
 pub struct PreparedContextItem {
     pub id: String,
-    pub kind: WorkspaceReferenceKind,
+    pub kind: MessageContextKind,
     pub content: String,
     pub display_path: Option<String>,
     pub line_start: Option<i32>,
@@ -134,9 +153,16 @@ pub struct PreparedContextItem {
 }
 
 impl PreparedContextItem {
-    pub fn preview(&self) -> WorkspaceReferencePreview {
-        WorkspaceReferencePreview {
-            kind: self.kind,
+    /// `None` for kinds that are not workspace references — the preview is the
+    /// `workspace_resolve_ref` response, and only `@` references reach it.
+    pub fn preview(&self) -> Option<WorkspaceReferencePreview> {
+        let kind = match self.kind {
+            MessageContextKind::ProjectFile => WorkspaceReferenceKind::ProjectFile,
+            MessageContextKind::ProjectDirectory => WorkspaceReferenceKind::ProjectDirectory,
+            MessageContextKind::ShellOutput | MessageContextKind::Conversation => return None,
+        };
+        Some(WorkspaceReferencePreview {
+            kind,
             path: self.display_path.clone().unwrap_or_default(),
             content: self.content.clone(),
             line_start: self.line_start.map(|v| v as u32),
@@ -145,7 +171,7 @@ impl PreparedContextItem {
             line_count: self.line_count.max(0) as usize,
             token_count: self.token_count.max(0) as usize,
             truncated: self.truncated != 0,
-        }
+        })
     }
 }
 
@@ -1070,6 +1096,13 @@ async fn resolve_one(
 
 /// Freeze references in request order. Invalid input fails the whole preflight;
 /// no message row exists at that point, so partial context can never be stored.
+/// The per-turn token ceiling every frozen context item is accounted against.
+/// Exposed so the conversation-reference freeze can spend what the workspace
+/// references left over, instead of each kind assuming it is alone.
+pub fn turn_context_token_limit(context_limit: usize) -> usize {
+    MAX_CONTEXT_TOKENS.min(context_limit / 4)
+}
+
 pub async fn prepare_references(
     context: &ToolContext,
     inputs: &[WorkspaceReferenceRequest],
@@ -1081,7 +1114,7 @@ pub async fn prepare_references(
             "at most {MAX_REFERENCES} workspace references may be attached to one message"
         ));
     }
-    let token_limit = MAX_CONTEXT_TOKENS.min(context_limit / 4);
+    let token_limit = turn_context_token_limit(context_limit);
     let mut remaining_bytes = MAX_TOTAL_BYTES;
     let mut remaining_tokens = token_limit;
     let mut out = Vec::with_capacity(inputs.len());
@@ -1095,7 +1128,7 @@ pub async fn prepare_references(
         let byte_count = content.len();
         out.push(PreparedContextItem {
             id: uuid::Uuid::new_v4().to_string(),
-            kind,
+            kind: kind.into(),
             content_hash: hash(&content),
             content,
             display_path: Some(normalise_display_path(&input.path)),
@@ -1125,6 +1158,7 @@ pub fn render_context_item(
         MessageContextKind::ProjectFile => "project file",
         MessageContextKind::ProjectDirectory => "project directory listing",
         MessageContextKind::ShellOutput => "user-run command output",
+        MessageContextKind::Conversation => "referenced conversation",
     };
     let mut location = path.unwrap_or("unknown").to_string();
     if let Some(start) = line_start {

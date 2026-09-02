@@ -11,6 +11,7 @@ pub mod memory;
 pub mod move_file;
 pub mod plan;
 pub mod reach;
+pub mod read_conversation;
 pub mod read_file;
 #[cfg(not(target_os = "android"))]
 pub mod run_command;
@@ -539,6 +540,12 @@ impl ToolRegistry {
             // `PlanTransitions` rebuilds the tool set mid-turn and would undo
             // any filtering a call site did.
             Arc::new(sub_agent::RunAgentTool),
+            // Unconditional like everything above — the tool array is a cache
+            // prefix — and self-limiting: it reads only conversations the user
+            // has attached to the current one, so a session with no references
+            // holds an empty grant set and every call is refused with the
+            // reason. See the module header for why QQ never reaches it.
+            Arc::new(read_conversation::ReadConversationTool::new()),
             Arc::new(web_search::WebSearchTool::new()),
         ];
         #[cfg(not(target_os = "android"))]

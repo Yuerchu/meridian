@@ -70,7 +70,7 @@ mod tests {
     fn prepared(content: &str) -> crate::workspace::reference::PreparedContextItem {
         crate::workspace::reference::PreparedContextItem {
             id: "ctx1".into(),
-            kind: crate::workspace::reference::WorkspaceReferenceKind::ProjectFile,
+            kind: crate::workspace::reference::MessageContextKind::ProjectFile,
             content: content.into(),
             display_path: Some("src/lib.rs".into()),
             line_start: None,

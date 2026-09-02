@@ -1589,8 +1589,11 @@ requireRustFields(workspaceReferenceFile, 'WorkspaceReferencePreview', {
 requireRustFields(workspaceReferenceFile, 'WorkspaceReferenceProbe', {
   kind: /^WorkspaceReferenceKind$/,
 })
+// The persisted vocabulary, not the workspace one: conversation excerpts
+// freeze through the same carrier as `@` references without ever being a
+// workspace reference. Still a closed enum — that is what the rule holds.
 requireRustFields(workspaceReferenceFile, 'PreparedContextItem', {
-  kind: /^WorkspaceReferenceKind$/,
+  kind: /^MessageContextKind$/,
 })
 requireTypescriptFields('src/types.ts', 'WorkspaceReferencePreviewResponse', {
   kind: /^WorkspaceReferenceKind$/,

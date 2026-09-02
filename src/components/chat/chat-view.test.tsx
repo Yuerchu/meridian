@@ -398,7 +398,7 @@ describe('ChatView composer dispatch', () => {
     await waitFor(() => expect(latestInputBar().value).toBe('\\@literal'))
     act(() => latestInputBar().onSubmit())
 
-    expect(mocks.sendMessage).toHaveBeenCalledWith('@literal', true, undefined, undefined, undefined, undefined, [])
+    expect(mocks.sendMessage).toHaveBeenCalledWith('@literal', true, undefined, undefined, undefined, undefined, [], [])
   })
 
   it('forwards frozen references when queueing a prompt', async () => {
@@ -410,9 +410,12 @@ describe('ChatView composer dispatch', () => {
     await waitFor(() => expect(latestInputBar().value).toBe('Review @src/api.ts'))
     act(() => latestInputBar().onSubmit())
 
-    expect(mocks.enqueue).toHaveBeenCalledWith('Review @src/api.ts', 'follow_up', [
-      { path: 'src/api.ts', lineStart: null, lineEnd: null },
-    ])
+    expect(mocks.enqueue).toHaveBeenCalledWith(
+      'Review @src/api.ts',
+      'follow_up',
+      [{ path: 'src/api.ts', lineStart: null, lineEnd: null }],
+      [],
+    )
   })
 
   it('guards an awaited slash command and preserves a newer draft', async () => {
