@@ -375,7 +375,7 @@ fn default_counter() -> &'static TokenCounter {
 }
 
 pub(crate) fn estimate_tokens(content: &str) -> usize {
-    default_counter().count(content) + 4
+    default_counter().count_content(content) + 4
 }
 
 /// Lift out the background we injected ourselves (the memory block).
@@ -872,6 +872,57 @@ mod tests {
         let mut msgs = vec![chat_msg("system", "sys"), chat_msg("user", "hi")];
         trim_to_context_limit(&mut msgs, 100_000, 5);
         assert_eq!(msgs.len(), 2);
+    }
+
+    #[test]
+    fn recent_inline_image_does_not_fill_the_window_by_base64_length() {
+        let image = serde_json::json!([
+            { "type": "text", "text": "what is in this image?" },
+            {
+                "type": "image_url",
+                "image_url": { "url": format!("data:image/jpeg;base64,{}", "A".repeat(1_000_000)) }
+            }
+        ])
+        .to_string();
+        let mut messages = vec![chat_msg("system", "sys"), chat_msg("user", &image)];
+
+        trim_to_context_limit(&mut messages, 20_000, 20);
+
+        assert_eq!(
+            messages.len(),
+            2,
+            "the current image must remain available to the model"
+        );
+        assert!(messages[1].content.contains("data:image/jpeg;base64,"));
+        assert!(
+            messages
+                .iter()
+                .map(|message| estimate_tokens(&message.content))
+                .sum::<usize>()
+                < 10_000,
+            "base64 transport bytes must not be treated as text tokens"
+        );
+    }
+
+    #[test]
+    fn microcompact_still_replaces_old_inline_images() {
+        let image = serde_json::json!([
+            { "type": "image_url", "image_url": { "url": "data:image/png;base64,QUJD" } }
+        ])
+        .to_string();
+        let budget = TokenBudget::new("openai", "gpt-4o", 128_000, 16_384, None);
+        let mut messages = vec![
+            chat_msg("system", "sys"),
+            chat_msg("user", &image),
+            chat_msg("assistant", "old answer"),
+            chat_msg("user", "new question"),
+            chat_msg("assistant", "new answer"),
+        ];
+
+        microcompact(&mut messages, &budget, 1);
+
+        assert!(!messages[1].content.contains("base64"));
+        assert!(messages[1].content.contains("[image: image/png]"));
     }
 
     #[test]

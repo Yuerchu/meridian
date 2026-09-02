@@ -41,6 +41,9 @@ pub fn tokenizer_for_model(provider_type: &str, model: &str) -> TokenizerKind {
 }
 
 const MESSAGE_OVERHEAD: usize = 4;
+const MULTIMODAL_PART_OVERHEAD: usize = 4;
+const IMAGE_PART_TOKENS: usize = 4_096;
+const FILE_PART_TOKENS: usize = 16_384;
 
 #[derive(Clone)]
 pub struct TokenCounter {
@@ -79,9 +82,47 @@ impl TokenCounter {
         }
     }
 
+    /// Count a stored message body without treating inline attachment bytes as
+    /// prose. Multimodal bodies are OpenAI-style parts arrays across every
+    /// adapter; providers charge images and files by their media rules, not by
+    /// tokenising the base64 transport encoding.
+    pub fn count_content(&self, content: &str) -> usize {
+        if !content.starts_with('[') {
+            return self.count(content);
+        }
+        let Ok(parts) = serde_json::from_str::<Vec<serde_json::Value>>(content) else {
+            return self.count(content);
+        };
+        if parts.is_empty()
+            || !parts
+                .iter()
+                .all(|part| match part.get("type").and_then(|value| value.as_str()) {
+                    Some("text") => part.get("text").is_some_and(serde_json::Value::is_string),
+                    Some("image_url") => part.pointer("/image_url/url").is_some_and(serde_json::Value::is_string),
+                    Some("file") => part.pointer("/file/url").is_some_and(serde_json::Value::is_string),
+                    _ => false,
+                })
+        {
+            return self.count(content);
+        }
+
+        parts
+            .iter()
+            .map(|part| {
+                MULTIMODAL_PART_OVERHEAD
+                    + match part.get("type").and_then(|value| value.as_str()) {
+                        Some("text") => self.count(part.get("text").and_then(|value| value.as_str()).unwrap_or("")),
+                        Some("image_url") => IMAGE_PART_TOKENS,
+                        Some("file") => FILE_PART_TOKENS,
+                        _ => unreachable!("part types were validated above"),
+                    }
+            })
+            .sum()
+    }
+
     pub fn count_message(&self, msg: &ChatMessage) -> usize {
         let mut tokens = MESSAGE_OVERHEAD;
-        tokens += self.count(&msg.content);
+        tokens += self.count_content(&msg.content);
         if let Some(ref reasoning) = msg.reasoning_content {
             tokens += self.count(reasoning);
         }
@@ -265,6 +306,54 @@ mod tests {
         let total = counter.count_messages(&msgs);
         let content_only = counter.count("hi");
         assert!(total > content_only);
+    }
+
+    fn image_content(payload: &str, caption: &str, image_count: usize) -> String {
+        let mut parts = vec![serde_json::json!({ "type": "text", "text": caption })];
+        parts.extend((0..image_count).map(|_| {
+            serde_json::json!({
+                "type": "image_url",
+                "image_url": { "url": format!("data:image/jpeg;base64,{payload}") }
+            })
+        }));
+        serde_json::Value::Array(parts).to_string()
+    }
+
+    #[test]
+    fn inline_image_budget_does_not_scale_with_base64_length() {
+        let counter = TokenCounter::new(TokenizerKind::Cl100kBase);
+        let small = image_content("QUJD", "look", 1);
+        let large = image_content(&"A".repeat(1_000_000), "look", 1);
+
+        assert_eq!(counter.count_content(&small), counter.count_content(&large));
+        assert!(counter.count_content(&large) < 10_000);
+        assert!(
+            counter.count(&large) > 100_000,
+            "the regression sample must be large as ordinary text"
+        );
+    }
+
+    #[test]
+    fn multimodal_budget_counts_captions_and_each_image() {
+        let counter = TokenCounter::new(TokenizerKind::Cl100kBase);
+        let one = counter.count_content(&image_content("QUJD", "short", 1));
+        let two = counter.count_content(&image_content("QUJD", "short", 2));
+        let long_caption = counter.count_content(&image_content("QUJD", &"caption ".repeat(200), 1));
+
+        assert_eq!(two - one, IMAGE_PART_TOKENS + MULTIMODAL_PART_OVERHEAD);
+        assert!(long_caption > one);
+    }
+
+    #[test]
+    fn non_multimodal_json_and_malformed_arrays_stay_plain_text() {
+        let counter = TokenCounter::new(TokenizerKind::Cl100kBase);
+        for content in [
+            r#"[{"type":"custom","payload":"abc"}]"#,
+            r#"[{"type":"image_url","payload":"not an image part"}]"#,
+            "[not valid json",
+        ] {
+            assert_eq!(counter.count_content(content), counter.count(content));
+        }
     }
 
     #[test]

@@ -8,6 +8,20 @@ pub fn conversation_files_dir(app_data_dir: &Path, conversation_id: &str) -> Pat
     files_dir(app_data_dir).join(conversation_id)
 }
 
+#[cfg(windows)]
+fn canonicalize(path: &Path) -> std::io::Result<PathBuf> {
+    // `std::fs::canonicalize` returns a verbatim `\\?\C:\...` path on
+    // Windows. That form is valid for filesystem operations, but serialising
+    // it as a file URI produces `file://///?/C:/...`, which Tauri's asset
+    // protocol does not match against the ordinary `$APPDATA/files/**` scope.
+    dunce::canonicalize(path)
+}
+
+#[cfg(not(windows))]
+fn canonicalize(path: &Path) -> std::io::Result<PathBuf> {
+    std::fs::canonicalize(path)
+}
+
 fn is_conversation_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 128 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
@@ -27,8 +41,8 @@ pub fn alloc_dest(app_data_dir: &Path, conversation_id: &str, ext: &str) -> Resu
     std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
     let dest_dir = root.join(conversation_id);
     std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
-    let root_real = std::fs::canonicalize(&root).map_err(|e| e.to_string())?;
-    let dest_real = std::fs::canonicalize(&dest_dir).map_err(|e| e.to_string())?;
+    let root_real = canonicalize(&root).map_err(|e| e.to_string())?;
+    let dest_real = canonicalize(&dest_dir).map_err(|e| e.to_string())?;
     if !dest_real.starts_with(&root_real) {
         return Err("invalid conversation id".into());
     }
@@ -112,10 +126,11 @@ mod tests {
     #[test]
     fn alloc_dest_stays_under_the_files_root() {
         let dir = tempfile::tempdir().unwrap();
-        let (path, _) = alloc_dest(dir.path(), "conv-1", "png").unwrap();
-        let root = std::fs::canonicalize(files_dir(dir.path())).unwrap();
+        let (path, uri) = alloc_dest(dir.path(), "conv-1", "png").unwrap();
+        let root = canonicalize(&files_dir(dir.path())).unwrap();
         assert!(path.starts_with(&root));
         assert!(path.extension().is_some_and(|e| e == "png"));
+        assert!(!uri.starts_with("file://///?/"), "verbatim path leaked into URI: {uri}");
     }
 
     #[test]

@@ -5,8 +5,8 @@ use serde::Deserialize;
 use std::collections::HashMap;
 
 use super::{
-    AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, StreamEvent, TokenUsage, ToolCall,
-    ToolDefinition,
+    AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, MessageContentPart, ProviderError, StreamEvent,
+    TokenUsage, ToolCall, ToolDefinition,
 };
 use crate::client::{HttpTransport, Request, RequestBody, ReqwestTransport};
 
@@ -101,6 +101,34 @@ impl OpenAIResponsesProvider {
     }
 }
 
+fn responses_user_content(content: &str) -> Result<Vec<serde_json::Value>, ProviderError> {
+    let Some(parts) = super::decode_message_parts(content).map_err(ProviderError::Parse)? else {
+        return Ok(vec![serde_json::json!({ "type": "input_text", "text": content })]);
+    };
+
+    parts
+        .into_iter()
+        .map(|part| match part {
+            MessageContentPart::Text { text } => Ok(serde_json::json!({
+                "type": "input_text",
+                "text": text,
+            })),
+            MessageContentPart::ImageUrl { image_url } => Ok(serde_json::json!({
+                "type": "input_image",
+                "image_url": image_url.url,
+            })),
+            MessageContentPart::File { file } => Ok(serde_json::json!({
+                "type": "input_file",
+                "file_data": file.url,
+                "filename": file.name,
+            })),
+            MessageContentPart::Sticker { .. } => Err(ProviderError::Parse(
+                "unresolved sticker part reached the OpenAI Responses adapter".into(),
+            )),
+        })
+        .collect()
+}
+
 fn serialize_responses_input(
     messages: &[ChatMessage],
 ) -> Result<(Option<String>, Vec<serde_json::Value>), ProviderError> {
@@ -125,7 +153,7 @@ fn serialize_responses_input(
                 input.push(serde_json::json!({
                     "type": "message",
                     "role": "user",
-                    "content": [{"type": "input_text", "text": rendered.content}],
+                    "content": responses_user_content(&rendered.content)?,
                 }));
             }
             "assistant" => {
@@ -709,6 +737,75 @@ mod tests {
             Some(RequestBody::Json(v)) => v,
             _ => panic!("expected a JSON body"),
         }
+    }
+
+    #[test]
+    fn user_multimodal_parts_become_native_responses_content() {
+        let body = serde_json::json!([
+            { "type": "text", "text": "look here" },
+            { "type": "image_url", "image_url": { "url": "data:image/jpeg;base64,QUJD" } }
+        ])
+        .to_string();
+        let message = ChatMessage::user_from(
+            &body,
+            crate::provider::SenderRef {
+                user_id: 42,
+                nickname: Some("Alice".into()),
+            },
+        );
+
+        let (_, input) = serialize_responses_input(&[message]).expect("serialize multimodal user input");
+        let content = input[0]["content"].as_array().expect("message content array");
+        assert_eq!(content.len(), 3);
+        assert_eq!(content[0]["type"], "input_text");
+        assert_eq!(content[0]["text"], "<sender>Alice(42)</sender>: ");
+        assert_eq!(
+            content[1],
+            serde_json::json!({ "type": "input_text", "text": "look here" })
+        );
+        assert_eq!(content[2]["type"], "input_image");
+        assert_eq!(content[2]["image_url"], "data:image/jpeg;base64,QUJD");
+        assert!(
+            content
+                .iter()
+                .filter_map(|part| part["text"].as_str())
+                .all(|text| !text.contains("base64")),
+            "the image payload must never be embedded in input_text"
+        );
+    }
+
+    #[test]
+    fn user_file_parts_become_input_files() {
+        let body = serde_json::json!([
+            {
+                "type": "file",
+                "file": {
+                    "url": "data:application/pdf;base64,QUJD",
+                    "mime_type": "application/pdf",
+                    "name": "report.pdf"
+                }
+            }
+        ])
+        .to_string();
+
+        let (_, input) = serialize_responses_input(&[ChatMessage::user(&body)]).expect("serialize file input");
+        assert_eq!(
+            input[0]["content"][0],
+            serde_json::json!({
+                "type": "input_file",
+                "file_data": "data:application/pdf;base64,QUJD",
+                "filename": "report.pdf"
+            })
+        );
+    }
+
+    #[test]
+    fn ordinary_user_text_keeps_the_existing_responses_shape() {
+        let (_, input) = serialize_responses_input(&[ChatMessage::user("hello")]).expect("serialize text input");
+        assert_eq!(
+            input[0]["content"],
+            serde_json::json!([{ "type": "input_text", "text": "hello" }])
+        );
     }
 
     #[test]

@@ -3176,6 +3176,7 @@ dependencies = [
  "diesel",
  "diesel_migrations",
  "dirs",
+ "dunce",
  "eventsource-stream",
  "futures",
  "glob",

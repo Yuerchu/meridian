@@ -21,11 +21,16 @@ export function assetSrc(url?: string): string | undefined {
   if (!url) return undefined
   if (!url.startsWith('file://')) return url
   if (remoteConnection) return remoteConnection.assetUrl(url)
-  let path = url.slice('file://'.length)
+  let path = decodeURIComponent(url.slice('file://'.length))
+  // `std::fs::canonicalize` used to leak Windows' verbatim `\\?\C:\...`
+  // form into stored URIs as `file://///?/C:/...`. The asset protocol scope
+  // contains the ordinary drive path, so repair historical rows before asking
+  // Tauri to serve them.
+  if (/^\/\/\/\?\/[A-Za-z]:\//.test(path)) path = path.slice('///?/'.length)
   // `file:///C:/x` — the authority is empty and the drive letter follows the
   // third slash, which is not part of the path.
   if (/^\/[A-Za-z]:/.test(path)) path = path.slice(1)
-  return convertFileSrc(decodeURIComponent(path))
+  return convertFileSrc(path)
 }
 
 /** Extensions the WebView will render as an image. */
