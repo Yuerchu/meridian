@@ -202,7 +202,15 @@ function ApprovalToast({
           ) : (
             <span className="flex min-w-0 items-start gap-1.5">
               <span className="shrink-0 font-medium leading-5">{toolLabel(t, item.toolName)}</span>
-              <ToolArgsSummary toolName={item.toolName} args={args} />
+              {/* Two lines of the whole value, never the key's compact form:
+                  this row is a decision, and the summary is what it rests on.
+                  The clamp is the container's, the way the card's trigger
+                  applies its own. */}
+              <ToolArgsSummary
+                toolName={item.toolName}
+                args={args}
+                className="line-clamp-2 [display:-webkit-box] whitespace-pre-wrap [overflow-wrap:anywhere]"
+              />
             </span>
           )}
           {/* Under the name, exactly as the card draws it. The row this replaces

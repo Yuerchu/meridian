@@ -6,10 +6,13 @@ import type { DiffLineKind, FileDiff } from '@/lib/patch-parse'
 import { useShikiLanguage } from '@/hooks/use-shiki-language'
 import { highlightInline } from '@/lib/shiki'
 import { fileIconUrl } from '@/lib/file-icon'
+import { pathExtension } from '@/lib/paths'
 import { cn } from '@/lib/utils'
-import { Hint } from '@/components/ui/hint'
+import { PathLabel } from '@/components/ui/path-label'
 
 // ---- Diff rendering for file-editing tools (write_file / edit_file / apply_patch) ----
+
+export { fileNameOf, pathExtension } from '@/lib/paths'
 
 const MAX_DIFF_LINES = 300
 
@@ -36,27 +39,6 @@ function diffSignClass(kind: DiffLineKind): string | undefined {
   return undefined
 }
 
-/** The extension a path ends in, or nothing when it has none. */
-export function pathExtension(path: string): string | undefined {
-  const ext = path.split('.').pop()?.toLowerCase()
-  if (!ext || ext === path.toLowerCase()) return undefined
-  return ext
-}
-
-/**
- * The file's own name, without the path leading to it.
- *
- * Deliberately not the last two segments, which was tried: the card's argument
- * summary already prints the full path above these headers, so qualifying them
- * put the same string on screen twice — and the review note that asked for it
- * ("the path is only in a `title`, which a touch screen cannot reach") was
- * reading this header on its own rather than the card around it. The `title`
- * stays for the move case, where it carries something the summary does not.
- */
-export function fileNameOf(path: string): string {
-  return path.split(/[/\\]/).pop() ?? path
-}
-
 function diffLinePrefix(kind: DiffLineKind): string {
   switch (kind) {
     case 'add':
@@ -77,19 +59,42 @@ export function FileIcon({ path }: { path: string }) {
   return <img src={src} alt="" aria-hidden className="size-3.5 shrink-0" />
 }
 
-export function FileDiffCard({ diff }: { diff: FileDiff }) {
-  const { t } = useTranslation()
-  const [expanded, setExpanded] = useState(false)
+/** `+N -M`, coloured. Drawn in the diff's own header, or handed up to a
+ *  panel header when the diff is the whole panel. */
+export function DiffStats({ diff }: { diff: FileDiff }) {
   const added = diff.lines.filter((l) => l.kind === 'add').length
   const removed = diff.lines.filter((l) => l.kind === 'remove').length
-  // The file plus the folder holding it, not the file alone. The full path was
-  // in a `title`, which is a hover — and a touch screen has none, so a card
-  // saying `index.ts` was one of several indistinguishable cards. One level of
-  // parent is what separates them in practice and still fits a narrow card;
-  // the `title` below keeps the whole path for a pointer.
-  const fileName = fileNameOf(diff.path)
+  if (added === 0 && removed === 0) return null
+  return (
+    <span data-slot="file-diff-stats" className="shrink-0 font-mono tabular-nums">
+      {added > 0 && <span className="text-success-soft-foreground">+{added}</span>}
+      {added > 0 && removed > 0 && ' '}
+      {removed > 0 && <span className="text-danger">-{removed}</span>}
+    </span>
+  )
+}
+
+/**
+ * One file's diff.
+ *
+ * Flat — no box of its own. It sits in a panel body that already is one, and
+ * a rounded card inside a rounded card is the double edge the Widget shell
+ * was brought in to remove. `header` is off when the panel's header already
+ * names the file, which is every single-file write and edit; a patch that
+ * touches several files keeps a header per file.
+ *
+ * **Line numbers are drawn only when the lines carry them.** Nothing here
+ * counts: `numberDiffLines` is called by whoever knows where the change
+ * starts, and a diff that reaches this card unnumbered — a Codex-style patch,
+ * an edit whose file could not be read — is drawn without a gutter rather
+ * than with a gutter counted from a guess.
+ */
+export function FileDiffCard({ diff, header = true }: { diff: FileDiff; header?: boolean }) {
+  const { t } = useTranslation()
+  const [expanded, setExpanded] = useState(false)
   const shown = expanded ? diff.lines : diff.lines.slice(0, MAX_DIFF_LINES)
   const hidden = diff.lines.length - shown.length
+  const numbered = diff.lines.some((line) => line.oldNo !== undefined || line.newNo !== undefined)
   // One grammar for the whole card, then every line colours from it. A diff is
   // not a program — its lines come from two versions with the context between
   // them missing — so there is nothing to parse as a whole anyway: a template
@@ -98,49 +103,66 @@ export function FileDiffCard({ diff }: { diff: FileDiff }) {
   const { language, ready } = useShikiLanguage(pathExtension(diff.path))
 
   return (
-    <div data-slot="file-diff" className="rounded-lg bg-default/40 overflow-hidden">
-      {diff.path !== '' && (
+    <div data-slot="file-diff" data-numbered={numbered || undefined} className="min-w-0 overflow-hidden">
+      {header && diff.path !== '' && (
         <div
           data-slot="file-diff-header"
-          className="flex items-center gap-2 px-3 py-1 bg-default/30 text-xs text-muted border-b border-border/50"
+          className="flex items-center gap-2 border-b border-border/50 bg-default/30 px-3 py-1.5 text-xs text-muted"
         >
           <FileIcon path={diff.path} />
           {/* A move used to arrive as one string with an arrow in the middle,
               which read correctly and could not be used as a path. The parser
-              keeps the two apart now; the tooltip puts them back together. */}
-          <Hint className="font-mono truncate" label={diff.movedFrom ? `${diff.movedFrom} → ${diff.path}` : diff.path}>
-            {fileName}
-          </Hint>
+              keeps the two apart; the header puts them side by side. */}
+          {diff.movedFrom && (
+            <>
+              <PathLabel path={diff.movedFrom} wrap className="text-muted [&_[data-slot=path-name]]:text-muted" />
+              <span aria-hidden className="shrink-0">
+                →
+              </span>
+            </>
+          )}
+          <PathLabel path={diff.path} wrap />
           {diff.op === 'create' && (
             <span className="text-success-soft-foreground shrink-0">{t('chat.tool.diff.newFile')}</span>
           )}
           {diff.op === 'delete' && <span className="text-danger shrink-0">{t('chat.tool.diff.deletedFile')}</span>}
           {diff.replaceAll && <span className="shrink-0">{t('chat.tool.diff.replaceAll')}</span>}
-          {(added > 0 || removed > 0) && (
-            <span data-slot="file-diff-stats" className="ml-auto shrink-0 font-mono">
-              {added > 0 && <span className="text-success-soft-foreground">+{added}</span>}
-              {added > 0 && removed > 0 && ' '}
-              {removed > 0 && <span className="text-danger">-{removed}</span>}
-            </span>
-          )}
+          <span className="ml-auto">
+            <DiffStats diff={diff} />
+          </span>
         </div>
       )}
-      <div data-slot="file-diff-content" className="max-h-60 overflow-auto">
-        <div className="py-1 font-mono text-xs leading-relaxed w-max min-w-full">
+      <div data-slot="file-diff-content" className="max-h-72 overflow-auto">
+        <div className="w-max min-w-full py-1 font-mono text-xs leading-relaxed">
           {shown.map((line, i) => (
             <div
               key={i}
               data-slot="file-diff-line"
               data-kind={line.kind}
-              className={cn('px-3 whitespace-pre', diffLineClass(line.kind, ready))}
+              className={cn('flex whitespace-pre', diffLineClass(line.kind, ready))}
             >
-              <span className={diffSignClass(line.kind)}>{diffLinePrefix(line.kind)}</span>
-              {ready && line.kind !== 'hunk' && line.text ? (
-                // Shiki escapes what it emits, and the sign beside it is ours.
-                <span dangerouslySetInnerHTML={{ __html: highlightInline(line.text, language) }} />
-              ) : (
-                line.text || ' '
+              {numbered && (
+                // Two columns, old and new, the way a side-by-side gutter reads
+                // in a unified view. Digits only: the sign has its own column,
+                // and a reader copying the diff should not get numbers with it.
+                <span
+                  aria-hidden
+                  data-slot="file-diff-gutter"
+                  className="sticky left-0 flex shrink-0 bg-surface text-muted/70 select-none tabular-nums"
+                >
+                  <span className="w-10 pr-1 text-right">{line.oldNo ?? ''}</span>
+                  <span className="w-10 pr-1 text-right">{line.newNo ?? ''}</span>
+                </span>
               )}
+              <span className={cn('shrink-0 pl-2', diffSignClass(line.kind))}>{diffLinePrefix(line.kind)}</span>
+              <span className="pr-3">
+                {ready && line.kind !== 'hunk' && line.text ? (
+                  // Shiki escapes what it emits, and the sign beside it is ours.
+                  <span dangerouslySetInnerHTML={{ __html: highlightInline(line.text, language) }} />
+                ) : (
+                  line.text || ' '
+                )}
+              </span>
             </div>
           ))}
           {diff.lines.length > MAX_DIFF_LINES && (

@@ -1,11 +1,40 @@
-import { useState, useCallback, useContext, useEffect, useMemo, useRef, useId } from 'react'
+import { Fragment, useState, useCallback, useContext, useEffect, useMemo, useRef, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { diffLines } from 'diff'
-import { parsePatchText, splitDiffText, type DiffLine, type DiffLineKind, type FileDiff } from '@/lib/patch-parse'
-import { ShikiCode } from './shiki-code'
-import { FileDiffCard, FileIcon, fileNameOf, pathExtension } from './file-diff-card'
 import {
+  firstHunkStart,
+  numberDiffLines,
+  parsePatchText,
+  splitDiffText,
+  type DiffLine,
+  type DiffLineKind,
+  type FileDiff,
+} from '@/lib/patch-parse'
+import {
+  isOneLiner,
+  NO_SEARCH_MATCHES,
+  parseCommandOutput,
+  parseDirectoryListing,
+  parseGlobResult,
+  parseReadFileOutput,
+  parseSearchMatches,
+  parseSubAgentResult,
+  splitListingFootnote,
+  splitTruncation,
+  type CommandOutput,
+  type SubAgentOutcome,
+  type SubAgentResult,
+} from '@/lib/tool-output'
+import { ShikiCode } from './shiki-code'
+import { NumberedCode } from './numbered-code'
+import { SubAgentTimeline } from './sub-agent-timeline'
+import { DiffStats, FileDiffCard, FileIcon } from './file-diff-card'
+import { pathExtension } from '@/lib/paths'
+import { PathLabel } from '@/components/ui/path-label'
+import { Hint } from '@/components/ui/hint'
+import {
+  ArrowUpRightFromSquare,
   ArrowUturnCcwLeft,
   Ban,
   Check,
@@ -14,8 +43,10 @@ import {
   CircleQuestion,
   Clock,
   Compass,
+  Folder,
   ForwardStep,
   Globe,
+  Link,
   ListCheck,
   PaperPlane,
   SquareListUl,
@@ -29,6 +60,9 @@ import {
   ChatToolArgs,
   ChatToolContent,
   ChatToolError,
+  ChatToolPanelBody,
+  ChatToolPanelFooter,
+  ChatToolPanelHeader,
   ChatToolPresentationContext,
   ChatToolResult,
   ChatToolStatusIcon,
@@ -37,6 +71,7 @@ import {
 } from '@/components/ui/chat-tool'
 import { BubbleKeyboardKey } from '@/components/ui/bubble-keyboard'
 import { usePanelExpansion } from '@/hooks/use-panel-expansion'
+import { useEditLocation } from '@/hooks/use-edit-location'
 import { ariaHotkey, formatHotkey } from '@/hooks/use-hotkey'
 import { APPROVE_HOTKEY, DENY_HOTKEY } from '@/hooks/use-transcript-hotkeys'
 import { cn } from '@/lib/utils'
@@ -45,7 +80,7 @@ import { parseTodoArgs, todoProgress, TodoItemList, type TodoDraft } from './tod
 import { ChatSource, ChatSources } from '@heroui-pro/react/chat-source'
 
 import { openExternally } from '@/lib/external-link'
-import { MarkdownContent } from './markdown-content'
+import { CopyButton, MarkdownContent } from './markdown-content'
 import { useConversationStore } from '@/stores/conversation-store'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
 import type { AutoReviewVerdictInfoResponse, ToolCallDisplay } from '@/types'
@@ -594,55 +629,77 @@ function ResultToggle({ expanded, onToggle }: { expanded: boolean; onToggle: () 
   )
 }
 
-function ReadFileResult({ result, path }: { result: string; path: string }) {
-  // Same reason as `FileDiffCard`: this header has no `title` at all, so the
-  // bare filename was the only thing identifying which file was read.
-  const fileName = fileNameOf(path)
-  // Previously this only *claimed* to be highlighted: it put `language-x hljs`
-  // on the element and never ran a highlighter, so the class bought a
-  // background colour and nothing else.
-  const [expanded, setExpanded] = useState(false)
-  const truncated = result.length > 2000
-  const body = truncated && !expanded ? `${result.slice(0, 2000)}…` : result
-
+/** A line under a listing saying what was left out of it. */
+function Footnote({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-lg bg-default/40 overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-1 bg-default/30 text-xs text-muted border-b border-border/50">
-        <FileIcon path={path} />
-        <span className="font-mono truncate">{fileName}</span>
-      </div>
-      <div className="max-h-60 overflow-auto">
-        <ShikiCode code={body} language={pathExtension(path)} />
-      </div>
-      {truncated && <ResultToggle expanded={expanded} onToggle={() => setExpanded((current) => !current)} />}
+    <div data-slot="tool-footnote" className="border-t border-border/50 px-3 py-1.5 text-xs text-muted">
+      {children}
     </div>
   )
 }
 
-interface SearchMatch {
-  file: string
-  line: number
-  text: string
+/** A result that is one sentence about nothing — no matches, an empty
+ *  directory — said in the panel's own words rather than the tool's. */
+function EmptyLine({ children }: { children: React.ReactNode }) {
+  return (
+    <div data-slot="tool-empty" className="px-3 py-2 text-xs text-muted">
+      {children}
+    </div>
+  )
 }
 
-function parseSearchResult(result: string): SearchMatch[] | null {
-  const lines = result.split('\n').filter(Boolean)
-  if (lines.length === 0) return null
+function PlainText({ text, className }: { text: string; className?: string }) {
+  return (
+    <pre
+      className={cn(
+        'max-h-72 overflow-auto px-3 py-2 font-mono text-xs leading-relaxed whitespace-pre-wrap text-foreground/90 [overflow-wrap:anywhere]',
+        className,
+      )}
+    >
+      {text}
+    </pre>
+  )
+}
 
-  const matches: SearchMatch[] = []
-  for (const line of lines) {
-    if (line.startsWith('(showing first') || line === 'No matches found.') continue
-    const m = line.match(/^(.+?):(\d+):(.*)$/)
-    if (m) {
-      matches.push({ file: m[1], line: parseInt(m[2], 10), text: m[3] })
-    }
-  }
-  return matches.length > 0 ? matches : null
+/** The first `limit` characters, cut at a line end so no line is torn. */
+function headOf(text: string, limit: number): string {
+  if (text.length <= limit) return text
+  const cut = text.lastIndexOf('\n', limit)
+  return text.slice(0, cut > limit / 2 ? cut : limit)
+}
+
+/**
+ * The file `read_file` returned, numbered from one. The tool has no range
+ * argument, so what came back starts at the file's first line and the gutter
+ * can say so; a reader can name a line to the model by its number.
+ */
+function ReadFileResult({ result, path }: { result: string; path: string }) {
+  const { t } = useTranslation()
+  const { content, truncated: capped } = useMemo(() => parseReadFileOutput(result), [result])
+  const [expanded, setExpanded] = useState(false)
+  const long = content.length > 2000
+  const body = long && !expanded ? headOf(content, 2000) : content
+  return (
+    <div data-slot="read-file-result">
+      <div className="max-h-72 overflow-auto">
+        <NumberedCode code={body} language={pathExtension(path)} />
+      </div>
+      {long && <ResultToggle expanded={expanded} onToggle={() => setExpanded((current) => !current)} />}
+      {capped && (
+        <Footnote>
+          {capped.totalBytes !== null
+            ? t('chat.tool.panel.fileTruncatedTotal', { bytes: capped.totalBytes.toLocaleString() })
+            : t('chat.tool.panel.fileTruncated')}
+        </Footnote>
+      )}
+    </div>
+  )
 }
 
 function SearchResult({ result }: { result: string }) {
-  const matches = useMemo(() => parseSearchResult(result), [result])
-
+  const { t } = useTranslation()
+  const { body, footnote } = useMemo(() => splitListingFootnote(result), [result])
+  const matches = useMemo(() => parseSearchMatches(body), [body])
   const grouped = useMemo(() => {
     const map = new Map<string, { line: number; text: string }[]>()
     for (const m of matches ?? []) {
@@ -654,45 +711,125 @@ function SearchResult({ result }: { result: string }) {
   }, [matches])
 
   if (!matches) {
-    return (
-      <div className="rounded-lg bg-default/40">
-        <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-xs">{result}</pre>
-      </div>
-    )
+    if (body.trim() === NO_SEARCH_MATCHES) return <EmptyLine>{t('chat.tool.panel.noMatches')}</EmptyLine>
+    return <PlainText text={body} />
   }
 
   return (
-    <div className="rounded-lg bg-default/40 max-h-60 overflow-auto">
-      {Array.from(grouped.entries()).map(([file, items]) => (
-        <div key={file} className="not-first:border-t not-first:border-border/50">
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-default/30 text-xs text-muted">
-            <FileIcon path={file} />
-            <span className="font-mono truncate">{file.split(/[/\\]/).pop()}</span>
-            <span className="text-muted ml-auto shrink-0">{items.length}</span>
-          </div>
-          {items.map((item, i) => (
-            <div key={i} className="flex w-max min-w-full gap-2 px-3 py-0.5 text-xs hover:bg-default/20">
-              <span className="text-muted font-mono w-8 text-right shrink-0">{item.line}</span>
-              <span className="text-foreground font-mono whitespace-pre">{item.text}</span>
+    <div data-slot="search-result">
+      <div className="max-h-72 overflow-auto">
+        {Array.from(grouped.entries()).map(([file, items]) => (
+          <div key={file} className="not-first:border-t not-first:border-border/50">
+            <div className="flex items-center gap-1.5 bg-default/30 px-3 py-1 text-xs text-muted">
+              <FileIcon path={file} />
+              <PathLabel path={file} className="min-w-0 flex-1" />
+              <span className="ml-auto shrink-0 tabular-nums">{items.length}</span>
             </div>
-          ))}
+            {items.map((item, i) => (
+              <div key={i} className="flex w-max min-w-full gap-2 px-3 py-0.5 text-xs hover:bg-default/20">
+                <span className="w-8 shrink-0 text-right font-mono text-muted tabular-nums">{item.line}</span>
+                <span className="font-mono whitespace-pre text-foreground">{item.text}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+      {footnote.showingFirst !== null && (
+        <Footnote>{t('chat.tool.panel.showingFirst', { count: footnote.showingFirst })}</Footnote>
+      )}
+    </div>
+  )
+}
+
+/** `glob` answers with bare paths and nothing else — never `path:line:text`,
+ *  so it gets a list of its own rather than a search's parser. */
+function GlobResult({ result }: { result: string }) {
+  const { t } = useTranslation()
+  const { body, footnote } = useMemo(() => splitListingFootnote(result), [result])
+  const { paths, empty } = useMemo(() => parseGlobResult(body), [body])
+  if (empty) return <EmptyLine>{t('chat.tool.panel.noGlobMatches')}</EmptyLine>
+  return (
+    <div data-slot="glob-result">
+      <div className="max-h-72 overflow-auto py-1">
+        {paths.map((path) => (
+          <div key={path} className="flex items-center gap-1.5 px-3 py-0.5 text-xs hover:bg-default/20">
+            <FileIcon path={path} />
+            <PathLabel path={path} className="min-w-0 flex-1" />
+          </div>
+        ))}
+      </div>
+      {footnote.showingFirst !== null && (
+        <Footnote>{t('chat.tool.panel.showingFirst', { count: footnote.showingFirst })}</Footnote>
+      )}
+    </div>
+  )
+}
+
+function DirectoryResult({ result }: { result: string }) {
+  const { t } = useTranslation()
+  const entries = useMemo(() => parseDirectoryListing(result), [result])
+  if (entries === null) return <PlainText text={result} />
+  if (entries.length === 0) return <EmptyLine>{t('chat.tool.panel.emptyDirectory')}</EmptyLine>
+  return (
+    <div data-slot="directory-result" className="max-h-72 overflow-auto py-1">
+      {entries.map((entry) => (
+        <div
+          key={`${entry.kind}:${entry.name}`}
+          className="flex items-center gap-1.5 px-3 py-0.5 text-xs hover:bg-default/20"
+        >
+          {entry.kind === 'dir' ? (
+            <Folder aria-hidden className="size-3.5 shrink-0 text-muted" />
+          ) : entry.kind === 'link' ? (
+            <Link aria-hidden className="size-3.5 shrink-0 text-muted" />
+          ) : (
+            <FileIcon path={entry.name} />
+          )}
+          <span className="min-w-0 flex-1 truncate font-mono text-foreground">{entry.name}</span>
+          {entry.size !== null && <span className="shrink-0 font-mono text-muted tabular-nums">{entry.size}</span>}
         </div>
       ))}
     </div>
   )
 }
 
-function CommandResult({ result }: { result: string }) {
+/**
+ * What a command printed, in the parts `formatted()` joined: stdout, then
+ * stderr in its own tinted section. The trailers — exit code, timeout, the
+ * command's own cap — are chips in the panel header, drawn by the block.
+ */
+function CommandOutputView({ output }: { output: CommandOutput }) {
+  const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
-  const truncated = result.length > 2000
+  if (output.noOutput) return <EmptyLine>{t('chat.shell.noOutput')}</EmptyLine>
+  const long = output.stdout.length > 2000
+  const stdout = long && !expanded ? `${output.stdout.slice(0, 2000)}…` : output.stdout
   return (
-    <div className="rounded-lg bg-default/40">
-      <div className="max-h-60 overflow-auto">
-        <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-xs font-mono leading-relaxed">
-          {truncated && !expanded ? `${result.slice(0, 2000)}…` : result}
-        </pre>
+    <div data-slot="command-output">
+      {output.stdout !== '' && <PlainText text={stdout} />}
+      {long && <ResultToggle expanded={expanded} onToggle={() => setExpanded((current) => !current)} />}
+      {output.stderr !== '' && (
+        <div data-slot="command-stderr" className="border-t border-border/50 bg-danger/5">
+          <div className="px-3 pt-1.5 text-xs font-medium text-danger">{t('chat.tool.panel.stderr')}</div>
+          <PlainText text={output.stderr} className="max-h-48 pt-0.5" />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** The command itself, as the shell will see it. Highlighted as bash, which is
+ *  the backend's default shell on every platform including Windows; a hosted
+ *  agent's `Bash` is bash by name. */
+function CommandCode({ command }: { command: string }) {
+  return (
+    <div data-slot="command-code" className="relative">
+      {/* Wrapped, not scrolled: a command is read whole before it is
+          approved, and a long `cd … && …` scrolled off to the right is the
+          part that matters least visible. The copy button keeps its corner. */}
+      <div className="max-h-48 overflow-auto py-0.5 pr-9 pl-1 [&_pre]:break-all [&_pre]:whitespace-pre-wrap">
+        <ShikiCode code={command} language="bash" />
       </div>
-      {truncated && <ResultToggle expanded={expanded} onToggle={() => setExpanded((current) => !current)} />}
+      <CopyButton text={command} className="absolute top-1.5 right-1.5" />
     </div>
   )
 }
@@ -709,19 +846,15 @@ function GenericResult({ result }: { result: string }) {
   }, [result])
 
   if (pretty !== null && pretty.length <= 2000) {
-    return <ChatToolResult text={pretty} />
+    return <ChatToolResult text={pretty} className="max-h-72 rounded-none bg-transparent" />
   }
 
   const display = pretty ?? result
   const truncated = display.length > 1000
 
   return (
-    <div className="rounded-lg bg-default/40">
-      <div className="max-h-40 overflow-y-auto">
-        <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-xs">
-          {truncated && !expanded ? `${display.slice(0, 1000)}…` : display}
-        </pre>
-      </div>
+    <div data-slot="generic-result">
+      <PlainText text={truncated && !expanded ? `${display.slice(0, 1000)}…` : display} className="max-h-48" />
       {truncated && <ResultToggle expanded={expanded} onToggle={() => setExpanded((current) => !current)} />}
     </div>
   )
@@ -731,25 +864,95 @@ function ToolErrorResult({ result }: { result: string }) {
   const [expanded, setExpanded] = useState(false)
   const truncated = result.length > 1000
   return (
-    <div>
+    <div className="p-2">
       <ChatToolError>{truncated && !expanded ? `${result.slice(0, 1000)}…` : result}</ChatToolError>
       {truncated && <ResultToggle expanded={expanded} onToggle={() => setExpanded((current) => !current)} />}
     </div>
   )
 }
 
+/** Tools whose result is what they read, and so belongs in the body whatever
+ *  its length — never folded into a footer sentence. */
+const READING_TOOLS = new Set(['read_file', 'Read', 'search_files', 'Grep', 'glob', 'Glob', 'list_directory'])
+
 function ToolResult({ toolName, result, args }: { toolName: string; result: string; args: Record<string, unknown> }) {
   switch (toolName) {
     case 'read_file':
       return <ReadFileResult result={result} path={String(args.path ?? '')} />
+    case 'Read':
+      return <ReadFileResult result={result} path={String(args.file_path ?? '')} />
     case 'search_files':
-    case 'glob':
       return <SearchResult result={result} />
-    case 'run_command':
-      return <CommandResult result={result} />
+    case 'glob':
+      return <GlobResult result={result} />
+    case 'list_directory':
+      return <DirectoryResult result={result} />
     default:
       return <GenericResult result={result} />
   }
+}
+
+/**
+ * The arguments as a list of what they are, for a tool with no drawing of its
+ * own: a memory's key and content, an MCP call's fields. The keys the built-in
+ * tools use have names in the locale; anything else shows as the model wrote
+ * it. A value with line breaks in it, or a long one, gets a block of its own
+ * under its label so the columns do not fight over the width.
+ */
+function ArgsList({ args }: { args: Record<string, unknown> }) {
+  const { t } = useTranslation()
+  const entries = Object.entries(args).filter(([key]) => key !== 'description')
+  if (entries.length === 0) return null
+  return (
+    <dl data-slot="tool-args-list" className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 px-3 py-2 text-xs">
+      {entries.map(([key, value]) => {
+        const labelKey = `chat.tool.param.${key}`
+        const label = t(labelKey)
+        const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
+        const block = text.includes('\n') || text.length > 80
+        return (
+          <Fragment key={key}>
+            <dt className={cn('text-muted', block && 'col-span-2')}>{label === labelKey ? key : label}</dt>
+            <dd
+              className={cn(
+                'min-w-0 font-mono text-foreground/90',
+                block ? 'col-span-2 rounded-md bg-default/40 px-2 py-1 break-words whitespace-pre-wrap' : 'truncate',
+              )}
+            >
+              {text}
+            </dd>
+          </Fragment>
+        )
+      })}
+    </dl>
+  )
+}
+
+/** The chips a command's trailers become. */
+function commandChips(t: TFunction, output: CommandOutput): React.ReactNode[] {
+  const chips: React.ReactNode[] = []
+  if (output.exitCode !== null) {
+    chips.push(
+      <Chip key="exit" size="sm" variant="soft" color={output.exitCode === 0 ? 'default' : 'danger'}>
+        {t('chat.shell.exitCode', { code: output.exitCode })}
+      </Chip>,
+    )
+  }
+  if (output.timedOut) {
+    chips.push(
+      <Chip key="timeout" size="sm" variant="soft" color="warning">
+        {t('chat.tool.panel.timedOut')}
+      </Chip>,
+    )
+  }
+  if (output.truncated) {
+    chips.push(
+      <Chip key="cap" size="sm" variant="soft">
+        {t('chat.shell.truncated')}
+      </Chip>,
+    )
+  }
+  return chips
 }
 
 function PendingApproval({
@@ -1516,40 +1719,57 @@ export function toolDescription(args: Record<string, unknown>): string | null {
  * `_meta.claudeCode.toolName` on a hosted session. Without them a hosted
  * transcript is a column of cards saying `Read` and nothing else.
  */
-function identifyingArg(toolName: string, args: Record<string, unknown>): string | null {
+/** What kind of thing the identifying argument is, which decides how it is
+ *  drawn: a path keeps its file name, a command keeps its first line. */
+export interface IdentifyingArg {
+  kind: 'path' | 'command' | 'text'
+  value: string
+}
+
+export function identifyingArg(toolName: string, args: Record<string, unknown>): IdentifyingArg | null {
   const str = (value: unknown) => (typeof value === 'string' && value.trim() !== '' ? value : null)
+  const path = (value: string | null): IdentifyingArg | null => (value === null ? null : { kind: 'path', value })
+  const text = (value: string | null): IdentifyingArg | null => (value === null ? null : { kind: 'text', value })
   switch (toolName) {
     case 'read_file':
     case 'list_directory':
     case 'write_file':
-      return str(args.path)
+      return path(str(args.path))
     case 'edit_file':
     case 'Read':
     case 'Write':
     case 'Edit':
     case 'NotebookEdit':
-      return str(args.file_path) ?? str(args.notebook_path)
+      return path(str(args.file_path) ?? str(args.notebook_path))
     case 'run_command':
     case 'Bash':
-    case 'SlashCommand':
-      return str(args.command)
+    case 'SlashCommand': {
+      const command = str(args.command)
+      return command === null ? null : { kind: 'command', value: command }
+    }
     case 'search_files':
     case 'glob':
     case 'Glob':
     case 'Grep':
-      return str(args.pattern)
+      return text(str(args.pattern))
     case 'WebFetch':
-      return str(args.url)
+      return text(str(args.url))
     case 'Skill':
-      return str(args.skill)
+      return text(str(args.skill))
     case 'apply_patch': {
       const patch = typeof args.patch === 'string' ? args.patch : ''
       const m = patch.match(/^\*\*\* (?:Update|Add|Delete) File: (.+)$/m) ?? patch.match(/^\+\+\+ (?:b\/)?(.+)$/m)
-      return m ? m[1].trim() : null
+      return path(m ? m[1].trim() : null)
     }
     default:
       return null
   }
+}
+
+/** A command's first line, with a count of the lines it is standing in for. */
+function commandHeadline(command: string): { head: string; more: number } {
+  const lines = command.split('\n').filter((line) => line.trim() !== '')
+  return { head: lines[0] ?? command, more: Math.max(0, lines.length - 1) }
 }
 
 /**
@@ -1562,15 +1782,55 @@ function identifyingArg(toolName: string, args: Record<string, unknown>): string
  * transcript, and two answers to "what is this call" would disagree in exactly
  * the place it matters — an `apply_patch` whose file the card names and the
  * queue does not is a decision made on less than the card offered.
+ *
+ * **`compact` is for an ordinary key and nothing else.** A key is half a row
+ * and shows one line, so a path keeps its file name and gives up its directory
+ * from the end, and a command keeps its first line with a count of the rest.
+ * A key waiting on a decision and the approval toast show the whole value:
+ * what is being approved cannot be something the reader did not see. Neither
+ * clamps here — how many lines the whole value may take is the container's
+ * call, and it says so with a descendant selector on `tool-arg`.
  */
-export function ToolArgsSummary({ toolName, args }: { toolName: string; args: Record<string, unknown> }) {
+export function ToolArgsSummary({
+  toolName,
+  args,
+  compact = false,
+  className,
+}: {
+  toolName: string
+  args: Record<string, unknown>
+  compact?: boolean
+  className?: string
+}) {
   const arg = identifyingArg(toolName, args)
-  return arg === null ? null : (
+  if (arg === null) return null
+  const base = 'min-w-0 font-mono text-xs text-foreground'
+  if (arg.kind === 'path') {
+    return (
+      <span data-slot="tool-arg" className={cn(base, 'flex', className)}>
+        <PathLabel path={arg.value} wrap={!compact} />
+      </span>
+    )
+  }
+  if (arg.kind === 'command' && compact) {
+    const { head, more } = commandHeadline(arg.value)
+    return (
+      <span data-slot="tool-arg" className={cn(base, 'flex whitespace-nowrap', className)}>
+        <span className="min-w-0 truncate">{head}</span>
+        {more > 0 && (
+          <span aria-hidden className="ml-1 shrink-0 text-muted">
+            ⏎ +{more}
+          </span>
+        )}
+      </span>
+    )
+  }
+  return (
     <span
       data-slot="tool-arg"
-      className="line-clamp-2 min-w-0 break-words whitespace-normal font-mono text-xs text-foreground [overflow-wrap:anywhere]"
+      className={cn(base, compact ? 'truncate' : 'break-words whitespace-pre-wrap [overflow-wrap:anywhere]', className)}
     >
-      {arg}
+      {arg.value}
     </span>
   )
 }
@@ -1610,6 +1870,21 @@ function SubAgentBlock({
   const settled =
     data.status === 'completed' || data.status === 'denied' || data.status === 'error' || data.status === 'orphaned'
   const expansion = usePanelExpansion(data.call_id, !settled, nested != null)
+  const [taskOpen, setTaskOpen] = useState(false)
+  const [reportOpen, setReportOpen] = useState(false)
+
+  // The report, with the verdict sentence and the stranded note taken off. The
+  // verdict itself comes from the run's recorded status when there is one —
+  // the sentence is parsed only for rows from before the status was carried.
+  const report = useMemo(
+    () =>
+      data.result === undefined || data.status === 'error'
+        ? null
+        : parseSubAgentResult(splitTruncation(data.result).body),
+    [data.result, data.status],
+  )
+  const outcome = subAgentOutcome(data, report)
+  const longReport = (report?.body.length ?? 0) > 1500
 
   // A question the run raised makes this key the one waiting on a person, and
   // the key has to say so: `run_agent` itself is merely running, and a spinner
@@ -1633,76 +1908,223 @@ function SubAgentBlock({
         )}
       </ChatToolTrigger>
       <ChatToolContent>
-        {prompt && (
-          <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap px-0.5 text-xs text-muted">{prompt}</pre>
-        )}
+        <ChatToolPanelHeader
+          title={description}
+          description={t(`chat.subAgent.${readOnly ? 'explore' : 'agent'}`)}
+          end={outcome && <SubAgentStatusChip outcome={outcome} />}
+        />
+        <ChatToolPanelBody>
+          {prompt && (
+            <section data-slot="sub-agent-task" className="px-3 pt-2 pb-1">
+              <div className="mb-1 text-xs font-medium text-muted">{t('chat.tool.panel.task')}</div>
+              {/* Three lines and a fade, unless asked for the whole thing: the
+                  briefing is the model's, often long, and the reader mostly
+                  wants the report under it. */}
+              <div className={cn('relative text-xs', !taskOpen && 'max-h-[4.5rem] overflow-hidden')}>
+                <MarkdownContent content={prompt} blockId={`${data.call_id}:prompt`} />
+                {!taskOpen && (
+                  <div
+                    aria-hidden
+                    className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-linear-to-t from-surface to-transparent"
+                  />
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-0.5 h-auto px-1 py-0.5 text-xs"
+                aria-expanded={taskOpen}
+                onPress={() => setTaskOpen((open) => !open)}
+              >
+                {t(taskOpen ? 'chat.tool.panel.collapseTask' : 'chat.tool.panel.expandTask')}
+              </Button>
+            </section>
+          )}
 
-        {/* The question the run raised. Asked here because this is where
-            somebody is looking — its own conversation may never be opened. */}
-        {nested && (
-          <div className="space-y-2 rounded-lg border border-border p-2">
-            <div className="flex items-start gap-1.5 px-0.5 text-xs text-muted">
-              <CircleQuestion className="w-3.5 h-3.5 shrink-0" />
-              <span>{t('chat.subAgent.asksFor', { tool: nested.tool_name })}</span>
+          {/* The question the run raised. Asked here because this is where
+              somebody is looking — its own conversation may never be opened. */}
+          {nested && (
+            <div className="space-y-2 border-t border-border/50 px-3 py-2">
+              <div className="flex items-start gap-1.5 px-0.5 text-xs text-muted">
+                <CircleQuestion className="w-3.5 h-3.5 shrink-0" />
+                <span>{t('chat.subAgent.asksFor', { tool: nested.tool_name })}</span>
+              </div>
+              <ChatToolArgs text={nested.arguments} />
+              {nested.tool_name === 'ask_user' || nested.tool_name === 'AskUserQuestion' ? (
+                <AskUserBlock
+                  data={{
+                    call_id: nested.call_id,
+                    tool_name: nested.tool_name,
+                    arguments: nested.arguments,
+                    status: 'pending',
+                    approval_id: nested.approval_id,
+                    retry_reason: nested.retry_reason,
+                  }}
+                  chromeless
+                  onAnswered={() => activeId && resolveNested(activeId, nested.approval_id)}
+                />
+              ) : (
+                <PendingApproval
+                  key={nested.approval_id}
+                  approvalId={nested.approval_id}
+                  retryReason={nested.retry_reason}
+                  onAnswered={() => activeId && resolveNested(activeId, nested.approval_id)}
+                />
+              )}
             </div>
-            <ChatToolArgs text={nested.arguments} />
-            {nested.tool_name === 'ask_user' || nested.tool_name === 'AskUserQuestion' ? (
-              <AskUserBlock
-                data={{
-                  call_id: nested.call_id,
-                  tool_name: nested.tool_name,
-                  arguments: nested.arguments,
-                  status: 'pending',
-                  approval_id: nested.approval_id,
-                  retry_reason: nested.retry_reason,
-                }}
-                chromeless
-                onAnswered={() => activeId && resolveNested(activeId, nested.approval_id)}
-              />
-            ) : (
-              <PendingApproval
-                key={nested.approval_id}
-                approvalId={nested.approval_id}
-                retryReason={nested.retry_reason}
-                onAnswered={() => activeId && resolveNested(activeId, nested.approval_id)}
-              />
-            )}
-          </div>
+          )}
+
+          {data.sub_agent && (
+            <div className="border-t border-border/50">
+              <SubAgentTimeline run={data.sub_agent} live={data.status === 'running'} count={steps} />
+            </div>
+          )}
+
+          {report && (
+            <section data-slot="sub-agent-report" className="border-t border-border/50 px-3 py-2">
+              <div className="mb-1 text-xs font-medium text-muted">{t('chat.tool.panel.report')}</div>
+              {report.body !== '' ? (
+                <div className={cn('relative', longReport && !reportOpen && 'max-h-96 overflow-hidden')}>
+                  <MarkdownContent content={report.body} blockId={`${data.call_id}:report`} />
+                  {longReport && !reportOpen && (
+                    <div
+                      aria-hidden
+                      className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-linear-to-t from-surface to-transparent"
+                    />
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-muted">{t('chat.tool.panel.noReport')}</p>
+              )}
+              {longReport && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mt-1 h-auto px-1 py-0.5 text-xs"
+                  onPress={() => setReportOpen((open) => !open)}
+                >
+                  {t(reportOpen ? 'chat.tool.showLess' : 'chat.tool.showFullResult')}
+                </Button>
+              )}
+              {report.stranded && (
+                <div
+                  data-slot="sub-agent-stranded"
+                  className="mt-2 flex items-start gap-1.5 rounded-md bg-warning/10 px-2 py-1.5 text-xs text-warning-soft-foreground"
+                >
+                  <TriangleExclamation className="mt-0.5 w-3.5 h-3.5 shrink-0" />
+                  <span>{report.stranded}</span>
+                </div>
+              )}
+            </section>
+          )}
+
+          {data.status === 'error' && data.result && (
+            <div className="border-t border-border/50">
+              <ToolErrorResult result={data.result} />
+            </div>
+          )}
+        </ChatToolPanelBody>
+
+        {(data.sub_agent || data.status === 'orphaned' || data.status === 'denied') && (
+          <ChatToolPanelFooter>
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <CardOutcome status={data.status} detail={data.status === 'denied' ? data.result : undefined} />
+              {/* TODO: this opens, but half-furnished. `ChatView` and the
+                  header read their conversation out of `s.conversations` (six
+                  reads in `chat-view.tsx`, one in `App.tsx`), and a sub-agent's
+                  is filtered out of that list — it is the sidebar's data
+                  source and these are hidden on purpose. So `assistant_id`,
+                  `mode`, `accept_edits`, `thinking_level` and `fast_mode` all
+                  come back null and the header shows the app name. The
+                  snapshot already carries the whole conversation;
+                  `loadMessages` drops it. Fix is a `conversationDetails` cache
+                  with a `conversationById` selector those seven reads fall
+                  back through — deferred with the rest of the navigation work
+                  until the HeroUI Pro change lands, since that is the layer it
+                  sits in.
+
+                  The second half of the same deferral: this keeps its own
+                  stack in `conversation-store` while `stores/nav-store.ts`
+                  owns the real one. Two truths for one back gesture; only the
+                  system back key on mobile can tell, which is why it can
+                  wait. */}
+              {data.sub_agent && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="ml-auto text-xs"
+                  onPress={() => openConversation(data.sub_agent!.conversation_id)}
+                >
+                  {t('chat.tool.panel.openConversation')}
+                  <ArrowUpRightFromSquare className="size-3" />
+                </Button>
+              )}
+            </div>
+          </ChatToolPanelFooter>
         )}
-
-        {/* TODO: this opens, but half-furnished. `ChatView` and the header read
-            their conversation out of `s.conversations` (six reads in
-            `chat-view.tsx`, one in `App.tsx`), and a sub-agent's is filtered out
-            of that list — it is the sidebar's data source and these are hidden
-            on purpose. So `assistant_id`, `mode`, `accept_edits`,
-            `thinking_level` and `fast_mode` all come back null and the header
-            shows the app name. The snapshot already carries the whole
-            conversation; `loadMessages` drops it. Fix is a
-            `conversationDetails` cache with a
-            `conversationById` selector those seven reads fall back through —
-            deferred with the rest of the navigation work until the HeroUI Pro
-            change lands, since that is the layer it sits in.
-
-            The second half of the same deferral: this keeps its own stack in
-            `conversation-store` while `stores/nav-store.ts` owns the real one.
-            Two truths for one back gesture; only the system back key on mobile
-            can tell, which is why it can wait. */}
-        {data.sub_agent && (
-          <Button variant="ghost" className="text-xs" onPress={() => openConversation(data.sub_agent!.conversation_id)}>
-            {t('chat.subAgent.viewProcess')}
-          </Button>
-        )}
-
-        {data.status === 'orphaned' && <OrphanedNotice />}
-
-        {data.result &&
-          (data.status === 'error' ? (
-            <ChatToolError>{data.result}</ChatToolError>
-          ) : (
-            <ChatToolResult>{data.result}</ChatToolResult>
-          ))}
       </ChatToolContent>
     </ChatTool>
+  )
+}
+
+type SubAgentVerdict = SubAgentOutcome | 'running' | 'interrupted'
+
+/** The run's verdict: the backend's recorded status first, the sentence at the
+ *  head of the result for rows from before that status was carried. */
+function subAgentOutcome(data: ToolCallDisplay, report: SubAgentResult | null): SubAgentVerdict | null {
+  if (data.status === 'running' || data.status === 'approved') return 'running'
+  if (data.status === 'error') return 'failed'
+  switch (data.sub_agent?.status) {
+    case 'running':
+    case 'waiting_review':
+      return 'running'
+    case 'done':
+      return 'done'
+    case 'cancelled':
+      return 'cancelled'
+    case 'failed':
+      return 'failed'
+    case 'interrupted':
+      return 'interrupted'
+    default:
+      return report?.outcome ?? null
+  }
+}
+
+function SubAgentStatusChip({ outcome }: { outcome: SubAgentVerdict }) {
+  const { t } = useTranslation()
+  const label = t(`chat.tool.panel.status.${outcome}`)
+  const icon =
+    outcome === 'running' ? (
+      <Spinner size="sm" color="current" className="size-3" />
+    ) : outcome === 'done' ? (
+      <CircleCheck className="size-3" />
+    ) : outcome === 'failed' ? (
+      <TriangleExclamation className="size-3" />
+    ) : (
+      <Ban className="size-3" />
+    )
+  return (
+    // The attributes ride a span of our own: HeroUI's Chip keeps what it is
+    // handed to itself.
+    <span data-slot="sub-agent-status" data-outcome={outcome} className="contents">
+      <Chip
+        size="sm"
+        variant="soft"
+        color={
+          outcome === 'done'
+            ? 'success'
+            : outcome === 'failed'
+              ? 'danger'
+              : outcome === 'running'
+                ? 'default'
+                : 'warning'
+        }
+      >
+        {icon}
+        {label}
+      </Chip>
+    </span>
   )
 }
 
@@ -1836,7 +2258,16 @@ function AutoReviewNotice({ verdict }: { verdict: AutoReviewVerdictInfoResponse 
  * "this failed" and "here is what it said" answer different questions and the
  * second is often a stack trace.
  */
-function CardOutcome({ status, detail }: { status: ToolCallDisplay['status']; detail?: string }) {
+function CardOutcome({
+  status,
+  detail,
+  sentence,
+}: {
+  status: ToolCallDisplay['status']
+  detail?: string
+  /** A finished call's one-line confirmation, in the tool's own words. */
+  sentence?: string
+}) {
   const { t } = useTranslation()
   const notice = (icon: React.ReactNode, text: string, withDetail = false) => (
     <div className="space-y-1.5">
@@ -1852,8 +2283,11 @@ function CardOutcome({ status, detail }: { status: ToolCallDisplay['status']; de
 
   switch (status) {
     case 'pending':
-    case 'completed':
       return null
+    case 'completed':
+      return sentence
+        ? notice(<CircleCheck className="w-3.5 h-3.5 shrink-0 text-success-soft-foreground" />, sentence)
+        : null
     case 'orphaned':
       return <OrphanedNotice />
     case 'denied':
@@ -1930,6 +2364,35 @@ export function ToolCallBlock({
   // hooks are; the ones that draw their own chrome keep an expansion of their
   // own and ignore this one.
   const expansion = usePanelExpansion(data.call_id, !isCompleted, data.status === 'pending')
+  const presentation = useContext(ChatToolPresentationContext)
+
+  // Where an edit lands. Asked here, ahead of the early returns, because it is
+  // a hook; it asks nothing unless the call is an edit that has not run yet.
+  const isEdit = data.tool_name === 'edit_file' || data.tool_name === 'Edit'
+  const editLine = useEditLocation(
+    data,
+    isEdit && typeof parsedArgs.file_path === 'string' ? parsedArgs.file_path : null,
+    isEdit && typeof parsedArgs.old_string === 'string' ? parsedArgs.old_string : null,
+  )
+
+  // Numbers where somebody knows them. A whole-file write starts at one; a
+  // unified patch says where each hunk starts; an edit is placed by the probe
+  // that read the file for `old_string`. Anything else is drawn unnumbered.
+  const numberedDiffs = useMemo(() => {
+    if (!fileDiffs) return null
+    return fileDiffs.map((diff) => {
+      if (data.tool_name === 'write_file' || data.tool_name === 'Write') {
+        return { ...diff, lines: numberDiffLines(diff.lines, { oldStart: 1, newStart: 1 }) }
+      }
+      if (data.tool_name === 'edit_file' || data.tool_name === 'Edit') {
+        return editLine === null
+          ? diff
+          : { ...diff, lines: numberDiffLines(diff.lines, { oldStart: editLine, newStart: editLine }) }
+      }
+      const start = firstHunkStart(diff.lines)
+      return start === null ? diff : { ...diff, lines: numberDiffLines(diff.lines, start) }
+    })
+  }, [fileDiffs, data.tool_name, editLine])
 
   // A hosted agent's questions and plans are the same two cards under different
   // names. Matching the name rather than translating it upstream keeps the
@@ -1987,18 +2450,77 @@ export function ToolCallBlock({
   }
 
   const label = toolLabel(t, data.tool_name)
+  const description = toolDescription(parsedArgs)
+  const arg = identifyingArg(data.tool_name, parsedArgs)
+  const state = mapChatToolState(data.status)
+  // A key is half a row; a key waiting on a decision, or a card, shows the
+  // whole value. See `ToolArgsSummary`.
+  const compact = presentation === 'keyboard' && state !== 'requires-action'
 
   const trimmedArgs = data.arguments.trim()
   const showArgs = trimmedArgs !== '' && trimmedArgs !== '{}'
+  const parsedOk = Object.keys(parsedArgs).length > 0
+  const isCommand = arg?.kind === 'command'
+
+  // What came back, with the turn-level truncation taken off the front so the
+  // renderers below see what the tool wrote. An error's text is the error.
+  const output = data.result !== undefined && data.status !== 'error' ? splitTruncation(data.result) : null
+  const command = isCommand && output !== null ? parseCommandOutput(output.body) : null
+  // A confirmation — "Successfully wrote 312 bytes to …", "Saved memory …" —
+  // is one sentence about the outcome and goes in the footer as such. What a
+  // reading tool returns is the reading, however short, and stays in the body;
+  // so does a command's one line of output.
+  const sentence =
+    output !== null && !isCommand && !READING_TOOLS.has(data.tool_name) && isOneLiner(output.body)
+      ? output.body.trim()
+      : null
+
+  const singleDiff = numberedDiffs !== null && numberedDiffs.length === 1 ? numberedDiffs[0] : null
+
+  const end: React.ReactNode[] = []
+  if (singleDiff) end.push(<DiffStats key="stats" diff={singleDiff} />)
+  if (command) end.push(...commandChips(t, command))
+  if (output?.truncation) {
+    end.push(
+      <Hint key="truncated" label={t('chat.tool.panel.truncatedTokens', { count: output.truncation.originalTokens })}>
+        <Chip size="sm" variant="soft">
+          {t('chat.tool.panel.truncated')}
+        </Chip>
+      </Hint>,
+    )
+  }
+
+  // The header says in full what the key had to shorten: the whole path, the
+  // description a compact key kept as a tooltip. A key waiting on a decision
+  // already shows both in full, and so does a card, so there the header
+  // carries only its chips — the same line an inch lower would say nothing.
+  // A command's own text is the first thing in the body, so its header, when
+  // there is one, is what the command is for.
+  const title =
+    !compact || arg === null ? null : arg.kind === 'path' ? (
+      <PathLabel path={arg.value} wrap />
+    ) : arg.kind === 'command' ? (
+      description
+    ) : (
+      <span className="font-mono">{arg.value}</span>
+    )
+  const headerDescription = compact && arg?.kind !== 'command' ? description : null
+
+  const pendingRow = data.status === 'pending' && data.approval_id !== undefined
+  // Only the ends nothing else on the panel shows: a refusal, a turn that
+  // died, a question parked on another card. Running has the key's spinner
+  // and queued has the key's label.
+  const outcome = data.status === 'denied' || data.status === 'orphaned' || data.status === 'awaiting_parent'
+  const hasFooter = pendingRow || outcome || data.auto_review !== undefined || sentence !== null
 
   return (
-    <ChatTool state={mapChatToolState(data.status)} {...expansion} className={className}>
+    <ChatTool state={state} {...expansion} className={className}>
       {/* Both, on two lines: what this call is, and what it is for. Neither
           displaces the other — see `toolDescription`. */}
-      <ChatToolTrigger subtitle={toolDescription(parsedArgs)}>
+      <ChatToolTrigger subtitle={description}>
         <ChatToolStatusIcon />
         <span className="font-medium text-foreground shrink-0">{label}</span>
-        <ToolArgsSummary toolName={data.tool_name} args={parsedArgs} />
+        <ToolArgsSummary toolName={data.tool_name} args={parsedArgs} compact={compact} />
         {/* In the trigger, not the body: a queued card is collapsed, and a
             standing clock beside a spinning one is too fine a distinction to
             rest the whole answer on. The summary stays — with three commands
@@ -2008,27 +2530,57 @@ export function ToolCallBlock({
         )}
       </ChatToolTrigger>
       <ChatToolContent>
-        {fileDiffs
-          ? fileDiffs.map((d, i) => <FileDiffCard key={i} diff={d} />)
-          : showArgs && <ChatToolArgs text={data.arguments} />}
-
-        {/* Above the buttons rather than below: when a review came back
-            unreadable there *are* buttons under this, and what it says is why
-            the user is being asked at all. */}
-        {data.auto_review && <AutoReviewNotice verdict={data.auto_review} />}
-
-        {data.status === 'pending' && data.approval_id && (
-          <PendingApproval key={data.approval_id} approvalId={data.approval_id} retryReason={data.retry_reason} />
+        {(title !== null || headerDescription !== null || end.length > 0) && (
+          <ChatToolPanelHeader title={title} description={headerDescription} end={end.length > 0 ? end : undefined} />
         )}
-
-        {data.status === 'orphaned' && <OrphanedNotice />}
-
-        {data.result &&
-          (data.status === 'error' ? (
-            <ToolErrorResult result={data.result} />
+        <ChatToolPanelBody>
+          {singleDiff ? (
+            // The panel header already names the file; a second header would
+            // name it again an inch lower.
+            <FileDiffCard diff={singleDiff} header={false} />
+          ) : numberedDiffs ? (
+            numberedDiffs.map((d, i) => <FileDiffCard key={i} diff={d} />)
+          ) : isCommand ? (
+            <CommandCode command={arg.value} />
+          ) : parsedOk ? (
+            <ArgsList args={parsedArgs} />
           ) : (
-            <ToolResult toolName={data.tool_name} result={data.result} args={parsedArgs} />
-          ))}
+            // Mid-stream the JSON is partial and parses to nothing; it is shown
+            // as it stands rather than as an empty list.
+            showArgs && <ChatToolArgs text={data.arguments} className="rounded-none bg-transparent" />
+          )}
+
+          {data.status === 'error' && data.result !== undefined && (
+            <div className="border-t border-border/50">
+              <ToolErrorResult result={data.result} />
+            </div>
+          )}
+          {output !== null && sentence === null && (
+            <div className="border-t border-border/50">
+              {command ? (
+                <CommandOutputView output={command} />
+              ) : (
+                <ToolResult toolName={data.tool_name} result={output.body} args={parsedArgs} />
+              )}
+            </div>
+          )}
+        </ChatToolPanelBody>
+        {hasFooter && (
+          <ChatToolPanelFooter>
+            {/* Above the buttons rather than below: when a review came back
+                unreadable there *are* buttons under this, and what it says is
+                why the user is being asked at all. */}
+            {data.auto_review && <AutoReviewNotice verdict={data.auto_review} />}
+            {pendingRow && (
+              <PendingApproval key={data.approval_id} approvalId={data.approval_id!} retryReason={data.retry_reason} />
+            )}
+            <CardOutcome
+              status={data.status}
+              detail={data.status === 'denied' ? data.result : undefined}
+              sentence={sentence ?? undefined}
+            />
+          </ChatToolPanelFooter>
+        )}
       </ChatToolContent>
     </ChatTool>
   )

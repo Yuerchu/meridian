@@ -105,7 +105,7 @@ describe('ChatTool on a keyboard', () => {
     const key = screen.getByRole('button', { name: /Write file/ })
     expect(key).toHaveAttribute('data-state', 'requires-action')
     expect(key).toHaveClass('basis-full')
-    const panel = container.querySelector('[data-slot="chat-tool-content"]')!
+    const panel = container.querySelector('[data-slot="chat-tool-panel"]')!
     expect(panel.className).toContain('ring-warning')
   })
 

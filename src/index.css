@@ -66,6 +66,7 @@
 @import '@heroui-pro/react/css/components/item-card-group.css' layer(components);
 @import '@heroui-pro/react/css/components/data-grid.css' layer(components);
 @import '@heroui-pro/react/css/components/table.css' layer(components);
+@import '@heroui-pro/react/css/components/widget.css' layer(components);
 @import '@fontsource-variable/geist';
 
 /* Plan review is a document surface with a sibling comment rail. The rail is

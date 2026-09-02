@@ -1,12 +1,13 @@
 import * as React from 'react'
 import { createPortal } from 'react-dom'
 import { Disclosure, Tooltip, tv, type VariantProps } from '@heroui/react'
+import { Widget } from '@heroui-pro/react/widget'
 import { DisclosureStateContext } from 'react-aria-components'
 import { CircleCheck, CircleDashed, CircleExclamation, CircleXmark, Clock } from '@gravity-ui/icons'
 import { useShikiLanguage } from '@/hooks/use-shiki-language'
 import { highlightInline } from '@/lib/shiki'
 import { cn } from '@/lib/utils'
-import { BubbleKeyboardStackContext, keyboardKeyVariants, keyboardPanelVariants } from './bubble-keyboard'
+import { BubbleKeyboardStackContext, keyboardKeyVariants } from './bubble-keyboard'
 
 /**
  * The first four mirror the states an assistant-UI tool part goes through.
@@ -332,6 +333,27 @@ function ChatToolContent({ className, children, ...props }: React.ComponentProps
   const stack = React.useContext(BubbleKeyboardStackContext)
   const disclosure = React.useContext(DisclosureStateContext)
 
+  const [occupants, setOccupants] = React.useState(0)
+  const [footer] = React.useState<ChatToolFooterSlot>(() => {
+    const node = document.createElement('div')
+    node.dataset.slot = 'chat-tool-footer-host'
+    node.className = 'flex w-full min-w-0 flex-col gap-2'
+    return {
+      node,
+      occupy: () => {
+        setOccupants((n) => n + 1)
+        return () => setOccupants((n) => n - 1)
+      },
+    }
+  })
+  const adoptFooter = React.useCallback(
+    (host: HTMLDivElement | null) => {
+      if (host) host.appendChild(footer.node)
+      else footer.node.remove()
+    },
+    [footer],
+  )
+
   // Escape closes the panel and hands focus back to its key — but only when
   // nothing else has a better claim on the key. A field inside the panel (the
   // reason for a refusal being typed) keeps it; an overlay drawn over the page
@@ -370,14 +392,44 @@ function ChatToolContent({ className, children, ...props }: React.ComponentProps
       // the attribute React Aria sets once a collapse has finished animating.
       // A collapsed panel is a zero-height box, not nothing, and a margin on it
       // would be a blank line in the stack for every closed key.
+      //
+      // No fill of its own: the Widget inside is the panel's box. React Aria
+      // measures this element's `scrollHeight` for the open/close animation,
+      // so the Widget's margins and `overflow: hidden` are inside what it
+      // measures. The Body stays for one reason — it is where Escape is
+      // listened for — and takes no padding, because the Widget brings its own.
       <Disclosure.Content
         data-slot="chat-tool-content"
         data-presentation="keyboard"
-        className={cn('min-h-0 not-[[hidden]]:mt-1', keyboardPanelVariants({ state }))}
+        className="min-h-0 not-[[hidden]]:mt-1"
         {...props}
       >
-        <Disclosure.Body className={cn('flex flex-col gap-2.5 p-3', className)} onKeyDown={handleKeyDown}>
-          {children}
+        <Disclosure.Body className="p-0" onKeyDown={handleKeyDown}>
+          <ChatToolFooterContext.Provider value={footer}>
+            {/* The status ring is on the Widget rather than on the panel above
+                it: `.widget` is an opaque `surface-secondary` box that clips
+                its children, and an inset ring painted under it would never
+                be seen. `rounded-xl` holds the radius ladder — Widget's own
+                `2 × --radius` is the bubble's step, and a panel is one below. */}
+            <Widget
+              data-slot="chat-tool-panel"
+              data-state={state}
+              className={cn('w-full min-w-0 rounded-xl text-xs', PANEL_RING[state], className)}
+            >
+              {children}
+              {/* Only while something is in it: an empty `Widget.Footer` is a
+                  band of padding with nothing to say. The node the occupants
+                  portal into is made up front and adopted here, the same
+                  arrangement as the keyboard's stack and for the same reason —
+                  a portal target that appears a render late is one the first
+                  occupant cannot reach. */}
+              {occupants > 0 && (
+                <Widget.Footer data-slot="chat-tool-panel-footer" className="flex-col items-stretch gap-2 pt-2.5 pb-3">
+                  <div ref={adoptFooter} className="contents" />
+                </Widget.Footer>
+              )}
+            </Widget>
+          </ChatToolFooterContext.Provider>
         </Disclosure.Body>
       </Disclosure.Content>
     )
@@ -392,14 +444,175 @@ function ChatToolContent({ className, children, ...props }: React.ComponentProps
     // default `min-height: auto` floors it at its content height — so the panel
     // would take `height: 0` and still render full size.
     <Disclosure.Content data-slot="chat-tool-content" className="min-h-0 w-full" {...props}>
-      {/* Body, not a plain div: it is what keeps the panel measurable, so
-          without it the content never collapses — it just loses its
-          `aria-expanded`.
-          Pro uses a very tight `p-1`; this keeps that density while leaving
+      {/* Pro uses a very tight `p-1`; this keeps that density while leaving
           enough edge around Meridian's diffs and approval controls. */}
       <Disclosure.Body className={cn('flex flex-col gap-2.5 px-3 pb-3 pt-0.5', className)}>{children}</Disclosure.Body>
     </Disclosure.Content>
   )
+}
+
+/**
+ * The three parts of a panel, in the shape Pro's Widget gives a dashboard
+ * card: what the call is (header), what it did (body), and what became of it
+ * or what it needs (footer).
+ *
+ * Blocks compose these rather than the Widget directly, so that a card drawn
+ * outside the keyboard — the playground, the tests — gets the same three
+ * regions as plain sections and nothing has to branch on the presentation.
+ */
+function ChatToolPanelHeader({
+  title,
+  description,
+  end,
+  className,
+  ...props
+}: Omit<React.ComponentProps<'div'>, 'title'> & {
+  /** What the call is: a path, a command, an errand. Wraps, never clips —
+   *  a decision rests on it. */
+  title?: React.ReactNode
+  /** What it is for, in the model's words. */
+  description?: React.ReactNode
+  /** Chips at the right-hand end: an exit code, a diff stat, a step count. */
+  end?: React.ReactNode
+}) {
+  const presentation = React.useContext(ChatToolPresentationContext)
+  // Chips alone — a diff stat over a card, an exit code over a key that
+  // already shows the whole command — take a shallower row than a title.
+  const bare = title == null && description == null
+  const lines = (
+    <div data-slot="chat-tool-panel-lines" className="flex min-w-0 flex-1 flex-col gap-0.5">
+      {title != null && (
+        <Widget.Title
+          data-slot="chat-tool-panel-title"
+          className="min-w-0 text-xs leading-5 font-medium break-words whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]"
+        >
+          {title}
+        </Widget.Title>
+      )}
+      {description != null && (
+        <Widget.Description data-slot="chat-tool-panel-description" className="min-w-0 leading-4 break-words">
+          {description}
+        </Widget.Description>
+      )}
+    </div>
+  )
+  const tail = end != null && (
+    <div data-slot="chat-tool-panel-end" className="flex shrink-0 items-center gap-1.5 text-xs text-muted">
+      {end}
+    </div>
+  )
+  if (presentation === 'card') {
+    return (
+      <div
+        data-slot="chat-tool-panel-header"
+        className={cn('flex items-start justify-between gap-3 px-3', bare ? 'py-1' : 'pt-2 pb-1', className)}
+        {...props}
+      >
+        {lines}
+        {tail}
+      </div>
+    )
+  }
+  // `Widget.Header` is one flex row and its title and description are
+  // sibling spans, so without the column above they would sit side by side.
+  return (
+    <Widget.Header
+      data-slot="chat-tool-panel-header"
+      className={cn('items-start', bare ? 'min-h-0 py-1' : 'py-2', className)}
+      {...props}
+    >
+      {lines}
+      {tail}
+    </Widget.Header>
+  )
+}
+
+/** The elevated area. Edge to edge (`p-0`): a diff, a listing or a block of
+ *  output brings its own gutter, and a second padding around it would put the
+ *  line numbers a step in from the box they belong to. */
+function ChatToolPanelBody({ className, children, ...props }: React.ComponentProps<'div'>) {
+  const presentation = React.useContext(ChatToolPresentationContext)
+  if (presentation === 'card') {
+    return (
+      <div
+        data-slot="chat-tool-panel-body"
+        className={cn('flex min-w-0 flex-col gap-2 px-3 pb-3', className)}
+        {...props}
+      >
+        {children}
+      </div>
+    )
+  }
+  // Flush with the header and the footer, not inset: Widget's own content
+  // area floats a rounded box inside the shell with a margin all round, which
+  // for a dashboard chart reads as elevation and for a diff under its file
+  // name read as the title having come loose from what it titles. One box —
+  // the band above names it, the band below says how it went.
+  return (
+    <Widget.Content
+      data-slot="chat-tool-panel-body"
+      className={cn('m-0 flex min-w-0 flex-col gap-2 overflow-hidden rounded-none p-0 shadow-none', className)}
+      {...props}
+    >
+      {children}
+    </Widget.Content>
+  )
+}
+
+/**
+ * Where the panel's footer occupants go.
+ *
+ * A node made before the first render and a count of who is in it. The
+ * decision row is rendered deep inside `PendingApproval`, under the notice
+ * and the reason field it belongs with, so it cannot be moved to the footer
+ * by rearranging JSX; it portals there instead, and the footer is drawn only
+ * while somebody has. The same slot serves an outcome line a block places
+ * explicitly, so a panel never grows two footers.
+ */
+interface ChatToolFooterSlot {
+  node: HTMLElement
+  /** Says something is in the footer; returns the call that says it left. */
+  occupy: () => () => void
+}
+
+const ChatToolFooterContext = React.createContext<ChatToolFooterSlot | undefined>(undefined)
+
+function useFooterOccupancy(footer: ChatToolFooterSlot | undefined) {
+  React.useEffect(() => footer?.occupy(), [footer])
+}
+
+function ChatToolPanelFooter({ className, children, ...props }: React.ComponentProps<'div'>) {
+  const presentation = React.useContext(ChatToolPresentationContext)
+  const footer = React.useContext(ChatToolFooterContext)
+  const inFooter = presentation === 'keyboard' && footer !== undefined
+  useFooterOccupancy(inFooter ? footer : undefined)
+  if (inFooter) {
+    return createPortal(
+      <div data-slot="chat-tool-panel-footer-item" className={cn('flex min-w-0 flex-col gap-2', className)} {...props}>
+        {children}
+      </div>,
+      footer.node,
+    )
+  }
+  return (
+    <div
+      data-slot="chat-tool-panel-footer"
+      className={cn('flex min-w-0 flex-col gap-2 border-t border-separator px-3 py-2.5', className)}
+      {...props}
+    >
+      {children}
+    </div>
+  )
+}
+
+/** The ring a panel wears for the two states worth noticing, matching its key's. */
+const PANEL_RING: Record<ChatToolState, string> = {
+  'input-streaming': '',
+  'input-available': '',
+  queued: '',
+  'output-available': '',
+  'output-error': 'ring-1 ring-danger/40 ring-inset',
+  'requires-action': 'ring-1 ring-warning/50 ring-inset',
 }
 
 // Shiki escapes the text it is given, so the markup it returns is safe to
@@ -475,7 +688,12 @@ function ChatToolError({ className, ...props }: React.ComponentProps<'div'>) {
  */
 function ChatToolApproval({ className, children, ...props }: React.ComponentProps<'div'>) {
   const presentation = React.useContext(ChatToolPresentationContext)
-  return (
+  const footer = React.useContext(ChatToolFooterContext)
+  // On a keyboard the row belongs at the foot of the panel, whatever rendered
+  // it and however deep. See `ChatToolFooterSlot`.
+  const inFooter = presentation === 'keyboard' && footer !== undefined
+  useFooterOccupancy(inFooter ? footer : undefined)
+  const row = (
     <div
       data-slot="chat-tool-approval"
       className={cn('flex min-w-0 flex-col gap-2', presentation === 'card' && 'pt-2.5', className)}
@@ -492,6 +710,7 @@ function ChatToolApproval({ className, children, ...props }: React.ComponentProp
       </div>
     </div>
   )
+  return inFooter ? createPortal(row, footer.node) : row
 }
 
 export {
@@ -499,6 +718,9 @@ export {
   ChatToolTrigger,
   ChatToolStatusIcon,
   ChatToolContent,
+  ChatToolPanelHeader,
+  ChatToolPanelBody,
+  ChatToolPanelFooter,
   ChatToolArgs,
   ChatToolResult,
   ChatToolError,
