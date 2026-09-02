@@ -62,7 +62,7 @@ export function lastKeyboard(turns: Turn[]): { toolKeys: string[]; thinkingKey: 
       const bubbles = groups[g].bubbles
       for (let b = bubbles.length - 1; b >= 0; b--) {
         const bubble = bubbles[b]
-        if (bubble.kind === 'sticker') continue
+        if (!('tools' in bubble)) continue
         if (bubble.tools.length === 0 && bubble.thinking.length === 0) continue
         return {
           // The same keys the panels register under — see `usePanelExpansion`

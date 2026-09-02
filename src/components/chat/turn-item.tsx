@@ -201,16 +201,15 @@ export const TurnItem = React.memo(function TurnItem({
   // viewport moves: the answer has not started, and the reader has long since
   // scrolled past whatever was working. Approving a call lands exactly here —
   // the decision row resolves and the screen goes still, leaving the stop
-  // button as the only sign the turn is alive. A tail marker keeps that sign
-  // where the user is already looking.
+  // button as the only sign the turn is alive. `buildAssistantGroups` ends the
+  // run on a `working` bubble then — the typing indicator, where the answer
+  // will appear — and this is what it says.
   const awaiting = awaitingModel(turn)
-  const activityMarker = awaiting && (
-    <Marker role="status" className="pl-10">
-      <MarkerContent className="shimmer text-xs">
-        {retry ? t('chat.turn.retrying', { attempt: retry.attempt, max: retry.max }) : t(workingKey(turn.id))}
-      </MarkerContent>
-    </Marker>
-  )
+  const workingLabel = awaiting
+    ? retry
+      ? t('chat.turn.retrying', { attempt: retry.attempt, max: retry.max })
+      : t(workingKey(turn.id))
+    : null
 
   // How the turn ended, when that is worth a line of its own. A finished turn
   // says nothing — the answer is the statement — and a turn waiting on the
@@ -252,6 +251,7 @@ export const TurnItem = React.memo(function TurnItem({
               owner={owner}
               copyText={copyText}
               showFooter={i === groups.length - 1 && !awaiting}
+              workingLabel={i === groups.length - 1 ? workingLabel : null}
               onDelete={onDeleteTurn}
               onRegenerate={onRegenerateTurn}
               onRate={onRate}
@@ -263,7 +263,6 @@ export const TurnItem = React.memo(function TurnItem({
           </ErrorBoundary>
         ))}
         {statusLine}
-        {activityMarker}
       </MessageScrollerAnchor>
       {answerPager}
     </div>

@@ -929,7 +929,81 @@ function Gallery() {
             />
             <TurnItemCase label="纯问答 · 头像与署名在结论行" blocks={[{ type: 'text', text: ANSWER }]} />
             <TurnItemCase
-              label="工具已返回、模型还没开口 · 底部留一行 shimmer"
+              label="低风险调用折成 badge · 命令 / 文件 / 搜索，时间在同一行右端；写入仍是键"
+              rows={[
+                {
+                  blocks: [
+                    { type: 'text', text: '先把相关的几处都看一遍，再决定怎么改。' },
+                    ...['src/lib/turns.ts', 'src/lib/message-groups.ts', 'src/lib/turns.ts'].map(
+                      (path, i): ContentBlock => ({
+                        type: 'tool_call',
+                        data: tool({
+                          tool_name: 'read_file',
+                          status: 'completed',
+                          call_id: `pg-fold-read-${i}`,
+                          arguments: JSON.stringify({ path }),
+                          result: READ_RESULT,
+                        }),
+                      }),
+                    ),
+                    {
+                      type: 'tool_call',
+                      data: tool({
+                        tool_name: 'search_files',
+                        status: 'completed',
+                        call_id: 'pg-fold-search',
+                        arguments: '{"pattern":"markQueued"}',
+                        result: SEARCH_RESULT,
+                      }),
+                    },
+                  ],
+                },
+                {
+                  blocks: ['pnpm typecheck', 'pnpm test src/lib/turns.test.ts'].map((command, i): ContentBlock => ({
+                    type: 'tool_call',
+                    data: tool({
+                      tool_name: 'run_command',
+                      status: 'completed',
+                      call_id: `pg-fold-cmd-${i}`,
+                      arguments: JSON.stringify({ command }),
+                      result: COMMAND_RESULT,
+                    }),
+                  })),
+                },
+                {
+                  blocks: [
+                    { type: 'text', text: '看完了。两处都改成按块找结论，写入如下：' },
+                    {
+                      type: 'tool_call',
+                      data: tool({
+                        tool_name: 'write_file',
+                        status: 'completed',
+                        call_id: 'pg-fold-write',
+                        arguments: '{"path":"src/lib/turns.ts","content":"// …"}',
+                        result: 'ok',
+                      }),
+                    },
+                  ],
+                },
+                {
+                  blocks: [
+                    ...['a.rs', 'b.rs'].map((path, i): ContentBlock => ({
+                      type: 'tool_call',
+                      data: tool({
+                        tool_name: 'read_file',
+                        status: 'completed',
+                        call_id: `pg-fold-after-${i}`,
+                        arguments: JSON.stringify({ path }),
+                        result: READ_RESULT,
+                      }),
+                    })),
+                  ],
+                },
+                { blocks: [{ type: 'text', text: '改好了，测试通过。' }] },
+              ]}
+            />
+            <TurnItemCase
+              label="工具已返回、模型还没开口 · 下一条气泡带 spinner，正文里不再闪光标"
               streaming
               blocks={[
                 { type: 'text', text: '我先看看项目里有什么。' },

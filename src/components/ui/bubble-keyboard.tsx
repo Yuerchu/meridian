@@ -150,9 +150,40 @@ const keyboardPanelVariants = tv({
   },
 })
 
+/**
+/**
+/**
+/**
+/**
+ * A badge standing in for keys the reader was not shown: "viewed 10 files".
+ *
+ * A toggle, not a disclosure. What it opens is not a panel under the row but
+ * the keys themselves, drawn into a keyboard of their own under the bubble,
+ * each with its own panel behind it — so the badge answers "which ten" and a
+ * key answers "what did that one say". `aria-expanded` carries the state; the
+ * pressed look reads off the same attribute so the two cannot disagree.
+ */
+function BubbleFoldBadge({ expanded, className, ...props }: React.ComponentProps<'button'> & { expanded: boolean }) {
+  return (
+    <button
+      type="button"
+      data-slot="bubble-fold-badge"
+      aria-expanded={expanded}
+      className={cn(
+        'inline-flex h-5 shrink-0 items-center gap-1 rounded-full bg-default/70 px-2 text-xs leading-none text-muted transition-colors outline-none select-none',
+        'hover:bg-default hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus/50',
+        'aria-expanded:bg-default aria-expanded:text-foreground',
+        className,
+      )}
+      {...props}
+    />
+  )
+}
+
 export {
   BubbleKeyboard,
   BubbleKeyboardKey,
+  BubbleFoldBadge,
   BubbleKeyboardStackContext,
   keyboardKeyVariants,
   keyboardPanelVariants,

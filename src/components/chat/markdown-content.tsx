@@ -599,7 +599,10 @@ export const MarkdownContent = React.memo(function MarkdownContent({
         </LocalMarkdown>
       </MarkdownStreamingContext>
       {isStreaming && (
-        <span className="ml-0.5 inline-block h-4 w-2 animate-pulse bg-muted motion-reduce:animate-none" />
+        <span
+          data-slot="markdown-cursor"
+          className="ml-0.5 inline-block h-4 w-2 animate-pulse bg-muted motion-reduce:animate-none"
+        />
       )}
     </div>
   )

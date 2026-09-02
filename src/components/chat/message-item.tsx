@@ -4,9 +4,12 @@ import {
   ArrowsRotateRight,
   Check,
   Copy,
+  File,
+  Magnifier,
   Microphone,
   Pencil,
   SquareDashedText,
+  TerminalLine,
   ThumbsDown,
   ThumbsUp,
   TrashBin,
@@ -19,7 +22,7 @@ import { ActionButton } from '@/components/ui/action-button'
 import { useConfirm } from '@/hooks/use-confirm'
 import { ConversationRefChips } from './conversation-ref-chips'
 import { CopyButton, MarkdownContent } from './markdown-content'
-import { Avatar, TextArea } from '@heroui/react'
+import { Avatar, Spinner, TextArea } from '@heroui/react'
 import {
   MessageGroupAssistant,
   MessageGroupAvatar,
@@ -29,8 +32,9 @@ import {
   MessageGroupUser,
 } from '@/components/ui/message-group'
 import { Bubble, BubbleContent, BubbleTime } from '@/components/ui/bubble'
-import { BubbleKeyboard } from '@/components/ui/bubble-keyboard'
+import { BubbleFoldBadge, BubbleKeyboard, keyboardPanelVariants } from '@/components/ui/bubble-keyboard'
 import { ChatToolPresentationProvider } from '@/components/ui/chat-tool'
+import { useConversationStore } from '@/stores/conversation-store'
 import { ChatAttachment, ChatAttachmentGroup } from '@heroui-pro/react/chat-attachment'
 import { ErrorBoundary } from '@/components/error-boundary'
 
@@ -49,7 +53,7 @@ import { ToolCallBlock } from './tool-call-block'
 import { ThinkingBlock } from './thinking-block'
 import { renderEmojisInText, StickerImage } from './emoji-renderer'
 import { formatDuration, type Turn } from '@/lib/turns'
-import type { AssistantGroup, BubbleModel } from '@/lib/message-groups'
+import type { AssistantGroup, BubbleModel, FoldKind, FoldedCalls } from '@/lib/message-groups'
 import type { MessageRating, MessageViewModel as MessageData } from '@/types'
 import type { SenderNames } from '@/hooks/use-sender-names'
 import type { EmojiMap } from './emoji-renderer'
@@ -488,23 +492,172 @@ export const UserMessage = React.memo(function UserMessage({
   )
 })
 
+const FOLD_ICONS: Record<FoldKind, React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>> = {
+  commands: TerminalLine,
+  files: File,
+  searches: Magnifier,
+}
+
+/**
+ * Which badges the reader has opened. In the store, beside the panel choices,
+ * for the same reason those are: the transcript is reloaded when a turn ends,
+ * which remounts every bubble, and a badge that snapped shut at that moment
+ * would be one the reader has to open twice. Outside a conversation — the
+ * playground — the choice is kept here.
+ *
+ * One string rather than one subscription per badge, so a bubble with three
+ * badges re-renders once when any of them changes and never when none has.
+ */
+function useFoldExpansion(folded: FoldedCalls[]) {
+  const conversationId = useConversationStore((s) => s.activeId)
+  const stored = useConversationStore((s) => {
+    if (!conversationId) return ''
+    const panels = s.sessions[conversationId]?.expandedPanels
+    return folded.map((f) => (panels?.[f.key] ? '1' : '0')).join('')
+  })
+  const setPanelExpanded = useConversationStore((s) => s.setPanelExpanded)
+  const [local, setLocal] = useState<Record<string, boolean>>({})
+  const isOpen = useCallback(
+    (key: string) => {
+      if (!conversationId) return local[key] ?? false
+      const i = folded.findIndex((f) => f.key === key)
+      return stored[i] === '1'
+    },
+    [conversationId, folded, local, stored],
+  )
+  const toggle = useCallback(
+    (key: string) => {
+      const next = !isOpen(key)
+      if (conversationId) setPanelExpanded(conversationId, key, next)
+      else setLocal((current) => ({ ...current, [key]: next }))
+    },
+    [conversationId, isOpen, setPanelExpanded],
+  )
+  return { isOpen, toggle }
+}
+
+function foldPanelId(fold: FoldedCalls): string {
+  return `fold-${fold.key.replace(/[^\w-]/g, '_')}`
+}
+
+/** The badges standing in for a bubble's folded calls, in a row. */
+function FoldBadges({
+  folded,
+  isOpen,
+  toggle,
+}: {
+  folded: FoldedCalls[]
+  isOpen: (key: string) => boolean
+  toggle: (key: string) => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <div data-slot="bubble-fold-badges" className="flex min-w-0 flex-wrap items-center gap-1">
+      {folded.map((fold) => {
+        const Icon = FOLD_ICONS[fold.kind]
+        return (
+          <BubbleFoldBadge
+            key={fold.key}
+            expanded={isOpen(fold.key)}
+            aria-controls={isOpen(fold.key) ? foldPanelId(fold) : undefined}
+            onClick={() => toggle(fold.key)}
+          >
+            <Icon aria-hidden className="size-3" />
+            {t(`chat.tool.fold.${fold.kind}`, { count: fold.count })}
+          </BubbleFoldBadge>
+        )
+      })}
+    </div>
+  )
+}
+
+/**
+ * The keys a badge opens into: a keyboard of their own, boxed like a panel,
+ * under the bubble and above its ordinary keyboard.
+ *
+ * Nothing of a folded call exists in the DOM until its badge is opened. That
+ * is the point of folding rather than merely hiding: a closed disclosure
+ * panel still holds its highlighted file, and sixty of them is what made a
+ * long research turn stop scrolling.
+ */
+function FoldPanels({
+  folded,
+  isOpen,
+  renderError,
+}: {
+  folded: FoldedCalls[]
+  isOpen: (key: string) => boolean
+  renderError: React.ReactNode
+}) {
+  const open = folded.filter((fold) => isOpen(fold.key))
+  if (open.length === 0) return null
+  return (
+    <ChatToolPresentationProvider value="keyboard">
+      {open.map((fold) => (
+        <div
+          key={fold.key}
+          id={foldPanelId(fold)}
+          data-slot="bubble-fold-panel"
+          data-kind={fold.kind}
+          className={cn(keyboardPanelVariants(), 'mt-0 p-1.5')}
+        >
+          <BubbleKeyboard>
+            {fold.tools.map((tool, i) => (
+              <ErrorBoundary key={`${tool.call_id}:${i}`} fallback={renderError}>
+                <MemoToolCallBlock data={tool} queued={false} />
+              </ErrorBoundary>
+            ))}
+          </BubbleKeyboard>
+        </div>
+      ))}
+    </ChatToolPresentationProvider>
+  )
+}
+
+/** The last line of a bubble that folded something: its badges on the left,
+ *  the time on the right — the shape a messenger gives a message's footer. */
+function FoldRow({
+  folded,
+  isOpen,
+  toggle,
+  at,
+  isStreaming,
+}: {
+  folded: FoldedCalls[]
+  isOpen: (key: string) => boolean
+  toggle: (key: string) => void
+  at: number
+  isStreaming: boolean
+}) {
+  return (
+    <div data-slot="bubble-fold-row" className="mt-1.5 flex min-w-0 items-center justify-between gap-3">
+      <FoldBadges folded={folded} isOpen={isOpen} toggle={toggle} />
+      {!isStreaming && <SentAt at={at} />}
+    </div>
+  )
+}
+
 /** The keyboard under a bubble: its reasoning first, then its calls, in the
  *  order the model made them. Every key is a disclosure whose panel lands in
  *  the keyboard's stack — see `bubble-keyboard.tsx`. */
 function BubbleKeys({
   bubble,
   renderError,
+  leading,
 }: {
   bubble: Extract<BubbleModel, { kind: 'text' | 'keyboard-only' }>
   renderError: React.ReactNode
+  /** Drawn at the head of the row, before the keys. */
+  leading?: React.ReactNode
 }) {
-  if (bubble.thinking.length === 0 && bubble.tools.length === 0) return null
+  if (bubble.thinking.length === 0 && bubble.tools.length === 0 && leading == null) return null
   // Reasoning with nothing after it yet is the thought still being written,
   // and the only sign of life on screen until the answer starts.
   const thinkingLive = bubble.isStreaming && bubble.kind === 'keyboard-only' && bubble.tools.length === 0
   return (
     <ChatToolPresentationProvider value="keyboard">
       <BubbleKeyboard>
+        {leading}
         {bubble.thinking.length > 0 && (
           <ThinkingBlock
             text={bubble.thinking.join('\n\n')}
@@ -522,9 +675,12 @@ function BubbleKeys({
   )
 }
 
+const NO_FOLDS: FoldedCalls[] = []
+
 function AssistantBubble({
   bubble,
   header,
+  workingLabel,
   isOneBot,
   emojiMap,
   renderError,
@@ -532,10 +688,15 @@ function AssistantBubble({
   bubble: BubbleModel
   /** Who is speaking, on the first bubble of the run only. */
   header: string | null
+  /** What the `working` bubble says beside its spinner. */
+  workingLabel: string | null
   isOneBot?: boolean
   emojiMap?: EmojiMap
   renderError: React.ReactNode
 }) {
+  const folded = 'folded' in bubble ? bubble.folded : NO_FOLDS
+  const { isOpen, toggle } = useFoldExpansion(folded)
+
   if (bubble.kind === 'sticker') {
     return (
       <div className="my-1 flex justify-start" data-slot="assistant-sticker">
@@ -543,24 +704,54 @@ function AssistantBubble({
       </div>
     )
   }
+  if (bubble.kind === 'working') {
+    return (
+      // The typing indicator: the next bubble of the run, with the spinner
+      // where the words will be. `role="status"` so it is announced, and so
+      // the tests can find the sign of life without knowing its wording.
+      <Bubble variant="assistant" position={bubble.position} role="status" data-working="true">
+        <BubbleContent className="flex items-center gap-2">
+          <Spinner size="sm" color="current" className="text-muted" />
+          <span className="shimmer text-xs">{workingLabel}</span>
+        </BubbleContent>
+      </Bubble>
+    )
+  }
+  const panels = <FoldPanels folded={folded} isOpen={isOpen} renderError={renderError} />
+  if (bubble.kind === 'summary') {
+    return (
+      <Bubble variant="assistant" position={bubble.position} className="w-full">
+        <BubbleContent className="w-full">
+          <FoldRow folded={folded} isOpen={isOpen} toggle={toggle} at={bubble.createdAt} isStreaming={false} />
+        </BubbleContent>
+        {panels}
+      </Bubble>
+    )
+  }
   if (bubble.kind === 'keyboard-only') {
+    // No prose to put a footer under, so the badges go at the head of the
+    // row, in front of the keys the reader is being shown.
+    const badges = folded.length > 0 ? <FoldBadges folded={folded} isOpen={isOpen} toggle={toggle} /> : null
     return (
       <div
         data-slot="bubble"
         data-position={bubble.position}
         data-variant="keyboard-only"
-        className="w-full max-w-[85%]"
+        className="flex w-full max-w-[85%] flex-col gap-1"
       >
-        <BubbleKeys bubble={bubble} renderError={renderError} />
+        {panels}
+        <BubbleKeys bubble={bubble} renderError={renderError} leading={badges} />
       </div>
     )
   }
   const hasKeys = bubble.thinking.length > 0 || bubble.tools.length > 0
+  const hasFolds = folded.length > 0
   return (
     // A bubble with a keyboard takes the column's width, so its keys have
-    // room to sit two to a row; one without is as wide as what it says.
-    <Bubble variant="assistant" position={bubble.position} className={cn(hasKeys && 'w-full')}>
-      <BubbleContent className={cn(hasKeys && 'w-full')}>
+    // room to sit two to a row; one with badges takes it so the time sits at
+    // the far edge of the row; one with neither is as wide as what it says.
+    <Bubble variant="assistant" position={bubble.position} className={cn((hasKeys || hasFolds) && 'w-full')}>
+      <BubbleContent className={cn((hasKeys || hasFolds) && 'w-full')}>
         {header && <MessageGroupHeader>{header}</MessageGroupHeader>}
         <MarkdownContent
           content={bubble.text}
@@ -568,9 +759,21 @@ function AssistantBubble({
           oneBot={isOneBot}
           emojiMap={emojiMap}
           blockId={bubble.key}
-          trailer={<SentAt at={bubble.createdAt} />}
+          // With badges the time moves out of the last paragraph and on to
+          // their row, where it is the right-hand end of the footer.
+          trailer={hasFolds ? null : <SentAt at={bubble.createdAt} />}
         />
+        {hasFolds && (
+          <FoldRow
+            folded={folded}
+            isOpen={isOpen}
+            toggle={toggle}
+            at={bubble.createdAt}
+            isStreaming={bubble.isStreaming}
+          />
+        )}
       </BubbleContent>
+      {panels}
       <BubbleKeys bubble={bubble} renderError={renderError} />
     </Bubble>
   )
@@ -585,6 +788,8 @@ export interface AssistantGroupViewProps {
   copyText: string
   /** The run that carries the turn's footer — the last one. */
   showFooter: boolean
+  /** What the `working` bubble says, when the run ends on one. */
+  workingLabel?: string | null
   onDelete?: () => void
   onRegenerate?: () => void
   onRate?: (id: string, rating: MessageRating | null) => void
@@ -605,6 +810,7 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
   owner,
   copyText,
   showFooter,
+  workingLabel = null,
   onDelete,
   onRegenerate,
   onRate,
@@ -654,6 +860,7 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
                 <AssistantBubble
                   bubble={bubble}
                   header={i === headerIndex ? header : null}
+                  workingLabel={workingLabel}
                   isOneBot={isOneBot}
                   emojiMap={emojiMap}
                   renderError={renderError}

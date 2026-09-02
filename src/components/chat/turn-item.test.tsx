@@ -101,10 +101,11 @@ function usage(over: Partial<TurnUsageInfoResponse> = {}): TurnUsageInfoResponse
   }
 }
 
-/** A turn with tool calls, which is what gets the collapse treatment. */
+/** A turn with a tool call that stays a key: a write is never folded into a
+ *  badge, whatever its state, so the keyboard is always there to look at. */
 function toolTurn(over: { status?: ToolCallDisplay['status']; conclusion?: boolean } = {}) {
   const u = msg('user', { content: 'q', created_at: 1000 })
-  const blocks: ContentBlock[] = [text('let me check'), toolBlock('read_file', over.status ?? 'completed')]
+  const blocks: ContentBlock[] = [text('let me check'), toolBlock('write_file', over.status ?? 'completed')]
   if (over.conclusion !== false) blocks.push(text('the answer'))
   const a = msg('assistant', { _blocks: blocks, content: 'the answer', created_at: 10_000 })
   return buildTurns([u, a])[0]
@@ -527,29 +528,37 @@ describe('TurnItem', () => {
     expect(within(details).getByText('≥ 11.00')).toBeInTheDocument()
   })
 
-  describe('activity marker', () => {
+  describe('working bubble', () => {
     const streamingTurn = (blocks: ContentBlock[]) => {
       const u = msg('user', { content: 'q', created_at: 1000 })
       const a = msg('assistant', { _blocks: blocks, created_at: 10_000 })
       return buildTurns([u, a], { streaming: true })[0]
     }
-    const marker = (root: HTMLElement) => root.querySelector('[data-slot="marker"][role="status"]')
+    const marker = (root: HTMLElement) => root.querySelector('[data-slot="bubble"][role="status"]')
 
-    it('marks the wait between a tool returning and the model speaking', () => {
+    it('draws the wait between a tool returning and the model speaking as the next bubble', () => {
       const turn = streamingTurn([text('let me check'), toolBlock('read_file')])
       const { container } = render(<TurnItem turn={turn} conversationId={CONV} isLastTurn streaming />)
-      // Where the user is looking. The headline saying the same thing is at the
-      // top of the turn, which by now is far above the viewport.
-      expect(marker(container)).toBeInTheDocument()
+      // Where the answer will land: inside the run, after the last bubble,
+      // with the avatar beside it — the typing indicator, not a footnote.
+      const working = marker(container)!
+      expect(working).toBeInTheDocument()
+      expect(container.querySelector('[data-slot="message-group-bubbles"]')).toContainElement(working)
+      expect(working).toHaveAttribute('data-position', 'last')
       // A dotted key that resolves to nothing renders as itself, which would
       // put "chat.turn.working.thinking" on screen and still pass the check above.
-      expect(marker(container)!.textContent).not.toContain('chat.turn')
+      expect(working.textContent).not.toContain('chat.turn')
+      // The sentence before the call was finished before the call was made:
+      // no cursor blinks in it, and it already carries its time.
+      expect(container.querySelector('[data-slot="markdown-cursor"]')).toBeNull()
+      expect(container.querySelector('[data-slot="bubble-time"]')).not.toBeNull()
     })
 
-    it('marks a turn that has produced nothing yet', () => {
+    it('draws it in a group of its own for a turn that has produced nothing yet', () => {
       const turn = streamingTurn([])
       const { container } = render(<TurnItem turn={turn} conversationId={CONV} isLastTurn streaming />)
       expect(marker(container)).toBeInTheDocument()
+      expect(container.querySelectorAll('[data-slot="message-group-avatar"]')).toHaveLength(1)
     })
 
     it('gets out of the way once the answer starts arriving', () => {
@@ -759,7 +768,7 @@ describe('TurnItem', () => {
     it('draws a tool as a key under the bubble that introduced it, shut once it has returned', () => {
       render(<TurnItem turn={toolTurn()} conversationId={CONV} />)
 
-      const k = key(/Read File/)
+      const k = key(/Write File/)
       expectCollapsed(k)
       // Nothing is folded away any more: both what the model said on the way
       // and what it concluded are on screen.
@@ -806,7 +815,7 @@ describe('TurnItem', () => {
       expect(turn.status).toBe('awaiting-input')
 
       render(<TurnItem turn={turn} conversationId={CONV} />)
-      const k = key(/Read File/)
+      const k = key(/Write File/)
       expectExpanded(k)
       expect(screen.getByText('Allow')).toBeVisible()
       expect(screen.getByText('Deny')).toBeVisible()
@@ -824,23 +833,70 @@ describe('TurnItem', () => {
     it('closes the panel as soon as the tool returns', async () => {
       const u = msg('user', { content: 'q', created_at: 1000 })
       const running = msg('assistant', {
-        _blocks: [text('working'), toolBlock('read_file', 'running')],
+        _blocks: [text('working'), toolBlock('write_file', 'running')],
         created_at: 5000,
       })
-      const done = { ...running, _blocks: [text('working'), toolBlock('read_file'), text('done')], content: 'done' }
+      const done = { ...running, _blocks: [text('working'), toolBlock('write_file'), text('done')], content: 'done' }
 
       const live = buildTurns([u, running], { streaming: true })[0]
       const settled = buildTurns([u, done])[0]
 
       const { rerender } = render(<TurnItem turn={live} conversationId={CONV} streaming isLastTurn />)
-      expectExpanded(key(/Read File/))
+      expectExpanded(key(/Write File/))
 
       rerender(<TurnItem turn={settled} conversationId={CONV} isLastTurn />)
       // Not on a timer of its own: the reload that follows a turn re-keys
       // nothing here, so there is no second reflow to wait out. The wait is
       // React Aria's, which marks the panel hidden once its animation settles.
-      await waitFor(() => expectCollapsed(key(/Read File/)))
+      await waitFor(() => expectCollapsed(key(/Write File/)))
       expect(screen.getByText('done')).toBeVisible()
+    })
+
+    /// A read that has returned is folded into a badge on the bubble's last
+    /// line, and nothing of it — not the key, not the highlighted file behind
+    /// it — is in the DOM until the badge is opened. That is what keeps a turn
+    /// that read sixty files from being sixty closed panels each holding one.
+    it('folds a finished read into a badge, and draws nothing of it until asked', async () => {
+      const u = msg('user', { content: 'q', created_at: 1000 })
+      const running = msg('assistant', {
+        _blocks: [text('working'), toolBlock('read_file', 'running')],
+        created_at: 5000,
+      })
+      const finished: ContentBlock = {
+        ...toolBlock('read_file'),
+        data: { ...toolBlock('read_file').data, result: 'fn main() {}' },
+      }
+      const done = { ...running, _blocks: [text('working'), finished, text('done')], content: 'done' }
+
+      const { rerender, container } = render(
+        <TurnItem turn={buildTurns([u, running], { streaming: true })[0]} conversationId={CONV} streaming isLastTurn />,
+      )
+      expectExpanded(key(/Read File/))
+
+      rerender(<TurnItem turn={buildTurns([u, done])[0]} conversationId={CONV} isLastTurn />)
+      expect(screen.queryByRole('button', { name: /Read File/ })).toBeNull()
+      expect(screen.queryByText('fn main() {}')).toBeNull()
+      const badge = screen.getByRole('button', { name: 'Viewed 1 file' })
+      expect(badge).toHaveAttribute('aria-expanded', 'false')
+      // On the bubble's last line, with the time at the other end of it.
+      const row = badge.closest('[data-slot="bubble-fold-row"]')!
+      expect(row.querySelector('[data-slot="bubble-time"]')).not.toBeNull()
+      expect(container.querySelector('[data-slot="bubble-fold-panel"]')).toBeNull()
+
+      await userEvent.click(badge)
+      expect(badge).toHaveAttribute('aria-expanded', 'true')
+      const k = key(/Read File/)
+      expectCollapsed(k)
+      expect(container.querySelector('[data-slot="bubble-fold-panel"]')).toContainElement(k)
+      await userEvent.click(k)
+      expectExpanded(k)
+      expect(screen.getByText('fn main() {}')).toBeVisible()
+
+      // The choice is the reader's, kept where the panel choices are kept, so
+      // the reload that follows a turn cannot snap it shut.
+      expect(useConversationStore.getState().sessions[CONV]?.expandedPanels['fold:files:read_file-1']).toBe(true)
+      await userEvent.click(badge)
+      expect(screen.queryByRole('button', { name: /Read File/ })).toBeNull()
     })
 
     /// A sandbox escalation: the call ran, was refused, and comes back asking
@@ -872,11 +928,11 @@ describe('TurnItem', () => {
     it('remembers a panel the user opened by hand', async () => {
       render(<TurnItem turn={toolTurn()} conversationId={CONV} />)
 
-      const k = key(/Read File/)
+      const k = key(/Write File/)
       await userEvent.click(k)
 
       expectExpanded(k)
-      expect(useConversationStore.getState().sessions[CONV]?.expandedPanels['read_file-1']).toBe(true)
+      expect(useConversationStore.getState().sessions[CONV]?.expandedPanels['write_file-1']).toBe(true)
     })
 
     it('says a crashed turn was cut off, in words of its own', () => {

@@ -120,7 +120,7 @@ describe('targetApproval', () => {
 
 describe('lastKeyboard', () => {
   it('names the panels of the last bubble that has any', () => {
-    const a = tool('read_file', 'completed')
+    const a = tool('write_file', 'completed')
     const b = tool('ask_user', 'completed')
     const turns = buildTurns([
       msg('user', { content: 'q' }),
@@ -191,8 +191,8 @@ describe('useTranscriptHotkeys', () => {
   })
 
   it('opens every panel of the last keyboard, then closes them', async () => {
-    const a = tool('read_file', 'completed')
-    const b = tool('run_command', 'completed')
+    const a = tool('write_file', 'completed')
+    const b = tool('edit_file', 'completed')
     const turns = buildTurns([msg('user', { content: 'q' }), msg('assistant', { _blocks: [text('x'), a, b] })])
     render(<Harness turns={turns} />)
     const idOf = (block: ContentBlock) => (block.type === 'tool_call' ? block.data.call_id : '')
