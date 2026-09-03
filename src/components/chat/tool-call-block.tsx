@@ -834,6 +834,40 @@ function CommandCode({ command }: { command: string }) {
   )
 }
 
+/**
+ * Prose a tool returned, rendered as prose: a sub-agent's report, a skill's
+ * text. Bounded with a fade and a toggle past 1500 characters, since a report
+ * can be pages and the panel is inside a bubble.
+ */
+function CollapsibleMarkdown({ content, blockId }: { content: string; blockId: string }) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const long = content.length > 1500
+  return (
+    <div data-slot="collapsible-markdown">
+      <div className={cn('relative', long && !open && 'max-h-96 overflow-hidden')}>
+        <MarkdownContent content={content} blockId={blockId} />
+        {long && !open && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-linear-to-t from-surface to-transparent"
+          />
+        )}
+      </div>
+      {long && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mt-1 h-auto px-1 py-0.5 text-xs"
+          onPress={() => setOpen((current) => !current)}
+        >
+          {t(open ? 'chat.tool.showLess' : 'chat.tool.showFullResult')}
+        </Button>
+      )}
+    </div>
+  )
+}
+
 function GenericResult({ result }: { result: string }) {
   const [expanded, setExpanded] = useState(false)
   // JSON results get pretty-printed and syntax-highlighted like HeroUI's preset.
@@ -875,7 +909,17 @@ function ToolErrorResult({ result }: { result: string }) {
  *  its length — never folded into a footer sentence. */
 const READING_TOOLS = new Set(['read_file', 'Read', 'search_files', 'Grep', 'glob', 'Glob', 'list_directory'])
 
-function ToolResult({ toolName, result, args }: { toolName: string; result: string; args: Record<string, unknown> }) {
+function ToolResult({
+  toolName,
+  result,
+  args,
+  callId,
+}: {
+  toolName: string
+  result: string
+  args: Record<string, unknown>
+  callId: string
+}) {
   switch (toolName) {
     case 'read_file':
       return <ReadFileResult result={result} path={String(args.path ?? '')} />
@@ -887,43 +931,73 @@ function ToolResult({ toolName, result, args }: { toolName: string; result: stri
       return <GlobResult result={result} />
     case 'list_directory':
       return <DirectoryResult result={result} />
+    // A skill is Markdown written for the model, and it reads better drawn as
+    // such than as a wall of `#` and `-` in a box.
+    case 'load_skill':
+    case 'Skill':
+      return (
+        <div className="px-3 py-2">
+          <CollapsibleMarkdown content={result} blockId={`${callId}:skill`} />
+        </div>
+      )
     default:
       return <GenericResult result={result} />
   }
 }
 
+function argText(value: unknown): string {
+  return typeof value === 'string' ? value : JSON.stringify(value, null, 2)
+}
+
+/** Too long for the header's meta line: it gets a block in the body. */
+function isLongArg(value: unknown): boolean {
+  const text = argText(value)
+  return text.includes('\n') || text.length > 80
+}
+
+/** The locale's name for a parameter, or the parameter's own name. */
+function argLabel(t: TFunction, key: string): string {
+  const labelKey = `chat.tool.param.${key}`
+  const label = t(labelKey)
+  return label === labelKey ? key : label
+}
+
 /**
- * The arguments as a list of what they are, for a tool with no drawing of its
- * own: a memory's key and content, an MCP call's fields. The keys the built-in
- * tools use have names in the locale; anything else shows as the model wrote
- * it. A value with line breaks in it, or a long one, gets a block of its own
- * under its label so the columns do not fight over the width.
+ * The short arguments, on one wrapping line under the title: `路径 src/lib ·
+ * 最大结果数 50`. Every panel has this line where it has such arguments, so
+ * a search, a memory write and an MCP call all open on the same shape.
  */
-function ArgsList({ args }: { args: Record<string, unknown> }) {
+function ArgsMeta({ entries }: { entries: [string, unknown][] }) {
   const { t } = useTranslation()
-  const entries = Object.entries(args).filter(([key]) => key !== 'description')
+  return (
+    <span data-slot="tool-args-meta" className="flex min-w-0 flex-wrap gap-x-3 gap-y-0.5">
+      {entries.map(([key, value]) => (
+        <span key={key} className="inline-flex min-w-0 max-w-full items-baseline gap-1">
+          <span className="shrink-0">{argLabel(t, key)}</span>
+          <span className="min-w-0 truncate font-mono text-foreground/80">{argText(value)}</span>
+        </span>
+      ))}
+    </span>
+  )
+}
+
+/**
+ * The long arguments, each as a block under its label: a prompt, a patch
+ * that could not be parsed, a JSON payload. What is short is in the header.
+ */
+function ArgsList({ entries }: { entries: [string, unknown][] }) {
+  const { t } = useTranslation()
   if (entries.length === 0) return null
   return (
-    <dl data-slot="tool-args-list" className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 px-3 py-2 text-xs">
-      {entries.map(([key, value]) => {
-        const labelKey = `chat.tool.param.${key}`
-        const label = t(labelKey)
-        const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
-        const block = text.includes('\n') || text.length > 80
-        return (
-          <Fragment key={key}>
-            <dt className={cn('text-muted', block && 'col-span-2')}>{label === labelKey ? key : label}</dt>
-            <dd
-              className={cn(
-                'min-w-0 font-mono text-foreground/90',
-                block ? 'col-span-2 rounded-md bg-default/40 px-2 py-1 break-words whitespace-pre-wrap' : 'truncate',
-              )}
-            >
-              {text}
-            </dd>
-          </Fragment>
-        )
-      })}
+    <dl data-slot="tool-args-list" className="flex flex-col gap-1.5 px-3 py-2 text-xs">
+      {entries.map(([key, value]) => (
+        <Fragment key={key}>
+          <dt className="text-muted">{argLabel(t, key)}</dt>
+          <dd className="max-h-48 min-w-0 overflow-auto rounded-md bg-default/40 px-2 py-1 font-mono break-words whitespace-pre-wrap text-foreground/90">
+            {argText(value)}
+          </dd>
+        </Fragment>
+      ))}
     </dl>
   )
 }
@@ -1724,46 +1798,80 @@ export function toolDescription(args: Record<string, unknown>): string | null {
 export interface IdentifyingArg {
   kind: 'path' | 'command' | 'text'
   value: string
+  /** The argument it was read from, so the panel can list the others. `null`
+   *  when it was derived rather than read — a patch's file name. */
+  key: string | null
 }
 
+/**
+ * The identifying argument, for the tools that have one: a path, a command, a
+ * pattern. The capitalised names are Claude Code's, reaching us through
+ * `_meta.claudeCode.toolName` on a hosted session.
+ *
+ * `null` for everything else, including anything from MCP or the custom
+ * registry — a summary guessed off an unknown schema is worse than none on a
+ * key or a toast, where it would stand for the whole call. The panel's title
+ * line is the one place a guess is cheap, and `panelTitleArg` makes it there.
+ */
 export function identifyingArg(toolName: string, args: Record<string, unknown>): IdentifyingArg | null {
   const str = (value: unknown) => (typeof value === 'string' && value.trim() !== '' ? value : null)
-  const path = (value: string | null): IdentifyingArg | null => (value === null ? null : { kind: 'path', value })
-  const text = (value: string | null): IdentifyingArg | null => (value === null ? null : { kind: 'text', value })
+  const path = (key: string, value: string | null): IdentifyingArg | null =>
+    value === null ? null : { kind: 'path', value, key }
+  const text = (key: string, value: string | null): IdentifyingArg | null =>
+    value === null ? null : { kind: 'text', value, key }
   switch (toolName) {
     case 'read_file':
     case 'list_directory':
     case 'write_file':
-      return path(str(args.path))
+      return path('path', str(args.path))
     case 'edit_file':
     case 'Read':
     case 'Write':
     case 'Edit':
     case 'NotebookEdit':
-      return path(str(args.file_path) ?? str(args.notebook_path))
+      return str(args.file_path) !== null
+        ? path('file_path', str(args.file_path))
+        : path('notebook_path', str(args.notebook_path))
     case 'run_command':
     case 'Bash':
     case 'SlashCommand': {
       const command = str(args.command)
-      return command === null ? null : { kind: 'command', value: command }
+      return command === null ? null : { kind: 'command', value: command, key: 'command' }
     }
     case 'search_files':
     case 'glob':
     case 'Glob':
     case 'Grep':
-      return text(str(args.pattern))
+      return text('pattern', str(args.pattern))
     case 'WebFetch':
-      return text(str(args.url))
+      return text('url', str(args.url))
     case 'Skill':
-      return text(str(args.skill))
+      return text('skill', str(args.skill))
     case 'apply_patch': {
       const patch = typeof args.patch === 'string' ? args.patch : ''
       const m = patch.match(/^\*\*\* (?:Update|Add|Delete) File: (.+)$/m) ?? patch.match(/^\+\+\+ (?:b\/)?(.+)$/m)
-      return path(m ? m[1].trim() : null)
+      return m ? { kind: 'path', value: m[1].trim(), key: null } : null
     }
     default:
       return null
   }
+}
+
+/**
+ * What the panel's title line says. The identifying argument where there is
+ * one; otherwise the first string argument the model wrote — a skill's name,
+ * a memory's key — which is a guess, and a cheap one here: the rest of the
+ * arguments are listed right under it, so a wrong pick costs a wrong emphasis
+ * and never a hidden value.
+ */
+function panelTitleArg(toolName: string, args: Record<string, unknown>): IdentifyingArg | null {
+  const known = identifyingArg(toolName, args)
+  if (known !== null) return known
+  // Short ones only: a patch or a prompt is a body, not a name.
+  const first = Object.entries(args).find(
+    ([key, value]) => key !== 'description' && typeof value === 'string' && value.trim() !== '' && !isLongArg(value),
+  )
+  return first ? { kind: 'text', value: first[1] as string, key: first[0] } : null
 }
 
 /** A command's first line, with a count of the lines it is standing in for. */
@@ -1871,7 +1979,6 @@ function SubAgentBlock({
     data.status === 'completed' || data.status === 'denied' || data.status === 'error' || data.status === 'orphaned'
   const expansion = usePanelExpansion(data.call_id, !settled, nested != null)
   const [taskOpen, setTaskOpen] = useState(false)
-  const [reportOpen, setReportOpen] = useState(false)
 
   // The report, with the verdict sentence and the stranded note taken off. The
   // verdict itself comes from the run's recorded status when there is one —
@@ -1884,7 +1991,6 @@ function SubAgentBlock({
     [data.result, data.status],
   )
   const outcome = subAgentOutcome(data, report)
-  const longReport = (report?.body.length ?? 0) > 1500
 
   // A question the run raised makes this key the one waiting on a person, and
   // the key has to say so: `run_agent` itself is merely running, and a spinner
@@ -1984,27 +2090,9 @@ function SubAgentBlock({
             <section data-slot="sub-agent-report" className="border-t border-border/50 px-3 py-2">
               <div className="mb-1 text-xs font-medium text-muted">{t('chat.tool.panel.report')}</div>
               {report.body !== '' ? (
-                <div className={cn('relative', longReport && !reportOpen && 'max-h-96 overflow-hidden')}>
-                  <MarkdownContent content={report.body} blockId={`${data.call_id}:report`} />
-                  {longReport && !reportOpen && (
-                    <div
-                      aria-hidden
-                      className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-linear-to-t from-surface to-transparent"
-                    />
-                  )}
-                </div>
+                <CollapsibleMarkdown content={report.body} blockId={`${data.call_id}:report`} />
               ) : (
                 <p className="text-xs text-muted">{t('chat.tool.panel.noReport')}</p>
-              )}
-              {longReport && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="mt-1 h-auto px-1 py-0.5 text-xs"
-                  onPress={() => setReportOpen((open) => !open)}
-                >
-                  {t(reportOpen ? 'chat.tool.showLess' : 'chat.tool.showFullResult')}
-                </Button>
               )}
               {report.stranded && (
                 <div
@@ -2490,21 +2578,33 @@ export function ToolCallBlock({
     )
   }
 
-  // The header says in full what the key had to shorten: the whole path, the
-  // description a compact key kept as a tooltip. A key waiting on a decision
-  // already shows both in full, and so does a card, so there the header
-  // carries only its chips — the same line an inch lower would say nothing.
-  // A command's own text is the first thing in the body, so its header, when
-  // there is one, is what the command is for.
+  // Every panel opens the same way: a band naming the call in full — the
+  // whole path, the pattern, what a command is for — with the rest of its
+  // short arguments in a muted line under it, and its chips at the right.
+  // The key above shows the same name, shortened or not, and repeating it is
+  // the price of every panel looking like every other panel; the description
+  // is repeated only where the key had folded it into a tooltip. A command's
+  // own text is the first thing in the body, so its title is its purpose.
+  const titleArg = panelTitleArg(data.tool_name, parsedArgs)
   const title =
-    !compact || arg === null ? null : arg.kind === 'path' ? (
-      <PathLabel path={arg.value} wrap />
-    ) : arg.kind === 'command' ? (
-      description
+    titleArg === null ? null : titleArg.kind === 'path' ? (
+      <PathLabel path={titleArg.value} wrap />
+    ) : titleArg.kind === 'command' ? (
+      (description ?? commandHeadline(titleArg.value).head)
     ) : (
-      <span className="font-mono">{arg.value}</span>
+      <span className="font-mono">{titleArg.value}</span>
     )
-  const headerDescription = compact && arg?.kind !== 'command' ? description : null
+  const headerDescription = compact && titleArg?.kind !== 'command' ? description : null
+  // The arguments the title and the body do not already show. A diff's
+  // content is the diff; a command's is the code block. Short ones go in the
+  // header's meta line, long ones — a prompt, a patch, a JSON blob — get a
+  // block each in the body.
+  const shownKeys = new Set<string>(['description'])
+  if (titleArg?.key) shownKeys.add(titleArg.key)
+  if (fileDiffs) for (const key of ['content', 'old_string', 'new_string', 'patch', 'replace_all']) shownKeys.add(key)
+  const restArgs = Object.entries(parsedArgs).filter(([key]) => !shownKeys.has(key))
+  const metaArgs = restArgs.filter(([, value]) => !isLongArg(value))
+  const longArgs = restArgs.filter(([, value]) => isLongArg(value))
 
   const pendingRow = data.status === 'pending' && data.approval_id !== undefined
   // Only the ends nothing else on the panel shows: a refusal, a turn that
@@ -2530,8 +2630,19 @@ export function ToolCallBlock({
         )}
       </ChatToolTrigger>
       <ChatToolContent>
-        {(title !== null || headerDescription !== null || end.length > 0) && (
-          <ChatToolPanelHeader title={title} description={headerDescription} end={end.length > 0 ? end : undefined} />
+        {(title !== null || headerDescription !== null || metaArgs.length > 0 || end.length > 0) && (
+          <ChatToolPanelHeader
+            title={title}
+            description={
+              headerDescription !== null || metaArgs.length > 0 ? (
+                <>
+                  {headerDescription !== null && <span className="block">{headerDescription}</span>}
+                  {metaArgs.length > 0 && <ArgsMeta entries={metaArgs} />}
+                </>
+              ) : null
+            }
+            end={end.length > 0 ? end : undefined}
+          />
         )}
         <ChatToolPanelBody>
           {singleDiff ? (
@@ -2543,7 +2654,7 @@ export function ToolCallBlock({
           ) : isCommand ? (
             <CommandCode command={arg.value} />
           ) : parsedOk ? (
-            <ArgsList args={parsedArgs} />
+            longArgs.length > 0 && <ArgsList entries={longArgs} />
           ) : (
             // Mid-stream the JSON is partial and parses to nothing; it is shown
             // as it stands rather than as an empty list.
@@ -2560,7 +2671,7 @@ export function ToolCallBlock({
               {command ? (
                 <CommandOutputView output={command} />
               ) : (
-                <ToolResult toolName={data.tool_name} result={output.body} args={parsedArgs} />
+                <ToolResult toolName={data.tool_name} result={output.body} args={parsedArgs} callId={data.call_id} />
               )}
             </div>
           )}
