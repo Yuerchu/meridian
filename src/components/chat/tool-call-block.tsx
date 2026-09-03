@@ -1741,8 +1741,14 @@ function TodoListBlock({ data, title, todos }: { data: ToolCallDisplay; title: s
         <span className="truncate font-medium text-foreground">{title}</span>
       </ChatToolTrigger>
       <ChatToolContent>
-        <TodoItemList todos={todos} />
-        {data.status === 'error' && data.result && <ChatToolError>{data.result}</ChatToolError>}
+        <ChatToolPanelBody>
+          <TodoItemList todos={todos} className="px-3 py-2" />
+        </ChatToolPanelBody>
+        {data.status === 'error' && data.result && (
+          <ChatToolPanelFooter>
+            <ChatToolError>{data.result}</ChatToolError>
+          </ChatToolPanelFooter>
+        )}
       </ChatToolContent>
     </ChatTool>
   )
@@ -2551,8 +2557,11 @@ export function ToolCallBlock({
   const isCommand = arg?.kind === 'command'
 
   // What came back, with the turn-level truncation taken off the front so the
-  // renderers below see what the tool wrote. An error's text is the error.
-  const output = data.result !== undefined && data.status !== 'error' ? splitTruncation(data.result) : null
+  // renderers below see what the tool wrote. Errors and denials carry the
+  // error/reason in `data.result` and draw it via `CardOutcome`; the body
+  // should not repeat it.
+  const hasBody = data.result !== undefined && data.status !== 'error' && data.status !== 'denied'
+  const output = hasBody ? splitTruncation(data.result!) : null
   const command = isCommand && output !== null ? parseCommandOutput(output.body) : null
   // A confirmation — "Successfully wrote 312 bytes to …", "Saved memory …" —
   // is one sentence about the outcome and goes in the footer as such. What a
@@ -2666,7 +2675,7 @@ export function ToolCallBlock({
               <ToolErrorResult result={data.result} />
             </div>
           )}
-          {output !== null && sentence === null && (
+          {data.status !== 'error' && output !== null && sentence === null && (
             <div className="border-t border-border/50">
               {command ? (
                 <CommandOutputView output={command} />
