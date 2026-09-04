@@ -2587,14 +2587,13 @@ export function ToolCallBlock({
     )
   }
 
-  // Every panel opens the same way: a band naming the call in full — the
-  // whole path, the pattern, what a command is for — with the rest of its
-  // short arguments in a muted line under it, and its chips at the right.
-  // The key above shows the same name, shortened or not, and repeating it is
-  // the price of every panel looking like every other panel; the description
-  // is repeated only where the key had folded it into a tooltip. A command's
-  // own text is the first thing in the body, so its title is its purpose.
-  const titleArg = panelTitleArg(data.tool_name, parsedArgs)
+  // The header names the call when the key above had to shorten it (compact),
+  // or when the header carries chips the key does not. A key that is already
+  // showing the whole value — `requires-action` — needs no repetition: the
+  // reader is looking at the same text an inch above, and saying it twice
+  // reads as two things rather than one.
+  const needsTitle = compact || end.length > 0
+  const titleArg = needsTitle ? panelTitleArg(data.tool_name, parsedArgs) : null
   const title =
     titleArg === null ? null : titleArg.kind === 'path' ? (
       <PathLabel path={titleArg.value} wrap />
