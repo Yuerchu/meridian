@@ -3146,6 +3146,7 @@ dependencies = [
  "ndk-context",
  "serde",
  "serde_json",
+ "sherpa-onnx-sys",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

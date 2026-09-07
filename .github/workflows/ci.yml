@@ -63,6 +63,18 @@ jobs:
           # path that is gone.
           cache-directories: src-tauri/target/sherpa-onnx-prebuilt
 
+      # The shell's debug build is ~500 crates of tauri and webkit, and the
+      # core's own test build recompiles another ~120 under its own feature
+      # set. Together they overran the 14 GB the runner leaves free — the
+      # linker died with SIGBUS and `No space left on device` — the first time
+      # the Linux leg got this far. The runner image carries toolchains this
+      # job never touches; dropping them frees ~25 GB.
+      - name: Free runner disk
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h /
+
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-latest'
         run: |
