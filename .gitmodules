@@ -1,0 +1,3 @@
+[submodule "src-tauri/crates"]
+	path = src-tauri/crates
+	url = https://github.com/Yuerchu/meridian-core.git

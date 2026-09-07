@@ -10,26 +10,28 @@ Copyright 2025 OpenAI
 Licensed under the Apache License, Version 2.0
 https://github.com/openai/codex
 
-The following modules contain code ported from codex-rs:
+The following modules contain code ported from codex-rs. All of them live in
+the meridian-core submodule at src-tauri/crates/ (its own NOTICE lists the
+same modules relative to that repository):
 
-  src-tauri/src/keyring/                — from codex-rs/keyring-store/
-  src-tauri/src/secrets/                — from codex-rs/secrets/
-  src-tauri/src/client/                 — from codex-rs/codex-client/
-  src-tauri/crates/sandbox-windows/     — from codex-rs/windows-sandbox-rs/
-                                          (job.rs from codex-rs/utils/pty/src/win/job.rs)
-  src-tauri/crates/sandbox-types/       — from codex-rs/utils/absolute-path/ and
-                                          codex-rs/protocol/ (permissions subset)
-  src-tauri/src/sandbox.rs              — bounded capture / timeout / cancellation
-                                          logic derived from codex-rs/core/src/exec.rs
-                                          and codex-rs/windows-sandbox-rs/src/lib.rs
-  src-tauri/src/agent/truncate.rs       — from codex-rs/utils/string/src/truncate.rs,
-                                          codex-rs/utils/output-truncation/src/lib.rs,
-                                          and TruncationPolicy from codex-rs/protocol/src/protocol.rs
-  src-tauri/src/agent/inline_tag.rs     — from codex-rs/utils/stream-parser/src/stream_text.rs
-                                          and inline_hidden_tag.rs
-  src-tauri/src/sleep_inhibitor/        — from codex-rs/utils/sleep-inhibitor/
-  src-tauri/src/agent/stream.rs         — retry-after parsing derived from
-                                          codex-rs/codex-api/src/sse/responses.rs
+  src-tauri/crates/core/src/keyring/          — from codex-rs/keyring-store/
+  src-tauri/crates/core/src/secrets/          — from codex-rs/secrets/
+  src-tauri/crates/core/src/client/           — from codex-rs/codex-client/
+  src-tauri/crates/sandbox-windows/           — from codex-rs/windows-sandbox-rs/
+                                                (job.rs from codex-rs/utils/pty/src/win/job.rs)
+  src-tauri/crates/sandbox-types/             — from codex-rs/utils/absolute-path/ and
+                                                codex-rs/protocol/ (permissions subset)
+  src-tauri/crates/core/src/sandbox.rs        — bounded capture / timeout / cancellation
+                                                logic derived from codex-rs/core/src/exec.rs
+                                                and codex-rs/windows-sandbox-rs/src/lib.rs
+  src-tauri/crates/core/src/agent/truncate.rs — from codex-rs/utils/string/src/truncate.rs,
+                                                codex-rs/utils/output-truncation/src/lib.rs,
+                                                and TruncationPolicy from codex-rs/protocol/src/protocol.rs
+  src-tauri/crates/core/src/agent/inline_tag.rs — from codex-rs/utils/stream-parser/src/stream_text.rs
+                                                and inline_hidden_tag.rs
+  src-tauri/crates/core/src/sleep_inhibitor/  — from codex-rs/utils/sleep-inhibitor/
+  src-tauri/crates/core/src/agent/stream.rs   — retry-after parsing derived from
+                                                codex-rs/codex-api/src/sse/responses.rs
 
 Modifications made:
   - keyring: renamed crate, no functional changes

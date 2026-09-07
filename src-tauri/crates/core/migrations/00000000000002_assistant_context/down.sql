@@ -1,1 +1,0 @@
--- SQLite does not support DROP COLUMN; this migration is not reversible.

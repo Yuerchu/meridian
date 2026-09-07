@@ -1,3 +1,0 @@
-ALTER TABLE messages ADD COLUMN reasoning_content TEXT;
-ALTER TABLE messages ADD COLUMN rating INTEGER;
-ALTER TABLE messages ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 1;

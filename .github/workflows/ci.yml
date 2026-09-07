@@ -34,6 +34,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # src-tauri/crates is the meridian-core submodule; without it every
+          # `meridian_core::` import is unresolved.
+          submodules: recursive
 
       - uses: pnpm/action-setup@v4
 
@@ -85,9 +89,19 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: pnpm format:check
 
+      # The shell and the core are two workspaces — `src-tauri/crates` is the
+      # meridian-core submodule, excluded from the shell's workspace — so every
+      # cargo gate runs twice. The core's runs share `src-tauri/target` through
+      # `--target-dir`, which is what keeps the second from rebuilding the
+      # dependency tree the first already built.
       - name: rustfmt check
         if: matrix.os == 'ubuntu-latest'
         working-directory: src-tauri
+        run: cargo fmt --all --check
+
+      - name: rustfmt check (core)
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: src-tauri/crates
         run: cargo fmt --all --check
 
       - name: Frontend tests
@@ -102,9 +116,18 @@ jobs:
         working-directory: src-tauri
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: Clippy (core)
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: src-tauri/crates
+        run: cargo clippy --workspace --all-targets --target-dir ../target -- -D warnings
+
       - name: Rust tests
         working-directory: src-tauri
         run: cargo test
+
+      - name: Rust tests (core)
+        working-directory: src-tauri/crates
+        run: cargo test --workspace --target-dir ../target
 
   android-check:
     runs-on: ubuntu-latest
@@ -112,6 +135,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - uses: dtolnay/rust-toolchain@stable
         with:

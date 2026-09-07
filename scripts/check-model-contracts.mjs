@@ -9,11 +9,11 @@
  *   pnpm contracts:check
  *   pnpm contracts:check:staged
  */
-import { execFileSync } from 'node:child_process'
 import { Buffer } from 'node:buffer'
 import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { stagedSnapshot } from './staged-snapshot.mjs'
 import {
   forbiddenJsonFallbacks,
   isBooleanField,
@@ -30,28 +30,18 @@ const STAGED = process.argv.includes('--staged')
 const problems = []
 
 const slash = (path) => path.replaceAll('\\', '/')
-const git = (args) =>
-  execFileSync('git', args, {
-    cwd: ROOT,
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
-    stdio: ['ignore', 'pipe', 'ignore'],
-  })
+// Core sources sit in the meridian-core submodule; "staged" there means the
+// commit the outer index points at. See staged-snapshot.mjs.
+const snapshot = STAGED ? stagedSnapshot(ROOT) : null
 
 function readAt(path) {
   if (!STAGED) return readFileSync(join(ROOT, path), 'utf8')
-  try {
-    return git(['show', `:${path}`])
-  } catch {
-    return null
-  }
+  return snapshot.read(path)
 }
 
 function filesUnder(path, extensions) {
   if (STAGED) {
-    return git(['ls-files', '--cached', '--', path])
-      .split('\n')
-      .filter((file) => file && extensions.some((extension) => file.endsWith(extension)))
+    return snapshot.list(path).filter((file) => extensions.some((extension) => file.endsWith(extension)))
   }
   const files = []
   const visit = (absolute) => {

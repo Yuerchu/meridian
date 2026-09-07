@@ -23,13 +23,16 @@
  * 留在工作区没暂存,读工作树会通过,而提交进去的两半对不上。
  */
 import { readFileSync } from 'node:fs'
-import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { stagedSnapshot } from './staged-snapshot.mjs'
 
 const SELF = fileURLToPath(import.meta.url)
 const ROOT = join(dirname(SELF), '..')
 const STAGED = process.argv.includes('--staged')
+// 目录和 registry 都在 meridian-core 子模块里,「暂存」在那边指外层将要指向的
+// commit——见 staged-snapshot.mjs。
+const snapshot = STAGED ? stagedSnapshot(ROOT) : null
 
 const CORE = 'src-tauri/crates/core/src'
 const CATALOG_REL = `${CORE}/provider/provider_catalog.json`
@@ -68,12 +71,8 @@ const CREDENTIALS_BY_TRANSPORT = {
 
 function read(rel) {
   if (!STAGED) return readFileSync(join(ROOT, rel), 'utf8')
-  try {
-    return execFileSync('git', ['show', `:${rel}`], { cwd: ROOT, encoding: 'utf8', maxBuffer: 32 << 20 })
-  } catch {
-    // 暂存区里没有 = 这次提交没动它,回落到工作树。
-    return readFileSync(join(ROOT, rel), 'utf8')
-  }
+  // 暂存区里没有 = 这次提交没动它,回落到工作树。
+  return snapshot.read(rel) ?? readFileSync(join(ROOT, rel), 'utf8')
 }
 
 const problems = []
@@ -155,7 +154,9 @@ if (migrationDefault && !API_FORMATS.includes(migrationDefault)) {
 const seenIds = new Set()
 for (const [entryIndex, entry] of entries.entries()) {
   const at = `providers[${entry?.id ?? entryIndex}]`
-  if (!requireExactObject(entry, ['id', 'provider_type', 'name', 'icon', 'balance', 'websites', 'auth', 'models'], at)) {
+  if (
+    !requireExactObject(entry, ['id', 'provider_type', 'name', 'icon', 'balance', 'websites', 'auth', 'models'], at)
+  ) {
     continue
   }
 

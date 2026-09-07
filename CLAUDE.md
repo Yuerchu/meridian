@@ -24,19 +24,33 @@ src-tauri/
     commands/               # #[tauri::command] entry points
     platform.rs             # platform detection + Android storage commands
     android_bridge.rs       # the Java_* symbols MainActivity.kt calls back into
-  crates/core/              # meridian-core: everything framework-free
-    migrations/             # embed_migrations! resolves against this crate root
-    src/
-      agent/engine/         # the turn loop, and the ports the runners plug into
-      db/ provider/ tools/ mcp/ secrets/ …
-      onebot/ hooks/        # the two non-desktop runners
-      acp/                  # hosting another coding agent, as its client
-      services.rs           # every long-lived thing, in one value
-      events.rs             # EventBus: where an event goes once it has happened
-      bootstrap.rs          # bootstrap(data_dir, events) -> Services
-  crates/sandbox-types/     # sandbox policy types
-  crates/sandbox-windows/   # Windows sandbox implementation
+  crates/                   # git submodule: github.com/Yuerchu/meridian-core (Apache-2.0)
+    core/                   # meridian-core: everything framework-free
+      migrations/           # embed_migrations! resolves against this crate root
+      src/
+        agent/engine/       # the turn loop, and the ports the runners plug into
+        db/ provider/ tools/ mcp/ secrets/ …
+        onebot/ hooks/      # the two non-desktop runners
+        acp/                # hosting another coding agent, as its client
+        services.rs         # every long-lived thing, in one value
+        events.rs           # EventBus: where an event goes once it has happened
+        bootstrap.rs        # bootstrap(data_dir, events) -> Services
+    sandbox-types/          # sandbox policy types
+    sandbox-windows/        # Windows sandbox implementation
 ```
+
+**`src-tauri/crates` is another repository.** Everything below the Tauri line is
+open source under Apache-2.0 and lives in `Yuerchu/meridian-core`; this
+repository pins a commit of it as a git submodule, and the shell depends on
+the crates by path exactly as before. Three things follow. Clone with
+`--recurse-submodules` (or `git submodule update --init` after the fact), or
+`cargo` reports every `meridian_core::` import as unresolved. A change to the
+core is committed *there* first, then the pointer is bumped here — and the
+contract checks read the pinned commit, not the submodule's working tree
+(`scripts/staged-snapshot.mjs`), so a bump whose commit is not yet in the
+submodule repository is refused. And the two workspaces have separate lock
+files: `src-tauri/Cargo.lock` for the app and `src-tauri/crates/Cargo.lock` for
+the core on its own, kept in step by hand.
 
 ## Key Design Decisions
 
@@ -1669,9 +1683,16 @@ script — which is the same reason it should not hold one across two platforms.
 ## Development
 
 ```bash
+git submodule update --init   # src-tauri/crates is the meridian-core repository
 pnpm install
 pnpm tauri dev        # Start dev (needs MERIDIAN_API_KEY env var)
 ```
+
+The Rust suite is two runs: `cargo test` in `src-tauri` covers the shell, and
+`cargo test --workspace --target-dir ../target` in `src-tauri/crates` covers
+the core (the shared target directory is what keeps the second from
+rebuilding everything). The core repository has its own rustfmt/clippy
+pre-commit hook under `.githooks/`; the hooks here do not reach inside it.
 
 **`@heroui-pro/react` is a stub on npm.** The package published to the registry
 contains nothing but a `postinstall`; the components are staged into it

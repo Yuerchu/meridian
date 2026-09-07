@@ -11,14 +11,19 @@ fi
 #
 # --staged:校验的是**将要提交的东西**。读工作树的话,暂存了迁移、却把 schema-data.ts
 # 的改动留在工作区没暂存,这里会通过,而提交进去的两半对不上。
-if git diff --cached --name-only | grep -qE '^src-tauri/crates/core/migrations/|^src/dev/schema-data\.ts$'; then
+#
+# src-tauri/crates 是 meridian-core 子模块:core 的文件不会出现在外层的暂存列表里,
+# 出现的只有那个 gitlink 本身(`src-tauri/crates`,指针动了才有)。所以下面三处
+# 都把它算作触发条件——指针一动,迁移/目录/合约都可能跟着变,三个检查一起跑
+# 也就几秒。脚本读子模块内容走的是外层暂存的那个 commit(scripts/staged-snapshot.mjs)。
+if git diff --cached --name-only | grep -qE '^src-tauri/crates$|^src/dev/schema-data\.ts$'; then
   node scripts/check-db-schema.mjs --staged
 fi
 
 # 厂商目录同理:它只描述展示与预填,却会以很有把握的样子出错——写着某家走
 # responses,而 adapter 根本不认那个 provider_type,建出来的行发不出请求。
 # registry / capabilities 那两侧改了也要核,因为对不上可能是它们动了而目录没跟。
-if git diff --cached --name-only | grep -qE '^src-tauri/crates/core/src/provider/(provider_catalog\.json|registry\.rs|capabilities\.rs|model_catalog\.json)$'; then
+if git diff --cached --name-only | grep -qE '^src-tauri/crates$'; then
   node scripts/check-provider-catalog.mjs --staged
 fi
 
@@ -26,6 +31,6 @@ fi
 # 金额全程 Decimal 字符串、invoke response 的生成式 runtime exact schema。
 # 任何一侧改动都检查暂存快照，避免靠未暂存文件通过；生成器和它依赖的
 # syntax helper 自己变化也必须触发 freshness check。
-if git diff --cached --name-only | grep -qE '^src/.*\.(ts|tsx)$|^src-tauri/.*\.(rs|sql|json)$|^src-tauri/(Cargo\.toml|Cargo\.lock)$|^scripts/(check-model-contracts|generate-invoke-response-schema|model-contract-rules(\.test)?)\.mjs$'; then
+if git diff --cached --name-only | grep -qE '^src/.*\.(ts|tsx)$|^src-tauri/crates$|^src-tauri/.*\.(rs|sql|json)$|^src-tauri/(Cargo\.toml|Cargo\.lock)$|^scripts/(check-model-contracts|generate-invoke-response-schema|model-contract-rules(\.test)?|staged-snapshot)\.mjs$'; then
   node scripts/check-model-contracts.mjs --staged
 fi

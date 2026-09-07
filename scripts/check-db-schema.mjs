@@ -19,10 +19,11 @@
  *   pnpm schema                  打开画布(#playground/schema)
  */
 import { readFileSync, readdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
-import { execFileSync, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { stagedSnapshot } from './staged-snapshot.mjs'
 
 const SELF = fileURLToPath(import.meta.url)
 const ROOT = join(dirname(SELF), '..')
@@ -64,22 +65,13 @@ try {
 // ── 取内容:工作树还是暂存区 ─────────────────────────────────────
 // pre-commit 要校验的是**将要提交的东西**。读工作树的话,暂存了迁移、却把
 // schema-data.ts 的修改留在工作区没暂存,校验会通过而提交进去的两半对不上。
-const git = (args, quiet = false) =>
-  execFileSync('git', args, {
-    cwd: ROOT,
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
-    // git 自己的 fatal 会直接写到终端，盖过脚本要说的话
-    stdio: quiet ? ['ignore', 'pipe', 'ignore'] : ['ignore', 'pipe', 'pipe'],
-  })
+// 迁移在 meridian-core 子模块里,「暂存」在那边指外层将要指向的 commit——
+// 见 staged-snapshot.mjs。
+const snapshot = STAGED ? stagedSnapshot(ROOT) : null
 
 function readAt(relPath) {
   if (!STAGED) return readFileSync(join(ROOT, relPath), 'utf8')
-  try {
-    return git(['show', `:${relPath}`], true)
-  } catch {
-    return null // 暂存区里没有这个文件（未跟踪 / 未暂存 / 已删除）
-  }
+  return snapshot.read(relPath) // 暂存区里没有这个文件（未跟踪 / 未暂存 / 已删除）时为 null
 }
 
 function migrationFiles() {
@@ -89,8 +81,8 @@ function migrationFiles() {
       .map((d) => `${MIG_DIR}/${d.name}/up.sql`)
       .sort()
   }
-  return git(['ls-files', '--cached', '--', MIG_DIR])
-    .split('\n')
+  return snapshot
+    .list(MIG_DIR)
     .filter((p) => p.endsWith('/up.sql'))
     .sort()
 }

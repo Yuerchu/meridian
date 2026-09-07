@@ -1,9 +1,17 @@
 [workspace]
-members = [".", "crates/core", "crates/sandbox-types", "crates/sandbox-windows"]
+members = ["."]
+# `crates/` is the meridian-core submodule (github.com/Yuerchu/meridian-core)
+# and a workspace of its own. A package may belong to one workspace only, so
+# the directory is excluded here and its crates are reached by path — which
+# cargo allows across a workspace boundary as long as nothing in there uses
+# `key.workspace = true` inheritance (it would be resolved against *this*
+# manifest when the shell builds).
+#
 # The shell alone is not the app: everything with a test in it lives in
-# `meridian-core`, so a bare `cargo test` or `cargo check` that stopped at the
-# root package would run twenty-two tests and report a green tree.
-default-members = [".", "crates/core"]
+# `meridian-core`, and a bare `cargo test` here runs the shell's twenty-two
+# tests only. The core's own suite runs from `crates/`
+# (`cargo test --workspace --target-dir ../target`), which is what CI does.
+exclude = ["crates"]
 
 [package]
 name = "meridian"
