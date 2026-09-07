@@ -38,6 +38,7 @@ export function GeneralSettings() {
   const [searchKeyExists, setSearchKeyExists] = useState(false)
   const [searchKeySaved, markSearchKeySaved, clearSearchKeySaved] = useTemporaryFlag()
   const [searchKeyError, setSearchKeyError] = useState<string | null>(null)
+  const [prefError, setPrefError] = useState<string | null>(null)
   const searchProviderTouched = useRef(false)
   const { confirm, confirmDialog } = useConfirm()
   useSettingsDirtyRegistration('general', 'search-api-key', searchApiKey.trim().length > 0)
@@ -67,7 +68,8 @@ export function GeneralSettings() {
 
   const handleShellChange = (value: ShellType) => {
     setShell(value)
-    api.setPreference({ key: 'shell', value })
+    setPrefError(null)
+    api.setPreference({ key: 'shell', value }).catch((reason) => setPrefError(String(reason)))
   }
 
   // Unlike the settings below, the theme is not a Tauri preference: it has to be
@@ -90,7 +92,8 @@ export function GeneralSettings() {
   // to be decided.
   const handleSandboxChange = (value: SandboxMode) => {
     setSandboxMode(value)
-    api.setPreference({ key: 'sandbox.enabled', value })
+    setPrefError(null)
+    api.setPreference({ key: 'sandbox.enabled', value }).catch((reason) => setPrefError(String(reason)))
   }
 
   const handleSearchProviderChange = async (value: SearchProvider) => {
@@ -100,7 +103,8 @@ export function GeneralSettings() {
     }
     searchProviderTouched.current = true
     setSearchProvider(value)
-    await api.setPreference({ key: 'search_provider', value })
+    setPrefError(null)
+    await api.setPreference({ key: 'search_provider', value }).catch((reason) => setPrefError(String(reason)))
   }
 
   const handleSaveSearchKey = async () => {
@@ -219,6 +223,12 @@ export function GeneralSettings() {
           </p>
         )}
       </div>
+
+      {prefError && (
+        <p role="alert" className="text-xs text-danger break-all">
+          {prefError}
+        </p>
+      )}
 
       {platform === 'android' && <AndroidFileAccess />}
       {confirmDialog}

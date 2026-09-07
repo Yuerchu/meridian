@@ -95,8 +95,12 @@ const keyboardKeyVariants = tv({
       'output-available': '',
       'output-error': 'ring-1 ring-danger/40 ring-inset',
       'requires-action': 'basis-full ring-1 ring-warning/50 ring-inset',
-      /** A key that goes somewhere rather than opening something. */
-      navigate: 'bg-accent text-accent-foreground hover:bg-accent/90 data-[hovered]:bg-accent/90',
+      /** A key that goes somewhere rather than opening something, while the
+       *  page it leads to is still waiting on the reader. Drawn like
+       *  `requires-action` — a ring, not a fill — because a filled `bg-accent`
+       *  key is a solid white bar in the dark theme, louder than the approval
+       *  keys it sits beside. Info rather than warning, matching the card. */
+      navigate: 'basis-full ring-1 ring-info/40 ring-inset',
     },
   },
   defaultVariants: {
@@ -150,10 +154,6 @@ const keyboardPanelVariants = tv({
   },
 })
 
-/**
-/**
-/**
-/**
 /**
  * A badge standing in for keys the reader was not shown: "viewed 10 files".
  *

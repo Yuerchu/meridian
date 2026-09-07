@@ -36,9 +36,29 @@ function decorations(document: ProseMirrorNode, comments: readonly CommentLike[]
   return DecorationSet.create(document, ranges)
 }
 
-export const PlanCommentDecorations = Extension.create({
+export interface PlanCommentDecorationsOptions {
+  /** A click landing on a highlighted range. The highlight had a hover
+   *  outline that promised exactly this and did nothing; without a handler
+   *  the comment can only be reached from the pane, never from the text. */
+  onCommentClick: ((commentId: string) => void) | null
+}
+
+/** The comment whose highlight covers a document position, if any. */
+export function planCommentAt(set: DecorationSet | undefined, pos: number): string | null {
+  for (const decoration of set?.find(pos, pos) ?? []) {
+    const id = decoration.spec.planCommentId
+    if (typeof id === 'string') return id
+  }
+  return null
+}
+
+export const PlanCommentDecorations = Extension.create<PlanCommentDecorationsOptions>({
   name: 'meridianPlanCommentDecorations',
+  addOptions() {
+    return { onCommentClick: null }
+  },
   addProseMirrorPlugins() {
+    const { options } = this
     return [
       new Plugin<DecorationSet>({
         key: planCommentDecorationKey,
@@ -51,6 +71,15 @@ export const PlanCommentDecorations = Extension.create({
         },
         props: {
           decorations: (state) => planCommentDecorationKey.getState(state) ?? null,
+          handleClick: (view, pos) => {
+            if (!options.onCommentClick) return false
+            const id = planCommentAt(planCommentDecorationKey.getState(view.state), pos)
+            if (id === null) return false
+            options.onCommentClick(id)
+            // Not handled: the click still places the caret, so the reader
+            // keeps their position in the text while the pane answers.
+            return false
+          },
         },
       }),
     ]

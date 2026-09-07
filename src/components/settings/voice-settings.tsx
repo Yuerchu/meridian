@@ -130,7 +130,7 @@ export function VoiceSettings() {
 
   const handleFilterChange = (value: VoiceFilterLevel) => {
     setFilterLevel(value)
-    api.setPreference({ key: 'voice.filter_level', value })
+    api.setPreference({ key: 'voice.filter_level', value }).catch((reason) => setError(String(reason)))
   }
 
   const handleMirrorChange = (value: string) => {

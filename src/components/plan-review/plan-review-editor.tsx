@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -26,15 +26,20 @@ import {
   proseMirrorAnchor,
   setPlanCommentDecorations,
 } from '@/lib/plan-comment-decorations'
+import { stripUnsupportedPasteMarks } from '@/lib/plan-paste'
 import type { PlanCommentInfoResponse, PlanProseMirrorRange } from '@/types'
 
 interface PlanReviewEditorProps {
   defaultValue: JSONContent
   comments: PlanCommentInfoResponse[]
   isReadOnly?: boolean
+  /** A fresh object per request: the effect that scrolls to it keys on
+   *  identity, so asking for the same range twice must not look like once. */
   focusAnchor?: PlanProseMirrorRange | null
   onChange: (document: JSONContent, anchors: Map<string, PlanProseMirrorRange | null>) => void
   onAddComment: (anchor: PlanProseMirrorRange) => void
+  /** A click on a highlighted range in the text. */
+  onCommentClick?: (commentId: string) => void
 }
 
 function CommentDecorationBridge({
@@ -84,9 +89,17 @@ export function PlanReviewEditor({
   focusAnchor,
   onChange,
   onAddComment,
+  onCommentClick,
 }: PlanReviewEditorProps) {
   const { t } = useTranslation()
-  const extensions = useMemo(() => [PlanCommentDecorations], [])
+  // The extension is configured once — re-creating it would rebuild the editor
+  // — so the handler it holds reads the latest prop through a ref.
+  const commentClickRef = useRef(onCommentClick)
+  commentClickRef.current = onCommentClick
+  const extensions = useMemo(
+    () => [PlanCommentDecorations.configure({ onCommentClick: (id: string) => commentClickRef.current?.(id) })],
+    [],
+  )
   const editorOptions = useMemo(
     () => ({
       editorProps: {
@@ -100,6 +113,7 @@ export function PlanReviewEditor({
           }
           return false
         },
+        transformPasted: stripUnsupportedPasteMarks,
       },
     }),
     [],

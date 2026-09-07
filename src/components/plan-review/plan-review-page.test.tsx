@@ -1,9 +1,11 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { JSONContent } from '@tiptap/core'
+
 import { usePlanReviewStore } from '@/stores/plan-review-store'
-import type { PlanReviewInfoResponse, PlanRevisionInfoResponse } from '@/types'
+import type { PlanProseMirrorRange, PlanReviewInfoResponse, PlanRevisionInfoResponse } from '@/types'
 import { PlanReviewPage } from './plan-review-page'
 
 const mocks = vi.hoisted(() => ({
@@ -11,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   listPlanRevisions: vi.fn(),
   savePlanReviewDraft: vi.fn(),
   continuePlanReviewDelivery: vi.fn(),
+  decidePlanReview: vi.fn(),
+  editorOnChange: null as null | ((document: JSONContent, anchors: Map<string, PlanProseMirrorRange | null>) => void),
 }))
 
 vi.mock('react-i18next', () => ({
@@ -26,11 +30,17 @@ vi.mock('@/api', () => ({
     listPlanRevisions: mocks.listPlanRevisions,
     savePlanReviewDraft: mocks.savePlanReviewDraft,
     continuePlanReviewDelivery: mocks.continuePlanReviewDelivery,
+    decidePlanReview: mocks.decidePlanReview,
   },
 }))
 
 vi.mock('@/components/chat/file-diff-card', () => ({ FileDiffCard: () => <div /> }))
-vi.mock('./plan-review-editor', () => ({ PlanReviewEditor: () => <div /> }))
+vi.mock('./plan-review-editor', () => ({
+  PlanReviewEditor: (props: { onChange: NonNullable<typeof mocks.editorOnChange> }) => {
+    mocks.editorOnChange = props.onChange
+    return <div data-testid="rich-editor" />
+  },
+}))
 
 vi.mock('@gravity-ui/icons', () => ({
   ChevronDown: () => null,
@@ -67,12 +77,16 @@ vi.mock('@heroui/react', () => {
       <button onClick={onAction}>{children}</button>
     ),
   })
-  const Tooltip = Object.assign(pass, { Content: pass })
+  const Tooltip = Object.assign(pass, {
+    Content: pass,
+    Trigger: ({ children, render }: { children?: React.ReactNode; render?: (props: object) => React.ReactNode }) =>
+      render ? render({ children }) : <>{children}</>,
+  })
   return {
     Button,
     Chip: pass,
     Dropdown,
-    Spinner: () => null,
+    Skeleton: () => <div />,
     TextArea: (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => <textarea {...props} />,
     Tooltip,
   }
@@ -236,8 +250,8 @@ describe('PlanReviewPage history feedback', () => {
     })
 
     render(<PlanReviewPage reviewId="review-2" onClose={vi.fn()} />)
-    await screen.findByText('planReview.history.item:1')
-    await userEvent.click(screen.getByRole('button', { name: 'planReview.history.item:1' }))
+    await screen.findByText('planReview.revision:1')
+    await userEvent.click(screen.getByRole('button', { name: 'planReview.revision:1' }))
 
     await waitFor(() => expect(mocks.getPlanReview).toHaveBeenCalledWith({ reviewId: 'review-1' }))
     expect(await screen.findByText('Keep the original scope')).toBeInTheDocument()
@@ -337,5 +351,183 @@ describe('PlanReviewPage history feedback', () => {
     expect(screen.queryByRole('button', { name: 'planReview.continueDelivery' })).not.toBeInTheDocument()
 
     rerender(<PlanReviewPage reviewId="review-2" onClose={vi.fn()} />)
+  })
+})
+
+describe('PlanReviewPage rich editor values', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.editorOnChange = null
+    usePlanReviewStore.setState({ activeReviewId: null, summaries: {} })
+  })
+
+  function untouchedRichReview() {
+    const currentRevision = revision('revision-1', 1, '# Plan\n\n- last item\n')
+    const current = review('review-1', currentRevision, 'pending')
+    return { ...current, draft: { ...current.draft, generation: 0 } }
+  }
+
+  it('does not read the editor-appended trailing paragraph as an edit, and names a refused value without a template', async () => {
+    mocks.getPlanReview.mockResolvedValue(untouchedRichReview())
+    mocks.listPlanRevisions.mockResolvedValue([])
+
+    render(<PlanReviewPage reviewId="review-1" onClose={vi.fn()} />)
+    await screen.findByTestId('rich-editor')
+    const onChange = mocks.editorOnChange
+    expect(onChange).not.toBeNull()
+
+    // What the live editor reports after a click: the parsed document plus
+    // StarterKit's trailing paragraph. Not an edit, so nothing to save.
+    act(() => {
+      onChange!(
+        {
+          type: 'doc',
+          content: [
+            { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: 'Plan' }] },
+            {
+              type: 'bulletList',
+              content: [
+                { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'last item' }] }] },
+              ],
+            },
+            { type: 'paragraph' },
+          ],
+        },
+        new Map(),
+      )
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('planReview.save.saved')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(mocks.savePlanReviewDraft).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'planReview.approve' })).toBeEnabled()
+
+    // A value Markdown genuinely cannot hold: the status names the failure
+    // instead of leaking the banner's `{{error}}` template, and deciding waits.
+    act(() => {
+      onChange!(
+        {
+          type: 'doc',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Line' }, { type: 'hardBreak' }] }],
+        },
+        new Map(),
+      )
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('planReview.save.failed')
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'planReview.save.error:Error: serialized plan Markdown changes the editor document semantics',
+    )
+    expect(screen.getByRole('button', { name: 'planReview.approve' })).toBeDisabled()
+
+    // The next acceptable edit clears it without a reload.
+    act(() => {
+      onChange!({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Line' }] }] }, new Map())
+    })
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('planReview.save.dirty')
+  })
+})
+
+describe('PlanReviewPage comments', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    usePlanReviewStore.setState({ activeReviewId: null, summaries: {} })
+  })
+
+  it('does not save a comment box until something is typed into it', async () => {
+    const currentRevision = revision('revision-1', 1, '# Plan\n')
+    mocks.getPlanReview.mockResolvedValue(review('review-1', currentRevision, 'pending'))
+    mocks.listPlanRevisions.mockResolvedValue([currentRevision])
+    mocks.savePlanReviewDraft.mockResolvedValue({ generation: 2, draft_sha256: 'next' })
+
+    render(<PlanReviewPage reviewId="review-1" onClose={vi.fn()} />)
+    const source = (await screen.findByLabelText('planReview.source.label')) as HTMLTextAreaElement
+    source.setSelectionRange(2, 6)
+    fireEvent.select(source)
+    await userEvent.click(screen.getByRole('button', { name: 'planReview.comments.add' }))
+
+    // Rendered twice: the aside and the sheet the add button opens draw the same pane.
+    const [box] = await screen.findAllByLabelText('planReview.comments.commentLabel')
+    await new Promise((resolve) => setTimeout(resolve, 600))
+    // Selecting text is persisted on its own, so a save may run; the box is not in it.
+    for (const [request] of mocks.savePlanReviewDraft.mock.calls) expect(request.comments).toEqual([])
+    expect(screen.getByRole('button', { name: 'planReview.approve' })).toBeEnabled()
+
+    fireEvent.change(box, { target: { value: 'Tighten this' } })
+    await waitFor(() =>
+      expect(mocks.savePlanReviewDraft.mock.calls.at(-1)?.[0].comments).toMatchObject([{ body: 'Tighten this' }]),
+    )
+  })
+})
+
+describe('PlanReviewPage save lifecycle', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    usePlanReviewStore.setState({ activeReviewId: null, summaries: {} })
+  })
+
+  it('flushes the debounced draft when the page is closed instead of dropping it', async () => {
+    const currentRevision = revision('revision-1', 1, '# Plan\n')
+    mocks.getPlanReview.mockResolvedValue(review('review-1', currentRevision, 'pending'))
+    mocks.listPlanRevisions.mockResolvedValue([currentRevision])
+    mocks.savePlanReviewDraft.mockResolvedValue({ generation: 2, draft_sha256: 'next' })
+
+    const { unmount } = render(<PlanReviewPage reviewId="review-1" onClose={vi.fn()} />)
+    const note = await screen.findByLabelText('planReview.comments.globalNote')
+    fireEvent.change(note, { target: { value: 'Ship it' } })
+    expect(mocks.savePlanReviewDraft).not.toHaveBeenCalled()
+
+    unmount()
+    await waitFor(() => expect(mocks.savePlanReviewDraft).toHaveBeenCalledTimes(1))
+    expect(mocks.savePlanReviewDraft.mock.calls[0][0].globalNote).toBe('Ship it')
+  })
+
+  it('selecting source text does not save; only a comment does', async () => {
+    const currentRevision = revision('revision-1', 1, '# Plan\n')
+    mocks.getPlanReview.mockResolvedValue(review('review-1', currentRevision, 'pending'))
+    mocks.listPlanRevisions.mockResolvedValue([currentRevision])
+
+    render(<PlanReviewPage reviewId="review-1" onClose={vi.fn()} />)
+    const source = (await screen.findByLabelText('planReview.source.label')) as HTMLTextAreaElement
+    source.setSelectionRange(2, 6)
+    fireEvent.select(source)
+    await new Promise((resolve) => setTimeout(resolve, 600))
+    expect(mocks.savePlanReviewDraft).not.toHaveBeenCalled()
+    expect(screen.getByRole('status', { name: '' })).toHaveTextContent('planReview.save.saved')
+  })
+
+  it('lists the submitted revision once, as the current review', async () => {
+    const older = revision('revision-1', 1, '# Plan\n')
+    const currentRevision = revision('revision-2', 2, '# Plan\n\nNext\n')
+    mocks.getPlanReview.mockResolvedValue(review('review-2', currentRevision, 'pending'))
+    mocks.listPlanRevisions.mockResolvedValue([older, currentRevision])
+
+    render(<PlanReviewPage reviewId="review-2" onClose={vi.fn()} />)
+    await screen.findByText('planReview.revision:1')
+    expect(screen.queryByRole('button', { name: 'planReview.revision:2' })).not.toBeInTheDocument()
+  })
+
+  it('says which decision is still in doubt, in its own words, and offers a reload', async () => {
+    const currentRevision = revision('revision-1', 1, '# Plan\n')
+    const current = review('review-1', currentRevision, 'pending')
+    mocks.getPlanReview.mockResolvedValue({ ...current, draft: { ...current.draft, global_note: 'Overall' } })
+    mocks.listPlanRevisions.mockResolvedValue([currentRevision])
+    mocks.savePlanReviewDraft.mockResolvedValue({ generation: 2, draft_sha256: 'next' })
+    mocks.decidePlanReview.mockRejectedValue(new Error('network down'))
+
+    render(<PlanReviewPage reviewId="review-1" onClose={vi.fn()} />)
+    const requestChanges = await screen.findByRole('button', { name: 'planReview.requestChanges' })
+    await waitFor(() => expect(requestChanges).toBeEnabled())
+    await userEvent.click(requestChanges)
+    expect(await screen.findByText('Error: network down')).toBeInTheDocument()
+
+    // Withdraw the note so the other decision becomes available, then press it:
+    // not a raw English string, and a way out beside it.
+    mocks.decidePlanReview.mockResolvedValue({ state: 'approved', delivery_state: null })
+    fireEvent.change(screen.getByLabelText('planReview.comments.globalNote'), { target: { value: '' } })
+    const approve = screen.getByRole('button', { name: 'planReview.approve' })
+    await waitFor(() => expect(approve).toBeEnabled())
+    await userEvent.click(approve)
+    expect(await screen.findByText('planReview.decision.inDoubt')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'planReview.reload' }).length).toBeGreaterThan(0)
   })
 })

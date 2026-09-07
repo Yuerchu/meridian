@@ -130,6 +130,21 @@ function ChatViewInner({
   }, [isOneBot, messages])
   const senderNames = useSenderNames(speakerKey)
   const { t } = useTranslation()
+  // What the barrier is waiting on. A decision already made is not a review
+  // still owed: after Approve the turn is held until the agent has read the
+  // decision, and telling the person to go and review it again is wrong twice.
+  const reviewBlockedMessage =
+    pendingPlanReview === null || pendingPlanReview.status === 'pending'
+      ? t('chat.plan.reviewBlocked')
+      : pendingPlanReview.delivery_state === 'held' || pendingPlanReview.delivery_state === 'in_doubt'
+        ? t('chat.plan.deliveryAttention')
+        : t('chat.plan.deliveryPending')
+  const reviewBlockedAction =
+    pendingPlanReview === null || pendingPlanReview.status === 'pending'
+      ? t('chat.plan.review')
+      : pendingPlanReview.delivery_state === 'held' || pendingPlanReview.delivery_state === 'in_doubt'
+        ? t('chat.plan.resolveDelivery')
+        : t('chat.plan.viewDelivery')
   const { confirm, confirmDialog } = useConfirm()
 
   const clearShellRetry = useCallback((turnId: string) => {
@@ -638,7 +653,7 @@ function ChatViewInner({
 
   const handleSubmit = useCallback(() => {
     if (reviewBlocked) {
-      storeSetError(conversationId, t('chat.plan.reviewBlocked'))
+      storeSetError(conversationId, reviewBlockedMessage)
       if (pendingPlanReview) openPlanReview(pendingPlanReview.review_id)
       return
     }
@@ -736,6 +751,7 @@ function ChatViewInner({
     queueDelivery,
     t,
     reviewBlocked,
+    reviewBlockedMessage,
     pendingPlanReview,
     openPlanReview,
   ])
@@ -786,7 +802,7 @@ function ChatViewInner({
         }
         trailing={<TranscriptStatus compacting={compacting} error={error} />}
         emptyState={
-          messages.length === 0 ? (
+          messages.length === 0 && !error ? (
             <ProEmptyState size="md" className="flex-1 justify-center px-4 py-10">
               <ProEmptyState.Header>
                 <ProEmptyState.Title>{t('chat.empty.subtitle')}</ProEmptyState.Title>
@@ -840,10 +856,10 @@ function ChatViewInner({
 
       {reviewBlocked && (
         <div className="flex shrink-0 items-center gap-3 border-t border-border bg-accent-soft px-4 py-2 text-xs text-accent">
-          <p className="min-w-0 flex-1">{t('chat.plan.reviewBlocked')}</p>
+          <p className="min-w-0 flex-1">{reviewBlockedMessage}</p>
           {pendingPlanReview && (
             <Button size="sm" variant="ghost" onPress={() => openPlanReview(pendingPlanReview.review_id)}>
-              {t('chat.plan.review')}
+              {reviewBlockedAction}
             </Button>
           )}
         </div>

@@ -200,35 +200,43 @@ describe('ChatView initial draft', () => {
   })
 
   it.each([
-    ['pending review', 'pending', null],
-    ['queued continuation', 'approved', 'queued'],
-    ['held continuation', 'changes_requested', 'held'],
-    ['in-doubt continuation', 'approved', 'in_doubt'],
-  ] as const)('blocks the composer and starter prompts for a durable %s barrier', (_label, status, deliveryState) => {
-    usePlanReviewStore.setState({
-      summaries: {
-        'review-1': {
-          review_id: 'review-1',
-          conversation_id: 'conversation-1',
-          document_id: 'document-1',
-          revision_id: 'revision-1',
-          assistant_message_id: 'message-1',
-          provider_call_id: 'call-1',
-          turn_id: 'turn-1',
-          status,
-          delivery_state: deliveryState,
-          lock_version: 0,
+    ['pending review', 'pending', null, /Review plan|审阅计划|chat\.plan\.review$/],
+    ['queued continuation', 'approved', 'queued', /View progress|查看进度|chat\.plan\.viewDelivery/],
+    ['held continuation', 'changes_requested', 'held', /Resolve|去处理|chat\.plan\.resolveDelivery/],
+    ['in-doubt continuation', 'approved', 'in_doubt', /Resolve|去处理|chat\.plan\.resolveDelivery/],
+  ] as const)(
+    'blocks the composer and starter prompts for a durable %s barrier',
+    (_label, status, deliveryState, action) => {
+      usePlanReviewStore.setState({
+        summaries: {
+          'review-1': {
+            review_id: 'review-1',
+            conversation_id: 'conversation-1',
+            document_id: 'document-1',
+            revision_id: 'revision-1',
+            assistant_message_id: 'message-1',
+            provider_call_id: 'call-1',
+            turn_id: 'turn-1',
+            status,
+            delivery_state: deliveryState,
+            lock_version: 0,
+          },
         },
-      },
-    })
+      })
 
-    render(<ChatView conversationId="conversation-1" />)
+      render(<ChatView conversationId="conversation-1" />)
 
-    expect(latestInputBar().disabled).toBe(true)
-    expect(latestInputBar().streaming).toBe(false)
-    expect(latestStarterPrompts().disabled).toBe(true)
-    expect(screen.getByRole('button', { name: /Review plan|审阅计划|chat.plan.review/ })).toBeInTheDocument()
-  })
+      expect(latestInputBar().disabled).toBe(true)
+      expect(latestInputBar().streaming).toBe(false)
+      expect(latestStarterPrompts().disabled).toBe(true)
+      // The banner says what is owed: a review while the plan is pending, the
+      // delivery once the decision has been made.
+      expect(screen.getByRole('button', { name: action })).toBeInTheDocument()
+      if (status !== 'pending') {
+        expect(screen.queryByText(/Review the pending plan|请先审阅待处理的计划/)).not.toBeInTheDocument()
+      }
+    },
+  )
 
   it('unblocks after continuation delivery is acknowledged', () => {
     usePlanReviewStore.setState({

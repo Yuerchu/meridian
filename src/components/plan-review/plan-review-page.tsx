@@ -2,15 +2,24 @@ import { useCallback, useEffect, useMemo, useRef, useState, type Key, type RefOb
 import { useTranslation } from 'react-i18next'
 
 import { ChevronDown, Clock, Comment, TriangleExclamation, Xmark } from '@gravity-ui/icons'
-import { Button, Chip, Dropdown, Spinner, TextArea, Tooltip } from '@heroui/react'
+import { Button, Chip, Dropdown, Skeleton, TextArea, Tooltip } from '@heroui/react'
 import { Segment } from '@heroui-pro/react/segment'
 import { Sheet } from '@heroui-pro/react/sheet'
 
 import { api } from '@/api'
 import { FileDiffCard } from '@/components/chat/file-diff-card'
+import { Hint } from '@/components/ui/hint'
+import { useHistoryLevel } from '@/hooks/use-history-level'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { useIsNarrow } from '@/hooks/use-narrow'
 import { remapSourceRange, sourceRangeAnchor } from '@/lib/plan-comment-decorations'
 import { parsePatchText } from '@/lib/patch-parse'
-import { parsePlanMarkdown, planSuggestionPatch, serializePlanDocument } from '@/lib/plan-markdown'
+import {
+  normalizePlanEditorDocument,
+  parsePlanMarkdown,
+  planSuggestionPatch,
+  serializePlanDocument,
+} from '@/lib/plan-markdown'
 import {
   planCommentRequests,
   planDraftPayload,
@@ -21,6 +30,7 @@ import {
 import {
   PlanDraftSaveQueue,
   PlanDecisionAttempt,
+  PlanDecisionInDoubtError,
   planReviewActionRules,
   type PlanDraftSaveState,
 } from '@/lib/plan-review-draft'
@@ -34,10 +44,21 @@ import type {
   PlanSourceRange,
 } from '@/types'
 
-import { PlanCommentsPane } from './plan-comments-pane'
+import { PlanCommentsPane, type PlanCommentFocusRequest } from './plan-comments-pane'
 import { PlanReviewEditor } from './plan-review-editor'
 
 type ReviewTab = 'plan' | 'changes' | 'suggestions'
+
+/** The width below which the comment rail folds into a sheet. The same number
+ *  as the `@container (min-width: 60rem)` rule in `index.css` that hides the
+ *  rail: the two have to agree, or the page opens a sheet over a rail that is
+ *  already showing the comment, or hides the only pane the comment is in. */
+const COMMENT_RAIL_MIN = 960
+
+/** How long the sheet takes to leave before the editor may take focus. A
+ *  React Aria modal hands focus back to its trigger as it closes, so a
+ *  selection made while it is still on screen is taken away again. */
+const SHEET_EXIT_MS = 250
 
 function PlanDiff({ patch, emptyLabel }: { patch: string; emptyLabel: string }) {
   const files = useMemo(() => parsePatchText(patch), [patch])
@@ -49,6 +70,48 @@ function PlanDiff({ patch, emptyLabel }: { patch: string; emptyLabel: string }) 
       {files.map((file, index) => (
         <FileDiffCard key={`${file.path}:${index}`} diff={file} />
       ))}
+    </div>
+  )
+}
+
+/** The page's shape while the review loads: header, view switch, a document's
+ *  worth of lines and the decision row. Sized to what replaces it, so nothing
+ *  moves when the review lands. */
+function PlanReviewSkeleton() {
+  const { t } = useTranslation()
+  return (
+    <div
+      data-slot="plan-review-skeleton"
+      role="status"
+      aria-busy="true"
+      aria-label={t('common.loading')}
+      className="flex h-full min-h-0 flex-col bg-surface"
+    >
+      <div className="flex min-h-14 shrink-0 items-center gap-3 border-b border-border px-3 @sm:px-5">
+        <div className="flex-1 space-y-1.5">
+          <Skeleton className="h-4 w-28 rounded-md" />
+          <Skeleton className="h-3 w-56 rounded-md" />
+        </div>
+        <Skeleton className="h-8 w-24 rounded-lg" />
+        <Skeleton className="size-8 rounded-lg" />
+      </div>
+      <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2 @sm:px-5">
+        <Skeleton className="h-8 w-60 rounded-lg" />
+      </div>
+      <div className="mx-auto w-full max-w-[54rem] flex-1 space-y-3 px-6 py-8">
+        <Skeleton className="h-6 w-2/3 rounded-md" />
+        <Skeleton className="h-3.5 w-full rounded-md" />
+        <Skeleton className="h-3.5 w-11/12 rounded-md" />
+        <Skeleton className="h-3.5 w-4/5 rounded-md" />
+        <Skeleton className="mt-6 h-5 w-1/3 rounded-md" />
+        <Skeleton className="h-3.5 w-full rounded-md" />
+        <Skeleton className="h-3.5 w-10/12 rounded-md" />
+      </div>
+      <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border px-3 py-3 @sm:px-5">
+        <Skeleton className="h-10 w-24 rounded-lg" />
+        <Skeleton className="h-10 w-24 rounded-lg" />
+        <Skeleton className="h-10 w-24 rounded-lg" />
+      </div>
     </div>
   )
 }
@@ -88,7 +151,7 @@ function SourceEditor({
       />
       {!isReadOnly && (
         <div className="flex shrink-0 items-center justify-between border-t border-border px-3 py-2">
-          <p className="text-xs text-muted">{t('planReview.source.exactOffsets')}</p>
+          <p className="text-xs text-muted">{t('planReview.source.hint')}</p>
           <Button
             size="sm"
             variant="ghost"
@@ -104,6 +167,16 @@ function SourceEditor({
   )
 }
 
+/** One row of the problem banner: something wrong, and the one thing to do
+ *  about it. Each problem gets its own row rather than sharing a sentence
+ *  chosen by priority, so a button is never shown beside a message that does
+ *  not explain it. */
+interface Problem {
+  key: string
+  message: string
+  action?: { label: string; run: () => void; pending?: boolean }
+}
+
 export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClose: () => void }) {
   const { t } = useTranslation()
   const [info, setInfo] = useState<PlanReviewInfoResponse | null>(null)
@@ -115,11 +188,19 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [saveState, setSaveState] = useState<PlanDraftSaveState>('saved')
   const [saveError, setSaveError] = useState<string | null>(null)
+  // A live editor value the Markdown codec refuses. Kept apart from the save
+  // queue's state because it clears itself on the next acceptable edit, while
+  // a failed request is sticky until the server copy is reloaded.
+  const [codecError, setCodecError] = useState<string | null>(null)
+  const effectiveSaveState: PlanDraftSaveState = codecError ? 'error' : saveState
   const [pageError, setPageError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [deciding, setDeciding] = useState(false)
+  const [restoring, setRestoring] = useState(false)
+  const [continuing, setContinuing] = useState(false)
   const [editorMount, setEditorMount] = useState(0)
   const [focusAnchor, setFocusAnchor] = useState<PlanProseMirrorRange | null>(null)
+  const [commentFocus, setCommentFocus] = useState<PlanCommentFocusRequest | null>(null)
   const [sourceSelection, setSourceSelection] = useState<PlanSourceRange | null>(null)
   const sourceRef = useRef<HTMLTextAreaElement>(null)
   const saveQueueRef = useRef<PlanDraftSaveQueue | null>(null)
@@ -131,6 +212,12 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
   const observedSummaryRef = useRef<string | null>(null)
   const summaries = usePlanReviewStore((state) => state.summaries)
   const summary = summaries[reviewId]
+  // Whether the comment rail is folded into the sheet. Measured on the page
+  // root, whose width is decided from above; the viewport is the fallback for
+  // as long as nothing can be measured.
+  const { ref: pageRef, isNarrow: railFolded } = useIsNarrow(COMMENT_RAIL_MIN, useIsMobile())
+
+  useHistoryLevel(commentsOpen, () => setCommentsOpen(false))
 
   const applyReview = useCallback(
     (next: PlanReviewInfoResponse) => {
@@ -138,16 +225,21 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
       const payload = planDraftPayload(local)
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
       lastPayloadRef.current = JSON.stringify(payload)
-      saveQueueRef.current = new PlanDraftSaveQueue(
+      const queue = new PlanDraftSaveQueue(
         reviewId,
         api.savePlanReviewDraft,
         next.draft.generation,
         next.draft.draft_sha256,
         (state, error) => {
+          // A queue replaced while its request was in flight still hears the
+          // answer. That answer is about a generation this page no longer
+          // holds, so it may not write the page's state.
+          if (saveQueueRef.current !== queue) return
           setSaveState(state)
           setSaveError(error ? String(error) : null)
         },
       )
+      saveQueueRef.current = queue
       setInfo(next)
       setDraft(local)
       setHistoricalRevisionId(null)
@@ -156,6 +248,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
       setFocusAnchor(null)
       setSaveState('saved')
       setSaveError(null)
+      setCodecError(null)
       setEditorMount((value) => value + 1)
       decisionAttemptRef.current.reset()
     },
@@ -184,7 +277,10 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
     return () => {
       loadSequenceRef.current += 1
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-      saveQueueRef.current?.clearPending()
+      // Leaving is not discarding. Whatever the debounce was still holding is
+      // the last thing typed, and the queue outlives this component, so it can
+      // finish the save with nobody watching.
+      void saveQueueRef.current?.flush().catch(() => undefined)
     }
   }, [loadReview])
 
@@ -255,10 +351,10 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
         draftMarkdown: draft?.markdown ?? '',
         comments: planCommentRequests(draft?.comments ?? []),
         globalNote: draft?.globalNote ?? null,
-        saveState,
+        saveState: effectiveSaveState,
         isHistorical: historicalRevision !== null,
       }),
-    [draft, historicalRevision, info, saveState],
+    [draft, effectiveSaveState, historicalRevision, info],
   )
 
   const flush = useCallback(async () => {
@@ -271,6 +367,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
 
   const addComment = useCallback(
     (anchor: PlanCommentAnchor) => {
+      const id = crypto.randomUUID()
       setDraft((current) => {
         if (!current) return current
         const position = Math.max(-1, ...current.comments.map((comment) => comment.position)) + 1
@@ -280,7 +377,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           comments: [
             ...current.comments,
             {
-              id: crypto.randomUUID(),
+              id,
               review_id: reviewId,
               position,
               state: 'active',
@@ -292,22 +389,45 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           ],
         }
       })
-      setCommentsOpen(true)
+      // The rail already shows the new box where it is on screen; the sheet is
+      // for where it is not.
+      if (railFolded) setCommentsOpen(true)
+      setCommentFocus({ commentId: id })
     },
-    [reviewId],
+    [railFolded, reviewId],
   )
 
-  const selectComment = useCallback((comment: PlanCommentInfoResponse) => {
-    if (comment.anchor.kind === 'prosemirror_range') {
-      setFocusAnchor(comment.anchor)
-      return
-    }
-    setSourceSelection(comment.anchor)
-    requestAnimationFrame(() => {
-      sourceRef.current?.focus()
-      sourceRef.current?.setSelectionRange(comment.anchor.from, comment.anchor.to)
-    })
-  }, [])
+  const selectComment = useCallback(
+    (comment: PlanCommentInfoResponse) => {
+      // From inside the sheet the text is behind a backdrop, so the jump would
+      // be invisible; close first and let the sheet leave before taking focus.
+      const wasOpen = commentsOpen
+      setCommentsOpen(false)
+      const apply = () => {
+        if (comment.anchor.kind === 'prosemirror_range') {
+          // A copy, not the stored object: the editor keys its scroll on identity.
+          setFocusAnchor({ ...comment.anchor })
+          return
+        }
+        setSourceSelection(comment.anchor)
+        requestAnimationFrame(() => {
+          sourceRef.current?.focus()
+          sourceRef.current?.setSelectionRange(comment.anchor.from, comment.anchor.to)
+        })
+      }
+      if (wasOpen) setTimeout(apply, SHEET_EXIT_MS)
+      else apply()
+    },
+    [commentsOpen],
+  )
+
+  const focusComment = useCallback(
+    (commentId: string) => {
+      if (railFolded) setCommentsOpen(true)
+      setCommentFocus({ commentId })
+    },
+    [railFolded],
+  )
 
   const commentsPane = (headingId: string) =>
     commentDraft ? (
@@ -316,6 +436,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
         comments={commentDraft.comments}
         globalNote={commentDraft.globalNote}
         isReadOnly={isReadOnly}
+        focusRequest={commentFocus}
         onChangeComment={(id, body) =>
           setDraft((current) =>
             current
@@ -369,7 +490,11 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
         setInfo((current) => (current ? { ...current, delivery } : current))
       }
     } catch (error) {
-      setPageError(String(error))
+      setPageError(
+        error instanceof PlanDecisionInDoubtError
+          ? t('planReview.decision.inDoubt', { action: t(`planReview.decision.action.${error.pending}`) })
+          : String(error),
+      )
     } finally {
       setDeciding(false)
     }
@@ -391,34 +516,35 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
   }
 
   const restorePlanFile = async () => {
-    if (!info) return
+    if (!info || restoring) return
+    setRestoring(true)
     setPageError(null)
     try {
       const document = await api.resolvePlanFileConflict({ documentId: info.document.id, action: 'restore_db' })
       setInfo((current) => (current ? { ...current, document } : current))
     } catch (error) {
       setPageError(String(error))
+    } finally {
+      setRestoring(false)
     }
   }
 
   const continueDelivery = async () => {
-    if (!info?.delivery) return
+    if (!info?.delivery || continuing) return
+    setContinuing(true)
     setPageError(null)
     try {
       const delivery = await api.continuePlanReviewDelivery({ deliveryId: info.delivery.id })
       setInfo((current) => (current ? { ...current, delivery } : current))
     } catch (error) {
       setPageError(String(error))
+    } finally {
+      setContinuing(false)
     }
   }
 
   if (loading && !info) {
-    return (
-      <div role="status" className="flex h-full items-center justify-center gap-2 text-sm text-muted">
-        <Spinner size="sm" />
-        {t('planReview.loading')}
-      </div>
-    )
+    return <PlanReviewSkeleton />
   }
 
   if (!info || !draft) {
@@ -447,10 +573,55 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
   const visibleMode = historicalContent?.mode ?? draft.mode
   const visibleFallback = historicalContent?.mode === 'source' ? historicalContent.reason : draft.fallbackReason
 
+  const reload = { label: t('planReview.reload'), run: () => void loadReview() }
+  const problems: Problem[] = []
+  if (effectiveSaveState === 'conflict') {
+    problems.push({ key: 'save-conflict', message: t('planReview.save.conflict'), action: reload })
+  } else if (effectiveSaveState === 'error') {
+    problems.push({
+      key: 'save-error',
+      message: t('planReview.save.error', { error: saveError ?? codecError ?? t('planReview.unknownError') }),
+      action: reload,
+    })
+  }
+  if (pageError) problems.push({ key: 'page', message: pageError, action: reload })
+  if (info.document.file_sync_state === 'conflict') {
+    problems.push({
+      key: 'file',
+      message: t('planReview.fileConflict'),
+      action: { label: t('planReview.restoreFile'), run: () => void restorePlanFile(), pending: restoring },
+    })
+  }
+  if (info.delivery?.state === 'held' || info.delivery?.state === 'in_doubt') {
+    // The error is the whole answer to "why does the button do nothing": a
+    // retry that fails the same way lands back here with the same message.
+    problems.push({
+      key: 'delivery',
+      message: info.delivery.error
+        ? t('planReview.deliveryHeldError', { error: info.delivery.error })
+        : t('planReview.deliveryHeld'),
+      action: { label: t('planReview.continueDelivery'), run: () => void continueDelivery(), pending: continuing },
+    })
+  }
+  // Progress, not a problem: the decision is made and on its way. Announced as
+  // status so a screen reader is told once rather than interrupted.
+  const progress =
+    info.delivery?.state === 'queued'
+      ? { message: t('planReview.deliveryQueued'), resumable: true }
+      : info.delivery?.state === 'dispatched'
+        ? { message: t('planReview.deliveryDispatched'), resumable: false }
+        : null
+
+  const historyItems = [...revisions]
+    // The submitted revision is what "current review" shows; listing it again
+    // is two rows for one state.
+    .filter((revision) => revision.id !== info.submitted_revision.id)
+    .sort((left, right) => right.revision_no - left.revision_no)
+
   return (
-    <div data-slot="plan-review-page" className="@container flex h-full min-h-0 flex-col bg-surface">
+    <div ref={pageRef} data-slot="plan-review-page" className="@container flex h-full min-h-0 flex-col bg-surface">
       <header className="shrink-0 border-b border-border">
-        <div className="mx-auto flex min-h-14 w-full max-w-[96rem] items-center gap-2 px-3 sm:px-5">
+        <div className="mx-auto flex min-h-14 w-full max-w-[96rem] items-center gap-2 px-3 @sm:px-5">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <h1 className="truncate text-sm font-semibold">{t('planReview.title')}</h1>
@@ -458,23 +629,28 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
                 {t(`planReview.status.${info.review.state}`)}
               </Chip>
             </div>
-            <p className="truncate text-xs text-muted">
-              {t('planReview.revision', { number: currentRevisionNumber })} · {info.document.file_rel_path}
+            <p className="flex min-w-0 items-baseline gap-1 text-xs text-muted">
+              <span className="shrink-0">{t('planReview.revision', { number: currentRevisionNumber })} ·</span>
+              <Hint label={info.document.file_rel_path} className="truncate">
+                {info.document.file_rel_path}
+              </Hint>
             </p>
           </div>
 
           <Dropdown>
-            <Button variant="ghost" size="sm" aria-label={t('planReview.history.title')}>
+            <Button variant="ghost" size="sm">
               <Clock />
-              <span className="hidden sm:inline">
-                {historicalRevision
-                  ? t('planReview.revision', { number: historicalRevision.revision_no })
-                  : t('planReview.history.current')}
-              </span>
+              {historicalRevision
+                ? t('planReview.revision', { number: historicalRevision.revision_no })
+                : t('planReview.history.current')}
               <ChevronDown />
             </Button>
             <Dropdown.Popover placement="bottom end">
-              <Dropdown.Menu aria-label={t('planReview.history.title')}>
+              <Dropdown.Menu
+                aria-label={t('planReview.history.title')}
+                selectionMode="single"
+                selectedKeys={[historicalRevisionId ?? 'current']}
+              >
                 <Dropdown.Item
                   id="current"
                   textValue={t('planReview.history.current')}
@@ -482,21 +658,19 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
                 >
                   {t('planReview.history.current')}
                 </Dropdown.Item>
-                {[...revisions]
-                  .sort((left, right) => right.revision_no - left.revision_no)
-                  .map((revision) => (
-                    <Dropdown.Item
-                      key={revision.id}
-                      id={revision.id}
-                      textValue={t('planReview.history.item', { number: revision.revision_no })}
-                      onAction={() => {
-                        setHistoricalRevisionId(revision.id === info.submitted_revision.id ? null : revision.id)
-                        setTab('plan')
-                      }}
-                    >
-                      {t('planReview.history.item', { number: revision.revision_no })}
-                    </Dropdown.Item>
-                  ))}
+                {historyItems.map((revision) => (
+                  <Dropdown.Item
+                    key={revision.id}
+                    id={revision.id}
+                    textValue={t('planReview.revision', { number: revision.revision_no })}
+                    onAction={() => {
+                      setHistoricalRevisionId(revision.id)
+                      setTab('plan')
+                    }}
+                  >
+                    {t('planReview.revision', { number: revision.revision_no })}
+                  </Dropdown.Item>
+                ))}
               </Dropdown.Menu>
             </Dropdown.Popover>
           </Dropdown>
@@ -510,46 +684,50 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
         </div>
       </header>
 
-      {(info.document.file_sync_state === 'conflict' ||
-        info.delivery?.state === 'queued' ||
-        info.delivery?.state === 'dispatched' ||
-        info.delivery?.state === 'held' ||
-        info.delivery?.state === 'in_doubt' ||
-        saveState === 'conflict' ||
-        saveState === 'error' ||
-        pageError) && (
-        <div className="shrink-0 border-b border-border bg-warning-soft px-4 py-2 text-sm text-warning-soft-foreground">
+      {problems.length > 0 && (
+        <div
+          data-slot="plan-review-problems"
+          className="shrink-0 divide-y divide-warning/20 border-b border-border bg-warning-soft text-sm text-warning-soft-foreground"
+        >
+          {problems.map((problem) => (
+            <div key={problem.key} className="mx-auto flex max-w-[96rem] items-center gap-3 px-4 py-2">
+              <TriangleExclamation className="shrink-0" />
+              <p role="alert" className="min-w-0 flex-1 break-words">
+                {problem.message}
+              </p>
+              {problem.action && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  isPending={problem.action.pending}
+                  isDisabled={problem.action.pending}
+                  onPress={problem.action.run}
+                >
+                  {problem.action.label}
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {progress && (
+        <div
+          data-slot="plan-review-progress"
+          className="shrink-0 border-b border-border bg-accent-soft px-4 py-2 text-sm text-accent"
+        >
           <div className="mx-auto flex max-w-[96rem] items-center gap-3">
-            <TriangleExclamation className="shrink-0" />
-            <p role="alert" className="min-w-0 flex-1 break-words">
-              {saveState === 'conflict'
-                ? t('planReview.save.conflict')
-                : saveState === 'error'
-                  ? t('planReview.save.error', { error: saveError })
-                  : pageError
-                    ? pageError
-                    : info.document.file_sync_state === 'conflict'
-                      ? t('planReview.fileConflict')
-                      : info.delivery?.state === 'queued'
-                        ? t('planReview.deliveryQueued')
-                        : info.delivery?.state === 'dispatched'
-                          ? t('planReview.deliveryDispatched')
-                          : t('planReview.deliveryHeld')}
+            <p role="status" className="min-w-0 flex-1 break-words">
+              {progress.message}
             </p>
-            {(saveState === 'conflict' || saveState === 'error') && (
-              <Button size="sm" variant="secondary" onPress={() => void loadReview()}>
-                {t('planReview.reload')}
-              </Button>
-            )}
-            {info.document.file_sync_state === 'conflict' && (
-              <Button size="sm" variant="secondary" onPress={() => void restorePlanFile()}>
-                {t('planReview.restoreFile')}
-              </Button>
-            )}
-            {(info.delivery?.state === 'queued' ||
-              info.delivery?.state === 'held' ||
-              info.delivery?.state === 'in_doubt') && (
-              <Button size="sm" variant="secondary" onPress={() => void continueDelivery()}>
+            {progress.resumable && (
+              <Button
+                size="sm"
+                variant="secondary"
+                isPending={continuing}
+                isDisabled={continuing}
+                onPress={() => void continueDelivery()}
+              >
                 {t('planReview.continueDelivery')}
               </Button>
             )}
@@ -557,8 +735,8 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
         </div>
       )}
 
-      <div className="mx-auto flex min-h-0 w-full max-w-[96rem] flex-1 flex-col px-0 sm:px-5">
-        <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2 sm:px-0">
+      <div className="mx-auto flex min-h-0 w-full max-w-[96rem] flex-1 flex-col px-0 @sm:px-5">
+        <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2 @sm:px-0">
           <Segment
             aria-label={t('planReview.views')}
             size="sm"
@@ -574,7 +752,11 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
             </Segment.Item>
           </Segment>
           <span className="ms-auto text-xs text-muted" role="status">
-            {t(`planReview.save.${saveState}`)}
+            {effectiveSaveState === 'error'
+              ? t('planReview.save.failed')
+              : effectiveSaveState === 'conflict'
+                ? t('planReview.save.conflictShort')
+                : t(`planReview.save.${saveState}`)}
           </span>
           <Button
             size="sm"
@@ -605,11 +787,13 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
                 isReadOnly={isReadOnly}
                 focusAnchor={focusAnchor}
                 onAddComment={addComment}
-                onChange={(document, anchors) => {
+                onCommentClick={focusComment}
+                onChange={(liveDocument, anchors) => {
                   if (isReadOnly) return
                   try {
+                    const document = normalizePlanEditorDocument(liveDocument)
                     const markdown = serializePlanDocument(document)
-                    setSaveError(null)
+                    setCodecError(null)
                     setDraft((current) =>
                       current
                         ? {
@@ -629,8 +813,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
                         : current,
                     )
                   } catch (error) {
-                    setSaveState('error')
-                    setSaveError(String(error))
+                    setCodecError(String(error))
                   }
                 }}
               />
@@ -646,10 +829,11 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
                   isReadOnly={isReadOnly}
                   selection={sourceSelection}
                   textareaRef={sourceRef}
-                  onSelectionChange={(selection) => {
-                    setSourceSelection(selection)
-                    setDraft((current) => (current ? { ...current, selection } : current))
-                  }}
+                  // Local only. The rich editor persists a selection when a
+                  // comment is added and not before; writing every drag into
+                  // the draft here made each one a save — the status flickered
+                  // and Approve went dark for the round trip.
+                  onSelectionChange={setSourceSelection}
                   onAddComment={addComment}
                   onChange={(sourceText) => {
                     setDraft((current) =>
@@ -682,22 +866,23 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
         </div>
       </div>
 
-      <footer className="shrink-0 border-t border-border bg-surface px-3 py-3 sm:px-5">
-        <div className="mx-auto flex max-w-[96rem] flex-col gap-3 sm:flex-row sm:items-center">
+      <footer className="shrink-0 border-t border-border bg-surface px-3 py-3 @sm:px-5">
+        <div className="mx-auto flex max-w-[96rem] flex-col gap-3 @sm:flex-row @sm:items-center">
           <div className="min-w-0 flex-1">
             <p className="text-xs text-muted">
               {info.review.state === 'pending'
                 ? t('planReview.queueHeld')
                 : t(`planReview.decision.${info.review.state}`)}
             </p>
-            {!rules.canApprove && info.review.state === 'pending' && rules.isPristine && saveState !== 'saved' && (
-              <p className="text-xs text-muted">{t('planReview.waitForSave')}</p>
-            )}
+            {!rules.canApprove &&
+              info.review.state === 'pending' &&
+              rules.isPristine &&
+              effectiveSaveState !== 'saved' && <p className="text-xs text-muted">{t('planReview.waitForSave')}</p>}
           </div>
           <div className="flex shrink-0 items-center justify-end gap-2">
             <Button
               variant="ghost"
-              isDisabled={deciding || saveState !== 'saved' || rules.isPristine || isReadOnly}
+              isDisabled={deciding || effectiveSaveState !== 'saved' || rules.isPristine || isReadOnly}
               onPress={() => void discard()}
             >
               {t('planReview.discard')}
@@ -721,6 +906,8 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
         </div>
       </footer>
 
+      {/* Portalled to `body`, so this is the one width here that really is
+          about the viewport rather than the page. */}
       <Sheet isOpen={commentsOpen} placement="right" onOpenChange={setCommentsOpen} isDismissable>
         <Sheet.Backdrop variant="blur">
           <Sheet.Content className="w-full sm:max-w-md">

@@ -295,3 +295,77 @@ describe('tool panels', () => {
     ).toBeNull()
   })
 })
+
+describe('every panel opens the same way', () => {
+  beforeAll(async () => {
+    await i18n.changeLanguage('en')
+  })
+
+  beforeEach(() => {
+    useConversationStore.setState({ sessions: {}, activeId: 'conv' })
+    useConversationStore.getState().ensureSession('conv')
+  })
+
+  /// A search used to draw its pattern in the header and then a key/value
+  /// table of pattern and path under it — the same values twice, in two
+  /// shapes. The title is the pattern; the path is the meta line; the body
+  /// is the matches, and nothing else.
+  it('names a search by its pattern with the rest of its arguments as a meta line', async () => {
+    const { container } = onKeyboard(
+      <ToolCallBlock
+        data={call(
+          'search_files',
+          { pattern: 'class UserFileBase', path: 'C:/proj/src', max_results: 50 },
+          'completed',
+          {
+            result: 'C:/proj/src/base.py:46:class UserFileBase(SQLModelBase):',
+          },
+        )}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Search Files/ }))
+    const p = panel(container)
+    expect(p.querySelector('[data-slot="chat-tool-panel-title"]')).toHaveTextContent('class UserFileBase')
+    const meta = p.querySelector('[data-slot="tool-args-meta"]')!
+    expect(meta).toHaveTextContent('C:/proj/src')
+    expect(meta).toHaveTextContent('50')
+    expect(meta.textContent).not.toContain('class UserFileBase')
+    expect(p.querySelector('[data-slot="tool-args-list"]')).toBeNull()
+    expect(p.querySelector('[data-slot="search-result"]')).toHaveTextContent('class UserFileBase(SQLModelBase):')
+  })
+
+  /// A tool with no shape of its own used to open on a bare argument table
+  /// and a wall of text. It opens on a title like every other panel — its
+  /// first short argument — and a skill's text is drawn as the Markdown it is.
+  it('gives a tool with no known shape a title from its first argument and draws a skill as prose', async () => {
+    const { container } = onKeyboard(
+      <ToolCallBlock
+        data={call('load_skill', { skill_name: 'claude-code-plan-review' }, 'completed', {
+          result: '# Skill: claude-code-plan-review\n\n## Review procedure\n\n1. Identify the goal.',
+        })}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Load Skill/ }))
+    const p = panel(container)
+    expect(p.querySelector('[data-slot="chat-tool-panel-title"]')).toHaveTextContent('claude-code-plan-review')
+    expect(p.querySelector('[data-slot="tool-args-list"]')).toBeNull()
+    expect(within(p).getByRole('heading', { name: 'Review procedure' })).toBeVisible()
+    expect(p.querySelector('pre')).toBeNull()
+  })
+
+  /// A long argument is a body, not a name: it stays out of the title and
+  /// gets a block of its own.
+  it('keeps a long argument out of the title and in a block of its own', async () => {
+    const prompt = 'x'.repeat(200)
+    const { container } = onKeyboard(
+      <ToolCallBlock
+        data={call('mcp__notes__append', { prompt, tag: 'daily' }, 'completed', { result: '{"ok":true}' })}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /mcp__notes__append/ }))
+    const p = panel(container)
+    expect(p.querySelector('[data-slot="chat-tool-panel-title"]')).toHaveTextContent('daily')
+    expect(p.querySelector('[data-slot="tool-args-list"]')).toHaveTextContent(prompt)
+    expect(p.querySelector('[data-slot="tool-args-meta"]')).toBeNull()
+  })
+})

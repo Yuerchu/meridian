@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { produce } from 'immer'
 import { api } from '@/api'
 import { parseTodoArgs, toDrafts, type TodoArgs } from '@/components/chat/todo-list'
+import { planReviewToolStatus } from '@/lib/plan-review-status'
 import { parseJsonText, requireExactKeys, requireKnownKeys, requireRecord } from '@/lib/strict-json'
 import type {
   AutoReviewVerdictInfoResponse,
@@ -52,10 +53,9 @@ function storedCalls(column: unknown[] | null | undefined): OpenAIToolCall[] | n
       typeof fn.arguments !== 'string'
     )
       throw new Error(`message.tool_calls[${index}] has invalid field types`)
-    requireRecord(
-      parseJsonText(fn.arguments, `message.tool_calls[${index}].function.arguments`),
-      `message.tool_calls[${index}].function.arguments`,
-    )
+    // Not parsed here. A stream cut mid-argument leaves a fragment on the row,
+    // and the transcript still has to open; the card shows what was recorded
+    // and the turn record says the call never completed.
     return { id: call.id, type: 'function', function: { name: fn.name, arguments: fn.arguments } }
   })
 }
@@ -189,19 +189,6 @@ function indexPlanReviews(
     byCall.set(review.provider_call_id, review)
   }
   return out
-}
-
-function planReviewToolStatus(status: PlanReviewSummaryInfoResponse['status']): ToolCallDisplay['status'] {
-  switch (status) {
-    case 'pending':
-      return 'pending'
-    case 'approved':
-      return 'completed'
-    case 'changes_requested':
-      return 'denied'
-    case 'orphaned':
-      return 'orphaned'
-  }
 }
 
 /** How a tool row says it went. Null is every row written before the column
@@ -372,7 +359,7 @@ function validateSnapshotContracts(
     for (const field of ['input_tokens', 'output_tokens', 'cache_read_tokens', 'cache_write_tokens'] as const) {
       requireNullableNonNegativeInteger(message[field], `message.${field}`)
     }
-    if (!Number.isInteger(message.sort_order) || message.sort_order < 0 || !Number.isFinite(message.created_at)) {
+    if (!Number.isInteger(message.sort_order) || !Number.isFinite(message.created_at)) {
       throw new Error('message has invalid ordering metadata')
     }
     if (message.sender_id !== null && !Number.isSafeInteger(message.sender_id)) {
@@ -406,7 +393,7 @@ function validateSnapshotContracts(
     }
     const callIds = new Set(calls.map((call) => call.id))
     for (const callId of Object.keys(reviews)) {
-      if (!callIds.has(callId)) throw new Error(`message.auto_review.${callId} names an unknown tool call`)
+      if (!callIds.has(callId)) delete reviews[callId]
     }
     validateContextItems(message)
   }
@@ -1390,16 +1377,31 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     // tool call with no result row is either waiting on the user, still running,
     // or was abandoned when its turn died — identical in the database, and told
     // apart only by the approvals and the turn records that came back with it.
-    const [snap, activeShellTurnId] = await Promise.all([
-      api.conversationSnapshot({ conversationId: convId }),
-      api.activeUserShellTurn(convId),
-    ])
+    let snap: Awaited<ReturnType<typeof api.conversationSnapshot>>
+    let activeShellTurnId: string | null
+    try {
+      ;[snap, activeShellTurnId] = await Promise.all([
+        api.conversationSnapshot({ conversationId: convId }),
+        api.activeUserShellTurn(convId),
+      ])
+    } catch (err) {
+      console.error(`[loadMessages] failed to fetch snapshot for ${convId}:`, err)
+      get().setError(convId, String(err))
+      return false
+    }
     // Reconciled outside produce: comparing against immer drafts would pit proxy
     // references against plain ones.
-    const snapshot = reconcileMessages(
-      get().sessions[convId]?.messages ?? [],
-      hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns, snap.sub_agent_runs, snap.plan_reviews),
-    )
+    let snapshot: MessageViewModel[]
+    try {
+      snapshot = reconcileMessages(
+        get().sessions[convId]?.messages ?? [],
+        hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns, snap.sub_agent_runs, snap.plan_reviews),
+      )
+    } catch (err) {
+      console.error(`[loadMessages] snapshot validation failed for ${convId}:`, err)
+      get().setError(convId, String(err))
+      return false
+    }
     let applied = false
     set(
       produce((state: ConversationStore) => {
@@ -1416,6 +1418,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         session.branches = indexBranches(snap.tree.branches)
         session.turns = snap.turns
         session.activeShellTurnId = activeShellTurnId
+        session.error = null
         adoptLiveTurn(session, snap.turns)
         applyPendingApprovals(session, snap.pending_approvals)
         applyPlanReviewAttention(state, convId, snap.plan_reviews)
@@ -1476,6 +1479,9 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         }),
       )
       if (applied) usePlanReviewStore.getState().rememberSummaries(snap.plan_reviews)
+    } catch (err) {
+      console.error(`[switchBranch] failed for ${convId}:`, err)
+      get().setError(convId, String(err))
     } finally {
       set(
         produce((state: ConversationStore) => {
@@ -2367,30 +2373,36 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     // records matter here more than anywhere — this is the moment a turn ends,
     // and how it ended is what says whether the calls above are abandoned or
     // were simply never going to be answered by anyone.
-    api.conversationSnapshot({ conversationId: convId }).then((snap) => {
-      const snapshot = reconcileMessages(
-        get().sessions[convId]?.messages ?? [],
-        hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns, snap.sub_agent_runs, snap.plan_reviews),
-      )
-      let applied = false
-      set(
-        produce((state: ConversationStore) => {
-          const session = state.sessions[convId]
-          if (!session) return
-          // A new stream started while this snapshot was in flight; its own stop
-          // handler will reload, so applying the stale snapshot would clobber it.
-          if (session.generation !== generation) return
-          session.messages = mergeSnapshot(session, snapshot)
-          session.planReviewBarrier = snap.plan_review_barrier
-          session.branches = indexBranches(snap.tree.branches)
-          session.turns = snap.turns
-          applyPendingApprovals(session, snap.pending_approvals)
-          applyPlanReviewAttention(state, convId, snap.plan_reviews)
-          applied = true
-        }),
-      )
-      if (applied) usePlanReviewStore.getState().rememberSummaries(snap.plan_reviews)
-    })
+    api
+      .conversationSnapshot({ conversationId: convId })
+      .then((snap) => {
+        const snapshot = reconcileMessages(
+          get().sessions[convId]?.messages ?? [],
+          hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns, snap.sub_agent_runs, snap.plan_reviews),
+        )
+        let applied = false
+        set(
+          produce((state: ConversationStore) => {
+            const session = state.sessions[convId]
+            if (!session) return
+            // A new stream started while this snapshot was in flight; its own stop
+            // handler will reload, so applying the stale snapshot would clobber it.
+            if (session.generation !== generation) return
+            session.messages = mergeSnapshot(session, snapshot)
+            session.planReviewBarrier = snap.plan_review_barrier
+            session.branches = indexBranches(snap.tree.branches)
+            session.turns = snap.turns
+            applyPendingApprovals(session, snap.pending_approvals)
+            applyPlanReviewAttention(state, convId, snap.plan_reviews)
+            applied = true
+          }),
+        )
+        if (applied) usePlanReviewStore.getState().rememberSummaries(snap.plan_reviews)
+      })
+      .catch((err) => {
+        console.error(`[handleStop] snapshot reload failed for ${convId}:`, err)
+        get().setError(convId, String(err))
+      })
   },
 
   handleCompactStart: (convId) => {
@@ -2439,11 +2451,14 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         )
         if (applied) usePlanReviewStore.getState().rememberSummaries(snap.plan_reviews)
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error(`[handleCompactDone] snapshot reload failed for ${convId}:`, err)
         set(
           produce((state: ConversationStore) => {
             const session = state.sessions[convId]
-            if (session) session.compacting = false
+            if (!session) return
+            session.compacting = false
+            session.error = String(err)
           }),
         )
       })

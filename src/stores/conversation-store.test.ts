@@ -279,12 +279,24 @@ describe('hydrateBlocks', () => {
     [{ id: 'c1', type: 'function', function: { name: 'read_file', arguments: '{}' }, future: true }],
     [{ id: 'c1', type: 'future', function: { name: 'read_file', arguments: '{}' } }],
     [{ id: 'c1', type: 'function', function: { name: 'read_file' } }],
-    [{ id: 'c1', type: 'function', function: { name: 'read_file', arguments: 'not-json' } }],
-    [{ id: 'c1', type: 'function', function: { name: 'read_file', arguments: '[]' } }],
   ])('rejects malformed stored tool calls: %j', (toolCalls) => {
     expect(() =>
       hydrateBlocks([msg('a', { tool_calls: toolCalls as unknown as MessageInfoResponse['tool_calls'] })]),
     ).toThrow(/message\.tool_calls/)
+  })
+
+  // A stream cut mid-argument leaves a fragment on the row. The transcript
+  // still opens, with the fragment shown as recorded.
+  it('keeps a truncated argument string verbatim instead of refusing the row', () => {
+    const out = hydrateBlocks(
+      [caller('a', 'c1', 'run_command')].map((m) => ({
+        ...m,
+        tool_calls: [
+          { id: 'c1', type: 'function', function: { name: 'run_command', arguments: '{"command":"echo half' } },
+        ],
+      })),
+    )
+    expect(callBlocks(out, 'a')[0]).toMatchObject({ arguments: '{"command":"echo half' })
   })
 
   it('rejects malformed and extended automatic-review verdicts', () => {
@@ -300,6 +312,30 @@ describe('hydrateBlocks', () => {
         hydrateBlocks([{ ...base, auto_review: autoReview as unknown as MessageInfoResponse['auto_review'] }]),
       ).toThrow(/message\.auto_review/)
     }
+  })
+
+  // Compaction summaries sit at sort_order -1 by design. Refusing them blanked
+  // every conversation that had ever compacted.
+  it('accepts a compaction summary at a negative sort_order', () => {
+    const summary = msg('s', { is_compact_summary: true, sort_order: -1 })
+    expect(() => hydrateBlocks([summary])).not.toThrow()
+  })
+
+  // A verdict for a call the row no longer names is orphaned metadata, not a
+  // broken row: dropped, not fatal.
+  it('drops an automatic-review verdict for a call the row does not name', () => {
+    const base = caller('a', 'kept')
+    const verdict = {
+      outcome: 'allow',
+      risk: null,
+      authorization: null,
+      rationale: null,
+      stage: null,
+      model: null,
+      evidence: [],
+    }
+    const row = { ...base, auto_review: { kept: verdict, gone: verdict } } as unknown as MessageInfoResponse
+    expect(() => hydrateBlocks([row])).not.toThrow()
   })
 
   it('rejects unknown message roles', () => {
@@ -1588,11 +1624,12 @@ describe('branch state', () => {
     expect(ids).toEqual(['q', 'a2'])
   })
 
-  it('clears the switching flag even when the request fails', async () => {
+  it('clears the switching flag and surfaces error when the request fails', async () => {
     vi.mocked(api.switchBranch).mockRejectedValue(new Error('nope'))
 
-    await expect(useConversationStore.getState().switchBranch(CONV, 'a2')).rejects.toThrow()
+    await useConversationStore.getState().switchBranch(CONV, 'a2')
     expect(useConversationStore.getState().sessions[CONV]?.switchingBranch).toBe(false)
+    expect(useConversationStore.getState().sessions[CONV]?.error).toBe('Error: nope')
   })
 
   /// Two round trips, and this path assigns the message list outright instead

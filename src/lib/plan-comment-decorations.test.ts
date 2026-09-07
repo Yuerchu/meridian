@@ -1,6 +1,16 @@
+import { Editor } from '@tiptap/core'
+import { StarterKit } from '@tiptap/starter-kit'
 import { describe, expect, it } from 'vitest'
 
-import { remapSourceRange, sourceRangeAnchor } from './plan-comment-decorations'
+import {
+  PlanCommentDecorations,
+  planCommentAt,
+  planCommentDecorationKey,
+  proseMirrorAnchor,
+  remapSourceRange,
+  setPlanCommentDecorations,
+  sourceRangeAnchor,
+} from './plan-comment-decorations'
 
 describe('source plan comment anchors', () => {
   it('keeps exact UTF-16 offsets around emoji and maps a unique quote after insertion', () => {
@@ -49,5 +59,22 @@ describe('source plan comment anchors', () => {
     const source = 'target and target'
     const anchor = sourceRangeAnchor(source, 0, 6)!
     expect(remapSourceRange(source, anchor)).toMatchObject({ from: 0, to: 6, quote: 'target' })
+  })
+})
+
+describe('planCommentAt', () => {
+  it('names the comment whose highlight covers a position, and nothing off it', () => {
+    const editor = new Editor({
+      element: document.createElement('div'),
+      extensions: [StarterKit, PlanCommentDecorations],
+      content: '<p>Keep this wording</p>',
+    })
+    setPlanCommentDecorations(editor, [
+      { id: 'c1', state: 'active', anchor: proseMirrorAnchor(editor.state.doc, 1, 5) },
+    ])
+    const set = planCommentDecorationKey.getState(editor.state)
+    expect(planCommentAt(set, 3)).toBe('c1')
+    expect(planCommentAt(set, 9)).toBeNull()
+    editor.destroy()
   })
 })

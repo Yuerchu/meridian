@@ -24,6 +24,7 @@ export function visible(
   order: string[],
   activeId: string | null,
   transcriptInert = false,
+  activeReviewId: string | null = null,
 ): AttentionItem[] {
   const out: AttentionItem[] = []
   for (const id of order) {
@@ -36,6 +37,10 @@ export function visible(
     // Settings covers that transcript with `inert`, so the card is not
     // reachable and this exclusion would hide the only remaining way in.
     if (item.conversationId === activeId && !transcriptInert) continue
+    // The review page being read. It is the whole of what this row offers, so
+    // the toast would only be a second way onto the page already on screen —
+    // and unlike the transcript case, the page is never inert while it is open.
+    if (item.kind === 'plan_review' && item.reviewId === activeReviewId) continue
     out.push(item)
     if (out.length === MAX_VISIBLE) break
   }

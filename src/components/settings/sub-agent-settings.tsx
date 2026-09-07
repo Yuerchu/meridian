@@ -28,6 +28,7 @@ function KindRow({ kind, providers }: { kind: Kind; providers: ProviderInfoRespo
   const [providerId, setProviderId] = useState('')
   const [modelId, setModelId] = useState('')
   const [models, setModels] = useState<ProviderModelInfoResponse[]>([])
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     api.getPreference({ key: PREFERENCE_KEYS[kind] }).then(({ value }) => {
@@ -51,10 +52,13 @@ function KindRow({ kind, providers }: { kind: Kind; providers: ProviderInfoRespo
   // An incomplete pair deletes the row: null is the one wire spelling of
   // "follow the parent", and a half-selected model never reaches storage.
   function persist(provider: string, model: string) {
-    api.setPreference({
-      key: PREFERENCE_KEYS[kind],
-      value: provider && model ? { providerId: provider, modelId: model } : null,
-    })
+    setError(null)
+    api
+      .setPreference({
+        key: PREFERENCE_KEYS[kind],
+        value: provider && model ? { providerId: provider, modelId: model } : null,
+      })
+      .catch((reason) => setError(String(reason)))
   }
 
   return (
@@ -78,6 +82,11 @@ function KindRow({ kind, providers }: { kind: Kind; providers: ProviderInfoRespo
         labelMode="aria"
         isModelDisabledWithoutProvider
       />
+      {error && (
+        <p role="alert" className="text-xs text-danger break-all">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

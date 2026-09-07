@@ -38,8 +38,14 @@ function jsonValue(value: JSONContent): JsonValue {
   return JSON.parse(JSON.stringify(value)) as JsonValue
 }
 
+/** What the wire and the decision rules see of the local comment list. A
+ *  comment with nothing typed in it is a box on screen, not feedback: the
+ *  server refuses a blank body, and one sent the moment "comment selection"
+ *  was pressed used to wedge the save queue before the first keystroke. */
 export function planCommentRequests(comments: PlanCommentInfoResponse[]): PlanCommentDraftRequest[] {
-  return comments.map(({ id, state, anchor, body }) => ({ id, state, anchor, body }))
+  return comments
+    .filter((comment) => comment.state === 'deleted' || comment.body.trim().length > 0)
+    .map(({ id, state, anchor, body }) => ({ id, state, anchor, body }))
 }
 
 /** Full assistant change across review sessions; per-revision patches are only deltas. */

@@ -470,7 +470,13 @@ export function listen<C extends AppEventChannel>(
   handler: (event: { payload: AppEventPayloadMap[C] }) => void,
 ): Promise<UnlistenFn> {
   return transport.listen<unknown>(channel, (event) => {
-    const payload = parseAppEventPayload(channel, event.payload)
+    let payload: AppEventPayloadMap[C]
+    try {
+      payload = parseAppEventPayload(channel, event.payload)
+    } catch (err) {
+      console.error(`[listen] failed to parse ${channel} event:`, err, event.payload)
+      return
+    }
     handler({ payload })
   })
 }

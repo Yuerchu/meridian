@@ -1,7 +1,6 @@
 import * as React from 'react'
 import { createPortal } from 'react-dom'
 import { Disclosure, Tooltip, tv, type VariantProps } from '@heroui/react'
-import { Widget } from '@heroui-pro/react/widget'
 import { DisclosureStateContext } from 'react-aria-components'
 import { CircleCheck, CircleDashed, CircleExclamation, CircleXmark, Clock } from '@gravity-ui/icons'
 import { useShikiLanguage } from '@/hooks/use-shiki-language'
@@ -393,42 +392,34 @@ function ChatToolContent({ className, children, ...props }: React.ComponentProps
       // A collapsed panel is a zero-height box, not nothing, and a margin on it
       // would be a blank line in the stack for every closed key.
       //
-      // No fill of its own: the Widget inside is the panel's box. React Aria
-      // measures this element's `scrollHeight` for the open/close animation,
-      // so the Widget's margins and `overflow: hidden` are inside what it
-      // measures. The Body stays for one reason — it is where Escape is
-      // listened for — and takes no padding, because the Widget brings its own.
+      // The panel is a continuation of the assistant bubble — same fill, same
+      // visual language. No Widget, no card-inside-a-card: the key above opens
+      // and the detail under it is more of the same message. The ring is on
+      // this element, flush with the content, so it wraps both the key and the
+      // panel as one continuous outline. `rounded-xl` sits under the bubble's
+      // `rounded-2xl` on the radius ladder.
       <Disclosure.Content
         data-slot="chat-tool-content"
         data-presentation="keyboard"
-        className="min-h-0 not-[[hidden]]:mt-1"
+        className={cn(
+          'min-h-0 not-[[hidden]]:mt-1 overflow-hidden rounded-xl bg-[var(--bubble-assistant)] text-[var(--bubble-assistant-foreground)] text-xs',
+          PANEL_RING[state],
+        )}
         {...props}
       >
         <Disclosure.Body className="p-0" onKeyDown={handleKeyDown}>
           <ChatToolFooterContext.Provider value={footer}>
-            {/* The status ring is on the Widget rather than on the panel above
-                it: `.widget` is an opaque `surface-secondary` box that clips
-                its children, and an inset ring painted under it would never
-                be seen. `rounded-xl` holds the radius ladder — Widget's own
-                `2 × --radius` is the bubble's step, and a panel is one below. */}
-            <Widget
-              data-slot="chat-tool-panel"
-              data-state={state}
-              className={cn('w-full min-w-0 rounded-xl text-xs', PANEL_RING[state], className)}
-            >
+            <div data-slot="chat-tool-panel" data-state={state} className={cn('w-full min-w-0', className)}>
               {children}
-              {/* Only while something is in it: an empty `Widget.Footer` is a
-                  band of padding with nothing to say. The node the occupants
-                  portal into is made up front and adopted here, the same
-                  arrangement as the keyboard's stack and for the same reason —
-                  a portal target that appears a render late is one the first
-                  occupant cannot reach. */}
               {occupants > 0 && (
-                <Widget.Footer data-slot="chat-tool-panel-footer" className="flex-col items-stretch gap-2 pt-2.5 pb-3">
+                <div
+                  data-slot="chat-tool-panel-footer"
+                  className="flex flex-col items-stretch gap-2 border-t border-foreground/5 px-3 pt-2.5 pb-3"
+                >
                   <div ref={adoptFooter} className="contents" />
-                </Widget.Footer>
+                </div>
               )}
-            </Widget>
+            </div>
           </ChatToolFooterContext.Provider>
         </Disclosure.Body>
       </Disclosure.Content>
@@ -452,13 +443,12 @@ function ChatToolContent({ className, children, ...props }: React.ComponentProps
 }
 
 /**
- * The three parts of a panel, in the shape Pro's Widget gives a dashboard
- * card: what the call is (header), what it did (body), and what became of it
- * or what it needs (footer).
+ * The three parts of a panel. Each is a plain section with padding: the panel
+ * is a bubble continuation, not a dashboard card, and they are one on top of
+ * the other with nothing between them.
  *
- * Blocks compose these rather than the Widget directly, so that a card drawn
- * outside the keyboard — the playground, the tests — gets the same three
- * regions as plain sections and nothing has to branch on the presentation.
+ * Blocks compose these so that a card drawn outside the keyboard — the
+ * playground, the tests — gets the same three regions without branching.
  */
 function ChatToolPanelHeader({
   title,
@@ -467,95 +457,50 @@ function ChatToolPanelHeader({
   className,
   ...props
 }: Omit<React.ComponentProps<'div'>, 'title'> & {
-  /** What the call is: a path, a command, an errand. Wraps, never clips —
-   *  a decision rests on it. */
   title?: React.ReactNode
-  /** What it is for, in the model's words. */
   description?: React.ReactNode
-  /** Chips at the right-hand end: an exit code, a diff stat, a step count. */
   end?: React.ReactNode
 }) {
-  const presentation = React.useContext(ChatToolPresentationContext)
-  // Chips alone — a diff stat over a card, an exit code over a key that
-  // already shows the whole command — take a shallower row than a title.
   const bare = title == null && description == null
-  const lines = (
-    <div data-slot="chat-tool-panel-lines" className="flex min-w-0 flex-1 flex-col gap-0.5">
-      {title != null && (
-        <Widget.Title
-          data-slot="chat-tool-panel-title"
-          className="min-w-0 text-xs leading-5 font-medium break-words whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]"
-        >
-          {title}
-        </Widget.Title>
-      )}
-      {description != null && (
-        <Widget.Description data-slot="chat-tool-panel-description" className="min-w-0 leading-4 break-words">
-          {description}
-        </Widget.Description>
-      )}
-    </div>
-  )
-  const tail = end != null && (
-    <div data-slot="chat-tool-panel-end" className="flex shrink-0 items-center gap-1.5 text-xs text-muted">
-      {end}
-    </div>
-  )
-  if (presentation === 'card') {
-    return (
-      <div
-        data-slot="chat-tool-panel-header"
-        className={cn('flex items-start justify-between gap-3 px-3', bare ? 'py-1' : 'pt-2 pb-1', className)}
-        {...props}
-      >
-        {lines}
-        {tail}
-      </div>
-    )
-  }
-  // `Widget.Header` is one flex row and its title and description are
-  // sibling spans, so without the column above they would sit side by side.
   return (
-    <Widget.Header
+    <div
       data-slot="chat-tool-panel-header"
-      className={cn('items-start', bare ? 'min-h-0 py-1' : 'py-2', className)}
+      className={cn('flex items-start justify-between gap-3 px-3', bare ? 'py-1' : 'pt-2.5 pb-1', className)}
       {...props}
     >
-      {lines}
-      {tail}
-    </Widget.Header>
+      <div data-slot="chat-tool-panel-lines" className="flex min-w-0 flex-1 flex-col gap-0.5">
+        {title != null && (
+          <span
+            data-slot="chat-tool-panel-title"
+            className="min-w-0 text-xs leading-5 font-medium break-words whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]"
+          >
+            {title}
+          </span>
+        )}
+        {description != null && (
+          <span data-slot="chat-tool-panel-description" className="min-w-0 text-xs leading-4 break-words text-muted">
+            {description}
+          </span>
+        )}
+      </div>
+      {end != null && (
+        <div data-slot="chat-tool-panel-end" className="flex shrink-0 items-center gap-1.5 text-xs text-muted">
+          {end}
+        </div>
+      )}
+    </div>
   )
 }
 
-/** The elevated area. Edge to edge (`p-0`): a diff, a listing or a block of
- *  output brings its own gutter, and a second padding around it would put the
- *  line numbers a step in from the box they belong to. */
 function ChatToolPanelBody({ className, children, ...props }: React.ComponentProps<'div'>) {
-  const presentation = React.useContext(ChatToolPresentationContext)
-  if (presentation === 'card') {
-    return (
-      <div
-        data-slot="chat-tool-panel-body"
-        className={cn('flex min-w-0 flex-col gap-2 px-3 pb-3', className)}
-        {...props}
-      >
-        {children}
-      </div>
-    )
-  }
-  // Flush with the header and the footer, not inset: Widget's own content
-  // area floats a rounded box inside the shell with a margin all round, which
-  // for a dashboard chart reads as elevation and for a diff under its file
-  // name read as the title having come loose from what it titles. One box —
-  // the band above names it, the band below says how it went.
   return (
-    <Widget.Content
+    <div
       data-slot="chat-tool-panel-body"
-      className={cn('m-0 flex min-w-0 flex-col gap-2 overflow-hidden rounded-none p-0 shadow-none', className)}
+      className={cn('flex min-w-0 flex-col gap-2 overflow-hidden', className)}
       {...props}
     >
       {children}
-    </Widget.Content>
+    </div>
   )
 }
 

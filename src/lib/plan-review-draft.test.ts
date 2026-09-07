@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { parsePlanMarkdown } from './plan-markdown'
 import {
+  isPlanStateConflict,
   PlanDecisionAttempt,
+  PlanDecisionInDoubtError,
   PlanDraftSaveQueue,
   planReviewActionRules,
   type PlanDraftPayload,
@@ -109,5 +111,32 @@ describe('plan review decision rules', () => {
     expect(() => attempt.forAction('request_changes')).toThrow('still in doubt')
     attempt.reset()
     expect(attempt.forAction('request_changes').id).not.toBe(first.id)
+  })
+})
+
+describe('isPlanStateConflict', () => {
+  it('recognises the backend conflict variant by its fixed prefix, wrapped or not', () => {
+    expect(isPlanStateConflict('plan state conflict: expected draft generation 3, found 4')).toBe(true)
+    expect(isPlanStateConflict(new Error('plan state conflict: review is not pending'))).toBe(true)
+  })
+
+  it('does not read a validation error as a conflict because of a word in it', () => {
+    expect(isPlanStateConflict('invalid plan state: comment anchor hash is malformed')).toBe(false)
+    expect(isPlanStateConflict('invalid plan state: expected generation to be an integer')).toBe(false)
+  })
+})
+
+describe('PlanDecisionInDoubtError', () => {
+  it('names the decision still in doubt so the page can say so in its own words', () => {
+    const attempt = new PlanDecisionAttempt()
+    attempt.forAction('approve')
+    let caught: unknown = null
+    try {
+      attempt.forAction('request_changes')
+    } catch (error) {
+      caught = error
+    }
+    expect(caught).toBeInstanceOf(PlanDecisionInDoubtError)
+    expect((caught as PlanDecisionInDoubtError).pending).toBe('approve')
   })
 })

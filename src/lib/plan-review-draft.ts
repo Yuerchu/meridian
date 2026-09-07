@@ -9,12 +9,22 @@ import type {
   JsonValue,
 } from '@/types'
 
+/** Thrown when the other decision button is pressed while a lost reply to the
+ *  first is still in doubt. A class rather than a message so the page can put
+ *  its own words on it: the string is what would otherwise reach the banner. */
+export class PlanDecisionInDoubtError extends Error {
+  constructor(public readonly pending: PlanReviewDecisionAction) {
+    super('a different plan decision is still in doubt')
+    this.name = 'PlanDecisionInDoubtError'
+  }
+}
+
 export class PlanDecisionAttempt {
   private attempt: { action: PlanReviewDecisionAction; id: string } | null = null
 
   forAction(action: PlanReviewDecisionAction): { action: PlanReviewDecisionAction; id: string } {
     if (this.attempt && this.attempt.action !== action) {
-      throw new Error('a different plan decision is still in doubt')
+      throw new PlanDecisionInDoubtError(this.attempt.action)
     }
     this.attempt ??= { action, id: crypto.randomUUID() }
     return this.attempt
@@ -82,6 +92,16 @@ export function planReviewActionRules(input: {
 }
 
 type Save = (request: PlanReviewDraftSaveRequest) => Promise<PlanReviewDraftSaveResponse>
+
+/** The backend's `PlanReviewStoreError::Conflict` is the one variant that means
+ *  "reload and look again" rather than "this request was wrong", and it arrives
+ *  flattened to a string with this prefix (`db/ops/plan_review.rs`). Matching
+ *  the prefix and nothing looser: a validation message that happens to contain
+ *  the word "hash" is not a conflict, and reading it as one hides the defect
+ *  behind a reload button. */
+export function isPlanStateConflict(error: unknown): boolean {
+  return /(^|\W)plan state conflict:/.test(String(error))
+}
 
 /**
  * One CAS writer for one open review. Calls are strictly ordered; edits made
@@ -158,11 +178,7 @@ export class PlanDraftSaveQueue {
       } catch (error) {
         this.failure = error
         this.pending = null
-        const message = String(error).toLowerCase()
-        const state = /conflict|generation|stale|hash|compare.and.swap|compare-and-swap/.test(message)
-          ? 'conflict'
-          : 'error'
-        this.onStateChange(state, error)
+        this.onStateChange(isPlanStateConflict(error) ? 'conflict' : 'error', error)
         throw error
       }
     }

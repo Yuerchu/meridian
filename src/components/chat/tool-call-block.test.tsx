@@ -73,7 +73,7 @@ describe('ToolCallBlock file-edit diff rendering', () => {
     const { container } = render(<ToolCallBlock data={toolCall('apply_patch', { base_path: '.', patch })} />)
 
     expectCardOpen(container)
-    expect(screen.getByText('__init__.py')).toBeVisible()
+    expect(screen.getAllByText('__init__.py')[0]).toBeVisible()
     expect(diffText(container)).toContain(') -> AssetCreateResponse:')
     expect(diffText(container)).toContain('async def create_volcengine_asset(')
     expect(screen.getByText('+1')).toBeVisible()
@@ -99,7 +99,7 @@ describe('ToolCallBlock file-edit diff rendering', () => {
     const { container } = render(<ToolCallBlock data={toolCall('apply_patch', { patch })} />)
 
     expectCardOpen(container)
-    expect(screen.getByText('lib.rs')).toBeVisible()
+    expect(screen.getAllByText('lib.rs')[0]).toBeVisible()
     expect(diffText(container)).toContain('fn new() {}')
     expect(diffText(container)).toContain('fn old() {}')
   })
@@ -116,7 +116,7 @@ describe('ToolCallBlock file-edit diff rendering', () => {
     )
 
     expectCardOpen(container)
-    expect(screen.getByText('app.py')).toBeVisible()
+    expect(screen.getAllByText('app.py')[0]).toBeVisible()
     expect(screen.getByText(/line_b/)).toBeVisible()
     expect(screen.getByText(/line_B/)).toBeVisible()
     // Unchanged lines appear once as context, not duplicated as -/+ pairs.
@@ -130,7 +130,7 @@ describe('ToolCallBlock file-edit diff rendering', () => {
     )
 
     expectCardOpen(container)
-    expect(screen.getByText('todo.md')).toBeVisible()
+    expect(screen.getAllByText('todo.md')[0]).toBeVisible()
     expect(diffText(container)).toContain('# Todo')
     expect(diffText(container)).toContain('- item one')
     expect(screen.getByText('+2')).toBeVisible()

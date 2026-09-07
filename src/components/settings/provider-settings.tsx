@@ -299,11 +299,19 @@ function safeThreshold(contextWindow: number, maxOutput: number | null): number 
  */
 type TierDraft = { threshold: string; input: string; output: string; cacheRead: string; cacheWrite: string }
 
+/** The five base price boxes, named so a refusal can point at one. */
+type PriceField = 'input' | 'output' | 'cache' | 'cacheWrite' | 'serverTool'
+
 const BLANK_TIER: TierDraft = { threshold: '', input: '', output: '', cacheRead: '', cacheWrite: '' }
 const ZERO_DECIMAL = decimal('0')
 
 function optionalPrice(value: string): DecimalString | null {
-  const trimmed = value.trim()
+  const trimmed = value
+    .trim()
+    // `.5` and `5.` are how people type prices; the canonical form is what is
+    // stored, so widen the accepted spelling here rather than in the parser.
+    .replace(/^(-?)\.(\d+)$/, '$10.$2')
+    .replace(/^(-?\d+)\.$/, '$1')
   return trimmed === '' ? null : decimal38_18(trimmed)
 }
 
@@ -574,6 +582,17 @@ function ModelConfigEditor({
   const [capFast, setCapFast] = useState<Tri>('auto')
   const [dirty, setDirty] = useState(false)
   const [priceError, setPriceError] = useState<string | null>(initialTiers.error)
+  // Which price boxes the last save attempt refused. The pair rule fails on a
+  // field the reader may have scrolled past, so the box is marked and brought
+  // into view rather than named only in a sentence under the button.
+  const [invalidPrices, setInvalidPrices] = useState<ReadonlySet<PriceField>>(() => new Set())
+  const priceRefs = {
+    input: useRef<HTMLInputElement>(null),
+    output: useRef<HTMLInputElement>(null),
+    cache: useRef<HTMLInputElement>(null),
+    cacheWrite: useRef<HTMLInputElement>(null),
+    serverTool: useRef<HTMLInputElement>(null),
+  } satisfies Record<PriceField, React.RefObject<HTMLInputElement | null>>
 
   useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange])
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange])
@@ -619,51 +638,88 @@ function ModelConfigEditor({
   }
 
   const handleSave = async () => {
-    let prices: Pick<
-      ModelConfigUpsertRequest,
-      'input_price' | 'output_price' | 'cache_read_price' | 'cache_write_price' | 'pricing_tiers' | 'server_tool_price'
-    >
+    const refuse = (message: string, fields: PriceField[]) => {
+      setPriceError(message)
+      setInvalidPrices(new Set(fields))
+      const first = fields.map((field) => priceRefs[field].current).find((el) => el !== null)
+      first?.scrollIntoView({ block: 'center' })
+      first?.focus()
+    }
+    const labels: Record<PriceField, string> = {
+      input: t('settings.model.inputPrice'),
+      output: t('settings.model.outputPrice'),
+      cache: t('settings.model.cachePrice'),
+      cacheWrite: t('settings.model.cacheWritePrice'),
+      serverTool: t('settings.model.serverToolPrice'),
+    }
+    const parsed: Partial<Record<PriceField, DecimalString | null>> = {}
+    for (const [field, raw] of [
+      ['input', inputPrice],
+      ['output', outputPrice],
+      ['cache', cachePrice],
+      ['cacheWrite', cacheWritePrice],
+      ['serverTool', serverToolPrice],
+    ] as const) {
+      try {
+        parsed[field] = optionalPrice(raw)
+      } catch {
+        refuse(t('settings.model.priceInvalidError', { field: labels[field] }), [field])
+        return
+      }
+    }
+    const input = parsed.input ?? null
+    const output = parsed.output ?? null
+    if ((input == null) !== (output == null)) {
+      refuse(t('settings.model.pricePairError'), [input == null ? 'input' : 'output'])
+      return
+    }
+    let priceTiers: PriceTier[]
     try {
-      const input = optionalPrice(inputPrice)
-      const output = optionalPrice(outputPrice)
-      if ((input == null) !== (output == null)) {
-        throw new TypeError('Input and output prices must either both be set or both be blank')
-      }
-      const priceTiers = tiersTo(tiers)
-      if (priceTiers.length > 0 && input == null) {
-        throw new TypeError('Price tiers require input and output prices')
-      }
-      prices = {
-        input_price: input,
-        output_price: output,
-        cache_read_price: optionalPrice(cachePrice),
-        cache_write_price: optionalPrice(cacheWritePrice),
-        pricing_tiers: priceTiers,
-        server_tool_price: optionalPrice(serverToolPrice),
-      }
+      priceTiers = tiersTo(tiers)
     } catch (error) {
+      refuse(error instanceof Error ? error.message : String(error), [])
+      return
+    }
+    if (priceTiers.length > 0 && input == null) {
+      refuse(t('settings.model.tierNeedsBaseError'), ['input', 'output'])
+      return
+    }
+    const prices = {
+      input_price: input,
+      output_price: output,
+      cache_read_price: parsed.cache ?? null,
+      cache_write_price: parsed.cacheWrite ?? null,
+      pricing_tiers: priceTiers,
+      server_tool_price: parsed.serverTool ?? null,
+    }
+    setPriceError(null)
+    setInvalidPrices(new Set())
+    try {
+      await onSave({
+        provider_id: providerId,
+        model_id: modelId,
+        display_name: existing?.display_name ?? null,
+        context_window: parseInt(contextWindow) || 128000,
+        compact_threshold: parseInt(compactThreshold) || 100000,
+        max_output_tokens: maxOutput ? parseInt(maxOutput) : null,
+        ...prices,
+        capability_overrides: buildOverrides(),
+        // What the user asked for, not what is currently supported. Filtering here
+        // against `caps` looked like defence and was a way to lose the setting:
+        // capabilities load asynchronously, so a save while that request was still
+        // in flight — or after it failed — silently wrote an empty list over a
+        // switch the user had just turned on. The narrowing that matters happens
+        // per turn in `resolve_turn_params`, where the model's support is known
+        // for certain and a stale name costs nothing.
+        server_tools: serverTools.length > 0 ? serverTools : null,
+      })
+    } catch (error) {
+      // The backend refuses for reasons the form cannot see — a plan review
+      // holding the model, a conversation set that moved mid-save. Unsaid, the
+      // editor stays open with nothing changed and reads as a dead button.
       setPriceError(error instanceof Error ? error.message : String(error))
       return
     }
-    setPriceError(null)
-    await onSave({
-      provider_id: providerId,
-      model_id: modelId,
-      display_name: existing?.display_name ?? null,
-      context_window: parseInt(contextWindow) || 128000,
-      compact_threshold: parseInt(compactThreshold) || 100000,
-      max_output_tokens: maxOutput ? parseInt(maxOutput) : null,
-      ...prices,
-      capability_overrides: buildOverrides(),
-      // What the user asked for, not what is currently supported. Filtering here
-      // against `caps` looked like defence and was a way to lose the setting:
-      // capabilities load asynchronously, so a save while that request was still
-      // in flight — or after it failed — silently wrote an empty list over a
-      // switch the user had just turned on. The narrowing that matters happens
-      // per turn in `resolve_turn_params`, where the model's support is known
-      // for certain and a stale name costs nothing.
-      server_tools: serverTools.length > 0 ? serverTools : null,
-    })
     setDirty(false)
   }
 
@@ -720,9 +776,10 @@ function ModelConfigEditor({
           default and blank means "priced like input" — which is what every
           provider but Anthropic does, and what the usage report bills them at. */}
       <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
-        <TextField fullWidth>
+        <TextField fullWidth isInvalid={invalidPrices.has('input')}>
           <Label>{t('settings.model.inputPrice')}</Label>
           <Input
+            ref={priceRefs.input}
             name={`modelInputPrice-${modelId}`}
             inputMode="decimal"
             value={inputPrice}
@@ -733,9 +790,10 @@ function ModelConfigEditor({
             className="h-7 pointer-coarse:h-10 text-xs"
           />
         </TextField>
-        <TextField fullWidth>
+        <TextField fullWidth isInvalid={invalidPrices.has('output')}>
           <Label>{t('settings.model.outputPrice')}</Label>
           <Input
+            ref={priceRefs.output}
             name={`modelOutputPrice-${modelId}`}
             inputMode="decimal"
             value={outputPrice}
@@ -746,9 +804,10 @@ function ModelConfigEditor({
             className="h-7 pointer-coarse:h-10 text-xs"
           />
         </TextField>
-        <TextField fullWidth>
+        <TextField fullWidth isInvalid={invalidPrices.has('cache')}>
           <Label>{t('settings.model.cachePrice')}</Label>
           <Input
+            ref={priceRefs.cache}
             name={`modelCachePrice-${modelId}`}
             inputMode="decimal"
             value={cachePrice}
@@ -761,9 +820,10 @@ function ModelConfigEditor({
           />
           <Description className="text-xs">{t('settings.model.cachePriceHint')}</Description>
         </TextField>
-        <TextField fullWidth>
+        <TextField fullWidth isInvalid={invalidPrices.has('cacheWrite')}>
           <Label>{t('settings.model.cacheWritePrice')}</Label>
           <Input
+            ref={priceRefs.cacheWrite}
             name={`modelCacheWritePrice-${modelId}`}
             inputMode="decimal"
             value={cacheWritePrice}
@@ -804,9 +864,10 @@ function ModelConfigEditor({
               )
             })}
           </div>
-          <TextField fullWidth>
+          <TextField fullWidth isInvalid={invalidPrices.has('serverTool')}>
             <Label>{t('settings.model.serverToolPrice')}</Label>
             <Input
+              ref={priceRefs.serverTool}
               name={`modelServerToolPrice-${modelId}`}
               inputMode="decimal"
               value={serverToolPrice}
@@ -1186,8 +1247,11 @@ function ProviderEditor({
       const map = new Map<string, ModelConfigInfoResponse>()
       for (const c of configs) map.set(c.model_id, c)
       setModelConfigs(map)
-    } catch {
-      /* ignore */
+    } catch (err) {
+      // One row failing the strict read is the whole list failing. Swallowed,
+      // a save that succeeded leaves the screen unchanged and looks like it did
+      // not.
+      setModelsError(String(err))
     }
   }, [provider.id])
 
@@ -1220,7 +1284,12 @@ function ProviderEditor({
   const handleDeleteModelConfig = useCallback(
     async (id: string) => {
       if (!(await confirm({ body: t('settings.confirmDelete.modelConfig') }))) return
-      await api.deleteModelConfig(id)
+      try {
+        await api.deleteModelConfig(id)
+      } catch (err) {
+        setModelsError(String(err))
+        return
+      }
       await loadModelConfigs()
       setEditingModelId(null)
     },

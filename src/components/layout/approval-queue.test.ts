@@ -73,3 +73,26 @@ describe('which questions the queue offers', () => {
     expect(visible(attention, order, 'being-read', true).map((i) => i.approvalId)).toEqual(['a', 'b'])
   })
 })
+
+describe('the plan review being read', () => {
+  function reviewItem(reviewId: string, conversationId: string): AttentionItem {
+    return {
+      approvalId: reviewId,
+      reviewId,
+      conversationId,
+      documentId: 'd1',
+      revisionId: 'r1',
+      turnId: 't1',
+      stage: 'review',
+      kind: 'plan_review',
+    }
+  }
+
+  /** The review page covers the transcript, so the inert rule alone would offer
+   *  the very review the page is showing — a toast saying "review the plan" on
+   *  top of the plan. */
+  it('is left out even while the transcript under it is inert', () => {
+    const { attention, order } = queue(reviewItem('review-1', 'c1'), reviewItem('review-2', 'c2'), item('a', 'c1'))
+    expect(visible(attention, order, 'c1', true, 'review-1').map((i) => i.approvalId)).toEqual(['review-2', 'a'])
+  })
+})

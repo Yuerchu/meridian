@@ -44,7 +44,7 @@ function AssistantEditor({
   assistant: AssistantInfoResponse
   providers: ProviderInfoResponse[]
   onSave: (id: string, updates: Omit<AssistantUpdateRequest, 'id'>) => Promise<void>
-  onDelete?: (id: string) => void
+  onDelete?: (id: string) => Promise<void>
   onDirtyChange?: (id: string, dirty: boolean) => void
 }) {
   const { t } = useTranslation()
@@ -59,6 +59,7 @@ function AssistantEditor({
   const [thinkingBudget, setThinkingBudget] = useState(assistant.thinking_budget?.toString() ?? '')
   const [models, setModels] = useState<ProviderModelInfoResponse[]>([])
   const [saved, markSaved] = useTemporaryFlag()
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [allTools, setAllTools] = useState<McpToolInfoResponse[]>([])
   const [templates, setTemplates] = useState<PromptTemplateInfoResponse[]>([])
   const [templateVars, setTemplateVars] = useState<TemplateVariableInfoResponse[]>([])
@@ -139,19 +140,27 @@ function AssistantEditor({
   async function handleSave() {
     const enabledTools = toolMode === 'custom' ? [...selectedTools] : null
     const toolPresetId = toolMode === 'preset' && selectedPresetId ? selectedPresetId : null
-    await onSave(assistant.id, {
-      name,
-      systemPrompt,
-      providerId: providerId.trim() || null,
-      modelId: modelId.trim() || null,
-      temperature: temperature ? parseFloat(temperature) : null,
-      contextLimit: contextLimit ? parseInt(contextLimit) : undefined,
-      enabledTools,
-      thinkingEnabled,
-      thinkingBudget: thinkingBudget ? parseInt(thinkingBudget) : null,
-      toolPresetId,
-      autoCompactEnabled,
-    })
+    setSaveError(null)
+    try {
+      await onSave(assistant.id, {
+        name,
+        systemPrompt,
+        providerId: providerId.trim() || null,
+        modelId: modelId.trim() || null,
+        temperature: temperature ? parseFloat(temperature) : null,
+        contextLimit: contextLimit ? parseInt(contextLimit) : undefined,
+        enabledTools,
+        thinkingEnabled,
+        thinkingBudget: thinkingBudget ? parseInt(thinkingBudget) : null,
+        toolPresetId,
+        autoCompactEnabled,
+      })
+    } catch (error) {
+      // A plan review can hold the assistant; said nowhere, the button does
+      // nothing and the draft stays dirty with no explanation.
+      setSaveError(error instanceof Error ? error.message : String(error))
+      return
+    }
     setSavedDraft(draft)
     markSaved()
   }
@@ -480,6 +489,11 @@ function AssistantEditor({
         </SettingsDrilldown>
       )}
 
+      {saveError && (
+        <p role="alert" className="text-xs text-danger break-all">
+          {saveError}
+        </p>
+      )}
       <div className="flex items-center gap-2 pt-1">
         <Button onPress={handleSave}>{t('common.save')}</Button>
         {saved && <SavedHint />}
@@ -487,7 +501,10 @@ function AssistantEditor({
           <Button
             variant="ghost"
             className="ml-auto text-danger hover:text-danger"
-            onPress={() => onDelete(assistant.id)}
+            onPress={() => {
+              setSaveError(null)
+              void onDelete(assistant.id).catch((reason) => setSaveError(String(reason)))
+            }}
           >
             {t('common.delete')}
           </Button>

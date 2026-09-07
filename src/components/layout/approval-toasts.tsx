@@ -73,10 +73,11 @@ function useApprovalToasts(transcriptInert = false) {
   const attention = useConversationStore((s) => s.attention)
   const order = useConversationStore((s) => s.attentionOrder)
   const activeId = useConversationStore((s) => s.activeId)
+  const activeReviewId = usePlanReviewStore((s) => s.activeReviewId)
 
   const shown = useMemo(
-    () => visible(attention, order, activeId, transcriptInert),
-    [attention, order, activeId, transcriptInert],
+    () => visible(attention, order, activeId, transcriptInert, activeReviewId),
+    [attention, order, activeId, transcriptInert, activeReviewId],
   )
   // Compared as a sequence. `shown` is a fresh array on every store change, so
   // without this the queue would be rebuilt when nothing about it had moved.

@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import { planReviewActionRules } from './plan-review-draft'
-import { planDraftPayload, planSubmittedReviewPatch, projectPlanReviewDraft } from './plan-review-projection'
+import {
+  planCommentRequests,
+  planDraftPayload,
+  planSubmittedReviewPatch,
+  projectPlanReviewDraft,
+} from './plan-review-projection'
 import type { PlanCommentInfoResponse, PlanReviewInfoResponse } from '@/types'
 
 const RAW_PLAN = '# Plan   \n\nBody\n'
@@ -227,5 +232,39 @@ describe('plan review editor projection', () => {
     info.submitted_revision.patch = '*** Begin Patch\n*** Add File: plan.md\n+# Plan\n*** End Patch'
 
     expect(planSubmittedReviewPatch(info)).toBe(info.submitted_revision.patch)
+  })
+})
+
+describe('planCommentRequests', () => {
+  const anchor = { kind: 'source_range' as const, from: 2, to: 6, quote: 'Plan', prefix: '# ', suffix: '\n' }
+  const comment = (id: string, body: string, state: PlanCommentInfoResponse['state'] = 'active') => ({
+    id,
+    review_id: 'review-1',
+    position: 0,
+    state,
+    anchor,
+    body,
+    created_at: 1,
+    updated_at: 1,
+  })
+
+  it('keeps a freshly added comment out of the wire and the rules until something is typed', () => {
+    const blank = [comment('c1', ''), comment('c2', '   ')]
+    expect(planCommentRequests(blank)).toEqual([])
+    const rules = planReviewActionRules({
+      status: 'pending',
+      baseMarkdown: '# Plan\n',
+      draftMarkdown: '# Plan\n',
+      comments: planCommentRequests(blank),
+      globalNote: null,
+      saveState: 'saved',
+      isHistorical: false,
+    })
+    expect(rules).toMatchObject({ isPristine: true, canApprove: true, canRequestChanges: false })
+  })
+
+  it('still carries typed comments and deletions of a comment the server may hold', () => {
+    const requests = planCommentRequests([comment('c1', 'Rename'), comment('c2', '', 'deleted')])
+    expect(requests.map((request) => request.id)).toEqual(['c1', 'c2'])
   })
 })

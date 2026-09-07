@@ -150,11 +150,22 @@ function indentContinuation(value: string, width: number): string {
     .join('\n')
 }
 
+function isEmptyParagraph(node: JSONContent): boolean {
+  return node.type === 'paragraph' && (node.content ?? []).length === 0
+}
+
+/** Markdown has no spelling for an empty paragraph, so one is skipped rather
+ *  than written as a run of blank lines the parser would fold away anyway. */
+function serializeBlocks(nodes: JSONContent[] | undefined): string {
+  return (nodes ?? [])
+    .filter((node) => !isEmptyParagraph(node))
+    .map(serializeBlock)
+    .join('\n\n')
+}
+
 function serializeListItem(node: JSONContent, marker: string): string {
   if (node.type !== 'listItem') throw new Error(`unsupported list child: ${String(node.type)}`)
-  const blocks = (node.content ?? []).map(serializeBlock)
-  const body = blocks.join('\n\n')
-  const continuation = indentContinuation(body, marker.length)
+  const continuation = indentContinuation(serializeBlocks(node.content), marker.length)
   return `${marker}${continuation}`
 }
 
@@ -168,9 +179,7 @@ function serializeBlock(node: JSONContent): string {
       return `${'#'.repeat(level)} ${serializeInline(node.content)}`
     }
     case 'blockquote':
-      return (node.content ?? [])
-        .map(serializeBlock)
-        .join('\n\n')
+      return serializeBlocks(node.content)
         .split('\n')
         .map((line) => `> ${line}`.trimEnd())
         .join('\n')
@@ -196,17 +205,42 @@ function serializeBlock(node: JSONContent): string {
 
 function serializePlanDocumentUnchecked(document: JSONContent): string {
   if (document.type !== 'doc') throw new Error('plan editor value must be a doc')
-  const markdown = (document.content ?? []).map(serializeBlock).join('\n\n').trimEnd()
+  const markdown = serializeBlocks(document.content).trimEnd()
   return markdown ? `${markdown}\n` : ''
+}
+
+/** The tree with every empty paragraph removed, except where that would leave
+ *  a block with no children at all — the parser fills one back in there, so
+ *  both sides of the round-trip check keep exactly one. */
+function withoutEmptyParagraphs(node: JSONContent): JSONContent {
+  if (!node.content) return node
+  const kept = node.content.map(withoutEmptyParagraphs).filter((child) => !isEmptyParagraph(child))
+  const content = kept.length === 0 && node.content.length > 0 ? [{ type: 'paragraph' }] : kept
+  return { ...node, content }
+}
+
+/** Drop the empty paragraphs the live editor keeps after a trailing list,
+ *  heading or code block. StarterKit's `TrailingNode` appends one on the first
+ *  transaction — a click into the editor is enough — and Markdown cannot write
+ *  it, so it is an editing affordance rather than content and must not read
+ *  as an edit. Only the tail is touched: nothing removed sits before a comment
+ *  anchor, so no ProseMirror position moves. */
+export function normalizePlanEditorDocument(document: JSONContent): JSONContent {
+  const content = document.content ?? []
+  let end = content.length
+  while (end > 1 && isEmptyParagraph(content[end - 1])) end -= 1
+  return end === content.length ? document : { ...document, content: content.slice(0, end) }
 }
 
 /** Serialize only when the emitted Markdown reparses into the same editor tree.
  *  This is also the save boundary for live RichTextEditor values, not merely a
- *  check performed when opening an existing plan. */
+ *  check performed when opening an existing plan. Empty paragraphs are not part
+ *  of that tree's semantics — Markdown cannot hold one — so the comparison
+ *  ignores them; a trailing hard break, which Markdown also drops, still fails. */
 export function serializePlanDocument(document: JSONContent): string {
   const markdown = serializePlanDocumentUnchecked(document)
   const reparsed = generateJSON(markedHtml(markdown), editorExtensions)
-  if (JSON.stringify(reparsed) !== JSON.stringify(document)) {
+  if (JSON.stringify(withoutEmptyParagraphs(reparsed)) !== JSON.stringify(withoutEmptyParagraphs(document))) {
     throw new Error('serialized plan Markdown changes the editor document semantics')
   }
   return markdown

@@ -22,6 +22,7 @@ export function MemorySettings() {
   const [newKey, setNewKey] = useState('')
   const [newContent, setNewContent] = useState('')
   const [newType, setNewType] = useState<MemoryType>('general')
+  const [actionError, setActionError] = useState<string | null>(null)
   const { confirm, confirmDialog } = useConfirm()
 
   const typeOptions = (browser.enums?.memory_types ?? ['general']).map((v) => ({
@@ -44,15 +45,21 @@ export function MemorySettings() {
 
   const handleAdd = async () => {
     if (!canAdd || !newKey.trim() || !newContent.trim()) return
-    await api.saveMemoryScoped({
-      scope: targetScope,
-      projectId: targetScope === 'project' ? targetProjectId : null,
-      subjectScopeId: null,
-      key: newKey.trim(),
-      content: newContent.trim(),
-      memoryType: newType,
-      ownerOnly: false,
-    })
+    setActionError(null)
+    try {
+      await api.saveMemoryScoped({
+        scope: targetScope,
+        projectId: targetScope === 'project' ? targetProjectId : null,
+        subjectScopeId: null,
+        key: newKey.trim(),
+        content: newContent.trim(),
+        memoryType: newType,
+        ownerOnly: false,
+      })
+    } catch (reason) {
+      setActionError(String(reason))
+      return
+    }
     setNewKey('')
     setNewContent('')
     setShowAdd(false)
@@ -116,6 +123,12 @@ export function MemorySettings() {
               triggerClassName="w-auto"
             />
           </div>
+
+          {actionError && (
+            <p role="alert" className="text-xs text-danger break-all">
+              {actionError}
+            </p>
+          )}
 
           {showAdd && (
             <Card data-slot="memory-add-form">
@@ -246,7 +259,13 @@ export function MemorySettings() {
                       body: t('settings.memory.deleteConfirmBody'),
                     })
                     if (!ok) return
-                    await api.deleteMemories([...browser.selected])
+                    setActionError(null)
+                    try {
+                      await api.deleteMemories([...browser.selected])
+                    } catch (reason) {
+                      setActionError(String(reason))
+                      return
+                    }
                     browser.clearSelection()
                     browser.refresh()
                   }}
