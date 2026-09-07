@@ -71,6 +71,18 @@ jobs:
 
       - run: pnpm install
 
+      # Before the Pro staging, not after: `hpsetup` appends an `allowBuilds`
+      # block to pnpm-workspace.yaml on every run (the file says so itself), and
+      # Prettier run afterwards was checking that tool-written block instead of
+      # the committed file. It failed on every push, and since the steps below
+      # never ran after it, the Linux leg had not executed a clippy or a test in
+      # months while reporting only "Prettier".
+      # Style gates run on the Linux leg only: they are platform-independent,
+      # and a Windows minute costs twice a Linux one.
+      - name: Prettier check
+        if: matrix.os == 'ubuntu-latest'
+        run: pnpm format:check
+
       - name: Stage HeroUI Pro
         env:
           HEROUI_KEY: ${{ secrets.HEROUI_KEY }}
@@ -79,15 +91,9 @@ jobs:
       - name: TypeScript check
         run: pnpm typecheck
 
-      # Style gates run on the Linux leg only: they are platform-independent,
-      # and a Windows minute costs twice a Linux one.
       - name: ESLint
         if: matrix.os == 'ubuntu-latest'
         run: pnpm lint
-
-      - name: Prettier check
-        if: matrix.os == 'ubuntu-latest'
-        run: pnpm format:check
 
       # The shell and the core are two workspaces — `src-tauri/crates` is the
       # meridian-core submodule, excluded from the shell's workspace — so every
