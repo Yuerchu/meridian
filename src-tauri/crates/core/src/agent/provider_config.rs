@@ -714,9 +714,8 @@ mod tests {
 
         for raw in ["not json", "{}", r#"[1,2]"#, r#"["web_search",1]"#] {
             let config = configured_with(Some(raw));
-            let error = enabled_server_tools(Some(&config), &caps)
-                .err()
-                .expect("malformed stored server_tools must fail");
+            let error =
+                enabled_server_tools(Some(&config), &caps).expect_err("malformed stored server_tools must fail");
             assert!(error.contains("server_tools"), "{raw:?}: {error}");
         }
     }

@@ -93,6 +93,10 @@ pub struct ChatMessage {
     pub reasoning_content: Option<String>,
     pub tool_calls: Option<Vec<ToolCall>>,
     pub tool_call_id: Option<String>,
+    /// A tool row that reports a failure or a refusal rather than a result.
+    /// Only the Messages API has a wire field for it (`tool_result.is_error`);
+    /// every other format says it in the text.
+    pub tool_error: bool,
     /// Opaque provider continuation state for this assistant message. It is
     /// reconstructed from the database and only a matching adapter may read it.
     pub provider_state: Option<state::ProviderState>,
@@ -109,6 +113,7 @@ impl ChatMessage {
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
+            tool_error: false,
             provider_state: None,
             origin: MessageOrigin::LegacyUser,
         }
@@ -121,6 +126,7 @@ impl ChatMessage {
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
+            tool_error: false,
             provider_state: None,
             origin: MessageOrigin::User(sender),
         }
@@ -133,6 +139,7 @@ impl ChatMessage {
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
+            tool_error: false,
             provider_state: None,
             origin: MessageOrigin::SystemContext,
         }
@@ -144,6 +151,7 @@ impl ChatMessage {
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
+            tool_error: false,
             provider_state: None,
             origin: MessageOrigin::UserProvidedContext,
         }
@@ -155,6 +163,7 @@ impl ChatMessage {
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
+            tool_error: false,
             provider_state: None,
             origin: MessageOrigin::Assistant,
         }
@@ -166,6 +175,7 @@ impl ChatMessage {
             reasoning_content,
             tool_calls: Some(tool_calls),
             tool_call_id: None,
+            tool_error: false,
             provider_state: None,
             origin: MessageOrigin::Assistant,
         }
@@ -177,8 +187,16 @@ impl ChatMessage {
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: Some(tool_call_id.into()),
+            tool_error: false,
             provider_state: None,
             origin: MessageOrigin::Tool,
+        }
+    }
+    /// Same row as `tool_result`, flagged as a failure or a refusal.
+    pub fn tool_error(tool_call_id: &str, content: &str) -> Self {
+        Self {
+            tool_error: true,
+            ..Self::tool_result(tool_call_id, content)
         }
     }
 }

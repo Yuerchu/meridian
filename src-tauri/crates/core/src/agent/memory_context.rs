@@ -741,7 +741,15 @@ pub fn trailing_with_memory(
             out.push(crate::provider::ChatMessage::system_context(block.trim_start()));
         }
     }
-    out.push(crate::provider::ChatMessage::user(user_message));
+    // No message, no row. A turn that resumes from a durable tool result — the
+    // continuation after a plan review — has nothing new to say, and the
+    // history it resends already ends on the result the model is answering. An
+    // empty `user` message here was accepted by OpenAI and refused by Kimi
+    // (`Invalid request: text content is empty`), which held every plan-review
+    // continuation on that provider at `held` with an identical retry.
+    if !user_message.is_empty() {
+        out.push(crate::provider::ChatMessage::user(user_message));
+    }
     if let Some(roster) = roster.filter(|r| !r.trim().is_empty()) {
         out.push(crate::provider::ChatMessage::system_context(roster.trim_start()));
     }
@@ -2202,6 +2210,22 @@ mod placement_tests {
     fn no_memory_means_no_extra_message() {
         assert_eq!(trailing_with_memory(None, None, "hi", None).len(), 1);
         assert_eq!(trailing_with_memory(Some("   "), None, "hi", None).len(), 1);
+    }
+
+    /// A continuation resumes from a tool result and has no new message. The
+    /// blocks around it still go on the wire; an empty `user` row does not —
+    /// Kimi refuses it, and OpenAI accepting it is what hid that.
+    #[test]
+    fn no_message_means_no_user_row() {
+        assert!(trailing_with_memory(None, None, "", None).is_empty());
+        let msgs = trailing_with_memory(
+            Some("<bot_memories>\n- x\n</bot_memories>"),
+            None,
+            "",
+            Some("<roster/>"),
+        );
+        assert_eq!(msgs.len(), 2);
+        assert!(msgs.iter().all(|m| matches!(m.origin, MessageOrigin::SystemContext)));
     }
 
     /// The roster goes *after* the message, and that is the whole reason the

@@ -641,10 +641,11 @@ mod tests {
             transitions.asked.lock().unwrap().is_empty(),
             "review is not an approval waiter"
         );
-        let submitted = transitions.submitted.lock().unwrap();
-        assert_eq!(submitted.len(), 1);
-        assert_eq!(submitted[0].provider_call_id, "call-1");
-        drop(submitted);
+        {
+            let submitted = transitions.submitted.lock().unwrap();
+            assert_eq!(submitted.len(), 1);
+            assert_eq!(submitted[0].provider_call_id, "call-1");
+        }
 
         for arguments in ["not json", r#"{"plan":"old payload"}"#, r#"{"future":true}"#] {
             let request = SubmitPlanRequest {

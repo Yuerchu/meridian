@@ -399,7 +399,7 @@ fn spans_of(state: &State) -> Vec<BlameSpan> {
                 kind: a.kind,
                 conversation_id: a.conversation_id.clone(),
                 turn_id: a.turn_id.clone(),
-                origin: a.origin.clone(),
+                origin: a.origin,
                 model_id: a.model_id.clone(),
                 tool_name: a.tool_name.clone(),
                 timestamp: Some(a.timestamp),

@@ -250,16 +250,11 @@ fn parse_string_list(raw: &str, field: &str) -> Result<Vec<String>, String> {
     serde_json::from_str(raw).map_err(|error| format!("invalid persisted {field}: {error}"))
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 enum OverrideField<T> {
+    #[default]
     Unset,
     Set(T),
-}
-
-impl<T> Default for OverrideField<T> {
-    fn default() -> Self {
-        Self::Unset
-    }
 }
 
 impl<T> OverrideField<T> {
@@ -1194,8 +1189,8 @@ mod tests {
 
     #[test]
     fn sqlite_booleans_are_closed_and_leave_ipc_as_booleans() {
-        assert_eq!(decode_sqlite_bool(0, "test.enabled").unwrap(), false);
-        assert_eq!(decode_sqlite_bool(1, "test.enabled").unwrap(), true);
+        assert!(!decode_sqlite_bool(0, "test.enabled").unwrap());
+        assert!(decode_sqlite_bool(1, "test.enabled").unwrap());
         assert!(decode_sqlite_bool(-1, "test.enabled").is_err());
         assert!(decode_sqlite_bool(2, "test.enabled").is_err());
     }

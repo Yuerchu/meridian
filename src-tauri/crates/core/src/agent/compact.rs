@@ -461,6 +461,7 @@ async fn compact_with_retry(
                 reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
+                tool_error: false,
                 provider_state: None,
                 origin: crate::provider::MessageOrigin::Assistant,
             },
@@ -691,19 +692,16 @@ fn extract_recent_files_from_db_messages(
                 "search_files" => "searched",
                 _ => continue,
             };
-            let args: serde_json::Value = serde_json::from_str(&tc.arguments).map_err(|error| {
-                format!(
-                    "message {} tool call {} has invalid arguments JSON: {error}",
-                    m.id, tc.id
-                )
-            })?;
-            let path = args
-                .get("path")
+            let path = serde_json::from_str::<serde_json::Value>(&tc.arguments)
+                .ok()
+                .as_ref()
+                .and_then(|v| v.get("path"))
                 .and_then(serde_json::Value::as_str)
-                .filter(|path| !path.is_empty())
-                .ok_or_else(|| format!("message {} tool call {} requires a non-empty string path", m.id, tc.id))?;
-            if seen.insert(path.to_string()) {
-                files.push((path.to_string(), op));
+                .filter(|p| !p.is_empty())
+                .map(String::from);
+            let Some(path) = path else { continue };
+            if seen.insert(path.clone()) {
+                files.push((path, op));
             }
         }
         if files.len() >= 10 {

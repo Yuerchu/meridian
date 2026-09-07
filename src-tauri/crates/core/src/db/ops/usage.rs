@@ -500,14 +500,16 @@ impl UsageAccumulator {
             };
 
         if resolved.used_current_fallback {
-            self.bucket.estimated_token_messages += resolved
-                .token_prices_from_current
-                .then_some(group.positive_token_messages)
-                .unwrap_or_default();
-            self.bucket.estimated_tool_messages += resolved
-                .tool_price_from_current
-                .then_some(group.server_tool_messages)
-                .unwrap_or_default();
+            self.bucket.estimated_token_messages += if resolved.token_prices_from_current {
+                group.positive_token_messages
+            } else {
+                Default::default()
+            };
+            self.bucket.estimated_tool_messages += if resolved.tool_price_from_current {
+                group.server_tool_messages
+            } else {
+                Default::default()
+            };
             self.bucket.estimated_messages +=
                 match (resolved.token_prices_from_current, resolved.tool_price_from_current) {
                     (true, true) => group.positive_token_or_tool_messages,

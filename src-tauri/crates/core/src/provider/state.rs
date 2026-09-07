@@ -34,8 +34,21 @@ pub enum ProviderStatePayload {
     GoogleThoughtSignatures {
         signatures: Vec<GoogleThoughtSignature>,
     },
+    /// The signature alone, from before whole blocks were kept. Still read for
+    /// rows written then; nothing writes it any more.
     AnthropicThinkingSignature {
         signature: String,
+    },
+    /// Every content block of one Messages-API assistant turn that is neither
+    /// `text` nor a client `tool_use`, verbatim and in order: `thinking` with
+    /// its signature, `redacted_thinking`, `server_tool_use` and the result
+    /// blocks a server tool produced.
+    ///
+    /// Kept raw for the same reason as [`CodexReasoningItem`]: the API wants
+    /// these back exactly as it sent them, and a block it adds next year must
+    /// survive the round trip without anyone here having heard of it.
+    AnthropicContentBlocks {
+        blocks: Vec<AnthropicContentBlock>,
     },
     /// Reasoning items from a `store: false` Responses turn, kept to be sent
     /// back on the next request of the same turn.
@@ -73,6 +86,17 @@ pub struct GoogleThoughtSignature {
     pub signature: String,
 }
 
+/// One Anthropic content block, exactly as the upstream sent it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnthropicContentBlock {
+    /// Where this block sat in the response's `content` array. Order is not
+    /// free to choose: thinking has to precede everything, and a server tool's
+    /// result has to follow the call that produced it.
+    pub position: usize,
+    /// The block as a JSON object string.
+    pub block_json: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GoogleSignatureLocation {
     Message,
@@ -94,11 +118,29 @@ enum StoredProviderStateV1 {
         producer: StoredProviderStateProducer,
         payload: StoredAnthropicThinkingSignaturePayload,
     },
+    AnthropicContentBlocks {
+        version: u32,
+        producer: StoredProviderStateProducer,
+        payload: StoredAnthropicContentBlocksPayload,
+    },
     CodexReasoning {
         version: u32,
         producer: StoredProviderStateProducer,
         payload: StoredCodexReasoningPayload,
     },
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StoredAnthropicContentBlocksPayload {
+    blocks: Vec<StoredAnthropicContentBlock>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StoredAnthropicContentBlock {
+    position: usize,
+    block_json: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -195,9 +237,13 @@ enum StoredGoogleToolCallLocationKind {
 /// Typed provider-state changes emitted by streaming wire adapters.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProviderStateUpdate {
-    AnthropicSignatureDelta {
+    /// A whole block, announced once its `content_block_stop` has arrived —
+    /// deltas are folded together by the adapter, which is the only place that
+    /// knows which delta type extends which field.
+    AnthropicContentBlock {
         model: String,
-        delta: String,
+        position: usize,
+        block_json: String,
     },
     /// A whole reasoning item, not a delta — the Responses API sends it complete
     /// on `response.output_item.done`, so there is nothing to accumulate.
@@ -235,6 +281,19 @@ impl ProviderState {
         }
         match &self.payload {
             ProviderStatePayload::AnthropicThinkingSignature { signature } => Some(signature),
+            _ => None,
+        }
+    }
+
+    /// The blocks to replay, in the order they were produced. Model-matched
+    /// like the signature: a thinking block signed by one model is rejected
+    /// by another, and a server tool's result belongs to the turn that ran it.
+    pub fn anthropic_blocks_for(&self, model: &str) -> Option<&[AnthropicContentBlock]> {
+        if self.producer.vendor != "anthropic" || self.producer.protocol != "messages" || self.producer.model != model {
+            return None;
+        }
+        match &self.payload {
+            ProviderStatePayload::AnthropicContentBlocks { blocks } => Some(blocks),
             _ => None,
         }
     }
@@ -297,6 +356,14 @@ impl ProviderState {
                     return Err("Anthropic thinking signature is empty".into());
                 }
             }
+            ProviderStatePayload::AnthropicContentBlocks { blocks } => {
+                if self.producer.vendor != "anthropic" || self.producer.protocol != "messages" {
+                    return Err("Anthropic content blocks have the wrong producer".into());
+                }
+                if blocks.is_empty() || blocks.iter().any(|block| block.block_json.is_empty()) {
+                    return Err("Anthropic content blocks are empty".into());
+                }
+            }
             ProviderStatePayload::CodexReasoning { items } => {
                 if self.producer.vendor != "openai" || self.producer.protocol != CODEX_RESPONSES_PROTOCOL {
                     return Err("Codex reasoning has the wrong producer".into());
@@ -342,6 +409,19 @@ impl From<&ProviderState> for StoredProviderStateV1 {
                     },
                 }
             }
+            ProviderStatePayload::AnthropicContentBlocks { blocks } => StoredProviderStateV1::AnthropicContentBlocks {
+                version: state.version,
+                producer: producer(),
+                payload: StoredAnthropicContentBlocksPayload {
+                    blocks: blocks
+                        .iter()
+                        .map(|block| StoredAnthropicContentBlock {
+                            position: block.position,
+                            block_json: block.block_json.clone(),
+                        })
+                        .collect(),
+                },
+            },
             ProviderStatePayload::CodexReasoning { items } => StoredProviderStateV1::CodexReasoning {
                 version: state.version,
                 producer: producer(),
@@ -389,6 +469,24 @@ impl From<StoredProviderStateV1> for ProviderState {
                 producer,
                 ProviderStatePayload::AnthropicThinkingSignature {
                     signature: payload.signature,
+                },
+            ),
+            StoredProviderStateV1::AnthropicContentBlocks {
+                version,
+                producer,
+                payload,
+            } => (
+                version,
+                producer,
+                ProviderStatePayload::AnthropicContentBlocks {
+                    blocks: payload
+                        .blocks
+                        .into_iter()
+                        .map(|block| AnthropicContentBlock {
+                            position: block.position,
+                            block_json: block.block_json,
+                        })
+                        .collect(),
                 },
             ),
             StoredProviderStateV1::CodexReasoning {
@@ -462,10 +560,15 @@ pub struct ProviderStateAccumulator {
 impl ProviderStateAccumulator {
     pub fn apply(&mut self, update: ProviderStateUpdate) -> Result<(), String> {
         match update {
-            ProviderStateUpdate::AnthropicSignatureDelta { model, delta } => {
-                if delta.is_empty() {
+            ProviderStateUpdate::AnthropicContentBlock {
+                model,
+                position,
+                block_json,
+            } => {
+                if block_json.is_empty() {
                     return Ok(());
                 }
+                let arriving = AnthropicContentBlock { position, block_json };
                 match self.state.as_mut() {
                     None => {
                         self.state = Some(ProviderState {
@@ -475,14 +578,22 @@ impl ProviderStateAccumulator {
                                 protocol: "messages".into(),
                                 model,
                             },
-                            payload: ProviderStatePayload::AnthropicThinkingSignature { signature: delta },
+                            payload: ProviderStatePayload::AnthropicContentBlocks { blocks: vec![arriving] },
                         });
                     }
                     Some(ProviderState {
                         producer,
-                        payload: ProviderStatePayload::AnthropicThinkingSignature { signature },
+                        payload: ProviderStatePayload::AnthropicContentBlocks { blocks },
                         ..
-                    }) if producer.model == model => signature.push_str(&delta),
+                    }) if producer.model == model => {
+                        // One announcement per block, but a repeat at the same
+                        // index would otherwise be replayed twice.
+                        match blocks.iter_mut().find(|block| block.position == arriving.position) {
+                            Some(existing) => *existing = arriving,
+                            None => blocks.push(arriving),
+                        }
+                        blocks.sort_by_key(|block| block.position);
+                    }
                     Some(_) => return Err("a response mixed incompatible provider state".into()),
                 }
             }
@@ -818,12 +929,68 @@ mod tests {
         let mut acc = ProviderStateAccumulator::default();
         acc.apply(codex_item(0, "rs_1")).unwrap();
         let err = acc
-            .apply(ProviderStateUpdate::AnthropicSignatureDelta {
+            .apply(ProviderStateUpdate::AnthropicContentBlock {
                 model: "claude".into(),
-                delta: "sig".into(),
+                position: 0,
+                block_json: r#"{"type":"thinking","thinking":"","signature":"sig"}"#.into(),
             })
             .unwrap_err();
         assert!(err.contains("mixed incompatible"));
+    }
+
+    fn anthropic_block(position: usize, block_json: &str) -> ProviderStateUpdate {
+        ProviderStateUpdate::AnthropicContentBlock {
+            model: "claude-opus-5".into(),
+            position,
+            block_json: block_json.into(),
+        }
+    }
+
+    /// Blocks go back in the order they came out, whatever order the stream
+    /// announced them in, and survive the database verbatim.
+    #[test]
+    fn anthropic_blocks_round_trip_in_position_order() {
+        let mut acc = ProviderStateAccumulator::default();
+        acc.apply(anthropic_block(
+            2,
+            r#"{"type":"web_search_tool_result","tool_use_id":"srvtoolu_1","content":[]}"#,
+        ))
+        .unwrap();
+        acc.apply(anthropic_block(
+            0,
+            r#"{"type":"thinking","thinking":"hm","signature":"sig"}"#,
+        ))
+        .unwrap();
+        acc.apply(anthropic_block(
+            1,
+            r#"{"type":"server_tool_use","id":"srvtoolu_1","name":"web_search","input":{"query":"x"}}"#,
+        ))
+        .unwrap();
+        let state = acc.finish().unwrap();
+
+        let blocks = state.anthropic_blocks_for("claude-opus-5").unwrap();
+        assert_eq!(blocks.iter().map(|b| b.position).collect::<Vec<_>>(), [0, 1, 2]);
+        assert!(
+            state.anthropic_blocks_for("claude-sonnet-5").is_none(),
+            "signed for one model"
+        );
+        assert!(
+            state.anthropic_signature_for("claude-opus-5").is_none(),
+            "not the legacy shape"
+        );
+
+        let raw = state.to_storage_json().unwrap();
+        assert!(raw.contains("anthropic_content_blocks"));
+        assert_eq!(ProviderState::from_storage_json(&raw).unwrap(), state);
+    }
+
+    /// The signature-only rows written before blocks were kept still read.
+    #[test]
+    fn legacy_anthropic_signature_rows_still_read() {
+        let raw = r#"{"version":1,"producer":{"vendor":"anthropic","protocol":"messages","model":"m"},"kind":"anthropic_thinking_signature","payload":{"signature":"sig"}}"#;
+        let state = ProviderState::from_storage_json(raw).unwrap();
+        assert_eq!(state.anthropic_signature_for("m"), Some("sig"));
+        assert!(state.anthropic_blocks_for("m").is_none());
     }
 
     /// Storage refuses a producer that does not match the payload, so a

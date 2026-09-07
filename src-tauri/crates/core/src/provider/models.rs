@@ -1,3 +1,4 @@
+use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
@@ -146,7 +147,24 @@ fn is_xai_text_model(id: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{configured_model, is_google_agent_model, is_xai_text_model};
+    use super::{OpenAIModelsResponse, configured_model, is_google_agent_model, is_xai_text_model};
+
+    /// The documented `/v1/models` shape must not feed the ignored-fields
+    /// warning: fired on every fetch, that warning stops meaning anything. A
+    /// field the docs do not name still lands in `extra`.
+    #[test]
+    fn a_standard_openai_model_list_reports_no_ignored_fields() {
+        let standard: OpenAIModelsResponse = serde_json::from_str(
+            r#"{"object":"list","data":[{"id":"gpt-4.1","object":"model","created":1,"owned_by":"openai"}]}"#,
+        )
+        .unwrap();
+        assert!(standard.extra.is_empty());
+        assert!(standard.data[0].extra.is_empty());
+
+        let novel: OpenAIModelsResponse =
+            serde_json::from_str(r#"{"data":[{"id":"m","context_length":8192}]}"#).unwrap();
+        assert_eq!(novel.data[0].extra.keys().collect::<Vec<_>>(), ["context_length"]);
+    }
 
     fn config_with(body: &str) -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
@@ -212,9 +230,15 @@ mod tests {
     }
 }
 
+// The fields OpenAI documents on `/v1/models` and reads nothing from are named
+// here as `IgnoredAny` rather than left to `extra`: the warning `extra` feeds
+// is for shapes this code has not seen, and a standard reply tripping it on
+// every fetch is a warning nobody reads. `default`, because relays omit them.
 #[derive(Deserialize)]
 struct OpenAIModelsResponse {
     data: Vec<OpenAIModel>,
+    #[serde(default, rename = "object")]
+    _object: IgnoredAny,
     #[serde(default, flatten)]
     extra: ExtraIgnore,
 }
@@ -222,6 +246,12 @@ struct OpenAIModelsResponse {
 #[derive(Deserialize)]
 struct OpenAIModel {
     id: String,
+    #[serde(default, rename = "object")]
+    _object: IgnoredAny,
+    #[serde(default, rename = "created")]
+    _created: IgnoredAny,
+    #[serde(default, rename = "owned_by")]
+    _owned_by: IgnoredAny,
     #[serde(default, flatten)]
     extra: ExtraIgnore,
 }

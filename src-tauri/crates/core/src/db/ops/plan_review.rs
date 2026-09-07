@@ -576,7 +576,7 @@ fn submit_head_for_review_inner(
             .order(plan_materializations::created_at.desc())
             .first::<PlanMaterializationRow>(conn)
             .optional()?;
-        if !materialized.is_some_and(|row| row.state == PlanMaterializationState::Applied.as_str()) {
+        if materialized.is_none_or(|row| row.state != PlanMaterializationState::Applied.as_str()) {
             return Err(PlanReviewStoreError::InvalidState(
                 "plan.md has not been materialized at the submitted revision".into(),
             ));

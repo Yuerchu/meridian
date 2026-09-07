@@ -151,6 +151,29 @@ fn hostname() -> Result<String, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Stop whatever is running and start what the config now says.
+///
+/// The pause is the port: a listener that has just been dropped is not
+/// immediately re-bindable, and without it the restart fails with "address in
+/// use" for a server that is on its way out. Same 300ms the hook server uses.
+async fn restart(app: &tauri::AppHandle, config: ListenConfig) -> Result<ListenStatusResponse, String> {
+    let services = app.services();
+    let holder = app.state::<AppRemote>();
+    let mut guard = holder.0.lock().await;
+
+    guard.stop();
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    let server = RemoteServer::new(services, config, app.clone());
+    let enabled = server.config().enabled;
+    if enabled {
+        server.start()?;
+    }
+    let status = server.status();
+    *guard = server;
+    Ok(status)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -177,27 +200,4 @@ mod tests {
         unknown["bind_all"] = json!(true);
         assert!(serde_json::from_value::<ListenConfigUpdateRequest>(unknown).is_err());
     }
-}
-
-/// Stop whatever is running and start what the config now says.
-///
-/// The pause is the port: a listener that has just been dropped is not
-/// immediately re-bindable, and without it the restart fails with "address in
-/// use" for a server that is on its way out. Same 300ms the hook server uses.
-async fn restart(app: &tauri::AppHandle, config: ListenConfig) -> Result<ListenStatusResponse, String> {
-    let services = app.services();
-    let holder = app.state::<AppRemote>();
-    let mut guard = holder.0.lock().await;
-
-    guard.stop();
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-
-    let server = RemoteServer::new(services, config, app.clone());
-    let enabled = server.config().enabled;
-    if enabled {
-        server.start()?;
-    }
-    let status = server.status();
-    *guard = server;
-    Ok(status)
 }

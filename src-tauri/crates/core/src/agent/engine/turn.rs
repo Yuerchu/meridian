@@ -54,6 +54,15 @@ use super::ports::{Steered, SteeredOrigin, Steering, SubAgentReport, SubAgentSpe
 /// caller accounts for them.
 const MAX_TAIL_CONTINUATIONS: usize = 3;
 
+/// How many times one turn may be resumed after a `pause_turn`.
+///
+/// The Messages API stops a turn while a server tool is running long and asks
+/// for the same request back with the round's blocks appended. Each resume is
+/// a request with nothing new in it, so a server that paused on every round
+/// would otherwise be a loop the loop guard cannot see — it counts tool calls,
+/// and these rounds make none.
+const MAX_PAUSE_CONTINUATIONS: usize = 8;
+
 /// What the model is told when an approval question ended with no answer.
 ///
 /// Not "denied by user", because nobody did that: `Ok(None)` from the
@@ -350,6 +359,13 @@ pub struct TurnProgress {
     pub cost: Option<crate::agent::pricing::RequestCost>,
     /// The loop guard cut it short.
     pub aborted: bool,
+    /// The model declined: the Messages API's `refusal` stop, or
+    /// chat-completions' `content_filter`. An ordinary ending as far as the
+    /// loop is concerned, and a different thing to tell the reader — an
+    /// answer that is empty because it was withheld is not an empty answer.
+    pub refused: bool,
+    /// The last reply hit the output limit and stopped mid-sentence.
+    pub truncated: bool,
     /// How many times the model was asked — one per assistant row. Not tool
     /// calls: a round that made three is still one step, and a round that made
     /// none still cost a request.
@@ -391,6 +407,10 @@ impl TurnOutcome {
             ChatStopReason::Error
         } else if self.progress.aborted {
             ChatStopReason::LoopDetected
+        } else if self.progress.refused {
+            ChatStopReason::Refusal
+        } else if self.progress.truncated {
+            ChatStopReason::MaxTokens
         } else {
             ChatStopReason::EndTurn
         }
@@ -477,6 +497,7 @@ async fn run(
     // holding down Enter keeps a turn alive indefinitely, and the loop guard
     // does not cover this: it counts tool calls, and these rounds have none.
     let mut continuations: usize = 0;
+    let mut pauses: usize = 0;
 
     // What the reply may cost, before it is trimmed to what each request has
     // left. Held apart from `params` because the trimming is per request and
@@ -707,8 +728,46 @@ async fn run(
         // as a request would send arguments the model never finished writing.
         let has_tool_calls = !result.tool_calls.is_empty()
             && !matches!(result.finish_reason.as_deref(), Some("length") | Some("max_tokens"));
+        // Per round, so the last one decides: a turn that was cut short in an
+        // early round and then answered in full is not a truncated turn.
+        progress.truncated = matches!(result.finish_reason.as_deref(), Some("length") | Some("max_tokens"));
+        progress.refused = matches!(
+            result.finish_reason.as_deref(),
+            Some("refusal") | Some("content_filter")
+        );
 
-        let tool_calls_json = has_tool_calls.then(|| serialize_tool_calls_openai(&result.tool_calls));
+        // The stored copy obeys the strict read contract the context rebuild
+        // parses it under. A stream cut short mid-argument — which neither
+        // finish_reason above catches, because the upstream stopped for another
+        // reason or stopped talking entirely — would otherwise be persisted as
+        // a fragment and fail every later rebuild of this conversation. The
+        // dispatch below still sees the original arguments, so the model gets
+        // the ordinary invalid-arguments answer it already recovers from by
+        // retrying; only what is written down is normalised.
+        let storable_calls: Vec<crate::provider::ToolCall> = result
+            .tool_calls
+            .iter()
+            .map(|call| {
+                let parseable = serde_json::from_str::<serde_json::Value>(&call.arguments)
+                    .map(|v| v.is_object())
+                    .unwrap_or(false);
+                if parseable {
+                    call.clone()
+                } else {
+                    tracing::warn!(
+                        tool = %call.name,
+                        call_id = %call.id,
+                        "a tool call's arguments never arrived intact; the stored copy is empty"
+                    );
+                    crate::provider::ToolCall {
+                        id: call.id.clone(),
+                        name: call.name.clone(),
+                        arguments: "{}".to_string(),
+                    }
+                }
+            })
+            .collect();
+        let tool_calls_json = has_tool_calls.then(|| serialize_tool_calls_openai(&storable_calls));
         let provider_state_json = result
             .provider_state
             .as_ref()
@@ -726,6 +785,20 @@ async fn run(
         .await?;
 
         last_assistant_text = result.text.clone();
+
+        // `pause_turn`: the upstream stopped while one of its own tools was
+        // running long, and wants the same request back with this round's
+        // blocks appended so it can carry on. Not a tool call — nothing here
+        // runs — and not an ending: the reader has no answer yet. The blocks
+        // travel in `provider_state`, which is what the adapter replays.
+        if !has_tool_calls && result.finish_reason.as_deref() == Some("pause_turn") && pauses < MAX_PAUSE_CONTINUATIONS
+        {
+            pauses += 1;
+            let mut assistant = ChatMessage::assistant(&result.text);
+            assistant.provider_state = result.provider_state.clone();
+            chat_messages.push(assistant);
+            continue;
+        }
 
         if !has_tool_calls {
             // The answer is written. Anything typed while it was being written
@@ -978,10 +1051,10 @@ async fn run(
                             // turn a committed WaitingReview boundary into a
                             // failed turn that can never be decided.
                             progress.waiting_review = Some(event.review_id.clone());
-                            if let Some(emitter) = emit {
-                                if let Err(error) = emitter.emit_plan_review_requested(event.clone()) {
-                                    tracing::warn!(%error, review_id = %event.review_id, "could not publish durable plan-review request");
-                                }
+                            if let Some(emitter) = emit
+                                && let Err(error) = emitter.emit_plan_review_requested(event.clone())
+                            {
+                                tracing::warn!(%error, review_id = %event.review_id, "could not publish durable plan-review request");
                             }
                             break;
                         }
@@ -1163,7 +1236,10 @@ async fn run(
                 parent_cursor = Some(id);
             }
 
-            chat_messages.push(ChatMessage::tool_result(&tc.id, &output));
+            chat_messages.push(match event_outcome {
+                ToolOutcome::Success => ChatMessage::tool_result(&tc.id, &output),
+                ToolOutcome::Denied | ToolOutcome::Error => ChatMessage::tool_error(&tc.id, &output),
+            });
 
             if turn_aborted {
                 break;
@@ -3009,6 +3085,174 @@ mod tests {
         run_turn(&services(&pool, &tools, &mcp), s, ports(&approvals, None)).await;
 
         assert_eq!(provider.ceilings(), [Some(8_000)]);
+    }
+
+    /// `pause_turn` is the Messages API stopping while its own tool runs long.
+    /// The same request goes back with the round's blocks appended, and the
+    /// blocks travel in `provider_state` — so the resumed request has to
+    /// carry the assistant row that holds them, or the search starts over.
+    #[tokio::test]
+    async fn a_pause_turn_is_resumed_with_the_rounds_blocks_on_the_request() {
+        let pool = test_db();
+        conversation(&pool);
+        let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
+        let paused = vec![
+            StreamEvent::ProviderStateUpdate {
+                update: crate::provider::state::ProviderStateUpdate::AnthropicContentBlock {
+                    model: "claude-opus-5".into(),
+                    position: 0,
+                    block_json:
+                        r#"{"type":"server_tool_use","id":"srvtoolu_1","name":"web_search","input":{"query":"x"}}"#
+                            .into(),
+                },
+            },
+            StreamEvent::Stop {
+                reason: "pause_turn".into(),
+                usage: None,
+            },
+        ];
+        let provider = Scripted::of(vec![paused, says("found it")]);
+        let approvals = Answers::nobody();
+
+        let outcome = run_turn(
+            &services(&pool, &tools, &mcp),
+            setup(&provider, &pool, &cancel, &["run_command"]),
+            ports(&approvals, None),
+        )
+        .await;
+        assert_eq!(outcome.reply.as_deref(), Ok("found it"));
+        assert_eq!(provider.rounds(), 2, "resumed once, then answered");
+
+        let (resumed_with, _) = &provider.requests()[1];
+        let paused_row = resumed_with
+            .iter()
+            .rev()
+            .find(|m| m.role == "assistant")
+            .expect("the paused round goes back on the request");
+        assert!(
+            paused_row
+                .provider_state
+                .as_ref()
+                .is_some_and(|s| s.anthropic_blocks_for("claude-opus-5").is_some()),
+            "with the blocks the adapter replays"
+        );
+        assert_eq!(outcome.chat_stop_reason(), ChatStopReason::EndTurn);
+    }
+
+    /// A server that pauses on every round is not a conversation; the cap is
+    /// what keeps it from being a loop the loop guard cannot see.
+    #[tokio::test]
+    async fn pause_turn_resumption_is_bounded() {
+        let pool = test_db();
+        conversation(&pool);
+        let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
+        let pause = || {
+            vec![StreamEvent::Stop {
+                reason: "pause_turn".into(),
+                usage: None,
+            }]
+        };
+        let provider = Scripted::of((0..MAX_PAUSE_CONTINUATIONS + 5).map(|_| pause()).collect());
+        let approvals = Answers::nobody();
+
+        let outcome = run_turn(
+            &services(&pool, &tools, &mcp),
+            setup(&provider, &pool, &cancel, &["run_command"]),
+            ports(&approvals, None),
+        )
+        .await;
+        assert!(outcome.reply.is_ok());
+        assert_eq!(provider.rounds(), MAX_PAUSE_CONTINUATIONS + 1);
+    }
+
+    /// A refusal and a length cut-off are stops with a name, not errors and
+    /// not ordinary ends: the reader is told which.
+    #[tokio::test]
+    async fn a_refusal_and_a_truncation_are_reported_by_name() {
+        for (reason, expected) in [
+            ("refusal", ChatStopReason::Refusal),
+            ("content_filter", ChatStopReason::Refusal),
+            ("max_tokens", ChatStopReason::MaxTokens),
+            ("length", ChatStopReason::MaxTokens),
+            ("end_turn", ChatStopReason::EndTurn),
+        ] {
+            let pool = test_db();
+            conversation(&pool);
+            let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
+            let provider = Scripted::of(vec![vec![StreamEvent::Stop {
+                reason: reason.into(),
+                usage: None,
+            }]]);
+            let approvals = Answers::nobody();
+            let outcome = run_turn(
+                &services(&pool, &tools, &mcp),
+                setup(&provider, &pool, &cancel, &["run_command"]),
+                ports(&approvals, None),
+            )
+            .await;
+            assert!(outcome.reply.is_ok(), "{reason} is not an error");
+            assert_eq!(outcome.chat_stop_reason(), expected, "{reason}");
+        }
+    }
+
+    /// A stream cut short mid-argument would otherwise be persisted as a
+    /// fragment and fail every later context rebuild of the conversation. The
+    /// stored copy is normalised to an empty object — which the strict read
+    /// contract accepts — while dispatch still sees the original arguments and
+    /// answers the call as the ordinary invalid-arguments error the model
+    /// already recovers from.
+    #[tokio::test]
+    async fn a_call_whose_arguments_never_arrived_intact_is_stored_empty() {
+        let pool = test_db();
+        conversation(&pool);
+        let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
+        let truncated = vec![
+            StreamEvent::ToolCallStart {
+                index: 0,
+                id: "c1".into(),
+                name: "run_command".into(),
+            },
+            StreamEvent::ToolCallDelta {
+                index: 0,
+                arguments: r#"{"command":"echo half"#.into(),
+            },
+            StreamEvent::Stop {
+                reason: "stop".into(),
+                usage: None,
+            },
+        ];
+        let provider = Scripted::of(vec![truncated, says("let me retry")]);
+        let approvals = Answers::nobody();
+
+        let outcome = run_turn(
+            &services(&pool, &tools, &mcp),
+            setup(&provider, &pool, &cancel, &["run_command"]),
+            ports(&approvals, None),
+        )
+        .await;
+        assert!(outcome.reply.is_ok());
+
+        // The row on disk is parseable under the read contract.
+        let assistant = rows(&pool)
+            .into_iter()
+            .find(|m| m.role == "assistant" && m.tool_calls.is_some())
+            .unwrap();
+        let stored = crate::agent::tool_calls::parse_stored_tool_calls(
+            assistant.schema_version,
+            assistant.tool_calls.as_deref(),
+        )
+        .expect("the stored tool_calls must satisfy the read contract");
+        assert_eq!(stored[0].arguments, "{}", "the fragment is not persisted");
+
+        // And the original arguments reached dispatch, which answered the call
+        // as invalid rather than running it.
+        let tool_row = rows(&pool).into_iter().find(|m| m.role == "tool").unwrap();
+        assert!(
+            tool_row.content.contains("invalid tool arguments JSON"),
+            "dispatch answered the original arguments: {:?}",
+            tool_row.content
+        );
+        assert_eq!(tool_row.tool_outcome.as_deref(), Some("error"));
     }
 
     /// Usage is accumulated across every round, not taken from the last one.

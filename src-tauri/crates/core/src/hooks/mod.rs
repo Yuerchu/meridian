@@ -477,7 +477,7 @@ mod tests {
         ] {
             let pool = test_db();
             set_preference(&pool, key, value);
-            let error = load_config(&pool).err().expect("malformed stored preference must fail");
+            let error = load_config(&pool).expect_err("malformed stored preference must fail");
             assert!(error.contains(key), "{key}: {error}");
         }
     }
@@ -489,9 +489,7 @@ mod tests {
         diesel::sql_query("DROP TABLE preferences").execute(&mut conn).unwrap();
         drop(conn);
 
-        let error = load_config(&pool)
-            .err()
-            .expect("database errors must fail config loading");
+        let error = load_config(&pool).expect_err("database errors must fail config loading");
         assert!(error.contains("hooks.enabled"), "{error}");
     }
 

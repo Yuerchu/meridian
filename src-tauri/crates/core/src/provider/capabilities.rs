@@ -400,33 +400,31 @@ fn resolve_inner(provider_type: &str, api_format: Option<&str>, model: &str) -> 
 /// model that needs one it does not inherit can be given it in
 /// `capability_overrides`.
 fn server_tools_for(provider_type: &str, api_format: Option<&str>) -> Vec<ServerToolKind> {
-    if api_format != Some("responses") {
-        return Vec::new();
-    }
-    let tools: &[ServerToolKind] = match provider_type {
-        "xai" => &[
+    let tools: &[ServerToolKind] = match (provider_type, api_format) {
+        // The Messages API's own search, `web_search_<date>`. The adapter
+        // picks the dated name the model's generation accepts.
+        ("anthropic", None | Some("messages")) => &[ServerToolKind::WebSearch],
+        ("xai", Some("responses")) => &[
             ServerToolKind::WebSearch,
             ServerToolKind::XSearch,
             ServerToolKind::CodeExecution,
         ],
         // Its compatibility table lists `function` and `web_search` as the
         // supported tool types and says everything else is ignored.
-        "deepseek" => &[ServerToolKind::WebSearch],
+        ("deepseek", Some("responses")) => &[ServerToolKind::WebSearch],
+        // Chat-completions has no such thing anywhere — measured: xAI answers
+        // "expected `function` or `live_search`" — and nobody else is listed
+        // without having been measured.
         _ => &[],
     };
     tools.to_vec()
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 enum OverrideField<T> {
+    #[default]
     Unset,
     Set(T),
-}
-
-impl<T> Default for OverrideField<T> {
-    fn default() -> Self {
-        Self::Unset
-    }
 }
 
 impl<'de, T> Deserialize<'de> for OverrideField<T>
@@ -998,6 +996,20 @@ mod tests {
             resolve("anthropic", Some("responses"), "claude-opus-4-8")
                 .server_tools
                 .is_empty()
+        );
+    }
+
+    /// The Messages API documents its own search tool, on every generation
+    /// under one dated name or another.
+    #[test]
+    fn anthropic_offers_web_search_on_its_own_api() {
+        assert_eq!(
+            resolve("anthropic", None, "claude-opus-4-8").server_tools,
+            vec![ServerToolKind::WebSearch]
+        );
+        assert_eq!(
+            resolve("anthropic", None, "claude-sonnet-4-20250514").server_tools,
+            vec![ServerToolKind::WebSearch]
         );
     }
 

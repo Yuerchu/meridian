@@ -65,6 +65,7 @@ pub fn build_messages_with_context_items(
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
+            tool_error: false,
             provider_state: None,
             origin: provider::MessageOrigin::Assistant,
         });
@@ -114,6 +115,7 @@ fn attach_sender_note(msgs: &mut Vec<ChatMessage>) {
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
+            tool_error: false,
             provider_state: None,
             origin: provider::MessageOrigin::Assistant,
         },
@@ -160,6 +162,27 @@ fn push_history_message(
                 .map_err(|error| format!("message {} has invalid persisted provider_state: {error}", m.id))?;
             let tool_calls = parse_stored_tool_calls(m.schema_version, m.tool_calls.as_deref())
                 .map_err(|error| format!("message {} has invalid persisted tool_calls: {error}", m.id))?;
+            // Providers require arguments to be a valid JSON object. A stream
+            // cut mid-argument persists a fragment; sending that verbatim makes
+            // the whole request fail. Normalise here — the only place the value
+            // leaves this process — rather than in the storage reader.
+            let tool_calls: Vec<_> = tool_calls
+                .into_iter()
+                .map(|tc| {
+                    let valid = serde_json::from_str::<serde_json::Value>(&tc.arguments)
+                        .ok()
+                        .filter(|v| v.is_object())
+                        .is_some();
+                    if valid {
+                        tc
+                    } else {
+                        crate::provider::ToolCall {
+                            arguments: "{}".to_string(),
+                            ..tc
+                        }
+                    }
+                })
+                .collect();
             let reasoning = m.reasoning_content.clone();
             if !tool_calls.is_empty() {
                 let mut message = ChatMessage::assistant_with_tools(&m.content, reasoning, tool_calls);
@@ -172,6 +195,7 @@ fn push_history_message(
                     reasoning_content: reasoning,
                     tool_calls: None,
                     tool_call_id: None,
+                    tool_error: false,
                     provider_state,
                     origin: provider::MessageOrigin::Assistant,
                 });
@@ -182,7 +206,20 @@ fn push_history_message(
                 .tool_call_id
                 .as_deref()
                 .ok_or_else(|| format!("tool message {} is missing tool_call_id", m.id))?;
-            msgs.push(ChatMessage::tool_result(call_id, &m.content));
+            let failed = match m.tool_outcome.as_deref() {
+                None => false,
+                Some(value) => match crate::events::ToolOutcome::parse(value)
+                    .map_err(|error| format!("tool message {}: {error}", m.id))?
+                {
+                    crate::events::ToolOutcome::Success => false,
+                    crate::events::ToolOutcome::Denied | crate::events::ToolOutcome::Error => true,
+                },
+            };
+            if failed {
+                msgs.push(ChatMessage::tool_error(call_id, &m.content));
+            } else {
+                msgs.push(ChatMessage::tool_result(call_id, &m.content));
+            }
         }
         // Background we injected on an earlier turn and then froze into the
         // history. The wire role is `user` either way — see
@@ -640,6 +677,7 @@ mod tests {
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
+            tool_error: false,
             provider_state: None,
             origin: provider::MessageOrigin::LegacyUser,
         }
@@ -706,8 +744,7 @@ mod tests {
         row.provider_state = Some(r#"{"version":1,"future":true}"#.into());
 
         let error = build_messages("", &ctx(&[row]), "continue")
-            .err()
-            .expect("corrupt provider state must not be flattened into None");
+            .expect_err("corrupt provider state must not be flattened into None");
         assert!(error.contains("broken-state"), "{error}");
         assert!(error.contains("invalid persisted provider_state"), "{error}");
     }
@@ -744,12 +781,35 @@ mod tests {
     }
 
     #[test]
+    /// A stream cut mid-argument leaves a fragment on the row. The row still
+    /// reads (the transcript has to open), but what reaches the provider is a
+    /// well-formed empty object, since a fragment fails the whole request.
+    fn a_truncated_argument_fragment_is_sent_as_an_empty_object() {
+        let mut assistant = msg("cut-short", "assistant", "");
+        assistant.tool_calls = Some(
+            r#"[{"id":"c1","type":"function","function":{"name":"run_command","arguments":"{\"command\":\"echo half"}}]"#
+                .into(),
+        );
+        // Answered, because an unanswered call is stripped from the context on
+        // its own — the model rejected the fragment as invalid arguments.
+        let mut result = msg("cut-short-result", "tool", "invalid arguments");
+        result.tool_call_id = Some("c1".into());
+        let built =
+            build_messages("", &ctx(&[assistant, result]), "next").expect("a fragment must not abort the rebuild");
+        let call = built
+            .iter()
+            .find_map(|m| m.tool_calls.as_ref())
+            .and_then(|calls| calls.first())
+            .expect("the call is still on the row");
+        assert_eq!(call.arguments, "{}");
+    }
+
+    #[test]
     fn corrupt_persisted_tool_calls_abort_context_rebuild() {
         let mut assistant = msg("broken-message", "assistant", "");
         assistant.tool_calls = Some("not-json".into());
         let error = build_messages("", &ctx(&[assistant]), "next")
-            .err()
-            .expect("corrupt history must not be flattened into a plain assistant row");
+            .expect_err("corrupt history must not be flattened into a plain assistant row");
         assert!(error.contains("broken-message"), "{error}");
         assert!(error.contains("invalid persisted tool_calls"), "{error}");
     }
@@ -1004,6 +1064,27 @@ mod tests {
         let idx = char_index_for_tokens_rev(&counter, &chars, 100);
         assert!(idx <= chars.len());
     }
+    /// The wire flag comes off the row's `tool_outcome`, so an error the
+    /// model was told about in one turn is still marked one when the history
+    /// is replayed. A row from before the column, and a success, stay plain.
+    #[test]
+    fn a_failed_tool_row_is_replayed_as_a_tool_error() {
+        let replay = |outcome: Option<&str>| {
+            let mut row = msg("t1", "tool", "boom");
+            row.tool_call_id = Some("call_1".into());
+            row.tool_outcome = outcome.map(str::to_owned);
+            let mut msgs = Vec::new();
+            push_history_message(&mut msgs, &row, &SenderNames::new(), None).unwrap();
+            assert_eq!(msgs.len(), 1);
+            assert_eq!(msgs[0].role, "tool");
+            assert_eq!(msgs[0].tool_call_id.as_deref(), Some("call_1"));
+            msgs[0].tool_error
+        };
+        assert!(replay(Some("error")));
+        assert!(replay(Some("denied")));
+        assert!(!replay(Some("success")));
+        assert!(!replay(None));
+    }
 }
 
 #[cfg(test)]
@@ -1062,6 +1143,7 @@ mod injected_context_tests {
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
+            tool_error: false,
             provider_state: None,
             origin: MessageOrigin::Assistant,
         }];

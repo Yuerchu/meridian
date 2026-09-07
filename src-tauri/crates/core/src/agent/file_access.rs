@@ -95,25 +95,6 @@ pub async fn build_file_access(pool: &DbPool) -> Result<tools::FileAccess, Strin
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::parse_saf_roots;
-
-    #[test]
-    fn saf_roots_require_the_canonical_array_shape() {
-        assert!(parse_saf_roots(None).unwrap().is_empty());
-        assert!(parse_saf_roots(Some("[]")).unwrap().is_empty());
-        assert!(parse_saf_roots(Some("{}")).is_err());
-        assert!(
-            parse_saf_roots(Some(
-                r#"[{"uri":"u","display_name":"d","virtual_prefix":"/v","future":true}]"#
-            ))
-            .is_err()
-        );
-        assert!(parse_saf_roots(Some(r#"[{"uri":"u","display_name":"d"}]"#)).is_err());
-    }
-}
-
 /// Describe accessible file roots for the system prompt so the model knows
 /// what paths it may use. Empty string when not in roots mode.
 pub fn file_access_prompt(file_access: &tools::FileAccess) -> String {
@@ -141,4 +122,23 @@ pub fn file_access_prompt(file_access: &tools::FileAccess) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_saf_roots;
+
+    #[test]
+    fn saf_roots_require_the_canonical_array_shape() {
+        assert!(parse_saf_roots(None).unwrap().is_empty());
+        assert!(parse_saf_roots(Some("[]")).unwrap().is_empty());
+        assert!(parse_saf_roots(Some("{}")).is_err());
+        assert!(
+            parse_saf_roots(Some(
+                r#"[{"uri":"u","display_name":"d","virtual_prefix":"/v","future":true}]"#
+            ))
+            .is_err()
+        );
+        assert!(parse_saf_roots(Some(r#"[{"uri":"u","display_name":"d"}]"#)).is_err());
+    }
 }

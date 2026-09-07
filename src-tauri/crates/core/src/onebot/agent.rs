@@ -345,6 +345,7 @@ pub(super) async fn oneshot_completion(
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
+            tool_error: false,
             provider_state: None,
             origin: provider::MessageOrigin::Assistant,
         },

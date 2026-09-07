@@ -769,7 +769,7 @@ mod tests {
     fn stored(status: UserCommandStatus, retry: bool) -> StoredResult {
         StoredResult {
             schema_version: 2,
-            status: status.into(),
+            status,
             command: "echo ok".into(),
             execution: Some(CommandExecution {
                 stdout: "ok".into(),

@@ -334,9 +334,7 @@ mod tests {
                 let mut conn = pool.get().unwrap();
                 crate::db::ops::preference::set_preference(&mut conn, LEVEL_PREFERENCE_KEY, raw, 1).unwrap();
             }
-            let error = load_saved_level(&pool)
-                .err()
-                .expect("invalid stored log level must fail");
+            let error = load_saved_level(&pool).expect_err("invalid stored log level must fail");
             assert!(error.contains("unsupported log level"), "{raw:?}: {error}");
         }
     }

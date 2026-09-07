@@ -1057,7 +1057,7 @@ fn prompt_with_workspace_context(text: &str, context: &[crate::workspace::refere
     };
     for item in context {
         let body = crate::workspace::reference::render_context_item(
-            item.kind.into(),
+            item.kind,
             item.display_path.as_deref(),
             item.line_start,
             item.line_end,
@@ -2358,7 +2358,7 @@ impl AcpSession {
     async fn pending_shell_context(&self, services: &Services) -> Result<Option<PendingShellContext>, String> {
         let pool = services.db.clone();
         let conversation_id = self.conversation_id.clone();
-        let loaded = tokio::task::spawn_blocking(move || -> Result<Option<PendingShellContext>, String> {
+        tokio::task::spawn_blocking(move || -> Result<Option<PendingShellContext>, String> {
             let mut conn = get_conn(&pool)?;
             let conversation = crate::db::ops::conversation::get_conversation(&mut conn, &conversation_id)
                 .map_err(|e| e.to_string())?;
@@ -2399,8 +2399,7 @@ impl AcpSession {
             bounded_pending_shell_context(&candidates)
         })
         .await
-        .map_err(|error| format!("ACP shell-context load task failed: {error}"))?;
-        loaded
+        .map_err(|error| format!("ACP shell-context load task failed: {error}"))?
     }
 
     /// Write the user's row and the turn record — and, when this prompt came

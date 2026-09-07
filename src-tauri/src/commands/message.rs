@@ -441,9 +441,6 @@ impl TryFrom<MessageRow> for MessageInfoResponse {
                 return Err(format!("message {} has negative {field}", row.id));
             }
         }
-        if row.sort_order < 0 {
-            return Err(format!("message {} has negative sort_order", row.id));
-        }
         if !matches!(row.rating, None | Some(-1 | 1)) {
             return Err(format!("message {} has invalid rating", row.id));
         }
@@ -487,20 +484,14 @@ impl TryFrom<MessageRow> for MessageInfoResponse {
         if auto_review.is_some() && role != db::models::message::MessageRole::Assistant {
             return Err(format!("non-assistant message {} has auto_review metadata", row.id));
         }
-        if let Some(verdicts) = &auto_review {
+        let auto_review = auto_review.map(|mut verdicts| {
             let call_ids = stored_tool_calls
                 .iter()
                 .map(|call| call.id.as_str())
                 .collect::<std::collections::BTreeSet<_>>();
-            for call_id in verdicts.keys() {
-                if call_id.is_empty() || !call_ids.contains(call_id.as_str()) {
-                    return Err(format!(
-                        "message {} has auto_review metadata for unknown tool call {call_id:?}",
-                        row.id
-                    ));
-                }
-            }
-        }
+            verdicts.retain(|call_id, _| !call_id.is_empty() && call_ids.contains(call_id.as_str()));
+            verdicts
+        });
         let tool_calls = row
             .tool_calls
             .is_some()
@@ -1993,6 +1984,36 @@ mod tests {
                 .into(),
         );
         assert!(MessageInfoResponse::try_from(extended).is_err());
+    }
+
+    /// Compaction summaries sit at `sort_order = -1` by design (migration 21),
+    /// so a conversation that has ever compacted carries one. Rejecting it here
+    /// used to fail the whole snapshot and blank the transcript.
+    #[test]
+    fn a_compaction_summary_at_negative_sort_order_is_readable() {
+        let mut row = exported_row("assistant", "summary");
+        row.is_compact_summary = 1;
+        row.sort_order = -1;
+        let json = serde_json::to_value(MessageInfoResponse::try_from(row).unwrap()).unwrap();
+        assert_eq!(json["sort_order"], -1);
+        assert_eq!(json["is_compact_summary"], true);
+    }
+
+    /// A verdict for a call the row no longer names — revised, or lost to a
+    /// crash — is orphaned metadata, not a broken row. It is dropped rather
+    /// than taking the transcript down with it.
+    #[test]
+    fn an_orphaned_auto_review_verdict_is_dropped_not_fatal() {
+        let mut row = exported_row("assistant", "");
+        row.tool_calls =
+            Some(r#"[{"id":"kept","type":"function","function":{"name":"read_file","arguments":"{}"}}]"#.into());
+        row.auto_review = Some(
+            r#"{"kept":{"outcome":"allow","risk":null,"authorization":null,"rationale":null,"stage":null,"model":null,"evidence":[]},"gone":{"outcome":"allow","risk":null,"authorization":null,"rationale":null,"stage":null,"model":null,"evidence":[]}}"#
+                .into(),
+        );
+        let json = serde_json::to_value(MessageInfoResponse::try_from(row).unwrap()).unwrap();
+        assert!(json["auto_review"].get("kept").is_some());
+        assert!(json["auto_review"].get("gone").is_none());
     }
 
     #[test]

@@ -1090,12 +1090,16 @@ mod response_contract_tests {
 
     #[test]
     fn capability_response_rejects_unknown_effort_and_verbosity() {
-        let mut capabilities = meridian_core::provider::ProviderCapabilities::default();
-        capabilities.supported_efforts = vec!["turbo".into()];
+        let capabilities = meridian_core::provider::ProviderCapabilities {
+            supported_efforts: vec!["turbo".into()],
+            ..Default::default()
+        };
         assert!(ProviderCapabilitiesInfoResponse::try_from(capabilities).is_err());
 
-        let mut capabilities = meridian_core::provider::ProviderCapabilities::default();
-        capabilities.default_verbosity = Some("verbose".into());
+        let capabilities = meridian_core::provider::ProviderCapabilities {
+            default_verbosity: Some("verbose".into()),
+            ..Default::default()
+        };
         assert!(ProviderCapabilitiesInfoResponse::try_from(capabilities).is_err());
     }
 

@@ -116,6 +116,7 @@ fn inject_tool_prompt(messages: &[ChatMessage], tool_prompt: &str) -> Vec<ChatMe
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
+            tool_error: false,
             provider_state: None,
             origin: super::MessageOrigin::Assistant,
         },

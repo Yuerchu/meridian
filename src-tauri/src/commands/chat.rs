@@ -99,7 +99,7 @@ fn trailing_with_user_context(
         .unwrap_or(trailing.len().saturating_sub(1));
     let injected = context.iter().map(|item| {
         ChatMessage::user_provided_context(&meridian_core::workspace::reference::render_context_item(
-            item.kind.into(),
+            item.kind,
             item.display_path.as_deref(),
             item.line_start,
             item.line_end,

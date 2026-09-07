@@ -569,6 +569,7 @@ pub(crate) fn system(content: &str) -> ChatMessage {
         reasoning_content: None,
         tool_calls: None,
         tool_call_id: None,
+        tool_error: false,
         provider_state: None,
         origin: crate::provider::MessageOrigin::Assistant,
     }
@@ -767,9 +768,7 @@ mod tests {
         for (key, value) in [("autoreview.enabled", "1"), ("autoreview.escalate", "FALSE")] {
             let pool = test_db();
             set_preference(&pool, key, value);
-            let error = Settings::load(&pool)
-                .err()
-                .expect("malformed stored boolean must fail settings loading");
+            let error = Settings::load(&pool).expect_err("malformed stored boolean must fail settings loading");
             assert!(error.contains(key), "{key}: {error}");
         }
     }
@@ -779,7 +778,7 @@ mod tests {
         for value in ["not json", r#"{"admin": 1}"#, r#"[1,"2"]"#] {
             let pool = test_db();
             set_preference(&pool, "onebot.admin_users", value);
-            let error = admin_roster(&pool).err().expect("malformed admin roster must fail");
+            let error = admin_roster(&pool).expect_err("malformed admin roster must fail");
             assert!(error.contains("onebot.admin_users"), "{value}: {error}");
         }
 
@@ -796,9 +795,7 @@ mod tests {
         diesel::sql_query("DROP TABLE preferences").execute(&mut conn).unwrap();
         drop(conn);
 
-        let error = Settings::load(&pool)
-            .err()
-            .expect("database errors must fail settings loading");
+        let error = Settings::load(&pool).expect_err("database errors must fail settings loading");
         assert!(error.contains("autoreview.enabled"), "{error}");
     }
 

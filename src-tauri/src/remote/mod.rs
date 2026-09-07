@@ -338,7 +338,7 @@ mod tests {
     fn stored_remote_scalars_use_exact_wire_spellings() {
         assert!(parse_stored_bool("remote.enabled", Some("yes".into()), false).is_err());
         assert!(parse_stored_port("remote.port", Some("08787".into()), DEFAULT_PORT).is_err());
-        assert_eq!(parse_stored_bool("remote.enabled", None, false).unwrap(), false);
+        assert!(!parse_stored_bool("remote.enabled", None, false).unwrap());
         assert_eq!(
             parse_stored_port("remote.port", None, DEFAULT_PORT).unwrap(),
             DEFAULT_PORT

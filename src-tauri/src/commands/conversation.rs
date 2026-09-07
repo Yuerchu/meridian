@@ -630,6 +630,10 @@ fn load_persona_and_memory(
 /// and tool results that are not persisted yet.
 /// Returns `(system_prompt, memory_block)`. They are counted together but sent
 /// separately: the memory block travels as a user-role message.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "mirrors the chat command's own inputs one for one; bundling them would be a struct with a single caller"
+)]
 async fn assemble_system_prompt(
     app: &tauri::AppHandle,
     pool: &DbPool,

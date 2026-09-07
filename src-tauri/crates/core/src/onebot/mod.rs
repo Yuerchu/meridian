@@ -1846,9 +1846,7 @@ mod tests {
         crate::db::ops::preference::set_preference(&mut conn, "onebot.admin_users", "not json", 1).unwrap();
         drop(conn);
 
-        let error = load_config(&pool)
-            .err()
-            .expect("malformed stored JSON must fail config loading");
+        let error = load_config(&pool).expect_err("malformed stored JSON must fail config loading");
         assert!(error.contains("onebot.admin_users"), "{error}");
     }
 

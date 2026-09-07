@@ -53,11 +53,6 @@ fn validate_call(call: provider::ToolCall, location: &str) -> Result<provider::T
     if call.name.is_empty() {
         return Err(format!("{location}.function.name must not be empty"));
     }
-    let arguments: serde_json::Value = serde_json::from_str(&call.arguments)
-        .map_err(|error| format!("{location}.function.arguments contains invalid JSON: {error}"))?;
-    if !arguments.is_object() {
-        return Err(format!("{location}.function.arguments must encode a JSON object"));
-    }
     Ok(call)
 }
 
@@ -182,19 +177,18 @@ mod tests {
     }
 
     #[test]
-    fn stored_arguments_must_be_a_json_object() {
-        assert!(
-            parse_openai_tool_calls(Some(
-                r#"[{"id":"call_1","type":"function","function":{"name":"read_file","arguments":"nope"}}]"#,
-            ))
-            .is_err()
-        );
-        assert!(
-            parse_openai_tool_calls(Some(
-                r#"[{"id":"call_1","type":"function","function":{"name":"read_file","arguments":"[]"}}]"#,
-            ))
-            .is_err()
-        );
+    fn stored_arguments_are_preserved_verbatim() {
+        let calls = parse_openai_tool_calls(Some(
+            r#"[{"id":"call_1","type":"function","function":{"name":"run_command","arguments":"nope"}}]"#,
+        ))
+        .unwrap();
+        assert_eq!(calls[0].arguments, "nope", "truncated arguments preserved");
+
+        let calls = parse_openai_tool_calls(Some(
+            r#"[{"id":"call_1","type":"function","function":{"name":"run_command","arguments":"[]"}}]"#,
+        ))
+        .unwrap();
+        assert_eq!(calls[0].arguments, "[]", "non-object arguments preserved");
     }
 
     #[test]

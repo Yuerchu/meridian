@@ -290,7 +290,7 @@ mod tests {
 
         for raw in [" 5", "05", "five", "18446744073709551615"] {
             set_ttl(&services, raw);
-            let error = ttl(&services).err().expect("invalid stored TTL must fail");
+            let error = ttl(&services).expect_err("invalid stored TTL must fail");
             assert!(error.contains(TTL_PREFERENCE), "{raw:?}: {error}");
         }
     }

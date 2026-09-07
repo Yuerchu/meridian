@@ -537,7 +537,7 @@ mod tests {
         let store = PlanFileStore::new(dir.path());
         let pool = crate::db::test_db();
         let mut conn = pool.get().unwrap();
-        let mut plans = vec![
+        let mut plans = [
             pending_plan(&mut conn, "conv-1", "# One\n"),
             pending_plan(&mut conn, "conv-2", "# Two\n"),
             pending_plan(&mut conn, "conv-3", "# Three\n"),

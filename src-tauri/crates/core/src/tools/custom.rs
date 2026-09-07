@@ -40,57 +40,6 @@ impl CustomToolExecutor {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::db::models::custom_tool::CustomToolRow;
-
-    fn row(schema: &str) -> CustomToolRow {
-        CustomToolRow {
-            id: "t1".into(),
-            name: "strict_tool".into(),
-            description: "test".into(),
-            category_id: None,
-            parameters_schema: schema.into(),
-            command: "true".into(),
-            args_template: None,
-            working_directory: None,
-            timeout_ms: None,
-            permission: "ask".into(),
-            is_enabled: 1,
-            sort_order: 0,
-            created_at: 1,
-            updated_at: 1,
-        }
-    }
-
-    #[test]
-    fn stored_parameter_schema_must_be_valid_json() {
-        let error = CustomToolExecutor::from_db(&row("not json"))
-            .err()
-            .expect("malformed schema must fail");
-        assert!(error.contains("invalid parameters_schema JSON"), "{error}");
-    }
-
-    #[test]
-    fn stored_parameter_schema_must_be_an_object() {
-        let error = CustomToolExecutor::from_db(&row("[]"))
-            .err()
-            .expect("non-object schema must fail");
-        assert!(error.contains("must be a JSON object"), "{error}");
-    }
-
-    #[test]
-    fn stored_permission_must_be_declared() {
-        let mut stored = row(r#"{"type":"object"}"#);
-        stored.permission = "future".into();
-        let error = CustomToolExecutor::from_db(&stored)
-            .err()
-            .expect("unknown permission must fail");
-        assert!(error.contains("unknown tool permission"), "{error}");
-    }
-}
-
 /// POSIX single-quote escaping. Model-supplied argument values must reach the
 /// shell as literal strings, never as syntax — the command template itself is
 /// author-defined and trusted, the values are not.
@@ -220,5 +169,56 @@ impl Tool for CustomToolExecutor {
                 res.exit_code, stdout, stderr,
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::models::custom_tool::CustomToolRow;
+
+    fn row(schema: &str) -> CustomToolRow {
+        CustomToolRow {
+            id: "t1".into(),
+            name: "strict_tool".into(),
+            description: "test".into(),
+            category_id: None,
+            parameters_schema: schema.into(),
+            command: "true".into(),
+            args_template: None,
+            working_directory: None,
+            timeout_ms: None,
+            permission: "ask".into(),
+            is_enabled: 1,
+            sort_order: 0,
+            created_at: 1,
+            updated_at: 1,
+        }
+    }
+
+    #[test]
+    fn stored_parameter_schema_must_be_valid_json() {
+        let Err(error) = CustomToolExecutor::from_db(&row("not json")) else {
+            panic!("malformed schema must fail");
+        };
+        assert!(error.contains("invalid parameters_schema JSON"), "{error}");
+    }
+
+    #[test]
+    fn stored_parameter_schema_must_be_an_object() {
+        let Err(error) = CustomToolExecutor::from_db(&row("[]")) else {
+            panic!("non-object schema must fail");
+        };
+        assert!(error.contains("must be a JSON object"), "{error}");
+    }
+
+    #[test]
+    fn stored_permission_must_be_declared() {
+        let mut stored = row(r#"{"type":"object"}"#);
+        stored.permission = "future".into();
+        let Err(error) = CustomToolExecutor::from_db(&stored) else {
+            panic!("unknown permission must fail");
+        };
+        assert!(error.contains("unknown tool permission"), "{error}");
     }
 }

@@ -86,9 +86,31 @@ pub(crate) fn warn_extra_fields(dto: &'static str, extra: &ExtraIgnore) {
     }
 
     let fields = extra.keys().cloned().collect::<Vec<_>>().join(",");
-    let fingerprint = format!("{dto}:{fields}");
+    if warn_once(format!("{dto}:{fields}")) {
+        tracing::warn!(
+            dto = dto,
+            ignored_fields = %fields,
+            "upstream response contained ignored fields"
+        );
+    }
+}
+
+/// A stream event or delta type this adapter has no branch for.
+///
+/// The same once-per-process rule as the fields above, and for the same
+/// reason: the point is to learn that the wire moved, not to write a line per
+/// token until it is fixed. Events the spec documents and this app has decided
+/// to ignore do not come through here — they are named in the adapter, so this
+/// only fires for something genuinely new.
+pub(crate) fn warn_unknown_event(dto: &'static str, event: &str) {
+    if warn_once(format!("{dto}:event:{event}")) {
+        tracing::warn!(dto = dto, event = event, "upstream stream carried an unknown event");
+    }
+}
+
+fn warn_once(fingerprint: String) -> bool {
     static WARNED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-    let should_warn = WARNED
+    WARNED
         .get_or_init(|| Mutex::new(HashSet::new()))
         .lock()
         .map(|mut warned| {
@@ -98,15 +120,7 @@ pub(crate) fn warn_extra_fields(dto: &'static str, extra: &ExtraIgnore) {
                 warned.insert(fingerprint)
             }
         })
-        .unwrap_or(true);
-
-    if should_warn {
-        tracing::warn!(
-            dto = dto,
-            ignored_fields = %fields,
-            "upstream response contained ignored fields"
-        );
-    }
+        .unwrap_or(true)
 }
 
 #[cfg(test)]

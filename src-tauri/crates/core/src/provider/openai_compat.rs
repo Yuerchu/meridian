@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;
 use futures::stream::StreamExt;
+use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -92,6 +93,12 @@ impl OpenAICompatProvider {
         }
         if let Some(ref effort) = params.thinking_effort {
             body["reasoning_effort"] = serde_json::json!(effort);
+        }
+        // A top-level field on chat-completions, unlike the Responses API's
+        // `text.verbosity`. `filter_params` has already cleared it for models
+        // whose capabilities do not list it, so this is a pure passthrough.
+        if let Some(ref verbosity) = params.verbosity {
+            body["verbosity"] = serde_json::json!(verbosity);
         }
         if self.flavor == OpenAICompatFlavor::Google {
             body["extra_body"] = serde_json::json!({
@@ -375,6 +382,11 @@ fn append_interrupted_results(out: &mut Vec<serde_json::Value>, results: Vec<(St
     }));
 }
 
+// The fields OpenAI documents on a chat-completions reply and this code reads
+// nothing from are named as `IgnoredAny` rather than left to `extra`, for the
+// same reason `models.rs` does it: the warning `extra` feeds is for shapes this
+// code has not seen, and a standard reply tripping it on every stream is a
+// warning nobody reads. `default`, because relays omit them.
 #[derive(Deserialize)]
 pub struct ChatChunk {
     /// This is the required OpenAI chat-completions envelope field. A relay
@@ -382,6 +394,22 @@ pub struct ChatChunk {
     /// mistaken for an empty token chunk.
     pub choices: Vec<ChunkChoice>,
     pub usage: Option<ChunkUsage>,
+    #[serde(default, rename = "id")]
+    _id: IgnoredAny,
+    #[serde(default, rename = "object")]
+    _object: IgnoredAny,
+    #[serde(default, rename = "created")]
+    _created: IgnoredAny,
+    #[serde(default, rename = "model")]
+    _model: IgnoredAny,
+    #[serde(default, rename = "service_tier")]
+    _service_tier: IgnoredAny,
+    #[serde(default, rename = "system_fingerprint")]
+    _system_fingerprint: IgnoredAny,
+    #[serde(default, rename = "obfuscation")]
+    _obfuscation: IgnoredAny,
+    #[serde(default, rename = "moderation")]
+    _moderation: IgnoredAny,
     #[serde(default, flatten)]
     extra: ExtraIgnore,
 }
@@ -409,7 +437,13 @@ fn parse_chat_chunk(raw: &str) -> Result<ChatChunk, ProviderError> {
 #[derive(Deserialize)]
 pub struct ChunkChoice {
     pub delta: Option<Delta>,
+    /// `stop | length | tool_calls | content_filter | function_call`, passed
+    /// through as the string it arrived as.
     pub finish_reason: Option<String>,
+    #[serde(default, rename = "index")]
+    _index: IgnoredAny,
+    #[serde(default, rename = "logprobs")]
+    _logprobs: IgnoredAny,
     #[serde(default, flatten)]
     extra: ExtraIgnore,
 }
@@ -426,9 +460,16 @@ impl ChunkChoice {
 #[derive(Deserialize)]
 pub struct Delta {
     pub content: Option<String>,
+    /// The model declining, in its own words. It arrives *instead of*
+    /// `content`, so a reader that only draws `content` shows a blank reply.
+    pub refusal: Option<String>,
     pub reasoning_content: Option<String>,
     pub tool_calls: Option<Vec<DeltaToolCall>>,
     pub extra_content: Option<GoogleExtraContent>,
+    #[serde(default, rename = "role")]
+    _role: IgnoredAny,
+    #[serde(default, rename = "function_call")]
+    _function_call: IgnoredAny,
     #[serde(default, flatten)]
     extra: ExtraIgnore,
 }
@@ -451,10 +492,32 @@ impl Delta {
 pub struct DeltaToolCall {
     pub index: usize,
     pub id: Option<String>,
+    /// `function` or `custom`. Only the opening delta of a call carries it.
+    #[serde(default, rename = "type")]
+    pub kind: Option<String>,
     pub function: Option<DeltaFunction>,
+    /// A `custom` call's `{name, input}` body. This app never requests a custom
+    /// tool, so one arriving is ignored (see `is_unrequested_custom_call`).
+    #[serde(default, rename = "custom")]
+    _custom: IgnoredAny,
     pub extra_content: Option<GoogleExtraContent>,
     #[serde(default, flatten)]
     extra: ExtraIgnore,
+}
+
+/// A `type: "custom"` call names a tool this app never asked for: the request
+/// body only ever sends `type: "function"` definitions. Dispatching one would
+/// mean routing a `{name, input}` body through machinery built for JSON
+/// arguments, so it is logged and dropped rather than half-handled.
+fn is_unrequested_custom_call(kind: Option<&str>, id: Option<&str>) -> bool {
+    if kind != Some("custom") {
+        return false;
+    }
+    tracing::warn!(
+        call_id = id.unwrap_or(""),
+        "upstream announced a custom tool call this app never requested; ignoring it"
+    );
+    true
 }
 
 impl DeltaToolCall {
@@ -517,11 +580,14 @@ impl ChunkUsage {
     }
 }
 
-/// Only the field we price on. Additions remain forward-compatible, but are
-/// captured by `ExtraIgnore` and warned rather than disappearing silently.
+/// Only `cached_tokens` is priced on; the documented siblings are named so a
+/// standard reply does not warn. Anything undocumented is still captured by
+/// `ExtraIgnore` and warned rather than disappearing silently.
 #[derive(Deserialize)]
 pub struct PromptTokensDetails {
     pub cached_tokens: Option<i32>,
+    #[serde(default, rename = "audio_tokens")]
+    _audio_tokens: IgnoredAny,
     #[serde(default, flatten)]
     extra: ExtraIgnore,
 }
@@ -536,6 +602,12 @@ impl PromptTokensDetails {
 #[derive(Deserialize)]
 pub struct CompletionTokensDetails {
     pub reasoning_tokens: Option<i32>,
+    #[serde(default, rename = "audio_tokens")]
+    _audio_tokens: IgnoredAny,
+    #[serde(default, rename = "accepted_prediction_tokens")]
+    _accepted_prediction_tokens: IgnoredAny,
+    #[serde(default, rename = "rejected_prediction_tokens")]
+    _rejected_prediction_tokens: IgnoredAny,
     #[serde(default, flatten)]
     extra: ExtraIgnore,
 }
@@ -550,6 +622,22 @@ impl CompletionTokensDetails {
 struct ChatResponseDto {
     choices: Vec<ResponseChoiceDto>,
     usage: Option<ChunkUsage>,
+    #[serde(default, rename = "id")]
+    _id: IgnoredAny,
+    #[serde(default, rename = "object")]
+    _object: IgnoredAny,
+    #[serde(default, rename = "created")]
+    _created: IgnoredAny,
+    #[serde(default, rename = "model")]
+    _model: IgnoredAny,
+    #[serde(default, rename = "service_tier")]
+    _service_tier: IgnoredAny,
+    #[serde(default, rename = "system_fingerprint")]
+    _system_fingerprint: IgnoredAny,
+    #[serde(default, rename = "metadata")]
+    _metadata: IgnoredAny,
+    #[serde(default, rename = "moderation")]
+    _moderation: IgnoredAny,
     #[serde(default, flatten)]
     extra: ExtraIgnore,
 }
@@ -577,6 +665,13 @@ fn parse_chat_response(raw: &[u8]) -> Result<ChatResponseDto, ProviderError> {
 #[derive(Deserialize)]
 struct ResponseChoiceDto {
     message: ResponseMessageDto,
+    /// Read only to be logged beside a refusal; the turn's stop reason for a
+    /// non-streaming call is decided by the caller.
+    finish_reason: Option<String>,
+    #[serde(default, rename = "index")]
+    _index: IgnoredAny,
+    #[serde(default, rename = "logprobs")]
+    _logprobs: IgnoredAny,
     #[serde(default, flatten)]
     extra: ExtraIgnore,
 }
@@ -591,11 +686,39 @@ impl ResponseChoiceDto {
 #[derive(Deserialize)]
 struct ResponseMessageDto {
     content: Option<String>,
+    /// See `Delta::refusal`.
+    refusal: Option<String>,
     reasoning_content: Option<String>,
     tool_calls: Option<Vec<ResponseToolCallDto>>,
     extra_content: Option<GoogleExtraContent>,
+    #[serde(default, rename = "role")]
+    _role: IgnoredAny,
+    #[serde(default, rename = "function_call")]
+    _function_call: IgnoredAny,
+    #[serde(default, rename = "annotations")]
+    _annotations: IgnoredAny,
+    #[serde(default, rename = "audio")]
+    _audio: IgnoredAny,
     #[serde(default, flatten)]
     extra: ExtraIgnore,
+}
+
+/// What a non-streaming reply says, with a refusal folded in after the prose.
+/// `None` only when neither was given: an empty `content` beside a refusal is
+/// what a refused reply looks like, and the refusal is the answer.
+fn reply_text(content: Option<String>, refusal: Option<String>, finish_reason: Option<&str>) -> Option<String> {
+    let refusal = refusal.filter(|r| !r.is_empty());
+    let Some(refusal) = refusal else {
+        return content;
+    };
+    tracing::info!(
+        finish_reason = finish_reason.unwrap_or(""),
+        chars = refusal.chars().count(),
+        "the model refused; showing the refusal as the reply"
+    );
+    let mut text = content.unwrap_or_default();
+    text.push_str(&refusal);
+    Some(text)
 }
 
 impl ResponseMessageDto {
@@ -615,7 +738,13 @@ impl ResponseMessageDto {
 #[derive(Deserialize)]
 struct ResponseToolCallDto {
     id: String,
-    function: ResponseFunctionDto,
+    #[serde(default, rename = "type")]
+    kind: Option<String>,
+    /// Required for a `function` call; a `custom` call carries `custom` instead,
+    /// which is why this is not simply a required field.
+    function: Option<ResponseFunctionDto>,
+    #[serde(default, rename = "custom")]
+    _custom: IgnoredAny,
     extra_content: Option<GoogleExtraContent>,
     #[serde(default, flatten)]
     extra: ExtraIgnore,
@@ -624,7 +753,9 @@ struct ResponseToolCallDto {
 impl ResponseToolCallDto {
     fn warn_ignored_fields(&self) {
         warn_extra_fields("response_tool_call", &self.extra);
-        self.function.warn_ignored_fields();
+        if let Some(function) = &self.function {
+            function.warn_ignored_fields();
+        }
         if let Some(extra_content) = &self.extra_content {
             extra_content.warn_ignored_fields();
         }
@@ -765,8 +896,24 @@ fn parse_openai_sse_events_for(
             {
                 events.push(StreamEvent::Text { content: c.clone() });
             }
+            // A refusal is the reply. Shown as text rather than given an event
+            // of its own, because every reader of the transcript already knows
+            // how to draw text and none of them knows a blank turn was a "no".
+            if let Some(ref r) = delta.refusal
+                && !r.is_empty()
+            {
+                tracing::info!(
+                    finish_reason = choice.finish_reason.as_deref().unwrap_or(""),
+                    chars = r.chars().count(),
+                    "the model refused; showing the refusal as the reply"
+                );
+                events.push(StreamEvent::Text { content: r.clone() });
+            }
             if let Some(ref tcs) = delta.tool_calls {
                 for tc in tcs {
+                    if is_unrequested_custom_call(tc.kind.as_deref(), tc.id.as_deref()) {
+                        continue;
+                    }
                     if let (Some(model), Some(signature)) = (
                         google_model,
                         tc.extra_content
@@ -878,7 +1025,13 @@ impl ChatProvider for OpenAICompatProvider {
             .choices
             .into_iter()
             .next()
-            .and_then(|choice| choice.message.content)
+            .and_then(|choice| {
+                reply_text(
+                    choice.message.content,
+                    choice.message.refusal,
+                    choice.finish_reason.as_deref(),
+                )
+            })
             .ok_or_else(|| ProviderError::Parse("no content in response".into()))
     }
 
@@ -896,29 +1049,34 @@ impl ChatProvider for OpenAICompatProvider {
         parsed.warn_ignored_fields();
 
         let usage = parsed.usage.as_ref().map(normalise_openai_usage);
-        let message = parsed
+        let choice = parsed
             .choices
             .into_iter()
             .next()
-            .map(|choice| choice.message)
             .ok_or_else(|| ProviderError::Parse("response choices is empty".into()))?;
+        let finish_reason = choice.finish_reason;
+        let message = choice.message;
         let provider_state = if self.flavor == OpenAICompatFlavor::Google {
             google_state_from_message(&message, &params.model)?
         } else {
             None
         };
-        let text = message.content.unwrap_or_default();
+        let text = reply_text(message.content, message.refusal, finish_reason.as_deref()).unwrap_or_default();
         let reasoning_content = message.reasoning_content;
-        let tool_calls = message
-            .tool_calls
-            .unwrap_or_default()
-            .into_iter()
-            .map(|tool_call| ToolCall {
+        let mut tool_calls = Vec::new();
+        for tool_call in message.tool_calls.unwrap_or_default() {
+            if is_unrequested_custom_call(tool_call.kind.as_deref(), Some(&tool_call.id)) {
+                continue;
+            }
+            let function = tool_call.function.ok_or_else(|| {
+                ProviderError::Parse(format!("tool call {} carries no `function` body", tool_call.id))
+            })?;
+            tool_calls.push(ToolCall {
                 id: tool_call.id,
-                name: tool_call.function.name,
-                arguments: tool_call.function.arguments,
-            })
-            .collect();
+                name: function.name,
+                arguments: function.arguments,
+            });
+        }
 
         Ok(AgentResponse {
             text,
@@ -1345,16 +1503,20 @@ mod google_tests {
     fn extra_fields_are_captured_without_entering_the_domain_model() {
         let chunk: ChatChunk = serde_json::from_value(serde_json::json!({
             "id": "relay-chunk-id",
+            "relay_envelope": "not logged",
             "choices": [{
                 "index": 0,
+                "relay_choice": "not logged",
                 "delta": { "content": "hello", "relay_trace": "not logged" },
                 "finish_reason": null
             }],
             "usage": null
         }))
         .unwrap();
-        assert!(chunk.extra.contains_key("id"));
-        assert!(chunk.choices[0].extra.contains_key("index"));
+        assert!(chunk.extra.contains_key("relay_envelope"));
+        assert!(!chunk.extra.contains_key("id"), "a documented field is not extra");
+        assert!(chunk.choices[0].extra.contains_key("relay_choice"));
+        assert!(!chunk.choices[0].extra.contains_key("index"));
         assert!(
             chunk.choices[0]
                 .delta
@@ -1373,5 +1535,201 @@ mod google_tests {
         .err()
         .expect("an error envelope is not a chat chunk");
         assert!(error.to_string().contains("missing field `choices`"));
+    }
+}
+
+#[cfg(test)]
+mod openai_tests {
+    use super::*;
+    use crate::client::RequestBody;
+
+    /// A chunk shaped exactly as OpenAI documents `chat.completion.chunk`,
+    /// with every envelope, choice, delta, tool-call and usage field present.
+    fn standard_chunk() -> serde_json::Value {
+        serde_json::json!({
+            "id": "chatcmpl-abc123",
+            "object": "chat.completion.chunk",
+            "created": 1_700_000_000,
+            "model": "gpt-4.1-mini",
+            "service_tier": "default",
+            "system_fingerprint": "fp_44709d6fcb",
+            "obfuscation": "x9Kq",
+            "moderation": null,
+            "choices": [{
+                "index": 0,
+                "delta": {
+                    "role": "assistant",
+                    "content": "hello",
+                    "refusal": null,
+                    "function_call": null,
+                    "tool_calls": [{
+                        "index": 0,
+                        "id": "call_1",
+                        "type": "function",
+                        "function": { "name": "read_file", "arguments": "{\"path\":" }
+                    }]
+                },
+                "finish_reason": null,
+                "logprobs": null
+            }],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "total_tokens": 15,
+                "prompt_tokens_details": { "cached_tokens": 4, "audio_tokens": 0 },
+                "completion_tokens_details": {
+                    "reasoning_tokens": 0,
+                    "audio_tokens": 0,
+                    "accepted_prediction_tokens": 0,
+                    "rejected_prediction_tokens": 0
+                }
+            }
+        })
+    }
+
+    /// Every documented field is named, so a standard reply feeds nothing to
+    /// `warn_extra_fields` — while a field nobody documented still lands in
+    /// `extra`, which is the only reason that warning is worth keeping.
+    #[test]
+    fn a_standard_chunk_leaves_every_extra_empty_and_an_invented_field_does_not() {
+        let chunk: ChatChunk = serde_json::from_value(standard_chunk()).unwrap();
+        assert!(chunk.extra.is_empty(), "chunk: {:?}", chunk.extra.keys());
+        let choice = &chunk.choices[0];
+        assert!(choice.extra.is_empty(), "choice: {:?}", choice.extra.keys());
+        let delta = choice.delta.as_ref().unwrap();
+        assert!(delta.extra.is_empty(), "delta: {:?}", delta.extra.keys());
+        let call = &delta.tool_calls.as_ref().unwrap()[0];
+        assert!(call.extra.is_empty(), "tool call: {:?}", call.extra.keys());
+        assert!(call.function.as_ref().unwrap().extra.is_empty());
+        let usage = chunk.usage.as_ref().unwrap();
+        assert!(usage.extra.is_empty(), "usage: {:?}", usage.extra.keys());
+
+        let mut invented = standard_chunk();
+        invented["relay_envelope"] = serde_json::json!("not logged");
+        invented["choices"][0]["delta"]["relay_trace"] = serde_json::json!("not logged");
+        let chunk: ChatChunk = serde_json::from_value(invented).unwrap();
+        assert_eq!(chunk.extra.keys().collect::<Vec<_>>(), ["relay_envelope"]);
+        let delta = chunk.choices[0].delta.as_ref().unwrap();
+        assert_eq!(delta.extra.keys().collect::<Vec<_>>(), ["relay_trace"]);
+    }
+
+    /// The two `*_tokens_details` objects carry more than the one field each
+    /// that is priced on, and the rest used to warn on every OpenAI stream.
+    #[test]
+    fn documented_usage_details_are_not_extra() {
+        let usage: ChunkUsage = serde_json::from_value(standard_chunk()["usage"].clone()).unwrap();
+        let prompt = usage.prompt_tokens_details.as_ref().unwrap();
+        assert!(prompt.extra.is_empty(), "{:?}", prompt.extra.keys());
+        assert_eq!(prompt.cached_tokens, Some(4), "the priced field is still read");
+        let completion = usage.completion_tokens_details.as_ref().unwrap();
+        assert!(completion.extra.is_empty(), "{:?}", completion.extra.keys());
+        assert_eq!(completion.reasoning_tokens, Some(0));
+    }
+
+    /// A refused reply carries `refusal` *instead of* `content`. Without this
+    /// the transcript showed a blank assistant turn that had said no.
+    #[test]
+    fn a_streamed_refusal_is_shown_as_text() {
+        let chunk: ChatChunk = serde_json::from_value(serde_json::json!({
+            "choices": [{
+                "index": 0,
+                "delta": { "content": null, "refusal": "I cannot help with that." },
+                "finish_reason": "stop"
+            }]
+        }))
+        .unwrap();
+        let (events, finish, _) = parse_openai_sse_events(&chunk);
+        assert!(
+            matches!(&events[..], [StreamEvent::Text { content }] if content == "I cannot help with that."),
+            "{events:?}"
+        );
+        assert_eq!(finish.as_deref(), Some("stop"));
+    }
+
+    #[test]
+    fn a_non_streamed_refusal_is_appended_to_the_text() {
+        let parsed = parse_chat_response(
+            br#"{"id":"chatcmpl-1","object":"chat.completion","created":1,"model":"gpt-4.1-mini",
+                "choices":[{"index":0,"finish_reason":"stop","logprobs":null,
+                    "message":{"role":"assistant","content":null,"refusal":"No.","annotations":[]}}],
+                "usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}"#,
+        )
+        .unwrap();
+        assert!(parsed.extra.is_empty(), "{:?}", parsed.extra.keys());
+        let choice = parsed.choices.into_iter().next().unwrap();
+        assert!(choice.extra.is_empty());
+        assert!(choice.message.extra.is_empty(), "{:?}", choice.message.extra.keys());
+        let text = reply_text(
+            choice.message.content,
+            choice.message.refusal,
+            choice.finish_reason.as_deref(),
+        );
+        assert_eq!(text.as_deref(), Some("No."));
+
+        assert_eq!(
+            reply_text(Some("a".into()), Some("b".into()), None).as_deref(),
+            Some("ab")
+        );
+        assert_eq!(
+            reply_text(None, Some(String::new()), None),
+            None,
+            "an empty refusal is no reply"
+        );
+    }
+
+    /// This app only ever sends `type: "function"` definitions, so a `custom`
+    /// call is one it never asked for: dropped, never started.
+    #[test]
+    fn an_unrequested_custom_call_is_ignored() {
+        let chunk: ChatChunk = serde_json::from_value(serde_json::json!({
+            "choices": [{
+                "index": 0,
+                "delta": { "tool_calls": [
+                    { "index": 0, "id": "call_c", "type": "custom", "custom": { "name": "grammar", "input": "x" } },
+                    { "index": 1, "id": "call_f", "type": "function", "function": { "name": "read_file", "arguments": "" } }
+                ] },
+                "finish_reason": null
+            }]
+        }))
+        .unwrap();
+        let call = &chunk.choices[0].delta.as_ref().unwrap().tool_calls.as_ref().unwrap()[0];
+        assert!(
+            call.extra.is_empty(),
+            "`custom` is a documented field: {:?}",
+            call.extra.keys()
+        );
+        let (events, _, _) = parse_openai_sse_events(&chunk);
+        assert!(
+            matches!(&events[..], [StreamEvent::ToolCallStart { id, .. }] if id == "call_f"),
+            "{events:?}"
+        );
+    }
+
+    /// Chat-completions takes `verbosity` at the top level, where the
+    /// Responses API nests it under `text`.
+    #[test]
+    fn verbosity_is_sent_at_the_top_level_when_set() {
+        let provider = OpenAICompatProvider::new("https://api.openai.com/v1", "key");
+        let mut params = ChatParams {
+            model: "gpt-5".into(),
+            verbosity: Some("low".into()),
+            ..Default::default()
+        };
+        let req = provider
+            .build_request(&[ChatMessage::user("hello")], None, &params, false)
+            .unwrap();
+        let Some(RequestBody::Json(body)) = req.body else {
+            panic!("JSON body")
+        };
+        assert_eq!(body["verbosity"], "low");
+
+        params.verbosity = None;
+        let req = provider
+            .build_request(&[ChatMessage::user("hello")], None, &params, false)
+            .unwrap();
+        let Some(RequestBody::Json(body)) = req.body else {
+            panic!("JSON body")
+        };
+        assert!(body.get("verbosity").is_none());
     }
 }

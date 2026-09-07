@@ -2,8 +2,11 @@ use async_trait::async_trait;
 use eventsource_stream::Eventsource;
 use futures::stream::StreamExt;
 use serde::Deserialize;
-use std::collections::HashMap;
+use serde::de::IgnoredAny;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Mutex, OnceLock};
 
+use super::dto::{ExtraIgnore, warn_extra_fields};
 use super::{
     AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, MessageContentPart, ProviderError, StreamEvent,
     TokenUsage, ToolCall, ToolDefinition,
@@ -51,7 +54,9 @@ impl OpenAIResponsesProvider {
             body["max_output_tokens"] = serde_json::json!(m);
         }
         if let Some(ref effort) = params.thinking_effort {
-            body["reasoning"] = serde_json::json!({"effort": effort});
+            // Without `summary` the reasoning summary events are never sent,
+            // so a reasoning model would think in silence.
+            body["reasoning"] = serde_json::json!({"effort": effort, "summary": "auto"});
         }
         if let Some(ref verbosity) = params.verbosity {
             body["text"] = serde_json::json!({"verbosity": verbosity});
@@ -208,16 +213,45 @@ pub(super) struct ResponseUsage {
     /// `prompt_tokens_details`. Same nesting, same reason for a struct of its
     /// own: serde cannot reach into a nested object from a flat field.
     input_tokens_details: Option<ResponseInputTokensDetails>,
+    /// `{reasoning_tokens}`: a subset of `output_tokens`, not an addition to
+    /// it, so nothing is read from it (see `normalise_responses_usage`). Named
+    /// rather than left to `extra` because every reasoning reply carries it.
+    #[serde(default, rename = "output_tokens_details")]
+    _output_tokens_details: IgnoredAny,
     /// Absent on every endpoint that has no server-side tools, which is why it
     /// is an `Option` rather than a defaulted struct: "none ran" and "this API
     /// has none" both read as nothing to bill, and neither is a zero worth
     /// recording.
     server_side_tool_usage_details: Option<ServerToolUsage>,
+    /// xAI's total beside the itemised details; deliberately not read, see
+    /// `ServerToolUsage`.
+    #[serde(default, rename = "num_server_side_tools_used")]
+    _num_server_side_tools_used: IgnoredAny,
+    #[serde(default, flatten)]
+    extra: ExtraIgnore,
+}
+
+/// Deserialise a usage object and report the fields it carried that this
+/// code does not know. The three call sites parse the same shape, and the
+/// warning belongs beside the parse rather than in `normalise_responses_usage`,
+/// which tests feed already-typed values.
+fn read_usage(value: Option<&serde_json::Value>) -> Option<TokenUsage> {
+    let usage = serde_json::from_value::<ResponseUsage>(value?.clone()).ok()?;
+    warn_extra_fields("responses_usage", &usage.extra);
+    if let Some(details) = usage.input_tokens_details.as_ref() {
+        warn_extra_fields("responses_input_tokens_details", &details.extra);
+    }
+    if let Some(details) = usage.server_side_tool_usage_details.as_ref() {
+        warn_extra_fields("responses_server_tool_usage", &details.extra);
+    }
+    Some(normalise_responses_usage(&usage))
 }
 
 #[derive(Deserialize)]
 struct ResponseInputTokensDetails {
     cached_tokens: Option<i64>,
+    #[serde(default, flatten)]
+    extra: ExtraIgnore,
 }
 
 /// What the provider ran on its own side, itemised.
@@ -247,6 +281,8 @@ struct ServerToolUsage {
     document_search_calls: i64,
     #[serde(default)]
     image_generation_calls: i64,
+    #[serde(default, flatten)]
+    extra: ExtraIgnore,
 }
 
 impl ServerToolUsage {
@@ -286,10 +322,156 @@ pub(super) fn normalise_responses_usage(u: &ResponseUsage) -> TokenUsage {
     }
 }
 
+/// `response.error` on a `response.failed` event.
 #[derive(Deserialize)]
 struct ResponseError {
     code: Option<String>,
     message: Option<String>,
+    #[serde(default, flatten)]
+    extra: ExtraIgnore,
+}
+
+/// The top-level `error` stream event. Not `ResponseError`: this one carries
+/// the event's own envelope (`type`, `param`, `sequence_number`), which would
+/// otherwise trip the unknown-field warning on every error.
+#[derive(Deserialize)]
+struct StreamErrorEvent {
+    code: Option<String>,
+    message: Option<String>,
+    #[serde(default, rename = "type")]
+    _type: IgnoredAny,
+    #[serde(default, rename = "param")]
+    _param: IgnoredAny,
+    #[serde(default, rename = "sequence_number")]
+    _sequence_number: IgnoredAny,
+    #[serde(default, flatten)]
+    extra: ExtraIgnore,
+}
+
+/// Every `ResponseStreamEvent` type the specification lists that this adapter
+/// has nothing to do with. Kept as a list rather than a `_ =>` arm so that a
+/// name absent from both this and the `match` is a *new* event — something
+/// worth a warning — instead of one more thing silently dropped.
+const IGNORED_EVENTS: &[&str] = &[
+    "response.created",
+    "response.in_progress",
+    "response.queued",
+    "response.content_part.added",
+    "response.content_part.done",
+    "response.output_text.done",
+    "response.output_text.annotation.added",
+    "response.refusal.done",
+    "response.reasoning_summary_part.added",
+    "response.reasoning_summary_part.done",
+    "response.reasoning_summary_text.done",
+    "response.reasoning_text.done",
+    "response.web_search_call.in_progress",
+    "response.web_search_call.searching",
+    "response.web_search_call.completed",
+    "response.file_search_call.in_progress",
+    "response.file_search_call.searching",
+    "response.file_search_call.completed",
+    "response.code_interpreter_call.in_progress",
+    "response.code_interpreter_call.interpreting",
+    "response.code_interpreter_call.completed",
+    "response.code_interpreter_call_code.delta",
+    "response.code_interpreter_call_code.done",
+    "response.image_generation_call.in_progress",
+    "response.image_generation_call.generating",
+    "response.image_generation_call.completed",
+    "response.image_generation_call.partial_image",
+    "response.mcp_call.in_progress",
+    "response.mcp_call.completed",
+    "response.mcp_call.failed",
+    "response.mcp_call_arguments.delta",
+    "response.mcp_call_arguments.done",
+    "response.mcp_list_tools.in_progress",
+    "response.mcp_list_tools.completed",
+    "response.mcp_list_tools.failed",
+    "response.custom_tool_call_input.delta",
+    "response.custom_tool_call_input.done",
+    "response.audio.delta",
+    "response.audio.done",
+    "response.audio.transcript.delta",
+    "response.audio.transcript.done",
+];
+
+/// Output item types the provider runs on its own side and reports back as
+/// already done. Only these become a `ServerToolCall`; see `server_tool_call`.
+const SERVER_TOOL_ITEMS: &[&str] = &[
+    "web_search_call",
+    "file_search_call",
+    "code_interpreter_call",
+    "image_generation_call",
+    "mcp_call",
+    "mcp_list_tools",
+    "custom_tool_call",
+    // xAI's collections search. Not in OpenAI's list, but measured on the
+    // wire and drawn as a card since before the list existed; it is priced
+    // differently and the usage counter already excludes it.
+    "document_search_call",
+];
+
+/// Output item types with a path of their own through the parser, and so not
+/// worth a warning when `server_tool_call` declines them.
+const OWN_PATH_ITEMS: &[&str] = &["message", "reasoning", "function_call"];
+
+/// Warn once per process about a wire name this adapter does not know — an
+/// event type, an output item type. Streams repeat a name for every token, so
+/// once is the only useful frequency; the set is capped like `warn_extra_fields`.
+fn warn_unknown_once(kind: &'static str, name: &str) {
+    static WARNED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    let fingerprint = format!("{kind}:{name}");
+    let should_warn = WARNED
+        .get_or_init(|| Mutex::new(HashSet::new()))
+        .lock()
+        .map(|mut warned| {
+            if warned.len() >= 256 {
+                false
+            } else {
+                warned.insert(fingerprint)
+            }
+        })
+        .unwrap_or(true);
+    if should_warn {
+        tracing::warn!(kind, name, "Responses stream carried a name this adapter does not know");
+    }
+}
+
+/// Serialise a `web_search_call`'s `action` the way a card can show it. The
+/// specification has three shapes and only the first was read to begin with:
+/// `search{query, queries, sources}`, `open_page{url}`, `find_in_page{pattern,
+/// url}`. Empty is how the opening event spells "not known yet", and an empty
+/// string shown as a query reads as a search for nothing — so `None` until
+/// something is there to show.
+fn web_search_arguments(action: &serde_json::Value) -> Option<String> {
+    let non_empty = |key: &str| action[key].as_str().filter(|s| !s.is_empty());
+    let mut args = serde_json::Map::new();
+    match action["type"].as_str() {
+        Some("open_page") => {
+            if let Some(url) = non_empty("url") {
+                args.insert("url".into(), url.into());
+            }
+        }
+        Some("find_in_page") => {
+            if let Some(pattern) = non_empty("pattern") {
+                args.insert("pattern".into(), pattern.into());
+            }
+            if let Some(url) = non_empty("url") {
+                args.insert("url".into(), url.into());
+            }
+        }
+        // `search`, and the absent type xAI's older events carry.
+        _ => {
+            if let Some(query) = non_empty("query") {
+                args.insert("query".into(), query.into());
+            }
+            if let Some(queries) = action["queries"].as_array().filter(|q| !q.is_empty()) {
+                args.insert("queries".into(), serde_json::Value::Array(queries.clone()));
+            }
+        }
+    }
+    (!args.is_empty()).then(|| serde_json::Value::Object(args).to_string())
 }
 
 /// Read a provider-side tool call out of an output item, if that is what it is.
@@ -317,10 +499,24 @@ struct ResponseError {
 /// consequence of getting it wrong is a card drawn for something we should have
 /// run, which is why it is written down here.
 ///
-/// Anything unrecognised is still announced rather than dropped. Nothing here is
-/// executed, so an unfamiliar card is the safe failure and silence is not.
+/// The item types that qualify are a whitelist (`SERVER_TOOL_ITEMS`), not the
+/// complement of a blacklist. The specification's output items also include
+/// calls the *client* is supposed to execute and answer with a matching
+/// `_call_output` (`computer_call`, `local_shell_call`, `shell_call`,
+/// `apply_patch_call`, `tool_search_call`) and items that are not calls at all
+/// (`compaction`, `program`, `configuration_update`). Announcing one of those
+/// as provider-side would claim it had already run — a card for work nobody
+/// did, and a model waiting for a reply that never comes — so anything outside
+/// the list is warned about once and dropped, and a new server-side item type
+/// is an entry here rather than a card by default.
 fn server_tool_call(item: &serde_json::Value, completed: bool) -> Option<super::ServerToolCall> {
     let item_type = item["type"].as_str()?;
+    if !SERVER_TOOL_ITEMS.contains(&item_type) {
+        if !OWN_PATH_ITEMS.contains(&item_type) {
+            warn_unknown_once("output_item", item_type);
+        }
+        return None;
+    }
     let id = item["id"].as_str().unwrap_or_default().to_string();
 
     if item_type == "custom_tool_call" {
@@ -336,29 +532,24 @@ fn server_tool_call(item: &serde_json::Value, completed: bool) -> Option<super::
         });
     }
 
-    let name = item_type.strip_suffix("_call")?;
-    // Everything here is a call the *client* is supposed to execute and answer
-    // with a matching `_call_output`. Announcing one as provider-side would
-    // claim it had already run — so the model would be shown a card for work
-    // nobody did, and then wait for a reply that never comes. Unreachable while
-    // this app never requests them, and one `capability_overrides` entry away
-    // from being reachable.
-    if matches!(
-        name,
-        "" | "function" | "computer" | "local_shell" | "apply_patch" | "mcp"
-    ) {
-        return None;
-    }
+    // The tool's name is the item type with `_call` removed; `mcp_list_tools`
+    // has no suffix and is its own name.
+    let name = item_type.strip_suffix("_call").unwrap_or(item_type);
     let action = &item["action"];
+    let arguments = if item_type == "web_search_call" {
+        web_search_arguments(action)
+    } else {
+        // Empty is how the opening event spells "not known yet", and an empty
+        // string shown as a query reads as a search for nothing.
+        action["query"]
+            .as_str()
+            .filter(|q| !q.is_empty())
+            .map(|query| serde_json::json!({ "query": query }).to_string())
+    };
     Some(super::ServerToolCall {
         id,
         name: name.to_string(),
-        // Empty is how the opening event spells "not known yet", and an empty
-        // string shown as a query reads as a search for nothing.
-        arguments: action["query"]
-            .as_str()
-            .filter(|q| !q.is_empty())
-            .map(|query| serde_json::json!({ "query": query }).to_string()),
+        arguments,
         sources: action["sources"]
             .as_array()
             .map(|sources| {
@@ -379,7 +570,9 @@ pub(super) fn parse_responses_event(
     state: &mut StreamState,
 ) -> Vec<Result<StreamEvent, ProviderError>> {
     match event_type {
-        "response.output_text.delta" => {
+        // A refusal is the model's answer to the question, and the reader
+        // should see it as one: it goes out as text, not as an error.
+        "response.output_text.delta" | "response.refusal.delta" => {
             let parsed: Result<serde_json::Value, _> = serde_json::from_str(data);
             match parsed {
                 Ok(v) => {
@@ -509,10 +702,7 @@ pub(super) fn parse_responses_event(
             match parsed {
                 Ok(v) => {
                     let response = &v["response"];
-                    let usage = response
-                        .get("usage")
-                        .and_then(|u| serde_json::from_value::<ResponseUsage>(u.clone()).ok())
-                        .map(|u| normalise_responses_usage(&u));
+                    let usage = read_usage(response.get("usage"));
                     let mut events = Vec::new();
                     if let Some(u) = usage {
                         events.push(Ok(StreamEvent::UsageUpdate { usage: u }));
@@ -534,6 +724,9 @@ pub(super) fn parse_responses_event(
                     let error = response
                         .get("error")
                         .and_then(|e| serde_json::from_value::<ResponseError>(e.clone()).ok());
+                    if let Some(error) = error.as_ref() {
+                        warn_extra_fields("responses_error", &error.extra);
+                    }
                     let code = error.as_ref().and_then(|e| e.code.as_deref()).unwrap_or("unknown");
                     let message = error
                         .as_ref()
@@ -554,10 +747,7 @@ pub(super) fn parse_responses_event(
                     let reason = v["response"]["incomplete_details"]["reason"]
                         .as_str()
                         .unwrap_or("unknown");
-                    let usage = v["response"]
-                        .get("usage")
-                        .and_then(|u| serde_json::from_value::<ResponseUsage>(u.clone()).ok())
-                        .map(|u| normalise_responses_usage(&u));
+                    let usage = read_usage(v["response"].get("usage"));
                     let mut events = Vec::new();
                     if let Some(u) = usage {
                         events.push(Ok(StreamEvent::UsageUpdate { usage: u }));
@@ -571,7 +761,30 @@ pub(super) fn parse_responses_event(
                 Err(e) => vec![Err(ProviderError::Parse(e.to_string()))],
             }
         }
-        _ => vec![],
+        // The stream's own error event, distinct from `response.failed`: it
+        // carries the code at the top level and there is no response to read
+        // it off. Nothing after it is coming, so it ends the stream as an error.
+        "error" => {
+            let parsed: Result<StreamErrorEvent, _> = serde_json::from_str(data);
+            match parsed {
+                Ok(error) => {
+                    warn_extra_fields("responses_stream_error", &error.extra);
+                    let code = error.code.as_deref().unwrap_or("unknown");
+                    let message = error.message.as_deref().unwrap_or("Unknown error");
+                    let status = if code.contains("rate_limit") { 429 } else { 400 };
+                    vec![Err(ProviderError::Api {
+                        status,
+                        body: format!("{}: {}", code, message),
+                    })]
+                }
+                Err(e) => vec![Err(ProviderError::Parse(e.to_string()))],
+            }
+        }
+        other if IGNORED_EVENTS.contains(&other) => vec![],
+        other => {
+            warn_unknown_once("event", other);
+            vec![]
+        }
     }
 }
 
@@ -701,10 +914,7 @@ impl ChatProvider for OpenAIResponsesProvider {
             }
         }
 
-        let usage = parsed
-            .get("usage")
-            .and_then(|u| serde_json::from_value::<ResponseUsage>(u.clone()).ok())
-            .map(|u| normalise_responses_usage(&u));
+        let usage = read_usage(parsed.get("usage"));
 
         Ok(AgentResponse {
             text,
@@ -963,13 +1173,116 @@ mod tests {
         }
     }
 
-    /// A tool nobody has heard of is still drawn. Nothing here is executed, so
-    /// an unfamiliar card is the safe failure — silence is not.
+    /// The whitelist, not its complement: an output item that is not a
+    /// provider-side call — a client-executed call, or no call at all — must
+    /// not be drawn as one, because a card claims the work was already done.
     #[test]
-    fn an_unfamiliar_server_tool_is_still_announced() {
-        let item = serde_json::json!({"id": "zz_1", "type": "document_search_call", "status": "completed"});
-        let call = server_tool_call(&item, true).expect("still announced");
-        assert_eq!(call.name, "document_search");
+    fn an_item_outside_the_whitelist_is_not_a_server_tool() {
+        for item in [
+            serde_json::json!({"id": "cp_1", "type": "compaction", "status": "completed"}),
+            serde_json::json!({"id": "sh_1", "type": "shell_call", "status": "completed"}),
+            serde_json::json!({"id": "cu_1", "type": "computer_call", "status": "completed"}),
+            serde_json::json!({"id": "zz_1", "type": "future_thing_call", "status": "completed"}),
+        ] {
+            assert!(server_tool_call(&item, true).is_none(), "{item}");
+        }
+        let listed = serde_json::json!({"id": "mcpl_1", "type": "mcp_list_tools"});
+        assert_eq!(
+            server_tool_call(&listed, true).expect("whitelisted").name,
+            "mcp_list_tools"
+        );
+        // xAI's collections search is measured, listed, and still a card.
+        let collections = serde_json::json!({"id": "ds_1", "type": "document_search_call", "status": "completed"});
+        assert_eq!(
+            server_tool_call(&collections, true).expect("whitelisted").name,
+            "document_search"
+        );
+    }
+
+    /// The other two `action` shapes of a `web_search_call`; only `search`
+    /// was read before, so a page open or an in-page find showed no arguments.
+    #[test]
+    fn web_search_actions_serialise_by_their_shape() {
+        let open: serde_json::Value = serde_json::from_str(
+            r#"{"id":"ws_1","type":"web_search_call","status":"completed",
+                "action":{"type":"open_page","url":"https://x.ai/about"}}"#,
+        )
+        .unwrap();
+        let call = server_tool_call(&open, true).expect("a server tool call");
+        assert_eq!(call.arguments.as_deref(), Some(r#"{"url":"https://x.ai/about"}"#));
+
+        let find: serde_json::Value = serde_json::from_str(
+            r#"{"id":"ws_2","type":"web_search_call","status":"completed",
+                "action":{"type":"find_in_page","pattern":"pricing","url":"https://x.ai/about"}}"#,
+        )
+        .unwrap();
+        let call = server_tool_call(&find, true).expect("a server tool call");
+        assert_eq!(
+            call.arguments.as_deref(),
+            Some(r#"{"pattern":"pricing","url":"https://x.ai/about"}"#)
+        );
+    }
+
+    #[test]
+    fn a_stream_error_event_ends_the_stream_as_an_api_error() {
+        let mut state = StreamState::default();
+        let out = parse_responses_event(
+            "error",
+            r#"{"type":"error","code":"rate_limit_exceeded","message":"slow down","param":null,"sequence_number":3}"#,
+            &mut state,
+        );
+        assert_eq!(out.len(), 1);
+        match &out[0] {
+            Err(ProviderError::Api { status, body }) => {
+                assert_eq!(*status, 429);
+                assert_eq!(body, "rate_limit_exceeded: slow down");
+            }
+            other => panic!("expected an API error, got {other:?}"),
+        }
+
+        let out = parse_responses_event(
+            "error",
+            r#"{"type":"error","code":"server_error","message":"x"}"#,
+            &mut state,
+        );
+        assert!(matches!(out.first(), Some(Err(ProviderError::Api { status: 400, .. }))));
+    }
+
+    #[test]
+    fn a_refusal_delta_is_text() {
+        let mut state = StreamState::default();
+        let out = parse_responses_event("response.refusal.delta", r#"{"delta":"I cannot"}"#, &mut state);
+        assert!(matches!(out.first(), Some(Ok(StreamEvent::Text { content })) if content == "I cannot"));
+        assert!(parse_responses_event("response.refusal.done", r#"{"refusal":"I cannot"}"#, &mut state).is_empty());
+    }
+
+    #[test]
+    fn unknown_and_ignored_events_produce_nothing() {
+        let mut state = StreamState::default();
+        assert!(parse_responses_event("response.created", r#"{"response":{}}"#, &mut state).is_empty());
+        assert!(parse_responses_event("response.audio.delta", r#"{"delta":"AAA="}"#, &mut state).is_empty());
+        assert!(parse_responses_event("response.something_new.delta", "not even json", &mut state).is_empty());
+    }
+
+    /// Reasoning summaries are sent only when asked for; without `summary`
+    /// the `reasoning_summary_text.delta` events never arrive.
+    #[test]
+    fn asking_for_effort_asks_for_the_summary_too() {
+        let body = body_for("gpt-5.6-sol", |p| p.thinking_effort = Some("max".into()));
+        assert_eq!(body["reasoning"]["summary"], "auto");
+        let body = body_for("gpt-5.6-sol", |p| p.thinking_effort = None);
+        assert!(body.get("reasoning").is_none(), "no effort, no reasoning object");
+    }
+
+    #[test]
+    fn a_compaction_item_is_neither_a_call_nor_a_card() {
+        let mut state = StreamState::default();
+        let out = parse_responses_event(
+            "response.output_item.done",
+            r#"{"item":{"id":"cp_1","type":"compaction","encrypted_content":"..."}}"#,
+            &mut state,
+        );
+        assert!(out.is_empty(), "{out:?}");
     }
 
     /// DeepSeek streams its chain of thought under a different event name than
