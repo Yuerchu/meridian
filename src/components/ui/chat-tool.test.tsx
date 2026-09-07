@@ -105,7 +105,9 @@ describe('ChatTool on a keyboard', () => {
     const key = screen.getByRole('button', { name: /Write file/ })
     expect(key).toHaveAttribute('data-state', 'requires-action')
     expect(key).toHaveClass('basis-full')
-    const panel = container.querySelector('[data-slot="chat-tool-panel"]')!
+    // The ring is on the panel's outer box, the one that continues the bubble,
+    // so it wraps the key and the detail as one outline.
+    const panel = container.querySelector('[data-slot="chat-tool-content"]')!
     expect(panel.className).toContain('ring-warning')
   })
 
