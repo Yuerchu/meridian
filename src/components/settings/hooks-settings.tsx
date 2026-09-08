@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Checkbox, Input, Label, ListBox, Select } from '@heroui/react'
+import { Alert, Button, Input, Label, ListBox, Select, TextField } from '@heroui/react'
+import { CellSwitch } from '@heroui-pro/react/cell-switch'
 import { ItemCard } from '@heroui-pro/react/item-card'
 import { api } from '@/api'
 import { cn } from '@/lib/utils'
@@ -105,7 +106,7 @@ function ModelPicker({
   ]
 
   return (
-    <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
+    <div data-slot="model-picker" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
       <Select
         fullWidth
         aria-label={t('settings.assistant.provider')}
@@ -203,10 +204,7 @@ export function HooksSettings() {
   const [modelDraftDirty, setModelDraftDirty] = useState(false)
   const { confirm, confirmDialog } = useConfirm()
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const hostId = useId()
-  const portId = useId()
-  const timeoutId = useId()
-  const roundsId = useId()
+  const enableHintId = useId()
   const draft = JSON.stringify({
     ...config,
     token: undefined,
@@ -369,20 +367,23 @@ export function HooksSettings() {
     return (
       <SettingsPane>
         <SettingsHeader title={t('settings.hooks.title')} />
-        <div role="alert" className="space-y-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
-          <p>{t('settings.hooks.loadError')}</p>
-          {loadError && <p className="break-all">{loadError}</p>}
-          <Button
-            size="sm"
-            variant="outline"
-            onPress={() => {
-              setLoading(true)
-              void loadData()
-            }}
-          >
-            {t('settings.hooks.retry')}
-          </Button>
-        </div>
+        <Alert status="danger" role="alert">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>{t('settings.hooks.loadError')}</Alert.Title>
+            {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
+            <Button
+              size="sm"
+              variant="outline"
+              onPress={() => {
+                setLoading(true)
+                void loadData()
+              }}
+            >
+              {t('settings.hooks.retry')}
+            </Button>
+          </Alert.Content>
+        </Alert>
       </SettingsPane>
     )
   }
@@ -391,38 +392,39 @@ export function HooksSettings() {
     <SettingsPane>
       <SettingsHeader title={t('settings.hooks.title')} />
 
-      <div className="flex items-start gap-2">
-        <Checkbox
-          id="hooks-enabled"
+      <div data-slot="hooks-enable" className="space-y-1.5">
+        <CellSwitch
+          aria-label={t('settings.hooks.enable')}
+          aria-describedby={enableHintId}
           isSelected={config.enabled}
           onChange={(selected) => setConfig({ ...config, enabled: selected })}
         >
-          <Checkbox.Content>
-            <Checkbox.Control>
-              <Checkbox.Indicator />
-            </Checkbox.Control>
-          </Checkbox.Content>
-        </Checkbox>
-        <div className="space-y-0.5">
-          <label htmlFor="hooks-enabled" className="text-sm font-medium cursor-pointer">
-            {t('settings.hooks.enable')}
-          </label>
-          <p className="text-xs text-muted">{t('settings.hooks.enableHint')}</p>
-        </div>
+          <CellSwitch.Trigger className="pointer-coarse:h-11">
+            <CellSwitch.Label>{t('settings.hooks.enable')}</CellSwitch.Label>
+            <CellSwitch.Control />
+          </CellSwitch.Trigger>
+        </CellSwitch>
+        <p data-slot="hooks-enable-hint" id={enableHintId} className="text-xs text-muted">
+          {t('settings.hooks.enableHint')}
+        </p>
       </div>
 
-      <div className="space-y-1.5">
-        <p className="block text-xs font-medium text-muted">{t('settings.hooks.reviewModel')}</p>
+      <div data-slot="hooks-review-model" className="space-y-1.5">
+        <p data-slot="hooks-review-model-label" className="block text-xs font-medium text-muted">
+          {t('settings.hooks.reviewModel')}
+        </p>
         <ModelPicker
           providers={providers}
           value={config.review_model}
           onChange={(review_model) => setConfig({ ...config, review_model })}
           onDirtyChange={setModelDraftDirty}
         />
-        <p className="text-xs text-muted">{t('settings.hooks.reviewModelHint')}</p>
+        <p data-slot="hooks-review-model-hint" className="text-xs text-muted">
+          {t('settings.hooks.reviewModelHint')}
+        </p>
       </div>
 
-      <div className="space-y-1.5">
+      <div data-slot="hooks-assistant" className="space-y-1.5">
         <Select
           fullWidth
           value={config.assistant_id ?? '_default'}
@@ -446,85 +448,76 @@ export function HooksSettings() {
             </ListBox>
           </Select.Popover>
         </Select>
-        <p className="text-xs text-muted">{t('settings.hooks.assistantHint')}</p>
+        <p data-slot="hooks-assistant-hint" className="text-xs text-muted">
+          {t('settings.hooks.assistantHint')}
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <label htmlFor={hostId} className="block text-xs font-medium text-muted">
-            {t('settings.hooks.host')}
-          </label>
+      <div data-slot="hooks-endpoint" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
+        <TextField fullWidth>
+          <Label>{t('settings.hooks.host')}</Label>
           <Input
-            fullWidth
-            id={hostId}
             name="hooksHost"
             value={config.host}
             onChange={(e) => setConfig({ ...config, host: e.target.value })}
             placeholder="127.0.0.1"
           />
-        </div>
-        <div className="space-y-1.5">
-          <label htmlFor={portId} className="block text-xs font-medium text-muted">
-            {t('settings.hooks.port')}
-          </label>
+        </TextField>
+        <TextField fullWidth type="number">
+          <Label>{t('settings.hooks.port')}</Label>
           <Input
-            fullWidth
-            id={portId}
             name="hooksPort"
             inputMode="numeric"
-            type="number"
             min={1}
             max={65535}
             value={portInput}
             onChange={(e) => setPortInput(e.target.value)}
             placeholder="8765"
           />
-        </div>
+        </TextField>
       </div>
 
-      <div className="space-y-1.5">
-        <label htmlFor={timeoutId} className="block text-xs font-medium text-muted">
-          {t('settings.hooks.timeout')}
-        </label>
-        <Input
-          fullWidth
-          id={timeoutId}
-          name="hooksTimeout"
-          inputMode="numeric"
-          type="number"
-          min={10}
-          // Mirrors MAX_TIMEOUT_SECS in hooks/mod.rs. The backend clamps too —
-          // this is only so the field cannot offer a number that cannot happen.
-          max={1200}
-          value={timeoutInput}
-          onChange={(e) => setTimeoutInput(e.target.value)}
-        />
-        <p className="text-xs text-muted">{t('settings.hooks.timeoutHint')}</p>
+      <div data-slot="hooks-timeout" className="space-y-1.5">
+        <TextField fullWidth type="number">
+          <Label>{t('settings.hooks.timeout')}</Label>
+          <Input
+            name="hooksTimeout"
+            inputMode="numeric"
+            min={10}
+            // Mirrors MAX_TIMEOUT_SECS in hooks/mod.rs. The backend clamps too —
+            // this is only so the field cannot offer a number that cannot happen.
+            max={1200}
+            value={timeoutInput}
+            onChange={(e) => setTimeoutInput(e.target.value)}
+          />
+        </TextField>
+        <p data-slot="hooks-timeout-hint" className="text-xs text-muted">
+          {t('settings.hooks.timeoutHint')}
+        </p>
       </div>
 
-      <div className="space-y-1.5">
-        <label htmlFor={roundsId} className="block text-xs font-medium text-muted">
-          {t('settings.hooks.maxRounds')}
-        </label>
-        <Input
-          fullWidth
-          id={roundsId}
-          name="hooksMaxRounds"
-          inputMode="numeric"
-          type="number"
-          min={0}
-          max={20}
-          value={roundsInput}
-          onChange={(e) => setRoundsInput(e.target.value)}
-        />
-        <p className="text-xs text-muted">
+      <div data-slot="hooks-max-rounds" className="space-y-1.5">
+        <TextField fullWidth type="number">
+          <Label>{t('settings.hooks.maxRounds')}</Label>
+          <Input
+            name="hooksMaxRounds"
+            inputMode="numeric"
+            min={0}
+            max={20}
+            value={roundsInput}
+            onChange={(e) => setRoundsInput(e.target.value)}
+          />
+        </TextField>
+        <p data-slot="hooks-max-rounds-hint" className="text-xs text-muted">
           {roundsInput === '0' ? t('settings.hooks.maxRoundsUnlimited') : t('settings.hooks.maxRoundsHint')}
         </p>
       </div>
 
-      <div className="space-y-1.5">
-        <p className="block text-xs font-medium text-muted">{t('settings.hooks.token')}</p>
-        <div className="flex items-center gap-2">
+      <div data-slot="hooks-token" className="space-y-1.5">
+        <p data-slot="hooks-token-label" className="block text-xs font-medium text-muted">
+          {t('settings.hooks.token')}
+        </p>
+        <div data-slot="hooks-token-row" className="flex items-center gap-2">
           <Input
             fullWidth
             aria-label={t('settings.hooks.token')}
@@ -542,21 +535,23 @@ export function HooksSettings() {
             {t('settings.hooks.regenerate')}
           </Button>
         </div>
-        <p className="text-xs text-muted">{t('settings.hooks.tokenHint')}</p>
+        <p data-slot="hooks-token-hint" className="text-xs text-muted">
+          {t('settings.hooks.tokenHint')}
+        </p>
       </div>
 
       {error && (
-        <p role="alert" className="text-xs text-danger break-all">
+        <p data-slot="hooks-error" role="alert" className="text-xs text-danger break-all">
           {error}
         </p>
       )}
 
-      <div className="flex items-center gap-3 pt-2">
+      <div data-slot="hooks-actions" className="flex items-center gap-3 pt-2">
         <Button variant="outline" onPress={handleSave} isDisabled={saving}>
           {saved ? t('common.saved') : t('common.save')}
         </Button>
         {saved && (
-          <span role="status" className="sr-only">
+          <span data-slot="hooks-saved-status" role="status" className="sr-only">
             {t('common.saved')}
           </span>
         )}
@@ -574,8 +569,9 @@ export function HooksSettings() {
           <ItemCard.Content className="min-w-0">
             <ItemCard.Title className="flex w-full items-center gap-2">
               <span
+                data-slot="hooks-status-dot"
                 aria-hidden
-                className={cn('inline-block size-2 shrink-0 rounded-full', running ? 'bg-success' : 'bg-muted')}
+                className={cn('inline-block size-2 shrink-0 rounded-full', running ? 'bg-success' : 'bg-default')}
               />
               {running ? t('settings.hooks.statusRunning') : t('settings.hooks.statusStopped')}
             </ItemCard.Title>

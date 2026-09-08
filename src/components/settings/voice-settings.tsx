@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { listen } from '@/lib/transport'
 import { open } from '@tauri-apps/plugin-dialog'
 import { TrashBin } from '@gravity-ui/icons'
-import { Button, Card, Description, Input, Label, ProgressCircle, Spinner, TextField } from '@heroui/react'
+import { Button, Card, Description, Input, Label, ProgressCircle, Spinner, TextField, Tooltip } from '@heroui/react'
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
 import type { VoiceModelDownloadEvent } from '@/lib/app-event'
@@ -149,11 +149,14 @@ export function VoiceSettings() {
     <SettingsPane>
       <SettingsHeader title={t('settings.voice.title')} subtitle={t('settings.voice.intro')} />
 
-      <div className="space-y-1.5">
-        <p className="block text-xs font-medium text-muted">{t('settings.voice.model')}</p>
+      <div data-slot="voice-model" className="space-y-1.5">
+        <p data-slot="voice-section-label" className="block text-xs font-medium text-muted">
+          {t('settings.voice.model')}
+        </p>
         <Card>
           {statusLoading ? (
             <div
+              data-slot="voice-model-loading"
               role="status"
               aria-label={t('common.loading')}
               className="flex items-center gap-2 p-4 text-sm text-muted"
@@ -162,25 +165,28 @@ export function VoiceSettings() {
               {t('common.loading')}
             </div>
           ) : status?.installed ? (
-            <div className="flex items-center justify-between gap-2">
+            <div data-slot="voice-model-installed" className="flex items-center justify-between gap-2">
               <Card.Header className="min-w-0">
                 <Card.Title>{t('settings.voice.modelInstalled')}</Card.Title>
                 <Card.Description className="truncate">
                   {formatSize(status.size_bytes, sizeNumber)} · {status.path}
                 </Card.Description>
               </Card.Header>
-              <Button
-                isIconOnly
-                variant="ghost"
-                aria-label={t('settings.voice.deleteModel')}
-                onPress={handleDelete}
-                isDisabled={downloading}
-              >
-                <TrashBin className="w-4 h-4" />
-              </Button>
+              <Tooltip delay={0}>
+                <Button
+                  isIconOnly
+                  variant="ghost"
+                  aria-label={t('settings.voice.deleteModel')}
+                  onPress={handleDelete}
+                  isDisabled={downloading}
+                >
+                  <TrashBin className="w-4 h-4" />
+                </Button>
+                <Tooltip.Content>{t('settings.voice.deleteModel')}</Tooltip.Content>
+              </Tooltip>
             </div>
           ) : downloading ? (
-            <div className="flex items-center gap-3">
+            <div data-slot="voice-model-download" className="flex items-center gap-3">
               <ProgressCircle
                 aria-label={t('settings.voice.downloading')}
                 value={progress.total ? progress.downloaded : undefined}
@@ -193,7 +199,7 @@ export function VoiceSettings() {
                   <ProgressCircle.FillCircle />
                 </ProgressCircle.Track>
               </ProgressCircle>
-              <span className="text-xs text-muted flex-1">
+              <span data-slot="voice-download-progress" className="text-xs text-muted flex-1">
                 {formatSize(progress.downloaded, sizeNumber)}
                 {progress.total ? ` / ${formatSize(progress.total, sizeNumber)}` : ''}
               </span>
@@ -208,7 +214,7 @@ export function VoiceSettings() {
                 <Card.Description>{t('settings.voice.modelHint')}</Card.Description>
               </Card.Header>
               <Card.Footer className="flex-col items-start gap-2">
-                <div className="flex gap-2">
+                <div data-slot="voice-model-actions" className="flex gap-2">
                   <Button size="sm" onPress={handleDownload}>
                     {t('settings.voice.download')}
                   </Button>
@@ -226,12 +232,16 @@ export function VoiceSettings() {
                     {t('settings.voice.import')}
                   </Button>
                 </div>
-                {!can.importFromDisk && <p className="text-xs text-muted">{t('capability.importFromDisk')}</p>}
+                {!can.importFromDisk && (
+                  <p data-slot="voice-import-unavailable" className="text-xs text-muted">
+                    {t('capability.importFromDisk')}
+                  </p>
+                )}
               </Card.Footer>
             </>
           )}
           {error && (
-            <p role="alert" className="text-xs text-danger">
+            <p data-slot="voice-error" role="alert" className="text-xs text-danger">
               {error}
             </p>
           )}

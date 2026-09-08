@@ -62,9 +62,13 @@ function KindRow({ kind, providers }: { kind: Kind; providers: ProviderInfoRespo
   }
 
   return (
-    <div className="space-y-1.5">
-      <p className="block text-xs text-muted">{t(`settings.subAgent.${kind}`)}</p>
-      <p className="text-xs text-muted">{t(`settings.subAgent.${kind}Hint`)}</p>
+    <div data-slot="sub-agent-kind" className="space-y-1.5">
+      <p data-slot="sub-agent-kind-label" className="block text-xs text-muted">
+        {t(`settings.subAgent.${kind}`)}
+      </p>
+      <p data-slot="sub-agent-kind-hint" className="text-xs text-muted">
+        {t(`settings.subAgent.${kind}Hint`)}
+      </p>
       <ProviderModelPicker
         providers={providers}
         models={models}
@@ -83,7 +87,7 @@ function KindRow({ kind, providers }: { kind: Kind; providers: ProviderInfoRespo
         isModelDisabledWithoutProvider
       />
       {error && (
-        <p role="alert" className="text-xs text-danger break-all">
+        <p data-slot="sub-agent-kind-error" role="alert" className="text-xs text-danger break-all">
           {error}
         </p>
       )}
@@ -102,7 +106,7 @@ export function SubAgentSettings({ providers }: { providers: ProviderInfoRespons
   const { t } = useTranslation()
 
   return (
-    <div className="space-y-4">
+    <div data-slot="sub-agent-settings" className="space-y-4">
       <SettingsHeader title={t('settings.subAgent.title')} subtitle={t('settings.subAgent.subtitle')} />
       {KINDS.map((kind) => (
         <KindRow key={kind} kind={kind} providers={providers} />

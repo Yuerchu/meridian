@@ -2,12 +2,14 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, StarFill, SquareDashedText } from '@gravity-ui/icons'
 import {
+  Alert,
   Button,
   Checkbox,
   Disclosure,
   DisclosureGroup,
   Input,
   Label,
+  ListBox,
   TextArea,
   TextField,
   Tooltip,
@@ -171,7 +173,7 @@ function AssistantEditor({
   ]
 
   return (
-    <div className="space-y-4 px-1 pb-4">
+    <div data-slot="assistant-editor" className="space-y-4 px-1 pb-4">
       <TextField fullWidth>
         <Label>{t('settings.assistant.name')}</Label>
         <Input name={`assistantName-${assistant.id}`} value={name} onChange={(e) => setName(e.target.value)} />
@@ -180,7 +182,7 @@ function AssistantEditor({
       {/* The label shares its line with a button, so it is nested rather than a
           direct child. React Aria wires it through context either way. */}
       <TextField fullWidth>
-        <div className="flex items-center justify-between">
+        <div data-slot="assistant-prompt-header" className="flex items-center justify-between">
           <Label>{t('settings.assistant.systemPrompt')}</Label>
           <Button variant="ghost" className="text-xs gap-1" onPress={() => setShowTemplates(!showTemplates)}>
             <SquareDashedText className="w-3.5 h-3.5" />
@@ -192,20 +194,28 @@ function AssistantEditor({
             data-slot="template-list"
             className="border border-border rounded-lg p-2 space-y-1 max-h-48 overflow-y-auto overscroll-contain"
           >
-            {templates.map((tpl) => (
-              <Button
-                key={tpl.id}
-                variant="ghost"
-                className="w-full justify-start h-auto px-2 py-1.5 text-xs"
-                onPress={() => {
-                  setSystemPrompt(tpl.template_text)
-                  setShowTemplates(false)
-                }}
-              >
-                <span className="font-medium">{tpl.name}</span>
-                {tpl.description && <span className="text-muted ml-2">{tpl.description}</span>}
-              </Button>
-            ))}
+            <ListBox
+              aria-label={t('settings.assistant.browseTemplates')}
+              onAction={(key) => {
+                const tpl = templates.find((candidate) => candidate.id === String(key))
+                if (!tpl) return
+                setSystemPrompt(tpl.template_text)
+                setShowTemplates(false)
+              }}
+            >
+              {templates.map((tpl) => (
+                <ListBox.Item key={tpl.id} id={tpl.id} textValue={tpl.name} className="rounded-lg px-2 py-1.5 text-xs">
+                  <span data-slot="template-name" className="font-medium">
+                    {tpl.name}
+                  </span>
+                  {tpl.description && (
+                    <span data-slot="template-description" className="text-muted ml-2">
+                      {tpl.description}
+                    </span>
+                  )}
+                </ListBox.Item>
+              ))}
+            </ListBox>
           </div>
         )}
         <TextArea
@@ -223,7 +233,7 @@ function AssistantEditor({
           className="resize-none font-mono text-xs"
         />
         {templateVars.length > 0 && (
-          <div className="flex flex-wrap gap-1">
+          <div data-slot="template-variables" className="flex flex-wrap gap-1">
             {templateVars.map((v) => (
               <Tooltip key={v.name} delay={0}>
                 <Button
@@ -252,7 +262,7 @@ function AssistantEditor({
         emptyProviderLabel={t('settings.assistant.providerDefault')}
       />
 
-      <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
+      <div data-slot="assistant-params" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
         <TextField fullWidth type="number">
           <Label>{t('settings.assistant.temperature')}</Label>
           <Input
@@ -277,8 +287,10 @@ function AssistantEditor({
         </TextField>
       </div>
 
-      <div className="space-y-1.5">
-        <p className="block text-xs text-muted">{t('settings.assistant.autoCompact')}</p>
+      <div data-slot="assistant-auto-compact" className="space-y-1.5">
+        <p data-slot="assistant-auto-compact-label" className="block text-xs text-muted">
+          {t('settings.assistant.autoCompact')}
+        </p>
         <Checkbox className="text-xs" isSelected={autoCompactEnabled} onChange={setAutoCompactEnabled}>
           <Checkbox.Content>
             <Checkbox.Control>
@@ -289,9 +301,11 @@ function AssistantEditor({
         </Checkbox>
       </div>
 
-      <div className="space-y-1.5">
-        <p className="block text-xs text-muted">{t('settings.assistant.thinking')}</p>
-        <div className="flex items-center gap-3">
+      <div data-slot="assistant-thinking" className="space-y-1.5">
+        <p data-slot="assistant-thinking-label" className="block text-xs text-muted">
+          {t('settings.assistant.thinking')}
+        </p>
+        <div data-slot="assistant-thinking-toggle" className="flex items-center gap-3">
           <Checkbox className="text-xs" isSelected={thinkingEnabled} onChange={setThinkingEnabled}>
             <Checkbox.Content>
               <Checkbox.Control>
@@ -302,7 +316,7 @@ function AssistantEditor({
           </Checkbox>
         </div>
         {thinkingEnabled && (
-          <div className="space-y-1 mt-2">
+          <div data-slot="assistant-thinking-budget" className="space-y-1 mt-2">
             <Input
               fullWidth
               type="number"
@@ -313,7 +327,9 @@ function AssistantEditor({
               onChange={(e) => setThinkingBudget(e.target.value)}
               placeholder={t('settings.assistant.thinkingBudget')}
             />
-            <p className="text-xs text-muted">{t('settings.assistant.thinkingBudgetHint')}</p>
+            <p data-slot="assistant-thinking-budget-hint" className="text-xs text-muted">
+              {t('settings.assistant.thinkingBudgetHint')}
+            </p>
           </div>
         )}
       </div>
@@ -368,6 +384,7 @@ function AssistantEditor({
                 group-level value would mean diffing an array back into "which
                 one changed", which is a lot of new failure for a label. */}
             <div
+              data-slot="tool-grid"
               role="group"
               aria-label={t('settings.assistant.tools')}
               className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-1 p-2"
@@ -388,8 +405,14 @@ function AssistantEditor({
                     <Checkbox.Control>
                       <Checkbox.Indicator />
                     </Checkbox.Control>
-                    <span className="truncate font-mono">{tool.name}</span>
-                    {tool.source === 'mcp' && <span className="text-xs text-muted">MCP</span>}
+                    <span data-slot="tool-name" className="truncate font-mono">
+                      {tool.name}
+                    </span>
+                    {tool.source === 'mcp' && (
+                      <span data-slot="tool-source" className="text-xs text-muted">
+                        MCP
+                      </span>
+                    )}
                   </Checkbox.Content>
                 </Checkbox>
               ))}
@@ -401,6 +424,7 @@ function AssistantEditor({
       {allPacks.length > 0 && (
         <SettingsDrilldown title={t('settings.assistant.emojiPacks')} summary={assignedPackIds.size || undefined}>
           <div
+            data-slot="emoji-pack-grid"
             role="group"
             aria-label={t('settings.assistant.emojiPacks')}
             className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-1 p-2 border border-border rounded-lg"
@@ -428,7 +452,9 @@ function AssistantEditor({
                   <Checkbox.Control>
                     <Checkbox.Indicator />
                   </Checkbox.Control>
-                  <span className="truncate">{pack.name}</span>
+                  <span data-slot="emoji-pack-name" className="truncate">
+                    {pack.name}
+                  </span>
                 </Checkbox.Content>
               </Checkbox>
             ))}
@@ -438,12 +464,15 @@ function AssistantEditor({
 
       {allSkills.length > 0 && (
         <SettingsDrilldown title={t('settings.skills.assistantSection')} summary={boundSkillDirs.size || undefined}>
-          <p className="text-xs text-muted">{t('settings.skills.assistantHint')}</p>
+          <p data-slot="skill-hint" className="text-xs text-muted">
+            {t('settings.skills.assistantHint')}
+          </p>
           <div
             data-slot="skill-list"
             className="max-h-40 overflow-y-auto overscroll-contain border border-border rounded-lg"
           >
             <div
+              data-slot="skill-grid"
               role="group"
               aria-label={t('settings.skills.assistantSection')}
               className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-1 p-2"
@@ -475,14 +504,16 @@ function AssistantEditor({
                     <Checkbox.Control>
                       <Checkbox.Indicator />
                     </Checkbox.Control>
-                    <span className="truncate">{skill.display_name}</span>
+                    <span data-slot="skill-name" className="truncate">
+                      {skill.display_name}
+                    </span>
                   </Checkbox.Content>
                 </Checkbox>
               ))}
             </div>
           </div>
           {skillError && (
-            <p role="alert" className="text-xs text-danger">
+            <p data-slot="skill-error" role="alert" className="text-xs text-danger">
               {skillError}
             </p>
           )}
@@ -490,17 +521,17 @@ function AssistantEditor({
       )}
 
       {saveError && (
-        <p role="alert" className="text-xs text-danger break-all">
+        <p data-slot="assistant-save-error" role="alert" className="text-xs text-danger break-all">
           {saveError}
         </p>
       )}
-      <div className="flex items-center gap-2 pt-1">
+      <div data-slot="assistant-editor-actions" className="flex items-center gap-2 pt-1">
         <Button onPress={handleSave}>{t('common.save')}</Button>
         {saved && <SavedHint />}
         {onDelete && (
           <Button
-            variant="ghost"
-            className="ml-auto text-danger hover:text-danger"
+            variant="danger-soft"
+            className="ml-auto"
             onPress={() => {
               setSaveError(null)
               void onDelete(assistant.id).catch((reason) => setSaveError(String(reason)))
@@ -595,23 +626,26 @@ export function AssistantSettings() {
     return (
       <SettingsPane>
         <SettingsHeader title={t('settings.assistant.title')} subtitle={t('settings.assistant.subtitle')} />
-        <div role="alert" className="space-y-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
-          <p>{t('settings.assistant.loadError')}</p>
-          <p className="break-all">{loadError}</p>
-          <Button
-            size="sm"
-            variant="outline"
-            onPress={() => {
-              setLoadError(null)
-              setLoading(true)
-              void refresh()
-                .catch((reason) => setLoadError(String(reason)))
-                .finally(() => setLoading(false))
-            }}
-          >
-            {t('settings.assistant.retry')}
-          </Button>
-        </div>
+        <Alert status="danger" role="alert">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>{t('settings.assistant.loadError')}</Alert.Title>
+            <Alert.Description className="break-all">{loadError}</Alert.Description>
+            <Button
+              size="sm"
+              variant="outline"
+              onPress={() => {
+                setLoadError(null)
+                setLoading(true)
+                void refresh()
+                  .catch((reason) => setLoadError(String(reason)))
+                  .finally(() => setLoading(false))
+              }}
+            >
+              {t('settings.assistant.retry')}
+            </Button>
+          </Alert.Content>
+        </Alert>
       </SettingsPane>
     )
   }
@@ -653,11 +687,15 @@ export function AssistantSettings() {
                     and `shrink-0`, which only mean anything inside a flex container.
                     `text-start` undoes the button element's centred UA default. */}
                 <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30">
-                  <span className="min-w-0 flex-1 truncate">{a.name}</span>
+                  <span data-slot="assistant-row-name" className="min-w-0 flex-1 truncate">
+                    {a.name}
+                  </span>
                   {isDefault && (
-                    <span className="shrink-0 text-warning">
+                    <span data-slot="assistant-row-default" className="shrink-0 text-warning">
                       <StarFill aria-hidden="true" className="w-3.5 h-3.5" />
-                      <span className="sr-only">{t('settings.assistant.defaultBadge')}</span>
+                      <span data-slot="assistant-row-default-label" className="sr-only">
+                        {t('settings.assistant.defaultBadge')}
+                      </span>
                     </span>
                   )}
                   {/* Both truncate, and both need `min-w-0` to be allowed to.
@@ -666,8 +704,16 @@ export function AssistantSettings() {
                       liked and the assistant's own name — the one thing the row
                       is for — was squeezed to nothing before either of them gave
                       up a character. */}
-                  {providerName && <span className="min-w-0 truncate text-xs text-muted">{providerName}</span>}
-                  {a.model_id && <span className="min-w-0 truncate text-xs text-muted">{a.model_id}</span>}
+                  {providerName && (
+                    <span data-slot="assistant-row-provider" className="min-w-0 truncate text-xs text-muted">
+                      {providerName}
+                    </span>
+                  )}
+                  {a.model_id && (
+                    <span data-slot="assistant-row-model" className="min-w-0 truncate text-xs text-muted">
+                      {a.model_id}
+                    </span>
+                  )}
                   <Disclosure.Indicator className="size-4 shrink-0 text-muted" />
                 </Disclosure.Trigger>
               </Disclosure.Heading>

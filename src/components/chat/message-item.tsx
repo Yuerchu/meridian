@@ -145,9 +145,16 @@ function speakerLabel(
 
 function QuotedMessageBlock({ sender, content }: { sender: string; content: string }) {
   return (
-    <div className="mb-2 pl-3 border-l-2 border-accent-foreground/30 text-xs text-accent-foreground/70">
-      <span className="font-medium">{sender}</span>
-      <p className="mt-0.5 line-clamp-3 whitespace-pre-wrap">{content}</p>
+    <div
+      data-slot="quoted-message"
+      className="mb-2 pl-3 border-l-2 border-accent-foreground/30 text-xs text-accent-foreground/70"
+    >
+      <span data-slot="quoted-message-sender" className="font-medium">
+        {sender}
+      </span>
+      <p data-slot="quoted-message-content" className="mt-0.5 line-clamp-3 whitespace-pre-wrap">
+        {content}
+      </p>
     </div>
   )
 }
@@ -317,7 +324,7 @@ export const UserMessage = React.memo(function UserMessage({
           <MessageGroupFooter className="gap-1">
             <CopyButton text={copyText} />
             {onDelete && (
-              <ActionButton label={t('chat.delete')} onClick={requestDelete} className="text-muted hover:text-danger">
+              <ActionButton label={t('chat.delete')} onClick={requestDelete} variant="danger-soft">
                 <TrashBin className="size-3.5" />
               </ActionButton>
             )}
@@ -373,7 +380,7 @@ export const UserMessage = React.memo(function UserMessage({
                   className="w-full min-w-[200px] min-h-0 rounded-none border-0 p-0 field-sizing-fixed bg-transparent dark:bg-transparent text-sm leading-relaxed resize-none outline-none focus-visible:ring-0"
                   rows={1}
                 />
-                <div className="flex justify-end gap-1 mt-1.5">
+                <div data-slot="message-edit-actions" className="flex justify-end gap-1 mt-1.5">
                   <ActionButton label={t('chat.cancelEdit')} onClick={handleCancelEdit} className="text-muted">
                     <Xmark className="w-3.5 h-3.5" />
                   </ActionButton>
@@ -398,7 +405,7 @@ export const UserMessage = React.memo(function UserMessage({
                     )}
                     {/* `flow-root` contains the floated time, so the bubble's
                         own padding wraps it instead of clipping it. */}
-                    <div className="flow-root whitespace-pre-wrap">
+                    <div data-slot="user-message-body" className="flow-root whitespace-pre-wrap">
                       {message.source === 'voice' && (
                         <Microphone
                           className="inline-block size-3.5 mr-1 -mt-0.5 opacity-60"
@@ -406,7 +413,7 @@ export const UserMessage = React.memo(function UserMessage({
                         />
                       )}
                       {emojiMap && Object.keys(emojiMap).length > 0 ? renderEmojisInText(body, emojiMap) : body}
-                      <span className="float-right ml-2 mt-1.5 opacity-70">
+                      <span data-slot="user-message-time" className="float-right ml-2 mt-1.5 opacity-70">
                         <SentAt at={message.created_at} />
                       </span>
                     </div>
@@ -433,11 +440,7 @@ export const UserMessage = React.memo(function UserMessage({
                 )}
                 <CopyButton text={copyText} />
                 {onDelete && (
-                  <ActionButton
-                    label={t('chat.delete')}
-                    onClick={requestDelete}
-                    className="text-muted hover:text-danger"
-                  >
+                  <ActionButton label={t('chat.delete')} onClick={requestDelete} variant="danger-soft">
                     <TrashBin className="w-3.5 h-3.5" />
                   </ActionButton>
                 )}
@@ -712,7 +715,9 @@ function AssistantBubble({
       <Bubble variant="assistant" position={bubble.position} role="status" data-working="true">
         <BubbleContent className="flex items-center gap-2">
           <Spinner size="sm" color="current" className="text-muted" />
-          <span className="shimmer text-xs">{workingLabel}</span>
+          <span data-slot="working-label" className="shimmer text-xs">
+            {workingLabel}
+          </span>
         </BubbleContent>
       </Bubble>
     )
@@ -823,7 +828,11 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
   const [selectedText, setSelectedText] = useState('')
   const [showSelectText, setShowSelectText] = useState(false)
   const coarse = isCoarsePointer()
-  const renderError = <div className="text-xs text-danger py-2">{t('chat.renderError')}</div>
+  const renderError = (
+    <div data-slot="render-error" className="text-xs text-danger py-2">
+      {t('chat.renderError')}
+    </div>
+  )
 
   const { confirm, confirmDialog } = useConfirm()
   const requestDelete = useCallback(async () => {
@@ -931,7 +940,7 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
               {t('chat.turn.duration', { duration: formatDuration(turn.durationMs) })}
             </span>
           )}
-          <div className="flex gap-1">
+          <div data-slot="assistant-actions" className="flex gap-1">
             <CopyButton text={copyText} />
             {canRate && (
               <>
@@ -947,7 +956,8 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
                   label={t('chat.thumbsDown')}
                   aria-pressed={rating === -1}
                   onClick={() => rate(-1)}
-                  className={cn(rating === -1 ? 'text-danger' : 'text-muted hover:text-foreground')}
+                  variant={rating === -1 ? 'danger-soft' : 'ghost'}
+                  className={rating === -1 ? undefined : 'text-muted hover:text-foreground'}
                 >
                   <ThumbsDown className="w-3.5 h-3.5" />
                 </ActionButton>
@@ -963,7 +973,7 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
               </ActionButton>
             )}
             {onDelete && (
-              <ActionButton label={t('chat.delete')} onClick={requestDelete} className="text-muted hover:text-danger">
+              <ActionButton label={t('chat.delete')} onClick={requestDelete} variant="danger-soft">
                 <TrashBin className="w-3.5 h-3.5" />
               </ActionButton>
             )}

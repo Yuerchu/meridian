@@ -59,7 +59,7 @@ export function ConfirmDialog({
                 no. */}
             <Button
               variant={status === 'danger' ? 'danger' : 'primary'}
-              onClick={() => {
+              onPress={() => {
                 onConfirm()
                 onOpenChange(false)
               }}

@@ -364,6 +364,7 @@
   "common.close": "关闭",
   "common.confirm": "确定",
   "toolbar.noAssistant": "无助手",
+  "toolbar.selectAssistant": "选择助手",
   "toolbar.models": "模型",
   "toolbar.selectModel": "选择模型",
   "toolbar.loadingModels": "加载模型中…",

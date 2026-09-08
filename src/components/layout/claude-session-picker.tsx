@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { Button, Modal, SearchField, Spinner } from '@heroui/react'
+import { Button, Modal, SearchField, Spinner, Tooltip } from '@heroui/react'
 import { FolderOpen, Xmark } from '@gravity-ui/icons'
 
 import { api } from '@/api'
@@ -226,7 +226,7 @@ export function ClaudeSessionPicker({
               <HostedAgentGlyph size={18} />
               {t(mode === 'attach' ? 'sessionPicker.attachHeading' : 'sessionPicker.importHeading')}
             </Modal.Heading>
-            <p className="text-xs text-muted">
+            <p data-slot="session-picker-hint" className="text-xs text-muted">
               {t(mode === 'attach' ? 'sessionPicker.attachHint' : 'sessionPicker.importHint')}
             </p>
           </Modal.Header>
@@ -237,7 +237,7 @@ export function ClaudeSessionPicker({
               the list below shrink and scroll inside the dialog rather than
               pushing it taller. */}
           <Modal.Body className="flex min-h-0 flex-col gap-3">
-            <div className="flex items-center gap-2">
+            <div data-slot="session-picker-toolbar" className="flex items-center gap-2">
               {/* HeroUI's own, rather than an Input with an icon stuck on the
                   front: it brings the magnifier, the clear button and Escape
                   clearing the field with it. */}
@@ -262,24 +262,31 @@ export function ClaudeSessionPicker({
                   showing this device's folders points at the wrong filesystem —
                   the same split a project's path has. */}
               {can.browseForDirectory && (
-                <Button variant="outline" onClick={() => void browse()} className="shrink-0">
+                <Button variant="outline" onPress={() => void browse()} className="shrink-0">
                   <FolderOpen />
                   {t('sessionPicker.folder')}
                 </Button>
               )}
               {folder && (
-                <Button
-                  isIconOnly
-                  variant="ghost"
-                  aria-label={t('sessionPicker.allProjects')}
-                  onClick={() => scopeTo('')}
-                  className="shrink-0"
-                >
-                  <Xmark />
-                </Button>
+                <Tooltip delay={0}>
+                  <Button
+                    isIconOnly
+                    variant="ghost"
+                    aria-label={t('sessionPicker.allProjects')}
+                    onPress={() => scopeTo('')}
+                    className="shrink-0"
+                  >
+                    <Xmark />
+                  </Button>
+                  <Tooltip.Content>{t('sessionPicker.allProjects')}</Tooltip.Content>
+                </Tooltip>
               )}
             </div>
-            {folder && <p className="truncate text-xs text-muted">{folder}</p>}
+            {folder && (
+              <p data-slot="session-picker-folder" className="truncate text-xs text-muted">
+                {folder}
+              </p>
+            )}
 
             {/* The live region is the container, not the placeholder inside it.
                 Announcing happens when a region that is *already* on the page
@@ -287,6 +294,7 @@ export function ClaudeSessionPicker({
                 moment there was something to say, so "12 sessions" was never
                 read out and neither was an empty search. */}
             <div
+              data-slot="session-picker-list"
               role="status"
               aria-live="polite"
               aria-busy={sessions === null}
@@ -303,25 +311,32 @@ export function ClaudeSessionPicker({
                   with neither a folder button nor a clear button there is
                   otherwise nothing on screen that can ask again. */}
               {error ? (
-                <div className="flex flex-col items-start gap-2 p-4">
-                  <p role="alert" className="text-xs text-danger">
+                <div data-slot="session-picker-error" className="flex flex-col items-start gap-2 p-4">
+                  <p data-slot="session-picker-error-message" role="alert" className="text-xs text-danger">
                     {error}
                   </p>
-                  <Button size="sm" variant="outline" onClick={() => void load(folder)}>
+                  <Button size="sm" variant="outline" onPress={() => void load(folder)}>
                     {t('sessionPicker.retry')}
                   </Button>
                 </div>
               ) : sessions === null ? (
                 // Starting an adapter takes seconds — on a machine that has
                 // never run it, long enough to download the package first.
-                <div className="flex h-40 flex-col items-center justify-center gap-2">
+                <div
+                  data-slot="session-picker-loading"
+                  className="flex h-40 flex-col items-center justify-center gap-2"
+                >
                   <Spinner />
-                  <span className="text-xs text-muted">{t('sessionPicker.loading')}</span>
+                  <span data-slot="session-picker-loading-label" className="text-xs text-muted">
+                    {t('sessionPicker.loading')}
+                  </span>
                 </div>
               ) : rows.length === 0 ? (
-                <p className="p-4 text-xs text-muted">{t('sessionPicker.empty')}</p>
+                <p data-slot="session-picker-empty" className="p-4 text-xs text-muted">
+                  {t('sessionPicker.empty')}
+                </p>
               ) : (
-                <ul aria-label={t('sessionPicker.listLabel')} className="divide-y">
+                <ul data-slot="session-picker-rows" aria-label={t('sessionPicker.listLabel')} className="divide-y">
                   {rows.map((session) => (
                     <SessionRow
                       key={session.sessionId}
@@ -345,7 +360,9 @@ export function ClaudeSessionPicker({
                     />
                   ))}
                   {hidden > 0 && (
-                    <li className="px-3 py-2 text-xs text-muted">{t('sessionPicker.more', { count: hidden })}</li>
+                    <li data-slot="session-picker-more" className="px-3 py-2 text-xs text-muted">
+                      {t('sessionPicker.more', { count: hidden })}
+                    </li>
                   )}
                 </ul>
               )}
@@ -395,8 +412,8 @@ function SessionRow({
     // `aria-busy` on the row, not on the button: React Aria filters everything
     // but the labelable aria props off a Button, so it would be dropped there —
     // and the row is what is working anyway.
-    <li aria-busy={busy} className="flex items-center gap-3 px-3 py-2">
-      <div className="min-w-0 flex-1">
+    <li data-slot="session-row" aria-busy={busy} className="flex items-center gap-3 px-3 py-2">
+      <div data-slot="session-row-body" className="min-w-0 flex-1">
         {/* `text-foreground` because `.modal__body` sets `text-muted` on
             everything inside it: inherited, the title came out the same grey as
             the path under it and the two rows of a row read as one.
@@ -407,40 +424,48 @@ function SessionRow({
         <p data-slot="session-title" className="truncate text-sm text-foreground">
           {session.title?.trim() || leafOf(session.cwd)}
         </p>
-        <p className="truncate text-xs text-muted">
+        <p data-slot="session-row-path" className="truncate text-xs text-muted">
           {session.cwd}
           {when && ` · ${when}`}
         </p>
         {error && (
-          <p role="alert" className="mt-1 text-xs text-danger">
+          <p data-slot="session-row-error" role="alert" className="mt-1 text-xs text-danger">
             {error}
           </p>
         )}
-        {truncated && <p className="mt-1 text-xs text-warning">{t('sessionPicker.truncated')}</p>}
+        {truncated && (
+          <p data-slot="session-row-truncated" className="mt-1 text-xs text-warning">
+            {t('sessionPicker.truncated')}
+          </p>
+        )}
       </div>
       {mine ? (
-        <span className="shrink-0 text-xs text-muted">{t('sessionPicker.current')}</span>
+        <span data-slot="session-row-current" className="shrink-0 text-xs text-muted">
+          {t('sessionPicker.current')}
+        </span>
       ) : taken && mode === 'attach' ? (
         // Two conversations pointing at one session would be two transcripts
         // written from the same place, so the row says why rather than failing
         // when it is pressed.
-        <span className="shrink-0 text-xs text-muted">{t('sessionPicker.taken')}</span>
+        <span data-slot="session-row-taken" className="shrink-0 text-xs text-muted">
+          {t('sessionPicker.taken')}
+        </span>
       ) : taken ? (
-        <Button size="sm" variant="ghost" onClick={onOpen} className="shrink-0">
+        <Button size="sm" variant="ghost" onPress={onOpen} className="shrink-0">
           {t('sessionPicker.alreadyImported')}
         </Button>
       ) : (
         // The label stays while the spinner is up. Swapped for it, the button
         // is both disabled and nameless for the length of an adapter start,
         // which to a screen reader is a control that has stopped existing.
-        <Button size="sm" variant="secondary" onClick={onAct} isDisabled={disabled} className="shrink-0">
+        <Button size="sm" variant="secondary" onPress={onAct} isDisabled={disabled} className="shrink-0">
           {/* Hidden from the accessibility tree: HeroUI's Spinner carries
               `aria-label="Loading"`, which would rename the button to "Loading
               Import" for the length of an adapter start. The row's `aria-busy`
               says the same thing without the control changing its name under
               the reader. */}
           {busy && (
-            <span aria-hidden>
+            <span data-slot="session-row-spinner" aria-hidden>
               <Spinner size="sm" />
             </span>
           )}

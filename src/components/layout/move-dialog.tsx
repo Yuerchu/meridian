@@ -48,28 +48,32 @@ export function MoveDialog({
     <Button
       key={id ?? 'none'}
       variant="ghost"
-      onClick={() => void choose(id)}
+      onPress={() => void choose(id)}
       isDisabled={isPending || id === currentProjectId}
       className="w-full justify-start"
     >
       {icon}
-      <span className="truncate">{label}</span>
+      <span data-slot="move-dialog-destination-label" className="truncate">
+        {label}
+      </span>
       {id === currentProjectId && (
-        <span className="ml-auto shrink-0 text-xs text-muted">{t('moveDialog.currentLocation')}</span>
+        <span data-slot="move-dialog-current-location" className="ml-auto shrink-0 text-xs text-muted">
+          {t('moveDialog.currentLocation')}
+        </span>
       )}
     </Button>
   )
 
   return (
     <Modal.Backdrop isOpen={isOpen} onOpenChange={onOpenChange}>
-      <Modal.Container placement="center" className="pb-[var(--ime-bottom,0px)]">
-        <Modal.Dialog data-slot="move-dialog" className="sm:max-w-[360px]">
+      <Modal.Container placement="center" size="sm" className="pb-[var(--ime-bottom,0px)]">
+        <Modal.Dialog data-slot="move-dialog">
           <Modal.Header>
             <Modal.Heading>{t('moveDialog.title')}</Modal.Heading>
           </Modal.Header>
           <Modal.Body className="flex flex-col gap-1">
             {error && (
-              <p role="alert" className="mb-1 text-xs text-danger">
+              <p data-slot="move-dialog-error" role="alert" className="mb-1 text-xs text-danger">
                 {error}
               </p>
             )}

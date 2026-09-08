@@ -132,29 +132,38 @@ export function SubAgentTimeline({ run, live, count }: { run: SubAgentRunDisplay
           data-slot="sub-agent-timeline-trigger"
           className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-xs text-muted transition-colors outline-none hover:bg-default/60 focus-visible:ring-2 focus-visible:ring-focus/50"
         >
-          <span className="font-medium text-foreground">{t('chat.tool.panel.process')}</span>
-          {count > 0 && <span className="tabular-nums">{t('chat.subAgent.steps', { count })}</span>}
+          <span data-slot="sub-agent-timeline-title" className="font-medium text-foreground">
+            {t('chat.tool.panel.process')}
+          </span>
+          {count > 0 && (
+            <span data-slot="sub-agent-timeline-count" className="tabular-nums">
+              {t('chat.subAgent.steps', { count })}
+            </span>
+          )}
           <Disclosure.Indicator className="ms-auto size-3 shrink-0" />
         </Disclosure.Trigger>
         <Disclosure.Content className="min-h-0">
           <Disclosure.Body className="p-0">
             {loaded === null || (loading && loaded.kind === 'error') ? (
               <div
+                data-slot="sub-agent-timeline-loading"
                 role="status"
                 aria-busy
                 aria-label={t('chat.tool.panel.processLoading')}
                 className="space-y-2 px-3 py-2"
               >
-                <Skeleton className="h-3 w-3/4 rounded" />
-                <Skeleton className="h-3 w-1/2 rounded" />
-                <Skeleton className="h-3 w-2/3 rounded" />
+                <Skeleton className="h-3 w-3/4 rounded-md" />
+                <Skeleton className="h-3 w-1/2 rounded-md" />
+                <Skeleton className="h-3 w-2/3 rounded-md" />
               </div>
             ) : loaded.kind === 'error' ? (
-              <div className="px-3 py-2 text-xs text-danger">
+              <div data-slot="sub-agent-timeline-error" className="px-3 py-2 text-xs text-danger">
                 {t('chat.tool.panel.processFailed', { error: loaded.message })}
               </div>
             ) : steps.length === 0 ? (
-              <div className="px-3 py-2 text-xs text-muted">{t('chat.tool.panel.processEmpty')}</div>
+              <div data-slot="sub-agent-timeline-empty" className="px-3 py-2 text-xs text-muted">
+                {t('chat.tool.panel.processEmpty')}
+              </div>
             ) : (
               <ol data-slot="sub-agent-steps" className="relative px-3 py-1">
                 {steps.map((step, index) => (
@@ -164,17 +173,23 @@ export function SubAgentTimeline({ run, live, count }: { run: SubAgentRunDisplay
                     className="relative flex min-w-0 gap-2.5 py-1 text-xs before:absolute before:top-[0.9rem] before:bottom-[-0.35rem] before:left-[0.3rem] before:w-px before:bg-border last:before:hidden"
                   >
                     <span
+                      data-slot="sub-agent-step-dot"
                       aria-hidden
                       className={cn(
                         'mt-[0.45rem] size-2.5 shrink-0 rounded-full ring-2 ring-surface',
+                        // eslint-disable-next-line no-restricted-syntax -- a live status dot pulses; it is not a placeholder
                         step.working ? 'animate-pulse bg-accent motion-reduce:animate-none' : 'bg-border',
                         index === steps.length - 1 && !step.working && !live && 'bg-success-soft-foreground',
                       )}
                     />
-                    <div className="flex min-w-0 flex-1 flex-col gap-1">
-                      {step.text !== null && <p className="line-clamp-2 min-w-0 text-foreground/90">{step.text}</p>}
+                    <div data-slot="sub-agent-step-body" className="flex min-w-0 flex-1 flex-col gap-1">
+                      {step.text !== null && (
+                        <p data-slot="sub-agent-step-text" className="line-clamp-2 min-w-0 text-foreground/90">
+                          {step.text}
+                        </p>
+                      )}
                       {(step.folded.length > 0 || step.keys.length > 0) && (
-                        <div className="flex min-w-0 flex-wrap items-center gap-1">
+                        <div data-slot="sub-agent-step-calls" className="flex min-w-0 flex-wrap items-center gap-1">
                           {step.folded.map((fold) => {
                             const Icon = FOLD_ICONS[fold.kind]
                             return (
@@ -198,18 +213,26 @@ export function SubAgentTimeline({ run, live, count }: { run: SubAgentRunDisplay
                                 data-status={tool.status}
                                 className="inline-flex h-5 max-w-full min-w-0 items-center gap-1 rounded-full bg-default/70 px-2 text-xs leading-none text-muted"
                               >
-                                <span className="shrink-0 text-foreground">{toolLabel(t, tool.tool_name)}</span>
+                                <span data-slot="sub-agent-step-key-label" className="shrink-0 text-foreground">
+                                  {toolLabel(t, tool.tool_name)}
+                                </span>
                                 {arg?.kind === 'path' ? (
                                   <PathLabel path={arg.value} className="min-w-0" />
                                 ) : arg ? (
-                                  <span className="min-w-0 truncate font-mono">{arg.value.split('\n')[0]}</span>
+                                  <span data-slot="sub-agent-step-key-arg" className="min-w-0 truncate font-mono">
+                                    {arg.value.split('\n')[0]}
+                                  </span>
                                 ) : null}
                               </span>
                             )
                           })}
                         </div>
                       )}
-                      {step.working && <p className="shimmer text-muted">{t('chat.tool.panel.status.running')}</p>}
+                      {step.working && (
+                        <p data-slot="sub-agent-step-status" className="shimmer text-muted">
+                          {t('chat.tool.panel.status.running')}
+                        </p>
+                      )}
                     </div>
                   </li>
                 ))}

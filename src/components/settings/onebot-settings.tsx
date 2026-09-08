@@ -2,7 +2,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
-import { Button, Checkbox, Description, Input, Label, TextField } from '@heroui/react'
+import { Alert, Button, Description, Input, Label, TextField } from '@heroui/react'
+import { CellSwitch } from '@heroui-pro/react/cell-switch'
 import { ItemCard } from '@heroui-pro/react/item-card'
 import { cn } from '@/lib/utils'
 import { assertDecimal38_18, decimal38_18 } from '@/lib/decimal'
@@ -251,20 +252,24 @@ export function OneBotSettings() {
     return (
       <SettingsPane>
         <SettingsHeader title={t('settings.onebot.title')} />
-        <div role="alert" className="space-y-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
-          <p>{t('settings.onebot.loadError')}</p>
-          {loadError && <p className="break-all">{loadError}</p>}
-          <Button
-            size="sm"
-            variant="outline"
-            onPress={() => {
-              setLoading(true)
-              void loadData()
-            }}
-          >
-            {t('settings.onebot.retry')}
-          </Button>
-        </div>
+        <Alert status="danger" role="alert">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>{t('settings.onebot.loadError')}</Alert.Title>
+            {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-2"
+              onPress={() => {
+                setLoading(true)
+                void loadData()
+              }}
+            >
+              {t('settings.onebot.retry')}
+            </Button>
+          </Alert.Content>
+        </Alert>
       </SettingsPane>
     )
   }
@@ -273,29 +278,24 @@ export function OneBotSettings() {
     <SettingsPane>
       <SettingsHeader title={t('settings.onebot.title')} />
 
-      <div className="flex items-start gap-2">
-        {/* Label stays outside because a description sits under it; the id is
-            what ties the two together. */}
-        <Checkbox
-          id="onebot-enabled"
+      <div data-slot="onebot-enable" className="space-y-1.5">
+        <CellSwitch
+          aria-label={t('settings.onebot.enable')}
+          aria-describedby="onebot-enabled-hint"
           isSelected={config.enabled}
           onChange={(selected) => setConfig({ ...config, enabled: selected })}
         >
-          <Checkbox.Content>
-            <Checkbox.Control>
-              <Checkbox.Indicator />
-            </Checkbox.Control>
-          </Checkbox.Content>
-        </Checkbox>
-        <div className="space-y-0.5">
-          <label htmlFor="onebot-enabled" className="text-sm font-medium cursor-pointer">
-            {t('settings.onebot.enable')}
-          </label>
-          <p className="text-xs text-muted">{t('settings.onebot.enableHint')}</p>
-        </div>
+          <CellSwitch.Trigger className="pointer-coarse:h-11">
+            <CellSwitch.Label>{t('settings.onebot.enable')}</CellSwitch.Label>
+            <CellSwitch.Control />
+          </CellSwitch.Trigger>
+        </CellSwitch>
+        <p id="onebot-enabled-hint" data-slot="onebot-enable-hint" className="text-xs text-muted">
+          {t('settings.onebot.enableHint')}
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
+      <div data-slot="onebot-endpoint" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
         <TextField fullWidth>
           <Label>{t('settings.onebot.host')}</Label>
           <Input
@@ -361,24 +361,21 @@ export function OneBotSettings() {
         <Description>{t('settings.onebot.voiceCaptureHint')}</Description>
       </TextField>
 
-      <div className="flex items-start gap-2">
-        <Checkbox
-          id="onebot-voice-send"
+      <div data-slot="onebot-voice-send" className="space-y-1.5">
+        <CellSwitch
+          aria-label={t('settings.onebot.voiceSend')}
+          aria-describedby="onebot-voice-send-hint"
           isSelected={config.voice_send_enabled}
           onChange={(selected) => setConfig({ ...config, voice_send_enabled: selected })}
         >
-          <Checkbox.Content>
-            <Checkbox.Control>
-              <Checkbox.Indicator />
-            </Checkbox.Control>
-          </Checkbox.Content>
-        </Checkbox>
-        <div className="space-y-0.5">
-          <label htmlFor="onebot-voice-send" className="text-sm font-medium cursor-pointer">
-            {t('settings.onebot.voiceSend')}
-          </label>
-          <p className="text-xs text-muted">{t('settings.onebot.voiceSendHint')}</p>
-        </div>
+          <CellSwitch.Trigger className="pointer-coarse:h-11">
+            <CellSwitch.Label>{t('settings.onebot.voiceSend')}</CellSwitch.Label>
+            <CellSwitch.Control />
+          </CellSwitch.Trigger>
+        </CellSwitch>
+        <p id="onebot-voice-send-hint" data-slot="onebot-voice-send-hint" className="text-xs text-muted">
+          {t('settings.onebot.voiceSendHint')}
+        </p>
       </div>
 
       {config.voice_send_enabled && (
@@ -394,7 +391,7 @@ export function OneBotSettings() {
             <Description>{t('settings.onebot.voiceSendGroupsHint')}</Description>
           </TextField>
 
-          <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
+          <div data-slot="onebot-voice-tts" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
             <TextField fullWidth>
               <Label>{t('settings.onebot.voiceTtsModel')}</Label>
               <Input
@@ -440,7 +437,7 @@ export function OneBotSettings() {
               because one of the four is a keychain entry this page never
               sees. */}
           {voiceReady && !voiceReady.ready && (
-            <p role="status" className="text-xs text-warning">
+            <p data-slot="onebot-voice-not-ready" role="status" className="text-xs text-warning">
               {t('settings.onebot.voiceNotReady', {
                 missing: [
                   !voiceReady.has_model && t('settings.onebot.voiceTtsModel'),
@@ -479,17 +476,17 @@ export function OneBotSettings() {
       </TextField>
 
       {error && (
-        <p role="alert" className="text-xs text-danger break-all">
+        <p data-slot="onebot-error" role="alert" className="text-xs text-danger break-all">
           {error}
         </p>
       )}
 
-      <div className="flex items-center gap-3 pt-2">
+      <div data-slot="onebot-actions" className="flex items-center gap-3 pt-2">
         <Button variant="outline" onPress={handleSave} isDisabled={saving}>
           {saved ? t('common.saved') : t('common.save')}
         </Button>
         {saved && (
-          <span role="status" className="sr-only">
+          <span data-slot="onebot-saved" role="status" className="sr-only">
             {t('common.saved')}
           </span>
         )}
@@ -509,8 +506,9 @@ export function OneBotSettings() {
               {/* Decoration: the state it stands for is spelled out beside it,
                 so announcing the dot too would only say it twice. */}
               <span
+                data-slot="onebot-status-dot"
                 aria-hidden
-                className={cn('inline-block size-2 shrink-0 rounded-full', running ? 'bg-success' : 'bg-muted')}
+                className={cn('inline-block size-2 shrink-0 rounded-full', running ? 'bg-success' : 'bg-default')}
               />
               {running ? t('settings.onebot.statusRunning') : t('settings.onebot.statusStopped')}
             </ItemCard.Title>

@@ -71,23 +71,29 @@ export function ComposerSuggestions({
                 style={item.kind === 'command' ? COMMAND_ROW_STYLE : undefined}
               >
                 {icon ? (
-                  <img src={icon} alt="" className="size-4 shrink-0" />
+                  <img data-slot="composer-suggestion-icon" src={icon} alt="" className="size-4 shrink-0" />
                 ) : item.kind === 'directory' ? (
                   <Folder className="size-4 shrink-0 text-muted" />
                 ) : item.kind === 'command' ? (
                   <Terminal className="size-4 shrink-0 text-muted" />
                 ) : (
-                  <span aria-hidden className="size-4 shrink-0 text-center text-xs text-muted">
+                  <span
+                    data-slot="composer-suggestion-icon"
+                    aria-hidden
+                    className="size-4 shrink-0 text-center text-xs text-muted"
+                  >
                     ·
                   </span>
                 )}
                 <span
+                  data-slot="composer-suggestion-label"
                   className={cn('min-w-0 truncate text-left text-sm font-medium', item.kind !== 'command' && 'flex-1')}
                 >
                   {item.label}
                 </span>
                 {item.detail && (
                   <span
+                    data-slot="composer-suggestion-detail"
                     className={cn(
                       'min-w-0 truncate text-left text-xs text-muted',
                       item.kind !== 'command' && 'max-w-1/2',

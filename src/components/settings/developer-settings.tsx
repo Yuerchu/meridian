@@ -302,8 +302,10 @@ export function DeveloperSettings() {
     <SettingsPane>
       <SettingsHeader title={t('settings.developer.title')} subtitle={t('settings.developer.intro')} />
 
-      <div className="space-y-1.5">
-        <p className="text-xs font-medium text-muted">{t('settings.developer.cssProbe')}</p>
+      <div data-slot="developer-css-probe" className="space-y-1.5">
+        <p data-slot="developer-section-label" className="text-xs font-medium text-muted">
+          {t('settings.developer.cssProbe')}
+        </p>
         <Card>
           <Card.Header>
             <Card.Title>{t('settings.developer.cssProbeTitle')}</Card.Title>
@@ -319,8 +321,12 @@ export function DeveloperSettings() {
                   ) : (
                     <CircleXmark className="size-4 shrink-0 text-danger" />
                   )}
-                  <span className="font-mono text-xs">{probe.name}</span>
-                  <span className="text-xs text-muted">{probe.note}</span>
+                  <span data-slot="css-probe-name" className="font-mono text-xs">
+                    {probe.name}
+                  </span>
+                  <span data-slot="css-probe-note" className="text-xs text-muted">
+                    {probe.note}
+                  </span>
                 </div>
               )
             })}
@@ -328,10 +334,12 @@ export function DeveloperSettings() {
         </Card>
       </div>
 
-      <div className="space-y-1.5">
+      <div data-slot="developer-mic-probe" className="space-y-1.5">
         {/* Names the section, not a control — there is no field under it, only a
             card that titles itself. It was a `<label>` pointing at nothing. */}
-        <p className="text-xs font-medium text-muted">{t('settings.developer.micProbe')}</p>
+        <p data-slot="developer-section-label" className="text-xs font-medium text-muted">
+          {t('settings.developer.micProbe')}
+        </p>
         <Card>
           <Card.Header>
             <Card.Title>{t('settings.developer.micProbeTitle')}</Card.Title>
@@ -341,25 +349,27 @@ export function DeveloperSettings() {
               button here is the Android-only one — so the case with the most
               buttons is also the narrowest screen they ever appear on. */}
           <Card.Footer className="flex-wrap gap-2">
-            <Button size="sm" onClick={() => record(true)} isDisabled={busy}>
+            <Button size="sm" onPress={() => record(true)} isDisabled={busy}>
               <Play className="w-4 h-4" />
               {t('settings.developer.probe.runWorklet')}
             </Button>
-            <Button variant="outline" size="sm" onClick={() => record(false)} isDisabled={busy}>
+            <Button variant="outline" size="sm" onPress={() => record(false)} isDisabled={busy}>
               {t('settings.developer.probe.runScriptProcessor')}
             </Button>
             {/* Android only: the desktop transcribes from a Rust-side recording
                 session, and reaches it through the composer's own button. */}
             {isAndroid && (
-              <Button variant="outline" size="sm" onClick={transcribe} isDisabled={busy}>
+              <Button variant="outline" size="sm" onPress={transcribe} isDisabled={busy}>
                 {t('settings.developer.probe.runTranscribe')}
               </Button>
             )}
           </Card.Footer>
 
           {recording && (
-            <div className="space-y-1">
-              <p className="text-xs text-danger">{t('settings.developer.probe.speakNow')}</p>
+            <div data-slot="mic-probe-level" className="space-y-1">
+              <p data-slot="mic-probe-speak-now" className="text-xs text-danger">
+                {t('settings.developer.probe.speakNow')}
+              </p>
               {/* A meter, not a progress bar: this is a level within a known
                   range, not a task advancing towards completion. The bare div
                   it replaces reported nothing at all to a screen reader. */}
@@ -376,19 +386,27 @@ export function DeveloperSettings() {
           )}
 
           {lines.length > 0 && (
-            <ul className="space-y-1.5 text-xs">
+            <ul data-slot="mic-probe-lines" className="space-y-1.5 text-xs">
               {lines.map((l) => (
-                <li key={l.id} className="flex items-start gap-2">
+                <li key={l.id} data-slot="mic-probe-line" className="flex items-start gap-2">
                   {l.verdict === 'pass' ? (
                     <CircleCheck className="mt-0.5 w-3.5 h-3.5 shrink-0 text-success" />
                   ) : l.verdict === 'fail' ? (
                     <CircleXmark className="mt-0.5 w-3.5 h-3.5 shrink-0 text-danger" />
                   ) : (
-                    <span className="mt-0.5 w-3.5 shrink-0 text-center text-muted">·</span>
+                    <span data-slot="mic-probe-pending-mark" className="mt-0.5 w-3.5 shrink-0 text-center text-muted">
+                      ·
+                    </span>
                   )}
-                  <span className="min-w-0">
-                    <span className={cn(l.verdict === 'fail' && 'text-danger')}>{l.label}</span>
-                    {l.detail && <span className="ml-1 break-all text-muted">— {l.detail}</span>}
+                  <span data-slot="mic-probe-line-text" className="min-w-0">
+                    <span data-slot="mic-probe-line-label" className={cn(l.verdict === 'fail' && 'text-danger')}>
+                      {l.label}
+                    </span>
+                    {l.detail && (
+                      <span data-slot="mic-probe-line-detail" className="ml-1 break-all text-muted">
+                        — {l.detail}
+                      </span>
+                    )}
                   </span>
                 </li>
               ))}

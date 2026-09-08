@@ -110,19 +110,31 @@ export function TurnUsage({ tokens, usage }: { tokens: TokenTotals; usage?: Turn
           aria-expanded={open}
           aria-controls={detailsId}
           onPress={() => setOpen(true)}
-          className="touch-hitbox h-auto min-w-0 cursor-[var(--cursor-interactive)] rounded-sm px-0 py-0 font-normal tabular-nums hover:text-foreground"
+          className="touch-hitbox min-w-0 cursor-[var(--cursor-interactive)] rounded-sm px-0 font-normal tabular-nums hover:text-foreground"
         >
           {costLabel}
         </Button>
       </HoverCard.Trigger>
       <HoverCard.Content placement="top" className="w-64 p-3">
         <HoverCard.Arrow />
-        <div id={detailsId} role="dialog" aria-label={t('chat.usage.title')} className="space-y-3">
-          <div className="space-y-0.5">
-            <h3 className="text-sm font-medium text-foreground">{t('chat.usage.title')}</h3>
-            {tokensLabel && <p className="text-xs text-muted tabular-nums">{tokensLabel}</p>}
+        <div
+          id={detailsId}
+          data-slot="turn-usage-details"
+          role="dialog"
+          aria-label={t('chat.usage.title')}
+          className="space-y-3"
+        >
+          <div data-slot="turn-usage-header" className="space-y-0.5">
+            <h3 data-slot="turn-usage-title" className="text-sm font-medium text-foreground">
+              {t('chat.usage.title')}
+            </h3>
+            {tokensLabel && (
+              <p data-slot="turn-usage-tokens" className="text-xs text-muted tabular-nums">
+                {tokensLabel}
+              </p>
+            )}
             {usage.incomplete_token_usage_messages > 0 && (
-              <p className="text-xs text-muted">
+              <p data-slot="turn-usage-tokens-hint" className="text-xs text-muted">
                 {t(
                   usage.missing_token_usage_messages >= usage.messages
                     ? 'chat.usage.tokensUnknownHint'
@@ -134,11 +146,13 @@ export function TurnUsage({ tokens, usage }: { tokens: TokenTotals; usage?: Turn
 
           {priced ? (
             <>
-              <dl className="space-y-1.5">
+              <dl data-slot="turn-usage-breakdown" className="space-y-1.5">
                 {parts.map(([key, label, gapKey, kind]) => (
-                  <div key={key} className="flex items-center justify-between gap-4 text-xs">
-                    <dt className="text-muted">{t(label)}</dt>
-                    <dd className="text-foreground tabular-nums">
+                  <div key={key} data-slot="turn-usage-row" className="flex items-center justify-between gap-4 text-xs">
+                    <dt data-slot="turn-usage-row-label" className="text-muted">
+                      {t(label)}
+                    </dt>
+                    <dd data-slot="turn-usage-row-value" className="text-foreground tabular-nums">
                       {usage[key] == null
                         ? t('chat.usage.unknownAmount')
                         : qualifiedAmount(
@@ -154,10 +168,10 @@ export function TurnUsage({ tokens, usage }: { tokens: TokenTotals; usage?: Turn
                 ))}
               </dl>
               <Separator />
-              <dl>
-                <div className="flex items-center justify-between gap-4 text-sm font-medium">
-                  <dt>{t('chat.usage.cost.total')}</dt>
-                  <dd className="tabular-nums">
+              <dl data-slot="turn-usage-total">
+                <div data-slot="turn-usage-row" className="flex items-center justify-between gap-4 text-sm font-medium">
+                  <dt data-slot="turn-usage-row-label">{t('chat.usage.cost.total')}</dt>
+                  <dd data-slot="turn-usage-row-value" className="tabular-nums">
                     {usage.total_cost == null
                       ? t('chat.usage.unknownAmount')
                       : qualifiedAmount(usage.total_cost, totalQualifier, t)}
@@ -165,7 +179,7 @@ export function TurnUsage({ tokens, usage }: { tokens: TokenTotals; usage?: Turn
                 </div>
               </dl>
               {totalQualifier !== 'exact' && (
-                <p className="text-xs text-muted">
+                <p data-slot="turn-usage-qualifier" className="text-xs text-muted">
                   {t(
                     totalQualifier === 'partial_estimate'
                       ? 'chat.usage.partialEstimate'
@@ -177,7 +191,9 @@ export function TurnUsage({ tokens, usage }: { tokens: TokenTotals; usage?: Turn
               )}
             </>
           ) : (
-            <p className="text-xs text-muted">{t(`chat.usage.statusHint.${usage.pricing_status}`)}</p>
+            <p data-slot="turn-usage-status-hint" className="text-xs text-muted">
+              {t(`chat.usage.statusHint.${usage.pricing_status}`)}
+            </p>
           )}
         </div>
       </HoverCard.Content>

@@ -177,8 +177,10 @@ export function GeneralSettings() {
         />
       )}
 
-      <div className="space-y-3">
-        <p className="block text-xs font-medium text-muted">{t('settings.general.webSearch')}</p>
+      <div data-slot="general-web-search" className="space-y-3">
+        <p data-slot="general-section-label" className="block text-xs font-medium text-muted">
+          {t('settings.general.webSearch')}
+        </p>
         {/* The heading above names the whole section, not this control, so both
             the picker and the key field carry their own name. Without them a
             screen reader announces the trigger by its current value alone. */}
@@ -190,7 +192,7 @@ export function GeneralSettings() {
           fullWidth
           triggerClassName="max-w-xs"
         />
-        <div className="flex items-center gap-2">
+        <div data-slot="general-search-key-row" className="flex items-center gap-2">
           <Input
             fullWidth
             type="password"
@@ -216,16 +218,18 @@ export function GeneralSettings() {
             {t('settings.general.save')}
           </Button>
         </div>
-        <p className="text-xs text-muted">{t('settings.general.searchHint')}</p>
+        <p data-slot="general-search-hint" className="text-xs text-muted">
+          {t('settings.general.searchHint')}
+        </p>
         {searchKeyError && (
-          <p role="alert" className="text-xs text-danger break-all">
+          <p data-slot="general-search-key-error" role="alert" className="text-xs text-danger break-all">
             {searchKeyError}
           </p>
         )}
       </div>
 
       {prefError && (
-        <p role="alert" className="text-xs text-danger break-all">
+        <p data-slot="general-pref-error" role="alert" className="text-xs text-danger break-all">
           {prefError}
         </p>
       )}

@@ -1,7 +1,7 @@
 import { useEffect, useId, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, PlugWire, PlugConnection, LogoMcp, TrashBin, ArrowDownToSquare } from '@gravity-ui/icons'
-import { Button, Input, Label, Spinner, Switch, TextArea, TextField, Tooltip } from '@heroui/react'
+import { Alert, Button, Input, Label, Spinner, Switch, TextArea, TextField, Tooltip } from '@heroui/react'
 import { EmptyState } from '@heroui-pro/react/empty-state'
 import { ListView } from '@heroui-pro/react/list-view'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
@@ -101,7 +101,7 @@ function JsonImportDialog({ onImport, onCancel }: { onImport: (data: McpServersJ
   }
 
   return (
-    <div className="space-y-3">
+    <div data-slot="mcp-import-form" className="space-y-3">
       <TextField fullWidth isInvalid={error}>
         <Label>{t('settings.mcp.importJson')}</Label>
         <TextArea
@@ -124,11 +124,11 @@ function JsonImportDialog({ onImport, onCancel }: { onImport: (data: McpServersJ
         />
       </TextField>
       {error && (
-        <p id={errorId} role="alert" className="text-sm text-danger">
+        <p id={errorId} data-slot="mcp-import-error" role="alert" className="text-sm text-danger">
           {t('settings.mcp.importJsonError')}
         </p>
       )}
-      <div className="flex gap-2">
+      <div data-slot="mcp-import-actions" className="flex gap-2">
         <Button onPress={handleSubmit}>{t('settings.mcp.importJsonSubmit')}</Button>
         <Button variant="outline" onPress={onCancel}>
           {t('settings.mcp.importJsonCancel')}
@@ -278,15 +278,22 @@ function McpServerEditor({
   const isHttp = transportType === 'streamablehttp'
 
   return (
-    <div className="space-y-4">
+    <div data-slot="mcp-server-editor" className="space-y-4">
       <TextField fullWidth>
         <Label>{t('settings.mcp.name')}</Label>
         <Input name={`mcpName-${server.id}`} value={name} onChange={(e) => setName(e.target.value)} />
       </TextField>
 
-      <div>
-        <p className="text-sm font-medium">{t('settings.mcp.transport')}</p>
-        <div role="group" aria-label={t('settings.mcp.transport')} className="flex gap-2 mt-1">
+      <div data-slot="mcp-transport">
+        <p data-slot="mcp-transport-label" className="text-sm font-medium">
+          {t('settings.mcp.transport')}
+        </p>
+        <div
+          data-slot="mcp-transport-options"
+          role="group"
+          aria-label={t('settings.mcp.transport')}
+          className="flex gap-2 mt-1"
+        >
           <Button
             variant="ghost"
             aria-pressed={!isHttp}
@@ -384,7 +391,7 @@ function McpServerEditor({
           in English, against roughly 330px on a phone — and this panel is not
           desktop-only, so that is a width it really gets. The switch keeps its
           `ml-auto` and simply lands on the second line once there is one. */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div data-slot="mcp-editor-actions" className="flex flex-wrap items-center gap-2">
         <Button onPress={handleSave}>{saved ? t('common.saved') : t('common.save')}</Button>
         {connected ? (
           <Button variant="outline" onPress={handleDisconnect}>
@@ -399,7 +406,7 @@ function McpServerEditor({
             aria-busy={connecting}
           >
             {connecting ? (
-              <Spinner aria-hidden="true" className="w-3.5 h-3.5 mr-1.5" />
+              <Spinner aria-hidden="true" size="sm" color="current" className="mr-1.5" />
             ) : (
               <PlugWire aria-hidden="true" className="w-3.5 h-3.5 mr-1.5" />
             )}
@@ -417,31 +424,39 @@ function McpServerEditor({
       </div>
 
       {error && (
-        <div role="alert" className="p-2 bg-danger/10 border border-danger/30 rounded text-sm text-danger break-all">
-          {error}
-        </div>
+        <Alert status="danger">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Description className="break-all">{error}</Alert.Description>
+          </Alert.Content>
+        </Alert>
       )}
 
       {tools.length > 0 && (
-        <div>
-          <p className="text-sm font-medium">
+        <div data-slot="mcp-tools">
+          <p data-slot="mcp-tools-label" className="text-sm font-medium">
             {t('settings.mcp.tools')} ({tools.length})
           </p>
-          <div className="mt-1 space-y-1">
+          <div data-slot="mcp-tool-list" className="mt-1 space-y-1">
             {tools.map((tool) => (
               <div
                 key={tool.qualified_name}
-                className="flex items-center gap-2 px-2 py-1 rounded bg-default/50 text-xs"
+                data-slot="mcp-tool-row"
+                className="flex items-center gap-2 px-2 py-1 rounded-lg bg-default/50 text-xs"
               >
-                <span className="font-mono">{tool.name}</span>
-                <span className="text-muted truncate">{tool.description}</span>
+                <span data-slot="mcp-tool-name" className="font-mono">
+                  {tool.name}
+                </span>
+                <span data-slot="mcp-tool-description" className="text-muted truncate">
+                  {tool.description}
+                </span>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      <div className="pt-4 border-t border-border">
+      <div data-slot="mcp-danger-zone" className="pt-4 border-t border-border">
         <Button variant="danger-soft" onPress={() => onDelete(server.id)}>
           <TrashBin className="w-3.5 h-3.5 mr-1.5" />
           {t('settings.mcp.deleteServer')}
@@ -566,7 +581,7 @@ export function McpSettings() {
             <ListView.Title className="font-normal">{s.name}</ListView.Title>
           </ListView.ItemContent>
           <ListView.ItemAction>
-            <span className="truncate text-xs text-muted">
+            <span data-slot="mcp-server-transport" className="truncate text-xs text-muted">
               {s.transport_type === 'streamablehttp' ? 'HTTP' : 'stdio'}
             </span>
           </ListView.ItemAction>
@@ -576,38 +591,47 @@ export function McpSettings() {
   )
 
   const headerActions = (
-    <div className="flex items-center gap-1">
+    <div data-slot="mcp-header-actions" className="flex items-center gap-1">
       <Tooltip delay={0}>
-        <Button aria-label={t('settings.mcp.importJson')} variant="outline" onPress={() => openAux('import')}>
+        <Button
+          isIconOnly
+          aria-label={t('settings.mcp.importJson')}
+          variant="outline"
+          onPress={() => openAux('import')}
+        >
           <ArrowDownToSquare className="w-4 h-4" />
         </Button>
         <Tooltip.Content placement="top">{t('settings.mcp.importJson')}</Tooltip.Content>
       </Tooltip>
-      <Button aria-label={t('settings.mcp.addServer')} variant="outline" onPress={handleAdd}>
-        <Plus className="w-4 h-4" />
-      </Button>
+      <Tooltip delay={0}>
+        <Button isIconOnly aria-label={t('settings.mcp.addServer')} variant="outline" onPress={handleAdd}>
+          <Plus className="w-4 h-4" />
+        </Button>
+        <Tooltip.Content placement="top">{t('settings.mcp.addServer')}</Tooltip.Content>
+      </Tooltip>
     </div>
   )
 
   return (
     <>
       {loadError && (
-        <div
-          role="alert"
-          className="mb-3 flex max-w-3xl items-center justify-between gap-3 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger"
-        >
-          <span className="break-all">{t('settings.mcp.loadError')}</span>
-          <Button
-            size="sm"
-            variant="outline"
-            onPress={() => {
-              setLoading(servers.length === 0)
-              void refresh()
-            }}
-          >
-            {t('settings.mcp.retry')}
-          </Button>
-        </div>
+        <Alert status="danger" className="mb-3 max-w-3xl">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Description className="break-all">{t('settings.mcp.loadError')}</Alert.Description>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-2"
+              onPress={() => {
+                setLoading(servers.length === 0)
+                void refresh()
+              }}
+            >
+              {t('settings.mcp.retry')}
+            </Button>
+          </Alert.Content>
+        </Alert>
       )}
       <MasterDetail
         nav={nav}

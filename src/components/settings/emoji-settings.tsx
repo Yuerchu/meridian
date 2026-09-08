@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowUpFromLine, Check, Plus, Sparkles, Sticker, TrashBin, Xmark } from '@gravity-ui/icons'
-import { Button, Chip, Disclosure, Input } from '@heroui/react'
+import { Button, Chip, Disclosure, Input, Tooltip } from '@heroui/react'
 import { ActionBar } from '@heroui-pro/react/action-bar'
 import { DataGrid, type DataGridColumn, type DataGridSelection } from '@heroui-pro/react/data-grid'
 import { EmptyState } from '@heroui-pro/react/empty-state'
@@ -115,12 +115,14 @@ function EditableCell({
       variant="ghost"
       className="h-8 w-full min-w-0 justify-start rounded-md px-1.5 text-sm font-normal"
       aria-label={`${ariaLabel}: ${value || placeholder}`}
-      onClick={() => {
+      onPress={() => {
         setDraft(value)
         setEditing(true)
       }}
     >
-      <span className={value ? 'truncate' : 'truncate text-muted'}>{value || placeholder}</span>
+      <span data-slot="editable-cell-value" className={value ? 'truncate' : 'truncate text-muted'}>
+        {value || placeholder}
+      </span>
     </Button>
   )
 }
@@ -147,14 +149,14 @@ function RowActions({
   const unconfirmed = emoji.semantic_status !== 'confirmed'
 
   return (
-    <div className="flex items-center justify-end gap-1">
+    <div data-slot="sticker-row-actions" className="flex items-center justify-end gap-1">
       {unconfirmed && (
         <>
           <Button
             size="sm"
             variant="ghost"
             isDisabled={busy !== null || !emoji.file_name}
-            onClick={() => {
+            onPress={() => {
               setBusy('suggest')
               void onSuggest(emoji.id).finally(() => setBusy(null))
             }}
@@ -166,7 +168,7 @@ function RowActions({
             size="sm"
             variant="outline"
             isDisabled={busy !== null || !shownName(emoji).trim()}
-            onClick={() => {
+            onPress={() => {
               setBusy('confirm')
               void onConfirm(emoji).finally(() => setBusy(null))
             }}
@@ -177,16 +179,18 @@ function RowActions({
         </>
       )}
       {canDelete && (
-        <Button
-          isIconOnly
-          size="sm"
-          variant="ghost"
-          aria-label={t('settings.emoji.deleteEmoji')}
-          className="text-danger hover:text-danger"
-          onClick={() => onDelete(emoji.id)}
-        >
-          <TrashBin className="size-3.5" />
-        </Button>
+        <Tooltip delay={0}>
+          <Button
+            isIconOnly
+            size="sm"
+            variant="danger-soft"
+            aria-label={t('settings.emoji.deleteEmoji')}
+            onPress={() => onDelete(emoji.id)}
+          >
+            <TrashBin className="size-3.5" />
+          </Button>
+          <Tooltip.Content>{t('settings.emoji.deleteEmoji')}</Tooltip.Content>
+        </Tooltip>
       )}
     </div>
   )
@@ -251,13 +255,19 @@ function StickerGrid({
         minWidth: 240,
         sortFn: (a, b) => shownName(a).localeCompare(shownName(b)),
         cell: (emoji) => (
-          <div className="flex min-w-0 items-center gap-2">
+          <div data-slot="sticker-cell" className="flex min-w-0 items-center gap-2">
             {urls[emoji.id] ? (
               // Lazy because a pack is unbounded and every frame of every GIF
               // is decoded the moment its element exists.
-              <img src={urls[emoji.id]} alt="" loading="lazy" className="size-9 shrink-0 rounded object-contain" />
+              <img
+                data-slot="sticker-thumbnail"
+                src={urls[emoji.id]}
+                alt=""
+                loading="lazy"
+                className="size-9 shrink-0 rounded-lg object-contain"
+              />
             ) : (
-              <div className="size-9 shrink-0 rounded bg-default/40" />
+              <div data-slot="sticker-thumbnail-placeholder" className="size-9 shrink-0 rounded-lg bg-default/40" />
             )}
             <EditableCell
               value={shownName(emoji)}
@@ -330,7 +340,7 @@ function StickerGrid({
   const rows = useMemo(() => orderForReview(detail.emojis), [detail.emojis])
 
   return (
-    <div className="space-y-2">
+    <div data-slot="sticker-grid" className="space-y-2">
       <DataGrid<EmojiInfoResponse>
         aria-label={t('settings.emoji.gridLabel', { pack: detail.pack.name })}
         variant="secondary"
@@ -359,7 +369,11 @@ function StickerGrid({
           </EmptyState>
         )}
       />
-      {error && <p className="text-xs text-danger">{error}</p>}
+      {error && (
+        <p data-slot="sticker-grid-error" className="text-xs text-danger">
+          {error}
+        </p>
+      )}
     </div>
   )
 }
@@ -399,8 +413,12 @@ function PackCard({
                 `text-start` undoes the button element's centred UA default. */}
             <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30">
               <Sticker className="w-3.5 h-3.5 shrink-0 text-muted" />
-              <span className="flex-1 truncate">{detail.pack.name}</span>
-              <span className="text-xs text-muted">{detail.emojis.length}</span>
+              <span data-slot="pack-name" className="flex-1 truncate">
+                {detail.pack.name}
+              </span>
+              <span data-slot="pack-count" className="text-xs text-muted">
+                {detail.emojis.length}
+              </span>
               {pending > 0 && <Chip color="warning">{t('settings.emoji.pendingCount', { count: pending })}</Chip>}
               {detail.pack.is_builtin && <Chip className="shrink-0 text-muted">{t('settings.template.builtin')}</Chip>}
               <Disclosure.Indicator className="size-4 shrink-0 text-muted" />
@@ -420,7 +438,11 @@ function PackCard({
                   drops the content in the same frame as the height animation. */}
               {isExpanded && (
                 <>
-                  {detail.pack.description && <p className="text-xs text-muted">{detail.pack.description}</p>}
+                  {detail.pack.description && (
+                    <p data-slot="pack-description" className="text-xs text-muted">
+                      {detail.pack.description}
+                    </p>
+                  )}
 
                   <StickerGrid
                     detail={detail}
@@ -431,24 +453,26 @@ function PackCard({
                     onDeleteEmoji={onDeleteEmoji}
                   />
 
-                  <div className="flex items-center gap-2">
+                  <div data-slot="pack-actions" className="flex items-center gap-2">
                     {onImport && (
                       // The picker returns paths on this device and the import
                       // is read by whichever machine the backend is on.
-                      <Button variant="outline" onClick={onImport} isDisabled={!can.importFromDisk}>
+                      <Button variant="outline" onPress={onImport} isDisabled={!can.importFromDisk}>
                         <ArrowUpFromLine className="w-3.5 h-3.5" />
                         {t('settings.emoji.import')}
                       </Button>
                     )}
                     {onDelete && !detail.pack.is_builtin && (
-                      <Button variant="ghost" className="ml-auto text-danger hover:text-danger" onClick={onDelete}>
+                      <Button variant="danger-soft" className="ml-auto" onPress={onDelete}>
                         <TrashBin className="w-3.5 h-3.5" />
                         {t('common.delete')}
                       </Button>
                     )}
                   </div>
                   {onImport && !can.importFromDisk && (
-                    <p className="text-xs text-muted">{t('capability.importFromDisk')}</p>
+                    <p data-slot="pack-import-note" className="text-xs text-muted">
+                      {t('capability.importFromDisk')}
+                    </p>
                   )}
                 </>
               )}
@@ -595,7 +619,7 @@ export function EmojiSettings() {
     <SettingsPane className="max-w-4xl">
       <SettingsHeader title={t('settings.emoji.title')} subtitle={t('settings.emoji.subtitle')} />
 
-      <div className="flex gap-2">
+      <div data-slot="pack-create" className="flex gap-2">
         <Input
           fullWidth
           value={newPackName}
@@ -607,13 +631,13 @@ export function EmojiSettings() {
             if (e.key === 'Enter') handleCreate()
           }}
         />
-        <Button variant="outline" onClick={handleCreate} isDisabled={!newPackName.trim()}>
+        <Button variant="outline" onPress={handleCreate} isDisabled={!newPackName.trim()}>
           <Plus className="w-3.5 h-3.5" />
           {t('settings.emoji.newPack')}
         </Button>
       </div>
 
-      <div className="space-y-1">
+      <div data-slot="pack-list" className="space-y-1">
         {details.map((d) => (
           <PackCard
             key={d.pack.id}
@@ -649,25 +673,28 @@ export function EmojiSettings() {
           <ActionBar.Prefix>
             {/* The count is the only thing that says a selection exists, so it
               announces itself rather than only appearing. */}
-            <span aria-live="polite" className="text-sm text-muted">
+            <span data-slot="emoji-selected-count" aria-live="polite" className="text-sm text-muted">
               {t('settings.emoji.selectedCount', { count: selectedIds.length })}
             </span>
           </ActionBar.Prefix>
           <ActionBar.Content>
-            <Button variant="ghost" onClick={handleDeleteSelected}>
+            <Button variant="ghost" onPress={handleDeleteSelected}>
               <TrashBin className="text-danger" />
               {t('settings.emoji.deleteSelected')}
             </Button>
           </ActionBar.Content>
           <ActionBar.Suffix>
-            <Button
-              isIconOnly
-              variant="ghost"
-              aria-label={t('settings.emoji.clearSelection')}
-              onClick={() => setSelection(null)}
-            >
-              <Xmark />
-            </Button>
+            <Tooltip delay={0}>
+              <Button
+                isIconOnly
+                variant="ghost"
+                aria-label={t('settings.emoji.clearSelection')}
+                onPress={() => setSelection(null)}
+              >
+                <Xmark />
+              </Button>
+              <Tooltip.Content>{t('settings.emoji.clearSelection')}</Tooltip.Content>
+            </Tooltip>
           </ActionBar.Suffix>
         </ActionBar>,
         document.body,

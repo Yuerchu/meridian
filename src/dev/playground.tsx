@@ -54,8 +54,10 @@ import type {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-3">
-      <h2 className="text-sm font-semibold text-muted">{title}</h2>
+    <section data-slot="gallery-section" className="space-y-3">
+      <h2 data-slot="gallery-section-title" className="text-sm font-semibold text-muted">
+        {title}
+      </h2>
       {children}
     </section>
   )
@@ -194,8 +196,13 @@ function TurnItemCase({
     { streaming, crashedTurnIds: crashed ? new Set(['t']) : undefined },
   )
   return (
-    <div className="w-full max-w-2xl space-y-1 rounded-xl border border-dashed border-border/60 p-4">
-      <div className="text-xs text-muted">{label}</div>
+    <div
+      data-slot="turn-case"
+      className="w-full max-w-2xl space-y-1 rounded-xl border border-dashed border-border/60 p-4"
+    >
+      <div data-slot="turn-case-label" className="text-xs text-muted">
+        {label}
+      </div>
       {turns.map((turn) => (
         <TurnItem
           key={turn.id}
@@ -236,9 +243,11 @@ function ComposerMenuCase({
   const [thinking, setThinking] = useState<ThinkingLevel>('default')
   const [fast, setFast] = useState(false)
   return (
-    <div className="flex flex-col gap-1">
-      <span className="text-xs text-muted">{label}</span>
-      <div className="flex items-center rounded-lg border border-border px-2 py-1">
+    <div data-slot="composer-menu-case" className="flex flex-col gap-1">
+      <span data-slot="composer-menu-case-label" className="text-xs text-muted">
+        {label}
+      </span>
+      <div data-slot="composer-menu-case-frame" className="flex items-center rounded-lg border border-border px-2 py-1">
         <ComposerMenu
           assistants={[]}
           providers={[]}
@@ -259,7 +268,7 @@ function ComposerMenuCase({
           onPickFile={() => {}}
         />
       </div>
-      <span className="text-xs text-muted">
+      <span data-slot="composer-menu-case-state" className="text-xs text-muted">
         {mode} · {acceptEdits ? 'accept-edits' : 'ask'}
       </span>
     </div>
@@ -447,16 +456,18 @@ function Gallery() {
   // will not remove.
   const { resolvedTheme, setTheme } = useAppTheme()
   return (
-    <div className="h-full overflow-y-auto bg-background text-foreground">
-      <div className="mx-auto max-w-2xl space-y-10 px-6 py-10">
-        <header className="flex items-center justify-between">
-          <h1 className="text-lg font-semibold">组件预览</h1>
+    <div data-slot="gallery" className="h-full overflow-y-auto bg-background text-foreground">
+      <div data-slot="gallery-body" className="mx-auto max-w-2xl space-y-10 px-6 py-10">
+        <header data-slot="gallery-header" className="flex items-center justify-between">
+          <h1 data-slot="gallery-title" className="text-lg font-semibold">
+            组件预览
+          </h1>
           <Tooltip delay={0}>
             <Button
               isIconOnly
               aria-label="切换主题"
               variant="outline"
-              onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+              onPress={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
             >
               <Sun className="hidden size-4 dark:block" />
               <Moon className="size-4 dark:hidden" />
@@ -491,12 +502,16 @@ function Gallery() {
         </Section>
 
         <Section title="ChatTool / 预设五态">
-          <div className="space-y-3">
+          <div data-slot="gallery-chat-tools" className="space-y-3">
             <ChatTool state="output-available" defaultExpanded>
               <ChatToolTrigger>
                 <ChatToolStatusIcon />
-                <span className="text-muted">Used tool:</span>
-                <span className="font-medium text-foreground">getWeather</span>
+                <span data-slot="chat-tool-verb" className="text-muted">
+                  Used tool:
+                </span>
+                <span data-slot="chat-tool-name" className="font-medium text-foreground">
+                  getWeather
+                </span>
               </ChatToolTrigger>
               <ChatToolContent>
                 <ChatToolArgs value={{ city: 'Paris' }} />
@@ -507,8 +522,12 @@ function Gallery() {
             <ChatTool state="input-streaming" defaultExpanded>
               <ChatToolTrigger>
                 <ChatToolStatusIcon />
-                <span className="text-muted">Running tool:</span>
-                <span className="font-medium text-foreground">searchDocs</span>
+                <span data-slot="chat-tool-verb" className="text-muted">
+                  Running tool:
+                </span>
+                <span data-slot="chat-tool-name" className="font-medium text-foreground">
+                  searchDocs
+                </span>
               </ChatToolTrigger>
               <ChatToolContent>
                 <ChatToolArgs text='{"query":"HeroUI Pro' />
@@ -518,8 +537,12 @@ function Gallery() {
             <ChatTool state="output-error" defaultExpanded>
               <ChatToolTrigger>
                 <ChatToolStatusIcon />
-                <span className="text-muted">Failed tool:</span>
-                <span className="font-medium text-foreground">fetchPage</span>
+                <span data-slot="chat-tool-verb" className="text-muted">
+                  Failed tool:
+                </span>
+                <span data-slot="chat-tool-name" className="font-medium text-foreground">
+                  fetchPage
+                </span>
               </ChatToolTrigger>
               <ChatToolContent>
                 <ChatToolArgs value={{ url: 'https://example.com' }} />
@@ -530,8 +553,12 @@ function Gallery() {
             <ChatTool state="requires-action" defaultExpanded>
               <ChatToolTrigger>
                 <ChatToolStatusIcon />
-                <span className="text-muted">Approval needed:</span>
-                <span className="font-medium text-foreground">sendEmail</span>
+                <span data-slot="chat-tool-verb" className="text-muted">
+                  Approval needed:
+                </span>
+                <span data-slot="chat-tool-name" className="font-medium text-foreground">
+                  sendEmail
+                </span>
               </ChatToolTrigger>
               <ChatToolContent>
                 <ChatToolArgs value={{ to: 'team@acme.com', subject: 'Launch update' }} />
@@ -545,7 +572,7 @@ function Gallery() {
         </Section>
 
         <Section title="ToolCallBlock / 业务状态">
-          <div>
+          <div data-slot="gallery-tool-states">
             <ToolCallBlock
               data={tool({
                 tool_name: 'read_file',
@@ -698,7 +725,7 @@ function Gallery() {
         </Section>
 
         <Section title="ToolCallBlock / run_agent">
-          <div>
+          <div data-slot="gallery-tool-agents">
             {/* 跑着，还没派出去——事件到达之前卡片上没有会话可以点进去。 */}
             <ToolCallBlock
               data={tool({
@@ -806,7 +833,7 @@ function Gallery() {
         </Section>
 
         <Section title="ToolCallBlock / ask_user 与 web_search">
-          <div>
+          <div data-slot="gallery-tool-asks">
             <ToolCallBlock
               data={tool({
                 tool_name: 'ask_user',
@@ -848,7 +875,7 @@ function Gallery() {
         </Section>
 
         <Section title="ToolCallBlock / todo 清单">
-          <div>
+          <div data-slot="gallery-tool-todos">
             <ToolCallBlock
               data={tool({
                 tool_name: 'update_todos',
@@ -899,7 +926,7 @@ function Gallery() {
         </Section>
 
         <Section title="ToolCallBlock / 计划模式">
-          <div>
+          <div data-slot="gallery-tool-plans">
             <ToolCallBlock
               data={tool({
                 tool_name: 'enter_plan',
@@ -968,7 +995,7 @@ function Gallery() {
         </Section>
 
         <Section title="ComposerMenu / 输入框选项菜单">
-          <div className="flex flex-wrap items-center gap-4">
+          <div data-slot="gallery-composer-menus" className="flex flex-wrap items-center gap-4">
             <ComposerMenuCase label="默认" mode="work" acceptEdits={false} />
             <ComposerMenuCase label="改动免批（触发器带警示点）" mode="work" acceptEdits />
             <ComposerMenuCase label="谋定模式（不提供免批项）" mode="plan" acceptEdits={false} />
@@ -976,7 +1003,7 @@ function Gallery() {
         </Section>
 
         <Section title="TurnItem / 一整个回合的排版">
-          <div className="space-y-3">
+          <div data-slot="gallery-turn-layouts" className="space-y-3">
             <TurnItemCase
               label="有中间过程 · 头像与署名在回合顶部"
               blocks={[
@@ -1116,7 +1143,7 @@ function Gallery() {
         </Section>
 
         <Section title="TurnItem / 状态与形态">
-          <div className="space-y-3">
+          <div data-slot="gallery-turn-states" className="space-y-3">
             <TurnItemCase
               label="多轮 · 同一模型的连续回答合成一组，头像贴底"
               rows={[
@@ -1263,7 +1290,7 @@ function Gallery() {
         </Section>
 
         <Section title="TodoBar / 常驻进度条">
-          <div className="space-y-2 -mx-4">
+          <div data-slot="gallery-todo-bars" className="space-y-2 -mx-4">
             <TodoBarView todos={JSON.parse(TODO_RUNNING)} />
             <TodoBarView todos={JSON.parse(TODO_SINGLE)} />
             <TodoBarView todos={JSON.parse(TODO_NO_CURRENT)} />
@@ -1306,20 +1333,25 @@ function Gallery() {
               to wrap, and both are two clicks deep otherwise. Boxed at 672px —
               the composer's width — because that is what decides whether three
               columns fit or the grid turns into a horizontal scroller. */}
-          <div className="w-full max-w-2xl rounded-2xl bg-surface p-4 shadow-surface">
+          <div data-slot="gallery-todo-board" className="w-full max-w-2xl rounded-2xl bg-surface p-4 shadow-surface">
             <TodoBoard todos={(JSON.parse(TODO_RUNNING) as { todos: TodoDraft[] }).todos} />
           </div>
-          <div className="w-[360px] rounded-2xl bg-surface p-4 shadow-surface">
+          <div data-slot="gallery-todo-board-narrow" className="w-[360px] rounded-2xl bg-surface p-4 shadow-surface">
             <TodoBoard todos={(JSON.parse(TODO_NO_CURRENT) as { todos: TodoDraft[] }).todos} />
           </div>
         </Section>
 
         <Section title="VoiceButton / 语音输入按钮">
-          <div className="flex flex-wrap items-center gap-6">
+          <div data-slot="gallery-voice-buttons" className="flex flex-wrap items-center gap-6">
             {(['idle', 'recording-hold', 'recording-toggle', 'transcribing'] as VoiceButtonState[]).map((s) => (
-              <div key={s} className="flex flex-col items-center gap-1">
-                <VoiceButton aria-label="语音输入" state={s} elapsed={s.startsWith('recording') ? 12.4 : 0} />
-                <span className="text-xs text-muted">{s}</span>
+              <div data-slot="gallery-voice-button" key={s} className="flex flex-col items-center gap-1">
+                <Tooltip delay={0}>
+                  <VoiceButton aria-label="语音输入" state={s} elapsed={s.startsWith('recording') ? 12.4 : 0} />
+                  <Tooltip.Content>语音输入</Tooltip.Content>
+                </Tooltip>
+                <span data-slot="gallery-voice-button-state" className="text-xs text-muted">
+                  {s}
+                </span>
               </div>
             ))}
           </div>
@@ -1331,10 +1363,13 @@ function Gallery() {
               and all three verbs side by side. Boxed at the panel's own
               minimum width, which is where a long path decides whether it
               truncates or pushes the marker off the edge. */}
-          <div className="h-96 w-[280px] rounded-2xl border border-border bg-surface">
+          <div data-slot="gallery-changes-panel" className="h-96 w-[280px] rounded-2xl border border-border bg-surface">
             <ChangesPanelView files={CHANGED_FILES} onClose={() => {}} />
           </div>
-          <div className="h-48 w-[280px] rounded-2xl border border-border bg-surface">
+          <div
+            data-slot="gallery-changes-panel-empty"
+            className="h-48 w-[280px] rounded-2xl border border-border bg-surface"
+          >
             <ChangesPanelView files={[]} onClose={() => {}} />
           </div>
         </Section>
@@ -1376,9 +1411,9 @@ function HotkeyProbe() {
   useHotkey('escape', () => note('escape'))
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <Button variant="outline" onClick={() => setPaletteOpen(true)}>
+    <div data-slot="hotkey-probe" className="space-y-3">
+      <div data-slot="hotkey-probe-controls" className="flex flex-wrap items-center gap-3">
+        <Button variant="outline" onPress={() => setPaletteOpen(true)}>
           打开面板
         </Button>
         <Input
@@ -1388,13 +1423,20 @@ function HotkeyProbe() {
           className="min-w-64 flex-1"
         />
       </div>
-      <p className="text-xs text-muted">
-        预期：<code>mod+k</code> 在输入框里也触发，<code>mod+shift+k</code> 不触发（<code>ignoreInInput</code>{' '}
-        默认开）， 且 <code>mod+shift+k</code> 不会连带触发 <code>mod+k</code>。
+      <p data-slot="hotkey-probe-expectation" className="text-xs text-muted">
+        预期：<code data-slot="hotkey-probe-code">mod+k</code> 在输入框里也触发，
+        <code data-slot="hotkey-probe-code">mod+shift+k</code> 不触发（
+        <code data-slot="hotkey-probe-code">ignoreInInput</code> 默认开）， 且{' '}
+        <code data-slot="hotkey-probe-code">mod+shift+k</code> 不会连带触发{' '}
+        <code data-slot="hotkey-probe-code">mod+k</code>。
       </p>
-      <div className="rounded-lg border border-border bg-surface p-3 text-xs">
-        <div className="text-muted">最近命中：{log.length ? log.join(' · ') : '（无）'}</div>
-        <div className="mt-1">面板选中：{chosen}</div>
+      <div data-slot="hotkey-probe-log" className="rounded-lg border border-border bg-surface p-3 text-xs">
+        <div data-slot="hotkey-probe-hits" className="text-muted">
+          最近命中：{log.length ? log.join(' · ') : '（无）'}
+        </div>
+        <div data-slot="hotkey-probe-chosen" className="mt-1">
+          面板选中：{chosen}
+        </div>
       </div>
 
       <CommandPalette

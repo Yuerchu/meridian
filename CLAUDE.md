@@ -1592,6 +1592,35 @@ Prefer HeroUI's answer over ours. Accepting a different radius or spacing is che
   containing block for `position: fixed` descendants: Pro's `ActionBar` is one
   and does not portal itself, so the two call sites do it for it.
 
+- **The conventions above are gated, not reviewed.** A 2026-09 audit against the
+  HeroUI design-taste profile found 218 violations across 114 files, and the
+  three rules that were already lint (palette, px sizes, native `title`) had
+  zero. So `eslint.config.js` now carries every convention a selector can see —
+  palette including `white`/`black`, `cursor-pointer`, `bg-muted`, `uppercase`,
+  bare `rounded`, raw `shadow-*`, `animate-pulse`/`animate-spin`, status colours
+  at alpha, a Button painted `text-danger` or given `h-auto`, a state attribute
+  on a `*.Content` slot, `onClick` on Button, a Spinner sized by className, a
+  template-string className, `t(…).replace`, glyph icons, px max-widths, native
+  `label`/`kbd` — and `scripts/eslint-rules/` is a local plugin for the two that
+  need ancestry: an icon-only control needs a `<Tooltip>` ancestor, and every
+  intrinsic element carries `data-slot`. Each message names the replacement.
+
+  `scripts/eslint-rules.test.mjs` (`pnpm lint:rules`, also in CI) pins every
+  selector to the shape it was written for, flagged and clean; a new restriction
+  adds both cases there, because a selector that quietly stops matching looks
+  exactly like a codebase that complies. The escape hatch is
+  `// eslint-disable-next-line <rule> -- <reason>`, and there are four
+  sanctioned reasons: a `components/ui` wrapper whose caller supplies the
+  tooltip, a genuinely multi-line button, the streaming caret, and a live
+  status dot that pulses (`animate-pulse` is banned for what it usually is, a
+  hand-rolled skeleton, and a dot saying "waiting on you" is the other thing).
+
+  What no selector can see — a `Button` row standing in for `Tabs`, padding
+  doubled between parent and child, a decorative icon, a missing `tabular-nums`
+  — is written down in `REVIEW-CHECKLIST.md`, which the stop-review reviewer is
+  told to read before judging a diff in this repository. The lint and the
+  checklist are deliberately disjoint: an item in both is one the reviewer
+  wastes a round restating.
 - **Dev playground:** `http://localhost:5173/#playground` in any dev build (tree-shaken from release). `#playground/scroll` is the scroll regression harness, `#playground/heroui` probes CSS support against the WebView. Add new component states there.
 - **`#playground/responsive` is where a breakpoint can be caught being wrong.**
   Nothing else can see one: `tsc`, eslint and the whole test suite are blind to

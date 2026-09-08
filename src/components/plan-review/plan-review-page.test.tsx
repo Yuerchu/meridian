@@ -51,8 +51,23 @@ vi.mock('@gravity-ui/icons', () => ({
   Xmark: () => null,
 }))
 
-vi.mock('@heroui/react', () => {
+vi.mock('@heroui/react', async () => {
+  const { createContext, useContext, useId } = await import('react')
   const pass = ({ children }: { children?: React.ReactNode }) => <>{children}</>
+  // The real TextField wires its Label to its TextArea through context; the
+  // mock does the same so `getByLabelText` reaches the control.
+  const FieldId = createContext<string | undefined>(undefined)
+  const TextField = ({ children }: { children?: React.ReactNode }) => (
+    <FieldId.Provider value={useId()}>
+      <div>{children}</div>
+    </FieldId.Provider>
+  )
+  const Label = ({ children }: { children?: React.ReactNode }) => (
+    <label htmlFor={useContext(FieldId)}>{children}</label>
+  )
+  const TextArea = (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => (
+    <textarea id={useContext(FieldId)} {...props} />
+  )
   const Button = ({
     children,
     onPress,
@@ -82,12 +97,24 @@ vi.mock('@heroui/react', () => {
     Trigger: ({ children, render }: { children?: React.ReactNode; render?: (props: object) => React.ReactNode }) =>
       render ? render({ children }) : <>{children}</>,
   })
+  const Link = ({
+    children,
+    onPress,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { onPress?: () => void }) => (
+    <a {...props} onClick={onPress}>
+      {children}
+    </a>
+  )
   return {
     Button,
     Chip: pass,
     Dropdown,
+    Label,
+    Link,
     Skeleton: () => <div />,
-    TextArea: (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => <textarea {...props} />,
+    TextArea,
+    TextField,
     Tooltip,
   }
 })

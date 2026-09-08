@@ -130,6 +130,7 @@ function MessageScrollerButton({
         // handlers against React Aria's synthetic events, which are the same
         // objects with a wider element type.
         ((buttonProps) => (
+          // eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- the caller wraps the tooltip
           <Button isIconOnly variant={variant} size={size} {...(buttonProps as React.ComponentProps<typeof Button>)} />
         ))
       }
@@ -138,7 +139,9 @@ function MessageScrollerButton({
       {children ?? (
         <>
           <ArrowDown />
-          <span className="sr-only">{t(direction === 'end' ? 'chat.scrollToBottom' : 'chat.scrollToTop')}</span>
+          <span data-slot="message-scroller-button-label" className="sr-only">
+            {t(direction === 'end' ? 'chat.scrollToBottom' : 'chat.scrollToTop')}
+          </span>
         </>
       )}
     </MessageScrollerPrimitive.Button>

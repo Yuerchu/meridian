@@ -87,7 +87,11 @@ export const TurnItem = React.memo(function TurnItem({
   const { t } = useTranslation()
   const dateLabel = useDateLabel()
   const assistants = turn.assistantMessages
-  const renderError = <div className="text-xs text-danger py-2">{t('chat.renderError')}</div>
+  const renderError = (
+    <div data-slot="turn-render-error" className="text-xs text-danger py-2">
+      {t('chat.renderError')}
+    </div>
+  )
 
   // The turn's actions belong to whichever row carries its conclusion. A turn
   // that was cut short has no conclusion, so they fall to the last row — leaving

@@ -81,8 +81,8 @@ export function PromptQueue({
       data-slot="queue-current"
       className="flex items-center gap-2 border-b border-separator px-3 py-2 text-xs text-muted"
     >
-      <Spinner size="sm" className="size-3.5 shrink-0" />
-      <span>{t('chat.queue.running')}</span>
+      <Spinner size="sm" className="shrink-0" />
+      <span data-slot="queue-running-label">{t('chat.queue.running')}</span>
     </div>
   ) : null
 
@@ -104,10 +104,12 @@ export function PromptQueue({
       {held && (
         <div data-slot="queue-held" className="flex items-center gap-2 px-3 py-2 text-xs text-warning" role="status">
           <TriangleExclamation className="size-4 shrink-0" />
-          <span className="min-w-0 flex-1">{t('chat.queue.held')}</span>
-          {/* The only way to restart a held queue, and about 20px tall without
-              the expanded hit area. */}
-          <Button size="sm" variant="ghost" className="touch-hitbox h-auto px-2 py-0.5 text-xs" onPress={onRelease}>
+          <span data-slot="queue-held-label" className="min-w-0 flex-1">
+            {t('chat.queue.held')}
+          </span>
+          {/* The only way to restart a held queue; the expanded hit area is
+              what makes it reachable with a finger. */}
+          <Button size="sm" variant="ghost" className="touch-hitbox px-2 text-xs" onPress={onRelease}>
             {t('chat.queue.release')}
           </Button>
         </div>

@@ -39,7 +39,7 @@ const bubbleVariants = tv({
       ghost:
         'border-none *:data-[slot=bubble-content]:rounded-none *:data-[slot=bubble-content]:bg-transparent *:data-[slot=bubble-content]:p-0 [&>[data-slot=bubble-content]:is(button,a):hover]:bg-default [&>[data-slot=bubble-content]:is(button,a):hover]:text-foreground dark:[&>[data-slot=bubble-content]:is(button,a):hover]:bg-default/50',
       destructive:
-        '*:data-[slot=bubble-content]:bg-danger/10 *:data-[slot=bubble-content]:text-danger dark:*:data-[slot=bubble-content]:bg-danger/20 [&>[data-slot=bubble-content]:is(button,a):hover]:bg-danger/20 dark:[&>[data-slot=bubble-content]:is(button,a):hover]:bg-danger/30',
+        '*:data-[slot=bubble-content]:bg-danger-soft *:data-[slot=bubble-content]:text-danger-soft-foreground [&>[data-slot=bubble-content]:is(button,a):hover]:bg-[color-mix(in_oklch,var(--danger-soft),var(--foreground)_8%)]',
     },
     align: {
       start: '',

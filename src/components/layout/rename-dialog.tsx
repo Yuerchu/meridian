@@ -59,8 +59,8 @@ export function RenameDialog({
 
   return (
     <Modal.Backdrop isOpen={isOpen} onOpenChange={onOpenChange}>
-      <Modal.Container placement="center" className="pb-[var(--ime-bottom,0px)]">
-        <Modal.Dialog data-slot="rename-dialog" className="sm:max-w-[360px]">
+      <Modal.Container placement="center" size="sm" className="pb-[var(--ime-bottom,0px)]">
+        <Modal.Dialog data-slot="rename-dialog">
           <Modal.Header>
             <Modal.Heading>{heading}</Modal.Heading>
           </Modal.Header>
@@ -83,7 +83,7 @@ export function RenameDialog({
             <Button slot="close" variant="secondary">
               {t('common.cancel')}
             </Button>
-            <Button onClick={submit} isDisabled={!canSave}>
+            <Button onPress={submit} isDisabled={!canSave}>
               {t('common.save')}
             </Button>
           </Modal.Footer>

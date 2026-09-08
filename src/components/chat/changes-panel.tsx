@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { Button } from '@heroui/react'
+import { Button, Tooltip } from '@heroui/react'
 import { FileTree } from '@heroui-pro/react/file-tree'
 import { File, Folder, FolderOpen, Xmark } from '@gravity-ui/icons'
 
@@ -67,19 +67,29 @@ export function ChangesPanelView({ files, onClose }: { files: TouchedFile[]; onC
 
   return (
     <div data-slot="changes-panel" className="flex h-full flex-col overflow-hidden">
-      <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">{t('chat.changes.title')}</span>
-        <span className="shrink-0 text-xs tabular-nums text-muted">{files.length}</span>
-        <Button
-          isIconOnly
-          variant="ghost"
-          size="sm"
-          aria-label={t('common.close')}
-          onClick={onClose}
-          className="shrink-0"
-        >
-          <Xmark />
-        </Button>
+      <header
+        data-slot="changes-panel-header"
+        className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2"
+      >
+        <span data-slot="changes-panel-title" className="min-w-0 flex-1 truncate text-sm font-medium">
+          {t('chat.changes.title')}
+        </span>
+        <span data-slot="changes-panel-count" className="shrink-0 text-xs tabular-nums text-muted">
+          {files.length}
+        </span>
+        <Tooltip delay={0}>
+          <Button
+            isIconOnly
+            variant="ghost"
+            size="sm"
+            aria-label={t('common.close')}
+            onPress={onClose}
+            className="shrink-0"
+          >
+            <Xmark />
+          </Button>
+          <Tooltip.Content>{t('common.close')}</Tooltip.Content>
+        </Tooltip>
       </header>
 
       <FileTree
@@ -100,7 +110,9 @@ export function ChangesPanelView({ files, onClose }: { files: TouchedFile[]; onC
       {/* Not a disclaimer for its own sake: a list of edited files that silently
           omits everything a command wrote is the kind of wrong that reads as
           right. */}
-      <p className="shrink-0 border-t border-border px-3 py-2 text-xs text-muted">{t('chat.changes.caveat')}</p>
+      <p data-slot="changes-panel-caveat" className="shrink-0 border-t border-border px-3 py-2 text-xs text-muted">
+        {t('chat.changes.caveat')}
+      </p>
     </div>
   )
 }
@@ -110,7 +122,7 @@ export function ChangesPanelView({ files, onClose }: { files: TouchedFile[]; onC
 function FileGlyph({ name }: { name: string }) {
   const url = fileIconUrl(name)
   if (!url) return <File />
-  return <img src={url} alt="" className="size-4 shrink-0" />
+  return <img data-slot="changes-file-glyph" src={url} alt="" className="size-4 shrink-0" />
 }
 
 function renderNode(node: FileNode, t: TFunction) {
@@ -126,13 +138,21 @@ function renderNode(node: FileNode, t: TFunction) {
         node.children ? ({ isExpanded }) => (isExpanded ? <FolderOpen /> : <Folder />) : <FileGlyph name={node.name} />
       }
       title={
-        <span className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="min-w-0 flex-1 truncate">{node.name}</span>
+        <span data-slot="changes-node-title" className="flex min-w-0 flex-1 items-center gap-2">
+          <span data-slot="changes-node-name" className="min-w-0 flex-1 truncate">
+            {node.name}
+          </span>
           {node.file && node.file.count > 1 && (
-            <span className="shrink-0 text-xs tabular-nums text-muted">×{node.file.count}</span>
+            <span data-slot="changes-node-count" className="shrink-0 text-xs tabular-nums text-muted">
+              ×{node.file.count}
+            </span>
           )}
           {op && (
-            <span aria-hidden="true" className={cn('shrink-0 font-mono text-xs', OP_CLASS[op])}>
+            <span
+              data-slot="changes-node-op"
+              aria-hidden="true"
+              className={cn('shrink-0 font-mono text-xs', OP_CLASS[op])}
+            >
               {OP_LETTER[op]}
             </span>
           )}

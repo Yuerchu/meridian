@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Dropdown, Label } from '@heroui/react'
+import { Dropdown, Label, Tooltip } from '@heroui/react'
 import { EllipsisVertical } from '@gravity-ui/icons'
 import { Sidebar } from '@heroui-pro/react/sidebar'
 
@@ -28,7 +28,9 @@ export function RowActionDropdownItems({ actions }: { actions: RowAction[] }) {
               no pointer events, so a tooltip on one is unreachable by mouse and
               by screen reader alike. */}
           {action.disabledReason && (
-            <span className="ml-auto shrink-0 text-xs text-muted">{action.disabledReason}</span>
+            <span data-slot="row-action-disabled-reason" className="ml-auto shrink-0 text-xs text-muted">
+              {action.disabledReason}
+            </span>
           )}
         </Dropdown.Item>
       ))}
@@ -70,9 +72,12 @@ export function RowActionsMenu({
             the only way to a row's actions — right-click cannot be reached by
             touch — and a miss lands on the row itself, which switches
             conversation and closes the sheet. */}
-        <Sidebar.MenuAction className="touch-hitbox" aria-label={t('sidebar.moreActions', { name: label })}>
-          <EllipsisVertical />
-        </Sidebar.MenuAction>
+        <Tooltip delay={0}>
+          <Sidebar.MenuAction className="touch-hitbox" aria-label={t('sidebar.moreActions', { name: label })}>
+            <EllipsisVertical />
+          </Sidebar.MenuAction>
+          <Tooltip.Content>{t('sidebar.moreActions', { name: label })}</Tooltip.Content>
+        </Tooltip>
         <Dropdown.Popover placement="bottom end">
           <Dropdown.Menu aria-label={t('sidebar.moreActions', { name: label })}>
             <RowActionDropdownItems actions={actions} />

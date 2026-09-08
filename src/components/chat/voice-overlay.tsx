@@ -72,18 +72,18 @@ export function VoiceOverlay({ state, elapsed, peak }: VoiceOverlayProps) {
         'pb-[calc(6rem+var(--ime-bottom,0px))]',
         'bg-gradient-to-t',
         cancelling
-          ? 'from-danger via-danger/80 to-transparent text-white'
+          ? 'from-danger via-danger/80 to-transparent text-danger-foreground'
           : 'from-overlay via-overlay/85 to-transparent text-overlay-foreground',
       )}
     >
       {/* Only state transitions are announced. The timer and level meter update
           continuously and would otherwise restart polite announcements. */}
-      <span className="sr-only" role="status" aria-live="polite">
+      <span data-slot="voice-overlay-status" className="sr-only" role="status" aria-live="polite">
         {statusText}
       </span>
-      <div className="flex flex-col items-center gap-3">
+      <div data-slot="voice-overlay-state" className="flex flex-col items-center gap-3">
         {cancelling ? <TrashBin className="size-8" /> : <Microphone className="size-8" />}
-        <span aria-hidden="true" className="text-base font-medium">
+        <span data-slot="voice-overlay-label" aria-hidden="true" className="text-base font-medium">
           {statusText}
         </span>
       </div>
@@ -92,20 +92,21 @@ export function VoiceOverlay({ state, elapsed, peak }: VoiceOverlayProps) {
           way to tell a dead microphone from a bad recogniser. */}
       {(state === 'recording-hold' || cancelling) && (
         <>
-          <div aria-hidden="true" className="flex h-10 items-center gap-1">
+          <div data-slot="voice-overlay-meter" aria-hidden="true" className="flex h-10 items-center gap-1">
             {Array.from({ length: 21 }, (_, i) => {
               const distance = Math.abs(i - 10) / 10
               const height = Math.max(0.1, Math.min(1, peak * 2.4 * (1 - distance * 0.6)))
               return (
                 <span
                   key={i}
+                  data-slot="voice-overlay-meter-bar"
                   className="h-full w-1 origin-center rounded-full bg-current transition-transform duration-75 motion-reduce:transition-none"
                   style={{ transform: `scaleY(${height})`, opacity: cancelling ? 0.5 : 0.9 }}
                 />
               )
             })}
           </div>
-          <span aria-hidden="true" className="text-sm tabular-nums opacity-80">
+          <span data-slot="voice-overlay-timer" aria-hidden="true" className="text-sm tabular-nums opacity-80">
             {remaining <= 10
               ? t('chat.voice.secondsLeft', { count: remaining })
               : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`}

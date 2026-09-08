@@ -16,11 +16,13 @@ export function ConversationRefChips({ items }: { items: MessageContextInfoRespo
   const refs = items.filter((item) => item.kind === 'conversation')
   if (refs.length === 0) return null
   return (
-    <div className="flex max-w-[80%] flex-wrap justify-end gap-1">
+    <div data-slot="conversation-ref-chips" className="flex max-w-[80%] flex-wrap justify-end gap-1">
       {refs.map((ref) => (
         <Chip key={ref.id} size="sm" variant="soft" aria-label={t('chat.convRef.chip', { name: ref.display_path })}>
           <Comments className="size-3" aria-hidden />
-          <span className="max-w-48 truncate">{ref.display_path}</span>
+          <span data-slot="conversation-ref-chip-label" className="max-w-48 truncate">
+            {ref.display_path}
+          </span>
         </Chip>
       ))}
     </div>

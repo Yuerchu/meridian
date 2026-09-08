@@ -50,11 +50,21 @@ export function SettingsHeader({
 }) {
   return (
     <div data-slot="settings-header" className={cn('flex items-start justify-between gap-2', className)} {...props}>
-      <div className="min-w-0">
-        <h2 className="text-lg font-medium">{title}</h2>
-        {subtitle && <p className="mt-1 text-xs text-muted">{subtitle}</p>}
+      <div data-slot="settings-header-text" className="min-w-0">
+        <h2 data-slot="settings-header-title" className="text-lg font-medium">
+          {title}
+        </h2>
+        {subtitle && (
+          <p data-slot="settings-header-subtitle" className="mt-1 text-xs text-muted">
+            {subtitle}
+          </p>
+        )}
       </div>
-      {actions && <div className="flex shrink-0 items-center gap-1">{actions}</div>}
+      {actions && (
+        <div data-slot="settings-header-actions" className="flex shrink-0 items-center gap-1">
+          {actions}
+        </div>
+      )}
     </div>
   )
 }
@@ -98,15 +108,25 @@ export function SettingsRow({
       aria-current={isActive || undefined}
       variant="ghost"
       className={cn(
-        'h-auto min-h-11 w-full justify-start gap-3 rounded-lg px-3 py-2 font-normal',
+        'min-h-11 w-full justify-start gap-3 rounded-lg px-3 py-2 font-normal',
         'data-active:bg-default data-active:text-default-foreground',
         className,
       )}
       {...props}
     >
-      {icon && <span className="flex size-4 shrink-0 items-center justify-center text-muted">{icon}</span>}
-      <span className="min-w-0 flex-1 truncate text-start text-sm">{label}</span>
-      {value && <span className="shrink-0 truncate text-xs text-muted">{value}</span>}
+      {icon && (
+        <span data-slot="settings-row-icon" className="flex size-4 shrink-0 items-center justify-center text-muted">
+          {icon}
+        </span>
+      )}
+      <span data-slot="settings-row-label" className="min-w-0 flex-1 truncate text-start text-sm">
+        {label}
+      </span>
+      {value && (
+        <span data-slot="settings-row-value" className="shrink-0 truncate text-xs text-muted">
+          {value}
+        </span>
+      )}
       {trailing === undefined ? <ChevronRight className="size-4 shrink-0 text-muted" /> : trailing}
     </Button>
   )
@@ -161,11 +181,11 @@ export function SettingsSkeleton({ rows = 4, className, ...props }: React.Compon
       className={cn('space-y-6 max-w-lg', className)}
       {...props}
     >
-      <div className="space-y-2">
+      <div data-slot="settings-skeleton-header" className="space-y-2">
         <Skeleton className="h-5 w-40 rounded-md" />
         <Skeleton className="h-3 w-64 rounded-md" />
       </div>
-      <div className="space-y-1">
+      <div data-slot="settings-skeleton-rows" className="space-y-1">
         {Array.from({ length: rows }, (_, i) => (
           <Skeleton key={i} className="h-11 w-full rounded-lg" />
         ))}

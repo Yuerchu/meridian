@@ -1,5 +1,5 @@
 import { Microphone, StopFill } from '@gravity-ui/icons'
-import { Button, Spinner } from '@heroui/react'
+import { Button, Spinner, Tooltip } from '@heroui/react'
 import { cn } from '@/lib/utils'
 
 export type VoiceButtonState =
@@ -47,44 +47,46 @@ export function VoiceButton({
   return (
     <div data-slot="voice-button" className="flex items-center gap-1.5">
       {recording && (
-        <span className="text-xs tabular-nums text-danger select-none">
+        <span data-slot="voice-button-elapsed" className="text-xs tabular-nums text-danger select-none">
           {Math.floor(elapsed / 60)}:{String(Math.floor(elapsed % 60)).padStart(2, '0')}
         </span>
       )}
-      <Button
-        isIconOnly
-        aria-label={ariaLabel}
-        aria-pressed={recording}
-        variant="ghost"
-        isDisabled={disabled || state === 'transcribing'}
-        className={cn(
-          'touch-hitbox touch-none select-none',
-          recording && 'text-danger hover:text-danger animate-pulse',
-          state === 'starting' && 'text-muted',
-          state !== 'starting' && !recording && 'text-muted hover:text-foreground',
-        )}
-        onPointerDown={onPointerDown}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerCancel}
-        onPointerEnter={onPointerEnter}
-        onPointerLeave={onPointerLeave}
-        onPress={(event) => {
-          // React Aria reports screen-reader and other programmatic activation
-          // as `virtual`; unlike mouse/touch/pen it has no pointer handler that
-          // could otherwise start recording.
-          if (event.pointerType === 'keyboard' || event.pointerType === 'virtual') onKeyboardPress?.()
-        }}
-        // Keep focus in the textarea; the browser default would steal it.
-        onMouseDown={(e) => e.preventDefault()}
-      >
-        {state === 'transcribing' ? (
-          <Spinner className="w-4 h-4" />
-        ) : state === 'recording-toggle' ? (
-          <StopFill className="w-4 h-4" />
-        ) : (
-          <Microphone className="w-4 h-4" />
-        )}
-      </Button>
+      <Tooltip delay={0}>
+        <Button
+          isIconOnly
+          aria-label={ariaLabel}
+          aria-pressed={recording}
+          variant={recording ? 'danger-soft' : 'ghost'}
+          isDisabled={disabled || state === 'transcribing'}
+          className={cn(
+            'touch-hitbox touch-none select-none',
+            state === 'starting' && 'text-muted',
+            state !== 'starting' && !recording && 'text-muted hover:text-foreground',
+          )}
+          onPointerDown={onPointerDown}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerCancel}
+          onPointerEnter={onPointerEnter}
+          onPointerLeave={onPointerLeave}
+          onPress={(event) => {
+            // React Aria reports screen-reader and other programmatic activation
+            // as `virtual`; unlike mouse/touch/pen it has no pointer handler that
+            // could otherwise start recording.
+            if (event.pointerType === 'keyboard' || event.pointerType === 'virtual') onKeyboardPress?.()
+          }}
+          // Keep focus in the textarea; the browser default would steal it.
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          {state === 'transcribing' ? (
+            <Spinner size="sm" />
+          ) : state === 'recording-toggle' ? (
+            <StopFill className="w-4 h-4" />
+          ) : (
+            <Microphone className="w-4 h-4" />
+          )}
+        </Button>
+        <Tooltip.Content>{ariaLabel}</Tooltip.Content>
+      </Tooltip>
     </div>
   )
 }

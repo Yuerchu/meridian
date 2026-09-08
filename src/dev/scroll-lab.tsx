@@ -779,60 +779,62 @@ export default function ScrollLab() {
   }, [metrics])
 
   return (
-    <div ref={rootRef} className="flex h-screen flex-col bg-background text-foreground">
-      <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
-        <span className="text-sm font-semibold">滚动行为实验场</span>
-        <Button size="sm" variant="outline" onClick={() => seedHistory()}>
+    <div data-slot="scroll-lab" ref={rootRef} className="flex h-screen flex-col bg-background text-foreground">
+      <div data-slot="scroll-lab-toolbar" className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
+        <span data-slot="scroll-lab-title" className="text-sm font-semibold">
+          滚动行为实验场
+        </span>
+        <Button size="sm" variant="outline" onPress={() => seedHistory()}>
           铺历史
         </Button>
         {/* Well past the transcript's window, so what this measures is the
             cost of a long conversation as the product actually renders one. */}
-        <Button size="sm" variant="outline" onClick={() => seedHistory(200)}>
+        <Button size="sm" variant="outline" onPress={() => seedHistory(200)}>
           铺 200 轮
         </Button>
-        <Button size="sm" variant="outline" onClick={() => setHasTrailingRow((v) => !v)}>
+        <Button size="sm" variant="outline" onPress={() => setHasTrailingRow((v) => !v)}>
           尾部状态行
         </Button>
-        <Button size="sm" variant="outline" onClick={() => sendUser(false)}>
+        <Button size="sm" variant="outline" onPress={() => sendUser(false)}>
           发短消息
         </Button>
-        <Button size="sm" variant="outline" onClick={() => sendUser(true)}>
+        <Button size="sm" variant="outline" onPress={() => sendUser(true)}>
           发长消息
         </Button>
-        <Button size="sm" variant="outline" onClick={() => sendUser(3)}>
+        <Button size="sm" variant="outline" onPress={() => sendUser(3)}>
           发超长消息
         </Button>
-        <Button size="sm" variant="outline" onClick={startAssistant}>
+        <Button size="sm" variant="outline" onPress={startAssistant}>
           助手开始
         </Button>
-        <Button size="sm" variant="outline" onClick={() => streamChunk()}>
+        <Button size="sm" variant="outline" onPress={() => streamChunk()}>
           流式一块
         </Button>
-        <Button size="sm" variant="outline" onClick={streamAll}>
+        <Button size="sm" variant="outline" onPress={streamAll}>
           流式到底
         </Button>
-        <Button size="sm" variant="outline" onClick={() => callTool()}>
+        <Button size="sm" variant="outline" onPress={() => callTool()}>
           工具调用
         </Button>
-        <Button size="sm" variant="outline" onClick={finishTool}>
+        <Button size="sm" variant="outline" onPress={finishTool}>
           工具返回
         </Button>
-        <Button size="sm" variant="outline" onClick={finishTurn}>
+        <Button size="sm" variant="outline" onPress={finishTurn}>
           结束本轮
         </Button>
-        <Button size="sm" variant="ghost" onClick={reset}>
+        <Button size="sm" variant="ghost" onPress={reset}>
           清空
         </Button>
         <Button
           size="sm"
-          onClick={() => {
+          onPress={() => {
             setResults(null)
             runScenarios().then(setResults)
           }}
         >
           跑全部场景
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}>
+        <Button size="sm" variant="ghost" onPress={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}>
           主题
         </Button>
       </div>
@@ -845,25 +847,44 @@ export default function ScrollLab() {
         // A real transcript often has an error/compaction row after its turns.
         // Scenario 6 turns this on so new-turn detection cannot assume that an
         // appended turn starts at the old direct-child count.
-        trailing={hasTrailingRow ? <div aria-hidden="true" className="h-px shrink-0" /> : null}
+        trailing={
+          hasTrailingRow ? (
+            <div data-slot="scroll-lab-trailing-row" aria-hidden="true" className="h-px shrink-0" />
+          ) : null
+        }
         scrollToBottomLabel="回到最新"
       />
 
       {results && (
-        <div data-testid="scroll-lab-results" className="max-h-48 overflow-y-auto border-t px-4 py-2 text-xs">
+        <div
+          data-slot="scroll-lab-results"
+          data-testid="scroll-lab-results"
+          className="max-h-48 overflow-y-auto border-t px-4 py-2 text-xs"
+        >
           {results.map((r) => (
-            <div key={r.name} className="flex gap-2 py-0.5">
-              <span className={r.pass ? 'text-success-soft-foreground' : 'text-danger'}>
+            <div data-slot="scroll-lab-result" key={r.name} className="flex gap-2 py-0.5">
+              <span
+                data-slot="scroll-lab-result-verdict"
+                className={r.pass ? 'text-success-soft-foreground' : 'text-danger'}
+              >
                 {r.pass ? 'PASS' : 'FAIL'}
               </span>
-              <span className="font-medium">{r.name}</span>
-              <span className="text-muted">{r.detail}</span>
+              <span data-slot="scroll-lab-result-name" className="font-medium">
+                {r.name}
+              </span>
+              <span data-slot="scroll-lab-result-detail" className="text-muted">
+                {r.detail}
+              </span>
             </div>
           ))}
         </div>
       )}
 
-      <div data-testid="scroll-lab-readout" className="border-t px-4 py-2 font-mono text-xs text-muted">
+      <div
+        data-slot="scroll-lab-readout"
+        data-testid="scroll-lab-readout"
+        className="border-t px-4 py-2 font-mono text-xs text-muted"
+      >
         {readout}
       </div>
     </div>

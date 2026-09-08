@@ -109,7 +109,10 @@ export function TurnOutline({ turns }: { turns: Turn[] }) {
   return (
     // Hidden where the transcript already fills the width: below `md` this
     // would sit on top of the text rather than beside it.
-    <div className="pointer-events-none absolute inset-y-0 end-0 z-10 hidden items-center pe-1 md:flex">
+    <div
+      data-slot="turn-outline"
+      className="pointer-events-none absolute inset-y-0 end-0 z-10 hidden items-center pe-1 md:flex"
+    >
       <FloatingToc placement="right">
         {/* The strip scrolls rather than growing without bound — a hundred-turn
             conversation is taller than the window. Pro's own `Bar` calls

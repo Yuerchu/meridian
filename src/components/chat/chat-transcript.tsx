@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LazyMotion, domAnimation } from 'motion/react'
 import * as m from 'motion/react-m'
-import { Button } from '@heroui/react'
+import { Button, Tooltip } from '@heroui/react'
 
 import { useImeBottom } from '@/hooks/use-android-insets'
 import {
@@ -216,7 +216,7 @@ function LazyTurn({ children, near: initiallyNear }: { children: React.ReactNode
 
   return (
     <div ref={ref} data-slot="lazy-turn" data-near={near || undefined}>
-      {near ? children : <div style={{ height: LAZY_ESTIMATE_PX }} aria-hidden />}
+      {near ? children : <div data-slot="lazy-turn-placeholder" style={{ height: LAZY_ESTIMATE_PX }} aria-hidden />}
     </div>
   )
 }
@@ -395,7 +395,10 @@ export function ChatTranscript({
                 {emptyState}
               </MessageScrollerContent>
             </MessageScrollerViewport>
-            <MessageScrollerButton aria-label={scrollToBottomLabel} />
+            <Tooltip delay={0}>
+              <MessageScrollerButton aria-label={scrollToBottomLabel} />
+              <Tooltip.Content>{scrollToBottomLabel}</Tooltip.Content>
+            </Tooltip>
             {/* Inside the scroller, not beside it: it reads the reading line off
                 the same context, and the root is already the positioned
                 ancestor. */}

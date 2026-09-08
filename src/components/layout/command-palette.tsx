@@ -164,9 +164,13 @@ export function CommandPalette({
                       onAction={act(() => onSelectConversation(hit.conversation_id))}
                     >
                       <TextAlignLeft />
-                      <div className="flex min-w-0 flex-col">
-                        <span className="truncate">{hit.title ?? t('sidebar.newChat')}</span>
-                        <span className="truncate text-xs text-muted">{hit.snippet}</span>
+                      <div data-slot="palette-hit" className="flex min-w-0 flex-col">
+                        <span data-slot="palette-hit-title" className="truncate">
+                          {hit.title ?? t('sidebar.newChat')}
+                        </span>
+                        <span data-slot="palette-hit-snippet" className="truncate text-xs text-muted">
+                          {hit.snippet}
+                        </span>
                       </div>
                     </Command.Item>
                   ))}

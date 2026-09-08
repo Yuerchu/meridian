@@ -141,9 +141,9 @@ describe('ToolCallBlock file-edit diff rendering', () => {
     const { container } = render(<ToolCallBlock data={toolCall('write_file', { path: 'notes/large.txt', content })} />)
 
     expect(container.querySelectorAll('[data-slot="file-diff-line"]')).toHaveLength(300)
-    await userEvent.click(screen.getByRole('button', { name: 'Show all lines' }))
+    await userEvent.click(screen.getByRole('link', { name: 'Show all lines' }))
     expect(container.querySelectorAll('[data-slot="file-diff-line"]')).toHaveLength(320)
-    expect(screen.getByRole('button', { name: 'Show fewer lines' })).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Show fewer lines' })).toBeVisible()
   })
 
   it('shows an unrecognized patch format as plain text with real newlines', () => {
@@ -216,9 +216,9 @@ describe('large tool results', () => {
     await userEvent.click(trigger)
 
     expect(container.textContent).not.toContain(tail)
-    await userEvent.click(screen.getByRole('button', { name: 'Show full result' }))
+    await userEvent.click(screen.getByRole('link', { name: 'Show full result' }))
     expect(container.textContent).toContain(tail)
-    expect(screen.getByRole('button', { name: 'Show less' })).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Show less' })).toBeVisible()
   })
 })
 
@@ -313,7 +313,7 @@ describe('the interactive cards say what became of them', () => {
       }[name]!
       const { container } = render(<ToolCallBlock data={toolCall(name, args, 'running')} queued />)
       expect(screen.getByText(i18n.t('chat.tool.queued'))).toBeVisible()
-      expect(container.querySelectorAll('.animate-spin')).toHaveLength(0)
+      expect(container.querySelectorAll('.animate-spin, [data-slot="spinner"]')).toHaveLength(0)
     },
   )
 
@@ -354,7 +354,7 @@ describe('the interactive cards say what became of them', () => {
     const { container } = render(
       <ToolCallBlock data={toolCall('ask_user', { questions: [{ id: 'q', question: 'Q?' }] }, 'running')} />,
     )
-    expect(container.querySelectorAll('.animate-spin')).toHaveLength(1)
+    expect(container.querySelectorAll('.animate-spin, [data-slot="spinner"]')).toHaveLength(1)
   })
 
   it('does not deny a tool while Enter is confirming IME composition', async () => {

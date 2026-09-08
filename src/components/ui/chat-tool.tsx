@@ -1,8 +1,8 @@
 import * as React from 'react'
 import { createPortal } from 'react-dom'
-import { Disclosure, Tooltip, tv, type VariantProps } from '@heroui/react'
+import { Disclosure, Spinner, Tooltip, tv, type VariantProps } from '@heroui/react'
 import { DisclosureStateContext } from 'react-aria-components'
-import { CircleCheck, CircleDashed, CircleExclamation, CircleXmark, Clock } from '@gravity-ui/icons'
+import { CircleCheck, CircleExclamation, CircleXmark, Clock } from '@gravity-ui/icons'
 import { useShikiLanguage } from '@/hooks/use-shiki-language'
 import { highlightInline } from '@/lib/shiki'
 import { cn } from '@/lib/utils'
@@ -266,10 +266,12 @@ function ChatToolStatusIcon({ className }: { className?: string }) {
     case 'input-streaming':
     case 'input-available':
       return (
-        <CircleDashed
+        <Spinner
+          size="sm"
+          color="current"
           aria-hidden
           data-slot="chat-tool-status-icon"
-          className={cn('size-3.5 shrink-0 animate-spin text-muted motion-reduce:animate-none', className)}
+          className={cn('shrink-0 text-muted', className)}
         />
       )
     // The same mark, standing still. Spinning is the claim that something is
@@ -416,7 +418,7 @@ function ChatToolContent({ className, children, ...props }: React.ComponentProps
                   data-slot="chat-tool-panel-footer"
                   className="flex flex-col items-stretch gap-2 border-t border-foreground/5 px-3 pt-2.5 pb-3"
                 >
-                  <div ref={adoptFooter} className="contents" />
+                  <div ref={adoptFooter} data-slot="chat-tool-panel-footer-slot" className="contents" />
                 </div>
               )}
             </div>
@@ -566,8 +568,8 @@ const PANEL_RING: Record<ChatToolState, string> = {
 function JsonCode({ code }: { code: string }) {
   const { language, ready } = useShikiLanguage('json')
   const html = React.useMemo(() => (ready ? highlightInline(code, language) : null), [code, language, ready])
-  if (html === null) return <code>{code}</code>
-  return <code dangerouslySetInnerHTML={{ __html: html }} />
+  if (html === null) return <code data-slot="chat-tool-json">{code}</code>
+  return <code data-slot="chat-tool-json" dangerouslySetInnerHTML={{ __html: html }} />
 }
 
 interface ChatToolPayloadProps extends React.ComponentProps<'div'> {
@@ -587,7 +589,10 @@ function ChatToolArgs({ value, text, className, children, ...props }: ChatToolPa
     >
       {children ??
         (code !== undefined && (
-          <pre className="font-mono text-xs leading-relaxed whitespace-pre-wrap text-foreground/90 [overflow-wrap:anywhere]">
+          <pre
+            data-slot="chat-tool-args-code"
+            className="font-mono text-xs leading-relaxed whitespace-pre-wrap text-foreground/90 [overflow-wrap:anywhere]"
+          >
             <JsonCode code={code} />
           </pre>
         ))}
@@ -605,7 +610,10 @@ function ChatToolResult({ value, text, className, children, ...props }: ChatTool
     >
       {children ??
         (code !== undefined && (
-          <pre className="font-mono text-xs leading-relaxed whitespace-pre-wrap text-foreground/90 [overflow-wrap:anywhere]">
+          <pre
+            data-slot="chat-tool-result-code"
+            className="font-mono text-xs leading-relaxed whitespace-pre-wrap text-foreground/90 [overflow-wrap:anywhere]"
+          >
             <JsonCode code={code} />
           </pre>
         ))}
@@ -618,7 +626,7 @@ function ChatToolError({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-slot="chat-tool-error"
       className={cn(
-        'rounded-lg bg-danger/5 px-2.5 py-2 leading-relaxed whitespace-pre-wrap text-danger [overflow-wrap:anywhere]',
+        'rounded-lg bg-danger-soft px-2.5 py-2 leading-relaxed whitespace-pre-wrap text-danger-soft-foreground [overflow-wrap:anywhere]',
         className,
       )}
       {...props}

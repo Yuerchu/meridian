@@ -32,26 +32,42 @@ export function ConversationIndicator({
 
   if (waiting) {
     return (
-      <span className="shrink-0">
-        <span aria-hidden className="block size-2 rounded-full bg-warning animate-pulse motion-reduce:animate-none" />
-        <span className="sr-only">{t('sidebar.status.waiting')}</span>
+      <span data-slot="conversation-indicator" className="shrink-0">
+        <span
+          data-slot="conversation-indicator-dot"
+          aria-hidden
+          // eslint-disable-next-line no-restricted-syntax -- a live status dot pulses; it is not a placeholder
+          className="block size-2 rounded-full bg-warning animate-pulse motion-reduce:animate-none"
+        />
+        <span data-slot="conversation-indicator-label" className="sr-only">
+          {t('sidebar.status.waiting')}
+        </span>
       </span>
     )
   }
   if (!session) return null
   if (session.streaming) {
     return (
-      <span className="shrink-0">
-        <span aria-hidden className="block size-2 rounded-full bg-info animate-pulse motion-reduce:animate-none" />
-        <span className="sr-only">{t('sidebar.status.streaming')}</span>
+      <span data-slot="conversation-indicator" className="shrink-0">
+        <span
+          data-slot="conversation-indicator-dot"
+          aria-hidden
+          // eslint-disable-next-line no-restricted-syntax -- a live status dot pulses; it is not a placeholder
+          className="block size-2 rounded-full bg-info animate-pulse motion-reduce:animate-none"
+        />
+        <span data-slot="conversation-indicator-label" className="sr-only">
+          {t('sidebar.status.streaming')}
+        </span>
       </span>
     )
   }
   if (session.fulfilledUnseen) {
     return (
-      <span className="shrink-0">
-        <span aria-hidden className="block size-2 rounded-full bg-success" />
-        <span className="sr-only">{t('sidebar.status.unseen')}</span>
+      <span data-slot="conversation-indicator" className="shrink-0">
+        <span data-slot="conversation-indicator-dot" aria-hidden className="block size-2 rounded-full bg-success" />
+        <span data-slot="conversation-indicator-label" className="sr-only">
+          {t('sidebar.status.unseen')}
+        </span>
       </span>
     )
   }

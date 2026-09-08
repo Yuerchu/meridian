@@ -1,7 +1,18 @@
 import { useEffect, useState, useCallback, useId, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, ArrowsRotateRight, TrashBin, Cloud, Key, Sliders, Xmark } from '@gravity-ui/icons'
-import { Button, Description, Disclosure, Input, Label, Spinner, TextField, Tooltip } from '@heroui/react'
+import {
+  Alert,
+  Button,
+  Description,
+  Disclosure,
+  Input,
+  Label,
+  Skeleton,
+  Spinner,
+  TextField,
+  Tooltip,
+} from '@heroui/react'
 import { EmptyState } from '@heroui-pro/react/empty-state'
 import { DataGrid, type DataGridColumn } from '@heroui-pro/react/data-grid'
 import { ListView } from '@heroui-pro/react/list-view'
@@ -223,38 +234,54 @@ function CodexAccount() {
 
   return (
     <div data-slot="codex-account" className="border-t border-border pt-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted">{t('settings.provider.codexAccount')}</p>
+      <div data-slot="codex-account-header" className="flex items-center justify-between">
+        <p data-slot="codex-account-label" className="text-xs text-muted">
+          {t('settings.provider.codexAccount')}
+        </p>
         <Button variant="outline" onPress={() => void check()} isDisabled={checking}>
-          <ArrowsRotateRight className={cn('w-3.5 h-3.5', checking && 'animate-spin')} />
+          {checking ? <Spinner size="sm" color="current" /> : <ArrowsRotateRight className="w-3.5 h-3.5" />}
           {t('settings.provider.codexRecheck')}
         </Button>
       </div>
 
       {checking && !status ? (
         <div
-          className="h-16 rounded-lg bg-default animate-pulse"
+          data-slot="codex-account-skeleton"
           role="status"
           aria-busy="true"
           aria-label={t('settings.provider.codexAccount')}
-        />
+        >
+          <Skeleton className="h-16 w-full rounded-lg" />
+        </div>
       ) : (
         status && (
-          <div className="rounded-lg border border-border p-3 space-y-1.5">
+          <div data-slot="codex-account-card" className="rounded-lg border border-border p-3 space-y-1.5">
             {status.logged_in ? (
               <>
-                <p className="text-sm">{status.email ?? t('settings.provider.codexSignedIn')}</p>
-                {status.plan && <p className="text-xs text-muted">{status.plan}</p>}
+                <p data-slot="codex-account-email" className="text-sm">
+                  {status.email ?? t('settings.provider.codexSignedIn')}
+                </p>
+                {status.plan && (
+                  <p data-slot="codex-account-plan" className="text-xs text-muted">
+                    {status.plan}
+                  </p>
+                )}
               </>
             ) : (
-              <p className="text-sm text-warning-soft-foreground">{t('settings.provider.codexSignedOut')}</p>
+              <p data-slot="codex-account-signed-out" className="text-sm text-warning-soft-foreground">
+                {t('settings.provider.codexSignedOut')}
+              </p>
             )}
-            {status.problem && <p className="text-xs text-danger break-words">{status.problem}</p>}
+            {status.problem && (
+              <p data-slot="codex-account-problem" className="text-xs text-danger break-words">
+                {status.problem}
+              </p>
+            )}
             {/* Where we looked. A GUI process need not inherit a terminal's
                 environment, so "logged in over there, not here" is otherwise
                 impossible for anyone to diagnose. */}
             {status.codex_home && (
-              <p className="text-xs text-muted break-all">
+              <p data-slot="codex-account-home" className="text-xs text-muted break-all">
                 {status.codex_home}
                 {status.storage === 'keyring' && ` · ${t('settings.provider.codexInKeyring')}`}
               </p>
@@ -397,10 +424,12 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
 
   return (
     <div data-slot="price-tiers" className="space-y-2">
-      <p className="text-xs text-muted">{t('settings.model.priceTiersHint')}</p>
+      <p data-slot="price-tiers-hint" className="text-xs text-muted">
+        {t('settings.model.priceTiersHint')}
+      </p>
       {tiers.map((tier, index) => (
         <div key={index} data-slot="price-tier" className="rounded-lg border border-border p-2 space-y-2">
-          <div className="flex items-end gap-2">
+          <div data-slot="price-tier-header" className="flex items-end gap-2">
             <TextField fullWidth>
               <Label>{t('settings.model.tierThreshold')}</Label>
               <Input
@@ -415,9 +444,9 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
             <Tooltip>
               <Button
                 size="sm"
-                variant="ghost"
+                variant="danger-soft"
                 aria-label={t('settings.model.removeTier')}
-                className="h-7 pointer-coarse:h-10 rounded-md px-2 text-danger"
+                className="h-7 pointer-coarse:h-10 rounded-md px-2"
                 onPress={() => onChange(tiers.filter((_, i) => i !== index))}
               >
                 <TrashBin className="size-3.5" />
@@ -425,7 +454,7 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
               <Tooltip.Content>{t('settings.model.removeTier')}</Tooltip.Content>
             </Tooltip>
           </div>
-          <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
+          <div data-slot="price-tier-rates" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
             <TextField fullWidth>
               <Label>{t('settings.model.inputPrice')}</Label>
               <Input
@@ -493,7 +522,9 @@ function CapabilityTriRow({ label, value, onChange }: { label: string; value: Tr
   ]
   return (
     <div data-slot="capability-tri-row" className="flex items-center justify-between gap-2">
-      <p className="text-xs text-muted">{label}</p>
+      <p data-slot="capability-tri-label" className="text-xs text-muted">
+        {label}
+      </p>
       <SettingsSelect
         ariaLabel={label}
         value={value}
@@ -729,8 +760,8 @@ function ModelConfigEditor({
     // own sizing is mobile-first (`h-10 md:h-9`) and the override threw that
     // away on every device, so the coarse-pointer variants put it back where a
     // finger is doing the aiming and leave the desktop exactly as it was.
-    <div className="px-3 pb-3 space-y-2 bg-default/30">
-      <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
+    <div data-slot="model-config-editor" className="px-3 pb-3 space-y-2 bg-default/30">
+      <div data-slot="model-config-limits" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
         <TextField fullWidth>
           <Label>{t('settings.model.contextWindow')}</Label>
           <Input
@@ -775,7 +806,7 @@ function ModelConfigEditor({
       {/* Four rates, all per million tokens. The two cache boxes are blank by
           default and blank means "priced like input" — which is what every
           provider but Anthropic does, and what the usage report bills them at. */}
-      <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
+      <div data-slot="model-config-prices" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
         <TextField fullWidth isInvalid={invalidPrices.has('input')}>
           <Label>{t('settings.model.inputPrice')}</Label>
           <Input
@@ -842,8 +873,10 @@ function ModelConfigEditor({
           a feature that failed to load. */}
       {(caps?.server_tools?.length ?? 0) > 0 && (
         <div data-slot="server-tools" className="space-y-1.5 pt-1">
-          <p className="text-xs text-muted">{t('settings.model.serverTools')}</p>
-          <div className="flex flex-wrap gap-1">
+          <p data-slot="server-tools-label" className="text-xs text-muted">
+            {t('settings.model.serverTools')}
+          </p>
+          <div data-slot="server-tool-chips" className="flex flex-wrap gap-1">
             {caps?.server_tools?.map((name) => {
               const on = serverTools.includes(name)
               return (
@@ -880,7 +913,9 @@ function ModelConfigEditor({
             />
             <Description className="text-xs">{t('settings.model.serverToolPriceHint')}</Description>
           </TextField>
-          <p className="text-xs text-muted">{t('settings.model.serverToolsHint')}</p>
+          <p data-slot="server-tools-hint" className="text-xs text-muted">
+            {t('settings.model.serverToolsHint')}
+          </p>
         </div>
       )}
       <Disclosure
@@ -929,8 +964,10 @@ function ModelConfigEditor({
               so without it the overrides never collapse. */}
           <Disclosure.Body className="space-y-2">
             <div data-slot="effort-whitelist" className="space-y-1.5">
-              <p className="text-xs text-muted">{t('settings.model.supportedEfforts')}</p>
-              <div className="flex flex-wrap gap-1">
+              <p data-slot="effort-whitelist-label" className="text-xs text-muted">
+                {t('settings.model.supportedEfforts')}
+              </p>
+              <div data-slot="effort-chips" className="flex flex-wrap gap-1">
                 {EFFORT_LADDER.map((tier) => {
                   const on = efforts.includes(tier)
                   return (
@@ -971,7 +1008,9 @@ function ModelConfigEditor({
                 setDirty(true)
               }}
             />
-            <p className="text-xs text-muted">{t('settings.model.capabilitiesHint')}</p>
+            <p data-slot="capabilities-hint" className="text-xs text-muted">
+              {t('settings.model.capabilitiesHint')}
+            </p>
             <Button
               variant="ghost"
               size="sm"
@@ -984,16 +1023,16 @@ function ModelConfigEditor({
         </Disclosure.Content>
       </Disclosure>
       {priceError && (
-        <p role="alert" className="text-xs text-danger">
+        <p data-slot="model-config-error" role="alert" className="text-xs text-danger">
           {priceError}
         </p>
       )}
-      <div className="flex items-center gap-2 pt-1">
+      <div data-slot="model-config-actions" className="flex items-center gap-2 pt-1">
         <Button size="sm" className="h-7 pointer-coarse:h-10 text-xs" onPress={() => void handleSave()}>
           {t('common.save')}
         </Button>
         {onDelete && (
-          <Button size="sm" variant="ghost" className="h-7 pointer-coarse:h-10 text-xs text-danger" onPress={onDelete}>
+          <Button size="sm" variant="danger-soft" className="h-7 pointer-coarse:h-10 text-xs" onPress={onDelete}>
             {t('common.delete')}
           </Button>
         )}
@@ -1342,7 +1381,10 @@ function ProviderEditor({
         minWidth: 176,
         cellClassName: 'text-xs',
         cell: (model) => (
-          <span className={cn('block truncate', modelConfigs.has(model.id) ? 'text-foreground' : 'text-muted')}>
+          <span
+            data-slot="model-name"
+            className={cn('block truncate', modelConfigs.has(model.id) ? 'text-foreground' : 'text-muted')}
+          >
             {model.name}
           </span>
         ),
@@ -1356,16 +1398,24 @@ function ProviderEditor({
         cellClassName: 'text-xs',
         cell: (model) => {
           const config = modelConfigs.get(model.id)
-          if (!config) return <span className="text-muted">{t('settings.provider.modelNotConfigured')}</span>
+          if (!config)
+            return (
+              <span data-slot="model-status-unconfigured" className="text-muted">
+                {t('settings.provider.modelNotConfigured')}
+              </span>
+            )
           return (config.input_price != null && compareDecimals(config.input_price, ZERO_DECIMAL) > 0) ||
             (config.output_price != null && compareDecimals(config.output_price, ZERO_DECIMAL) > 0) ? (
-            <span className="inline-flex items-center gap-1.5 text-success-soft-foreground">
-              <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-success" />
+            <span
+              data-slot="model-status-priced"
+              className="inline-flex items-center gap-1.5 text-success-soft-foreground"
+            >
+              <span data-slot="model-status-dot" aria-hidden className="size-1.5 shrink-0 rounded-full bg-success" />
               {t('settings.provider.modelPriced')}
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1.5 text-warning">
-              <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-warning" />
+            <span data-slot="model-status-unpriced" className="inline-flex items-center gap-1.5 text-warning">
+              <span data-slot="model-status-dot" aria-hidden className="size-1.5 shrink-0 rounded-full bg-warning" />
               {t('settings.provider.modelPriceMissing')}
             </span>
           )
@@ -1410,7 +1460,7 @@ function ProviderEditor({
   const editingModelConfig = editingModel == null ? undefined : modelConfigs.get(editingModel.id)
 
   return (
-    <div className="space-y-5">
+    <div data-slot="provider-editor" className="space-y-5">
       <TextField fullWidth>
         <Label>{t('settings.provider.name')}</Label>
         <Input name={`providerName-${provider.id}`} value={name} onChange={(e) => setName(e.target.value)} />
@@ -1475,7 +1525,7 @@ function ProviderEditor({
         />
       )}
 
-      <div className="flex items-center gap-2">
+      <div data-slot="provider-editor-actions" className="flex items-center gap-2">
         <Button onPress={handleSave}>{t('common.save')}</Button>
         {saved && <SavedHint />}
       </div>
@@ -1486,10 +1536,10 @@ function ProviderEditor({
       {usesChatGptLogin(provider) ? (
         <CodexAccount />
       ) : (
-        <div className="border-t border-border pt-4 space-y-3">
+        <div data-slot="provider-credentials" className="border-t border-border pt-4 space-y-3">
           <TextField fullWidth type="password">
             <Label>{t('settings.provider.apiKey')}</Label>
-            <div className="flex gap-2">
+            <div data-slot="provider-api-key-row" className="flex gap-2">
               <Input
                 name={`providerApiKey-${provider.id}`}
                 autoComplete="off"
@@ -1510,25 +1560,29 @@ function ProviderEditor({
                 onPress={handleSaveKey}
                 isDisabled={!apiKey.trim() || savingKey || keyStatus === 'loading'}
               >
-                {savingKey ? <Spinner className="w-3.5 h-3.5" /> : <Key className="w-3.5 h-3.5" />}
+                {savingKey ? <Spinner size="sm" color="current" /> : <Key className="w-3.5 h-3.5" />}
                 {keySaved ? t('common.saved') : t('settings.provider.saveKey')}
               </Button>
             </div>
           </TextField>
           {keyStatus === 'loading' && (
-            <p className="flex items-center gap-1.5 text-xs text-muted">
-              <Spinner className="w-3.5 h-3.5" />
+            <p data-slot="provider-key-checking" className="flex items-center gap-1.5 text-xs text-muted">
+              <Spinner size="sm" color="current" />
               {t('settings.provider.apiKeyChecking')}
             </p>
           )}
           {keyStatus === 'set' && (
-            <p className="text-xs text-success-soft-foreground">{t('settings.provider.keySaved')}</p>
+            <p data-slot="provider-key-saved" className="text-xs text-success-soft-foreground">
+              {t('settings.provider.keySaved')}
+            </p>
           )}
           {keyStatus === 'error' && (
-            <p className="text-xs text-warning-soft-foreground">{t('settings.provider.apiKeyCheckFailed')}</p>
+            <p data-slot="provider-key-check-failed" className="text-xs text-warning-soft-foreground">
+              {t('settings.provider.apiKeyCheckFailed')}
+            </p>
           )}
           {credentialError && (
-            <p role="alert" className="text-xs text-danger break-all">
+            <p data-slot="provider-credential-error" role="alert" className="text-xs text-danger break-all">
               {credentialError}
             </p>
           )}
@@ -1541,30 +1595,40 @@ function ProviderEditor({
           panels where it could never do anything. */}
       {entryByType(catalog, providerType)?.balance === true && (
         <div data-slot="provider-balance" className="border-t border-border pt-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-muted">{t('settings.provider.balance')}</p>
+          <div data-slot="provider-balance-header" className="flex items-center justify-between">
+            <p data-slot="provider-balance-label" className="text-xs text-muted">
+              {t('settings.provider.balance')}
+            </p>
             <Button variant="outline" onPress={handleFetchBalance} isDisabled={fetchingBalance || keyStatus !== 'set'}>
-              <ArrowsRotateRight className={cn('w-3.5 h-3.5', fetchingBalance && 'animate-spin')} />
+              {fetchingBalance ? <Spinner size="sm" color="current" /> : <ArrowsRotateRight className="w-3.5 h-3.5" />}
               {t('settings.provider.checkBalance')}
             </Button>
           </div>
           {balanceError && (
-            <p role="alert" className="text-xs text-danger break-all">
+            <p data-slot="provider-balance-error" role="alert" className="text-xs text-danger break-all">
               {balanceError}
             </p>
           )}
           {balance && (
-            <div className="rounded-lg border border-border p-3 space-y-1.5">
+            <div data-slot="provider-balance-card" className="rounded-lg border border-border p-3 space-y-1.5">
               {!balance.is_available && (
-                <p className="text-xs text-danger">{t('settings.provider.balanceUnavailable')}</p>
+                <p data-slot="provider-balance-unavailable" className="text-xs text-danger">
+                  {t('settings.provider.balanceUnavailable')}
+                </p>
               )}
               {balance.accounts.map((account) => (
-                <div key={account.currency} className="flex items-baseline justify-between gap-2">
-                  <span className="text-sm">{formatBalance(account.total_balance, account.currency)}</span>
+                <div
+                  key={account.currency}
+                  data-slot="provider-balance-account"
+                  className="flex items-baseline justify-between gap-2"
+                >
+                  <span data-slot="provider-balance-total" className="text-sm">
+                    {formatBalance(account.total_balance, account.currency)}
+                  </span>
                   {/* The split is the point: a total held up by expiring
                       promotional credit is closer to empty than it looks. */}
                   {account.topped_up_balance != null && account.granted_balance != null && (
-                    <span className="text-xs text-muted">
+                    <span data-slot="provider-balance-split" className="text-xs text-muted">
                       {t('settings.provider.balanceSplit', {
                         toppedUp: formatDecimalAmount(account.topped_up_balance, locale, 2, 2),
                         granted: formatDecimalAmount(account.granted_balance, locale, 2, 2),
@@ -1574,16 +1638,20 @@ function ProviderEditor({
                 </div>
               ))}
               {balance.accounts.length === 0 && (
-                <p className="text-xs text-muted">{t('settings.provider.balanceNoDetail')}</p>
+                <p data-slot="provider-balance-no-detail" className="text-xs text-muted">
+                  {t('settings.provider.balanceNoDetail')}
+                </p>
               )}
             </div>
           )}
         </div>
       )}
 
-      <div className="border-t border-border pt-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-muted">{t('settings.provider.models')}</p>
+      <div data-slot="provider-models" className="border-t border-border pt-4 space-y-3">
+        <div data-slot="provider-models-header" className="flex items-center justify-between">
+          <p data-slot="provider-models-label" className="text-xs text-muted">
+            {t('settings.provider.models')}
+          </p>
           {/* `keyStatus` is a proxy for "a request can be made", and it is only
               a valid one for rows whose credential lives in the secrets store.
               A ChatGPT login never has a stored key — the backend exempts it
@@ -1595,12 +1663,12 @@ function ProviderEditor({
             onPress={handleFetchModels}
             isDisabled={fetchingModels || (!usesChatGptLogin(provider) && keyStatus !== 'set')}
           >
-            <ArrowsRotateRight className={cn('w-3.5 h-3.5', fetchingModels && 'animate-spin')} />
+            {fetchingModels ? <Spinner size="sm" color="current" /> : <ArrowsRotateRight className="w-3.5 h-3.5" />}
             {t('settings.provider.fetchModels')}
           </Button>
         </div>
         {modelsError && (
-          <p role="alert" className="text-xs text-danger break-all">
+          <p data-slot="provider-models-error" role="alert" className="text-xs text-danger break-all">
             {modelsError}
           </p>
         )}
@@ -1617,10 +1685,11 @@ function ProviderEditor({
             />
             {editingModel && (
               <div
+                data-slot="model-config-panel"
                 id={modelEditorId}
                 className="max-h-96 overflow-y-auto overscroll-contain rounded-lg border border-border pt-3"
               >
-                <h4 className="px-3 pb-3 text-xs font-medium">
+                <h4 data-slot="model-config-panel-title" className="px-3 pb-3 text-xs font-medium">
                   {t('settings.provider.editModelConfig', { model: editingModel.name })}
                 </h4>
                 <ModelConfigEditor
@@ -1642,13 +1711,15 @@ function ProviderEditor({
           </div>
         )}
         {models.length === 0 && !fetchingModels && !modelsError && (
-          <p className="text-xs text-muted">{t('settings.provider.fetchModelsHint')}</p>
+          <p data-slot="provider-models-hint" className="text-xs text-muted">
+            {t('settings.provider.fetchModelsHint')}
+          </p>
         )}
       </div>
 
-      <div className="border-t border-border pt-4">
-        <Button variant="ghost" className="text-danger hover:text-danger" onPress={handleDelete} isDisabled={deleting}>
-          {deleting ? <Spinner className="w-3.5 h-3.5" /> : <TrashBin className="w-3.5 h-3.5" />}
+      <div data-slot="provider-danger-zone" className="border-t border-border pt-4">
+        <Button variant="danger-soft" onPress={handleDelete} isDisabled={deleting}>
+          {deleting ? <Spinner size="sm" color="current" /> : <TrashBin className="w-3.5 h-3.5" />}
           {deleting ? t('settings.provider.deletingProvider') : t('settings.provider.deleteProvider')}
         </Button>
       </div>
@@ -1749,23 +1820,26 @@ export function ProviderSettings() {
     return (
       <SettingsPane>
         <SettingsHeader title={t('settings.provider.title')} />
-        <div role="alert" className="space-y-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
-          <p>{t('settings.provider.loadError')}</p>
-          <p className="break-all">{loadError}</p>
-          <Button
-            size="sm"
-            variant="outline"
-            onPress={() => {
-              setLoadError(null)
-              setLoading(true)
-              void refresh()
-                .catch((reason) => setLoadError(String(reason)))
-                .finally(() => setLoading(false))
-            }}
-          >
-            {t('settings.provider.retry')}
-          </Button>
-        </div>
+        <Alert status="danger" role="alert">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>{t('settings.provider.loadError')}</Alert.Title>
+            <Alert.Description className="break-all">{loadError}</Alert.Description>
+            <Button
+              size="sm"
+              variant="outline"
+              onPress={() => {
+                setLoadError(null)
+                setLoading(true)
+                void refresh()
+                  .catch((reason) => setLoadError(String(reason)))
+                  .finally(() => setLoading(false))
+              }}
+            >
+              {t('settings.provider.retry')}
+            </Button>
+          </Alert.Content>
+        </Alert>
       </SettingsPane>
     )
   }
@@ -1815,7 +1889,10 @@ export function ProviderSettings() {
             className="min-h-11 rounded-lg border-b-0 px-3 py-2 data-[selected=true]:bg-default data-[selected=true]:text-default-foreground"
           >
             <ListView.ItemContent>
-              <span className="flex size-4 shrink-0 items-center justify-center text-muted">
+              <span
+                data-slot="provider-row-icon"
+                className="flex size-4 shrink-0 items-center justify-center text-muted"
+              >
                 {iconModel ? <ModelIcon model={iconModel} size={16} /> : <Cloud className="size-4" />}
               </span>
               <ListView.Title className="font-normal">{p.name}</ListView.Title>

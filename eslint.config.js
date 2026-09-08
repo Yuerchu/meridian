@@ -2,29 +2,114 @@ import js from '@eslint/js'
 import tseslint from 'typescript-eslint'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
+import meridianUi from './scripts/eslint-rules/index.mjs'
 
 // UI conventions from CLAUDE.md ("UI Conventions" section), machine-checkable
 // subset. The one whitelisted exception (gold-star text-amber-500) uses an
 // eslint-disable comment at the call site so it stays visible.
-const PALETTE_RE =
-  '(?:text|bg|border|ring|fill|stroke|from|via|to|divide|outline|decoration|accent|caret)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-[0-9]{2,3}'
+//
+// `white` and `black` are palette colours too — `text-white` on a danger fill
+// is `text-danger-foreground` spelt wrong, and the 2026-09 audit found two.
+const PALETTE_PREFIX = '(?:text|bg|border|ring|fill|stroke|from|via|to|divide|outline|decoration|accent|caret)'
+const PALETTE_RE = `${PALETTE_PREFIX}-(?:(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-[0-9]{2,3}|(?:white|black)\\b)`
 
-// Enforced everywhere, including src/components/ui/.
+// A class that is wrong wherever it appears: matched in string literals and in
+// template chunks alike, so `cn()` arguments and template classNames both see
+// it. `\\b` keeps `rounded` from matching `rounded-lg`.
+function forbiddenClass(re, message) {
+  return [
+    { selector: `Literal[value=/${re}/]`, message },
+    { selector: `TemplateElement[value.raw=/${re}/]`, message },
+  ]
+}
+
+// Enforced everywhere, including src/components/ui/. Each entry is a shape the
+// 2026-09 design audit found in the tree, with the replacement in the message.
 const styleRestrictions = [
-  {
-    selector: `Literal[value=/${PALETTE_RE}/]`,
-    message:
-      'Raw Tailwind palette class. Use theme tokens (--success/--warning/--info/--danger/...) per CLAUDE.md UI conventions.',
-  },
-  {
-    selector: `TemplateElement[value.raw=/${PALETTE_RE}/]`,
-    message:
-      'Raw Tailwind palette class. Use theme tokens (--success/--warning/--info/--danger/...) per CLAUDE.md UI conventions.',
-  },
+  ...forbiddenClass(
+    PALETTE_RE,
+    'Raw Tailwind palette class. Use theme tokens (--success/--warning/--info/--danger/...) per CLAUDE.md UI conventions.',
+  ),
   {
     selector: 'Literal[value=/text-\\u005B[0-9.]+px\\u005D/]',
     message: 'Arbitrary px font size. Use the Tailwind scale (text-xs/sm/base/lg) per CLAUDE.md UI conventions.',
   },
+  ...forbiddenClass(
+    '\\bcursor-pointer\\b',
+    "cursor-pointer ignores the user's cursor preference. Use cursor-[var(--cursor-interactive)] on custom interactive elements; HeroUI controls set it themselves.",
+  ),
+  ...forbiddenClass(
+    '\\bbg-muted\\b',
+    '--muted is secondary *text*, not a fill (see the token note in CLAUDE.md). A dot or a caret takes bg-default, bg-border or bg-current.',
+  ),
+  ...forbiddenClass('\\buppercase\\b', 'No ALL CAPS headings or labels; write the label in Title Case instead.'),
+  ...forbiddenClass(
+    '(?:^|\\s)rounded(?:\\s|$)',
+    'Bare `rounded` (4px) is off the radius ladder (composer 2xl → chat/tool card xl → settings lg). Use <Chip> or the ladder step of the container.',
+  ),
+  ...forbiddenClass(
+    '\\bshadow-(?:xs|sm|md|lg|xl|2xl)\\b',
+    'Raw Tailwind shadow-* stacks on the theme. Use shadow-surface (cards) or shadow-overlay (popovers/menus), which the theme sizes per mode.',
+  ),
+  ...forbiddenClass(
+    '\\banimate-pulse\\b',
+    'Hand-rolled animate-pulse placeholder. Use <Skeleton> from @heroui/react (with role="status" + aria-busy + a label on the group); a streaming caret disables this line with a reason.',
+  ),
+  ...forbiddenClass(
+    '\\banimate-spin\\b',
+    'Hand-rolled animate-spin icon. Use <Spinner size="sm" color="current" /> from @heroui/react.',
+  ),
+  ...forbiddenClass(
+    '\\b(?:bg|border)-(?:danger|warning|success|info)\\/[0-9]+',
+    'Status colour at alpha is a hand-drawn soft fill. Use bg-*-soft / text-*-soft-foreground, or <Alert status="…"> for a message box.',
+  ),
+  {
+    selector:
+      "JSXOpeningElement[name.name=/Button$/] > JSXAttribute[name.name='className'] Literal[value=/\\btext-danger\\b/]",
+    message: 'A destructive Button is variant="danger-soft", not ghost/outline painted text-danger by hand.',
+  },
+  {
+    selector:
+      "JSXOpeningElement[name.name=/Button$/] > JSXAttribute[name.name='className'] Literal[value=/\\bh-auto\\b/]",
+    message:
+      'h-auto on a Button is the signature of a Button standing in for something else — a list row (ListBox / Menu / SettingsRow), a chip (Chip / ToggleButtonGroup) or plain text (Link). Use that component; a genuinely multi-line button disables this line with a reason.',
+  },
+  {
+    selector:
+      "JSXOpeningElement[name.property.name=/^(?:Content|Control|Indicator)$/] > JSXAttribute[name.name='className'] Literal[value=/data-\\u005B?(?:selected|hovered|pressed|focus-visible|expanded)/]",
+    message:
+      'HeroUI puts data-selected / data-hovered / data-pressed on the component root, not on its *.Content or *.Control slot — this selector never matches. Style from the root with a descendant selector.',
+  },
+  {
+    selector: "JSXOpeningElement[name.name=/^(?:H)?Button$/] > JSXAttribute[name.name='onClick']",
+    message:
+      'HeroUI Button takes onPress, not onClick (React Aria press semantics: keyboard, touch, and no ghost clicks).',
+  },
+  {
+    selector:
+      "JSXOpeningElement[name.name='Spinner'] > JSXAttribute[name.name='className'] Literal[value=/\\b(?:size|w|h)-[0-9]/]",
+    message: 'Spinner is sized through its size prop (sm/md/lg), not className.',
+  },
+  {
+    selector: "JSXAttribute[name.name='className'] > JSXExpressionContainer > TemplateLiteral",
+    message:
+      'Compose className with cn(...) rather than a template string, so undefined/false parts drop out and Prettier can sort it.',
+  },
+  {
+    selector: "CallExpression[callee.property.name='replace'][callee.object.callee.name='t']",
+    message: 'Do not post-process a translation with .replace(); add a separate i18n key.',
+  },
+  {
+    // `×` is left out: as "×3" it is a count, which is typography rather than
+    // an icon.
+    selector: 'JSXText[value=/[✕✓✗←→↑↓]/]',
+    message:
+      'A glyph is not an icon: screen readers read it as nothing or as "multiplication x", and it does not match the icon set. Use the icon library (Xmark, Check, ArrowUp…).',
+  },
+  ...forbiddenClass(
+    'max-w-\\u005B[0-9]+px\\u005D',
+    'Arbitrary px max-width. Modals take size="sm|md|lg"; everything else uses the Tailwind scale (max-w-xs … max-w-3xl).',
+  ),
 ]
 
 // Enforced outside src/components/ui/, which is where the components HeroUI
@@ -53,6 +138,15 @@ const nativeElementRestrictions = [
   {
     selector: "JSXOpeningElement[name.name='dialog']",
     message: 'Use <AlertDialog>, <Modal> or <Drawer> from @heroui/react instead of the native <dialog>.',
+  },
+  {
+    selector: "JSXOpeningElement[name.name='label']",
+    message:
+      "Use <Label> from @heroui/react (inside a <TextField> / <Checkbox> / <Switch>, which wire the association) instead of the native <label htmlFor>. An enable/disable row is Pro's <CellSwitch>.",
+  },
+  {
+    selector: "JSXOpeningElement[name.name='kbd']",
+    message: 'Use <Kbd> from @heroui/react instead of the native <kbd>.',
   },
   {
     selector: "JSXOpeningElement[name.name=/^(?:button|Button)$/] > JSXAttribute[name.name='title']",
@@ -92,6 +186,13 @@ const nativeChromeRestrictions = [
   },
 ]
 
+// For scripts/eslint-rules.test.mjs, which pins every selector to the shape it
+// was written for.
+export const uiRestrictions = {
+  style: [...styleRestrictions, ...nativeChromeRestrictions],
+  nativeElements: nativeElementRestrictions,
+}
+
 export default tseslint.config(
   { ignores: ['dist', 'src-tauri', '**/*.test.ts', '**/*.test.tsx'] },
   js.configs.recommended,
@@ -100,6 +201,7 @@ export default tseslint.config(
     plugins: {
       'react-hooks': reactHooks,
       'react-refresh': reactRefresh,
+      'meridian-ui': meridianUi,
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
@@ -108,6 +210,16 @@ export default tseslint.config(
       'react-hooks/preserve-manual-memoization': 'off',
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+    },
+  },
+  // The two UI conventions that need to see more than one node: an icon-only
+  // control needs a <Tooltip> ancestor, and every intrinsic element carries
+  // data-slot. Both are the local plugin under scripts/eslint-rules/.
+  {
+    files: ['src/**/*.tsx'],
+    rules: {
+      'meridian-ui/icon-only-needs-tooltip': 'error',
+      'meridian-ui/intrinsic-needs-data-slot': 'error',
     },
   },
   // UI conventions from CLAUDE.md, machine-checkable subset. Two config blocks

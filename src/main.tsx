@@ -32,10 +32,19 @@ const isBrowserDev = isDev && !('__TAURI_INTERNALS__' in window)
 
 function renderAppCrashFallback(error: Error) {
   return (
-    <main className="flex h-screen flex-col items-center justify-center gap-3 p-8 text-center">
-      <h1 className="text-sm font-medium">{i18n.t('errorBoundary.title')}</h1>
-      <p className="max-w-md text-xs text-muted">{i18n.t('errorBoundary.description')}</p>
-      <p className="max-w-md break-all text-xs text-muted">{String(error)}</p>
+    <main
+      data-slot="app-crash-fallback"
+      className="flex h-screen flex-col items-center justify-center gap-3 p-8 text-center"
+    >
+      <h1 data-slot="app-crash-title" className="text-sm font-medium">
+        {i18n.t('errorBoundary.title')}
+      </h1>
+      <p data-slot="app-crash-description" className="max-w-md text-xs text-muted">
+        {i18n.t('errorBoundary.description')}
+      </p>
+      <p data-slot="app-crash-error" className="max-w-md break-all text-xs text-muted">
+        {String(error)}
+      </p>
       <Button variant="secondary" onPress={() => window.location.reload()}>
         {i18n.t('errorBoundary.reload')}
       </Button>

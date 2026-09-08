@@ -30,7 +30,9 @@ export function ThinkingBlock({
     <ChatTool state={isStreaming ? 'input-streaming' : 'output-available'} {...expansion}>
       <ChatToolTrigger>
         <Comment aria-hidden className="size-3.5 shrink-0 text-muted" />
-        <span className={cn('font-medium text-foreground', isStreaming && 'shimmer')}>{t('chat.thinking')}</span>
+        <span data-slot="thinking-label" className={cn('font-medium text-foreground', isStreaming && 'shimmer')}>
+          {t('chat.thinking')}
+        </span>
       </ChatToolTrigger>
       <ChatToolContent>
         <div data-slot="thinking-text" className="leading-relaxed whitespace-pre-wrap text-muted">

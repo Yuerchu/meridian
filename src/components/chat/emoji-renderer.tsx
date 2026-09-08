@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowsRotateRight, Picture } from '@gravity-ui/icons'
-import { Button } from '@heroui/react'
+import { Button, Skeleton } from '@heroui/react'
 import { api } from '@/api'
+import { cn } from '@/lib/utils'
 import type { EmojiInfoResponse } from '@/types'
 
 export interface EmojiMap {
@@ -80,9 +81,11 @@ export function StickerImage({
 
   if (load.status === 'loading') {
     return (
-      <div
-        className={`${className} rounded-xl bg-default/40 animate-pulse motion-reduce:animate-none`}
+      <Skeleton
+        data-slot="sticker-placeholder"
+        className={cn(className, 'rounded-xl')}
         role="status"
+        aria-busy
         aria-label={t('chat.emoji.loading', { name: name ?? t('chat.emoji.sticker') })}
       />
     )
@@ -90,7 +93,8 @@ export function StickerImage({
   if (load.status === 'error') {
     return (
       <div
-        className={`${className} flex flex-col items-center justify-center gap-1 rounded-xl bg-default/40 text-muted`}
+        data-slot="sticker-error"
+        className={cn(className, 'flex flex-col items-center justify-center gap-1 rounded-xl bg-default/40 text-muted')}
         role="group"
         aria-label={t('chat.emoji.loadFailed', { name: name ?? t('chat.emoji.sticker') })}
       >
@@ -98,7 +102,7 @@ export function StickerImage({
         <Button
           variant="ghost"
           size="sm"
-          className="touch-hitbox h-auto px-1 py-0.5 text-xs"
+          className="touch-hitbox px-1 text-xs"
           onPress={() => setAttempt((current) => current + 1)}
         >
           <ArrowsRotateRight aria-hidden className="size-3.5" />
@@ -109,12 +113,13 @@ export function StickerImage({
   }
   return (
     <img
+      data-slot="sticker-image"
       src={load.url}
       alt={name ?? t('chat.emoji.sticker')}
       loading="lazy"
       width={128}
       height={128}
-      className={`${className} object-contain`}
+      className={cn(className, 'object-contain')}
     />
   )
 }
@@ -140,12 +145,13 @@ export function renderEmojisInText(text: string, emojiMap: EmojiMap): (string | 
       parts.push(
         <img
           key={`${start}-${emojiName}`}
+          data-slot="inline-emoji"
           src={entry.url}
           alt={emojiName}
           loading="lazy"
           width={48}
           height={48}
-          className="emoji-sticker rounded"
+          className="emoji-sticker rounded-xl"
         />,
       )
     } else {

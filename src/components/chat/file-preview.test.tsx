@@ -170,8 +170,8 @@ describe('rich file preview modes', () => {
 
     fireEvent.click(screen.getByText('Preview'))
     expect(await screen.findByRole('heading', { name: 'Meridian' })).toBeInTheDocument()
-    const nested = screen.getByRole('button', { name: 'config.json' })
-    expect(nested).toBeDisabled()
+    const nested = screen.getByRole('link', { name: 'config.json' })
+    expect(nested).toHaveAttribute('aria-disabled', 'true')
     fireEvent.click(nested)
     expect(workspaceResolveRef).toHaveBeenCalledTimes(1)
     expect(document.querySelector('[data-slot="markdown-blocked-image"]')).toHaveTextContent('Remote diagram')

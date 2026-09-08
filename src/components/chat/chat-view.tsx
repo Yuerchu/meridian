@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DropZone } from 'react-aria-components'
 import type { DropItem } from 'react-aria-components'
-import { Button, Chip } from '@heroui/react'
+import { Button, Chip, Tooltip } from '@heroui/react'
 import { Comments, Xmark } from '@gravity-ui/icons'
 import { acceptsConversationDrop, CONVERSATION_DRAG_TYPE } from '@/components/layout/sidebar-dnd'
 import { EmptyState as ProEmptyState } from '@heroui-pro/react/empty-state'
@@ -487,16 +487,24 @@ function ChatViewInner({
             status: 'warning',
             title: t('chat.shell.retryTitle'),
             body: (
-              <div className="space-y-3">
-                <p>{t('chat.shell.retryBody')}</p>
-                <dl className="space-y-2 rounded-xl bg-surface-secondary p-3 text-xs">
-                  <div>
-                    <dt className="font-medium text-muted">{t('chat.shell.commandLabel')}</dt>
-                    <dd className="mt-0.5 break-all font-mono text-foreground">{command}</dd>
+              <div data-slot="shell-retry-body" className="space-y-3">
+                <p data-slot="shell-retry-text">{t('chat.shell.retryBody')}</p>
+                <dl data-slot="shell-retry-details" className="space-y-2 rounded-xl bg-surface-secondary p-3 text-xs">
+                  <div data-slot="shell-retry-detail">
+                    <dt data-slot="shell-retry-detail-label" className="font-medium text-muted">
+                      {t('chat.shell.commandLabel')}
+                    </dt>
+                    <dd data-slot="shell-retry-detail-value" className="mt-0.5 break-all font-mono text-foreground">
+                      {command}
+                    </dd>
                   </div>
-                  <div>
-                    <dt className="font-medium text-muted">{t('chat.shell.cwdLabel')}</dt>
-                    <dd className="mt-0.5 break-all font-mono text-foreground">{result.cwd}</dd>
+                  <div data-slot="shell-retry-detail">
+                    <dt data-slot="shell-retry-detail-label" className="font-medium text-muted">
+                      {t('chat.shell.cwdLabel')}
+                    </dt>
+                    <dd data-slot="shell-retry-detail-value" className="mt-0.5 break-all font-mono text-foreground">
+                      {result.cwd}
+                    </dd>
                   </div>
                 </dl>
               </div>
@@ -831,6 +839,7 @@ function ChatViewInner({
           typed. Pressing a chip removes it. */}
       {conversationRefs.length > 0 && (
         <div
+          data-slot="conversation-refs-pending"
           role="group"
           aria-label={t('chat.convRef.pending')}
           className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-border px-4 py-2"
@@ -838,25 +847,35 @@ function ChatViewInner({
           {conversationRefs.map((ref) => (
             <Chip key={ref.id} size="sm" variant="soft" className="pr-0.5">
               <Comments className="size-3.5" aria-hidden />
-              <span className="max-w-48 truncate">{ref.title}</span>
-              <Button
-                isIconOnly
-                size="sm"
-                variant="ghost"
-                aria-label={t('chat.convRef.remove', { name: ref.title })}
-                onPress={() => setConversationRefs((prev) => prev.filter((r) => r.id !== ref.id))}
-                className="touch-hitbox size-5 min-w-0 rounded-full"
-              >
-                <Xmark className="size-3" />
-              </Button>
+              <span data-slot="conversation-ref-title" className="max-w-48 truncate">
+                {ref.title}
+              </span>
+              <Tooltip delay={0}>
+                <Button
+                  isIconOnly
+                  size="sm"
+                  variant="ghost"
+                  aria-label={t('chat.convRef.remove', { name: ref.title })}
+                  onPress={() => setConversationRefs((prev) => prev.filter((r) => r.id !== ref.id))}
+                  className="touch-hitbox size-5 min-w-0 rounded-full"
+                >
+                  <Xmark className="size-3" />
+                </Button>
+                <Tooltip.Content>{t('chat.convRef.remove', { name: ref.title })}</Tooltip.Content>
+              </Tooltip>
             </Chip>
           ))}
         </div>
       )}
 
       {reviewBlocked && (
-        <div className="flex shrink-0 items-center gap-3 border-t border-border bg-accent-soft px-4 py-2 text-xs text-accent">
-          <p className="min-w-0 flex-1">{reviewBlockedMessage}</p>
+        <div
+          data-slot="review-blocked-notice"
+          className="flex shrink-0 items-center gap-3 border-t border-border bg-accent-soft px-4 py-2 text-xs text-accent"
+        >
+          <p data-slot="review-blocked-message" className="min-w-0 flex-1">
+            {reviewBlockedMessage}
+          </p>
           {pendingPlanReview && (
             <Button size="sm" variant="ghost" onPress={() => openPlanReview(pendingPlanReview.review_id)}>
               {reviewBlockedAction}

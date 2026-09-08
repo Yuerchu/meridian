@@ -17,10 +17,12 @@ interface ActionButtonProps {
   children: React.ReactNode
   /** Persistent toggle state, such as a message rating. */
   'aria-pressed'?: boolean
+  /** `ghost` unless the action is destructive, which is `danger-soft`. */
+  variant?: React.ComponentProps<typeof Button>['variant']
 }
 
 const ActionButton = React.forwardRef<HTMLButtonElement, ActionButtonProps>(function ActionButton(
-  { label, onClick, className, children, 'aria-pressed': ariaPressed },
+  { label, onClick, className, children, 'aria-pressed': ariaPressed, variant = 'ghost' },
   ref,
 ) {
   return (
@@ -35,7 +37,7 @@ const ActionButton = React.forwardRef<HTMLButtonElement, ActionButtonProps>(func
         aria-label={label}
         aria-pressed={ariaPressed}
         data-slot="action-button"
-        variant="ghost"
+        variant={variant}
         onPress={onClick}
         className={className}
       >

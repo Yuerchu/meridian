@@ -87,13 +87,16 @@ export function RemoteClientSettings() {
   if (isRemote) {
     const offline = state === 'offline'
     return (
-      <div className="space-y-3">
-        <p className="block text-xs font-medium text-muted">{t('settings.client.title')}</p>
+      <div data-slot="remote-client-connected" className="space-y-3">
+        <p data-slot="remote-client-label" className="block text-xs font-medium text-muted">
+          {t('settings.client.title')}
+        </p>
         <ItemCard variant="outline">
           <ItemCard.Content className="min-w-0">
             <ItemCard.Title className="flex w-full items-center gap-2">
               {/* Decoration: the state it stands for is spelled out beside it. */}
               <span
+                data-slot="remote-client-state-dot"
                 aria-hidden
                 className={cn(
                   'inline-block size-2 shrink-0 rounded-full',
@@ -110,17 +113,23 @@ export function RemoteClientSettings() {
         <Button variant="outline" onPress={handleDisconnect}>
           {t('settings.client.disconnect')}
         </Button>
-        <p className="text-xs text-muted">{t('settings.client.disconnectHint')}</p>
+        <p data-slot="remote-client-disconnect-hint" className="text-xs text-muted">
+          {t('settings.client.disconnectHint')}
+        </p>
       </div>
     )
   }
 
   return (
-    <div className="space-y-3">
-      <p className="block text-xs font-medium text-muted">{t('settings.client.title')}</p>
-      <p className="text-xs text-muted">{t('settings.client.intro')}</p>
+    <div data-slot="remote-client" className="space-y-3">
+      <p data-slot="remote-client-label" className="block text-xs font-medium text-muted">
+        {t('settings.client.title')}
+      </p>
+      <p data-slot="remote-client-intro" className="text-xs text-muted">
+        {t('settings.client.intro')}
+      </p>
 
-      <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
+      <div data-slot="remote-client-endpoint" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
         <TextField fullWidth>
           <Label>{t('settings.client.host')}</Label>
           <Input
@@ -156,7 +165,7 @@ export function RemoteClientSettings() {
         <Description>{t('settings.client.tokenHint')}</Description>
       </TextField>
 
-      <div className="flex items-center gap-2">
+      <div data-slot="remote-client-actions" className="flex items-center gap-2">
         <Button variant="outline" onPress={handleTest} isDisabled={!host.trim() || probing} aria-busy={probing}>
           {probing ? t('settings.client.testing') : t('settings.client.test')}
         </Button>
@@ -167,7 +176,7 @@ export function RemoteClientSettings() {
 
       {probe && <ProbeMessage probe={probe} />}
       {error && (
-        <p role="alert" className="text-xs text-danger break-all">
+        <p data-slot="remote-client-error" role="alert" className="text-xs text-danger break-all">
           {error}
         </p>
       )}
@@ -186,7 +195,7 @@ function ProbeMessage({ probe }: { probe: ProbeResult }) {
 
   if (probe.ok) {
     return (
-      <p role="status" className="text-xs text-success-soft-foreground">
+      <p data-slot="remote-client-probe-ok" role="status" className="text-xs text-success-soft-foreground">
         {t('settings.client.testOk', { version: probe.version })}
       </p>
     )
@@ -203,7 +212,7 @@ function ProbeMessage({ probe }: { probe: ProbeResult }) {
       : t(probe.reason === 'malformed' ? 'settings.client.testMalformed' : 'settings.client.testUnreachable')
 
   return (
-    <p role="status" className="text-xs text-danger">
+    <p data-slot="remote-client-probe-failed" role="status" className="text-xs text-danger">
       {message}
     </p>
   )

@@ -153,26 +153,34 @@ export function MasterDetail<Aux extends string = never>({
             {nav.aux !== null ? aux : detail}
           </SettingsSubPage>
         ) : (
-          <div className="space-y-3">
+          <div data-slot="master-detail-list-page" className="space-y-3">
             <SettingsHeader title={title} actions={actions} />
-            {emptyState ?? <div className="space-y-2">{list}</div>}
+            {emptyState ?? (
+              <div data-slot="master-detail-list" className="space-y-2">
+                {list}
+              </div>
+            )}
           </div>
         )
       ) : (
-        <div className="space-y-4">
+        <div data-slot="master-detail-wide" className="space-y-4">
           {atTop && <SettingsHeader title={title} actions={actions} />}
           {aux}
           {emptyState ?? (
-            <div className={cn('flex', atTop ? 'gap-4' : 'gap-6')}>
-              <div className={cn('shrink-0 space-y-2', listWidth)}>
+            <div data-slot="master-detail-columns" className={cn('flex', atTop ? 'gap-4' : 'gap-6')}>
+              <div data-slot="master-detail-list-column" className={cn('shrink-0 space-y-2', listWidth)}>
                 {!atTop && <SettingsHeader title={title} actions={actions} className="mb-3" />}
                 {list}
               </div>
               {/* The editor's queries resolve against this column, not against
                   the settings layer: two columns at 560px leaves 352px here,
                   and 208px of that width is one the editor never sees. */}
-              <div className="@container/pane min-w-0 flex-1">
-                {detail ?? <div className="text-sm text-muted">{emptyDetail}</div>}
+              <div data-slot="master-detail-detail-column" className="@container/pane min-w-0 flex-1">
+                {detail ?? (
+                  <div data-slot="master-detail-empty-detail" className="text-sm text-muted">
+                    {emptyDetail}
+                  </div>
+                )}
               </div>
             </div>
           )}

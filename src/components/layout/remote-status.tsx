@@ -34,9 +34,11 @@ export function RemoteStatus() {
       {/* The word beside it says the same thing, so announcing the dot too
           would only say it twice. */}
       <span
+        data-slot="remote-status-dot"
         aria-hidden
         className={cn(
           'size-1.5 rounded-full',
+          // eslint-disable-next-line no-restricted-syntax -- a live status dot pulses while connecting; it is not a placeholder
           offline ? 'bg-danger' : 'bg-warning animate-pulse motion-reduce:animate-none',
         )}
       />

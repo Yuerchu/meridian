@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 
-import { Button, Popover, ProgressCircle } from '@heroui/react'
+import { Link, Popover, ProgressCircle, Tooltip } from '@heroui/react'
 
 import type { AcpUsage } from '@/hooks/use-acp-config'
 import type { CompactCircuitBreakerState, ConversationAgentKind } from '@/types'
@@ -105,42 +105,53 @@ export function ContextGauge({
           is worth saying because it is the reason this is not simply a larger
           button: the toolbar row is 32px, and a control taller than that pushes
           the shell open. */}
-      <Popover.Trigger
-        aria-label={figures}
-        className="touch-hitbox inline-flex items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent"
-      >
-        <ProgressCircle
-          aria-hidden
-          value={used}
-          maxValue={limit}
-          isIndeterminate={compacting}
-          color={color}
-          className={color && !compacting ? undefined : '[--progress-circle-stroke:var(--muted)]'}
+      <Tooltip delay={0}>
+        <Popover.Trigger
+          aria-label={figures}
+          className="touch-hitbox inline-flex items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
-          <ProgressCircle.Track className="size-4.5">
-            <ProgressCircle.TrackCircle />
-            <ProgressCircle.FillCircle />
-          </ProgressCircle.Track>
-        </ProgressCircle>
-      </Popover.Trigger>
+          <ProgressCircle
+            aria-hidden
+            value={used}
+            maxValue={limit}
+            isIndeterminate={compacting}
+            color={color}
+            className={color && !compacting ? undefined : '[--progress-circle-stroke:var(--muted)]'}
+          >
+            <ProgressCircle.Track className="size-4.5">
+              <ProgressCircle.TrackCircle />
+              <ProgressCircle.FillCircle />
+            </ProgressCircle.Track>
+          </ProgressCircle>
+        </Popover.Trigger>
+        <Tooltip.Content>{figures}</Tooltip.Content>
+      </Tooltip>
       <Popover.Content placement="top" className="max-w-64">
         <Popover.Dialog aria-label={t('chat.context.title')} className="flex flex-col gap-1 text-xs tabular-nums">
           {compacting && !hosted ? (
-            <span>{t('chat.compact.inProgress')}</span>
+            <span data-slot="context-gauge-compacting">{t('chat.compact.inProgress')}</span>
           ) : (
             <>
-              <span className="text-muted">{whose}</span>
+              <span data-slot="context-gauge-model" className="text-muted">
+                {whose}
+              </span>
               {/* Only for a conversation whose rows *are* the context. A
                   hosted transcript is this app's copy of what the agent said,
                   not what it is carrying. */}
-              {!hosted && <span>{t('chat.context.messages', { count: context?.messageCount ?? 0 })}</span>}
-              <span>{figures}</span>
+              {!hosted && (
+                <span data-slot="context-gauge-messages">
+                  {t('chat.context.messages', { count: context?.messageCount ?? 0 })}
+                </span>
+              )}
+              <span data-slot="context-gauge-figures">{figures}</span>
               {hosted ? (
                 // The agent compacts its own history on its own terms, and
                 // this app has no say and no visibility. Saying so beats
                 // leaving a gap where every other conversation has a
                 // countdown.
-                <span className="text-muted">{t('chat.context.hostedCompaction')}</span>
+                <span data-slot="context-gauge-hosted-compaction" className="text-muted">
+                  {t('chat.context.hostedCompaction')}
+                </span>
               ) : (
                 <>
                   {context?.autoCompactEnabled && context.compactBreaker !== 'closed' ? (
@@ -148,24 +159,26 @@ export function ContextGauge({
                     // auto-compact" next to a number that never moves reads as
                     // a bug in the indicator rather than as compaction having
                     // given up.
-                    <span className="text-warning">{t('chat.compact.circuitBreakerOpen')}</span>
+                    <span data-slot="context-gauge-breaker" className="text-warning">
+                      {t('chat.compact.circuitBreakerOpen')}
+                    </span>
                   ) : (
                     context?.autoCompactEnabled &&
                     context.autoCompactThreshold > 0 && (
-                      <span>
+                      <span data-slot="context-gauge-countdown">
                         {Math.max(0, Math.round((1 - context.estimatedTokens / context.autoCompactThreshold) * 100))}%{' '}
                         {t('chat.compact.untilAutoCompact')}
                       </span>
                     )
                   )}
                   {onCompact && !streaming && (
-                    <Button
-                      variant="ghost"
-                      className="mt-1 h-auto justify-start px-0 py-0 text-xs font-normal underline underline-offset-2"
+                    <Link
+                      data-slot="context-gauge-compact"
+                      className="mt-1 text-xs font-normal underline underline-offset-2"
                       onPress={onCompact}
                     >
                       {t('chat.compact.manual')}
-                    </Button>
+                    </Link>
                   )}
                 </>
               )}

@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
 import { TrashBin } from '@gravity-ui/icons'
-import { Button, Checkbox, Description, Input, Label, Separator, Spinner, TextField } from '@heroui/react'
+import { Button, Checkbox, Description, Input, Label, Separator, Spinner, TextField, Tooltip } from '@heroui/react'
 import { ItemCard } from '@heroui-pro/react/item-card'
 import { ItemCardGroup } from '@heroui-pro/react/item-card-group'
 import { api } from '@/api'
@@ -117,23 +117,30 @@ export function VoiceCorpusSettings() {
       <SettingsHeader title={t('settings.voiceCorpus.title')} subtitle={t('settings.voiceCorpus.description')} />
 
       {error && (
-        <p role="alert" className="text-danger text-sm">
+        <p data-slot="voice-corpus-error" role="alert" className="text-danger text-sm">
           {error}
         </p>
       )}
       {notice && (
-        <p role="status" className="text-muted text-sm">
+        <p data-slot="voice-corpus-notice" role="status" className="text-muted text-sm">
           {notice}
         </p>
       )}
 
       {loading ? (
-        <div role="status" aria-label={t('common.loading')} className="flex items-center gap-2 text-sm text-muted">
+        <div
+          data-slot="voice-corpus-loading"
+          role="status"
+          aria-label={t('common.loading')}
+          className="flex items-center gap-2 text-sm text-muted"
+        >
           <Spinner aria-hidden="true" size="sm" />
           {t('common.loading')}
         </div>
       ) : sessions.length === 0 ? (
-        <p className="text-muted text-sm">{t('settings.voiceCorpus.empty')}</p>
+        <p data-slot="voice-corpus-empty" className="text-muted text-sm">
+          {t('settings.voiceCorpus.empty')}
+        </p>
       ) : (
         <ItemCardGroup variant="outline">
           {sessions.map((session, index) => (
@@ -153,15 +160,19 @@ export function VoiceCorpusSettings() {
                   </ItemCard.Description>
                 </ItemCard.Content>
                 <ItemCard.Action>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    isDisabled={busy}
-                    onPress={() => deleteSession(session)}
-                    aria-label={t('settings.voiceCorpus.deleteSession')}
-                  >
-                    <TrashBin />
-                  </Button>
+                  <Tooltip delay={0}>
+                    <Button
+                      isIconOnly
+                      size="sm"
+                      variant="ghost"
+                      isDisabled={busy}
+                      onPress={() => deleteSession(session)}
+                      aria-label={t('settings.voiceCorpus.deleteSession')}
+                    >
+                      <TrashBin />
+                    </Button>
+                    <Tooltip.Content>{t('settings.voiceCorpus.deleteSession')}</Tooltip.Content>
+                  </Tooltip>
                 </ItemCard.Action>
               </ItemCard>
             </Fragment>
@@ -171,7 +182,7 @@ export function VoiceCorpusSettings() {
 
       <TextField fullWidth>
         <Label>{t('settings.voiceCorpus.forgetSender')}</Label>
-        <div className="flex gap-2">
+        <div data-slot="voice-corpus-forget-row" className="flex gap-2">
           <Input value={senderInput} onChange={(e) => setSenderInput(e.target.value)} placeholder="12345" />
           <Button variant="ghost" isDisabled={busy || !senderInput.trim()} onPress={forgetSender}>
             {t('settings.voiceCorpus.forget')}
@@ -181,7 +192,7 @@ export function VoiceCorpusSettings() {
       </TextField>
 
       {can.exportToDisk && (
-        <div className="flex flex-col gap-2">
+        <div data-slot="voice-corpus-export" className="flex flex-col gap-2">
           {/* HeroUI's Checkbox draws nothing on its own — the box and its input
               live in Control/Indicator, so a bare one is a label you cannot
               press. */}

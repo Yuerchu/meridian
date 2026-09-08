@@ -39,7 +39,9 @@ export function SelectTextModal({
           <Modal.CloseTrigger />
           <Modal.Header>
             <Modal.Heading>{t('contextMenu.selectText')}</Modal.Heading>
-            <p className="mt-1.5 text-sm text-muted">{t('contextMenu.selectTextHint')}</p>
+            <p data-slot="select-text-hint" className="mt-1.5 text-sm text-muted">
+              {t('contextMenu.selectTextHint')}
+            </p>
           </Modal.Header>
           <Modal.Body>
             {/* `select-text` explicitly: the dialog is portalled out of the

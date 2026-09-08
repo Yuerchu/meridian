@@ -1,7 +1,7 @@
 import { memo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, Copy } from '@gravity-ui/icons'
-import { Button } from '@heroui/react'
+import { Button, Tooltip } from '@heroui/react'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { cn } from '@/lib/utils'
 import type { LogEntryInfoResponse } from '@/types'
@@ -67,7 +67,7 @@ function LogRowImpl({ entry }: { entry: LogEntryInfoResponse }) {
       data-slot="log-row"
       className={cn(
         'group grid grid-cols-[auto_1fr_auto] items-start gap-x-3 gap-y-1 border-b border-border px-3 py-2 last:border-b-0',
-        isError && 'bg-danger/5',
+        isError && 'bg-danger-soft',
       )}
     >
       <span data-slot="log-row-time" className="font-mono text-xs tabular-nums text-muted">
@@ -75,15 +75,19 @@ function LogRowImpl({ entry }: { entry: LogEntryInfoResponse }) {
       </span>
 
       <div data-slot="log-row-body" className="min-w-0 space-y-1">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <div data-slot="log-row-meta" className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <LogLevelBadge level={entry.level} />
-          <span className="truncate font-mono text-xs text-muted">{entry.target}</span>
+          <span data-slot="log-row-target" className="truncate font-mono text-xs text-muted">
+            {entry.target}
+          </span>
         </div>
-        <p className="text-sm break-words text-foreground">{entry.msg}</p>
+        <p data-slot="log-row-message" className="text-sm break-words text-foreground">
+          {entry.msg}
+        </p>
         {fields.length > 0 && (
           <div data-slot="log-row-fields" className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-xs text-muted">
             {fields.map(([key, value]) => (
-              <span key={key} className="break-all">
+              <span key={key} data-slot="log-row-field" className="break-all">
                 {key}={renderValue(value)}
               </span>
             ))}
@@ -91,20 +95,23 @@ function LogRowImpl({ entry }: { entry: LogEntryInfoResponse }) {
         )}
       </div>
 
-      <Button
-        isIconOnly
-        data-slot="log-row-copy"
-        variant="ghost"
-        size="sm"
-        aria-label={t('settings.about.logs.copyRecord')}
-        onPress={onCopy}
-        // Focus-visible alone does not rescue this on a touch screen, where a
-        // tap grants no focus ring — the only action on the row would be
-        // permanently invisible.
-        className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
-      >
-        {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-      </Button>
+      <Tooltip delay={0}>
+        <Button
+          isIconOnly
+          data-slot="log-row-copy"
+          variant="ghost"
+          size="sm"
+          aria-label={t('settings.about.logs.copyRecord')}
+          onPress={onCopy}
+          // Focus-visible alone does not rescue this on a touch screen, where a
+          // tap grants no focus ring — the only action on the row would be
+          // permanently invisible.
+          className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
+        >
+          {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+        </Button>
+        <Tooltip.Content>{t('settings.about.logs.copyRecord')}</Tooltip.Content>
+      </Tooltip>
     </div>
   )
 }

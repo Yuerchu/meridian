@@ -1079,7 +1079,7 @@ function Provider({ children, ...props }: MessageScrollerProviderProps) {
 function Root({ children, ...props }: React.ComponentProps<'div'>) {
   const { setRootElement } = useScrollerContext()
   return (
-    <div ref={setRootElement} {...props}>
+    <div ref={setRootElement} data-slot="message-scroller-root" {...props}>
       {children}
     </div>
   )
@@ -1135,6 +1135,7 @@ function Viewport({
   return (
     <div
       ref={setRef}
+      data-slot="message-scroller-viewport"
       role={role ?? 'region'}
       aria-label={ariaLabel}
       tabIndex={tabIndex ?? 0}
@@ -1230,10 +1231,17 @@ function Content({ children, ref, role, spacerClassName, 'aria-relevant': ariaRe
   }, [handleResize])
 
   return (
-    <div ref={setRef} role={role ?? 'log'} aria-relevant={ariaRelevant ?? 'additions'} {...props}>
+    <div
+      ref={setRef}
+      data-slot="message-scroller-content"
+      role={role ?? 'log'}
+      aria-relevant={ariaRelevant ?? 'additions'}
+      {...props}
+    >
       {children}
       <div
         ref={setSpacerElement}
+        data-slot="message-scroller-spacer"
         aria-hidden="true"
         data-message-scroller-spacer=""
         hidden
@@ -1263,7 +1271,13 @@ function Item({ messageId, ref, scrollAnchor = false, ...props }: MessageScrolle
   )
 
   return (
-    <div ref={setRef} data-message-id={messageId} data-scroll-anchor={scrollAnchor ? 'true' : 'false'} {...props} />
+    <div
+      ref={setRef}
+      data-slot="message-scroller-item"
+      data-message-id={messageId}
+      data-scroll-anchor={scrollAnchor ? 'true' : 'false'}
+      {...props}
+    />
   )
 }
 
@@ -1296,7 +1310,7 @@ function Anchor({ messageId, ref, ...props }: MessageScrollerAnchorProps) {
     [messageId, ref, register],
   )
 
-  return <div ref={setRef} data-message-anchor={messageId} {...props} />
+  return <div ref={setRef} data-slot="message-scroller-anchor" data-message-anchor={messageId} {...props} />
 }
 
 export interface MessageScrollerButtonProps extends React.ComponentProps<typeof dom.button> {
@@ -1334,6 +1348,7 @@ function Button({
 
   return (
     <dom.button
+      data-slot="message-scroller-button"
       data-active={active ? 'true' : 'false'}
       data-direction={String(direction)}
       type={type}
@@ -1352,7 +1367,7 @@ function Button({
       render={render}
       {...props}
     >
-      {children ?? <span>Scroll to {direction}</span>}
+      {children ?? <span data-slot="message-scroller-button-label">Scroll to {direction}</span>}
     </dom.button>
   )
 }

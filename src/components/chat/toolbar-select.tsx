@@ -67,7 +67,7 @@ export function ToolbarSelect({
       <InlineSelect.Trigger
         data-slot="toolbar-select-trigger"
         className={cn(
-          'h-8 max-w-[180px] min-w-0 items-center gap-1 rounded-lg border-0 bg-transparent px-2',
+          'h-8 max-w-44 min-w-0 items-center gap-1 rounded-lg border-0 bg-transparent px-2',
           'text-sm font-normal shadow-none',
           'text-foreground hover:bg-default data-hovered:bg-default transition-colors',
         )}
@@ -75,7 +75,9 @@ export function ToolbarSelect({
         <InlineSelect.Value className="min-w-0 flex-1 overflow-hidden">
           <span data-slot="toolbar-select-current" className="flex min-w-0 items-center gap-1.5">
             {current?.icon}
-            <span className={cn('truncate', !current && 'text-muted')}>{current?.label ?? placeholder}</span>
+            <span data-slot="toolbar-select-label" className={cn('truncate', !current && 'text-muted')}>
+              {current?.label ?? placeholder}
+            </span>
           </span>
         </InlineSelect.Value>
         <InlineSelect.Indicator className="size-3.5 shrink-0" />
@@ -91,8 +93,14 @@ export function ToolbarSelect({
             <ListBox.Item key={choice.value} id={choice.value} textValue={`${choice.label} ${choice.hint ?? ''}`}>
               <span data-slot="toolbar-select-option" className="flex min-w-0 flex-1 items-center gap-2">
                 {choice.icon}
-                <span className="truncate text-sm">{choice.label}</span>
-                {choice.hint && <span className="truncate text-xs text-muted">{choice.hint}</span>}
+                <span data-slot="toolbar-select-option-label" className="truncate text-sm">
+                  {choice.label}
+                </span>
+                {choice.hint && (
+                  <span data-slot="toolbar-select-option-hint" className="truncate text-xs text-muted">
+                    {choice.hint}
+                  </span>
+                )}
               </span>
               <ListBox.ItemIndicator />
             </ListBox.Item>

@@ -49,7 +49,9 @@ export function SettingsDrilldown({
       // below is portalled to `body`, so it is not even a descendant of the
       // pane that rendered it.
       <section data-slot="settings-drilldown" className="@container/pane space-y-2">
-        <h3 className="text-sm font-medium">{title}</h3>
+        <h3 data-slot="settings-drilldown-title" className="text-sm font-medium">
+          {title}
+        </h3>
         {children}
       </section>
     )
@@ -61,8 +63,11 @@ export function SettingsDrilldown({
       <Modal.Backdrop isOpen={open} onOpenChange={setOpen}>
         <Modal.Container size="full">
           <Modal.Dialog data-slot="settings-drilldown-page" className="p-0">
-            <div className="flex h-full flex-col">
-              <div className="flex shrink-0 items-center gap-2 border-b border-border px-1 pt-[var(--safe-top)]">
+            <div data-slot="settings-drilldown-frame" className="flex h-full flex-col">
+              <div
+                data-slot="settings-drilldown-bar"
+                className="flex shrink-0 items-center gap-2 border-b border-border px-1 pt-[var(--safe-top)]"
+              >
                 <Button
                   variant="ghost"
                   onPress={() => setOpen(false)}
@@ -73,7 +78,10 @@ export function SettingsDrilldown({
                 </Button>
                 <Modal.Heading className="min-w-0 flex-1 truncate text-sm font-medium">{title}</Modal.Heading>
               </div>
-              <div className="@container/pane flex-1 min-h-0 space-y-4 overflow-y-auto overscroll-contain p-4 pb-[max(1rem,var(--safe-bottom))]">
+              <div
+                data-slot="settings-drilldown-body"
+                className="@container/pane flex-1 min-h-0 space-y-4 overflow-y-auto overscroll-contain p-4 pb-[max(1rem,var(--safe-bottom))]"
+              >
                 {children}
               </div>
             </div>

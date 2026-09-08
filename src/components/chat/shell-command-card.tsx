@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { CircleCheck, CircleExclamation, CircleXmark, Clock, Terminal } from '@gravity-ui/icons'
-import { Card, Spinner } from '@heroui/react'
+import { Card, Skeleton, Spinner } from '@heroui/react'
 import { useTranslation } from 'react-i18next'
 
 import { api } from '@/api'
@@ -84,6 +84,7 @@ export function ShellCommandCard({ message }: { message: MessageViewModel }) {
         {state.status === 'loading' && <Spinner size="sm" aria-label={t('chat.shell.loading')} />}
         {state.status === 'loaded' && (
           <span
+            data-slot="shell-command-outcome"
             className={cn(
               'flex shrink-0 items-center gap-1 text-xs',
               commandSucceeded(state.result) ? 'text-muted' : 'text-danger',
@@ -93,7 +94,9 @@ export function ShellCommandCard({ message }: { message: MessageViewModel }) {
             <StatusIcon result={state.result} />
             {t(`chat.shell.status.${state.result.status}`)}
             {state.result.exit_code != null && (
-              <span>· {t('chat.shell.exitCode', { code: state.result.exit_code })}</span>
+              <span data-slot="shell-command-exit-code">
+                · {t('chat.shell.exitCode', { code: state.result.exit_code })}
+              </span>
             )}
           </span>
         )}
@@ -103,15 +106,29 @@ export function ShellCommandCard({ message }: { message: MessageViewModel }) {
       <Card.Content className="gap-0 p-0">
         {state.status === 'loaded' && (
           <>
-            <div className="flex min-w-0 flex-wrap gap-x-3 gap-y-1 border-b border-divider px-3 py-1.5 font-mono text-xs text-muted">
+            <div
+              data-slot="shell-command-meta"
+              className="flex min-w-0 flex-wrap gap-x-3 gap-y-1 border-b border-divider px-3 py-1.5 font-mono text-xs text-muted"
+            >
               <Hint className="truncate" label={state.result.cwd}>
                 {state.result.cwd}
               </Hint>
-              {state.result.host && <span className="shrink-0">{state.result.host}</span>}
-              <span className="shrink-0">{state.result.duration_ms} ms</span>
-              {state.result.truncated && <span className="shrink-0 text-warning">{t('chat.shell.truncated')}</span>}
+              {state.result.host && (
+                <span data-slot="shell-command-host" className="shrink-0">
+                  {state.result.host}
+                </span>
+              )}
+              <span data-slot="shell-command-duration" className="shrink-0">
+                {state.result.duration_ms} ms
+              </span>
+              {state.result.truncated && (
+                <span data-slot="shell-command-truncated" className="shrink-0 text-warning">
+                  {t('chat.shell.truncated')}
+                </span>
+              )}
             </div>
             <pre
+              data-slot="shell-command-output"
               className={cn(
                 'max-h-80 min-h-10 overflow-auto whitespace-pre-wrap wrap-break-word px-3 py-2.5 font-mono text-xs leading-5',
                 output ? 'text-foreground/85' : 'italic text-muted',
@@ -121,14 +138,22 @@ export function ShellCommandCard({ message }: { message: MessageViewModel }) {
             </pre>
           </>
         )}
-        {state.status === 'loading' && <div className="h-16 animate-pulse bg-default/30" />}
+        {state.status === 'loading' && (
+          <Skeleton
+            data-slot="shell-command-placeholder"
+            className="h-16 rounded-none"
+            role="status"
+            aria-busy
+            aria-label={t('chat.shell.loading')}
+          />
+        )}
         {state.status === 'unavailable' && (
-          <p role="status" className="px-3 py-3 text-xs text-muted">
+          <p data-slot="shell-command-unavailable" role="status" className="px-3 py-3 text-xs text-muted">
             {t('chat.shell.resultUnavailable')}
           </p>
         )}
         {state.status === 'error' && (
-          <p role="alert" className="px-3 py-3 text-xs text-danger wrap-break-word">
+          <p data-slot="shell-command-error" role="alert" className="px-3 py-3 text-xs text-danger wrap-break-word">
             {t('chat.shell.resultError', { error: state.message })}
           </p>
         )}

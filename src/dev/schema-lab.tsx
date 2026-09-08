@@ -25,7 +25,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
-import { Button, Input, Tooltip } from '@heroui/react'
+import { Button, Chip, Input, ListBox, Tooltip } from '@heroui/react'
 import { cn } from '@/lib/utils'
 import { useAppTheme } from '@/lib/theme'
 import {
@@ -69,11 +69,15 @@ function richText(source: string): ReactNode[] {
     const inner = unescape(m[2])
     out.push(
       m[1] === 'code' ? (
-        <code key={key++} className="rounded bg-default px-1 py-0.5 font-mono text-xs wrap-anywhere">
+        <code
+          key={key++}
+          data-slot="schema-rich-code"
+          className="rounded-md bg-default px-1 py-0.5 font-mono text-xs wrap-anywhere"
+        >
           {inner}
         </code>
       ) : (
-        <b key={key++} className="font-semibold text-foreground">
+        <b key={key++} data-slot="schema-rich-strong" className="font-semibold text-foreground">
           {inner}
         </b>
       ),
@@ -124,21 +128,25 @@ function ColumnRow({ table, column, keyed }: { table: SchemaTable; column: Schem
     >
       {handles}
       <span
+        data-slot="schema-column-mark"
         aria-hidden
         className={cn(
           'size-1.5 shrink-0 rounded-full',
           isPk && 'bg-warning',
           isFk && 'bg-success',
-          isSoft && 'bg-warning/40 ring-1 ring-warning/60',
+          isSoft && 'bg-warning-soft ring-1 ring-warning/60',
           !isPk && !isFk && !isSoft && 'bg-border',
         )}
       />
       <span
+        data-slot="schema-column-name"
         className={cn('truncate font-mono text-xs', isPk ? 'text-warning' : keyed ? 'text-foreground' : 'text-muted')}
       >
         {column.name}
       </span>
-      <span className="ml-auto font-mono text-xs text-muted/60">{column.type}</span>
+      <span data-slot="schema-column-type" className="ml-auto font-mono text-xs text-muted/60">
+        {column.type}
+      </span>
     </div>
   )
 }
@@ -159,16 +167,35 @@ function TableNode({ data, selected }: NodeProps<Node<TableNodeData>>) {
       )}
       style={{ width: NODE_WIDTH }}
     >
-      <div className="flex items-center gap-2 border-b border-border bg-default/50 px-3 py-2">
-        <span aria-hidden className="size-4 shrink-0 rounded" style={{ background: group?.color }} />
-        <span className="font-mono text-sm font-semibold">{table.name}</span>
-        <span className="ml-auto font-mono text-xs text-muted/70">迁移 {table.mig}</span>
+      <div
+        data-slot="schema-table-header"
+        className="flex items-center gap-2 border-b border-border bg-default/50 px-3 py-2"
+      >
+        <span
+          data-slot="schema-table-swatch"
+          aria-hidden
+          className="size-4 shrink-0 rounded-md"
+          style={{ background: group?.color }}
+        />
+        <span data-slot="schema-table-name" className="font-mono text-sm font-semibold">
+          {table.name}
+        </span>
+        <span data-slot="schema-table-migration" className="ml-auto font-mono text-xs text-muted/70">
+          迁移 {table.mig}
+        </span>
       </div>
-      <div className="flex items-baseline gap-2 px-3 pt-1.5 pb-0.5 text-xs text-muted">
-        <span className="truncate">{table.title}</span>
-        <span className="ml-auto shrink-0 font-mono text-muted/60">{table.columns.length} 列</span>
+      <div
+        data-slot="schema-table-subtitle"
+        className="flex items-baseline gap-2 px-3 pt-1.5 pb-0.5 text-xs text-muted"
+      >
+        <span data-slot="schema-table-title" className="truncate">
+          {table.title}
+        </span>
+        <span data-slot="schema-table-count" className="ml-auto shrink-0 font-mono text-muted/60">
+          {table.columns.length} 列
+        </span>
       </div>
-      <div className="py-1">
+      <div data-slot="schema-table-columns" className="py-1">
         {table.columns.map((c) => (
           <ColumnRow key={c.name} table={table} column={c} keyed={keyed.has(c.name)} />
         ))}
@@ -300,7 +327,7 @@ function Canvas({
         zoomable
         nodeColor={(n) => {
           const t = TABLE_BY_NAME.get(n.id)
-          return t ? (GROUP_BY_ID.get(t.group)?.color ?? '#888') : '#888'
+          return t ? (GROUP_BY_ID.get(t.group)?.color ?? 'var(--muted)') : 'var(--muted)'
         }}
         nodeStrokeWidth={0}
       />
@@ -311,40 +338,74 @@ function Canvas({
 // ── 详情面板 ──────────────────────────────────────────────────────────────
 
 function FlagChip({ flag }: { flag: string }) {
-  const tone =
-    flag === 'PK'
-      ? 'text-warning border-warning/40'
-      : flag === 'FK'
-        ? 'text-success border-success/40'
-        : flag === 'UQ'
-          ? 'text-info border-info/40'
-          : 'text-muted border-border'
-  return <span className={cn('rounded border px-1 font-mono text-xs', tone)}>{flag}</span>
+  const color = flag === 'PK' ? 'warning' : flag === 'FK' ? 'success' : 'default'
+  return (
+    <Chip size="sm" variant="soft" color={color} className={cn('font-mono', flag === 'UQ' && 'text-info')}>
+      {flag}
+    </Chip>
+  )
 }
 
-function EdgeRow({ edge, dir, onJump }: { edge: SchemaEdge; dir: 'out' | 'in'; onJump: (n: string) => void }) {
-  const text = dir === 'out' ? `${edge.col} → ${edge.to}.${edge.toCol}` : `${edge.from}.${edge.col} → ${edge.toCol}`
+function edgeText(edge: SchemaEdge, dir: 'out' | 'in') {
+  return dir === 'out' ? `${edge.col} → ${edge.to}.${edge.toCol}` : `${edge.from}.${edge.col} → ${edge.toCol}`
+}
+
+function EdgeList({
+  title,
+  edges,
+  dir,
+  onJump,
+}: {
+  title: string
+  edges: SchemaEdge[]
+  dir: 'out' | 'in'
+  onJump: (n: string) => void
+}) {
+  if (edges.length === 0) return null
   return (
-    <Button
-      variant="ghost"
-      onClick={() => onJump(dir === 'out' ? edge.to : edge.from)}
-      className="h-auto w-full flex-wrap justify-start gap-x-2 gap-y-0.5 rounded-md px-4 py-1 font-normal"
-    >
-      <span
-        className={cn('font-mono text-xs wrap-anywhere', edge.kind === 'soft' ? 'text-warning' : 'text-foreground')}
+    <>
+      <SectionTitle>{title}</SectionTitle>
+      <ListBox
+        aria-label={title}
+        onAction={(key) => {
+          const edge = edges[Number(key)]
+          if (edge) onJump(dir === 'out' ? edge.to : edge.from)
+        }}
+        className="px-2"
       >
-        {text}
-      </span>
-      <span className="ml-auto font-mono text-xs text-muted wrap-anywhere">
-        {edge.kind === 'soft' ? '逻辑 · ' : ''}
-        {edge.act}
-      </span>
-    </Button>
+        {edges.map((edge, i) => (
+          <ListBox.Item
+            key={i}
+            id={i}
+            textValue={edgeText(edge, dir)}
+            className="flex-wrap gap-x-2 gap-y-0.5 rounded-lg px-2 py-1"
+          >
+            <span
+              data-slot="schema-edge-path"
+              className={cn(
+                'font-mono text-xs wrap-anywhere',
+                edge.kind === 'soft' ? 'text-warning' : 'text-foreground',
+              )}
+            >
+              {edgeText(edge, dir)}
+            </span>
+            <span data-slot="schema-edge-action" className="ml-auto font-mono text-xs text-muted wrap-anywhere">
+              {edge.kind === 'soft' ? '逻辑 · ' : ''}
+              {edge.act}
+            </span>
+          </ListBox.Item>
+        ))}
+      </ListBox>
+    </>
   )
 }
 
 function SectionTitle({ children }: { children: ReactNode }) {
-  return <h3 className="px-4 pt-4 pb-1 text-xs font-semibold tracking-wider text-muted uppercase">{children}</h3>
+  return (
+    <h3 data-slot="schema-section-title" className="px-4 pt-4 pb-1 text-xs font-semibold text-muted">
+      {children}
+    </h3>
+  )
 }
 
 function DetailPanel({
@@ -358,10 +419,15 @@ function DetailPanel({
 }) {
   if (!name) {
     return (
-      <aside className="flex w-[420px] shrink-0 items-center justify-center border-l border-border bg-surface p-8 text-center text-sm text-muted">
-        <div className="space-y-2">
-          <p>点一个表看它的全部字段、跨字段约束与关联关系</p>
-          <p className="text-xs">拖动节点重新排布 · 滚轮缩放 · 选中一个表会把它的边挑出来</p>
+      <aside
+        data-slot="schema-detail-empty"
+        className="flex w-[420px] shrink-0 items-center justify-center border-l border-border bg-surface p-8 text-center text-sm text-muted"
+      >
+        <div data-slot="schema-detail-empty-body" className="space-y-2">
+          <p data-slot="schema-detail-empty-hint">点一个表看它的全部字段、跨字段约束与关联关系</p>
+          <p data-slot="schema-detail-empty-tips" className="text-xs">
+            拖动节点重新排布 · 滚轮缩放 · 选中一个表会把它的边挑出来
+          </p>
         </div>
       </aside>
     )
@@ -374,36 +440,41 @@ function DetailPanel({
   const inc = EDGES.filter((e) => e.to === name)
 
   return (
-    <aside className="flex w-[420px] shrink-0 flex-col border-l border-border bg-surface">
-      <header className="border-b border-border px-4 py-3">
-        <div className="flex items-start gap-2">
-          <div className="min-w-0">
-            <h2 className="font-mono text-base font-semibold">{table.name}</h2>
-            <p className="text-xs text-muted">
+    <aside data-slot="schema-detail" className="flex w-[420px] shrink-0 flex-col border-l border-border bg-surface">
+      <header data-slot="schema-detail-header" className="border-b border-border px-4 py-3">
+        <div data-slot="schema-detail-heading" className="flex items-start gap-2">
+          <div data-slot="schema-detail-identity" className="min-w-0">
+            <h2 data-slot="schema-detail-name" className="font-mono text-base font-semibold">
+              {table.name}
+            </h2>
+            <p data-slot="schema-detail-meta" className="text-xs text-muted">
               {table.title} · {group?.title} · 迁移 {table.mig}
             </p>
           </div>
           <Tooltip delay={0}>
-            <Button isIconOnly aria-label="关闭详情" variant="ghost" size="sm" className="ml-auto" onClick={onClose}>
+            <Button isIconOnly aria-label="关闭详情" variant="ghost" size="sm" className="ml-auto" onPress={onClose}>
               <Xmark className="size-4" />
             </Button>
             <Tooltip.Content placement="left">关闭</Tooltip.Content>
           </Tooltip>
         </div>
         {table.tags && table.tags.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
+          <div data-slot="schema-detail-tags" className="mt-2 flex flex-wrap gap-1.5">
             {table.tags.map((tag) => (
-              <span key={tag} className="rounded border border-border px-2 py-0.5 font-mono text-xs text-muted">
+              <Chip key={tag} size="sm" variant="secondary" className="font-mono text-muted">
                 {tag}
-              </span>
+              </Chip>
             ))}
           </div>
         )}
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto pb-10">
+      <div data-slot="schema-detail-body" className="min-h-0 flex-1 overflow-y-auto pb-10">
         {table.note && (
-          <p className="border-b border-border bg-default/40 px-4 py-3 text-xs leading-relaxed text-muted">
+          <p
+            data-slot="schema-detail-note"
+            className="border-b border-border bg-default/40 px-4 py-3 text-xs leading-relaxed text-muted"
+          >
             {richText(table.note)}
           </p>
         )}
@@ -411,40 +482,53 @@ function DetailPanel({
         <SectionTitle>字段 · {table.columns.length} 列</SectionTitle>
         {/* 一列一块,不是表格:说明里带着 `messages.compact_anchor_id` 这种长标识符,
             在 420px 宽的面板里排成三栏会把最后一栏顶出可视区。 */}
-        <ul>
+        <ul data-slot="schema-detail-columns">
           {table.columns.map((c) => (
-            <li key={c.name} className="border-b border-border/50 px-4 py-2 hover:bg-default/40">
-              <div className="flex items-baseline gap-2">
-                <span className="font-mono text-xs break-all">{c.name}</span>
-                <span className="ml-auto shrink-0 font-mono text-xs text-info">{c.type}</span>
+            <li
+              data-slot="schema-detail-column"
+              key={c.name}
+              className="border-b border-border/50 px-4 py-2 hover:bg-default/40"
+            >
+              <div data-slot="schema-detail-column-heading" className="flex items-baseline gap-2">
+                <span data-slot="schema-detail-column-name" className="font-mono text-xs break-all">
+                  {c.name}
+                </span>
+                <span data-slot="schema-detail-column-type" className="ml-auto shrink-0 font-mono text-xs text-info">
+                  {c.type}
+                </span>
               </div>
-              <div className="mt-1 flex flex-wrap items-center gap-1">
+              <div data-slot="schema-detail-column-flags" className="mt-1 flex flex-wrap items-center gap-1">
                 {c.flags.map((f) => (
                   <FlagChip key={f} flag={f} />
                 ))}
-                {c.def !== '—' && <span className="font-mono text-xs text-muted/70">默认 {c.def}</span>}
+                {c.def !== '—' && (
+                  <span data-slot="schema-detail-column-default" className="font-mono text-xs text-muted/70">
+                    默认 {c.def}
+                  </span>
+                )}
               </div>
-              {c.desc && <p className="mt-1 text-xs leading-relaxed break-words text-muted">{richText(c.desc)}</p>}
+              {c.desc && (
+                <p
+                  data-slot="schema-detail-column-desc"
+                  className="mt-1 text-xs leading-relaxed break-words text-muted"
+                >
+                  {richText(c.desc)}
+                </p>
+              )}
             </li>
           ))}
         </ul>
 
-        {out.length > 0 && <SectionTitle>指向别人</SectionTitle>}
-        {out.map((e) => (
-          <EdgeRow key={`o${e.col}${e.to}${e.toCol}`} edge={e} dir="out" onJump={onJump} />
-        ))}
+        <EdgeList title="指向别人" edges={out} dir="out" onJump={onJump} />
 
-        {inc.length > 0 && <SectionTitle>被谁指着</SectionTitle>}
-        {inc.map((e) => (
-          <EdgeRow key={`i${e.from}${e.col}${e.toCol}`} edge={e} dir="in" onJump={onJump} />
-        ))}
+        <EdgeList title="被谁指着" edges={inc} dir="in" onJump={onJump} />
 
         {table.rels && table.rels.length > 0 && (
           <>
             <SectionTitle>关联关系</SectionTitle>
-            <ul className="space-y-2 px-4 pl-8 text-xs leading-relaxed text-muted">
+            <ul data-slot="schema-detail-rels" className="space-y-2 px-4 pl-8 text-xs leading-relaxed text-muted">
               {table.rels.map((r, i) => (
-                <li key={i} className="list-disc">
+                <li data-slot="schema-detail-rel" key={i} className="list-disc">
                   {richText(r)}
                 </li>
               ))}
@@ -455,9 +539,9 @@ function DetailPanel({
         {table.rules && table.rules.length > 0 && (
           <>
             <SectionTitle>跨字段约束与不变式</SectionTitle>
-            <ul className="space-y-2 px-4 pl-8 text-xs leading-relaxed text-muted">
+            <ul data-slot="schema-detail-rules" className="space-y-2 px-4 pl-8 text-xs leading-relaxed text-muted">
               {table.rules.map((r, i) => (
-                <li key={i} className="list-disc">
+                <li data-slot="schema-detail-rule" key={i} className="list-disc">
                   {richText(r)}
                 </li>
               ))}
@@ -501,10 +585,15 @@ function Lab() {
     })
 
   return (
-    <div className="flex h-full flex-col bg-background text-foreground">
-      <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-2">
-        <h1 className="text-sm font-semibold whitespace-nowrap">数据库模型</h1>
-        <span className="font-mono text-xs whitespace-nowrap text-muted">
+    <div data-slot="schema-lab" className="flex h-full flex-col bg-background text-foreground">
+      <header
+        data-slot="schema-lab-header"
+        className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-2"
+      >
+        <h1 data-slot="schema-lab-title" className="text-sm font-semibold whitespace-nowrap">
+          数据库模型
+        </h1>
+        <span data-slot="schema-lab-stats" className="font-mono text-xs whitespace-nowrap text-muted">
           {TABLES.length} 表 · {fkCount} 外键 · {softCount} 逻辑引用
         </span>
         <Input
@@ -521,14 +610,14 @@ function Lab() {
           }}
           className="w-56"
         />
-        <Button variant={showSoft ? 'primary' : 'outline'} size="sm" onClick={() => setShowSoft((v) => !v)}>
+        <Button variant={showSoft ? 'primary' : 'outline'} size="sm" onPress={() => setShowSoft((v) => !v)}>
           逻辑引用
         </Button>
-        <Button variant="outline" size="sm" onClick={() => void rf.fitView({ padding: 0.06, duration: 400 })}>
+        <Button variant="outline" size="sm" onPress={() => void rf.fitView({ padding: 0.06, duration: 400 })}>
           适应画布
         </Button>
 
-        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+        <div data-slot="schema-lab-groups" className="ml-auto flex flex-wrap items-center gap-1.5">
           {GROUPS.map((g) => {
             const off = hiddenGroups.has(g.id)
             return (
@@ -536,11 +625,16 @@ function Lab() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => toggleGroup(g.id)}
+                  onPress={() => toggleGroup(g.id)}
                   aria-pressed={!off}
                   className={cn('h-7 gap-1.5 rounded-full px-2.5 text-xs font-normal', off && 'opacity-40')}
                 >
-                  <span aria-hidden className="size-2 rounded-sm" style={{ background: g.color }} />
+                  <span
+                    data-slot="schema-lab-group-swatch"
+                    aria-hidden
+                    className="size-2 rounded-sm"
+                    style={{ background: g.color }}
+                  />
                   {g.title}
                 </Button>
                 <Tooltip.Content placement="bottom">{g.desc}</Tooltip.Content>
@@ -553,7 +647,7 @@ function Lab() {
               aria-label="切换主题"
               variant="outline"
               size="sm"
-              onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+              onPress={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
             >
               <Sun className="hidden size-4 dark:block" />
               <Moon className="size-4 dark:hidden" />
@@ -563,8 +657,8 @@ function Lab() {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1">
-        <div className="relative min-w-0 flex-1">
+      <div data-slot="schema-lab-body" className="flex min-h-0 flex-1">
+        <div data-slot="schema-lab-canvas" className="relative min-w-0 flex-1">
           <Canvas
             query={query}
             hiddenGroups={hiddenGroups}
@@ -572,7 +666,10 @@ function Lab() {
             selected={selected}
             onSelect={setSelected}
           />
-          <p className="pointer-events-none absolute bottom-3.5 left-14 z-5 rounded-md border border-border bg-background/80 px-2.5 py-1 text-xs text-muted backdrop-blur-sm">
+          <p
+            data-slot="schema-lab-legend"
+            className="pointer-events-none absolute bottom-3.5 left-14 z-5 rounded-md border border-border bg-background/80 px-2.5 py-1 text-xs text-muted backdrop-blur-sm"
+          >
             实线 = 真外键（标注 ON DELETE 行为） · 虚线 = 代码维护的逻辑引用，故意不建外键
           </p>
         </div>
@@ -587,14 +684,14 @@ export default function SchemaLab() {
     <ReactFlowProvider>
       {/* React Flow 的连线颜色只能从它自己的类名上改;这几条是这个预览页独有的
           语义(外键 / 逻辑引用 / 选中相关 / 被压暗),不值得进 index.css。 */}
-      <style>{`
+      <style data-slot="schema-lab-style">{`
         /* 连线用 --muted 而不是 --border:border 是给分隔线用的,在浅色主题下淡到
            看不出走向,而这张图上的线本身就是内容。 */
         .react-flow__edge-path { stroke: var(--color-muted); stroke-width: 1.4px; opacity: .55; }
         .schema-edge-soft .react-flow__edge-path { stroke: var(--color-warning); stroke-dasharray: 5 4; opacity: .75; }
         .schema-edge-hl .react-flow__edge-path { stroke: var(--color-accent); stroke-width: 2.2px; opacity: 1; }
         .schema-edge-dim { opacity: .12; }
-        .react-flow__edge-text { fill: var(--color-muted); font-size: 9px; }
+        .react-flow__edge-text { fill: var(--color-muted); font-size: var(--text-xs); }
         .react-flow__edge-textbg { fill: var(--color-background); opacity: .85; }
         .react-flow__handle { opacity: 0; min-width: 6px; min-height: 6px; width: 6px; height: 6px; border: 0; }
       `}</style>
