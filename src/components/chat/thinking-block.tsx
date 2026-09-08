@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, Comment } from '@gravity-ui/icons'
 import { TextShimmer } from '@heroui-pro/react/text-shimmer'
-import { BubbleFoldBadge } from '@/components/ui/bubble-keyboard'
+import { BubbleFoldBadge } from '@/components/ui/bubble-block'
 import { usePanelExpansion } from '@/hooks/use-panel-expansion'
 import { cn } from '@/lib/utils'
 import { MarkdownContent } from './markdown-content'

@@ -6,8 +6,8 @@ import { useTranslation } from 'react-i18next'
 import { api } from '@/api'
 import { cn } from '@/lib/utils'
 import { Hint } from '@/components/ui/hint'
-import { Bubble, BubbleContent, BubbleTime } from '@/components/ui/bubble'
-import { BubbleFoldBadge, keyboardPanelVariants } from '@/components/ui/bubble-keyboard'
+import { Bubble, BubbleContent, BubbleTime, BUBBLE_BLOCK } from '@/components/ui/bubble'
+import { BubbleFoldBadge } from '@/components/ui/bubble-block'
 import { useClockTime } from '@/hooks/use-clock-time'
 import { usePanelExpansion } from '@/hooks/use-panel-expansion'
 import { useConversationStore } from '@/stores/conversation-store'
@@ -150,10 +150,15 @@ export function ShellCommandBubble({
       </BubbleContent>
 
       {isExpanded && (
+        // A second block of the same bubble, which is where its fill and its
+        // shared corner come from. `BUBBLE_BLOCK` reads `--bubble-fill`, so
+        // this one comes out in the person's colour without being told: it is
+        // the only block that is not on the assistant's side.
         <div
           id={panelId}
           data-slot="shell-command-panel"
-          className={cn(keyboardPanelVariants({ state: failed ? 'output-error' : 'output-available' }), 'w-full')}
+          data-bubble-block=""
+          className={cn(BUBBLE_BLOCK, 'w-full text-xs', failed && 'ring-1 ring-danger/40 ring-inset')}
         >
           {state.status === 'loaded' && (
             <>

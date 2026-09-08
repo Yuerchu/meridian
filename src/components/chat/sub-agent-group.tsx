@@ -4,6 +4,7 @@ import type { TFunction } from 'i18next'
 import { Alert, Chip, ListBox, Spinner } from '@heroui/react'
 import { Ban, CircleCheck, CircleQuestion, Compass, ForwardStep, TriangleExclamation } from '@gravity-ui/icons'
 import { ChatToolArgs } from '@/components/ui/chat-tool'
+import { BUBBLE_BLOCK } from '@/components/ui/bubble'
 import { useConversationStore } from '@/stores/conversation-store'
 import { parseSubAgentResult, splitTruncation, type SubAgentOutcome, type SubAgentResult } from '@/lib/tool-output'
 import { cn } from '@/lib/utils'
@@ -64,15 +65,40 @@ export function delegationOf(call: ToolCallDisplay): Delegation | null {
 
 export type SubAgentVerdict = SubAgentOutcome | 'running' | 'interrupted'
 
-/** The run's verdict: the backend's recorded status first, the sentence at the
- *  head of the result for rows from before that status was carried. */
+/**
+ * The run's verdict: the backend's recorded status first, the sentence at the
+ * head of the result for rows from before that status was carried.
+ *
+ * Except that a `running` on an answered call is not something the backend
+ * said. `run_agent` blocks until the run ends, and the backend writes the run's
+ * terminal status before it returns the report — so by the time this card has a
+ * result, the run is over. What is on the card is the guess
+ * `handleSubAgentStarted` seeds when the run starts. There is no finish event to
+ * retract it: `sub_agent_started` is the only one the backend emits about a run,
+ * and the `stop` at the end carries the *run's* conversation id, so the global
+ * listener routes it to the run's own session and the parent's card never hears
+ * of it. Nothing corrects the guess until the parent turn ends and reloads the
+ * whole snapshot — and a turn goes on delegating, calling tools and thinking
+ * for minutes after a run comes back, with the group counting a finished run as
+ * running on a row already showing its report.
+ *
+ * So an answered call reads its verdict off the result, which is the backend's
+ * own sentence about how the run ended, and is the only word the live path
+ * gets. It carries one verdict the recorded status cannot — `aborted`, the loop
+ * guard's stop, which is not a `TurnStatus` — which is also why this is not
+ * fixed by writing a status back onto the card in the store.
+ */
 export function subAgentOutcome(data: ToolCallDisplay, report: SubAgentResult | null): SubAgentVerdict | null {
   if (data.status === 'running' || data.status === 'approved') return 'running'
   if (data.status === 'error') return 'failed'
+  // Not merely "has a result": a denied `run_agent` has one too, and its run
+  // never started, so it must keep falling through to `idle`.
+  const ended = data.status === 'completed'
   switch (data.sub_agent?.status) {
     case 'running':
     case 'waiting_review':
-      return 'running'
+      if (!ended) return 'running'
+      break
     case 'done':
       return 'done'
     case 'cancelled':
@@ -81,9 +107,10 @@ export function subAgentOutcome(data: ToolCallDisplay, report: SubAgentResult | 
       return 'failed'
     case 'interrupted':
       return 'interrupted'
-    default:
-      return report?.outcome ?? null
   }
+  // A result the head sentence cannot be read out of, on a call that returned
+  // successfully: the tool answered, so it is not still going.
+  return report?.outcome ?? (ended ? 'done' : null)
 }
 
 export function SubAgentStatusChip({ outcome }: { outcome: SubAgentVerdict }) {
@@ -296,10 +323,11 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
   }
 
   return (
-    <div
-      data-slot="sub-agent-group"
-      className="flex min-w-0 basis-full flex-col overflow-hidden rounded-xl bg-[var(--bubble-assistant)] text-xs"
-    >
+    // A block of the bubble like any other, which is what it always looked
+    // like — a head row over its contents, in the bubble's own fill — while
+    // being an item on a keyboard. Now it says so, and `bubble.tsx` gives it
+    // the fill, the radius and the shared corners the rest of them get.
+    <div data-slot="sub-agent-group" data-bubble-block="" className={cn(BUBBLE_BLOCK, 'flex w-full flex-col text-xs')}>
       <div
         data-slot="sub-agent-group-header"
         className="flex items-center gap-2 border-b border-border/50 px-3 py-1.5 text-muted"

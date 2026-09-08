@@ -4,7 +4,6 @@ import i18n from '@/i18n'
 import { api } from '@/api'
 import { useConversationStore } from '@/stores/conversation-store'
 import { ChatToolPresentationProvider } from '@/components/ui/chat-tool'
-import { BubbleKeyboard } from '@/components/ui/bubble-keyboard'
 import { SubAgentGroup } from './sub-agent-group'
 import { SubAgentSheetContext } from './sub-agent-sheet-context'
 import { SubAgentSheetProvider } from './sub-agent-sheet'
@@ -46,17 +45,22 @@ const finished = (id: string, description: string, report: string): ToolCallDisp
     sub_agent: { conversation_id: `sub-${id}`, turn_id: `run-${id}`, kind: 'explore', steps: 3, status: 'done' },
   })
 
+/** What the live path leaves on the card the moment a run comes back: the
+ *  result has landed, and the `running` seeded when the run started is still
+ *  there because nothing but a reload ever replaces it. */
+const justFinished = (id: string, description: string, result: string): ToolCallDisplay =>
+  run(id, { agent: 'explore', description }, 'completed', {
+    result,
+    sub_agent: { conversation_id: `sub-${id}`, turn_id: `run-${id}`, kind: 'explore', steps: 3, status: 'running' },
+  })
+
 const live = (id: string, description: string): ToolCallDisplay =>
   run(id, { agent: 'explore', description }, 'running', {
     sub_agent: { conversation_id: `sub-${id}`, turn_id: `run-${id}`, kind: 'explore', steps: 0, status: 'running' },
   })
 
-function onKeyboard(ui: React.ReactNode) {
-  return render(
-    <ChatToolPresentationProvider value="keyboard">
-      <BubbleKeyboard>{ui}</BubbleKeyboard>
-    </ChatToolPresentationProvider>,
-  )
+function inBubble(ui: React.ReactNode) {
+  return render(<ChatToolPresentationProvider value="bubble">{ui}</ChatToolPresentationProvider>)
 }
 
 const rowOf = (name: RegExp) => screen.getByRole('option', { name })
@@ -73,7 +77,7 @@ describe('SubAgentGroup', () => {
   })
 
   it('draws a round’s delegations as one group, a row each, with the count of each state', () => {
-    const { container } = onKeyboard(
+    const { container } = inBubble(
       <SubAgentGroup
         calls={[
           finished('1', 'Audit the cache', 'Nothing stale.'),
@@ -93,7 +97,7 @@ describe('SubAgentGroup', () => {
   })
 
   it('shows a finished run’s verdict and the first line of its report, and keeps the report out', () => {
-    const { container } = onKeyboard(
+    const { container } = inBubble(
       <SubAgentGroup calls={[finished('1', 'Audit the cache', '## Findings\n\n- nothing stale\n- one miss')]} />,
     )
     const row = rowOf(/Audit the cache/)
@@ -102,6 +106,39 @@ describe('SubAgentGroup', () => {
     expect(within(row).queryByRole('heading')).toBeNull()
     expect(container.textContent).not.toContain('Sub-agent finished after')
     expect(container.textContent).not.toContain('one miss')
+  })
+
+  it('stops calling a run running once its result has landed, before any reload', () => {
+    const { container } = inBubble(
+      <SubAgentGroup
+        calls={[justFinished('1', 'Audit the cache', 'Sub-agent finished after 3 steps.\n\nNothing stale.')]}
+      />,
+    )
+    const row = rowOf(/Audit the cache/)
+    expect(row).toHaveAttribute('data-state', 'done')
+    expect(row.querySelector('[data-slot="sub-agent-status"]')).toHaveAttribute('data-outcome', 'done')
+    expect(row.querySelector('[data-slot="sub-agent-row-line"]')).toHaveTextContent('Nothing stale.')
+    const header = container.querySelector('[data-slot="sub-agent-group-header"]')!
+    expect(header).toHaveTextContent('1 finished')
+    expect(header).not.toHaveTextContent('running')
+  })
+
+  it('takes the verdict of such a run from the result, which is the only word the live path gets', () => {
+    inBubble(
+      <SubAgentGroup
+        calls={[
+          justFinished(
+            '1',
+            'Audit the cache',
+            'Sub-agent was stopped after 3 steps because it kept repeating itself. Anything below is partial.\n\nHalf of it.',
+          ),
+        ]}
+      />,
+    )
+    const row = rowOf(/Audit the cache/)
+    // `aborted` is not a `TurnStatus`, so it exists only on this path.
+    expect(row.querySelector('[data-slot="sub-agent-status"]')).toHaveAttribute('data-outcome', 'aborted')
+    expect(row).toHaveAttribute('data-state', 'failed')
   })
 
   it('says what a live run is doing, read off its own session', () => {
@@ -129,7 +166,7 @@ describe('SubAgentGroup', () => {
       sessions: { ...s.sessions, 'sub-2': { ...s.sessions['sub-2'], messages: [message] } },
       subAgentSteps: { 'run-2': 4 },
     }))
-    onKeyboard(<SubAgentGroup calls={[live('2', 'Read the workers')]} />)
+    inBubble(<SubAgentGroup calls={[live('2', 'Read the workers')]} />)
     const row = rowOf(/Read the workers/)
     const line = row.querySelector('[data-slot="sub-agent-row-line"]')!
     expect(line).toHaveAttribute('data-tone', 'live')
@@ -138,7 +175,7 @@ describe('SubAgentGroup', () => {
   })
 
   it('asks the run’s question under the group, with the row marked as waiting', () => {
-    const { container } = onKeyboard(
+    const { container } = inBubble(
       <SubAgentGroup
         calls={[
           run('4', { agent: 'agent', description: 'Fix the callback' }, 'running', {
@@ -164,7 +201,7 @@ describe('SubAgentGroup', () => {
   it('keeps the stranded note, which the parent is meant to read', () => {
     const note =
       'The user sent 1 message(s) to the sub-agent after it had stopped reading, so it never saw them. They are in its transcript. Read them before acting on the answer above.'
-    const { container } = onKeyboard(<SubAgentGroup calls={[finished('1', 'Audit the cache', `Fine.\n\n${note}`)]} />)
+    const { container } = inBubble(<SubAgentGroup calls={[finished('1', 'Audit the cache', `Fine.\n\n${note}`)]} />)
     expect(container.querySelector('[data-slot="sub-agent-stranded"]')).toHaveTextContent(note)
   })
 
@@ -187,13 +224,13 @@ describe('SubAgentGroup', () => {
   it('falls back to switching conversation where nothing can draw the sheet', async () => {
     const openConversation = vi.fn()
     useConversationStore.setState({ openConversation })
-    onKeyboard(<SubAgentGroup calls={[finished('1', 'Audit the cache', 'Fine.')]} />)
+    inBubble(<SubAgentGroup calls={[finished('1', 'Audit the cache', 'Fine.')]} />)
     await userEvent.click(rowOf(/Audit the cache/))
     expect(openConversation).toHaveBeenCalledWith('sub-1')
   })
 
   it('is what a lone run_agent key becomes', () => {
-    const { container } = onKeyboard(<ToolCallBlock data={finished('1', 'Audit the cache', 'Fine.')} />)
+    const { container } = inBubble(<ToolCallBlock data={finished('1', 'Audit the cache', 'Fine.')} />)
     expect(container.querySelector('[data-slot="sub-agent-group"]')).not.toBeNull()
     expect(container.querySelector('[data-slot="chat-tool-panel"]')).toBeNull()
   })

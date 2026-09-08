@@ -10,7 +10,6 @@ import {
   ChatToolPresentationProvider,
   ChatToolTrigger,
 } from '@/components/ui/chat-tool'
-import { BubbleKeyboard } from '@/components/ui/bubble-keyboard'
 import { resetEditLocations } from '@/hooks/use-edit-location'
 import i18n from '@/i18n'
 import { api } from '@/api'
@@ -40,12 +39,8 @@ function call(toolName: string, args: unknown, status: ToolCallDisplay['status']
   } satisfies ToolCallDisplay
 }
 
-function onKeyboard(ui: React.ReactNode) {
-  return render(
-    <ChatToolPresentationProvider value="keyboard">
-      <BubbleKeyboard>{ui}</BubbleKeyboard>
-    </ChatToolPresentationProvider>,
-  )
+function inBubble(ui: React.ReactNode) {
+  return render(<ChatToolPresentationProvider value="bubble">{ui}</ChatToolPresentationProvider>)
 }
 
 const panel = (container: HTMLElement) => container.querySelector<HTMLElement>('[data-slot="chat-tool-panel"]')!
@@ -66,7 +61,7 @@ describe('tool panels', () => {
   /// The screenshot that started this: a pending command drawn as
   /// `{"command": "cd \"...\" && ...", "description": "..."}`.
   it('draws a command as code and its output in parts, never as JSON', async () => {
-    const { container } = onKeyboard(
+    const { container } = inBubble(
       <ToolCallBlock
         data={call('run_command', { command: 'ls -la', description: 'List the directory' }, 'completed', {
           result: 'total 0\n[stderr] warning: slow disk\n[exit code: 2]',
@@ -90,7 +85,7 @@ describe('tool panels', () => {
   /// A hosted agent's shell writes no trailer, and "no exit code" is not
   /// "exit 0".
   it('claims no exit code when the shell wrote none', async () => {
-    const { container } = onKeyboard(
+    const { container } = inBubble(
       <ToolCallBlock data={call('Bash', { command: 'echo hi' }, 'completed', { result: 'hi' })} />,
     )
     await userEvent.click(screen.getByRole('button', { name: /Run Command/ }))
@@ -102,7 +97,7 @@ describe('tool panels', () => {
   /// be approved.
   it('shows a key waiting on a decision its whole path, unclamped', () => {
     const path = '/home/me/Documents/Code/foxline-pro-backend-server/.claude/worktrees/feat-ttapi/ttapi/__init__.py'
-    const { container } = onKeyboard(<ToolCallBlock data={call('write_file', { path, content: 'x' }, 'pending')} />)
+    const { container } = inBubble(<ToolCallBlock data={call('write_file', { path, content: 'x' }, 'pending')} />)
     const key = container.querySelector<HTMLElement>('[data-slot="chat-tool-trigger"]')!
     const arg = key.querySelector<HTMLElement>('[data-slot="tool-arg"]')!
     expect(arg).toHaveTextContent(path)
@@ -113,9 +108,7 @@ describe('tool panels', () => {
 
   it('keeps an ordinary key to one line with the file name intact', async () => {
     const path = '/home/me/very/deep/directory/structure/for/this/test/turn.rs'
-    const { container } = onKeyboard(
-      <ToolCallBlock data={call('read_file', { path }, 'completed', { result: 'fn' })} />,
-    )
+    const { container } = inBubble(<ToolCallBlock data={call('read_file', { path }, 'completed', { result: 'fn' })} />)
     const arg = container.querySelector<HTMLElement>('[data-slot="tool-arg"]')!
     expect(arg.querySelector('[data-slot="path-dir"]')!.className).toMatch(/truncate/)
     expect(arg.querySelector('[data-slot="path-name"]')).toHaveTextContent('turn.rs')
@@ -125,7 +118,7 @@ describe('tool panels', () => {
   })
 
   it('numbers a whole-file write from one and puts its stats in the header', () => {
-    const { container } = onKeyboard(
+    const { container } = inBubble(
       <ToolCallBlock
         data={call('write_file', { path: 'notes/todo.md', content: '# Todo\n- one\n- two\n' }, 'pending')}
       />,
@@ -151,7 +144,7 @@ describe('tool panels', () => {
       token_count: 10,
       truncated: false,
     })
-    const { container } = onKeyboard(
+    const { container } = inBubble(
       <ToolCallBlock
         data={call(
           'edit_file',
@@ -176,7 +169,7 @@ describe('tool panels', () => {
   /// After the edit ran the file has changed; a number read off it now would
   /// be a guess wearing a gutter.
   it('asks for no file once the edit has run, and draws no numbers', async () => {
-    const { container } = onKeyboard(
+    const { container } = inBubble(
       <ToolCallBlock
         data={call('edit_file', { file_path: 'src/app.py', old_string: 'a', new_string: 'b' }, 'completed', {
           result: 'Replaced 1 occurrence(s) in src/app.py',
@@ -194,7 +187,7 @@ describe('tool panels', () => {
   })
 
   it('lists glob matches as paths, with the cap as a footnote', async () => {
-    const { container } = onKeyboard(
+    const { container } = inBubble(
       <ToolCallBlock
         data={call('glob', { pattern: '**/*.ts' }, 'completed', {
           result: 'src/a.ts\nsrc/lib/b.ts\n\n(showing first 1000 matches)',
@@ -210,7 +203,7 @@ describe('tool panels', () => {
   })
 
   it('reads a directory listing into rows', async () => {
-    const { container } = onKeyboard(
+    const { container } = inBubble(
       <ToolCallBlock
         data={call('list_directory', { path: 'src' }, 'completed', {
           result: 'dir          -  lib\nfile    1.2 KB  main.rs',
@@ -225,7 +218,7 @@ describe('tool panels', () => {
   })
 
   it('puts the decision row in the panel’s footer, wherever it was rendered', () => {
-    const { container } = onKeyboard(
+    const { container } = inBubble(
       <ChatTool state="requires-action" defaultExpanded>
         <ChatToolTrigger>Write file</ChatToolTrigger>
         <ChatToolContent>
@@ -264,7 +257,7 @@ describe('every panel opens the same way', () => {
   /// shapes. The title is the pattern; the path is the meta line; the body
   /// is the matches, and nothing else.
   it('names a search by its pattern with the rest of its arguments as a meta line', async () => {
-    const { container } = onKeyboard(
+    const { container } = inBubble(
       <ToolCallBlock
         data={call(
           'search_files',
@@ -291,7 +284,7 @@ describe('every panel opens the same way', () => {
   /// and a wall of text. It opens on a title like every other panel — its
   /// first short argument — and a skill's text is drawn as the Markdown it is.
   it('gives a tool with no known shape a title from its first argument and draws a skill as prose', async () => {
-    const { container } = onKeyboard(
+    const { container } = inBubble(
       <ToolCallBlock
         data={call('load_skill', { skill_name: 'claude-code-plan-review' }, 'completed', {
           result: '# Skill: claude-code-plan-review\n\n## Review procedure\n\n1. Identify the goal.',
@@ -310,7 +303,7 @@ describe('every panel opens the same way', () => {
   /// gets a block of its own.
   it('keeps a long argument out of the title and in a block of its own', async () => {
     const prompt = 'x'.repeat(200)
-    const { container } = onKeyboard(
+    const { container } = inBubble(
       <ToolCallBlock
         data={call('mcp__notes__append', { prompt, tag: 'daily' }, 'completed', { result: '{"ok":true}' })}
       />,

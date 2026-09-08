@@ -32,7 +32,7 @@ import {
   MessageGroupUser,
 } from '@/components/ui/message-group'
 import { Bubble, BubbleContent, BubbleTime } from '@/components/ui/bubble'
-import { BubbleFoldBadge, BubbleKeyboard, keyboardPanelVariants } from '@/components/ui/bubble-keyboard'
+import { BubbleFoldBadge } from '@/components/ui/bubble-block'
 import { ChatToolPresentationProvider } from '@/components/ui/chat-tool'
 import { useConversationStore } from '@/stores/conversation-store'
 import { ChatAttachment, ChatAttachmentGroup } from '@heroui-pro/react/chat-attachment'
@@ -565,11 +565,13 @@ function useFoldExpansion(folded: FoldedCalls[]) {
   return { isOpen, toggle }
 }
 
-function foldPanelId(fold: FoldedCalls): string {
-  return `fold-${fold.key.replace(/[^\w-]/g, '_')}`
-}
-
-/** The badges standing in for a bubble's folded calls, in a row. */
+/** The badges standing in for a bubble's folded calls, in a row.
+ *
+ *  `aria-expanded` and no `aria-controls`: what a badge opens is several
+ *  blocks rather than one panel, and they are the bubble's own children now.
+ *  Naming one of them would be naming an arbitrary one; wrapping them so there
+ *  is something to name would cost them their fill and their corners, which
+ *  `bubble.tsx` gives to direct children only. */
 function FoldBadges({
   folded,
   isOpen,
@@ -585,12 +587,7 @@ function FoldBadges({
       {folded.map((fold) => {
         const Icon = FOLD_ICONS[fold.kind]
         return (
-          <BubbleFoldBadge
-            key={fold.key}
-            expanded={isOpen(fold.key)}
-            aria-controls={isOpen(fold.key) ? foldPanelId(fold) : undefined}
-            onClick={() => toggle(fold.key)}
-          >
+          <BubbleFoldBadge key={fold.key} expanded={isOpen(fold.key)} onClick={() => toggle(fold.key)}>
             <Icon aria-hidden className="size-3" />
             {t(`chat.tool.fold.${fold.kind}`, { count: fold.count })}
           </BubbleFoldBadge>
@@ -620,25 +617,20 @@ function FoldPanels({
 }) {
   const open = folded.filter((fold) => isOpen(fold.key))
   if (open.length === 0) return null
+  // No box around them, and none between them and the bubble: what a badge
+  // opens is the blocks themselves, and a block is a block wherever it came
+  // from. A wrapper would also break the rule `bubble.tsx` styles them with —
+  // it reads the bubble's *direct* children, so a block one level down would
+  // lose its fill and its corners.
   return (
-    <ChatToolPresentationProvider value="keyboard">
-      {open.map((fold) => (
-        <div
-          key={fold.key}
-          id={foldPanelId(fold)}
-          data-slot="bubble-fold-panel"
-          data-kind={fold.kind}
-          className={cn(keyboardPanelVariants(), 'mt-0 p-1.5')}
-        >
-          <BubbleKeyboard>
-            {fold.tools.map((tool, i) => (
-              <ErrorBoundary key={`${tool.call_id}:${i}`} fallback={renderError}>
-                <MemoToolCallBlock data={tool} queued={false} />
-              </ErrorBoundary>
-            ))}
-          </BubbleKeyboard>
-        </div>
-      ))}
+    <ChatToolPresentationProvider value="bubble">
+      {open.map((fold) =>
+        fold.tools.map((tool, i) => (
+          <ErrorBoundary key={`${fold.key}:${tool.call_id}:${i}`} fallback={renderError}>
+            <MemoToolCallBlock data={tool} queued={false} />
+          </ErrorBoundary>
+        )),
+      )}
     </ChatToolPresentationProvider>
   )
 }
@@ -666,15 +658,14 @@ function FoldRow({
   )
 }
 
-/** The keyboard under a bubble: its calls, in the order the model made them.
- *  Every key is a disclosure whose panel lands in the keyboard's stack — see
- *  `bubble-keyboard.tsx`. The reasoning is not a key; it is `ThinkingRow`, at
- *  the head of the bubble. */
+/** The calls a bubble made, in the order the model made them: one block each,
+ *  siblings of the prose in the same bubble — see `bubble.tsx`. The reasoning
+ *  is not one of them; it is `ThinkingRow`, at the head of the prose block. */
 function BubbleKeys({
   bubble,
   renderError,
 }: {
-  bubble: Extract<BubbleModel, { kind: 'text' | 'keyboard-only' }>
+  bubble: Extract<BubbleModel, { kind: 'text' | 'tools-only' }>
   renderError: React.ReactNode
 }) {
   if (bubble.tools.length === 0) return null
@@ -685,19 +676,17 @@ function BubbleKeys({
   const runs = bubble.tools.filter((tool) => delegationOf(tool) !== null)
   const keys = bubble.tools.map((tool, i) => [tool, i] as const).filter(([tool]) => delegationOf(tool) === null)
   return (
-    <ChatToolPresentationProvider value="keyboard">
-      <BubbleKeyboard>
-        {runs.length > 0 && (
-          <ErrorBoundary fallback={renderError}>
-            <SubAgentGroup calls={runs} />
-          </ErrorBoundary>
-        )}
-        {keys.map(([tool, i]) => (
-          <ErrorBoundary key={`${tool.call_id}:${i}`} fallback={renderError}>
-            <MemoToolCallBlock data={tool} queued={bubble.queued[i]} />
-          </ErrorBoundary>
-        ))}
-      </BubbleKeyboard>
+    <ChatToolPresentationProvider value="bubble">
+      {runs.length > 0 && (
+        <ErrorBoundary fallback={renderError}>
+          <SubAgentGroup calls={runs} />
+        </ErrorBoundary>
+      )}
+      {keys.map(([tool, i]) => (
+        <ErrorBoundary key={`${tool.call_id}:${i}`} fallback={renderError}>
+          <MemoToolCallBlock data={tool} queued={bubble.queued[i]} />
+        </ErrorBoundary>
+      ))}
     </ChatToolPresentationProvider>
   )
 }
@@ -757,7 +746,7 @@ function AssistantBubble({
       </Bubble>
     )
   }
-  if (bubble.kind === 'keyboard-only') {
+  if (bubble.kind === 'tools-only') {
     const keys = <BubbleKeys bubble={bubble} renderError={renderError} />
     const hasThinking = bubble.thinking.length > 0
     const hasFolds = folded.length > 0
@@ -795,7 +784,7 @@ function AssistantBubble({
       <div
         data-slot="bubble"
         data-position={bubble.position}
-        data-variant="keyboard-only"
+        data-variant="tools-only"
         className="flex w-full max-w-[85%] flex-col gap-1"
       >
         {panels}

@@ -775,10 +775,10 @@ describe('TurnItem', () => {
     })
   })
 
-  describe('keyboard', () => {
+  describe('tool blocks', () => {
     const key = (name: RegExp) => screen.getByRole('button', { name })
 
-    it('draws a tool as a key under the bubble that introduced it, shut once it has returned', () => {
+    it('draws a tool as a block of the bubble that introduced it, shut once it has returned', () => {
       render(<TurnItem turn={toolTurn()} conversationId={CONV} />)
 
       const k = key(/Write File/)
@@ -788,13 +788,13 @@ describe('TurnItem', () => {
       expect(screen.getByText('let me check')).toBeVisible()
       expect(screen.getByText('the answer')).toBeVisible()
 
-      // The key sits in the keyboard's row and its panel in the stack below —
-      // two layers, so the Tab order runs every key before any panel.
-      const keyboard = k.closest('[data-slot="bubble-keyboard"]')!
-      expect(keyboard.querySelector('[data-slot="bubble-keyboard-row"]')).toContainElement(k)
-      const panel = document.getElementById(k.getAttribute('aria-controls')!)!
-      expect(keyboard.querySelector('[data-slot="bubble-keyboard-stack"]')).toContainElement(panel)
-      expect(keyboard.querySelector('[data-slot="bubble-keyboard-row"]')).not.toContainElement(panel)
+      // The head and the detail are the same block, and the block is a direct
+      // child of the bubble — which is what `bubble.tsx` styles, and what makes
+      // the Tab order right without anything being moved anywhere.
+      const block = k.closest('[data-slot="chat-tool"]')!
+      expect(block).toHaveAttribute('data-bubble-block')
+      expect(block).toContainElement(document.getElementById(k.getAttribute('aria-controls')!))
+      expect(block.parentElement).toHaveAttribute('data-slot', 'bubble')
     })
 
     it('shows the duration in the footer rather than as a headline', () => {
@@ -894,13 +894,17 @@ describe('TurnItem', () => {
       // On the bubble's last line, with the time at the other end of it.
       const row = badge.closest('[data-slot="bubble-fold-row"]')!
       expect(row.querySelector('[data-slot="bubble-time"]')).not.toBeNull()
-      expect(container.querySelector('[data-slot="bubble-fold-panel"]')).toBeNull()
+      expect(container.querySelector('[data-slot="chat-tool"]')).toBeNull()
 
       await userEvent.click(badge)
       expect(badge).toHaveAttribute('aria-expanded', 'true')
       const k = key(/Read File/)
       expectCollapsed(k)
-      expect(container.querySelector('[data-slot="bubble-fold-panel"]')).toContainElement(k)
+      // What a badge opens is blocks, not a panel of blocks: they join the
+      // bubble as siblings of the prose that folded them.
+      const block = k.closest('[data-slot="chat-tool"]')!
+      expect(block).toHaveAttribute('data-bubble-block')
+      expect(block.parentElement).toBe(badge.closest('[data-slot="bubble"]'))
       await userEvent.click(k)
       expectExpanded(k)
       expect(screen.getByText('fn main() {}')).toBeVisible()

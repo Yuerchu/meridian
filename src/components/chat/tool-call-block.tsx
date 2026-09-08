@@ -75,7 +75,7 @@ import {
   ChatToolTrigger,
   type ChatToolState,
 } from '@/components/ui/chat-tool'
-import { BubbleKeyboardKey } from '@/components/ui/bubble-keyboard'
+import { BubbleBlockButton } from '@/components/ui/bubble-block'
 import { usePanelExpansion } from '@/hooks/use-panel-expansion'
 import { useEditLocation } from '@/hooks/use-edit-location'
 import { ariaHotkey, formatHotkey } from '@/hooks/use-hotkey'
@@ -571,7 +571,7 @@ export function AskUserBlock({
     )
   }
 
-  if (presentation === 'keyboard') {
+  if (presentation === 'bubble') {
     return (
       <ChatTool state={mapChatToolState(data.status)} {...expansion}>
         <ChatToolTrigger>
@@ -1299,7 +1299,7 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
   // change shape as a search goes from asked to running to answered. The card
   // below draws each state as its own thing, which was right for a card in a
   // column and wrong for a key in a row.
-  if (presentation === 'keyboard') {
+  if (presentation === 'bubble') {
     const failed = data.status === 'error' || (data.status === 'completed' && sources === null)
     const state: ChatToolState = failed ? 'output-error' : mapChatToolState(data.status)
     return (
@@ -1596,7 +1596,7 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
     </>
   )
 
-  if (presentation === 'keyboard') {
+  if (presentation === 'bubble') {
     return (
       <ChatTool state={mapChatToolState(data.status)} {...expansion}>
         <ChatToolTrigger>
@@ -1743,7 +1743,7 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
     </>
   )
 
-  if (presentation === 'keyboard') {
+  if (presentation === 'bubble') {
     return (
       <ChatTool state={mapChatToolState(data.status)} {...expansion}>
         <ChatToolTrigger>
@@ -1793,9 +1793,9 @@ function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay; revie
 
   // A key that goes somewhere rather than opening something: the review has a
   // page of its own, and a panel here would be a second, smaller copy of it.
-  if (presentation === 'keyboard') {
+  if (presentation === 'bubble') {
     return (
-      <BubbleKeyboardKey
+      <BubbleBlockButton
         data-slot="plan-review-entry"
         data-status={status}
         state={status === 'pending' ? 'navigate' : 'output-available'}
@@ -1808,7 +1808,7 @@ function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay; revie
         <Chip size="sm" variant="secondary" className="ml-auto">
           {t(`planReview.status.${status}`)}
         </Chip>
-      </BubbleKeyboardKey>
+      </BubbleBlockButton>
     )
   }
 
@@ -2415,7 +2415,7 @@ export function ToolCallBlock({
   const state = mapChatToolState(data.status)
   // A key is half a row; a key waiting on a decision, or a card, shows the
   // whole value. See `ToolArgsSummary`.
-  const compact = presentation === 'keyboard' && state !== 'requires-action'
+  const compact = presentation === 'bubble' && state !== 'requires-action'
 
   const trimmedArgs = data.arguments.trim()
   const showArgs = trimmedArgs !== '' && trimmedArgs !== '{}'

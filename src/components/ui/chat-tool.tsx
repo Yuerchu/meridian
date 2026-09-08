@@ -6,7 +6,7 @@ import { CircleCheck, CircleExclamation, CircleXmark, Clock } from '@gravity-ui/
 import { useShikiLanguage } from '@/hooks/use-shiki-language'
 import { highlightInline } from '@/lib/shiki'
 import { cn } from '@/lib/utils'
-import { BubbleKeyboardStackContext, keyboardKeyVariants } from './bubble-keyboard'
+import { BUBBLE_BLOCK, BUBBLE_BLOCK_HOVER } from './bubble'
 
 /**
  * The first four mirror the states an assistant-UI tool part goes through.
@@ -21,17 +21,31 @@ type ChatToolState =
 const ChatToolStateContext = React.createContext<ChatToolState>('input-available')
 
 /**
- * How a tool is drawn: as a card of its own, or as a key on the inline keyboard
- * under a bubble with its panel in the keyboard's stack.
+ * How a tool is drawn: as a card of its own, or as one of the blocks of the
+ * bubble it belongs to.
+ *
+ * **A tool call is a message.** It is something the assistant did in the middle
+ * of saying something, so it is drawn in the same shell as what it said: a
+ * block in the same bubble, taking the same corner treatment, the same fill and
+ * the same avatar. `bubble` is that.
+ *
+ * It replaces an inline keyboard — a row of keys under the bubble, each opening
+ * a panel — which cost two things. On screen it was two objects in two nearly
+ * identical greys with a gap between them, reading as a card inside a card
+ * beside a bubble that was neither. And in the DOM the panel could not stay
+ * next to its key: keys sat two to a row, so a panel had to be carried into a
+ * stack below the row by a portal, with a hand-built node adopted at commit to
+ * beat a React Aria effect. One block removes both — the head and the detail
+ * are the same element's children, so DOM order *is* reading order and the Tab
+ * sequence needs nothing done to it.
  *
  * One context rather than two component sets, because what changes is only the
- * chrome. The trigger, the panel, the status icon, the approval row and every
- * specialised card built on them keep their structure and their behaviour; the
- * keyboard mode swaps what the trigger looks like and where the panel lands.
- * `card` remains the default so the playground and the tests that exercise the
- * card go on doing so.
+ * chrome. The trigger, the panel sections, the status icon, the approval row
+ * and every specialised card built on them keep their structure and their
+ * behaviour. `card` remains the default so the playground and the tests that
+ * exercise the card go on doing so.
  */
-type ChatToolPresentation = 'card' | 'keyboard'
+type ChatToolPresentation = 'card' | 'bubble'
 
 const ChatToolPresentationContext = React.createContext<ChatToolPresentation>('card')
 
@@ -96,28 +110,94 @@ const chatToolVariants = tv({
   },
 })
 
+/**
+ * The tool as a bubble block.
+ *
+ * As wide as it needs to be while shut — a shut tool is a label, and a column
+ * of full-width labels reads as a form rather than as a conversation — and the
+ * column's full width once open, because what is inside is a diff, a result or
+ * a decision, and all three want the room. `data-expanded` is React Aria's, on
+ * the disclosure root, which is this element.
+ *
+ * `rounded-2xl` rather than the panel's old `rounded-xl`: this *is* a bubble
+ * now, so it takes the bubble's radius and lets `bubble.tsx` tighten the
+ * corners where it meets the block above or below it. The fill is stated here
+ * rather than left to `bubble.tsx` so that a tool drawn outside any bubble —
+ * the playground, a fold panel — still looks like itself.
+ */
+const toolBubbleVariants = tv({
+  base: [BUBBLE_BLOCK, 'w-fit flex-col text-xs', 'data-[expanded]:w-full'],
+  variants: {
+    state: {
+      'input-streaming': '',
+      'input-available': '',
+      queued: 'text-muted',
+      'output-available': '',
+      'output-error': 'ring-1 ring-danger/40 ring-inset',
+      // Never a label: a decision rests on the exact path or command, so it
+      // takes the width whether or not it is open.
+      'requires-action': 'w-full ring-1 ring-warning/50 ring-inset',
+    },
+  },
+  defaultVariants: {
+    state: 'input-available',
+  },
+})
+
+/**
+ * The head row of a block: what the call is, and the control that opens it.
+ *
+ * The hover wash lifts from the bubble's own fill (`BUBBLE_BLOCK_HOVER`)
+ * rather than being taken from `--default`, which is what the key it replaced
+ * used: a key was a control sitting on the transcript and washed towards the
+ * neutral hover colour, while this is a row inside a bubble — `bg-default`
+ * here would be a second, slightly different grey over the first, and it would
+ * be the assistant's grey even in the person's bubble.
+ */
+const toolHeadVariants = tv({
+  base: [
+    'flex min-h-9 w-full items-center gap-2 px-3 py-2 text-left outline-none transition-colors',
+    BUBBLE_BLOCK_HOVER,
+    'data-[pressed]:bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--foreground)_8%)]',
+    'focus-visible:ring-2 focus-visible:ring-focus/50 focus-visible:ring-inset',
+    'disabled:opacity-60',
+  ],
+  variants: {
+    state: {
+      'input-streaming': '',
+      'input-available': '',
+      queued: '',
+      'output-available': '',
+      'output-error': '',
+      'requires-action': '',
+    },
+  },
+  defaultVariants: {
+    state: 'input-available',
+  },
+})
+
 interface ChatToolProps extends React.ComponentProps<typeof Disclosure>, VariantProps<typeof chatToolVariants> {}
 
 function ChatTool({ state, className, ...props }: ChatToolProps) {
   const presentation = React.useContext(ChatToolPresentationContext)
   const resolvedState = state ?? 'input-available'
   const active = resolvedState === 'input-streaming' || resolvedState === 'input-available'
+  const asBubble = presentation === 'bubble'
   return (
     <ChatToolStateContext.Provider value={resolvedState}>
-      {/* In keyboard mode the disclosure has no box of its own: its trigger is a
-          key in the row and its panel is carried off to the stack, so a wrapper
-          with a box would be an empty item in the row's flex. `contents` keeps
-          the disclosure as a React tree — which is what pairs the two — without
-          giving it a place in the layout. Nothing the animation needs lives on
-          this element; React Aria measures the panel itself. */}
       <Disclosure
         data-slot="chat-tool"
         data-state={resolvedState}
         data-active={active || undefined}
         data-presentation={presentation}
+        // What makes `bubble.tsx` treat it as one of the bubble's own blocks:
+        // the fill, the corner tightening against its neighbours and the run's
+        // position all follow from this one attribute.
+        data-bubble-block={asBubble ? '' : undefined}
         className={
-          presentation === 'keyboard'
-            ? cn('contents', className)
+          asBubble
+            ? cn(toolBubbleVariants({ state: resolvedState }), className)
             : cn(CHAT_TOOL_CARD, chatToolVariants({ state: resolvedState }).base(), className)
         }
         {...props}
@@ -156,21 +236,21 @@ function ChatToolTrigger({ className, children, endContent, subtitle, ...props }
   const requiresAction = state === 'requires-action'
   const hasSubtitle = subtitle != null && subtitle !== ''
 
-  if (presentation === 'keyboard') {
-    // No `Disclosure.Heading`: React Aria's heading is an `<h3>`, and a row of
-    // keys is not a row of headings. The trigger pairs with its panel through
-    // the disclosure's own context, so nothing is lost by leaving it off.
+  if (presentation === 'bubble') {
+    // No `Disclosure.Heading`: React Aria's heading is an `<h3>`, and a
+    // transcript is not an outline of headings. The trigger pairs with its
+    // panel through the disclosure's own context, so nothing is lost.
     //
-    // A key that asks for a decision takes the whole row and clamps nothing —
-    // the exact path or command is what the decision rests on — and draws its
-    // description under the label the way the card does. An ordinary key is
-    // half a row and truncates, with the description as a tooltip: it is a
-    // supplement there, not the thing being approved.
+    // A block that asks for a decision clamps nothing — the exact path or
+    // command is what the decision rests on — and draws its description under
+    // the label the way the card does. An ordinary one truncates, with the
+    // description as a tooltip: it is a supplement there, not the thing being
+    // approved.
     const key = (
       <Disclosure.Trigger
         data-slot="chat-tool-trigger"
         data-state={state}
-        className={cn(keyboardKeyVariants({ state }), className)}
+        className={cn(toolHeadVariants({ state }), className)}
         {...props}
       >
         <div data-slot="chat-tool-trigger-lines" className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -201,7 +281,7 @@ function ChatToolTrigger({ className, children, endContent, subtitle, ...props }
         </span>
       </Disclosure.Trigger>
     )
-    // An ordinary key keeps its description as a tooltip: it is a supplement
+    // An ordinary head keeps its description as a tooltip: it is a supplement
     // there, not the thing being decided. The trigger is a React Aria button,
     // so `Tooltip` attaches to it directly — no wrapper, no second tab stop —
     // and the disclosure's own context reaches through.
@@ -331,7 +411,6 @@ function overlayIsOpen(doc: Document): boolean {
 function ChatToolContent({ className, children, ...props }: React.ComponentProps<typeof Disclosure.Content>) {
   const presentation = React.useContext(ChatToolPresentationContext)
   const state = React.useContext(ChatToolStateContext)
-  const stack = React.useContext(BubbleKeyboardStackContext)
   const disclosure = React.useContext(DisclosureStateContext)
 
   const [occupants, setOccupants] = React.useState(0)
@@ -365,7 +444,7 @@ function ChatToolContent({ className, children, ...props }: React.ComponentProps
   // `aria-controls` — is the body's parent.
   const handleKeyDown = React.useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
-      if (event.defaultPrevented || presentation !== 'keyboard') return
+      if (event.defaultPrevented || presentation !== 'bubble') return
       if (event.key !== 'Escape' || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
       if (isFormControl(event.target)) return
       const panel = event.currentTarget.closest<HTMLElement>('[data-slot="chat-tool-content"]')
@@ -383,30 +462,27 @@ function ChatToolContent({ className, children, ...props }: React.ComponentProps
     [disclosure, presentation],
   )
 
-  if (presentation === 'keyboard') {
-    const panel = (
-      // `min-h-0` is load-bearing: the panel sits in a flex column, and a flex
+  if (presentation === 'bubble') {
+    return (
+      // `min-h-0` is load-bearing: the block is a flex column, and a flex
       // item's default `min-height: auto` floors it at its content height — so
       // the panel would take `height: 0` and still render full size.
       //
-      // The top margin is conditional on the panel not being `hidden`, which is
-      // the attribute React Aria sets once a collapse has finished animating.
-      // A collapsed panel is a zero-height box, not nothing, and a margin on it
-      // would be a blank line in the stack for every closed key.
+      // The rule above the detail is conditional on the panel not being
+      // `hidden`, which is the attribute React Aria sets once a collapse has
+      // finished animating. A collapsed panel is a zero-height box rather than
+      // nothing at all, and a border on it would be a hairline under the head
+      // of every shut block.
       //
-      // The panel is a continuation of the assistant bubble — same fill, same
-      // visual language. No Widget, no card-inside-a-card: the key above opens
-      // and the detail under it is more of the same message. The ring is on
-      // this element, flush with the content, so it wraps both the key and the
-      // panel as one continuous outline. `rounded-xl` sits under the bubble's
-      // `rounded-2xl` on the radius ladder.
+      // No fill, no radius and no ring of its own: this is the lower half of
+      // the block above it, which carries all three. That is the whole of what
+      // "a tool call is a message" buys — the head and the detail are one
+      // object, so there is nothing to align, nothing to portal, and no second
+      // edge inside the first.
       <Disclosure.Content
         data-slot="chat-tool-content"
-        data-presentation="keyboard"
-        className={cn(
-          'min-h-0 not-[[hidden]]:mt-1 overflow-hidden rounded-xl bg-[var(--bubble-assistant)] text-[var(--bubble-assistant-foreground)] text-xs',
-          PANEL_RING[state],
-        )}
+        data-presentation="bubble"
+        className="min-h-0 w-full not-[[hidden]]:border-t not-[[hidden]]:border-border/50"
         {...props}
       >
         <Disclosure.Body className="p-0" onKeyDown={handleKeyDown}>
@@ -426,10 +502,6 @@ function ChatToolContent({ className, children, ...props }: React.ComponentProps
         </Disclosure.Body>
       </Disclosure.Content>
     )
-    // Inside a keyboard, the panel belongs to the stack. Without one — a tool
-    // drawn in keyboard mode with no keyboard around it — it stays where it is.
-    if (!stack) return panel
-    return createPortal(panel, stack.node)
   }
 
   return (
@@ -531,7 +603,7 @@ function useFooterOccupancy(footer: ChatToolFooterSlot | undefined) {
 function ChatToolPanelFooter({ className, children, ...props }: React.ComponentProps<'div'>) {
   const presentation = React.useContext(ChatToolPresentationContext)
   const footer = React.useContext(ChatToolFooterContext)
-  const inFooter = presentation === 'keyboard' && footer !== undefined
+  const inFooter = presentation === 'bubble' && footer !== undefined
   useFooterOccupancy(inFooter ? footer : undefined)
   if (inFooter) {
     return createPortal(
@@ -550,16 +622,6 @@ function ChatToolPanelFooter({ className, children, ...props }: React.ComponentP
       {children}
     </div>
   )
-}
-
-/** The ring a panel wears for the two states worth noticing, matching its key's. */
-const PANEL_RING: Record<ChatToolState, string> = {
-  'input-streaming': '',
-  'input-available': '',
-  queued: '',
-  'output-available': '',
-  'output-error': 'ring-1 ring-danger/40 ring-inset',
-  'requires-action': 'ring-1 ring-warning/50 ring-inset',
 }
 
 // Shiki escapes the text it is given, so the markup it returns is safe to
@@ -636,15 +698,16 @@ function ChatToolError({ className, ...props }: React.ComponentProps<'div'>) {
 
 /**
  * The decision row. In a card the buttons sit at the right, the way a dialog's
- * do; on a keyboard they share the row equally, the way an inline keyboard's
- * do — each is a key, and a key is as wide as its neighbours.
+ * do; in a bubble they share the row equally, because the block is as wide as
+ * the column and two buttons huddled at its right edge would be a long way from
+ * the command they answer for.
  */
 function ChatToolApproval({ className, children, ...props }: React.ComponentProps<'div'>) {
   const presentation = React.useContext(ChatToolPresentationContext)
   const footer = React.useContext(ChatToolFooterContext)
   // On a keyboard the row belongs at the foot of the panel, whatever rendered
   // it and however deep. See `ChatToolFooterSlot`.
-  const inFooter = presentation === 'keyboard' && footer !== undefined
+  const inFooter = presentation === 'bubble' && footer !== undefined
   useFooterOccupancy(inFooter ? footer : undefined)
   const row = (
     <div
@@ -656,7 +719,7 @@ function ChatToolApproval({ className, children, ...props }: React.ComponentProp
         data-slot="chat-tool-approval-actions"
         className={cn(
           'flex min-w-0 flex-wrap items-center gap-2 [&>button]:min-h-8 [&>button]:max-w-full [&>button]:min-w-0 [&>button]:whitespace-normal',
-          presentation === 'keyboard' ? '[&>button]:flex-1' : 'justify-end',
+          presentation === 'bubble' ? '[&>button]:flex-1' : 'justify-end',
         )}
       >
         {children}
