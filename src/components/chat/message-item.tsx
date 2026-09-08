@@ -652,14 +652,11 @@ function FoldRow({
 function BubbleKeys({
   bubble,
   renderError,
-  leading,
 }: {
   bubble: Extract<BubbleModel, { kind: 'text' | 'keyboard-only' }>
   renderError: React.ReactNode
-  /** Drawn at the head of the row, before the keys. */
-  leading?: React.ReactNode
 }) {
-  if (bubble.tools.length === 0 && leading == null) return null
+  if (bubble.tools.length === 0) return null
   // The delegations a round made together are one group, drawn first: the
   // runs are what the round is waiting on, and three keys side by side said
   // nothing about which of them still was. A call whose arguments are still
@@ -669,7 +666,6 @@ function BubbleKeys({
   return (
     <ChatToolPresentationProvider value="keyboard">
       <BubbleKeyboard>
-        {leading}
         {runs.length > 0 && (
           <ErrorBoundary fallback={renderError}>
             <SubAgentGroup calls={runs} />
@@ -741,21 +737,33 @@ function AssistantBubble({
     )
   }
   if (bubble.kind === 'keyboard-only') {
-    // No prose to put a footer under, so the badges go at the head of the
-    // row, in front of the keys the reader is being shown.
-    const badges = folded.length > 0 ? <FoldBadges folded={folded} isOpen={isOpen} toggle={toggle} /> : null
-    const keys = <BubbleKeys bubble={bubble} renderError={renderError} leading={badges} />
-    if (bubble.thinking.length > 0) {
-      // A row that thought and then called, or thought and stopped: the
-      // thinking gets a bubble of its own to sit at the head of, and the keys
-      // hang under it as they would under prose. While nothing has followed
-      // the thought yet it is still being written, and the only sign of life
-      // on screen until the answer starts.
-      const live = bubble.isStreaming && bubble.tools.length === 0
+    const keys = <BubbleKeys bubble={bubble} renderError={renderError} />
+    const hasThinking = bubble.thinking.length > 0
+    const hasFolds = folded.length > 0
+    if (hasThinking || hasFolds) {
+      // A row with no prose but something to say about itself — the thought
+      // it started from, the reads it folded — gets a bubble to say it in,
+      // laid out as a prose bubble is: reasoning at the head, badges and the
+      // time at the foot, keys under the bubble. Badges outside any bubble
+      // used to float between two of them, which read as belonging to
+      // neither. While nothing has followed the thought yet it is still
+      // being written, and the only sign of life until the answer starts.
+      const live = bubble.isStreaming && bubble.tools.length === 0 && !hasFolds
       return (
         <Bubble variant="assistant" position={bubble.position} className="w-full">
           <BubbleContent className="w-full">
-            <ThinkingRow text={bubble.thinking.join('\n\n')} panelKey={`${bubble.key}:thinking`} isStreaming={live} />
+            {hasThinking && (
+              <ThinkingRow text={bubble.thinking.join('\n\n')} panelKey={`${bubble.key}:thinking`} isStreaming={live} />
+            )}
+            {hasFolds && (
+              <FoldRow
+                folded={folded}
+                isOpen={isOpen}
+                toggle={toggle}
+                at={bubble.createdAt}
+                isStreaming={bubble.isStreaming}
+              />
+            )}
           </BubbleContent>
           {panels}
           {keys}

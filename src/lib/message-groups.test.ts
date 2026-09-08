@@ -352,6 +352,19 @@ describe('buildAssistantGroups — folding the low-risk calls into badges', () =
     expect(foldsOf(groups[0].bubbles[1])).toEqual(['files:1'])
   })
 
+  /// The thought at the head of the bubble, the reads it led to at its foot:
+  /// a fold-only row after a reasoning-only row is that bubble's badge line,
+  /// not a bubble of its own.
+  it('joins reads to a bubble that is only reasoning', () => {
+    const { groups } = groupsOf([
+      msg('assistant', { _blocks: [thinking('where is it')] }),
+      msg('assistant', { _blocks: [read('a.rs'), read('b.rs')] }),
+    ])
+    const kinds = groups[0].bubbles.map((b) => b.kind)
+    expect(kinds).toEqual(['keyboard-only'])
+    expect(foldsOf(groups[0].bubbles[0])).toEqual(['files:2'])
+  })
+
   it('opens a run of reads with no prose before it as a summary bubble', () => {
     const { groups } = groupsOf([
       msg('assistant', { _blocks: [read('a.rs'), read('b.rs')] }),

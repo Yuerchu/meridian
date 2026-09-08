@@ -362,8 +362,10 @@ function workingGroup(turn: Turn, modelId: string | null): AssistantGroup {
  * before it when that bubble can take badges *and* has no keys of its own:
  * badges sit under the prose and keys sit under the badges, so folding a row's
  * reads into a bubble that already has a key would draw them above a call
- * they were made after. Otherwise it stands as a summary bubble, which is a
- * bubble in the run for the corners' sake and a badge line for the reader's.
+ * they were made after. A bubble that is only reasoning takes them too — the
+ * thought at its head, the reads it led to at its foot. Otherwise it stands as
+ * a summary bubble, which is a bubble in the run for the corners' sake and a
+ * badge line for the reader's.
  */
 function foldBubbles(bubbles: BubbleModel[]): BubbleModel[] {
   const out: BubbleModel[] = []
@@ -399,7 +401,10 @@ function foldBubbles(bubbles: BubbleModel[]): BubbleModel[] {
       continue
     }
     const prev = out[out.length - 1]
-    if (prev && ((prev.kind === 'text' && prev.tools.length === 0) || prev.kind === 'summary')) {
+    const takesBadges =
+      prev &&
+      (prev.kind === 'summary' || ((prev.kind === 'text' || prev.kind === 'keyboard-only') && prev.tools.length === 0))
+    if (prev && takesBadges) {
       prev.folded = mergeFolded(prev.folded, b.folded)
       continue
     }
