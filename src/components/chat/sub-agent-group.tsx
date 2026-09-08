@@ -5,6 +5,7 @@ import { Alert, Chip, ListBox, Spinner } from '@heroui/react'
 import { Ban, CircleCheck, CircleQuestion, Compass, ForwardStep, TriangleExclamation } from '@gravity-ui/icons'
 import { ChatToolArgs } from '@/components/ui/chat-tool'
 import { BUBBLE_BLOCK } from '@/components/ui/bubble'
+import { useTranscriptConversationId } from '@/hooks/use-transcript-conversation'
 import { useConversationStore } from '@/stores/conversation-store'
 import { parseSubAgentResult, splitTruncation, type SubAgentOutcome, type SubAgentResult } from '@/lib/tool-output'
 import { cn } from '@/lib/utils'
@@ -296,7 +297,14 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
   const sheet = useSubAgentSheet()
   const openConversation = useConversationStore((s) => s.openConversation)
   const resolveNested = useConversationStore((s) => s.resolveNestedApproval)
-  const activeId = useConversationStore((s) => s.activeId)
+  // The conversation this group is drawn in, which is the one holding the
+  // `run_agent` row and therefore the `nested_approval` to retire. Today it is
+  // always the window's — a delegated run is handed no way to delegate
+  // (`commands/sub_agent.rs` passes `sub_agents: None`), so a group cannot
+  // appear inside the sub-agent sheet. That is somebody else's invariant
+  // though, and reading it from the transcript costs nothing and stops this
+  // from being the thing that breaks if nesting is ever allowed.
+  const conversationId = useTranscriptConversationId()
   const rows = useMemo(() => rowsOf(calls), [calls])
   if (rows.length === 0) return null
 
@@ -430,14 +438,14 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
                   retry_reason: nested.retry_reason,
                 }}
                 chromeless
-                onAnswered={() => activeId && resolveNested(activeId, nested.approval_id)}
+                onAnswered={() => conversationId && resolveNested(conversationId, nested.approval_id)}
               />
             ) : (
               <PendingApproval
                 key={nested.approval_id}
                 approvalId={nested.approval_id}
                 retryReason={nested.retry_reason}
-                onAnswered={() => activeId && resolveNested(activeId, nested.approval_id)}
+                onAnswered={() => conversationId && resolveNested(conversationId, nested.approval_id)}
               />
             )}
           </div>

@@ -1,9 +1,16 @@
-// An icon-only pressable needs a <Tooltip> around it.
+// An icon-only pressable needs a <Tooltip> around it *and* an accessible name.
 //
-// HeroUI's Tooltip contributes `aria-describedby` only, so `aria-label` is
-// still what names the control — this rule is about the *visible* half. The
-// 2026-09 audit found 43 `isIconOnly` buttons and four tooltips; a rule is the
-// only thing that keeps that ratio from drifting back.
+// Two obligations, checked independently, because HeroUI's Tooltip contributes
+// `aria-describedby` only: it describes the control and never names it. The
+// first version of this rule accepted a tooltip ancestor as the whole answer
+// and returned before it ever looked for a name, so
+// `<Tooltip><Button isIconOnly><Icon/></Button>…</Tooltip>` passed the gate
+// while remaining anonymous to a screen reader — the exact substitution the
+// rule's own message warns against. Nothing else was going to catch it: there
+// is no jsx-a11y rule configured here.
+//
+// The 2026-09 audit found 43 `isIconOnly` buttons and four tooltips; a rule is
+// the only thing that keeps that ratio from drifting back.
 //
 // What counts as icon-only: `isIconOnly` on anything, or an `aria-label` on a
 // pressable whose children are all elements (icons) with no text. The
@@ -85,11 +92,13 @@ function insideTooltip(node) {
 export default {
   meta: {
     type: 'problem',
-    docs: { description: 'An icon-only pressable must be wrapped in <Tooltip> (and carry aria-label).' },
+    docs: { description: 'An icon-only pressable must be wrapped in <Tooltip> and carry an accessible name.' },
     schema: [],
     messages: {
       needsTooltip:
         'Icon-only control without a <Tooltip>. Wrap it: <Tooltip delay={0}>…<Tooltip.Content>label</Tooltip.Content></Tooltip>, keeping aria-label on the control (a tooltip describes, it does not name). A wrapper that expects its caller to supply the tooltip disables this line with a reason.',
+      needsLabel:
+        'Icon-only control with no accessible name. Add aria-label (or aria-labelledby) to the control itself — a Tooltip only contributes aria-describedby, so it describes the control without naming it, and a wrapped button is still anonymous to a screen reader. A wrapper whose caller supplies the name disables this line with a reason.',
     },
   },
   create(context) {
@@ -97,10 +106,18 @@ export default {
       JSXOpeningElement(node) {
         const named = elementName(node)
         const explicit = hasAttr(node, 'isIconOnly')
-        const implicit = isPressable(named) && hasAttr(node, 'aria-label') && hasNoVisibleText(node.parent)
+        // `aria-labelledby` names just as well, and is what a control labelled
+        // by a heading elsewhere on the page uses.
+        const labelled = hasAttr(node, 'aria-label') || hasAttr(node, 'aria-labelledby')
+        // The implicit half is *recognised* by its name, so it always has one;
+        // only `isIconOnly` can reach the second report below.
+        const implicit = isPressable(named) && labelled && hasNoVisibleText(node.parent)
         if (!explicit && !implicit) return
-        if (insideTooltip(node.parent)) return
-        context.report({ node, messageId: 'needsTooltip' })
+        // Two reports, never one instead of the other: the visible affordance
+        // and the accessible name are separate obligations, and letting either
+        // stand in for the other is what made this rule pass an unnamed button.
+        if (!insideTooltip(node.parent)) context.report({ node, messageId: 'needsTooltip' })
+        if (!labelled) context.report({ node, messageId: 'needsLabel' })
       },
     }
   },

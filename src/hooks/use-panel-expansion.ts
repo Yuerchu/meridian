@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useConversationStore } from '@/stores/conversation-store'
+import { useTranscriptConversationId } from './use-transcript-conversation'
 
 /**
  * Whether a keyboard panel is open: the reader's choice if they made one, the
@@ -18,13 +19,19 @@ import { useConversationStore } from '@/stores/conversation-store'
  * survives that remount and switching conversations and back. `force` rising
  * clears it: a question arriving is a new reason to look, and a panel the
  * reader closed before it was asked is not a panel they chose to ignore.
+ *
+ * The conversation is the *transcript's*, not the window's — see
+ * `useTranscriptConversationId`. A panel opened in the sub-agent sheet belongs
+ * to the delegated run, and keying it by `activeId` wrote it to the outer
+ * conversation, where a repeated provider call id could match a different tool
+ * entirely.
  */
 export function usePanelExpansion(
   key: string,
   auto: boolean,
   force: boolean,
 ): { isExpanded: boolean; onExpandedChange: (next: boolean) => void } {
-  const conversationId = useConversationStore((s) => s.activeId)
+  const conversationId = useTranscriptConversationId()
   const stored = useConversationStore((s) =>
     conversationId ? s.sessions[conversationId]?.expandedPanels[key] : undefined,
   )

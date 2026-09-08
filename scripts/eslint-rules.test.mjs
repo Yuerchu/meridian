@@ -41,6 +41,8 @@ tester.run('icon-only-needs-tooltip', plugin.rules['icon-only-needs-tooltip'], {
     `<Sidebar.Menu aria-label="Conversations"><Sidebar.MenuItem /></Sidebar.Menu>`,
     // A pressable with no aria-label is somebody else's problem (a11y lint).
     `<Button isDisabled><Icon /></Button>`,
+    // `aria-labelledby` names it just as well as `aria-label`.
+    `<Tooltip><Button isIconOnly aria-labelledby="h"><Icon /></Button><Tooltip.Content>x</Tooltip.Content></Tooltip>`,
   ],
   invalid: [
     { code: `<Button isIconOnly aria-label="Close"><Xmark /></Button>`, errors: [{ messageId: 'needsTooltip' }] },
@@ -62,6 +64,20 @@ tester.run('icon-only-needs-tooltip', plugin.rules['icon-only-needs-tooltip'], {
     {
       code: `<div><Tooltip><span>hint</span></Tooltip><Button isIconOnly aria-label="x"><Icon /></Button></div>`,
       errors: [{ messageId: 'needsTooltip' }],
+    },
+    // The two obligations are independent, and a tooltip settles only one of
+    // them. This is what the rule used to let through: wrapped, and anonymous
+    // to a screen reader, because it returned on the tooltip before it ever
+    // looked for a name.
+    {
+      code: `<Tooltip><Button isIconOnly><Icon /></Button><Tooltip.Content>Close</Tooltip.Content></Tooltip>`,
+      errors: [{ messageId: 'needsLabel' }],
+    },
+    // Neither obligation met: both are reported, so fixing one still leaves
+    // the other on screen.
+    {
+      code: `<Button isIconOnly><Icon /></Button>`,
+      errors: [{ messageId: 'needsTooltip' }, { messageId: 'needsLabel' }],
     },
   ],
 })

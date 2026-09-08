@@ -35,6 +35,7 @@ import { Bubble, BubbleContent, BubbleTime } from '@/components/ui/bubble'
 import { BubbleFoldBadge } from '@/components/ui/bubble-block'
 import { ChatToolPresentationProvider } from '@/components/ui/chat-tool'
 import { useConversationStore } from '@/stores/conversation-store'
+import { useTranscriptConversationId } from '@/hooks/use-transcript-conversation'
 import { ChatAttachment, ChatAttachmentGroup } from '@heroui-pro/react/chat-attachment'
 import { ErrorBoundary } from '@/components/error-boundary'
 
@@ -538,7 +539,9 @@ const FOLD_ICONS: Record<FoldKind, React.ComponentType<{ className?: string; 'ar
  * badges re-renders once when any of them changes and never when none has.
  */
 function useFoldExpansion(folded: FoldedCalls[]) {
-  const conversationId = useConversationStore((s) => s.activeId)
+  // The transcript's conversation, not the window's: the same rule
+  // `usePanelExpansion` follows, and for the same reason.
+  const conversationId = useTranscriptConversationId()
   const stored = useConversationStore((s) => {
     if (!conversationId) return ''
     const panels = s.sessions[conversationId]?.expandedPanels

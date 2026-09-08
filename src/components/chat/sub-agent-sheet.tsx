@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { Skeleton } from '@heroui/react'
+import { Alert, Button, Skeleton } from '@heroui/react'
 import { Sheet } from '@heroui-pro/react/sheet'
 import { useConversationStore } from '@/stores/conversation-store'
 import { useTurns } from '@/hooks/use-turns'
@@ -33,26 +33,42 @@ function SubAgentSheet({ request, onClose }: { request: SubAgentSheetRequest; on
   const ensureSession = useConversationStore((s) => s.ensureSession)
   const loadMessages = useConversationStore((s) => s.loadMessages)
   const session = useConversationStore((s) => s.sessions[conversationId])
-  const [loaded, setLoaded] = React.useState(false)
+  const [load, setLoad] = React.useState<'loading' | 'loaded' | 'failed'>('loading')
+  const [attempt, setAttempt] = React.useState(0)
 
   React.useEffect(() => {
     let cancelled = false
-    setLoaded(false)
+    setLoad('loading')
     ensureSession(conversationId)
-    void loadMessages(conversationId).finally(() => {
-      if (!cancelled) setLoaded(true)
-    })
+    // `loadMessages` answers `false` for a fetch that failed and for a snapshot
+    // that would not validate, having already put the reason on the session. A
+    // `finally` reads both of those as success: with nothing cached the sheet
+    // then says "nothing recorded yet" about a run that has a transcript, and
+    // with something cached it presents stale rows as current — in neither case
+    // saying anything went wrong, and in neither case offering a way to retry.
+    void loadMessages(conversationId).then(
+      (ok) => {
+        if (!cancelled) setLoad(ok ? 'loaded' : 'failed')
+      },
+      () => {
+        if (!cancelled) setLoad('failed')
+      },
+    )
     return () => {
       cancelled = true
     }
-  }, [conversationId, ensureSession, loadMessages])
+  }, [conversationId, ensureSession, loadMessages, attempt])
 
   const messages = session?.messages ?? NO_MESSAGES
   const streaming = session?.streaming ?? false
   const turns = useTurns(messages, streaming, session?.turns)
   // The first load has nothing to draw until it lands; a live run whose
   // session already holds rows is drawn at once and reconciled under itself.
-  const ready = loaded || messages.length > 0
+  // A failed load with rows already in hand is the one case that draws anyway:
+  // those rows are real, they came from the live stream, and the notice above
+  // them says the rest could not be fetched.
+  const ready = load === 'loaded' || messages.length > 0
+  const failed = load === 'failed'
 
   return (
     <Sheet isOpen placement="right" onOpenChange={(open) => !open && onClose()} isDismissable>
@@ -67,6 +83,17 @@ function SubAgentSheet({ request, onClose }: { request: SubAgentSheetRequest; on
               <Sheet.CloseTrigger aria-label={t('common.close')} />
             </Sheet.Header>
             <Sheet.Body data-sheet-no-drag className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
+              {failed && (
+                <Alert status="danger" data-slot="sub-agent-sheet-error" className="m-4 mb-0">
+                  <Alert.Indicator />
+                  <Alert.Content>
+                    <Alert.Description>{session?.error ?? t('chat.subAgent.loadFailed')}</Alert.Description>
+                  </Alert.Content>
+                  <Button size="sm" variant="outline" onPress={() => setAttempt((n) => n + 1)}>
+                    {t('common.retry')}
+                  </Button>
+                </Alert>
+              )}
               {ready ? (
                 <ChatTranscript
                   turns={turns}
@@ -79,7 +106,10 @@ function SubAgentSheet({ request, onClose }: { request: SubAgentSheetRequest; on
                     </p>
                   }
                 />
-              ) : (
+              ) : failed ? null : (
+                // Not while it is failing: a skeleton is a promise that
+                // something is on its way, and the notice above has just said
+                // it is not.
                 <div
                   data-slot="sub-agent-sheet-loading"
                   role="status"

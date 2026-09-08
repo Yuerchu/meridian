@@ -268,4 +268,36 @@ describe('SubAgentSheetProvider', () => {
     expect(within(dialog).getByRole('heading', { name: 'Audit the cache' })).toBeVisible()
     expect(await within(dialog).findByText('Nothing recorded yet.')).toBeVisible()
   })
+
+  /// A load that failed is not a run with nothing in it. `loadMessages` catches
+  /// its own errors and answers `false`, so a `finally` reads a dead backend as
+  /// a successful load and the sheet says "nothing recorded yet" about a run
+  /// that has a transcript — with no error and no way to try again.
+  it('says a failed load failed, and offers to try again', async () => {
+    vi.mocked(api.conversationSnapshot).mockRejectedValue(new Error('backend is gone'))
+    render(
+      <SubAgentSheetProvider>
+        <SubAgentGroup calls={[finished('1', 'Audit the cache', 'Fine.')]} />
+      </SubAgentSheetProvider>,
+    )
+    await userEvent.click(rowOf(/Audit the cache/))
+    const dialog = await screen.findByRole('dialog')
+
+    const error = await within(dialog).findByText(/backend is gone/)
+    expect(error).toBeVisible()
+    expect(within(dialog).queryByText('Nothing recorded yet.')).toBeNull()
+    // Not a skeleton either: that promises something is on its way.
+    expect(dialog.querySelector('[data-slot="sub-agent-sheet-loading"]')).toBeNull()
+
+    vi.mocked(api.conversationSnapshot).mockResolvedValue({
+      tree: { messages: [], branches: [] },
+      pending_approvals: [],
+      turns: [],
+      sub_agent_runs: [],
+      plan_reviews: [],
+      plan_review_barrier: false,
+    } as unknown as Awaited<ReturnType<typeof api.conversationSnapshot>>)
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Retry' }))
+    expect(await within(dialog).findByText('Nothing recorded yet.')).toBeVisible()
+  })
 })

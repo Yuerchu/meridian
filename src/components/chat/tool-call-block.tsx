@@ -48,18 +48,7 @@ import {
   TriangleExclamation,
   Xmark,
 } from '@gravity-ui/icons'
-import {
-  Button,
-  Checkbox,
-  CheckboxGroup,
-  Chip,
-  Input,
-  Kbd,
-  Link as HLink,
-  Radio,
-  RadioGroup,
-  Spinner,
-} from '@heroui/react'
+import { Button, Checkbox, CheckboxGroup, Chip, Input, Kbd, Radio, RadioGroup, Spinner } from '@heroui/react'
 import {
   ChatTool,
   ChatToolApproval,
@@ -671,13 +660,20 @@ function toolFileDiffs(toolName: string, args: Record<string, unknown>): FileDif
   }
 }
 
+/**
+ * A button, not a link. It expands content in place and goes nowhere, and a
+ * HeroUI `Link` with `onPress` and no `href` renders `<span role="link">`:
+ * measured, that announces itself as a link to a screen reader and — the part
+ * with no workaround — answers Enter but **not** Space, which is half of a
+ * button's keyboard contract. `ghost` keeps the quiet look the link had.
+ */
 function ResultToggle({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
   const { t } = useTranslation()
   return (
     <div data-slot="result-toggle" className="border-t border-border/50 px-3 py-1.5">
-      <HLink className="text-xs" onPress={onToggle}>
+      <Button variant="ghost" size="sm" className="rounded-lg px-2 text-xs" onPress={onToggle}>
         {t(expanded ? 'chat.tool.showLess' : 'chat.tool.showFullResult')}
-      </HLink>
+      </Button>
     </div>
   )
 }
@@ -945,9 +941,16 @@ function CollapsibleMarkdown({ content, blockId }: { content: string; blockId: s
         )}
       </div>
       {long && (
-        <HLink className="mt-1 text-xs" onPress={() => setOpen((current) => !current)}>
+        // A button for the same reason `ResultToggle` is one: this opens
+        // content in place rather than going anywhere.
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mt-1 self-start rounded-lg px-2 text-xs"
+          onPress={() => setOpen((current) => !current)}
+        >
           {t(open ? 'chat.tool.showLess' : 'chat.tool.showFullResult')}
-        </HLink>
+        </Button>
       )}
     </div>
   )

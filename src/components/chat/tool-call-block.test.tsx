@@ -215,9 +215,33 @@ describe('large tool results', () => {
     await userEvent.click(trigger)
 
     expect(container.textContent).not.toContain(tail)
-    await userEvent.click(screen.getByRole('link', { name: 'Show full result' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Show full result' }))
     expect(container.textContent).toContain(tail)
-    expect(screen.getByRole('link', { name: 'Show less' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Show less' })).toBeVisible()
+  })
+
+  /// It opens content in place, so it is a button and has to answer a button's
+  /// keys. It was a HeroUI `Link` with `onPress` and no `href`, which renders
+  /// `<span role="link">`: measured, that answers Enter and ignores Space, so a
+  /// keyboard user pressing Space scrolled the page instead of expanding.
+  it('answers both Enter and Space, the way a button must', async () => {
+    const tail = 'COMPLETE-OUTPUT-TAIL'
+    const data = {
+      ...toolCall('run_command', { command: 'long-command' }, 'completed'),
+      result: `start\n${'x'.repeat(2100)}\n${tail}`,
+    }
+    const { container } = render(<ToolCallBlock data={data} />)
+    await userEvent.click(container.querySelector('[data-slot="chat-tool-trigger"]')!)
+
+    const toggle = screen.getByRole('button', { name: 'Show full result' })
+    expect(screen.queryByRole('link', { name: /Show/ })).toBeNull()
+
+    toggle.focus()
+    await userEvent.keyboard(' ')
+    expect(container.textContent).toContain(tail)
+
+    await userEvent.keyboard('{Enter}')
+    expect(container.textContent).not.toContain(tail)
   })
 })
 
