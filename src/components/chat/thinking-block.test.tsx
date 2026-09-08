@@ -11,7 +11,7 @@ vi.mock('@/api', () => ({
   },
 }))
 
-import { ThinkingRow, separateSummaryParts } from './thinking-block'
+import { ThinkingRow, separateSummaryParts, shapeOfThinking } from './thinking-block'
 
 describe('separateSummaryParts', () => {
   it('reopens the seam between two summary parts written without one', () => {
@@ -24,31 +24,52 @@ describe('separateSummaryParts', () => {
   })
 })
 
+describe('shapeOfThinking', () => {
+  it('reads a run of titles as titles and nothing else', () => {
+    expect(shapeOfThinking('**One****Two**\n\n**Three**')).toEqual({ titles: ['One', 'Two', 'Three'], hasProse: false })
+  })
+  it('reads a title over a body as prose', () => {
+    expect(shapeOfThinking('**Filtering**\n\nOnly the auth ones.')).toEqual({ titles: ['Filtering'], hasProse: true })
+  })
+  it('reads a plain thought as prose', () => {
+    expect(shapeOfThinking('let me see')).toEqual({ titles: [], hasProse: true })
+  })
+})
+
 describe('ThinkingRow', () => {
-  it('is a badge that opens the thought inline, rendered as Markdown', () => {
-    render(<ThinkingRow text={'**Filtering endpoint findings**\n\nOnly the auth ones.'} panelKey="m1:0:thinking" />)
+  it('shows a summary that is only titles as a persistent status line', () => {
+    const { container } = render(<ThinkingRow text="**Checking available references**" panelKey="m1:0:thinking" />)
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.getByText('Checking available references')).toBeInTheDocument()
+    expect(container.querySelector('[data-shape="titles"]')).not.toBeNull()
+  })
+
+  it('shimmers the latest title while the thought is still arriving', () => {
+    const { container } = render(<ThinkingRow text="**One****Two**" panelKey="m1:1:thinking" isStreaming />)
+    const shimmer = container.querySelector('.text-shimmer')
+    expect(shimmer?.textContent).toBe('Two')
+    expect(screen.getByText('One').closest('.text-shimmer')).toBeNull()
+  })
+
+  it('folds a thought with a body behind a badge and draws it as small Markdown', () => {
+    render(<ThinkingRow text={'**Filtering endpoint findings**\n\nOnly the auth ones.'} panelKey="m1:2:thinking" />)
     const badge = screen.getByRole('button', { name: /chat\.thinking/ })
     expect(badge).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByText('Filtering endpoint findings')).toBeNull()
 
     fireEvent.click(badge)
     expect(badge).toHaveAttribute('aria-expanded', 'true')
-    // Bold, not a line of asterisks.
     const title = screen.getByText('Filtering endpoint findings')
     expect(title.tagName).toBe('STRONG')
+    const panel = title.closest('[data-slot="markdown-content"]')
+    expect(panel?.className).toContain('text-xs')
+    expect(panel?.className).toContain('text-muted')
     expect(screen.getByText('Only the auth ones.')).toBeInTheDocument()
   })
 
-  it('shows summary-only reasoning as separate titles', () => {
-    render(<ThinkingRow text="**One****Two**" panelKey="m1:1:thinking" />)
-    fireEvent.click(screen.getByRole('button', { name: /chat\.thinking/ }))
-    expect(screen.getByText('One').tagName).toBe('STRONG')
-    expect(screen.getByText('Two').tagName).toBe('STRONG')
-  })
-
-  it('is open while the thought is still arriving', () => {
-    render(<ThinkingRow text="so far" panelKey="m1:2:thinking" isStreaming />)
+  it('is open while a thought with a body is still arriving', () => {
+    render(<ThinkingRow text="so far, and then some more" panelKey="m1:3:thinking" isStreaming />)
     expect(screen.getByRole('button', { name: /chat\.thinking/ })).toHaveAttribute('aria-expanded', 'true')
-    expect(screen.getByText('so far')).toBeInTheDocument()
+    expect(screen.getByText('so far, and then some more')).toBeInTheDocument()
   })
 })
