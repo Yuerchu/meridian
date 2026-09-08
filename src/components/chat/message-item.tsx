@@ -51,6 +51,7 @@ import { useClockTime } from '@/hooks/use-clock-time'
 import { SelectTextModal } from './select-text-modal'
 import { ToolCallBlock } from './tool-call-block'
 import { ThinkingRow } from './thinking-block'
+import { SubAgentGroup, delegationOf } from './sub-agent-group'
 import { renderEmojisInText, StickerImage } from './emoji-renderer'
 import { formatDuration, type Turn } from '@/lib/turns'
 import type { AssistantGroup, BubbleModel, FoldKind, FoldedCalls } from '@/lib/message-groups'
@@ -659,11 +660,22 @@ function BubbleKeys({
   leading?: React.ReactNode
 }) {
   if (bubble.tools.length === 0 && leading == null) return null
+  // The delegations a round made together are one group, drawn first: the
+  // runs are what the round is waiting on, and three keys side by side said
+  // nothing about which of them still was. A call whose arguments are still
+  // streaming is not a delegation yet and stays a key.
+  const runs = bubble.tools.filter((tool) => delegationOf(tool) !== null)
+  const keys = bubble.tools.map((tool, i) => [tool, i] as const).filter(([tool]) => delegationOf(tool) === null)
   return (
     <ChatToolPresentationProvider value="keyboard">
       <BubbleKeyboard>
         {leading}
-        {bubble.tools.map((tool, i) => (
+        {runs.length > 0 && (
+          <ErrorBoundary fallback={renderError}>
+            <SubAgentGroup calls={runs} />
+          </ErrorBoundary>
+        )}
+        {keys.map(([tool, i]) => (
           <ErrorBoundary key={`${tool.call_id}:${i}`} fallback={renderError}>
             <MemoToolCallBlock data={tool} queued={bubble.queued[i]} />
           </ErrorBoundary>

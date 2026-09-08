@@ -224,53 +224,6 @@ describe('tool panels', () => {
     expect(rows[1]).toHaveTextContent('1.2 KB')
   })
 
-  /// The third screenshot: a `<pre>` of the briefing, a ghost button, and
-  /// the report as one unbroken block starting "Sub-agent finished after 33
-  /// steps."
-  it('draws a delegated run with its verdict, its report as prose and the stranded note', async () => {
-    const note =
-      'The user sent 1 message(s) to the sub-agent after it had stopped reading, so it never saw them. They are in its transcript. Read them before acting on the answer above.'
-    const { container } = onKeyboard(
-      <ToolCallBlock
-        data={call(
-          'run_agent',
-          { agent: 'explore', description: 'Audit the cache', prompt: 'Read **everything**.' },
-          'completed',
-          {
-            result: `Sub-agent finished after 3 steps.\n\n## Findings\n\n- nothing\n\n${note}`,
-            sub_agent: { conversation_id: 'sub-1', turn_id: 'run-1', kind: 'explore', steps: 3, status: 'done' },
-          },
-        )}
-      />,
-    )
-    await userEvent.click(screen.getByRole('button', { name: /Explore/ }))
-    const p = panel(container)
-    expect(p.querySelector('[data-slot="sub-agent-status"]')).toHaveAttribute('data-outcome', 'done')
-    expect(p.textContent).not.toContain('Sub-agent finished after')
-    expect(within(p).getByRole('heading', { name: 'Findings' })).toBeVisible()
-    expect(p.querySelector('[data-slot="sub-agent-stranded"]')).toHaveTextContent(note)
-    expect(p.querySelector('[data-slot="sub-agent-task"]')).toHaveTextContent('Read everything.')
-    expect(p.querySelector('pre')).toBeNull()
-    expect(within(p).getByRole('button', { name: /Open its conversation/ })).toBeVisible()
-  })
-
-  it('loads the run’s own conversation for the steps, only once asked', async () => {
-    vi.mocked(api.conversationSnapshot).mockRejectedValue(new Error('offline'))
-    const { container } = onKeyboard(
-      <ToolCallBlock
-        data={call('run_agent', { agent: 'agent', description: 'Fix it', prompt: 'p' }, 'completed', {
-          result: 'Sub-agent finished after 2 steps.\n\nDone.',
-          sub_agent: { conversation_id: 'sub-9', turn_id: 'run-9', kind: 'agent', steps: 2, status: 'done' },
-        })}
-      />,
-    )
-    await userEvent.click(screen.getByRole('button', { name: /Agent/ }))
-    expect(api.conversationSnapshot).not.toHaveBeenCalled()
-    await userEvent.click(screen.getByRole('button', { name: /Steps/ }))
-    expect(api.conversationSnapshot).toHaveBeenCalledWith({ conversationId: 'sub-9' })
-    expect(await within(panel(container)).findByText(/could not be loaded: offline/)).toBeVisible()
-  })
-
   it('puts the decision row in the panel’s footer, wherever it was rendered', () => {
     const { container } = onKeyboard(
       <ChatTool state="requires-action" defaultExpanded>

@@ -1555,6 +1555,31 @@ Prefer HeroUI's answer over ours. Accepting a different radius or spacing is che
   **Line numbers are drawn only where somebody knows them**, and `numberDiffLines` is called with a known start or not at all: `1` for a whole-file write, the hunk headers of a unified patch, and for `edit_file` the line the bounded workspace reader found `old_string` on (`useEditLocation`) — asked only while the call is `pending`/`running`, kept by call id for the card's life, and never for a completed edit after a reload, where the file has since changed and a number read off it would be a guess wearing a gutter. A Codex-style `@@ ctx` header carries no numbers and the diff goes without. The panel header shows the full path only when the key had to shorten it (`compact` on `ToolArgsSummary`, which is for an ordinary key alone); a key waiting on a decision and the approval toast show the whole value, because a decision cannot rest on something the reader did not see.
 
   **Prose with a call after it is finished prose.** The engine writes prose then calls, and a text delta after a call opens a new block (`conversation-store.ts`'s `handleText`), so a text bubble that has calls or badges under it is never written into again: `isStreaming` is false for it, the cursor does not blink in it, and it carries its time. The wait between a tool returning and the model speaking again is a `working` bubble at the end of the run — the typing indicator, with the avatar beside it — rather than a status line under the group; before the first row lands it is a group of its own.
+- **A delegation is a row in a group, and the way in is the run's own
+  conversation.** `sub-agent-group.tsx` gathers the `run_agent` calls a round
+  made together into one group — `BubbleKeys` partitions them out of the keys,
+  and a lone one is a group of one — with a row per run: kind, the description
+  the parent gave it, what it is doing right now, its verdict in a sentence
+  once it has one, and the step count. The header counts the states and draws
+  a tick per run. It used to be a key with a panel three folds deep (task,
+  steps, the whole report), which for three parallel runs said nothing about
+  which was still going and put the report in front of the reader twice.
+
+  **"What it is doing right now" is the store's, not a fetch.** The global
+  listener writes every conversation's stream into `sessions[id]` whether or
+  not anything is showing it — `handleMessageStart` creates the session — so a
+  live run's latest row is already there. Pressing a row opens
+  `sub-agent-sheet.tsx`: the file preview's `Sheet` shell around a real
+  `ChatTranscript` over that session, loaded with the same `loadMessages` the
+  window uses and kept live by the same events. One renderer; the old
+  `SubAgentTimeline` projection is gone. Without a provider (playground, tests)
+  a row falls back to `openConversation`.
+
+  **The question a run raises is asked under the group, not on its row.** A
+  `ListBox.Item` is one focusable and cannot hold the buttons; the row is
+  marked `waiting` and the approval renders below the list, on the parent, for
+  the reason the attention-queue entry above gives — nobody is necessarily
+  watching the sub-agent.
 - **Colors: theme tokens only.** No raw Tailwind palette classes (`green-500`, `amber-500`, ...). Status colours use `--success` / `--warning` / `--info`; `--info` is a project extension with no HeroUI `color` variant behind it, so components that take one need their custom property set instead (`[--progress-circle-stroke:var(--info)]`). Sole whitelisted exception: `text-amber-500` on "default" star markers, for gold-star semantics.
 - **Font sizes: Tailwind scale only** (`text-xs/sm/base/lg`). No px arbitrary sizes (`text-[11px]`), no exceptions.
 - **Radius: ours nests inside theirs, never the reverse.** Our containers keep composer `rounded-2xl` → chat/tool cards `rounded-xl` → settings cards `rounded-lg`. HeroUI's own are much rounder (Button and Popover 24px, Tooltip up to 32px) and are not bound by that ladder. So when a HeroUI component sits inside one of our clipped containers, its radius must not exceed the container's — otherwise its hover fill is cut into at the corners. Overriding `h-*`/`px-*` on a Button without also overriding `rounded-*` is the usual way in.

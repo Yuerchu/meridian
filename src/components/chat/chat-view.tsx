@@ -9,6 +9,7 @@ import { EmptyState as ProEmptyState } from '@heroui-pro/react/empty-state'
 import { api } from '@/api'
 import { ChatTranscript } from './chat-transcript'
 import { CompactedRegion } from './compacted-region'
+import { SubAgentSheetProvider } from './sub-agent-sheet'
 import { TranscriptStatus } from './transcript-status'
 import { useTurns } from '@/hooks/use-turns'
 import { useTranscriptHotkeys } from '@/hooks/use-transcript-hotkeys'
@@ -765,179 +766,183 @@ function ChatViewInner({
   ])
 
   return (
-    // A DropZone rather than a div, so a conversation dragged off the sidebar
-    // can land anywhere on the chat column. It registers with the same drag
-    // manager React Aria's tree hooks use, keyboard drags included; drags that
-    // are not conversations are refused and never highlight it.
-    <DropZone
-      aria-label={t('chat.convRef.dropLabel')}
-      getDropOperation={(types) => (acceptsConversationDrop(types) ? 'copy' : 'cancel')}
-      onDrop={(e) => void handleConversationDrop(e.items)}
-      className="flex flex-col h-full data-[drop-target]:ring-2 data-[drop-target]:ring-accent data-[drop-target]:ring-inset"
-    >
-      <ChatTranscript
-        turns={activeTurns}
-        conversationId={conversationId}
-        streaming={streaming}
-        onDelete={handleDelete}
-        // Regenerate and edit are withheld on a hosted session. Both re-ask
-        // from a point in the history, and a hosted session's history lives in
-        // the adapter's process — `useSendMessage` refuses them for exactly
-        // that reason, so leaving the buttons up offers an action whose only
-        // outcome is an error message. The refusal stays as the backstop; this
-        // is the affordance agreeing with it. Delete is still offered: it does
-        // what it says, removing rows from *this* app's copy.
-        onRegenerate={isHostedAgent ? undefined : handleRegenerate}
-        onEdit={isHostedAgent ? undefined : handleEdit}
-        onRate={handleRate}
-        isOneBot={isOneBot}
-        isHosted={isHostedAgent}
-        emojiMap={emojiMap}
-        senderNames={senderNames}
-        assistantAvatar={settings.selectedAssistant?.avatar}
-        leading={
-          <CompactedRegion
-            turns={compactedTurns}
-            conversationId={conversationId}
-            compactedCount={compactedCount}
-            compactSummary={compactSummary}
-            onDelete={handleDelete}
-            isOneBot={isOneBot}
-            emojiMap={emojiMap}
-            senderNames={senderNames}
-            assistantAvatar={settings.selectedAssistant?.avatar}
-          />
-        }
-        trailing={<TranscriptStatus compacting={compacting} error={error} />}
-        emptyState={
-          messages.length === 0 && !error ? (
-            <ProEmptyState size="md" className="flex-1 justify-center px-4 py-10">
-              <ProEmptyState.Header>
-                <ProEmptyState.Title>{t('chat.empty.subtitle')}</ProEmptyState.Title>
-                <ProEmptyState.Description>{t('chat.startHint')}</ProEmptyState.Description>
-              </ProEmptyState.Header>
-              <ProEmptyState.Content className="w-full max-w-2xl">
-                <StarterPrompts
-                  disabled={streaming || !!shellTurnId || commandPending || reviewBlocked}
-                  onSelect={setInput}
-                />
-              </ProEmptyState.Content>
-            </ProEmptyState>
-          ) : null
-        }
-        scrollToBottomLabel={t('chat.scrollToBottom')}
-      />
+    // The sheet a delegation row opens lives at this level so it can outlast
+    // the row — the group re-renders on every step of a live run.
+    <SubAgentSheetProvider>
+      {/* A DropZone rather than a div, so a conversation dragged off the sidebar
+        can land anywhere on the chat column. It registers with the same drag
+        manager React Aria's tree hooks use, keyboard drags included; drags that
+        are not conversations are refused and never highlight it. */}
+      <DropZone
+        aria-label={t('chat.convRef.dropLabel')}
+        getDropOperation={(types) => (acceptsConversationDrop(types) ? 'copy' : 'cancel')}
+        onDrop={(e) => void handleConversationDrop(e.items)}
+        className="flex flex-col h-full data-[drop-target]:ring-2 data-[drop-target]:ring-accent data-[drop-target]:ring-inset"
+      >
+        <ChatTranscript
+          turns={activeTurns}
+          conversationId={conversationId}
+          streaming={streaming}
+          onDelete={handleDelete}
+          // Regenerate and edit are withheld on a hosted session. Both re-ask
+          // from a point in the history, and a hosted session's history lives in
+          // the adapter's process — `useSendMessage` refuses them for exactly
+          // that reason, so leaving the buttons up offers an action whose only
+          // outcome is an error message. The refusal stays as the backstop; this
+          // is the affordance agreeing with it. Delete is still offered: it does
+          // what it says, removing rows from *this* app's copy.
+          onRegenerate={isHostedAgent ? undefined : handleRegenerate}
+          onEdit={isHostedAgent ? undefined : handleEdit}
+          onRate={handleRate}
+          isOneBot={isOneBot}
+          isHosted={isHostedAgent}
+          emojiMap={emojiMap}
+          senderNames={senderNames}
+          assistantAvatar={settings.selectedAssistant?.avatar}
+          leading={
+            <CompactedRegion
+              turns={compactedTurns}
+              conversationId={conversationId}
+              compactedCount={compactedCount}
+              compactSummary={compactSummary}
+              onDelete={handleDelete}
+              isOneBot={isOneBot}
+              emojiMap={emojiMap}
+              senderNames={senderNames}
+              assistantAvatar={settings.selectedAssistant?.avatar}
+            />
+          }
+          trailing={<TranscriptStatus compacting={compacting} error={error} />}
+          emptyState={
+            messages.length === 0 && !error ? (
+              <ProEmptyState size="md" className="flex-1 justify-center px-4 py-10">
+                <ProEmptyState.Header>
+                  <ProEmptyState.Title>{t('chat.empty.subtitle')}</ProEmptyState.Title>
+                  <ProEmptyState.Description>{t('chat.startHint')}</ProEmptyState.Description>
+                </ProEmptyState.Header>
+                <ProEmptyState.Content className="w-full max-w-2xl">
+                  <StarterPrompts
+                    disabled={streaming || !!shellTurnId || commandPending || reviewBlocked}
+                    onSelect={setInput}
+                  />
+                </ProEmptyState.Content>
+              </ProEmptyState>
+            ) : null
+          }
+          scrollToBottomLabel={t('chat.scrollToBottom')}
+        />
 
-      {/* Folded into the queue card when something is stacked: HeroUI's Queue
+        {/* Folded into the queue card when something is stacked: HeroUI's Queue
           is current-plus-rows, and a TodoBar sitting above it made every
           queued message look nested under the checklist — interject and
           follow-up alike. Alone, the bar keeps its own card. */}
-      {queue.items.length === 0 && <TodoBar conversationId={conversationId} />}
+        {queue.items.length === 0 && <TodoBar conversationId={conversationId} />}
 
-      {/* Pending conversation references, above the composer the way queued
+        {/* Pending conversation references, above the composer the way queued
           rows are: they belong to the next message, not to the one being
           typed. Pressing a chip removes it. */}
-      {conversationRefs.length > 0 && (
-        <div
-          data-slot="conversation-refs-pending"
-          role="group"
-          aria-label={t('chat.convRef.pending')}
-          className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-border px-4 py-2"
-        >
-          {conversationRefs.map((ref) => (
-            <Chip key={ref.id} size="sm" variant="soft" className="pr-0.5">
-              <Comments className="size-3.5" aria-hidden />
-              <span data-slot="conversation-ref-title" className="max-w-48 truncate">
-                {ref.title}
-              </span>
-              <Tooltip delay={0}>
-                <Button
-                  isIconOnly
-                  size="sm"
-                  variant="ghost"
-                  aria-label={t('chat.convRef.remove', { name: ref.title })}
-                  onPress={() => setConversationRefs((prev) => prev.filter((r) => r.id !== ref.id))}
-                  className="touch-hitbox size-5 min-w-0 rounded-full"
-                >
-                  <Xmark className="size-3" />
-                </Button>
-                <Tooltip.Content>{t('chat.convRef.remove', { name: ref.title })}</Tooltip.Content>
-              </Tooltip>
-            </Chip>
-          ))}
-        </div>
-      )}
+        {conversationRefs.length > 0 && (
+          <div
+            data-slot="conversation-refs-pending"
+            role="group"
+            aria-label={t('chat.convRef.pending')}
+            className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-border px-4 py-2"
+          >
+            {conversationRefs.map((ref) => (
+              <Chip key={ref.id} size="sm" variant="soft" className="pr-0.5">
+                <Comments className="size-3.5" aria-hidden />
+                <span data-slot="conversation-ref-title" className="max-w-48 truncate">
+                  {ref.title}
+                </span>
+                <Tooltip delay={0}>
+                  <Button
+                    isIconOnly
+                    size="sm"
+                    variant="ghost"
+                    aria-label={t('chat.convRef.remove', { name: ref.title })}
+                    onPress={() => setConversationRefs((prev) => prev.filter((r) => r.id !== ref.id))}
+                    className="touch-hitbox size-5 min-w-0 rounded-full"
+                  >
+                    <Xmark className="size-3" />
+                  </Button>
+                  <Tooltip.Content>{t('chat.convRef.remove', { name: ref.title })}</Tooltip.Content>
+                </Tooltip>
+              </Chip>
+            ))}
+          </div>
+        )}
 
-      {reviewBlocked && (
-        <div
-          data-slot="review-blocked-notice"
-          className="flex shrink-0 items-center gap-3 border-t border-border bg-accent-soft px-4 py-2 text-xs text-accent"
-        >
-          <p data-slot="review-blocked-message" className="min-w-0 flex-1">
-            {reviewBlockedMessage}
-          </p>
-          {pendingPlanReview && (
-            <Button size="sm" variant="ghost" onPress={() => openPlanReview(pendingPlanReview.review_id)}>
-              {reviewBlockedAction}
-            </Button>
-          )}
-        </div>
-      )}
+        {reviewBlocked && (
+          <div
+            data-slot="review-blocked-notice"
+            className="flex shrink-0 items-center gap-3 border-t border-border bg-accent-soft px-4 py-2 text-xs text-accent"
+          >
+            <p data-slot="review-blocked-message" className="min-w-0 flex-1">
+              {reviewBlockedMessage}
+            </p>
+            {pendingPlanReview && (
+              <Button size="sm" variant="ghost" onPress={() => openPlanReview(pendingPlanReview.review_id)}>
+                {reviewBlockedAction}
+              </Button>
+            )}
+          </div>
+        )}
 
-      <InputBar
-        conversationId={conversationId}
-        isHosted={isHostedAgent}
-        value={input}
-        onChange={setInput}
-        onSubmit={handleSubmit}
-        onVoiceSend={handleVoiceSend}
-        onStop={handleStop}
-        disabled={streaming || !!shellTurnId || commandPending || reviewBlocked}
-        streaming={streaming || !!shellTurnId}
-        steerable={shellTurnId ? false : steerable}
-        queueing={queueing}
-        queueDelivery={queueDelivery}
-        onSelectQueueDelivery={setQueueDelivery}
-        queue={
-          <PromptQueue
-            items={queue.items}
-            currentTodos={queue.items.length > 0 ? activeTodos : null}
-            streaming={streaming}
-            held={queue.held}
-            onRemove={(id) => void queue.remove(id).catch((e) => storeSetError(conversationId, String(e)))}
-            onReorder={(next) => void queue.reorder(next)}
-            onSetDelivery={(id, delivery) => void queue.setDelivery(id, delivery)}
-            onRelease={() => void queue.release()}
-          />
-        }
-        assistants={settings.assistants}
-        providers={settings.providers}
-        currentAssistantId={settings.selectedAssistantId}
-        currentModelId={settings.selectedModelId}
-        currentProviderId={settings.selectedProviderId}
-        onSelectAssistant={settings.onSelectAssistant}
-        onSelectModel={settings.onSelectModel}
-        thinkingLevel={settings.thinkingLevel}
-        onSelectThinkingLevel={settings.onSelectThinkingLevel}
-        fastMode={settings.fastMode}
-        onToggleFast={settings.onToggleFast}
-        mode={settings.mode}
-        onSelectMode={settings.onSelectMode}
-        acceptEdits={settings.acceptEdits}
-        onToggleAcceptEdits={settings.onToggleAcceptEdits}
-        capabilities={settings.capabilities}
-        contextInfo={contextInfo}
-        compacting={compacting}
-        onCompact={() => handleCompact()}
-        attachedFiles={attachedFiles}
-        onAttachFiles={(files) => setAttachedFiles((prev) => [...prev, ...files])}
-        onRemoveFile={(idx) => setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))}
-        pendingSticker={pendingSticker}
-        onSelectSticker={setPendingSticker}
-        onRemoveSticker={() => setPendingSticker(null)}
-      />
-      {confirmDialog}
-    </DropZone>
+        <InputBar
+          conversationId={conversationId}
+          isHosted={isHostedAgent}
+          value={input}
+          onChange={setInput}
+          onSubmit={handleSubmit}
+          onVoiceSend={handleVoiceSend}
+          onStop={handleStop}
+          disabled={streaming || !!shellTurnId || commandPending || reviewBlocked}
+          streaming={streaming || !!shellTurnId}
+          steerable={shellTurnId ? false : steerable}
+          queueing={queueing}
+          queueDelivery={queueDelivery}
+          onSelectQueueDelivery={setQueueDelivery}
+          queue={
+            <PromptQueue
+              items={queue.items}
+              currentTodos={queue.items.length > 0 ? activeTodos : null}
+              streaming={streaming}
+              held={queue.held}
+              onRemove={(id) => void queue.remove(id).catch((e) => storeSetError(conversationId, String(e)))}
+              onReorder={(next) => void queue.reorder(next)}
+              onSetDelivery={(id, delivery) => void queue.setDelivery(id, delivery)}
+              onRelease={() => void queue.release()}
+            />
+          }
+          assistants={settings.assistants}
+          providers={settings.providers}
+          currentAssistantId={settings.selectedAssistantId}
+          currentModelId={settings.selectedModelId}
+          currentProviderId={settings.selectedProviderId}
+          onSelectAssistant={settings.onSelectAssistant}
+          onSelectModel={settings.onSelectModel}
+          thinkingLevel={settings.thinkingLevel}
+          onSelectThinkingLevel={settings.onSelectThinkingLevel}
+          fastMode={settings.fastMode}
+          onToggleFast={settings.onToggleFast}
+          mode={settings.mode}
+          onSelectMode={settings.onSelectMode}
+          acceptEdits={settings.acceptEdits}
+          onToggleAcceptEdits={settings.onToggleAcceptEdits}
+          capabilities={settings.capabilities}
+          contextInfo={contextInfo}
+          compacting={compacting}
+          onCompact={() => handleCompact()}
+          attachedFiles={attachedFiles}
+          onAttachFiles={(files) => setAttachedFiles((prev) => [...prev, ...files])}
+          onRemoveFile={(idx) => setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))}
+          pendingSticker={pendingSticker}
+          onSelectSticker={setPendingSticker}
+          onRemoveSticker={() => setPendingSticker(null)}
+        />
+        {confirmDialog}
+      </DropZone>
+    </SubAgentSheetProvider>
   )
 }
 

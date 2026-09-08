@@ -19,22 +19,18 @@ import {
   parseGlobResult,
   parseReadFileOutput,
   parseSearchMatches,
-  parseSubAgentResult,
   splitListingFootnote,
   splitTruncation,
   type CommandOutput,
-  type SubAgentOutcome,
-  type SubAgentResult,
 } from '@/lib/tool-output'
 import { ShikiCode } from './shiki-code'
 import { NumberedCode } from './numbered-code'
-import { SubAgentTimeline } from './sub-agent-timeline'
+import { SubAgentGroup } from './sub-agent-group'
 import { DiffStats, FileDiffCard, FileIcon } from './file-diff-card'
 import { pathExtension } from '@/lib/paths'
 import { PathLabel } from '@/components/ui/path-label'
 import { Hint } from '@/components/ui/hint'
 import {
-  ArrowUpRightFromSquare,
   ArrowUturnCcwLeft,
   Ban,
   Check,
@@ -53,7 +49,6 @@ import {
   Xmark,
 } from '@gravity-ui/icons'
 import {
-  Alert,
   Button,
   Checkbox,
   CheckboxGroup,
@@ -367,7 +362,7 @@ function QuestionBlock({
   )
 }
 
-function AskUserBlock({
+export function AskUserBlock({
   data,
   onAnswered,
   chromeless = false,
@@ -1132,7 +1127,7 @@ function commandChips(t: TFunction, output: CommandOutput): React.ReactNode[] {
   return chips
 }
 
-function PendingApproval({
+export function PendingApproval({
   approvalId,
   retryReason,
   onAnswered,
@@ -2081,286 +2076,6 @@ export function ToolArgsSummary({
   )
 }
 
-/**
- * A run handed to another agent.
- *
- * Its transcript is a conversation of its own, hidden from the sidebar and
- * reachable only from here, so this card is the whole of what the reader knows
- * about it until they go in: what it was asked to do, how far it has got, and
- * anything it needs permission for.
- *
- * The step count comes from the store keyed by the run's turn, not from the
- * sub-agent's message list — that list also holds whatever the user typed into
- * the run after it finished, and this card is reporting on one delegation.
- */
-function SubAgentBlock({
-  data,
-  description,
-  kind,
-  prompt,
-}: {
-  data: ToolCallDisplay
-  description: string
-  kind: string
-  prompt?: string
-}) {
-  const { t } = useTranslation()
-  const openConversation = useConversationStore((s) => s.openConversation)
-  const resolveNested = useConversationStore((s) => s.resolveNestedApproval)
-  const activeId = useConversationStore((s) => s.activeId)
-  // Live while it runs; the snapshot's count is what survives a reload.
-  const live = useConversationStore((s) => (data.sub_agent ? s.subAgentSteps[data.sub_agent.turn_id] : undefined))
-  const steps = Math.max(live ?? 0, data.sub_agent?.steps ?? 0)
-  const nested = data.nested_approval
-  const readOnly = kind === 'explore'
-  const settled =
-    data.status === 'completed' || data.status === 'denied' || data.status === 'error' || data.status === 'orphaned'
-  const expansion = usePanelExpansion(data.call_id, !settled, nested != null)
-  const [taskOpen, setTaskOpen] = useState(false)
-
-  // The report, with the verdict sentence and the stranded note taken off. The
-  // verdict itself comes from the run's recorded status when there is one —
-  // the sentence is parsed only for rows from before the status was carried.
-  const report = useMemo(
-    () =>
-      data.result === undefined || data.status === 'error'
-        ? null
-        : parseSubAgentResult(splitTruncation(data.result).body),
-    [data.result, data.status],
-  )
-  const outcome = subAgentOutcome(data, report)
-
-  // A question the run raised makes this key the one waiting on a person, and
-  // the key has to say so: `run_agent` itself is merely running, and a spinner
-  // is what a reader scrolls past.
-  return (
-    <ChatTool state={nested ? 'requires-action' : mapChatToolState(data.status)} {...expansion}>
-      <ChatToolTrigger>
-        {readOnly ? (
-          <Compass aria-hidden className="size-3.5 shrink-0 text-muted" />
-        ) : (
-          <ForwardStep aria-hidden className="size-3.5 shrink-0 text-muted" />
-        )}
-        <span data-slot="sub-agent-kind" className="font-medium text-foreground shrink-0">
-          {t(`chat.subAgent.${readOnly ? 'explore' : 'agent'}`)}
-        </span>
-        <span data-slot="sub-agent-description" className="truncate text-muted">
-          {description}
-        </span>
-        {steps > 0 && (
-          <span data-slot="sub-agent-steps" className="ml-auto shrink-0 text-xs text-muted tabular-nums">
-            {t('chat.subAgent.steps', { count: steps })}
-          </span>
-        )}
-      </ChatToolTrigger>
-      <ChatToolContent>
-        <ChatToolPanelHeader
-          title={description}
-          description={t(`chat.subAgent.${readOnly ? 'explore' : 'agent'}`)}
-          end={outcome && <SubAgentStatusChip outcome={outcome} />}
-        />
-        <ChatToolPanelBody>
-          {prompt && (
-            <section data-slot="sub-agent-task" className="px-3 pt-2 pb-1">
-              <div data-slot="sub-agent-task-label" className="mb-1 text-xs font-medium text-muted">
-                {t('chat.tool.panel.task')}
-              </div>
-              {/* Three lines and a fade, unless asked for the whole thing: the
-                  briefing is the model's, often long, and the reader mostly
-                  wants the report under it. */}
-              <div
-                data-slot="sub-agent-task-body"
-                className={cn('relative text-xs', !taskOpen && 'max-h-[4.5rem] overflow-hidden')}
-              >
-                <MarkdownContent content={prompt} blockId={`${data.call_id}:prompt`} />
-                {!taskOpen && (
-                  <div
-                    aria-hidden
-                    data-slot="sub-agent-task-fade"
-                    className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-linear-to-t from-surface to-transparent"
-                  />
-                )}
-              </div>
-              <HLink className="mt-0.5 text-xs" aria-expanded={taskOpen} onPress={() => setTaskOpen((open) => !open)}>
-                {t(taskOpen ? 'chat.tool.panel.collapseTask' : 'chat.tool.panel.expandTask')}
-              </HLink>
-            </section>
-          )}
-
-          {/* The question the run raised. Asked here because this is where
-              somebody is looking — its own conversation may never be opened. */}
-          {nested && (
-            <div data-slot="sub-agent-question" className="space-y-2 border-t border-border/50 px-3 py-2">
-              <div data-slot="sub-agent-question-header" className="flex items-start gap-1.5 px-0.5 text-xs text-muted">
-                <CircleQuestion className="w-3.5 h-3.5 shrink-0" />
-                <span data-slot="sub-agent-question-text">
-                  {t('chat.subAgent.asksFor', { tool: nested.tool_name })}
-                </span>
-              </div>
-              <ChatToolArgs text={nested.arguments} />
-              {nested.tool_name === 'ask_user' || nested.tool_name === 'AskUserQuestion' ? (
-                <AskUserBlock
-                  data={{
-                    call_id: nested.call_id,
-                    tool_name: nested.tool_name,
-                    arguments: nested.arguments,
-                    status: 'pending',
-                    approval_id: nested.approval_id,
-                    retry_reason: nested.retry_reason,
-                  }}
-                  chromeless
-                  onAnswered={() => activeId && resolveNested(activeId, nested.approval_id)}
-                />
-              ) : (
-                <PendingApproval
-                  key={nested.approval_id}
-                  approvalId={nested.approval_id}
-                  retryReason={nested.retry_reason}
-                  onAnswered={() => activeId && resolveNested(activeId, nested.approval_id)}
-                />
-              )}
-            </div>
-          )}
-
-          {data.sub_agent && (
-            <div data-slot="sub-agent-timeline-section" className="border-t border-border/50">
-              <SubAgentTimeline run={data.sub_agent} live={data.status === 'running'} count={steps} />
-            </div>
-          )}
-
-          {report && (
-            <section data-slot="sub-agent-report" className="border-t border-border/50 px-3 py-2">
-              <div data-slot="sub-agent-report-label" className="mb-1 text-xs font-medium text-muted">
-                {t('chat.tool.panel.report')}
-              </div>
-              {report.body !== '' ? (
-                <CollapsibleMarkdown content={report.body} blockId={`${data.call_id}:report`} />
-              ) : (
-                <p data-slot="sub-agent-no-report" className="text-xs text-muted">
-                  {t('chat.tool.panel.noReport')}
-                </p>
-              )}
-              {report.stranded && (
-                <Alert data-slot="sub-agent-stranded" status="warning" className="mt-2">
-                  <Alert.Indicator />
-                  <Alert.Content>
-                    <Alert.Description>{report.stranded}</Alert.Description>
-                  </Alert.Content>
-                </Alert>
-              )}
-            </section>
-          )}
-
-          {data.status === 'error' && data.result && (
-            <div data-slot="sub-agent-error" className="border-t border-border/50">
-              <ToolErrorResult result={data.result} />
-            </div>
-          )}
-        </ChatToolPanelBody>
-
-        {(data.sub_agent || data.status === 'orphaned' || data.status === 'denied') && (
-          <ChatToolPanelFooter>
-            <div data-slot="sub-agent-footer" className="flex min-w-0 items-center justify-between gap-2">
-              <CardOutcome status={data.status} detail={data.status === 'denied' ? data.result : undefined} />
-              {/* TODO: this opens, but half-furnished. `ChatView` and the
-                  header read their conversation out of `s.conversations` (six
-                  reads in `chat-view.tsx`, one in `App.tsx`), and a sub-agent's
-                  is filtered out of that list — it is the sidebar's data
-                  source and these are hidden on purpose. So `assistant_id`,
-                  `mode`, `accept_edits`, `thinking_level` and `fast_mode` all
-                  come back null and the header shows the app name. The
-                  snapshot already carries the whole conversation;
-                  `loadMessages` drops it. Fix is a `conversationDetails` cache
-                  with a `conversationById` selector those seven reads fall
-                  back through — deferred with the rest of the navigation work
-                  until the HeroUI Pro change lands, since that is the layer it
-                  sits in.
-
-                  The second half of the same deferral: this keeps its own
-                  stack in `conversation-store` while `stores/nav-store.ts`
-                  owns the real one. Two truths for one back gesture; only the
-                  system back key on mobile can tell, which is why it can
-                  wait. */}
-              {data.sub_agent && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="ml-auto text-xs"
-                  onPress={() => openConversation(data.sub_agent!.conversation_id)}
-                >
-                  {t('chat.tool.panel.openConversation')}
-                  <ArrowUpRightFromSquare className="size-3" />
-                </Button>
-              )}
-            </div>
-          </ChatToolPanelFooter>
-        )}
-      </ChatToolContent>
-    </ChatTool>
-  )
-}
-
-type SubAgentVerdict = SubAgentOutcome | 'running' | 'interrupted'
-
-/** The run's verdict: the backend's recorded status first, the sentence at the
- *  head of the result for rows from before that status was carried. */
-function subAgentOutcome(data: ToolCallDisplay, report: SubAgentResult | null): SubAgentVerdict | null {
-  if (data.status === 'running' || data.status === 'approved') return 'running'
-  if (data.status === 'error') return 'failed'
-  switch (data.sub_agent?.status) {
-    case 'running':
-    case 'waiting_review':
-      return 'running'
-    case 'done':
-      return 'done'
-    case 'cancelled':
-      return 'cancelled'
-    case 'failed':
-      return 'failed'
-    case 'interrupted':
-      return 'interrupted'
-    default:
-      return report?.outcome ?? null
-  }
-}
-
-function SubAgentStatusChip({ outcome }: { outcome: SubAgentVerdict }) {
-  const { t } = useTranslation()
-  const label = t(`chat.tool.panel.status.${outcome}`)
-  const icon =
-    outcome === 'running' ? (
-      <Spinner size="sm" color="current" />
-    ) : outcome === 'done' ? (
-      <CircleCheck className="size-3" />
-    ) : outcome === 'failed' ? (
-      <TriangleExclamation className="size-3" />
-    ) : (
-      <Ban className="size-3" />
-    )
-  return (
-    // The attributes ride a span of our own: HeroUI's Chip keeps what it is
-    // handed to itself.
-    <span data-slot="sub-agent-status" data-outcome={outcome} className="contents">
-      <Chip
-        size="sm"
-        variant="soft"
-        color={
-          outcome === 'done'
-            ? 'success'
-            : outcome === 'failed'
-              ? 'danger'
-              : outcome === 'running'
-                ? 'default'
-                : 'warning'
-        }
-      >
-        {icon}
-        {label}
-      </Chip>
-    </span>
-  )
-}
-
 function mapChatToolState(status: ToolCallDisplay['status']): ChatToolState {
   switch (status) {
     case 'pending':
@@ -2677,21 +2392,12 @@ export function ToolCallBlock({
     }
   }
 
-  // Mid-stream the description is not there yet, so the delegation renders as a
-  // plain tool card until the model has finished writing the call.
-  if (data.tool_name === 'run_agent') {
-    const description = typeof parsedArgs.description === 'string' ? parsedArgs.description.trim() : ''
-    const kind = typeof parsedArgs.agent === 'string' ? parsedArgs.agent : ''
-    if (description) {
-      return (
-        <SubAgentBlock
-          data={data}
-          description={description}
-          kind={kind}
-          prompt={typeof parsedArgs.prompt === 'string' ? parsedArgs.prompt.trim() : undefined}
-        />
-      )
-    }
+  // A delegation on its own is a group of one; `BubbleKeys` gathers the ones
+  // made together into one group before they reach here. Mid-stream the
+  // description is not there yet, so the call renders as a plain tool card
+  // until the model has finished writing it.
+  if (data.tool_name === 'run_agent' && typeof parsedArgs.description === 'string' && parsedArgs.description.trim()) {
+    return <SubAgentGroup calls={[data]} />
   }
 
   // Mid-stream the arguments are partial JSON and this parse fails, so the
