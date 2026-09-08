@@ -50,7 +50,7 @@ import { isCoarsePointer, isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { useClockTime } from '@/hooks/use-clock-time'
 import { SelectTextModal } from './select-text-modal'
 import { ToolCallBlock } from './tool-call-block'
-import { ThinkingBlock } from './thinking-block'
+import { ThinkingRow } from './thinking-block'
 import { renderEmojisInText, StickerImage } from './emoji-renderer'
 import { formatDuration, type Turn } from '@/lib/turns'
 import type { AssistantGroup, BubbleModel, FoldKind, FoldedCalls } from '@/lib/message-groups'
@@ -324,7 +324,7 @@ export const UserMessage = React.memo(function UserMessage({
           <MessageGroupFooter className="gap-1">
             <CopyButton text={copyText} />
             {onDelete && (
-              <ActionButton label={t('chat.delete')} onClick={requestDelete} variant="danger-soft">
+              <ActionButton label={t('chat.delete')} onClick={requestDelete} className="text-muted hover:text-danger">
                 <TrashBin className="size-3.5" />
               </ActionButton>
             )}
@@ -440,7 +440,11 @@ export const UserMessage = React.memo(function UserMessage({
                 )}
                 <CopyButton text={copyText} />
                 {onDelete && (
-                  <ActionButton label={t('chat.delete')} onClick={requestDelete} variant="danger-soft">
+                  <ActionButton
+                    label={t('chat.delete')}
+                    onClick={requestDelete}
+                    className="text-muted hover:text-danger"
+                  >
                     <TrashBin className="w-3.5 h-3.5" />
                   </ActionButton>
                 )}
@@ -640,9 +644,10 @@ function FoldRow({
   )
 }
 
-/** The keyboard under a bubble: its reasoning first, then its calls, in the
- *  order the model made them. Every key is a disclosure whose panel lands in
- *  the keyboard's stack — see `bubble-keyboard.tsx`. */
+/** The keyboard under a bubble: its calls, in the order the model made them.
+ *  Every key is a disclosure whose panel lands in the keyboard's stack — see
+ *  `bubble-keyboard.tsx`. The reasoning is not a key; it is `ThinkingRow`, at
+ *  the head of the bubble. */
 function BubbleKeys({
   bubble,
   renderError,
@@ -653,21 +658,11 @@ function BubbleKeys({
   /** Drawn at the head of the row, before the keys. */
   leading?: React.ReactNode
 }) {
-  if (bubble.thinking.length === 0 && bubble.tools.length === 0 && leading == null) return null
-  // Reasoning with nothing after it yet is the thought still being written,
-  // and the only sign of life on screen until the answer starts.
-  const thinkingLive = bubble.isStreaming && bubble.kind === 'keyboard-only' && bubble.tools.length === 0
+  if (bubble.tools.length === 0 && leading == null) return null
   return (
     <ChatToolPresentationProvider value="keyboard">
       <BubbleKeyboard>
         {leading}
-        {bubble.thinking.length > 0 && (
-          <ThinkingBlock
-            text={bubble.thinking.join('\n\n')}
-            panelKey={`${bubble.key}:thinking`}
-            isStreaming={thinkingLive}
-          />
-        )}
         {bubble.tools.map((tool, i) => (
           <ErrorBoundary key={`${tool.call_id}:${i}`} fallback={renderError}>
             <MemoToolCallBlock data={tool} queued={bubble.queued[i]} />
@@ -737,6 +732,24 @@ function AssistantBubble({
     // No prose to put a footer under, so the badges go at the head of the
     // row, in front of the keys the reader is being shown.
     const badges = folded.length > 0 ? <FoldBadges folded={folded} isOpen={isOpen} toggle={toggle} /> : null
+    const keys = <BubbleKeys bubble={bubble} renderError={renderError} leading={badges} />
+    if (bubble.thinking.length > 0) {
+      // A row that thought and then called, or thought and stopped: the
+      // thinking gets a bubble of its own to sit at the head of, and the keys
+      // hang under it as they would under prose. While nothing has followed
+      // the thought yet it is still being written, and the only sign of life
+      // on screen until the answer starts.
+      const live = bubble.isStreaming && bubble.tools.length === 0
+      return (
+        <Bubble variant="assistant" position={bubble.position} className="w-full">
+          <BubbleContent className="w-full">
+            <ThinkingRow text={bubble.thinking.join('\n\n')} panelKey={`${bubble.key}:thinking`} isStreaming={live} />
+          </BubbleContent>
+          {panels}
+          {keys}
+        </Bubble>
+      )
+    }
     return (
       <div
         data-slot="bubble"
@@ -745,7 +758,7 @@ function AssistantBubble({
         className="flex w-full max-w-[85%] flex-col gap-1"
       >
         {panels}
-        <BubbleKeys bubble={bubble} renderError={renderError} leading={badges} />
+        {keys}
       </div>
     )
   }
@@ -758,6 +771,10 @@ function AssistantBubble({
     <Bubble variant="assistant" position={bubble.position} className={cn((hasKeys || hasFolds) && 'w-full')}>
       <BubbleContent className={cn((hasKeys || hasFolds) && 'w-full')}>
         {header && <MessageGroupHeader>{header}</MessageGroupHeader>}
+        {bubble.thinking.length > 0 && (
+          // Finished by definition: there is prose under it.
+          <ThinkingRow text={bubble.thinking.join('\n\n')} panelKey={`${bubble.key}:thinking`} />
+        )}
         <MarkdownContent
           content={bubble.text}
           isStreaming={bubble.isStreaming}
@@ -956,8 +973,7 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
                   label={t('chat.thumbsDown')}
                   aria-pressed={rating === -1}
                   onClick={() => rate(-1)}
-                  variant={rating === -1 ? 'danger-soft' : 'ghost'}
-                  className={rating === -1 ? undefined : 'text-muted hover:text-foreground'}
+                  className={cn(rating === -1 ? 'text-danger-soft-foreground' : 'text-muted hover:text-foreground')}
                 >
                   <ThumbsDown className="w-3.5 h-3.5" />
                 </ActionButton>
@@ -973,7 +989,7 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
               </ActionButton>
             )}
             {onDelete && (
-              <ActionButton label={t('chat.delete')} onClick={requestDelete} variant="danger-soft">
+              <ActionButton label={t('chat.delete')} onClick={requestDelete} className="text-muted hover:text-danger">
                 <TrashBin className="w-3.5 h-3.5" />
               </ActionButton>
             )}

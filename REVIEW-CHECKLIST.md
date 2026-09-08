@@ -32,6 +32,9 @@ profile, in the order they were most often broken in the 2026-09 audit.
   corners.
 - **major** A destructive action drawn as the primary CTA beside a non-destructive
   primary, or a footer with no escape action (Cancel / Skip) beside its primary.
+- A labelled destructive button is `danger-soft`; an icon-only one in a row of
+  ghost icons (message actions, list rows) stays `ghost` and turns danger on
+  hover. A red pill among grey icons is louder than the action it stands for.
 - **major** `--accent` used as a hover wash or a highlight (it is the action
   colour; the hover wash is `--default`); `warning` used for anything that is not
   a genuine caution; `danger` for a hint that is not an error.

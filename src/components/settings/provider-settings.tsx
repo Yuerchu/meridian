@@ -444,9 +444,9 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
             <Tooltip>
               <Button
                 size="sm"
-                variant="danger-soft"
+                variant="ghost"
                 aria-label={t('settings.model.removeTier')}
-                className="h-7 pointer-coarse:h-10 rounded-md px-2"
+                className="h-7 pointer-coarse:h-10 rounded-md px-2 text-muted hover:text-danger"
                 onPress={() => onChange(tiers.filter((_, i) => i !== index))}
               >
                 <TrashBin className="size-3.5" />

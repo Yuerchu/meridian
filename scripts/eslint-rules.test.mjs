@@ -150,6 +150,10 @@ describe('ui selector restrictions', () => {
     ['rounded-lg', `<span className="rounded-lg rounded-t-none" />`],
     ['shadow tokens', `<div className="shadow-surface shadow-overlay shadow-none" />`],
     ['danger-soft variant', `<Button variant="danger-soft" />`],
+    // Danger on hover only, for an icon in a row of ghost icons; and the soft
+    // foreground, which is a different class.
+    ['hover danger on a ghost icon', `<Button isIconOnly variant="ghost" className="text-muted hover:text-danger" />`],
+    ['soft foreground', `<Button className={cn(selected ? 'text-danger-soft-foreground' : 'text-muted')} />`],
     ['state attr on root', `<Checkbox className="data-[selected=true]:bg-default" />`],
     ['onPress', `<Button onPress={go} />`],
     ['Spinner size prop', `<Spinner size="sm" className="shrink-0" />`],

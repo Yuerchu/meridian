@@ -65,8 +65,9 @@ const styleRestrictions = [
   ),
   {
     selector:
-      "JSXOpeningElement[name.name=/Button$/] > JSXAttribute[name.name='className'] Literal[value=/\\btext-danger\\b/]",
-    message: 'A destructive Button is variant="danger-soft", not ghost/outline painted text-danger by hand.',
+      "JSXOpeningElement[name.name=/Button$/] > JSXAttribute[name.name='className'] Literal[value=/(?:^|\\s)text-danger(?:\\s|$)/]",
+    message:
+      'A labelled destructive Button is variant="danger-soft", not ghost/outline painted text-danger by hand. An icon-only one in a row of ghost icons stays ghost and turns danger on hover (hover:text-danger) — a red pill among grey icons is louder than the action.',
   },
   {
     selector:

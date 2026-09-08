@@ -183,9 +183,9 @@ function SkillEditor({
           <Tooltip delay={0}>
             <Button
               isIconOnly
-              variant="danger-soft"
+              variant="ghost"
               aria-label={t('settings.skills.delete')}
-              className="ml-auto"
+              className="ml-auto text-muted hover:text-danger"
               onPress={onDelete}
             >
               <TrashBin className="w-3.5 h-3.5" />

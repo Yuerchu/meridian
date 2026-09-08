@@ -183,7 +183,8 @@ function RowActions({
           <Button
             isIconOnly
             size="sm"
-            variant="danger-soft"
+            variant="ghost"
+            className="text-muted hover:text-danger"
             aria-label={t('settings.emoji.deleteEmoji')}
             onPress={() => onDelete(emoji.id)}
           >
