@@ -67,7 +67,7 @@ export type BubbleModel =
   | {
       /** Reasoning or tool calls that no prose introduced: a row that opened
        *  straight on a call. Drawn as a keyboard with no bubble behind it. */
-      kind: 'keyboard-only'
+      kind: 'tools-only'
       key: string
       messageId: string
       thinking: string[]
@@ -133,7 +133,7 @@ export interface BuildGroupsOptions {
 
 /** Chat text is paragraphs; a run of text blocks reads as one bubble until a
  *  call or a reasoning block interrupts it. */
-type OpenBubble = Extract<BubbleModel, { kind: 'text' | 'keyboard-only' }>
+type OpenBubble = Extract<BubbleModel, { kind: 'text' | 'tools-only' }>
 
 /**
  * Which calls fold, by tool name. The capitalised names are Claude Code's,
@@ -265,7 +265,7 @@ export function buildAssistantGroups(turn: Turn, options: BuildGroupsOptions = {
       if (block.type === 'tool_call') {
         if (!open) {
           open = {
-            kind: 'keyboard-only',
+            kind: 'tools-only',
             key: keyFor(),
             messageId: m.id,
             thinking: pendingThinking,
@@ -302,7 +302,7 @@ export function buildAssistantGroups(turn: Turn, options: BuildGroupsOptions = {
     // thought and then stopped. Either way it needs a keyboard to live on.
     if (pendingThinking.length > 0) {
       g.bubbles.push({
-        kind: 'keyboard-only',
+        kind: 'tools-only',
         key: keyFor(),
         messageId: m.id,
         thinking: pendingThinking,
@@ -326,7 +326,7 @@ export function buildAssistantGroups(turn: Turn, options: BuildGroupsOptions = {
     // cursor has no business blinking in a sentence that ended a minute ago.
     // A keyboard with nothing on it yet is the thought still being written.
     if (last && last.kind === 'text' && last.tools.length === 0 && last.folded.length === 0) last.isStreaming = true
-    if (last && last.kind === 'keyboard-only') last.isStreaming = true
+    if (last && last.kind === 'tools-only') last.isStreaming = true
   }
 
   if (awaitingModel(turn)) {
@@ -362,13 +362,15 @@ function workingGroup(turn: Turn, modelId: string | null): AssistantGroup {
  * before it when that bubble can take badges *and* has no keys of its own:
  * badges sit under the prose and keys sit under the badges, so folding a row's
  * reads into a bubble that already has a key would draw them above a call
- * they were made after. Otherwise it stands as a summary bubble, which is a
- * bubble in the run for the corners' sake and a badge line for the reader's.
+ * they were made after. A bubble that is only reasoning takes them too — the
+ * thought at its head, the reads it led to at its foot. Otherwise it stands as
+ * a summary bubble, which is a bubble in the run for the corners' sake and a
+ * badge line for the reader's.
  */
 function foldBubbles(bubbles: BubbleModel[]): BubbleModel[] {
   const out: BubbleModel[] = []
   for (const b of bubbles) {
-    if (b.kind !== 'text' && b.kind !== 'keyboard-only') {
+    if (b.kind !== 'text' && b.kind !== 'tools-only') {
       out.push(b)
       continue
     }
@@ -393,13 +395,16 @@ function foldBubbles(bubbles: BubbleModel[]): BubbleModel[] {
       return tools ? [{ kind, key: `fold:${kind}:${tools[0].call_id}`, tools, count: countOf(kind, tools) }] : []
     })
 
-    const bare = b.kind === 'keyboard-only' && b.tools.length === 0 && b.thinking.length === 0 && b.folded.length > 0
+    const bare = b.kind === 'tools-only' && b.tools.length === 0 && b.thinking.length === 0 && b.folded.length > 0
     if (!bare) {
       out.push(b)
       continue
     }
     const prev = out[out.length - 1]
-    if (prev && ((prev.kind === 'text' && prev.tools.length === 0) || prev.kind === 'summary')) {
+    const takesBadges =
+      prev &&
+      (prev.kind === 'summary' || ((prev.kind === 'text' || prev.kind === 'tools-only') && prev.tools.length === 0))
+    if (prev && takesBadges) {
       prev.folded = mergeFolded(prev.folded, b.folded)
       continue
     }

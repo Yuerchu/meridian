@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { Button, Tooltip } from '@heroui/react'
+import { Button, ListBox, ToggleButton, ToggleButtonGroup, Tooltip } from '@heroui/react'
 
 import { CASES } from './responsive-cases'
 import { runDetectors, type Finding, type Severity } from './responsive-detectors'
@@ -98,9 +98,18 @@ export function ResponsiveFrame() {
   }
 
   const active = CASES.find((c) => c.id === params.caseId)
-  if (!active) return <div className="p-4 text-sm text-danger">No such case: {params.caseId}</div>
+  if (!active)
+    return (
+      <div data-slot="responsive-frame-missing" className="p-4 text-sm text-danger">
+        No such case: {params.caseId}
+      </div>
+    )
   return (
-    <div data-responsive-probe="content" className="h-svh overflow-y-auto bg-background text-foreground">
+    <div
+      data-slot="responsive-frame-content"
+      data-responsive-probe="content"
+      className="h-svh overflow-y-auto bg-background text-foreground"
+    >
       {active.render()}
     </div>
   )
@@ -175,99 +184,110 @@ export default function ResponsiveLab() {
   const active = CASES.find((c) => c.id === caseId)
 
   return (
-    <div className="flex h-svh flex-col bg-background text-foreground">
-      <header className="shrink-0 border-b border-border px-4 py-2">
-        <h1 className="text-sm font-medium">Responsive harness</h1>
-        <p className="mt-1 text-xs text-muted">
-          Overflow, escapes and short viewports are measured. Touch targets are <em>computed</em> — coarse-pointer CSS
-          does not apply in a desktop browser, so green is not a promise about a phone. The keyboard row checks the
-          mechanism, not Android&rsquo;s numbers. 360 and 400 are unreachable here (<code>minWidth: 640</code>) and only
-          mean something on a device.
+    <div data-slot="responsive-lab" className="flex h-svh flex-col bg-background text-foreground">
+      <header data-slot="responsive-lab-header" className="shrink-0 border-b border-border px-4 py-2">
+        <h1 data-slot="responsive-lab-title" className="text-sm font-medium">
+          Responsive harness
+        </h1>
+        <p data-slot="responsive-lab-intro" className="mt-1 text-xs text-muted">
+          Overflow, escapes and short viewports are measured. Touch targets are{' '}
+          <em data-slot="responsive-lab-intro-emphasis">computed</em> — coarse-pointer CSS does not apply in a desktop
+          browser, so green is not a promise about a phone. The keyboard row checks the mechanism, not Android&rsquo;s
+          numbers. 360 and 400 are unreachable here (<code data-slot="responsive-lab-intro-code">minWidth: 640</code>)
+          and only mean something on a device.
         </p>
       </header>
 
-      <div className="flex min-h-0 flex-1">
-        <aside className="w-72 shrink-0 space-y-4 overflow-y-auto border-r border-border p-3 text-xs">
+      <div data-slot="responsive-lab-body" className="flex min-h-0 flex-1">
+        <aside
+          data-slot="responsive-lab-controls"
+          className="w-72 shrink-0 space-y-4 overflow-y-auto border-r border-border p-3 text-xs"
+        >
           <Field label="Case">
-            <div className="space-y-1">
+            <ListBox
+              aria-label="Case"
+              selectionMode="single"
+              disallowEmptySelection
+              selectedKeys={new Set([caseId])}
+              onSelectionChange={(keys) => {
+                if (keys === 'all') return
+                const id = keys.values().next().value
+                if (typeof id === 'string') setCaseId(id)
+              }}
+            >
               {CASES.map((c) => (
-                <Button
-                  key={c.id}
-                  variant={c.id === caseId ? 'secondary' : 'ghost'}
-                  onClick={() => setCaseId(c.id)}
-                  className="h-auto w-full justify-start rounded-md px-2 py-1 text-xs font-normal"
-                >
+                <ListBox.Item key={c.id} id={c.id} textValue={c.label} className="min-h-7 rounded-lg px-2 py-1 text-xs">
                   {c.label}
-                </Button>
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
               ))}
-            </div>
-            {active && <p className="mt-1 text-muted">{active.watchFor}</p>}
+            </ListBox>
+            {active && (
+              <p data-slot="responsive-lab-watch-for" className="mt-1 text-muted">
+                {active.watchFor}
+              </p>
+            )}
           </Field>
 
           <Field label="Width">
-            <div className="flex flex-wrap gap-1">
-              {WIDTHS.map((w) => (
-                <Chip key={w.px} active={w.px === width} onClick={() => setWidth(w.px)} hint={w.note}>
-                  {w.px}
-                </Chip>
-              ))}
-            </div>
+            <Choices
+              label="Width"
+              value={width}
+              onChange={setWidth}
+              options={WIDTHS.map((w) => ({ value: w.px, hint: w.note }))}
+            />
           </Field>
 
           <Field label="Height">
-            <div className="flex flex-wrap gap-1">
-              {HEIGHTS.map((h) => (
-                <Chip key={h} active={h === height} onClick={() => setHeight(h)}>
-                  {h}
-                </Chip>
-              ))}
-            </div>
+            <Choices label="Height" value={height} onChange={setHeight} options={HEIGHTS.map((h) => ({ value: h }))} />
           </Field>
 
           <Field label="Pointer">
-            <div className="flex gap-1">
-              <Chip active={coarse === 'off'} onClick={() => setCoarse('off')}>
-                fine
-              </Chip>
-              <Chip active={coarse === 'js'} onClick={() => setCoarse('js')}>
-                coarse (JS only)
-              </Chip>
-            </div>
-            <p className="mt-1 text-muted">
-              Moves <code>isCoarsePointer()</code>. CSS <code>@media (pointer: coarse)</code> is untouched — that is why
-              hit areas are computed rather than measured.
+            <Choices
+              label="Pointer"
+              value={coarse}
+              onChange={setCoarse}
+              options={[
+                { value: 'off', label: 'fine' },
+                { value: 'js', label: 'coarse (JS only)' },
+              ]}
+            />
+            <p data-slot="responsive-lab-pointer-note" className="mt-1 text-muted">
+              Moves <code data-slot="responsive-lab-pointer-note-code">isCoarsePointer()</code>. CSS{' '}
+              <code data-slot="responsive-lab-pointer-note-code">@media (pointer: coarse)</code> is untouched — that is
+              why hit areas are computed rather than measured.
             </p>
           </Field>
 
           <Field label="Keyboard inset">
-            <div className="flex gap-1">
-              {[0, 240, 320].map((v) => (
-                <Chip key={v} active={v === ime} onClick={() => setIme(v)}>
-                  {v}
-                </Chip>
-              ))}
-            </div>
+            <Choices
+              label="Keyboard inset"
+              value={ime}
+              onChange={setIme}
+              options={[0, 240, 320].map((v) => ({ value: v }))}
+            />
           </Field>
 
-          <div className="flex gap-2">
-            <Button size="sm" onClick={measure}>
+          <div data-slot="responsive-lab-actions" className="flex gap-2">
+            <Button size="sm" onPress={measure}>
               Measure
             </Button>
-            <Button size="sm" variant="outline" onClick={sweep}>
+            <Button size="sm" variant="outline" onPress={sweep}>
               Sweep widths
             </Button>
           </div>
 
           {reading && (
-            <p className="text-muted">
+            <p data-slot="responsive-lab-reading" className="text-muted">
               innerWidth {reading.inner} · clientWidth {reading.client}
               {reading.inner !== reading.client && ` (${reading.inner - reading.client}px of scrollbar)`}
             </p>
           )}
         </aside>
 
-        <main className="min-w-0 flex-1 overflow-auto bg-surface-secondary p-4">
+        <main data-slot="responsive-lab-stage" className="min-w-0 flex-1 overflow-auto bg-surface-secondary p-4">
           <iframe
+            data-slot="responsive-frame"
             ref={frameRef}
             key={src}
             src={src}
@@ -277,11 +297,16 @@ export default function ResponsiveLab() {
           />
 
           {sorted && (
-            <div className="mt-4 space-y-1 text-xs">
-              <p className="font-medium">{sorted.length === 0 ? 'Nothing found.' : `${sorted.length} finding(s)`}</p>
+            <div data-slot="responsive-lab-findings" className="mt-4 space-y-1 text-xs">
+              <p data-slot="responsive-lab-findings-summary" className="font-medium">
+                {sorted.length === 0 ? 'Nothing found.' : `${sorted.length} finding(s)`}
+              </p>
               {sorted.map((f, i) => (
-                <p key={i} className={SEVERITY_CLASS[f.severity]}>
-                  <span className="font-mono">{f.severity}</span> · {f.detector} · {f.path} — {f.detail}
+                <p key={i} data-slot="responsive-lab-finding" className={SEVERITY_CLASS[f.severity]}>
+                  <span data-slot="responsive-lab-finding-severity" className="font-mono">
+                    {f.severity}
+                  </span>{' '}
+                  · {f.detector} · {f.path} — {f.detail}
                 </p>
               ))}
             </div>
@@ -294,39 +319,62 @@ export default function ResponsiveLab() {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
-      <p className="mb-1 font-medium">{label}</p>
+    <div data-slot="responsive-lab-field">
+      <p data-slot="responsive-lab-field-label" className="mb-1 font-medium">
+        {label}
+      </p>
       {children}
     </div>
   )
 }
 
-function Chip({
-  active,
-  onClick,
-  hint,
-  children,
+/**
+ * One value out of a few, drawn as a single-select toggle group. `hint` is what
+ * the value means — a tooltip, not a `title`, see the eslint rule.
+ */
+function Choices<T extends string | number>({
+  label,
+  options,
+  value,
+  onChange,
 }: {
-  active: boolean
-  onClick: () => void
-  /** What the width means. A tooltip, not a `title` — see the eslint rule. */
-  hint?: string
-  children: React.ReactNode
+  label: string
+  options: Array<{ value: T; label?: React.ReactNode; hint?: string }>
+  value: T
+  onChange: (value: T) => void
 }) {
-  const button = (
-    <Button
-      variant={active ? 'primary' : 'ghost'}
-      onClick={onClick}
-      className="h-auto rounded-md px-2 py-1 text-xs font-normal tabular-nums"
-    >
-      {children}
-    </Button>
-  )
-  if (!hint) return button
   return (
-    <Tooltip delay={0}>
-      {button}
-      <Tooltip.Content placement="bottom">{hint}</Tooltip.Content>
-    </Tooltip>
+    <ToggleButtonGroup
+      aria-label={label}
+      size="sm"
+      isDetached
+      selectionMode="single"
+      disallowEmptySelection
+      selectedKeys={new Set([String(value)])}
+      onSelectionChange={(keys) => {
+        const next = options.find((o) => keys.has(String(o.value)))
+        if (next) onChange(next.value)
+      }}
+      className="flex-wrap gap-1"
+    >
+      {options.map((o) => {
+        const key = String(o.value)
+        if (!o.hint) {
+          return (
+            <ToggleButton key={key} id={key} className="text-xs font-normal tabular-nums">
+              {o.label ?? o.value}
+            </ToggleButton>
+          )
+        }
+        return (
+          <Tooltip key={key} delay={0}>
+            <ToggleButton id={key} className="text-xs font-normal tabular-nums">
+              {o.label ?? o.value}
+            </ToggleButton>
+            <Tooltip.Content placement="bottom">{o.hint}</Tooltip.Content>
+          </Tooltip>
+        )
+      })}
+    </ToggleButtonGroup>
   )
 }

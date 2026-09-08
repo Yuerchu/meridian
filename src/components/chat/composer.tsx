@@ -147,7 +147,7 @@ export function Composer({
   const sendIsStop = !!streaming && !!onStop && !(steerable && value.trim() !== '')
 
   return (
-    <div ref={shellRef} className={cn('relative w-full', className)} data-input-mode={inputMode}>
+    <div ref={shellRef} data-slot="composer" className={cn('relative w-full', className)} data-input-mode={inputMode}>
       {notice}
       {suggestions}
       <PromptInput
@@ -172,8 +172,14 @@ export function Composer({
           <PromptInput.Content>
             {attachments && <PromptInput.Attachments>{attachments}</PromptInput.Attachments>}
             {inputMode === 'shell' && (
-              <div className="flex items-center gap-1.5 px-3 pt-2 text-xs font-medium text-muted" aria-hidden>
-                <span className="font-mono text-accent">!</span>
+              <div
+                data-slot="composer-shell-badge"
+                className="flex items-center gap-1.5 px-3 pt-2 text-xs font-medium text-muted"
+                aria-hidden
+              >
+                <span data-slot="composer-shell-prefix" className="font-mono text-accent">
+                  !
+                </span>
                 Shell
               </div>
             )}

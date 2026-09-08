@@ -1,8 +1,8 @@
-import { useEffect, useId, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Comment, TrashBin } from '@gravity-ui/icons'
-import { Button, Chip, TextArea, Tooltip } from '@heroui/react'
+import { Button, Chip, Label, Link, TextArea, TextField, Tooltip } from '@heroui/react'
 
 import type { PlanCommentInfoResponse } from '@/types'
 
@@ -36,7 +36,6 @@ export function PlanCommentsPane({
   onGlobalNoteChange,
 }: PlanCommentsPaneProps) {
   const { t } = useTranslation()
-  const globalNoteId = useId()
   const visible = comments.filter((comment) => comment.state !== 'deleted')
   const boxes = useRef(new Map<string, HTMLTextAreaElement>())
 
@@ -49,10 +48,13 @@ export function PlanCommentsPane({
   }, [focusRequest])
 
   return (
-    <section aria-labelledby={headingId} className="flex h-full min-h-0 flex-col">
-      <header className="flex min-h-12 shrink-0 items-center gap-2 border-b border-border px-4">
+    <section data-slot="plan-comments" aria-labelledby={headingId} className="flex h-full min-h-0 flex-col">
+      <header
+        data-slot="plan-comments-header"
+        className="flex min-h-12 shrink-0 items-center gap-2 border-b border-border px-4"
+      >
         <Comment className="size-4 text-muted" />
-        <h2 id={headingId} className="text-sm font-medium">
+        <h2 data-slot="plan-comments-title" id={headingId} className="text-sm font-medium">
           {t('planReview.comments.title')}
         </h2>
         <Chip size="sm" variant="secondary" className="ms-auto tabular-nums">
@@ -60,29 +62,30 @@ export function PlanCommentsPane({
         </Chip>
       </header>
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+      <div data-slot="plan-comments-list" className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
         {visible.length === 0 && (
-          <p className="px-2 py-8 text-center text-sm text-muted">{t('planReview.comments.empty')}</p>
+          <p data-slot="plan-comments-empty" className="px-2 py-8 text-center text-sm text-muted">
+            {t('planReview.comments.empty')}
+          </p>
         )}
 
         {visible.map((comment) => (
           <article
+            data-slot="plan-comment"
             key={comment.id}
             className="rounded-lg bg-surface-secondary p-3"
             data-state={comment.state}
             data-comment-id={comment.id}
           >
-            <div className="mb-2 flex items-start gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-auto min-w-0 flex-1 justify-start whitespace-normal px-0 py-0 text-start text-xs font-normal text-muted"
+            <div data-slot="plan-comment-header" className="mb-2 flex items-start gap-2">
+              <Link
+                className="min-w-0 flex-1 text-start text-xs font-normal text-muted"
                 onPress={() => onSelectComment(comment)}
               >
-                <q className="line-clamp-3 break-words">
+                <q data-slot="plan-comment-quote" className="line-clamp-3 break-words">
                   {comment.anchor.quote || t('planReview.comments.emptyQuote')}
                 </q>
-              </Button>
+              </Link>
               {!isReadOnly && (
                 <Tooltip>
                   <Button
@@ -100,7 +103,9 @@ export function PlanCommentsPane({
               )}
             </div>
             {isReadOnly ? (
-              <p className="whitespace-pre-wrap text-sm text-foreground">{comment.body}</p>
+              <p data-slot="plan-comment-body" className="whitespace-pre-wrap text-sm text-foreground">
+                {comment.body}
+              </p>
             ) : (
               <TextArea
                 ref={(node) => {
@@ -118,27 +123,30 @@ export function PlanCommentsPane({
               />
             )}
             {comment.state === 'orphaned' && (
-              <p className="mt-2 text-xs text-warning">{t('planReview.comments.orphaned')}</p>
+              <p data-slot="plan-comment-orphaned" className="mt-2 text-xs text-warning">
+                {t('planReview.comments.orphaned')}
+              </p>
             )}
           </article>
         ))}
       </div>
 
-      <div className="shrink-0 border-t border-border p-3">
+      <div data-slot="plan-comments-footer" className="shrink-0 border-t border-border p-3">
         {isReadOnly ? (
           globalNote && (
-            <div>
-              <p className="mb-1 text-xs font-medium text-muted">{t('planReview.comments.globalNote')}</p>
-              <p className="whitespace-pre-wrap text-sm">{globalNote}</p>
+            <div data-slot="plan-global-note-readonly">
+              <p data-slot="plan-global-note-label" className="mb-1 text-xs font-medium text-muted">
+                {t('planReview.comments.globalNote')}
+              </p>
+              <p data-slot="plan-global-note-body" className="whitespace-pre-wrap text-sm">
+                {globalNote}
+              </p>
             </div>
           )
         ) : (
-          <div className="space-y-1.5">
-            <label htmlFor={globalNoteId} className="text-sm font-medium">
-              {t('planReview.comments.globalNote')}
-            </label>
+          <TextField data-slot="plan-global-note-field" fullWidth className="space-y-1.5">
+            <Label className="text-sm font-medium">{t('planReview.comments.globalNote')}</Label>
             <TextArea
-              id={globalNoteId}
               placeholder={t('planReview.comments.globalPlaceholder')}
               value={globalNote}
               rows={2}
@@ -147,7 +155,7 @@ export function PlanCommentsPane({
               className="resize-none"
               onChange={(event) => onGlobalNoteChange(event.target.value)}
             />
-          </div>
+          </TextField>
         )}
       </div>
     </section>

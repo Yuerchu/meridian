@@ -199,10 +199,14 @@ function ApprovalToast({
         </Toast.Title>
         <Toast.Description data-slot="approval-toast-description" className="w-full">
           {item.kind === 'plan_review' ? (
-            <span className="font-medium leading-5">{planReviewMessage}</span>
+            <span data-slot="approval-toast-plan-message" className="font-medium leading-5">
+              {planReviewMessage}
+            </span>
           ) : (
-            <span className="flex min-w-0 items-start gap-1.5">
-              <span className="shrink-0 font-medium leading-5">{toolLabel(t, item.toolName)}</span>
+            <span data-slot="approval-toast-call" className="flex min-w-0 items-start gap-1.5">
+              <span data-slot="approval-toast-tool-name" className="shrink-0 font-medium leading-5">
+                {toolLabel(t, item.toolName)}
+              </span>
               {/* Two lines of the whole value, never the key's compact form:
                   this row is a decision, and the summary is what it rests on.
                   The clamp is the container's, the way the card's trigger
@@ -218,12 +222,18 @@ function ApprovalToast({
               is a decision, so what the call *is* keeps the first line and what
               it is *for* gets the second — the reverse hid the path a
               `write_file` was being approved for. */}
-          {description !== null && <span className="mt-0.5 line-clamp-2 break-words text-xs">{description}</span>}
+          {description !== null && (
+            <span data-slot="approval-toast-tool-description" className="mt-0.5 line-clamp-2 break-words text-xs">
+              {description}
+            </span>
+          )}
           {/* The sandbox asked once already and was refused by the sandbox, not
               by a person. Without this the second question looks identical to
               the first. */}
           {item.kind !== 'plan_review' && item.retryReason !== undefined && (
-            <span className="mt-1 block text-xs">{t('chat.tool.sandboxRetryPrompt')}</span>
+            <span data-slot="approval-toast-retry-prompt" className="mt-1 block text-xs">
+              {t('chat.tool.sandboxRetryPrompt')}
+            </span>
           )}
         </Toast.Description>
         {/* Wraps, because the row does not fit on a phone. A toast is
@@ -253,11 +263,10 @@ function ApprovalToast({
               it is offered as a way in and nothing else. It is in the queue at
               all because it stops a turn exactly as an approval does. */}
           {item.kind === 'approval' && (
-            <div className="ml-auto flex items-center gap-2">
+            <div data-slot="approval-toast-decisions" className="ml-auto flex items-center gap-2">
               <Button
                 size="sm"
-                variant="outline"
-                className="text-danger hover:text-danger"
+                variant="danger-soft"
                 onPress={() => decide(() => api.denyToolCall({ approvalId: item.approvalId, reason: null }))}
               >
                 <Xmark className="size-3.5" />

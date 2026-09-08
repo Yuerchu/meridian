@@ -433,7 +433,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
                       <span
                         data-slot="composer-menu-item-value"
                         className={cn(
-                          'text-xs truncate max-w-[88px]',
+                          'text-xs truncate max-w-24',
                           entry.tone === 'warning'
                             ? 'text-warning-soft-foreground'
                             : entry.tone === 'info'
@@ -461,16 +461,16 @@ export function ComposerMenu(props: ComposerMenuProps) {
                 data-slot="composer-menu-detail"
                 className="min-w-0 flex-1 basis-60 overflow-hidden border-l border-border"
               >
-                <div className="h-full overflow-y-auto p-1">
+                <div data-slot="composer-menu-detail-scroll" className="h-full overflow-y-auto p-1">
                   {hoveredEntry?.loading ? (
-                    <div className="flex items-center justify-center py-6">
-                      <Spinner className="size-4" />
+                    <div data-slot="composer-menu-detail-loading" className="flex items-center justify-center py-6">
+                      <Spinner size="sm" />
                     </div>
                   ) : (
                     hoveredEntry?.options?.map((opt, i) => {
                       const heading = opt.group && opt.group !== hoveredEntry.options?.[i - 1]?.group ? opt.group : null
                       return (
-                        <div key={opt.value}>
+                        <div key={opt.value} data-slot="composer-menu-detail-row">
                           {heading && (
                             <div
                               data-slot="composer-menu-detail-heading"
@@ -489,17 +489,29 @@ export function ComposerMenu(props: ComposerMenuProps) {
                               close()
                             }}
                             className={cn(
+                              // eslint-disable-next-line no-restricted-syntax -- a two-line option row: the label with its description underneath
                               'w-full h-auto justify-start gap-2 rounded-2xl px-1.5 py-1 text-sm font-normal',
                               opt.selected
                                 ? 'bg-default text-default-foreground'
                                 : 'text-muted hover:bg-default/50 hover:text-foreground',
                             )}
                           >
-                            {opt.icon && <span className="shrink-0">{opt.icon}</span>}
-                            <span className="flex-1 min-w-0 text-left">
-                              <span className="block truncate">{opt.label}</span>
+                            {opt.icon && (
+                              <span data-slot="composer-menu-detail-icon" className="shrink-0">
+                                {opt.icon}
+                              </span>
+                            )}
+                            <span data-slot="composer-menu-detail-text" className="flex-1 min-w-0 text-left">
+                              <span data-slot="composer-menu-detail-label" className="block truncate">
+                                {opt.label}
+                              </span>
                               {opt.description && (
-                                <span className="block truncate text-xs text-muted">{opt.description}</span>
+                                <span
+                                  data-slot="composer-menu-detail-description"
+                                  className="block truncate text-xs text-muted"
+                                >
+                                  {opt.description}
+                                </span>
                               )}
                             </span>
                           </Button>

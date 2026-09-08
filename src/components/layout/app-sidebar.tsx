@@ -28,7 +28,7 @@ import { useTranslation } from 'react-i18next'
 import { DropZone, useDragAndDrop } from 'react-aria-components'
 import type { DropItem, Key } from 'react-aria-components'
 import { open } from '@tauri-apps/plugin-dialog'
-import { Button, Dropdown, Input, Label, Spinner } from '@heroui/react'
+import { Alert, Button, Dropdown, Input, Label, Spinner, ToggleButton, Tooltip } from '@heroui/react'
 import { Sidebar, useSidebar } from '@heroui-pro/react/sidebar'
 import {
   Archive,
@@ -218,7 +218,7 @@ function NewProjectForm({
   }
 
   return (
-    <div className="px-2 py-1.5 space-y-1.5">
+    <div data-slot="project-form" className="px-2 py-1.5 space-y-1.5">
       <Input
         fullWidth
         type="text"
@@ -248,7 +248,9 @@ function NewProjectForm({
           className="w-full justify-start text-xs"
         >
           <FolderOpen className="text-muted" />
-          <span className={path ? 'text-foreground truncate' : 'text-muted'}>{path || t('sidebar.browsePath')}</span>
+          <span data-slot="project-form-path" className={path ? 'text-foreground truncate' : 'text-muted'}>
+            {path || t('sidebar.browsePath')}
+          </span>
         </Button>
       ) : (
         <Input
@@ -267,11 +269,11 @@ function NewProjectForm({
         />
       )}
       {error && (
-        <p role="alert" className="text-xs text-danger">
+        <p data-slot="project-form-error" role="alert" className="text-xs text-danger">
           {error}
         </p>
       )}
-      <div className="flex gap-1">
+      <div data-slot="project-form-actions" className="flex gap-1">
         <Button
           variant="secondary"
           aria-busy={saving}
@@ -284,9 +286,12 @@ function NewProjectForm({
         </Button>
         {/* The glyph is not a name: a screen reader reads U+2715 as nothing, or
             as "multiplication x". */}
-        <Button variant="ghost" aria-label={t('common.cancel')} onPress={onCancel} isDisabled={saving}>
-          ✕
-        </Button>
+        <Tooltip delay={0}>
+          <Button isIconOnly variant="ghost" aria-label={t('common.cancel')} onPress={onCancel} isDisabled={saving}>
+            <Xmark />
+          </Button>
+          <Tooltip.Content>{t('common.cancel')}</Tooltip.Content>
+        </Tooltip>
       </div>
     </div>
   )
@@ -338,7 +343,7 @@ function NewHostedSessionForm({
   }
 
   return (
-    <div className="px-2 py-1.5 space-y-1.5">
+    <div data-slot="hosted-session-form" className="px-2 py-1.5 space-y-1.5">
       {/* Same split as a project's path, for the same reason: the adapter runs
           on the machine the backend is on, so a picker showing this device's
           folders would be pointing at the wrong filesystem. */}
@@ -350,7 +355,7 @@ function NewHostedSessionForm({
           className="w-full justify-start text-xs"
         >
           <FolderOpen className="text-muted" />
-          <span className={path ? 'text-foreground truncate' : 'text-muted'}>
+          <span data-slot="hosted-session-form-path" className={path ? 'text-foreground truncate' : 'text-muted'}>
             {path || t('sidebar.hostedSessionFolder')}
           </span>
         </Button>
@@ -372,11 +377,11 @@ function NewHostedSessionForm({
         />
       )}
       {error && (
-        <p role="alert" className="text-xs text-danger">
+        <p data-slot="hosted-session-form-error" role="alert" className="text-xs text-danger">
           {error}
         </p>
       )}
-      <div className="flex gap-1">
+      <div data-slot="hosted-session-form-actions" className="flex gap-1">
         <Button
           variant="secondary"
           aria-busy={starting}
@@ -387,9 +392,12 @@ function NewHostedSessionForm({
           {starting && <Spinner size="sm" aria-hidden />}
           {t('sidebar.startHostedSession')}
         </Button>
-        <Button variant="ghost" aria-label={t('common.cancel')} onPress={onCancel} isDisabled={starting}>
-          ✕
-        </Button>
+        <Tooltip delay={0}>
+          <Button isIconOnly variant="ghost" aria-label={t('common.cancel')} onPress={onCancel} isDisabled={starting}>
+            <Xmark />
+          </Button>
+          <Tooltip.Content>{t('common.cancel')}</Tooltip.Content>
+        </Tooltip>
       </div>
     </div>
   )
@@ -446,7 +454,9 @@ function RowActionItems({ actions }: { actions: RowAction[] }) {
             {action.label}
             {/* Beside the label rather than in a tooltip — see `RowAction`. */}
             {action.disabledReason && (
-              <span className="ml-auto shrink-0 text-xs text-muted">{action.disabledReason}</span>
+              <span data-slot="row-action-disabled-reason" className="ml-auto shrink-0 text-xs text-muted">
+                {action.disabledReason}
+              </span>
             )}
           </ContextMenuItem>
         </Fragment>
@@ -549,62 +559,82 @@ function ConversationGroup({
               wholesale by React Aria's render props. The loose group carries
               none — it has no actions a context menu could offer. */}
           <div
+            data-slot="sidebar-group-header"
             className="flex min-w-0 items-center gap-0.5"
             data-row-id={projectId ?? undefined}
             data-row-kind={projectId ? 'project' : undefined}
           >
-            <Button
-              isIconOnly
-              size="sm"
-              variant="ghost"
-              aria-expanded={!folded}
-              aria-label={folded ? t('sidebar.unfoldGroup', { name: title }) : t('sidebar.foldGroup', { name: title })}
-              onPress={onToggleFold}
-              className="touch-hitbox size-5 shrink-0 rounded-md text-muted"
-            >
-              <ChevronRight className={cn('size-3 transition-transform', !folded && 'rotate-90')} />
-            </Button>
-            {onSelectToggle ? (
-              <Button
-                size="sm"
-                variant="ghost"
-                onPress={onSelectToggle}
-                // The selection this toggles decides where a new conversation
-                // files and which workspace the empty state reads — state, so
-                // `aria-pressed` rather than `aria-current`.
-                aria-pressed={isCurrent}
-                className={cn(
-                  'h-auto min-w-0 flex-1 justify-start rounded-sm px-1 py-0.5 text-xs font-medium',
-                  isCurrent ? 'text-foreground' : 'text-muted',
-                )}
-              >
-                <span className="truncate">{title}</span>
-              </Button>
-            ) : (
-              <span className="min-w-0 flex-1 truncate px-1">{title}</span>
-            )}
-            <span className="sidebar-group-actions flex shrink-0 items-center">
+            <Tooltip delay={0}>
               <Button
                 isIconOnly
                 size="sm"
                 variant="ghost"
-                aria-label={projectId ? t('sidebar.newConversationIn', { name: title }) : t('sidebar.newChat')}
-                onPress={onNewConversation}
-                className="touch-hitbox size-6 rounded-md text-muted"
+                aria-expanded={!folded}
+                aria-label={
+                  folded ? t('sidebar.unfoldGroup', { name: title }) : t('sidebar.foldGroup', { name: title })
+                }
+                onPress={onToggleFold}
+                className="touch-hitbox size-5 shrink-0 rounded-md text-muted"
               >
-                <Plus />
+                <ChevronRight className={cn('size-3 transition-transform', !folded && 'rotate-90')} />
               </Button>
+              <Tooltip.Content>
+                {folded ? t('sidebar.unfoldGroup', { name: title }) : t('sidebar.foldGroup', { name: title })}
+              </Tooltip.Content>
+            </Tooltip>
+            {onSelectToggle ? (
+              <ToggleButton
+                size="sm"
+                variant="ghost"
+                onChange={onSelectToggle}
+                // The selection this toggles decides where a new conversation
+                // files and which workspace the empty state reads — state, so
+                // `aria-pressed` rather than `aria-current`.
+                isSelected={isCurrent}
+                className={cn(
+                  'h-6 min-w-0 flex-1 justify-start rounded-sm px-1 text-xs font-medium',
+                  isCurrent ? 'text-foreground' : 'text-muted',
+                )}
+              >
+                <span data-slot="sidebar-group-title" className="truncate">
+                  {title}
+                </span>
+              </ToggleButton>
+            ) : (
+              <span data-slot="sidebar-group-title" className="min-w-0 flex-1 truncate px-1">
+                {title}
+              </span>
+            )}
+            <span data-slot="sidebar-group-actions" className="sidebar-group-actions flex shrink-0 items-center">
+              <Tooltip delay={0}>
+                <Button
+                  isIconOnly
+                  size="sm"
+                  variant="ghost"
+                  aria-label={projectId ? t('sidebar.newConversationIn', { name: title }) : t('sidebar.newChat')}
+                  onPress={onNewConversation}
+                  className="touch-hitbox size-6 rounded-md text-muted"
+                >
+                  <Plus />
+                </Button>
+                <Tooltip.Content>
+                  {projectId ? t('sidebar.newConversationIn', { name: title }) : t('sidebar.newChat')}
+                </Tooltip.Content>
+              </Tooltip>
               {actions && actions.length > 0 && (
                 <Dropdown>
                   {/* Styled as a menu action — the docs' own pattern for a
                       dropdown trigger in a sidebar — so the two buttons match. */}
-                  <Dropdown.Trigger
-                    aria-label={moreLabel}
-                    className="sidebar__menu-action touch-hitbox"
-                    data-slot="sidebar-menu-action"
-                  >
-                    <EllipsisVertical className="size-4" />
-                  </Dropdown.Trigger>
+                  <Tooltip delay={0}>
+                    <Dropdown.Trigger
+                      aria-label={moreLabel}
+                      className="sidebar__menu-action touch-hitbox"
+                      data-slot="sidebar-menu-action"
+                    >
+                      <EllipsisVertical className="size-4" />
+                    </Dropdown.Trigger>
+                    <Tooltip.Content>{moreLabel}</Tooltip.Content>
+                  </Tooltip>
                   <Dropdown.Popover placement="bottom end">
                     <Dropdown.Menu aria-label={moreLabel}>
                       <RowActionDropdownItems actions={actions} />
@@ -961,9 +991,11 @@ export function AppSidebar({
           delay: 500,
           placement: 'right',
           content: (
-            <div className="flex flex-col gap-1">
-              <span className="font-medium">{title}</span>
-              <span className="opacity-60">
+            <div data-slot="conversation-tooltip" className="flex flex-col gap-1">
+              <span data-slot="conversation-tooltip-title" className="font-medium">
+                {title}
+              </span>
+              <span data-slot="conversation-tooltip-meta" className="opacity-60">
                 {projectName ? `${projectName} · ` : ''}
                 {exactTime.format(conv.updated_at)}
               </span>
@@ -981,16 +1013,21 @@ export function AppSidebar({
             pointers because DnD is disabled there and the row-actions dialog
             is the touch path; on fine pointers it appears on hover, the way a
             file tree's handle does — see `conv-grip` in `index.css`. */}
-        <Sidebar.MenuAction
-          slot="drag"
-          aria-label={t('sidebar.dragConversation', { name: title })}
-          className="conv-grip hidden pointer-fine:flex cursor-grab active:cursor-grabbing"
-        >
-          <Grip />
-        </Sidebar.MenuAction>
+        <Tooltip delay={0}>
+          <Sidebar.MenuAction
+            slot="drag"
+            aria-label={t('sidebar.dragConversation', { name: title })}
+            className="conv-grip hidden pointer-fine:flex cursor-grab active:cursor-grabbing"
+          >
+            <Grip />
+          </Sidebar.MenuAction>
+          <Tooltip.Content>{t('sidebar.dragConversation', { name: title })}</Tooltip.Content>
+        </Tooltip>
         <Sidebar.MenuChip className="gap-1">
           {/* Hover swaps this for the action buttons — see `conv-time`. */}
-          <span className="conv-time">{relativeTime(conv.updated_at)}</span>
+          <span data-slot="conversation-time" className="conv-time">
+            {relativeTime(conv.updated_at)}
+          </span>
           {/* Pinned rows were sorted to the top and said nothing about why they
               were there. */}
           {conv.is_pinned && <Pin aria-label={t('contextMenu.pin')} className="size-3 text-muted" />}
@@ -1021,9 +1058,12 @@ export function AppSidebar({
             {canHostSessions && (
               <Sidebar.MenuActions>
                 <Dropdown>
-                  <Sidebar.MenuAction className="touch-hitbox" aria-label={t('sidebar.newChatMore')}>
-                    <EllipsisVertical />
-                  </Sidebar.MenuAction>
+                  <Tooltip delay={0}>
+                    <Sidebar.MenuAction className="touch-hitbox" aria-label={t('sidebar.newChatMore')}>
+                      <EllipsisVertical />
+                    </Sidebar.MenuAction>
+                    <Tooltip.Content>{t('sidebar.newChatMore')}</Tooltip.Content>
+                  </Tooltip>
                   <Dropdown.Popover placement="bottom end">
                     <Dropdown.Menu aria-label={t('sidebar.newChatMore')}>
                       <Dropdown.Item
@@ -1064,7 +1104,7 @@ export function AppSidebar({
             </Sidebar.MenuIcon>
             <Sidebar.MenuLabel>{t('sidebar.search')}</Sidebar.MenuLabel>
             <Sidebar.MenuChip>
-              <span>{searchShortcut}</span>
+              <span data-slot="sidebar-search-shortcut">{searchShortcut}</span>
             </Sidebar.MenuChip>
           </Sidebar.MenuItem>
         </Sidebar.Menu>
@@ -1178,19 +1218,25 @@ export function AppSidebar({
 
       <Sidebar.Footer>
         {actionError && (
-          <div role="alert" className="flex items-start gap-1.5 px-2 py-1.5 text-xs text-danger">
-            <span className="min-w-0 flex-1 break-words">{actionError}</span>
-            <Button
-              isIconOnly
-              size="sm"
-              variant="ghost"
-              aria-label={t('common.close')}
-              onPress={() => setActionError(null)}
-              className="touch-hitbox shrink-0"
-            >
-              <Xmark />
-            </Button>
-          </div>
+          <Alert status="danger" role="alert" data-slot="sidebar-action-error">
+            <Alert.Indicator />
+            <Alert.Content className="min-w-0">
+              <Alert.Description className="break-words">{actionError}</Alert.Description>
+            </Alert.Content>
+            <Tooltip delay={0}>
+              <Button
+                isIconOnly
+                size="sm"
+                variant="ghost"
+                aria-label={t('common.close')}
+                onPress={() => setActionError(null)}
+                className="touch-hitbox shrink-0"
+              >
+                <Xmark />
+              </Button>
+              <Tooltip.Content>{t('common.close')}</Tooltip.Content>
+            </Tooltip>
+          </Alert>
         )}
         <Sidebar.Menu aria-label={t('sidebar.settings')}>
           <Sidebar.MenuItem id={`${prefix}settings`} textValue={t('sidebar.settings')} onAction={openSettings}>

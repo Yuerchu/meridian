@@ -51,14 +51,14 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
     active,
     label,
     count = null,
-    onClick,
+    onPress,
     indent = false,
   }: {
     id: string
     active: boolean
     label: string
     count?: number | null
-    onClick: () => void
+    onPress: () => void
     indent?: boolean
   }) => (
     <Button
@@ -66,11 +66,17 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
       aria-pressed={active}
       variant={active ? 'secondary' : 'ghost'}
       className={cn('w-full justify-between font-normal', indent && 'pl-6')}
-      onClick={onClick}
+      onPress={onPress}
       data-slot="memory-scope-row"
     >
-      <span className="truncate">{label}</span>
-      {count !== null && <span className="text-xs text-muted">{count}</span>}
+      <span data-slot="memory-scope-row-label" className="truncate">
+        {label}
+      </span>
+      {count !== null && (
+        <span data-slot="memory-scope-row-count" className="text-xs text-muted">
+          {count}
+        </span>
+      )}
     </Button>
   )
 
@@ -83,7 +89,7 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
       key={`${slot}-more`}
       variant="ghost"
       className="w-full justify-start pl-6 text-xs font-normal text-muted"
-      onClick={onToggle}
+      onPress={onToggle}
       data-slot={slot}
     >
       {expanded ? t('settings.memory.nav.showLess') : t('settings.memory.nav.showAll', { count: total })}
@@ -99,42 +105,44 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
     // and they have to stay that way: on different stops there is a width where
     // this is 224px wide inside a column layout, lying across the list.
     <div data-slot="memory-scope-nav" className="flex w-full shrink-0 flex-col gap-0.5 @xl/pane:w-56">
-      <div className="px-2 pb-1 text-xs font-medium text-muted">{t('settings.memory.nav.scope')}</div>
+      <div data-slot="memory-scope-nav-title" className="px-2 pb-1 text-xs font-medium text-muted">
+        {t('settings.memory.nav.scope')}
+      </div>
 
       {row({
         id: 'all',
         active: filter.kind === 'all',
         label: t('settings.memory.nav.all'),
         count: counts.all,
-        onClick: () => onFilterChange({ kind: 'all' }),
+        onPress: () => onFilterChange({ kind: 'all' }),
       })}
       {row({
         id: 'clientGlobal',
         active: filter.kind === 'clientGlobal',
         label: t('settings.memory.nav.clientGlobal'),
         count: counts.clientGlobal,
-        onClick: () => onFilterChange({ kind: 'clientGlobal' }),
+        onPress: () => onFilterChange({ kind: 'clientGlobal' }),
       })}
       {row({
         id: 'global',
         active: filter.kind === 'global',
         label: t('settings.memory.nav.global'),
         count: counts.global,
-        onClick: () => onFilterChange({ kind: 'global' }),
+        onPress: () => onFilterChange({ kind: 'global' }),
       })}
       {row({
         id: 'chats',
         active: filter.kind === 'chats',
         label: t('settings.memory.nav.chats'),
         count: counts.chats,
-        onClick: () => onFilterChange({ kind: 'chats' }),
+        onPress: () => onFilterChange({ kind: 'chats' }),
       })}
       {visibleProjects.map((p) =>
         row({
           id: `project:${p.id}`,
           active: filter.kind === 'project' && filter.projectId === p.id,
           label: p.name,
-          onClick: () => onFilterChange({ kind: 'project', projectId: p.id }),
+          onPress: () => onFilterChange({ kind: 'project', projectId: p.id }),
           indent: true,
         }),
       )}
@@ -145,14 +153,14 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
         active: filter.kind === 'people',
         label: t('settings.memory.nav.people'),
         count: counts.people,
-        onClick: () => onFilterChange({ kind: 'people' }),
+        onPress: () => onFilterChange({ kind: 'people' }),
       })}
       {visibleSubjects.map((s) =>
         row({
           id: `person:${s.scope_id}`,
           active: filter.kind === 'person' && filter.scopeId === s.scope_id,
           label: s.display_name ?? s.scope_id,
-          onClick: () => onFilterChange({ kind: 'person', scopeId: s.scope_id }),
+          onPress: () => onFilterChange({ kind: 'person', scopeId: s.scope_id }),
           indent: true,
         }),
       )}
@@ -170,13 +178,15 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
             </Card.Description>
           </Card.Header>
           {selectedPerson.opted_out && (
-            <div className="text-xs text-warning-soft-foreground">{t('settings.memory.person.optedOut')}</div>
+            <div data-slot="memory-person-opted-out" className="text-xs text-warning-soft-foreground">
+              {t('settings.memory.person.optedOut')}
+            </div>
           )}
 
           <Button
             variant="ghost"
             className="w-full justify-start font-normal"
-            onClick={async () => {
+            onPress={async () => {
               await api.setMemorySubjectFlags({
                 subjectScopeId: selectedPerson.scope_id,
                 isPinned: !selectedPerson.is_pinned,
@@ -193,7 +203,7 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
           <Button
             variant="ghost"
             className="w-full justify-start font-normal"
-            onClick={async () => {
+            onPress={async () => {
               const ok = await confirm({
                 title: t('settings.memory.person.forgetConfirmTitle'),
                 body: t('settings.memory.person.forgetConfirmBody'),

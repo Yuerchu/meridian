@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Input, Label, TextArea } from '@heroui/react'
+import { Button, Description, Input, Label, TextArea, TextField } from '@heroui/react'
 import { api } from '@/api'
 import { cn } from '@/lib/utils'
 import type { AcpCheckResponse, AcpConfigInfoResponse } from '@/types'
@@ -34,8 +34,6 @@ function parseArgs(text: string): string[] {
 
 export function AcpSettings() {
   const { t } = useTranslation()
-  const commandId = useId()
-  const argsId = useId()
   const [config, setConfig] = useState<AcpConfigInfoResponse | null>(null)
   const [argsText, setArgsText] = useState('')
   const [saved, setSaved] = useState(false)
@@ -142,24 +140,20 @@ export function AcpSettings() {
         actions={saved ? <SavedHint /> : null}
       />
 
-      <div className="space-y-2">
-        <Label htmlFor={commandId}>{t('settings.acp.command')}</Label>
+      <TextField fullWidth>
+        <Label>{t('settings.acp.command')}</Label>
         <Input
-          id={commandId}
-          fullWidth
           name="acpCommand"
           value={config.command}
           onChange={(e) => setConfig({ ...config, command: e.target.value })}
           placeholder={DEFAULTS.command}
         />
-        <p className="text-xs text-muted">{t('settings.acp.commandHint')}</p>
-      </div>
+        <Description>{t('settings.acp.commandHint')}</Description>
+      </TextField>
 
-      <div className="space-y-2">
-        <Label htmlFor={argsId}>{t('settings.acp.args')}</Label>
+      <TextField fullWidth>
+        <Label>{t('settings.acp.args')}</Label>
         <TextArea
-          id={argsId}
-          fullWidth
           name="acpArgs"
           rows={3}
           spellCheck={false}
@@ -171,16 +165,16 @@ export function AcpSettings() {
           }}
           className="font-mono text-xs"
         />
-        <p className="text-xs text-muted">{t('settings.acp.argsHint')}</p>
-      </div>
+        <Description>{t('settings.acp.argsHint')}</Description>
+      </TextField>
 
       {saveError && (
-        <p role="alert" className="text-xs text-danger break-all">
+        <p data-slot="acp-save-error" role="alert" className="text-xs text-danger break-all">
           {saveError}
         </p>
       )}
 
-      <div className="flex items-center gap-2">
+      <div data-slot="acp-actions" className="flex items-center gap-2">
         <Button variant="primary" onPress={() => void save()} isDisabled={!config.command.trim()}>
           {t('common.save')}
         </Button>
@@ -190,11 +184,16 @@ export function AcpSettings() {
         <Button variant="secondary" onPress={() => void runCheck()} isDisabled={checking || dirty}>
           {checking ? t('settings.acp.checking') : t('settings.acp.check')}
         </Button>
-        {dirty && !checking && <p className="text-xs text-muted">{t('settings.acp.saveBeforeCheck')}</p>}
+        {dirty && !checking && (
+          <p data-slot="acp-save-before-check" className="text-xs text-muted">
+            {t('settings.acp.saveBeforeCheck')}
+          </p>
+        )}
       </div>
 
       {check && (
         <div
+          data-slot="acp-check-result"
           role="status"
           className={cn(
             'rounded-lg border px-3 py-2 text-xs',
@@ -203,8 +202,10 @@ export function AcpSettings() {
         >
           {check.ok ? (
             <>
-              <p>{t('settings.acp.checkOk', { agent: check.agent ?? t('settings.acp.unnamedAgent') })}</p>
-              <p className="mt-1 text-muted">
+              <p data-slot="acp-check-agent">
+                {t('settings.acp.checkOk', { agent: check.agent ?? t('settings.acp.unnamedAgent') })}
+              </p>
+              <p data-slot="acp-check-protocol" className="mt-1 text-muted">
                 {t('settings.acp.protocolVersion', { version: check.protocol_version ?? '?' })}
                 {check.load_session ? ` · ${t('settings.acp.supportsResume')}` : ''}
               </p>
@@ -213,12 +214,16 @@ export function AcpSettings() {
             // The adapter's own stderr, which is where "command not found" and a
             // node stack trace both end up. Wrapped rather than truncated: the
             // useful part is often at the end.
-            <p className="break-words whitespace-pre-wrap">{check.error}</p>
+            <p data-slot="acp-check-error" className="break-words whitespace-pre-wrap">
+              {check.error}
+            </p>
           )}
         </div>
       )}
 
-      <p className="text-xs text-muted">{t('settings.acp.authNote')}</p>
+      <p data-slot="acp-auth-note" className="text-xs text-muted">
+        {t('settings.acp.authNote')}
+      </p>
     </SettingsPane>
   )
 }

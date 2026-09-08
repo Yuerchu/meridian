@@ -6,7 +6,7 @@ import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
 import { openExternalUrl } from '@/lib/external-link'
 import { Check, Copy } from '@gravity-ui/icons'
-import { Button, Tooltip } from '@heroui/react'
+import { Link, Skeleton, Tooltip } from '@heroui/react'
 import type { Components } from 'react-markdown'
 
 import { markdownVariants } from '@heroui-pro/react/markdown'
@@ -83,18 +83,20 @@ function FileReferenceButton({ reference }: { reference: MarkdownFileReference }
 
   return (
     <Tooltip delay={0}>
-      <Button
+      <Link
         data-slot="markdown-file-reference"
         aria-label={label}
-        variant="ghost"
-        size="sm"
         isDisabled={!preview}
         onPress={() => preview?.openPreview(reference)}
-        className="mx-0.5 inline-flex h-auto min-w-0 max-w-full gap-1 rounded-md px-1.5 py-0.5 align-baseline font-mono text-xs"
+        className="mx-0.5 inline-flex min-w-0 max-w-full gap-1 rounded-md px-1.5 py-0.5 align-baseline font-mono text-xs"
       >
-        {icon && <img src={icon} alt="" aria-hidden className="size-3.5 shrink-0" />}
-        <span className="truncate">{markdownFileName(reference.path)}</span>
-      </Button>
+        {icon && (
+          <img data-slot="markdown-file-reference-icon" src={icon} alt="" aria-hidden className="size-3.5 shrink-0" />
+        )}
+        <span data-slot="markdown-file-reference-name" className="truncate">
+          {markdownFileName(reference.path)}
+        </span>
+      </Link>
       <Tooltip.Content>{label}</Tooltip.Content>
     </Tooltip>
   )
@@ -178,7 +180,11 @@ const CodeBlock: Components['code'] = ({ className, children, node, ...props }) 
     const value = String(children ?? '').trim()
     const reference = !isStreaming ? parseMarkdownFileCandidate(value) : null
     const fallback = (
-      <code className={cn('rounded bg-default px-1.5 py-0.5 text-xs', className)} {...props}>
+      <code
+        data-slot="markdown-inline-code"
+        className={cn('rounded-md bg-default px-1.5 py-0.5 text-xs', className)}
+        {...props}
+      >
         {children}
       </code>
     )
@@ -199,8 +205,10 @@ const CodeBlock: Components['code'] = ({ className, children, node, ...props }) 
     // what a card inside the transcript may take.
     <div data-slot="markdown-code-block" className="code-block my-3 rounded-xl">
       <div data-slot="markdown-code-header" className="code-block__header">
-        {icon && <img src={icon} alt="" aria-hidden className="size-4 shrink-0" />}
-        <span className="text-xs text-muted">{language}</span>
+        {icon && <img data-slot="markdown-code-icon" src={icon} alt="" aria-hidden className="size-4 shrink-0" />}
+        <span data-slot="markdown-code-language" className="text-xs text-muted">
+          {language}
+        </span>
         {/* The only way to copy a single block — the long-press menu copies the
             whole message. `size-7` rather than the 24px it was: `.code-block` is
             `overflow: clip` for its corners, which cut the expanded hit area
@@ -231,7 +239,9 @@ const CodeBlock: Components['code'] = ({ className, children, node, ...props }) 
  */
 const TableBlock: Components['table'] = ({ children, ...props }) => (
   <div data-slot="markdown-table" className="my-3 max-w-full overflow-x-auto">
-    <table {...props}>{children}</table>
+    <table data-slot="markdown-table-element" {...props}>
+      {children}
+    </table>
   </div>
 )
 
@@ -318,7 +328,13 @@ const MarkdownAnchor: Components['a'] = ({ href, children, node: _node, ...props
     },
   } as React.ComponentProps<'a'>
 
-  if (target.kind !== 'external') return <a {...anchorProps}>{children}</a>
+  if (target.kind !== 'external') {
+    return (
+      <a data-slot="markdown-link" {...anchorProps}>
+        {children}
+      </a>
+    )
+  }
 
   // Where the link really goes, since `href` deliberately does not say. The
   // anchor is its own trigger — rendered through `Tooltip.Trigger` rather than
@@ -329,7 +345,7 @@ const MarkdownAnchor: Components['a'] = ({ href, children, node: _node, ...props
       <Tooltip.Trigger
         role="link"
         render={(triggerProps) => (
-          <a {...(triggerProps as React.ComponentProps<'a'>)} {...anchorProps}>
+          <a data-slot="markdown-external-link" {...(triggerProps as React.ComponentProps<'a'>)} {...anchorProps}>
             {children}
           </a>
         )}
@@ -384,7 +400,7 @@ function TrailedParagraph({
   ...props
 }: React.HTMLAttributes<HTMLParagraphElement> & { trailer: React.ReactNode; node?: unknown }) {
   return (
-    <p {...props} className={cn('flow-root', props.className)}>
+    <p data-slot="markdown-trailed-paragraph" {...props} className={cn('flow-root', props.className)}>
       {children}
       <span data-slot="markdown-trailer" className="float-right ml-2 mt-1.5">
         {trailer}
@@ -471,18 +487,23 @@ function LocalMarkdown({
 }
 
 function MarkdownImage({ alt = '', className, onError, onLoad, ...props }: React.ComponentProps<'img'>) {
+  const { t } = useTranslation()
   const [loaded, setLoaded] = React.useState(false)
 
   return (
     <span
       data-slot="markdown-image-frame"
       data-loaded={loaded || undefined}
+      role={loaded ? undefined : 'status'}
+      aria-busy={loaded ? undefined : true}
+      aria-label={loaded ? undefined : t('common.loading')}
       className={cn(
         'relative my-3 block w-fit max-w-full overflow-hidden rounded-lg bg-default/20',
         !loaded && 'min-h-24 min-w-24',
       )}
     >
       <img
+        data-slot="markdown-image"
         {...props}
         alt={alt}
         loading="lazy"
@@ -501,7 +522,15 @@ function MarkdownImage({ alt = '', className, onError, onLoad, ...props }: React
           onError?.(event)
         }}
       />
-      {!loaded && <span aria-hidden="true" className="absolute inset-0 animate-pulse motion-reduce:animate-none" />}
+      {!loaded && (
+        <Skeleton
+          aria-hidden="true"
+          className="absolute inset-0"
+          render={(props) => (
+            <span data-slot="markdown-image-placeholder" {...(props as React.ComponentProps<'span'>)} />
+          )}
+        />
+      )}
     </span>
   )
 }
@@ -566,13 +595,14 @@ export const MarkdownContent = React.memo(function MarkdownContent({
         if (alt?.startsWith('sticker:')) {
           return (
             <img
+              data-slot="markdown-sticker"
               {...props}
               src={src}
               alt={alt.slice(8)}
               loading="lazy"
               width={48}
               height={48}
-              className="emoji-sticker rounded"
+              className="emoji-sticker rounded-md"
             />
           )
         }
@@ -584,7 +614,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({
   )
 
   return (
-    <div className={cn(markdownClasses, className)}>
+    <div data-slot="markdown-content" className={cn(markdownClasses, className)}>
       {/* `id` seeds the keys of the memoised blocks, so it only has to be unique
           between renderers on screen — the key itself already hashes the block's
           own content. Falls back to a generated one. */}
@@ -601,7 +631,8 @@ export const MarkdownContent = React.memo(function MarkdownContent({
       {isStreaming && (
         <span
           data-slot="markdown-cursor"
-          className="ml-0.5 inline-block h-4 w-2 animate-pulse bg-muted motion-reduce:animate-none"
+          // eslint-disable-next-line no-restricted-syntax -- the streaming caret blinks; it is a cursor, not a placeholder for content
+          className="ml-0.5 inline-block h-4 w-2 animate-pulse bg-current text-muted motion-reduce:animate-none"
         />
       )}
     </div>

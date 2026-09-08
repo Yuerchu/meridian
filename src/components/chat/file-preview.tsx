@@ -68,7 +68,10 @@ function FilePreviewLines({
   }, [start, file.content])
 
   return (
-    <div className="code-block__code min-w-max overflow-visible py-2 font-mono text-xs leading-5">
+    <div
+      data-slot="file-preview-lines"
+      className="code-block__code min-w-max overflow-visible py-2 font-mono text-xs leading-5"
+    >
       {lines.map((line, index) => {
         // A source location only selects rows in the bounded whole-file
         // prefix, so numbering always starts at the resolver's first line.
@@ -78,20 +81,25 @@ function FilePreviewLines({
           <div
             key={number}
             ref={number === start ? targetRef : undefined}
+            data-slot="file-preview-line"
             data-preview-line={number}
             data-highlighted={highlighted || undefined}
             className={highlighted ? 'flex bg-accent/10 text-foreground' : 'flex text-foreground/80'}
           >
             <span
+              data-slot="file-preview-line-number"
               aria-hidden="true"
               className="sticky left-0 w-14 shrink-0 select-none bg-surface px-3 text-right tabular-nums text-muted"
             >
               {number}
             </span>
-            <span className="shiki min-w-0 whitespace-pre pe-6">
+            <span data-slot="file-preview-line-source" className="shiki min-w-0 whitespace-pre pe-6">
               {highlightedLines && line ? (
                 // Shiki escapes the source and returns only token spans here.
-                <span dangerouslySetInnerHTML={{ __html: highlightedLines[index] }} />
+                <span
+                  data-slot="file-preview-line-tokens"
+                  dangerouslySetInnerHTML={{ __html: highlightedLines[index] }}
+                />
               ) : (
                 line || ' '
               )}
@@ -105,7 +113,7 @@ function FilePreviewLines({
 
 function MarkdownFilePreview({ content, path }: { content: string; path: string }) {
   return (
-    <div className="h-full overflow-auto bg-surface px-6 py-4">
+    <div data-slot="markdown-file-preview" className="h-full overflow-auto bg-surface px-6 py-4">
       {/* A README may mention more project files, but opening one from inside
           an already-open preview would silently replace the current sheet.
           Keep those references visible and inert instead. */}
@@ -132,14 +140,18 @@ function HtmlFilePreview({ content, name }: { content: string; name: string }) {
       sandbox=""
       referrerPolicy="no-referrer"
       srcDoc={srcDoc}
-      className="h-full w-full border-0 bg-white"
+      className="h-full w-full border-0 bg-surface"
     />
   )
 }
 
 function FileGlyph({ path }: { path: string }) {
   const icon = fileIconUrl(path)
-  return icon ? <img src={icon} alt="" aria-hidden className="size-4 shrink-0" /> : <FileText className="size-4" />
+  return icon ? (
+    <img data-slot="file-preview-glyph" src={icon} alt="" aria-hidden className="size-4 shrink-0" />
+  ) : (
+    <FileText className="size-4" />
+  )
 }
 
 function PreviewSheet({
@@ -193,7 +205,7 @@ function PreviewSheet({
         <Sheet.Content className="w-full sm:max-w-2xl">
           <Sheet.Dialog className="flex h-full min-h-0 flex-col">
             <Sheet.Header className="pe-14">
-              <div className="flex min-w-0 items-center gap-2">
+              <div data-slot="file-preview-title" className="flex min-w-0 items-center gap-2">
                 <FileGlyph path={reference.path} />
                 <Sheet.Heading className="truncate">{name}</Sheet.Heading>
               </div>
@@ -222,18 +234,25 @@ function PreviewSheet({
 
             <Sheet.Body data-sheet-no-drag className="min-h-0 flex-1 overflow-hidden p-0">
               {state.status === 'loading' && (
-                <div role="status" className="flex h-full items-center justify-center gap-2 text-sm text-muted">
+                <div
+                  data-slot="file-preview-loading"
+                  role="status"
+                  className="flex h-full items-center justify-center gap-2 text-sm text-muted"
+                >
                   <Spinner size="sm" />
                   {t('chat.filePreview.loading')}
                 </div>
               )}
               {state.status === 'error' && (
-                <div role="alert" className="p-6 text-sm text-danger wrap-break-word">
+                <div data-slot="file-preview-error" role="alert" className="p-6 text-sm text-danger wrap-break-word">
                   {t('chat.filePreview.loadError', { error: state.message })}
                 </div>
               )}
               {state.status === 'loaded' && state.file.binary && (
-                <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted">
+                <div
+                  data-slot="file-preview-binary"
+                  className="flex h-full items-center justify-center p-6 text-center text-sm text-muted"
+                >
                   {t('chat.filePreview.binary')}
                 </div>
               )}
@@ -244,7 +263,7 @@ function PreviewSheet({
                   ) : mode === 'preview' && richPreview === 'html' ? (
                     <HtmlFilePreview content={state.file.content} name={name} />
                   ) : (
-                    <div className="h-full overflow-auto bg-surface">
+                    <div data-slot="file-preview-source" className="h-full overflow-auto bg-surface">
                       <FilePreviewLines file={state.file} reference={reference} firstLine={state.firstLine} />
                     </div>
                   )}
@@ -253,7 +272,7 @@ function PreviewSheet({
             </Sheet.Body>
 
             <Sheet.Footer className="flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-              <div className="min-w-0 flex-1 text-xs text-muted">
+              <div data-slot="file-preview-metadata" className="min-w-0 flex-1 text-xs text-muted">
                 {state.status === 'loaded' && (
                   <>
                     {t('chat.filePreview.metadata', {
@@ -264,14 +283,14 @@ function PreviewSheet({
                   </>
                 )}
                 {editorError && (
-                  <p role="alert" className="mt-1 text-danger wrap-break-word">
+                  <p data-slot="file-preview-editor-error" role="alert" className="mt-1 text-danger wrap-break-word">
                     {editorError === 'editor_not_configured'
                       ? t('chat.filePreview.editorNotConfigured')
                       : t('chat.filePreview.editorError', { error: editorError })}
                   </p>
                 )}
               </div>
-              <div className="flex shrink-0 justify-end gap-2">
+              <div data-slot="file-preview-actions" className="flex shrink-0 justify-end gap-2">
                 <Button variant="secondary" onPress={copyPath}>
                   {copied ? <Check /> : <Copy />}
                   {t(copied ? 'chat.filePreview.pathCopied' : 'chat.filePreview.copyPath')}

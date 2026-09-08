@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { Chip } from '@heroui/react'
 import { Comments } from '@gravity-ui/icons'
 
+import { cn } from '@/lib/utils'
 import type { MessageContextInfoResponse } from '@/types'
 
 /**
@@ -11,16 +12,24 @@ import type { MessageContextInfoResponse } from '@/types'
  * stays behind the IPC boundary, so the chip names the thread without
  * navigating to it.
  */
-export function ConversationRefChips({ items }: { items: MessageContextInfoResponse[] }) {
+export function ConversationRefChips({
+  items,
+  className,
+}: {
+  items: MessageContextInfoResponse[]
+  className?: string
+}) {
   const { t } = useTranslation()
   const refs = items.filter((item) => item.kind === 'conversation')
   if (refs.length === 0) return null
   return (
-    <div className="flex max-w-[80%] flex-wrap justify-end gap-1">
+    <div data-slot="conversation-ref-chips" className={cn('flex min-w-0 flex-wrap gap-1', className)}>
       {refs.map((ref) => (
         <Chip key={ref.id} size="sm" variant="soft" aria-label={t('chat.convRef.chip', { name: ref.display_path })}>
           <Comments className="size-3" aria-hidden />
-          <span className="max-w-48 truncate">{ref.display_path}</span>
+          <span data-slot="conversation-ref-chip-label" className="max-w-48 truncate">
+            {ref.display_path}
+          </span>
         </Chip>
       ))}
     </div>

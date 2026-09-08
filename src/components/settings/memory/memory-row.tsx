@@ -61,18 +61,23 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
             shrink-wrapped rather than a fixed square so that the indicator's own
             `ms-auto` has no free space to push against. */}
         <Disclosure.Heading>
-          <Disclosure.Trigger
-            data-slot="memory-row-toggle"
-            aria-label={memory.key}
-            // Shrink-wrapped for the reason above, which leaves it at about
-            // 32px — and since it is the only part of the row that opens it,
-            // the hit area is expanded rather than the button.
-            className="touch-hitbox inline-flex shrink-0 items-center rounded-lg p-2 text-muted transition-colors outline-none hover:bg-default hover:text-foreground focus-visible:bg-default"
-          >
-            <Disclosure.Indicator className="size-4" />
-          </Disclosure.Trigger>
+          <Tooltip delay={0}>
+            <Disclosure.Trigger
+              data-slot="memory-row-toggle"
+              aria-label={memory.key}
+              // Shrink-wrapped for the reason above, which leaves it at about
+              // 32px — and since it is the only part of the row that opens it,
+              // the hit area is expanded rather than the button.
+              className="touch-hitbox inline-flex shrink-0 items-center rounded-lg p-2 text-muted transition-colors outline-none hover:bg-default hover:text-foreground focus-visible:bg-default"
+            >
+              <Disclosure.Indicator className="size-4" />
+            </Disclosure.Trigger>
+            <Tooltip.Content>{memory.key}</Tooltip.Content>
+          </Tooltip>
         </Disclosure.Heading>
-        <span className="min-w-0 truncate font-mono text-sm">{memory.key}</span>
+        <span data-slot="memory-row-key" className="min-w-0 truncate font-mono text-sm">
+          {memory.key}
+        </span>
         <Chip color="default">{memory.scope_type.replace('onebot_', '').replace('client_global', 'client')}</Chip>
         {/* `--info` is a project token with no HeroUI colour behind it, so the
             property the component reads is set directly rather than through a
@@ -93,8 +98,10 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
             <Tooltip.Content>{t('settings.memory.ownerOnlyHint')}</Tooltip.Content>
           </Tooltip>
         )}
-        <div className="flex-1" />
-        <span className="text-xs text-muted">{date.format(new Date(memory.updated_at))}</span>
+        <div data-slot="memory-row-spacer" className="flex-1" />
+        <span data-slot="memory-row-date" className="text-xs text-muted">
+          {date.format(new Date(memory.updated_at))}
+        </span>
       </div>
 
       {/* `min-h-0` is load-bearing: the card is a flex column, and a flex item's
@@ -108,7 +115,7 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
         <Disclosure.Body
           data-slot="memory-row-editor"
           className="space-y-2"
-          render={(props) => <div {...props} className="border-t border-border p-3" />}
+          render={(props) => <div {...props} data-slot="memory-row-body" className="border-t border-border p-3" />}
         >
           <TextArea
             fullWidth
@@ -126,17 +133,17 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
             rows={3}
             className="resize-y"
           />
-          <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
-            <span>
+          <div data-slot="memory-row-meta" className="flex flex-wrap items-center gap-3 text-xs text-muted">
+            <span data-slot="memory-row-learned-at">
               {t('settings.memory.learnedAt')}: {date.format(new Date(memory.created_at))}
             </span>
             {memory.source_session_id && (
-              <span>
+              <span data-slot="memory-row-source">
                 {t('settings.memory.sourceChat')}: {memory.source_session_id}
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div data-slot="memory-row-actions" className="flex items-center gap-2">
             <Button
               variant="secondary"
               isDisabled={saving || draft === memory.content}
@@ -144,19 +151,22 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
             >
               {t('common.save')}
             </Button>
-            <div className="flex-1" />
-            <Button
-              variant="ghost"
-              isIconOnly
-              aria-label={t('settings.memory.delete')}
-              onPress={async () => {
-                await api.deleteMemories([memory.id])
-                onChanged()
-              }}
-              data-slot="memory-row-delete"
-            >
-              <TrashBin className="text-danger" />
-            </Button>
+            <div data-slot="memory-row-actions-spacer" className="flex-1" />
+            <Tooltip delay={0}>
+              <Button
+                variant="ghost"
+                isIconOnly
+                aria-label={t('settings.memory.delete')}
+                onPress={async () => {
+                  await api.deleteMemories([memory.id])
+                  onChanged()
+                }}
+                data-slot="memory-row-delete"
+              >
+                <TrashBin className="text-danger" />
+              </Button>
+              <Tooltip.Content>{t('settings.memory.delete')}</Tooltip.Content>
+            </Tooltip>
           </div>
         </Disclosure.Body>
       </Disclosure.Content>

@@ -107,6 +107,13 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: pnpm lint
 
+      # The local rules and selectors that ESLint runs above are themselves
+      # pinned to fixtures; a selector that stops matching is invisible to
+      # `pnpm lint` and only this step notices.
+      - name: Lint rule fixtures
+        if: matrix.os == 'ubuntu-latest'
+        run: pnpm lint:rules
+
       # The shell and the core are two workspaces — `src-tauri/crates` is the
       # meridian-core submodule, excluded from the shell's workspace — so every
       # cargo gate runs twice. The core's runs share `src-tauri/target` through

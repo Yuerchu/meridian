@@ -2,7 +2,6 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ToolCallBlock } from './tool-call-block'
 import { ChatToolPresentationProvider } from '@/components/ui/chat-tool'
-import { BubbleKeyboard } from '@/components/ui/bubble-keyboard'
 import { expectCollapsed, expectExpanded } from '@/test/disclosure'
 import i18n from '@/i18n'
 import { api } from '@/api'
@@ -141,9 +140,9 @@ describe('ToolCallBlock file-edit diff rendering', () => {
     const { container } = render(<ToolCallBlock data={toolCall('write_file', { path: 'notes/large.txt', content })} />)
 
     expect(container.querySelectorAll('[data-slot="file-diff-line"]')).toHaveLength(300)
-    await userEvent.click(screen.getByRole('button', { name: 'Show all lines' }))
+    await userEvent.click(screen.getByRole('link', { name: 'Show all lines' }))
     expect(container.querySelectorAll('[data-slot="file-diff-line"]')).toHaveLength(320)
-    expect(screen.getByRole('button', { name: 'Show fewer lines' })).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Show fewer lines' })).toBeVisible()
   })
 
   it('shows an unrecognized patch format as plain text with real newlines', () => {
@@ -219,6 +218,30 @@ describe('large tool results', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Show full result' }))
     expect(container.textContent).toContain(tail)
     expect(screen.getByRole('button', { name: 'Show less' })).toBeVisible()
+  })
+
+  /// It opens content in place, so it is a button and has to answer a button's
+  /// keys. It was a HeroUI `Link` with `onPress` and no `href`, which renders
+  /// `<span role="link">`: measured, that answers Enter and ignores Space, so a
+  /// keyboard user pressing Space scrolled the page instead of expanding.
+  it('answers both Enter and Space, the way a button must', async () => {
+    const tail = 'COMPLETE-OUTPUT-TAIL'
+    const data = {
+      ...toolCall('run_command', { command: 'long-command' }, 'completed'),
+      result: `start\n${'x'.repeat(2100)}\n${tail}`,
+    }
+    const { container } = render(<ToolCallBlock data={data} />)
+    await userEvent.click(container.querySelector('[data-slot="chat-tool-trigger"]')!)
+
+    const toggle = screen.getByRole('button', { name: 'Show full result' })
+    expect(screen.queryByRole('link', { name: /Show/ })).toBeNull()
+
+    toggle.focus()
+    await userEvent.keyboard(' ')
+    expect(container.textContent).toContain(tail)
+
+    await userEvent.keyboard('{Enter}')
+    expect(container.textContent).not.toContain(tail)
   })
 })
 
@@ -313,7 +336,7 @@ describe('the interactive cards say what became of them', () => {
       }[name]!
       const { container } = render(<ToolCallBlock data={toolCall(name, args, 'running')} queued />)
       expect(screen.getByText(i18n.t('chat.tool.queued'))).toBeVisible()
-      expect(container.querySelectorAll('.animate-spin')).toHaveLength(0)
+      expect(container.querySelectorAll('.animate-spin, [data-slot="spinner"]')).toHaveLength(0)
     },
   )
 
@@ -354,7 +377,7 @@ describe('the interactive cards say what became of them', () => {
     const { container } = render(
       <ToolCallBlock data={toolCall('ask_user', { questions: [{ id: 'q', question: 'Q?' }] }, 'running')} />,
     )
-    expect(container.querySelectorAll('.animate-spin')).toHaveLength(1)
+    expect(container.querySelectorAll('.animate-spin, [data-slot="spinner"]')).toHaveLength(1)
   })
 
   it('does not deny a tool while Enter is confirming IME composition', async () => {
@@ -787,7 +810,7 @@ describe('a hosted agent asks with the same cards', () => {
   })
 })
 
-describe('on a keyboard', () => {
+describe('as bubble blocks', () => {
   beforeAll(async () => {
     await i18n.changeLanguage('en')
   })
@@ -796,34 +819,36 @@ describe('on a keyboard', () => {
     useConversationStore.setState({ activeId: null })
   })
 
-  function onKeyboard(ui: React.ReactNode) {
-    return render(
-      <ChatToolPresentationProvider value="keyboard">
-        <BubbleKeyboard>{ui}</BubbleKeyboard>
-      </ChatToolPresentationProvider>,
-    )
+  function inBubble(ui: React.ReactNode) {
+    return render(<ChatToolPresentationProvider value="bubble">{ui}</ChatToolPresentationProvider>)
   }
 
   function keyOf(container: HTMLElement): HTMLElement {
     return container.querySelector<HTMLElement>('[data-slot="chat-tool-trigger"]')!
   }
 
-  it('draws a call as a key in the row with its panel in the stack', () => {
-    const { container } = onKeyboard(<ToolCallBlock data={toolCall('Bash', { command: 'ls' }, 'completed')} />)
+  function blockOf(container: HTMLElement): HTMLElement {
+    return container.querySelector<HTMLElement>('[data-slot="chat-tool"]')!
+  }
+
+  it('draws a call as one block of the bubble, head and detail together', () => {
+    const { container } = inBubble(<ToolCallBlock data={toolCall('Bash', { command: 'ls' }, 'completed')} />)
     const key = keyOf(container)
-    expect(container.querySelector('[data-slot="bubble-keyboard-row"]')).toContainElement(key)
+    const block = blockOf(container)
+    expect(block).toHaveAttribute('data-bubble-block')
+    expect(block).toContainElement(key)
     const panel = document.getElementById(key.getAttribute('aria-controls')!)!
-    expect(container.querySelector('[data-slot="bubble-keyboard-stack"]')).toContainElement(panel)
-    // A finished call keeps its panel shut; the row does not grow a heading.
+    expect(block).toContainElement(panel)
+    // A finished call keeps its detail shut; the block does not grow a heading.
     expectCollapsed(key)
     expect(container.querySelector('h3')).toBeNull()
   })
 
-  /// The rule the card already lives by, kept on the key: what an approval
+  /// The rule the card already lives by, kept on the block: what an approval
   /// rests on is the exact path, and a decision made about a truncated one is
   /// a decision about something the reader could not see.
-  it('gives a call waiting on a decision the whole row, path and description both on the key', () => {
-    const { container } = onKeyboard(
+  it('gives a call waiting on a decision the whole column, path and description both on the head', () => {
+    const { container } = inBubble(
       <ToolCallBlock
         data={toolCall('write_file', {
           path: '/home/me/.ssh/config',
@@ -833,7 +858,7 @@ describe('on a keyboard', () => {
       />,
     )
     const key = keyOf(container)
-    expect(key).toHaveClass('basis-full')
+    expect(blockOf(container)).toHaveClass('w-full')
     expect(key.querySelector('[data-slot="tool-arg"]')).toHaveTextContent('/home/me/.ssh/config')
     expect(key.querySelector('[data-slot="chat-tool-subtitle"]')).toHaveTextContent('Add the jump host')
     expectExpanded(key)
@@ -841,14 +866,14 @@ describe('on a keyboard', () => {
     expect(screen.getByText('Deny')).toBeVisible()
   })
 
-  it('keeps an ordinary key short, with the description as a tooltip', async () => {
-    const { container } = onKeyboard(
+  it('keeps an ordinary block as wide as its label, with the description as a tooltip', async () => {
+    const { container } = inBubble(
       <ToolCallBlock
         data={toolCall('Bash', { command: 'git log --oneline', description: 'Recent history' }, 'completed')}
       />,
     )
     const key = keyOf(container)
-    expect(key).not.toHaveClass('basis-full')
+    expect(blockOf(container)).not.toHaveClass('w-full')
     expect(key.querySelector('[data-slot="chat-tool-subtitle"]')).toBeNull()
     // HeroUI's tooltip, not the browser's: nothing on the key carries `title`.
     expect(container.querySelector('[title]')).toBeNull()
@@ -857,7 +882,7 @@ describe('on a keyboard', () => {
   })
 
   it('asks a question from a panel, open while it waits', () => {
-    const { container } = onKeyboard(
+    const { container } = inBubble(
       <ToolCallBlock
         data={toolCall('ask_user', {
           questions: [{ id: 'q1', question: 'Which one?', options: [{ label: 'A' }, { label: 'B' }] }],
@@ -867,9 +892,9 @@ describe('on a keyboard', () => {
     const key = keyOf(container)
     expect(key).toHaveTextContent('Question')
     expectExpanded(key)
-    const stack = container.querySelector('[data-slot="bubble-keyboard-stack"]')!
-    expect(within(stack as HTMLElement).getByText('Which one?')).toBeVisible()
-    expect(within(stack as HTMLElement).getByRole('button', { name: /Submit/ })).toBeVisible()
+    const panel = document.getElementById(key.getAttribute('aria-controls')!)!
+    expect(within(panel).getByText('Which one?')).toBeVisible()
+    expect(within(panel).getByRole('button', { name: /Submit/ })).toBeVisible()
   })
 
   it('makes the plan review a key that goes to the review', async () => {
@@ -890,7 +915,7 @@ describe('on a keyboard', () => {
         },
       },
     })
-    const { container } = onKeyboard(
+    const { container } = inBubble(
       <ToolCallBlock
         data={{
           call_id: 'call-1',
@@ -909,21 +934,19 @@ describe('on a keyboard', () => {
   })
 
   it('unifies a search into one key whatever its state', () => {
-    const { container, rerender } = onKeyboard(
+    const { container, rerender } = inBubble(
       <ToolCallBlock data={toolCall('web_search', { query: 'heroui disclosure' }, 'running')} />,
     )
     expect(keyOf(container)).toHaveTextContent('heroui disclosure')
     expect(keyOf(container)).toHaveAttribute('data-state', 'input-available')
     rerender(
-      <ChatToolPresentationProvider value="keyboard">
-        <BubbleKeyboard>
-          <ToolCallBlock
-            data={{
-              ...toolCall('web_search', { query: 'heroui disclosure' }, 'completed'),
-              result: JSON.stringify({ sources: [{ title: 'Docs', url: 'https://heroui.com/docs', content: '' }] }),
-            }}
-          />
-        </BubbleKeyboard>
+      <ChatToolPresentationProvider value="bubble">
+        <ToolCallBlock
+          data={{
+            ...toolCall('web_search', { query: 'heroui disclosure' }, 'completed'),
+            result: JSON.stringify({ sources: [{ title: 'Docs', url: 'https://heroui.com/docs', content: '' }] }),
+          }}
+        />
       </ChatToolPresentationProvider>,
     )
     expect(keyOf(container)).toHaveAttribute('data-state', 'output-available')

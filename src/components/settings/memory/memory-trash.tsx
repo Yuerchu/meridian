@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TrashBin, ArrowUturnCcwLeft } from '@gravity-ui/icons'
 import { api } from '@/api'
-import { Button, Card, Chip, Drawer, Spinner } from '@heroui/react'
+import { Alert, Button, Card, Chip, Drawer, Spinner, Tooltip } from '@heroui/react'
 import { EmptyState } from '@heroui-pro/react/empty-state'
 import { INFO_CHIP } from './memory-row'
 import type { MemoryInfoResponse } from '@/types'
@@ -74,26 +74,31 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
             <Drawer.CloseTrigger />
             <Drawer.Header className="gap-1">
               <Drawer.Heading>{t('settings.memory.trash.title')}</Drawer.Heading>
-              <p id={hintId} className="text-sm text-muted">
+              <p id={hintId} data-slot="memory-trash-hint" className="text-sm text-muted">
                 {t('settings.memory.trash.retentionHint')}
               </p>
             </Drawer.Header>
 
             <Drawer.Body className="space-y-2">
               {loading ? (
-                <div role="status" aria-label={t('common.loading')} className="flex justify-center p-6">
+                <div
+                  data-slot="memory-trash-loading"
+                  role="status"
+                  aria-label={t('common.loading')}
+                  className="flex justify-center p-6"
+                >
                   <Spinner aria-hidden="true" />
                 </div>
               ) : error ? (
-                <div
-                  role="alert"
-                  className="space-y-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger"
-                >
-                  <p>{t('settings.memory.trash.loadError')}</p>
-                  <Button size="sm" variant="outline" onPress={() => void load()}>
-                    {t('settings.memory.retry')}
-                  </Button>
-                </div>
+                <Alert status="danger" role="alert">
+                  <Alert.Indicator />
+                  <Alert.Content>
+                    <Alert.Description>{t('settings.memory.trash.loadError')}</Alert.Description>
+                    <Button size="sm" variant="outline" className="mt-2" onPress={() => void load()}>
+                      {t('settings.memory.retry')}
+                    </Button>
+                  </Alert.Content>
+                </Alert>
               ) : rows.length === 0 ? (
                 <EmptyState size="sm">
                   <EmptyState.Header>
@@ -106,42 +111,51 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                 sunken step reads as a row against it. */}
               {rows.map((m) => (
                 <Card key={m.id} data-slot="memory-trash-row" variant="secondary">
-                  <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <span className="min-w-0 flex-1 break-words font-mono text-sm [overflow-wrap:anywhere]">
+                  <div data-slot="memory-trash-row-header" className="flex min-w-0 flex-wrap items-center gap-2">
+                    <span
+                      data-slot="memory-trash-row-key"
+                      className="min-w-0 flex-1 break-words font-mono text-sm [overflow-wrap:anywhere]"
+                    >
                       {m.key}
                     </span>
                     <Chip className={INFO_CHIP}>{deletedByLabel(m.deleted_by)}</Chip>
-                    <div className="ms-auto flex shrink-0 items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        isIconOnly
-                        aria-label={t('settings.memory.trash.restore')}
-                        onPress={async () => {
-                          await api.restoreMemories([m.id])
-                          void load()
-                          onChanged()
-                        }}
-                        data-slot="memory-trash-restore"
-                      >
-                        <ArrowUturnCcwLeft />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        isIconOnly
-                        aria-label={t('settings.memory.trash.purge')}
-                        onPress={async () => {
-                          const accepted = await confirm({
-                            body: t('settings.memory.trash.purgeConfirm', { key: m.key }),
-                          })
-                          if (!accepted) return
-                          await api.purgeMemories([m.id])
-                          void load()
-                          onChanged()
-                        }}
-                        data-slot="memory-trash-purge"
-                      >
-                        <TrashBin className="text-danger" />
-                      </Button>
+                    <div data-slot="memory-trash-row-actions" className="ms-auto flex shrink-0 items-center gap-1">
+                      <Tooltip delay={0}>
+                        <Button
+                          variant="ghost"
+                          isIconOnly
+                          aria-label={t('settings.memory.trash.restore')}
+                          onPress={async () => {
+                            await api.restoreMemories([m.id])
+                            void load()
+                            onChanged()
+                          }}
+                          data-slot="memory-trash-restore"
+                        >
+                          <ArrowUturnCcwLeft />
+                        </Button>
+                        <Tooltip.Content>{t('settings.memory.trash.restore')}</Tooltip.Content>
+                      </Tooltip>
+                      <Tooltip delay={0}>
+                        <Button
+                          variant="ghost"
+                          isIconOnly
+                          aria-label={t('settings.memory.trash.purge')}
+                          onPress={async () => {
+                            const accepted = await confirm({
+                              body: t('settings.memory.trash.purgeConfirm', { key: m.key }),
+                            })
+                            if (!accepted) return
+                            await api.purgeMemories([m.id])
+                            void load()
+                            onChanged()
+                          }}
+                          data-slot="memory-trash-purge"
+                        >
+                          <TrashBin className="text-danger" />
+                        </Button>
+                        <Tooltip.Content>{t('settings.memory.trash.purge')}</Tooltip.Content>
+                      </Tooltip>
                     </div>
                   </div>
                   <Card.Description className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">

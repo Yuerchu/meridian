@@ -18,6 +18,7 @@ import {
   Strikethrough,
 } from '@gravity-ui/icons'
 import type { JSONContent } from '@tiptap/core'
+import { Tooltip } from '@heroui/react'
 import { RichTextEditor, useRichTextEditor, type RichTextEditorFormatCommand } from '@heroui-pro/react/rich-text-editor'
 
 import {
@@ -144,12 +145,12 @@ export function PlanReviewEditor({
               <FormatButton command="strike" label={t('planReview.editor.strike')} icon={<Strikethrough />} />
               <FormatButton command="code" label={t('planReview.editor.code')} icon={<Code />} />
               <RichTextEditor.LinkPopover>
-                <RichTextEditor.LinkPopover.Trigger
-                  aria-label={t('planReview.editor.link')}
-                  tooltip={t('planReview.editor.link')}
-                >
-                  <Link />
-                </RichTextEditor.LinkPopover.Trigger>
+                <Tooltip delay={0}>
+                  <RichTextEditor.LinkPopover.Trigger aria-label={t('planReview.editor.link')}>
+                    <Link />
+                  </RichTextEditor.LinkPopover.Trigger>
+                  <Tooltip.Content>{t('planReview.editor.link')}</Tooltip.Content>
+                </Tooltip>
                 <RichTextEditor.LinkPopover.Content>
                   <RichTextEditor.LinkPopover.Input aria-label={t('planReview.editor.linkUrl')} />
                   <RichTextEditor.LinkPopover.Actions>

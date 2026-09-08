@@ -15,7 +15,7 @@
 // never the doubtful side.
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { ArrowDownToSquare, Copy, Scissors, SquareDashedText } from '@gravity-ui/icons'
+import { ArrowDownToSquare, ArrowUp, Copy, Scissors, SquareDashedText } from '@gravity-ui/icons'
 
 import {
   Button as HButton,
@@ -167,10 +167,14 @@ interface Report {
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-2">
-      <h2 className="text-sm font-semibold">
+    <section data-slot="lab-section" className="space-y-2">
+      <h2 data-slot="lab-section-title" className="text-sm font-semibold">
         {title}
-        {hint && <span className="ml-2 font-normal text-muted">{hint}</span>}
+        {hint && (
+          <span data-slot="lab-section-hint" className="ml-2 font-normal text-muted">
+            {hint}
+          </span>
+        )}
       </h2>
       {children}
     </section>
@@ -200,8 +204,9 @@ function SidebarProbe() {
   const rows = ['alpha', 'beta', 'gamma']
 
   return (
-    <div className="space-y-2">
+    <div data-slot="sidebar-probe" className="space-y-2">
       <div
+        data-slot="sidebar-probe-frame"
         ref={rootRef}
         className="h-64 overflow-hidden rounded-lg border [&_.sidebar]:h-full [&_.sidebar\_\_provider]:h-full"
       >
@@ -243,15 +248,15 @@ function SidebarProbe() {
             </ProSidebar.Content>
           </ProSidebar>
           <ProSidebar.Main>
-            <span />
+            <span data-slot="sidebar-probe-main" />
           </ProSidebar.Main>
         </ProSidebar.Provider>
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div data-slot="sidebar-probe-actions" className="flex flex-wrap gap-2">
         <HButton
           size="sm"
           variant="secondary"
-          onClick={() =>
+          onPress={() =>
             setAttrs(
               Array.from(rootRef.current?.querySelectorAll('[data-row-id]') ?? []).map(
                 (el) => el.getAttribute('data-row-id') ?? '?',
@@ -278,7 +283,7 @@ function PromptInputProbe() {
   const [steerable, setSteerable] = useState(false)
 
   return (
-    <div className="space-y-2">
+    <div data-slot="prompt-input-probe" className="space-y-2">
       <Composer
         value={value}
         onChange={setValue}
@@ -295,31 +300,37 @@ function PromptInputProbe() {
         ariaLabel="探测输入框"
         placeholder="打几个字，试 Enter / Shift+Enter / 组词中的 Enter"
         toolbarStart={
-          <span data-testid="slot-start" className="text-xs text-muted">
+          <span data-slot="prompt-input-probe-slot-start" data-testid="slot-start" className="text-xs text-muted">
             工具槽
           </span>
         }
         toolbarEnd={
           <>
-            <span data-testid="slot-end" className="text-xs text-muted">
+            <span data-slot="prompt-input-probe-slot-end" data-testid="slot-end" className="text-xs text-muted">
               右槽
             </span>
             {/* Same shape as the composer's context gauge, which went missing
                 after the move. */}
             <HPopover>
-              <HPopover.Trigger aria-label="上下文用量" className="inline-flex items-center rounded-full outline-none">
-                <HProgressCircle
-                  aria-hidden
-                  value={40}
-                  maxValue={100}
-                  className="[--progress-circle-stroke:var(--muted)]"
+              <HTooltip delay={0}>
+                <HPopover.Trigger
+                  aria-label="上下文用量"
+                  className="inline-flex items-center rounded-full outline-none"
                 >
-                  <HProgressCircle.Track className="size-4.5">
-                    <HProgressCircle.TrackCircle />
-                    <HProgressCircle.FillCircle />
-                  </HProgressCircle.Track>
-                </HProgressCircle>
-              </HPopover.Trigger>
+                  <HProgressCircle
+                    aria-hidden
+                    value={40}
+                    maxValue={100}
+                    className="[--progress-circle-stroke:var(--muted)]"
+                  >
+                    <HProgressCircle.Track className="size-4.5">
+                      <HProgressCircle.TrackCircle />
+                      <HProgressCircle.FillCircle />
+                    </HProgressCircle.Track>
+                  </HProgressCircle>
+                </HPopover.Trigger>
+                <HTooltip.Content>上下文用量</HTooltip.Content>
+              </HTooltip>
               <HPopover.Content placement="top" className="p-3 text-xs">
                 用量面板
               </HPopover.Content>
@@ -327,8 +338,15 @@ function PromptInputProbe() {
           </>
         }
       />
-      <p className="text-xs text-muted">
-        提交 <span data-testid="submit-count">{submits}</span> · 停止 <span data-testid="stop-count">{stops}</span>
+      <p data-slot="prompt-input-probe-counts" className="text-xs text-muted">
+        提交{' '}
+        <span data-slot="prompt-input-probe-submit-count" data-testid="submit-count">
+          {submits}
+        </span>{' '}
+        · 停止{' '}
+        <span data-slot="prompt-input-probe-stop-count" data-testid="stop-count">
+          {stops}
+        </span>
         {' · '}
         <HButton size="sm" variant="ghost" onPress={() => setStreaming((s) => !s)}>
           {streaming ? '结束流式' : '模拟流式'}
@@ -338,7 +356,7 @@ function PromptInputProbe() {
           {steerable ? '关掉可插话' : '开可插话'}
         </HButton>
       </p>
-      <p className="text-xs text-muted">
+      <p data-slot="prompt-input-probe-note" className="text-xs text-muted">
         「可插话」是子 agent 的模式：流式中 Enter 仍然提交，Send 保持 Send，Stop 单独出现在它左边——
         但只在框里有字的时候，框空了 Pro 会把 Stop 的行为还给 Send。
       </p>
@@ -431,20 +449,23 @@ export default function HeroUiLab() {
     : '采集中…'
 
   return (
-    <div className="h-full overflow-y-auto bg-background text-foreground">
-      <div className="mx-auto max-w-3xl space-y-8 px-6 py-8">
-        <header className="space-y-1">
-          <h1 className="text-lg font-semibold">HeroUI v3 在 WebView2 的落地探测</h1>
-          <p className="text-xs text-muted">
-            必须在 <code>pnpm tauri dev</code> 的窗口里看。浏览器里跑出来的结果不作数。
+    <div data-slot="heroui-lab" className="h-full overflow-y-auto bg-background text-foreground">
+      <div data-slot="heroui-lab-body" className="mx-auto max-w-3xl space-y-8 px-6 py-8">
+        <header data-slot="heroui-lab-header" className="space-y-1">
+          <h1 data-slot="heroui-lab-title" className="text-lg font-semibold">
+            HeroUI v3 在 WebView2 的落地探测
+          </h1>
+          <p data-slot="heroui-lab-intro" className="text-xs text-muted">
+            必须在 <code data-slot="heroui-lab-intro-code">pnpm tauri dev</code>{' '}
+            的窗口里看。浏览器里跑出来的结果不作数。
           </p>
         </header>
 
         <Section title="探测结果" hint="复制这段发回给我">
-          <div className="flex gap-2">
+          <div data-slot="heroui-lab-report-actions" className="flex gap-2">
             <HButton
               size="sm"
-              onClick={() => {
+              onPress={() => {
                 setReport(collect())
                 navigator.clipboard?.writeText(asText).then(
                   () => {
@@ -460,14 +481,17 @@ export default function HeroUiLab() {
               {copied ? '已复制' : '重新采集并复制'}
             </HButton>
           </div>
-          <pre className="max-h-96 overflow-auto rounded-lg border bg-default/30 p-3 font-mono text-xs whitespace-pre-wrap select-all">
+          <pre
+            data-slot="heroui-lab-report"
+            className="max-h-96 overflow-auto rounded-lg border bg-default/30 p-3 font-mono text-xs whitespace-pre-wrap select-all"
+          >
             {asText}
           </pre>
         </Section>
 
         <Section title="HeroUI 组件实拍" hint="看有没有错位、缺色、缺边框">
-          <div ref={buttonRef} className="space-y-4 rounded-lg border p-4">
-            <div className="flex flex-wrap items-center gap-3">
+          <div data-slot="heroui-lab-components" ref={buttonRef} className="space-y-4 rounded-lg border p-4">
+            <div data-slot="heroui-lab-buttons" className="flex flex-wrap items-center gap-3">
               <HButton>Primary</HButton>
               <HButton variant="secondary">Secondary</HButton>
               <HButton variant="ghost">Ghost</HButton>
@@ -477,7 +501,7 @@ export default function HeroUiLab() {
 
             {/* Control 嵌在 Content 里面，不是它的兄弟：Content 是那个可点击的
                 <label>，Control 挪到外面就再也点不动了 */}
-            <div className="flex flex-wrap items-center gap-6">
+            <div data-slot="heroui-lab-toggles" className="flex flex-wrap items-center gap-6">
               <HSwitch defaultSelected>
                 <HSwitch.Content>
                   <HSwitch.Control>
@@ -496,7 +520,7 @@ export default function HeroUiLab() {
               </HCheckbox>
             </div>
 
-            <div className="max-w-sm space-y-2">
+            <div data-slot="heroui-lab-inputs" className="max-w-sm space-y-2">
               <HInput fullWidth placeholder="Input：单行输入" />
               <HTextArea fullWidth placeholder="TextArea：多行输入" rows={2} />
             </div>
@@ -505,10 +529,16 @@ export default function HeroUiLab() {
                 utility layer — so a Tailwind size class on the same element may
                 or may not outrank it. Everything the composer builds on top of
                 Button sizes itself this way. */}
-            <div data-probe="size-override" className="flex flex-wrap items-center gap-3">
+            <div
+              data-slot="heroui-lab-size-probe"
+              data-probe="size-override"
+              className="flex flex-wrap items-center gap-3"
+            >
               <HButton className="h-6 px-1.5">h-6</HButton>
               <HButton className="size-6 p-0">size-6</HButton>
+              {/* eslint-disable-next-line no-restricted-syntax -- probe: measures whether utilities beat .button */}
               <HButton className="h-auto p-1">h-auto p-1</HButton>
+              {/* eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- probe: measures whether utilities beat .button */}
               <HButton isIconOnly className="size-8">
                 size-8
               </HButton>
@@ -521,7 +551,7 @@ export default function HeroUiLab() {
               </HSlider.Track>
             </HSlider>
 
-            <div className="flex flex-wrap items-center gap-3">
+            <div data-slot="heroui-lab-overlays" className="flex flex-wrap items-center gap-3">
               <HTooltip delay={0}>
                 <HButton variant="secondary">悬停看 Tooltip</HButton>
                 <HTooltip.Content>浮层定位对不对</HTooltip.Content>
@@ -603,7 +633,7 @@ export default function HeroUiLab() {
             instead of spelling out "TYPESCRIPT". `languageIconUrl` maps a fence
             label onto the file it would live in. */}
         <Section title="CodeBlock + 语言图标" hint="每种语言的图标都要认得出来，认不出的回落成通用文件图标">
-          <div className="space-y-3">
+          <div data-slot="heroui-lab-code-blocks" className="space-y-3">
             {[
               { lang: 'typescript', code: 'const answer: number = 42\nconsole.log(answer)' },
               { lang: 'python', code: 'def greet(name: str) -> str:\n    return f"Hello, {name}"' },
@@ -615,10 +645,14 @@ export default function HeroUiLab() {
             ].map(({ lang, code }) => {
               const icon = languageIconUrl(lang)
               return (
-                <div key={lang} className="code-block rounded-xl">
-                  <div className="code-block__header">
-                    {icon && <img src={icon} alt="" aria-hidden className="size-4" />}
-                    <span className="text-xs text-muted">{lang}</span>
+                <div data-slot="heroui-lab-code-block" key={lang} className="code-block rounded-xl">
+                  <div data-slot="heroui-lab-code-block-header" className="code-block__header">
+                    {icon && (
+                      <img data-slot="heroui-lab-code-block-icon" src={icon} alt="" aria-hidden className="size-4" />
+                    )}
+                    <span data-slot="heroui-lab-code-block-lang" className="text-xs text-muted">
+                      {lang}
+                    </span>
                   </div>
                   <ShikiCode code={code} language={lang} />
                 </div>
@@ -635,16 +669,20 @@ export default function HeroUiLab() {
             every answer ever written. Both renderers get the same string; read
             the first three lines of each. */}
         <Section title="Markdown 两边对照" hint="重点看开头三行：右边会不会断成三行">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="min-w-0 space-y-2">
-              <h3 className="text-xs font-medium text-muted">现在（react-markdown + remark-gfm）</h3>
-              <div className="rounded-lg border p-3">
+          <div data-slot="heroui-lab-markdown-compare" className="grid grid-cols-2 gap-4">
+            <div data-slot="heroui-lab-markdown-ours" className="min-w-0 space-y-2">
+              <h3 data-slot="heroui-lab-markdown-heading" className="text-xs font-medium text-muted">
+                现在（react-markdown + remark-gfm）
+              </h3>
+              <div data-slot="heroui-lab-markdown-frame" className="rounded-lg border p-3">
                 <MarkdownContent content={MARKDOWN_PROBE} />
               </div>
             </div>
-            <div className="min-w-0 space-y-2">
-              <h3 className="text-xs font-medium text-muted">Pro（+ remark-breaks，改不掉）</h3>
-              <div className="rounded-lg border p-3">
+            <div data-slot="heroui-lab-markdown-pro" className="min-w-0 space-y-2">
+              <h3 data-slot="heroui-lab-markdown-heading" className="text-xs font-medium text-muted">
+                Pro（+ remark-breaks，改不掉）
+              </h3>
+              <div data-slot="heroui-lab-markdown-frame" className="rounded-lg border p-3">
                 <ProMarkdown>{MARKDOWN_PROBE}</ProMarkdown>
               </div>
             </div>
@@ -678,15 +716,15 @@ export default function HeroUiLab() {
             upstream. */}
         <Section title="Sidebar 的 Tree 能不能带私货" hint="点一行、右键一行，再按「读 data-row-id」">
           <SidebarProbe />
-          <p className="text-xs text-muted">
+          <p data-slot="heroui-lab-sidebar-note" className="text-xs text-muted">
             三个读数都要有值。任何一个空，侧栏的选中或右键菜单就是坏的——而坏法是安静的，不报错也不掉类型。
           </p>
         </Section>
 
         <Section title="Composer 同构复现" hint="右键输入框；滚动一下看菜单是否消失">
-          <div ref={proRef} className="rounded-lg border">
-            <div className="px-4 pb-4 pt-2">
-              <div className="mx-auto max-w-2xl">
+          <div data-slot="heroui-lab-composer" ref={proRef} className="rounded-lg border">
+            <div data-slot="heroui-lab-composer-padding" className="px-4 pb-4 pt-2">
+              <div data-slot="heroui-lab-composer-width" className="mx-auto max-w-2xl">
                 <ProContextMenu>
                   {/* `block w-full` 不是装饰：Pro 给 .context-menu__trigger 定的是
                       inline-block，包住撑满宽度的输入框时会把它塌成内容宽。这两个
@@ -695,7 +733,7 @@ export default function HeroUiLab() {
                   <ProContextMenu.Trigger className="block w-full">
                     <HTextField fullWidth aria-label="发送消息">
                       <HInputGroup fullWidth className="flex flex-col gap-2 rounded-2xl py-2">
-                        <div className="relative w-full">
+                        <div data-slot="heroui-lab-composer-textarea" className="relative w-full">
                           <HInputGroup.TextArea
                             rows={1}
                             placeholder="发送消息…"
@@ -703,13 +741,19 @@ export default function HeroUiLab() {
                           />
                         </div>
                         <HInputGroup.Suffix className="w-full items-center gap-1 border-0 px-3 py-0">
-                          <HButton isIconOnly size="sm" variant="ghost" aria-label="加号" className="rounded-lg">
-                            +
-                          </HButton>
-                          <span className="flex-1" />
-                          <HButton isIconOnly size="sm" aria-label="发送" className="rounded-full">
-                            ↑
-                          </HButton>
+                          <HTooltip delay={0}>
+                            <HButton isIconOnly size="sm" variant="ghost" aria-label="加号" className="rounded-lg">
+                              +
+                            </HButton>
+                            <HTooltip.Content>加号</HTooltip.Content>
+                          </HTooltip>
+                          <span data-slot="heroui-lab-composer-spacer" className="flex-1" />
+                          <HTooltip delay={0}>
+                            <HButton isIconOnly size="sm" aria-label="发送" className="rounded-full">
+                              <ArrowUp />
+                            </HButton>
+                            <HTooltip.Content>发送</HTooltip.Content>
+                          </HTooltip>
                         </HInputGroup.Suffix>
                       </HInputGroup>
                     </HTextField>
@@ -751,7 +795,7 @@ export default function HeroUiLab() {
               </div>
             </div>
           </div>
-          <p className="text-xs text-muted">
+          <p data-slot="heroui-lab-composer-note" className="text-xs text-muted">
             输入框必须满宽。把窗口拉矮再在靠底部处右键，看菜单是翻到上方去，还是原地压扁出滚动条。
           </p>
         </Section>
@@ -762,23 +806,29 @@ export default function HeroUiLab() {
             HeroUI 不提供、因而仍由本项目自己拼的组合件——只有它们还会自己读
             token，也只有它们能显示出主题层被抢的后果。 */}
         <Section title="本项目自有组合件" hint="仍自己读 token 的那部分">
-          <div className="space-y-3 rounded-lg border p-4">
+          <div data-slot="heroui-lab-composites" className="space-y-3 rounded-lg border p-4">
             <Bubble>
               <BubbleContent>气泡的圆角、底色、内边距应当和迁移前一致。</BubbleContent>
             </Bubble>
-            <p className="text-xs text-muted">这行是 text-muted，应当是灰的；如果变成正文色，说明 --muted 被抢了。</p>
+            <p data-slot="heroui-lab-composites-note" className="text-xs text-muted">
+              这行是 text-muted，应当是灰的；如果变成正文色，说明 --muted 被抢了。
+            </p>
           </div>
         </Section>
 
         <Section title=":has() 压测" hint="200 个节点，看上面的耗时读数">
-          <div ref={perfRef} className="max-h-32 overflow-auto rounded-lg border p-2">
-            <style>{`
+          <div data-slot="heroui-lab-perf" ref={perfRef} className="max-h-32 overflow-auto rounded-lg border p-2">
+            <style data-slot="heroui-lab-perf-style">{`
               .probe-host:has(.probe-item:hover) .probe-item { opacity: 0.9; }
               .probe-host.probe-flip .probe-item:has(+ .probe-item) { outline: 1px solid transparent; }
             `}</style>
-            <div className="probe-host flex flex-wrap gap-1">
+            <div data-slot="heroui-lab-perf-host" className="probe-host flex flex-wrap gap-1">
               {Array.from({ length: 200 }, (_, i) => (
-                <span key={i} className="probe-item rounded bg-default px-1 text-xs">
+                <span
+                  key={i}
+                  data-slot="heroui-lab-perf-item"
+                  className="probe-item rounded-md bg-default px-1 text-xs"
+                >
                   {i}
                 </span>
               ))}

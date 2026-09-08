@@ -22,7 +22,13 @@ export interface ModelIconProps {
 function ModelIcon({ size = 12, ...props }: ModelIconProps) {
   return (
     <Suspense
-      fallback={<span className={props.className} style={{ display: 'inline-block', width: size, height: size }} />}
+      fallback={
+        <span
+          data-slot="model-icon-placeholder"
+          className={props.className}
+          style={{ display: 'inline-block', width: size, height: size }}
+        />
+      }
     >
       <LazyModelIcon size={size} {...props} />
     </Suspense>

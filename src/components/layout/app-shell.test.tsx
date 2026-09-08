@@ -35,7 +35,22 @@ vi.mock('@heroui/react', () => {
   const Tooltip = Object.assign(({ children }: { children: React.ReactNode }) => <>{children}</>, {
     Content: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   })
+  const Kbd = Object.assign(({ children }: { children: React.ReactNode }) => <kbd>{children}</kbd>, {
+    Content: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  })
+  const Alert = Object.assign(
+    ({ children, status: _status, ...props }: React.HTMLAttributes<HTMLDivElement> & { status?: string }) => (
+      <div {...props}>{children}</div>
+    ),
+    {
+      Indicator: () => null,
+      Content: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+      Description: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
+    },
+  )
   return {
+    Alert,
+    Kbd,
     Button: ({
       children,
       onPress,

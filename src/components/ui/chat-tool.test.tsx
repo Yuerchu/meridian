@@ -11,7 +11,6 @@ import {
   ChatToolStatusIcon,
   ChatToolTrigger,
 } from './chat-tool'
-import { BubbleKeyboard } from './bubble-keyboard'
 
 describe('ChatTool', () => {
   it('exposes active state without treating a queued call as busy', () => {
@@ -71,17 +70,13 @@ describe('ChatTool', () => {
   })
 })
 
-describe('ChatTool on a keyboard', () => {
-  function onKeyboard(ui: React.ReactNode) {
-    return render(
-      <ChatToolPresentationProvider value="keyboard">
-        <BubbleKeyboard>{ui}</BubbleKeyboard>
-      </ChatToolPresentationProvider>,
-    )
+describe('ChatTool as a bubble block', () => {
+  function inBubble(ui: React.ReactNode) {
+    return render(<ChatToolPresentationProvider value="bubble">{ui}</ChatToolPresentationProvider>)
   }
 
-  it('renders the trigger as a key with no heading, and the panel in the stack', () => {
-    const { container } = onKeyboard(
+  it('is one block holding both the head and the detail, with no heading', () => {
+    const { container } = inBubble(
       <ChatTool state="output-available">
         <ChatToolTrigger>Read file</ChatToolTrigger>
         <ChatToolContent>contents</ChatToolContent>
@@ -89,14 +84,18 @@ describe('ChatTool on a keyboard', () => {
     )
     const key = screen.getByRole('button', { name: /Read file/ })
     expect(container.querySelector('h3')).toBeNull()
-    expect(container.querySelector('[data-slot="bubble-keyboard-row"]')).toContainElement(key)
+    const block = container.querySelector('[data-slot="chat-tool"]')!
+    // What `bubble.tsx` styles it by, and the whole of why there is no portal:
+    // the head and the panel are children of this one element.
+    expect(block).toHaveAttribute('data-bubble-block')
+    expect(block).toContainElement(key)
     const panel = document.getElementById(key.getAttribute('aria-controls')!)!
-    expect(container.querySelector('[data-slot="bubble-keyboard-stack"]')).toContainElement(panel)
+    expect(block).toContainElement(panel)
     expectCollapsed(key)
   })
 
-  it('carries the status onto both the key and the panel', () => {
-    const { container } = onKeyboard(
+  it('carries the status on the block, which is the one edge around both halves', () => {
+    const { container } = inBubble(
       <ChatTool state="requires-action" defaultExpanded>
         <ChatToolTrigger>Write file</ChatToolTrigger>
         <ChatToolContent>Exact change</ChatToolContent>
@@ -104,15 +103,16 @@ describe('ChatTool on a keyboard', () => {
     )
     const key = screen.getByRole('button', { name: /Write file/ })
     expect(key).toHaveAttribute('data-state', 'requires-action')
-    expect(key).toHaveClass('basis-full')
-    // The ring is on the panel's outer box, the one that continues the bubble,
-    // so it wraps the key and the detail as one outline.
-    const panel = container.querySelector('[data-slot="chat-tool-content"]')!
-    expect(panel.className).toContain('ring-warning')
+    const block = container.querySelector('[data-slot="chat-tool"]')!
+    // A decision takes the column whatever else is true, and the ring is on the
+    // block rather than on either half — one outline, not two.
+    expect(block.className).toContain('ring-warning')
+    expect(block.className).toContain('w-full')
+    expect(container.querySelector('[data-slot="chat-tool-content"]')!.className).not.toContain('ring-warning')
   })
 
   it('closes on Escape from inside the panel and hands focus back to the key', async () => {
-    onKeyboard(
+    inBubble(
       <ChatTool state="output-available" defaultExpanded>
         <ChatToolTrigger>Read file</ChatToolTrigger>
         <ChatToolContent>
@@ -129,7 +129,7 @@ describe('ChatTool on a keyboard', () => {
   })
 
   it('leaves Escape to a field inside the panel', async () => {
-    onKeyboard(
+    inBubble(
       <ChatTool state="requires-action" defaultExpanded>
         <ChatToolTrigger>Run command</ChatToolTrigger>
         <ChatToolContent>
@@ -144,7 +144,7 @@ describe('ChatTool on a keyboard', () => {
   })
 
   it('shares the decision row equally between its keys', () => {
-    const { container } = onKeyboard(
+    const { container } = inBubble(
       <ChatToolApproval>
         <Button>Reject</Button>
         <Button>Allow</Button>

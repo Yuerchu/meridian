@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Disclosure, ProgressCircle } from '@heroui/react'
+import { Disclosure, ProgressCircle, Tooltip } from '@heroui/react'
 import { Segment } from '@heroui-pro/react/segment'
 import { LayoutColumns3, LayoutList } from '@gravity-ui/icons'
 import { useTranslation } from 'react-i18next'
@@ -74,7 +74,7 @@ export function TodoBarView({
               sits on a wrapper because React Aria's ProgressBar filters
               `aria-hidden` off its own element; the label it insists on
               never surfaces from in here. */}
-          <span aria-hidden="true" className="shrink-0">
+          <span data-slot="todo-bar-ring" aria-hidden="true" className="shrink-0">
             <ProgressCircle
               aria-label={t('chat.todo.progress', { done, total })}
               value={done}
@@ -90,7 +90,7 @@ export function TodoBarView({
           {/* Same shape as ChatToolTrigger: the label row absorbs the slack
               so the count and chevron sit at the right edge without an
               ml-auto fighting for the free space. */}
-          <div className="flex min-w-0 flex-1 items-center gap-2">
+          <div data-slot="todo-bar-summary" className="flex min-w-0 flex-1 items-center gap-2">
             <span data-slot="todo-bar-title" className="max-w-40 shrink-0 truncate font-medium text-foreground">
               {todos.title}
             </span>
@@ -98,7 +98,9 @@ export function TodoBarView({
               {current ? current.active_form : t('chat.todo.idle')}
             </span>
           </div>
-          <span className="shrink-0 tabular-nums text-muted">{t('chat.todo.progress', { done, total })}</span>
+          <span data-slot="todo-bar-progress" className="shrink-0 tabular-nums text-muted">
+            {t('chat.todo.progress', { done, total })}
+          </span>
           <Disclosure.Indicator className="size-3.5 shrink-0 text-muted" />
         </Disclosure.Trigger>
       </Disclosure.Heading>
@@ -106,7 +108,7 @@ export function TodoBarView({
         {/* Body, not a plain wrapper: it is what keeps the panel measurable,
             so without it the list never collapses. */}
         <Disclosure.Body>
-          <div className="flex justify-end px-4 pb-2">
+          <div data-slot="todo-bar-view-switch" className="flex justify-end px-4 pb-2">
             <Segment
               aria-label={`${t('chat.todo.viewList')} / ${t('chat.todo.viewBoard')}`}
               size="sm"
@@ -115,12 +117,18 @@ export function TodoBarView({
                 if (next === 'list' || next === 'board') setView(next)
               }}
             >
-              <Segment.Item id="list" aria-label={t('chat.todo.viewList')} className="w-7 px-0">
-                <LayoutList />
-              </Segment.Item>
-              <Segment.Item id="board" aria-label={t('chat.todo.viewBoard')} className="w-7 px-0">
-                <LayoutColumns3 />
-              </Segment.Item>
+              <Tooltip delay={0}>
+                <Segment.Item id="list" aria-label={t('chat.todo.viewList')} className="w-7 px-0">
+                  <LayoutList />
+                </Segment.Item>
+                <Tooltip.Content>{t('chat.todo.viewList')}</Tooltip.Content>
+              </Tooltip>
+              <Tooltip delay={0}>
+                <Segment.Item id="board" aria-label={t('chat.todo.viewBoard')} className="w-7 px-0">
+                  <LayoutColumns3 />
+                </Segment.Item>
+                <Tooltip.Content>{t('chat.todo.viewBoard')}</Tooltip.Content>
+              </Tooltip>
             </Segment>
           </div>
           {view === 'board' ? (
@@ -146,7 +154,9 @@ export function TodoBarView({
       data-slot="todo-bar-shell"
       className={cn('px-4 pt-2 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]', className)}
     >
-      <div className="mx-auto max-w-2xl">{bar}</div>
+      <div data-slot="todo-bar-inner" className="mx-auto max-w-2xl">
+        {bar}
+      </div>
     </div>
   )
 }

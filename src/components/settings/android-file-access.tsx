@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FolderOpen, Xmark } from '@gravity-ui/icons'
-import { Button } from '@heroui/react'
+import { Button, Tooltip } from '@heroui/react'
 import { CellSwitch } from '@heroui-pro/react/cell-switch'
 import { EmptyState } from '@heroui-pro/react/empty-state'
 import { api } from '@/api'
@@ -83,14 +83,20 @@ export function AndroidFileAccess() {
   }
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h3 className="text-sm font-medium">{t('settings.fileAccess.title')}</h3>
-        <p className="text-xs text-muted">{t('settings.fileAccess.description')}</p>
+    <div data-slot="android-file-access" className="space-y-4">
+      <div data-slot="file-access-heading">
+        <h3 data-slot="file-access-title" className="text-sm font-medium">
+          {t('settings.fileAccess.title')}
+        </h3>
+        <p data-slot="file-access-description" className="text-xs text-muted">
+          {t('settings.fileAccess.description')}
+        </p>
       </div>
 
-      <div className="space-y-1.5">
-        <p className="block text-xs font-medium text-muted">{t('settings.fileAccess.safDirs')}</p>
+      <div data-slot="file-access-saf" className="space-y-1.5">
+        <p data-slot="file-access-saf-label" className="block text-xs font-medium text-muted">
+          {t('settings.fileAccess.safDirs')}
+        </p>
         {safRoots.length === 0 ? (
           <EmptyState size="sm">
             <EmptyState.Header>
@@ -98,33 +104,44 @@ export function AndroidFileAccess() {
             </EmptyState.Header>
           </EmptyState>
         ) : (
-          <ul className="space-y-1">
+          <ul data-slot="file-access-saf-list" className="space-y-1">
             {safRoots.map((root) => (
-              <li key={root.uri} className="flex items-center justify-between rounded-md border px-2 py-1.5 text-xs">
-                <div className="min-w-0">
-                  <div className="truncate font-medium">{root.display_name}</div>
-                  <div className="truncate text-xs text-muted">{root.virtual_prefix}</div>
+              <li
+                key={root.uri}
+                data-slot="file-access-saf-root"
+                className="flex items-center justify-between rounded-md border px-2 py-1.5 text-xs"
+              >
+                <div data-slot="file-access-saf-root-text" className="min-w-0">
+                  <div data-slot="file-access-saf-root-name" className="truncate font-medium">
+                    {root.display_name}
+                  </div>
+                  <div data-slot="file-access-saf-root-prefix" className="truncate text-xs text-muted">
+                    {root.virtual_prefix}
+                  </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  isIconOnly
-                  className="shrink-0"
-                  onClick={() => handleRemove(root.uri)}
-                  aria-label={t('settings.fileAccess.removeDir')}
-                >
-                  <Xmark className="h-3.5 w-3.5" />
-                </Button>
+                <Tooltip delay={0}>
+                  <Button
+                    variant="ghost"
+                    isIconOnly
+                    className="shrink-0"
+                    onPress={() => handleRemove(root.uri)}
+                    aria-label={t('settings.fileAccess.removeDir')}
+                  >
+                    <Xmark className="h-3.5 w-3.5" />
+                  </Button>
+                  <Tooltip.Content>{t('settings.fileAccess.removeDir')}</Tooltip.Content>
+                </Tooltip>
               </li>
             ))}
           </ul>
         )}
-        <Button variant="outline" onClick={handleAddDirectory} isDisabled={picking}>
+        <Button variant="outline" onPress={handleAddDirectory} isDisabled={picking}>
           <FolderOpen className="mr-1.5 h-3.5 w-3.5" />
           {t('settings.fileAccess.addDir')}
         </Button>
       </div>
 
-      <div className="space-y-1.5">
+      <div data-slot="file-access-manage" className="space-y-1.5">
         <CellSwitch
           aria-label={t('settings.fileAccess.manageToggle')}
           aria-describedby="manage-storage-hint"
@@ -136,14 +153,16 @@ export function AndroidFileAccess() {
             <CellSwitch.Control />
           </CellSwitch.Trigger>
         </CellSwitch>
-        <p id="manage-storage-hint" className="text-xs text-muted">
+        <p id="manage-storage-hint" data-slot="file-access-manage-hint" className="text-xs text-muted">
           {manageEnabled && !manageGranted
             ? t('settings.fileAccess.manageNotGranted')
             : t('settings.fileAccess.manageHint')}
         </p>
       </div>
 
-      <p className="text-xs text-muted">{t('settings.fileAccess.approvalNote')}</p>
+      <p data-slot="file-access-approval-note" className="text-xs text-muted">
+        {t('settings.fileAccess.approvalNote')}
+      </p>
     </div>
   )
 }

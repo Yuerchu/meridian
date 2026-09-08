@@ -1,7 +1,19 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, TrashBin, Wrench, Terminal } from '@gravity-ui/icons'
-import { Button, Card, Chip, Description, Disclosure, DisclosureGroup, Input, Label, TextField } from '@heroui/react'
+import {
+  Alert,
+  Button,
+  Card,
+  Chip,
+  Description,
+  Disclosure,
+  DisclosureGroup,
+  Input,
+  Label,
+  TextField,
+  Tooltip,
+} from '@heroui/react'
 import { EmptyState } from '@heroui-pro/react/empty-state'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
@@ -114,7 +126,7 @@ function CustomToolEditor({
         void handleSave()
       }}
     >
-      <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
+      <div data-slot="custom-tool-fields" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
         <TextField fullWidth isInvalid={invalid.has('name')}>
           <Label>{t('settings.tools.name')}</Label>
           <Input
@@ -177,28 +189,32 @@ function CustomToolEditor({
         />
       </TextField>
       {invalid.size > 0 && (
-        <p role="alert" className="text-xs text-danger">
+        <p data-slot="custom-tool-validation" role="alert" className="text-xs text-danger">
           {invalid.has('timeout') ? t('settings.tools.invalidTimeout') : t('settings.tools.requiredFields')}
         </p>
       )}
       {saveError && (
-        <p role="alert" className="text-xs text-danger break-all">
+        <p data-slot="custom-tool-save-error" role="alert" className="text-xs text-danger break-all">
           {saveError}
         </p>
       )}
-      <div className="flex items-center gap-2">
+      <div data-slot="custom-tool-actions" className="flex items-center gap-2">
         <Button type="submit">{t('common.save')}</Button>
         {saved && <SavedHint />}
         {onDelete && (
-          <Button
-            type="button"
-            variant="ghost"
-            aria-label={t('settings.tools.delete')}
-            className="ml-auto text-danger hover:text-danger"
-            onPress={onDelete}
-          >
-            <TrashBin className="w-3.5 h-3.5" />
-          </Button>
+          <Tooltip delay={0}>
+            <Button
+              type="button"
+              isIconOnly
+              variant="ghost"
+              aria-label={t('settings.tools.delete')}
+              className="ml-auto text-muted hover:text-danger"
+              onPress={onDelete}
+            >
+              <TrashBin className="w-3.5 h-3.5" />
+            </Button>
+            <Tooltip.Content>{t('settings.tools.delete')}</Tooltip.Content>
+          </Tooltip>
         )}
       </div>
     </form>
@@ -247,32 +263,37 @@ export function ToolMarketplace() {
       <SettingsHeader title={t('settings.tools.title')} subtitle={t('settings.tools.subtitle')} />
 
       {loadError && (
-        <div
-          role="alert"
-          className="flex items-center justify-between gap-3 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger"
-        >
-          <span>{t('settings.tools.loadError')}</span>
-          <Button size="sm" variant="outline" onPress={() => void refresh()}>
-            {t('settings.tools.retry')}
-          </Button>
-        </div>
+        <Alert status="danger" role="alert">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Description>{t('settings.tools.loadError')}</Alert.Description>
+            <Button size="sm" variant="outline" onPress={() => void refresh()}>
+              {t('settings.tools.retry')}
+            </Button>
+          </Alert.Content>
+        </Alert>
       )}
 
       <SettingsDrilldown
         title={t('settings.tools.builtinSection')}
         summary={builtinTools.filter((tool) => tool.source === 'builtin').length}
       >
-        <div className="grid grid-cols-1 gap-1">
+        <div data-slot="builtin-tool-list" className="grid grid-cols-1 gap-1">
           {builtinTools
             .filter((t) => t.source === 'builtin')
             .map((tool) => (
               <div
                 key={tool.name}
+                data-slot="builtin-tool-row"
                 className="flex items-center gap-2 px-3 py-1.5 text-xs border border-border rounded-lg"
               >
                 <Wrench className="w-3.5 h-3.5 text-muted flex-shrink-0" />
-                <span className="font-mono flex-1">{tool.name}</span>
-                <span className="text-muted truncate max-w-[200px]">{tool.description}</span>
+                <span data-slot="builtin-tool-name" className="font-mono flex-1">
+                  {tool.name}
+                </span>
+                <span data-slot="builtin-tool-description" className="text-muted truncate max-w-48">
+                  {tool.description}
+                </span>
               </div>
             ))}
         </div>
@@ -283,18 +304,25 @@ export function ToolMarketplace() {
           title={t('settings.tools.onebotSection')}
           summary={builtinTools.filter((tool) => tool.source === 'onebot').length}
         >
-          <p className="text-xs text-muted">{t('settings.tools.onebotHint')}</p>
-          <div className="grid grid-cols-1 gap-1">
+          <p data-slot="onebot-tool-hint" className="text-xs text-muted">
+            {t('settings.tools.onebotHint')}
+          </p>
+          <div data-slot="onebot-tool-list" className="grid grid-cols-1 gap-1">
             {builtinTools
               .filter((tool) => tool.source === 'onebot')
               .map((tool) => (
                 <div
                   key={tool.name}
+                  data-slot="onebot-tool-row"
                   className="flex items-center gap-2 px-3 py-1.5 text-xs border border-border rounded-lg"
                 >
                   <Wrench className="w-3.5 h-3.5 text-muted flex-shrink-0" />
-                  <span className="font-mono flex-1">{tool.name}</span>
-                  <span className="text-muted truncate max-w-[160px]">{t(`settings.tools.qq.${tool.name}`)}</span>
+                  <span data-slot="onebot-tool-name" className="font-mono flex-1">
+                    {tool.name}
+                  </span>
+                  <span data-slot="onebot-tool-description" className="text-muted truncate max-w-40">
+                    {t(`settings.tools.qq.${tool.name}`)}
+                  </span>
                   {tool.scope === 'group' && <Chip className="text-muted">{t('settings.tools.qqGroupOnly')}</Chip>}
                   {tool.scope === 'private' && <Chip className="text-muted">{t('settings.tools.qqPrivateOnly')}</Chip>}
                   {tool.admin_only === true && <Chip className="text-muted">{t('settings.tools.qqAdminOnly')}</Chip>}
@@ -305,9 +333,11 @@ export function ToolMarketplace() {
         </SettingsDrilldown>
       )}
 
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-medium">{t('settings.tools.customSection')}</h3>
+      <div data-slot="custom-tools">
+        <div data-slot="custom-tools-header" className="flex items-center justify-between mb-2">
+          <h3 data-slot="custom-tools-title" className="text-sm font-medium">
+            {t('settings.tools.customSection')}
+          </h3>
           <Button variant="outline" onPress={() => setShowCreate(!showCreate)}>
             <Plus className="w-3.5 h-3.5" />
             {t('settings.tools.new')}
@@ -348,13 +378,13 @@ export function ToolMarketplace() {
                       centred UA default. */}
                   <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2 text-start text-xs transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30">
                     <Terminal className="w-3.5 h-3.5 shrink-0 text-muted" />
-                    <span className="font-mono min-w-0 flex-1 truncate">{ct.name}</span>
-                    <span className="text-muted truncate">{ct.command}</span>
-                    {!ct.is_enabled && (
-                      <span className="text-xs text-muted bg-default px-1 rounded shrink-0">
-                        {t('settings.tools.disabled')}
-                      </span>
-                    )}
+                    <span data-slot="custom-tool-name" className="font-mono min-w-0 flex-1 truncate">
+                      {ct.name}
+                    </span>
+                    <span data-slot="custom-tool-command" className="text-muted truncate">
+                      {ct.command}
+                    </span>
+                    {!ct.is_enabled && <Chip className="shrink-0 text-muted">{t('settings.tools.disabled')}</Chip>}
                     <Disclosure.Indicator className="size-3.5 shrink-0 text-muted" />
                   </Disclosure.Trigger>
                 </Disclosure.Heading>
@@ -396,18 +426,25 @@ export function ToolMarketplace() {
         </DisclosureGroup>
       </div>
 
-      <div>
-        <h3 className="text-sm font-medium mb-2">{t('settings.tools.presetsSection')}</h3>
-        <div className="space-y-1">
+      <div data-slot="tool-presets">
+        <h3 data-slot="tool-presets-title" className="text-sm font-medium mb-2">
+          {t('settings.tools.presetsSection')}
+        </h3>
+        <div data-slot="tool-preset-list" className="space-y-1">
           {presets.map((preset) => {
             const toolNames = preset.tool_names
             return (
               <div
                 key={preset.id}
+                data-slot="tool-preset-row"
                 className="flex items-center gap-2 px-3 py-2 text-xs border border-border rounded-lg"
               >
-                <span className="font-medium flex-1">{preset.name}</span>
-                <span className="text-muted">{t('settings.tools.presetCount', { count: toolNames.length })}</span>
+                <span data-slot="tool-preset-name" className="font-medium flex-1">
+                  {preset.name}
+                </span>
+                <span data-slot="tool-preset-count" className="text-muted">
+                  {t('settings.tools.presetCount', { count: toolNames.length })}
+                </span>
                 {preset.is_builtin && <Chip className="text-muted">{t('settings.template.builtin')}</Chip>}
               </div>
             )

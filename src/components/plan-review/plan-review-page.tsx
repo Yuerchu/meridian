@@ -63,10 +63,14 @@ const SHEET_EXIT_MS = 250
 function PlanDiff({ patch, emptyLabel }: { patch: string; emptyLabel: string }) {
   const files = useMemo(() => parsePatchText(patch), [patch])
   if (!patch || files.length === 0) {
-    return <p className="px-5 py-12 text-center text-sm text-muted">{emptyLabel}</p>
+    return (
+      <p data-slot="plan-diff-empty" className="px-5 py-12 text-center text-sm text-muted">
+        {emptyLabel}
+      </p>
+    )
   }
   return (
-    <div className="space-y-3 p-4">
+    <div data-slot="plan-diff" className="space-y-3 p-4">
       {files.map((file, index) => (
         <FileDiffCard key={`${file.path}:${index}`} diff={file} />
       ))}
@@ -87,18 +91,27 @@ function PlanReviewSkeleton() {
       aria-label={t('common.loading')}
       className="flex h-full min-h-0 flex-col bg-surface"
     >
-      <div className="flex min-h-14 shrink-0 items-center gap-3 border-b border-border px-3 @sm:px-5">
-        <div className="flex-1 space-y-1.5">
+      <div
+        data-slot="plan-review-skeleton-header"
+        className="flex min-h-14 shrink-0 items-center gap-3 border-b border-border px-3 @sm:px-5"
+      >
+        <div data-slot="plan-review-skeleton-heading" className="flex-1 space-y-1.5">
           <Skeleton className="h-4 w-28 rounded-md" />
           <Skeleton className="h-3 w-56 rounded-md" />
         </div>
         <Skeleton className="h-8 w-24 rounded-lg" />
         <Skeleton className="size-8 rounded-lg" />
       </div>
-      <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2 @sm:px-5">
+      <div
+        data-slot="plan-review-skeleton-views"
+        className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2 @sm:px-5"
+      >
         <Skeleton className="h-8 w-60 rounded-lg" />
       </div>
-      <div className="mx-auto w-full max-w-[54rem] flex-1 space-y-3 px-6 py-8">
+      <div
+        data-slot="plan-review-skeleton-document"
+        className="mx-auto w-full max-w-[54rem] flex-1 space-y-3 px-6 py-8"
+      >
         <Skeleton className="h-6 w-2/3 rounded-md" />
         <Skeleton className="h-3.5 w-full rounded-md" />
         <Skeleton className="h-3.5 w-11/12 rounded-md" />
@@ -107,7 +120,10 @@ function PlanReviewSkeleton() {
         <Skeleton className="h-3.5 w-full rounded-md" />
         <Skeleton className="h-3.5 w-10/12 rounded-md" />
       </div>
-      <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border px-3 py-3 @sm:px-5">
+      <div
+        data-slot="plan-review-skeleton-decision"
+        className="flex shrink-0 items-center justify-end gap-2 border-t border-border px-3 py-3 @sm:px-5"
+      >
         <Skeleton className="h-10 w-24 rounded-lg" />
         <Skeleton className="h-10 w-24 rounded-lg" />
         <Skeleton className="h-10 w-24 rounded-lg" />
@@ -135,7 +151,7 @@ function SourceEditor({
 }) {
   const { t } = useTranslation()
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div data-slot="plan-source-editor" className="flex h-full min-h-0 flex-col">
       <TextArea
         ref={textareaRef}
         aria-label={t('planReview.source.label')}
@@ -150,8 +166,13 @@ function SourceEditor({
         }}
       />
       {!isReadOnly && (
-        <div className="flex shrink-0 items-center justify-between border-t border-border px-3 py-2">
-          <p className="text-xs text-muted">{t('planReview.source.hint')}</p>
+        <div
+          data-slot="plan-source-editor-footer"
+          className="flex shrink-0 items-center justify-between border-t border-border px-3 py-2"
+        >
+          <p data-slot="plan-source-editor-hint" className="text-xs text-muted">
+            {t('planReview.source.hint')}
+          </p>
           <Button
             size="sm"
             variant="ghost"
@@ -465,7 +486,9 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
         onGlobalNoteChange={(globalNote) => setDraft((current) => (current ? { ...current, globalNote } : current))}
       />
     ) : (
-      <p className="p-6 text-center text-sm text-muted">{t('planReview.history.noFeedback')}</p>
+      <p data-slot="plan-review-no-feedback" className="p-6 text-center text-sm text-muted">
+        {t('planReview.history.noFeedback')}
+      </p>
     )
 
   const decide = async (action: 'approve' | 'request_changes') => {
@@ -549,11 +572,14 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
 
   if (!info || !draft) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-        <p role="alert" className="max-w-xl text-sm text-danger">
+      <div
+        data-slot="plan-review-load-error"
+        className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center"
+      >
+        <p data-slot="plan-review-load-error-message" role="alert" className="max-w-xl text-sm text-danger">
           {t('planReview.loadError', { error: pageError ?? t('planReview.unknownError') })}
         </p>
-        <div className="flex gap-2">
+        <div data-slot="plan-review-load-error-actions" className="flex gap-2">
           <Button variant="secondary" onPress={() => void loadReview()}>
             {t('planReview.reload')}
           </Button>
@@ -620,17 +646,24 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
 
   return (
     <div ref={pageRef} data-slot="plan-review-page" className="@container flex h-full min-h-0 flex-col bg-surface">
-      <header className="shrink-0 border-b border-border">
-        <div className="mx-auto flex min-h-14 w-full max-w-[96rem] items-center gap-2 px-3 @sm:px-5">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <h1 className="truncate text-sm font-semibold">{t('planReview.title')}</h1>
+      <header data-slot="plan-review-header" className="shrink-0 border-b border-border">
+        <div
+          data-slot="plan-review-header-row"
+          className="mx-auto flex min-h-14 w-full max-w-[96rem] items-center gap-2 px-3 @sm:px-5"
+        >
+          <div data-slot="plan-review-heading" className="min-w-0 flex-1">
+            <div data-slot="plan-review-title-row" className="flex items-center gap-2">
+              <h1 data-slot="plan-review-title" className="truncate text-sm font-semibold">
+                {t('planReview.title')}
+              </h1>
               <Chip size="sm" variant="secondary">
                 {t(`planReview.status.${info.review.state}`)}
               </Chip>
             </div>
-            <p className="flex min-w-0 items-baseline gap-1 text-xs text-muted">
-              <span className="shrink-0">{t('planReview.revision', { number: currentRevisionNumber })} ·</span>
+            <p data-slot="plan-review-subtitle" className="flex min-w-0 items-baseline gap-1 text-xs text-muted">
+              <span data-slot="plan-review-revision" className="shrink-0">
+                {t('planReview.revision', { number: currentRevisionNumber })} ·
+              </span>
               <Hint label={info.document.file_rel_path} className="truncate">
                 {info.document.file_rel_path}
               </Hint>
@@ -690,9 +723,13 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           className="shrink-0 divide-y divide-warning/20 border-b border-border bg-warning-soft text-sm text-warning-soft-foreground"
         >
           {problems.map((problem) => (
-            <div key={problem.key} className="mx-auto flex max-w-[96rem] items-center gap-3 px-4 py-2">
+            <div
+              data-slot="plan-review-problem"
+              key={problem.key}
+              className="mx-auto flex max-w-[96rem] items-center gap-3 px-4 py-2"
+            >
               <TriangleExclamation className="shrink-0" />
-              <p role="alert" className="min-w-0 flex-1 break-words">
+              <p data-slot="plan-review-problem-message" role="alert" className="min-w-0 flex-1 break-words">
                 {problem.message}
               </p>
               {problem.action && (
@@ -716,8 +753,8 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           data-slot="plan-review-progress"
           className="shrink-0 border-b border-border bg-accent-soft px-4 py-2 text-sm text-accent"
         >
-          <div className="mx-auto flex max-w-[96rem] items-center gap-3">
-            <p role="status" className="min-w-0 flex-1 break-words">
+          <div data-slot="plan-review-progress-row" className="mx-auto flex max-w-[96rem] items-center gap-3">
+            <p data-slot="plan-review-progress-message" role="status" className="min-w-0 flex-1 break-words">
               {progress.message}
             </p>
             {progress.resumable && (
@@ -735,8 +772,14 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
         </div>
       )}
 
-      <div className="mx-auto flex min-h-0 w-full max-w-[96rem] flex-1 flex-col px-0 @sm:px-5">
-        <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2 @sm:px-0">
+      <div
+        data-slot="plan-review-body"
+        className="mx-auto flex min-h-0 w-full max-w-[96rem] flex-1 flex-col px-0 @sm:px-5"
+      >
+        <div
+          data-slot="plan-review-toolbar"
+          className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2 @sm:px-0"
+        >
           <Segment
             aria-label={t('planReview.views')}
             size="sm"
@@ -751,7 +794,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
               {t('planReview.tabs.suggestions')}
             </Segment.Item>
           </Segment>
-          <span className="ms-auto text-xs text-muted" role="status">
+          <span data-slot="plan-review-save-state" className="ms-auto text-xs text-muted" role="status">
             {effectiveSaveState === 'error'
               ? t('planReview.save.failed')
               : effectiveSaveState === 'conflict'
@@ -769,14 +812,18 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           </Button>
         </div>
 
-        <div className="plan-review-workspace min-h-0 flex-1">
-          <section className="plan-review-document min-h-0 overflow-hidden" aria-label={t(`planReview.tabs.${tab}`)}>
+        <div data-slot="plan-review-workspace" className="plan-review-workspace min-h-0 flex-1">
+          <section
+            data-slot="plan-review-document"
+            className="plan-review-document min-h-0 overflow-hidden"
+            aria-label={t(`planReview.tabs.${tab}`)}
+          >
             {tab === 'changes' ? (
-              <div className="h-full overflow-y-auto">
+              <div data-slot="plan-review-changes" className="h-full overflow-y-auto">
                 <PlanDiff patch={submittedPatch} emptyLabel={t('planReview.diff.emptyChanges')} />
               </div>
             ) : tab === 'suggestions' ? (
-              <div className="h-full overflow-y-auto">
+              <div data-slot="plan-review-suggestions" className="h-full overflow-y-auto">
                 <PlanDiff patch={suggestionPatch} emptyLabel={t('planReview.diff.emptySuggestions')} />
               </div>
             ) : visibleMode === 'rich' && visibleDocument ? (
@@ -818,9 +865,12 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
                 }}
               />
             ) : (
-              <div className="flex h-full min-h-0 flex-col">
+              <div data-slot="plan-review-source" className="flex h-full min-h-0 flex-col">
                 {visibleFallback && (
-                  <p className="shrink-0 border-b border-border bg-surface-secondary px-4 py-2 text-xs text-muted">
+                  <p
+                    data-slot="plan-review-source-fallback"
+                    className="shrink-0 border-b border-border bg-surface-secondary px-4 py-2 text-xs text-muted"
+                  >
                     {t(`planReview.source.reason.${visibleFallback}`)}
                   </p>
                 )}
@@ -860,16 +910,22 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
             )}
           </section>
 
-          <aside className="plan-review-comments-aside min-h-0 border-s border-border">
+          <aside
+            data-slot="plan-review-comments-aside"
+            className="plan-review-comments-aside min-h-0 border-s border-border"
+          >
             {commentsPane('plan-comments-aside-heading')}
           </aside>
         </div>
       </div>
 
-      <footer className="shrink-0 border-t border-border bg-surface px-3 py-3 @sm:px-5">
-        <div className="mx-auto flex max-w-[96rem] flex-col gap-3 @sm:flex-row @sm:items-center">
-          <div className="min-w-0 flex-1">
-            <p className="text-xs text-muted">
+      <footer data-slot="plan-review-footer" className="shrink-0 border-t border-border bg-surface px-3 py-3 @sm:px-5">
+        <div
+          data-slot="plan-review-footer-row"
+          className="mx-auto flex max-w-[96rem] flex-col gap-3 @sm:flex-row @sm:items-center"
+        >
+          <div data-slot="plan-review-footer-status" className="min-w-0 flex-1">
+            <p data-slot="plan-review-decision-state" className="text-xs text-muted">
               {info.review.state === 'pending'
                 ? t('planReview.queueHeld')
                 : t(`planReview.decision.${info.review.state}`)}
@@ -877,9 +933,13 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
             {!rules.canApprove &&
               info.review.state === 'pending' &&
               rules.isPristine &&
-              effectiveSaveState !== 'saved' && <p className="text-xs text-muted">{t('planReview.waitForSave')}</p>}
+              effectiveSaveState !== 'saved' && (
+                <p data-slot="plan-review-wait-for-save" className="text-xs text-muted">
+                  {t('planReview.waitForSave')}
+                </p>
+              )}
           </div>
-          <div className="flex shrink-0 items-center justify-end gap-2">
+          <div data-slot="plan-review-decision-actions" className="flex shrink-0 items-center justify-end gap-2">
             <Button
               variant="ghost"
               isDisabled={deciding || effectiveSaveState !== 'saved' || rules.isPristine || isReadOnly}

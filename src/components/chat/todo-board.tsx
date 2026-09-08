@@ -52,7 +52,11 @@ export default function TodoBoard({ todos, className }: { todos: TodoDraft[]; cl
             <Kanban.ColumnBody>
               <Kanban.CardList
                 aria-label={t(`chat.todo.status.${status}`)}
-                renderEmptyState={() => <span className="text-xs text-muted">{t('chat.todo.emptyColumn')}</span>}
+                renderEmptyState={() => (
+                  <span data-slot="todo-board-empty" className="text-xs text-muted">
+                    {t('chat.todo.emptyColumn')}
+                  </span>
+                )}
               >
                 {/* Index as key and as id, for the reason `TodoItemList`
                     gives: a `TodoDraft` carries no id, and the list is
@@ -61,8 +65,9 @@ export default function TodoBoard({ todos, className }: { todos: TodoDraft[]; cl
                     and three columns of `0` are not. */}
                 {items.map((todo, i) => (
                   <Kanban.Card key={i} id={`${status}:${i}`} textValue={todo.content}>
-                    <div className="p-2.5 text-xs">
+                    <div data-slot="todo-board-card-body" className="p-2.5 text-xs">
                       <span
+                        data-slot="todo-board-card-text"
                         className={cn(
                           status === 'completed' && 'text-muted line-through',
                           status === 'in_progress' && 'font-medium text-foreground',

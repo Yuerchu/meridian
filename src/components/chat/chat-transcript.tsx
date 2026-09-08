@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { TranscriptConversationProvider } from '@/hooks/use-transcript-conversation'
 import { useTranslation } from 'react-i18next'
 import { LazyMotion, domAnimation } from 'motion/react'
 import * as m from 'motion/react-m'
-import { Button } from '@heroui/react'
+import { Button, Tooltip } from '@heroui/react'
 
 import { useImeBottom } from '@/hooks/use-android-insets'
 import {
@@ -19,7 +20,7 @@ import { TurnOutline } from './turn-outline'
 import { FilePreviewProvider } from './file-preview'
 import type { EmojiMap } from './emoji-renderer'
 import type { SenderNames } from '@/hooks/use-sender-names'
-import { answerAnchorId, turnEndedAt, type Turn } from '@/lib/turns'
+import { answerAnchorId, questionPositionOf, turnEndedAt, type Turn } from '@/lib/turns'
 import type { MessageRating } from '@/types'
 
 const TRANSCRIPT_WINDOW_TURNS = 40
@@ -216,7 +217,7 @@ function LazyTurn({ children, near: initiallyNear }: { children: React.ReactNode
 
   return (
     <div ref={ref} data-slot="lazy-turn" data-near={near || undefined}>
-      {near ? children : <div style={{ height: LAZY_ESTIMATE_PX }} aria-hidden />}
+      {near ? children : <div data-slot="lazy-turn-placeholder" style={{ height: LAZY_ESTIMATE_PX }} aria-hidden />}
     </div>
   )
 }
@@ -262,6 +263,7 @@ function TranscriptTurns({
               // Off the full list, not the window: a day passed between two turns
               // whether or not the earlier one is rendered.
               previousTurnEndedAt={i > 0 ? turnEndedAt(turns[i - 1]) : null}
+              questionPosition={questionPositionOf(turns, i)}
               onDelete={onDelete}
               onRegenerate={onRegenerate}
               onEdit={onEdit}
@@ -349,60 +351,69 @@ export function ChatTranscript({
   }, [conversationId, turns, visibleStart])
 
   return (
-    <FilePreviewProvider conversationId={conversationId}>
-      <LazyMotion features={domAnimation}>
-        <MessageScrollerProvider
-          autoScroll
-          defaultScrollPosition="last-anchor"
-          // Count changes identify a genuinely new live turn, including queued
-          // turns, while surviving the optimistic row's persisted-id re-key.
-          // A non-streaming branch/history update must not re-arm follow.
-          followKey={streaming ? turns.length : null}
-          scrollPreviousItemPeek={48}
-        >
-          <ImeScrollSync />
-          <AnswerSettle streaming={streaming} anchorId={lastTurn ? answerAnchorId(lastTurn.id) : null} />
-          <MessageScroller className="flex-1 min-h-0">
-            <MessageScrollerViewport>
-              <MessageScrollerContent className="max-w-4xl mx-auto px-4 py-6 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]">
-                {leading}
-                {visibleStart > 0 && (
-                  <LoadEarlierTurns
-                    remaining={visibleStart}
-                    oldFirstId={turns[visibleStart]?.id}
-                    onLoad={() => {
-                      const nextStart = Math.max(0, visibleStart - TRANSCRIPT_WINDOW_TURNS)
-                      setWindowState({ conversationId, firstVisibleId: turns[nextStart]?.id ?? null })
-                    }}
+    // Which conversation everything below is drawing, for the per-conversation
+    // state it keeps — panel expansion, fold badges, a delegated run's pending
+    // question. They used to read `activeId`, which is the conversation the
+    // *window* is on and the wrong answer inside the sub-agent sheet.
+    <TranscriptConversationProvider value={conversationId}>
+      <FilePreviewProvider conversationId={conversationId}>
+        <LazyMotion features={domAnimation}>
+          <MessageScrollerProvider
+            autoScroll
+            defaultScrollPosition="last-anchor"
+            // Count changes identify a genuinely new live turn, including queued
+            // turns, while surviving the optimistic row's persisted-id re-key.
+            // A non-streaming branch/history update must not re-arm follow.
+            followKey={streaming ? turns.length : null}
+            scrollPreviousItemPeek={48}
+          >
+            <ImeScrollSync />
+            <AnswerSettle streaming={streaming} anchorId={lastTurn ? answerAnchorId(lastTurn.id) : null} />
+            <MessageScroller className="flex-1 min-h-0">
+              <MessageScrollerViewport>
+                <MessageScrollerContent className="max-w-4xl mx-auto px-4 py-6 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]">
+                  {leading}
+                  {visibleStart > 0 && (
+                    <LoadEarlierTurns
+                      remaining={visibleStart}
+                      oldFirstId={turns[visibleStart]?.id}
+                      onLoad={() => {
+                        const nextStart = Math.max(0, visibleStart - TRANSCRIPT_WINDOW_TURNS)
+                        setWindowState({ conversationId, firstVisibleId: turns[nextStart]?.id ?? null })
+                      }}
+                    />
+                  )}
+                  <TranscriptTurns
+                    turns={turns}
+                    visibleStart={visibleStart}
+                    conversationId={conversationId}
+                    streaming={streaming}
+                    onDelete={onDelete}
+                    onRegenerate={onRegenerate}
+                    onEdit={onEdit}
+                    onRate={onRate}
+                    isOneBot={isOneBot}
+                    isHosted={isHosted}
+                    emojiMap={emojiMap}
+                    senderNames={senderNames}
+                    assistantAvatar={assistantAvatar}
                   />
-                )}
-                <TranscriptTurns
-                  turns={turns}
-                  visibleStart={visibleStart}
-                  conversationId={conversationId}
-                  streaming={streaming}
-                  onDelete={onDelete}
-                  onRegenerate={onRegenerate}
-                  onEdit={onEdit}
-                  onRate={onRate}
-                  isOneBot={isOneBot}
-                  isHosted={isHosted}
-                  emojiMap={emojiMap}
-                  senderNames={senderNames}
-                  assistantAvatar={assistantAvatar}
-                />
-                {trailing}
-                {emptyState}
-              </MessageScrollerContent>
-            </MessageScrollerViewport>
-            <MessageScrollerButton aria-label={scrollToBottomLabel} />
-            {/* Inside the scroller, not beside it: it reads the reading line off
+                  {trailing}
+                  {emptyState}
+                </MessageScrollerContent>
+              </MessageScrollerViewport>
+              <Tooltip delay={0}>
+                <MessageScrollerButton aria-label={scrollToBottomLabel} />
+                <Tooltip.Content>{scrollToBottomLabel}</Tooltip.Content>
+              </Tooltip>
+              {/* Inside the scroller, not beside it: it reads the reading line off
                 the same context, and the root is already the positioned
                 ancestor. */}
-            <TurnOutline turns={visibleTurns} />
-          </MessageScroller>
-        </MessageScrollerProvider>
-      </LazyMotion>
-    </FilePreviewProvider>
+              <TurnOutline turns={visibleTurns} />
+            </MessageScroller>
+          </MessageScrollerProvider>
+        </LazyMotion>
+      </FilePreviewProvider>
+    </TranscriptConversationProvider>
   )
 }

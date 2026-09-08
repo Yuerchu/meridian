@@ -11,8 +11,10 @@ import {
   DisclosureGroup,
   Input,
   Label,
+  Spinner,
   TextArea,
   TextField,
+  Tooltip,
 } from '@heroui/react'
 import { EmptyState } from '@heroui-pro/react/empty-state'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
@@ -178,14 +180,18 @@ function SkillEditor({
         </Button>
         {saved && <SavedHint data-slot="skill-editor-saved" />}
         {onDelete && !isBuiltin && (
-          <Button
-            variant="ghost"
-            aria-label={t('settings.skills.delete')}
-            className="ml-auto text-danger hover:text-danger"
-            onPress={onDelete}
-          >
-            <TrashBin className="w-3.5 h-3.5" />
-          </Button>
+          <Tooltip delay={0}>
+            <Button
+              isIconOnly
+              variant="ghost"
+              aria-label={t('settings.skills.delete')}
+              className="ml-auto text-muted hover:text-danger"
+              onPress={onDelete}
+            >
+              <TrashBin className="w-3.5 h-3.5" />
+            </Button>
+            <Tooltip.Content>{t('settings.skills.delete')}</Tooltip.Content>
+          </Tooltip>
         )}
       </div>
     </div>
@@ -268,7 +274,7 @@ export function SkillSettings() {
         actions={
           <>
             <Button variant="outline" onPress={handleRescan} isDisabled={rescanning}>
-              <ArrowsRotateRight className={rescanning ? 'w-3.5 h-3.5 animate-spin' : 'w-3.5 h-3.5'} />
+              {rescanning ? <Spinner size="sm" color="current" /> : <ArrowsRotateRight className="w-3.5 h-3.5" />}
               {t('settings.skills.rescan')}
             </Button>
             <Button variant="outline" onPress={() => setShowCreate(!showCreate)}>
@@ -344,7 +350,7 @@ export function SkillSettings() {
                     {/* The label row absorbs the slack, so the badge and the
                         chevron sit at the right edge without a second auto
                         margin fighting the indicator's own `ms-auto`. */}
-                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <div data-slot="skill-item-label-row" className="flex min-w-0 flex-1 items-center gap-2">
                       <span data-slot="skill-item-name" className="truncate">
                         {skill.display_name}
                       </span>

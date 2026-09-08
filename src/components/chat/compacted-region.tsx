@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@heroui/react'
+import { Button, Link } from '@heroui/react'
 import { MessageScrollerItem } from '@/components/ui/message-scroller'
 import { Marker, MarkerContent } from '@/components/ui/marker'
+import { Bubble, BubbleContent } from '@/components/ui/bubble'
 import { TurnItem } from './turn-item'
 import type { EmojiMap } from './emoji-renderer'
 import type { SenderNames } from '@/hooks/use-sender-names'
@@ -54,13 +55,13 @@ export function CompactedRegion({
         <>
           <Button
             variant="ghost"
-            onClick={() => setShowCompactedMessages(false)}
-            className="w-full h-auto rounded-lg text-center text-xs text-muted hover:text-muted py-2"
+            onPress={() => setShowCompactedMessages(false)}
+            className="w-full rounded-lg text-center text-xs text-muted hover:text-muted py-2"
           >
             {t('chat.compact.hideCompacted', { count: compactedCount })}
           </Button>
           {turns.map((turn, i) => (
-            <div key={turn.id} className="opacity-40">
+            <div key={turn.id} data-slot="compacted-turn" className="opacity-40">
               <TurnItem
                 turn={turn}
                 conversationId={conversationId}
@@ -77,29 +78,29 @@ export function CompactedRegion({
       ) : (
         <Button
           variant="ghost"
-          onClick={() => setShowCompactedMessages(true)}
-          className="w-full h-auto rounded-lg text-center text-xs text-muted hover:text-muted py-2"
+          onPress={() => setShowCompactedMessages(true)}
+          className="w-full rounded-lg text-center text-xs text-muted hover:text-muted py-2"
         >
           {t('chat.compact.showCompacted', { count: compactedCount })}
         </Button>
       )}
       <Marker variant="separator" className="py-3 px-2">
         <MarkerContent>
-          {/* `h-auto py-0` leaves this about 18px tall, and it is the only way
-              to open the summary of what was compacted away. */}
-          <Button
-            variant="ghost"
-            onClick={() => setShowCompactSummary((v) => !v)}
-            className="touch-hitbox text-xs text-muted hover:text-muted whitespace-nowrap h-auto px-2 py-0"
+          {/* About 18px tall, and it is the only way to open the summary of
+              what was compacted away. */}
+          <Link
+            data-slot="compact-boundary-toggle"
+            onPress={() => setShowCompactSummary((v) => !v)}
+            className="touch-hitbox text-xs font-normal text-muted whitespace-nowrap px-2"
           >
             {t('chat.compact.boundary', { count: compactedCount })}
-          </Button>
+          </Link>
         </MarkerContent>
       </Marker>
       {compactSummary && showCompactSummary && (
-        <div className="px-4 py-2 mb-2 text-xs text-muted bg-default/30 rounded-lg border border-border whitespace-pre-wrap">
-          {compactSummary.content}
-        </div>
+        <Bubble variant="muted" data-slot="compact-summary" className="mb-2 max-w-full">
+          <BubbleContent className="text-xs whitespace-pre-wrap text-muted">{compactSummary.content}</BubbleContent>
+        </Bubble>
       )}
     </MessageScrollerItem>
   )

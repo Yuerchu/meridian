@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Checkbox, Input, ListBox, Select, TextArea } from '@heroui/react'
+import { Button, Description, Input, Label, ListBox, Select, TextArea, TextField } from '@heroui/react'
+import { CellSwitch } from '@heroui-pro/react/cell-switch'
 import { api } from '@/api'
 import type { PreferenceModelSelectionRequest, ProviderInfoResponse, ProviderModelInfoResponse } from '@/types'
 import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
@@ -141,7 +142,7 @@ function ModelPicker({
   ]
 
   return (
-    <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
+    <div data-slot="model-picker" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
       <Select
         fullWidth
         aria-label={t('settings.assistant.provider')}
@@ -216,22 +217,12 @@ function RuleBox({
   placeholder: string
   onChange: (next: string) => void
 }) {
-  const id = useId()
   return (
-    <div className="space-y-1.5">
-      <label htmlFor={id} className="text-sm font-medium">
-        {label}
-      </label>
-      <p className="text-xs text-muted">{hint}</p>
-      <TextArea
-        id={id}
-        fullWidth
-        rows={3}
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    </div>
+    <TextField fullWidth>
+      <Label>{label}</Label>
+      <TextArea rows={3} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
+      <Description>{hint}</Description>
+    </TextField>
   )
 }
 
@@ -329,13 +320,9 @@ export function AutoReviewSettings() {
       {/* Above the reviewer, because it applies whether or not there is one:
           this is how long a person is waited for, and the reviewer is who
           answers when nobody does. */}
-      <div className="space-y-1.5">
-        <label htmlFor="approvals-ttl" className="text-sm font-medium">
-          {t('settings.approvals.ttl')}
-        </label>
-        <p className="text-xs text-muted">{t('settings.approvals.ttlHint')}</p>
+      <TextField>
+        <Label>{t('settings.approvals.ttl')}</Label>
         <Input
-          id="approvals-ttl"
           type="number"
           min={0}
           max={MAX_TTL_MINUTES}
@@ -343,60 +330,65 @@ export function AutoReviewSettings() {
           value={settings.ttl}
           onChange={(e) => setSettings({ ...settings, ttl: e.target.value })}
         />
+        <Description>{t('settings.approvals.ttlHint')}</Description>
         {normaliseTtl(settings.ttl) === 0 && (
-          <p className="text-xs text-warning-soft-foreground">{t('settings.approvals.ttlNever')}</p>
+          <p data-slot="approvals-ttl-never" className="text-xs text-warning-soft-foreground">
+            {t('settings.approvals.ttlNever')}
+          </p>
         )}
-      </div>
+      </TextField>
 
-      <div className="flex items-start gap-2">
-        <Checkbox
-          id="autoreview-enabled"
+      <div data-slot="autoreview-enable" className="space-y-1.5">
+        <CellSwitch
+          aria-label={t('settings.autoReview.enable')}
+          aria-describedby="autoreview-enabled-hint"
           isSelected={settings.enabled}
           onChange={(selected) => setSettings({ ...settings, enabled: selected })}
         >
-          <Checkbox.Content>
-            <Checkbox.Control>
-              <Checkbox.Indicator />
-            </Checkbox.Control>
-          </Checkbox.Content>
-        </Checkbox>
-        <div className="space-y-0.5">
-          <label htmlFor="autoreview-enabled" className="text-sm font-medium cursor-pointer">
-            {t('settings.autoReview.enable')}
-          </label>
-          <p className="text-xs text-muted">{t('settings.autoReview.enableHint')}</p>
-        </div>
+          <CellSwitch.Trigger className="pointer-coarse:h-11">
+            <CellSwitch.Label>{t('settings.autoReview.enable')}</CellSwitch.Label>
+            <CellSwitch.Control />
+          </CellSwitch.Trigger>
+        </CellSwitch>
+        <p id="autoreview-enabled-hint" data-slot="autoreview-enable-hint" className="text-xs text-muted">
+          {t('settings.autoReview.enableHint')}
+        </p>
       </div>
 
-      <div className="space-y-1.5">
-        <span className="text-sm font-medium">{t('settings.autoReview.model')}</span>
-        <p className="text-xs text-muted">{t('settings.autoReview.modelHint')}</p>
+      <div data-slot="autoreview-model" className="space-y-1.5">
+        <span data-slot="autoreview-model-label" className="text-sm font-medium">
+          {t('settings.autoReview.model')}
+        </span>
+        <p data-slot="autoreview-model-hint" className="text-xs text-muted">
+          {t('settings.autoReview.modelHint')}
+        </p>
         <ModelPicker
           providers={providers}
           value={settings.model}
           onChange={(model) => setSettings({ ...settings, model })}
         />
-        {incomplete && <p className="text-xs text-warning-soft-foreground">{t('settings.autoReview.noModel')}</p>}
+        {incomplete && (
+          <p data-slot="autoreview-no-model" className="text-xs text-warning-soft-foreground">
+            {t('settings.autoReview.noModel')}
+          </p>
+        )}
       </div>
 
-      <div className="flex items-start gap-2">
-        <Checkbox
-          id="autoreview-escalate"
+      <div data-slot="autoreview-escalate" className="space-y-1.5">
+        <CellSwitch
+          aria-label={t('settings.autoReview.escalate')}
+          aria-describedby="autoreview-escalate-hint"
           isSelected={settings.escalate}
           onChange={(selected) => setSettings({ ...settings, escalate: selected })}
         >
-          <Checkbox.Content>
-            <Checkbox.Control>
-              <Checkbox.Indicator />
-            </Checkbox.Control>
-          </Checkbox.Content>
-        </Checkbox>
-        <div className="space-y-0.5">
-          <label htmlFor="autoreview-escalate" className="text-sm font-medium cursor-pointer">
-            {t('settings.autoReview.escalate')}
-          </label>
-          <p className="text-xs text-muted">{t('settings.autoReview.escalateHint')}</p>
-        </div>
+          <CellSwitch.Trigger className="pointer-coarse:h-11">
+            <CellSwitch.Label>{t('settings.autoReview.escalate')}</CellSwitch.Label>
+            <CellSwitch.Control />
+          </CellSwitch.Trigger>
+        </CellSwitch>
+        <p id="autoreview-escalate-hint" data-slot="autoreview-escalate-hint" className="text-xs text-muted">
+          {t('settings.autoReview.escalateHint')}
+        </p>
       </div>
 
       <RuleBox
@@ -421,13 +413,21 @@ export function AutoReviewSettings() {
         onChange={(deny) => setSettings({ ...settings, deny })}
       />
 
-      {error && <p className="text-xs text-danger">{error}</p>}
+      {error && (
+        <p data-slot="autoreview-error" className="text-xs text-danger">
+          {error}
+        </p>
+      )}
 
-      <div className="flex items-center gap-3">
-        <Button onClick={handleSave} isDisabled={saving}>
+      <div data-slot="autoreview-actions" className="flex items-center gap-3">
+        <Button onPress={handleSave} isDisabled={saving}>
           {t('common.save')}
         </Button>
-        {saved && <span className="text-xs text-success">{t('common.saved')}</span>}
+        {saved && (
+          <span data-slot="autoreview-saved" className="text-xs text-success">
+            {t('common.saved')}
+          </span>
+        )}
       </div>
     </SettingsPane>
   )

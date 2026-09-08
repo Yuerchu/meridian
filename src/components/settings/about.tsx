@@ -70,7 +70,7 @@ function InfoRow({ label, value, action }: { label: string; value?: string; acti
         <ItemCard.Title className={ROW_TITLE}>{label}</ItemCard.Title>
       </ItemCard.Content>
       <ItemCard.Action className="min-w-0 shrink">
-        <div className="flex min-w-0 items-center gap-1">
+        <div data-slot="info-row-value" className="flex min-w-0 items-center gap-1">
           {value === undefined ? (
             <Skeleton className="h-4 w-28 rounded-md" />
           ) : (
@@ -108,7 +108,7 @@ export function About() {
     // guessed at a header height that grows by the status bar on a phone, and
     // the surrounding scroller already bounds this.
     return (
-      <div className="h-full">
+      <div data-slot="about-logs" className="h-full">
         <LogViewer onBack={() => setShowLogs(false)} />
       </div>
     )
@@ -132,20 +132,27 @@ export function About() {
     <SettingsPane>
       <SettingsHeader title={t('settings.about.title')} />
 
-      <div className="flex items-start gap-4">
-        <div className="bg-accent/10 text-accent flex size-14 shrink-0 items-center justify-center rounded-2xl">
+      <div data-slot="about-hero" className="flex items-start gap-4">
+        <div
+          data-slot="about-mark"
+          className="bg-accent/10 text-accent flex size-14 shrink-0 items-center justify-center rounded-2xl"
+        >
           <MeridianMark intro className="size-8" />
         </div>
-        <div className="min-w-0 space-y-1.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="shimmer shimmer-duration-3000 text-xl font-semibold">{t('app.name')}</span>
+        <div data-slot="about-identity" className="min-w-0 space-y-1.5">
+          <div data-slot="about-name-row" className="flex flex-wrap items-center gap-2">
+            <span data-slot="about-name" className="shimmer shimmer-duration-3000 text-xl font-semibold">
+              {t('app.name')}
+            </span>
             {info && (
               <Chip size="sm" variant="secondary">
                 v{info.version}
               </Chip>
             )}
           </div>
-          <p className="text-muted text-sm leading-relaxed">{t('settings.about.description')}</p>
+          <p data-slot="about-description" className="text-muted text-sm leading-relaxed">
+            {t('settings.about.description')}
+          </p>
         </div>
       </div>
 
@@ -250,10 +257,10 @@ export function About() {
         </ItemCardGroup>
       </ItemCardGroup>
 
-      <div className="border-border text-muted space-y-2 border-t pt-4 text-xs">
-        <p>{t('settings.about.copyright')}</p>
-        <p>{t('settings.about.notice')}</p>
-        <p>{t('settings.about.grokBuildNotice')}</p>
+      <div data-slot="about-footer" className="border-border text-muted space-y-2 border-t pt-4 text-xs">
+        <p data-slot="about-footer-line">{t('settings.about.copyright')}</p>
+        <p data-slot="about-footer-line">{t('settings.about.notice')}</p>
+        <p data-slot="about-footer-line">{t('settings.about.grokBuildNotice')}</p>
       </div>
     </SettingsPane>
   )

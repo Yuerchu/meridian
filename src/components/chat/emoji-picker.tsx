@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FaceSmile, Magnifier } from '@gravity-ui/icons'
-import { Button, ScrollShadow, SearchField } from '@heroui/react'
+import { Button, ScrollShadow, SearchField, Tooltip } from '@heroui/react'
 import { ChatLoader, EmojiPicker as ProEmojiPicker } from '@heroui-pro/react'
 
 import { api } from '@/api'
@@ -138,18 +138,21 @@ export function EmojiPicker({
       onOpenChange={handleOpenChange}
       onSelectionChange={handleSelect}
     >
-      <ProEmojiPicker.Trigger
-        aria-label={t('chat.emoji')}
-        className="touch-hitbox flex size-8 items-center justify-center rounded-lg text-muted hover:bg-default hover:text-foreground"
-        onPress={() => {
-          // RAC Select normally declines to open an empty collection. This
-          // picker still has useful content in that state: the assigned-pack
-          // explanation and search shell.
-          if (!open) setOpen(true)
-        }}
-      >
-        <FaceSmile className="size-4" />
-      </ProEmojiPicker.Trigger>
+      <Tooltip delay={0}>
+        <ProEmojiPicker.Trigger
+          aria-label={t('chat.emoji')}
+          className="touch-hitbox flex size-8 items-center justify-center rounded-lg text-muted hover:bg-default hover:text-foreground"
+          onPress={() => {
+            // RAC Select normally declines to open an empty collection. This
+            // picker still has useful content in that state: the assigned-pack
+            // explanation and search shell.
+            if (!open) setOpen(true)
+          }}
+        >
+          <FaceSmile className="size-4" />
+        </ProEmojiPicker.Trigger>
+        <Tooltip.Content>{t('chat.emoji')}</Tooltip.Content>
+      </Tooltip>
       <ProEmojiPicker.Popover placement="top end">
         <ProEmojiPicker.Content>
           <SearchField
@@ -173,7 +176,7 @@ export function EmojiPicker({
               loading || loadedAssistantId !== assistantId ? (
                 <ChatLoader.Dots label={t('chat.emojiLoading')} />
               ) : (
-                <span className="flex flex-col items-center gap-2">
+                <span data-slot="emoji-picker-empty" className="flex flex-col items-center gap-2">
                   <Magnifier className="size-5" />
                   {search.trim() ? t('chat.emojiNotFound') : t('chat.emojiNoPacks')}
                 </span>
@@ -187,9 +190,19 @@ export function EmojiPicker({
                 textValue={`${item.emoji.name} ${item.emoji.tags ?? ''} ${item.packName}`}
               >
                 {item.url ? (
-                  <img src={item.url} alt={item.emoji.name} className="size-7 object-contain" />
+                  <img
+                    data-slot="emoji-picker-image"
+                    src={item.url}
+                    alt={item.emoji.name}
+                    className="size-7 object-contain"
+                  />
                 ) : (
-                  <span className="line-clamp-2 text-center text-xs leading-tight text-muted">{item.emoji.name}</span>
+                  <span
+                    data-slot="emoji-picker-name"
+                    className="line-clamp-2 text-center text-xs leading-tight text-muted"
+                  >
+                    {item.emoji.name}
+                  </span>
                 )}
               </ProEmojiPicker.Item>
             )}
@@ -198,7 +211,7 @@ export function EmojiPicker({
           {displayPacks.length > 0 && (
             <ProEmojiPicker.Footer>
               <ScrollShadow hideScrollBar orientation="horizontal" className="min-w-0 flex-1">
-                <div className="flex items-center gap-1 px-1">
+                <div data-slot="emoji-picker-packs" className="flex items-center gap-1 px-1">
                   {displayPacks.map(({ pack }) => (
                     <Button
                       key={pack.id}

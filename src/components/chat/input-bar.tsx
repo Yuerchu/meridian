@@ -240,9 +240,11 @@ function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAc
           aria-label={t('chat.agentOptions')}
           data-slot="agent-options-trigger"
           isDisabled={busy}
-          className="h-8 max-w-[220px] gap-1 rounded-lg px-2 text-sm font-normal"
+          className="h-8 max-w-56 gap-1 rounded-lg px-2 text-sm font-normal"
         >
-          <span className="truncate">{summary.length > 0 ? summary.join(' · ') : t('chat.agentOptions')}</span>
+          <span data-slot="agent-options-summary" className="truncate">
+            {summary.length > 0 ? summary.join(' · ') : t('chat.agentOptions')}
+          </span>
           <ChevronDown className="size-4 shrink-0 text-muted" />
         </Button>
         <Tooltip.Content placement="top">{t('chat.agentOptions')}</Tooltip.Content>
@@ -251,8 +253,14 @@ function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAc
         <Popover.Dialog className="flex max-h-[min(420px,calc(100vh-6rem))] flex-col gap-3 overflow-y-auto">
           {pickers.map((option) => (
             <div key={option.id} data-slot="agent-knob">
-              <p className="px-2 text-xs font-medium">{knobName(t, option)}</p>
-              {option.description && <p className="px-2 pt-0.5 text-xs text-muted">{option.description}</p>}
+              <p data-slot="agent-knob-name" className="px-2 text-xs font-medium">
+                {knobName(t, option)}
+              </p>
+              {option.description && (
+                <p data-slot="agent-knob-description" className="px-2 pt-0.5 text-xs text-muted">
+                  {option.description}
+                </p>
+              )}
               {/* A flat list rather than a second dropdown. Every value is
                   visible at once and the current one is ticked, which is the
                   thing the toolbar could not say — and it keeps this from being
@@ -270,7 +278,9 @@ function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAc
               >
                 {option.options.map((v) => (
                   <ListBox.Item key={v.value} id={v.value} textValue={knobValueName(t, option, v)}>
-                    <span className="min-w-0 flex-1 truncate text-sm">{knobValueName(t, option, v)}</span>
+                    <span data-slot="agent-knob-value" className="min-w-0 flex-1 truncate text-sm">
+                      {knobValueName(t, option, v)}
+                    </span>
                     <ListBox.ItemIndicator />
                   </ListBox.Item>
                 ))}
@@ -662,25 +672,33 @@ export function InputBar({
           <ContextMenuItem onClick={handleCut}>
             <Scissors />
             {t('contextMenu.cut')}
-            <span className="ml-auto text-xs text-muted">Ctrl+X</span>
+            <span data-slot="context-menu-shortcut" className="ml-auto text-xs text-muted">
+              Ctrl+X
+            </span>
           </ContextMenuItem>
           <ContextMenuItem onClick={handleCopy}>
             <Copy />
             {t('chat.copy')}
-            <span className="ml-auto text-xs text-muted">Ctrl+C</span>
+            <span data-slot="context-menu-shortcut" className="ml-auto text-xs text-muted">
+              Ctrl+C
+            </span>
           </ContextMenuItem>
         </>
       )}
       <ContextMenuItem onClick={handlePaste}>
         <ArrowDownToSquare />
         {t('contextMenu.paste')}
-        <span className="ml-auto text-xs text-muted">Ctrl+V</span>
+        <span data-slot="context-menu-shortcut" className="ml-auto text-xs text-muted">
+          Ctrl+V
+        </span>
       </ContextMenuItem>
       <ContextMenuSeparator />
       <ContextMenuItem onClick={handleSelectAll}>
         <SquareDashedText />
         {t('contextMenu.selectAll')}
-        <span className="ml-auto text-xs text-muted">Ctrl+A</span>
+        <span data-slot="context-menu-shortcut" className="ml-auto text-xs text-muted">
+          Ctrl+A
+        </span>
       </ContextMenuItem>
     </>
   )
@@ -689,13 +707,14 @@ export function InputBar({
     // Sides as well as bottom: turned sideways the 3-button bar moves to one
     // edge, and the send button is in the corner it lands on.
     <div
+      data-slot="input-bar"
       className={
         embedded
           ? 'w-full'
           : 'px-4 pb-[max(1rem,var(--safe-bottom))] pt-2 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]'
       }
     >
-      <div className="max-w-2xl mx-auto">
+      <div data-slot="input-bar-inner" className="max-w-2xl mx-auto">
         {isAndroid && (
           <VoiceOverlay state={androidVoice.state} elapsed={androidVoice.elapsed} peak={androidVoice.peak} />
         )}
@@ -759,14 +778,20 @@ export function InputBar({
             // say about why reads as the app having broken.
             notice={
               offline ? (
-                <p className="px-2 pb-1.5 text-xs text-danger">{t('settings.client.composerOffline')}</p>
+                <p data-slot="composer-notice" className="px-2 pb-1.5 text-xs text-danger">
+                  {t('settings.client.composerOffline')}
+                </p>
               ) : (
-                voiceNotice && <p className="px-2 pb-1.5 text-xs text-muted">{voiceNotice}</p>
+                voiceNotice && (
+                  <p data-slot="composer-notice" className="px-2 pb-1.5 text-xs text-muted">
+                    {voiceNotice}
+                  </p>
+                )
               )
             }
             attachments={
               (attachedFiles.length > 0 || pendingSticker) && (
-                <div className="flex items-end gap-2 px-1 pb-1">
+                <div data-slot="composer-attachments" className="flex items-end gap-2 px-1 pb-1">
                   {attachedFiles.length > 0 && (
                     <ChatAttachmentGroup>
                       {attachedFiles.map((f, i) => (
@@ -797,21 +822,25 @@ export function InputBar({
                   {pendingSticker && (
                     <div className="relative shrink-0 rounded-xl bg-default/40 p-2" data-slot="pending-sticker">
                       <img
+                        data-slot="pending-sticker-image"
                         src={pendingSticker.url}
                         alt={pendingSticker.emoji.name}
                         className="size-20 object-contain"
                       />
                       {onRemoveSticker && (
-                        <Button
-                          isIconOnly
-                          size="sm"
-                          variant="primary"
-                          aria-label={t('chat.removeSticker')}
-                          className="touch-hitbox absolute -right-2 -top-2 min-w-0 size-6 rounded-full shadow-sm"
-                          onClick={onRemoveSticker}
-                        >
-                          <Xmark className="size-3.5" />
-                        </Button>
+                        <Tooltip delay={0}>
+                          <Button
+                            isIconOnly
+                            size="sm"
+                            variant="primary"
+                            aria-label={t('chat.removeSticker')}
+                            className="touch-hitbox absolute -right-2 -top-2 min-w-0 size-6 rounded-full shadow-surface"
+                            onPress={onRemoveSticker}
+                          >
+                            <Xmark className="size-3.5" />
+                          </Button>
+                          <Tooltip.Content>{t('chat.removeSticker')}</Tooltip.Content>
+                        </Tooltip>
                       )}
                     </div>
                   )}

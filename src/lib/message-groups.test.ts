@@ -96,8 +96,8 @@ describe('buildAssistantGroups — cutting a turn into bubbles', () => {
   it('draws a call with no prose as a keyboard with nothing above it', () => {
     const { groups } = groupsOf([msg('assistant', { _blocks: [thinking('hmm'), tool('write_file')] })])
     const [bubble] = groups[0].bubbles
-    expect(bubble.kind).toBe('keyboard-only')
-    if (bubble.kind !== 'keyboard-only') return
+    expect(bubble.kind).toBe('tools-only')
+    if (bubble.kind !== 'tools-only') return
     expect(bubble.thinking).toEqual(['hmm'])
     expect(bubble.tools).toHaveLength(1)
   })
@@ -107,7 +107,7 @@ describe('buildAssistantGroups — cutting a turn into bubbles', () => {
       streaming: true,
     })
     const [bubble] = groups[0].bubbles
-    expect(bubble.kind).toBe('keyboard-only')
+    expect(bubble.kind).toBe('tools-only')
     expect(bubble.isStreaming).toBe(true)
   })
 
@@ -124,7 +124,7 @@ describe('buildAssistantGroups — cutting a turn into bubbles', () => {
   it('puts a sticker outside the bubbles', () => {
     const { groups } = groupsOf([msg('assistant', { _blocks: [tool('send_sticker'), sticker('s1')] })])
     const kinds = groups[0].bubbles.map((b) => b.kind)
-    expect(kinds).toEqual(['keyboard-only', 'sticker'])
+    expect(kinds).toEqual(['tools-only', 'sticker'])
     const s = groups[0].bubbles[1]
     expect(s.kind === 'sticker' && s.stickerId).toBe('s1')
   })
@@ -201,7 +201,7 @@ describe('buildAssistantGroups — a search-only row', () => {
   it('hides the reasoning of a row that only searched', () => {
     const { groups } = groupsOf([msg('assistant', { _blocks: [thinking('where'), tool('web_search')] })])
     const [bubble] = groups[0].bubbles
-    expect(bubble.kind === 'keyboard-only' && bubble.thinking).toEqual([])
+    expect(bubble.kind === 'tools-only' && bubble.thinking).toEqual([])
   })
 
   it('keeps the reasoning when the row also spoke', () => {
@@ -352,6 +352,19 @@ describe('buildAssistantGroups — folding the low-risk calls into badges', () =
     expect(foldsOf(groups[0].bubbles[1])).toEqual(['files:1'])
   })
 
+  /// The thought at the head of the bubble, the reads it led to at its foot:
+  /// a fold-only row after a reasoning-only row is that bubble's badge line,
+  /// not a bubble of its own.
+  it('joins reads to a bubble that is only reasoning', () => {
+    const { groups } = groupsOf([
+      msg('assistant', { _blocks: [thinking('where is it')] }),
+      msg('assistant', { _blocks: [read('a.rs'), read('b.rs')] }),
+    ])
+    const kinds = groups[0].bubbles.map((b) => b.kind)
+    expect(kinds).toEqual(['tools-only'])
+    expect(foldsOf(groups[0].bubbles[0])).toEqual(['files:2'])
+  })
+
   it('opens a run of reads with no prose before it as a summary bubble', () => {
     const { groups } = groupsOf([
       msg('assistant', { _blocks: [read('a.rs'), read('b.rs')] }),
@@ -366,8 +379,8 @@ describe('buildAssistantGroups — folding the low-risk calls into badges', () =
   it('keeps badges on a keyboard that still has keys', () => {
     const { groups } = groupsOf([msg('assistant', { _blocks: [thinking('hmm'), read('a.rs'), tool('write_file')] })])
     const [bubble] = groups[0].bubbles
-    expect(bubble.kind).toBe('keyboard-only')
-    expect(bubble.kind === 'keyboard-only' && bubble.tools.map((t) => t.tool_name)).toEqual(['write_file'])
+    expect(bubble.kind).toBe('tools-only')
+    expect(bubble.kind === 'tools-only' && bubble.tools.map((t) => t.tool_name)).toEqual(['write_file'])
     expect(foldsOf(bubble)).toEqual(['files:1'])
   })
 

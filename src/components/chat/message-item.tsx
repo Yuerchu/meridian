@@ -32,9 +32,10 @@ import {
   MessageGroupUser,
 } from '@/components/ui/message-group'
 import { Bubble, BubbleContent, BubbleTime } from '@/components/ui/bubble'
-import { BubbleFoldBadge, BubbleKeyboard, keyboardPanelVariants } from '@/components/ui/bubble-keyboard'
+import { BubbleFoldBadge } from '@/components/ui/bubble-block'
 import { ChatToolPresentationProvider } from '@/components/ui/chat-tool'
 import { useConversationStore } from '@/stores/conversation-store'
+import { useTranscriptConversationId } from '@/hooks/use-transcript-conversation'
 import { ChatAttachment, ChatAttachmentGroup } from '@heroui-pro/react/chat-attachment'
 import { ErrorBoundary } from '@/components/error-boundary'
 
@@ -50,15 +51,16 @@ import { isCoarsePointer, isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { useClockTime } from '@/hooks/use-clock-time'
 import { SelectTextModal } from './select-text-modal'
 import { ToolCallBlock } from './tool-call-block'
-import { ThinkingBlock } from './thinking-block'
+import { ThinkingRow } from './thinking-block'
+import { SubAgentGroup, delegationOf } from './sub-agent-group'
 import { renderEmojisInText, StickerImage } from './emoji-renderer'
 import { formatDuration, type Turn } from '@/lib/turns'
-import type { AssistantGroup, BubbleModel, FoldKind, FoldedCalls } from '@/lib/message-groups'
+import type { AssistantGroup, BubbleModel, BubblePosition, FoldKind, FoldedCalls } from '@/lib/message-groups'
 import type { MessageRating, MessageViewModel as MessageData } from '@/types'
 import type { SenderNames } from '@/hooks/use-sender-names'
 import type { EmojiMap } from './emoji-renderer'
 import { TurnUsage } from './turn-usage'
-import { ShellCommandCard } from './shell-command-card'
+import { ShellCommandBubble } from './shell-command-bubble'
 
 /**
  * Who is speaking: the assistant's own picture when it has one, otherwise the
@@ -145,9 +147,16 @@ function speakerLabel(
 
 function QuotedMessageBlock({ sender, content }: { sender: string; content: string }) {
   return (
-    <div className="mb-2 pl-3 border-l-2 border-accent-foreground/30 text-xs text-accent-foreground/70">
-      <span className="font-medium">{sender}</span>
-      <p className="mt-0.5 line-clamp-3 whitespace-pre-wrap">{content}</p>
+    <div
+      data-slot="quoted-message"
+      className="mb-2 pl-3 border-l-2 border-accent-foreground/30 text-xs text-accent-foreground/70"
+    >
+      <span data-slot="quoted-message-sender" className="font-medium">
+        {sender}
+      </span>
+      <p data-slot="quoted-message-content" className="mt-0.5 line-clamp-3 whitespace-pre-wrap">
+        {content}
+      </p>
     </div>
   )
 }
@@ -179,10 +188,19 @@ export interface UserMessageProps {
   emojiMap?: EmojiMap
   /** Nicknames for the ids on user rows. Only a group has more than one. */
   senderNames?: SenderNames
+  /** Where this sits in a run of unanswered questions — the corners. */
+  position?: BubblePosition
 }
 
-/** What the person said: a bubble against the right edge, with its
- *  attachments and stickers as their own items beside it. */
+/**
+ * What the person said: a bubble against the right edge, laid out the way
+ * the model's are. Its head is what the message carried — the speaker in a
+ * group, the message it quoted, the conversations it referenced, its
+ * attachments — above what it said, and the time sits at the end of the last
+ * line or, with nothing said, on a foot line of its own. Stickers stay
+ * outside the bubble, as the model's do. `position` is the run treatment
+ * `questionPositionOf` decided; the bubble reads nothing off its siblings.
+ */
 export const UserMessage = React.memo(function UserMessage({
   message,
   onDelete,
@@ -190,6 +208,7 @@ export const UserMessage = React.memo(function UserMessage({
   isOneBot,
   emojiMap,
   senderNames,
+  position = 'single',
 }: UserMessageProps) {
   const { t } = useTranslation()
 
@@ -308,12 +327,15 @@ export const UserMessage = React.memo(function UserMessage({
   const speaker = isOneBot ? speakerLabel(message.sender_id, senderNames, senderPrefix) : null
 
   const hasAttachments = !!contentParts && contentParts.some((p) => p.type === 'image_url' || p.type === 'file')
+  const hasRefs = message.context_items.some((item) => item.kind === 'conversation')
+  const hasBody = !!body || message.source === 'voice'
+  const hasBubble = hasBody || !!quotedMessage || hasRefs || hasAttachments
 
   if (message.source === 'shell') {
     return (
       <>
         <MessageGroupUser>
-          <ShellCommandCard message={message} />
+          <ShellCommandBubble message={message} position={position} />
           <MessageGroupFooter className="gap-1">
             <CopyButton text={copyText} />
             {onDelete && (
@@ -332,26 +354,6 @@ export const UserMessage = React.memo(function UserMessage({
     <ContextMenu onOpenChange={handleContextMenuOpenChange}>
       <ContextMenuTrigger render={<MessageGroupUser className="pointer-coarse:select-none" />}>
         <>
-          <ConversationRefChips items={message.context_items} />
-          {hasAttachments && (
-            <ChatAttachmentGroup className="max-w-[80%] justify-end">
-              {contentParts!
-                .filter((p) => p.type === 'image_url')
-                .map((p, i) => (
-                  <ChatAttachment
-                    key={`img-${i}`}
-                    mediaType="image"
-                    name={t('chat.attachedImage')}
-                    src={assetSrc(p.image_url?.url)}
-                  />
-                ))}
-              {contentParts!
-                .filter((p) => p.type === 'file')
-                .map((p, i) => (
-                  <ChatAttachment key={`file-${i}`} name={p.file?.name ?? 'file'} />
-                ))}
-            </ChatAttachmentGroup>
-          )}
           {editing ? (
             // Full width while editing. A bubble is sized to what it says, but
             // an edit box is sized to what you are about to say — and the
@@ -373,7 +375,7 @@ export const UserMessage = React.memo(function UserMessage({
                   className="w-full min-w-[200px] min-h-0 rounded-none border-0 p-0 field-sizing-fixed bg-transparent dark:bg-transparent text-sm leading-relaxed resize-none outline-none focus-visible:ring-0"
                   rows={1}
                 />
-                <div className="flex justify-end gap-1 mt-1.5">
+                <div data-slot="message-edit-actions" className="flex justify-end gap-1 mt-1.5">
                   <ActionButton label={t('chat.cancelEdit')} onClick={handleCancelEdit} className="text-muted">
                     <Xmark className="w-3.5 h-3.5" />
                   </ActionButton>
@@ -385,8 +387,8 @@ export const UserMessage = React.memo(function UserMessage({
             </Bubble>
           ) : (
             <>
-              {(body || quotedMessage || message.source === 'voice') && (
-                <Bubble align="end" variant="user">
+              {hasBubble && (
+                <Bubble align="end" variant="user" position={position}>
                   <BubbleContent>
                     {speaker && (
                       <MessageGroupHeader className="text-[var(--bubble-user-foreground)]/80">
@@ -396,20 +398,48 @@ export const UserMessage = React.memo(function UserMessage({
                     {quotedMessage && (
                       <QuotedMessageBlock sender={quotedMessage.sender} content={quotedMessage.content} />
                     )}
-                    {/* `flow-root` contains the floated time, so the bubble's
-                        own padding wraps it instead of clipping it. */}
-                    <div className="flow-root whitespace-pre-wrap">
-                      {message.source === 'voice' && (
-                        <Microphone
-                          className="inline-block size-3.5 mr-1 -mt-0.5 opacity-60"
-                          aria-label={t('chat.voice.badge')}
-                        />
-                      )}
-                      {emojiMap && Object.keys(emojiMap).length > 0 ? renderEmojisInText(body, emojiMap) : body}
-                      <span className="float-right ml-2 mt-1.5 opacity-70">
+                    {hasRefs && <ConversationRefChips items={message.context_items} className="mb-1.5" />}
+                    {hasAttachments && (
+                      <ChatAttachmentGroup className="mb-1.5">
+                        {contentParts!
+                          .filter((p) => p.type === 'image_url')
+                          .map((p, i) => (
+                            <ChatAttachment
+                              key={`img-${i}`}
+                              mediaType="image"
+                              name={t('chat.attachedImage')}
+                              src={assetSrc(p.image_url?.url)}
+                            />
+                          ))}
+                        {contentParts!
+                          .filter((p) => p.type === 'file')
+                          .map((p, i) => (
+                            <ChatAttachment key={`file-${i}`} name={p.file?.name ?? 'file'} />
+                          ))}
+                      </ChatAttachmentGroup>
+                    )}
+                    {hasBody ? (
+                      // `flow-root` contains the floated time, so the bubble's
+                      // own padding wraps it instead of clipping it.
+                      <div data-slot="user-message-body" className="flow-root whitespace-pre-wrap">
+                        {message.source === 'voice' && (
+                          <Microphone
+                            className="inline-block size-3.5 mr-1 -mt-0.5 opacity-60"
+                            aria-label={t('chat.voice.badge')}
+                          />
+                        )}
+                        {emojiMap && Object.keys(emojiMap).length > 0 ? renderEmojisInText(body, emojiMap) : body}
+                        <span data-slot="user-message-time" className="float-right ml-2 mt-1.5 opacity-70">
+                          <SentAt at={message.created_at} />
+                        </span>
+                      </div>
+                    ) : (
+                      // Nothing said, only carried: the time takes a foot line
+                      // of its own, where a bubble with badges puts it.
+                      <div data-slot="user-message-foot" className="flex justify-end opacity-70">
                         <SentAt at={message.created_at} />
-                      </span>
-                    </div>
+                      </div>
+                    )}
                   </BubbleContent>
                 </Bubble>
               )}
@@ -509,7 +539,9 @@ const FOLD_ICONS: Record<FoldKind, React.ComponentType<{ className?: string; 'ar
  * badges re-renders once when any of them changes and never when none has.
  */
 function useFoldExpansion(folded: FoldedCalls[]) {
-  const conversationId = useConversationStore((s) => s.activeId)
+  // The transcript's conversation, not the window's: the same rule
+  // `usePanelExpansion` follows, and for the same reason.
+  const conversationId = useTranscriptConversationId()
   const stored = useConversationStore((s) => {
     if (!conversationId) return ''
     const panels = s.sessions[conversationId]?.expandedPanels
@@ -536,11 +568,13 @@ function useFoldExpansion(folded: FoldedCalls[]) {
   return { isOpen, toggle }
 }
 
-function foldPanelId(fold: FoldedCalls): string {
-  return `fold-${fold.key.replace(/[^\w-]/g, '_')}`
-}
-
-/** The badges standing in for a bubble's folded calls, in a row. */
+/** The badges standing in for a bubble's folded calls, in a row.
+ *
+ *  `aria-expanded` and no `aria-controls`: what a badge opens is several
+ *  blocks rather than one panel, and they are the bubble's own children now.
+ *  Naming one of them would be naming an arbitrary one; wrapping them so there
+ *  is something to name would cost them their fill and their corners, which
+ *  `bubble.tsx` gives to direct children only. */
 function FoldBadges({
   folded,
   isOpen,
@@ -556,12 +590,7 @@ function FoldBadges({
       {folded.map((fold) => {
         const Icon = FOLD_ICONS[fold.kind]
         return (
-          <BubbleFoldBadge
-            key={fold.key}
-            expanded={isOpen(fold.key)}
-            aria-controls={isOpen(fold.key) ? foldPanelId(fold) : undefined}
-            onClick={() => toggle(fold.key)}
-          >
+          <BubbleFoldBadge key={fold.key} expanded={isOpen(fold.key)} onClick={() => toggle(fold.key)}>
             <Icon aria-hidden className="size-3" />
             {t(`chat.tool.fold.${fold.kind}`, { count: fold.count })}
           </BubbleFoldBadge>
@@ -591,25 +620,20 @@ function FoldPanels({
 }) {
   const open = folded.filter((fold) => isOpen(fold.key))
   if (open.length === 0) return null
+  // No box around them, and none between them and the bubble: what a badge
+  // opens is the blocks themselves, and a block is a block wherever it came
+  // from. A wrapper would also break the rule `bubble.tsx` styles them with —
+  // it reads the bubble's *direct* children, so a block one level down would
+  // lose its fill and its corners.
   return (
-    <ChatToolPresentationProvider value="keyboard">
-      {open.map((fold) => (
-        <div
-          key={fold.key}
-          id={foldPanelId(fold)}
-          data-slot="bubble-fold-panel"
-          data-kind={fold.kind}
-          className={cn(keyboardPanelVariants(), 'mt-0 p-1.5')}
-        >
-          <BubbleKeyboard>
-            {fold.tools.map((tool, i) => (
-              <ErrorBoundary key={`${tool.call_id}:${i}`} fallback={renderError}>
-                <MemoToolCallBlock data={tool} queued={false} />
-              </ErrorBoundary>
-            ))}
-          </BubbleKeyboard>
-        </div>
-      ))}
+    <ChatToolPresentationProvider value="bubble">
+      {open.map((fold) =>
+        fold.tools.map((tool, i) => (
+          <ErrorBoundary key={`${fold.key}:${tool.call_id}:${i}`} fallback={renderError}>
+            <MemoToolCallBlock data={tool} queued={false} />
+          </ErrorBoundary>
+        )),
+      )}
     </ChatToolPresentationProvider>
   )
 }
@@ -637,40 +661,35 @@ function FoldRow({
   )
 }
 
-/** The keyboard under a bubble: its reasoning first, then its calls, in the
- *  order the model made them. Every key is a disclosure whose panel lands in
- *  the keyboard's stack — see `bubble-keyboard.tsx`. */
+/** The calls a bubble made, in the order the model made them: one block each,
+ *  siblings of the prose in the same bubble — see `bubble.tsx`. The reasoning
+ *  is not one of them; it is `ThinkingRow`, at the head of the prose block. */
 function BubbleKeys({
   bubble,
   renderError,
-  leading,
 }: {
-  bubble: Extract<BubbleModel, { kind: 'text' | 'keyboard-only' }>
+  bubble: Extract<BubbleModel, { kind: 'text' | 'tools-only' }>
   renderError: React.ReactNode
-  /** Drawn at the head of the row, before the keys. */
-  leading?: React.ReactNode
 }) {
-  if (bubble.thinking.length === 0 && bubble.tools.length === 0 && leading == null) return null
-  // Reasoning with nothing after it yet is the thought still being written,
-  // and the only sign of life on screen until the answer starts.
-  const thinkingLive = bubble.isStreaming && bubble.kind === 'keyboard-only' && bubble.tools.length === 0
+  if (bubble.tools.length === 0) return null
+  // The delegations a round made together are one group, drawn first: the
+  // runs are what the round is waiting on, and three keys side by side said
+  // nothing about which of them still was. A call whose arguments are still
+  // streaming is not a delegation yet and stays a key.
+  const runs = bubble.tools.filter((tool) => delegationOf(tool) !== null)
+  const keys = bubble.tools.map((tool, i) => [tool, i] as const).filter(([tool]) => delegationOf(tool) === null)
   return (
-    <ChatToolPresentationProvider value="keyboard">
-      <BubbleKeyboard>
-        {leading}
-        {bubble.thinking.length > 0 && (
-          <ThinkingBlock
-            text={bubble.thinking.join('\n\n')}
-            panelKey={`${bubble.key}:thinking`}
-            isStreaming={thinkingLive}
-          />
-        )}
-        {bubble.tools.map((tool, i) => (
-          <ErrorBoundary key={`${tool.call_id}:${i}`} fallback={renderError}>
-            <MemoToolCallBlock data={tool} queued={bubble.queued[i]} />
-          </ErrorBoundary>
-        ))}
-      </BubbleKeyboard>
+    <ChatToolPresentationProvider value="bubble">
+      {runs.length > 0 && (
+        <ErrorBoundary fallback={renderError}>
+          <SubAgentGroup calls={runs} />
+        </ErrorBoundary>
+      )}
+      {keys.map(([tool, i]) => (
+        <ErrorBoundary key={`${tool.call_id}:${i}`} fallback={renderError}>
+          <MemoToolCallBlock data={tool} queued={bubble.queued[i]} />
+        </ErrorBoundary>
+      ))}
     </ChatToolPresentationProvider>
   )
 }
@@ -712,7 +731,9 @@ function AssistantBubble({
       <Bubble variant="assistant" position={bubble.position} role="status" data-working="true">
         <BubbleContent className="flex items-center gap-2">
           <Spinner size="sm" color="current" className="text-muted" />
-          <span className="shimmer text-xs">{workingLabel}</span>
+          <span data-slot="working-label" className="shimmer text-xs">
+            {workingLabel}
+          </span>
         </BubbleContent>
       </Bubble>
     )
@@ -728,19 +749,49 @@ function AssistantBubble({
       </Bubble>
     )
   }
-  if (bubble.kind === 'keyboard-only') {
-    // No prose to put a footer under, so the badges go at the head of the
-    // row, in front of the keys the reader is being shown.
-    const badges = folded.length > 0 ? <FoldBadges folded={folded} isOpen={isOpen} toggle={toggle} /> : null
+  if (bubble.kind === 'tools-only') {
+    const keys = <BubbleKeys bubble={bubble} renderError={renderError} />
+    const hasThinking = bubble.thinking.length > 0
+    const hasFolds = folded.length > 0
+    if (hasThinking || hasFolds) {
+      // A row with no prose but something to say about itself — the thought
+      // it started from, the reads it folded — gets a bubble to say it in,
+      // laid out as a prose bubble is: reasoning at the head, badges and the
+      // time at the foot, keys under the bubble. Badges outside any bubble
+      // used to float between two of them, which read as belonging to
+      // neither. While nothing has followed the thought yet it is still
+      // being written, and the only sign of life until the answer starts.
+      const live = bubble.isStreaming && bubble.tools.length === 0 && !hasFolds
+      return (
+        <Bubble variant="assistant" position={bubble.position} className="w-full">
+          <BubbleContent className="w-full">
+            {hasThinking && (
+              <ThinkingRow text={bubble.thinking.join('\n\n')} panelKey={`${bubble.key}:thinking`} isStreaming={live} />
+            )}
+            {hasFolds && (
+              <FoldRow
+                folded={folded}
+                isOpen={isOpen}
+                toggle={toggle}
+                at={bubble.createdAt}
+                isStreaming={bubble.isStreaming}
+              />
+            )}
+          </BubbleContent>
+          {panels}
+          {keys}
+        </Bubble>
+      )
+    }
     return (
       <div
         data-slot="bubble"
         data-position={bubble.position}
-        data-variant="keyboard-only"
+        data-variant="tools-only"
         className="flex w-full max-w-[85%] flex-col gap-1"
       >
         {panels}
-        <BubbleKeys bubble={bubble} renderError={renderError} leading={badges} />
+        {keys}
       </div>
     )
   }
@@ -753,6 +804,10 @@ function AssistantBubble({
     <Bubble variant="assistant" position={bubble.position} className={cn((hasKeys || hasFolds) && 'w-full')}>
       <BubbleContent className={cn((hasKeys || hasFolds) && 'w-full')}>
         {header && <MessageGroupHeader>{header}</MessageGroupHeader>}
+        {bubble.thinking.length > 0 && (
+          // Finished by definition: there is prose under it.
+          <ThinkingRow text={bubble.thinking.join('\n\n')} panelKey={`${bubble.key}:thinking`} />
+        )}
         <MarkdownContent
           content={bubble.text}
           isStreaming={bubble.isStreaming}
@@ -823,7 +878,11 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
   const [selectedText, setSelectedText] = useState('')
   const [showSelectText, setShowSelectText] = useState(false)
   const coarse = isCoarsePointer()
-  const renderError = <div className="text-xs text-danger py-2">{t('chat.renderError')}</div>
+  const renderError = (
+    <div data-slot="render-error" className="text-xs text-danger py-2">
+      {t('chat.renderError')}
+    </div>
+  )
 
   const { confirm, confirmDialog } = useConfirm()
   const requestDelete = useCallback(async () => {
@@ -931,7 +990,7 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
               {t('chat.turn.duration', { duration: formatDuration(turn.durationMs) })}
             </span>
           )}
-          <div className="flex gap-1">
+          <div data-slot="assistant-actions" className="flex gap-1">
             <CopyButton text={copyText} />
             {canRate && (
               <>
@@ -947,7 +1006,7 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
                   label={t('chat.thumbsDown')}
                   aria-pressed={rating === -1}
                   onClick={() => rate(-1)}
-                  className={cn(rating === -1 ? 'text-danger' : 'text-muted hover:text-foreground')}
+                  className={cn(rating === -1 ? 'text-danger-soft-foreground' : 'text-muted hover:text-foreground')}
                 >
                   <ThumbsDown className="w-3.5 h-3.5" />
                 </ActionButton>

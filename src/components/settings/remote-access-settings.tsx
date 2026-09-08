@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Checkbox, Description, Input, Label, Separator, TextField } from '@heroui/react'
+import { Alert, Button, Description, Input, Label, Separator, TextField, Tooltip } from '@heroui/react'
+import { CellSwitch } from '@heroui-pro/react/cell-switch'
 import { ItemCard } from '@heroui-pro/react/item-card'
 import { ItemCardGroup } from '@heroui-pro/react/item-card-group'
 import { Check, Copy, TriangleExclamation } from '@gravity-ui/icons'
@@ -190,20 +191,24 @@ export function RemoteAccessSettings() {
     return (
       <SettingsPane>
         <SettingsHeader title={t('settings.remote.title')} subtitle={t('settings.remote.subtitle')} />
-        <div role="alert" className="space-y-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
-          <p>{t('settings.remote.loadError')}</p>
-          {loadError && <p className="break-all">{loadError}</p>}
-          <Button
-            size="sm"
-            variant="outline"
-            onPress={() => {
-              setLoading(true)
-              void loadData()
-            }}
-          >
-            {t('settings.remote.retry')}
-          </Button>
-        </div>
+        <Alert status="danger" role="alert">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>{t('settings.remote.loadError')}</Alert.Title>
+            {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-2"
+              onPress={() => {
+                setLoading(true)
+                void loadData()
+              }}
+            >
+              {t('settings.remote.retry')}
+            </Button>
+          </Alert.Content>
+        </Alert>
       </SettingsPane>
     )
   }
@@ -212,34 +217,31 @@ export function RemoteAccessSettings() {
     <SettingsPane>
       <SettingsHeader title={t('settings.remote.title')} subtitle={t('settings.remote.subtitle')} />
 
-      <div className="flex items-start gap-2">
-        {/* Label stays outside because a description sits under it; the id is
-            what ties the two together. */}
-        <Checkbox
-          id="remote-enabled"
+      <div data-slot="remote-enable" className="space-y-1.5">
+        <CellSwitch
+          aria-label={t('settings.remote.enable')}
+          aria-describedby="remote-enabled-hint"
           isSelected={config.enabled}
           onChange={(selected) => setConfig({ ...config, enabled: selected })}
         >
-          <Checkbox.Content>
-            <Checkbox.Control>
-              <Checkbox.Indicator />
-            </Checkbox.Control>
-          </Checkbox.Content>
-        </Checkbox>
-        <div className="space-y-0.5">
-          <label htmlFor="remote-enabled" className="text-sm font-medium cursor-pointer">
-            {t('settings.remote.enable')}
-          </label>
-          <p className="text-xs text-muted">{t('settings.remote.enableHint')}</p>
-        </div>
+          <CellSwitch.Trigger className="pointer-coarse:h-11">
+            <CellSwitch.Label>{t('settings.remote.enable')}</CellSwitch.Label>
+            <CellSwitch.Control />
+          </CellSwitch.Trigger>
+        </CellSwitch>
+        <p id="remote-enabled-hint" data-slot="remote-enable-hint" className="text-xs text-muted">
+          {t('settings.remote.enableHint')}
+        </p>
       </div>
 
-      <div className="flex items-start gap-2 rounded-lg border p-3">
+      <div data-slot="remote-trust-warning" className="flex items-start gap-2 rounded-lg border p-3">
         <TriangleExclamation className="mt-0.5 size-4 shrink-0 text-warning-soft-foreground" aria-hidden />
-        <p className="text-xs text-warning-soft-foreground">{t('settings.remote.trustWarning')}</p>
+        <p data-slot="remote-trust-warning-text" className="text-xs text-warning-soft-foreground">
+          {t('settings.remote.trustWarning')}
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
+      <div data-slot="remote-endpoint" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
         <TextField fullWidth>
           <Label>{t('settings.remote.host')}</Label>
           <Input
@@ -264,9 +266,11 @@ export function RemoteAccessSettings() {
         </TextField>
       </div>
 
-      <div className="space-y-1.5">
-        <p className="text-xs font-medium text-muted">{t('settings.remote.token')}</p>
-        <div className="flex flex-wrap items-center gap-2">
+      <div data-slot="remote-token" className="space-y-1.5">
+        <p data-slot="remote-token-label" className="text-xs font-medium text-muted">
+          {t('settings.remote.token')}
+        </p>
+        <div data-slot="remote-token-row" className="flex flex-wrap items-center gap-2">
           <Input
             fullWidth
             aria-label={t('settings.remote.token')}
@@ -284,21 +288,23 @@ export function RemoteAccessSettings() {
             {t('settings.remote.regenerate')}
           </Button>
         </div>
-        <p className="text-xs text-muted">{t('settings.remote.tokenHint')}</p>
+        <p data-slot="remote-token-hint" className="text-xs text-muted">
+          {t('settings.remote.tokenHint')}
+        </p>
       </div>
 
       {error && (
-        <p role="alert" className="text-xs text-danger break-all">
+        <p data-slot="remote-error" role="alert" className="text-xs text-danger break-all">
           {error}
         </p>
       )}
 
-      <div className="flex items-center gap-3 pt-2">
+      <div data-slot="remote-actions" className="flex items-center gap-3 pt-2">
         <Button variant="outline" onPress={handleSave} isDisabled={saving}>
           {saved ? t('common.saved') : t('common.save')}
         </Button>
         {saved && (
-          <span role="status" className="sr-only">
+          <span data-slot="remote-saved" role="status" className="sr-only">
             {t('common.saved')}
           </span>
         )}
@@ -318,8 +324,9 @@ export function RemoteAccessSettings() {
               {/* Decoration: the state it stands for is spelled out beside it,
                 so announcing the dot too would only say it twice. */}
               <span
+                data-slot="remote-status-dot"
                 aria-hidden
-                className={cn('inline-block size-2 shrink-0 rounded-full', running ? 'bg-success' : 'bg-muted')}
+                className={cn('inline-block size-2 shrink-0 rounded-full', running ? 'bg-success' : 'bg-default')}
               />
               {running ? t('settings.remote.statusRunning') : t('settings.remote.statusStopped')}
             </ItemCard.Title>
@@ -334,10 +341,14 @@ export function RemoteAccessSettings() {
         </ItemCard>
       )}
 
-      <div className="space-y-1.5">
-        <p className="text-xs font-medium text-muted">{t('settings.remote.addresses')}</p>
+      <div data-slot="remote-addresses" className="space-y-1.5">
+        <p data-slot="remote-addresses-label" className="text-xs font-medium text-muted">
+          {t('settings.remote.addresses')}
+        </p>
         {addresses.length === 0 ? (
-          <p className="text-xs text-muted">{t('settings.remote.addressesEmpty')}</p>
+          <p data-slot="remote-addresses-empty" className="text-xs text-muted">
+            {t('settings.remote.addressesEmpty')}
+          </p>
         ) : (
           <ItemCardGroup variant="outline">
             {addresses.map((address, index) => {
@@ -350,19 +361,22 @@ export function RemoteAccessSettings() {
                       <ItemCard.Title className="w-full break-all font-mono">{dialable}</ItemCard.Title>
                     </ItemCard.Content>
                     <ItemCard.Action>
-                      <Button
-                        isIconOnly
-                        size="sm"
-                        variant="ghost"
-                        aria-label={t('settings.remote.copyAddress')}
-                        onPress={() => copyAddress(dialable)}
-                      >
-                        {copied && copiedAddress === dialable ? (
-                          <Check className="size-3.5" />
-                        ) : (
-                          <Copy className="size-3.5" />
-                        )}
-                      </Button>
+                      <Tooltip delay={0}>
+                        <Button
+                          isIconOnly
+                          size="sm"
+                          variant="ghost"
+                          aria-label={t('settings.remote.copyAddress')}
+                          onPress={() => copyAddress(dialable)}
+                        >
+                          {copied && copiedAddress === dialable ? (
+                            <Check className="size-3.5" />
+                          ) : (
+                            <Copy className="size-3.5" />
+                          )}
+                        </Button>
+                        <Tooltip.Content>{t('settings.remote.copyAddress')}</Tooltip.Content>
+                      </Tooltip>
                     </ItemCard.Action>
                   </ItemCard>
                 </Fragment>
@@ -370,7 +384,9 @@ export function RemoteAccessSettings() {
             })}
           </ItemCardGroup>
         )}
-        <p className="text-xs text-muted">{t('settings.remote.addressesHint')}</p>
+        <p data-slot="remote-addresses-hint" className="text-xs text-muted">
+          {t('settings.remote.addressesHint')}
+        </p>
       </div>
 
       {confirmDialog}

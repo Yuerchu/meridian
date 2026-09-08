@@ -46,17 +46,18 @@ export function NumberedCode({
       {lines.map((line, index) => {
         const number = startLine + index
         return (
-          <div key={number} data-code-line={number} className="flex text-foreground/85">
+          <div key={number} data-slot="numbered-code-line" data-code-line={number} className="flex text-foreground/85">
             <span
+              data-slot="numbered-code-line-number"
               aria-hidden
               className="sticky left-0 w-10 shrink-0 bg-surface pr-2 text-right text-muted/70 select-none tabular-nums"
             >
               {number}
             </span>
-            <span className="shiki min-w-0 pr-4 pl-2 whitespace-pre">
+            <span data-slot="numbered-code-line-source" className="shiki min-w-0 pr-4 pl-2 whitespace-pre">
               {highlighted && line ? (
                 // Shiki escapes the source and returns only token spans here.
-                <span dangerouslySetInnerHTML={{ __html: highlighted[index] }} />
+                <span data-slot="numbered-code-line-tokens" dangerouslySetInnerHTML={{ __html: highlighted[index] }} />
               ) : (
                 line || ' '
               )}

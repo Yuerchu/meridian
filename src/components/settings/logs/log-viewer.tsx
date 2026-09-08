@@ -51,8 +51,10 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
           <ChevronLeft className="size-4" />
           {t('settings.about.logs.back')}
         </Button>
-        <h2 className="text-lg font-medium">{t('settings.about.logs.title')}</h2>
-        <div className="ml-auto flex items-center gap-2">
+        <h2 data-slot="log-viewer-title" className="text-lg font-medium">
+          {t('settings.about.logs.title')}
+        </h2>
+        <div data-slot="log-viewer-actions" className="ml-auto flex items-center gap-2">
           <Button variant="ghost" size="sm" onPress={logs.refresh} isDisabled={logs.loading}>
             <ArrowsRotateRight className="size-4" />
             {t('settings.about.logs.refresh')}
@@ -67,7 +69,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
         </div>
       </div>
 
-      <p className="text-xs text-muted">
+      <p data-slot="log-viewer-export-hint" className="text-xs text-muted">
         {can.exportToDisk ? t('settings.about.logs.exportHint') : t('capability.exportToDisk')}
       </p>
 
@@ -104,7 +106,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
         {logs.entries.length > 0 && (
           // Only what is on screen. The reader stops as soon as it has a page,
           // so a total would be a number nobody actually counted.
-          <span className="ml-auto text-xs text-muted">
+          <span data-slot="log-viewer-count" className="ml-auto text-xs text-muted">
             {t('settings.about.logs.count', { shown: logs.entries.length })}
           </span>
         )}
@@ -124,11 +126,17 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
             </EmptyState.Header>
           </EmptyState>
         ) : logs.error ? (
-          <p role="alert" className="p-6 text-sm text-danger">
+          <p data-slot="log-viewer-error" role="alert" className="p-6 text-sm text-danger">
             {t('settings.about.logs.loadError')}
           </p>
         ) : logs.loading ? (
-          <div role="status" aria-busy="true" aria-label={t('common.loading')} className="space-y-3 p-3">
+          <div
+            data-slot="log-viewer-loading"
+            role="status"
+            aria-busy="true"
+            aria-label={t('common.loading')}
+            className="space-y-3 p-3"
+          >
             {Array.from({ length: 5 }, (_, i) => (
               <Skeleton key={i} className="h-12 w-full" />
             ))}
@@ -148,13 +156,19 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
             {logs.entries.map((entry) => (
               <LogRow key={`${entry.cursor.fileIndex}:${entry.cursor.byteOffset}`} entry={entry} />
             ))}
-            <div className="flex flex-col items-center gap-2 p-3">
-              {logs.truncated && <p className="text-xs text-muted">{t('settings.about.logs.truncated')}</p>}
+            <div data-slot="log-viewer-footer" className="flex flex-col items-center gap-2 p-3">
+              {logs.truncated && (
+                <p data-slot="log-viewer-truncated" className="text-xs text-muted">
+                  {t('settings.about.logs.truncated')}
+                </p>
+              )}
               {logs.capped ? (
-                <p className="text-xs text-muted">{t('settings.about.logs.capped', { max: MAX_RENDERED })}</p>
+                <p data-slot="log-viewer-capped" className="text-xs text-muted">
+                  {t('settings.about.logs.capped', { max: MAX_RENDERED })}
+                </p>
               ) : logs.canLoadOlder ? (
                 <Button variant="ghost" size="sm" onPress={logs.loadOlder} isDisabled={logs.loadingMore}>
-                  {logs.loadingMore && <Spinner className="size-4" />}
+                  {logs.loadingMore && <Spinner size="sm" color="current" />}
                   {t('settings.about.logs.loadOlder')}
                 </Button>
               ) : null}

@@ -53,9 +53,9 @@ export function ShikiCode({
 
   if (!ready || defer) {
     return (
-      <div className={cn('code-block__code', className)}>
-        <pre>
-          <code>{code}</code>
+      <div data-slot="shiki-code-plain" className={cn('code-block__code', className)}>
+        <pre data-slot="shiki-code-pre">
+          <code data-slot="shiki-code-source">{code}</code>
         </pre>
       </div>
     )
@@ -63,6 +63,7 @@ export function ShikiCode({
 
   return (
     <div
+      data-slot="shiki-code"
       className={cn('code-block__code', className)}
       // Shiki escapes the code it is given; what comes back is its own markup
       // around that escaped text.

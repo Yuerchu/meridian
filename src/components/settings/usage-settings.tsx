@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Label, Skeleton, Spinner, Tabs, Tooltip } from '@heroui/react'
+import { Alert, Button, Label, Skeleton, Spinner, Tabs, Tooltip } from '@heroui/react'
 import { EmptyState } from '@heroui-pro/react/empty-state'
 import { KPI } from '@heroui-pro/react/kpi'
 import { AreaChart } from '@heroui-pro/react/area-chart'
@@ -319,7 +319,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
     <SettingsPane className="max-w-4xl">
       <SettingsHeader title={t('settings.usage.title')} subtitle={t('settings.usage.subtitle')} />
 
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+      <div data-slot="usage-filters" className="flex flex-wrap items-center gap-x-6 gap-y-3">
         <Filter
           label={t('settings.usage.rangeLabel')}
           selectedKey={String(range)}
@@ -339,17 +339,19 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
       </div>
 
       {error && (
-        <div
-          role="alert"
-          className="flex flex-wrap items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger"
-        >
-          <Hint className="min-w-0 flex-1 break-words" label={error}>
-            {t('settings.usage.loadError')}
-          </Hint>
-          <Button size="sm" variant="outline" onPress={() => setReload((value) => value + 1)}>
-            {t('settings.usage.retry')}
-          </Button>
-        </div>
+        <Alert status="danger" role="alert">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Description>
+              <Hint className="min-w-0 break-words" label={error}>
+                {t('settings.usage.loadError')}
+              </Hint>
+            </Alert.Description>
+            <Button size="sm" variant="outline" onPress={() => setReload((value) => value + 1)}>
+              {t('settings.usage.retry')}
+            </Button>
+          </Alert.Content>
+        </Alert>
       )}
 
       {!report && loading ? (
@@ -363,7 +365,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
         </EmptyState>
       ) : (
         <>
-          <div className="grid grid-cols-1 @sm/pane:grid-cols-2 @2xl/pane:grid-cols-4 gap-3">
+          <div data-slot="usage-kpis" className="grid grid-cols-1 @sm/pane:grid-cols-2 @2xl/pane:grid-cols-4 gap-3">
             <Kpi title={t('settings.usage.kpi.cost')}>
               <span
                 data-slot="cost-total"
@@ -376,12 +378,12 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
                 the raw number leaves it ungrouped, and "13830144" sitting under
                 "1514.9万" reads as two different quantities. */}
             <Kpi title={t('settings.usage.kpi.input')} note={tokenNote}>
-              <span className="block truncate text-2xl font-semibold tracking-tight">
+              <span data-slot="input-total" className="block truncate text-2xl font-semibold tracking-tight">
                 {tokenTotal(total.input_tokens, total, t, compact)}
               </span>
             </Kpi>
             <Kpi title={t('settings.usage.kpi.output')}>
-              <span className="block truncate text-2xl font-semibold tracking-tight">
+              <span data-slot="output-total" className="block truncate text-2xl font-semibold tracking-tight">
                 {tokenTotal(total.output_tokens, total, t, compact)}
               </span>
             </Kpi>
@@ -389,7 +391,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
               title={t('settings.usage.kpi.cacheRate')}
               note={t('settings.usage.kpi.replies', { count: total.messages })}
             >
-              <span className="block truncate text-2xl font-semibold tracking-tight">
+              <span data-slot="cache-rate" className="block truncate text-2xl font-semibold tracking-tight">
                 {hitRate === null ? '—' : percent.format(hitRate)}
               </span>
             </Kpi>
@@ -422,7 +424,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
             <TokenTrend days={report?.days ?? []} />
           </Section>
 
-          <div className="grid gap-6 @2xl/pane:grid-cols-2">
+          <div data-slot="usage-cost-charts" className="grid gap-6 @2xl/pane:grid-cols-2">
             <Section title={t('settings.usage.byProvider')}>
               <CostBars buckets={report?.providers ?? []} />
             </Section>
@@ -435,8 +437,10 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
               content beneath them, so this one has panels. Only the selected
               panel renders, and `rows` is that dimension's data — the fetch is
               keyed on the same state the tab is. */}
-          <section className="space-y-2">
-            <h3 className="text-sm font-medium">{t('settings.usage.breakdown')}</h3>
+          <section data-slot="usage-breakdown" className="space-y-2">
+            <h3 data-slot="usage-breakdown-title" className="text-sm font-medium">
+              {t('settings.usage.breakdown')}
+            </h3>
             <Tabs selectedKey={breakdown} onSelectionChange={(key) => setBreakdown(key as Breakdown)}>
               <Tabs.ListContainer className="w-fit">
                 <Tabs.List aria-label={t('settings.usage.breakdown')}>
@@ -500,9 +504,14 @@ function Filter({
   items: [string, string][]
 }) {
   return (
-    <div className="space-y-1.5">
+    <div data-slot="usage-filter" className="space-y-1.5">
       <Label className="text-xs text-muted">{label}</Label>
-      <div role="group" aria-label={label} className="flex w-fit rounded-xl bg-default p-1">
+      <div
+        data-slot="usage-filter-group"
+        role="group"
+        aria-label={label}
+        className="flex w-fit rounded-xl bg-default p-1"
+      >
         {items.map(([id, text]) => (
           <Button
             key={id}
@@ -534,14 +543,23 @@ function Filter({
 function UsageSkeleton() {
   const { t } = useTranslation()
   return (
-    <div role="status" aria-busy="true" aria-label={t('common.loading')} className="space-y-6">
-      <div className="grid grid-cols-1 @sm/pane:grid-cols-2 @2xl/pane:grid-cols-4 gap-3">
+    <div
+      data-slot="usage-skeleton"
+      role="status"
+      aria-busy="true"
+      aria-label={t('common.loading')}
+      className="space-y-6"
+    >
+      <div
+        data-slot="usage-skeleton-kpis"
+        className="grid grid-cols-1 @sm/pane:grid-cols-2 @2xl/pane:grid-cols-4 gap-3"
+      >
         {Array.from({ length: 4 }, (_, i) => (
           <Skeleton key={i} className="h-24 w-full rounded-lg" />
         ))}
       </div>
       <Skeleton className="h-[200px] w-full rounded-lg" />
-      <div className="grid gap-6 @2xl/pane:grid-cols-2">
+      <div data-slot="usage-skeleton-charts" className="grid gap-6 @2xl/pane:grid-cols-2">
         <Skeleton className="h-40 w-full rounded-lg" />
         <Skeleton className="h-40 w-full rounded-lg" />
       </div>
@@ -569,9 +587,13 @@ function Kpi({ title, note, children }: { title: string; note?: string; children
             and `truncate` does nothing to an inline span. A cost carries up to
             six decimals, which is a long string at `text-2xl` —
             it used to be drawn straight out through the side of the card. */}
-        <div className="min-w-0">
+        <div data-slot="kpi-body" className="min-w-0">
           {children}
-          {note && <p className="mt-0.5 truncate text-xs text-muted">{note}</p>}
+          {note && (
+            <p data-slot="kpi-note" className="mt-0.5 truncate text-xs text-muted">
+              {note}
+            </p>
+          )}
         </div>
       </KPI.Content>
     </KPI>
@@ -601,23 +623,36 @@ function CostBreakdown({ bucket }: { bucket: UsageBucketInfoResponse }) {
           : null
   return (
     <section data-slot="cost-breakdown" className="space-y-2" aria-labelledby="usage-cost-breakdown-title">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <h3 id="usage-cost-breakdown-title" className="text-sm font-medium">
+      <div data-slot="cost-breakdown-header" className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <h3 data-slot="cost-breakdown-title" id="usage-cost-breakdown-title" className="text-sm font-medium">
           {t('settings.usage.costBreakdown')}
         </h3>
-        {note && <span className="text-xs text-muted">{note}</span>}
+        {note && (
+          <span data-slot="cost-breakdown-note" className="text-xs text-muted">
+            {note}
+          </span>
+        )}
       </div>
       {bucket.metered_messages === 0 && nonLocalMessages(bucket) > 0 ? (
-        <p className="text-sm text-muted">{t('settings.usage.noLocalCostBreakdown')}</p>
+        <p data-slot="cost-breakdown-empty" className="text-sm text-muted">
+          {t('settings.usage.noLocalCostBreakdown')}
+        </p>
       ) : (
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 @sm/pane:grid-cols-4">
+        <dl data-slot="cost-breakdown-list" className="grid grid-cols-2 gap-x-6 gap-y-3 @sm/pane:grid-cols-4">
           {COST_SERIES.map((part) => (
-            <div key={part.key} className="min-w-0">
-              <dt className="flex items-center gap-1.5 text-xs text-muted">
-                <span className="size-2 rounded-full" style={{ backgroundColor: part.color }} aria-hidden="true" />
-                <span className="truncate">{t(part.labelKey)}</span>
+            <div key={part.key} data-slot="cost-breakdown-part" className="min-w-0">
+              <dt data-slot="cost-breakdown-part-label" className="flex items-center gap-1.5 text-xs text-muted">
+                <span
+                  data-slot="cost-breakdown-swatch"
+                  className="size-2 rounded-full"
+                  style={{ backgroundColor: part.color }}
+                  aria-hidden="true"
+                />
+                <span data-slot="cost-breakdown-part-name" className="truncate">
+                  {t(part.labelKey)}
+                </span>
               </dt>
-              <dd className="mt-0.5 truncate text-sm font-medium tabular-nums">
+              <dd data-slot="cost-breakdown-part-value" className="mt-0.5 truncate text-sm font-medium tabular-nums">
                 {qualifiedCost(bucket[part.key], componentQualifier(bucket, part.key), t, locale)}
               </dd>
             </div>
@@ -630,8 +665,10 @@ function CostBreakdown({ bucket }: { bucket: UsageBucketInfoResponse }) {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-2">
-      <h3 className="text-sm font-medium">{title}</h3>
+    <section data-slot="usage-section" className="space-y-2">
+      <h3 data-slot="usage-section-title" className="text-sm font-medium">
+        {title}
+      </h3>
       {children}
     </section>
   )
@@ -730,13 +767,17 @@ function CostBars({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
     shownBuckets.reduce((sum, bucket) => sum + bucket.estimated_messages, 0),
   )
   if (data.length === 0 || bands.length === 0 || compareDecimals(maximum, ZERO_DECIMAL) === 0) {
-    return <p className="text-sm text-muted">{t('settings.usage.noPricedCost')}</p>
+    return (
+      <p data-slot="cost-bars-empty" className="text-sm text-muted">
+        {t('settings.usage.noPricedCost')}
+      </p>
+    )
   }
   return (
     <>
       <Legend bands={bands} />
       {qualifier !== 'exact' && (
-        <p className="text-xs text-muted">
+        <p data-slot="cost-bars-note" className="text-xs text-muted">
           {t(
             qualifier === 'partial_estimate'
               ? 'settings.usage.costChartPartialEstimate'
@@ -750,12 +791,17 @@ function CostBars({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
           would coerce them through IEEE-754 before the first pixel was drawn. */}
       <div className="space-y-2.5" data-slot="cost-bars">
         {data.map((row) => (
-          <div key={row.bucket.key} className="grid grid-cols-[minmax(5rem,auto)_minmax(0,1fr)] items-center gap-2">
+          <div
+            key={row.bucket.key}
+            data-slot="cost-bar-row"
+            className="grid grid-cols-[minmax(5rem,auto)_minmax(0,1fr)] items-center gap-2"
+          >
             <Hint className="max-w-40 truncate text-xs text-muted" label={row.name}>
               {row.name}
             </Hint>
             <div
-              className="flex h-3.5 min-w-0 overflow-hidden rounded bg-default"
+              data-slot="cost-bar"
+              className="flex h-3.5 min-w-0 overflow-hidden rounded-lg bg-default"
               role="img"
               aria-label={`${row.name}: ${formatCostAmount(row.total, bucketCostQualifier(row.bucket), locale)}`}
             >
@@ -766,7 +812,7 @@ function CostBars({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
                   <Hint
                     key={band.key}
                     focusable={false}
-                    className="block h-full first:rounded-s last:rounded-e"
+                    className="block h-full first:rounded-s-lg last:rounded-e-lg"
                     style={{ width: decimalPercent(amount, maximum), backgroundColor: band.color }}
                     label={`${t(band.labelKey)}: ${formatCostAmount(
                       amount,
@@ -792,11 +838,17 @@ function CostBars({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
 function Legend({ bands }: { bands: readonly { key: string; color: string; labelKey: string }[] }) {
   const { t } = useTranslation()
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+    <div data-slot="usage-legend" className="flex flex-wrap items-center gap-x-4 gap-y-1">
       {bands.map((band) => (
-        <span key={band.key} className="flex items-center gap-1.5">
-          <span className="size-2.5 rounded-full" style={{ backgroundColor: band.color }} />
-          <span className="text-xs text-muted">{t(band.labelKey)}</span>
+        <span key={band.key} data-slot="usage-legend-item" className="flex items-center gap-1.5">
+          <span
+            data-slot="usage-legend-swatch"
+            className="size-2.5 rounded-full"
+            style={{ backgroundColor: band.color }}
+          />
+          <span data-slot="usage-legend-label" className="text-xs text-muted">
+            {t(band.labelKey)}
+          </span>
         </span>
       ))}
     </div>
@@ -981,9 +1033,11 @@ function BucketTable({
         minWidth: 240,
         cell: (row) =>
           row.conversationCount > 1 ? (
-            <span className="block min-w-0">
-              <span className="block truncate text-sm">{row.displayLabel}</span>
-              <span className="block truncate text-xs text-muted">
+            <span data-slot="usage-row-label-group" className="block min-w-0">
+              <span data-slot="usage-row-label" className="block truncate text-sm">
+                {row.displayLabel}
+              </span>
+              <span data-slot="usage-row-label-summary" className="block truncate text-xs text-muted">
                 {t('settings.usage.conversationGroupSummary', {
                   conversations: row.conversationCount,
                   messages: row.messages,
@@ -1039,7 +1093,11 @@ function BucketTable({
                   : undefined
           const hint = [pricingTitle, billingCoverage(row, t)].filter(Boolean).join(' ')
           if (!hint)
-            return <span className={cn(qualifier !== 'exact' && 'text-muted')}>{displayedCost(row, t, locale)}</span>
+            return (
+              <span data-slot="usage-row-cost" className={cn(qualifier !== 'exact' && 'text-muted')}>
+                {displayedCost(row, t, locale)}
+              </span>
+            )
           return (
             <Hint focusable={false} className={cn(qualifier !== 'exact' && 'text-muted')} label={hint}>
               {displayedCost(row, t, locale)}
@@ -1090,7 +1148,11 @@ function BucketTable({
       getChildren={dimension === 'conversation' ? (row) => row.children : undefined}
       treeColumn={dimension === 'conversation' ? 'label' : undefined}
       renderEmptyState={() =>
-        isLoading ? <Spinner size="sm" aria-label={t('common.loading')} /> : <span>{t('settings.usage.empty')}</span>
+        isLoading ? (
+          <Spinner size="sm" aria-label={t('common.loading')} />
+        ) : (
+          <span data-slot="usage-grid-empty">{t('settings.usage.empty')}</span>
+        )
       }
       // The named column must keep room for long conversation and model ids.
       // A conversation also has an action column; on a narrow pane the grid

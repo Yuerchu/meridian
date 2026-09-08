@@ -1,13 +1,6 @@
 import * as React from 'react'
-import {
-  Ban,
-  ChevronLeft,
-  ChevronRight,
-  CircleCheck,
-  CircleDashed,
-  CircleExclamation,
-  TriangleExclamation,
-} from '@gravity-ui/icons'
+import { Spinner } from '@heroui/react'
+import { Ban, ChevronLeft, ChevronRight, CircleCheck, CircleExclamation, TriangleExclamation } from '@gravity-ui/icons'
 
 import { cn } from '@/lib/utils'
 // Imported rather than restated. This used to be a copy of the union in
@@ -20,7 +13,7 @@ function TurnStatusIcon({ status, className }: { status: TurnStatus; className?:
   const shared = cn('size-3.5 shrink-0', className)
   switch (status) {
     case 'streaming':
-      return <CircleDashed aria-hidden className={cn(shared, 'animate-spin text-muted motion-reduce:animate-none')} />
+      return <Spinner size="sm" color="current" aria-hidden className={cn('shrink-0 text-muted', className)} />
     case 'awaiting-input':
       return <CircleExclamation aria-hidden className={cn(shared, 'text-warning-soft-foreground')} />
     // Warning-coloured, unlike `interrupted`, which is grey. A turn the user

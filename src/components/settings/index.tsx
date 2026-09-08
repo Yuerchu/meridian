@@ -103,7 +103,9 @@ export default function SettingsPage({
           was taking 9% of it. The container is declared on the scroller above
           rather than here — a query resolves against an ancestor container, so
           an element carrying both would look past its own. */}
-      <div className="p-4 @2xl/settings:p-6">{panel}</div>
+      <div data-slot="settings-panel" className="p-4 @2xl/settings:p-6">
+        {panel}
+      </div>
     </div>
   )
 }

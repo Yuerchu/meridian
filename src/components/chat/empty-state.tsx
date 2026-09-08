@@ -185,7 +185,7 @@ export function EmptyState({ onSubmit, onCreate, onOpenSettingsTab, disabled, ac
   }, [])
 
   return (
-    <div className="flex h-full overflow-y-auto px-4">
+    <div data-slot="empty-state" className="flex h-full overflow-y-auto px-4">
       <ProEmptyState size="lg" className="mx-auto my-auto w-full max-w-2xl gap-6 px-0 py-8">
         <ProEmptyState.Header>
           <ProEmptyState.Title className="text-xl font-medium">{t('chat.empty.subtitle')}</ProEmptyState.Title>
@@ -225,7 +225,7 @@ export function EmptyState({ onSubmit, onCreate, onOpenSettingsTab, disabled, ac
             onRemoveSticker={() => setPendingSticker(null)}
           />
           {submitError && (
-            <p role="alert" className="break-words px-2 text-xs text-danger">
+            <p data-slot="empty-state-error" role="alert" className="break-words px-2 text-xs text-danger">
               {submitError}
             </p>
           )}

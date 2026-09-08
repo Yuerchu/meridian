@@ -1,7 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Button, Tooltip } from '@heroui/react'
+import { Alert, Button, Kbd, Tooltip } from '@heroui/react'
 import { Sidebar } from '@heroui-pro/react/sidebar'
 import { Resizable } from '@heroui-pro/react/resizable'
 import { FolderTree, Magnifier, Xmark } from '@gravity-ui/icons'
@@ -187,6 +187,7 @@ export function AppShell(props: ShellProps) {
   return (
     <>
       <a
+        data-slot="skip-link"
         href="#main-content"
         onClick={(event) => {
           // Browser-dev uses the hash as its playground route and reloads on a
@@ -194,7 +195,7 @@ export function AppShell(props: ShellProps) {
           event.preventDefault()
           document.getElementById('main-content')?.focus({ preventScroll: true })
         }}
-        className="sr-only focus:not-sr-only focus:fixed focus:start-2 focus:top-2 focus:z-100 focus:rounded-md focus:bg-overlay focus:px-3 focus:py-2 focus:text-sm focus:text-overlay-foreground focus:shadow-md focus:outline-none focus:ring-2 focus:ring-focus"
+        className="sr-only focus:not-sr-only focus:fixed focus:start-2 focus:top-2 focus:z-100 focus:rounded-md focus:bg-overlay focus:px-3 focus:py-2 focus:text-sm focus:text-overlay-foreground focus:shadow-overlay focus:outline-none focus:ring-2 focus:ring-focus"
       >
         {t('app.skipToContent')}
       </a>
@@ -244,13 +245,18 @@ export function AppShell(props: ShellProps) {
           phones owned a plain `div` here, which is why this never came up. */}
         <Sidebar.Main className="min-h-0 overflow-hidden">
           <header
+            data-slot="app-header"
             className="flex items-center min-h-12 gap-2 px-4 pt-[var(--safe-top)] pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))] border-b border-border select-none shrink-0"
             data-tauri-drag-region={canDragWindow ? '' : undefined}
           >
             {/* Below 768px this is the only way to the conversation list, so it
               is sized for a thumb rather than for a pointer. */}
-            <Sidebar.Trigger aria-label={t('sidebar.toggle')} className="-ml-1 size-11 md:size-8" />
+            <Tooltip>
+              <Sidebar.Trigger aria-label={t('sidebar.toggle')} className="-ml-1 size-11 md:size-8" />
+              <Tooltip.Content placement="bottom">{t('sidebar.toggle')}</Tooltip.Content>
+            </Tooltip>
             <h1
+              data-slot="app-title"
               ref={pageHeadingRef}
               tabIndex={-1}
               className="truncate rounded-sm text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-focus/50"
@@ -266,7 +272,7 @@ export function AppShell(props: ShellProps) {
               nobody uses — the tooltip is where it gets written down. */}
             {/* One `ml-auto`, on the group. Two auto margins split the free space
               between them and leave a gap in the middle of the pair. */}
-            <div className="ml-auto flex shrink-0 items-center gap-1">
+            <div data-slot="app-header-actions" className="ml-auto flex shrink-0 items-center gap-1">
               {/* Only where the panel it toggles can open. */}
               {activeId && !isMobile && page !== 'settings' && !activeReviewId && (
                 <Tooltip>
@@ -296,28 +302,35 @@ export function AppShell(props: ShellProps) {
                 </Button>
                 <Tooltip.Content placement="bottom">
                   {t('palette.title')}
-                  <kbd className="ml-2 text-xs opacity-70">{commandShortcut}</kbd>
+                  <Kbd variant="light" className="ml-2">
+                    <Kbd.Content>{commandShortcut}</Kbd.Content>
+                  </Kbd>
                 </Tooltip.Content>
               </Tooltip>
             </div>
           </header>
 
           {actionError && (
-            <div
-              role="alert"
-              className="flex min-h-11 items-center gap-2 border-b border-danger/20 bg-danger/10 px-4 py-2 text-xs text-danger"
-            >
-              <span className="min-w-0 flex-1 break-words">{actionError}</span>
-              <Button
-                isIconOnly
-                size="sm"
-                variant="ghost"
-                aria-label={t('common.close')}
-                onPress={() => setActionError(null)}
-                className="touch-hitbox shrink-0"
-              >
-                <Xmark />
-              </Button>
+            <div data-slot="app-action-error" className="shrink-0 border-b border-border px-4 py-2">
+              <Alert status="danger" role="alert">
+                <Alert.Indicator />
+                <Alert.Content className="min-w-0">
+                  <Alert.Description className="break-words">{actionError}</Alert.Description>
+                </Alert.Content>
+                <Tooltip>
+                  <Button
+                    isIconOnly
+                    size="sm"
+                    variant="ghost"
+                    aria-label={t('common.close')}
+                    onPress={() => setActionError(null)}
+                    className="touch-hitbox shrink-0"
+                  >
+                    <Xmark />
+                  </Button>
+                  <Tooltip.Content placement="bottom">{t('common.close')}</Tooltip.Content>
+                </Tooltip>
+              </Alert>
             </div>
           )}
 
@@ -331,8 +344,17 @@ export function AppShell(props: ShellProps) {
             collapses all of that to zero, so restoring it jumps back to the
             top. Inert keeps the layout exactly where it was while taking the
             subtree out of reach of focus and pointers. */}
-          <main id="main-content" tabIndex={-1} className="relative flex-1 min-h-0 overflow-hidden">
-            <div className="flex h-full flex-col" inert={page === 'settings' || activeReviewId !== null || undefined}>
+          <main
+            data-slot="app-main"
+            id="main-content"
+            tabIndex={-1}
+            className="relative flex-1 min-h-0 overflow-hidden"
+          >
+            <div
+              data-slot="app-chat-layer"
+              className="flex h-full flex-col"
+              inert={page === 'settings' || activeReviewId !== null || undefined}
+            >
               {/* The split lives inside the chat branch, not around it: `<main>`
                 is the positioned box the settings layer covers, and a group
                 that enclosed both would have the settings page inside a panel
@@ -342,7 +364,7 @@ export function AppShell(props: ShellProps) {
                   {/* `min-w-0` or a flex child refuses to shrink, and the
                     transcript's `max-w-4xl mx-auto` overflows instead of
                     narrowing. */}
-                  <div className="flex h-full min-w-0 flex-col">
+                  <div data-slot="app-chat-pane" className="flex h-full min-w-0 flex-col">
                     {activeId ? (
                       <ChatView
                         key={activeId}
