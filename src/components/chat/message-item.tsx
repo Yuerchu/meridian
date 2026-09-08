@@ -54,12 +54,12 @@ import { ThinkingRow } from './thinking-block'
 import { SubAgentGroup, delegationOf } from './sub-agent-group'
 import { renderEmojisInText, StickerImage } from './emoji-renderer'
 import { formatDuration, type Turn } from '@/lib/turns'
-import type { AssistantGroup, BubbleModel, FoldKind, FoldedCalls } from '@/lib/message-groups'
+import type { AssistantGroup, BubbleModel, BubblePosition, FoldKind, FoldedCalls } from '@/lib/message-groups'
 import type { MessageRating, MessageViewModel as MessageData } from '@/types'
 import type { SenderNames } from '@/hooks/use-sender-names'
 import type { EmojiMap } from './emoji-renderer'
 import { TurnUsage } from './turn-usage'
-import { ShellCommandCard } from './shell-command-card'
+import { ShellCommandBubble } from './shell-command-bubble'
 
 /**
  * Who is speaking: the assistant's own picture when it has one, otherwise the
@@ -187,10 +187,19 @@ export interface UserMessageProps {
   emojiMap?: EmojiMap
   /** Nicknames for the ids on user rows. Only a group has more than one. */
   senderNames?: SenderNames
+  /** Where this sits in a run of unanswered questions — the corners. */
+  position?: BubblePosition
 }
 
-/** What the person said: a bubble against the right edge, with its
- *  attachments and stickers as their own items beside it. */
+/**
+ * What the person said: a bubble against the right edge, laid out the way
+ * the model's are. Its head is what the message carried — the speaker in a
+ * group, the message it quoted, the conversations it referenced, its
+ * attachments — above what it said, and the time sits at the end of the last
+ * line or, with nothing said, on a foot line of its own. Stickers stay
+ * outside the bubble, as the model's do. `position` is the run treatment
+ * `questionPositionOf` decided; the bubble reads nothing off its siblings.
+ */
 export const UserMessage = React.memo(function UserMessage({
   message,
   onDelete,
@@ -198,6 +207,7 @@ export const UserMessage = React.memo(function UserMessage({
   isOneBot,
   emojiMap,
   senderNames,
+  position = 'single',
 }: UserMessageProps) {
   const { t } = useTranslation()
 
@@ -316,12 +326,15 @@ export const UserMessage = React.memo(function UserMessage({
   const speaker = isOneBot ? speakerLabel(message.sender_id, senderNames, senderPrefix) : null
 
   const hasAttachments = !!contentParts && contentParts.some((p) => p.type === 'image_url' || p.type === 'file')
+  const hasRefs = message.context_items.some((item) => item.kind === 'conversation')
+  const hasBody = !!body || message.source === 'voice'
+  const hasBubble = hasBody || !!quotedMessage || hasRefs || hasAttachments
 
   if (message.source === 'shell') {
     return (
       <>
         <MessageGroupUser>
-          <ShellCommandCard message={message} />
+          <ShellCommandBubble message={message} position={position} />
           <MessageGroupFooter className="gap-1">
             <CopyButton text={copyText} />
             {onDelete && (
@@ -340,26 +353,6 @@ export const UserMessage = React.memo(function UserMessage({
     <ContextMenu onOpenChange={handleContextMenuOpenChange}>
       <ContextMenuTrigger render={<MessageGroupUser className="pointer-coarse:select-none" />}>
         <>
-          <ConversationRefChips items={message.context_items} />
-          {hasAttachments && (
-            <ChatAttachmentGroup className="max-w-[80%] justify-end">
-              {contentParts!
-                .filter((p) => p.type === 'image_url')
-                .map((p, i) => (
-                  <ChatAttachment
-                    key={`img-${i}`}
-                    mediaType="image"
-                    name={t('chat.attachedImage')}
-                    src={assetSrc(p.image_url?.url)}
-                  />
-                ))}
-              {contentParts!
-                .filter((p) => p.type === 'file')
-                .map((p, i) => (
-                  <ChatAttachment key={`file-${i}`} name={p.file?.name ?? 'file'} />
-                ))}
-            </ChatAttachmentGroup>
-          )}
           {editing ? (
             // Full width while editing. A bubble is sized to what it says, but
             // an edit box is sized to what you are about to say — and the
@@ -393,8 +386,8 @@ export const UserMessage = React.memo(function UserMessage({
             </Bubble>
           ) : (
             <>
-              {(body || quotedMessage || message.source === 'voice') && (
-                <Bubble align="end" variant="user">
+              {hasBubble && (
+                <Bubble align="end" variant="user" position={position}>
                   <BubbleContent>
                     {speaker && (
                       <MessageGroupHeader className="text-[var(--bubble-user-foreground)]/80">
@@ -404,20 +397,48 @@ export const UserMessage = React.memo(function UserMessage({
                     {quotedMessage && (
                       <QuotedMessageBlock sender={quotedMessage.sender} content={quotedMessage.content} />
                     )}
-                    {/* `flow-root` contains the floated time, so the bubble's
-                        own padding wraps it instead of clipping it. */}
-                    <div data-slot="user-message-body" className="flow-root whitespace-pre-wrap">
-                      {message.source === 'voice' && (
-                        <Microphone
-                          className="inline-block size-3.5 mr-1 -mt-0.5 opacity-60"
-                          aria-label={t('chat.voice.badge')}
-                        />
-                      )}
-                      {emojiMap && Object.keys(emojiMap).length > 0 ? renderEmojisInText(body, emojiMap) : body}
-                      <span data-slot="user-message-time" className="float-right ml-2 mt-1.5 opacity-70">
+                    {hasRefs && <ConversationRefChips items={message.context_items} className="mb-1.5" />}
+                    {hasAttachments && (
+                      <ChatAttachmentGroup className="mb-1.5">
+                        {contentParts!
+                          .filter((p) => p.type === 'image_url')
+                          .map((p, i) => (
+                            <ChatAttachment
+                              key={`img-${i}`}
+                              mediaType="image"
+                              name={t('chat.attachedImage')}
+                              src={assetSrc(p.image_url?.url)}
+                            />
+                          ))}
+                        {contentParts!
+                          .filter((p) => p.type === 'file')
+                          .map((p, i) => (
+                            <ChatAttachment key={`file-${i}`} name={p.file?.name ?? 'file'} />
+                          ))}
+                      </ChatAttachmentGroup>
+                    )}
+                    {hasBody ? (
+                      // `flow-root` contains the floated time, so the bubble's
+                      // own padding wraps it instead of clipping it.
+                      <div data-slot="user-message-body" className="flow-root whitespace-pre-wrap">
+                        {message.source === 'voice' && (
+                          <Microphone
+                            className="inline-block size-3.5 mr-1 -mt-0.5 opacity-60"
+                            aria-label={t('chat.voice.badge')}
+                          />
+                        )}
+                        {emojiMap && Object.keys(emojiMap).length > 0 ? renderEmojisInText(body, emojiMap) : body}
+                        <span data-slot="user-message-time" className="float-right ml-2 mt-1.5 opacity-70">
+                          <SentAt at={message.created_at} />
+                        </span>
+                      </div>
+                    ) : (
+                      // Nothing said, only carried: the time takes a foot line
+                      // of its own, where a bubble with badges puts it.
+                      <div data-slot="user-message-foot" className="flex justify-end opacity-70">
                         <SentAt at={message.created_at} />
-                      </span>
-                    </div>
+                      </div>
+                    )}
                   </BubbleContent>
                 </Bubble>
               )}

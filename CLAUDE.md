@@ -1555,6 +1555,21 @@ Prefer HeroUI's answer over ours. Accepting a different radius or spacing is che
   **Line numbers are drawn only where somebody knows them**, and `numberDiffLines` is called with a known start or not at all: `1` for a whole-file write, the hunk headers of a unified patch, and for `edit_file` the line the bounded workspace reader found `old_string` on (`useEditLocation`) — asked only while the call is `pending`/`running`, kept by call id for the card's life, and never for a completed edit after a reload, where the file has since changed and a number read off it would be a guess wearing a gutter. A Codex-style `@@ ctx` header carries no numbers and the diff goes without. The panel header shows the full path only when the key had to shorten it (`compact` on `ToolArgsSummary`, which is for an ordinary key alone); a key waiting on a decision and the approval toast show the whole value, because a decision cannot rest on something the reader did not see.
 
   **Prose with a call after it is finished prose.** The engine writes prose then calls, and a text delta after a call opens a new block (`conversation-store.ts`'s `handleText`), so a text bubble that has calls or badges under it is never written into again: `isStreaming` is false for it, the cursor does not blink in it, and it carries its time. The wait between a tool returning and the model speaking again is a `working` bubble at the end of the run — the typing indicator, with the avatar beside it — rather than a status line under the group; before the first row lands it is a group of its own.
+  **The person's side is the same system.** A user bubble has the head and
+  foot a model's has: the speaker (in a group), the quoted message, the
+  conversations it referenced and its attachments above what was said, the
+  time at the end of the last line — or on a foot line of its own when
+  nothing was said — and stickers outside, as the model's are. Two questions
+  with nothing answered between them are a run with the tight corners
+  (`questionPositionOf` in `lib/turns.ts`; the later question closes up to
+  the earlier one, except past a date separator). A `!` command is
+  `ShellCommandBubble`: the command at the head with its outcome, an "output"
+  badge and the time at the foot, and the output as a keyboard-style panel
+  under the bubble, open by default and remembered per bubble like every
+  other panel. It used to be a `Card` with its own border, the one thing on
+  that side drawn in a different system. Rows with `role = context` or
+  `system` are not drawn at all, on purpose; the compaction summary is a
+  `muted` bubble.
 - **A delegation is a row in a group, and the way in is the run's own
   conversation.** `sub-agent-group.tsx` gathers the `run_agent` calls a round
   made together into one group — `BubbleKeys` partitions them out of the keys,

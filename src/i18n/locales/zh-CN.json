@@ -1211,6 +1211,7 @@
   "chat.shell.exitCode": "退出码 {{code}}",
   "chat.shell.truncated": "输出已截断",
   "chat.shell.noOutput": "命令执行完成，没有输出。",
+  "chat.shell.output": "输出",
   "chat.shell.resultUnavailable": "无法读取已保存的命令结果。",
   "chat.shell.resultError": "无法加载命令结果：{{error}}",
   "chat.command.unknown": "未知命令：/{{name}}",

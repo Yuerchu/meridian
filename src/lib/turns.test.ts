@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildTurns, formatDuration, isBlockingCall, markQueued } from '@/lib/turns'
+import { buildTurns, formatDuration, isBlockingCall, markQueued, questionPositionOf } from '@/lib/turns'
 import { reconcileTurns } from '@/hooks/use-turns'
 import type { ContentBlock, MessageViewModel, ToolCallDisplay } from '@/types'
 
@@ -458,5 +458,33 @@ describe('buildTurns — turns that never finished', () => {
     const u = msg('user', { content: 'q' })
     const a = msg('assistant', { _blocks: [tool('read_file')] })
     expect(buildTurns([u, a], crashed('t1')).at(-1)!.status).toBe('interrupted')
+  })
+})
+
+/// Two questions with nothing answered between them are one run, drawn with
+/// the tight corners a run of the model's bubbles gets; a question that was
+/// answered stands alone.
+describe('questionPositionOf', () => {
+  it('reads a run of unanswered questions as first, middle, last', () => {
+    const turns = buildTurns([
+      msg('user', { content: 'one' }),
+      msg('user', { content: 'two' }),
+      msg('user', { content: 'three' }),
+      msg('assistant', { _blocks: [text('answer')] }),
+    ])
+    expect(turns.map((_, i) => questionPositionOf(turns, i))).toEqual(['first', 'middle', 'last'])
+  })
+  it('keeps an answered question single', () => {
+    const turns = buildTurns([
+      msg('user', { content: 'one' }),
+      msg('assistant', { _blocks: [text('a')] }),
+      msg('user', { content: 'two' }),
+      msg('assistant', { _blocks: [text('b')] }),
+    ])
+    expect(turns.map((_, i) => questionPositionOf(turns, i))).toEqual(['single', 'single'])
+  })
+  it('is single for a turn with no question', () => {
+    const turns = buildTurns([msg('assistant', { _blocks: [text('hello')] })])
+    expect(questionPositionOf(turns, 0)).toBe('single')
   })
 })

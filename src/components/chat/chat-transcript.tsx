@@ -19,7 +19,7 @@ import { TurnOutline } from './turn-outline'
 import { FilePreviewProvider } from './file-preview'
 import type { EmojiMap } from './emoji-renderer'
 import type { SenderNames } from '@/hooks/use-sender-names'
-import { answerAnchorId, turnEndedAt, type Turn } from '@/lib/turns'
+import { answerAnchorId, questionPositionOf, turnEndedAt, type Turn } from '@/lib/turns'
 import type { MessageRating } from '@/types'
 
 const TRANSCRIPT_WINDOW_TURNS = 40
@@ -262,6 +262,7 @@ function TranscriptTurns({
               // Off the full list, not the window: a day passed between two turns
               // whether or not the earlier one is rendered.
               previousTurnEndedAt={i > 0 ? turnEndedAt(turns[i - 1]) : null}
+              questionPosition={questionPositionOf(turns, i)}
               onDelete={onDelete}
               onRegenerate={onRegenerate}
               onEdit={onEdit}

@@ -10,7 +10,7 @@ import { useHeightCompensation } from '@/hooks/use-height-compensation'
 import { isDifferentDay, useDateLabel } from '@/hooks/use-clock-time'
 import { useConversationStore } from '@/stores/conversation-store'
 import { answerAnchorId, turnStartedAt, type Turn } from '@/lib/turns'
-import { awaitingModel, buildAssistantGroups, groupsPlainText } from '@/lib/message-groups'
+import { awaitingModel, buildAssistantGroups, groupsPlainText, type BubblePosition } from '@/lib/message-groups'
 import type { EmojiMap } from './emoji-renderer'
 import type { SenderNames } from '@/hooks/use-sender-names'
 import type { MessageRating } from '@/types'
@@ -57,6 +57,10 @@ export interface TurnItemProps {
    *  the transcript's window may have left it unrendered, and a day that
    *  passed between two turns passed either way. Null for the first. */
   previousTurnEndedAt?: number | null
+  /** Where the question sits in a run of unanswered questions — see
+   *  `questionPositionOf`. Decides its corners, and whether it closes up to
+   *  the question before it. */
+  questionPosition?: BubblePosition
   className?: string
 }
 
@@ -82,6 +86,7 @@ export const TurnItem = React.memo(function TurnItem({
   senderNames,
   assistantAvatar,
   previousTurnEndedAt = null,
+  questionPosition = 'single',
   className,
 }: TurnItemProps) {
   const { t } = useTranslation()
@@ -172,17 +177,25 @@ export const TurnItem = React.memo(function TurnItem({
   const startedAt = turnStartedAt(turn)
   const showDate = startedAt != null && (previousTurnEndedAt == null || isDifferentDay(previousTurnEndedAt, startedAt))
 
+  // A question continuing a run of questions closes up to the one before it:
+  // the tight corner only reads as "the same speaker, continued" when the two
+  // nearly touch, and the six-unit rhythm between turns is a paragraph break.
+  // Not past a date separator, which is a break of its own.
+  const continuesRun = (questionPosition === 'middle' || questionPosition === 'last') && !showDate
   const question = turn.userMessage && (
-    <ErrorBoundary fallback={renderError}>
-      <UserMessage
-        message={turn.userMessage}
-        onDelete={onDeleteTurn}
-        onEdit={!streaming ? onEdit : undefined}
-        isOneBot={isOneBot}
-        emojiMap={emojiMap}
-        senderNames={senderNames}
-      />
-    </ErrorBoundary>
+    <div data-slot="turn-question" className={cn(continuesRun && '-mt-5')}>
+      <ErrorBoundary fallback={renderError}>
+        <UserMessage
+          message={turn.userMessage}
+          position={questionPosition}
+          onDelete={onDeleteTurn}
+          onEdit={!streaming ? onEdit : undefined}
+          isOneBot={isOneBot}
+          emojiMap={emojiMap}
+          senderNames={senderNames}
+        />
+      </ErrorBoundary>
+    </div>
   )
 
   // Outside the group's footer on purpose: that fades in on hover, and a pager

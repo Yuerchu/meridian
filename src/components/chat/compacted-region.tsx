@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Button, Link } from '@heroui/react'
 import { MessageScrollerItem } from '@/components/ui/message-scroller'
 import { Marker, MarkerContent } from '@/components/ui/marker'
+import { Bubble, BubbleContent } from '@/components/ui/bubble'
 import { TurnItem } from './turn-item'
 import type { EmojiMap } from './emoji-renderer'
 import type { SenderNames } from '@/hooks/use-sender-names'
@@ -97,12 +98,9 @@ export function CompactedRegion({
         </MarkerContent>
       </Marker>
       {compactSummary && showCompactSummary && (
-        <div
-          data-slot="compact-summary"
-          className="px-4 py-2 mb-2 text-xs text-muted bg-default/30 rounded-lg border border-border whitespace-pre-wrap"
-        >
-          {compactSummary.content}
-        </div>
+        <Bubble variant="muted" data-slot="compact-summary" className="mb-2 max-w-full">
+          <BubbleContent className="text-xs whitespace-pre-wrap text-muted">{compactSummary.content}</BubbleContent>
+        </Bubble>
       )}
     </MessageScrollerItem>
   )

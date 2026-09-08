@@ -146,6 +146,19 @@ describe('TurnItem', () => {
     expect(container.querySelector('[data-slot="turn"]')).toHaveAttribute('data-status', 'complete')
   })
 
+  /// The question is a bubble in the same system as the answers: its corners
+  /// come from where it sits in a run of questions, and a continuing question
+  /// closes up to the one before it.
+  it('draws the question with the run position it was given', () => {
+    const u = msg('user', { content: 'and another thing' })
+    const turn = buildTurns([u])[0]
+
+    const { container } = render(<TurnItem turn={turn} conversationId={CONV} questionPosition="last" />)
+    const bubble = container.querySelector('[data-slot="bubble"][data-variant="user"]')
+    expect(bubble).toHaveAttribute('data-position', 'last')
+    expect(container.querySelector('[data-slot="turn-question"]')?.className).toContain('-mt-5')
+  })
+
   it('renders a headless turn without a question bubble', () => {
     const a = msg('assistant', { _blocks: [text('unprompted')], content: 'unprompted' })
     const turn = buildTurns([a])[0]

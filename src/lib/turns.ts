@@ -1,4 +1,5 @@
 import type { ContentBlock, MessageRating, MessageViewModel, ToolCallDisplay, TurnUsageInfoResponse } from '@/types'
+import type { BubblePosition } from '@/lib/message-groups'
 
 /**
  * A turn is one user message plus everything the agent produced in response.
@@ -229,6 +230,30 @@ function hasBlockingCall(messages: MessageViewModel[]): boolean {
 interface OpenTurn {
   userMessage: MessageViewModel | null
   assistantMessages: MessageViewModel[]
+}
+
+/**
+ * The corner treatment of a turn's question, read off its neighbours.
+ *
+ * Two questions with nothing answered between them are one run, the way two
+ * of the model's bubbles in a group are — a person sending twice before the
+ * answer comes, or a OneBot group where several people spoke. A turn's
+ * question is `first` when the next turn's follows it with no answer in
+ * between, `last` when the previous turn's did, `middle` for both, `single`
+ * otherwise. Derived here rather than stored on the turn so the fixtures that
+ * build turns by hand need not know about it.
+ */
+export function questionPositionOf(turns: readonly Turn[], index: number): BubblePosition {
+  const turn = turns[index]
+  if (!turn?.userMessage) return 'single'
+  const prev = turns[index - 1]
+  const next = turns[index + 1]
+  const continuesPrevious = !!prev?.userMessage && prev.assistantMessages.length === 0
+  const continuesIntoNext = turn.assistantMessages.length === 0 && !!next?.userMessage
+  if (continuesPrevious && continuesIntoNext) return 'middle'
+  if (continuesPrevious) return 'last'
+  if (continuesIntoNext) return 'first'
+  return 'single'
 }
 
 export function buildTurns(messages: MessageViewModel[], ctx: BuildTurnsContext = {}): Turn[] {

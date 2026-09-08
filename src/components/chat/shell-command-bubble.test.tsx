@@ -7,7 +7,7 @@ const getUserCommandResult = vi.hoisted(() => vi.fn())
 
 vi.mock('@/api', () => ({ api: { getUserCommandResult } }))
 
-import { ShellCommandCard } from './shell-command-card'
+import { ShellCommandBubble } from './shell-command-bubble'
 
 const message = {
   id: 'message-1',
@@ -45,7 +45,7 @@ beforeEach(() => {
 
 it('rehydrates a structured command result without reading raw transcript context', async () => {
   getUserCommandResult.mockResolvedValue(result)
-  render(<ShellCommandCard message={message} />)
+  render(<ShellCommandBubble message={message} />)
 
   expect(screen.getByText('pnpm test')).toBeInTheDocument()
   expect(await screen.findByText('12 tests passed')).toBeInTheDocument()
@@ -62,7 +62,7 @@ it('waits for the matching finish event and then refreshes an in-flight card', a
   getUserCommandResult.mockResolvedValue(result)
   act(() => useConversationStore.getState().beginShellCommand('conversation-1', 'turn-1'))
 
-  render(<ShellCommandCard message={message} />)
+  render(<ShellCommandBubble message={message} />)
   expect(getUserCommandResult).not.toHaveBeenCalled()
 
   act(() => useConversationStore.getState().finishShellCommand(result))
@@ -73,7 +73,7 @@ it('waits for the matching finish event and then refreshes an in-flight card', a
 
 it('renders a completed command with a non-zero exit as a failure', async () => {
   getUserCommandResult.mockResolvedValue({ ...result, stdout: '', exit_code: 7 })
-  render(<ShellCommandCard message={message} />)
+  render(<ShellCommandBubble message={message} />)
 
   await waitFor(() => expect(getUserCommandResult).toHaveBeenCalled())
   const outcome = document.querySelector('[data-command-outcome]')

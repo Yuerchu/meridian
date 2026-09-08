@@ -1218,6 +1218,7 @@
   "chat.shell.exitCode": "exit {{code}}",
   "chat.shell.truncated": "truncated",
   "chat.shell.noOutput": "Command completed without output.",
+  "chat.shell.output": "Output",
   "chat.shell.resultUnavailable": "The persisted command result is unavailable.",
   "chat.shell.resultError": "Could not load the command result: {{error}}",
   "chat.command.unknown": "Unknown command: /{{name}}",
