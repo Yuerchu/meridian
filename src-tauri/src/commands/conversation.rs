@@ -474,6 +474,21 @@ pub async fn toggle_pin_conversation(app: tauri::AppHandle, id: String) -> Resul
     .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+pub async fn toggle_archive_conversation(
+    app: tauri::AppHandle,
+    id: String,
+) -> Result<ConversationInfoResponse, String> {
+    let pool = app.services().db.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        let row = db::ops::conversation::toggle_archive(&mut conn, &id, now_ms()).map_err(|e| e.to_string())?;
+        row.try_into()
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Delete a conversation and everything in it.
 ///
 /// Refused while a turn is running. The front end sends a stop first, but a

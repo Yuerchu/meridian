@@ -4,14 +4,8 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { ArrowDownToSquare, ChevronDown, Copy, Scissors, SquareDashedText, Xmark } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
-import { Button, ListBox, Popover, Tooltip } from '@heroui/react'
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from '@/components/ui/context-menu'
+import { Button, Kbd, Label, ListBox, Popover, Tooltip } from '@heroui/react'
+import { ContextMenu } from '@heroui-pro/react/context-menu'
 import { ChatAttachment, ChatAttachmentGroup } from '@heroui-pro/react/chat-attachment'
 
 import { localPreviewSrc } from '@/lib/asset-src'
@@ -295,11 +289,14 @@ function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAc
 
 function ComposerContextMenu({
   enabled,
+  label,
   onOpenChange,
   items,
   children,
 }: {
   enabled: boolean
+  /** Names the menu for a screen reader. */
+  label: string
   onOpenChange: (open: boolean) => void
   items: React.ReactNode
   children: React.ReactNode
@@ -307,9 +304,22 @@ function ComposerContextMenu({
   if (!enabled) return children
   return (
     <ContextMenu onOpenChange={onOpenChange}>
-      <ContextMenuTrigger>{children}</ContextMenuTrigger>
-      <ContextMenuContent>{items}</ContextMenuContent>
+      {/* `block w-full` is not decoration: Pro's trigger is `inline-block`,
+          and around a full-width field it collapses to the content's width.
+          The lab's display probe measures whether these two still win. */}
+      <ContextMenu.Trigger className="block w-full">{children}</ContextMenu.Trigger>
+      <ContextMenu.Popover>
+        <ContextMenu.Menu aria-label={label}>{items}</ContextMenu.Menu>
+      </ContextMenu.Popover>
     </ContextMenu>
+  )
+}
+
+function Shortcut({ keys }: { keys: string }) {
+  return (
+    <Kbd className="ms-auto" slot="keyboard" variant="light">
+      <Kbd.Content>{keys}</Kbd.Content>
+    </Kbd>
   )
 }
 
@@ -669,37 +679,29 @@ export function InputBar({
     <>
       {selectedText && (
         <>
-          <ContextMenuItem onClick={handleCut}>
-            <Scissors />
-            {t('contextMenu.cut')}
-            <span data-slot="context-menu-shortcut" className="ml-auto text-xs text-muted">
-              Ctrl+X
-            </span>
-          </ContextMenuItem>
-          <ContextMenuItem onClick={handleCopy}>
-            <Copy />
-            {t('chat.copy')}
-            <span data-slot="context-menu-shortcut" className="ml-auto text-xs text-muted">
-              Ctrl+C
-            </span>
-          </ContextMenuItem>
+          <ContextMenu.Item id="cut" textValue={t('contextMenu.cut')} onAction={handleCut}>
+            <Scissors className="size-4 text-muted" />
+            <Label>{t('contextMenu.cut')}</Label>
+            <Shortcut keys="Ctrl+X" />
+          </ContextMenu.Item>
+          <ContextMenu.Item id="copy" textValue={t('chat.copy')} onAction={handleCopy}>
+            <Copy className="size-4 text-muted" />
+            <Label>{t('chat.copy')}</Label>
+            <Shortcut keys="Ctrl+C" />
+          </ContextMenu.Item>
         </>
       )}
-      <ContextMenuItem onClick={handlePaste}>
-        <ArrowDownToSquare />
-        {t('contextMenu.paste')}
-        <span data-slot="context-menu-shortcut" className="ml-auto text-xs text-muted">
-          Ctrl+V
-        </span>
-      </ContextMenuItem>
-      <ContextMenuSeparator />
-      <ContextMenuItem onClick={handleSelectAll}>
-        <SquareDashedText />
-        {t('contextMenu.selectAll')}
-        <span data-slot="context-menu-shortcut" className="ml-auto text-xs text-muted">
-          Ctrl+A
-        </span>
-      </ContextMenuItem>
+      <ContextMenu.Item id="paste" textValue={t('contextMenu.paste')} onAction={() => void handlePaste()}>
+        <ArrowDownToSquare className="size-4 text-muted" />
+        <Label>{t('contextMenu.paste')}</Label>
+        <Shortcut keys="Ctrl+V" />
+      </ContextMenu.Item>
+      <ContextMenu.Separator />
+      <ContextMenu.Item id="select-all" textValue={t('contextMenu.selectAll')} onAction={handleSelectAll}>
+        <SquareDashedText className="size-4 text-muted" />
+        <Label>{t('contextMenu.selectAll')}</Label>
+        <Shortcut keys="Ctrl+A" />
+      </ContextMenu.Item>
     </>
   )
 
@@ -719,7 +721,12 @@ export function InputBar({
           <VoiceOverlay state={androidVoice.state} elapsed={androidVoice.elapsed} peak={androidVoice.peak} />
         )}
         {isRemote && onAttachFiles && <FileInput ref={fileInputRef} multiple onFiles={handleBrowserFiles} />}
-        <ComposerContextMenu enabled={!isCoarsePointer()} onOpenChange={handleContextMenuOpen} items={menuItems}>
+        <ComposerContextMenu
+          enabled={!isCoarsePointer()}
+          label={t('contextMenu.composerActions')}
+          onOpenChange={handleContextMenuOpen}
+          items={menuItems}
+        >
           <Composer
             value={value}
             onChange={onChange}

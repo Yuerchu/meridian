@@ -252,6 +252,14 @@
   background-color: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
+/* Pro declares `--sidebar-width: 240px` on both `.sidebar` and the wrapper
+   independently. Redirect both to a custom property so a single assignment
+   on any ancestor controls the width. Unlayered to outrank the import. */
+.sidebar,
+.sidebar__offcanvas-wrapper {
+  --sidebar-width: var(--app-sidebar-width, 240px);
+}
+
 /* HeroUI ships a `dark` variant that also falls back to `prefers-color-scheme`.
    Ours is deliberate: the theme is an explicit setting, and a dark OS must not
    darken an app the user asked to keep light. Declared after the import so it

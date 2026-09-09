@@ -22,7 +22,8 @@ import { ActionButton } from '@/components/ui/action-button'
 import { useConfirm } from '@/hooks/use-confirm'
 import { ConversationRefChips } from './conversation-ref-chips'
 import { CopyButton, MarkdownContent } from './markdown-content'
-import { Avatar, Spinner, TextArea } from '@heroui/react'
+import { Avatar, Label, Spinner, TextArea } from '@heroui/react'
+import { ContextMenu } from '@heroui-pro/react/context-menu'
 import {
   MessageGroupAssistant,
   MessageGroupAvatar,
@@ -40,13 +41,6 @@ import { ChatAttachment, ChatAttachmentGroup } from '@heroui-pro/react/chat-atta
 import { ErrorBoundary } from '@/components/error-boundary'
 
 import { assetSrc } from '@/lib/asset-src'
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from '@/components/ui/context-menu'
 import { isCoarsePointer, isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { useClockTime } from '@/hooks/use-clock-time'
 import { SelectTextModal } from './select-text-modal'
@@ -352,7 +346,11 @@ export const UserMessage = React.memo(function UserMessage({
 
   const userContent = (
     <ContextMenu onOpenChange={handleContextMenuOpenChange}>
-      <ContextMenuTrigger render={<MessageGroupUser className="pointer-coarse:select-none" />}>
+      {/* The group *is* the trigger. Pro's `render` is a function of the DOM
+          props rather than an element, and the ref in them has to reach the
+          div — which it does, because the group spreads everything it is
+          given. The group's own `flex` outranks the trigger's `inline-block`. */}
+      <ContextMenu.Trigger className="pointer-coarse:select-none" render={(props) => <MessageGroupUser {...props} />}>
         <>
           {editing ? (
             // Full width while editing. A bubble is sized to what it says, but
@@ -475,41 +473,62 @@ export const UserMessage = React.memo(function UserMessage({
             </>
           )}
         </>
-      </ContextMenuTrigger>
-      <ContextMenuContent>
-        {selectedText && (
-          <>
-            <ContextMenuItem onClick={() => navigator.clipboard.writeText(selectedText)}>
-              <Copy />
-              {t('contextMenu.copySelection')}
-            </ContextMenuItem>
-            <ContextMenuSeparator />
-          </>
-        )}
-        {canEdit && (
-          <ContextMenuItem onClick={handleStartEdit}>
-            <Pencil />
-            {t('chat.edit')}
-          </ContextMenuItem>
-        )}
-        <ContextMenuItem onClick={() => navigator.clipboard.writeText(copyText)}>
-          <Copy />
-          {t('chat.copy')}
-        </ContextMenuItem>
-        {coarse && (
-          <ContextMenuItem onClick={() => setShowSelectText(true)}>
-            <SquareDashedText />
-            {t('contextMenu.selectText')}
-          </ContextMenuItem>
-        )}
-        <ContextMenuSeparator />
-        {onDelete && (
-          <ContextMenuItem variant="destructive" onClick={requestDelete}>
-            <TrashBin />
-            {t('chat.delete')}
-          </ContextMenuItem>
-        )}
-      </ContextMenuContent>
+      </ContextMenu.Trigger>
+      <ContextMenu.Popover>
+        <ContextMenu.Menu aria-label={t('contextMenu.messageActions')}>
+          {selectedText && (
+            <>
+              <ContextMenu.Item
+                id="copy-selection"
+                textValue={t('contextMenu.copySelection')}
+                onAction={() => void navigator.clipboard.writeText(selectedText)}
+              >
+                <Copy className="size-4 text-muted" />
+                <Label>{t('contextMenu.copySelection')}</Label>
+              </ContextMenu.Item>
+              <ContextMenu.Separator />
+            </>
+          )}
+          {canEdit && (
+            <ContextMenu.Item id="edit" textValue={t('chat.edit')} onAction={handleStartEdit}>
+              <Pencil className="size-4 text-muted" />
+              <Label>{t('chat.edit')}</Label>
+            </ContextMenu.Item>
+          )}
+          <ContextMenu.Item
+            id="copy"
+            textValue={t('chat.copy')}
+            onAction={() => void navigator.clipboard.writeText(copyText)}
+          >
+            <Copy className="size-4 text-muted" />
+            <Label>{t('chat.copy')}</Label>
+          </ContextMenu.Item>
+          {coarse && (
+            <ContextMenu.Item
+              id="select-text"
+              textValue={t('contextMenu.selectText')}
+              onAction={() => setShowSelectText(true)}
+            >
+              <SquareDashedText className="size-4 text-muted" />
+              <Label>{t('contextMenu.selectText')}</Label>
+            </ContextMenu.Item>
+          )}
+          {onDelete && (
+            <>
+              <ContextMenu.Separator />
+              <ContextMenu.Item
+                id="delete"
+                textValue={t('chat.delete')}
+                variant="danger"
+                onAction={() => void requestDelete()}
+              >
+                <TrashBin className="size-4" />
+                <Label>{t('chat.delete')}</Label>
+              </ContextMenu.Item>
+            </>
+          )}
+        </ContextMenu.Menu>
+      </ContextMenu.Popover>
     </ContextMenu>
   )
 
@@ -911,7 +930,11 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
     // beside the footer rather than beside the last bubble.
     <div data-slot="assistant-group" className="group/message flex min-w-0 flex-col">
       <ContextMenu onOpenChange={handleContextMenuOpenChange}>
-        <ContextMenuTrigger render={<MessageGroupAssistant className="pointer-coarse:select-none" />}>
+        {/* Same shape as the user group above: the group is the trigger. */}
+        <ContextMenu.Trigger
+          className="pointer-coarse:select-none"
+          render={(props) => <MessageGroupAssistant {...props} />}
+        >
           <AssistantAvatar src={assistantAvatar} modelId={group.modelId} hosted={isHosted} />
           <MessageGroupBubbles>
             {group.bubbles.map((bubble, i) => (
@@ -927,53 +950,74 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
               </ErrorBoundary>
             ))}
           </MessageGroupBubbles>
-        </ContextMenuTrigger>
-        <ContextMenuContent>
-          {selectedText && (
-            <>
-              <ContextMenuItem onClick={() => navigator.clipboard.writeText(selectedText)}>
-                <Copy />
-                {t('contextMenu.copySelection')}
-              </ContextMenuItem>
-              <ContextMenuSeparator />
-            </>
-          )}
-          <ContextMenuItem onClick={() => navigator.clipboard.writeText(copyText)}>
-            <Copy />
-            {t('chat.copy')}
-          </ContextMenuItem>
-          {coarse && (
-            <ContextMenuItem onClick={() => setShowSelectText(true)}>
-              <SquareDashedText />
-              {t('contextMenu.selectText')}
-            </ContextMenuItem>
-          )}
-          {canRate && (
-            <>
-              <ContextMenuItem onClick={() => rate(1)}>
-                <ThumbsUp className={rating === 1 ? 'text-success-soft-foreground' : ''} />
-                {t('chat.thumbsUp')}
-              </ContextMenuItem>
-              <ContextMenuItem onClick={() => rate(-1)}>
-                <ThumbsDown className={rating === -1 ? 'text-danger' : ''} />
-                {t('chat.thumbsDown')}
-              </ContextMenuItem>
-            </>
-          )}
-          {onRegenerate && !isStreaming && (
-            <ContextMenuItem onClick={onRegenerate}>
-              <ArrowsRotateRight />
-              {t('chat.regenerate')}
-            </ContextMenuItem>
-          )}
-          <ContextMenuSeparator />
-          {onDelete && (
-            <ContextMenuItem variant="destructive" onClick={requestDelete}>
-              <TrashBin />
-              {t('chat.delete')}
-            </ContextMenuItem>
-          )}
-        </ContextMenuContent>
+        </ContextMenu.Trigger>
+        <ContextMenu.Popover>
+          <ContextMenu.Menu aria-label={t('contextMenu.messageActions')}>
+            {selectedText && (
+              <>
+                <ContextMenu.Item
+                  id="copy-selection"
+                  textValue={t('contextMenu.copySelection')}
+                  onAction={() => void navigator.clipboard.writeText(selectedText)}
+                >
+                  <Copy className="size-4 text-muted" />
+                  <Label>{t('contextMenu.copySelection')}</Label>
+                </ContextMenu.Item>
+                <ContextMenu.Separator />
+              </>
+            )}
+            <ContextMenu.Item
+              id="copy"
+              textValue={t('chat.copy')}
+              onAction={() => void navigator.clipboard.writeText(copyText)}
+            >
+              <Copy className="size-4 text-muted" />
+              <Label>{t('chat.copy')}</Label>
+            </ContextMenu.Item>
+            {coarse && (
+              <ContextMenu.Item
+                id="select-text"
+                textValue={t('contextMenu.selectText')}
+                onAction={() => setShowSelectText(true)}
+              >
+                <SquareDashedText className="size-4 text-muted" />
+                <Label>{t('contextMenu.selectText')}</Label>
+              </ContextMenu.Item>
+            )}
+            {canRate && (
+              <>
+                <ContextMenu.Item id="thumbs-up" textValue={t('chat.thumbsUp')} onAction={() => rate(1)}>
+                  <ThumbsUp className={cn('size-4', rating === 1 ? 'text-success-soft-foreground' : 'text-muted')} />
+                  <Label>{t('chat.thumbsUp')}</Label>
+                </ContextMenu.Item>
+                <ContextMenu.Item id="thumbs-down" textValue={t('chat.thumbsDown')} onAction={() => rate(-1)}>
+                  <ThumbsDown className={cn('size-4', rating === -1 ? 'text-danger' : 'text-muted')} />
+                  <Label>{t('chat.thumbsDown')}</Label>
+                </ContextMenu.Item>
+              </>
+            )}
+            {onRegenerate && !isStreaming && (
+              <ContextMenu.Item id="regenerate" textValue={t('chat.regenerate')} onAction={onRegenerate}>
+                <ArrowsRotateRight className="size-4 text-muted" />
+                <Label>{t('chat.regenerate')}</Label>
+              </ContextMenu.Item>
+            )}
+            {onDelete && (
+              <>
+                <ContextMenu.Separator />
+                <ContextMenu.Item
+                  id="delete"
+                  textValue={t('chat.delete')}
+                  variant="danger"
+                  onAction={() => void requestDelete()}
+                >
+                  <TrashBin className="size-4" />
+                  <Label>{t('chat.delete')}</Label>
+                </ContextMenu.Item>
+              </>
+            )}
+          </ContextMenu.Menu>
+        </ContextMenu.Popover>
       </ContextMenu>
       {showFooter && (
         // Under the bubbles, indented past the avatar column. Cost and duration

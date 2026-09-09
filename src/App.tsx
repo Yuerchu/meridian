@@ -273,6 +273,18 @@ function App() {
     [refreshConversations],
   )
 
+  const handleToggleArchive = useCallback(
+    async (id: string) => {
+      const updated = await api.toggleArchiveConversation(id)
+      await refreshConversations()
+      if (updated.is_archived && id === activeId) {
+        const next = conversations.find((c) => c.id !== id && !c.is_archived)
+        storeSetActiveId(next?.id ?? null)
+      }
+    },
+    [activeId, conversations, refreshConversations, storeSetActiveId],
+  )
+
   const handleMoveToProject = useCallback(
     async (id: string, projectId: string | null): Promise<string | null> => {
       try {
@@ -330,6 +342,7 @@ function App() {
     onDelete: handleDelete,
     onRename: handleRename,
     onTogglePin: handleTogglePin,
+    onToggleArchive: handleToggleArchive,
     onMoveToProject: handleMoveToProject,
     onSelectProject: handleSelectProject,
     onCreateProject: handleCreateProject,
