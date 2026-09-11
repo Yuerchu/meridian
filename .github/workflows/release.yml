@@ -106,6 +106,16 @@ jobs:
           # path that is gone.
           cache-directories: src-tauri/target/sherpa-onnx-prebuilt
 
+      - name: Free runner disk
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL /opt/hostedtoolcache/go /opt/hostedtoolcache/PyPy \
+            /usr/share/swift /usr/local/graalvm /usr/local/julia* \
+            /usr/local/lib/heroku /usr/local/aws-cli /opt/microsoft/powershell
+          docker image prune -af 2>/dev/null || true
+          df -h /
+
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-latest'
         run: |
@@ -171,6 +181,16 @@ jobs:
           # writes down a level, the unpacked libraries included. The guard step
           # below covers a miss either way, but only by re-downloading.
           cache-directories: src-tauri/target/${{ matrix.target }}/sherpa-onnx-prebuilt
+
+      - name: Free runner disk
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL /opt/hostedtoolcache/go /opt/hostedtoolcache/PyPy \
+            /usr/share/swift /usr/local/graalvm /usr/local/julia* \
+            /usr/local/lib/heroku /usr/local/aws-cli /opt/microsoft/powershell
+          docker image prune -af 2>/dev/null || true
+          df -h /
 
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-latest'
