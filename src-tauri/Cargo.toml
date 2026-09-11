@@ -15,7 +15,7 @@ exclude = ["crates"]
 
 [package]
 name = "meridian"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 license = "LicenseRef-Proprietary-Yuerchu"
 authors = ["于小丘 Yuerchu <admin@yuxiaoqiu.cn>"]
