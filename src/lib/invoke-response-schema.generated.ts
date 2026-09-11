@@ -656,6 +656,10 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "ref",
       "id": 2
     },
+    "toggle_archive_conversation": {
+      "kind": "ref",
+      "id": 33
+    },
     "toggle_pin_conversation": {
       "kind": "ref",
       "id": 33
@@ -9143,4 +9147,4 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
   }
 }
 
-export const INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT = 215
+export const INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT = 216

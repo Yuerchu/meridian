@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
-import { ArrowDownToLine, FolderArrowRight, Link, Pencil, Pin, PinSlash, TrashBin } from '@gravity-ui/icons'
+import { Archive, ArrowDownToLine, FolderArrowRight, Link, Pencil, Pin, PinSlash, TrashBin } from '@gravity-ui/icons'
 
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
@@ -20,7 +20,7 @@ import type { ConversationInfoResponse, ProjectInfoResponse } from '@/types'
  * refresh.
  */
 export interface RowAction {
-  key: 'pin' | 'rename' | 'move' | 'attach-session' | 'export-sft' | 'export-dpo' | 'delete'
+  key: 'pin' | 'archive' | 'rename' | 'move' | 'attach-session' | 'export-sft' | 'export-dpo' | 'delete'
   icon: React.ComponentType<{ className?: string }>
   label: string
   variant?: 'default' | 'destructive'
@@ -68,6 +68,7 @@ async function exportConversation(
  */
 export function useConversationActions(args: {
   onTogglePin: (id: string) => void
+  onToggleArchive: (id: string) => void
   onRequestRename: (id: string) => void
   /** Open the move-to-project picker for this conversation. */
   onRequestMove: (id: string) => void
@@ -84,7 +85,15 @@ export function useConversationActions(args: {
   onRequestAttachSession?: (id: string) => void
 }): (conversation: ConversationInfoResponse) => RowAction[] {
   const { t } = useTranslation()
-  const { onTogglePin, onRequestRename, onRequestMove, onRequestDelete, onExportError, onRequestAttachSession } = args
+  const {
+    onTogglePin,
+    onToggleArchive,
+    onRequestRename,
+    onRequestMove,
+    onRequestDelete,
+    onExportError,
+    onRequestAttachSession,
+  } = args
 
   // The picker returns a path on the machine the *user* is at, and the export
   // is written by the machine the app is on. Connected to another one those are
@@ -98,6 +107,12 @@ export function useConversationActions(args: {
         icon: conversation.is_pinned ? PinSlash : Pin,
         label: conversation.is_pinned ? t('contextMenu.unpin') : t('contextMenu.pin'),
         run: () => onTogglePin(conversation.id),
+      },
+      {
+        key: 'archive',
+        icon: Archive,
+        label: conversation.is_archived ? t('contextMenu.unarchive') : t('contextMenu.archive'),
+        run: () => onToggleArchive(conversation.id),
       },
       {
         key: 'rename',
@@ -147,6 +162,7 @@ export function useConversationActions(args: {
       t,
       exportBlocked,
       onTogglePin,
+      onToggleArchive,
       onRequestRename,
       onRequestMove,
       onRequestDelete,

@@ -93,6 +93,7 @@ macro_rules! with_all_commands {
                 request: $crate::commands::conversation::ConversationReasoningPreferencesUpdateRequest,
             ),
             async commands::conversation => toggle_pin_conversation(id: String),
+            async commands::conversation => toggle_archive_conversation(id: String),
             async commands::conversation => delete_conversation(id: String),
             async commands::conversation => compact(
                 request: $crate::commands::conversation::ConversationCompactionRequest,

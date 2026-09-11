@@ -13,6 +13,7 @@ import { useConfirm } from '@/hooks/use-confirm'
 import { useBackGesture, useHistoryLevel } from '@/hooks/use-history-level'
 import { useHotkey } from '@/hooks/use-hotkey'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useSidebarResize } from '@/hooks/use-sidebar-resize'
 import { usePlatform } from '@/hooks/use-platform'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
 import { ApprovalToastRegion } from './approval-toasts'
@@ -62,6 +63,7 @@ export function AppShell(props: ShellProps) {
     onDelete,
     onRename,
     onTogglePin,
+    onToggleArchive,
     onMoveToProject,
     onSelectProject,
     onCreateProject,
@@ -112,6 +114,7 @@ export function AppShell(props: ShellProps) {
   // Not folded into the `&&` below: short-circuiting past a hook call is how a
   // conditional hook gets written by accident.
   const isMobile = useIsMobile()
+  const { resetWidth, handleProps: resizeHandleProps } = useSidebarResize()
   // Nothing to list without a conversation, and no room to list it in below
   // `md` — the panel would leave the transcript a column too narrow to read.
   // Unmounted rather than hidden with a class: a hidden panel still builds the
@@ -231,10 +234,22 @@ export function AppShell(props: ShellProps) {
           onCreateHostedSession={onCreateHostedSession}
           onRename={onRename}
           onTogglePin={onTogglePin}
+          onToggleArchive={onToggleArchive}
           onMoveToProject={onMoveToProject}
           onDeleteProject={onDeleteProject}
           onRenameProject={onRenameProject}
         />
+        {!isMobile && sidebarOpen && (
+          <div
+            data-slot="sidebar-resize-handle"
+            role="separator"
+            aria-orientation="vertical"
+            tabIndex={-1}
+            onDoubleClick={resetWidth}
+            className="relative hidden md:block w-0.5 shrink-0 cursor-col-resize bg-transparent hover:bg-focus/30 active:bg-focus/50 transition-colors before:absolute before:inset-y-0 before:-left-1 before:w-3 before:content-['']"
+            {...resizeHandleProps}
+          />
+        )}
         {/* `min-h-0` is what makes the keyboard inset above actually do
           something. `.sidebar__main` is `min-height: 100svh` (`calc(100svh -
           1rem)` under `variant="inset"`), so shrinking the provider's content

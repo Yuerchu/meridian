@@ -44,7 +44,6 @@ import { Sidebar as ProSidebar } from '@heroui-pro/react/sidebar'
 
 import { Composer } from '@/components/chat/composer'
 
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
 import { MarkdownContent } from '@/components/chat/markdown-content'
 import { ShikiCode } from '@/components/chat/shiki-code'
@@ -215,13 +214,22 @@ function SidebarProbe() {
             <ProSidebar.Content>
               <ProSidebar.Group>
                 <ProSidebar.GroupLabel>行</ProSidebar.GroupLabel>
-                {/* Root 必须包住自己的 Trigger：把 Root 挪到别处去，base-ui 会在
-                    渲染时抛 ContextMenuRootContext is missing，而 tsc 和 build
-                    都看不见。 */}
-                <ContextMenu open={hit !== null} onOpenChange={(open) => setHit(open ? hitRef.current : null)}>
-                  <ContextMenuTrigger
+                {/* Root 必须包住自己的 Trigger：Trigger 从 Root 的 context 里拿
+                    handleOpen，而 context 的默认值是空函数——Root 挪到别处去，
+                    菜单安静地永远打不开，tsc 和 build 都看不见。
+
+                    命中行记在 onPointerDown / onContextMenuCapture 上，不能用
+                    onContextMenu：Pro 的 Trigger 把传入的 props 铺在自己的处理器
+                    *之后*，同名的冒泡处理器会把开菜单的那个整个顶掉。 */}
+                <ProContextMenu open={hit !== null} onOpenChange={(open) => setHit(open ? hitRef.current : null)}>
+                  <ProContextMenu.Trigger
+                    className="block"
                     data-slot="probe-trigger"
-                    onContextMenu={(e: React.MouseEvent) => {
+                    onPointerDown={(e: React.PointerEvent) => {
+                      hitRef.current =
+                        (e.target as HTMLElement).closest('[data-row-id]')?.getAttribute('data-row-id') ?? null
+                    }}
+                    onContextMenuCapture={(e: React.MouseEvent) => {
                       hitRef.current =
                         (e.target as HTMLElement).closest('[data-row-id]')?.getAttribute('data-row-id') ?? null
                     }}
@@ -239,11 +247,15 @@ function SidebarProbe() {
                         </ProSidebar.MenuItem>
                       ))}
                     </ProSidebar.Menu>
-                  </ContextMenuTrigger>
-                  <ContextMenuContent>
-                    <ContextMenuItem onClick={() => {}}>对 {hit} 做点什么</ContextMenuItem>
-                  </ContextMenuContent>
-                </ContextMenu>
+                  </ProContextMenu.Trigger>
+                  <ProContextMenu.Popover>
+                    <ProContextMenu.Menu aria-label="行操作">
+                      <ProContextMenu.Item id="act" textValue={`对 ${hit} 做点什么`} onAction={() => {}}>
+                        <HLabel>对 {hit} 做点什么</HLabel>
+                      </ProContextMenu.Item>
+                    </ProContextMenu.Menu>
+                  </ProContextMenu.Popover>
+                </ProContextMenu>
               </ProSidebar.Group>
             </ProSidebar.Content>
           </ProSidebar>
@@ -696,23 +708,26 @@ export default function HeroUiLab() {
             check a composer change was to ask someone to right-click in a dev
             window and describe what happened.
 
-            It is also the minimal reproduction for two defects that kept Pro's
-            ContextMenu out of the composer, both measured here:
+            It is also the minimal reproduction for two things Pro's ContextMenu
+            does that the app lives with, both measured here:
 
             1. Any scroll closes it. Pro listens for `scroll` on `window` in the
                capture phase and closes unless the scrolled element is inside the
-               popover. Scrolling an unrelated container 120px kills the menu —
-               and during streaming this transcript scrolls continuously, so the
-               menu would be unusable for as long as an answer is being written.
+               popover. Scrolling an unrelated container 120px kills the menu.
                Not interceptable from outside: scroll does not bubble, and a
-               capture listener on window is the first to see it.
+               capture listener on window is the first to see it. Accepted,
+               because the only thing that scrolls under an open menu without a
+               hand on it is the transcript following a stream — and a reader
+               who has scrolled up to an older message is `idle`, where nothing
+               moves. What it costs is a right-click on the sidebar while a
+               stream is being followed, which reopens with a second click.
             2. First open measures the panel before the portal has laid it out,
                so `max-height` comes back 36px for a 173px menu in a 300px-tall
                window, and it pins itself below the cursor instead of flipping.
                Any later reposition re-solves correctly (`placement: top`, full
                height) — so this one a resize event could paper over.
 
-            Keep this around: it is what verifies the fix if either lands
+            Keep this around: it is what says whether either has changed
             upstream. */}
         <Section title="Sidebar 的 Tree 能不能带私货" hint="点一行、右键一行，再按「读 data-row-id」">
           <SidebarProbe />

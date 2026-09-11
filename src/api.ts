@@ -242,6 +242,8 @@ export const api = {
 
   togglePinConversation: (id: string) => invoke<ConversationInfoResponse>('toggle_pin_conversation', { id }),
 
+  toggleArchiveConversation: (id: string) => invoke<ConversationInfoResponse>('toggle_archive_conversation', { id }),
+
   /** Refile a conversation under another project, or under none (`null`). For
    *  a native conversation this also moves what the next turn resolves its
    *  working directory and file access against. */

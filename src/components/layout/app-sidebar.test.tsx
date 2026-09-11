@@ -10,7 +10,12 @@ const apiMocks = vi.hoisted(() => ({ exportConversation: vi.fn() }))
 const dialogMocks = vi.hoisted(() => ({ open: vi.fn(), save: vi.fn() }))
 
 vi.mock('@/api', () => ({
-  api: { getPlatform: () => Promise.resolve('windows'), exportConversation: apiMocks.exportConversation },
+  api: {
+    getPlatform: () => Promise.resolve('windows'),
+    exportConversation: apiMocks.exportConversation,
+    // The archived rows of each group, loaded by the sidebar itself.
+    listConversations: () => Promise.resolve([]),
+  },
 }))
 vi.mock('@tauri-apps/plugin-dialog', () => dialogMocks)
 // The dot beside a row subscribes to the store for streaming state; nothing
@@ -169,6 +174,38 @@ describe('AppSidebar project groups', () => {
    * conversation row stayed behind as an anonymous icon, so nothing below the
    * header renders at all; the header and footer rows are the rail.
    */
+  /**
+   * The hook gates open one conversation per plan and per stop, and a project
+   * under development collects dozens; they are folded under the group they
+   * belong to and drawn only on request — or when one of them is on screen.
+   */
+  describe('reviews', () => {
+    const REVIEW = { ...conversation('c-review', '计划审查：侧边栏', 'p-code'), agent_kind: 'plan_review' as const }
+
+    it('folds them under the group until the fold is opened', async () => {
+      const user = userEvent.setup()
+      renderSidebar({ conversations: [...CONVERSATIONS, REVIEW] })
+
+      expect(screen.queryByRole('row', { name: /计划审查/ })).not.toBeInTheDocument()
+      expect(within(group('Meridian')).getByRole('row', { name: /侧边栏重构/ })).toBeInTheDocument()
+      // No fold on a group with nothing to fold.
+      expect(screen.getAllByRole('treegrid', { name: '1 条审查会话' })).toHaveLength(1)
+
+      await user.click(screen.getByRole('row', { name: '1 条审查会话' }))
+      expect(within(group('1 条审查会话')).getByRole('row', { name: /计划审查/ })).toBeInTheDocument()
+      // Still out of the group's own list, which is the drop target.
+      expect(within(group('Meridian')).queryByRole('row', { name: /计划审查/ })).not.toBeInTheDocument()
+    })
+
+    it('opens the fold holding whatever is on screen', async () => {
+      const { update } = renderSidebar({ conversations: [...CONVERSATIONS, REVIEW] })
+      expect(screen.queryByRole('row', { name: /计划审查/ })).not.toBeInTheDocument()
+
+      update({ activeId: 'c-review' })
+      await waitFor(() => expect(screen.getByRole('row', { name: /计划审查/ })).toBeInTheDocument())
+    })
+  })
+
   it('withholds every group from the icon rail', async () => {
     const user = userEvent.setup()
     const { setPanelOpen } = renderSidebar()

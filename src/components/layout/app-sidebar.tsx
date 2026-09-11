@@ -29,12 +29,14 @@ import { DropZone, useDragAndDrop } from 'react-aria-components'
 import type { DropItem, Key } from 'react-aria-components'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Alert, Button, Dropdown, Input, Label, Spinner, ToggleButton, Tooltip } from '@heroui/react'
+import { ContextMenu } from '@heroui-pro/react/context-menu'
 import { Sidebar, useSidebar } from '@heroui-pro/react/sidebar'
 import {
   Archive,
   ArrowDownToSquare,
   ArrowLeft,
   ChevronRight,
+  CodePullRequestCheck,
   EllipsisVertical,
   FolderOpen,
   FolderPlus,
@@ -49,6 +51,7 @@ import {
 import { ConversationIcon } from '@/components/ui/agent-icon'
 import { ClaudeSessionPicker } from './claude-session-picker'
 
+import { api } from '@/api'
 import { can } from '@/lib/capabilities'
 import { cn } from '@/lib/utils'
 import { isRemote } from '@/lib/transport'
@@ -60,13 +63,6 @@ import { visibleSettingsTabs, type SettingsTab } from '@/components/settings/tab
 import { usePlatform } from '@/hooks/use-platform'
 import { useHistoryLevel } from '@/hooks/use-history-level'
 import { useRelativeTime } from '@/hooks/use-relative-time'
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from '@/components/ui/context-menu'
 import { useConfirm } from '@/hooks/use-confirm'
 import { isCoarsePointer } from '@/hooks/use-coarse-pointer'
 import { ConversationIndicator } from './conversation-indicator'
@@ -88,6 +84,7 @@ interface AppSidebarProps {
   onDelete: (id: string) => void
   onRename: (id: string, newTitle: string) => void
   onTogglePin: (id: string) => void
+  onToggleArchive: (id: string) => void
   /** Refile a conversation under another project, or under none (`null`). */
   onMoveToProject: (id: string, projectId: string | null) => Promise<string | null>
   page: Page
@@ -418,16 +415,39 @@ interface MenuHit {
 }
 
 /**
- * The conversations of each project, and the ones belonging to none.
+ * The hook gates' transcripts — `hooks/protocol.rs` names the two kinds. A
+ * review is opened by another agent's hook, not by a person, and a project
+ * under active development grows one per plan and one per stop; left in the
+ * list they outnumber the conversations somebody actually started.
+ */
+const REVIEW_KINDS = new Set<string>(['plan_review', 'impl_review'])
+
+function isReview(conversation: ConversationInfoResponse): boolean {
+  return typeof conversation.agent_kind === 'string' && REVIEW_KINDS.has(conversation.agent_kind)
+}
+
+/**
+ * The conversations of each project, and the ones belonging to none — with
+ * each group's reviews set aside for the fold under it.
  *
  * Grouping happens here rather than in SQL because the order inside each group
  * has to be the order the list arrived in — pinned first, then by recency — and
  * a second query per project would sort each one independently of the whole.
+ * The reviews are keyed the way the archived map is: the project id, or `null`
+ * for the loose group.
  */
 function groupByProject(conversations: ConversationInfoResponse[]) {
   const filed = new Map<string, ConversationInfoResponse[]>()
   const loose: ConversationInfoResponse[] = []
+  const reviews = new Map<string | null, ConversationInfoResponse[]>()
   for (const conversation of conversations) {
+    if (isReview(conversation)) {
+      const key = conversation.project_id ?? null
+      const existing = reviews.get(key)
+      if (existing) existing.push(conversation)
+      else reviews.set(key, [conversation])
+      continue
+    }
     if (!conversation.project_id) {
       loose.push(conversation)
       continue
@@ -436,7 +456,7 @@ function groupByProject(conversations: ConversationInfoResponse[]) {
     if (existing) existing.push(conversation)
     else filed.set(conversation.project_id, [conversation])
   }
-  return { filed, loose }
+  return { filed, loose, reviews }
 }
 
 function RowActionItems({ actions }: { actions: RowAction[] }) {
@@ -444,21 +464,23 @@ function RowActionItems({ actions }: { actions: RowAction[] }) {
     <>
       {actions.map((action, i) => (
         <Fragment key={action.key}>
-          {i > 0 && GROUP_STARTS.has(action.key) && <ContextMenuSeparator />}
-          <ContextMenuItem
-            variant={action.variant === 'destructive' ? 'destructive' : undefined}
-            disabled={Boolean(action.disabledReason)}
-            onClick={() => void action.run()}
+          {i > 0 && GROUP_STARTS.has(action.key) && <ContextMenu.Separator />}
+          <ContextMenu.Item
+            id={action.key}
+            textValue={action.label}
+            variant={action.variant === 'destructive' ? 'danger' : undefined}
+            isDisabled={Boolean(action.disabledReason)}
+            onAction={() => void action.run()}
           >
-            <action.icon />
-            {action.label}
+            <action.icon className="size-4" />
+            <Label>{action.label}</Label>
             {/* Beside the label rather than in a tooltip — see `RowAction`. */}
             {action.disabledReason && (
               <span data-slot="row-action-disabled-reason" className="ml-auto shrink-0 text-xs text-muted">
                 {action.disabledReason}
               </span>
             )}
-          </ContextMenuItem>
+          </ContextMenu.Item>
         </Fragment>
       ))}
     </>
@@ -494,6 +516,50 @@ interface ConversationGroupProps {
   dragConversations: (keys: Set<Key>) => Record<string, string>[]
   moveDropped: (items: DropItem[], projectId: string | null) => Promise<void>
   renderConversation: (conv: ConversationInfoResponse) => ReactNode
+  /** This group's hook-gate transcripts, folded under its own rows. */
+  reviewConversations: ConversationInfoResponse[]
+  reviewsExpanded: boolean
+  onToggleReviewsExpanded: () => void
+  archivedConversations: ConversationInfoResponse[]
+  archivedExpanded: boolean
+  onToggleArchivedExpanded: () => void
+}
+
+/**
+ * A set of rows folded away under the group — reviews, archived — behind one
+ * row whose label is the count. One menu holds the toggle and, once opened,
+ * the rows: two menus with the same name would be two tree grids a screen
+ * reader cannot tell apart. No drag hooks, on purpose: what is in here is
+ * filed where its hook or its archiving left it.
+ */
+function FoldedMenu({
+  id,
+  icon,
+  label,
+  expanded,
+  onToggle,
+  children,
+}: {
+  id: string
+  icon: ReactNode
+  label: string
+  expanded: boolean
+  onToggle: () => void
+  /** The rows, drawn only while expanded. */
+  children: ReactNode
+}) {
+  return (
+    <Sidebar.Menu aria-label={label}>
+      <Sidebar.MenuItem id={id} textValue={label} onAction={onToggle}>
+        <Sidebar.MenuIcon>{icon}</Sidebar.MenuIcon>
+        <Sidebar.MenuLabel className="text-muted text-xs">{label}</Sidebar.MenuLabel>
+        <Sidebar.MenuChip>
+          <ChevronRight className={cn('size-3 text-muted transition-transform', expanded && 'rotate-90')} />
+        </Sidebar.MenuChip>
+      </Sidebar.MenuItem>
+      {expanded && children}
+    </Sidebar.Menu>
+  )
 }
 
 /**
@@ -522,6 +588,12 @@ function ConversationGroup({
   dragConversations,
   moveDropped,
   renderConversation,
+  reviewConversations,
+  reviewsExpanded,
+  onToggleReviewsExpanded,
+  archivedConversations,
+  archivedExpanded,
+  onToggleArchivedExpanded,
 }: ConversationGroupProps) {
   const { t } = useTranslation()
 
@@ -651,6 +723,32 @@ function ConversationGroup({
           {conversations.map(renderConversation)}
         </Sidebar.Menu>
       )}
+      {/* Reviews before archived: a review is live work on this project, an
+          archived conversation is over. Neither list is a drop target — the
+          rows carry the drag hooks of the menu above, and a review is filed
+          where its hook filed it. */}
+      {!folded && reviewConversations.length > 0 && (
+        <FoldedMenu
+          id={`reviews-toggle-${projectId ?? 'loose'}`}
+          icon={<CodePullRequestCheck />}
+          label={t('sidebar.reviewsCount', { count: reviewConversations.length })}
+          expanded={reviewsExpanded}
+          onToggle={onToggleReviewsExpanded}
+        >
+          {reviewConversations.map(renderConversation)}
+        </FoldedMenu>
+      )}
+      {!folded && archivedConversations.length > 0 && (
+        <FoldedMenu
+          id={`archived-toggle-${projectId ?? 'loose'}`}
+          icon={<Archive />}
+          label={t('sidebar.archivedCount', { count: archivedConversations.length })}
+          expanded={archivedExpanded}
+          onToggle={onToggleArchivedExpanded}
+        >
+          {archivedConversations.map(renderConversation)}
+        </FoldedMenu>
+      )}
     </Sidebar.Group>
   )
 }
@@ -664,6 +762,7 @@ export function AppSidebar({
   onDelete,
   onRename,
   onTogglePin,
+  onToggleArchive,
   onMoveToProject,
   page,
   onOpenSettings,
@@ -714,7 +813,60 @@ export function AppSidebar({
   const [moveError, setMoveError] = useState<string | null>(null)
   const [movePending, setMovePending] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [archivedConversations, setArchivedConversations] = useState<ConversationInfoResponse[]>([])
+  const archivedLoaded = useRef(false)
+  const [expandedArchivedGroups, setExpandedArchivedGroups] = useState<Set<string | null>>(new Set())
   const { confirm, confirmDialog } = useConfirm()
+
+  const loadArchived = useCallback(async () => {
+    const archived = await api.listConversations(true)
+    setArchivedConversations(archived)
+    archivedLoaded.current = true
+  }, [])
+
+  // Load on mount so the toggle is visible from the start, and reload whenever
+  // the active conversation list changes (an archive/unarchive shifts a row
+  // between the two lists).
+  useEffect(() => {
+    void loadArchived()
+  }, [conversations, loadArchived])
+
+  const archivedByProject = useMemo(() => {
+    const map = new Map<string | null, ConversationInfoResponse[]>()
+    for (const conv of archivedConversations) {
+      const key = conv.project_id ?? null
+      const list = map.get(key)
+      if (list) list.push(conv)
+      else map.set(key, [conv])
+    }
+    return map
+  }, [archivedConversations])
+
+  const toggleArchivedGroup = useCallback(
+    (groupKey: string | null) => {
+      setExpandedArchivedGroups((prev) => {
+        const next = new Set(prev)
+        if (next.has(groupKey)) next.delete(groupKey)
+        else next.add(groupKey)
+        return next
+      })
+      if (!archivedLoaded.current) void loadArchived()
+    },
+    [loadArchived],
+  )
+
+  // Which groups have their reviews unfolded. Shut by default, for the reason
+  // `REVIEW_KINDS` gives; in-memory only, like the group folds.
+  const [expandedReviewGroups, setExpandedReviewGroups] = useState<ReadonlySet<string | null>>(
+    () => new Set<string | null>(),
+  )
+  const toggleReviewGroup = useCallback((groupKey: string | null) => {
+    setExpandedReviewGroups((prev) => {
+      const next = new Set(prev)
+      if (!next.delete(groupKey)) next.add(groupKey)
+      return next
+    })
+  }, [])
 
   // The sheet is a level of its own, so the back key closes it before it
   // reaches whatever is behind. A no-op on a desktop, where the panel never
@@ -763,7 +915,7 @@ export function AppSidebar({
   const hitRef = useRef<MenuHit | null>(null)
   const [menu, setMenu] = useState<MenuHit | null>(null)
 
-  const { filed, loose } = useMemo(() => groupByProject(conversations), [conversations])
+  const { filed, loose, reviews } = useMemo(() => groupByProject(conversations), [conversations])
   const projectNameById = useMemo(() => new Map(projects.map((p) => [p.id, p.name])), [projects])
   const exactTime = useMemo(
     () => new Intl.DateTimeFormat(i18n.resolvedLanguage ?? i18n.language, { dateStyle: 'medium', timeStyle: 'short' }),
@@ -798,6 +950,19 @@ export function AppSidebar({
       return next
     })
   }, [activeGroupKey])
+  // The same for the review fold: a review opened from a toast or the palette
+  // is current inside a fold that is shut.
+  const activeReviewGroup =
+    activeConversation && isReview(activeConversation) ? activeConversation.project_id : undefined
+  useEffect(() => {
+    if (activeReviewGroup === undefined) return
+    setExpandedReviewGroups((prev) => {
+      if (prev.has(activeReviewGroup)) return prev
+      const next = new Set(prev)
+      next.add(activeReviewGroup)
+      return next
+    })
+  }, [activeReviewGroup])
 
   /**
    * Dragging a conversation onto where it should live, beside the dialog
@@ -849,6 +1014,7 @@ export function AppSidebar({
 
   const conversationActions = useConversationActions({
     onTogglePin,
+    onToggleArchive,
     onRequestRename: (id) => setRenameTarget({ type: 'conversation', id }),
     onRequestMove: (id) => {
       setMoveError(null)
@@ -881,7 +1047,10 @@ export function AppSidebar({
   // row already knows. Which *kind* of row it was is read off the DOM too:
   // a conversation row and a project's group header live under one trigger, so
   // the list a click landed in no longer says what was clicked.
-  const hitConversation = menu?.kind === 'conversation' ? conversations.find((c) => c.id === menu.id) : undefined
+  const hitConversation =
+    menu?.kind === 'conversation'
+      ? (conversations.find((c) => c.id === menu.id) ?? archivedConversations.find((c) => c.id === menu.id))
+      : undefined
   const hitProject = menu?.kind === 'project' ? projects.find((p) => p.id === menu.id) : undefined
   const hitActions = hitConversation
     ? conversationActions(hitConversation)
@@ -896,39 +1065,54 @@ export function AppSidebar({
     hitRef.current = id && kind ? { scope, kind, id } : null
   }, [])
 
-  // base-ui reads the cursor position off the Root, so the Root has to enclose
-  // its own Trigger — a Root parked next to the dialogs at the bottom of this
-  // component throws `ContextMenuRootContext is missing` at render, which
+  // The menu is named for the row it was opened on — the same string as the
+  // row's own actions button, so a screen reader hears one name for both.
+  const hitLabel = t('sidebar.moreActions', { name: hitConversation?.title ?? hitProject?.name ?? '' })
+
+  // The Trigger reads the cursor position through the Root's context, whose
+  // default `handleOpen` is a no-op — so a Root parked next to the dialogs at
+  // the bottom of this component renders fine and simply never opens, which
   // neither the type checker nor the build notices.
   const rowMenu = useCallback(
     (scope: string, actions: RowAction[], children: React.ReactNode) => (
       <ContextMenu open={menu?.scope === scope} onOpenChange={(open) => setMenu(open ? hitRef.current : null)}>
         {/* Recorded on `pointerdown` as well as on `contextmenu`, because the
             two ways this menu opens do not agree on which event comes first. A
-            right-click fires `contextmenu` and base-ui opens from it; a touch
-            starts base-ui's own 500ms long-press timer, and the WebView's native
+            right-click fires `contextmenu` and Pro opens from it; a touch
+            starts Pro's own 500ms long-press timer, and the WebView's native
             `contextmenu` is on roughly the same fuse. Whichever wins, the
             controlled `open` below reads `hitRef` — and read before the row was
             recorded it is null, so the menu is asked to open with nothing
-            selected and silently does not. `pointerdown` precedes both. */}
-        <ContextMenuTrigger
+            selected and silently does not. `pointerdown` precedes both.
+
+            The capture variant, and not `onContextMenu`: the Trigger spreads
+            its props *after* its own handlers, so a bubbling handler here would
+            replace the one that opens the menu. `block`, because Pro's trigger
+            is `inline-block` and this one wraps the whole list. */}
+        <ContextMenu.Trigger
+          className="block"
           onPointerDown={(e: React.PointerEvent) => recordHit(scope, e.target)}
-          onContextMenu={(e: React.MouseEvent) => recordHit(scope, e.target)}
+          onContextMenuCapture={(e: React.MouseEvent) => recordHit(scope, e.target)}
         >
           {children}
-        </ContextMenuTrigger>
-        <ContextMenuContent>
-          <RowActionItems actions={actions} />
-        </ContextMenuContent>
+        </ContextMenu.Trigger>
+        <ContextMenu.Popover>
+          <ContextMenu.Menu aria-label={hitLabel}>
+            <RowActionItems actions={actions} />
+          </ContextMenu.Menu>
+        </ContextMenu.Popover>
       </ContextMenu>
     ),
-    [menu, recordHit],
+    [menu, recordHit, hitLabel],
   )
 
   const renaming =
     renameTarget?.type === 'project'
       ? projects.find((p) => p.id === renameTarget.id)?.name
-      : (conversations.find((c) => c.id === renameTarget?.id)?.title ?? '')
+      : ((
+          conversations.find((c) => c.id === renameTarget?.id) ??
+          archivedConversations.find((c) => c.id === renameTarget?.id)
+        )?.title ?? '')
 
   const settingsSide = (prefix: string) => (
     <>
@@ -1162,6 +1346,12 @@ export function AppSidebar({
                   dragConversations={dragConversations}
                   moveDropped={moveDropped}
                   renderConversation={(conv) => conversationItem(prefix, conv)}
+                  reviewConversations={reviews.get(project.id) ?? []}
+                  reviewsExpanded={expandedReviewGroups.has(project.id)}
+                  onToggleReviewsExpanded={() => toggleReviewGroup(project.id)}
+                  archivedConversations={archivedByProject.get(project.id) ?? []}
+                  archivedExpanded={expandedArchivedGroups.has(project.id)}
+                  onToggleArchivedExpanded={() => toggleArchivedGroup(project.id)}
                 />
               ))}
               {/* The conversations belonging to no project. Always rendered,
@@ -1180,6 +1370,12 @@ export function AppSidebar({
                 dragConversations={dragConversations}
                 moveDropped={moveDropped}
                 renderConversation={(conv) => conversationItem(prefix, conv)}
+                reviewConversations={reviews.get(null) ?? []}
+                reviewsExpanded={expandedReviewGroups.has(null)}
+                onToggleReviewsExpanded={() => toggleReviewGroup(null)}
+                archivedConversations={archivedByProject.get(null) ?? []}
+                archivedExpanded={expandedArchivedGroups.has(null)}
+                onToggleArchivedExpanded={() => toggleArchivedGroup(null)}
               />
               <Sidebar.Group>
                 <Sidebar.Menu aria-label={t('sidebar.newProject')}>
