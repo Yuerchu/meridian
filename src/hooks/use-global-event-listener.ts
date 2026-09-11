@@ -264,6 +264,11 @@ export function useGlobalEventListener() {
       // this listener fail type-checking until its handling is deliberate.
       if (p.type === 'acp_config' || p.type === 'acp_usage') return
 
+      if (p.type === 'redaction_notice') {
+        store.handleRedactionNotice(convId, p.turn_id, p.redacted_count, p.rules)
+        return
+      }
+
       const exhaustive: never = p
       throw new Error(`Unhandled chat stream event: ${String(exhaustive)}`)
     })

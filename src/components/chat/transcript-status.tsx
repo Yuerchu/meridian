@@ -8,11 +8,28 @@ import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker'
  * The two rows that sit under the last turn: a compaction in progress, and the
  * error the turn that just failed left behind.
  */
-export function TranscriptStatus({ compacting, error }: { compacting: boolean; error: string | null }) {
+export function TranscriptStatus({
+  compacting,
+  error,
+  redactionNotice,
+}: {
+  compacting: boolean
+  error: string | null
+  redactionNotice: { redactedCount: number; rules: string[] } | null
+}) {
   const { t } = useTranslation()
 
   return (
     <>
+      {redactionNotice && (
+        <MessageScrollerItem messageId="__redaction_notice">
+          <Bubble variant="muted">
+            <BubbleContent className="text-xs text-muted">
+              {t('chat.redaction.notice', { count: redactionNotice.redactedCount })}
+            </BubbleContent>
+          </Bubble>
+        </MessageScrollerItem>
+      )}
       {compacting && (
         <MessageScrollerItem messageId="__compacting">
           <Marker role="status" className="justify-center py-3">

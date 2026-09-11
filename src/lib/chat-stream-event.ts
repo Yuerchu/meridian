@@ -21,6 +21,7 @@ const CHAT_STREAM_EVENT_TYPES = {
   auto_review: true,
   acp_config: true,
   acp_usage: true,
+  redaction_notice: true,
   stop: true,
 } satisfies Record<ChatStreamEvent['type'], true>
 
@@ -336,6 +337,18 @@ export function parseChatStreamEvent(value: unknown): ChatStreamEvent {
       requireStringFields(event, ['type', 'conversation_id'], 'acp_usage event')
       requireInteger(event.used, 0, Number.MAX_SAFE_INTEGER, 'acp_usage event.used')
       requireInteger(event.size, 0, Number.MAX_SAFE_INTEGER, 'acp_usage event.size')
+      break
+    }
+    case 'redaction_notice': {
+      const event = requireShape(
+        value,
+        ['type', 'conversation_id', 'turn_id', 'redacted_count', 'rules'],
+        [],
+        'redaction_notice event',
+      )
+      requireStringFields(event, ['type', 'conversation_id', 'turn_id'], 'redaction_notice event')
+      requireInteger(event.redacted_count, 0, Number.MAX_SAFE_INTEGER, 'redaction_notice event.redacted_count')
+      requireStringArray(event.rules, 'redaction_notice event.rules')
       break
     }
     case 'stop': {

@@ -2678,6 +2678,13 @@ export type ChatStreamEvent =
   | { type: 'acp_config'; conversation_id: string; config_options: AcpConfigOptionInfoResponse[] }
   | { type: 'acp_usage'; conversation_id: string; used: number; size: number }
   | {
+      type: 'redaction_notice'
+      conversation_id: string
+      turn_id: string
+      redacted_count: number
+      rules: string[]
+    }
+  | {
       type: 'stop'
       reason: ChatStopReason
       message_id: string | null

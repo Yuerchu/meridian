@@ -818,6 +818,7 @@ export interface ConversationSession {
    *  automatic policy"; once a panel appears here it keeps whatever the user
    *  chose. Lives on the session so the choice survives the post-turn reload
    *  and switching conversations and back. */
+  redactionNotice: { redactedCount: number; rules: string[] } | null
   expandedPanels: Record<string, boolean>
   /** Steps on the path with more than one version, keyed by the version
    *  currently shown. Empty until something has been regenerated. */
@@ -851,6 +852,7 @@ function defaultSession(): ConversationSession {
     pendingAsks: {},
     generation: 0,
     activeTodos: null,
+    redactionNotice: null,
     expandedPanels: {},
     branches: {},
     switchingBranch: false,
@@ -1189,6 +1191,7 @@ export interface ConversationStore {
   /** A tool call the automatic reviewer decided instead of the user. Arrives
    *  for calls that were never drawn as pending — nobody was asked — so it is
    *  the only event that will ever say why one of them was refused. */
+  handleRedactionNotice: (convId: string, turnId: string, redactedCount: number, rules: string[]) => void
   handleAutoReview: (convId: string, messageId: string, callId: string, verdict: AutoReviewVerdictInfoResponse) => void
   /** The answer never landed — the backend has forgotten this request. Drops
    *  the buttons rather than leaving one that cannot work. Takes no
@@ -2074,6 +2077,16 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             }
           }
         }
+      }),
+    )
+  },
+
+  handleRedactionNotice: (convId, _turnId, redactedCount, rules) => {
+    set(
+      produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (!session) return
+        session.redactionNotice = { redactedCount, rules }
       }),
     )
   },

@@ -83,6 +83,7 @@ function ChatViewInner({
   const shellTurnId = session?.activeShellTurnId ?? null
   const compacting = session?.compacting ?? false
   const error = session?.error ?? null
+  const redactionNotice = session?.redactionNotice ?? null
   const activeTodos = session?.activeTodos ?? null
   const pendingPlanReview = useMemo(
     () =>
@@ -812,7 +813,7 @@ function ChatViewInner({
               assistantAvatar={settings.selectedAssistant?.avatar}
             />
           }
-          trailing={<TranscriptStatus compacting={compacting} error={error} />}
+          trailing={<TranscriptStatus compacting={compacting} error={error} redactionNotice={redactionNotice} />}
           emptyState={
             messages.length === 0 && !error ? (
               <ProEmptyState size="md" className="flex-1 justify-center px-4 py-10">

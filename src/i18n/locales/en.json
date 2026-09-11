@@ -739,6 +739,7 @@
   "settings.assistant.autoCompact": "Auto Compact",
   "settings.assistant.autoCompactHint": "Auto-compact when context is nearly full",
   "settings.assistant.thinkingBudgetHint": "Only applies to models with extended thinking, e.g. Claude.",
+  "chat.redaction.notice": "{{count}} sensitive value(s) redacted. Originals are held in memory for tool execution only and will be lost when Meridian closes.",
   "chat.compact.inProgress": "Compacting conversation...",
   "chat.compact.boundary": "{{count}} messages compacted",
   "chat.compact.showCompacted": "Show {{count}} compacted messages",

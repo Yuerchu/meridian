@@ -733,6 +733,7 @@
   "settings.assistant.autoCompact": "自动压缩",
   "settings.assistant.autoCompactHint": "上下文接近限制时自动压缩对话",
   "settings.assistant.thinkingBudgetHint": "仅对支持扩展思考的模型生效，如 Claude。",
+  "chat.redaction.notice": "{{count}} 个敏感值已脱敏，仅在本次会话内存中保留用于工具执行。关闭 Meridian 后不可恢复。",
   "chat.compact.inProgress": "正在压缩对话上下文…",
   "chat.compact.boundary": "已压缩 {{count}} 条消息",
   "chat.compact.showCompacted": "查看 {{count}} 条已压缩消息",

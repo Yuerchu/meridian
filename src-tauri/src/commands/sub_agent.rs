@@ -544,6 +544,8 @@ impl DesktopSubAgents {
                 pool: &self.pool,
                 tools: &self.registry,
                 mcp: &self.mcp,
+                redaction: &self.services.redaction,
+                redaction_mappings: &self.services.redaction_mappings,
             },
             engine::TurnSetup {
                 provider: &*provider.0,
@@ -882,6 +884,7 @@ mod tests {
         ToolRegistry::new(
             std::path::PathBuf::from("/nonexistent"),
             std::path::PathBuf::from("/nonexistent"),
+            std::sync::Arc::new(meridian_core::redaction::RedactionEngine::disabled()),
         )
     }
 

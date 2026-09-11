@@ -1890,6 +1890,8 @@ async fn chat_inner(
             pool: &pool,
             tools: tool_registry,
             mcp: &mcp,
+            redaction: &services.redaction,
+            redaction_mappings: &services.redaction_mappings,
         },
         engine::TurnSetup {
             provider: &*provider,

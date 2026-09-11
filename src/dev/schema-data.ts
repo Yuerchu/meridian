@@ -1930,6 +1930,39 @@ const RAW_TABLES: RawTable[] = [
 
   // ── 系统 ─────────────────────────────────────────────────────
   {
+    name: 'redaction_rules',
+    group: 'sys',
+    title: '脱敏规则',
+    mig: 54,
+    tags: ['隐私'],
+    show: ['name', 'scope_type', 'category', 'is_enabled'],
+    note: '动态脱敏规则。内置规则在 Rust 代码中（<code>redaction::builtin</code>），不入库。模型通过 <code>add_redaction_rule</code> 工具添加新规则，持久化后热刷新到引擎。每个匹配的值在发往上游前被替换为 <code>[REDACTED:name:N]</code> 占位符，原值通过内存中的反向映射在工具执行时还原。',
+    cols: [
+      ['id', 'TEXT', ['PK', 'NN'], '—', 'UUID'],
+      ['scope_type', 'TEXT', ['NN'], '—', "'global' | 'project'"],
+      ['scope_id', 'TEXT', ['NN'], '—', "全局为 '_'，项目为 project UUID"],
+      ['name', 'TEXT', ['NN'], '—', 'slug，成为占位符 [REDACTED:<name>:N]'],
+      ['description', 'TEXT', ['NN'], '—', '一行说明匹配什么'],
+      ['pattern', 'TEXT', ['NN'], '—', 'Rust regex 语法'],
+      ['category', 'TEXT', ['NN'], '—', "'secret' | 'pii' | 'network'"],
+      ['examples', 'TEXT', ['NN'], '—', 'JSON 数组 [{text, should_match}]，入库前校验'],
+      ['origin', 'TEXT', ['NN'], '—', "'model' | 'user'"],
+      ['source_conversation_id', 'TEXT', ['NULL'], '—', '模型在哪个会话里学到的；无外键，规则比会话活得久'],
+      ['is_enabled', 'INTEGER', ['NN'], '1', '0 或 1'],
+      ['created_at', 'BIGINT', ['NN'], '—', ''],
+      ['updated_at', 'BIGINT', ['NN'], '—', ''],
+    ],
+    rels: [
+      '<code>(scope_type, scope_id, name)</code> 唯一——含被禁用的行，防止模型重加一条用户禁用过的规则。',
+      '项目删除时级联清理（<code>delete_project_rules</code>），启动时清扫孤儿（<code>purge_orphan_project_rules</code>）。',
+    ],
+    rules: [
+      '写入前经 <code>validate_spec</code> 校验：regex 编译、正反例、benign corpus 不误伤、幂等性。',
+      '<code>remove_redaction_rule</code> 工具只能删 <code>origin=model</code> 的规则。',
+      '每个 scope 最多 200 条。',
+    ],
+  },
+  {
     name: 'preferences',
     group: 'sys',
     title: '偏好 / 服务配置',
@@ -2162,6 +2195,7 @@ const LAYOUT: { x: number; tables: string[] }[] = [
       'plan_revisions',
       'plan_review_sessions',
       'todo_lists',
+      'redaction_rules',
       'preferences',
     ],
   },
