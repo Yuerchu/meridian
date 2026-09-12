@@ -42,6 +42,10 @@ rl.on('line', async (line) => {
   }
 
   if (msg.method === 'initialize') {
+    // Whether the client opted into the AIR `sessionFailure` extension, which
+    // changes what a failed prompt looks like — see the `air-*` prompts below.
+    const air = msg.params?.clientCapabilities?._meta?.jetbrains?.air
+    globalThis.__air = Array.isArray(air?.capabilities) && air.capabilities.includes('sessionFailure')
     send({
       jsonrpc: '2.0',
       id: msg.id,
@@ -173,6 +177,123 @@ rl.on('line', async (line) => {
       for (let i = 0; i < 4000; i++) {
         upd({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `chunk ${i} ` } })
       }
+      send({ jsonrpc: '2.0', id: msg.id, result: { stopReason: 'end_turn' } })
+      return
+    }
+
+    // The AIR `sessionFailure` extension, in the three shapes the real adapter
+    // (0.76.0) produces. `failure` is the record as `sessionFailureMeta`
+    // spells it; a warning rides a `session_info_update` that carries nothing
+    // but `_meta`, and a turn-terminal failure rides the prompt's own reply —
+    // as an ordinary `end_turn`, with the JSON-RPC error suppressed — only
+    // when the client opted in. Without the opt-in the legacy rejection is
+    // what a failure looks like.
+    const failure = (record) => ({ jetbrains: { air: { version: 1, sessionFailure: record } } })
+    if (asked === 'air-warn') {
+      upd({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'partial ' } })
+      upd({
+        sessionUpdate: 'session_info_update',
+        _meta: failure({
+          id: 'turn-1:error',
+          revision: 1,
+          category: 'limit',
+          severity: 'warning',
+          title: 'Retrying Claude, attempt 1 of 5.',
+          actions: [],
+        }),
+      })
+      upd({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'answer' } })
+      send({ jsonrpc: '2.0', id: msg.id, result: { stopReason: 'end_turn' } })
+      return
+    }
+    if (asked === 'air-fail') {
+      if (!globalThis.__air) {
+        send({ jsonrpc: '2.0', id: msg.id, error: { code: -32603, message: 'Claude could not complete the request.' } })
+        return
+      }
+      send({
+        jsonrpc: '2.0',
+        id: msg.id,
+        result: {
+          stopReason: 'end_turn',
+          usage: { inputTokens: 1, outputTokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, totalTokens: 1 },
+          _meta: {
+            quota: { token_count: { inputTokens: 1 }, model_usage: [] },
+            ...failure({
+              id: 'turn-1:error',
+              revision: 2,
+              category: 'service',
+              severity: 'error',
+              title: 'Claude could not complete the request.',
+              actions: ['retry'],
+            }),
+          },
+        },
+      })
+      return
+    }
+    // Authentication is the one failure that still rejects: the JSON-RPC
+    // error is what starts a client's sign-in flow. The typed record arrives
+    // beside it, session-scoped.
+    if (asked === 'air-auth') {
+      if (globalThis.__air) {
+        upd({
+          sessionUpdate: 'session_info_update',
+          _meta: failure({
+            id: 'sess-1:session-error:1:1',
+            revision: 1,
+            category: 'access',
+            severity: 'error',
+            title: 'Sign in to continue using Claude.',
+            details: 'Claude request failed.',
+            actions: ['login'],
+          }),
+        })
+      }
+      send({ jsonrpc: '2.0', id: msg.id, error: { code: -32000, message: 'Authentication required' } })
+      return
+    }
+
+    // The title frame, exactly as `session-titles.ts` publishes it at the
+    // end of the turn that generated it.
+    if (asked === 'title') {
+      upd({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'named' } })
+      upd({ sessionUpdate: 'session_info_update', title: 'Fix the flaky title test', updatedAt: '2026-09-12T02:00:00.000Z' })
+      send({ jsonrpc: '2.0', id: msg.id, result: { stopReason: 'end_turn' } })
+      return
+    }
+
+    // A `Write` over an existing file, in the three frames the real adapter
+    // sends: the optimistic announcement (`oldText: null`, no line), the
+    // PostToolUse refinement — no status, `content` replaced by one diff per
+    // hunk with a location per hunk — and the completion, which carries no
+    // diff at all.
+    if (asked === 'write-diff') {
+      const path = '/work/meridian/src/lib.rs'
+      upd({
+        sessionUpdate: 'tool_call',
+        toolCallId: 'toolu_write',
+        _meta: { claudeCode: { toolName: 'Write' } },
+        title: 'Write src/lib.rs',
+        kind: 'edit',
+        status: 'pending',
+        rawInput: { file_path: path, content: 'line1\nNEW line2\nline3' },
+        content: [{ type: 'diff', path, oldText: null, newText: 'line1\nNEW line2\nline3' }],
+        locations: [{ path }],
+      })
+      upd({
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 'toolu_write',
+        _meta: { claudeCode: { toolName: 'Write', toolResponse: { type: 'update' } } },
+        content: [{ type: 'diff', path, oldText: 'line1\nold line2\nline3', newText: 'line1\nNEW line2\nline3' }],
+        locations: [{ path, line: 1 }],
+      })
+      upd({
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 'toolu_write',
+        _meta: { claudeCode: { toolName: 'Write' } },
+        status: 'completed',
+      })
       send({ jsonrpc: '2.0', id: msg.id, result: { stopReason: 'end_turn' } })
       return
     }
