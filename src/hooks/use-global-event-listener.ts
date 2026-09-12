@@ -269,6 +269,11 @@ export function useGlobalEventListener() {
         return
       }
 
+      if (p.type === 'acp_notice') {
+        store.handleAcpNotice(convId, p.notice)
+        return
+      }
+
       const exhaustive: never = p
       throw new Error(`Unhandled chat stream event: ${String(exhaustive)}`)
     })

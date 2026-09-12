@@ -18,10 +18,13 @@ import type {
   OpenAIToolCall,
   SubAgentKind,
   SubAgentRunInfoResponse,
+  AcpSessionNoticeInfoResponse,
   TodoInfoResponse,
   ToolCallDisplay,
   TurnInfoResponse,
 } from '@/types'
+import { requireAcpSessionNotice } from '@/lib/chat-stream-event'
+import { mergeAcpNotice } from '@/lib/acp-notices'
 import { usePlanReviewStore, type PlanReviewEventInfo } from '@/stores/plan-review-store'
 
 /**
@@ -408,6 +411,15 @@ function validateSnapshotContracts(
       throw new Error(`unknown sub-agent kind: ${run.agent_kind}`)
     }
   }
+}
+
+/** The snapshot's incident list, checked to the same shape the live event
+ *  is — one validator for both, so a snapshot cannot admit what an event
+ *  would refuse. */
+function checkedAcpNotices(notices: unknown): AcpSessionNoticeInfoResponse[] {
+  if (!Array.isArray(notices)) throw new Error('snapshot.acp_notices must be an array')
+  notices.forEach((notice, index) => requireAcpSessionNotice(notice, `snapshot.acp_notices[${index}]`))
+  return notices as AcpSessionNoticeInfoResponse[]
 }
 
 /** A tool call that already has its answer.
@@ -819,6 +831,10 @@ export interface ConversationSession {
    *  chose. Lives on the session so the choice survives the post-turn reload
    *  and switching conversations and back. */
   redactionNotice: { redactedCount: number; rules: string[] } | null
+  /** What a hosted Claude Code session reported about itself, one entry per
+   *  incident at its latest revision. Filled from the snapshot and kept up to
+   *  date by `acp_notice` events; a native conversation's stays empty. */
+  acpNotices: AcpSessionNoticeInfoResponse[]
   expandedPanels: Record<string, boolean>
   /** Steps on the path with more than one version, keyed by the version
    *  currently shown. Empty until something has been regenerated. */
@@ -853,6 +869,7 @@ function defaultSession(): ConversationSession {
     generation: 0,
     activeTodos: null,
     redactionNotice: null,
+    acpNotices: [],
     expandedPanels: {},
     branches: {},
     switchingBranch: false,
@@ -1192,6 +1209,10 @@ export interface ConversationStore {
    *  for calls that were never drawn as pending — nobody was asked — so it is
    *  the only event that will ever say why one of them was refused. */
   handleRedactionNotice: (convId: string, turnId: string, redactedCount: number, rules: string[]) => void
+  /** A hosted session reported an incident, or a newer revision of one it
+   *  already reported. Replaces by `notice_id` only when the revision is
+   *  higher; a replay of what is already held changes nothing. */
+  handleAcpNotice: (convId: string, notice: AcpSessionNoticeInfoResponse) => void
   handleAutoReview: (convId: string, messageId: string, callId: string, verdict: AutoReviewVerdictInfoResponse) => void
   /** The answer never landed — the backend has forgotten this request. Drops
    *  the buttons rather than leaving one that cannot work. Takes no
@@ -1420,6 +1441,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         session.planReviewBarrier = snap.plan_review_barrier
         session.branches = indexBranches(snap.tree.branches)
         session.turns = snap.turns
+        session.acpNotices = checkedAcpNotices(snap.acp_notices)
         session.activeShellTurnId = activeShellTurnId
         session.error = null
         adoptLiveTurn(session, snap.turns)
@@ -1474,6 +1496,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           session.planReviewBarrier = snap.plan_review_barrier
           session.branches = indexBranches(snap.tree.branches)
           session.turns = snap.turns
+          session.acpNotices = checkedAcpNotices(snap.acp_notices)
           adoptLiveTurn(session, snap.turns)
           applyPendingApprovals(session, snap.pending_approvals)
           applyPlanReviewAttention(state, convId, snap.plan_reviews)
@@ -2091,6 +2114,16 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     )
   },
 
+  handleAcpNotice: (convId, notice) => {
+    set(
+      produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (!session) return
+        session.acpNotices = mergeAcpNotice(session.acpNotices, notice)
+      }),
+    )
+  },
+
   handleAutoReview: (convId, messageId, callId, verdict) => {
     set(
       produce((state: ConversationStore) => {
@@ -2405,6 +2438,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             session.planReviewBarrier = snap.plan_review_barrier
             session.branches = indexBranches(snap.tree.branches)
             session.turns = snap.turns
+            session.acpNotices = checkedAcpNotices(snap.acp_notices)
             applyPendingApprovals(session, snap.pending_approvals)
             applyPlanReviewAttention(state, convId, snap.plan_reviews)
             applied = true
@@ -2458,6 +2492,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             session.planReviewBarrier = snap.plan_review_barrier
             session.branches = indexBranches(snap.tree.branches)
             session.turns = snap.turns
+            session.acpNotices = checkedAcpNotices(snap.acp_notices)
             applyPlanReviewAttention(state, convId, snap.plan_reviews)
             applied = true
           }),

@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { ErrorBoundary } from '@/components/error-boundary'
 import { AssistantGroupView, UserMessage } from './message-item'
+import { AcpNoticeList } from './acp-notice-bubble'
+import type { AcpSessionNoticeInfoResponse } from '@/types'
 import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker'
 import { MessageScrollerAnchor } from '@/components/ui/message-scroller'
 import { TurnBranchPager, TurnStatusIcon } from '@/components/ui/turn-status'
@@ -61,6 +63,9 @@ export interface TurnItemProps {
    *  `questionPositionOf`. Decides its corners, and whether it closes up to
    *  the question before it. */
   questionPosition?: BubblePosition
+  /** What a hosted Claude Code session reported about this turn — a failure,
+   *  or the warnings on the way to one. Drawn under the answer. */
+  notices?: readonly AcpSessionNoticeInfoResponse[]
   className?: string
 }
 
@@ -87,6 +92,7 @@ export const TurnItem = React.memo(function TurnItem({
   assistantAvatar,
   previousTurnEndedAt = null,
   questionPosition = 'single',
+  notices,
   className,
 }: TurnItemProps) {
   const { t } = useTranslation()
@@ -280,6 +286,11 @@ export const TurnItem = React.memo(function TurnItem({
           </ErrorBoundary>
         ))}
         {statusLine}
+        {/* After the status line: the adapter's own account of how the turn
+            went belongs under this app's one-word verdict on it. */}
+        {notices !== undefined && notices.length > 0 && (
+          <AcpNoticeList notices={notices} retryText={turn.userMessage?.content ?? null} />
+        )}
       </MessageScrollerAnchor>
       {answerPager}
     </div>

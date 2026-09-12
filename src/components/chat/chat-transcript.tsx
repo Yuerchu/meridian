@@ -21,7 +21,7 @@ import { FilePreviewProvider } from './file-preview'
 import type { EmojiMap } from './emoji-renderer'
 import type { SenderNames } from '@/hooks/use-sender-names'
 import { answerAnchorId, questionPositionOf, turnEndedAt, type Turn } from '@/lib/turns'
-import type { MessageRating } from '@/types'
+import type { AcpSessionNoticeInfoResponse, MessageRating } from '@/types'
 
 const TRANSCRIPT_WINDOW_TURNS = 40
 
@@ -86,6 +86,9 @@ export interface ChatTranscriptProps {
   /** Nicknames for the ids on user rows. Only a group has more than one. */
   senderNames?: SenderNames
   assistantAvatar?: string | null
+  /** A hosted session's incidents, keyed by the turn they were filed against.
+   *  Ones filed against no turn are the chat view's to draw, after the turns. */
+  noticesByTurn?: ReadonlyMap<string, readonly AcpSessionNoticeInfoResponse[]>
   /** Rows above the turns — the compacted region and its boundary marker. */
   leading?: React.ReactNode
   /** Rows below the turns — the compaction spinner and the turn's error. */
@@ -247,6 +250,7 @@ function TranscriptTurns({
   emojiMap,
   senderNames,
   assistantAvatar,
+  noticesByTurn,
 }: TranscriptTurnsProps & { visibleStart: number }) {
   return (
     <>
@@ -273,6 +277,7 @@ function TranscriptTurns({
               emojiMap={emojiMap}
               senderNames={senderNames}
               assistantAvatar={assistantAvatar}
+              notices={turn.turnId === null ? undefined : noticesByTurn?.get(turn.turnId)}
             />
           </LazyTurn>
         )
@@ -325,6 +330,7 @@ export function ChatTranscript({
   assistantAvatar,
   leading,
   trailing,
+  noticesByTurn,
   emptyState,
   scrollToBottomLabel,
 }: ChatTranscriptProps) {
@@ -397,6 +403,7 @@ export function ChatTranscript({
                     emojiMap={emojiMap}
                     senderNames={senderNames}
                     assistantAvatar={assistantAvatar}
+                    noticesByTurn={noticesByTurn}
                   />
                   {trailing}
                   {emptyState}

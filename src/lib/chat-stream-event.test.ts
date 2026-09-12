@@ -108,6 +108,25 @@ const validEvents: ChatStreamEvent[] = [
   },
   { type: 'acp_usage', conversation_id: 'c1', used: 120, size: 1_000 },
   {
+    type: 'acp_notice',
+    conversation_id: 'c1',
+    notice: {
+      id: 'n1',
+      conversation_id: 'c1',
+      turn_id: null,
+      notice_id: 'sess:notice:1:1',
+      revision: 1,
+      category: 'limit',
+      severity: 'warning',
+      title: 'Retrying Claude, attempt 1 of 5.',
+      details: null,
+      reason: null,
+      actions: [],
+      created_at: 1,
+      updated_at: 1,
+    },
+  },
+  {
     type: 'stop',
     reason: 'end_turn',
     message_id: 'm1',
@@ -276,5 +295,39 @@ describe('parseChatStreamEvent', () => {
         ],
       }),
     ).toThrow('acp_config event.config_options[0] is missing required field: description')
+  })
+})
+
+describe('acp_notice', () => {
+  const notice = {
+    id: 'n1',
+    conversation_id: 'c1',
+    turn_id: null,
+    notice_id: 'sess:notice:1:1',
+    revision: 1,
+    category: 'limit',
+    severity: 'warning',
+    title: 'Retrying Claude, attempt 1 of 5.',
+    details: null,
+    reason: null,
+    actions: ['retry'],
+    created_at: 1,
+    updated_at: 1,
+  }
+
+  it('rejects an absent nullable key, an unknown category and an unknown action', () => {
+    const { details: _details, ...missing } = notice
+    expect(() => parseChatStreamEvent({ type: 'acp_notice', conversation_id: 'c1', notice: missing })).toThrow(
+      'acp_notice event.notice is missing required field: details',
+    )
+    expect(() =>
+      parseChatStreamEvent({ type: 'acp_notice', conversation_id: 'c1', notice: { ...notice, category: 'weather' } }),
+    ).toThrow('acp_notice event.notice.category must be one of')
+    expect(() =>
+      parseChatStreamEvent({ type: 'acp_notice', conversation_id: 'c1', notice: { ...notice, actions: ['teleport'] } }),
+    ).toThrow('acp_notice event.notice.actions[0] must be one of')
+    expect(() =>
+      parseChatStreamEvent({ type: 'acp_notice', conversation_id: 'c1', notice: { ...notice, extra: 1 } }),
+    ).toThrow()
   })
 })

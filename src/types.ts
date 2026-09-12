@@ -1466,7 +1466,39 @@ export interface ConversationSnapshotResponse {
   plan_review_barrier: boolean
   /** Empty for every conversation that has never delegated. */
   sub_agent_runs: SubAgentRunListResponse
+  /** What a hosted Claude Code session reported about itself — failures and
+   *  warnings at their latest revision. Empty for a native conversation. */
+  acp_notices: AcpSessionNoticeListResponse
 }
+
+/** The group a hosted session's incident belongs to. Drives the icon and
+ *  nothing else; the text is the message. */
+export type AcpNoticeCategory = 'connection' | 'access' | 'limit' | 'request' | 'service' | 'unknown'
+/** A `warning` never ended a turn; an `error` needs a person or another request. */
+export type AcpNoticeSeverity = 'warning' | 'error'
+/** What the adapter recommends. The app decides which it can offer. */
+export type AcpNoticeAction = 'retry' | 'login' | 'new_session'
+
+/** One incident a hosted Claude Code session reported, at its latest revision.
+ *  Keyed by `notice_id` — the adapter's own id — and replaced in place when a
+ *  higher `revision` arrives. `turn_id` is null for a session-scoped one. */
+export interface AcpSessionNoticeInfoResponse {
+  id: string
+  conversation_id: string
+  turn_id: string | null
+  notice_id: string
+  revision: number
+  category: AcpNoticeCategory
+  severity: AcpNoticeSeverity
+  title: string
+  details: string | null
+  reason: string | null
+  actions: AcpNoticeAction[]
+  created_at: number
+  updated_at: number
+}
+
+export type AcpSessionNoticeListResponse = AcpSessionNoticeInfoResponse[]
 
 export interface ConversationSnapshotRequest {
   conversationId: string
@@ -2677,6 +2709,7 @@ export type ChatStreamEvent =
     }
   | { type: 'acp_config'; conversation_id: string; config_options: AcpConfigOptionInfoResponse[] }
   | { type: 'acp_usage'; conversation_id: string; used: number; size: number }
+  | { type: 'acp_notice'; conversation_id: string; notice: AcpSessionNoticeInfoResponse }
   | {
       type: 'redaction_notice'
       conversation_id: string

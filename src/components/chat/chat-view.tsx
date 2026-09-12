@@ -11,6 +11,8 @@ import { ChatTranscript } from './chat-transcript'
 import { CompactedRegion } from './compacted-region'
 import { SubAgentSheetProvider } from './sub-agent-sheet'
 import { TranscriptStatus } from './transcript-status'
+import { AcpNoticeActionsContext, type AcpNoticeActions } from './acp-notice-actions'
+import { placeNotices } from '@/lib/acp-notices'
 import { useTurns } from '@/hooks/use-turns'
 import { useTranscriptHotkeys } from '@/hooks/use-transcript-hotkeys'
 import { InputBar, type AttachedFile, type PendingSticker } from './input-bar'
@@ -31,13 +33,21 @@ import { findComposerCommand } from '@/lib/composer-commands'
 import { allowedEfforts } from '@/lib/thinking'
 import { visibleSettingsTabs, type SettingsTab } from '@/components/settings/tabs'
 import { isRemote } from '@/lib/transport'
-import type { ChatMode, MessageRating, MessageViewModel, QueueDelivery, ThinkingLevel } from '@/types'
+import type {
+  AcpSessionNoticeInfoResponse,
+  ChatMode,
+  MessageRating,
+  MessageViewModel,
+  QueueDelivery,
+  ThinkingLevel,
+} from '@/types'
 import { StarterPrompts } from './empty-state'
 import type { InitialTurnDraft } from './conversation-draft'
 
 // Stable identity for the empty case: `?? []` would hand useTurns a new array on
 // every render of a conversation whose session has not been created yet.
 const NO_MESSAGES: MessageViewModel[] = []
+const NO_NOTICES: AcpSessionNoticeInfoResponse[] = []
 
 interface ShellSubmission {
   draft: string
@@ -84,6 +94,7 @@ function ChatViewInner({
   const compacting = session?.compacting ?? false
   const error = session?.error ?? null
   const redactionNotice = session?.redactionNotice ?? null
+  const acpNotices = session?.acpNotices ?? NO_NOTICES
   const activeTodos = session?.activeTodos ?? null
   const pendingPlanReview = useMemo(
     () =>
@@ -263,6 +274,30 @@ function ChatViewInner({
   // put the question in the compacted region and its answer in the active one.
   const compactedTurns = compactBoundary != null ? allTurns.filter((t) => t.firstSortOrder < compactBoundary) : []
   const activeTurns = compactBoundary != null ? allTurns.filter((t) => t.firstSortOrder >= compactBoundary) : allTurns
+  // A hosted session's incidents, each under its turn where that turn is on
+  // this path and after the transcript otherwise. Placed against every turn,
+  // compacted ones included, so an incident on a compacted turn is not drawn
+  // twice.
+  const placedNotices = useMemo(() => placeNotices(acpNotices, allTurns), [acpNotices, allTurns])
+  const lastQuestion = allTurns.length > 0 ? (allTurns[allTurns.length - 1].userMessage?.content ?? null) : null
+  // What a notice's recommended action does here. `retry` is a new prompt
+  // with the same question; `restartAgent` closes the adapter so the next
+  // message reopens it and resumes the same session, which is the runtime
+  // replacement `new_session` asks for after a lost transport.
+  const acpNoticeActions = useMemo<AcpNoticeActions>(
+    () => ({
+      busy: streaming,
+      retry: (text) => {
+        void sendMessage(text, true)
+      },
+      restartAgent: () => {
+        void api.acpClose(conversationId).catch((err: unknown) => {
+          useConversationStore.getState().setError(conversationId, String(err))
+        })
+      },
+    }),
+    [streaming, sendMessage, conversationId],
+  )
   const compactedCount =
     compactBoundary != null ? visibleMessages.filter((m) => m.sort_order < compactBoundary).length : 0
 
@@ -780,58 +815,69 @@ function ChatViewInner({
         onDrop={(e) => void handleConversationDrop(e.items)}
         className="flex flex-col h-full data-[drop-target]:ring-2 data-[drop-target]:ring-accent data-[drop-target]:ring-inset"
       >
-        <ChatTranscript
-          turns={activeTurns}
-          conversationId={conversationId}
-          streaming={streaming}
-          onDelete={handleDelete}
-          // Regenerate and edit are withheld on a hosted session. Both re-ask
-          // from a point in the history, and a hosted session's history lives in
-          // the adapter's process — `useSendMessage` refuses them for exactly
-          // that reason, so leaving the buttons up offers an action whose only
-          // outcome is an error message. The refusal stays as the backstop; this
-          // is the affordance agreeing with it. Delete is still offered: it does
-          // what it says, removing rows from *this* app's copy.
-          onRegenerate={isHostedAgent ? undefined : handleRegenerate}
-          onEdit={isHostedAgent ? undefined : handleEdit}
-          onRate={handleRate}
-          isOneBot={isOneBot}
-          isHosted={isHostedAgent}
-          emojiMap={emojiMap}
-          senderNames={senderNames}
-          assistantAvatar={settings.selectedAssistant?.avatar}
-          leading={
-            <CompactedRegion
-              turns={compactedTurns}
-              conversationId={conversationId}
-              compactedCount={compactedCount}
-              compactSummary={compactSummary}
-              onDelete={handleDelete}
-              isOneBot={isOneBot}
-              emojiMap={emojiMap}
-              senderNames={senderNames}
-              assistantAvatar={settings.selectedAssistant?.avatar}
-            />
-          }
-          trailing={<TranscriptStatus compacting={compacting} error={error} redactionNotice={redactionNotice} />}
-          emptyState={
-            messages.length === 0 && !error ? (
-              <ProEmptyState size="md" className="flex-1 justify-center px-4 py-10">
-                <ProEmptyState.Header>
-                  <ProEmptyState.Title>{t('chat.empty.subtitle')}</ProEmptyState.Title>
-                  <ProEmptyState.Description>{t('chat.startHint')}</ProEmptyState.Description>
-                </ProEmptyState.Header>
-                <ProEmptyState.Content className="w-full max-w-2xl">
-                  <StarterPrompts
-                    disabled={streaming || !!shellTurnId || commandPending || reviewBlocked}
-                    onSelect={setInput}
-                  />
-                </ProEmptyState.Content>
-              </ProEmptyState>
-            ) : null
-          }
-          scrollToBottomLabel={t('chat.scrollToBottom')}
-        />
+        <AcpNoticeActionsContext.Provider value={acpNoticeActions}>
+          <ChatTranscript
+            turns={activeTurns}
+            noticesByTurn={placedNotices.byTurn}
+            conversationId={conversationId}
+            streaming={streaming}
+            onDelete={handleDelete}
+            // Regenerate and edit are withheld on a hosted session. Both re-ask
+            // from a point in the history, and a hosted session's history lives in
+            // the adapter's process — `useSendMessage` refuses them for exactly
+            // that reason, so leaving the buttons up offers an action whose only
+            // outcome is an error message. The refusal stays as the backstop; this
+            // is the affordance agreeing with it. Delete is still offered: it does
+            // what it says, removing rows from *this* app's copy.
+            onRegenerate={isHostedAgent ? undefined : handleRegenerate}
+            onEdit={isHostedAgent ? undefined : handleEdit}
+            onRate={handleRate}
+            isOneBot={isOneBot}
+            isHosted={isHostedAgent}
+            emojiMap={emojiMap}
+            senderNames={senderNames}
+            assistantAvatar={settings.selectedAssistant?.avatar}
+            leading={
+              <CompactedRegion
+                turns={compactedTurns}
+                conversationId={conversationId}
+                compactedCount={compactedCount}
+                compactSummary={compactSummary}
+                onDelete={handleDelete}
+                isOneBot={isOneBot}
+                emojiMap={emojiMap}
+                senderNames={senderNames}
+                assistantAvatar={settings.selectedAssistant?.avatar}
+              />
+            }
+            trailing={
+              <TranscriptStatus
+                compacting={compacting}
+                error={error}
+                redactionNotice={redactionNotice}
+                notices={placedNotices.unplaced}
+                retryText={lastQuestion}
+              />
+            }
+            emptyState={
+              messages.length === 0 && !error ? (
+                <ProEmptyState size="md" className="flex-1 justify-center px-4 py-10">
+                  <ProEmptyState.Header>
+                    <ProEmptyState.Title>{t('chat.empty.subtitle')}</ProEmptyState.Title>
+                    <ProEmptyState.Description>{t('chat.startHint')}</ProEmptyState.Description>
+                  </ProEmptyState.Header>
+                  <ProEmptyState.Content className="w-full max-w-2xl">
+                    <StarterPrompts
+                      disabled={streaming || !!shellTurnId || commandPending || reviewBlocked}
+                      onSelect={setInput}
+                    />
+                  </ProEmptyState.Content>
+                </ProEmptyState>
+              ) : null
+            }
+            scrollToBottomLabel={t('chat.scrollToBottom')}
+          />
+        </AcpNoticeActionsContext.Provider>
 
         {/* Folded into the queue card when something is stacked: HeroUI's Queue
           is current-plus-rows, and a TodoBar sitting above it made every

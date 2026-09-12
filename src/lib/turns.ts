@@ -79,6 +79,10 @@ export interface Turn {
    *  rows written before turns were recorded, and while a live turn has not
    *  reached its post-stop snapshot yet. */
   usage: TurnUsageInfoResponse | null
+  /** The backend's run id for the answer on this path — see `pathTurnId`.
+   *  Null for rows written before turns were recorded. What a notice filed
+   *  against a turn is matched on. */
+  turnId: string | null
   lastMessageId: string
   firstSortOrder: number
 }
@@ -278,12 +282,13 @@ export function buildTurns(messages: MessageViewModel[], ctx: BuildTurnsContext 
   const crashed = ctx.crashedTurnIds
   const usage = ctx.usageByTurnId
   return groups.map((g, i) => {
-    const turnId = crashed === undefined && usage === undefined ? null : pathTurnId(g)
+    const turnId = pathTurnId(g)
     return finalize(
       g,
       i === groups.length - 1 && ctx.streaming === true,
       turnId !== null && crashed?.has(turnId) === true,
       turnId === null ? null : (usage?.get(turnId) ?? null),
+      turnId,
     )
   })
 }
@@ -308,7 +313,13 @@ function pathTurnId(group: OpenTurn): string | null {
   return group.assistantMessages.length > 0 ? null : (group.userMessage?.turn_id ?? null)
 }
 
-function finalize(group: OpenTurn, isStreaming: boolean, didCrash: boolean, usage: TurnUsageInfoResponse | null): Turn {
+function finalize(
+  group: OpenTurn,
+  isStreaming: boolean,
+  didCrash: boolean,
+  usage: TurnUsageInfoResponse | null,
+  turnId: string | null,
+): Turn {
   const { userMessage, assistantMessages } = group
 
   const blocked = hasBlockingCall(assistantMessages)
@@ -357,6 +368,7 @@ function finalize(group: OpenTurn, isStreaming: boolean, didCrash: boolean, usag
     summary,
     tokens: sumTokens(assistantMessages),
     usage,
+    turnId,
     lastMessageId: last?.id ?? '',
     firstSortOrder: userMessage?.sort_order ?? assistantMessages[0]?.sort_order ?? 0,
   }

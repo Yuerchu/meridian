@@ -21,6 +21,7 @@ const CHAT_STREAM_EVENT_TYPES = {
   auto_review: true,
   acp_config: true,
   acp_usage: true,
+  acp_notice: true,
   redaction_notice: true,
   stop: true,
 } satisfies Record<ChatStreamEvent['type'], true>
@@ -77,6 +78,49 @@ function requireStringFields(object: Record<string, unknown>, fields: readonly s
 
 function requireNullableString(object: Record<string, unknown>, field: string, label: string): void {
   if (object[field] !== null) requireString(object[field], `${label}.${field}`)
+}
+
+const ACP_NOTICE_CATEGORIES = ['connection', 'access', 'limit', 'request', 'service', 'unknown'] as const
+const ACP_NOTICE_SEVERITIES = ['warning', 'error'] as const
+const ACP_NOTICE_ACTIONS = ['retry', 'login', 'new_session'] as const
+
+/** The exact shape of a hosted session's incident, every nullable key present
+ *  and every closed string one of ours. Shared by the live event and the
+ *  snapshot, so the two cannot drift. */
+export function requireAcpSessionNotice(value: unknown, label: string): void {
+  const notice = requireShape(
+    value,
+    [
+      'id',
+      'conversation_id',
+      'turn_id',
+      'notice_id',
+      'revision',
+      'category',
+      'severity',
+      'title',
+      'details',
+      'reason',
+      'actions',
+      'created_at',
+      'updated_at',
+    ],
+    [],
+    label,
+  )
+  requireStringFields(notice, ['id', 'conversation_id', 'notice_id', 'title'], label)
+  requireNullableString(notice, 'turn_id', label)
+  requireNullableString(notice, 'details', label)
+  requireNullableString(notice, 'reason', label)
+  requireInteger(notice.revision, 0, Number.MAX_SAFE_INTEGER, `${label}.revision`)
+  requireInteger(notice.created_at, Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER, `${label}.created_at`)
+  requireInteger(notice.updated_at, Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER, `${label}.updated_at`)
+  requireClosedString(notice.category, ACP_NOTICE_CATEGORIES, `${label}.category`)
+  requireClosedString(notice.severity, ACP_NOTICE_SEVERITIES, `${label}.severity`)
+  if (!Array.isArray(notice.actions)) throw new Error(`${label}.actions must be an array`)
+  for (const [index, action] of notice.actions.entries()) {
+    requireClosedString(action, ACP_NOTICE_ACTIONS, `${label}.actions[${index}]`)
+  }
 }
 
 function requireStringArray(value: unknown, label: string): string[] {
@@ -337,6 +381,12 @@ export function parseChatStreamEvent(value: unknown): ChatStreamEvent {
       requireStringFields(event, ['type', 'conversation_id'], 'acp_usage event')
       requireInteger(event.used, 0, Number.MAX_SAFE_INTEGER, 'acp_usage event.used')
       requireInteger(event.size, 0, Number.MAX_SAFE_INTEGER, 'acp_usage event.size')
+      break
+    }
+    case 'acp_notice': {
+      const event = requireShape(value, ['type', 'conversation_id', 'notice'], [], 'acp_notice event')
+      requireStringFields(event, ['type', 'conversation_id'], 'acp_notice event')
+      requireAcpSessionNotice(event.notice, 'acp_notice event.notice')
       break
     }
     case 'redaction_notice': {

@@ -793,6 +793,121 @@ impl From<CoreTurnStatus> for TurnStatus {
     }
 }
 
+/// The group a hosted session's incident belongs to. The shell's own spelling
+/// of `meridian_core::events::AcpNoticeCategory`, so a change there is a
+/// contract change here rather than a silent widening.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AcpNoticeCategory {
+    Connection,
+    Access,
+    Limit,
+    Request,
+    Service,
+    Unknown,
+}
+
+impl From<meridian_core::events::AcpNoticeCategory> for AcpNoticeCategory {
+    fn from(category: meridian_core::events::AcpNoticeCategory) -> Self {
+        use meridian_core::events::AcpNoticeCategory as Core;
+        match category {
+            Core::Connection => Self::Connection,
+            Core::Access => Self::Access,
+            Core::Limit => Self::Limit,
+            Core::Request => Self::Request,
+            Core::Service => Self::Service,
+            Core::Unknown => Self::Unknown,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AcpNoticeSeverity {
+    Warning,
+    Error,
+}
+
+impl From<meridian_core::events::AcpNoticeSeverity> for AcpNoticeSeverity {
+    fn from(severity: meridian_core::events::AcpNoticeSeverity) -> Self {
+        use meridian_core::events::AcpNoticeSeverity as Core;
+        match severity {
+            Core::Warning => Self::Warning,
+            Core::Error => Self::Error,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AcpNoticeAction {
+    Retry,
+    Login,
+    NewSession,
+}
+
+impl From<meridian_core::events::AcpNoticeAction> for AcpNoticeAction {
+    fn from(action: meridian_core::events::AcpNoticeAction) -> Self {
+        use meridian_core::events::AcpNoticeAction as Core;
+        match action {
+            Core::Retry => Self::Retry,
+            Core::Login => Self::Login,
+            Core::NewSession => Self::NewSession,
+        }
+    }
+}
+
+/// One incident a hosted Claude Code session reported, at its latest revision.
+///
+/// `turn_id` is null for a session-scoped incident. The nullable keys are
+/// always serialised, so a client can tell the current contract from an
+/// incomplete payload.
+#[derive(serde::Serialize)]
+pub struct AcpSessionNoticeInfoResponse {
+    pub id: String,
+    pub conversation_id: String,
+    pub turn_id: Option<String>,
+    pub notice_id: String,
+    pub revision: u32,
+    pub category: AcpNoticeCategory,
+    pub severity: AcpNoticeSeverity,
+    pub title: String,
+    pub details: Option<String>,
+    pub reason: Option<String>,
+    pub actions: Vec<AcpNoticeAction>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+impl TryFrom<db::models::acp_session_notice::AcpSessionNoticeRow> for AcpSessionNoticeInfoResponse {
+    type Error = String;
+
+    /// Through the core's own projection, which is where the stored action
+    /// list is decoded strictly. A row that cannot be read is an error: an
+    /// incident with its recommendations silently dropped would be drawn as
+    /// one that recommends nothing.
+    fn try_from(row: db::models::acp_session_notice::AcpSessionNoticeRow) -> Result<Self, String> {
+        let event = meridian_core::events::AcpSessionNoticeEvent::try_from(row)?;
+        Ok(Self {
+            id: event.id,
+            conversation_id: event.conversation_id,
+            turn_id: event.turn_id,
+            notice_id: event.notice_id,
+            revision: event.revision,
+            category: event.category.into(),
+            severity: event.severity.into(),
+            title: event.title,
+            details: event.details,
+            reason: event.reason,
+            actions: event.actions.into_iter().map(Into::into).collect(),
+            created_at: event.created_at,
+            updated_at: event.updated_at,
+        })
+    }
+}
+
+pub type AcpSessionNoticeListResponse = Vec<AcpSessionNoticeInfoResponse>;
+
 #[cfg(test)]
 impl TurnStatus {
     fn as_str(self) -> &'static str {
@@ -1000,6 +1115,9 @@ pub struct ConversationSnapshotResponse {
     pub plan_review_barrier: bool,
     /// Empty for every conversation that has never delegated.
     pub sub_agent_runs: SubAgentRunListResponse,
+    /// What a hosted Claude Code session reported about itself — failures and
+    /// warnings, at their latest revision. Empty for a native conversation.
+    pub acp_notices: AcpSessionNoticeListResponse,
 }
 
 /// One conversation, read as one state rather than assembled from several.
@@ -1075,7 +1193,7 @@ pub async fn conversation_snapshot(
         );
     }
 
-    let (conversation, tree, turns, sub_agent_runs, plan_reviews, plan_review_barrier) = match settled {
+    let (conversation, tree, turns, sub_agent_runs, plan_reviews, plan_review_barrier, acp_notices) = match settled {
         Some(read) => read,
         // Turns are starting and stopping faster than the conversation can be
         // read. Rather than pick one of the passes and hope, this one refuses to
@@ -1100,6 +1218,7 @@ pub async fn conversation_snapshot(
         plan_reviews,
         plan_review_barrier,
         sub_agent_runs,
+        acp_notices,
     })
 }
 
@@ -1117,6 +1236,7 @@ type SnapshotRead = (
     Vec<SubAgentRunInfoResponse>,
     crate::commands::plan_review::PlanReviewSummaryListResponse,
     bool,
+    AcpSessionNoticeListResponse,
 );
 
 async fn children_off_thread(pool: &db::DbPool, conversation_id: &str) -> Result<Vec<String>, String> {
@@ -1255,6 +1375,15 @@ fn read_snapshot(conn: &mut db::PooledConn, conversation_id: &str, live: &OwnedL
                 .map_err(|error| diesel::result::Error::QueryBuilderError(error.into()))?;
         let plan_review_barrier = db::ops::plan_review::has_conversation_barrier(conn, conversation_id)
             .map_err(|error| diesel::result::Error::QueryBuilderError(error.into()))?;
+        // Inside the same transaction as the turns, so an incident filed
+        // against a turn is never read beside a turn list that lacks it.
+        let acp_notices = db::ops::acp_session_notice::list_for_conversation(conn, conversation_id)?
+            .into_iter()
+            .map(|row| {
+                AcpSessionNoticeInfoResponse::try_from(row)
+                    .map_err(|error| diesel::result::Error::QueryBuilderError(error.into()))
+            })
+            .collect::<Result<Vec<_>, diesel::result::Error>>()?;
         Ok((
             conversation,
             tree,
@@ -1262,6 +1391,7 @@ fn read_snapshot(conn: &mut db::PooledConn, conversation_id: &str, live: &OwnedL
             sub_agent_runs,
             plan_reviews,
             plan_review_barrier,
+            acp_notices,
         ))
     })
     .map_err(|e| e.to_string())
@@ -1822,6 +1952,51 @@ mod tests {
         assert_eq!(value.as_object().unwrap().len(), 26);
     }
 
+    /// The notice crosses IPC with its nullable keys present and its closed
+    /// enums spelled the way the TypeScript union expects.
+    #[test]
+    fn acp_session_notice_is_explicitly_mapped() {
+        let row = |actions: &str| db::models::acp_session_notice::AcpSessionNoticeRow {
+            id: "n1".into(),
+            conversation_id: "c1".into(),
+            turn_id: None,
+            notice_id: "sess:notice:1:1".into(),
+            revision: 2,
+            category: "limit".into(),
+            severity: "warning".into(),
+            title: "Retrying Claude, attempt 1 of 5.".into(),
+            details: None,
+            reason: None,
+            actions: actions.into(),
+            created_at: 5,
+            updated_at: 6,
+        };
+        let response = AcpSessionNoticeInfoResponse::try_from(row(r#"["retry","new_session"]"#)).unwrap();
+        assert_eq!(
+            serde_json::to_value(response).unwrap(),
+            serde_json::json!({
+                "id": "n1",
+                "conversation_id": "c1",
+                "turn_id": null,
+                "notice_id": "sess:notice:1:1",
+                "revision": 2,
+                "category": "limit",
+                "severity": "warning",
+                "title": "Retrying Claude, attempt 1 of 5.",
+                "details": null,
+                "reason": null,
+                "actions": ["retry", "new_session"],
+                "created_at": 5,
+                "updated_at": 6,
+            })
+        );
+
+        // A stored action list this build cannot read fails the row rather
+        // than becoming an incident that recommends nothing.
+        assert!(AcpSessionNoticeInfoResponse::try_from(row(r#"["teleport"]"#)).is_err());
+        assert!(AcpSessionNoticeInfoResponse::try_from(row("not json")).is_err());
+    }
+
     #[test]
     fn auto_review_verdict_is_explicitly_mapped() {
         let response = AutoReviewVerdictInfoResponse::from(CoreAutoReviewVerdict {
@@ -2286,8 +2461,9 @@ mod tests {
         }
 
         let mut conn = pool.get().unwrap();
-        let (conv, tree, turns, runs, plan_reviews, plan_review_barrier) =
+        let (conv, tree, turns, runs, plan_reviews, plan_review_barrier, acp_notices) =
             read_snapshot(&mut conn, "c1", &holding("c1", Some("t1"))).unwrap();
+        assert!(acp_notices.is_empty(), "a native conversation reports no incidents");
 
         assert_eq!(conv.id, "c1");
         assert_eq!(tree.messages.len(), 1);

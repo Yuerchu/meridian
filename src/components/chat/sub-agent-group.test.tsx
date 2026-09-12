@@ -253,6 +253,7 @@ describe('SubAgentSheetProvider', () => {
       pending_approvals: [],
       turns: [],
       sub_agent_runs: [],
+      acp_notices: [],
       plan_reviews: [],
       plan_review_barrier: false,
     } as unknown as Awaited<ReturnType<typeof api.conversationSnapshot>>)
@@ -294,6 +295,7 @@ describe('SubAgentSheetProvider', () => {
       pending_approvals: [],
       turns: [],
       sub_agent_runs: [],
+      acp_notices: [],
       plan_reviews: [],
       plan_review_barrier: false,
     } as unknown as Awaited<ReturnType<typeof api.conversationSnapshot>>)

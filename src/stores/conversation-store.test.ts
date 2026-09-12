@@ -41,6 +41,7 @@ function snapshotOf(
     plan_reviews: [],
     plan_review_barrier: false,
     sub_agent_runs: [],
+    acp_notices: [],
     ...over,
   }
 }
