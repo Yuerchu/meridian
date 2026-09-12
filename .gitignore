@@ -18,6 +18,7 @@ tsconfig.tsbuildinfo
 .claude/
 .codex/
 .mcp.json
+temp/
 
 # Playwright MCP scratch output (page snapshots, console logs, screenshots)
 .playwright-mcp/
