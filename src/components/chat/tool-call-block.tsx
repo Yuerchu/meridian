@@ -596,11 +596,13 @@ export function AskUserBlock({
   )
 }
 
-// ---- Diff extraction for file-editing tools (write_file / edit_file / apply_patch) ----
+// ---- Diff extraction for file-editing tools (write_file / edit_file / apply_patch,
+// and a hosted Claude Code's Write / Edit, which carry the same arguments) ----
 // The card itself lives in file-diff-card.tsx, shared with the workspace panel.
 
 function writeFileDiff(args: Record<string, unknown>): FileDiff[] | null {
-  const path = typeof args.path === 'string' ? args.path : null
+  // `path` is write_file's; `file_path` is where a hosted `Write` keeps it.
+  const path = typeof args.path === 'string' ? args.path : typeof args.file_path === 'string' ? args.file_path : null
   const content = typeof args.content === 'string' ? args.content : null
   if (path === null || content === null) return null
   return [
@@ -650,8 +652,10 @@ function applyPatchDiff(args: Record<string, unknown>): FileDiff[] | null {
 function toolFileDiffs(toolName: string, args: Record<string, unknown>): FileDiff[] | null {
   switch (toolName) {
     case 'write_file':
+    case 'Write':
       return writeFileDiff(args)
     case 'edit_file':
+    case 'Edit':
       return editFileDiff(args)
     case 'apply_patch':
       return applyPatchDiff(args)

@@ -135,6 +135,37 @@ describe('ToolCallBlock file-edit diff rendering', () => {
     expect(screen.getByText('+2')).toBeVisible()
   })
 
+  /**
+   * A hosted Claude Code `Edit` carries exactly `edit_file`'s arguments and a
+   * `Write` carries `write_file`'s under `file_path`, so both draw the same
+   * diff. Left out of `toolFileDiffs`, the card fell back to the raw argument
+   * list — `old_string` and `new_string` laid out as two text blocks, which is
+   * the one thing an approval card for an edit must not do.
+   */
+  it.each([
+    ['edit_file', { file_path: 'src/app.py', old_string: 'line_a\nline_b', new_string: 'line_a\nline_B' }],
+    ['Edit', { file_path: 'src/app.py', old_string: 'line_a\nline_b', new_string: 'line_a\nline_B' }],
+  ])('draws %s as a diff and not as an argument list', (name, args) => {
+    const { container } = render(<ToolCallBlock data={toolCall(name, args)} />)
+
+    expectCardOpen(container)
+    expect(diffText(container)).toContain('line_b')
+    expect(diffText(container)).toContain('line_B')
+    expect(container.querySelector('[data-slot="tool-args-list"]')).toBeNull()
+  })
+
+  it.each([
+    ['write_file', { path: 'notes/todo.md', content: '# Todo\n- item one\n' }],
+    ['Write', { file_path: 'notes/todo.md', content: '# Todo\n- item one\n' }],
+  ])('draws %s as a diff and not as an argument list', (name, args) => {
+    const { container } = render(<ToolCallBlock data={toolCall(name, args)} />)
+
+    expectCardOpen(container)
+    expect(screen.getAllByText('todo.md')[0]).toBeVisible()
+    expect(diffText(container)).toContain('- item one')
+    expect(container.querySelector('[data-slot="tool-args-list"]')).toBeNull()
+  })
+
   it('keeps a large file diff bounded until the user asks for every line', async () => {
     const content = Array.from({ length: 320 }, (_, index) => `line-${index}`).join('\n')
     const { container } = render(<ToolCallBlock data={toolCall('write_file', { path: 'notes/large.txt', content })} />)

@@ -57,7 +57,11 @@ function callEffects(toolName: string, args: Record<string, unknown>): Array<[st
       // was there before, and guessing wrong is worse than being vague.
       return path ? [[path, 'modify']] : []
     }
-    case 'edit_file': {
+    // A hosted Claude Code's Write and Edit share edit_file's shape, with the
+    // path under `file_path` in all three.
+    case 'edit_file':
+    case 'Write':
+    case 'Edit': {
       const path = str(args, 'file_path')
       return path ? [[path, 'modify']] : []
     }

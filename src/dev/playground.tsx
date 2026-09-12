@@ -674,6 +674,18 @@ function Gallery() {
                 }),
               })}
             />
+            {/* The same edit as a hosted Claude Code makes it: must draw the same diff. */}
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'Edit',
+                status: 'pending',
+                arguments: JSON.stringify({
+                  file_path: 'src/main.tsx',
+                  old_string: 'createRoot(root).render(\n  <App />,\n)',
+                  new_string: 'createRoot(root).render(\n  <StrictMode>\n    <App />\n  </StrictMode>,\n)',
+                }),
+              })}
+            />
             <ToolCallBlock
               data={tool({
                 tool_name: 'apply_patch',

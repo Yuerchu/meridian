@@ -31,6 +31,20 @@ describe('touchedFiles', () => {
     ])
   })
 
+  it('reads a hosted Claude Code edit the same way', () => {
+    // `Write` keeps its path under `file_path`, where `write_file` has `path`.
+    const files = touchedFiles([
+      msg(
+        call('Write', { file_path: 'a.ts', content: 'x' }),
+        call('Edit', { file_path: 'b.ts', old_string: 'x', new_string: 'y' }),
+      ),
+    ])
+    expect(files).toEqual([
+      { path: 'a.ts', op: 'modify', count: 1 },
+      { path: 'b.ts', op: 'modify', count: 1 },
+    ])
+  })
+
   it('splits a move into the two facts it is', () => {
     // One call, two paths: the origin is gone and the destination is new.
     const files = touchedFiles([msg(call('move_file', { from: 'old.ts', to: 'new.ts' }))])
