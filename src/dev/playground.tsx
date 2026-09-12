@@ -126,6 +126,7 @@ function msg(over: Partial<MessageViewModel> & Pick<MessageViewModel, 'id' | 'ro
     turn_id: null,
     tool_outcome: null,
     auto_review: null,
+    tool_diffs: null,
     context_items: [],
     ...over,
   }

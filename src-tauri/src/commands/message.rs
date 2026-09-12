@@ -413,9 +413,37 @@ pub struct MessageInfoResponse {
     /// able to say who denied it and why — a reload that lost the reason would
     /// leave the model's refusal looking like its own choice.
     pub auto_review: Option<std::collections::BTreeMap<String, AutoReviewVerdictInfoResponse>>,
+    /// What a hosted agent said each Edit/Write on this row changed, keyed by
+    /// call id. `None` for every row the agent reported nothing for. Crosses
+    /// the boundary so a reloaded card draws the diff the agent computed —
+    /// with the file's pre-overwrite text — rather than one reconstructed from
+    /// the arguments.
+    pub tool_diffs: Option<std::collections::BTreeMap<String, Vec<ToolCallDiffInfoResponse>>>,
     /// Descriptors only. Raw file snapshots and command output stay behind the
     /// provider/preview boundary.
     pub context_items: Vec<MessageContextInfoResponse>,
+}
+
+/// One hunk of the diff a hosted agent reported. `old_text` is null for a file
+/// that did not exist; `line` is the hunk's first line after the edit, null
+/// when the adapter did not say.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ToolCallDiffInfoResponse {
+    pub path: String,
+    pub old_text: Option<String>,
+    pub new_text: String,
+    pub line: Option<u32>,
+}
+
+impl From<meridian_core::events::ToolCallDiff> for ToolCallDiffInfoResponse {
+    fn from(diff: meridian_core::events::ToolCallDiff) -> Self {
+        Self {
+            path: diff.path,
+            old_text: diff.old_text,
+            new_text: diff.new_text,
+            line: diff.line,
+        }
+    }
 }
 
 impl TryFrom<MessageRow> for MessageInfoResponse {
@@ -492,6 +520,34 @@ impl TryFrom<MessageRow> for MessageInfoResponse {
             verdicts.retain(|call_id, _| !call_id.is_empty() && call_ids.contains(call_id.as_str()));
             verdicts
         });
+        // Same policy as `auto_review`: decoded strictly through the core's
+        // typed shape, refused on a row that made no calls, and an entry for
+        // a call this row does not have is dropped rather than drawn under
+        // nothing.
+        let tool_diffs = row
+            .tool_diffs
+            .as_deref()
+            .map(|raw| {
+                serde_json::from_str::<std::collections::BTreeMap<String, Vec<meridian_core::events::ToolCallDiff>>>(
+                    raw,
+                )
+                .map_err(|error| format!("message {} has invalid persisted tool_diffs: {error}", row.id))
+            })
+            .transpose()?;
+        if tool_diffs.is_some() && role != db::models::message::MessageRole::Assistant {
+            return Err(format!("non-assistant message {} has tool_diffs", row.id));
+        }
+        let tool_diffs = tool_diffs.map(|diffs| {
+            let call_ids = stored_tool_calls
+                .iter()
+                .map(|call| call.id.as_str())
+                .collect::<std::collections::BTreeSet<_>>();
+            diffs
+                .into_iter()
+                .filter(|(call_id, _)| !call_id.is_empty() && call_ids.contains(call_id.as_str()))
+                .map(|(call_id, hunks)| (call_id, hunks.into_iter().map(Into::into).collect::<Vec<_>>()))
+                .collect::<std::collections::BTreeMap<_, _>>()
+        });
         let tool_calls = row
             .tool_calls
             .is_some()
@@ -545,6 +601,7 @@ impl TryFrom<MessageRow> for MessageInfoResponse {
             cache_write_tokens: row.cache_write_tokens,
             provider_name: row.provider_name,
             auto_review,
+            tool_diffs,
             context_items: Vec::new(),
         })
     }
@@ -2078,6 +2135,7 @@ mod tests {
             provider_name: None,
             provider_state: None,
             auto_review: None,
+            tool_diffs: None,
         }
     }
 
@@ -2189,6 +2247,34 @@ mod tests {
         let json = serde_json::to_value(MessageInfoResponse::try_from(row).unwrap()).unwrap();
         assert!(json["auto_review"].get("kept").is_some());
         assert!(json["auto_review"].get("gone").is_none());
+    }
+
+    /// The agent's diff crosses IPC typed, with its nullable keys present; an
+    /// entry for a call the row does not have is dropped, and a row that is
+    /// not an assistant's cannot carry one at all.
+    #[test]
+    fn tool_diffs_are_mapped_typed_and_orphans_dropped() {
+        let mut row = exported_row("assistant", "");
+        row.tool_calls =
+            Some(r#"[{"id":"kept","type":"function","function":{"name":"Write","arguments":"{}"}}]"#.into());
+        row.tool_diffs = Some(
+            r#"{"kept":[{"path":"src/lib.rs","old_text":null,"new_text":"fn main() {}","line":1}],
+                "gone":[{"path":"x","old_text":"a","new_text":"b","line":null}]}"#
+                .into(),
+        );
+        let json = serde_json::to_value(MessageInfoResponse::try_from(row).unwrap()).unwrap();
+        assert_eq!(
+            json["tool_diffs"],
+            serde_json::json!({ "kept": [{ "path": "src/lib.rs", "old_text": null, "new_text": "fn main() {}", "line": 1 }] })
+        );
+
+        let mut corrupt = exported_row("assistant", "");
+        corrupt.tool_diffs = Some("not json".into());
+        assert!(MessageInfoResponse::try_from(corrupt).is_err());
+
+        let mut user = exported_row("user", "hi");
+        user.tool_diffs = Some("{}".into());
+        assert!(MessageInfoResponse::try_from(user).is_err());
     }
 
     #[test]

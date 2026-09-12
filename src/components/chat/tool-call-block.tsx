@@ -67,6 +67,7 @@ import {
 import { BubbleBlockButton } from '@/components/ui/bubble-block'
 import { usePanelExpansion } from '@/hooks/use-panel-expansion'
 import { useEditLocation } from '@/hooks/use-edit-location'
+import { agentFileDiffs } from '@/lib/tool-diffs'
 import { ariaHotkey, formatHotkey } from '@/hooks/use-hotkey'
 import { APPROVE_HOTKEY, DENY_HOTKEY } from '@/hooks/use-transcript-hotkeys'
 import { cn } from '@/lib/utils'
@@ -2333,7 +2334,15 @@ export function ToolCallBlock({
     return {}
   }, [data.arguments])
 
-  const fileDiffs = useMemo(() => toolFileDiffs(data.tool_name, parsedArgs), [data.tool_name, parsedArgs])
+  // What the agent said it changed wins over what the arguments imply: it has
+  // the file's pre-overwrite text and each hunk's line, neither of which the
+  // arguments carry. Absent — every native call, and a hosted one before it
+  // ran — the diff is derived from the arguments as before.
+  const agentDiffs = data.diffs !== undefined && data.diffs.length > 0 ? data.diffs : null
+  const fileDiffs = useMemo(
+    () => (agentDiffs !== null ? agentFileDiffs(agentDiffs) : toolFileDiffs(data.tool_name, parsedArgs)),
+    [agentDiffs, data.tool_name, parsedArgs],
+  )
 
   // Open while it works or waits, shut once it has an outcome — unless the
   // reader said otherwise. Called before the specialised cards return, because
@@ -2344,7 +2353,8 @@ export function ToolCallBlock({
 
   // Where an edit lands. Asked here, ahead of the early returns, because it is
   // a hook; it asks nothing unless the call is an edit that has not run yet.
-  const isEdit = data.tool_name === 'edit_file' || data.tool_name === 'Edit'
+  // Not asked when the agent's own diff is here: its hunks carry their line.
+  const isEdit = agentDiffs === null && (data.tool_name === 'edit_file' || data.tool_name === 'Edit')
   const editLine = useEditLocation(
     data,
     isEdit && typeof parsedArgs.file_path === 'string' ? parsedArgs.file_path : null,
@@ -2356,6 +2366,8 @@ export function ToolCallBlock({
   // that read the file for `old_string`. Anything else is drawn unnumbered.
   const numberedDiffs = useMemo(() => {
     if (!fileDiffs) return null
+    // The agent's hunks are numbered where the agent said, or not at all.
+    if (agentDiffs !== null) return fileDiffs
     return fileDiffs.map((diff) => {
       if (data.tool_name === 'write_file' || data.tool_name === 'Write') {
         return { ...diff, lines: numberDiffLines(diff.lines, { oldStart: 1, newStart: 1 }) }
@@ -2368,7 +2380,7 @@ export function ToolCallBlock({
       const start = firstHunkStart(diff.lines)
       return start === null ? diff : { ...diff, lines: numberDiffLines(diff.lines, start) }
     })
-  }, [fileDiffs, data.tool_name, editLine])
+  }, [fileDiffs, agentDiffs, data.tool_name, editLine])
 
   // A hosted agent's questions and plans are the same two cards under different
   // names. Matching the name rather than translating it upstream keeps the

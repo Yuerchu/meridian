@@ -127,6 +127,13 @@ const validEvents: ChatStreamEvent[] = [
     },
   },
   {
+    type: 'tool_call_diff',
+    conversation_id: 'c1',
+    message_id: 'm1',
+    call_id: 'toolu_1',
+    diffs: [{ path: 'src/lib.rs', old_text: null, new_text: 'fn main() {}', line: null }],
+  },
+  {
     type: 'stop',
     reason: 'end_turn',
     message_id: 'm1',
@@ -328,6 +335,22 @@ describe('acp_notice', () => {
     ).toThrow('acp_notice event.notice.actions[0] must be one of')
     expect(() =>
       parseChatStreamEvent({ type: 'acp_notice', conversation_id: 'c1', notice: { ...notice, extra: 1 } }),
+    ).toThrow()
+  })
+})
+
+describe('tool_call_diff', () => {
+  const base = { type: 'tool_call_diff', conversation_id: 'c1', message_id: 'm1', call_id: 'toolu_1' }
+
+  it('rejects a hunk missing a nullable key, a zero line, or an unknown key', () => {
+    expect(() => parseChatStreamEvent({ ...base, diffs: [{ path: 'a', new_text: 'b', line: null }] })).toThrow(
+      'tool_call_diff event.diffs[0] is missing required field: old_text',
+    )
+    expect(() =>
+      parseChatStreamEvent({ ...base, diffs: [{ path: 'a', old_text: null, new_text: 'b', line: 0 }] }),
+    ).toThrow('tool_call_diff event.diffs[0].line must be an integer from 1')
+    expect(() =>
+      parseChatStreamEvent({ ...base, diffs: [{ path: 'a', old_text: null, new_text: 'b', line: 1, extra: 1 }] }),
     ).toThrow()
   })
 })

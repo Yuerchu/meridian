@@ -274,6 +274,11 @@ export function useGlobalEventListener() {
         return
       }
 
+      if (p.type === 'tool_call_diff') {
+        store.handleToolCallDiff(convId, p.message_id, p.call_id, p.diffs)
+        return
+      }
+
       const exhaustive: never = p
       throw new Error(`Unhandled chat stream event: ${String(exhaustive)}`)
     })

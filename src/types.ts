@@ -1126,6 +1126,20 @@ export interface ToolCallDisplay {
    *  person. Shown beside the status so a denial does not read as the model
    *  giving up on its own. */
   auto_review?: AutoReviewVerdictInfoResponse
+  /** What a hosted agent said this Edit/Write changed, one entry per hunk.
+   *  Preferred over the diff derived from the arguments when present: it
+   *  carries the file's pre-overwrite text and each hunk's line. */
+  diffs?: ToolCallDiffInfoResponse[]
+}
+
+/** One hunk of the diff a hosted agent reported. `old_text` is null for a
+ *  file that did not exist; `line` is the hunk's first line after the edit,
+ *  null when the adapter did not say. */
+export interface ToolCallDiffInfoResponse {
+  path: string
+  old_text: string | null
+  new_text: string
+  line: number | null
 }
 
 /** The delegated run a `run_agent` call started. */
@@ -1756,6 +1770,9 @@ export interface MessageInfoResponse {
   tool_outcome: ToolOutcome | null
   /** Automatic-review verdicts keyed by provider call id. */
   auto_review: Record<string, AutoReviewVerdictInfoResponse> | null
+  /** The diff a hosted agent reported per Edit/Write call, keyed by call id.
+   *  Null on every row the agent reported nothing for. */
+  tool_diffs: Record<string, ToolCallDiffInfoResponse[]> | null
   /** Frozen context bound to this branch. The raw body is fetched separately
    *  and never travels in an ordinary transcript snapshot. */
   context_items: MessageContextInfoResponse[]
@@ -2710,6 +2727,13 @@ export type ChatStreamEvent =
   | { type: 'acp_config'; conversation_id: string; config_options: AcpConfigOptionInfoResponse[] }
   | { type: 'acp_usage'; conversation_id: string; used: number; size: number }
   | { type: 'acp_notice'; conversation_id: string; notice: AcpSessionNoticeInfoResponse }
+  | {
+      type: 'tool_call_diff'
+      conversation_id: string
+      message_id: string
+      call_id: string
+      diffs: ToolCallDiffInfoResponse[]
+    }
   | {
       type: 'redaction_notice'
       conversation_id: string

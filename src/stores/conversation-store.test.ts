@@ -86,6 +86,7 @@ function msg(id: string, over: Partial<MessageViewModel> = {}): MessageViewModel
     turn_id: null,
     tool_outcome: null,
     auto_review: null,
+    tool_diffs: null,
     context_items: [],
     ...over,
   }
@@ -2231,5 +2232,32 @@ describe('the waiting-on-you queue', () => {
 
       expect(store().attentionOrder).toEqual(['appr-1'])
     })
+  })
+})
+
+describe('hydrateBlocks with agent-reported diffs', () => {
+  const hunk = { path: 'src/lib.rs', old_text: 'a', new_text: 'b', line: 3 }
+  const withCall = (toolDiffs: unknown) =>
+    msg('a', {
+      role: 'assistant',
+      tool_calls: [{ id: 'toolu_1', type: 'function', function: { name: 'Write', arguments: '{}' } }],
+      tool_diffs: toolDiffs as MessageInfoResponse['tool_diffs'],
+    })
+
+  /** The reload path: a stored diff reaches the card the same way a live
+   *  `tool_call_diff` would, keyed by the call it belongs to. */
+  it('puts the stored diff on its call and nothing on the others', () => {
+    const [row] = hydrateBlocks([withCall({ toolu_1: [hunk], toolu_9: [hunk] })])
+    const card = (row._blocks ?? []).find((b) => b.type === 'tool_call')
+    expect(card?.type === 'tool_call' && card.data.diffs).toEqual([hunk])
+  })
+
+  it('refuses a diff that does not have the wire shape', () => {
+    expect(() => hydrateBlocks([withCall({ toolu_1: [{ path: 'x', new_text: 'b', line: null }] })])).toThrow(
+      /tool_diffs\.toolu_1\[0\] is missing required field: old_text/,
+    )
+    expect(() => hydrateBlocks([msg('u', { role: 'user', tool_diffs: {} })])).toThrow(
+      'non-assistant message has tool_diffs',
+    )
   })
 })

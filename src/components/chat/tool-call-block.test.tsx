@@ -166,6 +166,30 @@ describe('ToolCallBlock file-edit diff rendering', () => {
     expect(container.querySelector('[data-slot="tool-args-list"]')).toBeNull()
   })
 
+  /**
+   * What the agent reported wins over what the arguments imply. A hosted
+   * `Write` over an existing file says, from the arguments, that every line
+   * was added; the agent's hunk carries the line it replaced and where.
+   */
+  it('draws the agent-reported diff over the argument-derived one, numbered from its hunk', () => {
+    const data = {
+      ...toolCall('Write', { file_path: 'src/lib.rs', content: 'line1\nNEW line2\nline3' }, 'completed'),
+      diffs: [
+        { path: 'src/lib.rs', old_text: 'line1\nold line2\nline3', new_text: 'line1\nNEW line2\nline3', line: 1 },
+      ],
+    }
+    const { container } = render(<ToolCallBlock data={data} />)
+    fireEvent.click(container.querySelector('[data-slot="chat-tool-trigger"]')!)
+
+    const text = diffText(container)
+    expect(text).toContain('old line2')
+    expect(text).toContain('NEW line2')
+    expect(screen.getByText('-1')).toBeVisible()
+    // Numbered from the hunk's own line rather than from 1-as-a-whole-file.
+    const numbered = container.querySelector('[data-slot="file-diff-line"][data-kind="remove"]')
+    expect(numbered?.textContent).toContain('2')
+  })
+
   it('keeps a large file diff bounded until the user asks for every line', async () => {
     const content = Array.from({ length: 320 }, (_, index) => `line-${index}`).join('\n')
     const { container } = render(<ToolCallBlock data={toolCall('write_file', { path: 'notes/large.txt', content })} />)

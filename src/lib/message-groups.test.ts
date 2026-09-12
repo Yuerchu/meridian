@@ -33,6 +33,7 @@ function msg(role: MessageViewModel['role'], over: Partial<MessageViewModel> = {
     turn_id: null,
     tool_outcome: null,
     auto_review: null,
+    tool_diffs: null,
     context_items: [],
     ...over,
   }

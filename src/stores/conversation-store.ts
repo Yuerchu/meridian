@@ -19,11 +19,12 @@ import type {
   SubAgentKind,
   SubAgentRunInfoResponse,
   AcpSessionNoticeInfoResponse,
+  ToolCallDiffInfoResponse,
   TodoInfoResponse,
   ToolCallDisplay,
   TurnInfoResponse,
 } from '@/types'
-import { requireAcpSessionNotice } from '@/lib/chat-stream-event'
+import { requireAcpSessionNotice, requireToolCallDiffs } from '@/lib/chat-stream-event'
 import { mergeAcpNotice } from '@/lib/acp-notices'
 import { usePlanReviewStore, type PlanReviewEventInfo } from '@/stores/plan-review-store'
 
@@ -246,6 +247,7 @@ const MESSAGE_RESPONSE_KEYS = [
   'turn_id',
   'tool_outcome',
   'auto_review',
+  'tool_diffs',
   'context_items',
 ] as const
 
@@ -394,6 +396,10 @@ function validateSnapshotContracts(
     if (message.role !== 'assistant' && message.auto_review !== null) {
       throw new Error('non-assistant message has auto_review')
     }
+    parseToolDiffs(message.tool_diffs)
+    if (message.role !== 'assistant' && message.tool_diffs !== null) {
+      throw new Error('non-assistant message has tool_diffs')
+    }
     const callIds = new Set(calls.map((call) => call.id))
     for (const callId of Object.keys(reviews)) {
       if (!callIds.has(callId)) delete reviews[callId]
@@ -479,6 +485,17 @@ function parseAutoReview(raw: unknown): Record<string, AutoReviewVerdictInfoResp
   )
 }
 
+/** The row's agent-reported diffs, keyed by call id, checked to the same
+ *  shape the live event is. `{}` for a row with none. */
+function parseToolDiffs(raw: unknown): Record<string, ToolCallDiffInfoResponse[]> {
+  if (raw == null) return {}
+  const parsed = requireRecord(raw, 'message.tool_diffs')
+  for (const [callId, hunks] of Object.entries(parsed)) {
+    requireToolCallDiffs(hunks, `message.tool_diffs.${callId}`)
+  }
+  return parsed as Record<string, ToolCallDiffInfoResponse[]>
+}
+
 export function hydrateBlocks(
   msgs: MessageInfoResponse[],
   pending: PendingApprovalInfoResponse[] = [],
@@ -511,6 +528,7 @@ export function hydrateBlocks(
       // Consumed as they match, for the same reason as the approvals.
       const owned = [...(answers.get(m.id) ?? [])]
       const reviewed = parseAutoReview(m.auto_review)
+      const diffed = parseToolDiffs(m.tool_diffs)
       for (const tc of tcs) {
         const answered = owned.findIndex((tm) => tm.tool_call_id === tc.id)
         const toolMsg = answered >= 0 ? owned.splice(answered, 1)[0] : undefined
@@ -564,6 +582,7 @@ export function hydrateBlocks(
                 }
               : undefined,
             auto_review: reviewed[tc.id],
+            diffs: diffed[tc.id],
           },
         })
         if (toolMsg && outcomeOf(toolMsg) === 'completed' && tc.function.name === 'send_sticker') {
@@ -691,7 +710,7 @@ function keepAnswered(local: MessageViewModel, fresh: MessageViewModel): Message
 function sameStoredFields(a: MessageViewModel, b: MessageViewModel): boolean {
   for (const key of Object.keys(b) as (keyof MessageViewModel)[]) {
     if (key === '_blocks') continue
-    if (key === 'tool_calls' || key === 'auto_review' || key === 'context_items') {
+    if (key === 'tool_calls' || key === 'auto_review' || key === 'tool_diffs' || key === 'context_items') {
       if (JSON.stringify(a[key]) !== JSON.stringify(b[key])) return false
       continue
     }
@@ -1214,6 +1233,10 @@ export interface ConversationStore {
    *  higher; a replay of what is already held changes nothing. */
   handleAcpNotice: (convId: string, notice: AcpSessionNoticeInfoResponse) => void
   handleAutoReview: (convId: string, messageId: string, callId: string, verdict: AutoReviewVerdictInfoResponse) => void
+  /** A hosted agent said what an Edit/Write changed. Lands on the card
+   *  whatever its status: the refinement routinely arrives after the call's
+   *  result, and a reload can put it after `completed`. */
+  handleToolCallDiff: (convId: string, messageId: string, callId: string, diffs: ToolCallDiffInfoResponse[]) => void
   /** The answer never landed — the backend has forgotten this request. Drops
    *  the buttons rather than leaving one that cannot work. Takes no
    *  conversation id: the approval id is a UUID, and a tool card does not know
@@ -1689,6 +1712,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           turn_id: null,
           tool_outcome: null,
           auto_review: null,
+          tool_diffs: null,
           context_items: [],
         })
       }),
@@ -1737,6 +1761,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           turn_id: null,
           tool_outcome: null,
           auto_review: null,
+          tool_diffs: null,
           context_items: [],
         })
       }),
@@ -2136,6 +2161,18 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         const target = session.messages.find((m) => m.id === messageId)
         const card = (target?._blocks ?? []).find((b) => b.type === 'tool_call' && b.data.call_id === callId)
         if (card?.type === 'tool_call') card.data.auto_review = verdict
+      }),
+    )
+  },
+
+  handleToolCallDiff: (convId, messageId, callId, diffs) => {
+    set(
+      produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (!session) return
+        const target = session.messages.find((m) => m.id === messageId)
+        const card = (target?._blocks ?? []).find((b) => b.type === 'tool_call' && b.data.call_id === callId)
+        if (card?.type === 'tool_call') card.data.diffs = diffs
       }),
     )
   },

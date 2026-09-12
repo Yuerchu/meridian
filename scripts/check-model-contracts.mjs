@@ -714,6 +714,7 @@ requireRustFields(messageCommandFile, 'MessageInfoResponse', {
   rating: /^Option<MessageRating>$/,
   tool_outcome: /^Option<ToolOutcome>$/,
   auto_review: /^Option<(?:std::collections::)?BTreeMap<String, AutoReviewVerdictInfoResponse>>$/,
+  tool_diffs: /^Option<(?:std::collections::)?BTreeMap<String, Vec<ToolCallDiffInfoResponse>>>$/,
 })
 if (/struct AutoReviewVerdictInfoResponse[\s\S]{0,900}?skip_serializing_if/.test(messageCommandSource ?? '')) {
   add(messageCommandFile, 'AutoReviewVerdictInfoResponse nullable key 与 evidence 必须始终序列化')

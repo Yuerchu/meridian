@@ -22,6 +22,7 @@ const CHAT_STREAM_EVENT_TYPES = {
   acp_config: true,
   acp_usage: true,
   acp_notice: true,
+  tool_call_diff: true,
   redaction_notice: true,
   stop: true,
 } satisfies Record<ChatStreamEvent['type'], true>
@@ -120,6 +121,19 @@ export function requireAcpSessionNotice(value: unknown, label: string): void {
   if (!Array.isArray(notice.actions)) throw new Error(`${label}.actions must be an array`)
   for (const [index, action] of notice.actions.entries()) {
     requireClosedString(action, ACP_NOTICE_ACTIONS, `${label}.actions[${index}]`)
+  }
+}
+
+/** A hosted agent's hunk list: every hunk with its two nullable keys present,
+ *  `line` a positive integer or null. Shared by the live event and the
+ *  snapshot's `tool_diffs`. */
+export function requireToolCallDiffs(value: unknown, label: string): void {
+  if (!Array.isArray(value)) throw new Error(`${label} must be an array`)
+  for (const [index, item] of value.entries()) {
+    const hunk = requireShape(item, ['path', 'old_text', 'new_text', 'line'], [], `${label}[${index}]`)
+    requireStringFields(hunk, ['path', 'new_text'], `${label}[${index}]`)
+    requireNullableString(hunk, 'old_text', `${label}[${index}]`)
+    if (hunk.line !== null) requireInteger(hunk.line, 1, Number.MAX_SAFE_INTEGER, `${label}[${index}].line`)
   }
 }
 
@@ -381,6 +395,17 @@ export function parseChatStreamEvent(value: unknown): ChatStreamEvent {
       requireStringFields(event, ['type', 'conversation_id'], 'acp_usage event')
       requireInteger(event.used, 0, Number.MAX_SAFE_INTEGER, 'acp_usage event.used')
       requireInteger(event.size, 0, Number.MAX_SAFE_INTEGER, 'acp_usage event.size')
+      break
+    }
+    case 'tool_call_diff': {
+      const event = requireShape(
+        value,
+        ['type', 'conversation_id', 'message_id', 'call_id', 'diffs'],
+        [],
+        'tool_call_diff event',
+      )
+      requireStringFields(event, ['type', 'conversation_id', 'message_id', 'call_id'], 'tool_call_diff event')
+      requireToolCallDiffs(event.diffs, 'tool_call_diff event.diffs')
       break
     }
     case 'acp_notice': {
