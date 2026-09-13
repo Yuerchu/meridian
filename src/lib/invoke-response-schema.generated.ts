@@ -4058,6 +4058,10 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         {
           "kind": "literal",
           "value": "gemma_tool"
+        },
+        {
+          "kind": "literal",
+          "value": "litert_lm"
         }
       ]
     },
@@ -4075,12 +4079,20 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         {
           "kind": "literal",
           "value": "chatgpt_oauth"
+        },
+        {
+          "kind": "literal",
+          "value": "none"
         }
       ]
     },
     {
       "kind": "union",
       "variants": [
+        {
+          "kind": "literal",
+          "value": "litert_lm"
+        },
         {
           "kind": "literal",
           "value": "openai"
@@ -4113,6 +4125,10 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         {
           "kind": "literal",
           "value": "chatgpt_codex"
+        },
+        {
+          "kind": "literal",
+          "value": "local_native"
         }
       ]
     },
@@ -7843,6 +7859,12 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           }
         },
         "gemma_tool": {
+          "optional": true,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "litert_lm": {
           "optional": true,
           "schema": {
             "kind": "string"

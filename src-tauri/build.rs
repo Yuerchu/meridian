@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 fn main() {
     stage_sherpa_runtime();
+    stage_litert_runtime();
     tauri_build::build()
 }
 
@@ -88,6 +89,44 @@ fn profile_dir() -> Option<PathBuf> {
         .ancestors()
         .find(|p| p.file_name() == Some(std::ffi::OsStr::new(&profile)))
         .map(Path::to_path_buf)
+}
+
+/// Stage LiteRT-LM DLLs from a known location into `resources/`.
+///
+/// The DLLs come from the Python `litert-lm` package (v0.17.0+), which bundles
+/// a self-contained `litert-lm.dll` with GPU acceleration statically linked.
+/// Windows needs three files: `litert-lm.dll`, `dxcompiler.dll`, `dxil.dll`.
+///
+/// Set `LITERT_LM_STAGE_DIR` to a directory containing the DLLs. When unset,
+/// staging is skipped and the app runs without on-device LLM support.
+fn stage_litert_runtime() {
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+        return;
+    }
+
+    const LITERT_DLLS: [&str; 3] = ["litert-lm.dll", "dxcompiler.dll", "dxil.dll"];
+
+    let staged = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("resources");
+    let _ = std::fs::create_dir_all(&staged);
+
+    let stage_path = std::env::var("LITERT_LM_STAGE_DIR").ok().map(PathBuf::from);
+
+    for name in LITERT_DLLS {
+        let to = staged.join(name);
+        if let Some(ref dir) = stage_path {
+            let from = dir.join(name);
+            if from.exists() && !is_current(&from, &to) {
+                if let Err(e) = std::fs::copy(&from, &to) {
+                    println!("cargo:warning=could not stage {name}: {e}");
+                }
+                continue;
+            }
+        }
+        if !to.exists() {
+            let _ = std::fs::write(&to, []);
+        }
+    }
+    println!("cargo:rerun-if-env-changed=LITERT_LM_STAGE_DIR");
 }
 
 fn is_current(from: &Path, to: &Path) -> bool {

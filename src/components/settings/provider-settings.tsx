@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useId, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import { Plus, ArrowsRotateRight, TrashBin, Cloud, Key, Sliders, Xmark } from '@gravity-ui/icons'
 import {
   Alert,
@@ -103,7 +104,7 @@ function entryByType(
   return catalog.find((e) => e.provider_type === providerType)
 }
 
-const PROVIDER_TYPES = new Set<ProviderType>(['openai', 'anthropic', 'deepseek', 'xai', 'google'])
+const PROVIDER_TYPES = new Set<ProviderType>(['openai', 'anthropic', 'deepseek', 'xai', 'google', 'litert_lm'])
 
 function requireProviderType(value: string): ProviderType {
   if (!PROVIDER_TYPES.has(value as ProviderType)) throw new Error(`unknown provider type ${JSON.stringify(value)}`)
@@ -117,15 +118,6 @@ function requireProviderType(value: string): ProviderType {
  * entry is known, a missing match is corrupt first-party state rather than a
  * request to reinterpret the row under a different login.
  */
-function authFor(
-  entry: ProviderCatalogEntryInfoResponse | undefined,
-  credentialKind: string,
-): ProviderCatalogAuthOptionInfoResponse | undefined {
-  if (!entry) return undefined
-  const auth = entry.auth.find((candidate) => candidate.credential_kind === credentialKind)
-  if (!auth) throw new Error(`unknown credential kind ${JSON.stringify(credentialKind)} for catalog entry ${entry.id}`)
-  return auth
-}
 
 /**
  * The dialects available under one sign-in option.
@@ -164,6 +156,7 @@ function parseProviderApiFormat(value: string): ProviderApiFormat {
     case 'responses':
     case 'gemini_generate_content':
     case 'gemma_tool':
+    case 'litert_lm':
       return value
     default:
       throw new Error(`unknown provider API format: ${value}`)
@@ -180,6 +173,18 @@ function usesChatGptLogin(provider: ProviderInfoResponse): boolean {
   return provider.credential_kind === 'codex_cli' || provider.credential_kind === 'chatgpt_oauth'
 }
 
+function isLocalProvider(provider: ProviderInfoResponse): boolean {
+  return provider.credential_kind === 'none'
+}
+
+async function pickModelFile(): Promise<string | null> {
+  const file = await dialogOpen({
+    multiple: false,
+    filters: [{ name: 'LiteRT-LM model', extensions: ['litertlm'] }],
+  }).catch(() => null)
+  return typeof file === 'string' ? file : null
+}
+
 /**
  * Display names for the closed sign-in-kind set. Adding one requires adding
  * its backend resolver and its UI label in the same change.
@@ -188,6 +193,7 @@ const AUTH_METHOD_LABELS: Record<string, string> = {
   api_key: 'settings.provider.authMethodApiKey',
   codex_cli: 'settings.provider.authMethodCodexCli',
   chatgpt_oauth: 'settings.provider.authMethodChatGptOauth',
+  none: 'settings.provider.authMethodNone',
 }
 
 function authMethodLabel(credentialKind: string): string {
@@ -1120,6 +1126,10 @@ function ProviderEditor({
   }, [confirm, t, onDelete, provider.id])
 
   useEffect(() => {
+    if (provider.credential_kind === 'none') {
+      setKeyStatus('set')
+      return
+    }
     let cancelled = false
     setKeyStatus('loading')
     api
@@ -1134,13 +1144,17 @@ function ProviderEditor({
     return () => {
       cancelled = true
     }
-  }, [provider.id])
+  }, [provider.id, provider.credential_kind])
 
   // The sign-in option the form is under right now: the row's stored kind
   // resolved against the entry the persisted type names. A type transition
   // chooses a new login explicitly in `handleProviderTypeChange`; persisted
   // mismatches are rejected here.
-  const activeAuth = authFor(entryByType(catalog, providerType), provider.credential_kind)
+  const activeAuth = (() => {
+    const entry = entryByType(catalog, providerType)
+    if (!entry) return undefined
+    return entry.auth.find((a) => a.credential_kind === provider.credential_kind) ?? entry.auth[0]
+  })()
 
   const handleSave = useCallback(async () => {
     // A changed type can leave the row under a sign-in its new vendor does not
@@ -1492,19 +1506,48 @@ function ProviderEditor({
         />
       )}
 
-      <TextField fullWidth type="url">
-        <Label>{t('settings.provider.baseUrl')}</Label>
-        <Input
-          name={`providerBaseUrl-${provider.id}`}
-          inputMode="url"
-          spellCheck={false}
-          value={baseUrl}
-          onChange={(e) => setBaseUrl(e.target.value)}
-          placeholder={
-            defaultUrlFor(activeAuth, apiFormat) ?? URL_PLACEHOLDERS[apiFormat] ?? URL_PLACEHOLDERS.chat_completions
-          }
-        />
-      </TextField>
+      {activeAuth?.credential_kind === 'none' ? (
+        <div data-slot="model-path-picker" className="space-y-1.5">
+          <Label>{t('settings.provider.modelPath', 'Model file path')}</Label>
+          <div data-slot="model-path-row" className="flex gap-2">
+            <TextField fullWidth>
+              <Input
+                name={`providerModelPath-${provider.id}`}
+                spellCheck={false}
+                value={baseUrl === 'local://' ? '' : baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                placeholder={t('settings.provider.modelPathPlaceholder', 'Select a .litertlm model file')}
+              />
+            </TextField>
+            <Button
+              variant="outline"
+              onPress={async () => {
+                const file = await pickModelFile()
+                if (file) setBaseUrl(file)
+              }}
+            >
+              {t('settings.provider.browseModel', 'Browse')}
+            </Button>
+          </div>
+          <Description className="text-xs text-muted">
+            {t('settings.provider.modelPathHint', 'Absolute path to the .litertlm model file')}
+          </Description>
+        </div>
+      ) : (
+        <TextField fullWidth type="url">
+          <Label>{t('settings.provider.baseUrl')}</Label>
+          <Input
+            name={`providerBaseUrl-${provider.id}`}
+            inputMode="url"
+            spellCheck={false}
+            value={baseUrl}
+            onChange={(e) => setBaseUrl(e.target.value)}
+            placeholder={
+              defaultUrlFor(activeAuth, apiFormat) ?? URL_PLACEHOLDERS[apiFormat] ?? URL_PLACEHOLDERS.chat_completions
+            }
+          />
+        </TextField>
+      )}
 
       {/* One dialect means there is nothing to choose — which is what the old
           `SINGLE_FORMAT_TYPES` denylist said about Anthropic, now read off the
@@ -1533,7 +1576,7 @@ function ProviderEditor({
       {/* A sign-in that has no key must not be shown a key field: there is
           nothing to type, and an empty one reads as a step left undone. What
           replaces it is the account the session belongs to. */}
-      {usesChatGptLogin(provider) ? (
+      {activeAuth?.credential_kind === 'none' ? null : usesChatGptLogin(provider) ? (
         <CodexAccount />
       ) : (
         <div data-slot="provider-credentials" className="border-t border-border pt-4 space-y-3">
@@ -1661,7 +1704,9 @@ function ProviderEditor({
           <Button
             variant="outline"
             onPress={handleFetchModels}
-            isDisabled={fetchingModels || (!usesChatGptLogin(provider) && keyStatus !== 'set')}
+            isDisabled={
+              fetchingModels || (!usesChatGptLogin(provider) && !isLocalProvider(provider) && keyStatus !== 'set')
+            }
           >
             {fetchingModels ? <Spinner size="sm" color="current" /> : <ArrowsRotateRight className="w-3.5 h-3.5" />}
             {t('settings.provider.fetchModels')}
