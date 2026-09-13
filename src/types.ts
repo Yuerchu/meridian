@@ -1842,10 +1842,11 @@ export type StoredThinkingLevel = Exclude<ThinkingLevel, 'default'>
 /** Provider-specific wire shape used to enable or disable model reasoning. */
 export type ThinkingStyle = 'none' | 'effort_only' | 'budget' | 'adaptive' | 'always_on' | 'toggle_off'
 
-export type ProviderApiFormat = 'chat_completions' | 'responses' | 'gemini_generate_content' | 'gemma_tool'
-export type ProviderCredentialKind = 'api_key' | 'codex_cli' | 'chatgpt_oauth'
-export type ProviderTransportProfile = 'standard' | 'chatgpt_codex'
-export type ProviderType = 'openai' | 'anthropic' | 'deepseek' | 'xai' | 'google'
+export type ProviderApiFormat =
+  'chat_completions' | 'responses' | 'gemini_generate_content' | 'gemma_tool' | 'litert_lm'
+export type ProviderCredentialKind = 'api_key' | 'codex_cli' | 'chatgpt_oauth' | 'none'
+export type ProviderTransportProfile = 'standard' | 'chatgpt_codex' | 'local_native'
+export type ProviderType = 'openai' | 'anthropic' | 'deepseek' | 'xai' | 'google' | 'litert_lm'
 
 export interface ProviderInfoResponse {
   id: string

@@ -835,7 +835,7 @@ pub async fn fetch_provider_models(
     // request that comes back as an unexplained 401.
     let api_key = match get_provider_api_key(&secrets, &provider_id) {
         Some(key) => key,
-        None if transport_profile == "chatgpt_codex" => String::new(),
+        None if transport_profile == "chatgpt_codex" || transport_profile == "local_native" => String::new(),
         None => return Err("API Key not set for this provider".into()),
     };
 
