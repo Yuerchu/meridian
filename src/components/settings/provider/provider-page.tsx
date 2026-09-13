@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import { Bin, Key, Plus, RefreshCw } from '@keyline-icons/react/two-tone'
 import {
   Alert,
@@ -33,7 +34,6 @@ import { useSettingsDraft, useSettingsResume } from '../settings-stack'
 import { CodexAccount } from './codex-account'
 import { ProviderIconPicker } from './icon-picker'
 import {
-  authFor,
   authMethodLabel,
   balanceEntry,
   defaultUrlFor,
@@ -56,6 +56,14 @@ import type {
   ProviderApiFormat,
 } from '@/types'
 import { titleIfTruncated } from '@/lib/truncation'
+
+async function pickModelFile(): Promise<string | null> {
+  const file = await dialogOpen({
+    multiple: false,
+    filters: [{ name: 'LiteRT-LM model', extensions: ['litertlm'] }],
+  }).catch(() => null)
+  return typeof file === 'string' ? file : null
+}
 
 /** Only the Responses adapter reads the column; a ChatGPT login is that shape already. */
 function offersCodexRequestShapeFor(apiFormat: ProviderApiFormat, provider: ProviderInfoResponse): boolean {
@@ -280,6 +288,10 @@ function ProviderEditor({
   }, [])
 
   useEffect(() => {
+    if (provider.credential_kind === 'none') {
+      setKeyStatus('set')
+      return
+    }
     let cancelled = false
     setKeyStatus('loading')
     api
@@ -294,7 +306,7 @@ function ProviderEditor({
     return () => {
       cancelled = true
     }
-  }, [provider.id])
+  }, [provider.id, provider.credential_kind])
 
   // The vendor this row is, which is not the same question as which adapter
   // family it uses — three of them are `openai`.
@@ -304,7 +316,10 @@ function ProviderEditor({
   // resolved against its vendor's entry. A type transition chooses a new login
   // explicitly in `handleProviderTypeChange`; persisted mismatches are rejected
   // here.
-  const activeAuth = authFor(rowEntry, provider.credential_kind)
+  const activeAuth = (() => {
+    if (!rowEntry) return undefined
+    return rowEntry.auth.find((a) => a.credential_kind === provider.credential_kind) ?? rowEntry.auth[0]
+  })()
 
   // Only the Responses adapter reads the column, so only a Responses row is
   // offered the switch. A `chatgpt_codex` row is the shape already — it goes to
@@ -790,27 +805,62 @@ function ProviderEditor({
           </SettingsRow>
         )}
 
-        <SettingsRow
-          label={t('settings.provider.baseUrl')}
-          stacked
-          className="@sm/pane:flex-col @sm/pane:items-stretch"
-        >
-          {({ labelId }) => (
-            <Input
-              aria-labelledby={labelId}
-              name={`providerBaseUrl-${provider.id}`}
-              type="url"
-              inputMode="url"
-              spellCheck={false}
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
-              placeholder={
-                defaultUrlFor(activeAuth, apiFormat) ?? URL_PLACEHOLDERS[apiFormat] ?? URL_PLACEHOLDERS.chat_completions
-              }
-              fieldClassName="w-full"
-            />
-          )}
-        </SettingsRow>
+        {activeAuth?.credential_kind === 'none' ? (
+          <SettingsRow
+            label={t('settings.provider.modelPath')}
+            description={t('settings.provider.modelPathHint')}
+            stacked
+            className="@sm/pane:flex-col @sm/pane:items-stretch"
+          >
+            {({ labelId }) => (
+              <div data-slot="model-path-row" className="flex w-full gap-2">
+                <Input
+                  aria-labelledby={labelId}
+                  name={`providerModelPath-${provider.id}`}
+                  spellCheck={false}
+                  value={baseUrl === 'local://' ? '' : baseUrl}
+                  onChange={(e) => setBaseUrl(e.target.value)}
+                  placeholder={t('settings.provider.modelPathPlaceholder')}
+                  fieldClassName="w-full"
+                />
+                <Button
+                  size="small"
+                  variant="secondary"
+                  onPress={async () => {
+                    const file = await pickModelFile()
+                    if (file) setBaseUrl(file)
+                  }}
+                >
+                  {t('settings.provider.browseModel')}
+                </Button>
+              </div>
+            )}
+          </SettingsRow>
+        ) : (
+          <SettingsRow
+            label={t('settings.provider.baseUrl')}
+            stacked
+            className="@sm/pane:flex-col @sm/pane:items-stretch"
+          >
+            {({ labelId }) => (
+              <Input
+                aria-labelledby={labelId}
+                name={`providerBaseUrl-${provider.id}`}
+                type="url"
+                inputMode="url"
+                spellCheck={false}
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                placeholder={
+                  defaultUrlFor(activeAuth, apiFormat) ??
+                  URL_PLACEHOLDERS[apiFormat] ??
+                  URL_PLACEHOLDERS.chat_completions
+                }
+                fieldClassName="w-full"
+              />
+            )}
+          </SettingsRow>
+        )}
 
         {/* One dialect means there is nothing to choose — which is what the old
             `SINGLE_FORMAT_TYPES` denylist said about Anthropic, now read off the
@@ -897,7 +947,7 @@ function ProviderEditor({
       {/* A sign-in that has no key must not be shown a key field: there is
           nothing to type, and an empty one reads as a step left undone. What
           replaces it is the account the session belongs to. */}
-      {usesChatGptLogin(provider) ? (
+      {activeAuth?.credential_kind === 'none' ? null : usesChatGptLogin(provider) ? (
         <CodexAccount />
       ) : (
         <div data-slot="provider-credentials" className="flex flex-col gap-2">
@@ -1095,7 +1145,7 @@ function ProviderEditor({
               leadingIcon={RefreshCw}
               variant="secondary"
               onPress={handleFetchModels}
-              isDisabled={!usesChatGptLogin(provider) && keyStatus !== 'set'}
+              isDisabled={activeAuth?.credential_kind !== 'none' && !usesChatGptLogin(provider) && keyStatus !== 'set'}
               isPending={fetchingModels}
             >
               {t('settings.provider.fetchModels')}

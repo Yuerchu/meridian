@@ -125,7 +125,7 @@ export function balanceEntry(
   return namedVendor(catalog, catalogId, providerType)
 }
 
-export const PROVIDER_TYPES = new Set<ProviderType>(['openai', 'anthropic', 'deepseek', 'xai', 'google'])
+export const PROVIDER_TYPES = new Set<ProviderType>(['openai', 'anthropic', 'deepseek', 'xai', 'google', 'litert_lm'])
 
 export function requireProviderType(value: string): ProviderType {
   if (!PROVIDER_TYPES.has(value as ProviderType)) throw new Error(`unknown provider type ${JSON.stringify(value)}`)
@@ -187,6 +187,7 @@ export function parseProviderApiFormat(value: string): ProviderApiFormat {
     case 'gemini_generate_content':
     case 'gemini_interactions':
     case 'gemma_tool':
+    case 'litert_lm':
       return value
     default:
       throw new Error(`unknown provider API format: ${value}`)
@@ -204,6 +205,11 @@ export function usesChatGptLogin(provider: ProviderInfoResponse): boolean {
   return provider.credential_kind === 'codex_cli' || provider.credential_kind === 'chatgpt_oauth'
 }
 
+/** Whether this row runs a local on-device model and needs no credential. */
+export function isLocalProvider(provider: ProviderInfoResponse): boolean {
+  return provider.credential_kind === 'none'
+}
+
 /** Whether this row authenticates Vertex with a service-account JSON document. */
 export function usesVertexServiceAccount(provider: ProviderInfoResponse): boolean {
   return provider.credential_kind === 'google_vertex_service_account'
@@ -218,6 +224,7 @@ export const AUTH_METHOD_LABELS: Record<string, string> = {
   google_vertex_service_account: 'settings.provider.authMethodGoogleVertexServiceAccount',
   codex_cli: 'settings.provider.authMethodCodexCli',
   chatgpt_oauth: 'settings.provider.authMethodChatGptOauth',
+  none: 'settings.provider.authMethodNone',
 }
 
 export function authMethodLabel(credentialKind: string): string {

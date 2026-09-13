@@ -2065,10 +2065,11 @@ export type StoredThinkingLevel = Exclude<ThinkingLevel, 'default'>
 export type ThinkingStyle = 'none' | 'effort_only' | 'budget' | 'adaptive' | 'always_on' | 'toggle_off'
 
 export type ProviderApiFormat =
-  'chat_completions' | 'responses' | 'gemini_generate_content' | 'gemini_interactions' | 'gemma_tool'
-export type ProviderCredentialKind = 'api_key' | 'google_vertex_service_account' | 'codex_cli' | 'chatgpt_oauth'
-export type ProviderTransportProfile = 'standard' | 'chatgpt_codex'
-export type ProviderType = 'openai' | 'anthropic' | 'deepseek' | 'xai' | 'google'
+  'chat_completions' | 'responses' | 'gemini_generate_content' | 'gemini_interactions' | 'gemma_tool' | 'litert_lm'
+export type ProviderCredentialKind =
+  'api_key' | 'google_vertex_service_account' | 'codex_cli' | 'chatgpt_oauth' | 'none'
+export type ProviderTransportProfile = 'standard' | 'chatgpt_codex' | 'local_native'
+export type ProviderType = 'openai' | 'anthropic' | 'deepseek' | 'xai' | 'google' | 'litert_lm'
 
 export interface ProviderInfoResponse {
   id: string

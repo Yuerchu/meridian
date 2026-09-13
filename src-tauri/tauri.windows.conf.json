@@ -3,7 +3,10 @@
     "resources": {
       "resources/sherpa-onnx-c-api.dll": "./",
       "resources/onnxruntime.dll": "./",
-      "resources/onnxruntime_providers_shared.dll": "./"
+      "resources/onnxruntime_providers_shared.dll": "./",
+      "resources/litert-lm.dll": "./",
+      "resources/dxcompiler.dll": "./",
+      "resources/dxil.dll": "./"
     }
   }
 }
