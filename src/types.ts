@@ -2120,7 +2120,6 @@ export interface OneBotConfigInfoResponse {
   assistant_id: string | null
   admin_users: number[]
   ack_emoji_id: string
-  balance_alert_threshold: DecimalString | null
   voice_capture_sessions: string[]
   voice_send_enabled: boolean
   voice_send_groups: string[]
@@ -2137,7 +2136,6 @@ export interface OneBotConfigUpdateRequest {
   assistant_id: string | null
   admin_users: number[]
   ack_emoji_id: string
-  balance_alert_threshold: DecimalString | null
   voice_capture_sessions: string[]
   voice_send_enabled: boolean
   voice_send_groups: string[]

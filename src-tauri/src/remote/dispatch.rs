@@ -517,6 +517,20 @@ mod tests {
             // guard against. The check runs that same binary.
             "acp_save_config",
             "acp_check_adapter",
+            // The notification endpoints, and again not for self-lockout. The
+            // URL decides where an alert naming a provider and an amount of
+            // money is delivered, so a remote caller able to write one
+            // redirects the alerts; the signing secret beside it is a
+            // credential. Reading the list back is `local` for the same reason
+            // `get_onebot_config` is — it carries those URLs, whose query
+            // strings are how DingTalk and WeCom authenticate a robot.
+            "get_notify_config",
+            "save_notify_config",
+            "list_notification_webhooks",
+            "create_notification_webhook",
+            "update_notification_webhook",
+            "delete_notification_webhook",
+            "test_notification_webhook",
             // Same ACE as `acp.command`: a stdio MCP server is a binary this
             // app spawns, and a custom tool with `permission: always` is a
             // shell command that never asks.

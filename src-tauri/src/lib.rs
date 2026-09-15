@@ -102,6 +102,8 @@ pub fn run() {
             #[cfg(not(target_os = "android"))]
             let remote_config = remote::load_config(&services.db)
                 .map_err(|error| std::io::Error::other(format!("invalid stored remote config: {error}")))?;
+            let notify_config = meridian_core::notify::load_config(&services.db)
+                .map_err(|error| std::io::Error::other(format!("invalid stored notification config: {error}")))?;
             // The one thing core needs from up here: how to run a turn. The
             // prompt queue lives below the line and has to be able to start
             // one, and `commands::chat` is a Tauri command. Set before anything
@@ -147,6 +149,17 @@ pub fn run() {
                 let handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     handle.manage(remote::maybe_start(services, remote_config, handle.clone()).await);
+                });
+            }
+
+            // Registered even when the watcher is switched off, so the IPC
+            // commands always have something to talk to — the same arrangement
+            // the three listeners above use.
+            {
+                let services = services.clone();
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    handle.manage(meridian_core::notify::maybe_start(services, notify_config).await);
                 });
             }
 

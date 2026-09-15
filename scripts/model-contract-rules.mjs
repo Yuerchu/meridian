@@ -146,8 +146,21 @@ export function rustTauriCommandDeclarations(source) {
   return declarations
 }
 
+/**
+ * A duration or a tally, which is never an amount of money however the rest of
+ * the name reads. `balance_interval_minutes` is how often to ask an upstream
+ * for a balance; `baseline_windows` is a count of time windows. Without this
+ * the money rule forces those to be renamed away from the word the domain
+ * actually uses, which costs clarity to satisfy a heuristic.
+ */
+const UNIT_SUFFIX = /_(?:ms|secs|seconds|minutes|hours|days|tokens|count|windows|messages)$/
+
 export function isMoneyLeafField(name) {
   if (name === 'balance') return false // provider catalog capability, not an amount
+  // A flag is not an amount. `balance_watch_enabled` says whether to look, and
+  // the value it eventually reports is a separate Decimal field.
+  if (isBooleanField(name)) return false
+  if (UNIT_SUFFIX.test(name)) return false
   return /(?:^|_)(?:price|cost|balance|amount)(?:_|$)/.test(name)
 }
 

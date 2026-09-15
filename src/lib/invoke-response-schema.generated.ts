@@ -6184,13 +6184,6 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
             "id": 2
           }
         },
-        "balance_alert_threshold": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 86
-          }
-        },
         "enabled": {
           "optional": false,
           "schema": {

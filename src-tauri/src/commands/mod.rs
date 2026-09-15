@@ -18,6 +18,7 @@ pub mod mcp;
 pub mod memory;
 pub mod message;
 pub mod model_config;
+pub mod notify;
 #[cfg(not(target_os = "android"))]
 pub mod onebot;
 pub mod plan_review;

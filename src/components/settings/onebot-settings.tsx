@@ -6,8 +6,7 @@ import { Alert, Button, Description, Input, Label, TextField } from '@heroui/rea
 import { CellSwitch } from '@heroui-pro/react/cell-switch'
 import { ItemCard } from '@heroui-pro/react/item-card'
 import { cn } from '@/lib/utils'
-import { assertDecimal38_18, decimal38_18 } from '@/lib/decimal'
-import type { AssistantInfoResponse, DecimalString, OneBotConfigInfoResponse, OneBotStatusInfoResponse } from '@/types'
+import type { AssistantInfoResponse, OneBotConfigInfoResponse, OneBotStatusInfoResponse } from '@/types'
 import { SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
 import { useSettingsDirtyRegistration } from './dirty-guard'
 
@@ -21,7 +20,6 @@ export function OneBotSettings() {
     assistant_id: null,
     admin_users: [],
     ack_emoji_id: '76',
-    balance_alert_threshold: null,
     voice_capture_sessions: [],
     voice_send_enabled: false,
     voice_send_groups: [],
@@ -31,11 +29,13 @@ export function OneBotSettings() {
   const [status, setStatus] = useState<OneBotStatusInfoResponse | null>(null)
   const [assistants, setAssistants] = useState<AssistantInfoResponse[]>([])
   const [adminInput, setAdminInput] = useState('')
-  // Held as text like the admin list, so a half-typed "1." is representable.
-  // Empty is a real setting here — it switches the watcher off.
-  const [balanceInput, setBalanceInput] = useState('')
-  // Same shape again. Rewritten from what was saved, so an entry the backend
-  // could not read disappears visibly instead of being silently ignored.
+  // The low-balance threshold used to sit here. It is `notify.balance.threshold`
+  // now — one watcher feeding every outlet, rather than one living inside the
+  // chat server — and it belongs on the notification settings page.
+  //
+  // Held as text like the admin list, and rewritten from what was saved, so an
+  // entry the backend could not read disappears visibly instead of being
+  // silently ignored.
   const [voiceCaptureInput, setVoiceCaptureInput] = useState('')
   const [voiceSendInput, setVoiceSendInput] = useState('')
   const [voiceReady, setVoiceReady] = useState<Awaited<ReturnType<typeof api.getVoiceSendReadiness>> | null>(null)
@@ -53,7 +53,6 @@ export function OneBotSettings() {
     ...config,
     port: portInput,
     adminInput,
-    balanceInput,
     voiceCaptureInput,
     voiceSendInput,
     fishKey,
@@ -73,7 +72,6 @@ export function OneBotSettings() {
       ])
       const nextPort = cfg.port.toString()
       const nextAdmin = cfg.admin_users.join(', ')
-      const nextBalance = cfg.balance_alert_threshold == null ? '' : assertDecimal38_18(cfg.balance_alert_threshold)
       const nextCapture = cfg.voice_capture_sessions.join(', ')
       const nextSend = cfg.voice_send_groups.join(', ')
       setConfig(cfg)
@@ -81,7 +79,6 @@ export function OneBotSettings() {
       setAssistants(assts)
       setPortInput(nextPort)
       setAdminInput(nextAdmin)
-      setBalanceInput(nextBalance)
       setVoiceCaptureInput(nextCapture)
       setVoiceSendInput(nextSend)
       setFishKeySet(hasFishKey)
@@ -91,7 +88,6 @@ export function OneBotSettings() {
           ...cfg,
           port: nextPort,
           adminInput: nextAdmin,
-          balanceInput: nextBalance,
           voiceCaptureInput: nextCapture,
           voiceSendInput: nextSend,
           fishKey: '',
@@ -133,16 +129,6 @@ export function OneBotSettings() {
     const port = Number(portInput)
     const adminEntries = splitEntries(adminInput)
     const adminUsers = adminEntries.map(Number)
-    const balanceText = balanceInput.trim()
-    let threshold: DecimalString | null = null
-    if (balanceText !== '') {
-      try {
-        threshold = decimal38_18(balanceText)
-      } catch {
-        setError(t('settings.onebot.invalidBalance'))
-        return false
-      }
-    }
     const voiceCaptureSessions = splitEntries(voiceCaptureInput)
     const voiceSendGroups = splitEntries(voiceSendInput)
 
@@ -178,7 +164,6 @@ export function OneBotSettings() {
         ...config,
         port,
         admin_users: adminUsers,
-        balance_alert_threshold: threshold,
         voice_capture_sessions: voiceCaptureSessions,
         voice_send_groups: voiceSendGroups,
       }
@@ -186,12 +171,10 @@ export function OneBotSettings() {
       setConfig(newConfig)
       const nextPort = port.toString()
       const nextAdmin = adminUsers.join(', ')
-      const nextBalance = threshold ?? ''
       const nextCapture = voiceCaptureSessions.join(', ')
       const nextSend = voiceSendGroups.join(', ')
       setPortInput(nextPort)
       setAdminInput(nextAdmin)
-      setBalanceInput(nextBalance)
       setVoiceCaptureInput(nextCapture)
       setVoiceSendInput(nextSend)
       setSavedDraft(
@@ -199,7 +182,6 @@ export function OneBotSettings() {
           ...newConfig,
           port: nextPort,
           adminInput: nextAdmin,
-          balanceInput: nextBalance,
           voiceCaptureInput: nextCapture,
           voiceSendInput: nextSend,
           fishKey: '',
@@ -461,18 +443,6 @@ export function OneBotSettings() {
           placeholder="76"
         />
         <Description>{t('settings.onebot.ackEmojiHint')}</Description>
-      </TextField>
-
-      <TextField fullWidth>
-        <Label>{t('settings.onebot.balanceAlert')}</Label>
-        <Input
-          name="onebotBalanceThreshold"
-          inputMode="decimal"
-          value={balanceInput}
-          onChange={(e) => setBalanceInput(e.target.value)}
-          placeholder={t('settings.onebot.balanceAlertPlaceholder')}
-        />
-        <Description>{t('settings.onebot.balanceAlertHint')}</Description>
       </TextField>
 
       {error && (
