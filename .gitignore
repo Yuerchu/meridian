@@ -1,5 +1,8 @@
 node_modules/
 dist/
+# A cargo invocation made from the repository root lands here rather than in
+# src-tauri/target. Same build output, different path.
+/target/
 src-tauri/target/
 src-tauri/.cargo/
 # Runtime DLLs that build.rs stages out of target/<profile>, so the bundle
