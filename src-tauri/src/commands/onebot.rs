@@ -13,7 +13,10 @@ pub struct OneBotConfigInfoResponse {
     pub assistant_id: Option<String>,
     pub admin_users: Vec<i64>,
     pub ack_emoji_id: String,
-    pub balance_alert_threshold: Option<meridian_core::decimal::Decimal>,
+    // The balance threshold used to be here. It is `notify.balance.threshold`
+    // now — one threshold, because the watcher that reads it no longer lives
+    // inside the chat server and QQ is one outlet among several. See migration
+    // 55, which carries an existing value across.
     pub voice_capture_sessions: Vec<String>,
     pub voice_send_enabled: bool,
     pub voice_send_groups: Vec<String>,
@@ -31,7 +34,6 @@ impl From<onebot::OneBotConfig> for OneBotConfigInfoResponse {
             assistant_id: config.assistant_id,
             admin_users: config.admin_users,
             ack_emoji_id: config.ack_emoji_id,
-            balance_alert_threshold: config.balance_alert_threshold,
             voice_capture_sessions: config.voice_capture_sessions,
             voice_send_enabled: config.voice_send_enabled,
             voice_send_groups: config.voice_send_groups,
@@ -97,7 +99,6 @@ pub struct OneBotConfigUpdateRequest {
     pub assistant_id: RequiredNullable<String>,
     pub admin_users: Vec<i64>,
     pub ack_emoji_id: String,
-    pub balance_alert_threshold: RequiredNullable<meridian_core::decimal::Decimal>,
     pub voice_capture_sessions: Vec<String>,
     pub voice_send_enabled: bool,
     pub voice_send_groups: Vec<String>,
@@ -109,12 +110,6 @@ impl TryFrom<OneBotConfigUpdateRequest> for onebot::OneBotConfig {
     type Error = String;
 
     fn try_from(config: OneBotConfigUpdateRequest) -> Result<Self, Self::Error> {
-        let balance_alert_threshold = config
-            .balance_alert_threshold
-            .0
-            .map(|value| value.require_non_negative("balance_alert_threshold"))
-            .transpose()
-            .map_err(|error| error.to_string())?;
         Ok(Self {
             enabled: config.enabled,
             host: config.host,
@@ -123,7 +118,6 @@ impl TryFrom<OneBotConfigUpdateRequest> for onebot::OneBotConfig {
             assistant_id: config.assistant_id.0,
             admin_users: config.admin_users,
             ack_emoji_id: config.ack_emoji_id,
-            balance_alert_threshold,
             voice_capture_sessions: config.voice_capture_sessions,
             voice_send_enabled: config.voice_send_enabled,
             voice_send_groups: config.voice_send_groups,
@@ -229,7 +223,6 @@ mod tests {
             "assistant_id": null,
             "admin_users": [],
             "ack_emoji_id": "76",
-            "balance_alert_threshold": null,
             "voice_capture_sessions": [],
             "voice_send_enabled": false,
             "voice_send_groups": [],
@@ -242,20 +235,13 @@ mod tests {
     fn onebot_config_request_requires_nullable_keys_and_rejects_unknown_fields() {
         assert!(serde_json::from_value::<OneBotConfigUpdateRequest>(request()).is_ok());
 
-        let mut decimal = request();
-        decimal["balance_alert_threshold"] = json!("1.25");
-        assert!(serde_json::from_value::<OneBotConfigUpdateRequest>(decimal).is_ok());
+        // The balance threshold moved to `save_notify_config`; sending it here
+        // is now an unknown field rather than a value this command ignores.
+        let mut moved = request();
+        moved["balance_alert_threshold"] = json!("1.25");
+        assert!(serde_json::from_value::<OneBotConfigUpdateRequest>(moved).is_err());
 
-        let mut numeric_money = request();
-        numeric_money["balance_alert_threshold"] = json!(1.25);
-        assert!(serde_json::from_value::<OneBotConfigUpdateRequest>(numeric_money).is_err());
-
-        let mut negative = request();
-        negative["balance_alert_threshold"] = json!("-1");
-        let negative = serde_json::from_value::<OneBotConfigUpdateRequest>(negative).unwrap();
-        assert!(onebot::OneBotConfig::try_from(negative).is_err());
-
-        for key in ["access_token", "assistant_id", "balance_alert_threshold"] {
+        for key in ["access_token", "assistant_id"] {
             let mut missing = request();
             missing.as_object_mut().unwrap().remove(key);
             assert!(

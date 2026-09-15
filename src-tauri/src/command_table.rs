@@ -363,6 +363,26 @@ macro_rules! with_all_commands {
             #[cfg(not(target_os = "android"))]
             local commands::onebot => stop_onebot(),
 
+            // All `local`, and for a reason that is not self-lockout. The URL
+            // decides where an alert — which names a provider and an amount of
+            // money — is delivered, so a remote caller able to write it
+            // redirects the alerts somewhere of their choosing. The signing
+            // secret is a credential on top of that. This is the `acp.command`
+            // class of setting: it configures the machine running Meridian.
+            local commands::notify => get_notify_config(),
+            local commands::notify => save_notify_config(
+                request: $crate::commands::notify::NotifyConfigUpdateRequest,
+            ),
+            local commands::notify => list_notification_webhooks(),
+            local commands::notify => create_notification_webhook(
+                request: $crate::commands::notify::NotificationWebhookCreateRequest,
+            ),
+            local commands::notify => update_notification_webhook(
+                request: $crate::commands::notify::NotificationWebhookUpdateRequest,
+            ),
+            local commands::notify => delete_notification_webhook(id: String),
+            local commands::notify => test_notification_webhook(id: String),
+
             #[cfg(not(target_os = "android"))]
             async commands::hooks => get_hooks_status(),
             #[cfg(not(target_os = "android"))]

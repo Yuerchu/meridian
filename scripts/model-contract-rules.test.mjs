@@ -108,11 +108,42 @@ pub async fn chat(app: tauri::AppHandle, request: ChatRequest) -> Result<(), Str
 })
 
 test('recognises monetary leaves but not capability or accounting metadata', () => {
-  for (const field of ['input_price', 'total_cost', 'balance_alert_threshold', 'amount']) {
+  for (const field of [
+    'input_price',
+    'total_cost',
+    'balance_alert_threshold',
+    'amount',
+    'window_cost',
+    'baseline_cost',
+    'usage_min_cost',
+    'total_balance',
+  ]) {
     assert.equal(isMoneyLeafField(field), true, field)
   }
   for (const field of ['balance', 'billing_mode', 'unpriced_messages', 'pricing_tiers']) {
     assert.equal(isMoneyLeafField(field), false, field)
+  }
+})
+
+test('a duration or a flag is not an amount however the rest of the name reads', () => {
+  // Renaming these away from the domain's own word to satisfy the heuristic
+  // costs clarity and buys nothing: neither can hold money.
+  for (const field of [
+    'balance_interval_minutes',
+    'usage_check_interval_minutes',
+    'usage_cooldown_minutes',
+    'baseline_windows',
+    'cost_timeout_secs',
+    'balance_watch_enabled',
+    'has_balance',
+    'is_balance_low',
+  ]) {
+    assert.equal(isMoneyLeafField(field), false, field)
+  }
+  // The exclusions must not swallow a real amount that happens to sit beside
+  // one of those words.
+  for (const field of ['balance_threshold', 'cache_read_price', 'tool_cost']) {
+    assert.equal(isMoneyLeafField(field), true, field)
   }
 })
 
