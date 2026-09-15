@@ -16,7 +16,7 @@ use crate::ServicesExt;
 use crate::commands::model_config::RequiredNullable;
 use meridian_core::db::models::notification::{
     MAX_WEBHOOKS, NotificationEventKind, NotificationFormat, NotificationWebhookChangeset, NotificationWebhookInsert,
-    NotificationWebhookRow, encode_events,
+    NotificationWebhookRow, SecretMeaning, encode_events,
 };
 use meridian_core::notify;
 
@@ -97,8 +97,19 @@ pub struct NotificationWebhookInfoResponse {
     pub format: NotificationFormat,
     pub events: Vec<NotificationEventKind>,
     pub is_enabled: bool,
-    /// Whether a signing secret is on file. Never the secret itself.
+    /// Whether a secret is on file. Never the secret itself.
+    ///
+    /// What it *is* depends on the format — a signing key, a bearer token, or
+    /// nothing at all — which is why `secret_meaning` travels beside it rather
+    /// than leaving a settings page to restate the table.
     pub has_secret: bool,
+    pub secret_meaning: SecretMeaning,
+    /// The JSON document a `custom` endpoint posts, decoded. `null` for every
+    /// other format.
+    ///
+    /// Typed rather than the stored string: `TEXT` is storage, not a public
+    /// string contract.
+    pub body_template: Option<serde_json::Value>,
     pub last_attempt_at: Option<i64>,
     pub last_success_at: Option<i64>,
     pub last_error: Option<String>,
@@ -112,9 +123,12 @@ impl NotificationWebhookInfoResponse {
     /// boundary. A stored subscription that will not parse is a contract
     /// violation, not a request to hand back an empty list.
     fn build(row: NotificationWebhookRow, has_secret: bool) -> Result<Self, String> {
+        let format = row.format()?;
         Ok(Self {
-            format: row.format()?,
+            format,
+            secret_meaning: format.secret_meaning(),
             events: row.events()?,
+            body_template: row.body_template()?,
             is_enabled: row.is_enabled(),
             has_secret,
             id: row.id,
@@ -167,6 +181,10 @@ pub struct NotificationWebhookCreateRequest {
     pub events: Vec<NotificationEventKind>,
     pub is_enabled: bool,
     pub secret: RequiredNullable<String>,
+    /// The JSON document a `custom` endpoint posts. Required for that format
+    /// and refused for every other, which sends a shape this app or a vendor
+    /// defines. Typed rather than a string: `TEXT` is storage, not a contract.
+    pub body_template: RequiredNullable<serde_json::Value>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -186,6 +204,42 @@ pub struct NotificationWebhookUpdateRequest {
     /// settings page that does not want to change the secret sends back what
     /// `has_secret` told it, which is a decision rather than an omission.
     pub secret: RequiredNullable<String>,
+    /// As on the create request.
+    pub body_template: RequiredNullable<serde_json::Value>,
+}
+
+/// Pair a body template with the format that does or does not want one, and
+/// encode it for storage.
+///
+/// Both directions are refused, because either alone is an endpoint that looks
+/// configured and posts the wrong thing: a `custom` row with no template posts
+/// nothing and is recorded as delivered, and a template on a vendor format is a
+/// document that will never be sent, sitting in a settings page looking
+/// effective.
+fn encode_body_template(
+    format: NotificationFormat,
+    template: Option<&serde_json::Value>,
+) -> Result<Option<String>, String> {
+    match (format.needs_body_template(), template) {
+        (true, None) => Err(format!(
+            "`{}` posts a document you define, so `body_template` is required",
+            format.as_str()
+        )),
+        (false, Some(_)) => Err(format!(
+            "`{}` sends that vendor's own shape; a `body_template` only applies to `custom`",
+            format.as_str()
+        )),
+        (_, None) => Ok(None),
+        (_, Some(template)) => {
+            // Checked before it is stored, not at delivery: a typo caught at
+            // delivery time is caught by nobody, because the delivery it breaks
+            // is the one nobody is watching for.
+            notify::template::validate(template)?;
+            serde_json::to_string(template)
+                .map(Some)
+                .map_err(|error| format!("could not encode the body template: {error}"))
+        }
+    }
 }
 
 #[tauri::command]
@@ -261,6 +315,7 @@ pub async fn create_notification_webhook(
     request: NotificationWebhookCreateRequest,
 ) -> Result<NotificationWebhookInfoResponse, String> {
     notify::validate_endpoint(&request.name, &request.url, &request.events)?;
+    let body_template = encode_body_template(request.format, request.body_template.0.as_ref())?;
     let services = app.services();
     let id = uuid::Uuid::new_v4().to_string();
     let events = encode_events(&request.events)?;
@@ -289,6 +344,7 @@ pub async fn create_notification_webhook(
                     format,
                     events: &events,
                     is_enabled,
+                    body_template: body_template.as_deref(),
                     created_at: now,
                     updated_at: now,
                 },
@@ -312,6 +368,7 @@ pub async fn update_notification_webhook(
     request: NotificationWebhookUpdateRequest,
 ) -> Result<NotificationWebhookInfoResponse, String> {
     notify::validate_endpoint(&request.name, &request.url, &request.events)?;
+    let body_template = encode_body_template(request.format, request.body_template.0.as_ref())?;
     let services = app.services();
     let events = encode_events(&request.events)?;
     let now = meridian_core::util::now_ms();
@@ -323,6 +380,7 @@ pub async fn update_notification_webhook(
             name: Some(request.name.clone()),
             url: Some(request.url.clone()),
             format: Some(request.format.as_str().to_string()),
+            body_template: Some(body_template.clone()),
             events: Some(events),
             is_enabled: Some(i32::from(request.is_enabled)),
             updated_at: Some(now),
@@ -454,7 +512,8 @@ mod tests {
             "format": "dingtalk",
             "events": ["balance_low", "usage_surge"],
             "is_enabled": true,
-            "secret": null
+            "secret": null,
+            "body_template": null
         })
     }
 
@@ -493,6 +552,7 @@ mod tests {
             format: "generic".into(),
             events: "not json".into(),
             is_enabled: 1,
+            body_template: None,
             last_attempt_at: None,
             last_success_at: None,
             last_error: None,
@@ -501,6 +561,36 @@ mod tests {
             updated_at: 1,
         };
         assert!(NotificationWebhookInfoResponse::build(row, false).is_err());
+    }
+
+    /// Both directions, because either alone is an endpoint that looks
+    /// configured and posts the wrong thing: nothing at all one way, a vendor's
+    /// shape the other.
+    #[test]
+    fn a_body_template_and_the_custom_format_require_each_other() {
+        let template = serde_json::json!({ "title": "{{title}}" });
+
+        let error = encode_body_template(NotificationFormat::Custom, None).unwrap_err();
+        assert!(error.contains("required"), "{error}");
+
+        let error = encode_body_template(NotificationFormat::Feishu, Some(&template)).unwrap_err();
+        assert!(error.contains("only applies to `custom`"), "{error}");
+
+        assert_eq!(encode_body_template(NotificationFormat::Slack, None).unwrap(), None);
+        assert!(
+            encode_body_template(NotificationFormat::Custom, Some(&template))
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    /// A typo caught at delivery time is caught by nobody: the delivery it
+    /// breaks is the one nobody is watching for.
+    #[test]
+    fn a_placeholder_typo_is_refused_before_the_row_is_written() {
+        let typo = serde_json::json!({ "title": "{{titel}}" });
+        let error = encode_body_template(NotificationFormat::Custom, Some(&typo)).unwrap_err();
+        assert!(error.contains("titel"), "{error}");
     }
 
     #[test]
@@ -512,6 +602,7 @@ mod tests {
             format: "generic".into(),
             events: r#"["test"]"#.into(),
             is_enabled: 1,
+            body_template: None,
             last_attempt_at: None,
             last_success_at: None,
             last_error: None,
