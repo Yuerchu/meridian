@@ -88,19 +88,79 @@ function useProviderCatalog(): ProviderCatalogEntryInfoResponse[] {
 }
 
 /**
- * The catalog entry a form is currently describing.
+ * The entry a *type* defaults to — the first one listed under it, catalog order
+ * being editorial. This is the right lookup while the type select is being
+ * changed, because at that moment the type is all the user has said.
  *
- * Keyed by `provider_type` rather than by the row's `catalog_id` because the
- * type is what the user is editing — the select changes it, and the prefills
- * have to follow that immediately rather than the identity the row was saved
- * with. Once several vendors share one type this needs the id as well, and the
- * select needs to offer entries rather than types; that is the same change.
+ * It is no longer an identity: Moonshot, SiliconFlow and OpenAI are all
+ * `openai`, so this answers "what does picking that type start you from",
+ * nothing more. Use {@link entryForRow} for what a row actually is.
  */
 function entryByType(
   catalog: ProviderCatalogEntryInfoResponse[],
   providerType: ProviderType,
 ): ProviderCatalogEntryInfoResponse | undefined {
   return catalog.find((e) => e.provider_type === providerType)
+}
+
+/**
+ * The vendor a row names, and only that.
+ *
+ * `catalog_id` is the answer, but only while the type select still agrees with
+ * it: the id is the saved row's and `providerType` is what the form is being
+ * edited to, so a row switched from Moonshot to Anthropic must stop being
+ * described by Moonshot's entry before it is saved. Switching back restores it,
+ * which is the same "the row is the truth until Save" rule the rest of the form
+ * follows.
+ *
+ * `undefined` for a row that names no vendor — a relay, or anything made by
+ * hand. That is a real answer rather than a gap, and it is the one
+ * {@link balanceEntry} rests on.
+ */
+function namedVendor(
+  catalog: ProviderCatalogEntryInfoResponse[],
+  catalogId: string | null,
+  providerType: ProviderType,
+): ProviderCatalogEntryInfoResponse | undefined {
+  const byId = catalogId ? catalog.find((e) => e.id === catalogId) : undefined
+  return byId?.provider_type === providerType ? byId : undefined
+}
+
+/**
+ * What describes the form: the row's own vendor, or failing that whatever the
+ * type defaults to.
+ *
+ * The fallback is right for sign-ins, dialects and prefills — a relay speaking
+ * the OpenAI dialect should be offered the OpenAI dialects, since that is what
+ * the dialect *is*. It is wrong for anything that identifies an account, which
+ * is why the balance button does not use this.
+ */
+function entryForRow(
+  catalog: ProviderCatalogEntryInfoResponse[],
+  catalogId: string | null,
+  providerType: ProviderType,
+): ProviderCatalogEntryInfoResponse | undefined {
+  return namedVendor(catalog, catalogId, providerType) ?? entryByType(catalog, providerType)
+}
+
+/**
+ * The entry that decides whether a balance button is drawn — the row's named
+ * vendor, with no fallback to the type.
+ *
+ * Falling back would draw the button on every row of a type some vendor of
+ * which publishes a balance: `openai` covers OpenAI, Moonshot, SiliconFlow and
+ * every relay, so the type answers for none of them. Refusing to guess costs a
+ * hand-made row at a vendor's own address a button it could have had — the
+ * backend is more generous there, which is what the daemon needs — and naming
+ * the vendor on the row is the fix. The other direction would post the key to
+ * an account endpoint whose operator never published one.
+ */
+function balanceEntry(
+  catalog: ProviderCatalogEntryInfoResponse[],
+  catalogId: string | null,
+  providerType: ProviderType,
+): ProviderCatalogEntryInfoResponse | undefined {
+  return namedVendor(catalog, catalogId, providerType)
 }
 
 const PROVIDER_TYPES = new Set<ProviderType>(['openai', 'anthropic', 'deepseek', 'xai', 'google'])
@@ -1136,11 +1196,15 @@ function ProviderEditor({
     }
   }, [provider.id])
 
+  // The vendor this row is, which is not the same question as which adapter
+  // family it uses — three of them are `openai`.
+  const rowEntry = entryForRow(catalog, provider.catalog_id, providerType)
+
   // The sign-in option the form is under right now: the row's stored kind
-  // resolved against the entry the persisted type names. A type transition
-  // chooses a new login explicitly in `handleProviderTypeChange`; persisted
-  // mismatches are rejected here.
-  const activeAuth = authFor(entryByType(catalog, providerType), provider.credential_kind)
+  // resolved against its vendor's entry. A type transition chooses a new login
+  // explicitly in `handleProviderTypeChange`; persisted mismatches are rejected
+  // here.
+  const activeAuth = authFor(rowEntry, provider.credential_kind)
 
   const handleSave = useCallback(async () => {
     // A changed type can leave the row under a sign-in its new vendor does not
@@ -1207,8 +1271,7 @@ function ProviderEditor({
   // the user remembered to press Save.
   const handleAuthOptionChange = useCallback(
     async (nextId: string) => {
-      const entry = entryByType(catalog, providerType)
-      const next = entry?.auth.find((a) => a.id === nextId)
+      const next = rowEntry?.auth.find((a) => a.id === nextId)
       if (!next || next.credential_kind === activeAuth?.credential_kind) return
       const nextFormat = next.api_formats.includes(apiFormat) ? apiFormat : (next.api_formats[0] ?? 'chat_completions')
       // Same replace-only-untouched rule as a change of vendor: the endpoint
@@ -1234,7 +1297,7 @@ function ProviderEditor({
         setCredentialError(String(err))
       }
     },
-    [catalog, providerType, activeAuth, apiFormat, baseUrl, provider.id, markSaved, onUpdate],
+    [rowEntry?.auth, activeAuth, apiFormat, baseUrl, provider.id, markSaved, onUpdate],
   )
 
   const handleSaveKey = useCallback(async () => {
@@ -1478,11 +1541,11 @@ function ProviderEditor({
           today. This is the one control that writes `credential_kind`, and
           without it a ChatGPT-login row could only be made by editing the
           database by hand. */}
-      {(entryByType(catalog, providerType)?.auth.length ?? 0) > 1 && (
+      {(rowEntry?.auth.length ?? 0) > 1 && (
         <SettingsSelect
           label={t('settings.provider.authMethod')}
           value={activeAuth?.id ?? ''}
-          options={(entryByType(catalog, providerType)?.auth ?? []).map((a) => ({
+          options={(rowEntry?.auth ?? []).map((a) => ({
             value: a.id,
             label: t(authMethodLabel(a.credential_kind)),
           }))}
@@ -1593,7 +1656,7 @@ function ProviderEditor({
           vendor that publishes nothing returns null and this form says so, so a
           drift shows up rather than hiding. This only keeps the button off the
           panels where it could never do anything. */}
-      {entryByType(catalog, providerType)?.balance === true && (
+      {balanceEntry(catalog, provider.catalog_id, providerType)?.balance === true && (
         <div data-slot="provider-balance" className="border-t border-border pt-4 space-y-3">
           <div data-slot="provider-balance-header" className="flex items-center justify-between">
             <p data-slot="provider-balance-label" className="text-xs text-muted">
