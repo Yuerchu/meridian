@@ -888,23 +888,28 @@ pub async fn get_provider_balance(
     let pool = services.db.clone();
     let secrets = services.secrets.clone();
 
-    let (provider_type, base_url) = {
+    let (catalog_id, provider_type, base_url) = {
         let pid = provider_id.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
             let p = db::ops::provider::get_provider(&mut conn, &pid).map_err(|e| e.to_string())?;
-            Ok::<_, String>((p.provider_type, p.base_url))
+            Ok::<_, String>((p.catalog_id, p.provider_type, p.base_url))
         })
         .await
         .map_err(|e| e.to_string())??
     };
 
-    if !meridian_core::provider::balance::supports_balance(&provider_type) {
+    // The vendor decides whose account endpoint this is, not the adapter
+    // family: every upstream added since the original five is
+    // OpenAI-compatible, so `provider_type` cannot tell them apart.
+    let identity =
+        meridian_core::provider::balance::ProviderIdentity::new(catalog_id.as_deref(), &provider_type, &base_url);
+    if !meridian_core::provider::balance::supports_balance(identity) {
         return Ok(None);
     }
 
     let api_key = get_provider_api_key(&secrets, &provider_id).ok_or("API Key not set for this provider")?;
-    meridian_core::provider::balance::fetch_balance(&provider_type, &base_url, &api_key)
+    meridian_core::provider::balance::fetch_balance(identity, &api_key)
         .await
         .map(|balance| Some(balance.into()))
         .map_err(|e| e.to_string())

@@ -497,6 +497,47 @@ describe('ProviderSettings list/detail navigation', () => {
     )
   })
 
+  // The balance button belongs to the *vendor*, and the type can no longer
+  // answer for it: Moonshot, SiliconFlow and OpenAI are all `openai`, so a
+  // lookup by type returns whichever the catalog lists first and draws the
+  // button on all three or on none. Both directions are asserted here because
+  // each is a different failure — a button that always errors, and a working
+  // upstream with no way to ask.
+  it('the balance button follows the row’s vendor rather than its adapter family', async () => {
+    mockViewport(false)
+    const catalog: ProviderCatalogEntryInfoResponse[] = [
+      { ...CATALOG[0], id: 'openai', name: 'OpenAI', balance: false },
+      { ...CATALOG[0], id: 'moonshot', name: 'Moonshot (Kimi)', balance: true },
+    ]
+    mockApi.listProviderCatalog.mockResolvedValue(catalog)
+    mockApi.listProviders.mockResolvedValue([
+      { ...makeProvider('kimi-1', 'Kimi'), catalog_id: 'moonshot', base_url: 'https://api.moonshot.cn/v1' },
+    ])
+    const { unmount } = render(<ProviderSettings />)
+    expect(await screen.findByText(i18n.t('settings.provider.balance'))).toBeInTheDocument()
+    unmount()
+
+    // Same type, same catalog, different vendor.
+    mockApi.listProviders.mockResolvedValue([{ ...makeProvider('oa-1', 'OpenAI'), catalog_id: 'openai' }])
+    render(<ProviderSettings />)
+    await screen.findByText(i18n.t('settings.provider.deleteProvider'))
+    expect(screen.queryByText(i18n.t('settings.provider.balance'))).not.toBeInTheDocument()
+  })
+
+  // A row with no `catalog_id` is a relay as far as the panel is concerned:
+  // nothing here knows whose it is, so offering an account lookup would mean
+  // posting the key to an endpoint its operator never published.
+  it('an unidentified row is offered no balance button', async () => {
+    mockViewport(false)
+    mockApi.listProviderCatalog.mockResolvedValue([{ ...CATALOG[0], id: 'moonshot', balance: true }])
+    mockApi.listProviders.mockResolvedValue([
+      { ...makeProvider('relay-1', 'Relay'), catalog_id: null, base_url: 'https://relay.example/v1' },
+    ])
+    render(<ProviderSettings />)
+    await screen.findByText(i18n.t('settings.provider.deleteProvider'))
+    expect(screen.queryByText(i18n.t('settings.provider.balance'))).not.toBeInTheDocument()
+  })
+
   /** An API-key provider keeps the field it has always had. */
   it('an API-key provider still gets a key field', async () => {
     mockViewport(false)
