@@ -23,7 +23,7 @@ import { useConfirm } from '@/hooks/use-confirm'
 import { ConversationRefChips } from './conversation-ref-chips'
 import { CopyButton, MarkdownContent } from './markdown-content'
 import { Avatar, Label, Spinner, TextArea } from '@heroui/react'
-import { ContextMenu } from '@heroui-pro/react/context-menu'
+import { ContextMenu } from '@/components/base'
 import {
   MessageGroupAssistant,
   MessageGroupAvatar,

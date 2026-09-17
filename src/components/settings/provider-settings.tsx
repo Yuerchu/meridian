@@ -14,7 +14,7 @@ import {
   Tooltip,
 } from '@heroui/react'
 import { EmptyState } from '@/components/base'
-import { DataGrid, type DataGridColumn } from '@heroui-pro/react/data-grid'
+import { DataGrid, type DataGridColumn } from '@/components/base'
 import { ListView } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { ModelIcon } from '@/components/ui/model-icon'

@@ -5,7 +5,7 @@ import { ArrowDownToSquare, ChevronDown, Copy, Scissors, SquareDashedText, Xmark
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
 import { Button, Kbd, Label, ListBox, Popover, Tooltip } from '@heroui/react'
-import { ContextMenu } from '@heroui-pro/react/context-menu'
+import { ContextMenu } from '@/components/base'
 import { ChatAttachment, ChatAttachmentGroup } from '@/components/base'
 
 import { localPreviewSrc } from '@/lib/asset-src'

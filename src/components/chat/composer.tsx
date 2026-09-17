@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { StopFill } from '@gravity-ui/icons'
 
-import { PromptInput } from '@heroui-pro/react/prompt-input'
+import { PromptInput } from '@/components/base'
 
 import { isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { useFileDrop } from '@/hooks/use-file-drop'

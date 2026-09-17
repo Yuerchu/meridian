@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Check, CircleQuestion, Clock, TriangleExclamation } from '@gravity-ui/icons'
 import { Button, Spinner } from '@heroui/react'
-import { PromptInput } from '@heroui-pro/react/prompt-input'
+import { PromptInput } from '@/components/base'
 
 import { isCoarsePointer } from '@/hooks/use-coarse-pointer'
 import { queueState } from '@/hooks/use-prompt-queue'
