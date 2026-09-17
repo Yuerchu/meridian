@@ -41,8 +41,8 @@ function DisclosureTrigger({ className, render, ...props }: DisclosureTriggerPro
     className: cn('flex w-full items-center gap-2 text-left', className),
   }
   if (render) return render(domProps)
-  // data-slot is in domProps but ESLint's static check can't see spread
-  return <button data-slot="disclosure-trigger" {...domProps} />
+  // eslint-disable-next-line meridian-ui/intrinsic-needs-data-slot -- data-slot is in domProps
+  return <button {...domProps} />
 }
 
 function DisclosureIndicator({ className, ...props }: ComponentProps<'span'>) {
@@ -66,7 +66,8 @@ interface DisclosureContentProps extends ComponentProps<'div'> {
 function DisclosureContent({ className, render, ...props }: DisclosureContentProps) {
   const domProps = { 'data-slot': 'disclosure-content' as const, ...props, className: cn('', className) }
   if (render) return render(domProps)
-  return <div data-slot="disclosure-content" {...domProps} />
+  // eslint-disable-next-line meridian-ui/intrinsic-needs-data-slot -- data-slot is in domProps
+  return <div {...domProps} />
 }
 
 interface DisclosureBodyProps extends ComponentProps<'div'> {
@@ -76,7 +77,8 @@ interface DisclosureBodyProps extends ComponentProps<'div'> {
 function DisclosureBody({ className, render, ...props }: DisclosureBodyProps) {
   const domProps = { 'data-slot': 'disclosure-body' as const, ...props, className: cn('', className) }
   if (render) return render(domProps)
-  return <div data-slot="disclosure-body" {...domProps} />
+  // eslint-disable-next-line meridian-ui/intrinsic-needs-data-slot -- data-slot is in domProps
+  return <div {...domProps} />
 }
 
 export const Disclosure = Object.assign(DisclosureRoot, {
