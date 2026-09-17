@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Command } from '@heroui-pro/react/command'
+import { Command } from '@/components/base'
 import { Archive, Comment, FolderOpen, Magnifier, Plus, TextAlignLeft } from '@gravity-ui/icons'
 
 import { api } from '@/api'

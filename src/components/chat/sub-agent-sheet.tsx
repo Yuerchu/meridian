@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Alert, Button, Skeleton } from '@heroui/react'
-import { Sheet } from '@heroui-pro/react/sheet'
+import { Sheet } from '@/components/base'
 import { useConversationStore } from '@/stores/conversation-store'
 import { useTurns } from '@/hooks/use-turns'
 import { useHistoryLevel } from '@/hooks/use-history-level'

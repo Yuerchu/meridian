@@ -18,8 +18,8 @@ describe('ChangesPanelView', () => {
       />,
     )
 
-    expect(screen.getByRole('row', { name: 'created.ts, created' })).toBeVisible()
-    expect(screen.getByRole('row', { name: 'changed.ts, modified' })).toBeVisible()
-    expect(screen.getByRole('row', { name: 'deleted.txt, deleted' })).toBeVisible()
+    expect(screen.getByRole('treeitem', { name: 'created.ts, created' })).toBeVisible()
+    expect(screen.getByRole('treeitem', { name: 'changed.ts, modified' })).toBeVisible()
+    expect(screen.getByRole('treeitem', { name: 'deleted.txt, deleted' })).toBeVisible()
   })
 })

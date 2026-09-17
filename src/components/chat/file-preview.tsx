@@ -3,7 +3,7 @@ import { ArrowRightFromSquare, Check, Copy, FileText } from '@gravity-ui/icons'
 import { Button, Spinner } from '@heroui/react'
 import { Hint } from '@/components/ui/hint'
 import { Segment } from '@/components/base'
-import { Sheet } from '@heroui-pro/react/sheet'
+import { Sheet } from '@/components/base'
 import { useTranslation } from 'react-i18next'
 
 import { api } from '@/api'

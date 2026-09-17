@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { ChevronDown, Clock, Comment, TriangleExclamation, Xmark } from '@gravity-ui/icons'
 import { Button, Chip, Dropdown, Skeleton, TextArea, Tooltip } from '@heroui/react'
 import { Segment } from '@/components/base'
-import { Sheet } from '@heroui-pro/react/sheet'
+import { Sheet } from '@/components/base'
 
 import { api } from '@/api'
 import { FileDiffCard } from '@/components/chat/file-diff-card'
