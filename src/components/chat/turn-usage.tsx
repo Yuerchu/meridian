@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Separator } from '@heroui/react'
-import { HoverCard } from '@heroui-pro/react/hover-card'
+import { HoverCard } from '@/components/base'
 
 import { costQualifier, formatCostAmount, type CostQualifier } from '@/lib/cost-format'
 import type { DecimalString, TurnUsageInfoResponse } from '@/types'

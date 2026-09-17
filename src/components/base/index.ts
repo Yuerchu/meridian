@@ -1,15 +1,37 @@
+export { ActionBar } from './action-bar'
 export { Button } from './button'
 export { CellSwitch } from './cell-switch'
-export { EmptyState } from './empty-state'
+export {
+  ChainOfThought,
+  ChainOfThoughtTrigger,
+  ChainOfThoughtContent,
+  ChainOfThoughtSteps,
+  ChainOfThoughtStep,
+} from './chain-of-thought'
+export { ChatAttachment, ChatAttachmentGroup } from './chat-attachment'
+export { ChatLoader } from './chat-loader'
+export { ChatSource, ChatSources } from './chat-source'
 export { Chip } from './chip'
 export { Description } from './description'
 export { dom } from './dom'
+export { EmptyState } from './empty-state'
+export { FloatingToc } from './floating-toc'
+export { HoverCard } from './hover-card'
+export { InlineSelect } from './inline-select'
+export { ItemCard, ItemCardGroup } from './item-card'
+export { Kanban } from './kanban'
 export { Kbd } from './kbd'
+export { KPI } from './kpi'
 export { Label } from './label'
 export { Link } from './link'
+export { ListView } from './list-view'
+export { Markdown, markdownVariants } from './markdown-variants'
+export { PromptSuggestion } from './prompt-suggestion'
+export { Resizable } from './resizable'
 export { Segment } from './segment'
 export { Separator } from './separator'
 export { Skeleton } from './skeleton'
 export { Spinner } from './spinner'
 export { Switch } from './switch'
+export { TextShimmer } from './text-shimmer'
 export { Tooltip } from './tooltip'

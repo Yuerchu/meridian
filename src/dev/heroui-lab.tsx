@@ -39,7 +39,7 @@ import {
 // Subpath, never the barrel: the barrel reaches recharts, tiptap and maplibre,
 // none of which are installed — importing it fails the build outright.
 import { ContextMenu as ProContextMenu } from '@heroui-pro/react/context-menu'
-import { Markdown as ProMarkdown } from '@heroui-pro/react/markdown'
+import { Markdown as ProMarkdown } from '@/components/base'
 import { Sidebar as ProSidebar } from '@heroui-pro/react/sidebar'
 
 import { Composer } from '@/components/chat/composer'

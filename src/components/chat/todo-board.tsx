@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Kanban } from '@heroui-pro/react/kanban'
+import { Kanban } from '@/components/base'
 
 import type { TodoItemStatus } from '@/types'
 import { cn } from '@/lib/utils'

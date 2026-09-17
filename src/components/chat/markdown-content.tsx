@@ -9,7 +9,7 @@ import { Check, Copy } from '@gravity-ui/icons'
 import { Link, Skeleton, Tooltip } from '@heroui/react'
 import type { Components } from 'react-markdown'
 
-import { markdownVariants } from '@heroui-pro/react/markdown'
+import { markdownVariants } from '@/components/base'
 
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { ActionButton } from '@/components/ui/action-button'

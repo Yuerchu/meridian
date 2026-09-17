@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { EmptyState as ProEmptyState } from '@/components/base'
-import { PromptSuggestion } from '@heroui-pro/react'
+import { PromptSuggestion } from '@/components/base'
 
 import { useIsOffline } from '@/hooks/use-connection-state'
 import { usePlatform } from '@/hooks/use-platform'

@@ -15,7 +15,7 @@ import {
 } from '@heroui/react'
 import { EmptyState } from '@/components/base'
 import { DataGrid, type DataGridColumn } from '@heroui-pro/react/data-grid'
-import { ListView } from '@heroui-pro/react/list-view'
+import { ListView } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { ModelIcon } from '@/components/ui/model-icon'
 import { formatCurrencyAmount, formatDecimalAmount } from '@/lib/cost-format'

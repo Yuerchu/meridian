@@ -13,7 +13,8 @@ function DOMElement<E extends keyof React.JSX.IntrinsicElements>(
   ElementType: E,
   props: DOMRenderProps<E> & React.JSX.IntrinsicElements[E],
 ) {
-  const { ref: forwardedRef, render, ...otherProps } = props as Record<string, unknown>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- polymorphic destructure
+  const { ref: forwardedRef, render, ...otherProps } = props as any
   const elementRef = useRef<Element>(null)
   const ref = useMemo(() => mergeRefs(forwardedRef as React.Ref<Element>, elementRef), [forwardedRef, elementRef])
 

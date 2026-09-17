@@ -13,7 +13,7 @@ import { VoiceOverlay } from '@/components/chat/voice-overlay'
 import { MasterDetail } from '@/components/settings/master-detail'
 import { useMasterDetail } from '@/components/settings/use-master-detail'
 import { Label } from '@heroui/react'
-import { ListView } from '@heroui-pro/react/list-view'
+import { ListView } from '@/components/base'
 
 /**
  * The things worth putting in front of the detectors, and nothing else.

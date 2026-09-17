@@ -6,7 +6,7 @@ import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
 import { Button, Kbd, Label, ListBox, Popover, Tooltip } from '@heroui/react'
 import { ContextMenu } from '@heroui-pro/react/context-menu'
-import { ChatAttachment, ChatAttachmentGroup } from '@heroui-pro/react/chat-attachment'
+import { ChatAttachment, ChatAttachmentGroup } from '@/components/base'
 
 import { localPreviewSrc } from '@/lib/asset-src'
 import { can } from '@/lib/capabilities'

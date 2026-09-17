@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { ListBox } from '@heroui/react'
-import { InlineSelect } from '@heroui-pro/react/inline-select'
+import { InlineSelect } from '@/components/base'
 
 import { cn } from '@/lib/utils'
 

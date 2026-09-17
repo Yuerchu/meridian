@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Description, Input, Label, TextField } from '@heroui/react'
-import { ItemCard } from '@heroui-pro/react/item-card'
+import { ItemCard } from '@/components/base'
 
 import { api } from '@/api'
 import { useConnectionState } from '@/hooks/use-connection-state'

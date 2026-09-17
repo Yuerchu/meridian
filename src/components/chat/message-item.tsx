@@ -37,7 +37,7 @@ import { BubbleFoldBadge } from '@/components/ui/bubble-block'
 import { ChatToolPresentationProvider } from '@/components/ui/chat-tool'
 import { useConversationStore } from '@/stores/conversation-store'
 import { useTranscriptConversationId } from '@/hooks/use-transcript-conversation'
-import { ChatAttachment, ChatAttachmentGroup } from '@heroui-pro/react/chat-attachment'
+import { ChatAttachment, ChatAttachmentGroup } from '@/components/base'
 import { ErrorBoundary } from '@/components/error-boundary'
 
 import { assetSrc } from '@/lib/asset-src'

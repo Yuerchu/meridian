@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FloatingToc } from '@heroui-pro/react/floating-toc'
+import { FloatingToc } from '@/components/base'
 
 import { useMessageScroller, useMessageScrollerVisibility } from '@/components/ui/message-scroller'
 import type { Turn } from '@/lib/turns'

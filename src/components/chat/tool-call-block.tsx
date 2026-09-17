@@ -73,7 +73,7 @@ import { APPROVE_HOTKEY, DENY_HOTKEY } from '@/hooks/use-transcript-hotkeys'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { parseTodoArgs, todoProgress, TodoItemList, type TodoDraft } from './todo-list'
-import { ChatSource, ChatSources } from '@heroui-pro/react/chat-source'
+import { ChatSource, ChatSources } from '@/components/base'
 
 import { openExternally } from '@/lib/external-link'
 import { CopyButton, MarkdownContent } from './markdown-content'
