@@ -1,0 +1,138 @@
+/* Meridian design token mappings.
+ *
+ * During coexistence (Phase 1–4): @heroui/styles still provides the Tailwind
+ * utility → CSS variable bindings.  This file only adds boardui semantic
+ * aliases so that self-built components written against boardui's naming can
+ * resolve to Meridian's values.
+ *
+ * After the flip (Phase 5): the HeroUI @theme inline block below becomes
+ * the canonical mapping, replacing @heroui/styles entirely.
+ */
+
+/* ── Phase 5: HeroUI @theme inline replacement ────────────────────────────
+ *
+ * Uncomment once @heroui/styles is removed from index.css.  Every line is a
+ * verbatim copy of node_modules/@heroui/styles/dist/themes/shared/theme.css
+ * so that the ~1200 Tailwind utility sites in the codebase keep resolving.
+ *
+ * @theme inline {
+ *   --color-background: var(--background);
+ *   --color-foreground: var(--foreground);
+ *
+ *   --color-surface: var(--surface);
+ *   --color-surface-foreground: var(--surface-foreground);
+ *   --color-surface-hover: var(--surface-hover);
+ *
+ *   --color-surface-secondary: var(--surface-secondary);
+ *   --color-surface-secondary-foreground: var(--surface-secondary-foreground);
+ *
+ *   --color-surface-tertiary: var(--surface-tertiary);
+ *   --color-surface-tertiary-foreground: var(--surface-tertiary-foreground);
+ *
+ *   --color-overlay: var(--overlay);
+ *   --color-overlay-foreground: var(--overlay-foreground);
+ *
+ *   --color-muted: var(--muted);
+ *
+ *   --color-accent: var(--accent);
+ *   --color-accent-foreground: var(--accent-foreground);
+ *
+ *   --color-segment: var(--segment);
+ *   --color-segment-foreground: var(--segment-foreground);
+ *
+ *   --color-border: var(--border);
+ *   --color-separator: var(--separator);
+ *   --color-focus: var(--focus);
+ *   --color-link: var(--link);
+ *
+ *   --color-default: var(--default);
+ *   --color-default-foreground: var(--default-foreground);
+ *
+ *   --color-success: var(--success);
+ *   --color-success-foreground: var(--success-foreground);
+ *
+ *   --color-warning: var(--warning);
+ *   --color-warning-foreground: var(--warning-foreground);
+ *
+ *   --color-danger: var(--danger);
+ *   --color-danger-foreground: var(--danger-foreground);
+ *
+ *   --color-backdrop: var(--backdrop);
+ *
+ *   --shadow-surface: var(--surface-shadow);
+ *   --shadow-overlay: var(--overlay-shadow);
+ *   --shadow-field: var(--field-shadow);
+ *
+ *   --color-field: var(--field-background, var(--default));
+ *   --color-field-hover: var(--field-hover);
+ *   --color-field-foreground: var(--field-foreground, var(--foreground));
+ *   --color-field-placeholder: var(--field-placeholder, var(--muted));
+ *   --color-field-border: var(--field-border, var(--border));
+ *   --radius-field: var(--field-radius, calc(var(--radius) * 1.5));
+ *   --border-width-field: var(--field-border-width, var(--border-width));
+ *
+ *   --color-background-secondary: var(--background-secondary);
+ *   --color-background-tertiary: var(--background-tertiary);
+ *   --color-background-inverse: var(--background-inverse);
+ *
+ *   --color-default-hover: var(--default-hover);
+ *   --color-accent-hover: var(--accent-hover);
+ *   --color-success-hover: var(--success-hover);
+ *   --color-warning-hover: var(--warning-hover);
+ *   --color-danger-hover: var(--danger-hover);
+ *
+ *   --color-field-focus: var(--field-focus);
+ *   --color-field-border-hover: var(--field-border-hover);
+ *   --color-field-border-focus: var(--field-border-focus);
+ *
+ *   --color-default-soft: var(--default-soft);
+ *   --color-default-soft-foreground: var(--default-soft-foreground);
+ *   --color-default-soft-hover: var(--default-soft-hover);
+ *
+ *   --color-accent-soft: var(--accent-soft);
+ *   --color-accent-soft-foreground: var(--accent-soft-foreground);
+ *   --color-accent-soft-hover: var(--accent-soft-hover);
+ *
+ *   --color-danger-soft: var(--danger-soft);
+ *   --color-danger-soft-foreground: var(--danger-soft-foreground);
+ *   --color-danger-soft-hover: var(--danger-soft-hover);
+ *
+ *   --color-warning-soft: var(--warning-soft);
+ *   --color-warning-soft-foreground: var(--warning-soft-foreground);
+ *   --color-warning-soft-hover: var(--warning-soft-hover);
+ *
+ *   --color-success-soft: var(--success-soft);
+ *   --color-success-soft-foreground: var(--success-soft-foreground);
+ *   --color-success-soft-hover: var(--success-soft-hover);
+ *
+ *   --color-separator-secondary: var(--separator-secondary);
+ *   --color-separator-tertiary: var(--separator-tertiary);
+ *
+ *   --color-border-secondary: var(--border-secondary);
+ *   --color-border-tertiary: var(--border-tertiary);
+ *
+ *   --radius-xs: calc(var(--radius) * 0.25);
+ *   --radius-sm: calc(var(--radius) * 0.5);
+ *   --radius-md: calc(var(--radius) * 0.75);
+ *   --radius-lg: calc(var(--radius) * 1);
+ *   --radius-xl: calc(var(--radius) * 1.5);
+ *   --radius-2xl: calc(var(--radius) * 2);
+ *   --radius-3xl: calc(var(--radius) * 3);
+ *   --radius-4xl: calc(var(--radius) * 4);
+ *
+ *   --animate-spin-fast: spin 0.75s linear infinite;
+ *   --animate-skeleton: skeleton 2s linear infinite;
+ *   --animate-caret-blink: caret-blink 1.2s ease-out infinite;
+ *
+ *   @keyframes skeleton { 100% { transform: translateX(200%); } }
+ *   @keyframes caret-blink { 0%,70%,100% { opacity: 1; } 20%,50% { opacity: 0; } }
+ *
+ *   --font-sans: 'PingFang SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+ *
+ *   --color-info: var(--info);
+ *   --color-success-soft-foreground: var(--success-soft-foreground);
+ *   --color-warning-soft-foreground: var(--warning-soft-foreground);
+ *   --color-danger-soft-foreground: var(--danger-soft-foreground);
+ *   --color-info-soft-foreground: var(--info-soft-foreground);
+ * }
+ */

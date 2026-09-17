@@ -213,6 +213,12 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
     },
   },
+  {
+    files: ['src/components/base/**/*.{ts,tsx}'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
   // The two UI conventions that need to see more than one node: an icon-only
   // control needs a <Tooltip> ancestor, and every intrinsic element carries
   // data-slot. Both are the local plugin under scripts/eslint-rules/.
@@ -234,7 +240,7 @@ export default tseslint.config(
   },
   {
     files: ['src/**/*.{ts,tsx}'],
-    ignores: ['src/components/ui/**'],
+    ignores: ['src/components/ui/**', 'src/components/base/**'],
     rules: {
       'no-restricted-syntax': [
         'error',
