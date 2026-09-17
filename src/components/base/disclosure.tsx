@@ -1,10 +1,14 @@
-import { useState, type ComponentProps } from 'react'
+import React, { useState, type ComponentProps, type ReactElement } from 'react'
 import { cn } from '@/lib/utils'
 
-interface DisclosureProps extends ComponentProps<'div'> {
+type DisclosureChildren = React.ReactNode | ((opts: { isExpanded: boolean }) => React.ReactNode)
+
+interface DisclosureProps extends Omit<ComponentProps<'div'>, 'children'> {
   isExpanded?: boolean
   defaultExpanded?: boolean
   onExpandedChange?: (expanded: boolean) => void
+  variant?: string
+  children?: DisclosureChildren
 }
 
 function DisclosureRoot({
@@ -12,6 +16,7 @@ function DisclosureRoot({
   isExpanded,
   defaultExpanded = false,
   onExpandedChange: _onExpandedChange,
+  variant: _variant,
   children,
   ...props
 }: DisclosureProps) {
@@ -19,20 +24,25 @@ function DisclosureRoot({
   const expanded = isExpanded ?? internal
   return (
     <div data-slot="disclosure" data-expanded={expanded || undefined} {...props} className={cn('', className)}>
-      {children}
+      {typeof children === 'function' ? children({ isExpanded: expanded }) : children}
     </div>
   )
 }
 
-function DisclosureTrigger({ className, ...props }: ComponentProps<'button'>) {
-  return (
-    <button
-      data-slot="disclosure-trigger"
-      type="button"
-      {...props}
-      className={cn('flex w-full items-center gap-2 text-left', className)}
-    />
-  )
+interface DisclosureTriggerProps extends ComponentProps<'button'> {
+  render?: (props: ComponentProps<'button'>) => ReactElement
+}
+
+function DisclosureTrigger({ className, render, ...props }: DisclosureTriggerProps) {
+  const domProps = {
+    'data-slot': 'disclosure-trigger' as const,
+    type: 'button' as const,
+    ...props,
+    className: cn('flex w-full items-center gap-2 text-left', className),
+  }
+  if (render) return render(domProps)
+  // data-slot is in domProps but ESLint's static check can't see spread
+  return <button data-slot="disclosure-trigger" {...domProps} />
 }
 
 function DisclosureIndicator({ className, ...props }: ComponentProps<'span'>) {
@@ -49,12 +59,24 @@ function DisclosureHeading({ className, ...props }: ComponentProps<'div'>) {
   return <div data-slot="disclosure-heading" {...props} className={cn('', className)} />
 }
 
-function DisclosureContent({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="disclosure-content" {...props} className={cn('', className)} />
+interface DisclosureContentProps extends ComponentProps<'div'> {
+  render?: (props: ComponentProps<'div'>) => ReactElement
 }
 
-function DisclosureBody({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="disclosure-body" {...props} className={cn('', className)} />
+function DisclosureContent({ className, render, ...props }: DisclosureContentProps) {
+  const domProps = { 'data-slot': 'disclosure-content' as const, ...props, className: cn('', className) }
+  if (render) return render(domProps)
+  return <div data-slot="disclosure-content" {...domProps} />
+}
+
+interface DisclosureBodyProps extends ComponentProps<'div'> {
+  render?: (props: ComponentProps<'div'>) => ReactElement
+}
+
+function DisclosureBody({ className, render, ...props }: DisclosureBodyProps) {
+  const domProps = { 'data-slot': 'disclosure-body' as const, ...props, className: cn('', className) }
+  if (render) return render(domProps)
+  return <div data-slot="disclosure-body" {...domProps} />
 }
 
 export const Disclosure = Object.assign(DisclosureRoot, {
@@ -65,7 +87,12 @@ export const Disclosure = Object.assign(DisclosureRoot, {
   Body: DisclosureBody,
 })
 
-function DisclosureGroupRoot({ className, ...props }: ComponentProps<'div'>) {
+interface DisclosureGroupProps extends ComponentProps<'div'> {
+  expandedKeys?: Iterable<string>
+  onExpandedChange?: (keys: Set<string>) => void
+}
+
+function DisclosureGroupRoot({ className, expandedKeys: _ek, onExpandedChange: _oec, ...props }: DisclosureGroupProps) {
   return <div data-slot="disclosure-group" {...props} className={cn('flex flex-col', className)} />
 }
 

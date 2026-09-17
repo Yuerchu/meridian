@@ -27,7 +27,12 @@ export function ToggleButton({
   )
 }
 
-export function ToggleButtonGroup({ className, ...props }: AriaToggleButtonGroupProps & { className?: string }) {
+export function ToggleButtonGroup({
+  className,
+  isDetached: _isDetached,
+  size: _size,
+  ...props
+}: AriaToggleButtonGroupProps & { className?: string; isDetached?: boolean; size?: string }) {
   return (
     <AriaToggleButtonGroup
       data-slot="toggle-button-group"

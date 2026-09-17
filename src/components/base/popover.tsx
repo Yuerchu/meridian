@@ -7,8 +7,18 @@ import {
 import type { ComponentProps, ReactElement } from 'react'
 import { cn } from '@/lib/utils'
 
-function PopoverRoot({ children }: { children?: React.ReactNode }) {
-  return <DialogTrigger>{children}</DialogTrigger>
+interface PopoverRootProps {
+  isOpen?: boolean
+  onOpenChange?: (open: boolean) => void
+  children?: React.ReactNode
+}
+
+function PopoverRoot({ isOpen, onOpenChange, children }: PopoverRootProps) {
+  return (
+    <DialogTrigger isOpen={isOpen} onOpenChange={onOpenChange}>
+      {children}
+    </DialogTrigger>
+  )
 }
 
 interface PopoverTriggerProps extends ComponentProps<'span'> {

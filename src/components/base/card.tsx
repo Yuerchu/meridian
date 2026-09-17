@@ -1,7 +1,7 @@
 import type { ComponentProps } from 'react'
 import { cn } from '@/lib/utils'
 
-function CardRoot({ className, ...props }: ComponentProps<'div'>) {
+function CardRoot({ className, variant: _variant, ...props }: ComponentProps<'div'> & { variant?: string }) {
   return <div data-slot="card" {...props} className={cn('rounded-xl bg-surface shadow-surface', className)} />
 }
 

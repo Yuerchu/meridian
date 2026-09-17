@@ -117,7 +117,9 @@ export function ApprovalToastRegion({
   // `MAX_SAFE_INTEGER`, so the stack depth is decided here or not at all.
   return (
     <Toast.Provider placement="top" queue={approvalQueue} maxVisibleToasts={MAX_VISIBLE}>
-      {({ toast }) => <ApprovalToast toast={toast} onSelect={onSelect} />}
+      {({ toast }: { toast: { content: ApprovalToastContent; key: string } }) => (
+        <ApprovalToast toast={toast} onSelect={onSelect} />
+      )}
     </Toast.Provider>
   )
 }

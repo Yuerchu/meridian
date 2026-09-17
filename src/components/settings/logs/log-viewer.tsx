@@ -90,7 +90,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
             aria-label={t('settings.about.logs.searchPlaceholder')}
             name="logSearch"
             value={logs.search}
-            onChange={(e) => logs.setSearch(e.target.value)}
+            onChange={(e: import('react').ChangeEvent<HTMLInputElement>) => logs.setSearch(e.target.value)}
             placeholder={t('settings.about.logs.searchPlaceholder')}
           />
         </InputGroup>

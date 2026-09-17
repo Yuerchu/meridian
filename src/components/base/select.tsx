@@ -14,8 +14,10 @@ interface SelectRootProps {
   isDisabled?: boolean
   placeholder?: string
   value?: string
+  defaultValue?: string
   onChange?: (value: string) => void
   selectedKey?: string
+  defaultSelectedKey?: string
   onSelectionChange?: (key: string) => void
   className?: string
   children?: React.ReactNode
@@ -25,8 +27,10 @@ function SelectRoot({
   className,
   fullWidth: _fw,
   value,
+  defaultValue: _dv,
   onChange,
   selectedKey,
+  defaultSelectedKey: _dsk,
   onSelectionChange,
   ...props
 }: SelectRootProps) {

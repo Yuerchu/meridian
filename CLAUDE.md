@@ -8,7 +8,7 @@ Multi-provider AI desktop client with coding agent capabilities.
 |-------|-----------|
 | Runtime | Tauri v2 (Rust backend + WebView frontend) |
 | Frontend | React 19 + TypeScript + Vite |
-| UI | Tailwind CSS v4 + HeroUI v3 (React Aria) |
+| UI | Tailwind CSS v4 + self-built components (React Aria) + boardui design conventions |
 | Backend | Rust (tokio async runtime) |
 | AI Streaming | reqwest + eventsource-stream (SSE) |
 | Database | SQLite (planned) |
@@ -1523,9 +1523,11 @@ from `src/dev/schema-data.ts`, which is the single source both halves of this fe
 
 ## UI Conventions
 
-Built on HeroUI v3 (React Aria underneath). Read the component's own CSS before styling it — `node_modules/@heroui/styles/dist/components/*.css` says what it already does, and most "why won't this override" questions are answered there. The `heroui-react` skill fetches the official docs.
+Built on self-owned components under `src/components/base/` (React Aria underneath). **Front-end conventions strictly follow boardui** (https://www.boardui.com/) unless there is a specific reason that requires human sign-off. This means: semantic tokens only (no raw palette), composite typography utilities, `cx()` for class merging, the boardui motion language, and the boardui radius/spacing conventions. The `boardui` skill has the full reference. Components that boardui ships as free source should be installed from its registry and adapted rather than hand-built from scratch.
 
-Prefer HeroUI's answer over ours. Accepting a different radius or spacing is cheaper than a `className` that fights the library, and a wrapper that only re-exports a HeroUI component should not exist. What remains under `components/ui/` is what HeroUI has no equivalent for.
+`components/base/` is a vendored snapshot of self-built components — **do not run `boardui add --overwrite`** on files that have been adapted to Meridian's RAC-based API (e.g. `onPress` instead of `onClick`). New primitives should be installed fresh and then adapted.
+
+What remains under `components/ui/` is Meridian-specific domain components (bubble, chat-tool, marker, etc.) that no component library covers.
 
 - **Two tokens mean the opposite of what shadcn called them.** `--muted` is secondary *text*, not a pale background; `--accent` is the main action colour (Button primary, Switch and Slider fill, focus ring), not a neutral hover wash. The neutral hover wash is `--default`. Getting these backwards renders, so it survives review — check the token, not the look.
 - **A card in the transcript carries its own edge, because the transcript is itself `--surface`.** "A HeroUI card has no border — it is lighter than the page, plus `--surface-shadow`" is true of a card on the *page* and false of every card here, and both halves of it fail at once. `Sidebar.Main` under `variant="inset"` is painted `background-color: var(--surface)` (Pro's `sidebar.css`), so a `bg-surface` card is exactly its parent's colour rather than one step above the page; and HeroUI sets `--surface-shadow: 0 0 0 0 transparent inset` in dark mode on purpose ("No shadow on dark mode"). A dark-theme tool card was therefore invisible: no fill difference, no shadow, no border. `CHAT_TOOL_CARD` adds `ring-1 ring-border ring-inset` and the status variants recolour that same ring — a second edge beside the first is what a border would have cost. The transcript no longer draws tools as cards (see the next entry); the card is `ChatTool`'s `card` presentation, kept for the playground and for anything outside a bubble.

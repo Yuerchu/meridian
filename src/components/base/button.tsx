@@ -1,11 +1,13 @@
 import { Button as AriaButton, type ButtonProps as AriaButtonProps } from 'react-aria-components'
+import type { ForwardedRef } from 'react'
 import { cn } from '@/lib/utils'
 
-type ButtonVariant =
+export type ButtonVariant =
   'primary' | 'secondary' | 'tertiary' | 'outline' | 'ghost' | 'danger' | 'danger-soft' | 'transparent'
 type ButtonSize = 'sm' | 'md' | 'lg'
 
 interface ButtonProps extends AriaButtonProps {
+  ref?: ForwardedRef<HTMLButtonElement>
   variant?: ButtonVariant
   size?: ButtonSize
   isIconOnly?: boolean

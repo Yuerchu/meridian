@@ -11,7 +11,13 @@ import {
 import type { ComponentProps } from 'react'
 import { cn } from '@/lib/utils'
 
-function DropdownRoot(props: MenuTriggerProps) {
+interface DropdownRootProps extends MenuTriggerProps {
+  'aria-label'?: string
+  'data-slot'?: string
+  className?: string
+}
+
+function DropdownRoot({ 'aria-label': _al, 'data-slot': _ds, className: _cn, ...props }: DropdownRootProps) {
   return <MenuTrigger data-slot="dropdown" {...props} />
 }
 
@@ -27,7 +33,11 @@ function DropdownMenu({ className, ...props }: MenuProps<any> & { className?: st
   )
 }
 
-function DropdownItem({ className, ...props }: MenuItemProps & { className?: string }) {
+function DropdownItem({
+  className,
+  variant: _variant,
+  ...props
+}: MenuItemProps & { className?: string; variant?: string }) {
   return (
     <MenuItem
       data-slot="dropdown-item"
@@ -46,8 +56,8 @@ function DropdownSeparator({ className, ...props }: ComponentProps<'div'>) {
   return <AriaSeparator data-slot="dropdown-separator" {...props} className={cn('my-1 h-px bg-separator', className)} />
 }
 
-function DropdownTrigger({ children }: { children?: React.ReactNode }) {
-  return <>{children}</>
+function DropdownTrigger(props: ComponentProps<'div'>) {
+  return <>{props.children}</>
 }
 
 function DropdownPopover({ children }: ComponentProps<'div'> & { placement?: string }) {

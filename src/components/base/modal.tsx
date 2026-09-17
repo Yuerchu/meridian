@@ -84,7 +84,7 @@ function ModalBackdrop({
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- passthrough
-function ModalContainer({ children, ..._props }: any) {
+function ModalContainer({ children }: any) {
   return <>{children}</>
 }
 

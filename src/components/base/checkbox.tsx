@@ -7,7 +7,11 @@ import {
 import type { ComponentProps } from 'react'
 import { cn } from '@/lib/utils'
 
-function CheckboxRoot({ className, ...props }: AriaCheckboxProps & { className?: string }) {
+function CheckboxRoot({
+  className,
+  variant: _variant,
+  ...props
+}: AriaCheckboxProps & { className?: string; variant?: string }) {
   return (
     <AriaCheckbox
       data-slot="checkbox"

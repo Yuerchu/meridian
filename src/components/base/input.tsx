@@ -62,7 +62,12 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(function 
   )
 })
 
-function SearchFieldRoot({ className, ...props }: AriaSearchFieldProps & { className?: string }) {
+function SearchFieldRoot({
+  className,
+  fullWidth: _fw,
+  variant: _v,
+  ...props
+}: AriaSearchFieldProps & { className?: string; fullWidth?: boolean; variant?: string }) {
   return <AriaSearchField data-slot="search-field" {...props} className={cn('flex flex-col gap-1.5', className)} />
 }
 
@@ -102,7 +107,7 @@ export const SearchField = Object.assign(SearchFieldRoot, {
   ClearButton: SearchFieldClearButton,
 })
 
-function InputGroupRoot({ className, ...props }: ComponentProps<'div'>) {
+function InputGroupRoot({ className, fullWidth: _fw, ...props }: ComponentProps<'div'> & { fullWidth?: boolean }) {
   return <div data-slot="input-group" {...props} className={cn('flex items-center gap-1', className)} />
 }
 
@@ -115,6 +120,8 @@ function InputGroupSuffix({ className, ...props }: ComponentProps<'span'>) {
 }
 
 export const InputGroup = Object.assign(InputGroupRoot, {
+  Input,
+  TextArea,
   Prefix: InputGroupPrefix,
   Suffix: InputGroupSuffix,
 })
