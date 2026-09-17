@@ -13,7 +13,6 @@ export type MemoryListResponse = MemoryInfoResponse[]
 export type MemorySubjectListResponse = MemorySubjectInfoResponse[]
 export type ModelConfigListResponse = ModelConfigInfoResponse[]
 export type ProjectListResponse = ProjectInfoResponse[]
-export type PromptTemplateListResponse = PromptTemplateInfoResponse[]
 export type ProviderListResponse = ProviderInfoResponse[]
 export type QueuedPromptListResponse = QueuedPromptInfoResponse[]
 export type SkillListResponse = SkillInfoResponse[]
@@ -214,21 +213,6 @@ export interface ProjectUpdateRequest {
   path?: string
   assistantId?: string
   description?: string
-}
-
-export interface PromptTemplateCreateRequest {
-  name: string
-  category: string
-  templateText: string
-  description: string | null
-}
-
-export interface PromptTemplateUpdateRequest {
-  id: string
-  name?: string
-  description?: string | null
-  category?: string
-  templateText?: string
 }
 
 export interface ProviderCreateRequest {
@@ -2183,18 +2167,6 @@ export interface StickerContentPart {
   type: 'sticker'
   sticker_id: string
   name?: string
-}
-
-export interface PromptTemplateInfoResponse {
-  id: string
-  name: string
-  description: string | null
-  category: string
-  template_text: string
-  is_builtin: boolean
-  sort_order: number
-  created_at: number
-  updated_at: number
 }
 
 export interface TemplateVariableInfoResponse {

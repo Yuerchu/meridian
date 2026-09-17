@@ -380,14 +380,8 @@ requireRustFields('src-tauri/src/commands/project.rs', 'ProjectCreateRequest', {
   assistant_id: /^RequiredNullable<String>$/,
   description: /^RequiredNullable<String>$/,
 })
-requireRustFields('src-tauri/src/commands/prompt_template.rs', 'PromptTemplateCreateRequest', {
-  description: /^RequiredNullable<String>$/,
-})
 requireRustFields('src-tauri/src/commands/skill.rs', 'SkillCreateRequest', {
   display_name: /^RequiredNullable<String>$/,
-})
-requireRustFields('src-tauri/src/commands/prompt_template.rs', 'PromptTemplateUpdateRequest', {
-  id: /^String$/,
 })
 requireRustFields('src-tauri/src/commands/skill.rs', 'SkillUpdateRequest', {
   dir_name: /^String$/,
@@ -552,8 +546,6 @@ const namedCommandRequests = [
   ['src-tauri/src/commands/memory.rs', 'set_memory_subject_flags', 'MemorySubjectFlagsUpdateRequest'],
   ['src-tauri/src/commands/project.rs', 'create_project', 'ProjectCreateRequest'],
   ['src-tauri/src/commands/project.rs', 'update_project', 'ProjectUpdateRequest'],
-  ['src-tauri/src/commands/prompt_template.rs', 'create_prompt_template', 'PromptTemplateCreateRequest'],
-  ['src-tauri/src/commands/prompt_template.rs', 'update_prompt_template', 'PromptTemplateUpdateRequest'],
   ['src-tauri/src/commands/provider.rs', 'create_provider', 'ProviderCreateRequest'],
   ['src-tauri/src/commands/provider.rs', 'update_provider', 'ProviderUpdateRequest'],
   ['src-tauri/src/commands/provider.rs', 'set_provider_key', 'ProviderKeyUpdateRequest'],
@@ -2285,17 +2277,10 @@ requireTypescriptFields(typesFile, 'ProjectCreateRequest', {
   description: /^string \| null$/,
 })
 requireTypescriptRequiredFields(typesFile, 'ProjectCreateRequest', ['path', 'sourceId', 'assistantId', 'description'])
-requireTypescriptFields(typesFile, 'PromptTemplateCreateRequest', {
-  description: /^string \| null$/,
-})
-requireTypescriptRequiredFields(typesFile, 'PromptTemplateCreateRequest', ['description'])
 requireTypescriptFields(typesFile, 'SkillCreateRequest', {
   displayName: /^string \| null$/,
 })
 requireTypescriptRequiredFields(typesFile, 'SkillCreateRequest', ['displayName'])
-requireTypescriptFields(typesFile, 'PromptTemplateUpdateRequest', {
-  id: /^string$/,
-})
 requireTypescriptFields(typesFile, 'SkillUpdateRequest', {
   dirName: /^string$/,
 })

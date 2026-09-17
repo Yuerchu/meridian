@@ -15,7 +15,6 @@ use meridian_core::db::models::{
     memory::{MemoryRow, MemorySubjectRow},
     model_config::ModelConfigRow,
     project::ProjectRow,
-    prompt_template::PromptTemplateRow,
     provider::ProviderRow,
     queue::QueuedPromptRow,
     skill::SkillRow,
@@ -875,19 +874,6 @@ impl TryFrom<ProjectRow> for ProjectInfoResponse {
 }
 
 pub type ProjectListResponse = Vec<ProjectInfoResponse>;
-
-strict_bool_entity_response!(PromptTemplateRow, PromptTemplateInfoResponse, PromptTemplateListResponse, |_row| {}, {
-    id: String,
-    name: String,
-    description: Option<String>,
-    category: String,
-    template_text: String,
-    sort_order: i32,
-    created_at: i64,
-    updated_at: i64,
-}, {
-    is_builtin,
-});
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ProviderInfoResponse {
