@@ -46,9 +46,9 @@ describe('ThinkingRow', () => {
 
   it('shimmers the latest title while the thought is still arriving', () => {
     const { container } = render(<ThinkingRow text="**One****Two**" panelKey="m1:1:thinking" isStreaming />)
-    const shimmer = container.querySelector('.text-shimmer')
+    const shimmer = container.querySelector('[data-slot="text-shimmer"]')
     expect(shimmer?.textContent).toBe('Two')
-    expect(screen.getByText('One').closest('.text-shimmer')).toBeNull()
+    expect(screen.getByText('One').closest('[data-slot="text-shimmer"]')).toBeNull()
   })
 
   it('folds a thought with a body behind a badge and draws it as small Markdown', () => {

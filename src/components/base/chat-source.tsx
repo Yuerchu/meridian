@@ -1,4 +1,4 @@
-import { useState, type ComponentProps } from 'react'
+import React, { useId, useState, type ComponentProps } from 'react'
 import { cn } from '@/lib/utils'
 
 interface ChatSourceProps extends ComponentProps<'div'> {
@@ -65,21 +65,31 @@ interface ChatSourcesProps extends ComponentProps<'div'> {
 
 function ChatSourcesRoot({ className, defaultExpanded = false, children, ...props }: ChatSourcesProps) {
   const [expanded, setExpanded] = useState(defaultExpanded)
+  const panelId = useId()
   return (
-    <div data-slot="chat-sources" data-expanded={expanded || undefined} {...props} className={cn('', className)}>
-      <div data-slot="chat-sources-toggle-area" onClick={() => setExpanded((v) => !v)}>
-        {/* Trigger rendered via children */}
+    <ChatSourcesContext.Provider value={{ expanded, toggle: () => setExpanded((v) => !v), panelId }}>
+      <div data-slot="chat-sources" data-expanded={expanded || undefined} {...props} className={cn('', className)}>
+        {children}
       </div>
-      {children}
-    </div>
+    </ChatSourcesContext.Provider>
   )
 }
 
+const ChatSourcesContext = React.createContext<{ expanded: boolean; toggle: () => void; panelId: string }>({
+  expanded: false,
+  toggle: () => {},
+  panelId: '',
+})
+
 function ChatSourcesTrigger({ className, ...props }: ComponentProps<'button'>) {
+  const { expanded, toggle, panelId } = React.useContext(ChatSourcesContext)
   return (
     <button
       data-slot="chat-sources-trigger"
       type="button"
+      aria-expanded={expanded}
+      aria-controls={panelId}
+      onClick={toggle}
       {...props}
       className={cn('flex items-center gap-1 text-xs font-medium text-muted', className)}
     />
@@ -87,7 +97,17 @@ function ChatSourcesTrigger({ className, ...props }: ComponentProps<'button'>) {
 }
 
 function ChatSourcesContent({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="chat-sources-content" {...props} className={cn('mt-1', className)} />
+  const { expanded, panelId } = React.useContext(ChatSourcesContext)
+  return (
+    <div
+      data-slot="chat-sources-content"
+      id={panelId}
+      role="region"
+      hidden={!expanded}
+      {...props}
+      className={cn('mt-1', expanded ? '' : 'hidden', className)}
+    />
+  )
 }
 
 function ChatSourcesList({ className, ...props }: ComponentProps<'div'>) {

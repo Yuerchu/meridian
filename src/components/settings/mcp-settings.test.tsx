@@ -59,9 +59,9 @@ describe('McpSettings list/detail navigation', () => {
     const user = userEvent.setup()
     render(<McpSettings />)
 
-    const list = await screen.findByRole('grid', { name: i18n.t('settings.mcp.title') })
-    const local = within(list).getByRole('row', { name: 'Local tools' })
-    const remote = within(list).getByRole('row', { name: 'Remote tools' })
+    const list = await screen.findByRole('listbox', { name: i18n.t('settings.mcp.title') })
+    const local = within(list).getByRole('option', { name: /Local tools/ })
+    const remote = within(list).getByRole('option', { name: /Remote tools/ })
 
     expect(local).toHaveAttribute('data-key', 'stdio-server')
     expect(remote).toHaveTextContent('HTTP')
