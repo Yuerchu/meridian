@@ -3,6 +3,7 @@ use crate::commands::entity_response::{AssistantInfoResponse, AssistantListRespo
 use crate::commands::model_config::RequiredNullable;
 use meridian_core::db;
 use meridian_core::db::models::assistant::{AssistantChangeset, AssistantInsert};
+use meridian_core::template;
 use meridian_core::util::{double_option, now_ms};
 
 const PLAN_REVIEW_ASSISTANT_BARRIER: &str = "This assistant is frozen into a plan review or its continuation. Finish that review before changing or deleting the assistant.";
@@ -242,6 +243,27 @@ pub async fn delete_assistant(app: tauri::AppHandle, id: String) -> Result<(), S
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TemplateVariableInfoResponse {
+    pub name: String,
+    pub description_en: String,
+    pub description_zh: String,
+}
+
+pub type TemplateVariableListResponse = Vec<TemplateVariableInfoResponse>;
+
+#[tauri::command]
+pub fn list_template_variables(_app: tauri::AppHandle) -> Result<TemplateVariableListResponse, String> {
+    Ok(template::available_variables()
+        .into_iter()
+        .map(|variable| TemplateVariableInfoResponse {
+            name: variable.name.to_owned(),
+            description_en: variable.description_en.to_owned(),
+            description_zh: variable.description_zh.to_owned(),
+        })
+        .collect())
 }
 
 #[cfg(test)]

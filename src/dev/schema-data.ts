@@ -1503,27 +1503,6 @@ const RAW_TABLES: RawTable[] = [
     rels: ['复合主键 <code>(assistant_id, dir_name)</code>。'],
     rules: [],
   },
-  {
-    name: 'prompt_templates',
-    group: 'tools',
-    title: '提示词模板',
-    mig: 6,
-    show: ['id', 'name', 'category', 'is_builtin'],
-    cols: [
-      ['id', 'TEXT', ['PK', 'NN'], '—', ''],
-      ['name', 'TEXT', ['NN'], '—', ''],
-      ['description', 'TEXT', ['NULL'], 'NULL', ''],
-      ['category', 'TEXT', ['NN'], "'general'", ''],
-      ['template_text', 'TEXT', ['NN'], '—', ''],
-      ['is_builtin', 'INTEGER', ['NN'], '0', '0/1'],
-      ['sort_order', 'INTEGER', ['NN'], '0', ''],
-      ['created_at', 'BIGINT', ['NN'], '—', ''],
-      ['updated_at', 'BIGINT', ['NN'], '—', ''],
-    ],
-    rels: ['孤立表，不引用任何东西也不被引用。'],
-    rules: [],
-  },
-
   // ── 表情与贴纸 ────────────────────────────────────────────────
   {
     name: 'emoji_packs',
@@ -2324,7 +2303,7 @@ export const EDGES: SchemaEdge[] = [
 const LAYOUT: { x: number; tables: string[] }[] = [
   {
     x: 0,
-    tables: ['providers', 'model_configs', 'cached_models', 'mcp_servers', 'prompt_templates'],
+    tables: ['providers', 'model_configs', 'cached_models', 'mcp_servers'],
   },
   { x: 340, tables: ['assistants', 'tool_presets', 'tool_categories', 'custom_tools', 'projects', 'skills'] },
   {

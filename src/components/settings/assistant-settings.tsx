@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, StarFill, SquareDashedText } from '@gravity-ui/icons'
+import { Plus, StarFill } from '@gravity-ui/icons'
 import {
   Alert,
   Button,
@@ -9,7 +9,6 @@ import {
   DisclosureGroup,
   Input,
   Label,
-  ListBox,
   TextArea,
   TextField,
   Tooltip,
@@ -28,7 +27,6 @@ import type {
   ProviderInfoResponse,
   McpToolInfoResponse,
   ProviderModelInfoResponse,
-  PromptTemplateInfoResponse,
   SkillInfoResponse,
   TemplateVariableInfoResponse,
   ToolPresetInfoResponse,
@@ -63,9 +61,7 @@ function AssistantEditor({
   const [saved, markSaved] = useTemporaryFlag()
   const [saveError, setSaveError] = useState<string | null>(null)
   const [allTools, setAllTools] = useState<McpToolInfoResponse[]>([])
-  const [templates, setTemplates] = useState<PromptTemplateInfoResponse[]>([])
   const [templateVars, setTemplateVars] = useState<TemplateVariableInfoResponse[]>([])
-  const [showTemplates, setShowTemplates] = useState(false)
   const [allPacks, setAllPacks] = useState<EmojiPackInfoResponse[]>([])
   const [assignedPackIds, setAssignedPackIds] = useState<Set<string>>(new Set())
   const [allSkills, setAllSkills] = useState<SkillInfoResponse[]>([])
@@ -128,7 +124,6 @@ function AssistantEditor({
 
   useEffect(() => {
     api.listAllToolNames().then(setAllTools)
-    api.listPromptTemplates().then(setTemplates)
     api.listTemplateVariables().then(setTemplateVars)
     api.listEmojiPacks().then(setAllPacks)
     api.listToolPresets().then(setToolPresets)
@@ -179,45 +174,8 @@ function AssistantEditor({
         <Input name={`assistantName-${assistant.id}`} value={name} onChange={(e) => setName(e.target.value)} />
       </TextField>
 
-      {/* The label shares its line with a button, so it is nested rather than a
-          direct child. React Aria wires it through context either way. */}
       <TextField fullWidth>
-        <div data-slot="assistant-prompt-header" className="flex items-center justify-between">
-          <Label>{t('settings.assistant.systemPrompt')}</Label>
-          <Button variant="ghost" className="text-xs gap-1" onPress={() => setShowTemplates(!showTemplates)}>
-            <SquareDashedText className="w-3.5 h-3.5" />
-            {t('settings.assistant.browseTemplates')}
-          </Button>
-        </div>
-        {showTemplates && (
-          <div
-            data-slot="template-list"
-            className="border border-border rounded-lg p-2 space-y-1 max-h-48 overflow-y-auto overscroll-contain"
-          >
-            <ListBox
-              aria-label={t('settings.assistant.browseTemplates')}
-              onAction={(key) => {
-                const tpl = templates.find((candidate) => candidate.id === String(key))
-                if (!tpl) return
-                setSystemPrompt(tpl.template_text)
-                setShowTemplates(false)
-              }}
-            >
-              {templates.map((tpl) => (
-                <ListBox.Item key={tpl.id} id={tpl.id} textValue={tpl.name} className="rounded-lg px-2 py-1.5 text-xs">
-                  <span data-slot="template-name" className="font-medium">
-                    {tpl.name}
-                  </span>
-                  {tpl.description && (
-                    <span data-slot="template-description" className="text-muted ml-2">
-                      {tpl.description}
-                    </span>
-                  )}
-                </ListBox.Item>
-              ))}
-            </ListBox>
-          </div>
-        )}
+        <Label>{t('settings.assistant.systemPrompt')}</Label>
         <TextArea
           name={`assistantSystemPrompt-${assistant.id}`}
           value={systemPrompt}
