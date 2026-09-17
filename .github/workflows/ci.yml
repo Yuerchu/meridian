@@ -99,11 +99,6 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: pnpm format:check
 
-      - name: Stage HeroUI Pro
-        env:
-          HEROUI_KEY: ${{ secrets.HEROUI_KEY }}
-        run: pnpm dlx hpsetup@latest react --auto
-
       - name: TypeScript check
         run: pnpm typecheck
 

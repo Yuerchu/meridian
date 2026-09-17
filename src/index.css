@@ -5,12 +5,23 @@
 /* Kept for `shimmer`, `no-scrollbar` and the `data-*` variants; it defines no
    colour tokens of its own, so it cannot collide with the theme above. */
 @import 'shadcn/tailwind.css';
-/* The chart CSS files map recharts' own class names onto the theme, so without
-   them the axes, grid and tooltip cursor draw in recharts' defaults rather than
-   in ours. Keep these until the chart wrapper replicates the styling. */
-@import '@heroui-pro/react/css/components/bar-chart.css' layer(components);
-@import '@heroui-pro/react/css/components/area-chart.css' layer(components);
-@import '@heroui-pro/react/css/components/chart-tooltip.css' layer(components);
+/* Chart styling: recharts class names mapped onto the theme. Previously from
+   Pro CSS; inlined here until the AreaChart wrapper replicates it. */
+.recharts-cartesian-grid line {
+  stroke: var(--separator);
+}
+.recharts-cartesian-axis-tick-value {
+  fill: var(--muted);
+  font-size: 0.75rem;
+}
+.recharts-tooltip-cursor {
+  stroke: var(--border);
+}
+.recharts-default-tooltip {
+  background: var(--overlay) !important;
+  border-color: var(--border) !important;
+  border-radius: calc(var(--radius) * 1.5);
+}
 @import '@fontsource-variable/geist';
 
 /* Plan review is a document surface with a sibling comment rail. The rail is
