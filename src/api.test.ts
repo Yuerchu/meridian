@@ -553,13 +553,6 @@ describe('api', () => {
       expect(mockInvoke).toHaveBeenCalledWith('update_assistant', { request })
     })
 
-    it('sends prompt template updates as one request', async () => {
-      mockInvoke.mockResolvedValueOnce({ id: 'template-1' })
-      const request = { id: 'template-1', templateText: 'Summarize: {{text}}' }
-      await api.updatePromptTemplate(request)
-      expect(mockInvoke).toHaveBeenCalledWith('update_prompt_template', { request })
-    })
-
     it('sends skill updates as one request', async () => {
       mockInvoke.mockResolvedValueOnce({ dir_name: 'review' })
       const request = { dirName: 'review', isEnabled: false }

@@ -11,7 +11,6 @@ vi.mock('@/api', () => ({
     listAssistants: vi.fn(),
     listProviders: vi.fn(),
     listAllToolNames: vi.fn(),
-    listPromptTemplates: vi.fn(),
     listTemplateVariables: vi.fn(),
     listEmojiPacks: vi.fn(),
     listToolPresets: vi.fn(),
@@ -84,7 +83,6 @@ describe('AssistantSettings tool mode segment', () => {
     mockApi.listAssistants.mockResolvedValue([ASSISTANT])
     mockApi.listProviders.mockResolvedValue([])
     mockApi.listAllToolNames.mockResolvedValue([TOOL])
-    mockApi.listPromptTemplates.mockResolvedValue([])
     mockApi.listTemplateVariables.mockResolvedValue([])
     mockApi.listEmojiPacks.mockResolvedValue([])
     mockApi.listToolPresets.mockResolvedValue([PRESET])

@@ -24,7 +24,6 @@ pub mod onebot;
 pub mod plan_review;
 pub mod preference;
 pub mod project;
-pub mod prompt_template;
 pub mod provider;
 pub mod queue;
 #[cfg(not(target_os = "android"))]

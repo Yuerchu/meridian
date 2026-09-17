@@ -136,10 +136,6 @@ import type {
   ProjectListResponse,
   ProjectCreateRequest,
   ProjectUpdateRequest,
-  PromptTemplateCreateRequest,
-  PromptTemplateInfoResponse,
-  PromptTemplateListResponse,
-  PromptTemplateUpdateRequest,
   ProviderInfoResponse,
   ProviderListResponse,
   ProviderCapabilitiesReadRequest,
@@ -771,16 +767,6 @@ export const api = {
   getListenAddresses: () => invoke<ListenAddressesResponse>('get_listen_addresses'),
 
   // Prompt Templates
-  listPromptTemplates: () => invoke<PromptTemplateListResponse>('list_prompt_templates'),
-
-  createPromptTemplate: (request: PromptTemplateCreateRequest) =>
-    invoke<PromptTemplateInfoResponse>('create_prompt_template', { request }),
-
-  updatePromptTemplate: (request: PromptTemplateUpdateRequest) =>
-    invoke<PromptTemplateInfoResponse>('update_prompt_template', { request }),
-
-  deletePromptTemplate: (id: string) => invoke<void>('delete_prompt_template', { id }),
-
   listTemplateVariables: () => invoke<TemplateVariableListResponse>('list_template_variables'),
 
   // Emoji Packs

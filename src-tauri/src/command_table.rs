@@ -533,15 +533,7 @@ macro_rules! with_all_commands {
                 request: $crate::commands::voice_corpus::VoiceCorpusExportRequest,
             ),
 
-            sync commands::prompt_template => list_prompt_templates(),
-            sync commands::prompt_template => create_prompt_template(
-                request: $crate::commands::prompt_template::PromptTemplateCreateRequest,
-            ),
-            sync commands::prompt_template => update_prompt_template(
-                request: $crate::commands::prompt_template::PromptTemplateUpdateRequest,
-            ),
-            sync commands::prompt_template => delete_prompt_template(id: String),
-            sync commands::prompt_template => list_template_variables(),
+            sync commands::assistant => list_template_variables(),
 
             sync commands::skill => list_skills(),
             sync commands::skill => rescan_skills(),
@@ -700,13 +692,6 @@ mod tests {
         rejects_unknown::<crate::commands::project::ProjectUpdateRequest>(serde_json::json!({
             "id": "project-1", "futureField": true
         }));
-        rejects_unknown::<crate::commands::prompt_template::PromptTemplateCreateRequest>(serde_json::json!({
-            "name": "Template", "category": "general", "templateText": "Hello",
-            "description": null, "futureField": true
-        }));
-        rejects_unknown::<crate::commands::prompt_template::PromptTemplateUpdateRequest>(serde_json::json!({
-            "id": "template-1", "futureField": true
-        }));
         rejects_unknown::<crate::commands::provider::ProviderCreateRequest>(serde_json::json!({
             "name": "OpenAI", "providerType": "openai", "baseUrl": "https://example.invalid",
             "apiFormat": null, "catalogId": null, "authOption": null, "futureField": true
@@ -779,13 +764,6 @@ mod tests {
             }),
             &["path", "sourceId", "assistantId", "description"],
         );
-        requires_nullable_keys::<crate::commands::prompt_template::PromptTemplateCreateRequest>(
-            serde_json::json!({
-                "name": "Template", "category": "general", "templateText": "Hello",
-                "description": null
-            }),
-            &["description"],
-        );
         requires_nullable_keys::<crate::commands::skill::SkillCreateRequest>(
             serde_json::json!({
                 "dirName": "review", "llmDescription": "Review", "body": "Body",
@@ -820,12 +798,6 @@ mod tests {
             serde_json::from_value::<crate::commands::assistant::AssistantUpdateRequest>(serde_json::json!({
                 "name": "Helper"
             }))
-            .is_err()
-        );
-        assert!(
-            serde_json::from_value::<crate::commands::prompt_template::PromptTemplateUpdateRequest>(
-                serde_json::json!({ "name": "Template" })
-            )
             .is_err()
         );
         assert!(
