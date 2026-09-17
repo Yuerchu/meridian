@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TrashBin, TriangleExclamation } from '@gravity-ui/icons'
 import { api } from '@/api'
-import { Button, Checkbox, Chip, Disclosure, TextArea, Tooltip } from '@heroui/react'
+import { Button, Checkbox, Chip, Disclosure, TextArea, Tooltip } from '@/components/base'
 import type { MemoryInfoResponse } from '@/types'
 
 /**

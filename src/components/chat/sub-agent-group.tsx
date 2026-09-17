@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { Alert, Chip, ListBox, Spinner } from '@heroui/react'
+import { Alert, Chip, ListBox, Spinner } from '@/components/base'
 import { Ban, CircleCheck, CircleQuestion, Compass, ForwardStep, TriangleExclamation } from '@gravity-ui/icons'
 import { ChatToolArgs } from '@/components/ui/chat-tool'
 import { BUBBLE_BLOCK } from '@/components/ui/bubble'

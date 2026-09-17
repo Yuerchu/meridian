@@ -1,6 +1,6 @@
 import * as React from 'react'
 
-import { Button, Tooltip } from '@heroui/react'
+import { Button, Tooltip } from '@/components/base'
 
 /**
  * An icon button with a tooltip. Lives here rather than beside the message

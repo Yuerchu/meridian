@@ -5,7 +5,7 @@ import { ChevronLeft, ArrowDownToLine, ArrowsRotateRight, Magnifier } from '@gra
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
-import { Button, InputGroup, Skeleton, Spinner } from '@heroui/react'
+import { Button, InputGroup, Skeleton, Spinner } from '@/components/base'
 import { EmptyState } from '@/components/base'
 import { LogRow } from './log-row'
 import { SettingsSelect, type SettingsSelectOption } from '../primitives'

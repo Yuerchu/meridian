@@ -11,7 +11,7 @@
 // step through a scenario deterministically instead of racing a timer.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { Button } from '@heroui/react'
+import { Button } from '@/components/base'
 import { ChatTranscript } from '@/components/chat/chat-transcript'
 import { useTurns } from '@/hooks/use-turns'
 import { useAppTheme } from '@/lib/theme'

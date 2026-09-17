@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Input } from '@heroui/react'
+import { Button, Input } from '@/components/base'
 import { Check } from '@gravity-ui/icons'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { LANGUAGES, setLocale } from '@/i18n'

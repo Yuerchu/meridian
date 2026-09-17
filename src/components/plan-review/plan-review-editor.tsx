@@ -18,7 +18,7 @@ import {
   Strikethrough,
 } from '@gravity-ui/icons'
 import type { JSONContent } from '@tiptap/core'
-import { Tooltip } from '@heroui/react'
+import { Tooltip } from '@/components/base'
 import { RichTextEditor, useRichTextEditor, type RichTextEditorFormatCommand } from '@/components/base'
 
 import {

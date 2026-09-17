@@ -158,7 +158,7 @@ function SidebarGroupLabel({ className, ...props }: ComponentProps<'div'>) {
   )
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic tree props passthrough
+/* eslint-disable @typescript-eslint/no-explicit-any -- generic tree props passthrough */
 function SidebarMenu({
   className,
   onAction: _onAction,
@@ -180,7 +180,6 @@ function SidebarMenu({
   )
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- accepts many consumer-specific props
 function SidebarMenuItem({
   className,
   onAction,
@@ -229,7 +228,6 @@ function SidebarMenuChip({ className, ...props }: ComponentProps<'span'>) {
   )
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- accepts consumer-specific props
 function SidebarMenuAction({ className, onPress, ...props }: any) {
   return (
     // eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- sidebar action
@@ -244,6 +242,8 @@ function SidebarMenuAction({ className, onPress, ...props }: any) {
     />
   )
 }
+
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 function SidebarMenuActions({ className, ...props }: ComponentProps<'div'>) {
   return (

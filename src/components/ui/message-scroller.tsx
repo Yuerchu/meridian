@@ -9,7 +9,7 @@ import {
 
 import { cn } from '@/lib/utils'
 import { usePlatform } from '@/hooks/use-platform'
-import { Button } from '@heroui/react'
+import { Button } from '@/components/base'
 import { ArrowDown } from '@gravity-ui/icons'
 
 function MessageScrollerProvider(props: React.ComponentProps<typeof MessageScrollerPrimitive.Provider>) {

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Link } from '@heroui/react'
+import { Button, Link } from '@/components/base'
 import { MessageScrollerItem } from '@/components/ui/message-scroller'
 import { Marker, MarkerContent } from '@/components/ui/marker'
 import { Bubble, BubbleContent } from '@/components/ui/bubble'

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Description, Input, Label, TextArea, TextField } from '@heroui/react'
+import { Button, Description, Input, Label, TextArea, TextField } from '@/components/base'
 import { api } from '@/api'
 import { cn } from '@/lib/utils'
 import type { AcpCheckResponse, AcpConfigInfoResponse } from '@/types'

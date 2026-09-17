@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Disclosure, ProgressCircle, Tooltip } from '@heroui/react'
+import { Disclosure, ProgressCircle, Tooltip } from '@/components/base'
 import { Segment } from '@/components/base'
 import { LayoutColumns3, LayoutList } from '@gravity-ui/icons'
 import { useTranslation } from 'react-i18next'

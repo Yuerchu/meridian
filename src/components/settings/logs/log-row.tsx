@@ -1,7 +1,7 @@
 import { memo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, Copy } from '@gravity-ui/icons'
-import { Button, Tooltip } from '@heroui/react'
+import { Button, Tooltip } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { cn } from '@/lib/utils'
 import type { LogEntryInfoResponse } from '@/types'

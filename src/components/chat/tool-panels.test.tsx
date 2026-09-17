@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Button } from '@heroui/react'
+import { Button } from '@/components/base'
 import { ToolCallBlock } from './tool-call-block'
 import {
   ChatTool,

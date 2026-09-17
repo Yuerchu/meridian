@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 
-import { Link, Popover, ProgressCircle, Tooltip } from '@heroui/react'
+import { Link, Popover, ProgressCircle, Tooltip } from '@/components/base'
 
 import type { AcpUsage } from '@/hooks/use-acp-config'
 import type { CompactCircuitBreakerState, ConversationAgentKind } from '@/types'

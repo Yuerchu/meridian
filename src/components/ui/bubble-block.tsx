@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { tv, type VariantProps } from '@heroui/react'
+import { tv, type VariantProps } from '@/components/base'
 
 import { cn } from '@/lib/utils'
 import { BUBBLE_BLOCK } from './bubble'

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type Key, type RefOb
 import { useTranslation } from 'react-i18next'
 
 import { ChevronDown, Clock, Comment, TriangleExclamation, Xmark } from '@gravity-ui/icons'
-import { Button, Chip, Dropdown, Skeleton, TextArea, Tooltip } from '@heroui/react'
+import { Button, Chip, Dropdown, Skeleton, TextArea, Tooltip } from '@/components/base'
 import { Segment } from '@/components/base'
 import { Sheet } from '@/components/base'
 

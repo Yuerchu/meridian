@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Button } from '@heroui/react'
+import { Button } from '@/components/base'
 import { ArrowLeft } from '@gravity-ui/icons'
 
 import { cn } from '@/lib/utils'

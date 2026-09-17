@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowsRotateRight, Picture } from '@gravity-ui/icons'
-import { Button, Skeleton } from '@heroui/react'
+import { Button, Skeleton } from '@/components/base'
 import { api } from '@/api'
 import { cn } from '@/lib/utils'
 import type { EmojiInfoResponse } from '@/types'

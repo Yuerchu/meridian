@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Chip } from '@heroui/react'
+import { Chip } from '@/components/base'
 import { Comments } from '@gravity-ui/icons'
 
 import { cn } from '@/lib/utils'

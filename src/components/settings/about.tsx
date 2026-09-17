@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, ChevronRight, Copy, FileText } from '@gravity-ui/icons'
-import { Button, Chip, Separator, Skeleton, Tooltip } from '@heroui/react'
+import { Button, Chip, Separator, Skeleton, Tooltip } from '@/components/base'
 import { Hint } from '@/components/ui/hint'
 import { ItemCard } from '@/components/base'
 import { ItemCardGroup } from '@/components/base'

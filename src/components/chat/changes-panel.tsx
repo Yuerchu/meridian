@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { Button, Tooltip } from '@heroui/react'
+import { Button, Tooltip } from '@/components/base'
 import { FileTree } from '@/components/base'
 import { File, Folder, FolderOpen, Xmark } from '@gravity-ui/icons'
 

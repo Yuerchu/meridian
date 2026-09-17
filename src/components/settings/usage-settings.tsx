@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button, Label, Skeleton, Spinner, Tabs, Tooltip } from '@heroui/react'
+import { Alert, Button, Label, Skeleton, Spinner, Tabs, Tooltip } from '@/components/base'
 import { EmptyState } from '@/components/base'
 import { KPI } from '@/components/base'
 import { AreaChart } from '@/components/base'

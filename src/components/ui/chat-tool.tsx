@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { createPortal } from 'react-dom'
-import { Disclosure, Spinner, Tooltip, tv, type VariantProps } from '@heroui/react'
+import { Disclosure, Spinner, Tooltip, tv, type VariantProps } from '@/components/base'
 import { DisclosureStateContext } from 'react-aria-components'
 import { CircleCheck, CircleExclamation, CircleXmark, Clock } from '@gravity-ui/icons'
 import { useShikiLanguage } from '@/hooks/use-shiki-language'

@@ -12,7 +12,7 @@ import {
   Spinner,
   TextField,
   Tooltip,
-} from '@heroui/react'
+} from '@/components/base'
 import { EmptyState } from '@/components/base'
 import { DataGrid, type DataGridColumn } from '@/components/base'
 import { ListView } from '@/components/base'

@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Dropdown, Label, Tooltip } from '@heroui/react'
+import { Dropdown, Label, Tooltip } from '@/components/base'
 import { EllipsisVertical } from '@gravity-ui/icons'
 import { Sidebar } from '@/components/base'
 

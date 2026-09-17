@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { ArrowRightFromSquare, Check, Copy, FileText } from '@gravity-ui/icons'
-import { Button, Spinner } from '@heroui/react'
+import { Button, Spinner } from '@/components/base'
 import { Hint } from '@/components/ui/hint'
 import { Segment } from '@/components/base'
 import { Sheet } from '@/components/base'

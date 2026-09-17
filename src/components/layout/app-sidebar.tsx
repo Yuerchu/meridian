@@ -28,7 +28,7 @@ import { useTranslation } from 'react-i18next'
 import { DropZone, useDragAndDrop } from 'react-aria-components'
 import type { DropItem, Key } from 'react-aria-components'
 import { open } from '@tauri-apps/plugin-dialog'
-import { Alert, Button, Dropdown, Input, Label, Spinner, ToggleButton, Tooltip } from '@heroui/react'
+import { Alert, Button, Dropdown, Input, Label, Spinner, ToggleButton, Tooltip } from '@/components/base'
 import { ContextMenu } from '@/components/base'
 import { Sidebar, useSidebar } from '@/components/base'
 import {

@@ -1,4 +1,4 @@
-import { tv, type VariantProps } from '@heroui/react'
+import { tv, type VariantProps } from '@/components/base'
 import { cn } from '@/lib/utils'
 import type { LogRecordLevel } from '@/types'
 

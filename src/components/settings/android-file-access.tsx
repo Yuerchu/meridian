@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FolderOpen, Xmark } from '@gravity-ui/icons'
-import { Button, Tooltip } from '@heroui/react'
+import { Button, Tooltip } from '@/components/base'
 import { CellSwitch } from '@/components/base'
 import { EmptyState } from '@/components/base'
 import { api } from '@/api'

@@ -51,7 +51,7 @@ vi.mock('@gravity-ui/icons', () => ({
   Xmark: () => null,
 }))
 
-vi.mock('@heroui/react', async () => {
+vi.mock('@/components/base', async () => {
   const { createContext, useContext, useId } = await import('react')
   const pass = ({ children }: { children?: React.ReactNode }) => <>{children}</>
   // The real TextField wires its Label to its TextArea through context; the

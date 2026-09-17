@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { Button, Modal, SearchField, Spinner, Tooltip } from '@heroui/react'
+import { Button, Modal, SearchField, Spinner, Tooltip } from '@/components/base'
 import { FolderOpen, Xmark } from '@gravity-ui/icons'
 
 import { api } from '@/api'

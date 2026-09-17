@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { ChevronDown, CircleCheck, CircleExclamation, CircleXmark, Clock, Terminal } from '@gravity-ui/icons'
-import { Skeleton, Spinner } from '@heroui/react'
+import { Skeleton, Spinner } from '@/components/base'
 import { useTranslation } from 'react-i18next'
 
 import { api } from '@/api'

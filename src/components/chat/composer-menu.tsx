@@ -14,7 +14,7 @@ import {
 } from '@gravity-ui/icons'
 import { ModelIcon } from '@/components/ui/model-icon'
 
-import { Button, Popover, Spinner, Tooltip } from '@heroui/react'
+import { Button, Popover, Spinner, Tooltip } from '@/components/base'
 import { CellSwitch } from '@/components/base'
 
 import { cn } from '@/lib/utils'

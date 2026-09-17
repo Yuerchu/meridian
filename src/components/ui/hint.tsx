@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Tooltip } from '@heroui/react'
+import { Tooltip } from '@/components/base'
 
 import { cn } from '@/lib/utils'
 

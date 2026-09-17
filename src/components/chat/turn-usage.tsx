@@ -1,6 +1,6 @@
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Separator } from '@heroui/react'
+import { Button, Separator } from '@/components/base'
 import { HoverCard } from '@/components/base'
 
 import { costQualifier, formatCostAmount, type CostQualifier } from '@/lib/cost-format'

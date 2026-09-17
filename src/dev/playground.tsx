@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Moon, Sun } from '@gravity-ui/icons'
 
-import { Button, Input, Tooltip } from '@heroui/react'
+import { Button, Input, Tooltip } from '@/components/base'
 import {
   ChainOfThought,
   ChainOfThoughtContent,

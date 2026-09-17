@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Button, Modal } from '@heroui/react'
+import { Button, Modal } from '@/components/base'
 import { Comment } from '@gravity-ui/icons'
 
 import type { ProjectInfoResponse } from '@/types'

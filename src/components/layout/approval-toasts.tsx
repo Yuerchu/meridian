@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Button, Toast, ToastQueue } from '@heroui/react'
+import { Button, Toast, ToastQueue } from '@/components/base'
 import type { QueuedToast } from 'react-aria-components'
 import { ArrowRight, Check, Clock, Xmark } from '@gravity-ui/icons'
 

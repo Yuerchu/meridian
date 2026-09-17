@@ -1,5 +1,5 @@
 import { Microphone, StopFill } from '@gravity-ui/icons'
-import { Button, Spinner, Tooltip } from '@heroui/react'
+import { Button, Spinner, Tooltip } from '@/components/base'
 import { cn } from '@/lib/utils'
 
 export type VoiceButtonState =

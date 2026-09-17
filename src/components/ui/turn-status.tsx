@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Spinner } from '@heroui/react'
+import { Spinner } from '@/components/base'
 import { Ban, ChevronLeft, ChevronRight, CircleCheck, CircleExclamation, TriangleExclamation } from '@gravity-ui/icons'
 
 import { cn } from '@/lib/utils'

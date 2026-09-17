@@ -3,7 +3,7 @@ import { TranscriptConversationProvider } from '@/hooks/use-transcript-conversat
 import { useTranslation } from 'react-i18next'
 import { LazyMotion, domAnimation } from 'motion/react'
 import * as m from 'motion/react-m'
-import { Button, Tooltip } from '@heroui/react'
+import { Button, Tooltip } from '@/components/base'
 
 import { useImeBottom } from '@/hooks/use-android-insets'
 import {

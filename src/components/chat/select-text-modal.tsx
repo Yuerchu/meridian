@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Button, Modal } from '@heroui/react'
+import { Button, Modal } from '@/components/base'
 
 /**
  * Somewhere to select part of a message with a finger.

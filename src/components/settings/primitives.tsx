@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Button, Description, Label, ListBox, Select, Skeleton } from '@heroui/react'
+import { Button, Description, Label, ListBox, Select, Skeleton } from '@/components/base'
 import { Check, ChevronRight } from '@gravity-ui/icons'
 
 import { cn } from '@/lib/utils'

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Description, Input, Label, TextField } from '@heroui/react'
+import { Button, Description, Input, Label, TextField } from '@/components/base'
 import { ItemCard } from '@/components/base'
 
 import { api } from '@/api'

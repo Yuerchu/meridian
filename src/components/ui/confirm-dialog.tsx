@@ -1,6 +1,6 @@
 import { useId, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertDialog, Button } from '@heroui/react'
+import { AlertDialog, Button } from '@/components/base'
 
 export interface ConfirmOptions {
   /** Defaults to `confirm.title`. */

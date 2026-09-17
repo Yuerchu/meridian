@@ -4,7 +4,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { ArrowDownToSquare, ChevronDown, Copy, Scissors, SquareDashedText, Xmark } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
-import { Button, Kbd, Label, ListBox, Popover, Tooltip } from '@heroui/react'
+import { Button, Kbd, Label, ListBox, Popover, Tooltip } from '@/components/base'
 import { ContextMenu } from '@/components/base'
 import { ChatAttachment, ChatAttachmentGroup } from '@/components/base'
 

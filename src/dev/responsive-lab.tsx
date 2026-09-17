@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { Button, ListBox, ToggleButton, ToggleButtonGroup, Tooltip } from '@heroui/react'
+import { Button, ListBox, ToggleButton, ToggleButtonGroup, Tooltip } from '@/components/base'
 
 import { CASES } from './responsive-cases'
 import { runDetectors, type Finding, type Severity } from './responsive-detectors'

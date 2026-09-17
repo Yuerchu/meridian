@@ -6,7 +6,7 @@ import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
 import { openExternalUrl } from '@/lib/external-link'
 import { Check, Copy } from '@gravity-ui/icons'
-import { Link, Skeleton, Tooltip } from '@heroui/react'
+import { Link, Skeleton, Tooltip } from '@/components/base'
 import type { Components } from 'react-markdown'
 
 import { markdownVariants } from '@/components/base'

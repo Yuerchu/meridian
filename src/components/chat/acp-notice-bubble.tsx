@@ -1,6 +1,6 @@
 import { useContext } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@heroui/react'
+import { Button } from '@/components/base'
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
 import { cn } from '@/lib/utils'
 import { AcpNoticeActionsContext } from './acp-notice-actions'

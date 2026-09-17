@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CircleCheck, CircleXmark, Play } from '@gravity-ui/icons'
-import { Button, Card, Meter } from '@heroui/react'
+import { Button, Card, Meter } from '@/components/base'
 
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'

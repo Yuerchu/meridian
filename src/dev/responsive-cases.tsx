@@ -12,7 +12,7 @@ import { MarkdownContent } from '@/components/chat/markdown-content'
 import { VoiceOverlay } from '@/components/chat/voice-overlay'
 import { MasterDetail } from '@/components/settings/master-detail'
 import { useMasterDetail } from '@/components/settings/use-master-detail'
-import { Label } from '@heroui/react'
+import { Label } from '@/components/base'
 import { ListView } from '@/components/base'
 
 /**

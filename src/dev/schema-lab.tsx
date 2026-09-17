@@ -25,7 +25,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
-import { Button, Chip, Input, ListBox, Tooltip } from '@heroui/react'
+import { Button, Chip, Input, ListBox, Tooltip } from '@/components/base'
 import { cn } from '@/lib/utils'
 import { useAppTheme } from '@/lib/theme'
 import {

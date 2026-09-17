@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Comment, TrashBin } from '@gravity-ui/icons'
-import { Button, Chip, Label, Link, TextArea, TextField, Tooltip } from '@heroui/react'
+import { Button, Chip, Label, Link, TextArea, TextField, Tooltip } from '@/components/base'
 
 import type { PlanCommentInfoResponse } from '@/types'
 

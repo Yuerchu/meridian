@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Modal } from '@heroui/react'
+import { Button, Modal } from '@/components/base'
 import { ArrowLeft } from '@gravity-ui/icons'
 
 import { useIsMobile } from '@/hooks/use-mobile'

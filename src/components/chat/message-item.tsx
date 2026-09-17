@@ -22,7 +22,7 @@ import { ActionButton } from '@/components/ui/action-button'
 import { useConfirm } from '@/hooks/use-confirm'
 import { ConversationRefChips } from './conversation-ref-chips'
 import { CopyButton, MarkdownContent } from './markdown-content'
-import { Avatar, Label, Spinner, TextArea } from '@heroui/react'
+import { Avatar, Label, Spinner, TextArea } from '@/components/base'
 import { ContextMenu } from '@/components/base'
 import {
   MessageGroupAssistant,

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Input, Modal, TextField } from '@heroui/react'
+import { Button, Input, Modal, TextField } from '@/components/base'
 
 import { useHistoryLevel } from '@/hooks/use-history-level'
 

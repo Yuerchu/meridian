@@ -1,7 +1,7 @@
 import { useEffect, useId, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, PlugWire, PlugConnection, LogoMcp, TrashBin, ArrowDownToSquare } from '@gravity-ui/icons'
-import { Alert, Button, Input, Label, Spinner, Switch, TextArea, TextField, Tooltip } from '@heroui/react'
+import { Alert, Button, Input, Label, Spinner, Switch, TextArea, TextField, Tooltip } from '@/components/base'
 import { EmptyState } from '@/components/base'
 import { ListView } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'

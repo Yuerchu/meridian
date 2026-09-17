@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Input, Label, TextField } from '@heroui/react'
+import { Input, Label, TextField } from '@/components/base'
 
 import { SettingsSelect } from './primitives'
 import type { ProviderInfoResponse, ProviderModelInfoResponse } from '@/types'

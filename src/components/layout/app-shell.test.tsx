@@ -31,7 +31,7 @@ vi.mock('@gravity-ui/icons', () => ({
   Magnifier: () => null,
   Xmark: () => null,
 }))
-vi.mock('@heroui/react', () => {
+vi.mock('@/components/base', () => {
   const Tooltip = Object.assign(({ children }: { children: React.ReactNode }) => <>{children}</>, {
     Content: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   })

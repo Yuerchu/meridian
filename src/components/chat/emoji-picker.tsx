@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FaceSmile, Magnifier } from '@gravity-ui/icons'
-import { Button, ScrollShadow, SearchField, Tooltip } from '@heroui/react'
+import { Button, ScrollShadow, SearchField, Tooltip } from '@/components/base'
 import { ChatLoader, EmojiPicker as ProEmojiPicker } from '@/components/base'
 
 import { api } from '@/api'

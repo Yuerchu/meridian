@@ -34,7 +34,7 @@ import {
   TextArea as HTextArea,
   TextField as HTextField,
   Tooltip as HTooltip,
-} from '@heroui/react'
+} from '@/components/base'
 
 import { ContextMenu as ProContextMenu, Markdown as ProMarkdown, Sidebar as ProSidebar } from '@/components/base'
 

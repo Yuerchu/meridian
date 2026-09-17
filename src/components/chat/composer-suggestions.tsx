@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import { Folder, Terminal } from '@gravity-ui/icons'
-import { ListBox } from '@heroui/react'
+import { ListBox } from '@/components/base'
 
 import { fileIconUrl } from '@/lib/file-icon'
 import { COMPOSER_COMMANDS } from '@/lib/composer-commands'

@@ -15,7 +15,7 @@ import {
   TextArea,
   TextField,
   Tooltip,
-} from '@heroui/react'
+} from '@/components/base'
 import { EmptyState } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'

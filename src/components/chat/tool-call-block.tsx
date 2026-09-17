@@ -48,7 +48,7 @@ import {
   TriangleExclamation,
   Xmark,
 } from '@gravity-ui/icons'
-import { Button, Checkbox, CheckboxGroup, Chip, Input, Kbd, Radio, RadioGroup, Spinner } from '@heroui/react'
+import { Button, Checkbox, CheckboxGroup, Chip, Input, Kbd, Radio, RadioGroup, Spinner } from '@/components/base'
 import {
   ChatTool,
   ChatToolApproval,

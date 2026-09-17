@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Description, Input, Label, ListBox, Select, TextArea, TextField } from '@heroui/react'
+import { Button, Description, Input, Label, ListBox, Select, TextArea, TextField } from '@/components/base'
 import { CellSwitch } from '@/components/base'
 import { api } from '@/api'
 import type { PreferenceModelSelectionRequest, ProviderInfoResponse, ProviderModelInfoResponse } from '@/types'

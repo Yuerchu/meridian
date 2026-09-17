@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button, Skeleton } from '@heroui/react'
+import { Alert, Button, Skeleton } from '@/components/base'
 import { Sheet } from '@/components/base'
 import { useConversationStore } from '@/stores/conversation-store'
 import { useTurns } from '@/hooks/use-turns'

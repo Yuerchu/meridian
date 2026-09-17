@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Spinner } from '@heroui/react'
+import { Spinner } from '@/components/base'
 import { MessageScrollerItem } from '@/components/ui/message-scroller'
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
 import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker'

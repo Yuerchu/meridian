@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button, Description, Input, Label, Separator, TextField, Tooltip } from '@heroui/react'
+import { Alert, Button, Description, Input, Label, Separator, TextField, Tooltip } from '@/components/base'
 import { CellSwitch } from '@/components/base'
 import { ItemCard } from '@/components/base'
 import { ItemCardGroup } from '@/components/base'
