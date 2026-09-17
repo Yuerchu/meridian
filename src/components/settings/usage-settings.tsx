@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Alert, Button, Label, Skeleton, Spinner, Tabs, Tooltip } from '@heroui/react'
-import { EmptyState } from '@heroui-pro/react/empty-state'
+import { EmptyState } from '@/components/base'
 import { KPI } from '@heroui-pro/react/kpi'
 import { AreaChart } from '@heroui-pro/react/area-chart'
 import { DataGrid, type DataGridColumn } from '@heroui-pro/react/data-grid'

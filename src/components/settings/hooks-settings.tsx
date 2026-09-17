@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Alert, Button, Input, Label, ListBox, Select, TextField } from '@heroui/react'
-import { CellSwitch } from '@heroui-pro/react/cell-switch'
+import { CellSwitch } from '@/components/base'
 import { ItemCard } from '@heroui-pro/react/item-card'
 import { api } from '@/api'
 import { cn } from '@/lib/utils'

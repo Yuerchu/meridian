@@ -13,7 +13,7 @@ import {
   TextField,
   Tooltip,
 } from '@heroui/react'
-import { EmptyState } from '@heroui-pro/react/empty-state'
+import { EmptyState } from '@/components/base'
 import { DataGrid, type DataGridColumn } from '@heroui-pro/react/data-grid'
 import { ListView } from '@heroui-pro/react/list-view'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'

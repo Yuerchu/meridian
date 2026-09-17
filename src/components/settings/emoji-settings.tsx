@@ -5,7 +5,7 @@ import { ArrowUpFromLine, Check, Plus, Sparkles, Sticker, TrashBin, Xmark } from
 import { Button, Chip, Disclosure, Input, Tooltip } from '@heroui/react'
 import { ActionBar } from '@heroui-pro/react/action-bar'
 import { DataGrid, type DataGridColumn, type DataGridSelection } from '@heroui-pro/react/data-grid'
-import { EmptyState } from '@heroui-pro/react/empty-state'
+import { EmptyState } from '@/components/base'
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
 import { useConfirm } from '@/hooks/use-confirm'

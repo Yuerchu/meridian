@@ -15,7 +15,7 @@ import {
 import { ModelIcon } from '@/components/ui/model-icon'
 
 import { Button, Popover, Spinner, Tooltip } from '@heroui/react'
-import { CellSwitch } from '@heroui-pro/react/cell-switch'
+import { CellSwitch } from '@/components/base'
 
 import { cn } from '@/lib/utils'
 import { api } from '@/api'

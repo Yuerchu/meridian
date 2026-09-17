@@ -14,7 +14,7 @@ import {
   TextField,
   Tooltip,
 } from '@heroui/react'
-import { Segment } from '@heroui-pro/react/segment'
+import { Segment } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'

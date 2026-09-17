@@ -2,7 +2,7 @@ import * as React from 'react'
 import { ArrowRightFromSquare, Check, Copy, FileText } from '@gravity-ui/icons'
 import { Button, Spinner } from '@heroui/react'
 import { Hint } from '@/components/ui/hint'
-import { Segment } from '@heroui-pro/react/segment'
+import { Segment } from '@/components/base'
 import { Sheet } from '@heroui-pro/react/sheet'
 import { useTranslation } from 'react-i18next'
 

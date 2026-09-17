@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { ChevronDown, Clock, Comment, TriangleExclamation, Xmark } from '@gravity-ui/icons'
 import { Button, Chip, Dropdown, Skeleton, TextArea, Tooltip } from '@heroui/react'
-import { Segment } from '@heroui-pro/react/segment'
+import { Segment } from '@/components/base'
 import { Sheet } from '@heroui-pro/react/sheet'
 
 import { api } from '@/api'

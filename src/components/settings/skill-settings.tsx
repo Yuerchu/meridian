@@ -16,7 +16,7 @@ import {
   TextField,
   Tooltip,
 } from '@heroui/react'
-import { EmptyState } from '@heroui-pro/react/empty-state'
+import { EmptyState } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
