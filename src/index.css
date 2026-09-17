@@ -5,14 +5,6 @@
 /* Kept for `shimmer`, `no-scrollbar` and the `data-*` variants; it defines no
    colour tokens of its own, so it cannot collide with the theme above. */
 @import 'shadcn/tailwind.css';
-/* Pro ships its styles per component, and those files are *unlayered* — only
-   the full `@heroui-pro/react/css` bundle declares `@layer components`, and it
-   carries all seventy components. An unlayered rule outranks every layered one,
-   so without the explicit `layer()` here `.context-menu__trigger`'s
-   `display: inline-block` would beat any utility we put on the same element,
-   silently. One line per component we actually use. */
-@import '@heroui-pro/react/css/components/sidebar.css' layer(components);
-@import '@heroui-pro/react/css/components/rich-text-editor.css' layer(components);
 /* The chart CSS files map recharts' own class names onto the theme, so without
    them the axes, grid and tooltip cursor draw in recharts' defaults rather than
    in ours. Keep these until the chart wrapper replicates the styling. */

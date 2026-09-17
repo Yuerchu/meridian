@@ -1,0 +1,396 @@
+import { createContext, useContext, useMemo, type ComponentProps, type ReactNode } from 'react'
+import { useEditor, EditorContent, type Editor, type JSONContent } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
+import Underline from '@tiptap/extension-underline'
+import Link from '@tiptap/extension-link'
+import { Placeholder, CharacterCount } from '@tiptap/extensions'
+import type { Extension } from '@tiptap/core'
+import { cn } from '@/lib/utils'
+import { Button } from './button'
+import { Tooltip } from './tooltip'
+
+export type RichTextEditorFormatCommand =
+  | 'heading-1'
+  | 'heading-2'
+  | 'heading-3'
+  | 'bold'
+  | 'italic'
+  | 'strike'
+  | 'underline'
+  | 'code'
+  | 'codeBlock'
+  | 'bulletList'
+  | 'orderedList'
+  | 'blockquote'
+
+const RteContext = createContext<{ editor: Editor | null }>({ editor: null })
+
+export function useRichTextEditor() {
+  return useContext(RteContext)
+}
+
+interface RichTextEditorProps extends Omit<ComponentProps<'div'>, 'defaultValue'> {
+  defaultValue?: JSONContent
+  extensions?: Extension[]
+  editorOptions?: Record<string, unknown>
+  isReadOnly?: boolean
+  placeholder?: string
+  maxLength?: number
+  onValueChange?: (document: JSONContent, details: { editor: Editor }) => void
+}
+
+function RichTextEditorRoot({
+  className,
+  defaultValue,
+  extensions: userExtensions = [],
+  isReadOnly = false,
+  placeholder: placeholderText,
+  maxLength,
+  onValueChange,
+  children,
+  ...props
+}: RichTextEditorProps) {
+  const allExtensions = useMemo(
+    () => [
+      StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
+      Underline,
+      Link.configure({ openOnClick: false }),
+      Placeholder.configure({ placeholder: placeholderText }),
+      ...(maxLength != null ? [CharacterCount.configure({ limit: maxLength })] : []),
+      ...userExtensions,
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- extensions are stable
+    [placeholderText, maxLength],
+  )
+
+  const editor = useEditor({
+    extensions: allExtensions,
+    content: defaultValue,
+    editable: !isReadOnly,
+    onUpdate: ({ editor: e }) => {
+      onValueChange?.(e.getJSON(), { editor: e })
+    },
+  })
+
+  return (
+    <RteContext.Provider value={{ editor }}>
+      <div data-slot="rich-text-editor" {...props} className={cn('flex flex-col', className)}>
+        {children}
+      </div>
+    </RteContext.Provider>
+  )
+}
+
+function RteShell({ className, ...props }: ComponentProps<'div'>) {
+  return (
+    <div
+      data-slot="rich-text-editor-shell"
+      {...props}
+      className={cn('rich-text-editor__shell overflow-hidden rounded-xl border border-border bg-surface', className)}
+    />
+  )
+}
+
+function RteToolbar({ className, ...props }: ComponentProps<'div'>) {
+  return (
+    <div
+      data-slot="rich-text-editor-toolbar"
+      role="toolbar"
+      {...props}
+      className={cn(
+        'rich-text-editor__toolbar flex items-center gap-0.5 border-b border-separator px-2 py-1',
+        className,
+      )}
+    />
+  )
+}
+
+function RteToolbarGroup({ className, ...props }: ComponentProps<'div'>) {
+  return (
+    <div data-slot="rich-text-editor-toolbar-group" {...props} className={cn('flex items-center gap-0.5', className)} />
+  )
+}
+
+function RteToolbarSeparator({ className, ...props }: ComponentProps<'div'>) {
+  return (
+    <div
+      data-slot="rich-text-editor-toolbar-separator"
+      {...props}
+      className={cn('mx-1 h-5 w-px bg-separator', className)}
+    />
+  )
+}
+
+const commandMap: Record<RichTextEditorFormatCommand, (editor: Editor) => void> = {
+  'heading-1': (e) => e.chain().focus().toggleHeading({ level: 1 }).run(),
+  'heading-2': (e) => e.chain().focus().toggleHeading({ level: 2 }).run(),
+  'heading-3': (e) => e.chain().focus().toggleHeading({ level: 3 }).run(),
+  bold: (e) => e.chain().focus().toggleBold().run(),
+  italic: (e) => e.chain().focus().toggleItalic().run(),
+  strike: (e) => e.chain().focus().toggleStrike().run(),
+  underline: (e) => e.chain().focus().toggleUnderline().run(),
+  code: (e) => e.chain().focus().toggleCode().run(),
+  codeBlock: (e) => e.chain().focus().toggleCodeBlock().run(),
+  bulletList: (e) => e.chain().focus().toggleBulletList().run(),
+  orderedList: (e) => e.chain().focus().toggleOrderedList().run(),
+  blockquote: (e) => e.chain().focus().toggleBlockquote().run(),
+}
+
+const activeCheck: Record<RichTextEditorFormatCommand, (editor: Editor) => boolean> = {
+  'heading-1': (e) => e.isActive('heading', { level: 1 }),
+  'heading-2': (e) => e.isActive('heading', { level: 2 }),
+  'heading-3': (e) => e.isActive('heading', { level: 3 }),
+  bold: (e) => e.isActive('bold'),
+  italic: (e) => e.isActive('italic'),
+  strike: (e) => e.isActive('strike'),
+  underline: (e) => e.isActive('underline'),
+  code: (e) => e.isActive('code'),
+  codeBlock: (e) => e.isActive('codeBlock'),
+  bulletList: (e) => e.isActive('bulletList'),
+  orderedList: (e) => e.isActive('orderedList'),
+  blockquote: (e) => e.isActive('blockquote'),
+}
+
+interface RteToggleButtonProps {
+  command: RichTextEditorFormatCommand
+  'aria-label'?: string
+  tooltip?: string
+  children?: ReactNode
+  className?: string
+}
+
+function RteToggleButton({ command, tooltip, children, className, ...props }: RteToggleButtonProps) {
+  const { editor } = useContext(RteContext)
+  const isActive = editor ? activeCheck[command]?.(editor) : false
+
+  const button = (
+    // eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- tooltip applied conditionally below
+    <Button
+      data-slot="rich-text-editor-toggle-button"
+      variant={isActive ? 'secondary' : 'ghost'}
+      isIconOnly
+      size="sm"
+      onPress={() => editor && commandMap[command]?.(editor)}
+      className={cn('size-7', className)}
+      aria-label={props['aria-label']}
+      aria-pressed={isActive}
+    >
+      {children}
+    </Button>
+  )
+
+  if (!tooltip) return button
+  return (
+    <Tooltip delay={0}>
+      {button}
+      <Tooltip.Content>{tooltip}</Tooltip.Content>
+    </Tooltip>
+  )
+}
+
+interface RteActionButtonProps {
+  action: 'undo' | 'redo'
+  'aria-label'?: string
+  tooltip?: string
+  children?: ReactNode
+  className?: string
+}
+
+function RteActionButton({ action, tooltip, children, className, ...props }: RteActionButtonProps) {
+  const { editor } = useContext(RteContext)
+  const canDo = editor ? (action === 'undo' ? editor.can().undo() : editor.can().redo()) : false
+
+  const button = (
+    // eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- tooltip applied conditionally below
+    <Button
+      data-slot="rich-text-editor-action-button"
+      variant="ghost"
+      isIconOnly
+      size="sm"
+      isDisabled={!canDo}
+      onPress={() =>
+        editor && (action === 'undo' ? editor.chain().focus().undo().run() : editor.chain().focus().redo().run())
+      }
+      className={cn('size-7', className)}
+      aria-label={props['aria-label']}
+    >
+      {children}
+    </Button>
+  )
+
+  if (!tooltip) return button
+  return (
+    <Tooltip delay={0}>
+      {button}
+      <Tooltip.Content>{tooltip}</Tooltip.Content>
+    </Tooltip>
+  )
+}
+
+interface RteCommandButtonProps {
+  'aria-label'?: string
+  tooltip?: string
+  isDisabled?: boolean | ((editor: Editor) => boolean)
+  onCommand?: (editor: Editor) => void
+  children?: ReactNode
+  className?: string
+}
+
+function RteCommandButton({ tooltip, isDisabled, onCommand, children, className, ...props }: RteCommandButtonProps) {
+  const { editor } = useContext(RteContext)
+  const disabled = typeof isDisabled === 'function' ? (editor ? isDisabled(editor) : true) : isDisabled
+
+  const button = (
+    // eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- tooltip applied conditionally below
+    <Button
+      data-slot="rich-text-editor-command-button"
+      variant="ghost"
+      isIconOnly
+      size="sm"
+      isDisabled={disabled}
+      onPress={() => editor && onCommand?.(editor)}
+      className={cn('size-7', className)}
+      aria-label={props['aria-label']}
+    >
+      {children}
+    </Button>
+  )
+
+  if (!tooltip) return button
+  return (
+    <Tooltip delay={0}>
+      {button}
+      <Tooltip.Content>{tooltip}</Tooltip.Content>
+    </Tooltip>
+  )
+}
+
+function RteLinkPopoverRoot({ children }: { children?: ReactNode }) {
+  return <>{children}</>
+}
+
+function RteLinkPopoverTrigger({ children, className, ...props }: ComponentProps<'div'>) {
+  return (
+    <div data-slot="rich-text-editor-link-trigger" {...props} className={cn('', className)}>
+      {children}
+    </div>
+  )
+}
+
+function RteLinkPopoverContent({ children, className, ...props }: ComponentProps<'div'>) {
+  return (
+    <div
+      data-slot="rich-text-editor-link-content"
+      {...props}
+      className={cn('flex items-center gap-1 rounded-lg border border-border bg-overlay p-2 shadow-overlay', className)}
+    >
+      {children}
+    </div>
+  )
+}
+
+function RteLinkPopoverInput({ className, ...props }: ComponentProps<'input'>) {
+  return (
+    <input
+      data-slot="rich-text-editor-link-input"
+      type="url"
+      {...props}
+      className={cn('flex-1 bg-transparent text-sm outline-none placeholder:text-muted', className)}
+    />
+  )
+}
+
+function RteLinkPopoverActions({ children, className, ...props }: ComponentProps<'div'>) {
+  return (
+    <div data-slot="rich-text-editor-link-actions" {...props} className={cn('flex items-center gap-1', className)}>
+      {children}
+    </div>
+  )
+}
+
+function RteLinkPopoverUnsetButton({
+  children,
+  className,
+  ...props
+}: ComponentProps<'button'> & { 'aria-label'?: string }) {
+  return (
+    <Button
+      data-slot="rich-text-editor-link-unset"
+      variant="ghost"
+      size="sm"
+      className={cn('', className)}
+      aria-label={props['aria-label']}
+    >
+      {children}
+    </Button>
+  )
+}
+
+function RteLinkPopoverApplyButton({
+  children,
+  className,
+  ...props
+}: ComponentProps<'button'> & { 'aria-label'?: string }) {
+  return (
+    <Button
+      data-slot="rich-text-editor-link-apply"
+      variant="primary"
+      size="sm"
+      className={cn('', className)}
+      aria-label={props['aria-label']}
+    >
+      {children}
+    </Button>
+  )
+}
+
+const RteLinkPopover = Object.assign(RteLinkPopoverRoot, {
+  Trigger: RteLinkPopoverTrigger,
+  Content: RteLinkPopoverContent,
+  Input: RteLinkPopoverInput,
+  Actions: RteLinkPopoverActions,
+  UnsetButton: RteLinkPopoverUnsetButton,
+  ApplyButton: RteLinkPopoverApplyButton,
+})
+
+function RteContent({ className, ...props }: ComponentProps<'div'>) {
+  const { editor } = useContext(RteContext)
+  if (!editor) return null
+  return (
+    <div
+      data-slot="rich-text-editor-content"
+      {...props}
+      className={cn('rich-text-editor__prosemirror prose prose-sm max-w-none dark:prose-invert', className)}
+    >
+      <EditorContent editor={editor} />
+    </div>
+  )
+}
+
+function RteBubbleMenu({ children, className, ...props }: ComponentProps<'div'>) {
+  return (
+    <div
+      data-slot="rich-text-editor-bubble-menu"
+      {...props}
+      className={cn(
+        'flex items-center gap-0.5 rounded-lg border border-border bg-overlay p-1 shadow-overlay',
+        className,
+      )}
+    >
+      {children}
+    </div>
+  )
+}
+
+export const RichTextEditor = Object.assign(RichTextEditorRoot, {
+  Shell: RteShell,
+  Toolbar: RteToolbar,
+  ToolbarGroup: RteToolbarGroup,
+  ToolbarSeparator: RteToolbarSeparator,
+  ToggleButton: RteToggleButton,
+  ActionButton: RteActionButton,
+  CommandButton: RteCommandButton,
+  LinkPopover: RteLinkPopover,
+  Content: RteContent,
+  BubbleMenu: RteBubbleMenu,
+})

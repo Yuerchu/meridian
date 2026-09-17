@@ -19,7 +19,7 @@ import {
 } from '@gravity-ui/icons'
 import type { JSONContent } from '@tiptap/core'
 import { Tooltip } from '@heroui/react'
-import { RichTextEditor, useRichTextEditor, type RichTextEditorFormatCommand } from '@heroui-pro/react/rich-text-editor'
+import { RichTextEditor, useRichTextEditor, type RichTextEditorFormatCommand } from '@/components/base'
 
 import {
   mappedPlanCommentAnchors,

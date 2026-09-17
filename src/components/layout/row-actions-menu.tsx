@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { Dropdown, Label, Tooltip } from '@heroui/react'
 import { EllipsisVertical } from '@gravity-ui/icons'
-import { Sidebar } from '@heroui-pro/react/sidebar'
+import { Sidebar } from '@/components/base'
 
 import type { RowAction } from './row-actions'
 

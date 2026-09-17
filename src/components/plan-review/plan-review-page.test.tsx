@@ -119,14 +119,14 @@ vi.mock('@heroui/react', async () => {
   }
 })
 
-vi.mock('@heroui-pro/react/segment', () => {
+vi.mock('@/components/base', () => {
   const Segment = Object.assign(({ children }: { children?: React.ReactNode }) => <div>{children}</div>, {
     Item: ({ children }: { children?: React.ReactNode }) => <span>{children}</span>,
   })
   return { Segment }
 })
 
-vi.mock('@heroui-pro/react/sheet', () => {
+vi.mock('@/components/base', () => {
   const pass = ({ children }: { children?: React.ReactNode }) => <>{children}</>
   const Sheet = Object.assign(
     ({ children, isOpen }: { children?: React.ReactNode; isOpen?: boolean }) => (isOpen ? <>{children}</> : null),

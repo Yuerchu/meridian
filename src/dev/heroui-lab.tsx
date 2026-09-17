@@ -36,11 +36,7 @@ import {
   Tooltip as HTooltip,
 } from '@heroui/react'
 
-// Subpath, never the barrel: the barrel reaches recharts, tiptap and maplibre,
-// none of which are installed — importing it fails the build outright.
-import { ContextMenu as ProContextMenu } from '@heroui-pro/react/context-menu'
-import { Markdown as ProMarkdown } from '@/components/base'
-import { Sidebar as ProSidebar } from '@heroui-pro/react/sidebar'
+import { ContextMenu as ProContextMenu, Markdown as ProMarkdown, Sidebar as ProSidebar } from '@/components/base'
 
 import { Composer } from '@/components/chat/composer'
 

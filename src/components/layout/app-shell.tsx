@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Alert, Button, Kbd, Tooltip } from '@heroui/react'
-import { Sidebar } from '@heroui-pro/react/sidebar'
+import { Sidebar } from '@/components/base'
 import { Resizable } from '@/components/base'
 import { FolderTree, Magnifier, Xmark } from '@gravity-ui/icons'
 import { ChangesPanel } from '@/components/chat/changes-panel'

@@ -30,7 +30,7 @@ import type { DropItem, Key } from 'react-aria-components'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Alert, Button, Dropdown, Input, Label, Spinner, ToggleButton, Tooltip } from '@heroui/react'
 import { ContextMenu } from '@/components/base'
-import { Sidebar, useSidebar } from '@heroui-pro/react/sidebar'
+import { Sidebar, useSidebar } from '@/components/base'
 import {
   Archive,
   ArrowDownToSquare,

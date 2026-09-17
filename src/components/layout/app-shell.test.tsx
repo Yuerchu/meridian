@@ -63,14 +63,14 @@ vi.mock('@heroui/react', () => {
     Tooltip,
   }
 })
-vi.mock('@heroui-pro/react/sidebar', () => ({
+vi.mock('@/components/base', () => ({
   Sidebar: {
     Provider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
     Main: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
     Trigger: (props: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props} />,
   },
 }))
-vi.mock('@heroui-pro/react/resizable', () => ({
+vi.mock('@/components/base', () => ({
   Resizable: Object.assign(({ children }: { children: React.ReactNode }) => <div>{children}</div>, {
     Panel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
     Handle: (props: React.HTMLAttributes<HTMLDivElement>) => <div {...props} />,
