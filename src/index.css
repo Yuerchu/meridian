@@ -1,9 +1,10 @@
-/* HeroUI brings Tailwind and tw-animate-css with it, and declares the layer
-   order (theme, base, components, utilities) — importing Tailwind again here
-   would fight it. */
-@import '@heroui/styles';
-/* Kept for `shimmer`, `no-scrollbar` and the `data-*` variants; it defines no
-   colour tokens of its own, so it cannot collide with the theme above. */
+@layer theme, base, components, utilities;
+
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import './styles/tokens.css';
+@import './styles/base.css';
+/* shimmer, no-scrollbar and data-* variants */
 @import 'shadcn/tailwind.css';
 /* Chart styling: recharts class names mapped onto the theme. Previously from
    Pro CSS; inlined here until the AreaChart wrapper replicates it. */
@@ -22,7 +23,6 @@
   border-color: var(--border) !important;
   border-radius: calc(var(--radius) * 1.5);
 }
-@import '@fontsource-variable/geist';
 
 /* Plan review is a document surface with a sibling comment rail. The rail is
    selected by the page container, not by the window: a narrow split panel gets
