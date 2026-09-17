@@ -158,8 +158,18 @@ function SidebarGroupLabel({ className, ...props }: ComponentProps<'div'>) {
   )
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic tree props
-function SidebarMenu({ className, ...props }: any) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic tree props passthrough
+function SidebarMenu({
+  className,
+  onAction: _onAction,
+  dragAndDropHooks: _dnd,
+  selectedKeys: _sk,
+  selectionMode: _sm,
+  selectionBehavior: _sb,
+  shouldSelectOnPressUp: _ssop,
+  disallowEmptySelection: _des,
+  ...props
+}: any) {
   return (
     <div
       data-slot="sidebar-menu"
@@ -171,15 +181,34 @@ function SidebarMenu({ className, ...props }: any) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- accepts many consumer-specific props
-function SidebarMenuItem({ className, ...props }: any) {
+function SidebarMenuItem({
+  className,
+  onAction,
+  id,
+  textValue: _textValue,
+  isCurrent: _isCurrent,
+  tooltipProps: _tooltipProps,
+  ...props
+}: any) {
   return (
     <div
       data-slot="sidebar-menu-item"
+      data-key={id}
       role="treeitem"
+      tabIndex={0}
+      onClick={() => onAction?.()}
+      onKeyDown={(e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onAction?.()
+        }
+      }}
       {...props}
       className={cn(
-        'sidebar__menu-item flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm outline-none',
+        'sidebar__menu-item flex cursor-[var(--cursor-interactive)] items-center gap-2 rounded-lg px-2 py-1.5 text-sm outline-none',
+        'hover:bg-default/50',
         'data-[selected=true]:bg-default data-[selected=true]:text-default-foreground',
+        'focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus',
         className,
       )}
     />
@@ -201,7 +230,7 @@ function SidebarMenuChip({ className, ...props }: ComponentProps<'span'>) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- accepts consumer-specific props
-function SidebarMenuAction({ className, ...props }: any) {
+function SidebarMenuAction({ className, onPress, ...props }: any) {
   return (
     // eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- sidebar action
     <Button
@@ -209,6 +238,7 @@ function SidebarMenuAction({ className, ...props }: any) {
       variant="ghost"
       isIconOnly
       size="sm"
+      onPress={onPress}
       className={cn('sidebar__menu-action size-6 shrink-0 text-muted', className)}
       {...props}
     />
