@@ -153,7 +153,7 @@ function SidebarGroupLabel({ className, ...props }: ComponentProps<'div'>) {
       data-slot="sidebar-group-label"
       {...props}
       className={cx(
-        'sidebar__group-label flex items-center px-2 py-1 text-xs font-medium text-text-secondary',
+        'sidebar__group-label flex items-center px-2 py-1 text-caption-1-medium text-text-secondary',
         className,
       )}
     />
@@ -206,8 +206,9 @@ function SidebarMenuItem({
       }}
       {...props}
       className={cx(
-        'sidebar__menu-item flex cursor-[var(--cursor-interactive)] items-center gap-2 rounded-lg px-2 py-1.5 text-sm outline-none',
-        'hover:bg-background-secondary-default/50',
+        'sidebar__menu-item flex cursor-[var(--cursor-interactive)] items-center gap-2 rounded-2lg px-2 py-1.5 outline-none',
+        'text-body-medium text-text-secondary',
+        'hover:bg-background-secondary-hover',
         'data-[selected=true]:bg-background-secondary-default data-[selected=true]:text-text-primary',
         'focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-border-focus-ring',
         className,
@@ -218,12 +219,22 @@ function SidebarMenuItem({
 
 function SidebarMenuIcon({ className, ...props }: ComponentProps<'span'>) {
   return (
-    <span data-slot="sidebar-menu-icon" {...props} className={cx('flex shrink-0 text-text-secondary', className)} />
+    <span
+      data-slot="sidebar-menu-icon"
+      {...props}
+      className={cx('flex shrink-0 text-foreground-icon-secondary', className)}
+    />
   )
 }
 
 function SidebarMenuLabel({ className, ...props }: ComponentProps<'span'>) {
-  return <span data-slot="sidebar-menu-label" {...props} className={cx('min-w-0 flex-1 truncate', className)} />
+  return (
+    <span
+      data-slot="sidebar-menu-label"
+      {...props}
+      className={cx('min-w-0 flex-1 truncate text-body-medium', className)}
+    />
+  )
 }
 
 function SidebarMenuChip({ className, ...props }: ComponentProps<'span'>) {
