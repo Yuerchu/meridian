@@ -13,7 +13,7 @@ import {
   requireKnownKeys,
   requireRecord,
 } from '@/lib/strict-json'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import type { McpServerInfoResponse, McpServerToolInfoResponse, McpTransport } from '@/types'
@@ -124,7 +124,7 @@ function JsonImportDialog({ onImport, onCancel }: { onImport: (data: McpServersJ
         />
       </TextField>
       {error && (
-        <p id={errorId} data-slot="mcp-import-error" role="alert" className="text-sm text-danger">
+        <p id={errorId} data-slot="mcp-import-error" role="alert" className="text-sm text-status-danger">
           {t('settings.mcp.importJsonError')}
         </p>
       )}
@@ -298,11 +298,11 @@ function McpServerEditor({
             variant="ghost"
             aria-pressed={!isHttp}
             onPress={() => setTransportType('stdio')}
-            className={cn(
+            className={cx(
               'px-3 py-1.5 rounded-md text-sm transition-colors',
               !isHttp
-                ? 'bg-default text-default-foreground hover:bg-default hover:text-default-foreground'
-                : 'text-muted hover:text-foreground hover:bg-default/50',
+                ? 'bg-background-secondary-default text-text-primary hover:bg-background-primary-hover hover:text-text-primary'
+                : 'text-text-secondary hover:text-text-primary hover:bg-background-primary-hover/50',
             )}
           >
             {t('settings.mcp.transportStdio')}
@@ -311,11 +311,11 @@ function McpServerEditor({
             variant="ghost"
             aria-pressed={isHttp}
             onPress={() => setTransportType('streamablehttp')}
-            className={cn(
+            className={cx(
               'px-3 py-1.5 rounded-md text-sm transition-colors',
               isHttp
-                ? 'bg-default text-default-foreground hover:bg-default hover:text-default-foreground'
-                : 'text-muted hover:text-foreground hover:bg-default/50',
+                ? 'bg-background-secondary-default text-text-primary hover:bg-background-primary-hover hover:text-text-primary'
+                : 'text-text-secondary hover:text-text-primary hover:bg-background-primary-hover/50',
             )}
           >
             {t('settings.mcp.transportHttp')}
@@ -434,12 +434,12 @@ function McpServerEditor({
               <div
                 key={tool.qualified_name}
                 data-slot="mcp-tool-row"
-                className="flex items-center gap-2 px-2 py-1 rounded-lg bg-default/50 text-xs"
+                className="flex items-center gap-2 px-2 py-1 rounded-lg bg-background-secondary-default/50 text-xs"
               >
                 <span data-slot="mcp-tool-name" className="font-mono">
                   {tool.name}
                 </span>
-                <span data-slot="mcp-tool-description" className="text-muted truncate">
+                <span data-slot="mcp-tool-description" className="text-text-secondary truncate">
                   {tool.description}
                 </span>
               </div>
@@ -448,7 +448,7 @@ function McpServerEditor({
         </div>
       )}
 
-      <div data-slot="mcp-danger-zone" className="pt-4 border-t border-border">
+      <div data-slot="mcp-danger-zone" className="pt-4 border-t border-border-button-default">
         <Button variant="danger-soft" onPress={() => onDelete(server.id)}>
           <TrashBin className="w-3.5 h-3.5 mr-1.5" />
           {t('settings.mcp.deleteServer')}
@@ -566,14 +566,14 @@ export function McpSettings() {
           key={s.id}
           id={s.id}
           textValue={s.name}
-          className="min-h-11 rounded-lg border-b-0 px-3 py-2 data-[selected=true]:bg-default data-[selected=true]:text-default-foreground"
+          className="min-h-11 rounded-lg border-b-0 px-3 py-2 data-[selected=true]:bg-background-tertiary-default data-[selected=true]:text-text-primary"
         >
           <ListView.ItemContent>
             <LogoMcp className="size-4" />
             <ListView.Title className="font-normal">{s.name}</ListView.Title>
           </ListView.ItemContent>
           <ListView.ItemAction>
-            <span data-slot="mcp-server-transport" className="truncate text-xs text-muted">
+            <span data-slot="mcp-server-transport" className="truncate text-xs text-text-secondary">
               {s.transport_type === 'streamablehttp' ? 'HTTP' : 'stdio'}
             </span>
           </ListView.ItemAction>

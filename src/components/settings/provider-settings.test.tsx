@@ -338,8 +338,8 @@ describe('ProviderSettings list/detail navigation', () => {
     expect(within(grid).getByText(i18n.t('settings.provider.modelPriced'))).toBeInTheDocument()
     expect(within(grid).getByText(i18n.t('settings.provider.modelPriceMissing'))).toBeInTheDocument()
     expect(within(grid).getByText(i18n.t('settings.provider.modelNotConfigured'))).toBeInTheDocument()
-    expect(within(grid).getByText('gpt-5.6-mini')).not.toHaveClass('text-muted')
-    expect(within(grid).getByText('gpt-unconfigured')).toHaveClass('text-muted')
+    expect(within(grid).getByText('gpt-5.6-mini')).not.toHaveClass('text-text-secondary')
+    expect(within(grid).getByText('gpt-unconfigured')).toHaveClass('text-text-secondary')
 
     await user.click(
       within(grid).getByRole('button', {

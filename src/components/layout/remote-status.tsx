@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next'
 
 import { useConnectionState } from '@/hooks/use-connection-state'
 import { isRemote } from '@/lib/transport'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 /**
  * Whether the machine answering this window is still there.
@@ -26,9 +26,9 @@ export function RemoteStatus() {
     <span
       data-slot="remote-status"
       role="status"
-      className={cn(
+      className={cx(
         'flex shrink-0 items-center gap-1.5 text-xs',
-        offline ? 'text-danger' : 'text-warning-soft-foreground',
+        offline ? 'text-status-danger' : 'text-status-warning-soft-foreground',
       )}
     >
       {/* The word beside it says the same thing, so announcing the dot too
@@ -36,10 +36,10 @@ export function RemoteStatus() {
       <span
         data-slot="remote-status-dot"
         aria-hidden
-        className={cn(
+        className={cx(
           'size-1.5 rounded-full',
           // eslint-disable-next-line no-restricted-syntax -- a live status dot pulses while connecting; it is not a placeholder
-          offline ? 'bg-danger' : 'bg-warning animate-pulse motion-reduce:animate-none',
+          offline ? 'bg-status-danger' : 'bg-status-warning animate-pulse motion-reduce:animate-none',
         )}
       />
       {t(`settings.client.state.${state}`)}

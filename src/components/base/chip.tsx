@@ -13,26 +13,26 @@ interface ChipProps extends Omit<ComponentProps<'span'>, 'color'> {
 
 const colorClasses: Record<ChipColor, string> = {
   default: 'text-text-primary',
-  accent: 'text-accent-soft-foreground',
-  success: 'text-success-soft-foreground',
-  warning: 'text-warning-soft-foreground',
-  danger: 'text-danger-soft-foreground',
+  accent: 'text-button-ghost-foreground',
+  success: 'text-status-success-soft-foreground',
+  warning: 'text-status-warning-soft-foreground',
+  danger: 'text-status-danger-soft-foreground',
 }
 
 const softColorClasses: Record<ChipColor, string> = {
   default: 'bg-background-secondary-default text-text-secondary',
-  accent: 'bg-accent-soft text-accent-soft-foreground',
-  success: 'bg-success-soft text-success-soft-foreground',
-  warning: 'bg-warning-soft text-warning-soft-foreground',
-  danger: 'bg-danger-soft text-danger-soft-foreground',
+  accent: 'bg-button-ghost-background text-button-ghost-foreground',
+  success: 'bg-status-success-soft text-status-success-soft-foreground',
+  warning: 'bg-status-warning-soft text-status-warning-soft-foreground',
+  danger: 'bg-status-danger-soft text-status-danger-soft-foreground',
 }
 
 const primaryColorClasses: Record<ChipColor, string> = {
   default: '',
   accent: 'bg-accent-500 text-text-white',
-  success: 'bg-success text-success-foreground',
-  warning: 'bg-warning text-warning-foreground',
-  danger: 'bg-danger text-danger-foreground',
+  success: 'bg-status-success text-status-success-foreground',
+  warning: 'bg-status-warning text-status-warning-foreground',
+  danger: 'bg-status-danger text-status-danger-foreground',
 }
 
 const sizeClasses: Record<ChipSize, string> = {

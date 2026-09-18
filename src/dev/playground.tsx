@@ -55,7 +55,7 @@ import type {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section data-slot="gallery-section" className="space-y-3">
-      <h2 data-slot="gallery-section-title" className="text-sm font-semibold text-muted">
+      <h2 data-slot="gallery-section-title" className="text-sm font-semibold text-text-secondary">
         {title}
       </h2>
       {children}
@@ -199,9 +199,9 @@ function TurnItemCase({
   return (
     <div
       data-slot="turn-case"
-      className="w-full max-w-2xl space-y-1 rounded-xl border border-dashed border-border/60 p-4"
+      className="w-full max-w-2xl space-y-1 rounded-xl border border-dashed border-border-button-default/60 p-4"
     >
-      <div data-slot="turn-case-label" className="text-xs text-muted">
+      <div data-slot="turn-case-label" className="text-xs text-text-secondary">
         {label}
       </div>
       {turns.map((turn) => (
@@ -245,10 +245,13 @@ function ComposerMenuCase({
   const [fast, setFast] = useState(false)
   return (
     <div data-slot="composer-menu-case" className="flex flex-col gap-1">
-      <span data-slot="composer-menu-case-label" className="text-xs text-muted">
+      <span data-slot="composer-menu-case-label" className="text-xs text-text-secondary">
         {label}
       </span>
-      <div data-slot="composer-menu-case-frame" className="flex items-center rounded-lg border border-border px-2 py-1">
+      <div
+        data-slot="composer-menu-case-frame"
+        className="flex items-center rounded-lg border border-border-button-default px-2 py-1"
+      >
         <ComposerMenu
           assistants={[]}
           providers={[]}
@@ -269,7 +272,7 @@ function ComposerMenuCase({
           onPickFile={() => {}}
         />
       </div>
-      <span data-slot="composer-menu-case-state" className="text-xs text-muted">
+      <span data-slot="composer-menu-case-state" className="text-xs text-text-secondary">
         {mode} · {acceptEdits ? 'accept-edits' : 'ask'}
       </span>
     </div>
@@ -457,7 +460,7 @@ function Gallery() {
   // will not remove.
   const { resolvedTheme, setTheme } = useAppTheme()
   return (
-    <div data-slot="gallery" className="h-full overflow-y-auto bg-background text-foreground">
+    <div data-slot="gallery" className="h-full overflow-y-auto bg-background-full text-text-primary">
       <div data-slot="gallery-body" className="mx-auto max-w-2xl space-y-10 px-6 py-10">
         <header data-slot="gallery-header" className="flex items-center justify-between">
           <h1 data-slot="gallery-title" className="text-lg font-semibold">
@@ -496,7 +499,7 @@ function Gallery() {
         <Section title="ChainOfThought / 流式 (shimmer)">
           <ChainOfThought defaultExpanded isStreaming>
             <ChainOfThoughtTrigger>思考过程</ChainOfThoughtTrigger>
-            <ChainOfThoughtContent className="text-xs text-muted leading-relaxed whitespace-pre-wrap">
+            <ChainOfThoughtContent className="text-xs text-text-secondary leading-relaxed whitespace-pre-wrap">
               {'用户想要一个简单的登录页。这是一个直接的 UI 任务——我应该先生成一些设计灵感确保观感，然后再搭页面。'}
             </ChainOfThoughtContent>
           </ChainOfThought>
@@ -507,10 +510,10 @@ function Gallery() {
             <ChatTool state="output-available" defaultExpanded>
               <ChatToolTrigger>
                 <ChatToolStatusIcon />
-                <span data-slot="chat-tool-verb" className="text-muted">
+                <span data-slot="chat-tool-verb" className="text-text-secondary">
                   Used tool:
                 </span>
-                <span data-slot="chat-tool-name" className="font-medium text-foreground">
+                <span data-slot="chat-tool-name" className="font-medium text-text-primary">
                   getWeather
                 </span>
               </ChatToolTrigger>
@@ -523,10 +526,10 @@ function Gallery() {
             <ChatTool state="input-streaming" defaultExpanded>
               <ChatToolTrigger>
                 <ChatToolStatusIcon />
-                <span data-slot="chat-tool-verb" className="text-muted">
+                <span data-slot="chat-tool-verb" className="text-text-secondary">
                   Running tool:
                 </span>
-                <span data-slot="chat-tool-name" className="font-medium text-foreground">
+                <span data-slot="chat-tool-name" className="font-medium text-text-primary">
                   searchDocs
                 </span>
               </ChatToolTrigger>
@@ -538,10 +541,10 @@ function Gallery() {
             <ChatTool state="output-error" defaultExpanded>
               <ChatToolTrigger>
                 <ChatToolStatusIcon />
-                <span data-slot="chat-tool-verb" className="text-muted">
+                <span data-slot="chat-tool-verb" className="text-text-secondary">
                   Failed tool:
                 </span>
-                <span data-slot="chat-tool-name" className="font-medium text-foreground">
+                <span data-slot="chat-tool-name" className="font-medium text-text-primary">
                   fetchPage
                 </span>
               </ChatToolTrigger>
@@ -554,10 +557,10 @@ function Gallery() {
             <ChatTool state="requires-action" defaultExpanded>
               <ChatToolTrigger>
                 <ChatToolStatusIcon />
-                <span data-slot="chat-tool-verb" className="text-muted">
+                <span data-slot="chat-tool-verb" className="text-text-secondary">
                   Approval needed:
                 </span>
-                <span data-slot="chat-tool-name" className="font-medium text-foreground">
+                <span data-slot="chat-tool-name" className="font-medium text-text-primary">
                   sendEmail
                 </span>
               </ChatToolTrigger>
@@ -1346,10 +1349,16 @@ function Gallery() {
               to wrap, and both are two clicks deep otherwise. Boxed at 672px —
               the composer's width — because that is what decides whether three
               columns fit or the grid turns into a horizontal scroller. */}
-          <div data-slot="gallery-todo-board" className="w-full max-w-2xl rounded-2xl bg-surface p-4 shadow-surface">
+          <div
+            data-slot="gallery-todo-board"
+            className="w-full max-w-2xl rounded-2xl bg-background-primary-default p-4 shadow-card"
+          >
             <TodoBoard todos={(JSON.parse(TODO_RUNNING) as { todos: TodoDraft[] }).todos} />
           </div>
-          <div data-slot="gallery-todo-board-narrow" className="w-[360px] rounded-2xl bg-surface p-4 shadow-surface">
+          <div
+            data-slot="gallery-todo-board-narrow"
+            className="w-[360px] rounded-2xl bg-background-primary-default p-4 shadow-card"
+          >
             <TodoBoard todos={(JSON.parse(TODO_NO_CURRENT) as { todos: TodoDraft[] }).todos} />
           </div>
         </Section>
@@ -1362,7 +1371,7 @@ function Gallery() {
                   <VoiceButton aria-label="语音输入" state={s} elapsed={s.startsWith('recording') ? 12.4 : 0} />
                   <Tooltip>语音输入</Tooltip>
                 </TooltipTrigger>
-                <span data-slot="gallery-voice-button-state" className="text-xs text-muted">
+                <span data-slot="gallery-voice-button-state" className="text-xs text-text-secondary">
                   {s}
                 </span>
               </div>
@@ -1376,12 +1385,15 @@ function Gallery() {
               and all three verbs side by side. Boxed at the panel's own
               minimum width, which is where a long path decides whether it
               truncates or pushes the marker off the edge. */}
-          <div data-slot="gallery-changes-panel" className="h-96 w-[280px] rounded-2xl border border-border bg-surface">
+          <div
+            data-slot="gallery-changes-panel"
+            className="h-96 w-[280px] rounded-2xl border border-border-button-default bg-background-primary-default"
+          >
             <ChangesPanelView files={CHANGED_FILES} onClose={() => {}} />
           </div>
           <div
             data-slot="gallery-changes-panel-empty"
-            className="h-48 w-[280px] rounded-2xl border border-border bg-surface"
+            className="h-48 w-[280px] rounded-2xl border border-border-button-default bg-background-primary-default"
           >
             <ChangesPanelView files={[]} onClose={() => {}} />
           </div>
@@ -1436,15 +1448,18 @@ function HotkeyProbe() {
           className="min-w-64 flex-1"
         />
       </div>
-      <p data-slot="hotkey-probe-expectation" className="text-xs text-muted">
+      <p data-slot="hotkey-probe-expectation" className="text-xs text-text-secondary">
         预期：<code data-slot="hotkey-probe-code">mod+k</code> 在输入框里也触发，
         <code data-slot="hotkey-probe-code">mod+shift+k</code> 不触发（
         <code data-slot="hotkey-probe-code">ignoreInInput</code> 默认开）， 且{' '}
         <code data-slot="hotkey-probe-code">mod+shift+k</code> 不会连带触发{' '}
         <code data-slot="hotkey-probe-code">mod+k</code>。
       </p>
-      <div data-slot="hotkey-probe-log" className="rounded-lg border border-border bg-surface p-3 text-xs">
-        <div data-slot="hotkey-probe-hits" className="text-muted">
+      <div
+        data-slot="hotkey-probe-log"
+        className="rounded-lg border border-border-button-default bg-background-primary-default p-3 text-xs"
+      >
+        <div data-slot="hotkey-probe-hits" className="text-text-secondary">
           最近命中：{log.length ? log.join(' · ') : '（无）'}
         </div>
         <div data-slot="hotkey-probe-chosen" className="mt-1">

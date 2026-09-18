@@ -19,9 +19,9 @@ const sizeClasses: Record<SpinnerSize, string> = {
 const colorClasses: Record<SpinnerColor, string> = {
   current: 'text-current',
   accent: 'text-accent-500',
-  danger: 'text-danger',
-  success: 'text-success',
-  warning: 'text-warning',
+  danger: 'text-status-danger',
+  success: 'text-status-success',
+  warning: 'text-status-warning',
 }
 
 function SpinnerIcon(props: ComponentProps<'svg'>) {

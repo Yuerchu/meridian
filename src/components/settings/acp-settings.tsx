@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Description, Input, Label, TextArea, TextField } from '@/components/base'
 import { api } from '@/api'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import type { AcpCheckResponse, AcpConfigInfoResponse } from '@/types'
 import { SavedHint, SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
 import { useSettingsDirtyRegistration } from './dirty-guard'
@@ -169,7 +169,7 @@ export function AcpSettings() {
       </TextField>
 
       {saveError && (
-        <p data-slot="acp-save-error" role="alert" className="text-xs text-danger break-all">
+        <p data-slot="acp-save-error" role="alert" className="text-xs text-status-danger break-all">
           {saveError}
         </p>
       )}
@@ -185,7 +185,7 @@ export function AcpSettings() {
           {checking ? t('settings.acp.checking') : t('settings.acp.check')}
         </Button>
         {dirty && !checking && (
-          <p data-slot="acp-save-before-check" className="text-xs text-muted">
+          <p data-slot="acp-save-before-check" className="text-xs text-text-secondary">
             {t('settings.acp.saveBeforeCheck')}
           </p>
         )}
@@ -195,9 +195,11 @@ export function AcpSettings() {
         <div
           data-slot="acp-check-result"
           role="status"
-          className={cn(
+          className={cx(
             'rounded-lg border px-3 py-2 text-xs',
-            check.ok ? 'border-success text-success-soft-foreground' : 'border-danger text-danger',
+            check.ok
+              ? 'border-status-success text-status-success-soft-foreground'
+              : 'border-status-danger text-status-danger',
           )}
         >
           {check.ok ? (
@@ -205,7 +207,7 @@ export function AcpSettings() {
               <p data-slot="acp-check-agent">
                 {t('settings.acp.checkOk', { agent: check.agent ?? t('settings.acp.unnamedAgent') })}
               </p>
-              <p data-slot="acp-check-protocol" className="mt-1 text-muted">
+              <p data-slot="acp-check-protocol" className="mt-1 text-text-secondary">
                 {t('settings.acp.protocolVersion', { version: check.protocol_version ?? '?' })}
                 {check.load_session ? ` · ${t('settings.acp.supportsResume')}` : ''}
               </p>
@@ -221,7 +223,7 @@ export function AcpSettings() {
         </div>
       )}
 
-      <p data-slot="acp-auth-note" className="text-xs text-muted">
+      <p data-slot="acp-auth-note" className="text-xs text-text-secondary">
         {t('settings.acp.authNote')}
       </p>
     </SettingsPane>

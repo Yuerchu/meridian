@@ -108,7 +108,7 @@ export function ContextGauge({
       <TooltipTrigger delay={0}>
         <Popover.Trigger
           aria-label={figures}
-          className="touch-hitbox inline-flex items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          className="touch-hitbox inline-flex items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
         >
           <ProgressCircle
             aria-hidden
@@ -127,7 +127,7 @@ export function ContextGauge({
             <span data-slot="context-gauge-compacting">{t('chat.compact.inProgress')}</span>
           ) : (
             <>
-              <span data-slot="context-gauge-model" className="text-muted">
+              <span data-slot="context-gauge-model" className="text-text-secondary">
                 {whose}
               </span>
               {/* Only for a conversation whose rows *are* the context. A
@@ -144,7 +144,7 @@ export function ContextGauge({
                 // this app has no say and no visibility. Saying so beats
                 // leaving a gap where every other conversation has a
                 // countdown.
-                <span data-slot="context-gauge-hosted-compaction" className="text-muted">
+                <span data-slot="context-gauge-hosted-compaction" className="text-text-secondary">
                   {t('chat.context.hostedCompaction')}
                 </span>
               ) : (
@@ -154,7 +154,7 @@ export function ContextGauge({
                     // auto-compact" next to a number that never moves reads as
                     // a bug in the indicator rather than as compaction having
                     // given up.
-                    <span data-slot="context-gauge-breaker" className="text-warning">
+                    <span data-slot="context-gauge-breaker" className="text-status-warning">
                       {t('chat.compact.circuitBreakerOpen')}
                     </span>
                   ) : (

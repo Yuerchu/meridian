@@ -51,9 +51,9 @@ export function PlanCommentsPane({
     <section data-slot="plan-comments" aria-labelledby={headingId} className="flex h-full min-h-0 flex-col">
       <header
         data-slot="plan-comments-header"
-        className="flex min-h-12 shrink-0 items-center gap-2 border-b border-border px-4"
+        className="flex min-h-12 shrink-0 items-center gap-2 border-b border-border-button-default px-4"
       >
-        <Comment className="size-4 text-muted" />
+        <Comment className="size-4 text-text-secondary" />
         <h2 data-slot="plan-comments-title" id={headingId} className="text-sm font-medium">
           {t('planReview.comments.title')}
         </h2>
@@ -64,7 +64,7 @@ export function PlanCommentsPane({
 
       <div data-slot="plan-comments-list" className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
         {visible.length === 0 && (
-          <p data-slot="plan-comments-empty" className="px-2 py-8 text-center text-sm text-muted">
+          <p data-slot="plan-comments-empty" className="px-2 py-8 text-center text-sm text-text-secondary">
             {t('planReview.comments.empty')}
           </p>
         )}
@@ -73,13 +73,13 @@ export function PlanCommentsPane({
           <article
             data-slot="plan-comment"
             key={comment.id}
-            className="rounded-lg bg-surface-secondary p-3"
+            className="rounded-lg bg-background-secondary-default p-3"
             data-state={comment.state}
             data-comment-id={comment.id}
           >
             <div data-slot="plan-comment-header" className="mb-2 flex items-start gap-2">
               <Link
-                className="min-w-0 flex-1 text-start text-xs font-normal text-muted"
+                className="min-w-0 flex-1 text-start text-xs font-normal text-text-secondary"
                 onPress={() => onSelectComment(comment)}
               >
                 <q data-slot="plan-comment-quote" className="line-clamp-3 break-words">
@@ -103,7 +103,7 @@ export function PlanCommentsPane({
               )}
             </div>
             {isReadOnly ? (
-              <p data-slot="plan-comment-body" className="whitespace-pre-wrap text-sm text-foreground">
+              <p data-slot="plan-comment-body" className="whitespace-pre-wrap text-sm text-text-primary">
                 {comment.body}
               </p>
             ) : (
@@ -122,7 +122,7 @@ export function PlanCommentsPane({
               />
             )}
             {comment.state === 'orphaned' && (
-              <p data-slot="plan-comment-orphaned" className="mt-2 text-xs text-warning">
+              <p data-slot="plan-comment-orphaned" className="mt-2 text-xs text-status-warning">
                 {t('planReview.comments.orphaned')}
               </p>
             )}
@@ -130,11 +130,11 @@ export function PlanCommentsPane({
         ))}
       </div>
 
-      <div data-slot="plan-comments-footer" className="shrink-0 border-t border-border p-3">
+      <div data-slot="plan-comments-footer" className="shrink-0 border-t border-border-button-default p-3">
         {isReadOnly ? (
           globalNote && (
             <div data-slot="plan-global-note-readonly">
-              <p data-slot="plan-global-note-label" className="mb-1 text-xs font-medium text-muted">
+              <p data-slot="plan-global-note-label" className="mb-1 text-xs font-medium text-text-secondary">
                 {t('planReview.comments.globalNote')}
               </p>
               <p data-slot="plan-global-note-body" className="whitespace-pre-wrap text-sm">

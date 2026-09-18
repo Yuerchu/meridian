@@ -2,7 +2,7 @@ import { useContext } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/base'
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { AcpNoticeActionsContext } from './acp-notice-actions'
 import type { AcpSessionNoticeInfoResponse } from '@/types'
 
@@ -36,7 +36,7 @@ export function AcpNoticeBubble({
       variant={isError ? 'destructive' : 'muted'}
       className="max-w-[85%]"
     >
-      <BubbleContent className={cn('space-y-2', !isError && 'text-warning-soft-foreground')}>
+      <BubbleContent className={cx('space-y-2', !isError && 'text-status-warning-soft-foreground')}>
         <div data-slot="acp-notice-head" className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <span data-slot="acp-notice-category" className="text-xs opacity-80">
             {t(`chat.acpNotice.category.${notice.category}`)}

@@ -7,6 +7,7 @@ import {
 } from 'react-aria-components'
 import type { ComponentProps } from 'react'
 import { cx } from '@/utils/cx'
+import { OVERLAY_MOTION } from './overlay-motion'
 
 interface InlineSelectProps {
   'aria-label'?: string
@@ -70,8 +71,7 @@ function InlineSelectPopover({ className, ...props }: AriaPopoverProps) {
       {...props}
       className={cx(
         'min-w-[var(--trigger-width)] overflow-hidden rounded-xl border border-border-button-default bg-background-primary-default p-1 shadow-dropdown',
-        'data-[entering]:animate-in data-[entering]:fade-in-0 data-[entering]:zoom-in-95 data-[entering]:duration-150',
-        'data-[exiting]:animate-out data-[exiting]:fade-out data-[exiting]:zoom-out-95 data-[exiting]:duration-100',
+        OVERLAY_MOTION,
         className as string,
       )}
     />

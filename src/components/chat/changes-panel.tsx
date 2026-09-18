@@ -8,7 +8,7 @@ import { File, Folder, FolderOpen, Xmark } from '@gravity-ui/icons'
 import { useConversationStore } from '@/stores/conversation-store'
 import { fileIconUrl } from '@/lib/file-icon'
 import { buildFileTree, touchedFiles, type FileNode, type TouchedFile, type TouchedOp } from '@/lib/touched-files'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 /** Every directory in the tree, so a new one arrives already open. */
 function branchIds(nodes: FileNode[], out: string[] = []): string[] {
@@ -21,9 +21,9 @@ function branchIds(nodes: FileNode[], out: string[] = []): string[] {
 }
 
 const OP_CLASS: Record<TouchedOp, string> = {
-  create: 'text-success-soft-foreground',
-  modify: 'text-info-soft-foreground',
-  delete: 'text-danger-soft-foreground',
+  create: 'text-status-success-soft-foreground',
+  modify: 'text-status-info-soft-foreground',
+  delete: 'text-status-danger-soft-foreground',
 }
 
 /** A, M, D — the letters every diff viewer uses, so nothing has to explain them. */
@@ -69,12 +69,12 @@ export function ChangesPanelView({ files, onClose }: { files: TouchedFile[]; onC
     <div data-slot="changes-panel" className="flex h-full flex-col overflow-hidden">
       <header
         data-slot="changes-panel-header"
-        className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2"
+        className="flex shrink-0 items-center gap-2 border-b border-border-button-default px-3 py-2"
       >
         <span data-slot="changes-panel-title" className="min-w-0 flex-1 truncate text-sm font-medium">
           {t('chat.changes.title')}
         </span>
-        <span data-slot="changes-panel-count" className="shrink-0 text-xs tabular-nums text-muted">
+        <span data-slot="changes-panel-count" className="shrink-0 text-xs tabular-nums text-text-secondary">
           {files.length}
         </span>
         <TooltipTrigger delay={0}>
@@ -110,7 +110,10 @@ export function ChangesPanelView({ files, onClose }: { files: TouchedFile[]; onC
       {/* Not a disclaimer for its own sake: a list of edited files that silently
           omits everything a command wrote is the kind of wrong that reads as
           right. */}
-      <p data-slot="changes-panel-caveat" className="shrink-0 border-t border-border px-3 py-2 text-xs text-muted">
+      <p
+        data-slot="changes-panel-caveat"
+        className="shrink-0 border-t border-border-button-default px-3 py-2 text-xs text-text-secondary"
+      >
         {t('chat.changes.caveat')}
       </p>
     </div>
@@ -143,7 +146,7 @@ function renderNode(node: FileNode, t: TFunction) {
             {node.name}
           </span>
           {node.file && node.file.count > 1 && (
-            <span data-slot="changes-node-count" className="shrink-0 text-xs tabular-nums text-muted">
+            <span data-slot="changes-node-count" className="shrink-0 text-xs tabular-nums text-text-secondary">
               ×{node.file.count}
             </span>
           )}
@@ -151,7 +154,7 @@ function renderNode(node: FileNode, t: TFunction) {
             <span
               data-slot="changes-node-op"
               aria-hidden="true"
-              className={cn('shrink-0 font-mono text-xs', OP_CLASS[op])}
+              className={cx('shrink-0 font-mono text-xs', OP_CLASS[op])}
             >
               {OP_LETTER[op]}
             </span>

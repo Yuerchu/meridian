@@ -69,7 +69,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
         </div>
       </div>
 
-      <p data-slot="log-viewer-export-hint" className="text-xs text-muted">
+      <p data-slot="log-viewer-export-hint" className="text-xs text-text-secondary">
         {can.exportToDisk ? t('settings.about.logs.exportHint') : t('capability.exportToDisk')}
       </p>
 
@@ -106,7 +106,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
         {logs.entries.length > 0 && (
           // Only what is on screen. The reader stops as soon as it has a page,
           // so a total would be a number nobody actually counted.
-          <span data-slot="log-viewer-count" className="ml-auto text-xs text-muted">
+          <span data-slot="log-viewer-count" className="ml-auto text-xs text-text-secondary">
             {t('settings.about.logs.count', { shown: logs.entries.length })}
           </span>
         )}
@@ -117,7 +117,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
       <div
         data-slot="log-list"
         tabIndex={0}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-lg border border-border outline-none focus-visible:ring-2 focus-visible:ring-focus/50"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-lg border border-border-button-default outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring/50"
       >
         {unavailable ? (
           <EmptyState size="sm">
@@ -126,7 +126,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
             </EmptyState.Header>
           </EmptyState>
         ) : logs.error ? (
-          <p data-slot="log-viewer-error" role="alert" className="p-6 text-sm text-danger">
+          <p data-slot="log-viewer-error" role="alert" className="p-6 text-sm text-status-danger">
             {t('settings.about.logs.loadError')}
           </p>
         ) : logs.loading ? (
@@ -158,12 +158,12 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
             ))}
             <div data-slot="log-viewer-footer" className="flex flex-col items-center gap-2 p-3">
               {logs.truncated && (
-                <p data-slot="log-viewer-truncated" className="text-xs text-muted">
+                <p data-slot="log-viewer-truncated" className="text-xs text-text-secondary">
                   {t('settings.about.logs.truncated')}
                 </p>
               )}
               {logs.capped ? (
-                <p data-slot="log-viewer-capped" className="text-xs text-muted">
+                <p data-slot="log-viewer-capped" className="text-xs text-text-secondary">
                   {t('settings.about.logs.capped', { max: MAX_RENDERED })}
                 </p>
               ) : logs.canLoadOlder ? (

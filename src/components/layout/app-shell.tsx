@@ -198,7 +198,7 @@ export function AppShell(props: ShellProps) {
           event.preventDefault()
           document.getElementById('main-content')?.focus({ preventScroll: true })
         }}
-        className="sr-only focus:not-sr-only focus:fixed focus:start-2 focus:top-2 focus:z-100 focus:rounded-md focus:bg-overlay focus:px-3 focus:py-2 focus:text-sm focus:text-overlay-foreground focus:shadow-overlay focus:outline-none focus:ring-2 focus:ring-focus"
+        className="sr-only focus:not-sr-only focus:fixed focus:start-2 focus:top-2 focus:z-100 focus:rounded-md focus:bg-background-primary-default focus:px-3 focus:py-2 focus:text-sm focus:text-text-primary focus:shadow-dropdown focus:outline-none focus:ring-2 focus:ring-border-focus-ring"
       >
         {t('app.skipToContent')}
       </a>
@@ -245,7 +245,7 @@ export function AppShell(props: ShellProps) {
             aria-orientation="vertical"
             tabIndex={-1}
             onDoubleClick={resetWidth}
-            className="relative hidden md:block w-0.5 shrink-0 cursor-col-resize bg-transparent hover:bg-focus/30 active:bg-focus/50 transition-colors before:absolute before:inset-y-0 before:-left-1 before:w-3 before:content-['']"
+            className="relative hidden md:block w-0.5 shrink-0 cursor-col-resize bg-transparent hover:bg-border-focus-ring/30 active:bg-border-focus-ring/50 transition-colors before:absolute before:inset-y-0 before:-left-1 before:w-3 before:content-['']"
             {...resizeHandleProps}
           />
         )}
@@ -260,7 +260,7 @@ export function AppShell(props: ShellProps) {
         <Sidebar.Main className="min-h-0 overflow-hidden">
           <header
             data-slot="app-header"
-            className="flex items-center min-h-12 gap-2 px-4 pt-[var(--safe-top)] pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))] border-b border-border select-none shrink-0"
+            className="flex items-center min-h-12 gap-2 px-4 pt-[var(--safe-top)] pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))] border-b border-border-button-default select-none shrink-0"
             data-tauri-drag-region={canDragWindow ? '' : undefined}
           >
             {/* Below 768px this is the only way to the conversation list, so it
@@ -273,7 +273,7 @@ export function AppShell(props: ShellProps) {
               data-slot="app-title"
               ref={pageHeadingRef}
               tabIndex={-1}
-              className="truncate rounded-sm text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-focus/50"
+              className="truncate rounded-sm text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring/50"
             >
               {headerTitle}
             </h1>
@@ -323,7 +323,7 @@ export function AppShell(props: ShellProps) {
           </header>
 
           {actionError && (
-            <div data-slot="app-action-error" className="shrink-0 border-b border-border px-4 py-2">
+            <div data-slot="app-action-error" className="shrink-0 border-b border-border-button-default px-4 py-2">
               <Alert status="danger" role="alert">
                 <Alert.Indicator />
                 <Alert.Content className="min-w-0">
@@ -428,11 +428,11 @@ export function AppShell(props: ShellProps) {
               </Resizable>
             </div>
 
-            {/* `bg-surface`, not `bg-background`: this covers `Sidebar.Main`,
+            {/* `bg-background-primary-default`, not `bg-background-full`: this covers `Sidebar.Main`,
               which Pro paints `--surface`, and the two are different colours in
               both themes. */}
             {page === 'settings' && (
-              <div data-slot="settings-layer" className="absolute inset-0 z-20 bg-surface">
+              <div data-slot="settings-layer" className="absolute inset-0 z-20 bg-background-primary-default">
                 {/* No spinner: the chunk is on local disk and resolves within a
                   frame or two, where a flash of "loading" would read as jank. */}
                 <Suspense fallback={null}>
@@ -443,7 +443,7 @@ export function AppShell(props: ShellProps) {
               </div>
             )}
             {activeReviewId && (
-              <div data-slot="plan-review-layer" className="absolute inset-0 z-30 bg-surface">
+              <div data-slot="plan-review-layer" className="absolute inset-0 z-30 bg-background-primary-default">
                 <Suspense fallback={null}>
                   <PlanReviewPage key={activeReviewId} reviewId={activeReviewId} onClose={closePlanReview} />
                 </Suspense>

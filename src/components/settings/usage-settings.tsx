@@ -22,7 +22,7 @@ import { ArrowRightFromSquare } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { costQualifier, formatCostAmount, type CostQualifier } from '@/lib/cost-format'
 import { compareDecimals, decimal, decimalPercent, sumDecimals, type DecimalString } from '@/lib/decimal'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { Hint } from '@/components/ui/hint'
 import { SettingsHeader, SettingsPane } from './primitives'
 import type { UsageBucketInfoResponse, UsageDimension, UsageReportRequest } from '@/types'
@@ -76,10 +76,10 @@ const DAY_MS = 86_400_000
  * thing; magenta for the reply, which is the other thing.
  */
 const SERIES = [
-  { key: 'uncached', color: 'var(--chart-3)', labelKey: 'settings.usage.legend.uncached' },
-  { key: 'cacheRead', color: 'var(--chart-2)', labelKey: 'settings.usage.legend.cacheRead' },
-  { key: 'cacheWrite', color: 'var(--chart-1)', labelKey: 'settings.usage.legend.cacheWrite' },
-  { key: 'output', color: 'var(--chart-4)', labelKey: 'settings.usage.legend.output' },
+  { key: 'uncached', color: 'var(--color-chart-3)', labelKey: 'settings.usage.legend.uncached' },
+  { key: 'cacheRead', color: 'var(--color-chart-2)', labelKey: 'settings.usage.legend.cacheRead' },
+  { key: 'cacheWrite', color: 'var(--color-chart-1)', labelKey: 'settings.usage.legend.cacheWrite' },
+  { key: 'output', color: 'var(--color-chart-4)', labelKey: 'settings.usage.legend.output' },
 ] as const
 
 type SeriesKey = (typeof SERIES)[number]['key']
@@ -92,10 +92,10 @@ type Split = Record<SeriesKey, number>
  * never recreate them from token counts.
  */
 const COST_SERIES = [
-  { key: 'input_cost', color: 'var(--chart-3)', labelKey: 'settings.usage.cost.input' },
-  { key: 'cache_cost', color: 'var(--chart-2)', labelKey: 'settings.usage.cost.cache' },
-  { key: 'output_cost', color: 'var(--chart-4)', labelKey: 'settings.usage.cost.output' },
-  { key: 'tool_cost', color: 'var(--chart-1)', labelKey: 'settings.usage.cost.tools' },
+  { key: 'input_cost', color: 'var(--color-chart-3)', labelKey: 'settings.usage.cost.input' },
+  { key: 'cache_cost', color: 'var(--color-chart-2)', labelKey: 'settings.usage.cost.cache' },
+  { key: 'output_cost', color: 'var(--color-chart-4)', labelKey: 'settings.usage.cost.output' },
+  { key: 'tool_cost', color: 'var(--color-chart-1)', labelKey: 'settings.usage.cost.tools' },
 ] as const
 
 type CostSeriesKey = (typeof COST_SERIES)[number]['key']
@@ -412,7 +412,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
           {localQualifier !== 'exact' && (
             <p
               data-slot={total.unpriced_messages > 0 ? 'unpriced-warning' : 'estimated-warning'}
-              className={cn('text-xs', total.unpriced_messages > 0 ? 'text-warning' : 'text-muted')}
+              className={cx('text-xs', total.unpriced_messages > 0 ? 'text-status-warning' : 'text-text-secondary')}
             >
               {localQualifier === 'partial_estimate'
                 ? t('settings.usage.partialEstimate', {
@@ -425,7 +425,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
             </p>
           )}
           {billingNote && (
-            <p data-slot="billing-coverage-warning" className="text-xs text-muted">
+            <p data-slot="billing-coverage-warning" className="text-xs text-text-secondary">
               {billingNote}
             </p>
           )}
@@ -498,7 +498,7 @@ const TAB = 'whitespace-nowrap'
  * One filter, as a labelled segmented control. These choices narrow the page;
  * they do not switch a tab panel, so they should not expose tab semantics.
  *
- * `w-fit` on the container because the pill is `bg-default` and stretches to
+ * `w-fit` on the container because the pill is `bg-background-secondary-default` and stretches to
  * whatever it is given; in a flex row that is the whole remaining width.
  */
 function Filter({
@@ -514,12 +514,12 @@ function Filter({
 }) {
   return (
     <div data-slot="usage-filter" className="space-y-1.5">
-      <Label className="text-xs text-muted">{label}</Label>
+      <Label className="text-xs text-text-secondary">{label}</Label>
       <div
         data-slot="usage-filter-group"
         role="group"
         aria-label={label}
-        className="flex w-fit rounded-xl bg-default p-1"
+        className="flex w-fit rounded-xl bg-background-secondary-default p-1"
       >
         {items.map(([id, text]) => (
           <Button
@@ -586,7 +586,7 @@ function UsageSkeleton() {
  */
 function Kpi({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
   return (
-    <KPI className="rounded-lg border border-border">
+    <KPI className="rounded-lg border border-border-button-default">
       <KPI.Header>
         <KPI.Title>{title}</KPI.Title>
       </KPI.Header>
@@ -599,7 +599,7 @@ function Kpi({ title, note, children }: { title: string; note?: string; children
         <div data-slot="kpi-body" className="min-w-0">
           {children}
           {note && (
-            <p data-slot="kpi-note" className="mt-0.5 truncate text-xs text-muted">
+            <p data-slot="kpi-note" className="mt-0.5 truncate text-xs text-text-secondary">
               {note}
             </p>
           )}
@@ -637,20 +637,23 @@ function CostBreakdown({ bucket }: { bucket: UsageBucketInfoResponse }) {
           {t('settings.usage.costBreakdown')}
         </h3>
         {note && (
-          <span data-slot="cost-breakdown-note" className="text-xs text-muted">
+          <span data-slot="cost-breakdown-note" className="text-xs text-text-secondary">
             {note}
           </span>
         )}
       </div>
       {bucket.metered_messages === 0 && nonLocalMessages(bucket) > 0 ? (
-        <p data-slot="cost-breakdown-empty" className="text-sm text-muted">
+        <p data-slot="cost-breakdown-empty" className="text-sm text-text-secondary">
           {t('settings.usage.noLocalCostBreakdown')}
         </p>
       ) : (
         <dl data-slot="cost-breakdown-list" className="grid grid-cols-2 gap-x-6 gap-y-3 @sm/pane:grid-cols-4">
           {COST_SERIES.map((part) => (
             <div key={part.key} data-slot="cost-breakdown-part" className="min-w-0">
-              <dt data-slot="cost-breakdown-part-label" className="flex items-center gap-1.5 text-xs text-muted">
+              <dt
+                data-slot="cost-breakdown-part-label"
+                className="flex items-center gap-1.5 text-xs text-text-secondary"
+              >
                 <span
                   data-slot="cost-breakdown-swatch"
                   className="size-2 rounded-full"
@@ -777,7 +780,7 @@ function CostBars({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
   )
   if (data.length === 0 || bands.length === 0 || compareDecimals(maximum, ZERO_DECIMAL) === 0) {
     return (
-      <p data-slot="cost-bars-empty" className="text-sm text-muted">
+      <p data-slot="cost-bars-empty" className="text-sm text-text-secondary">
         {t('settings.usage.noPricedCost')}
       </p>
     )
@@ -786,7 +789,7 @@ function CostBars({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
     <>
       <Legend bands={bands} />
       {qualifier !== 'exact' && (
-        <p data-slot="cost-bars-note" className="text-xs text-muted">
+        <p data-slot="cost-bars-note" className="text-xs text-text-secondary">
           {t(
             qualifier === 'partial_estimate'
               ? 'settings.usage.costChartPartialEstimate'
@@ -805,12 +808,12 @@ function CostBars({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
             data-slot="cost-bar-row"
             className="grid grid-cols-[minmax(5rem,auto)_minmax(0,1fr)] items-center gap-2"
           >
-            <Hint className="max-w-40 truncate text-xs text-muted" label={row.name}>
+            <Hint className="max-w-40 truncate text-xs text-text-secondary" label={row.name}>
               {row.name}
             </Hint>
             <div
               data-slot="cost-bar"
-              className="flex h-3.5 min-w-0 overflow-hidden rounded-lg bg-default"
+              className="flex h-3.5 min-w-0 overflow-hidden rounded-lg bg-background-secondary-default"
               role="img"
               aria-label={`${row.name}: ${formatCostAmount(row.total, bucketCostQualifier(row.bucket), locale)}`}
             >
@@ -855,7 +858,7 @@ function Legend({ bands }: { bands: readonly { key: string; color: string; label
             className="size-2.5 rounded-full"
             style={{ backgroundColor: band.color }}
           />
-          <span data-slot="usage-legend-label" className="text-xs text-muted">
+          <span data-slot="usage-legend-label" className="text-xs text-text-secondary">
             {t(band.labelKey)}
           </span>
         </span>
@@ -1046,7 +1049,7 @@ function BucketTable({
               <span data-slot="usage-row-label" className="block truncate text-sm">
                 {row.displayLabel}
               </span>
-              <span data-slot="usage-row-label-summary" className="block truncate text-xs text-muted">
+              <span data-slot="usage-row-label-summary" className="block truncate text-xs text-text-secondary">
                 {t('settings.usage.conversationGroupSummary', {
                   conversations: row.conversationCount,
                   messages: row.messages,
@@ -1056,10 +1059,10 @@ function BucketTable({
           ) : (
             <Hint
               focusable={false}
-              className={cn(
+              className={cx(
                 'block truncate text-sm',
-                row.isDeleted && 'text-muted italic',
-                row.isConversationInstance && 'text-muted',
+                row.isDeleted && 'text-text-secondary italic',
+                row.isConversationInstance && 'text-text-secondary',
               )}
               label={row.isConversationInstance ? (row.conversationId ?? row.displayLabel) : row.displayLabel}
             >
@@ -1074,7 +1077,7 @@ function BucketTable({
         width: 136,
         minWidth: 120,
         headerClassName: 'whitespace-nowrap',
-        cellClassName: 'whitespace-nowrap text-xs text-muted tabular-nums',
+        cellClassName: 'whitespace-nowrap text-xs text-text-secondary tabular-nums',
         cell: (row) => tokenTotal(row.input_tokens + row.output_tokens, row, t, compact),
       },
       {
@@ -1103,12 +1106,12 @@ function BucketTable({
           const hint = [pricingTitle, billingCoverage(row, t)].filter(Boolean).join(' ')
           if (!hint)
             return (
-              <span data-slot="usage-row-cost" className={cn(qualifier !== 'exact' && 'text-muted')}>
+              <span data-slot="usage-row-cost" className={cx(qualifier !== 'exact' && 'text-text-secondary')}>
                 {displayedCost(row, t, locale)}
               </span>
             )
           return (
-            <Hint focusable={false} className={cn(qualifier !== 'exact' && 'text-muted')} label={hint}>
+            <Hint focusable={false} className={cx(qualifier !== 'exact' && 'text-text-secondary')} label={hint}>
               {displayedCost(row, t, locale)}
             </Hint>
           )

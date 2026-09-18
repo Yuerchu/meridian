@@ -4,7 +4,7 @@ import { Skeleton, Spinner } from '@/components/base'
 import { useTranslation } from 'react-i18next'
 
 import { api } from '@/api'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { Hint } from '@/components/ui/hint'
 import { Bubble, BubbleContent, BubbleTime, BUBBLE_BLOCK } from '@/components/ui/bubble'
 import { BubbleFoldBadge } from '@/components/ui/bubble-block'
@@ -34,12 +34,12 @@ function commandSucceeded(result: UserCommandResultResponse): boolean {
 }
 
 function StatusIcon({ result }: { result: UserCommandResultResponse }) {
-  if (commandSucceeded(result)) return <CircleCheck className="size-3.5 text-success" />
+  if (commandSucceeded(result)) return <CircleCheck className="size-3.5 text-status-success" />
   if (result.status === 'timed_out' || result.status === 'cancelled') {
-    return <Clock className="size-3.5 text-warning" />
+    return <Clock className="size-3.5 text-status-warning" />
   }
-  if (result.status === 'in_doubt') return <CircleExclamation className="size-3.5 text-warning" />
-  return <CircleXmark className="size-3.5 text-danger" />
+  if (result.status === 'in_doubt') return <CircleExclamation className="size-3.5 text-status-warning" />
+  return <CircleXmark className="size-3.5 text-status-danger" />
 }
 
 /**
@@ -116,9 +116,9 @@ export function ShellCommandBubble({
           {state.status === 'loaded' && (
             <span
               data-slot="shell-command-outcome"
-              className={cn(
+              className={cx(
                 'flex shrink-0 items-center gap-1 text-xs',
-                commandSucceeded(state.result) ? 'opacity-70' : 'text-danger',
+                commandSucceeded(state.result) ? 'opacity-70' : 'text-status-danger',
               )}
               data-command-outcome={commandSucceeded(state.result) ? 'success' : 'failure'}
             >
@@ -139,7 +139,7 @@ export function ShellCommandBubble({
             onClick={() => onExpandedChange(!isExpanded)}
           >
             {t('chat.shell.output')}
-            <ChevronDown aria-hidden className={cn('size-3 transition-transform', isExpanded && 'rotate-180')} />
+            <ChevronDown aria-hidden className={cx('size-3 transition-transform', isExpanded && 'rotate-180')} />
           </BubbleFoldBadge>
           {message.created_at > 0 && (
             <BubbleTime dateTime={new Date(message.created_at).toISOString()} className="opacity-70">
@@ -158,13 +158,13 @@ export function ShellCommandBubble({
           id={panelId}
           data-slot="shell-command-panel"
           data-bubble-block=""
-          className={cn(BUBBLE_BLOCK, 'w-full text-xs', failed && 'ring-1 ring-danger/40 ring-inset')}
+          className={cx(BUBBLE_BLOCK, 'w-full text-xs', failed && 'ring-1 ring-status-danger/40 ring-inset')}
         >
           {state.status === 'loaded' && (
             <>
               <div
                 data-slot="shell-command-meta"
-                className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-3 pt-2 font-mono text-xs text-muted"
+                className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-3 pt-2 font-mono text-xs text-text-secondary"
               >
                 <Hint className="truncate" label={state.result.cwd}>
                   {state.result.cwd}
@@ -178,7 +178,7 @@ export function ShellCommandBubble({
                   {state.result.duration_ms} ms
                 </span>
                 {state.result.truncated && (
-                  <span data-slot="shell-command-truncated" className="shrink-0 text-warning-soft-foreground">
+                  <span data-slot="shell-command-truncated" className="shrink-0 text-status-warning-soft-foreground">
                     {t('chat.shell.truncated')}
                   </span>
                 )}
@@ -186,9 +186,9 @@ export function ShellCommandBubble({
               </div>
               <pre
                 data-slot="shell-command-output"
-                className={cn(
+                className={cx(
                   'max-h-80 min-h-10 overflow-auto px-3 py-2.5 font-mono text-xs leading-5 whitespace-pre-wrap wrap-break-word',
-                  output ? 'text-foreground' : 'text-muted italic',
+                  output ? 'text-text-primary' : 'text-text-secondary italic',
                 )}
               >
                 {output || t('chat.shell.noOutput')}
@@ -205,7 +205,7 @@ export function ShellCommandBubble({
             />
           )}
           {state.status === 'unavailable' && (
-            <p data-slot="shell-command-unavailable" role="status" className="px-3 py-3 text-xs text-muted">
+            <p data-slot="shell-command-unavailable" role="status" className="px-3 py-3 text-xs text-text-secondary">
               {t('chat.shell.resultUnavailable')}
             </p>
           )}
@@ -213,7 +213,7 @@ export function ShellCommandBubble({
             <p
               data-slot="shell-command-error"
               role="alert"
-              className="px-3 py-3 text-xs wrap-break-word text-danger-soft-foreground"
+              className="px-3 py-3 text-xs wrap-break-word text-status-danger-soft-foreground"
             >
               {t('chat.shell.resultError', { error: state.message })}
             </p>

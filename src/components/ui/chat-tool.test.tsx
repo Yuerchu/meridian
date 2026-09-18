@@ -106,9 +106,9 @@ describe('ChatTool as a bubble block', () => {
     const block = container.querySelector('[data-slot="chat-tool"]')!
     // A decision takes the column whatever else is true, and the ring is on the
     // block rather than on either half — one outline, not two.
-    expect(block.className).toContain('ring-warning')
+    expect(block.className).toContain('ring-status-warning')
     expect(block.className).toContain('w-full')
-    expect(container.querySelector('[data-slot="chat-tool-content"]')!.className).not.toContain('ring-warning')
+    expect(container.querySelector('[data-slot="chat-tool-content"]')!.className).not.toContain('ring-status-warning')
   })
 
   it('closes on Escape from inside the panel and hands focus back to the key', async () => {

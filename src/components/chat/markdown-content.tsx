@@ -24,7 +24,7 @@ import {
   remarkFileReferences,
   type MarkdownFileReference,
 } from '@/lib/markdown-target'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { useFilePreview, type FilePreviewContextValue } from './file-preview-context'
 import { ShikiCode } from './shiki-code'
 import type { EmojiMap } from './emoji-renderer'
@@ -149,7 +149,7 @@ export function CopyButton({ text, className }: { text: string; className?: stri
     <ActionButton
       label={t('chat.copy')}
       onClick={handleCopy}
-      className={cn('text-muted hover:text-foreground', className)}
+      className={cx('text-text-secondary hover:text-text-primary', className)}
     >
       {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
     </ActionButton>
@@ -182,7 +182,7 @@ const CodeBlock: Components['code'] = ({ className, children, node, ...props }) 
     const fallback = (
       <code
         data-slot="markdown-inline-code"
-        className={cn('rounded-md bg-default px-1.5 py-0.5 text-xs', className)}
+        className={cx('rounded-md bg-background-secondary-default px-1.5 py-0.5 text-xs', className)}
         {...props}
       >
         {children}
@@ -206,7 +206,7 @@ const CodeBlock: Components['code'] = ({ className, children, node, ...props }) 
     <div data-slot="markdown-code-block" className="code-block my-3 rounded-xl">
       <div data-slot="markdown-code-header" className="code-block__header">
         {icon && <img data-slot="markdown-code-icon" src={icon} alt="" aria-hidden className="size-4 shrink-0" />}
-        <span data-slot="markdown-code-language" className="text-xs text-muted">
+        <span data-slot="markdown-code-language" className="text-xs text-text-secondary">
           {language}
         </span>
         {/* The only way to copy a single block — the long-press menu copies the
@@ -250,7 +250,7 @@ const TableBlock: Components['table'] = ({ children, ...props }) => (
  * and sizes `h3` at the body size. Both are fine for a short answer and wrong
  * for a long one, which is most of what lands here.
  */
-const markdownClasses = cn(
+const markdownClasses = cx(
   'text-sm leading-relaxed',
   '[&_ul]:list-outside [&_ul]:ps-5 [&_ol]:list-outside [&_ol]:ps-5',
   '[&_h3]:text-base',
@@ -391,7 +391,7 @@ function TrailedParagraph({
   ...props
 }: React.HTMLAttributes<HTMLParagraphElement> & { trailer: React.ReactNode; node?: unknown }) {
   return (
-    <p data-slot="markdown-trailed-paragraph" {...props} className={cn('flow-root', props.className)}>
+    <p data-slot="markdown-trailed-paragraph" {...props} className={cx('flow-root', props.className)}>
       {children}
       <span data-slot="markdown-trailer" className="float-right ml-2 mt-1.5">
         {trailer}
@@ -488,8 +488,8 @@ function MarkdownImage({ alt = '', className, onError, onLoad, ...props }: React
       role={loaded ? undefined : 'status'}
       aria-busy={loaded ? undefined : true}
       aria-label={loaded ? undefined : t('common.loading')}
-      className={cn(
-        'relative my-3 block w-fit max-w-full overflow-hidden rounded-lg bg-default/20',
+      className={cx(
+        'relative my-3 block w-fit max-w-full overflow-hidden rounded-lg bg-background-secondary-default/20',
         !loaded && 'min-h-24 min-w-24',
       )}
     >
@@ -499,7 +499,7 @@ function MarkdownImage({ alt = '', className, onError, onLoad, ...props }: React
         alt={alt}
         loading="lazy"
         decoding="async"
-        className={cn(
+        className={cx(
           'block h-auto max-h-[70svh] max-w-full object-contain transition-opacity motion-reduce:transition-none',
           !loaded && 'opacity-0',
           className,
@@ -577,7 +577,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({
             <Hint
               data-slot="markdown-blocked-image"
               label={src}
-              className="my-3 block max-w-full truncate rounded-lg bg-default/30 px-3 py-2 text-xs text-muted"
+              className="my-3 block max-w-full truncate rounded-lg bg-background-secondary-default/30 px-3 py-2 text-xs text-text-secondary"
             >
               {alt}
             </Hint>
@@ -605,7 +605,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({
   )
 
   return (
-    <div data-slot="markdown-content" className={cn(markdownClasses, className)}>
+    <div data-slot="markdown-content" className={cx(markdownClasses, className)}>
       {/* `id` seeds the keys of the memoised blocks, so it only has to be unique
           between renderers on screen — the key itself already hashes the block's
           own content. Falls back to a generated one. */}
@@ -623,7 +623,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({
         <span
           data-slot="markdown-cursor"
           // eslint-disable-next-line no-restricted-syntax -- the streaming caret blinks; it is a cursor, not a placeholder for content
-          className="ml-0.5 inline-block h-4 w-2 animate-pulse bg-current text-muted motion-reduce:animate-none"
+          className="ml-0.5 inline-block h-4 w-2 animate-pulse bg-current text-text-secondary motion-reduce:animate-none"
         />
       )}
     </div>

@@ -141,7 +141,7 @@ export function EmojiPicker({
       <TooltipTrigger delay={0}>
         <ProEmojiPicker.Trigger
           aria-label={t('chat.emoji')}
-          className="touch-hitbox flex size-8 items-center justify-center rounded-lg text-muted hover:bg-default hover:text-foreground"
+          className="touch-hitbox flex size-8 items-center justify-center rounded-lg text-text-secondary hover:bg-background-primary-hover hover:text-text-primary"
           onPress={() => {
             // RAC Select normally declines to open an empty collection. This
             // picker still has useful content in that state: the assigned-pack
@@ -193,7 +193,7 @@ export function EmojiPicker({
                 ) : (
                   <span
                     data-slot="emoji-picker-name"
-                    className="line-clamp-2 text-center text-xs leading-tight text-muted"
+                    className="line-clamp-2 text-center text-xs leading-tight text-text-secondary"
                   >
                     {item.emoji.name}
                   </span>
@@ -213,8 +213,8 @@ export function EmojiPicker({
                       variant="ghost"
                       className={
                         pack.id === activePackId && !search.trim()
-                          ? 'h-7 shrink-0 bg-default px-2 text-xs text-foreground'
-                          : 'h-7 shrink-0 px-2 text-xs text-muted'
+                          ? 'h-7 shrink-0 bg-background-secondary-default px-2 text-xs text-text-primary'
+                          : 'h-7 shrink-0 px-2 text-xs text-text-secondary'
                       }
                       onPress={() => {
                         setActivePackId(pack.id)

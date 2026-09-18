@@ -21,7 +21,7 @@ import {
 import { ModelIcon } from '@/components/ui/model-icon'
 import { Button, Sheet, Tooltip, TooltipTrigger } from '@/components/base'
 import { CellSwitch } from '@/components/base'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { api } from '@/api'
 import { allowedEfforts } from '@/lib/thinking'
 import type {
@@ -180,7 +180,7 @@ export function MobileOptionsMenu({
   // Also neutralizes ui Button defaults (h-8/rounded-lg/justify-center/font-medium)
   // so the drawer items keep their original full-width list layout.
   const itemCls =
-    'flex h-auto items-center justify-start gap-3 w-full rounded-none px-4 py-2.5 text-sm font-normal text-foreground active:bg-default transition-colors'
+    'flex h-auto items-center justify-start gap-3 w-full rounded-none px-4 py-2.5 text-sm font-normal text-text-primary active:bg-background-tertiary-default transition-colors'
 
   return (
     <Sheet
@@ -220,29 +220,29 @@ export function MobileOptionsMenu({
                 like it would inset the rows, but the two cancel: the body
                 widens by 3px on each side and pads the same amount back, so a
                 focus ring has room without the rows losing any width. */}
-            <Sheet.Body className="text-foreground">
+            <Sheet.Body className="text-text-primary">
               {panel === 'main' && (
                 <div data-slot="mobile-options-main" className="flex flex-col">
                   {supportsImages && (
                     <>
                       <Button variant="ghost" className={itemCls} onPress={() => handleAction(onTakePhoto)}>
-                        <Camera className="w-4 h-4 text-muted" />
+                        <Camera className="w-4 h-4 text-text-secondary" />
                         {t('chat.takePhoto')}
                       </Button>
                       <Button variant="ghost" className={itemCls} onPress={() => handleAction(onPickGallery)}>
-                        <Picture className="w-4 h-4 text-muted" />
+                        <Picture className="w-4 h-4 text-text-secondary" />
                         {t('chat.pickFromGallery')}
                       </Button>
                     </>
                   )}
                   {onPickFile && (
                     <Button variant="ghost" className={itemCls} onPress={() => handleAction(onPickFile)}>
-                      <Paperclip className="w-4 h-4 text-muted" />
+                      <Paperclip className="w-4 h-4 text-text-secondary" />
                       {t('chat.attachFile')}
                     </Button>
                   )}
-                  <div data-slot="mobile-options-separator" className="h-px bg-border mx-4 my-1" />
-                  <Button variant="ghost" className={cn(itemCls, 'justify-between')} onPress={() => setPanel('mode')}>
+                  <div data-slot="mobile-options-separator" className="h-px bg-border-button-default mx-4 my-1" />
+                  <Button variant="ghost" className={cx(itemCls, 'justify-between')} onPress={() => setPanel('mode')}>
                     <span data-slot="mobile-options-mode-summary" className="flex items-center gap-3">
                       {(() => {
                         const active = CHAT_MODES.find((m) => m.id === mode) ?? CHAT_MODES[0]
@@ -250,7 +250,10 @@ export function MobileOptionsMenu({
                         return (
                           <>
                             <Icon
-                              className={cn('w-4 h-4', mode === 'work' ? 'text-muted' : 'text-info-soft-foreground')}
+                              className={cx(
+                                'w-4 h-4',
+                                mode === 'work' ? 'text-text-secondary' : 'text-status-info-soft-foreground',
+                              )}
                             />
                             <span data-slot="mobile-options-mode-label">
                               {t('toolbar.mode')}: {t(active.labelKey)}
@@ -259,54 +262,54 @@ export function MobileOptionsMenu({
                         )
                       })()}
                     </span>
-                    <ChevronRight className="w-4 h-4 text-muted" />
+                    <ChevronRight className="w-4 h-4 text-text-secondary" />
                   </Button>
                   <Button
                     variant="ghost"
-                    className={cn(itemCls, 'justify-between')}
+                    className={cx(itemCls, 'justify-between')}
                     onPress={() => setPanel('assistant')}
                   >
                     <span data-slot="mobile-options-assistant-summary" className="flex items-center gap-3">
-                      <FaceRobot className="w-4 h-4 text-muted" />
+                      <FaceRobot className="w-4 h-4 text-text-secondary" />
                       <span data-slot="mobile-options-assistant-name">
                         {currentAssistant?.name ?? t('toolbar.noAssistant')}
                       </span>
                     </span>
-                    <ChevronRight className="w-4 h-4 text-muted" />
+                    <ChevronRight className="w-4 h-4 text-text-secondary" />
                   </Button>
-                  <Button variant="ghost" className={cn(itemCls, 'justify-between')} onPress={() => setPanel('model')}>
+                  <Button variant="ghost" className={cx(itemCls, 'justify-between')} onPress={() => setPanel('model')}>
                     <span data-slot="mobile-options-model-summary" className="flex items-center gap-3">
                       {currentModelId ? (
                         <ModelIcon model={currentModelId} size={16} />
                       ) : (
-                        <Cpu className="w-4 h-4 text-muted" />
+                        <Cpu className="w-4 h-4 text-text-secondary" />
                       )}
                       <span data-slot="mobile-options-model-name" className="truncate max-w-48">
                         {currentModelId ?? t('toolbar.selectModel')}
                       </span>
                     </span>
-                    <ChevronRight className="w-4 h-4 text-muted" />
+                    <ChevronRight className="w-4 h-4 text-text-secondary" />
                   </Button>
                   {supportsThinking && (
                     <Button
                       variant="ghost"
-                      className={cn(itemCls, 'justify-between')}
+                      className={cx(itemCls, 'justify-between')}
                       onPress={() => setPanel('thinking')}
                     >
                       <span data-slot="mobile-options-thinking-summary" className="flex items-center gap-3">
                         <Bulb
-                          className={cn(
+                          className={cx(
                             'w-4 h-4',
                             thinkingLevel !== 'default' && thinkingLevel !== 'off'
-                              ? 'text-info-soft-foreground'
-                              : 'text-muted',
+                              ? 'text-status-info-soft-foreground'
+                              : 'text-text-secondary',
                           )}
                         />
                         <span data-slot="mobile-options-thinking-label">
                           {t('toolbar.thinking')}: {thinkingLabel}
                         </span>
                       </span>
-                      <ChevronRight className="w-4 h-4 text-muted" />
+                      <ChevronRight className="w-4 h-4 text-text-secondary" />
                     </Button>
                   )}
                   {mode !== 'plan' && (
@@ -315,15 +318,21 @@ export function MobileOptionsMenu({
                       aria-label={t('toolbar.acceptEdits')}
                       isSelected={acceptEdits}
                       onChange={onToggleAcceptEdits}
-                      className="w-full [--switch-control-bg-checked:var(--warning)]"
+                      className="w-full [--switch-control-bg-checked:var(--color-status-warning)]"
                     >
-                      <CellSwitch.Trigger className="h-auto min-h-10 w-full gap-3 rounded-none border-0 bg-transparent px-4 py-2.5 text-foreground shadow-none transition-colors active:bg-default pointer-coarse:min-h-11">
+                      <CellSwitch.Trigger className="h-auto min-h-10 w-full gap-3 rounded-none border-0 bg-transparent px-4 py-2.5 text-text-primary shadow-none transition-colors active:bg-background-tertiary-default pointer-coarse:min-h-11">
                         <ChevronsRight
-                          className={cn('w-4 h-4', acceptEdits ? 'text-warning-soft-foreground' : 'text-muted')}
+                          className={cx(
+                            'w-4 h-4',
+                            acceptEdits ? 'text-status-warning-soft-foreground' : 'text-text-secondary',
+                          )}
                         />
                         <CellSwitch.Label className="flex items-center justify-between gap-2 font-normal">
                           <span data-slot="mobile-accept-edits-label">{t('toolbar.acceptEdits')}</span>
-                          <span data-slot="mobile-accept-edits-state" className="text-xs font-normal text-muted">
+                          <span
+                            data-slot="mobile-accept-edits-state"
+                            className="text-xs font-normal text-text-secondary"
+                          >
                             {acceptEdits ? t('toolbar.acceptEdits.on') : t('toolbar.acceptEdits.off')}
                           </span>
                         </CellSwitch.Label>
@@ -337,15 +346,18 @@ export function MobileOptionsMenu({
                       aria-label={t('toolbar.fast')}
                       isSelected={fastMode}
                       onChange={onToggleFast}
-                      className="w-full [--switch-control-bg-checked:var(--warning)]"
+                      className="w-full [--switch-control-bg-checked:var(--color-status-warning)]"
                     >
-                      <CellSwitch.Trigger className="h-auto min-h-10 w-full gap-3 rounded-none border-0 bg-transparent px-4 py-2.5 text-foreground shadow-none transition-colors active:bg-default pointer-coarse:min-h-11">
+                      <CellSwitch.Trigger className="h-auto min-h-10 w-full gap-3 rounded-none border-0 bg-transparent px-4 py-2.5 text-text-primary shadow-none transition-colors active:bg-background-tertiary-default pointer-coarse:min-h-11">
                         <Thunderbolt
-                          className={cn('w-4 h-4', fastMode ? 'text-warning-soft-foreground' : 'text-muted')}
+                          className={cx(
+                            'w-4 h-4',
+                            fastMode ? 'text-status-warning-soft-foreground' : 'text-text-secondary',
+                          )}
                         />
                         <CellSwitch.Label className="flex items-center justify-between gap-2 font-normal">
                           <span data-slot="mobile-fast-label">{t('toolbar.fast')}</span>
-                          <span data-slot="mobile-fast-state" className="text-xs font-normal text-muted">
+                          <span data-slot="mobile-fast-state" className="text-xs font-normal text-text-secondary">
                             {fastMode ? t('toolbar.fast.on') : t('toolbar.fast.off')}
                           </span>
                         </CellSwitch.Label>
@@ -360,14 +372,14 @@ export function MobileOptionsMenu({
                 <div data-slot="mobile-options-assistant-panel" className="flex flex-col">
                   <div
                     data-slot="mobile-options-assistant-header"
-                    className="flex items-center gap-2 px-4 py-2.5 border-b border-border"
+                    className="flex items-center gap-2 px-4 py-2.5 border-b border-border-button-default"
                   >
                     <TooltipTrigger delay={0}>
                       <Button
                         iconOnly
                         aria-label={t('common.back')}
                         variant="ghost"
-                        className="size-auto p-1 rounded-md hover:bg-default"
+                        className="size-auto p-1 rounded-md hover:bg-background-primary-hover"
                         onPress={() => setPanel('main')}
                       >
                         <ChevronLeft className="w-4 h-4" />
@@ -384,7 +396,7 @@ export function MobileOptionsMenu({
                         key={a.id}
                         aria-pressed={a.id === currentAssistantId}
                         variant="ghost"
-                        className={cn(itemCls, a.id === currentAssistantId && 'bg-default')}
+                        className={cx(itemCls, a.id === currentAssistantId && 'bg-background-secondary-default')}
                         onPress={() => {
                           onSelectAssistant(a.id)
                           close()
@@ -399,7 +411,7 @@ export function MobileOptionsMenu({
                         <span data-slot="toolbar-assistant-name" className="flex-1 truncate">
                           {a.name}
                         </span>
-                        {a.id === currentAssistantId && <Check className="w-4 h-4 text-muted" />}
+                        {a.id === currentAssistantId && <Check className="w-4 h-4 text-text-secondary" />}
                       </Button>
                     ))}
                   </div>
@@ -410,14 +422,14 @@ export function MobileOptionsMenu({
                 <div data-slot="mobile-options-model-panel" className="flex flex-col">
                   <div
                     data-slot="mobile-options-model-header"
-                    className="flex items-center gap-2 px-4 py-2.5 border-b border-border"
+                    className="flex items-center gap-2 px-4 py-2.5 border-b border-border-button-default"
                   >
                     <TooltipTrigger delay={0}>
                       <Button
                         iconOnly
                         aria-label={t('common.back')}
                         variant="ghost"
-                        className="size-auto p-1 rounded-md hover:bg-default"
+                        className="size-auto p-1 rounded-md hover:bg-background-primary-hover"
                         onPress={() => setPanel('main')}
                       >
                         <ChevronLeft className="w-4 h-4" />
@@ -462,13 +474,13 @@ export function MobileOptionsMenu({
                   </div>
                   <div data-slot="toolbar-model-list" className="max-h-[50vh] overflow-y-auto overscroll-contain">
                     {loadingModels && (
-                      <div data-slot="toolbar-model-loading" className="px-4 py-3 text-xs text-muted">
+                      <div data-slot="toolbar-model-loading" className="px-4 py-3 text-xs text-text-secondary">
                         {t('toolbar.loadingModels')}
                       </div>
                     )}
                     {groups.map((g) => (
                       <div key={g.provider.id} data-slot="toolbar-model-group">
-                        <div data-slot="toolbar-model-provider" className="px-4 py-1 text-xs text-muted">
+                        <div data-slot="toolbar-model-provider" className="px-4 py-1 text-xs text-text-secondary">
                           {g.provider.name}
                         </div>
                         {g.models.map((m) => (
@@ -476,9 +488,11 @@ export function MobileOptionsMenu({
                             key={`${g.provider.id}-${m.id}`}
                             aria-pressed={m.id === currentModelId && g.provider.id === currentProviderId}
                             variant="ghost"
-                            className={cn(
+                            className={cx(
                               itemCls,
-                              m.id === currentModelId && g.provider.id === currentProviderId && 'bg-default',
+                              m.id === currentModelId &&
+                                g.provider.id === currentProviderId &&
+                                'bg-background-secondary-default',
                             )}
                             onPress={() => {
                               onSelectModel(m.id, g.provider.id)
@@ -490,14 +504,14 @@ export function MobileOptionsMenu({
                               {m.name}
                             </span>
                             {m.id === currentModelId && g.provider.id === currentProviderId && (
-                              <Check className="w-4 h-4 text-muted flex-shrink-0" />
+                              <Check className="w-4 h-4 text-text-secondary flex-shrink-0" />
                             )}
                           </Button>
                         ))}
                       </div>
                     ))}
                     {!loadingModels && groups.length === 0 && (
-                      <div data-slot="toolbar-model-empty" className="px-4 py-3 text-xs text-muted">
+                      <div data-slot="toolbar-model-empty" className="px-4 py-3 text-xs text-text-secondary">
                         {t('toolbar.noModels')}
                       </div>
                     )}
@@ -509,14 +523,14 @@ export function MobileOptionsMenu({
                 <div data-slot="mobile-options-mode-panel" className="flex flex-col">
                   <div
                     data-slot="mobile-options-mode-header"
-                    className="flex items-center gap-2 px-4 py-2.5 border-b border-border"
+                    className="flex items-center gap-2 px-4 py-2.5 border-b border-border-button-default"
                   >
                     <TooltipTrigger delay={0}>
                       <Button
                         iconOnly
                         aria-label={t('common.back')}
                         variant="ghost"
-                        className="size-auto p-1 rounded-md hover:bg-default"
+                        className="size-auto p-1 rounded-md hover:bg-background-primary-hover"
                         onPress={() => setPanel('main')}
                       >
                         <ChevronLeft className="w-4 h-4" />
@@ -534,17 +548,17 @@ export function MobileOptionsMenu({
                         key={m.id}
                         aria-pressed={m.id === mode}
                         variant="ghost"
-                        className={cn(itemCls, 'justify-between', m.id === mode && 'bg-default')}
+                        className={cx(itemCls, 'justify-between', m.id === mode && 'bg-background-secondary-default')}
                         onPress={() => {
                           onSelectMode(m.id)
                           close()
                         }}
                       >
                         <span data-slot="mobile-options-mode-choice" className="flex items-center gap-3">
-                          <Icon className="w-4 h-4 text-muted" />
+                          <Icon className="w-4 h-4 text-text-secondary" />
                           <span data-slot="mobile-options-mode-choice-label">{t(m.labelKey)}</span>
                         </span>
-                        <span data-slot="mobile-options-mode-choice-desc" className="text-xs text-muted">
+                        <span data-slot="mobile-options-mode-choice-desc" className="text-xs text-text-secondary">
                           {t(m.descKey)}
                         </span>
                       </Button>
@@ -557,14 +571,14 @@ export function MobileOptionsMenu({
                 <div data-slot="mobile-options-thinking-panel" className="flex flex-col">
                   <div
                     data-slot="mobile-options-thinking-header"
-                    className="flex items-center gap-2 px-4 py-2.5 border-b border-border"
+                    className="flex items-center gap-2 px-4 py-2.5 border-b border-border-button-default"
                   >
                     <TooltipTrigger delay={0}>
                       <Button
                         iconOnly
                         aria-label={t('common.back')}
                         variant="ghost"
-                        className="size-auto p-1 rounded-md hover:bg-default"
+                        className="size-auto p-1 rounded-md hover:bg-background-primary-hover"
                         onPress={() => setPanel('main')}
                       >
                         <ChevronLeft className="w-4 h-4" />
@@ -580,14 +594,18 @@ export function MobileOptionsMenu({
                       key={level.id}
                       aria-pressed={level.id === thinkingLevel}
                       variant="ghost"
-                      className={cn(itemCls, 'justify-between', level.id === thinkingLevel && 'bg-default')}
+                      className={cx(
+                        itemCls,
+                        'justify-between',
+                        level.id === thinkingLevel && 'bg-background-secondary-default',
+                      )}
                       onPress={() => {
                         onSelectThinkingLevel(level.id)
                         close()
                       }}
                     >
                       <span data-slot="mobile-options-thinking-choice-label">{t(level.labelKey)}</span>
-                      <span data-slot="mobile-options-thinking-choice-desc" className="text-xs text-muted">
+                      <span data-slot="mobile-options-thinking-choice-desc" className="text-xs text-text-secondary">
                         {t(level.descKey)}
                       </span>
                     </Button>

@@ -1,7 +1,7 @@
 import { Square, SquareCheck, SquareMinus } from '@gravity-ui/icons'
 import { useTranslation } from 'react-i18next'
 
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import type { TodoItemInfoResponse, TodoItemStatus } from '@/types'
 
 /**
@@ -66,11 +66,11 @@ export function TodoStatusIcon({ status, className }: { status: TodoItemStatus; 
       aria-label={t(`chat.todo.status.${status}`)}
       data-slot="todo-status-icon"
       data-status={status}
-      className={cn(
+      className={cx(
         'size-3.5 shrink-0',
-        status === 'completed' && 'text-success-soft-foreground',
-        status === 'in_progress' && 'text-info-soft-foreground',
-        status === 'pending' && 'text-muted',
+        status === 'completed' && 'text-status-success-soft-foreground',
+        status === 'in_progress' && 'text-status-info-soft-foreground',
+        status === 'pending' && 'text-text-secondary',
         className,
       )}
     />
@@ -83,16 +83,16 @@ export function TodoItemRow({ item, className }: { item: TodoDraft; className?: 
       role="listitem"
       data-slot="todo-item"
       data-status={item.status}
-      className={cn('flex items-start gap-2 text-xs', className)}
+      className={cx('flex items-start gap-2 text-xs', className)}
     >
       <TodoStatusIcon status={item.status} className="mt-px" />
       <span
         data-slot="todo-item-content"
-        className={cn(
+        className={cx(
           'min-w-0 flex-1',
-          item.status === 'completed' && 'text-muted line-through',
-          item.status === 'in_progress' && 'font-medium text-foreground',
-          item.status === 'pending' && 'text-muted',
+          item.status === 'completed' && 'text-text-secondary line-through',
+          item.status === 'in_progress' && 'font-medium text-text-primary',
+          item.status === 'pending' && 'text-text-secondary',
         )}
       >
         {item.content}
@@ -103,7 +103,7 @@ export function TodoItemRow({ item, className }: { item: TodoDraft; className?: 
 
 export function TodoItemList({ todos, className }: { todos: TodoDraft[]; className?: string }) {
   return (
-    <div role="list" data-slot="todo-item-list" className={cn('flex flex-col gap-1.5', className)}>
+    <div role="list" data-slot="todo-item-list" className={cx('flex flex-col gap-1.5', className)}>
       {/* Index as key: a `TodoDraft` has no id — neither the streamed ones nor
           the stored ones carry one — and the list is replaced wholesale rather
           than reordered, so position is stable for as long as it exists. */}

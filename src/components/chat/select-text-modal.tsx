@@ -39,7 +39,7 @@ export function SelectTextModal({
           <Modal.CloseTrigger />
           <Modal.Header>
             <Modal.Heading>{t('contextMenu.selectText')}</Modal.Heading>
-            <p data-slot="select-text-hint" className="mt-1.5 text-sm text-muted">
+            <p data-slot="select-text-hint" className="mt-1.5 text-sm text-text-secondary">
               {t('contextMenu.selectTextHint')}
             </p>
           </Modal.Header>

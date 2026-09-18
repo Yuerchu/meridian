@@ -3,7 +3,7 @@ import { ChevronDown, Comment } from '@gravity-ui/icons'
 import { TextShimmer } from '@/components/base'
 import { BubbleFoldBadge } from '@/components/ui/bubble-block'
 import { usePanelExpansion } from '@/hooks/use-panel-expansion'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { MarkdownContent } from './markdown-content'
 
 /**
@@ -86,7 +86,7 @@ function ThinkingTitles({ titles, isStreaming }: { titles: string[]; isStreaming
     <div
       data-slot="bubble-thinking"
       data-shape="titles"
-      className="mb-1.5 flex min-w-0 flex-col gap-0.5 text-xs text-muted"
+      className="mb-1.5 flex min-w-0 flex-col gap-0.5 text-xs text-text-secondary"
     >
       {titles.map((title, i) => {
         const live = isStreaming && i === titles.length - 1
@@ -124,10 +124,10 @@ function ThinkingFold({ text, panelKey, isStreaming }: { text: string; panelKey:
           onClick={() => onExpandedChange(!isExpanded)}
         >
           <Comment aria-hidden className="size-3" />
-          <span data-slot="thinking-label" className={cn(isStreaming && 'shimmer')}>
+          <span data-slot="thinking-label" className={cx(isStreaming && 'shimmer')}>
             {t('chat.thinking')}
           </span>
-          <ChevronDown aria-hidden className={cn('size-3 transition-transform', isExpanded && 'rotate-180')} />
+          <ChevronDown aria-hidden className={cx('size-3 transition-transform', isExpanded && 'rotate-180')} />
         </BubbleFoldBadge>
       </div>
       {isExpanded && (
@@ -140,7 +140,7 @@ function ThinkingFold({ text, panelKey, isStreaming }: { text: string; panelKey:
             // Smaller and quieter than the answer under it, so the two read
             // as different things; a part's title is a heading of the thought,
             // not of the reply.
-            className="text-xs text-muted [&_strong]:font-medium"
+            className="text-xs text-text-secondary [&_strong]:font-medium"
           />
         </div>
       )}

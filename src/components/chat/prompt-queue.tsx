@@ -33,7 +33,7 @@ interface PromptQueueProps {
  */
 function SteerMark() {
   return (
-    <span aria-hidden className="text-muted text-xs" data-slot="queue-steer-mark">
+    <span aria-hidden className="text-text-secondary text-xs" data-slot="queue-steer-mark">
       ↳
     </span>
   )
@@ -73,13 +73,13 @@ export function PromptQueue({
   if (items.length === 0) return null
 
   const current = currentTodos ? (
-    <div data-slot="queue-current" className="border-b border-separator">
+    <div data-slot="queue-current" className="border-b border-separator-border">
       <TodoBarView todos={currentTodos} framed={false} />
     </div>
   ) : streaming ? (
     <div
       data-slot="queue-current"
-      className="flex items-center gap-2 border-b border-separator px-3 py-2 text-xs text-muted"
+      className="flex items-center gap-2 border-b border-separator-border px-3 py-2 text-xs text-text-secondary"
     >
       <Spinner size="sm" className="shrink-0" />
       <span data-slot="queue-running-label">{t('chat.queue.running')}</span>
@@ -102,7 +102,11 @@ export function PromptQueue({
   return (
     <PromptInput.Queue actionsVisibility={isCoarsePointer() ? 'always' : 'hover'}>
       {held && (
-        <div data-slot="queue-held" className="flex items-center gap-2 px-3 py-2 text-xs text-warning" role="status">
+        <div
+          data-slot="queue-held"
+          className="flex items-center gap-2 px-3 py-2 text-xs text-status-warning"
+          role="status"
+        >
           <TriangleExclamation className="size-4 shrink-0" />
           <span data-slot="queue-held-label" className="min-w-0 flex-1">
             {t('chat.queue.held')}
@@ -150,9 +154,9 @@ export function PromptQueue({
                     interrupt and the button that makes one look the same. */}
                 <PromptInput.Queue.Item.Icon>
                   {doubtful ? (
-                    <CircleQuestion className="size-3.5 text-warning" />
+                    <CircleQuestion className="size-3.5 text-status-warning" />
                   ) : taken ? (
-                    <Check className="size-3.5 text-muted" />
+                    <Check className="size-3.5 text-text-secondary" />
                   ) : interject ? (
                     <SteerMark />
                   ) : (
@@ -161,7 +165,7 @@ export function PromptQueue({
                 </PromptInput.Queue.Item.Icon>
                 <PromptInput.Queue.Item.Content>{item.content}</PromptInput.Queue.Item.Content>
                 {doubtful && (
-                  <PromptInput.Queue.Item.Description className="text-warning">
+                  <PromptInput.Queue.Item.Description className="text-status-warning">
                     {t('chat.queue.inDoubt')}
                   </PromptInput.Queue.Item.Description>
                 )}

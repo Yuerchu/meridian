@@ -226,7 +226,7 @@ export function EmptyState({ onSubmit, onCreate, onOpenSettingsTab, disabled, ac
             onRemoveSticker={() => setPendingSticker(null)}
           />
           {submitError && (
-            <p data-slot="empty-state-error" role="alert" className="break-words px-2 text-xs text-danger">
+            <p data-slot="empty-state-error" role="alert" className="break-words px-2 text-xs text-status-danger">
               {submitError}
             </p>
           )}

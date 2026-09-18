@@ -311,7 +311,7 @@ export function AutoReviewSettings() {
         />
         <Description>{t('settings.approvals.ttlHint')}</Description>
         {normaliseTtl(settings.ttl) === 0 && (
-          <p data-slot="approvals-ttl-never" className="text-xs text-warning-soft-foreground">
+          <p data-slot="approvals-ttl-never" className="text-xs text-status-warning-soft-foreground">
             {t('settings.approvals.ttlNever')}
           </p>
         )}
@@ -329,7 +329,7 @@ export function AutoReviewSettings() {
             <CellSwitch.Control />
           </CellSwitch.Trigger>
         </CellSwitch>
-        <p id="autoreview-enabled-hint" data-slot="autoreview-enable-hint" className="text-xs text-muted">
+        <p id="autoreview-enabled-hint" data-slot="autoreview-enable-hint" className="text-xs text-text-secondary">
           {t('settings.autoReview.enableHint')}
         </p>
       </div>
@@ -338,7 +338,7 @@ export function AutoReviewSettings() {
         <span data-slot="autoreview-model-label" className="text-sm font-medium">
           {t('settings.autoReview.model')}
         </span>
-        <p data-slot="autoreview-model-hint" className="text-xs text-muted">
+        <p data-slot="autoreview-model-hint" className="text-xs text-text-secondary">
           {t('settings.autoReview.modelHint')}
         </p>
         <ModelPicker
@@ -347,7 +347,7 @@ export function AutoReviewSettings() {
           onChange={(model) => setSettings({ ...settings, model })}
         />
         {incomplete && (
-          <p data-slot="autoreview-no-model" className="text-xs text-warning-soft-foreground">
+          <p data-slot="autoreview-no-model" className="text-xs text-status-warning-soft-foreground">
             {t('settings.autoReview.noModel')}
           </p>
         )}
@@ -365,7 +365,7 @@ export function AutoReviewSettings() {
             <CellSwitch.Control />
           </CellSwitch.Trigger>
         </CellSwitch>
-        <p id="autoreview-escalate-hint" data-slot="autoreview-escalate-hint" className="text-xs text-muted">
+        <p id="autoreview-escalate-hint" data-slot="autoreview-escalate-hint" className="text-xs text-text-secondary">
           {t('settings.autoReview.escalateHint')}
         </p>
       </div>
@@ -393,7 +393,7 @@ export function AutoReviewSettings() {
       />
 
       {error && (
-        <p data-slot="autoreview-error" className="text-xs text-danger">
+        <p data-slot="autoreview-error" className="text-xs text-status-danger">
           {error}
         </p>
       )}
@@ -403,7 +403,7 @@ export function AutoReviewSettings() {
           {t('common.save')}
         </Button>
         {saved && (
-          <span data-slot="autoreview-saved" className="text-xs text-success">
+          <span data-slot="autoreview-saved" className="text-xs text-status-success">
             {t('common.saved')}
           </span>
         )}

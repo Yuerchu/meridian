@@ -74,7 +74,7 @@ function InfoRow({ label, value, action }: { label: string; value?: string; acti
           {value === undefined ? (
             <Skeleton className="h-4 w-28 rounded-md" />
           ) : (
-            <Hint className="text-muted min-w-0 truncate text-xs select-text" label={value}>
+            <Hint className="text-text-secondary min-w-0 truncate text-xs select-text" label={value}>
               {value}
             </Hint>
           )}
@@ -135,7 +135,7 @@ export function About() {
       <div data-slot="about-hero" className="flex items-start gap-4">
         <div
           data-slot="about-mark"
-          className="bg-accent/10 text-accent flex size-14 shrink-0 items-center justify-center rounded-2xl"
+          className="bg-button-primary/10 text-button-ghost-foreground flex size-14 shrink-0 items-center justify-center rounded-2xl"
         >
           <MeridianMark intro className="size-8" />
         </div>
@@ -150,7 +150,7 @@ export function About() {
               </Chip>
             )}
           </div>
-          <p data-slot="about-description" className="text-muted text-sm leading-relaxed">
+          <p data-slot="about-description" className="text-text-secondary text-sm leading-relaxed">
             {t('settings.about.description')}
           </p>
         </div>
@@ -257,7 +257,10 @@ export function About() {
         </ItemCardGroup>
       </ItemCardGroup>
 
-      <div data-slot="about-footer" className="border-border text-muted space-y-2 border-t pt-4 text-xs">
+      <div
+        data-slot="about-footer"
+        className="border-border-button-default text-text-secondary space-y-2 border-t pt-4 text-xs"
+      >
         <p data-slot="about-footer-line">{t('settings.about.copyright')}</p>
         <p data-slot="about-footer-line">{t('settings.about.notice')}</p>
         <p data-slot="about-footer-line">{t('settings.about.grokBuildNotice')}</p>

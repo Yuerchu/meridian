@@ -780,7 +780,7 @@ export default function ScrollLab() {
   }, [metrics])
 
   return (
-    <div data-slot="scroll-lab" ref={rootRef} className="flex h-screen flex-col bg-background text-foreground">
+    <div data-slot="scroll-lab" ref={rootRef} className="flex h-screen flex-col bg-background-full text-text-primary">
       <div data-slot="scroll-lab-toolbar" className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
         <span data-slot="scroll-lab-title" className="text-sm font-semibold">
           滚动行为实验场
@@ -866,14 +866,14 @@ export default function ScrollLab() {
             <div data-slot="scroll-lab-result" key={r.name} className="flex gap-2 py-0.5">
               <span
                 data-slot="scroll-lab-result-verdict"
-                className={r.pass ? 'text-success-soft-foreground' : 'text-danger'}
+                className={r.pass ? 'text-status-success-soft-foreground' : 'text-status-danger'}
               >
                 {r.pass ? 'PASS' : 'FAIL'}
               </span>
               <span data-slot="scroll-lab-result-name" className="font-medium">
                 {r.name}
               </span>
-              <span data-slot="scroll-lab-result-detail" className="text-muted">
+              <span data-slot="scroll-lab-result-detail" className="text-text-secondary">
                 {r.detail}
               </span>
             </div>
@@ -884,7 +884,7 @@ export default function ScrollLab() {
       <div
         data-slot="scroll-lab-readout"
         data-testid="scroll-lab-readout"
-        className="border-t px-4 py-2 font-mono text-xs text-muted"
+        className="border-t px-4 py-2 font-mono text-xs text-text-secondary"
       >
         {readout}
       </div>

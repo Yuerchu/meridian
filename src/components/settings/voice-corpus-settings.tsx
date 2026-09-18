@@ -128,12 +128,12 @@ export function VoiceCorpusSettings() {
       <SettingsHeader title={t('settings.voiceCorpus.title')} subtitle={t('settings.voiceCorpus.description')} />
 
       {error && (
-        <p data-slot="voice-corpus-error" role="alert" className="text-danger text-sm">
+        <p data-slot="voice-corpus-error" role="alert" className="text-status-danger text-sm">
           {error}
         </p>
       )}
       {notice && (
-        <p data-slot="voice-corpus-notice" role="status" className="text-muted text-sm">
+        <p data-slot="voice-corpus-notice" role="status" className="text-text-secondary text-sm">
           {notice}
         </p>
       )}
@@ -143,13 +143,13 @@ export function VoiceCorpusSettings() {
           data-slot="voice-corpus-loading"
           role="status"
           aria-label={t('common.loading')}
-          className="flex items-center gap-2 text-sm text-muted"
+          className="flex items-center gap-2 text-sm text-text-secondary"
         >
           <Spinner aria-hidden="true" size="sm" />
           {t('common.loading')}
         </div>
       ) : sessions.length === 0 ? (
-        <p data-slot="voice-corpus-empty" className="text-muted text-sm">
+        <p data-slot="voice-corpus-empty" className="text-text-secondary text-sm">
           {t('settings.voiceCorpus.empty')}
         </p>
       ) : (

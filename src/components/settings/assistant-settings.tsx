@@ -197,7 +197,7 @@ function AssistantEditor({
               <TooltipTrigger key={v.name} delay={0}>
                 <Button
                   variant="outline"
-                  className="text-xs px-1.5 py-0.5 bg-default/50 text-muted hover:bg-default font-mono"
+                  className="text-xs px-1.5 py-0.5 bg-background-secondary-default/50 text-text-secondary hover:bg-background-primary-hover font-mono"
                   onPress={() => setSystemPrompt((prev) => prev + `{{${v.name}}}`)}
                 >
                   {`{{${v.name}}}`}
@@ -247,7 +247,7 @@ function AssistantEditor({
       </div>
 
       <div data-slot="assistant-auto-compact" className="space-y-1.5">
-        <p data-slot="assistant-auto-compact-label" className="block text-xs text-muted">
+        <p data-slot="assistant-auto-compact-label" className="block text-xs text-text-secondary">
           {t('settings.assistant.autoCompact')}
         </p>
         <Checkbox className="text-xs" isSelected={autoCompactEnabled} onChange={setAutoCompactEnabled}>
@@ -256,7 +256,7 @@ function AssistantEditor({
       </div>
 
       <div data-slot="assistant-thinking" className="space-y-1.5">
-        <p data-slot="assistant-thinking-label" className="block text-xs text-muted">
+        <p data-slot="assistant-thinking-label" className="block text-xs text-text-secondary">
           {t('settings.assistant.thinking')}
         </p>
         <div data-slot="assistant-thinking-toggle" className="flex items-center gap-3">
@@ -275,7 +275,7 @@ function AssistantEditor({
               onChange={(e) => setThinkingBudget(e.target.value)}
               placeholder={t('settings.assistant.thinkingBudget')}
             />
-            <p data-slot="assistant-thinking-budget-hint" className="text-xs text-muted">
+            <p data-slot="assistant-thinking-budget-hint" className="text-xs text-text-secondary">
               {t('settings.assistant.thinkingBudgetHint')}
             </p>
           </div>
@@ -323,7 +323,7 @@ function AssistantEditor({
         {toolMode === 'custom' && (
           <div
             data-slot="tool-list"
-            className="max-h-40 overflow-y-auto overscroll-contain border border-border rounded-lg"
+            className="max-h-40 overflow-y-auto overscroll-contain border border-border-button-default rounded-lg"
           >
             {/* `role="group"` with a name, rather than `CheckboxGroup`: the
                 boxes below commit one at a time and two of the three sibling
@@ -369,7 +369,7 @@ function AssistantEditor({
             data-slot="emoji-pack-grid"
             role="group"
             aria-label={t('settings.assistant.emojiPacks')}
-            className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-1 p-2 border border-border rounded-lg"
+            className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-1 p-2 border border-border-button-default rounded-lg"
           >
             {allPacks.map((pack) => (
               <Checkbox
@@ -401,12 +401,12 @@ function AssistantEditor({
 
       {allSkills.length > 0 && (
         <SettingsDrilldown title={t('settings.skills.assistantSection')} summary={boundSkillDirs.size || undefined}>
-          <p data-slot="skill-hint" className="text-xs text-muted">
+          <p data-slot="skill-hint" className="text-xs text-text-secondary">
             {t('settings.skills.assistantHint')}
           </p>
           <div
             data-slot="skill-list"
-            className="max-h-40 overflow-y-auto overscroll-contain border border-border rounded-lg"
+            className="max-h-40 overflow-y-auto overscroll-contain border border-border-button-default rounded-lg"
           >
             <div
               data-slot="skill-grid"
@@ -445,7 +445,7 @@ function AssistantEditor({
             </div>
           </div>
           {skillError && (
-            <p data-slot="skill-error" role="alert" className="text-xs text-danger">
+            <p data-slot="skill-error" role="alert" className="text-xs text-status-danger">
               {skillError}
             </p>
           )}
@@ -453,7 +453,7 @@ function AssistantEditor({
       )}
 
       {saveError && (
-        <p data-slot="assistant-save-error" role="alert" className="text-xs text-danger break-all">
+        <p data-slot="assistant-save-error" role="alert" className="text-xs text-status-danger break-all">
           {saveError}
         </p>
       )}
@@ -612,18 +612,18 @@ export function AssistantSettings() {
             <Disclosure
               key={a.id}
               id={a.id}
-              className="flex w-full flex-col overflow-hidden rounded-lg border border-border"
+              className="flex w-full flex-col overflow-hidden rounded-lg border border-border-button-default"
             >
               <Disclosure.Heading>
                 {/* `flex` is not optional: HeroUI styles the indicator with `ms-auto`
                     and `shrink-0`, which only mean anything inside a flex container.
                     `text-start` undoes the button element's centred UA default. */}
-                <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30">
+                <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm transition-colors outline-none hover:bg-background-primary-hover/30 focus-visible:bg-background-secondary-default/30">
                   <span data-slot="assistant-row-name" className="min-w-0 flex-1 truncate">
                     {a.name}
                   </span>
                   {isDefault && (
-                    <span data-slot="assistant-row-default" className="shrink-0 text-warning">
+                    <span data-slot="assistant-row-default" className="shrink-0 text-status-warning">
                       <StarFill aria-hidden="true" className="w-3.5 h-3.5" />
                       <span data-slot="assistant-row-default-label" className="sr-only">
                         {t('settings.assistant.defaultBadge')}
@@ -637,16 +637,16 @@ export function AssistantSettings() {
                       is for — was squeezed to nothing before either of them gave
                       up a character. */}
                   {providerName && (
-                    <span data-slot="assistant-row-provider" className="min-w-0 truncate text-xs text-muted">
+                    <span data-slot="assistant-row-provider" className="min-w-0 truncate text-xs text-text-secondary">
                       {providerName}
                     </span>
                   )}
                   {a.model_id && (
-                    <span data-slot="assistant-row-model" className="min-w-0 truncate text-xs text-muted">
+                    <span data-slot="assistant-row-model" className="min-w-0 truncate text-xs text-text-secondary">
                       {a.model_id}
                     </span>
                   )}
-                  <Disclosure.Indicator className="size-4 shrink-0 text-muted" />
+                  <Disclosure.Indicator className="size-4 shrink-0 text-text-secondary" />
                 </Disclosure.Trigger>
               </Disclosure.Heading>
               {/* `min-h-0` is load-bearing: the card is a flex column, and a flex

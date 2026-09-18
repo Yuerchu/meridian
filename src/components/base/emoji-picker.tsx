@@ -1,6 +1,7 @@
 import { createContext, useContext, type ComponentProps, type Key, type ReactNode } from 'react'
 import { Popover as AriaPopover, DialogTrigger, Dialog, type PopoverProps } from 'react-aria-components'
 import { cx } from '@/utils/cx'
+import { OVERLAY_MOTION } from './overlay-motion'
 import { Button } from './buttons/button'
 
 interface EmojiPickerCtx {
@@ -60,8 +61,7 @@ function EmojiPickerPopover({ className, ...props }: Omit<PopoverProps, 'childre
       {...props}
       className={cx(
         'w-72 overflow-hidden rounded-xl border border-border-button-default bg-background-primary-default shadow-dropdown',
-        'data-[entering]:animate-in data-[entering]:fade-in-0 data-[entering]:zoom-in-95 data-[entering]:duration-150',
-        'data-[exiting]:animate-out data-[exiting]:fade-out data-[exiting]:zoom-out-95 data-[exiting]:duration-100',
+        OVERLAY_MOTION,
         className as string,
       )}
     >

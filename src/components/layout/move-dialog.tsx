@@ -57,7 +57,7 @@ export function MoveDialog({
         {label}
       </span>
       {id === currentProjectId && (
-        <span data-slot="move-dialog-current-location" className="ml-auto shrink-0 text-xs text-muted">
+        <span data-slot="move-dialog-current-location" className="ml-auto shrink-0 text-xs text-text-secondary">
           {t('moveDialog.currentLocation')}
         </span>
       )}
@@ -73,11 +73,11 @@ export function MoveDialog({
           </Modal.Header>
           <Modal.Body className="flex flex-col gap-1">
             {error && (
-              <p data-slot="move-dialog-error" role="alert" className="mb-1 text-xs text-danger">
+              <p data-slot="move-dialog-error" role="alert" className="mb-1 text-xs text-status-danger">
                 {error}
               </p>
             )}
-            {destination(null, <Comment className="text-muted" />, t('moveDialog.noProject'))}
+            {destination(null, <Comment className="text-text-secondary" />, t('moveDialog.noProject'))}
             {projects.map((project) =>
               destination(project.id, <ProjectIcon sourceType={project.source_type} />, project.name),
             )}

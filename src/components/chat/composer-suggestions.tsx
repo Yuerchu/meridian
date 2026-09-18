@@ -4,7 +4,7 @@ import { ListBox } from '@/components/base'
 
 import { fileIconUrl } from '@/lib/file-icon'
 import { COMPOSER_COMMANDS } from '@/lib/composer-commands'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 const COMMAND_LABEL_WIDTH = Math.max(...COMPOSER_COMMANDS.map((command) => command.name.length + 1))
 const COMMAND_ROW_STYLE = {
@@ -34,7 +34,7 @@ export function ComposerSuggestions({
 
   return (
     <div
-      className="absolute inset-x-0 bottom-full z-40 mb-2 max-h-72 overflow-y-auto rounded-2xl bg-overlay p-1.5 text-overlay-foreground shadow-overlay"
+      className="absolute inset-x-0 bottom-full z-40 mb-2 max-h-72 overflow-y-auto rounded-2xl bg-background-primary-default p-1.5 text-text-primary shadow-dropdown"
       // The textarea owns keyboard focus and aria-activedescendant. Pointer
       // selection must not blur it before the replacement has read its caret.
       onMouseDown={(event) => event.preventDefault()}
@@ -57,14 +57,14 @@ export function ComposerSuggestions({
               key={item.id}
               id={item.id}
               textValue={`${item.label} ${item.detail ?? ''}`}
-              className={cn(
+              className={cx(
                 'min-h-10 cursor-[var(--cursor-interactive)] rounded-xl px-2.5 py-2',
-                index === activeIndex && 'bg-accent/10',
+                index === activeIndex && 'bg-button-primary/10',
               )}
             >
               <span
                 data-slot="composer-suggestion-row"
-                className={cn(
+                className={cx(
                   'w-full min-w-0 items-center gap-2.5 text-left',
                   item.kind === 'command' ? 'grid' : 'flex',
                 )}
@@ -73,29 +73,29 @@ export function ComposerSuggestions({
                 {icon ? (
                   <img data-slot="composer-suggestion-icon" src={icon} alt="" className="size-4 shrink-0" />
                 ) : item.kind === 'directory' ? (
-                  <Folder className="size-4 shrink-0 text-muted" />
+                  <Folder className="size-4 shrink-0 text-text-secondary" />
                 ) : item.kind === 'command' ? (
-                  <Terminal className="size-4 shrink-0 text-muted" />
+                  <Terminal className="size-4 shrink-0 text-text-secondary" />
                 ) : (
                   <span
                     data-slot="composer-suggestion-icon"
                     aria-hidden
-                    className="size-4 shrink-0 text-center text-xs text-muted"
+                    className="size-4 shrink-0 text-center text-xs text-text-secondary"
                   >
                     ·
                   </span>
                 )}
                 <span
                   data-slot="composer-suggestion-label"
-                  className={cn('min-w-0 truncate text-left text-sm font-medium', item.kind !== 'command' && 'flex-1')}
+                  className={cx('min-w-0 truncate text-left text-sm font-medium', item.kind !== 'command' && 'flex-1')}
                 >
                   {item.label}
                 </span>
                 {item.detail && (
                   <span
                     data-slot="composer-suggestion-detail"
-                    className={cn(
-                      'min-w-0 truncate text-left text-xs text-muted',
+                    className={cx(
+                      'min-w-0 truncate text-left text-xs text-text-secondary',
                       item.kind !== 'command' && 'max-w-1/2',
                     )}
                   >

@@ -63,7 +63,7 @@ describe('ThinkingRow', () => {
     expect(title.tagName).toBe('STRONG')
     const panel = title.closest('[data-slot="markdown-content"]')
     expect(panel?.className).toContain('text-xs')
-    expect(panel?.className).toContain('text-muted')
+    expect(panel?.className).toContain('text-text-secondary')
     expect(screen.getByText('Only the auth ones.')).toBeInTheDocument()
   })
 

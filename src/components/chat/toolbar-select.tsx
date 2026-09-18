@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { ListBox } from '@/components/base'
 import { InlineSelect } from '@/components/base'
 
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 export interface ToolbarChoice {
   value: string
@@ -59,23 +59,23 @@ export function ToolbarSelect({
       onChange={(key) => {
         if (typeof key === 'string' && key) onSelect(key)
       }}
-      className={cn('w-auto min-w-0', className)}
+      className={cx('w-auto min-w-0', className)}
     >
       {/* Pro supplies the inline-select interaction and density; the composer
           gives it a fixed 32px target. Height and radius move together so the
           toolbar's hover fill follows the surrounding shell. */}
       <InlineSelect.Trigger
         data-slot="toolbar-select-trigger"
-        className={cn(
+        className={cx(
           'h-8 max-w-44 min-w-0 items-center gap-1 rounded-lg border-0 bg-transparent px-2',
           'text-sm font-normal shadow-none',
-          'text-foreground hover:bg-default data-hovered:bg-default transition-colors',
+          'text-text-primary hover:bg-background-primary-hover data-hovered:bg-background-secondary-default transition-colors',
         )}
       >
         <InlineSelect.Value className="min-w-0 flex-1 overflow-hidden">
           <span data-slot="toolbar-select-current" className="flex min-w-0 items-center gap-1.5">
             {current?.icon}
-            <span data-slot="toolbar-select-label" className={cn('truncate', !current && 'text-muted')}>
+            <span data-slot="toolbar-select-label" className={cx('truncate', !current && 'text-text-secondary')}>
               {current?.label ?? placeholder}
             </span>
           </span>
@@ -97,7 +97,7 @@ export function ToolbarSelect({
                   {choice.label}
                 </span>
                 {choice.hint && (
-                  <span data-slot="toolbar-select-option-hint" className="truncate text-xs text-muted">
+                  <span data-slot="toolbar-select-option-hint" className="truncate text-xs text-text-secondary">
                     {choice.hint}
                   </span>
                 )}

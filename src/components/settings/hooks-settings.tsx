@@ -4,7 +4,7 @@ import { Alert, Button, Input, Label, Select, SelectItem, TextField } from '@/co
 import { CellSwitch } from '@/components/base'
 import { ItemCard } from '@/components/base'
 import { api } from '@/api'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import type {
   AssistantInfoResponse,
   HookConfigInfoResponse,
@@ -383,13 +383,13 @@ export function HooksSettings() {
             <CellSwitch.Control />
           </CellSwitch.Trigger>
         </CellSwitch>
-        <p data-slot="hooks-enable-hint" id={enableHintId} className="text-xs text-muted">
+        <p data-slot="hooks-enable-hint" id={enableHintId} className="text-xs text-text-secondary">
           {t('settings.hooks.enableHint')}
         </p>
       </div>
 
       <div data-slot="hooks-review-model" className="space-y-1.5">
-        <p data-slot="hooks-review-model-label" className="block text-xs font-medium text-muted">
+        <p data-slot="hooks-review-model-label" className="block text-xs font-medium text-text-secondary">
           {t('settings.hooks.reviewModel')}
         </p>
         <ModelPicker
@@ -398,7 +398,7 @@ export function HooksSettings() {
           onChange={(review_model) => setConfig({ ...config, review_model })}
           onDirtyChange={setModelDraftDirty}
         />
-        <p data-slot="hooks-review-model-hint" className="text-xs text-muted">
+        <p data-slot="hooks-review-model-hint" className="text-xs text-text-secondary">
           {t('settings.hooks.reviewModelHint')}
         </p>
       </div>
@@ -417,7 +417,7 @@ export function HooksSettings() {
             </SelectItem>
           ))}
         </Select>
-        <p data-slot="hooks-assistant-hint" className="text-xs text-muted">
+        <p data-slot="hooks-assistant-hint" className="text-xs text-text-secondary">
           {t('settings.hooks.assistantHint')}
         </p>
       </div>
@@ -460,7 +460,7 @@ export function HooksSettings() {
             onChange={(e) => setTimeoutInput(e.target.value)}
           />
         </TextField>
-        <p data-slot="hooks-timeout-hint" className="text-xs text-muted">
+        <p data-slot="hooks-timeout-hint" className="text-xs text-text-secondary">
           {t('settings.hooks.timeoutHint')}
         </p>
       </div>
@@ -477,13 +477,13 @@ export function HooksSettings() {
             onChange={(e) => setRoundsInput(e.target.value)}
           />
         </TextField>
-        <p data-slot="hooks-max-rounds-hint" className="text-xs text-muted">
+        <p data-slot="hooks-max-rounds-hint" className="text-xs text-text-secondary">
           {roundsInput === '0' ? t('settings.hooks.maxRoundsUnlimited') : t('settings.hooks.maxRoundsHint')}
         </p>
       </div>
 
       <div data-slot="hooks-token" className="space-y-1.5">
-        <p data-slot="hooks-token-label" className="block text-xs font-medium text-muted">
+        <p data-slot="hooks-token-label" className="block text-xs font-medium text-text-secondary">
           {t('settings.hooks.token')}
         </p>
         <div data-slot="hooks-token-row" className="flex items-center gap-2">
@@ -503,13 +503,13 @@ export function HooksSettings() {
             {t('settings.hooks.regenerate')}
           </Button>
         </div>
-        <p data-slot="hooks-token-hint" className="text-xs text-muted">
+        <p data-slot="hooks-token-hint" className="text-xs text-text-secondary">
           {t('settings.hooks.tokenHint')}
         </p>
       </div>
 
       {error && (
-        <p data-slot="hooks-error" role="alert" className="text-xs text-danger break-all">
+        <p data-slot="hooks-error" role="alert" className="text-xs text-status-danger break-all">
           {error}
         </p>
       )}
@@ -539,7 +539,10 @@ export function HooksSettings() {
               <span
                 data-slot="hooks-status-dot"
                 aria-hidden
-                className={cn('inline-block size-2 shrink-0 rounded-full', running ? 'bg-success' : 'bg-default')}
+                className={cx(
+                  'inline-block size-2 shrink-0 rounded-full',
+                  running ? 'bg-status-success' : 'bg-background-secondary-default',
+                )}
               />
               {running ? t('settings.hooks.statusRunning') : t('settings.hooks.statusStopped')}
             </ItemCard.Title>

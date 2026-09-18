@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { Microphone, TrashBin } from '@gravity-ui/icons'
 
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import type { AndroidVoiceState } from '@/hooks/use-android-voice-recorder'
 
 interface VoiceOverlayProps {
@@ -67,13 +67,13 @@ export function VoiceOverlay({ state, elapsed, peak }: VoiceOverlayProps) {
       // and someone then held the button. The variable is set on `<html>`
       // (`use-android-insets`), so anything portalled can still read it, and it
       // is undefined everywhere but Android — hence the fallback.
-      className={cn(
+      className={cx(
         'pointer-events-none fixed inset-x-0 bottom-0 z-50 flex h-1/2 flex-col items-center justify-end gap-6',
         'pb-[calc(6rem+var(--ime-bottom,0px))]',
         'bg-gradient-to-t',
         cancelling
-          ? 'from-danger via-danger/80 to-transparent text-danger-foreground'
-          : 'from-overlay via-overlay/85 to-transparent text-overlay-foreground',
+          ? 'from-status-danger via-status-danger/80 to-transparent text-status-danger-foreground'
+          : 'from-background-primary-default via-background-primary-default/85 to-transparent text-text-primary',
       )}
     >
       {/* Only state transitions are announced. The timer and level meter update

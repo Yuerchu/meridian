@@ -75,7 +75,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
               <Sheet.CloseTrigger />
               <Sheet.Header className="gap-1">
                 <Sheet.Heading>{t('settings.memory.trash.title')}</Sheet.Heading>
-                <p id={hintId} data-slot="memory-trash-hint" className="text-sm text-muted">
+                <p id={hintId} data-slot="memory-trash-hint" className="text-sm text-text-secondary">
                   {t('settings.memory.trash.retentionHint')}
                 </p>
               </Sheet.Header>
@@ -153,7 +153,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                             }}
                             data-slot="memory-trash-purge"
                           >
-                            <TrashBin className="text-danger" />
+                            <TrashBin className="text-status-danger" />
                           </Button>
                           <Tooltip>{t('settings.memory.trash.purge')}</Tooltip>
                         </TooltipTrigger>

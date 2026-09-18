@@ -226,7 +226,7 @@ export function ClaudeSessionPicker({
               <HostedAgentGlyph size={18} />
               {t(mode === 'attach' ? 'sessionPicker.attachHeading' : 'sessionPicker.importHeading')}
             </Modal.Heading>
-            <p data-slot="session-picker-hint" className="text-xs text-muted">
+            <p data-slot="session-picker-hint" className="text-xs text-text-secondary">
               {t(mode === 'attach' ? 'sessionPicker.attachHint' : 'sessionPicker.importHint')}
             </p>
           </Modal.Header>
@@ -277,7 +277,7 @@ export function ClaudeSessionPicker({
               )}
             </div>
             {folder && (
-              <p data-slot="session-picker-folder" className="truncate text-xs text-muted">
+              <p data-slot="session-picker-folder" className="truncate text-xs text-text-secondary">
                 {folder}
               </p>
             )}
@@ -306,7 +306,7 @@ export function ClaudeSessionPicker({
                   otherwise nothing on screen that can ask again. */}
               {error ? (
                 <div data-slot="session-picker-error" className="flex flex-col items-start gap-2 p-4">
-                  <p data-slot="session-picker-error-message" role="alert" className="text-xs text-danger">
+                  <p data-slot="session-picker-error-message" role="alert" className="text-xs text-status-danger">
                     {error}
                   </p>
                   <Button size="small" variant="outline" onPress={() => void load(folder)}>
@@ -321,12 +321,12 @@ export function ClaudeSessionPicker({
                   className="flex h-40 flex-col items-center justify-center gap-2"
                 >
                   <Spinner />
-                  <span data-slot="session-picker-loading-label" className="text-xs text-muted">
+                  <span data-slot="session-picker-loading-label" className="text-xs text-text-secondary">
                     {t('sessionPicker.loading')}
                   </span>
                 </div>
               ) : rows.length === 0 ? (
-                <p data-slot="session-picker-empty" className="p-4 text-xs text-muted">
+                <p data-slot="session-picker-empty" className="p-4 text-xs text-text-secondary">
                   {t('sessionPicker.empty')}
                 </p>
               ) : (
@@ -354,7 +354,7 @@ export function ClaudeSessionPicker({
                     />
                   ))}
                   {hidden > 0 && (
-                    <li data-slot="session-picker-more" className="px-3 py-2 text-xs text-muted">
+                    <li data-slot="session-picker-more" className="px-3 py-2 text-xs text-text-secondary">
                       {t('sessionPicker.more', { count: hidden })}
                     </li>
                   )}
@@ -408,40 +408,40 @@ function SessionRow({
     // and the row is what is working anyway.
     <li data-slot="session-row" aria-busy={busy} className="flex items-center gap-3 px-3 py-2">
       <div data-slot="session-row-body" className="min-w-0 flex-1">
-        {/* `text-foreground` because `.modal__body` sets `text-muted` on
+        {/* `text-text-primary` because `.modal__body` sets `text-text-secondary` on
             everything inside it: inherited, the title came out the same grey as
             the path under it and the two rows of a row read as one.
 
             An empty title is the same as none: the adapter sanitises whatever
             the SDK summarised, and a row with a blank first line is one nobody
             can tell from its neighbour. */}
-        <p data-slot="session-title" className="truncate text-sm text-foreground">
+        <p data-slot="session-title" className="truncate text-sm text-text-primary">
           {session.title?.trim() || leafOf(session.cwd)}
         </p>
-        <p data-slot="session-row-path" className="truncate text-xs text-muted">
+        <p data-slot="session-row-path" className="truncate text-xs text-text-secondary">
           {session.cwd}
           {when && ` · ${when}`}
         </p>
         {error && (
-          <p data-slot="session-row-error" role="alert" className="mt-1 text-xs text-danger">
+          <p data-slot="session-row-error" role="alert" className="mt-1 text-xs text-status-danger">
             {error}
           </p>
         )}
         {truncated && (
-          <p data-slot="session-row-truncated" className="mt-1 text-xs text-warning">
+          <p data-slot="session-row-truncated" className="mt-1 text-xs text-status-warning">
             {t('sessionPicker.truncated')}
           </p>
         )}
       </div>
       {mine ? (
-        <span data-slot="session-row-current" className="shrink-0 text-xs text-muted">
+        <span data-slot="session-row-current" className="shrink-0 text-xs text-text-secondary">
           {t('sessionPicker.current')}
         </span>
       ) : taken && mode === 'attach' ? (
         // Two conversations pointing at one session would be two transcripts
         // written from the same place, so the row says why rather than failing
         // when it is pressed.
-        <span data-slot="session-row-taken" className="shrink-0 text-xs text-muted">
+        <span data-slot="session-row-taken" className="shrink-0 text-xs text-text-secondary">
           {t('sessionPicker.taken')}
         </span>
       ) : taken ? (

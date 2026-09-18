@@ -5,7 +5,7 @@ import { DisclosureStateContext } from 'react-aria-components'
 import { CircleCheck, CircleExclamation, CircleXmark, Clock } from '@gravity-ui/icons'
 import { useShikiLanguage } from '@/hooks/use-shiki-language'
 import { highlightInline } from '@/lib/shiki'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { BUBBLE_BLOCK, BUBBLE_BLOCK_HOVER } from './bubble'
 
 /**
@@ -62,7 +62,7 @@ function ChatToolPresentationProvider({ value, children }: { value: ChatToolPres
  * A HeroUI card carries none because it is told apart by being lighter than the
  * *page* plus `--surface-shadow`, and both halves of that fail in the one place
  * these are drawn. The transcript is inside `Sidebar.Main`, which Pro paints
- * `background-color: var(--surface)` under `variant="inset"` — so a `bg-surface`
+ * `background-color: var(--color-background-primary-default)` under `variant="inset"` — so a `bg-background-primary-default`
  * card is exactly its parent's colour, not one step above the page. And HeroUI
  * sets `--surface-shadow: 0 0 0 0 transparent inset` in dark mode on purpose
  * ("No shadow on dark mode"), which leaves a dark-theme card with no fill
@@ -72,7 +72,8 @@ function ChatToolPresentationProvider({ value, children }: { value: ChatToolPres
  * it takes no space, so recolouring it for `output-error` costs no reflow and
  * needs no second mechanism.
  */
-const CHAT_TOOL_CARD = 'overflow-hidden rounded-xl bg-surface shadow-surface ring-1 ring-border ring-inset'
+const CHAT_TOOL_CARD =
+  'overflow-hidden rounded-xl bg-background-primary-default shadow-card ring-1 ring-border-button-default ring-inset'
 
 const chatToolVariants = tv({
   slots: {
@@ -81,18 +82,18 @@ const chatToolVariants = tv({
     // inside the clipped card and does not add another layout edge.
     trigger: [
       'flex min-h-11 w-full items-center gap-2 px-3 py-2.5 text-left transition-colors outline-none',
-      'hover:bg-default data-[pressed]:bg-default focus-visible:bg-default',
-      'focus-visible:ring-2 focus-visible:ring-focus/50 focus-visible:ring-inset',
+      'hover:bg-background-primary-hover data-[pressed]:bg-background-tertiary-default focus-visible:bg-background-secondary-default',
+      'focus-visible:ring-2 focus-visible:ring-border-focus-ring/50 focus-visible:ring-inset',
     ],
   },
   variants: {
-    // The ordinary states leave the card's own `ring-border` alone; these two
+    // The ordinary states leave the card's own `ring-border-button-default` alone; these two
     // recolour it, which is what makes them worth noticing without adding a
     // second edge beside the first.
     //
     // A ring rather than a border. The alternative measured worse: `.alert`'s
     // way of colouring a status surface is a `-soft` wash, but `--danger-soft`
-    // under the trigger drops `text-muted` from 4.74:1 to 3.63:1 in light mode,
+    // under the trigger drops `text-text-secondary` from 4.74:1 to 3.63:1 in light mode,
     // and the argument summary in a real tool row is muted. A ring sits under no
     // text at all, takes no space, and `ring-inset` keeps it inside the rounded
     // corner.
@@ -101,8 +102,8 @@ const chatToolVariants = tv({
       'input-available': {},
       queued: {},
       'output-available': {},
-      'output-error': { base: 'ring-1 ring-danger/40 ring-inset' },
-      'requires-action': { base: 'ring-1 ring-warning/40 ring-inset' },
+      'output-error': { base: 'ring-1 ring-status-danger/40 ring-inset' },
+      'requires-action': { base: 'ring-1 ring-status-warning/40 ring-inset' },
     },
   },
   defaultVariants: {
@@ -131,12 +132,12 @@ const toolBubbleVariants = tv({
     state: {
       'input-streaming': '',
       'input-available': '',
-      queued: 'text-muted',
+      queued: 'text-text-secondary',
       'output-available': '',
-      'output-error': 'ring-1 ring-danger/40 ring-inset',
+      'output-error': 'ring-1 ring-status-danger/40 ring-inset',
       // Never a label: a decision rests on the exact path or command, so it
       // takes the width whether or not it is open.
-      'requires-action': 'w-full ring-1 ring-warning/50 ring-inset',
+      'requires-action': 'w-full ring-1 ring-status-warning/50 ring-inset',
     },
   },
   defaultVariants: {
@@ -150,7 +151,7 @@ const toolBubbleVariants = tv({
  * The hover wash lifts from the bubble's own fill (`BUBBLE_BLOCK_HOVER`)
  * rather than being taken from `--default`, which is what the key it replaced
  * used: a key was a control sitting on the transcript and washed towards the
- * neutral hover colour, while this is a row inside a bubble — `bg-default`
+ * neutral hover colour, while this is a row inside a bubble — `bg-background-secondary-default`
  * here would be a second, slightly different grey over the first, and it would
  * be the assistant's grey even in the person's bubble.
  */
@@ -158,8 +159,8 @@ const toolHeadVariants = tv({
   base: [
     'flex min-h-9 w-full items-center gap-2 px-3 py-2 text-left outline-none transition-colors',
     BUBBLE_BLOCK_HOVER,
-    'data-[pressed]:bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--foreground)_8%)]',
-    'focus-visible:ring-2 focus-visible:ring-focus/50 focus-visible:ring-inset',
+    'data-[pressed]:bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--color-text-primary)_8%)]',
+    'focus-visible:ring-2 focus-visible:ring-border-focus-ring/50 focus-visible:ring-inset',
     'disabled:opacity-60',
   ],
   variants: {
@@ -197,8 +198,8 @@ function ChatTool({ state, className, ...props }: ChatToolProps) {
         data-bubble-block={asBubble ? '' : undefined}
         className={
           asBubble
-            ? cn(toolBubbleVariants({ state: resolvedState }), className)
-            : cn(CHAT_TOOL_CARD, chatToolVariants({ state: resolvedState }).base(), className)
+            ? cx(toolBubbleVariants({ state: resolvedState }), className)
+            : cx(CHAT_TOOL_CARD, chatToolVariants({ state: resolvedState }).base(), className)
         }
         {...props}
       />
@@ -250,13 +251,13 @@ function ChatToolTrigger({ className, children, endContent, subtitle, ...props }
       <Disclosure.Trigger
         data-slot="chat-tool-trigger"
         data-state={state}
-        className={cn(toolHeadVariants({ state }), className)}
+        className={cx(toolHeadVariants({ state }), className)}
         {...props}
       >
         <div data-slot="chat-tool-trigger-lines" className="flex min-w-0 flex-1 flex-col gap-0.5">
           <div
             data-slot="chat-tool-trigger-label"
-            className={cn(
+            className={cx(
               'flex min-w-0 items-center gap-1.5',
               '[&_[data-slot=tool-arg]]:min-w-0 [&_[data-slot=tool-arg]]:flex-1',
               requiresAction
@@ -269,15 +270,18 @@ function ChatToolTrigger({ className, children, endContent, subtitle, ...props }
           {requiresAction && hasSubtitle && (
             <span
               data-slot="chat-tool-subtitle"
-              className="break-words text-left text-xs leading-snug text-muted [overflow-wrap:anywhere]"
+              className="break-words text-left text-xs leading-snug text-text-secondary [overflow-wrap:anywhere]"
             >
               {subtitle}
             </span>
           )}
         </div>
-        <span data-slot="chat-tool-trigger-end" className="flex shrink-0 items-center gap-1.5 text-xs text-muted">
+        <span
+          data-slot="chat-tool-trigger-end"
+          className="flex shrink-0 items-center gap-1.5 text-xs text-text-secondary"
+        >
           {endContent}
-          <Disclosure.Indicator className="ms-0 size-3 shrink-0 text-muted" />
+          <Disclosure.Indicator className="ms-0 size-3 shrink-0 text-text-secondary" />
         </span>
       </Disclosure.Trigger>
     )
@@ -302,13 +306,13 @@ function ChatToolTrigger({ className, children, endContent, subtitle, ...props }
           `shrink-0`, which only mean anything inside a flex container. */}
       <Disclosure.Trigger
         data-slot="chat-tool-trigger"
-        className={cn(chatToolVariants().trigger(), className)}
+        className={cx(chatToolVariants().trigger(), className)}
         {...props}
       >
         <div data-slot="chat-tool-trigger-lines" className="flex min-w-0 flex-1 flex-col gap-1">
           <div
             data-slot="chat-tool-trigger-label"
-            className={cn(
+            className={cx(
               'flex min-w-0 items-center gap-2',
               // The identifying value is supplied by `ToolArgsSummary`. Two
               // lines make paths and commands legible on touch devices where a
@@ -325,7 +329,7 @@ function ChatToolTrigger({ className, children, endContent, subtitle, ...props }
           {hasSubtitle && (
             <span
               data-slot="chat-tool-subtitle"
-              className="line-clamp-2 break-words text-left text-xs leading-snug text-muted [overflow-wrap:anywhere]"
+              className="line-clamp-2 break-words text-left text-xs leading-snug text-text-secondary [overflow-wrap:anywhere]"
             >
               {subtitle}
             </span>
@@ -333,7 +337,7 @@ function ChatToolTrigger({ className, children, endContent, subtitle, ...props }
         </div>
         <span data-slot="chat-tool-trigger-end" className="flex shrink-0 items-center gap-2 text-xs">
           {endContent}
-          <Disclosure.Indicator className="size-3.5 shrink-0 text-muted" />
+          <Disclosure.Indicator className="size-3.5 shrink-0 text-text-secondary" />
         </span>
       </Disclosure.Trigger>
     </Disclosure.Heading>
@@ -351,7 +355,7 @@ function ChatToolStatusIcon({ className }: { className?: string }) {
           color="current"
           aria-hidden
           data-slot="chat-tool-status-icon"
-          className={cn('shrink-0 text-muted', className)}
+          className={cx('shrink-0 text-text-secondary', className)}
         />
       )
     // The same mark, standing still. Spinning is the claim that something is
@@ -362,7 +366,7 @@ function ChatToolStatusIcon({ className }: { className?: string }) {
         <Clock
           aria-hidden
           data-slot="chat-tool-status-icon"
-          className={cn('size-3.5 shrink-0 text-muted', className)}
+          className={cx('size-3.5 shrink-0 text-text-secondary', className)}
         />
       )
     case 'output-available':
@@ -370,7 +374,7 @@ function ChatToolStatusIcon({ className }: { className?: string }) {
         <CircleCheck
           aria-hidden
           data-slot="chat-tool-status-icon"
-          className={cn('size-3.5 shrink-0 text-success-soft-foreground', className)}
+          className={cx('size-3.5 shrink-0 text-status-success-soft-foreground', className)}
         />
       )
     case 'output-error':
@@ -378,7 +382,7 @@ function ChatToolStatusIcon({ className }: { className?: string }) {
         <CircleXmark
           aria-hidden
           data-slot="chat-tool-status-icon"
-          className={cn('size-3.5 shrink-0 text-danger', className)}
+          className={cx('size-3.5 shrink-0 text-status-danger', className)}
         />
       )
     case 'requires-action':
@@ -386,7 +390,7 @@ function ChatToolStatusIcon({ className }: { className?: string }) {
         <CircleExclamation
           aria-hidden
           data-slot="chat-tool-status-icon"
-          className={cn('size-3.5 shrink-0 text-warning-soft-foreground', className)}
+          className={cx('size-3.5 shrink-0 text-status-warning-soft-foreground', className)}
         />
       )
   }
@@ -482,17 +486,17 @@ function ChatToolContent({ className, children, ...props }: React.ComponentProps
       <Disclosure.Content
         data-slot="chat-tool-content"
         data-presentation="bubble"
-        className="min-h-0 w-full not-[[hidden]]:border-t not-[[hidden]]:border-border/50"
+        className="min-h-0 w-full not-[[hidden]]:border-t not-[[hidden]]:border-border-button-default/50"
         {...props}
       >
         <Disclosure.Body className="p-0" onKeyDown={handleKeyDown}>
           <ChatToolFooterContext.Provider value={footer}>
-            <div data-slot="chat-tool-panel" data-state={state} className={cn('w-full min-w-0', className)}>
+            <div data-slot="chat-tool-panel" data-state={state} className={cx('w-full min-w-0', className)}>
               {children}
               {occupants > 0 && (
                 <div
                   data-slot="chat-tool-panel-footer"
-                  className="flex flex-col items-stretch gap-2 border-t border-foreground/5 px-3 pt-2.5 pb-3"
+                  className="flex flex-col items-stretch gap-2 border-t border-text-primary/5 px-3 pt-2.5 pb-3"
                 >
                   <div ref={adoptFooter} data-slot="chat-tool-panel-footer-slot" className="contents" />
                 </div>
@@ -511,7 +515,7 @@ function ChatToolContent({ className, children, ...props }: React.ComponentProps
     <Disclosure.Content data-slot="chat-tool-content" className="min-h-0 w-full" {...props}>
       {/* Pro uses a very tight `p-1`; this keeps that density while leaving
           enough edge around Meridian's diffs and approval controls. */}
-      <Disclosure.Body className={cn('flex flex-col gap-2.5 px-3 pb-3 pt-0.5', className)}>{children}</Disclosure.Body>
+      <Disclosure.Body className={cx('flex flex-col gap-2.5 px-3 pb-3 pt-0.5', className)}>{children}</Disclosure.Body>
     </Disclosure.Content>
   )
 }
@@ -539,26 +543,29 @@ function ChatToolPanelHeader({
   return (
     <div
       data-slot="chat-tool-panel-header"
-      className={cn('flex items-start justify-between gap-3 px-3', bare ? 'py-1' : 'pt-2.5 pb-1', className)}
+      className={cx('flex items-start justify-between gap-3 px-3', bare ? 'py-1' : 'pt-2.5 pb-1', className)}
       {...props}
     >
       <div data-slot="chat-tool-panel-lines" className="flex min-w-0 flex-1 flex-col gap-0.5">
         {title != null && (
           <span
             data-slot="chat-tool-panel-title"
-            className="min-w-0 text-xs leading-5 font-medium break-words whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]"
+            className="min-w-0 text-xs leading-5 font-medium break-words whitespace-pre-wrap text-text-primary [overflow-wrap:anywhere]"
           >
             {title}
           </span>
         )}
         {description != null && (
-          <span data-slot="chat-tool-panel-description" className="min-w-0 text-xs leading-4 break-words text-muted">
+          <span
+            data-slot="chat-tool-panel-description"
+            className="min-w-0 text-xs leading-4 break-words text-text-secondary"
+          >
             {description}
           </span>
         )}
       </div>
       {end != null && (
-        <div data-slot="chat-tool-panel-end" className="flex shrink-0 items-center gap-1.5 text-xs text-muted">
+        <div data-slot="chat-tool-panel-end" className="flex shrink-0 items-center gap-1.5 text-xs text-text-secondary">
           {end}
         </div>
       )}
@@ -570,7 +577,7 @@ function ChatToolPanelBody({ className, children, ...props }: React.ComponentPro
   return (
     <div
       data-slot="chat-tool-panel-body"
-      className={cn('flex min-w-0 flex-col gap-2 overflow-hidden', className)}
+      className={cx('flex min-w-0 flex-col gap-2 overflow-hidden', className)}
       {...props}
     >
       {children}
@@ -607,7 +614,7 @@ function ChatToolPanelFooter({ className, children, ...props }: React.ComponentP
   useFooterOccupancy(inFooter ? footer : undefined)
   if (inFooter) {
     return createPortal(
-      <div data-slot="chat-tool-panel-footer-item" className={cn('flex min-w-0 flex-col gap-2', className)} {...props}>
+      <div data-slot="chat-tool-panel-footer-item" className={cx('flex min-w-0 flex-col gap-2', className)} {...props}>
         {children}
       </div>,
       footer.node,
@@ -616,7 +623,7 @@ function ChatToolPanelFooter({ className, children, ...props }: React.ComponentP
   return (
     <div
       data-slot="chat-tool-panel-footer"
-      className={cn('flex min-w-0 flex-col gap-2 border-t border-separator px-3 py-2.5', className)}
+      className={cx('flex min-w-0 flex-col gap-2 border-t border-separator-border px-3 py-2.5', className)}
       {...props}
     >
       {children}
@@ -646,14 +653,17 @@ function ChatToolArgs({ value, text, className, children, ...props }: ChatToolPa
   return (
     <div
       data-slot="chat-tool-args"
-      className={cn('scrollbar-gutter-stable max-h-48 overflow-auto rounded-lg bg-default/50 px-3 py-2', className)}
+      className={cx(
+        'scrollbar-gutter-stable max-h-48 overflow-auto rounded-lg bg-background-secondary-default/50 px-3 py-2',
+        className,
+      )}
       {...props}
     >
       {children ??
         (code !== undefined && (
           <pre
             data-slot="chat-tool-args-code"
-            className="font-mono text-xs leading-relaxed whitespace-pre-wrap text-foreground/90 [overflow-wrap:anywhere]"
+            className="font-mono text-xs leading-relaxed whitespace-pre-wrap text-text-primary/90 [overflow-wrap:anywhere]"
           >
             <JsonCode code={code} />
           </pre>
@@ -667,14 +677,17 @@ function ChatToolResult({ value, text, className, children, ...props }: ChatTool
   return (
     <div
       data-slot="chat-tool-result"
-      className={cn('scrollbar-gutter-stable max-h-72 overflow-auto rounded-lg bg-default/50 px-3 py-2', className)}
+      className={cx(
+        'scrollbar-gutter-stable max-h-72 overflow-auto rounded-lg bg-background-secondary-default/50 px-3 py-2',
+        className,
+      )}
       {...props}
     >
       {children ??
         (code !== undefined && (
           <pre
             data-slot="chat-tool-result-code"
-            className="font-mono text-xs leading-relaxed whitespace-pre-wrap text-foreground/90 [overflow-wrap:anywhere]"
+            className="font-mono text-xs leading-relaxed whitespace-pre-wrap text-text-primary/90 [overflow-wrap:anywhere]"
           >
             <JsonCode code={code} />
           </pre>
@@ -687,8 +700,8 @@ function ChatToolError({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="chat-tool-error"
-      className={cn(
-        'rounded-lg bg-danger-soft px-2.5 py-2 leading-relaxed whitespace-pre-wrap text-danger-soft-foreground [overflow-wrap:anywhere]',
+      className={cx(
+        'rounded-lg bg-status-danger-soft px-2.5 py-2 leading-relaxed whitespace-pre-wrap text-status-danger-soft-foreground [overflow-wrap:anywhere]',
         className,
       )}
       {...props}
@@ -712,12 +725,12 @@ function ChatToolApproval({ className, children, ...props }: React.ComponentProp
   const row = (
     <div
       data-slot="chat-tool-approval"
-      className={cn('flex min-w-0 flex-col gap-2', presentation === 'card' && 'pt-2.5', className)}
+      className={cx('flex min-w-0 flex-col gap-2', presentation === 'card' && 'pt-2.5', className)}
       {...props}
     >
       <div
         data-slot="chat-tool-approval-actions"
-        className={cn(
+        className={cx(
           'flex min-w-0 flex-wrap items-center gap-2 [&>button]:min-h-8 [&>button]:max-w-full [&>button]:min-w-0 [&>button]:whitespace-normal',
           presentation === 'bubble' ? '[&>button]:flex-1' : 'justify-end',
         )}

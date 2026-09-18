@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { Kanban } from '@/components/base'
 
 import type { TodoItemStatus } from '@/types'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { TodoStatusIcon, type TodoDraft } from './todo-list'
 
 const COLUMNS: readonly TodoItemStatus[] = ['pending', 'in_progress', 'completed']
@@ -36,7 +36,7 @@ export default function TodoBoard({ todos, className }: { todos: TodoDraft[]; cl
     <Kanban
       size="sm"
       aria-label={t('chat.todo.board')}
-      className={cn('[--kanban-column-min-width:200px] [--kanban-column-height:auto]', className)}
+      className={cx('[--kanban-column-min-width:200px] [--kanban-column-height:auto]', className)}
     >
       {COLUMNS.map((status) => {
         const items = todos.filter((todo) => todo.status === status)
@@ -53,7 +53,7 @@ export default function TodoBoard({ todos, className }: { todos: TodoDraft[]; cl
               <Kanban.CardList
                 aria-label={t(`chat.todo.status.${status}`)}
                 renderEmptyState={() => (
-                  <span data-slot="todo-board-empty" className="text-xs text-muted">
+                  <span data-slot="todo-board-empty" className="text-xs text-text-secondary">
                     {t('chat.todo.emptyColumn')}
                   </span>
                 )}
@@ -68,10 +68,10 @@ export default function TodoBoard({ todos, className }: { todos: TodoDraft[]; cl
                     <div data-slot="todo-board-card-body" className="p-2.5 text-xs">
                       <span
                         data-slot="todo-board-card-text"
-                        className={cn(
-                          status === 'completed' && 'text-muted line-through',
-                          status === 'in_progress' && 'font-medium text-foreground',
-                          status === 'pending' && 'text-muted',
+                        className={cx(
+                          status === 'completed' && 'text-text-secondary line-through',
+                          status === 'in_progress' && 'font-medium text-text-primary',
+                          status === 'pending' && 'text-text-secondary',
                         )}
                       >
                         {todo.content}

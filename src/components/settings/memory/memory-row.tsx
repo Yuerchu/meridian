@@ -10,7 +10,7 @@ import type { MemoryInfoResponse } from '@/types'
  * its Chip reads is set directly. The same shape as the `--progress-circle-*`
  * override elsewhere, and for the same reason.
  */
-export const INFO_CHIP = '[--chip-fg:var(--info-soft-foreground)]'
+export const INFO_CHIP = '[--chip-fg:var(--color-status-info-soft-foreground)]'
 
 interface MemoryRowProps {
   memory: MemoryInfoResponse
@@ -42,7 +42,11 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
   return (
     // The enclosing DisclosureGroup names the open row by this id, which is
     // what keeps one open at a time.
-    <Disclosure id={memory.id} data-slot="memory-row" className="flex w-full flex-col rounded-lg border border-border">
+    <Disclosure
+      id={memory.id}
+      data-slot="memory-row"
+      className="flex w-full flex-col rounded-lg border border-border-button-default"
+    >
       {/* Wraps rather than overflows: a key, three or four badges and a date do
           not fit one line on a phone, and this scroller shares its horizontal
           overflow with the whole settings page — one long key here used to drag
@@ -62,7 +66,7 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
               // Shrink-wrapped for the reason above, which leaves it at about
               // 32px — and since it is the only part of the row that opens it,
               // the hit area is expanded rather than the button.
-              className="touch-hitbox inline-flex shrink-0 items-center rounded-lg p-2 text-muted transition-colors outline-none hover:bg-default hover:text-foreground focus-visible:bg-default"
+              className="touch-hitbox inline-flex shrink-0 items-center rounded-lg p-2 text-text-secondary transition-colors outline-none hover:bg-background-primary-hover hover:text-text-primary focus-visible:bg-background-secondary-default"
             >
               <Disclosure.Indicator className="size-4" />
             </Disclosure.Trigger>
@@ -77,7 +81,7 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
             property the component reads is set directly rather than through a
             `color` that does not exist. */}
         <Chip className={INFO_CHIP}>{memory.origin}</Chip>
-        <Chip className="text-muted">{memory.memory_type}</Chip>
+        <Chip className="text-text-secondary">{memory.memory_type}</Chip>
         {ownerOnly && (
           <TooltipTrigger delay={0}>
             <span data-slot="memory-owner-trigger" tabIndex={0} className="inline-flex">
@@ -90,7 +94,7 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
           </TooltipTrigger>
         )}
         <div data-slot="memory-row-spacer" className="flex-1" />
-        <span data-slot="memory-row-date" className="text-xs text-muted">
+        <span data-slot="memory-row-date" className="text-xs text-text-secondary">
           {date.format(new Date(memory.updated_at))}
         </span>
       </div>
@@ -106,7 +110,9 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
         <Disclosure.Body
           data-slot="memory-row-editor"
           className="space-y-2"
-          render={(props) => <div {...props} data-slot="memory-row-body" className="border-t border-border p-3" />}
+          render={(props) => (
+            <div {...props} data-slot="memory-row-body" className="border-t border-border-button-default p-3" />
+          )}
         >
           <TextArea
             aria-label={t('settings.memory.content')}
@@ -123,7 +129,7 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
             rows={3}
             className="resize-y"
           />
-          <div data-slot="memory-row-meta" className="flex flex-wrap items-center gap-3 text-xs text-muted">
+          <div data-slot="memory-row-meta" className="flex flex-wrap items-center gap-3 text-xs text-text-secondary">
             <span data-slot="memory-row-learned-at">
               {t('settings.memory.learnedAt')}: {date.format(new Date(memory.created_at))}
             </span>
@@ -153,7 +159,7 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
                 }}
                 data-slot="memory-row-delete"
               >
-                <TrashBin className="text-danger" />
+                <TrashBin className="text-status-danger" />
               </Button>
               <Tooltip>{t('settings.memory.delete')}</Tooltip>
             </TooltipTrigger>

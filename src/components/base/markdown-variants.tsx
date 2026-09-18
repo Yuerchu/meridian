@@ -8,17 +8,17 @@ export function Markdown({ className, ...props }: React.ComponentProps<'div'>) {
 
 const proseClasses = [
   'prose prose-sm max-w-none dark:prose-invert',
-  'prose-headings:font-semibold prose-headings:text-foreground',
-  'prose-p:text-foreground prose-p:leading-relaxed',
-  'prose-a:text-accent prose-a:no-underline hover:prose-a:underline',
-  'prose-code:rounded prose-code:bg-surface-secondary prose-code:px-1 prose-code:py-0.5 prose-code:text-sm prose-code:font-normal prose-code:before:content-none prose-code:after:content-none',
-  'prose-pre:rounded-xl prose-pre:bg-surface-secondary',
-  'prose-blockquote:border-l-accent prose-blockquote:text-muted',
-  'prose-strong:text-foreground',
-  'prose-li:text-foreground',
-  'prose-table:text-foreground',
-  'prose-th:text-foreground prose-th:font-semibold',
-  'prose-hr:border-separator',
+  'prose-headings:font-semibold prose-headings:text-text-primary',
+  'prose-p:text-text-primary prose-p:leading-relaxed',
+  'prose-a:text-button-ghost-foreground prose-a:no-underline hover:prose-a:underline',
+  'prose-code:rounded prose-code:bg-background-secondary-default prose-code:px-1 prose-code:py-0.5 prose-code:text-sm prose-code:font-normal prose-code:before:content-none prose-code:after:content-none',
+  'prose-pre:rounded-xl prose-pre:bg-background-secondary-default',
+  'prose-blockquote:border-l-accent prose-blockquote:text-text-secondary',
+  'prose-strong:text-text-primary',
+  'prose-li:text-text-primary',
+  'prose-table:text-text-primary',
+  'prose-th:text-text-primary prose-th:font-semibold',
+  'prose-hr:border-separator-border',
 ]
 
 export const markdownVariants = tv({

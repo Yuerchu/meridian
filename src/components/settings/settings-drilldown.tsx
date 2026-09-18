@@ -66,12 +66,12 @@ export function SettingsDrilldown({
             <div data-slot="settings-drilldown-frame" className="flex h-full flex-col">
               <div
                 data-slot="settings-drilldown-bar"
-                className="flex shrink-0 items-center gap-2 border-b border-border px-1 pt-[var(--safe-top)]"
+                className="flex shrink-0 items-center gap-2 border-b border-border-button-default px-1 pt-[var(--safe-top)]"
               >
                 <Button
                   variant="ghost"
                   onPress={() => setOpen(false)}
-                  className="h-10 gap-1 rounded-xl px-2 text-sm font-normal text-muted hover:text-foreground"
+                  className="h-10 gap-1 rounded-xl px-2 text-sm font-normal text-text-secondary hover:text-text-primary"
                 >
                   <ArrowLeft className="size-4" />
                   {t('common.back')}

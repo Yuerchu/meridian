@@ -232,7 +232,7 @@ function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAc
           <span data-slot="agent-options-summary" className="truncate">
             {summary.length > 0 ? summary.join(' · ') : t('chat.agentOptions')}
           </span>
-          <ChevronDown className="size-4 shrink-0 text-muted" />
+          <ChevronDown className="size-4 shrink-0 text-text-secondary" />
         </Button>
         <Tooltip placement="top">{t('chat.agentOptions')}</Tooltip>
       </TooltipTrigger>
@@ -244,7 +244,7 @@ function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAc
                 {knobName(t, option)}
               </p>
               {option.description && (
-                <p data-slot="agent-knob-description" className="px-2 pt-0.5 text-xs text-muted">
+                <p data-slot="agent-knob-description" className="px-2 pt-0.5 text-xs text-text-secondary">
                   {option.description}
                 </p>
               )}
@@ -669,25 +669,25 @@ export function InputBar({
       {selectedText && (
         <>
           <ContextMenu.Item id="cut" textValue={t('contextMenu.cut')} onAction={handleCut}>
-            <Scissors className="size-4 text-muted" />
+            <Scissors className="size-4 text-text-secondary" />
             <Label>{t('contextMenu.cut')}</Label>
             <Shortcut keys="Ctrl+X" />
           </ContextMenu.Item>
           <ContextMenu.Item id="copy" textValue={t('chat.copy')} onAction={handleCopy}>
-            <Copy className="size-4 text-muted" />
+            <Copy className="size-4 text-text-secondary" />
             <Label>{t('chat.copy')}</Label>
             <Shortcut keys="Ctrl+C" />
           </ContextMenu.Item>
         </>
       )}
       <ContextMenu.Item id="paste" textValue={t('contextMenu.paste')} onAction={() => void handlePaste()}>
-        <ArrowDownToSquare className="size-4 text-muted" />
+        <ArrowDownToSquare className="size-4 text-text-secondary" />
         <Label>{t('contextMenu.paste')}</Label>
         <Shortcut keys="Ctrl+V" />
       </ContextMenu.Item>
       <ContextMenu.Separator />
       <ContextMenu.Item id="select-all" textValue={t('contextMenu.selectAll')} onAction={handleSelectAll}>
-        <SquareDashedText className="size-4 text-muted" />
+        <SquareDashedText className="size-4 text-text-secondary" />
         <Label>{t('contextMenu.selectAll')}</Label>
         <Shortcut keys="Ctrl+A" />
       </ContextMenu.Item>
@@ -774,12 +774,12 @@ export function InputBar({
             // say about why reads as the app having broken.
             notice={
               offline ? (
-                <p data-slot="composer-notice" className="px-2 pb-1.5 text-xs text-danger">
+                <p data-slot="composer-notice" className="px-2 pb-1.5 text-xs text-status-danger">
                   {t('settings.client.composerOffline')}
                 </p>
               ) : (
                 voiceNotice && (
-                  <p data-slot="composer-notice" className="px-2 pb-1.5 text-xs text-muted">
+                  <p data-slot="composer-notice" className="px-2 pb-1.5 text-xs text-text-secondary">
                     {voiceNotice}
                   </p>
                 )
@@ -816,7 +816,10 @@ export function InputBar({
                     </ChatAttachmentGroup>
                   )}
                   {pendingSticker && (
-                    <div className="relative shrink-0 rounded-xl bg-default/40 p-2" data-slot="pending-sticker">
+                    <div
+                      className="relative shrink-0 rounded-xl bg-background-secondary-default/40 p-2"
+                      data-slot="pending-sticker"
+                    >
                       <img
                         data-slot="pending-sticker-image"
                         src={pendingSticker.url}
@@ -830,7 +833,7 @@ export function InputBar({
                             size="small"
                             variant="primary"
                             aria-label={t('chat.removeSticker')}
-                            className="touch-hitbox absolute -right-2 -top-2 min-w-0 size-6 rounded-full shadow-surface"
+                            className="touch-hitbox absolute -right-2 -top-2 min-w-0 size-6 rounded-full shadow-card"
                             onPress={onRemoveSticker}
                           >
                             <Xmark className="size-3.5" />

@@ -8,7 +8,7 @@ import { BUBBLE_BLOCK } from '@/components/ui/bubble'
 import { useTranscriptConversationId } from '@/hooks/use-transcript-conversation'
 import { useConversationStore } from '@/stores/conversation-store'
 import { parseSubAgentResult, splitTruncation, type SubAgentOutcome, type SubAgentResult } from '@/lib/tool-output'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { AskUserBlock, PendingApproval, identifyingArg, toolLabel } from './tool-call-block'
 import { useSubAgentSheet } from './sub-agent-sheet-context'
 import type { MessageViewModel, ToolCallDisplay } from '@/types'
@@ -235,20 +235,20 @@ function stateOf(row: Row): RowState {
 }
 
 const DOT: Record<RowState, string> = {
-  done: 'bg-success',
-  running: 'bg-info ring-4 ring-info/20',
+  done: 'bg-status-success',
+  running: 'bg-status-info ring-4 ring-status-info/20',
   // eslint-disable-next-line no-restricted-syntax -- a live status dot pulses; it is not a placeholder
-  waiting: 'bg-warning ring-4 ring-warning/25 animate-pulse motion-reduce:animate-none',
-  failed: 'bg-danger',
-  idle: 'bg-default',
+  waiting: 'bg-status-warning ring-4 ring-status-warning/25 animate-pulse motion-reduce:animate-none',
+  failed: 'bg-status-danger',
+  idle: 'bg-background-secondary-default',
 }
 
 const TICK: Record<RowState, string> = {
-  done: 'bg-success',
-  running: 'bg-info',
-  waiting: 'bg-warning',
-  failed: 'bg-danger',
-  idle: 'bg-default',
+  done: 'bg-status-success',
+  running: 'bg-status-info',
+  waiting: 'bg-status-warning',
+  failed: 'bg-status-danger',
+  idle: 'bg-background-secondary-default',
 }
 
 function SubAgentRowLine({ row, state }: { row: Row; state: RowState }) {
@@ -281,10 +281,10 @@ function SubAgentRowLine({ row, state }: { row: Row; state: RowState }) {
     <div
       data-slot="sub-agent-row-line"
       data-tone={tone}
-      className={cn(
+      className={cx(
         'truncate text-xs',
         tone === 'live' && 'shimmer',
-        tone === 'warn' ? 'text-warning-soft-foreground' : 'text-muted',
+        tone === 'warn' ? 'text-status-warning-soft-foreground' : 'text-text-secondary',
       )}
     >
       {text}
@@ -335,12 +335,12 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
     // like — a head row over its contents, in the bubble's own fill — while
     // being an item on a keyboard. Now it says so, and `bubble.tsx` gives it
     // the fill, the radius and the shared corners the rest of them get.
-    <div data-slot="sub-agent-group" data-bubble-block="" className={cn(BUBBLE_BLOCK, 'flex w-full flex-col text-xs')}>
+    <div data-slot="sub-agent-group" data-bubble-block="" className={cx(BUBBLE_BLOCK, 'flex w-full flex-col text-xs')}>
       <div
         data-slot="sub-agent-group-header"
-        className="flex items-center gap-2 border-b border-border/50 px-3 py-1.5 text-muted"
+        className="flex items-center gap-2 border-b border-border-button-default/50 px-3 py-1.5 text-text-secondary"
       >
-        <span data-slot="sub-agent-group-title" className="font-medium text-foreground">
+        <span data-slot="sub-agent-group-title" className="font-medium text-text-primary">
           {t('chat.subAgent.group', { count: rows.length })}
         </span>
         {summary.length > 0 && <span data-slot="sub-agent-group-summary">{summary.join(' · ')}</span>}
@@ -350,7 +350,7 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
               key={i}
               data-slot="sub-agent-group-tick"
               data-state={state}
-              className={cn('block h-1 w-4 rounded-sm', TICK[state])}
+              className={cx('block h-1 w-4 rounded-sm', TICK[state])}
             />
           ))}
         </span>
@@ -383,23 +383,23 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
                 <span
                   data-slot="sub-agent-row-dot"
                   aria-hidden
-                  className={cn('block size-2 rounded-full', DOT[state])}
+                  className={cx('block size-2 rounded-full', DOT[state])}
                 />
-                <span data-slot="sub-agent-row-kind" className="flex items-center gap-1 font-medium text-foreground">
+                <span data-slot="sub-agent-row-kind" className="flex items-center gap-1 font-medium text-text-primary">
                   {readOnly ? (
-                    <Compass aria-hidden className="size-3.5 text-muted" />
+                    <Compass aria-hidden className="size-3.5 text-text-secondary" />
                   ) : (
-                    <ForwardStep aria-hidden className="size-3.5 text-muted" />
+                    <ForwardStep aria-hidden className="size-3.5 text-text-secondary" />
                   )}
                   {t(`chat.subAgent.${row.delegation.kind}`)}
                 </span>
                 <span data-slot="sub-agent-row-body" className="min-w-0">
-                  <span data-slot="sub-agent-row-title" className="block truncate text-sm text-foreground">
+                  <span data-slot="sub-agent-row-title" className="block truncate text-sm text-text-primary">
                     {row.delegation.description}
                   </span>
                   <SubAgentRowLine row={row} state={state} />
                 </span>
-                <span data-slot="sub-agent-row-end" className="flex items-center gap-2 text-muted">
+                <span data-slot="sub-agent-row-end" className="flex items-center gap-2 text-text-secondary">
                   {row.outcome && row.outcome !== 'running' && <SubAgentStatusChip outcome={row.outcome} />}
                   <LiveSteps run={row.call.sub_agent} fallback={steps} />
                 </span>
@@ -418,9 +418,9 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
           <div
             key={nested.approval_id}
             data-slot="sub-agent-question"
-            className="space-y-2 border-t border-border/50 px-3 py-2"
+            className="space-y-2 border-t border-border-button-default/50 px-3 py-2"
           >
-            <div data-slot="sub-agent-question-header" className="flex items-start gap-1.5 px-0.5 text-muted">
+            <div data-slot="sub-agent-question-header" className="flex items-start gap-1.5 px-0.5 text-text-secondary">
               <CircleQuestion className="size-3.5 shrink-0" />
               <span data-slot="sub-agent-question-text">
                 {row.delegation.description} · {t('chat.subAgent.asksFor', { tool: nested.tool_name })}

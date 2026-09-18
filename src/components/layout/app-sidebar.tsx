@@ -64,7 +64,7 @@ import { ClaudeSessionPicker } from './claude-session-picker'
 
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { isRemote } from '@/lib/transport'
 import type { ConversationInfoResponse, ProjectInfoResponse } from '@/types'
 import type { Page } from './shell-props'
@@ -254,8 +254,8 @@ function NewProjectForm({
           isDisabled={saving}
           className="w-full justify-start text-xs"
         >
-          <FolderOpen className="text-muted" />
-          <span data-slot="project-form-path" className={path ? 'text-foreground truncate' : 'text-muted'}>
+          <FolderOpen className="text-text-secondary" />
+          <span data-slot="project-form-path" className={path ? 'text-text-primary truncate' : 'text-text-secondary'}>
             {path || t('sidebar.browsePath')}
           </span>
         </Button>
@@ -275,7 +275,7 @@ function NewProjectForm({
         />
       )}
       {error && (
-        <p data-slot="project-form-error" role="alert" className="text-xs text-danger">
+        <p data-slot="project-form-error" role="alert" className="text-xs text-status-danger">
           {error}
         </p>
       )}
@@ -360,8 +360,11 @@ function NewHostedSessionForm({
           onPress={() => void handleBrowse()}
           className="w-full justify-start text-xs"
         >
-          <FolderOpen className="text-muted" />
-          <span data-slot="hosted-session-form-path" className={path ? 'text-foreground truncate' : 'text-muted'}>
+          <FolderOpen className="text-text-secondary" />
+          <span
+            data-slot="hosted-session-form-path"
+            className={path ? 'text-text-primary truncate' : 'text-text-secondary'}
+          >
             {path || t('sidebar.hostedSessionFolder')}
           </span>
         </Button>
@@ -382,7 +385,7 @@ function NewHostedSessionForm({
         />
       )}
       {error && (
-        <p data-slot="hosted-session-form-error" role="alert" className="text-xs text-danger">
+        <p data-slot="hosted-session-form-error" role="alert" className="text-xs text-status-danger">
           {error}
         </p>
       )}
@@ -484,7 +487,7 @@ function RowActionItems({ actions }: { actions: RowAction[] }) {
             <Label>{action.label}</Label>
             {/* Beside the label rather than in a tooltip — see `RowAction`. */}
             {action.disabledReason && (
-              <span data-slot="row-action-disabled-reason" className="ml-auto shrink-0 text-xs text-muted">
+              <span data-slot="row-action-disabled-reason" className="ml-auto shrink-0 text-xs text-text-secondary">
                 {action.disabledReason}
               </span>
             )}
@@ -560,9 +563,9 @@ function FoldedMenu({
     <Sidebar.Menu aria-label={label}>
       <Sidebar.MenuItem id={id} textValue={label} onAction={onToggle}>
         <Sidebar.MenuIcon>{icon}</Sidebar.MenuIcon>
-        <Sidebar.MenuLabel className="text-muted text-xs">{label}</Sidebar.MenuLabel>
+        <Sidebar.MenuLabel className="text-text-secondary text-xs">{label}</Sidebar.MenuLabel>
         <Sidebar.MenuChip>
-          <ChevronRight className={cn('size-3 text-muted transition-transform', expanded && 'rotate-90')} />
+          <ChevronRight className={cx('size-3 text-text-secondary transition-transform', expanded && 'rotate-90')} />
         </Sidebar.MenuChip>
       </Sidebar.MenuItem>
       {expanded && children}
@@ -654,9 +657,9 @@ function ConversationGroup({
                   folded ? t('sidebar.unfoldGroup', { name: title }) : t('sidebar.foldGroup', { name: title })
                 }
                 onPress={onToggleFold}
-                className="touch-hitbox size-5 shrink-0 rounded-md text-muted"
+                className="touch-hitbox size-5 shrink-0 rounded-md text-text-secondary"
               >
-                <ChevronRight className={cn('size-3 transition-transform', !folded && 'rotate-90')} />
+                <ChevronRight className={cx('size-3 transition-transform', !folded && 'rotate-90')} />
               </Button>
               <Tooltip>
                 {folded ? t('sidebar.unfoldGroup', { name: title }) : t('sidebar.foldGroup', { name: title })}
@@ -671,9 +674,9 @@ function ConversationGroup({
                 // files and which workspace the empty state reads — state, so
                 // `aria-pressed` rather than `aria-current`.
                 isSelected={isCurrent}
-                className={cn(
+                className={cx(
                   'h-6 min-w-0 flex-1 justify-start rounded-sm px-1 text-xs font-medium',
-                  isCurrent ? 'text-foreground' : 'text-muted',
+                  isCurrent ? 'text-text-primary' : 'text-text-secondary',
                 )}
               >
                 <span data-slot="sidebar-group-title" className="truncate">
@@ -693,7 +696,7 @@ function ConversationGroup({
                   variant="ghost"
                   aria-label={projectId ? t('sidebar.newConversationIn', { name: title }) : t('sidebar.newChat')}
                   onPress={onNewConversation}
-                  className="touch-hitbox size-6 rounded-md text-muted"
+                  className="touch-hitbox size-6 rounded-md text-text-secondary"
                 >
                   <Plus />
                 </Button>
@@ -1214,7 +1217,7 @@ export function AppSidebar({
           </span>
           {/* Pinned rows were sorted to the top and said nothing about why they
               were there. */}
-          {conv.is_pinned && <Pin aria-label={t('contextMenu.pin')} className="size-3 text-muted" />}
+          {conv.is_pinned && <Pin aria-label={t('contextMenu.pin')} className="size-3 text-text-secondary" />}
           <ConversationIndicator conversationId={conv.id} activeId={activeId} transcriptInert={page === 'settings'} />
         </Sidebar.MenuChip>
         <RowActionsMenu label={title} actions={conversationActions(conv)} />
@@ -1385,7 +1388,7 @@ export function AppSidebar({
                     <Sidebar.MenuIcon>
                       <FolderPlus />
                     </Sidebar.MenuIcon>
-                    <Sidebar.MenuLabel className="text-muted">{t('sidebar.newProject')}</Sidebar.MenuLabel>
+                    <Sidebar.MenuLabel className="text-text-secondary">{t('sidebar.newProject')}</Sidebar.MenuLabel>
                   </Sidebar.MenuItem>
                 </Sidebar.Menu>
                 {showNewProject && (

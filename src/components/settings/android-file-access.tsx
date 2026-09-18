@@ -88,13 +88,13 @@ export function AndroidFileAccess() {
         <h3 data-slot="file-access-title" className="text-sm font-medium">
           {t('settings.fileAccess.title')}
         </h3>
-        <p data-slot="file-access-description" className="text-xs text-muted">
+        <p data-slot="file-access-description" className="text-xs text-text-secondary">
           {t('settings.fileAccess.description')}
         </p>
       </div>
 
       <div data-slot="file-access-saf" className="space-y-1.5">
-        <p data-slot="file-access-saf-label" className="block text-xs font-medium text-muted">
+        <p data-slot="file-access-saf-label" className="block text-xs font-medium text-text-secondary">
           {t('settings.fileAccess.safDirs')}
         </p>
         {safRoots.length === 0 ? (
@@ -115,7 +115,7 @@ export function AndroidFileAccess() {
                   <div data-slot="file-access-saf-root-name" className="truncate font-medium">
                     {root.display_name}
                   </div>
-                  <div data-slot="file-access-saf-root-prefix" className="truncate text-xs text-muted">
+                  <div data-slot="file-access-saf-root-prefix" className="truncate text-xs text-text-secondary">
                     {root.virtual_prefix}
                   </div>
                 </div>
@@ -153,14 +153,14 @@ export function AndroidFileAccess() {
             <CellSwitch.Control />
           </CellSwitch.Trigger>
         </CellSwitch>
-        <p id="manage-storage-hint" data-slot="file-access-manage-hint" className="text-xs text-muted">
+        <p id="manage-storage-hint" data-slot="file-access-manage-hint" className="text-xs text-text-secondary">
           {manageEnabled && !manageGranted
             ? t('settings.fileAccess.manageNotGranted')
             : t('settings.fileAccess.manageHint')}
         </p>
       </div>
 
-      <p data-slot="file-access-approval-note" className="text-xs text-muted">
+      <p data-slot="file-access-approval-note" className="text-xs text-text-secondary">
         {t('settings.fileAccess.approvalNote')}
       </p>
     </div>

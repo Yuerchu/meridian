@@ -1,6 +1,6 @@
 import { Microphone, StopFill } from '@gravity-ui/icons'
 import { Button, Tooltip, TooltipTrigger } from '@/components/base'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 export type VoiceButtonState =
   | 'idle'
@@ -47,7 +47,7 @@ export function VoiceButton({
   return (
     <div data-slot="voice-button" className="flex items-center gap-1.5">
       {recording && (
-        <span data-slot="voice-button-elapsed" className="text-xs tabular-nums text-danger select-none">
+        <span data-slot="voice-button-elapsed" className="text-xs tabular-nums text-status-danger select-none">
           {Math.floor(elapsed / 60)}:{String(Math.floor(elapsed % 60)).padStart(2, '0')}
         </span>
       )}
@@ -59,10 +59,10 @@ export function VoiceButton({
           variant={recording ? 'danger-soft' : 'ghost'}
           isDisabled={disabled}
           isPending={state === 'transcribing'}
-          className={cn(
+          className={cx(
             'touch-hitbox touch-none select-none',
-            state === 'starting' && 'text-muted',
-            state !== 'starting' && !recording && 'text-muted hover:text-foreground',
+            state === 'starting' && 'text-text-secondary',
+            state !== 'starting' && !recording && 'text-text-secondary hover:text-text-primary',
           )}
           onPointerDown={onPointerDown}
           onPointerUp={onPointerUp}

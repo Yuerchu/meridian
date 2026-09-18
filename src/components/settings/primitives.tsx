@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { Button, Select, SelectItem, Skeleton } from '@/components/base'
 import { Check, ChevronRight } from '@gravity-ui/icons'
 
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 /**
  * The three shapes every settings panel was already drawing by hand.
@@ -34,7 +34,7 @@ import { cn } from '@/lib/utils'
  * one and does not portal itself — see the two call sites, which do it for it.
  */
 export function SettingsPane({ className, ...props }: React.ComponentProps<'div'>) {
-  return <div data-slot="settings-pane" className={cn('@container/pane space-y-6 max-w-lg', className)} {...props} />
+  return <div data-slot="settings-pane" className={cx('@container/pane space-y-6 max-w-lg', className)} {...props} />
 }
 
 export function SettingsHeader({
@@ -49,13 +49,13 @@ export function SettingsHeader({
   actions?: React.ReactNode
 }) {
   return (
-    <div data-slot="settings-header" className={cn('flex items-start justify-between gap-2', className)} {...props}>
+    <div data-slot="settings-header" className={cx('flex items-start justify-between gap-2', className)} {...props}>
       <div data-slot="settings-header-text" className="min-w-0">
         <h2 data-slot="settings-header-title" className="text-lg font-medium">
           {title}
         </h2>
         {subtitle && (
-          <p data-slot="settings-header-subtitle" className="mt-1 text-xs text-muted">
+          <p data-slot="settings-header-subtitle" className="mt-1 text-xs text-text-secondary">
             {subtitle}
           </p>
         )}
@@ -107,15 +107,18 @@ export function SettingsRow({
       // missing it.
       aria-current={isActive || undefined}
       variant="ghost"
-      className={cn(
+      className={cx(
         'min-h-11 w-full justify-start gap-3 rounded-lg px-3 py-2 font-normal',
-        'data-active:bg-default data-active:text-default-foreground',
+        'data-active:bg-background-tertiary-default data-active:text-text-primary',
         className,
       )}
       {...props}
     >
       {icon && (
-        <span data-slot="settings-row-icon" className="flex size-4 shrink-0 items-center justify-center text-muted">
+        <span
+          data-slot="settings-row-icon"
+          className="flex size-4 shrink-0 items-center justify-center text-text-secondary"
+        >
           {icon}
         </span>
       )}
@@ -123,11 +126,11 @@ export function SettingsRow({
         {label}
       </span>
       {value && (
-        <span data-slot="settings-row-value" className="shrink-0 truncate text-xs text-muted">
+        <span data-slot="settings-row-value" className="shrink-0 truncate text-xs text-text-secondary">
           {value}
         </span>
       )}
-      {trailing === undefined ? <ChevronRight className="size-4 shrink-0 text-muted" /> : trailing}
+      {trailing === undefined ? <ChevronRight className="size-4 shrink-0 text-text-secondary" /> : trailing}
     </Button>
   )
 }
@@ -145,7 +148,7 @@ export function SavedHint({ className, ...props }: React.ComponentProps<'span'>)
     <span
       data-slot="saved-hint"
       role="status"
-      className={cn('flex items-center gap-1 text-xs text-success-soft-foreground', className)}
+      className={cx('flex items-center gap-1 text-xs text-status-success-soft-foreground', className)}
       {...props}
     >
       <Check className="size-3.5" />
@@ -178,7 +181,7 @@ export function SettingsSkeleton({ rows = 4, className, ...props }: React.Compon
       role="status"
       aria-busy="true"
       aria-label={t('common.loading')}
-      className={cn('space-y-6 max-w-lg', className)}
+      className={cx('space-y-6 max-w-lg', className)}
       {...props}
     >
       <div data-slot="settings-skeleton-header" className="space-y-2">

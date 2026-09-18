@@ -1,12 +1,12 @@
 import * as React from 'react'
 import { dom, tv, type VariantProps } from '@/components/base'
 
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 export type BubblePosition = 'single' | 'first' | 'middle' | 'last'
 
 function BubbleGroup({ className, ...props }: React.ComponentProps<'div'>) {
-  return <div data-slot="bubble-group" className={cn('flex min-w-0 flex-col gap-2', className)} {...props} />
+  return <div data-slot="bubble-group" className={cx('flex min-w-0 flex-col gap-2', className)} {...props} />
 }
 
 /**
@@ -73,15 +73,16 @@ const bubbleVariants = tv({
        *  the room. */
       assistant:
         'max-w-[85%] [--bubble-fill:var(--bubble-assistant)] [--bubble-ink:var(--bubble-assistant-foreground)]',
-      muted: '[--bubble-fill:var(--default)] [--bubble-ink:var(--foreground)]',
+      muted: '[--bubble-fill:var(--color-background-secondary-default)] [--bubble-ink:var(--color-text-primary)]',
       // The two that are not a fill with a lift on it: an outline bubble is
       // drawn by its edge, and hovering one changes colour rather than
       // brightening, so both keep a rule of their own.
       outline:
-        '[--bubble-fill:var(--background)] [--bubble-ink:var(--foreground)] [--bubble-edge:var(--border)] [&_[data-bubble-block]:is(button,a):hover]:bg-default [&_[data-bubble-block]:is(button,a):hover]:text-foreground dark:[&_[data-bubble-block]:is(button,a):hover]:bg-field/30',
+        '[--bubble-fill:var(--color-background-full)] [--bubble-ink:var(--color-text-primary)] [--bubble-edge:var(--color-border-button-default)] [&_[data-bubble-block]:is(button,a):hover]:bg-background-secondary-default [&_[data-bubble-block]:is(button,a):hover]:text-text-primary dark:[&_[data-bubble-block]:is(button,a):hover]:bg-background-tertiary-default/30',
       ghost:
-        'border-none [--bubble-fill:transparent] [--bubble-ink:var(--foreground)] [&_[data-bubble-block]]:rounded-none [&_[data-bubble-block]]:p-0 [&_[data-bubble-block]:is(button,a):hover]:bg-default [&_[data-bubble-block]:is(button,a):hover]:text-foreground dark:[&_[data-bubble-block]:is(button,a):hover]:bg-default/50',
-      destructive: '[--bubble-fill:var(--danger-soft)] [--bubble-ink:var(--danger-soft-foreground)] [--bubble-lift:8%]',
+        'border-none [--bubble-fill:transparent] [--bubble-ink:var(--color-text-primary)] [&_[data-bubble-block]]:rounded-none [&_[data-bubble-block]]:p-0 [&_[data-bubble-block]:is(button,a):hover]:bg-background-secondary-default [&_[data-bubble-block]:is(button,a):hover]:text-text-primary dark:[&_[data-bubble-block]:is(button,a):hover]:bg-background-secondary-default/50',
+      destructive:
+        '[--bubble-fill:var(--color-status-danger-soft)] [--bubble-ink:var(--color-status-danger-soft-foreground)] [--bubble-lift:8%]',
     },
     // The corners, and the only rules here that need a block to be a direct
     // child. Two questions per side: is one of ours directly above, and is one
@@ -131,13 +132,13 @@ const bubbleVariants = tv({
 const BUBBLE_BLOCK = [
   'max-w-full min-w-0 overflow-hidden rounded-2xl',
   'bg-[var(--bubble-fill,var(--bubble-assistant))] text-[var(--bubble-ink,var(--bubble-assistant-foreground))]',
-  '[&:is(button,a):hover]:bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--foreground)_var(--bubble-lift,5%))]',
+  '[&:is(button,a):hover]:bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--color-text-primary)_var(--bubble-lift,5%))]',
 ]
 
 /** The hover wash for a control *inside* a block — a disclosure head, a row —
  *  which cannot use the rule above because it is not the block itself. */
 const BUBBLE_BLOCK_HOVER =
-  'hover:bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--foreground)_var(--bubble-lift,5%))]'
+  'hover:bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--color-text-primary)_var(--bubble-lift,5%))]'
 
 /**
  * Says so when a block has been buried under a wrapper, in development only.
@@ -182,7 +183,7 @@ function Bubble({
       data-variant={variant}
       data-align={align}
       data-position={position}
-      className={cn(bubbleVariants({ variant, align, position }), className)}
+      className={cx(bubbleVariants({ variant, align, position }), className)}
       {...props}
     />
   )
@@ -193,9 +194,9 @@ function BubbleContent({ className, render, ...props }: React.ComponentProps<typ
     <dom.div
       data-slot="bubble-content"
       data-bubble-block=""
-      className={cn(
+      className={cx(
         BUBBLE_BLOCK,
-        'w-fit border border-[var(--bubble-edge,transparent)] px-3 py-2 text-sm leading-relaxed wrap-break-word group-data-[align=end]/bubble:self-end [button]:text-left [button,a]:transition-colors [button,a]:outline-none [button,a]:focus-visible:border-focus [button,a]:focus-visible:ring-3 [button,a]:focus-visible:ring-focus/50',
+        'w-fit border border-[var(--bubble-edge,transparent)] px-3 py-2 text-sm leading-relaxed wrap-break-word group-data-[align=end]/bubble:self-end [button]:text-left [button,a]:transition-colors [button,a]:outline-none [button,a]:focus-visible:border-border-focus-ring [button,a]:focus-visible:ring-3 [button,a]:focus-visible:ring-border-focus-ring/50',
         className,
       )}
       render={render}
@@ -218,7 +219,7 @@ function BubbleTime({ className, ...props }: React.ComponentProps<'time'>) {
   return (
     <time
       data-slot="bubble-time"
-      className={cn('text-xs leading-none whitespace-nowrap text-muted select-none', className)}
+      className={cx('text-xs leading-none whitespace-nowrap text-text-secondary select-none', className)}
       {...props}
     />
   )

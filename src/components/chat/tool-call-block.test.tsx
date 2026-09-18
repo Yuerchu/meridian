@@ -365,7 +365,7 @@ describe('the interactive cards say what became of them', () => {
     const slot = name === 'enter_plan' ? 'enter-plan' : 'exit-plan'
     const ringed = (status: ToolCallDisplay['status']) => {
       const { container, unmount } = render(<ToolCallBlock data={toolCall(name, args, status)} />)
-      const on = container.querySelector(`[data-slot="${slot}"]`)!.className.includes('ring-info')
+      const on = container.querySelector(`[data-slot="${slot}"]`)!.className.includes('ring-status-info')
       unmount()
       return on
     }

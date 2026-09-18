@@ -116,7 +116,7 @@ function SkillEditor({
           />
           <Description>{t('settings.skills.dirNameHint')}</Description>
           {dirName.trim().length > 0 && !dirNameValid && (
-            <p data-slot="skill-editor-error" className="text-xs text-danger">
+            <p data-slot="skill-editor-error" className="text-xs text-status-danger">
               {t('settings.skills.dirNameInvalid')}
             </p>
           )}
@@ -147,7 +147,7 @@ function SkillEditor({
       <TextField>
         <Label>{t('settings.skills.body')}</Label>
         {bodyLoading ? (
-          <p data-slot="skill-editor-hint" className="text-xs text-muted">
+          <p data-slot="skill-editor-hint" className="text-xs text-text-secondary">
             {t('common.loading')}
           </p>
         ) : (
@@ -163,13 +163,13 @@ function SkillEditor({
       </TextField>
 
       {isBuiltin && (
-        <p data-slot="skill-editor-builtin-notice" className="text-xs text-info-soft-foreground">
+        <p data-slot="skill-editor-builtin-notice" className="text-xs text-status-info-soft-foreground">
           {t('settings.skills.builtinNotice')}
         </p>
       )}
 
       {error && (
-        <p data-slot="skill-editor-error" className="text-xs text-danger">
+        <p data-slot="skill-editor-error" className="text-xs text-status-danger">
           {error}
         </p>
       )}
@@ -185,7 +185,7 @@ function SkillEditor({
               iconOnly
               variant="ghost"
               aria-label={t('settings.skills.delete')}
-              className="ml-auto text-muted hover:text-danger"
+              className="ml-auto text-text-secondary hover:text-status-danger"
               onPress={onDelete}
             >
               <TrashBin className="w-3.5 h-3.5" />
@@ -286,7 +286,7 @@ export function SkillSettings() {
       />
 
       {error && (
-        <p data-slot="skill-settings-error" className="text-xs text-danger">
+        <p data-slot="skill-settings-error" className="text-xs text-status-danger">
           {error}
         </p>
       )}
@@ -319,7 +319,7 @@ export function SkillSettings() {
               key={skill.dir_name}
               id={skill.dir_name}
               data-slot="skill-item"
-              className="flex w-full flex-col overflow-hidden rounded-lg border border-border"
+              className="flex w-full flex-col overflow-hidden rounded-lg border border-border-button-default"
             >
               {/* A container query, not a viewport one. The row wraps when the
                   two labelled checkboxes (about 130px between them) would leave
@@ -345,8 +345,8 @@ export function SkillSettings() {
                       `ms-auto` and `shrink-0`, which only mean anything inside a
                       flex container. `text-start` undoes the button element's
                       centred UA default. */}
-                  <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2 text-start text-xs transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30">
-                    <BookOpen className="w-3.5 h-3.5 shrink-0 text-muted" />
+                  <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2 text-start text-xs transition-colors outline-none hover:bg-background-primary-hover/30 focus-visible:bg-background-secondary-default/30">
+                    <BookOpen className="w-3.5 h-3.5 shrink-0 text-text-secondary" />
                     {/* The label row absorbs the slack, so the badge and the
                         chevron sit at the right edge without a second auto
                         margin fighting the indicator's own `ms-auto`. */}
@@ -354,14 +354,14 @@ export function SkillSettings() {
                       <span data-slot="skill-item-name" className="truncate">
                         {skill.display_name}
                       </span>
-                      <span data-slot="skill-item-slug" className="font-mono text-muted truncate">
+                      <span data-slot="skill-item-slug" className="font-mono text-text-secondary truncate">
                         {skill.llm_name}
                       </span>
                     </div>
-                    <Chip data-slot="skill-item-source" className="shrink-0 text-muted">
+                    <Chip data-slot="skill-item-source" className="shrink-0 text-text-secondary">
                       {t(`settings.skills.source.${skill.source}`)}
                     </Chip>
-                    <Disclosure.Indicator className="size-3.5 shrink-0 text-muted" />
+                    <Disclosure.Indicator className="size-3.5 shrink-0 text-text-secondary" />
                   </Disclosure.Trigger>
                 </Disclosure.Heading>
                 <Checkbox
@@ -395,7 +395,7 @@ export function SkillSettings() {
                       read every skill's file on every visit to this page. */}
                   {isExpanded && (
                     <>
-                      <p data-slot="skill-item-description" className="text-xs text-muted">
+                      <p data-slot="skill-item-description" className="text-xs text-text-secondary">
                         {skill.llm_description}
                       </p>
                       <SkillEditor
@@ -433,7 +433,7 @@ export function SkillSettings() {
         )}
       </DisclosureGroup>
 
-      <p data-slot="skill-settings-global-hint" className="text-xs text-muted">
+      <p data-slot="skill-settings-global-hint" className="text-xs text-text-secondary">
         {t('settings.skills.globalBindingHint')}
       </p>
       {confirmDialog}

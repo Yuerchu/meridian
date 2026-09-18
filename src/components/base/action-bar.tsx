@@ -13,7 +13,7 @@ function ActionBarRoot({ className, isOpen, ...props }: ActionBarProps) {
       {...props}
       className={cx(
         'fixed inset-x-0 bottom-4 z-50 mx-auto flex w-fit items-center gap-2 rounded-xl border border-border-button-default bg-background-primary-default px-3 py-2 shadow-dropdown',
-        'animate-in fade-in-0 slide-in-from-bottom-2 duration-200',
+        'motion-safe:animate-[meridian-rise-in_200ms_ease-out]',
         className,
       )}
     />

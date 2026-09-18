@@ -161,7 +161,7 @@ export function VoiceSettings() {
       <SettingsHeader title={t('settings.voice.title')} subtitle={t('settings.voice.intro')} />
 
       <div data-slot="voice-model" className="space-y-1.5">
-        <p data-slot="voice-section-label" className="block text-xs font-medium text-muted">
+        <p data-slot="voice-section-label" className="block text-xs font-medium text-text-secondary">
           {t('settings.voice.model')}
         </p>
         <Card>
@@ -170,7 +170,7 @@ export function VoiceSettings() {
               data-slot="voice-model-loading"
               role="status"
               aria-label={t('common.loading')}
-              className="flex items-center gap-2 p-4 text-sm text-muted"
+              className="flex items-center gap-2 p-4 text-sm text-text-secondary"
             >
               <Spinner aria-hidden="true" size="sm" />
               {t('common.loading')}
@@ -210,7 +210,7 @@ export function VoiceSettings() {
                   <ProgressCircle.FillCircle />
                 </ProgressCircle.Track>
               </ProgressCircle>
-              <span data-slot="voice-download-progress" className="text-xs text-muted flex-1">
+              <span data-slot="voice-download-progress" className="text-xs text-text-secondary flex-1">
                 {formatSize(progress.downloaded, sizeNumber)}
                 {progress.total ? ` / ${formatSize(progress.total, sizeNumber)}` : ''}
               </span>
@@ -244,7 +244,7 @@ export function VoiceSettings() {
                   </Button>
                 </div>
                 {!can.importFromDisk && (
-                  <p data-slot="voice-import-unavailable" className="text-xs text-muted">
+                  <p data-slot="voice-import-unavailable" className="text-xs text-text-secondary">
                     {t('capability.importFromDisk')}
                   </p>
                 )}
@@ -252,7 +252,7 @@ export function VoiceSettings() {
             </>
           )}
           {error && (
-            <p data-slot="voice-error" role="alert" className="text-xs text-danger">
+            <p data-slot="voice-error" role="alert" className="text-xs text-status-danger">
               {error}
             </p>
           )}

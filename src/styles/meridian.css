@@ -157,3 +157,98 @@
     filter: blur(3px);
   }
 }
+
+/* ---------------------------------------------------------------- app-level */
+
+:root {
+  /* The two bubble fills of the transcript. Who is speaking is the one colour
+     on screen that carries meaning, so it is a token of its own rather than the
+     action colour or the hover wash written at the call site — and it stays
+     neutral while `accent` is boardui blue. */
+  --bubble-user: var(--color-neutral-950);
+  --bubble-user-foreground: var(--color-white);
+  --bubble-assistant: var(--color-neutral-100);
+  --bubble-assistant-foreground: var(--color-neutral-950);
+
+  --scrollbar-thumb: var(--color-neutral-200);
+  --scrollbar-track: transparent;
+
+  /* Insets the native shell reports (`use-android-insets.ts`), with the CSS
+     environment as the fallback for a plain WebView. Zero on a desktop. */
+  --safe-top: var(--native-inset-top, env(safe-area-inset-top, 0px));
+  --safe-bottom: var(--native-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --safe-left: var(--native-inset-left, env(safe-area-inset-left, 0px));
+  --safe-right: var(--native-inset-right, env(safe-area-inset-right, 0px));
+}
+
+.dark {
+  --bubble-user: var(--color-neutral-200);
+  --bubble-user-foreground: var(--color-neutral-950);
+  --bubble-assistant: var(--color-neutral-800);
+  --bubble-assistant-foreground: var(--color-neutral-50);
+
+  --scrollbar-thumb: color-mix(in srgb, var(--color-white) 12%, transparent);
+}
+
+@theme inline {
+  --color-bubble-user: var(--bubble-user);
+  --color-bubble-user-foreground: var(--bubble-user-foreground);
+  --color-bubble-assistant: var(--bubble-assistant);
+  --color-bubble-assistant-foreground: var(--bubble-assistant-foreground);
+
+  --animate-spin-fast: spin 0.75s linear infinite;
+  --animate-skeleton: skeleton 2s linear infinite;
+  --animate-caret-blink: caret-blink 1.2s ease-out infinite;
+
+  @keyframes skeleton {
+    100% {
+      transform: translateX(200%);
+    }
+  }
+  @keyframes caret-blink {
+    0%,
+    70%,
+    100% {
+      opacity: 1;
+    }
+    20%,
+    50% {
+      opacity: 0;
+    }
+  }
+}
+
+@layer base {
+  /* Every box's default edge colour, so a bare `border` draws the hairline. */
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-border-button-default, currentColor);
+  }
+}
+
+/* Scrollbars. Chromium ignores `scrollbar-width` once ::-webkit-scrollbar is
+   sized, so these are the answer everywhere; `scrollbar-none` still hides. */
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+@utility scrollbar-gutter-stable {
+  scrollbar-gutter: stable;
+}
+@utility scrollbar-thumb-transparent {
+  scrollbar-color: transparent transparent;
+  &::-webkit-scrollbar-thumb {
+    background-color: transparent;
+  }
+}
+@utility scrollbar-track-transparent {
+  scrollbar-color: transparent transparent;
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}

@@ -135,7 +135,7 @@ export function MemorySettings() {
           </div>
 
           {actionError && (
-            <p data-slot="memory-action-error" role="alert" className="text-xs text-danger break-all">
+            <p data-slot="memory-action-error" role="alert" className="text-xs text-status-danger break-all">
               {actionError}
             </p>
           )}
@@ -255,7 +255,7 @@ export function MemorySettings() {
               <ActionBar.Prefix>
                 {/* The count is the only thing that says a selection exists, so
                   it announces itself rather than only appearing. */}
-                <span data-slot="memory-selected-count" aria-live="polite" className="text-sm text-muted">
+                <span data-slot="memory-selected-count" aria-live="polite" className="text-sm text-text-secondary">
                   {t('settings.memory.selectedCount', { count: browser.selected.size })}
                 </span>
               </ActionBar.Prefix>
@@ -286,7 +286,7 @@ export function MemorySettings() {
                     browser.refresh()
                   }}
                 >
-                  <TrashBin className="text-danger" />
+                  <TrashBin className="text-status-danger" />
                   {t('settings.memory.deleteSelected')}
                 </Button>
               </ActionBar.Content>

@@ -5,7 +5,7 @@ import { Button, Card, Meter } from '@/components/base'
 
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { encodePcm16Base64, openCapture } from '@/lib/web-audio-capture'
 import { SettingsHeader, SettingsPane } from './primitives'
 
@@ -303,7 +303,7 @@ export function DeveloperSettings() {
       <SettingsHeader title={t('settings.developer.title')} subtitle={t('settings.developer.intro')} />
 
       <div data-slot="developer-css-probe" className="space-y-1.5">
-        <p data-slot="developer-section-label" className="text-xs font-medium text-muted">
+        <p data-slot="developer-section-label" className="text-xs font-medium text-text-secondary">
           {t('settings.developer.cssProbe')}
         </p>
         <Card>
@@ -317,14 +317,14 @@ export function DeveloperSettings() {
               return (
                 <div key={probe.name} data-slot="css-probe-line" className="flex items-center gap-2 text-sm">
                   {ok ? (
-                    <CircleCheck className="size-4 shrink-0 text-success" />
+                    <CircleCheck className="size-4 shrink-0 text-status-success" />
                   ) : (
-                    <CircleXmark className="size-4 shrink-0 text-danger" />
+                    <CircleXmark className="size-4 shrink-0 text-status-danger" />
                   )}
                   <span data-slot="css-probe-name" className="font-mono text-xs">
                     {probe.name}
                   </span>
-                  <span data-slot="css-probe-note" className="text-xs text-muted">
+                  <span data-slot="css-probe-note" className="text-xs text-text-secondary">
                     {probe.note}
                   </span>
                 </div>
@@ -337,7 +337,7 @@ export function DeveloperSettings() {
       <div data-slot="developer-mic-probe" className="space-y-1.5">
         {/* Names the section, not a control — there is no field under it, only a
             card that titles itself. It was a `<label>` pointing at nothing. */}
-        <p data-slot="developer-section-label" className="text-xs font-medium text-muted">
+        <p data-slot="developer-section-label" className="text-xs font-medium text-text-secondary">
           {t('settings.developer.micProbe')}
         </p>
         <Card>
@@ -367,7 +367,7 @@ export function DeveloperSettings() {
 
           {recording && (
             <div data-slot="mic-probe-level" className="space-y-1">
-              <p data-slot="mic-probe-speak-now" className="text-xs text-danger">
+              <p data-slot="mic-probe-speak-now" className="text-xs text-status-danger">
                 {t('settings.developer.probe.speakNow')}
               </p>
               {/* A meter, not a progress bar: this is a level within a known
@@ -378,8 +378,8 @@ export function DeveloperSettings() {
                 value={Math.min(100, peak * 140)}
                 className="w-full"
               >
-                <Meter.Track className="h-2 rounded-full bg-default">
-                  <Meter.Fill className="bg-success transition-[width] duration-75" />
+                <Meter.Track className="h-2 rounded-full bg-background-secondary-default">
+                  <Meter.Fill className="bg-status-success transition-[width] duration-75" />
                 </Meter.Track>
               </Meter>
             </div>
@@ -390,20 +390,23 @@ export function DeveloperSettings() {
               {lines.map((l) => (
                 <li key={l.id} data-slot="mic-probe-line" className="flex items-start gap-2">
                   {l.verdict === 'pass' ? (
-                    <CircleCheck className="mt-0.5 w-3.5 h-3.5 shrink-0 text-success" />
+                    <CircleCheck className="mt-0.5 w-3.5 h-3.5 shrink-0 text-status-success" />
                   ) : l.verdict === 'fail' ? (
-                    <CircleXmark className="mt-0.5 w-3.5 h-3.5 shrink-0 text-danger" />
+                    <CircleXmark className="mt-0.5 w-3.5 h-3.5 shrink-0 text-status-danger" />
                   ) : (
-                    <span data-slot="mic-probe-pending-mark" className="mt-0.5 w-3.5 shrink-0 text-center text-muted">
+                    <span
+                      data-slot="mic-probe-pending-mark"
+                      className="mt-0.5 w-3.5 shrink-0 text-center text-text-secondary"
+                    >
                       ·
                     </span>
                   )}
                   <span data-slot="mic-probe-line-text" className="min-w-0">
-                    <span data-slot="mic-probe-line-label" className={cn(l.verdict === 'fail' && 'text-danger')}>
+                    <span data-slot="mic-probe-line-label" className={cx(l.verdict === 'fail' && 'text-status-danger')}>
                       {l.label}
                     </span>
                     {l.detail && (
-                      <span data-slot="mic-probe-line-detail" className="ml-1 break-all text-muted">
+                      <span data-slot="mic-probe-line-detail" className="ml-1 break-all text-text-secondary">
                         — {l.detail}
                       </span>
                     )}

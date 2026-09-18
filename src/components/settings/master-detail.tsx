@@ -1,6 +1,6 @@
 import { useCallback, useLayoutEffect, useRef } from 'react'
 
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { SettingsHeader } from './primitives'
 import { SettingsSubPage } from './settings-subpage'
 import type { MasterDetailNav } from './use-master-detail'
@@ -146,7 +146,7 @@ export function MasterDetail<Aux extends string = never>({
     // measurement each time it flipped. Its width comes from the parent and
     // never from what is rendered inside it, so the observer cannot be fed its
     // own output. The three layouts differ below this line.
-    <div data-slot="master-detail" ref={setRoot} className={cn('max-w-3xl', className)}>
+    <div data-slot="master-detail" ref={setRoot} className={cx('max-w-3xl', className)}>
       {nav.isNarrow ? (
         nav.showsDetail ? (
           <SettingsSubPage title={nav.aux !== null ? auxTitle : detailTitle} onBack={nav.back}>
@@ -167,8 +167,8 @@ export function MasterDetail<Aux extends string = never>({
           {atTop && <SettingsHeader title={title} actions={actions} />}
           {aux}
           {emptyState ?? (
-            <div data-slot="master-detail-columns" className={cn('flex', atTop ? 'gap-4' : 'gap-6')}>
-              <div data-slot="master-detail-list-column" className={cn('shrink-0 space-y-2', listWidth)}>
+            <div data-slot="master-detail-columns" className={cx('flex', atTop ? 'gap-4' : 'gap-6')}>
+              <div data-slot="master-detail-list-column" className={cx('shrink-0 space-y-2', listWidth)}>
                 {!atTop && <SettingsHeader title={title} actions={actions} className="mb-3" />}
                 {list}
               </div>
@@ -177,7 +177,7 @@ export function MasterDetail<Aux extends string = never>({
                   and 208px of that width is one the editor never sees. */}
               <div data-slot="master-detail-detail-column" className="@container/pane min-w-0 flex-1">
                 {detail ?? (
-                  <div data-slot="master-detail-empty-detail" className="text-sm text-muted">
+                  <div data-slot="master-detail-empty-detail" className="text-sm text-text-secondary">
                     {emptyDetail}
                   </div>
                 )}

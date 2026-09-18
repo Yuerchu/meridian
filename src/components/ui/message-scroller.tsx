@@ -7,7 +7,7 @@ import {
   useMessageScrollerVisibility,
 } from '@/lib/message-scroller'
 
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { usePlatform } from '@/hooks/use-platform'
 import { Button } from '@/components/base'
 import { ArrowDown } from '@gravity-ui/icons'
@@ -20,7 +20,7 @@ function MessageScroller({ className, ...props }: React.ComponentProps<typeof Me
   return (
     <MessageScrollerPrimitive.Root
       data-slot="message-scroller"
-      className={cn('group/message-scroller relative flex size-full min-h-0 flex-col overflow-hidden', className)}
+      className={cx('group/message-scroller relative flex size-full min-h-0 flex-col overflow-hidden', className)}
       {...props}
     />
   )
@@ -46,7 +46,7 @@ function MessageScrollerViewport({
       // answer row appearing reads to `syncAfterScroll` as the reader leaving
       // the live edge — `follow` became `idle` on the first chunk. Growth above
       // an idle reader is compensated by `useHeightCompensation` instead.
-      className={cn(
+      className={cx(
         'size-full min-h-0 min-w-0 scrollbar-gutter-stable overflow-y-auto overscroll-contain [overflow-anchor:none] data-autoscrolling:scrollbar-thumb-transparent data-autoscrolling:scrollbar-track-transparent',
         className,
       )}
@@ -62,7 +62,7 @@ function MessageScrollerContent({
   return (
     <MessageScrollerPrimitive.Content
       data-slot="message-scroller-content"
-      className={cn('flex h-max min-h-full flex-col gap-6', className)}
+      className={cx('flex h-max min-h-full flex-col gap-6', className)}
       {...props}
     />
   )
@@ -80,7 +80,7 @@ function MessageScrollerItem({
       scrollAnchor={scrollAnchor}
       // content-visibility:auto crashes WebView2 (STATUS_ACCESS_VIOLATION).
       // Android WebView is unaffected — restore the optimization there only.
-      className={cn(
+      className={cx(
         'min-w-0 shrink-0',
         platform === 'android' && '[content-visibility:auto] [contain-intrinsic-size:auto_120px]',
         className,
@@ -96,7 +96,7 @@ function MessageScrollerAnchor({ className, ...props }: React.ComponentProps<typ
   return (
     <MessageScrollerPrimitive.Anchor
       data-slot="message-scroller-anchor"
-      className={cn('min-w-0', className)}
+      className={cx('min-w-0', className)}
       {...props}
     />
   )
@@ -120,8 +120,8 @@ function MessageScrollerButton({
       data-variant={variant}
       data-size={size}
       direction={direction}
-      className={cn(
-        'absolute inset-s-1/2 -translate-x-1/2 border-border bg-background text-foreground transition-[translate,scale,opacity] duration-200 motion-reduce:transition-none hover:bg-default hover:text-foreground data-[active=false]:pointer-events-none data-[active=false]:scale-95 data-[active=false]:opacity-0 data-[active=false]:duration-400 data-[active=false]:ease-[cubic-bezier(0.7,0,0.84,0)] data-[active=true]:translate-y-0 data-[active=true]:scale-100 data-[active=true]:opacity-100 data-[active=true]:ease-[cubic-bezier(0.23,1,0.32,1)] data-[direction=end]:bottom-4 data-[direction=end]:data-[active=false]:translate-y-full data-[direction=start]:top-4 data-[direction=start]:data-[active=false]:-translate-y-full rtl:translate-x-1/2 data-[direction=start]:[&_svg]:rotate-180',
+      className={cx(
+        'absolute inset-s-1/2 -translate-x-1/2 border-border-button-default bg-background-full text-text-primary transition-[translate,scale,opacity] duration-200 motion-reduce:transition-none hover:bg-background-primary-hover hover:text-text-primary data-[active=false]:pointer-events-none data-[active=false]:scale-95 data-[active=false]:opacity-0 data-[active=false]:duration-400 data-[active=false]:ease-[cubic-bezier(0.7,0,0.84,0)] data-[active=true]:translate-y-0 data-[active=true]:scale-100 data-[active=true]:opacity-100 data-[active=true]:ease-[cubic-bezier(0.23,1,0.32,1)] data-[direction=end]:bottom-4 data-[direction=end]:data-[active=false]:translate-y-full data-[direction=start]:top-4 data-[direction=start]:data-[active=false]:-translate-y-full rtl:translate-x-1/2 data-[direction=start]:[&_svg]:rotate-180',
         className,
       )}
       render={

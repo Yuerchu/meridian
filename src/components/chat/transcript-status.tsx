@@ -40,7 +40,7 @@ export function TranscriptStatus({
       {redactionNotice && (
         <MessageScrollerItem messageId="__redaction_notice">
           <Bubble variant="muted">
-            <BubbleContent className="text-xs text-muted">
+            <BubbleContent className="text-xs text-text-secondary">
               {t('chat.redaction.notice', { count: redactionNotice.redactedCount })}
             </BubbleContent>
           </Bubble>

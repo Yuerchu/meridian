@@ -7,7 +7,7 @@ import { PromptInput } from '@/components/base'
 
 import { isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { useFileDrop } from '@/hooks/use-file-drop'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 interface ComposerProps {
   value: string
@@ -147,7 +147,7 @@ export function Composer({
   const sendIsStop = !!streaming && !!onStop && !(steerable && value.trim() !== '')
 
   return (
-    <div ref={shellRef} data-slot="composer" className={cn('relative w-full', className)} data-input-mode={inputMode}>
+    <div ref={shellRef} data-slot="composer" className={cx('relative w-full', className)} data-input-mode={inputMode}>
       {notice}
       {suggestions}
       <PromptInput
@@ -174,10 +174,10 @@ export function Composer({
             {inputMode === 'shell' && (
               <div
                 data-slot="composer-shell-badge"
-                className="flex items-center gap-1.5 px-3 pt-2 text-xs font-medium text-muted"
+                className="flex items-center gap-1.5 px-3 pt-2 text-xs font-medium text-text-secondary"
                 aria-hidden
               >
-                <span data-slot="composer-shell-prefix" className="font-mono text-accent">
+                <span data-slot="composer-shell-prefix" className="font-mono text-button-ghost-foreground">
                   !
                 </span>
                 Shell

@@ -5,7 +5,7 @@ import { api } from '@/api'
 import { Alert, Button, Description, Input, Label, TextField } from '@/components/base'
 import { CellSwitch } from '@/components/base'
 import { ItemCard } from '@/components/base'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import type { AssistantInfoResponse, OneBotConfigInfoResponse, OneBotStatusInfoResponse } from '@/types'
 import { SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
 import { useSettingsDirtyRegistration } from './dirty-guard'
@@ -272,7 +272,7 @@ export function OneBotSettings() {
             <CellSwitch.Control />
           </CellSwitch.Trigger>
         </CellSwitch>
-        <p id="onebot-enabled-hint" data-slot="onebot-enable-hint" className="text-xs text-muted">
+        <p id="onebot-enabled-hint" data-slot="onebot-enable-hint" className="text-xs text-text-secondary">
           {t('settings.onebot.enableHint')}
         </p>
       </div>
@@ -354,7 +354,7 @@ export function OneBotSettings() {
             <CellSwitch.Control />
           </CellSwitch.Trigger>
         </CellSwitch>
-        <p id="onebot-voice-send-hint" data-slot="onebot-voice-send-hint" className="text-xs text-muted">
+        <p id="onebot-voice-send-hint" data-slot="onebot-voice-send-hint" className="text-xs text-text-secondary">
           {t('settings.onebot.voiceSendHint')}
         </p>
       </div>
@@ -418,7 +418,7 @@ export function OneBotSettings() {
               because one of the four is a keychain entry this page never
               sees. */}
           {voiceReady && !voiceReady.ready && (
-            <p data-slot="onebot-voice-not-ready" role="status" className="text-xs text-warning">
+            <p data-slot="onebot-voice-not-ready" role="status" className="text-xs text-status-warning">
               {t('settings.onebot.voiceNotReady', {
                 missing: [
                   !voiceReady.has_model && t('settings.onebot.voiceTtsModel'),
@@ -445,7 +445,7 @@ export function OneBotSettings() {
       </TextField>
 
       {error && (
-        <p data-slot="onebot-error" role="alert" className="text-xs text-danger break-all">
+        <p data-slot="onebot-error" role="alert" className="text-xs text-status-danger break-all">
           {error}
         </p>
       )}
@@ -477,7 +477,10 @@ export function OneBotSettings() {
               <span
                 data-slot="onebot-status-dot"
                 aria-hidden
-                className={cn('inline-block size-2 shrink-0 rounded-full', running ? 'bg-success' : 'bg-default')}
+                className={cx(
+                  'inline-block size-2 shrink-0 rounded-full',
+                  running ? 'bg-status-success' : 'bg-background-secondary-default',
+                )}
               />
               {running ? t('settings.onebot.statusRunning') : t('settings.onebot.statusStopped')}
             </ItemCard.Title>

@@ -37,7 +37,7 @@ export function ConversationIndicator({
           data-slot="conversation-indicator-dot"
           aria-hidden
           // eslint-disable-next-line no-restricted-syntax -- a live status dot pulses; it is not a placeholder
-          className="block size-2 rounded-full bg-warning animate-pulse motion-reduce:animate-none"
+          className="block size-2 rounded-full bg-status-warning animate-pulse motion-reduce:animate-none"
         />
         <span data-slot="conversation-indicator-label" className="sr-only">
           {t('sidebar.status.waiting')}
@@ -53,7 +53,7 @@ export function ConversationIndicator({
           data-slot="conversation-indicator-dot"
           aria-hidden
           // eslint-disable-next-line no-restricted-syntax -- a live status dot pulses; it is not a placeholder
-          className="block size-2 rounded-full bg-info animate-pulse motion-reduce:animate-none"
+          className="block size-2 rounded-full bg-status-info animate-pulse motion-reduce:animate-none"
         />
         <span data-slot="conversation-indicator-label" className="sr-only">
           {t('sidebar.status.streaming')}
@@ -64,7 +64,11 @@ export function ConversationIndicator({
   if (session.fulfilledUnseen) {
     return (
       <span data-slot="conversation-indicator" className="shrink-0">
-        <span data-slot="conversation-indicator-dot" aria-hidden className="block size-2 rounded-full bg-success" />
+        <span
+          data-slot="conversation-indicator-dot"
+          aria-hidden
+          className="block size-2 rounded-full bg-status-success"
+        />
         <span data-slot="conversation-indicator-label" className="sr-only">
           {t('sidebar.status.unseen')}
         </span>

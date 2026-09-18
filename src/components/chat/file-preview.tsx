@@ -84,12 +84,12 @@ function FilePreviewLines({
             data-slot="file-preview-line"
             data-preview-line={number}
             data-highlighted={highlighted || undefined}
-            className={highlighted ? 'flex bg-accent/10 text-foreground' : 'flex text-foreground/80'}
+            className={highlighted ? 'flex bg-button-primary/10 text-text-primary' : 'flex text-text-primary/80'}
           >
             <span
               data-slot="file-preview-line-number"
               aria-hidden="true"
-              className="sticky left-0 w-14 shrink-0 select-none bg-surface px-3 text-right tabular-nums text-muted"
+              className="sticky left-0 w-14 shrink-0 select-none bg-background-primary-default px-3 text-right tabular-nums text-text-secondary"
             >
               {number}
             </span>
@@ -113,7 +113,7 @@ function FilePreviewLines({
 
 function MarkdownFilePreview({ content, path }: { content: string; path: string }) {
   return (
-    <div data-slot="markdown-file-preview" className="h-full overflow-auto bg-surface px-6 py-4">
+    <div data-slot="markdown-file-preview" className="h-full overflow-auto bg-background-primary-default px-6 py-4">
       {/* A README may mention more project files, but opening one from inside
           an already-open preview would silently replace the current sheet.
           Keep those references visible and inert instead. */}
@@ -140,7 +140,7 @@ function HtmlFilePreview({ content, name }: { content: string; name: string }) {
       sandbox=""
       referrerPolicy="no-referrer"
       srcDoc={srcDoc}
-      className="h-full w-full border-0 bg-surface"
+      className="h-full w-full border-0 bg-background-primary-default"
     />
   )
 }
@@ -209,7 +209,7 @@ function PreviewSheet({
                 <FileGlyph path={reference.path} />
                 <Sheet.Heading className="truncate">{name}</Sheet.Heading>
               </div>
-              <Hint as="p" className="mt-1 truncate font-mono text-xs text-muted" label={reference.path}>
+              <Hint as="p" className="mt-1 truncate font-mono text-xs text-text-secondary" label={reference.path}>
                 {reference.path}
                 {reference.line
                   ? `:${reference.line}${reference.endLine ? `-${reference.endLine}` : ''}${reference.column ? `:${reference.column}` : ''}`
@@ -237,21 +237,25 @@ function PreviewSheet({
                 <div
                   data-slot="file-preview-loading"
                   role="status"
-                  className="flex h-full items-center justify-center gap-2 text-sm text-muted"
+                  className="flex h-full items-center justify-center gap-2 text-sm text-text-secondary"
                 >
                   <Spinner size="sm" />
                   {t('chat.filePreview.loading')}
                 </div>
               )}
               {state.status === 'error' && (
-                <div data-slot="file-preview-error" role="alert" className="p-6 text-sm text-danger wrap-break-word">
+                <div
+                  data-slot="file-preview-error"
+                  role="alert"
+                  className="p-6 text-sm text-status-danger wrap-break-word"
+                >
                   {t('chat.filePreview.loadError', { error: state.message })}
                 </div>
               )}
               {state.status === 'loaded' && state.file.binary && (
                 <div
                   data-slot="file-preview-binary"
-                  className="flex h-full items-center justify-center p-6 text-center text-sm text-muted"
+                  className="flex h-full items-center justify-center p-6 text-center text-sm text-text-secondary"
                 >
                   {t('chat.filePreview.binary')}
                 </div>
@@ -263,7 +267,7 @@ function PreviewSheet({
                   ) : mode === 'preview' && richPreview === 'html' ? (
                     <HtmlFilePreview content={state.file.content} name={name} />
                   ) : (
-                    <div data-slot="file-preview-source" className="h-full overflow-auto bg-surface">
+                    <div data-slot="file-preview-source" className="h-full overflow-auto bg-background-primary-default">
                       <FilePreviewLines file={state.file} reference={reference} firstLine={state.firstLine} />
                     </div>
                   )}
@@ -272,7 +276,7 @@ function PreviewSheet({
             </Sheet.Body>
 
             <Sheet.Footer className="flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-              <div data-slot="file-preview-metadata" className="min-w-0 flex-1 text-xs text-muted">
+              <div data-slot="file-preview-metadata" className="min-w-0 flex-1 text-xs text-text-secondary">
                 {state.status === 'loaded' && (
                   <>
                     {t('chat.filePreview.metadata', {
@@ -283,7 +287,11 @@ function PreviewSheet({
                   </>
                 )}
                 {editorError && (
-                  <p data-slot="file-preview-editor-error" role="alert" className="mt-1 text-danger wrap-break-word">
+                  <p
+                    data-slot="file-preview-editor-error"
+                    role="alert"
+                    className="mt-1 text-status-danger wrap-break-word"
+                  >
                     {editorError === 'editor_not_configured'
                       ? t('chat.filePreview.editorNotConfigured')
                       : t('chat.filePreview.editorError', { error: editorError })}

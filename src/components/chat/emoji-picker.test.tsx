@@ -120,7 +120,7 @@ describe('EmojiPicker', () => {
     await waitFor(() => expect(mocks.fileUrl).toHaveBeenCalledWith('emoji-1'))
     await user.click(screen.getByRole('button', { name: 'Emoji' }))
 
-    expect(await screen.findByRole('button', { name: 'Usable Pack' })).toHaveClass('bg-default')
+    expect(await screen.findByRole('button', { name: 'Usable Pack' })).toHaveClass('bg-background-secondary-default')
     expect(await screen.findByRole('button', { name: /^Wave\b/ })).toBeInTheDocument()
     expect(screen.queryByText('No emoji packs assigned to this assistant')).not.toBeInTheDocument()
   })

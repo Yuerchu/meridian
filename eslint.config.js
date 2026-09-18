@@ -23,12 +23,21 @@ function forbiddenClass(re, message) {
   ]
 }
 
+// HeroUI's token vocabulary, which `styles/tokens.css` used to bridge. Every
+// name here has a boardui or meridian.css spelling (see the table in the
+// commit that removed the bridge); the utilities below now resolve to nothing.
+const LEGACY_TOKEN_RE = `(?<![\\w-])${PALETTE_PREFIX}-(?:muted|foreground|surface(?:-secondary|-tertiary|-foreground)?|overlay(?:-foreground)?|default(?:-foreground|-soft)?|field(?:-border)?|separator|focus|link|accent(?:-foreground|-soft(?:-foreground|-hover)?)?|(?:danger|warning|success|info)(?:-foreground|-soft(?:-foreground|-hover)?)?)(?![\\w-])|\\bshadow-(?:surface|overlay)\\b|(?<![\\w-])border-border(?![\\w-])`
+
 // Enforced everywhere, including src/components/ui/. Each entry is a shape the
 // 2026-09 design audit found in the tree, with the replacement in the message.
 const styleRestrictions = [
   ...forbiddenClass(
     PALETTE_RE,
-    'Raw Tailwind palette class. Use theme tokens (--success/--warning/--info/--danger/...) per CLAUDE.md UI conventions.',
+    'Raw Tailwind palette class. Use boardui tokens (text-text-*, bg-background-*, border-border-*, accent-*) or meridian.css status tokens (status-success/-warning/-danger/-info).',
+  ),
+  ...forbiddenClass(
+    LEGACY_TOKEN_RE,
+    'HeroUI token name; nothing defines it any more. text-muted → text-text-secondary, text-foreground → text-text-primary, bg-default → bg-background-secondary-default, bg-surface → bg-background-primary-default, border-border → border-border-button-default, ring-focus → ring-border-focus-ring, *-danger/-warning/-success/-info → *-status-…',
   ),
   {
     selector: 'Literal[value=/text-\\u005B[0-9.]+px\\u005D/]',
@@ -40,7 +49,7 @@ const styleRestrictions = [
   ),
   ...forbiddenClass(
     '\\bbg-muted\\b',
-    '--muted is secondary *text*, not a fill (see the token note in CLAUDE.md). A dot or a caret takes bg-default, bg-border or bg-current.',
+    'There is no muted fill. A dot or a caret takes bg-background-tertiary-default, bg-border-button-default or bg-current.',
   ),
   ...forbiddenClass('\\buppercase\\b', 'No ALL CAPS headings or labels; write the label in Title Case instead.'),
   ...forbiddenClass(
@@ -60,14 +69,14 @@ const styleRestrictions = [
     'Hand-rolled animate-spin icon. Use <Spinner size="sm" color="current" /> from @/components/base.',
   ),
   ...forbiddenClass(
-    '\\b(?:bg|border)-(?:danger|warning|success|info)\\/[0-9]+',
-    'Status colour at alpha is a hand-drawn soft fill. Use bg-*-soft / text-*-soft-foreground, or <Alert status="…"> for a message box.',
+    '\\b(?:bg|border)-status-(?:danger|warning|success|info)\\/[0-9]+',
+    'Status colour at alpha is a hand-drawn soft fill. Use bg-status-*-soft / text-status-*-soft-foreground, or <Alert status="…"> for a message box.',
   ),
   {
     selector:
-      "JSXOpeningElement[name.name=/Button$/] > JSXAttribute[name.name='className'] Literal[value=/(?:^|\\s)text-danger(?:\\s|$)/]",
+      "JSXOpeningElement[name.name=/Button$/] > JSXAttribute[name.name='className'] Literal[value=/(?:^|\\s)text-status-danger(?:\\s|$)/]",
     message:
-      'A labelled destructive Button is variant="danger-soft", not ghost/outline painted text-danger by hand. An icon-only one in a row of ghost icons stays ghost and turns danger on hover (hover:text-danger) — a red pill among grey icons is louder than the action.',
+      'A labelled destructive Button is variant="danger-soft", not ghost/outline painted text-status-danger by hand. An icon-only one in a row of ghost icons stays ghost and turns danger on hover (hover:text-status-danger) — a red pill among grey icons is louder than the action.',
   },
   {
     selector:

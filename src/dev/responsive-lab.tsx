@@ -100,7 +100,7 @@ export function ResponsiveFrame() {
   const active = CASES.find((c) => c.id === params.caseId)
   if (!active)
     return (
-      <div data-slot="responsive-frame-missing" className="p-4 text-sm text-danger">
+      <div data-slot="responsive-frame-missing" className="p-4 text-sm text-status-danger">
         No such case: {params.caseId}
       </div>
     )
@@ -108,7 +108,7 @@ export function ResponsiveFrame() {
     <div
       data-slot="responsive-frame-content"
       data-responsive-probe="content"
-      className="h-svh overflow-y-auto bg-background text-foreground"
+      className="h-svh overflow-y-auto bg-background-full text-text-primary"
     >
       {active.render()}
     </div>
@@ -122,9 +122,9 @@ export function ResponsiveFrame() {
 const SEVERITY_ORDER: Record<Severity, number> = { fail: 0, warn: 1, info: 2 }
 
 const SEVERITY_CLASS: Record<Severity, string> = {
-  fail: 'text-danger',
-  warn: 'text-warning',
-  info: 'text-muted',
+  fail: 'text-status-danger',
+  warn: 'text-status-warning',
+  info: 'text-text-secondary',
 }
 
 export default function ResponsiveLab() {
@@ -184,12 +184,12 @@ export default function ResponsiveLab() {
   const active = CASES.find((c) => c.id === caseId)
 
   return (
-    <div data-slot="responsive-lab" className="flex h-svh flex-col bg-background text-foreground">
-      <header data-slot="responsive-lab-header" className="shrink-0 border-b border-border px-4 py-2">
+    <div data-slot="responsive-lab" className="flex h-svh flex-col bg-background-full text-text-primary">
+      <header data-slot="responsive-lab-header" className="shrink-0 border-b border-border-button-default px-4 py-2">
         <h1 data-slot="responsive-lab-title" className="text-sm font-medium">
           Responsive harness
         </h1>
-        <p data-slot="responsive-lab-intro" className="mt-1 text-xs text-muted">
+        <p data-slot="responsive-lab-intro" className="mt-1 text-xs text-text-secondary">
           Overflow, escapes and short viewports are measured. Touch targets are{' '}
           <em data-slot="responsive-lab-intro-emphasis">computed</em> — coarse-pointer CSS does not apply in a desktop
           browser, so green is not a promise about a phone. The keyboard row checks the mechanism, not Android&rsquo;s
@@ -201,7 +201,7 @@ export default function ResponsiveLab() {
       <div data-slot="responsive-lab-body" className="flex min-h-0 flex-1">
         <aside
           data-slot="responsive-lab-controls"
-          className="w-72 shrink-0 space-y-4 overflow-y-auto border-r border-border p-3 text-xs"
+          className="w-72 shrink-0 space-y-4 overflow-y-auto border-r border-border-button-default p-3 text-xs"
         >
           <Field label="Case">
             <ListBox
@@ -223,7 +223,7 @@ export default function ResponsiveLab() {
               ))}
             </ListBox>
             {active && (
-              <p data-slot="responsive-lab-watch-for" className="mt-1 text-muted">
+              <p data-slot="responsive-lab-watch-for" className="mt-1 text-text-secondary">
                 {active.watchFor}
               </p>
             )}
@@ -252,7 +252,7 @@ export default function ResponsiveLab() {
                 { value: 'js', label: 'coarse (JS only)' },
               ]}
             />
-            <p data-slot="responsive-lab-pointer-note" className="mt-1 text-muted">
+            <p data-slot="responsive-lab-pointer-note" className="mt-1 text-text-secondary">
               Moves <code data-slot="responsive-lab-pointer-note-code">isCoarsePointer()</code>. CSS{' '}
               <code data-slot="responsive-lab-pointer-note-code">@media (pointer: coarse)</code> is untouched — that is
               why hit areas are computed rather than measured.
@@ -278,14 +278,17 @@ export default function ResponsiveLab() {
           </div>
 
           {reading && (
-            <p data-slot="responsive-lab-reading" className="text-muted">
+            <p data-slot="responsive-lab-reading" className="text-text-secondary">
               innerWidth {reading.inner} · clientWidth {reading.client}
               {reading.inner !== reading.client && ` (${reading.inner - reading.client}px of scrollbar)`}
             </p>
           )}
         </aside>
 
-        <main data-slot="responsive-lab-stage" className="min-w-0 flex-1 overflow-auto bg-surface-secondary p-4">
+        <main
+          data-slot="responsive-lab-stage"
+          className="min-w-0 flex-1 overflow-auto bg-background-secondary-default p-4"
+        >
           <iframe
             data-slot="responsive-frame"
             ref={frameRef}
@@ -293,7 +296,7 @@ export default function ResponsiveLab() {
             src={src}
             title="Responsive frame"
             style={{ width, height }}
-            className="border border-border bg-background"
+            className="border border-border-button-default bg-background-full"
           />
 
           {sorted && (

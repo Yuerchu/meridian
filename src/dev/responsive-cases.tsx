@@ -82,7 +82,7 @@ function ComposerCase() {
           />
         }
       />
-      <p data-slot="responsive-case-note" className="mt-2 text-xs text-muted">
+      <p data-slot="responsive-case-note" className="mt-2 text-xs text-text-secondary">
         Open the <code data-slot="responsive-case-note-code">+</code> menu before sweeping: it is portalled, and 464px
         of it is what the escape detector is here to catch.
       </p>
@@ -93,7 +93,7 @@ function ComposerCase() {
 function TranscriptCase() {
   return (
     <div data-slot="responsive-case-transcript" className="p-4">
-      <div data-slot="responsive-case-bubble" className="rounded-2xl bg-surface p-3 shadow-surface">
+      <div data-slot="responsive-case-bubble" className="rounded-2xl bg-background-primary-default p-3 shadow-card">
         <MarkdownContent content={TABLE_MD} />
       </div>
     </div>
@@ -133,7 +133,7 @@ function SettingsCase() {
                 key={id}
                 id={id}
                 textValue={label}
-                className="min-h-11 rounded-lg border-b-0 px-3 py-2 data-[selected=true]:bg-default data-[selected=true]:text-default-foreground"
+                className="min-h-11 rounded-lg border-b-0 px-3 py-2 data-[selected=true]:bg-background-tertiary-default data-[selected=true]:text-text-primary"
               >
                 <ListView.ItemContent>
                   <ListView.Title className="font-normal">{label}</ListView.Title>
@@ -150,16 +150,19 @@ function SettingsCase() {
             // than being it: the real panel fetches on mount. Keep the two in
             // step by hand — this exists to show what that grid does at a width,
             // and it is worth nothing if it stops looking like it.
-            <div data-slot="responsive-case-price-block" className="space-y-2 rounded-lg bg-default/30 px-3 py-3">
+            <div
+              data-slot="responsive-case-price-block"
+              className="space-y-2 rounded-lg bg-background-secondary-default/30 px-3 py-3"
+            >
               <div data-slot="responsive-case-price-grid" className="grid grid-cols-1 gap-2 @sm/pane:grid-cols-2">
                 {['Input price', 'Output price', 'Cache read', 'Cache write'].map((label) => (
                   <Label key={label} className="block text-xs">
-                    <span data-slot="responsive-case-price-label" className="text-muted">
+                    <span data-slot="responsive-case-price-label" className="text-text-secondary">
                       {label}
                     </span>
                     <span
                       data-slot="responsive-case-price-input"
-                      className="mt-1 block h-7 rounded-md border border-field-border bg-field-background pointer-coarse:h-10"
+                      className="mt-1 block h-7 rounded-md border border-border-button-default bg-field-background pointer-coarse:h-10"
                     />
                   </Label>
                 ))}
@@ -175,7 +178,7 @@ function SettingsCase() {
 function VoiceCase() {
   return (
     <div data-slot="responsive-case-voice" className="relative h-full p-4">
-      <p data-slot="responsive-case-note" className="text-xs text-muted">
+      <p data-slot="responsive-case-note" className="text-xs text-text-secondary">
         Set an IME inset in the panel: this overlay is `fixed` and outside the shell that `app-shell` pads.
       </p>
       <VoiceOverlay state="recording-hold" elapsed={12} peak={0.6} />
