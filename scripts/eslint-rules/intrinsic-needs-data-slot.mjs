@@ -6,7 +6,7 @@
 // a devtools query or a parent's descendant selector without leaning on a
 // class name that Tailwind will rewrite; it costs nothing at runtime.
 //
-// Intrinsic means a lowercase JSX name, or HeroUI's `dom.*` (which renders the
+// Intrinsic means a lowercase JSX name, or the base layer's `dom.*` (which renders the
 // same element with React Aria's props threaded through). Excluded: the
 // innards of an inline SVG, which are drawing instructions rather than nodes
 // anyone addresses, and the void inline elements `br` / `wbr`.

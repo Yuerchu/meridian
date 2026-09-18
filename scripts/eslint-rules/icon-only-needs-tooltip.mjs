@@ -1,6 +1,6 @@
 // An icon-only pressable needs a <Tooltip> around it *and* an accessible name.
 //
-// Two obligations, checked independently, because HeroUI's Tooltip contributes
+// Two obligations, checked independently, because a React Aria tooltip contributes
 // `aria-describedby` only: it describes the control and never names it. The
 // first version of this rule accepted a tooltip ancestor as the whole answer
 // and returned before it ever looked for a name, so
