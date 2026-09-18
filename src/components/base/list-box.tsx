@@ -19,7 +19,7 @@ function ListBoxItem({ className, ...props }: AriaListBoxItemProps & { className
       {...props}
       className={cx(
         'flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm outline-none select-none',
-        'data-[selected]:bg-accent-100 data-[focused]:bg-background-secondary-default data-[focus-visible]:ring-2 data-[focus-visible]:ring-inset data-[focus-visible]:ring-border-focus-ring',
+        'data-[selected]:bg-dropdown-item-hover-background data-[focused]:bg-dropdown-item-hover-background data-[focus-visible]:ring-2 data-[focus-visible]:ring-inset data-[focus-visible]:ring-border-focus-ring',
         'data-[disabled]:opacity-50',
         className,
       )}

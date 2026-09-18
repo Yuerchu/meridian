@@ -53,12 +53,12 @@ function SelectRoot({
   )
 }
 
-function SelectTrigger({ className, ...props }: ComponentProps<'div'>) {
+function SelectTrigger({ className, children }: ComponentProps<'div'>) {
   return (
     <AriaButton
       data-slot="select-trigger"
       className={cx(
-        'flex w-full cursor-pointer items-center justify-between rounded-2lg',
+        'flex w-full cursor-pointer items-center justify-between gap-1.5 rounded-2lg',
         'border border-border-button-default bg-background-primary-default px-2.5 py-2 text-body-medium shadow-xs',
         'text-text-primary',
         'transition-[background-color,border-color,box-shadow] duration-200 ease',
@@ -68,19 +68,19 @@ function SelectTrigger({ className, ...props }: ComponentProps<'div'>) {
         className,
       )}
     >
-      <span data-slot="select-trigger-content" {...props} />
+      {children}
     </AriaButton>
   )
 }
 
 function SelectValue({ className, ...props }: ComponentProps<'span'>) {
-  return <AriaSelectValue data-slot="select-value" {...props} className={cx('truncate', className)} />
+  return <AriaSelectValue data-slot="select-value" {...props} className={cx('min-w-0 flex-1 truncate', className)} />
 }
 
 function SelectIndicator({ className, ...props }: ComponentProps<'span'>) {
   return (
-    <span data-slot="select-indicator" {...props} className={cx('text-text-secondary', className)}>
-      <ChevronDownSmall className="size-4 transition-transform duration-200 ease group-data-[open]:rotate-180" />
+    <span data-slot="select-indicator" {...props} className={cx('shrink-0 text-text-secondary', className)}>
+      <ChevronDownSmall className="size-4" />
     </span>
   )
 }
