@@ -38,7 +38,7 @@ const PlanReviewPage = lazy(() =>
  * tablet in landscape got the desktop shell it had not been designed for.
  *
  * One frame instead. The sidebar is the conversation list, as a panel above
- * 768px and as a sheet below it — Pro renders both from the same tree — and
+ * 768px and as a sheet below it — Sidebar renders both from the same tree — and
  * settings is a page beside the chat rather than a screen on top of it. What
  * the phone loses is nothing it had: the back gesture still closes the sheet,
  * because that is a level (`useHistoryLevel`), which is all the stack was
@@ -77,10 +77,11 @@ export function AppShell(props: ShellProps) {
     onInitialDraftConsumed,
   } = props
 
-  // Controlled on purpose. Left uncontrolled, Pro writes the state to a
-  // `sidebar_state` cookie on every toggle — a Next.js convention, useless here
-  // (nothing reads it back) and one more thing to have an opinion about under a
-  // custom protocol. Persisting the state is a store field if we ever want it.
+  // Controlled on purpose. Left uncontrolled, the old provider wrote the state
+  // to a `sidebar_state` cookie on every toggle — a Next.js convention, useless
+  // here (nothing reads it back) and one more thing to have an opinion about
+  // under a custom protocol. Persisting the state is a store field if we ever
+  // want it.
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [settingsHistoryClaimed, setSettingsHistoryClaimed] = useState(true)
@@ -206,9 +207,9 @@ export function AppShell(props: ShellProps) {
         open={sidebarOpen}
         onOpenChange={setSidebarOpen}
         collapsible="icon"
-        // Pro's provider is `min-h-svh`: a page that grows. This one is a fixed
-        // viewport with its own scrollers inside, and the transcript's scroller
-        // needs a container that does not move to measure against.
+        // The old provider was `min-h-svh`: a page that grows. This one is a
+        // fixed viewport with its own scrollers inside, and the transcript's
+        // scroller needs a container that does not move to measure against.
         className="h-svh overflow-hidden pb-[var(--ime-bottom,0px)]"
       >
         <AppSidebar
@@ -410,7 +411,7 @@ export function AppShell(props: ShellProps) {
                   nobody can get back. */}
                 {showChanges && activeId && (
                   <>
-                    {/* Pro's handle is a 1px line with an 8px hit area, which is a
+                    {/* The handle is a 1px line with an 8px hit area, which is a
                       pointer's measurement. This panel only mounts above 768px,
                       and a touch laptop or a tablet in landscape is squarely in
                       that range — the divider was there and could not be
@@ -429,8 +430,8 @@ export function AppShell(props: ShellProps) {
             </div>
 
             {/* `bg-background-primary-default`, not `bg-background-full`: this covers `Sidebar.Main`,
-              which Pro paints `--surface`, and the two are different colours in
-              both themes. */}
+              which paints `bg-background-primary-default` itself, and the two
+              are different colours in both themes. */}
             {page === 'settings' && (
               <div data-slot="settings-layer" className="absolute inset-0 z-20 bg-background-primary-default">
                 {/* No spinner: the chunk is on local disk and resolves within a

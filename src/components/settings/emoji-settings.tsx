@@ -411,8 +411,8 @@ function PackCard({
       {({ isExpanded }) => (
         <>
           <Disclosure.Heading>
-            {/* `flex` is not optional: HeroUI styles the indicator with `ms-auto`
-                and `shrink-0`, which only mean anything inside a flex container.
+            {/* `flex` is not optional: Disclosure.Indicator carries `shrink-0`,
+                which only means something inside a flex container.
                 `text-start` undoes the button element's centred UA default. */}
             <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-body-regular transition-colors outline-none hover:bg-background-primary-hover/30 focus-visible:bg-background-secondary-default/30">
               <Sticker className="w-3.5 h-3.5 shrink-0 text-text-secondary" />
@@ -666,7 +666,7 @@ export function EmojiSettings() {
         )}
       </div>
 
-      {/* Through a portal, because Pro renders `.action-bar` in place and it is
+      {/* Through a portal, because ActionBar renders itself in place and it is
           `position: fixed`. This pane is a query container now, and
           `container-type` brings `contain: layout` with it — which makes the
           container the containing block for its fixed descendants. Left here,

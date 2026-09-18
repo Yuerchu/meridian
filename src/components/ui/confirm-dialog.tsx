@@ -20,9 +20,9 @@ export interface ConfirmOptions {
  * an id wired to it the dialog announces its title and then nothing. That is
  * baked in here, along with the status icon none of the five had.
  *
- * Neither ESC nor a click on the backdrop dismisses it. That is HeroUI's
- * default for an alert dialog rather than a decision taken here, and it is the
- * right one: an accidental Escape should not read as consent.
+ * Neither ESC nor a click on the backdrop dismisses it. That is AlertDialog's
+ * default rather than a decision taken here, and it is the right one: an
+ * accidental Escape should not read as consent.
  */
 export function ConfirmDialog({
   isOpen,

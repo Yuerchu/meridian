@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 import { PlanCommentDecorations } from './plan-comment-decorations'
 import { normalizePlanEditorDocument, parsePlanMarkdown, serializePlanDocument } from './plan-markdown'
 
-// What HeroUI Pro's RichTextEditor actually builds (`rich-text-editor.js`),
+// What RichTextEditor actually builds (`rich-text-editor.js`),
 // plus the one extension PlanReviewEditor adds. The codec is otherwise tested
 // only against its own generateJSON, which runs no plugins — so nothing else in
 // this file can see what the live editor does to a document between two

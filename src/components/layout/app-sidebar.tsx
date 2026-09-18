@@ -1,8 +1,8 @@
 /**
- * The sidebar, on HeroUI Pro's — a panel on a wide window, a sheet on a narrow
- * one, and the phone's conversation list either way.
+ * The sidebar, on the base layer's `Sidebar` — a panel on a wide window, a
+ * sheet on a narrow one, and the phone's conversation list either way.
  *
- * The shape is HeroUI Pro's agent-workspace example: one `Sidebar.Group` per
+ * The shape follows an agent-workspace pattern: one `Sidebar.Group` per
  * project with the group label carrying the project's own affordances (fold,
  * select, new-conversation, actions, and the drop target a drag files into),
  * and a flat menu of conversation rows under it. There is no project row and
@@ -17,8 +17,8 @@
  * not at all, which is also what keeps the Android back key predictable.
  *
  * The consequence: `closeMobileOnAction` hangs off the href branch, and would
- * take `onAction` with it if we went there (Pro sets `onAction` to its own
- * dismiss handler when `href` is present, replacing ours). So the sheet is
+ * take `onAction` with it if we went there (React Aria sets `onAction` to its
+ * own dismiss handler when `href` is present, replacing ours). So the sheet is
  * closed by hand — see `dismissing` — and every row that navigates has to go
  * through it or the sheet stays open over the page it just opened.
  */
@@ -117,7 +117,7 @@ interface AppSidebarProps {
 /**
  * The draft, held above the two sidebars rather than inside them.
  *
- * Below 768px Pro renders this tree twice — the panel, hidden with
+ * Below 768px Sidebar renders this tree twice — the panel, hidden with
  * `display: none`, and the sheet — so a `useState` in the form is two pieces of
  * state, and crossing the breakpoint swaps which one is on screen. Typing a
  * project name in a narrow window and then widening it produced an empty form.
@@ -506,8 +506,8 @@ function RowActionItems({ actions }: { actions: RowAction[] }) {
 const LOOSE_KEY = 'loose'
 
 /**
- * The panel keeps the example's density; the mobile sheet keeps Pro's default,
- * because a finger needs the taller row. Withheld while settings fills the
+ * The panel keeps the example's density; the mobile sheet keeps Sidebar's
+ * default, because a finger needs the taller row. Withheld while settings fills the
  * pane — that side is a short nav list, and two densities inside one app read
  * as a bug.
  */
@@ -799,7 +799,7 @@ export function AppSidebar({
    */
   const canHostSessions = platform !== 'android' || isRemote
   const { isMobileOpen, setMobileOpen, isOpen, isMobile, collapsible } = useSidebar()
-  // Pro's own rail test, verbatim: the desktop panel is an icon rail only
+  // The rail test: the desktop panel is an icon rail only
   // under `collapsible="icon"`, and the mobile sheet is never one.
   const isIconCollapsed = collapsible === 'icon' && !isMobile && !isOpen
   const [showNewProject, setShowNewProject] = useState(false)
@@ -1084,17 +1084,16 @@ export function AppSidebar({
       <ContextMenu open={menu?.scope === scope} onOpenChange={(open) => setMenu(open ? hitRef.current : null)}>
         {/* Recorded on `pointerdown` as well as on `contextmenu`, because the
             two ways this menu opens do not agree on which event comes first. A
-            right-click fires `contextmenu` and Pro opens from it; a touch
-            starts Pro's own 500ms long-press timer, and the WebView's native
-            `contextmenu` is on roughly the same fuse. Whichever wins, the
-            controlled `open` below reads `hitRef` — and read before the row was
-            recorded it is null, so the menu is asked to open with nothing
-            selected and silently does not. `pointerdown` precedes both.
+            right-click fires `contextmenu` and the menu opens from it directly;
+            a touch starts the WebView's own ~500ms long-press-to-contextmenu
+            gesture. Whichever wins, the controlled `open` below reads `hitRef`
+            — and read before the row was recorded it is null, so the menu is
+            asked to open with nothing selected and silently does not.
+            `pointerdown` precedes both.
 
             The capture variant, and not `onContextMenu`: the Trigger spreads
             its props *after* its own handlers, so a bubbling handler here would
-            replace the one that opens the menu. `block`, because Pro's trigger
-            is `inline-block` and this one wraps the whole list. */}
+            replace the one that opens the menu. `block` wraps the whole list. */}
         <ContextMenu.Trigger
           className="block"
           onPointerDown={(e: React.PointerEvent) => recordHit(scope, e.target)}
@@ -1285,7 +1284,7 @@ export function AppSidebar({
           {/* The palette's third door, and the sheet's only one: a phone has
               no `mod` key to press and no header button while the sheet is
               open. The chip writes the shortcut down where a desktop reader
-              will look for it; Pro hides it in the rail on its own. */}
+              will look for it. */}
           <Sidebar.MenuItem id={`${prefix}search`} textValue={t('sidebar.search')} onAction={openSearch}>
             <Sidebar.MenuIcon>
               <Magnifier />
@@ -1320,12 +1319,12 @@ export function AppSidebar({
       </Sidebar.Header>
 
       <Sidebar.Content>
-        {/* Nothing below the header exists in the icon rail. Pro would keep
-            every conversation row as an anonymous icon — the group labels are
-            `display: none` there, so the rows lose the only thing that told
-            them apart — and a column of identical chat icons crowds out the
-            rail's real destinations. A conversation is reached through the
-            reopened panel or the palette either way. */}
+        {/* Nothing below the header exists in the icon rail. Keeping every
+            conversation row as an anonymous icon there — with the group
+            labels `display: none` — would lose the only thing that told
+            them apart, and a column of identical chat icons would crowd out
+            the rail's real destinations. A conversation is reached through
+            the reopened panel or the palette either way. */}
         {!collapsed &&
           rowMenu(
             `${prefix}groups`,
@@ -1477,7 +1476,7 @@ export function AppSidebar({
       >
         {side('d-', isIconCollapsed)}
       </Sidebar>
-      {/* Renders nothing above 768px. Below it Pro hides the panel outright, so
+      {/* Renders nothing above 768px. Below it Sidebar hides the panel outright, so
           without this a narrow window would have a toggle that toggles nothing.
           The sheet covers the full height including the cutout and the
           navigation bar, and it is a separate element from the panel above, so

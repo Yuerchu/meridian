@@ -55,8 +55,8 @@ export function TodoBarView({
       )}
     >
       <Disclosure.Heading>
-        {/* `flex` is not optional: HeroUI styles the indicator with `ms-auto`
-            and `shrink-0`, which only mean anything inside a flex container. */}
+        {/* `flex` is not optional: Disclosure.Indicator carries `shrink-0`,
+            which only means something inside a flex container. */}
         <Disclosure.Trigger
           data-slot="todo-bar-trigger"
           className={cx(
@@ -64,9 +64,9 @@ export function TodoBarView({
             'hover:bg-background-primary-hover focus-visible:bg-background-secondary-default',
           )}
         >
-          {/* `--info` has no `color` variant of its own — HeroUI's are
-              accent/default/success/warning/danger. The stroke reads a
-              custom property, so pointing that at the token is the
+          {/* `--info` has no `color` variant of its own — the usual named
+              values are accent/default/success/warning/danger. The stroke
+              reads a custom property, so pointing that at the token is the
               supported way in rather than restyling the circle. */}
           {/* Hidden from the accessibility tree: the trigger takes its name
               from its contents and the count is already spelled out to the

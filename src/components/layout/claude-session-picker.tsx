@@ -238,17 +238,13 @@ export function ClaudeSessionPicker({
               pushing it taller. */}
           <Modal.Body className="flex min-h-0 flex-col gap-3">
             <div data-slot="session-picker-toolbar" className="flex items-center gap-2">
-              {/* HeroUI's own, rather than an Input with an icon stuck on the
+              {/* SearchField, rather than an Input with an icon stuck on the
                   front: it brings the magnifier, the clear button and Escape
                   clearing the field with it. */}
               <SearchField aria-label={t('sessionPicker.search')} value={query} onChange={setQuery} className="flex-1">
                 <SearchField.Group>
                   <SearchField.SearchIcon />
                   <SearchField.Input placeholder={t('sessionPicker.search')} />
-                  {/* Named here because HeroUI's `CloseButton` hardcodes
-                      `aria-label="Close"` before its spread — untranslated, and
-                      wrong about what it does: this clears a field rather than
-                      closing anything. */}
                   <SearchField.ClearButton aria-label={t('sessionPicker.clearSearch')} />
                 </SearchField.Group>
               </SearchField>
@@ -460,7 +456,7 @@ function SessionRow({
         // is both disabled and nameless for the length of an adapter start,
         // which to a screen reader is a control that has stopped existing.
         <Button size="small" variant="secondary" onPress={onAct} isDisabled={disabled} className="shrink-0">
-          {/* Hidden from the accessibility tree: HeroUI's Spinner carries
+          {/* Hidden from the accessibility tree: Spinner carries
               `aria-label="Loading"`, which would rename the button to "Loading
               Import" for the length of an adapter start. The row's `aria-busy`
               says the same thing without the control changing its name under

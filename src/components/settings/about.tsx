@@ -36,12 +36,10 @@ const OS_LABELS: Record<string, string> = {
 /**
  * What a row's text has to be told, twice.
  *
- * Pro gives `.item-card__title` and `.item-card__description` both
- * `white-space: nowrap` and `width: fit-content`. `fit-content` resolves
- * against the *content*, so a description longer than the row lays itself out
- * at full width and paints straight over the button on the right — the
- * `text-overflow: ellipsis` that comes with it never fires, because nothing
- * ever constrained the width. `w-full` is what gives it a bound to overflow
+ * `ItemCard.Title` and `ItemCard.Description` are both `truncate`, which needs
+ * a bounded width to do anything — without one, a description longer than the
+ * row can grow past its container instead of ellipsizing, painting straight
+ * over the button on the right. `w-full` is what gives it a bound to overflow
  * against.
  *
  * Then they diverge. A title is two or three words and truncating it loses
@@ -162,7 +160,7 @@ export function About() {
         </ItemCardGroup.Header>
 
         <ItemCardGroup className="overflow-hidden">
-          {/* Pro's own example makes a whole row pressable by rendering a native
+          {/* The upstream example makes a whole row pressable by rendering a native
               `<button>`; an eslint rule here forbids one, and the row would have
               had to stay free of controls anyway. So both rows carry their
               action on the right instead, which is also the only shape that

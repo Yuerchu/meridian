@@ -385,8 +385,8 @@ export function ToolMarketplace() {
                 className="flex w-full flex-col overflow-hidden rounded-lg border border-border-button-default"
               >
                 <Disclosure.Heading>
-                  {/* `flex` is not optional: HeroUI styles the indicator with
-                      `ms-auto` and `shrink-0`, which only mean anything inside a
+                  {/* `flex` is not optional: Disclosure.Indicator carries
+                      `shrink-0`, which only means something inside a
                       flex container. `text-start` undoes the button element's
                       centred UA default. */}
                   <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2 text-start text-caption-1-regular transition-colors outline-none hover:bg-background-primary-hover/30 focus-visible:bg-background-secondary-default/30">

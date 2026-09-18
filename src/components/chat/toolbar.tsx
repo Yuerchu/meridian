@@ -216,10 +216,6 @@ export function MobileOptionsMenu({
             className="max-h-[70vh] px-0 pt-2 pb-[max(1rem,var(--safe-bottom))]"
           >
             <Sheet.Handle />
-            {/* Only the colour is overridden. HeroUI's `-mx-3px p-3px` looks
-                like it would inset the rows, but the two cancel: the body
-                widens by 3px on each side and pads the same amount back, so a
-                focus ring has room without the rows losing any width. */}
             <Sheet.Body className="text-text-primary">
               {panel === 'main' && (
                 <div data-slot="mobile-options-main" className="flex flex-col">

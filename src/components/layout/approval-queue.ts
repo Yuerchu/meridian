@@ -3,7 +3,7 @@ import type { AttentionItem } from '@/stores/conversation-store'
 /**
  * How many questions are on screen at once.
  *
- * HeroUI stacks them and makes every one but the frontmost
+ * `ToastQueue` stacks them and makes every one but the frontmost
  * `pointer-events-none`, so this is a depth cue rather than three things to
  * answer: the queue is worked one at a time, and the two behind say how much is
  * left. The rest of the queue is not handed to `ToastQueue` at all — thirty

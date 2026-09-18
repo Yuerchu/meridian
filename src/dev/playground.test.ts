@@ -85,8 +85,8 @@ function walk(dir: string): string[] {
 
 /** Resolves an import specifier to the file it names, or null for a package.
  *  Relative specifiers are resolved against the file that wrote them, which is
- *  what makes `Button` from `@heroui/react` and `Button` from `./ui/button`
- *  two different things. */
+ *  what makes `Button` from a component library's exports and `Button` from
+ *  `./ui/button` two different things. */
 function moduleToFile(module: string, from: string): string | null {
   const base = module.startsWith('@/')
     ? join(SRC, module.slice(2))
@@ -116,13 +116,13 @@ describe('playground', () => {
     // `motion.create()` or a `render` prop and never appear as a tag.
     //
     // Keyed by the file the name resolves to, not by the bare name: half of
-    // `@heroui/react`'s exports are called `Button`, `Select`, `Avatar` or
+    // a component library's exports are called `Button`, `Select`, `Avatar` or
     // `Spinner` too, and matching on the identifier alone would let any of them
     // vouch for a local component of the same name that nothing renders.
     const productFiles = walk(SRC).filter(
       (f) => !NOT_PRODUCT.some((dir) => f.startsWith(dir)) && !/\.test\.tsx?$/.test(f),
     )
-    // `heroui-lab.tsx` and `scroll-lab.tsx` used to land in here, which let the
+    // `webview-lab.tsx` and `scroll-lab.tsx` used to land in here, which let the
     // playground's own neighbours vouch for what it previews.
     expect(productFiles.filter((f) => f.startsWith(join(SRC, 'dev')))).toEqual([])
 

@@ -21,7 +21,7 @@ import {
   ChatToolStatusIcon,
   ChatToolTrigger,
 } from '@/components/ui/chat-tool'
-import HeroUiLab from './heroui-lab'
+import WebViewLab from './webview-lab'
 import ResponsiveLab, { ResponsiveFrame } from './responsive-lab'
 import SchemaLab from './schema-lab'
 import ScrollLab from './scroll-lab'
@@ -301,7 +301,7 @@ const COMMAND_RESULT = [
 
 const WEB_SEARCH_RESULT = JSON.stringify({
   sources: [
-    { title: 'HeroUI Pro', url: 'https://heroui.pro', content: '', site_name: 'HeroUI' },
+    { title: 'boardui', url: 'https://boardui.com', content: '', site_name: 'boardui' },
     {
       title: 'Base UI Collapsible',
       url: 'https://base-ui.com/react/components/collapsible',
@@ -441,7 +441,7 @@ export default function Playground() {
   // scroll harness needs the full viewport height, which a page that scrolls as
   // a whole cannot give it.
   if (window.location.hash === '#playground/scroll') return <ScrollLab />
-  if (window.location.hash === '#playground/heroui') return <HeroUiLab />
+  if (window.location.hash === '#playground/webview') return <WebViewLab />
   if (window.location.hash === '#playground/schema') return <SchemaLab />
   // One route, two sides: the harness and the frame it drives are the same
   // document loaded twice, told apart by a query parameter rather than a second
@@ -486,7 +486,7 @@ function Gallery() {
             <ChainOfThoughtContent>
               <ChainOfThoughtSteps>
                 <ChainOfThoughtStep label="Search">
-                  Looked up HeroUI Pro chat template patterns for message layout and composer spacing.
+                  Looked up boardui chat template patterns for message layout and composer spacing.
                 </ChainOfThoughtStep>
                 <ChainOfThoughtStep label="Plan">
                   Mapped the template structure to SDK-agnostic compound components.
@@ -534,7 +534,7 @@ function Gallery() {
                 </span>
               </ChatToolTrigger>
               <ChatToolContent>
-                <ChatToolArgs text='{"query":"HeroUI Pro' />
+                <ChatToolArgs text='{"query":"boardui' />
               </ChatToolContent>
             </ChatTool>
 
@@ -876,14 +876,14 @@ function Gallery() {
               data={tool({
                 tool_name: 'web_search',
                 status: 'pending',
-                arguments: JSON.stringify({ query: 'HeroUI Pro chain of thought' }),
+                arguments: JSON.stringify({ query: 'boardui chain of thought' }),
               })}
             />
             <ToolCallBlock
               data={tool({
                 tool_name: 'web_search',
                 status: 'completed',
-                arguments: JSON.stringify({ query: 'HeroUI Pro chain of thought' }),
+                arguments: JSON.stringify({ query: 'boardui chain of thought' }),
                 result: WEB_SEARCH_RESULT,
               })}
             />

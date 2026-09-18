@@ -12,7 +12,7 @@ import { useHistoryLevel } from '@/hooks/use-history-level'
  * keyboard *is* a blur, so backing out halfway through would silently save a
  * half-typed title. Here the only ways out are Save and Cancel.
  *
- * **The keyboard has to be padded for by hand.** HeroUI sizes a modal with
+ * **The keyboard has to be padded for by hand.** Modal sizes itself with
  * `--visual-viewport-height`, which React Aria fills in from
  * `window.visualViewport` — and this app runs `adjustNothing`, so the WebView is
  * never resized and that variable never moves. The dialog opens focused, which

@@ -22,11 +22,11 @@ function cachedHighlight(code: string, language: string): string {
 /**
  * The highlighted body of a code block.
  *
- * Stands in for Pro's `CodeBlock.Code`, which imports Shiki's full entry point
- * — every grammar it ships as a chunk apiece, plus the oniguruma WASM. This one
- * goes through `lib/shiki`, where the grammar list is ours.
+ * Stands in for the old library's `CodeBlock.Code`, which imports Shiki's full
+ * entry point — every grammar it ships as a chunk apiece, plus the oniguruma
+ * WASM. This one goes through `lib/shiki`, where the grammar list is ours.
  *
- * It keeps Pro's `code-block__code` class: that is where the font, the
+ * It keeps the old `code-block__code` class: that is where the font, the
  * horizontal scroll and — the part worth having — the rule that picks
  * `--shiki-light` or `--shiki-dark` per token all live, so a theme switch stays
  * free and needs no re-highlight.

@@ -23,7 +23,7 @@ const RECENT = 20
 /**
  * Cmd+K, over what the app already has in memory.
  *
- * Filtering is Pro's: `Command.Dialog` wraps its children in React Aria's
+ * Filtering comes from `Command.Dialog`: it wraps its children in React Aria's
  * `Autocomplete`, which matches each item's `textValue` case-insensitively.
  * So the only rule here is that **`textValue` has to carry every word worth
  * searching for** — a settings row whose `textValue` is just its own label

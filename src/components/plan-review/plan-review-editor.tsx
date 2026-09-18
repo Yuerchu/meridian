@@ -105,7 +105,7 @@ export function PlanReviewEditor({
     () => ({
       editorProps: {
         handleKeyDown: (_view: unknown, event: KeyboardEvent) => {
-          // HeroUI Pro includes Underline in its default extension set. Markdown
+          // RichTextEditor includes Underline in its default extension set. Markdown
           // has no lossless underline syntax, so the command is deliberately
           // absent from this editor and its platform shortcut is consumed.
           if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'u') {

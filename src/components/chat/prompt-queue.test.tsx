@@ -57,7 +57,7 @@ function rowFor(text: string) {
 }
 
 describe('PromptQueue', () => {
-  it('nests an interjection under the current run with Pro’s ↳, and leaves a follow-up as a sibling', () => {
+  it('nests an interjection under the current run with the ↳ mark, and leaves a follow-up as a sibling', () => {
     mount(
       <PromptQueue
         {...NOOP}

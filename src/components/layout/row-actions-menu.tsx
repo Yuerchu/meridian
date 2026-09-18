@@ -46,9 +46,8 @@ export function RowActionDropdownItems({ actions }: { actions: RowAction[] }) {
  *
  * The right-click menu beside it cannot be opened without a right button, which
  * on a phone means the list rows had no actions at all — that was what the
- * mobile list's own overflow button was for. Pro shows `Sidebar.MenuActions` on
- * hover in the panel and *always* inside the mobile sheet
- * (`.sidebar__mobile .sidebar__menu-actions { display: flex }`), so one button
+ * mobile list's own overflow button was for. `Sidebar.MenuActions` shows on
+ * hover in the panel and *always* inside the mobile sheet, so one button
  * covers both without a breakpoint of ours.
  *
  * A separate component from the context menu rather than a shared one: this is
@@ -70,8 +69,7 @@ export function RowActionsMenu({
   return (
     <Sidebar.MenuActions>
       <Dropdown>
-        {/* Pro gives `.sidebar__menu-action` 4px of padding around a 16px icon,
-            so it is 24px square. In the mobile sheet it is always visible and is
+        {/* `.sidebar__menu-action` is 24px square. In the mobile sheet it is always visible and is
             the only way to a row's actions — right-click cannot be reached by
             touch — and a miss lands on the row itself, which switches
             conversation and closes the sheet. */}

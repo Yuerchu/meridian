@@ -6,8 +6,8 @@ import { Button, Checkbox, Chip, Disclosure, TextArea, Tooltip, TooltipTrigger }
 import type { MemoryInfoResponse } from '@/types'
 
 /**
- * `--info` is a project extension: HeroUI has no `info` colour, so the property
- * its Chip reads is set directly. The same shape as the `--progress-circle-*`
+ * `--info` is a project extension: Chip has no `info` colour, so the property
+ * it reads is set directly. The same shape as the `--progress-circle-*`
  * override elsewhere, and for the same reason.
  */
 export const INFO_CHIP = '[--chip-fg:var(--color-status-info-soft-foreground)]'
@@ -77,7 +77,7 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
           {memory.key}
         </span>
         <Chip color="default">{memory.scope_type.replace('onebot_', '').replace('client_global', 'client')}</Chip>
-        {/* `--info` is a project token with no HeroUI colour behind it, so the
+        {/* `--info` is a project token with no Chip colour behind it, so the
             property the component reads is set directly rather than through a
             `color` that does not exist. */}
         <Chip className={INFO_CHIP}>{memory.origin}</Chip>

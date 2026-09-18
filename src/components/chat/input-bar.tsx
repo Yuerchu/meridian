@@ -300,9 +300,8 @@ function ComposerContextMenu({
   if (!enabled) return children
   return (
     <ContextMenu onOpenChange={onOpenChange}>
-      {/* `block w-full` is not decoration: Pro's trigger is `inline-block`,
-          and around a full-width field it collapses to the content's width.
-          The lab's display probe measures whether these two still win. */}
+      {/* ContextMenu.Trigger renders a plain div when given no `render` prop;
+          `w-full` is what makes it span a full-width field. */}
       <ContextMenu.Trigger className="block w-full">{children}</ContextMenu.Trigger>
       <ContextMenu.Popover>
         <ContextMenu.Menu aria-label={label}>{items}</ContextMenu.Menu>
@@ -405,8 +404,8 @@ export function InputBar({
    * device that does not have one does not show a button for it.
    */
   const onVoiceSend = can.voiceInput ? onVoiceSendProp : undefined
-  // Filled by Composer once the field exists: Pro spreads incoming props after
-  // its own ref, so one passed down would displace theirs.
+  // Filled by Composer once the field exists: PromptInput.TextArea spreads
+  // incoming props after its own ref, so one passed down would displace theirs.
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const [selectedText, setSelectedText] = useState('')
 

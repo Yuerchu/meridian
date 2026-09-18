@@ -882,8 +882,8 @@ function ChatViewInner({
           />
         </AcpNoticeActionsContext.Provider>
 
-        {/* Folded into the queue card when something is stacked: HeroUI's Queue
-          is current-plus-rows, and a TodoBar sitting above it made every
+        {/* Folded into the queue card when something is stacked: the queue is
+          current-plus-rows, and a TodoBar sitting above it made every
           queued message look nested under the checklist — interject and
           follow-up alike. Alone, the bar keeps its own card. */}
         {queue.items.length === 0 && <TodoBar conversationId={conversationId} />}

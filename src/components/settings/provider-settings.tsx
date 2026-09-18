@@ -823,11 +823,10 @@ function ModelConfigEditor({
   }
 
   return (
-    // Every control in here overrides HeroUI's height down to 28px, which is a
-    // deliberate density for a form of this many fields and a pointer. HeroUI's
-    // own sizing is mobile-first (`h-10 md:h-9`) and the override threw that
-    // away on every device, so the coarse-pointer variants put it back where a
-    // finger is doing the aiming and leave the desktop exactly as it was.
+    // Every control in here overrides the default height down to 28px, which
+    // is a deliberate density for a form of this many fields and a pointer.
+    // The coarse-pointer variants put the extra height back where a finger is
+    // doing the aiming and leave the desktop exactly as it was.
     <div data-slot="model-config-editor" className="px-3 pb-3 space-y-2 bg-background-secondary-default/30">
       <div data-slot="model-config-limits" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
         <TextField>

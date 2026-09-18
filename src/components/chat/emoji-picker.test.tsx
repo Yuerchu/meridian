@@ -34,7 +34,7 @@ describe('EmojiPicker', () => {
     return i18n.changeLanguage('en')
   })
 
-  it('uses the Pro picker surface while preserving assigned sticker packs', async () => {
+  it('uses the EmojiPicker surface while preserving assigned sticker packs', async () => {
     const user = userEvent.setup()
     const onSelect = vi.fn()
     render(<EmojiPicker assistantId="assistant-1" onSelect={onSelect} />)

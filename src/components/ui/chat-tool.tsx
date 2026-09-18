@@ -54,19 +54,16 @@ function ChatToolPresentationProvider({ value, children }: { value: ChatToolPres
 }
 
 /**
- * The Pro ChatTool's 12px corner and compact row, with Meridian's surface and
- * inset ring. A generic HeroUI Card is deliberately not used: its padding sits
- * outside the full-width trigger and stops the hover wash before the edge.
+ * A 12px corner and compact row, with Meridian's surface and inset ring. A
+ * generic Card is deliberately not used: its padding sits outside the
+ * full-width trigger and stops the hover wash before the edge.
  *
  * **The edge is not decoration here, and dropping it made these cards vanish.**
- * A HeroUI card carries none because it is told apart by being lighter than the
- * *page* plus `--surface-shadow`, and both halves of that fail in the one place
- * these are drawn. The transcript is inside `Sidebar.Main`, which Pro paints
- * `background-color: var(--color-background-primary-default)` under `variant="inset"` — so a `bg-background-primary-default`
- * card is exactly its parent's colour, not one step above the page. And HeroUI
- * sets `--surface-shadow: 0 0 0 0 transparent inset` in dark mode on purpose
- * ("No shadow on dark mode"), which leaves a dark-theme card with no fill
- * difference, no shadow and no border: nothing at all.
+ * A plain surface card is told apart from the page by being lighter than it —
+ * and that fails in the one place these are drawn. The transcript sits inside
+ * `Sidebar.Main`, which paints `background-color: var(--color-background-primary-default)` —
+ * the same colour a `bg-background-primary-default` card would use, so the
+ * card is exactly its parent's colour, not one step above the page.
  *
  * A ring rather than a border, for the reason the status variants below give —
  * it takes no space, so recolouring it for `output-error` costs no reflow and
@@ -78,8 +75,8 @@ const CHAT_TOOL_CARD =
 const chatToolVariants = tv({
   slots: {
     base: 'flex w-full flex-col text-caption-1-regular',
-    // Mirrors Pro's chat-tool rhythm. The inset focus ring remains visible
-    // inside the clipped card and does not add another layout edge.
+    // The inset focus ring remains visible inside the clipped card and does
+    // not add another layout edge.
     trigger: [
       'flex min-h-11 w-full items-center gap-2 px-3 py-2.5 text-left transition-colors outline-none',
       'hover:bg-background-primary-hover data-[pressed]:bg-background-tertiary-default focus-visible:bg-background-secondary-default',
@@ -226,8 +223,9 @@ interface ChatToolTriggerProps extends Omit<React.ComponentProps<typeof Disclosu
    * a collapsed card entirely.
    */
   subtitle?: React.ReactNode
-  // Narrower than HeroUI's, which also accepts a render function: this trigger
-  // lays its children out in a label row, and a function has nothing to lay out.
+  // Narrower than Disclosure.Trigger's, which also accepts a render function:
+  // this trigger lays its children out in a label row, and a function has
+  // nothing to lay out.
   children?: React.ReactNode
 }
 
@@ -302,8 +300,8 @@ function ChatToolTrigger({ className, children, endContent, subtitle, ...props }
 
   return (
     <Disclosure.Heading>
-      {/* `flex` is not optional: HeroUI styles the indicator with `ms-auto` and
-          `shrink-0`, which only mean anything inside a flex container. */}
+      {/* `flex` is not optional: Disclosure.Indicator carries `shrink-0`,
+          which only means something inside a flex container. */}
       <Disclosure.Trigger
         data-slot="chat-tool-trigger"
         className={cx(chatToolVariants().trigger(), className)}
@@ -513,8 +511,8 @@ function ChatToolContent({ className, children, ...props }: React.ComponentProps
     // default `min-height: auto` floors it at its content height — so the panel
     // would take `height: 0` and still render full size.
     <Disclosure.Content data-slot="chat-tool-content" className="min-h-0 w-full" {...props}>
-      {/* Pro uses a very tight `p-1`; this keeps that density while leaving
-          enough edge around Meridian's diffs and approval controls. */}
+      {/* A tight `p-1` reads too dense here; this keeps close to that density
+          while leaving enough edge around Meridian's diffs and approval controls. */}
       <Disclosure.Body className={cx('flex flex-col gap-2.5 px-3 pb-3 pt-0.5', className)}>{children}</Disclosure.Body>
     </Disclosure.Content>
   )

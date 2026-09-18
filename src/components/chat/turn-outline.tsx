@@ -70,8 +70,8 @@ function label(content: string): string {
  * A minimap of the conversation, for finding a message you remember having.
  *
  * Turns, not headings. A table of contents built from the `#` in one long
- * answer would need the block index of every heading, which Pro's markdown
- * renderer makes unavailable — it renders each top-level block as its own
+ * answer would need the block index of every heading, which `MarkdownContent`
+ * makes unavailable — it renders each top-level block as its own
  * isolated `ReactMarkdown`, so there is no shared counter to mint stable ids
  * from. Indexing by turn needs none of that: the transcript already registers
  * every turn with the scroller under `turn.id`, so this is a list of ids the
@@ -115,10 +115,10 @@ export function TurnOutline({ turns }: { turns: Turn[] }) {
     >
       <FloatingToc placement="right">
         {/* The strip scrolls rather than growing without bound — a hundred-turn
-            conversation is taller than the window. Pro's own `Bar` calls
-            `scrollIntoView({ block: 'nearest' })` when it becomes active, which
-            only does anything if something here can scroll, so this is the
-            shape that component was written for. */}
+            conversation is taller than the window. The old library's `Bar`
+            called `scrollIntoView({ block: 'nearest' })` when it became active,
+            which only does anything if something here can scroll, so this is
+            the shape that component was written for. */}
         <FloatingToc.Trigger
           aria-label={t('chat.outline.title')}
           className="pointer-events-auto max-h-[60vh] overflow-y-auto no-scrollbar"

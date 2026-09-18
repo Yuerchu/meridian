@@ -14,8 +14,8 @@ import { cx } from '@/utils/cx'
  * can sit in its own row beside its number; gated on `ready` because that
  * call is synchronous and answers nothing until the grammar has loaded.
  *
- * `code-block__code` is Pro's class for the scrolling area, reused for its
- * font and line height so a file here matches a fenced block in the answer.
+ * `code-block__code` is the old library's class for the scrolling area, reused
+ * for its font and line height so a file here matches a fenced block in the answer.
  */
 export function NumberedCode({
   code,

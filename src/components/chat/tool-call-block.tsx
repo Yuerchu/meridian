@@ -680,7 +680,7 @@ function toolFileDiffs(toolName: string, args: Record<string, unknown>): FileDif
 
 /**
  * A button, not a link. It expands content in place and goes nowhere, and a
- * HeroUI `Link` with `onPress` and no `href` renders `<span role="link">`:
+ * React Aria `Link` with `onPress` and no `href` renders `<span role="link">`:
  * measured, that announces itself as a link to a screen reader and — the part
  * with no workaround — answers Enter but **not** Space, which is half of a
  * button's keyboard contract. `ghost` keeps the quiet look the link had.
@@ -986,7 +986,7 @@ function CollapsibleMarkdown({ content, blockId }: { content: string; blockId: s
 
 function GenericResult({ result }: { result: string }) {
   const [expanded, setExpanded] = useState(false)
-  // JSON results get pretty-printed and syntax-highlighted like HeroUI's preset.
+  // JSON results get pretty-printed and syntax-highlighted like a preset theme.
   const pretty = useMemo(() => {
     try {
       return JSON.stringify(JSON.parse(result), null, 2)

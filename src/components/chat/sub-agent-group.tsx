@@ -128,8 +128,8 @@ export function SubAgentStatusChip({ outcome }: { outcome: SubAgentVerdict }) {
       <Ban className="size-3" />
     )
   return (
-    // The attributes ride a span of our own: HeroUI's Chip keeps what it is
-    // handed to itself.
+    // The attributes ride a span of our own: Chip keeps what it is handed to
+    // itself.
     <span data-slot="sub-agent-status" data-outcome={outcome} className="contents">
       <Chip
         size="sm"

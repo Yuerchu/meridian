@@ -26,10 +26,9 @@ interface PromptQueueProps {
 }
 
 /**
- * Pro's own mark for a steered row. The Steer button's default children are
- * this plus the English word "Steer"; overriding the children without it
- * loses the only thing that tells an interjection from a follow-up at a
- * glance, which is why both the icon and the action rebuild it.
+ * The mark for a steered row, shared by the row's own icon and the Steer
+ * button's children so both draw the same glyph rather than two copies of the
+ * raw "↳" drifting apart.
  */
 function SteerMark() {
   return (
@@ -42,14 +41,14 @@ function SteerMark() {
 /**
  * The messages stacked up above the composer, in the order they will be sent.
  *
- * HeroUI's Queue is one card with the *current* run at the top and the stacked
- * messages under it. The two delivery modes are not urgency levels, and they
- * are not the same shape either:
+ * One card with the *current* run at the top and the stacked messages under
+ * it. The two delivery modes are not urgency levels, and they are not the
+ * same shape either:
  *
- * - **`interject`** hangs off the current row with Pro's `↳`, because it goes
+ * - **`interject`** hangs off the current row with `↳`, because it goes
  *   in at the next gap of the turn already running.
  * - **`follow_up`** is an ordinary queued row, and its one action is Steer —
- *   Pro's own word for switching it to an interjection, which also delivers it.
+ *   the word for switching it to an interjection, which also delivers it.
  *
  * Drawing them as a flat list next to a separate TodoBar made both modes look
  * like the nested one: the checklist sat where "current" belongs, and every
@@ -149,8 +148,8 @@ export function PromptQueue({
                 {/* For a doubtful row the icon is the doubt rather than the
                     mode: what happens to it next is the only thing about it
                     still undecided, and the mode no longer decides anything.
-                    An interjection uses Pro's ↳, not a different arrow — that
-                    mark is what Steer itself draws, so a row that will
+                    An interjection uses the same ↳, not a different arrow —
+                    that mark is what Steer itself draws, so a row that will
                     interrupt and the button that makes one look the same. */}
                 <PromptInput.Queue.Item.Icon>
                   {doubtful ? (
@@ -196,13 +195,13 @@ export function PromptQueue({
                       </PromptInput.Queue.Item.Action>
                     </>
                   )}
-                  {/* Pro's own word for it, and it does what it says: switching
+                  {/* Steer does what it says: switching
                       a row to `interject` also delivers it, so this is "now"
                       rather than a setting that takes effect eventually. Its
                       opposite is a plain action rather than a menu — with two
                       modes, a menu is a click to reach a single item. The ↳ is
-                      not optional: passing only the label replaces the default
-                      children, which is how the mark disappeared. */}
+                      not optional: passing only the label loses the only thing
+                      that tells an interjection from a follow-up at a glance. */}
                   {interject ? (
                     <PromptInput.Queue.Item.Action onPress={() => onSetDelivery(item.id, 'follow_up')}>
                       {t('chat.queue.followUp')}

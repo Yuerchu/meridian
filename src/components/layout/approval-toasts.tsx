@@ -245,7 +245,7 @@ function ApprovalToast({
             `calc(100vw - 2rem)` wide and its padding leaves about 264px at
             360px, against four buttons whose labels are set by whatever the
             question is — the sandbox retry spells its Allow "Retry without
-            sandbox" on its own. HeroUI buttons are `whitespace-nowrap`, and a
+            sandbox" on its own. Buttons are `whitespace-nowrap`, and a
             frontmost toast does not clip, so the overflow was drawn outside the
             rounded edge rather than being hidden. */}
         <div data-slot="approval-toast-actions" className="mt-2 flex flex-wrap items-center gap-2">

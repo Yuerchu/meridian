@@ -12,7 +12,8 @@ import {
 export type ThemePreference = 'system' | 'light' | 'dark'
 export type ResolvedTheme = 'light' | 'dark'
 
-const STORAGE_KEY = 'heroui-theme'
+// Read by the pre-paint script in index.html as well; the two must agree.
+const STORAGE_KEY = 'meridian-theme'
 const MEDIA_QUERY = '(prefers-color-scheme: dark)'
 
 function asPreference(value: string | null | undefined): ThemePreference {
@@ -21,9 +22,9 @@ function asPreference(value: string | null | undefined): ThemePreference {
 
 function applyToDOM(resolved: ResolvedTheme) {
   const root = document.documentElement
-  root.classList.remove('light', 'dark')
-  root.classList.add(resolved)
-  root.setAttribute('data-theme', resolved)
+  // `dark` is the only class anything reads (`@custom-variant dark` in
+  // globals.css); light is its absence.
+  root.classList.toggle('dark', resolved === 'dark')
 }
 
 type ThemeContextValue = {

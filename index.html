@@ -15,13 +15,25 @@
     <!-- Settles the theme before anything paints. React cannot: the preference
          lives in localStorage precisely because it has to be readable
          synchronously, where a Tauri `get_preference` round-trip is not.
-         The key and the media query are the ones `useTheme` (@heroui/react)
-         uses, and `src/lib/theme.tsx` narrows a junk value the same way —
-         diverge here and the two fight over `<html>`. -->
+         The key and the media query are the ones `src/lib/theme.tsx` uses,
+         and it narrows a junk value the same way — diverge here and the two
+         fight over `<html>`. `dark` is the only class anything reads
+         (`@custom-variant dark` in globals.css); light is its absence.
+
+         The key was `heroui-theme` until 2026-09; the one-time read below
+         carries a stored choice across the rename and then forgets the old key. -->
     <script>
       ;(function () {
         try {
-          var stored = localStorage.getItem('heroui-theme')
+          var stored = localStorage.getItem('meridian-theme')
+          if (stored === null) {
+            var legacy = localStorage.getItem('heroui-theme')
+            if (legacy !== null) {
+              localStorage.setItem('meridian-theme', legacy)
+              localStorage.removeItem('heroui-theme')
+              stored = legacy
+            }
+          }
           if (stored !== 'light' && stored !== 'dark') stored = 'system'
           var resolved =
             stored === 'system'
@@ -29,26 +41,23 @@
                 ? 'dark'
                 : 'light'
               : stored
-          var root = document.documentElement
-          root.classList.remove('light', 'dark')
-          root.classList.add(resolved)
-          root.setAttribute('data-theme', resolved)
+          document.documentElement.classList.toggle('dark', resolved === 'dark')
         } catch (e) {
           document.documentElement.classList.add('dark')
         }
       })()
     </script>
     <!-- Painted before the stylesheet arrives, so the window does not flash the
-         wrong colour on the way to the app. Both values are `--background` from
-         index.css — oklch(0.97 0 0) light, oklch(0.145 0 0) dark — and both have
-         to be changed with it. The window's own colour is set in
-         tauri.conf.json for the frame before that. -->
+         wrong colour on the way to the app. Both values are boardui's
+         `--color-background-full` (styles/theme.css) — white light, neutral-925
+         dark — and both have to be changed with it. The window's own colour is
+         set in tauri.conf.json for the frame before that. -->
     <style>
       html {
-        background-color: #f5f5f5;
+        background-color: #ffffff;
       }
       html.dark {
-        background-color: #0a0a0a;
+        background-color: #121212;
       }
     </style>
   </head>

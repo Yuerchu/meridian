@@ -163,7 +163,7 @@ function fenceLanguage(className: string | undefined): string {
 /**
  * A fenced block, or inline code when it fits on one line.
  *
- * The line test comes from Pro's own renderer, and is what the old
+ * The line test comes from the old renderer's own logic, and is what the old
  * `!className && !code.includes('\n')` guess was standing in for: a fence
  * without a language has no className either, so the two cases were only ever
  * distinguishable by their newline. The position is exact.
@@ -196,13 +196,13 @@ const CodeBlock: Components['code'] = ({ className, children, node, ...props }) 
   const icon = languageIconUrl(language)
 
   return (
-    // Pro's classes without Pro's components: importing `CodeBlock` for its
-    // header would drag in `CodeBlock.Code`, and with it Shiki's full entry
-    // point — the whole reason `lib/shiki` exists. The stylesheet is already
-    // loaded, so the markup below looks the same either way.
+    // The old library's classes without its components: importing `CodeBlock`
+    // for its header would drag in `CodeBlock.Code`, and with it Shiki's full
+    // entry point — the whole reason `lib/shiki` exists. The stylesheet is
+    // already loaded, so the markup below looks the same either way.
     //
-    // The radius is ours: Pro's own is 16px, the composer's rung, one above
-    // what a card inside the transcript may take.
+    // The radius is ours: the old library's own was 16px, the composer's rung,
+    // one above what a card inside the transcript may take.
     <div data-slot="markdown-code-block" className="code-block my-3 rounded-xl">
       <div data-slot="markdown-code-header" className="code-block__header">
         {icon && <img data-slot="markdown-code-icon" src={icon} alt="" aria-hidden className="size-4 shrink-0" />}
@@ -224,7 +224,7 @@ const CodeBlock: Components['code'] = ({ className, children, node, ...props }) 
 /**
  * A table, with somewhere for it to go when it does not fit.
  *
- * Pro styles `.markdown table` at `width: 100%` and stops there, which is an
+ * The old `.markdown table` style stopped at `width: 100%`, which is an
  * answer only for a table narrower than its column. Past that the cells stop at
  * their minimum content width and the table runs over the edge — and the bubble
  * around it is `overflow-hidden`, so the columns on the end were not clipped
@@ -246,9 +246,9 @@ const TableBlock: Components['table'] = ({ children, ...props }) => (
 )
 
 /**
- * Pro sets `list-inside`, which tucks a wrapped list item under its own marker,
- * and sizes `h3` at the body size. Both are fine for a short answer and wrong
- * for a long one, which is most of what lands here.
+ * The old defaults set `list-inside`, which tucks a wrapped list item under
+ * its own marker, and sized `h3` at the body size. Both are fine for a short
+ * answer and wrong for a long one, which is most of what lands here.
  */
 const markdownClasses = cx(
   'text-body-regular leading-relaxed',
@@ -400,7 +400,7 @@ function TrailedParagraph({
   )
 }
 
-/** Pro's renderer with one deliberate seam: safe URL and text-node transforms. */
+/** A markdown renderer with one deliberate seam: safe URL and text-node transforms. */
 function LocalMarkdown({
   children,
   components,

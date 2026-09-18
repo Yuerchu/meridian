@@ -18,7 +18,7 @@
 
 :root {
   /* The lint rule that bans `cursor-pointer` points at this variable so the
-     cursor is decided once. HeroUI used to define it; boardui does not. */
+     cursor is decided once; boardui defines no cursor token of its own. */
   --cursor-interactive: pointer;
 
   /* Status. `*-soft` is the tinted fill behind a status message or chip and

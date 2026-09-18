@@ -10,7 +10,7 @@ import { runDetectors, type Finding, type Severity } from './responsive-detector
  *
  * **Why an iframe.** Every responsive decision in this app is keyed to the
  * *viewport* — `useIsMobile` reads `innerWidth`, Tailwind's `md:` is a media
- * query, and Pro hides the sidebar panel at `max-width: 768px`. Nothing else
+ * query, and Sidebar hides the panel at `max-width: 768px`. Nothing else
  * moves those: `transform: scale` is a visual lie, element `zoom` leaves media
  * queries and `innerWidth` disagreeing with each other, and a resizable `div`
  * only reaches the container queries that the settings pane has just started
@@ -37,7 +37,7 @@ const WIDTHS: Array<{ px: number; note: string }> = [
   { px: 360, note: 'Android portrait — unreachable on this desktop' },
   { px: 400, note: 'Large Android portrait' },
   { px: 640, note: 'The window minimum (tauri.conf.json)' },
-  { px: 768, note: 'Pro drops the sidebar panel at or below here' },
+  { px: 768, note: 'Sidebar drops the panel at or below here' },
   { px: 900, note: 'Two columns, but the layer is only ~660px' },
   { px: 1000, note: 'Top of the squeeze' },
   { px: 1280, note: 'Ordinary desktop' },

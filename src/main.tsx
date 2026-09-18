@@ -52,7 +52,7 @@ function renderAppCrashFallback(error: Error) {
   )
 }
 
-// A Tauri window has no address bar, so `VITE_PLAYGROUND=heroui pnpm tauri dev`
+// A Tauri window has no address bar, so `VITE_PLAYGROUND=webview pnpm tauri dev`
 // is the only way in. Written with replaceState rather than by assigning the
 // hash, which would fire the reload listener below and loop.
 const wantedPlayground = isDev ? import.meta.env.VITE_PLAYGROUND : undefined

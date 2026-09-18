@@ -61,7 +61,7 @@ export function ToolbarSelect({
       }}
       className={cx('w-auto min-w-0', className)}
     >
-      {/* Pro supplies the inline-select interaction and density; the composer
+      {/* InlineSelect supplies the interaction and density; the composer
           gives it a fixed 32px target. Height and radius move together so the
           toolbar's hover fill follows the surrounding shell. */}
       <InlineSelect.Trigger

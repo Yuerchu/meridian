@@ -55,7 +55,7 @@ describe('ChatTool', () => {
     expect(screen.getByText('Exact change')).toBeVisible()
   })
 
-  it('wraps approval actions in the Pro-style actions region', () => {
+  it('wraps approval actions in the actions region', () => {
     const { container } = render(
       <ChatToolApproval>
         <Button>Reject</Button>

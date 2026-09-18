@@ -248,7 +248,7 @@ export function MemorySettings() {
               list, which is where it used to be — on a long list you had to
               scroll to the end to reach the actions for rows at the top.
 
-              Through a portal, because Pro renders `.action-bar` in place and it
+              Through a portal, because ActionBar renders itself in place and it
               is `position: fixed`. This panel is a query container now, and
               `container-type` brings `contain: layout` with it — which makes the
               container the containing block for its fixed descendants. Left

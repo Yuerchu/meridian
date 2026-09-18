@@ -376,7 +376,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
 
                 return (
                   // This is a plain button because these compact rows sit inside
-                  // a two-column picker. Boolean rows above use Pro CellSwitch so
+                  // a two-column picker. Boolean rows above use CellSwitch so
                   // the entire row has native switch semantics.
                   // eslint-disable-next-line no-restricted-syntax -- the compact picker row owns this deliberately flattened layout
                   <button

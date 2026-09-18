@@ -58,18 +58,16 @@ registerProcessor('probe', ProbeProcessor)
 `
 
 /**
- * The two CSS features Pro's `TextShimmer` needs, asked on the device itself.
+ * The two CSS features `TextShimmer` needs, asked on the device itself.
  *
- * `#playground/heroui` asks the same question, but only a dev server can reach
+ * `#playground/webview` asks the same question, but only a dev server can reach
  * that — and the answer that matters is Android's, where the WebView ships with
  * the system and an old phone can be years behind. This is why the probe lives
  * in Settings: a plain release APK can open it.
  *
  * What rides on it: if `tan()` is missing, the shimmer's `background` shorthand
  * fails to parse while `-webkit-text-fill-color: transparent` beside it applies
- * regardless. The text does not fall back to plain — it goes invisible. Both
- * green here is what would let `ChainOfThought` move onto Pro's, which pulls
- * `TextShimmer` in with it.
+ * regardless. The text does not fall back to plain — it goes invisible.
  */
 const CSS_PROBES: Array<{ name: string; note: string; test: () => boolean }> = [
   {

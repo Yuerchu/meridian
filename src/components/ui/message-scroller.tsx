@@ -126,7 +126,7 @@ function MessageScrollerButton({
       )}
       render={
         render ??
-        // `dom` hands back intrinsic `<button>` props; HeroUI types its own
+        // `dom` hands back intrinsic `<button>` props; `Button` types its own
         // handlers against React Aria's synthetic events, which are the same
         // objects with a wider element type.
         ((buttonProps) => (

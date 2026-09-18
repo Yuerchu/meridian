@@ -1,11 +1,11 @@
 import { expect } from 'vitest'
 
 /**
- * Assertions for HeroUI disclosures — `Turn`, `ChatTool`, `ChainOfThought`.
+ * Assertions for disclosures — `Turn`, `ChatTool`, `ChainOfThought`.
  *
  * base-ui's `Collapsible` returned `null` while collapsed, so "is it hidden"
  * and "is it in the DOM" were the same question and `queryByText` answered
- * both. React Aria, which HeroUI's `Disclosure` is built on, always renders the
+ * both. React Aria, which `Disclosure` is built on, always renders the
  * panel and marks it `aria-hidden` + `hidden="until-found"` instead. Testing
  * Library's text queries and `querySelector` look straight through both, so
  * every "X is hidden behind the trigger" assertion written against presence now

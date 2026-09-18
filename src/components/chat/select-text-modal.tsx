@@ -29,7 +29,7 @@ export function SelectTextModal({
   return (
     <Modal.Backdrop isOpen={isOpen} onOpenChange={onOpenChange}>
       <Modal.Container size="cover" placement="center">
-        {/* Portalled to the body, so no ancestor's inset reaches it: HeroUI's
+        {/* Portalled to the body, so no ancestor's inset reaches it: Modal's
             own padding is all that stands between the footer buttons and the
             navigation bar, and under 3-button navigation that is not enough. */}
         <Modal.Dialog

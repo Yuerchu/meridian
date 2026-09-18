@@ -23,7 +23,7 @@ interface ComposerProps {
    * Lets Enter submit while a reply is still streaming — steering a run rather
    * than starting a turn.
    *
-   * Pro keeps Send as Send whenever there is text in that mode, which leaves no
+   * PromptInput keeps Send as Send whenever there is text in that mode, which leaves no
    * way to stop the run without first emptying the field, so a separate Stop
    * appears beside it. Off, the composer behaves as it always has: Send becomes
    * Stop and nothing can be submitted until the answer is finished.
@@ -47,7 +47,7 @@ interface ComposerProps {
   suggestions?: ReactNode
   /** Runs before the composer's submit guard; may consume Enter/Tab/Escape. */
   onKeyDownCapture?: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void
-  /** Keeps a caret-aware typeahead in sync without replacing Pro's textarea ref. */
+  /** Keeps a caret-aware typeahead in sync without replacing PromptInput's textarea ref. */
   onCaretChange?: (caret: number) => void
   /** A leading bang changes semantics without replacing the textarea. */
   inputMode?: 'prompt' | 'shell'
@@ -55,7 +55,7 @@ interface ComposerProps {
    * Queued messages, in their own card above the shell.
    *
    * A sibling of `PromptInput.Shell` rather than a slot inside it, which is
-   * where Pro puts it and where it belongs: the rows are about messages that
+   * where PromptInput puts it and where it belongs: the rows are about messages that
    * have already been written, not about the one being typed.
    */
   queue?: ReactNode
@@ -64,7 +64,7 @@ interface ComposerProps {
   /**
    * The field element, once there is one.
    *
-   * Pro points `TextArea`'s ref at its own context and spreads incoming props
+   * PromptInput points `TextArea`'s ref at its own context and spreads incoming props
    * after it, so passing a ref would replace theirs and take the built-in
    * autosize down with it. Callers that need the element — to focus it, or to
    * read `selectionStart` for a paste — get it this way instead.
@@ -73,7 +73,7 @@ interface ComposerProps {
 }
 
 /**
- * The message composer, on Pro's PromptInput.
+ * The message composer, on PromptInput.
  *
  * Everything hangs off it as a slot, because the two callers want very
  * different amounts of it: the empty state is a field and a send button, the
@@ -125,11 +125,11 @@ export function Composer({
     onSubmit()
   }, [onSubmit])
 
-  // Capture, not bubble. Pro's built-in key handler runs first and has already
+  // Capture, not bubble. PromptInput's built-in key handler runs first and has already
   // called `preventDefault` and `onSubmit` by the time a handler passed in
   // would see the event; stopping it here is the only way left to hold Enter
   // back. React ends the dispatch for this element's bubble handler too —
-  // `#playground/heroui` has the probe that proves it.
+  // `#playground/webview` has the probe that proves it.
   const guardEnter = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       onKeyDownCapture?.(e)
@@ -139,7 +139,7 @@ export function Composer({
     [onKeyDownCapture],
   )
 
-  // Pro's own rule for what the send button does, restated because only the
+  // PromptInput's own rule for what the send button does, restated because only the
   // label and the extra Stop are ours and both have to agree with it: while a
   // run is going the button stops it, unless steering is on *and* there is
   // something to steer with. An empty steerable field gets Stop back — which is
@@ -166,7 +166,7 @@ export function Composer({
         maxHeight={200}
       >
         {queue}
-        {/* Pro styles this state — dotted accent border and a soft fill — but
+        {/* PromptInput styles this state — dotted accent border and a soft fill — but
             sets it for nobody; it is left for whoever owns the drag. */}
         <PromptInput.Shell data-dragging={dropping ? 'true' : undefined}>
           <PromptInput.Content>
@@ -200,7 +200,7 @@ export function Composer({
             />
           </PromptInput.Content>
           <PromptInput.Toolbar>
-            {/* Pro's toolbar is a `space-between` flex row inside a shell that
+            {/* PromptInput's toolbar is a `space-between` flex row inside a shell that
                 clips, and neither half is told what to do when the left one
                 runs out of room. So a wide left half pushes Send past the
                 shell's edge and it is simply gone — which is what a hosted
@@ -220,17 +220,17 @@ export function Composer({
                 exactly where it was.
 
                 The horizontal half was added later and for a second reason:
-                Pro leaves this slot no inline padding, so the first control sat
+                PromptInput leaves this slot no inline padding, so the first control sat
                 flush against a scroll container's edge and `touch-hitbox` had
                 nowhere to expand sideways. The `+` button came out 44px tall
                 and still 40px wide — which the harness at
                 `#playground/responsive` is what noticed. */}
             {/* `shrink` as well as `min-w-0`, and it is the half that was
-                missing: Pro sets `flex-shrink: 0` on this slot, and a flex item
+                missing: PromptInput sets `flex-shrink: 0` on this slot, and a flex item
                 that may not shrink ignores `min-w-0` entirely — so the scroller
                 above was real but never narrower than its contents, and Send
                 still went over the clipped edge. Both halves of the toolbar
-                carry Pro's `shrink-0`; this is the one that gives way, because
+                carry PromptInput's `shrink-0`; this is the one that gives way, because
                 the other one is Send. */}
             <PromptInput.ToolbarStart className="-m-1 min-w-0 shrink overflow-x-auto p-1 scrollbar-none [&>*]:shrink-0">
               {toolbarStart}
@@ -244,7 +244,7 @@ export function Composer({
                   <StopFill />
                 </PromptInput.Action>
               )}
-              {/* Pro would label it "Send message" / "Stop" in English, and it
+              {/* PromptInput would label it "Send message" / "Stop" in English, and it
                   decides which one it is from the same three values below. */}
               <PromptInput.Send
                 aria-label={sendIsStop ? t('chat.stop') : t('chat.send')}

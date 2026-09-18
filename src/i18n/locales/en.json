@@ -1207,7 +1207,7 @@
   "common.loading": "Loading...",
   "settings.developer.cssProbe": "CSS support",
   "settings.developer.cssProbeTitle": "Does this WebView have what the shimmer needs?",
-  "settings.developer.cssProbeHint": "Both must be green before the reasoning header can use HeroUI Pro’s shimmer. Where tan() is missing the text goes invisible rather than plain.",
+  "settings.developer.cssProbeHint": "Both must be green before the reasoning header can use the shimmering label. Where tan() is missing the text goes invisible rather than plain.",
   "chat.commandSuggestions": "Commands",
   "chat.referenceSuggestions": "Project files",
   "chat.referenceFollowUpOnly": "Workspace references can be attached only to a new or follow-up turn, not injected into a turn already in progress.",

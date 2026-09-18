@@ -579,8 +579,8 @@ function UsageSkeleton() {
 /**
  * A figure with a caption.
  *
- * Pro's `KPI.Value` renders through `NumberValue`, which takes a number and
- * formats it with `Intl` — right for a count and wrong for the two figures here
+ * The old `KPI.Value` rendered through `NumberValue`, which took a number and
+ * formatted it with `Intl` — right for a count and wrong for the two figures here
  * that are not plain numbers (a cost with no currency, a rate that can be "no
  * data"). So the value slot takes a node and the card keeps everything else.
  */
@@ -843,8 +843,8 @@ function CostBars({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
 }
 
 /**
- * Pro's charts ship no legend part and do not re-export recharts', so this is
- * the shape its own examples use — and it has to be built from the same `bands`
+ * `AreaChart` ships no legend part and does not re-export recharts', so this is
+ * a shape built by hand — and it has to be built from the same `bands`
  * the chart drew, or it starts naming a series that is not there.
  */
 function Legend({ bands }: { bands: readonly { key: string; color: string; labelKey: string }[] }) {

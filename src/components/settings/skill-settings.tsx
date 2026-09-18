@@ -341,15 +341,15 @@ export function SkillSettings() {
                     shorter one beside it fit. From 0 the row grows into whatever
                     is left and truncates instead. */}
                 <Disclosure.Heading className="min-w-0 flex-1 basis-full @sm/skill-row:basis-0">
-                  {/* `flex` is not optional: HeroUI styles the indicator with
-                      `ms-auto` and `shrink-0`, which only mean anything inside a
+                  {/* `flex` is not optional: Disclosure.Indicator carries
+                      `shrink-0`, which only means something inside a
                       flex container. `text-start` undoes the button element's
                       centred UA default. */}
                   <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2 text-start text-caption-1-regular transition-colors outline-none hover:bg-background-primary-hover/30 focus-visible:bg-background-secondary-default/30">
                     <BookOpen className="w-3.5 h-3.5 shrink-0 text-text-secondary" />
                     {/* The label row absorbs the slack, so the badge and the
-                        chevron sit at the right edge without a second auto
-                        margin fighting the indicator's own `ms-auto`. */}
+                        chevron sit at the right edge without a separate
+                        spacer pushing them there. */}
                     <div data-slot="skill-item-label-row" className="flex min-w-0 flex-1 items-center gap-2">
                       <span data-slot="skill-item-name" className="truncate">
                         {skill.display_name}

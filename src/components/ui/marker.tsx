@@ -37,7 +37,7 @@ function MarkerIcon({ className, ...props }: React.ComponentProps<'span'>) {
     <span
       data-slot="marker-icon"
       aria-hidden="true"
-      // A direct child only. The descendant form reached inside HeroUI's
+      // A direct child only. The descendant form reached inside
       // Spinner, whose markup is a sized span wrapping an unsized svg: the svg
       // matched, shrank to 16px, and parked in the corner of its 24px parent —
       // which is the element carrying the spin. The mark appeared to orbit
