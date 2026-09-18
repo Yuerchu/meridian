@@ -162,7 +162,7 @@ export const TurnItem = React.memo(function TurnItem({
         onNext={() => go(1)}
         // Switching mid-stream would leave the running turn writing into a path
         // that is no longer on screen.
-        isDisabled={switching || streaming}
+        disabled={switching || streaming}
         previousLabel={t('chat.turn.branchPrev')}
         nextLabel={t('chat.turn.branchNext')}
       />

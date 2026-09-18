@@ -19,7 +19,7 @@ export function RowActionDropdownItems({ actions }: { actions: RowAction[] }) {
           id={action.key}
           textValue={action.label}
           variant={action.variant === 'destructive' ? 'danger' : undefined}
-          isDisabled={Boolean(action.disabledReason)}
+          disabled={Boolean(action.disabledReason)}
           onAction={() => void action.run()}
         >
           <action.icon className="size-4" />

@@ -198,7 +198,7 @@ function AssistantEditor({
                 <Button
                   variant="outline"
                   className="text-xs px-1.5 py-0.5 bg-default/50 text-muted hover:bg-default font-mono"
-                  onPress={() => setSystemPrompt((prev) => prev + `{{${v.name}}}`)}
+                  onClick={() => setSystemPrompt((prev) => prev + `{{${v.name}}}`)}
                 >
                   {`{{${v.name}}}`}
                 </Button>
@@ -421,7 +421,7 @@ function AssistantEditor({
                   key={skill.dir_name}
                   className="py-0.5 text-xs"
                   isSelected={boundSkillDirs.has(skill.dir_name)}
-                  isDisabled={!skill.is_enabled}
+                  disabled={!skill.is_enabled}
                   onChange={async (selected) => {
                     setSkillError(null)
                     try {
@@ -460,13 +460,13 @@ function AssistantEditor({
         </p>
       )}
       <div data-slot="assistant-editor-actions" className="flex items-center gap-2 pt-1">
-        <Button onPress={handleSave}>{t('common.save')}</Button>
+        <Button onClick={handleSave}>{t('common.save')}</Button>
         {saved && <SavedHint />}
         {onDelete && (
           <Button
             variant="danger-soft"
             className="ml-auto"
-            onPress={() => {
+            onClick={() => {
               setSaveError(null)
               void onDelete(assistant.id).catch((reason) => setSaveError(String(reason)))
             }}
@@ -568,7 +568,7 @@ export function AssistantSettings() {
             <Button
               size="sm"
               variant="outline"
-              onPress={() => {
+              onClick={() => {
                 setLoadError(null)
                 setLoading(true)
                 void refresh()
@@ -590,7 +590,7 @@ export function AssistantSettings() {
         title={t('settings.assistant.title')}
         subtitle={t('settings.assistant.subtitle')}
         actions={
-          <Button variant="outline" onPress={handleCreate}>
+          <Button variant="outline" onClick={handleCreate}>
             <Plus className="w-3.5 h-3.5" />
             {t('settings.assistant.new')}
           </Button>

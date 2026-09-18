@@ -215,7 +215,7 @@ function QuestionBlock({
         <span data-slot="question-skipped-text" className="text-sm text-muted line-through">
           {q.question}
         </span>
-        <Button variant="ghost" onPress={() => onUnskip(q.id)} className="text-xs text-muted shrink-0 ml-2">
+        <Button variant="ghost" onClick={() => onUnskip(q.id)} className="text-xs text-muted shrink-0 ml-2">
           <ArrowUturnCcwLeft className="w-3.5 h-3.5" />
           {t('chat.tool.undo')}
         </Button>
@@ -242,7 +242,7 @@ function QuestionBlock({
           )}
         </div>
         {!q.required && (
-          <Button variant="ghost" onPress={() => onSkip(q.id)} className="text-xs text-muted shrink-0 mt-0.5">
+          <Button variant="ghost" onClick={() => onSkip(q.id)} className="text-xs text-muted shrink-0 mt-0.5">
             <ForwardStep className="w-3.5 h-3.5" />
             {t('chat.tool.skipQuestion')}
           </Button>
@@ -665,7 +665,7 @@ function ResultToggle({ expanded, onToggle }: { expanded: boolean; onToggle: () 
   const { t } = useTranslation()
   return (
     <div data-slot="result-toggle" className="border-t border-border/50 px-3 py-1.5">
-      <Button variant="ghost" size="sm" className="rounded-lg px-2 text-xs" onPress={onToggle}>
+      <Button variant="ghost" size="small" className="rounded-lg px-2 text-xs" onClick={onToggle}>
         {t(expanded ? 'chat.tool.showLess' : 'chat.tool.showFullResult')}
       </Button>
     </div>
@@ -941,7 +941,7 @@ function CollapsibleMarkdown({ content, blockId }: { content: string; blockId: s
           variant="ghost"
           size="sm"
           className="mt-1 self-start rounded-lg px-2 text-xs"
-          onPress={() => setOpen((current) => !current)}
+          onClick={() => setOpen((current) => !current)}
         >
           {t(open ? 'chat.tool.showLess' : 'chat.tool.showFullResult')}
         </Button>
@@ -1203,14 +1203,14 @@ export function PendingApproval({
               accessible name leaves out: `aria-keyshortcuts` is what a screen
               reader announces, and `aria-hidden` keeps the hint from being read
               as part of the button's name. */}
-          <Button variant="danger-soft" aria-keyshortcuts={ariaHotkey(DENY_HOTKEY)} onPress={() => setUi('feedback')}>
+          <Button variant="danger-soft" aria-keyshortcuts={ariaHotkey(DENY_HOTKEY)} onClick={() => setUi('feedback')}>
             <Xmark className="w-3.5 h-3.5" />
             <span data-slot="approval-deny-label">{t('chat.tool.deny')}</span>
             <HotkeyHint combo={DENY_HOTKEY} />
           </Button>
           <Button
             aria-keyshortcuts={ariaHotkey(APPROVE_HOTKEY)}
-            onPress={() => decide(() => api.approveToolCall(approvalId))}
+            onClick={() => decide(() => api.approveToolCall(approvalId))}
           >
             <Check className="w-3.5 h-3.5" />
             <span data-slot="approval-allow-label">
@@ -1244,10 +1244,10 @@ export function PendingApproval({
         autoFocus
       />
       <ChatToolApproval className="pt-0">
-        <Button variant="ghost" onPress={() => setUi('idle')}>
+        <Button variant="ghost" onClick={() => setUi('idle')}>
           {t('chat.tool.cancel')}
         </Button>
-        <Button variant="danger-soft" onPress={deny}>
+        <Button variant="danger-soft" onClick={deny}>
           <Xmark className="w-3.5 h-3.5" />
           {feedback.trim() ? t('chat.tool.denyWithReason') : t('chat.tool.deny')}
         </Button>
@@ -1566,11 +1566,11 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
       {data.status === 'pending' && approvalId && !sent && (
         <div data-slot="enter-plan-actions" className={cn(divider, section)}>
           <ChatToolApproval>
-            <Button variant="outline" onPress={() => decide(() => api.denyToolCall({ approvalId, reason: null }))}>
+            <Button variant="outline" onClick={() => decide(() => api.denyToolCall({ approvalId, reason: null }))}>
               <Xmark className="w-3.5 h-3.5" />
               {t('chat.plan.keepBuilding')}
             </Button>
-            <Button onPress={() => decide(() => api.approveToolCall(approvalId))}>
+            <Button onClick={() => decide(() => api.approveToolCall(approvalId))}>
               <Compass className="w-3.5 h-3.5" />
               {t('chat.plan.startPlanning')}
             </Button>
@@ -1701,10 +1701,10 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
                 autoFocus
               />
               <ChatToolApproval className="pt-0">
-                <Button variant="ghost" onPress={() => setUi('idle')}>
+                <Button variant="ghost" onClick={() => setUi('idle')}>
                   {t('chat.tool.cancel')}
                 </Button>
-                <Button variant="outline" onPress={sendBack}>
+                <Button variant="outline" onClick={sendBack}>
                   <ArrowUturnCcwLeft className="w-3.5 h-3.5" />
                   {t('chat.plan.sendBack')}
                 </Button>
@@ -1712,11 +1712,11 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
             </div>
           ) : (
             <ChatToolApproval>
-              <Button variant="outline" onPress={() => setUi('feedback')}>
+              <Button variant="outline" onClick={() => setUi('feedback')}>
                 <ArrowUturnCcwLeft className="w-3.5 h-3.5" />
                 {t('chat.plan.revise')}
               </Button>
-              <Button onPress={() => decide(() => api.approveToolCall(approvalId))}>
+              <Button onClick={() => decide(() => api.approveToolCall(approvalId))}>
                 <Check className="w-3.5 h-3.5" />
                 {t('chat.plan.approve')}
               </Button>
@@ -1835,7 +1835,7 @@ function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay; revie
             {status === 'pending' ? t('chat.plan.reviewReady') : t('chat.plan.reviewHistory')}
           </p>
         </div>
-        <Button variant={status === 'pending' ? 'primary' : 'outline'} onPress={() => openReview(reviewId)}>
+        <Button variant={status === 'pending' ? 'primary' : 'outline'} onClick={() => openReview(reviewId)}>
           {t('chat.plan.review')}
         </Button>
       </div>

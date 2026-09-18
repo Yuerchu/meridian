@@ -83,7 +83,7 @@ export function RenameDialog({
             <Button slot="close" variant="secondary">
               {t('common.cancel')}
             </Button>
-            <Button onPress={submit} isDisabled={!canSave}>
+            <Button onClick={submit} disabled={!canSave}>
               {t('common.save')}
             </Button>
           </Modal.Footer>

@@ -269,10 +269,10 @@ export default function ResponsiveLab() {
           </Field>
 
           <div data-slot="responsive-lab-actions" className="flex gap-2">
-            <Button size="sm" onPress={measure}>
+            <Button size="small" onClick={measure}>
               Measure
             </Button>
-            <Button size="sm" variant="outline" onPress={sweep}>
+            <Button size="small" variant="outline" onClick={sweep}>
               Sweep widths
             </Button>
           </div>

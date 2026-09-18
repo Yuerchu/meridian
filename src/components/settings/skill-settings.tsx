@@ -176,18 +176,18 @@ function SkillEditor({
       )}
 
       <div data-slot="skill-editor-actions" className="flex items-center gap-2">
-        <Button onPress={handleSave} isDisabled={!canSave}>
+        <Button onClick={handleSave} disabled={!canSave}>
           {t('common.save')}
         </Button>
         {saved && <SavedHint data-slot="skill-editor-saved" />}
         {onDelete && !isBuiltin && (
           <TooltipTrigger delay={0}>
             <Button
-              isIconOnly
+              iconOnly
               variant="ghost"
               aria-label={t('settings.skills.delete')}
               className="ml-auto text-muted hover:text-danger"
-              onPress={onDelete}
+              onClick={onDelete}
             >
               <TrashBin className="w-3.5 h-3.5" />
             </Button>
@@ -274,11 +274,11 @@ export function SkillSettings() {
         subtitle={t('settings.skills.subtitle')}
         actions={
           <>
-            <Button variant="outline" onPress={handleRescan} isDisabled={rescanning}>
+            <Button variant="outline" onClick={handleRescan} disabled={rescanning}>
               {rescanning ? <Spinner size="sm" color="current" /> : <ArrowsRotateRight className="w-3.5 h-3.5" />}
               {t('settings.skills.rescan')}
             </Button>
-            <Button variant="outline" onPress={() => setShowCreate(!showCreate)}>
+            <Button variant="outline" onClick={() => setShowCreate(!showCreate)}>
               <Plus className="w-3.5 h-3.5" />
               {t('settings.skills.new')}
             </Button>

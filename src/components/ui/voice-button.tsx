@@ -53,11 +53,11 @@ export function VoiceButton({
       )}
       <TooltipTrigger delay={0}>
         <Button
-          isIconOnly
+          iconOnly
           aria-label={ariaLabel}
           aria-pressed={recording}
           variant={recording ? 'danger-soft' : 'ghost'}
-          isDisabled={disabled || state === 'transcribing'}
+          disabled={disabled || state === 'transcribing'}
           className={cn(
             'touch-hitbox touch-none select-none',
             state === 'starting' && 'text-muted',
@@ -68,7 +68,7 @@ export function VoiceButton({
           onPointerCancel={onPointerCancel}
           onPointerEnter={onPointerEnter}
           onPointerLeave={onPointerLeave}
-          onPress={(event) => {
+          onClick={(event) => {
             // React Aria reports screen-reader and other programmatic activation
             // as `virtual`; unlike mouse/touch/pen it has no pointer handler that
             // could otherwise start recording.

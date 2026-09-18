@@ -291,12 +291,12 @@ function PreviewSheet({
                 )}
               </div>
               <div data-slot="file-preview-actions" className="flex shrink-0 justify-end gap-2">
-                <Button variant="secondary" onPress={copyPath}>
+                <Button variant="secondary" onClick={copyPath}>
                   {copied ? <Check /> : <Copy />}
                   {t(copied ? 'chat.filePreview.pathCopied' : 'chat.filePreview.copyPath')}
                 </Button>
                 {canOpenEditor && state.status === 'loaded' && state.kind === 'project_file' && (
-                  <Button variant="outline" onPress={openInEditor}>
+                  <Button variant="outline" onClick={openInEditor}>
                     <ArrowRightFromSquare />
                     {t('chat.filePreview.openInEditor')}
                   </Button>

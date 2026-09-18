@@ -79,11 +79,11 @@ export function ChangesPanelView({ files, onClose }: { files: TouchedFile[]; onC
         </span>
         <TooltipTrigger delay={0}>
           <Button
-            isIconOnly
+            iconOnly
             variant="ghost"
             size="sm"
             aria-label={t('common.close')}
-            onPress={onClose}
+            onClick={onClose}
             className="shrink-0"
           >
             <Xmark />

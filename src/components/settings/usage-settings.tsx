@@ -359,7 +359,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
                 {t('settings.usage.loadError')}
               </Hint>
             </Alert.Description>
-            <Button size="sm" variant="outline" onPress={() => setReload((value) => value + 1)}>
+            <Button size="small" variant="outline" onClick={() => setReload((value) => value + 1)}>
               {t('settings.usage.retry')}
             </Button>
           </Alert.Content>
@@ -528,7 +528,7 @@ function Filter({
             variant={selectedKey === id ? 'secondary' : 'ghost'}
             aria-pressed={selectedKey === id}
             className={TAB}
-            onPress={() => onChange(id)}
+            onClick={() => onChange(id)}
           >
             {text}
           </Button>
@@ -1135,7 +1135,7 @@ function BucketTable({
           })
           return (
             <TooltipTrigger>
-              <Button isIconOnly variant="ghost" aria-label={label} onPress={() => onOpenConversation(conversationId)}>
+              <Button iconOnly variant="ghost" aria-label={label} onClick={() => onOpenConversation(conversationId)}>
                 <ArrowRightFromSquare className="size-4" />
               </Button>
               <Tooltip placement="left">{label}</Tooltip>

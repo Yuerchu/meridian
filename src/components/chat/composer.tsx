@@ -156,7 +156,7 @@ export function Composer({
         onSubmit={handleSubmit}
         onStop={onStop}
         status={pending ? 'submitted' : streaming ? 'streaming' : 'ready'}
-        isDisabled={disabled}
+        disabled={disabled}
         // Default `true` would grey out the whole toolbar while a reply
         // streams — including the context gauge, which is when it is most worth
         // reading. The field stays live as it always has; only Send becomes
@@ -240,7 +240,7 @@ export function Composer({
               {/* Exactly when Send is not already a Stop, so the two are never
                   up at once and the run is never unstoppable. */}
               {streaming && onStop && !sendIsStop && (
-                <PromptInput.Action aria-label={t('chat.stop')} tooltip={t('chat.stop')} onPress={onStop}>
+                <PromptInput.Action aria-label={t('chat.stop')} tooltip={t('chat.stop')} onClick={onStop}>
                   <StopFill />
                 </PromptInput.Action>
               )}
@@ -248,7 +248,7 @@ export function Composer({
                   decides which one it is from the same three values below. */}
               <PromptInput.Send
                 aria-label={sendIsStop ? t('chat.stop') : t('chat.send')}
-                isDisabled={hasPayload && !streaming ? false : undefined}
+                disabled={hasPayload && !streaming ? false : undefined}
               />
             </PromptInput.ToolbarEnd>
           </PromptInput.Toolbar>

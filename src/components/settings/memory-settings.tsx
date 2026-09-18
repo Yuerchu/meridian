@@ -87,11 +87,11 @@ export function MemorySettings() {
         subtitle={t('settings.memory.subtitle')}
         actions={
           <>
-            <Button variant="ghost" onPress={() => setTrashOpen(true)} data-slot="memory-trash-open">
+            <Button variant="ghost" onClick={() => setTrashOpen(true)} data-slot="memory-trash-open">
               <TrashBin />
               {t('settings.memory.trash.title')}
             </Button>
-            <Button variant="secondary" onPress={() => setShowAdd(true)} isDisabled={!canAdd}>
+            <Button variant="secondary" onClick={() => setShowAdd(true)} disabled={!canAdd}>
               <Plus />
               {t('settings.memory.new')}
             </Button>
@@ -180,7 +180,7 @@ export function MemorySettings() {
                 />
                 <div data-slot="memory-add-spacer" className="flex-1" />
                 <TooltipTrigger delay={0}>
-                  <Button variant="ghost" isIconOnly aria-label={t('common.cancel')} onPress={() => setShowAdd(false)}>
+                  <Button variant="ghost" iconOnly aria-label={t('common.cancel')} onClick={() => setShowAdd(false)}>
                     <Xmark />
                   </Button>
                   <Tooltip>{t('common.cancel')}</Tooltip>
@@ -188,10 +188,10 @@ export function MemorySettings() {
                 <TooltipTrigger delay={0}>
                   <Button
                     variant="secondary"
-                    isIconOnly
+                    iconOnly
                     aria-label={t('settings.memory.add')}
-                    onPress={handleAdd}
-                    isDisabled={!newKey.trim() || !newContent.trim()}
+                    onClick={handleAdd}
+                    disabled={!newKey.trim() || !newContent.trim()}
                   >
                     <Check />
                   </Button>
@@ -208,7 +208,7 @@ export function MemorySettings() {
               <Alert.Indicator />
               <Alert.Content>
                 <Alert.Description className="break-words">{t('settings.memory.loadError')}</Alert.Description>
-                <Button size="sm" variant="outline" className="mt-2" onPress={() => void browser.refresh()}>
+                <Button size="small" variant="outline" className="mt-2" onClick={() => void browser.refresh()}>
                   {t('settings.memory.retry')}
                 </Button>
               </Alert.Content>
@@ -263,14 +263,14 @@ export function MemorySettings() {
               <ActionBar.Content>
                 <Button
                   variant="ghost"
-                  onPress={browser.selectAllVisible}
-                  isDisabled={browser.selected.size === browser.visible.length}
+                  onClick={browser.selectAllVisible}
+                  disabled={browser.selected.size === browser.visible.length}
                 >
                   {t('settings.memory.selectAll')}
                 </Button>
                 <Button
                   variant="ghost"
-                  onPress={async () => {
+                  onClick={async () => {
                     const ok = await confirm({
                       title: t('settings.memory.deleteConfirmTitle'),
                       body: t('settings.memory.deleteConfirmBody'),
@@ -294,10 +294,10 @@ export function MemorySettings() {
               <ActionBar.Suffix>
                 <TooltipTrigger delay={0}>
                   <Button
-                    isIconOnly
+                    iconOnly
                     variant="ghost"
                     aria-label={t('settings.memory.clearSelection')}
-                    onPress={browser.clearSelection}
+                    onClick={browser.clearSelection}
                   >
                     <Xmark />
                   </Button>

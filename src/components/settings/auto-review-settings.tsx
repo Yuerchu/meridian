@@ -160,7 +160,7 @@ function ModelPicker({
         <Select
           aria-label={t('settings.assistant.model')}
           selectedKey={modelId || '_none'}
-          isDisabled={!providerId}
+          disabled={!providerId}
           onSelectionChange={(v) => emit(providerId, !v || v === '_none' ? '' : String(v))}
         >
           {modelOptions.map((o) => (
@@ -400,7 +400,7 @@ export function AutoReviewSettings() {
       )}
 
       <div data-slot="autoreview-actions" className="flex items-center gap-3">
-        <Button onPress={handleSave} isDisabled={saving}>
+        <Button onClick={handleSave} disabled={saving}>
           {t('common.save')}
         </Button>
         {saved && (

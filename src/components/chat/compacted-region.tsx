@@ -55,7 +55,7 @@ export function CompactedRegion({
         <>
           <Button
             variant="ghost"
-            onPress={() => setShowCompactedMessages(false)}
+            onClick={() => setShowCompactedMessages(false)}
             className="w-full rounded-lg text-center text-xs text-muted hover:text-muted py-2"
           >
             {t('chat.compact.hideCompacted', { count: compactedCount })}
@@ -78,7 +78,7 @@ export function CompactedRegion({
       ) : (
         <Button
           variant="ghost"
-          onPress={() => setShowCompactedMessages(true)}
+          onClick={() => setShowCompactedMessages(true)}
           className="w-full rounded-lg text-center text-xs text-muted hover:text-muted py-2"
         >
           {t('chat.compact.showCompacted', { count: compactedCount })}
@@ -90,7 +90,7 @@ export function CompactedRegion({
               what was compacted away. */}
           <Link
             data-slot="compact-boundary-toggle"
-            onPress={() => setShowCompactSummary((v) => !v)}
+            onClick={() => setShowCompactSummary((v) => !v)}
             className="touch-hitbox text-xs font-normal text-muted whitespace-nowrap px-2"
           >
             {t('chat.compact.boundary', { count: compactedCount })}

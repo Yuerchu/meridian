@@ -288,7 +288,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
           behaviour without either needing to know about the other. */}
       <TooltipTrigger delay={0}>
         <Button
-          isIconOnly
+          iconOnly
           aria-label={t('composer.menu')}
           data-slot="composer-menu-trigger"
           variant="ghost"
@@ -484,7 +484,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
                             aria-label={opt.label}
                             aria-pressed={opt.selected}
                             variant="ghost"
-                            onPress={() => {
+                            onClick={() => {
                               opt.onSelect()
                               close()
                             }}

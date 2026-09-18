@@ -252,8 +252,8 @@ function NewProjectForm({
         <Button
           type="button"
           variant="outline"
-          onPress={() => void handleBrowse()}
-          isDisabled={saving}
+          onClick={() => void handleBrowse()}
+          disabled={saving}
           className="w-full justify-start text-xs"
         >
           <FolderOpen className="text-muted" />
@@ -286,8 +286,8 @@ function NewProjectForm({
         <Button
           variant="secondary"
           aria-busy={saving}
-          onPress={() => void submit()}
-          isDisabled={!name.trim() || !path.trim() || saving}
+          onClick={() => void submit()}
+          disabled={!name.trim() || !path.trim() || saving}
           className="flex-1"
         >
           {saving && <Spinner size="sm" aria-hidden />}
@@ -296,7 +296,7 @@ function NewProjectForm({
         {/* The glyph is not a name: a screen reader reads U+2715 as nothing, or
             as "multiplication x". */}
         <TooltipTrigger delay={0}>
-          <Button isIconOnly variant="ghost" aria-label={t('common.cancel')} onPress={onCancel} isDisabled={saving}>
+          <Button iconOnly variant="ghost" aria-label={t('common.cancel')} onClick={onCancel} disabled={saving}>
             <Xmark />
           </Button>
           <Tooltip>{t('common.cancel')}</Tooltip>
@@ -360,7 +360,7 @@ function NewHostedSessionForm({
         <Button
           type="button"
           variant="outline"
-          onPress={() => void handleBrowse()}
+          onClick={() => void handleBrowse()}
           className="w-full justify-start text-xs"
         >
           <FolderOpen className="text-muted" />
@@ -394,15 +394,15 @@ function NewHostedSessionForm({
         <Button
           variant="secondary"
           aria-busy={starting}
-          onPress={() => void submit()}
-          isDisabled={!path.trim() || starting}
+          onClick={() => void submit()}
+          disabled={!path.trim() || starting}
           className="flex-1"
         >
           {starting && <Spinner size="sm" aria-hidden />}
           {t('sidebar.startHostedSession')}
         </Button>
         <TooltipTrigger delay={0}>
-          <Button isIconOnly variant="ghost" aria-label={t('common.cancel')} onPress={onCancel} isDisabled={starting}>
+          <Button iconOnly variant="ghost" aria-label={t('common.cancel')} onClick={onCancel} disabled={starting}>
             <Xmark />
           </Button>
           <Tooltip>{t('common.cancel')}</Tooltip>
@@ -481,7 +481,7 @@ function RowActionItems({ actions }: { actions: RowAction[] }) {
             id={action.key}
             textValue={action.label}
             variant={action.variant === 'destructive' ? 'danger' : undefined}
-            isDisabled={Boolean(action.disabledReason)}
+            disabled={Boolean(action.disabledReason)}
             onAction={() => void action.run()}
           >
             <action.icon className="size-4" />
@@ -615,7 +615,7 @@ function ConversationGroup({
   // no `onInsert` — because the order inside a group is pinned state and
   // recency, not something a person arranges.
   const { dragAndDropHooks } = useDragAndDrop({
-    isDisabled: dndDisabled,
+    disabled: dndDisabled,
     getItems: dragConversations,
     // 'move' first — the in-sidebar drops keep their refiling semantics — and
     // 'copy' beside it so the chat column's DropZone can accept the same drag
@@ -650,14 +650,14 @@ function ConversationGroup({
           >
             <TooltipTrigger delay={0}>
               <Button
-                isIconOnly
-                size="sm"
+                iconOnly
+                size="small"
                 variant="ghost"
                 aria-expanded={!folded}
                 aria-label={
                   folded ? t('sidebar.unfoldGroup', { name: title }) : t('sidebar.foldGroup', { name: title })
                 }
-                onPress={onToggleFold}
+                onClick={onToggleFold}
                 className="touch-hitbox size-5 shrink-0 rounded-md text-muted"
               >
                 <ChevronRight className={cn('size-3 transition-transform', !folded && 'rotate-90')} />
@@ -668,7 +668,7 @@ function ConversationGroup({
             </TooltipTrigger>
             {onSelectToggle ? (
               <ToggleButton
-                size="sm"
+                size="small"
                 variant="ghost"
                 onChange={onSelectToggle}
                 // The selection this toggles decides where a new conversation
@@ -692,11 +692,11 @@ function ConversationGroup({
             <span data-slot="sidebar-group-actions" className="sidebar-group-actions flex shrink-0 items-center">
               <TooltipTrigger delay={0}>
                 <Button
-                  isIconOnly
-                  size="sm"
+                  iconOnly
+                  size="small"
                   variant="ghost"
                   aria-label={projectId ? t('sidebar.newConversationIn', { name: title }) : t('sidebar.newChat')}
-                  onPress={onNewConversation}
+                  onClick={onNewConversation}
                   className="touch-hitbox size-6 rounded-md text-muted"
                 >
                   <Plus />
@@ -1423,11 +1423,11 @@ export function AppSidebar({
             </Alert.Content>
             <TooltipTrigger delay={0}>
               <Button
-                isIconOnly
-                size="sm"
+                iconOnly
+                size="small"
                 variant="ghost"
                 aria-label={t('common.close')}
-                onPress={() => setActionError(null)}
+                onClick={() => setActionError(null)}
                 className="touch-hitbox shrink-0"
               >
                 <Xmark />

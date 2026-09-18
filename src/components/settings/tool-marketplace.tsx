@@ -206,11 +206,11 @@ function CustomToolEditor({
           <TooltipTrigger delay={0}>
             <Button
               type="button"
-              isIconOnly
+              iconOnly
               variant="ghost"
               aria-label={t('settings.tools.delete')}
               className="ml-auto text-muted hover:text-danger"
-              onPress={onDelete}
+              onClick={onDelete}
             >
               <TrashBin className="w-3.5 h-3.5" />
             </Button>
@@ -268,7 +268,7 @@ export function ToolMarketplace() {
           <Alert.Indicator />
           <Alert.Content>
             <Alert.Description>{t('settings.tools.loadError')}</Alert.Description>
-            <Button size="sm" variant="outline" onPress={() => void refresh()}>
+            <Button size="small" variant="outline" onClick={() => void refresh()}>
               {t('settings.tools.retry')}
             </Button>
           </Alert.Content>
@@ -339,7 +339,7 @@ export function ToolMarketplace() {
           <h3 data-slot="custom-tools-title" className="text-sm font-medium">
             {t('settings.tools.customSection')}
           </h3>
-          <Button variant="outline" onPress={() => setShowCreate(!showCreate)}>
+          <Button variant="outline" onClick={() => setShowCreate(!showCreate)}>
             <Plus className="w-3.5 h-3.5" />
             {t('settings.tools.new')}
           </Button>

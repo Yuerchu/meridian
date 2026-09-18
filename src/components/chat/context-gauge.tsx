@@ -175,7 +175,7 @@ export function ContextGauge({
                     <Link
                       data-slot="context-gauge-compact"
                       className="mt-1 text-xs font-normal underline underline-offset-2"
-                      onPress={onCompact}
+                      onClick={onCompact}
                     >
                       {t('chat.compact.manual')}
                     </Link>

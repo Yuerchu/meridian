@@ -142,7 +142,7 @@ export function EmojiPicker({
         <ProEmojiPicker.Trigger
           aria-label={t('chat.emoji')}
           className="touch-hitbox flex size-8 items-center justify-center rounded-lg text-muted hover:bg-default hover:text-foreground"
-          onPress={() => {
+          onClick={() => {
             // RAC Select normally declines to open an empty collection. This
             // picker still has useful content in that state: the assigned-pack
             // explanation and search shell.
@@ -186,7 +186,7 @@ export function EmojiPicker({
             {(item) => (
               <ProEmojiPicker.Item
                 id={item.emoji.id}
-                isDisabled={!item.url}
+                disabled={!item.url}
                 textValue={`${item.emoji.name} ${item.emoji.tags ?? ''} ${item.packName}`}
               >
                 {item.url ? (
@@ -222,7 +222,7 @@ export function EmojiPicker({
                           ? 'h-7 shrink-0 bg-default px-2 text-xs text-foreground'
                           : 'h-7 shrink-0 px-2 text-xs text-muted'
                       }
-                      onPress={() => {
+                      onClick={() => {
                         setActivePackId(pack.id)
                         setSearch('')
                       }}

@@ -265,7 +265,7 @@ function SidebarProbe() {
         <HButton
           size="sm"
           variant="secondary"
-          onPress={() =>
+          onClick={() =>
             setAttrs(
               Array.from(rootRef.current?.querySelectorAll('[data-row-id]') ?? []).map(
                 (el) => el.getAttribute('data-row-id') ?? '?',
@@ -357,11 +357,11 @@ function PromptInputProbe() {
           {stops}
         </span>
         {' · '}
-        <HButton size="sm" variant="ghost" onPress={() => setStreaming((s) => !s)}>
+        <HButton size="sm" variant="ghost" onClick={() => setStreaming((s) => !s)}>
           {streaming ? '结束流式' : '模拟流式'}
         </HButton>
         {' · '}
-        <HButton size="sm" variant="ghost" onPress={() => setSteerable((s) => !s)}>
+        <HButton size="sm" variant="ghost" onClick={() => setSteerable((s) => !s)}>
           {steerable ? '关掉可插话' : '开可插话'}
         </HButton>
       </p>
@@ -474,7 +474,7 @@ export default function HeroUiLab() {
           <div data-slot="heroui-lab-report-actions" className="flex gap-2">
             <HButton
               size="sm"
-              onPress={() => {
+              onClick={() => {
                 setReport(collect())
                 navigator.clipboard?.writeText(asText).then(
                   () => {
@@ -504,7 +504,7 @@ export default function HeroUiLab() {
               <HButton>Primary</HButton>
               <HButton variant="secondary">Secondary</HButton>
               <HButton variant="ghost">Ghost</HButton>
-              <HButton isDisabled>Disabled</HButton>
+              <HButton disabled>Disabled</HButton>
               <HProgressCircle isIndeterminate aria-label="加载中" />
             </div>
 
@@ -533,8 +533,8 @@ export default function HeroUiLab() {
               <HButton className="size-6 p-0">size-6</HButton>
               {/* eslint-disable-next-line no-restricted-syntax -- probe: measures whether utilities beat .button */}
               <HButton className="h-auto p-1">h-auto p-1</HButton>
-              {/* eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- probe: measures whether utilities beat .button */}
-              <HButton isIconOnly className="size-8">
+              {}
+              <HButton iconOnly className="size-8">
                 size-8
               </HButton>
             </div>
@@ -724,14 +724,14 @@ export default function HeroUiLab() {
                         </div>
                         <HInputGroup.Suffix className="w-full items-center gap-1 border-0 px-3 py-0">
                           <HTooltip delay={0}>
-                            <HButton isIconOnly size="sm" variant="ghost" aria-label="加号" className="rounded-lg">
+                            <HButton iconOnly size="sm" variant="ghost" aria-label="加号" className="rounded-lg">
                               +
                             </HButton>
                             <HTooltipContent>加号</HTooltipContent>
                           </HTooltip>
                           <span data-slot="heroui-lab-composer-spacer" className="flex-1" />
                           <HTooltip delay={0}>
-                            <HButton isIconOnly size="sm" aria-label="发送" className="rounded-full">
+                            <HButton iconOnly size="sm" aria-label="发送" className="rounded-full">
                               <ArrowUp />
                             </HButton>
                             <HTooltipContent>发送</HTooltipContent>

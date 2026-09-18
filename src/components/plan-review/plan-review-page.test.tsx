@@ -71,17 +71,17 @@ vi.mock('@/components/base', async () => {
   const Button = ({
     children,
     onPress,
-    isDisabled,
+    disabled,
     isPending: _isPending,
-    isIconOnly: _isIconOnly,
+    iconOnly: _iconOnly,
     ...props
   }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
     onPress?: () => void
-    isDisabled?: boolean
+    disabled?: boolean
     isPending?: boolean
-    isIconOnly?: boolean
+    iconOnly?: boolean
   }) => (
-    <button {...props} disabled={isDisabled} onClick={onPress}>
+    <button {...props} disabled={disabled} onClick={onPress}>
       {children}
     </button>
   )

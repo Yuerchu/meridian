@@ -89,7 +89,7 @@ function SubAgentSheet({ request, onClose }: { request: SubAgentSheetRequest; on
                   <Alert.Content>
                     <Alert.Description>{session?.error ?? t('chat.subAgent.loadFailed')}</Alert.Description>
                   </Alert.Content>
-                  <Button size="sm" variant="outline" onPress={() => setAttempt((n) => n + 1)}>
+                  <Button size="small" variant="outline" onClick={() => setAttempt((n) => n + 1)}>
                     {t('common.retry')}
                   </Button>
                 </Alert>

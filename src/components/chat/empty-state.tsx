@@ -26,7 +26,7 @@ export function StarterPrompts({ disabled, onSelect }: { disabled?: boolean; onS
     <PromptSuggestion>
       <PromptSuggestion.Items>
         {STARTER_PROMPT_KEYS.map((key) => (
-          <PromptSuggestion.Item key={key} isDisabled={disabled} onPress={() => onSelect(t(key))}>
+          <PromptSuggestion.Item key={key} disabled={disabled} onClick={() => onSelect(t(key))}>
             {t(key)}
           </PromptSuggestion.Item>
         ))}

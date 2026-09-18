@@ -115,7 +115,7 @@ function EditableCell({
       variant="ghost"
       className="h-8 w-full min-w-0 justify-start rounded-md px-1.5 text-sm font-normal"
       aria-label={`${ariaLabel}: ${value || placeholder}`}
-      onPress={() => {
+      onClick={() => {
         setDraft(value)
         setEditing(true)
       }}
@@ -155,8 +155,8 @@ function RowActions({
           <Button
             size="sm"
             variant="ghost"
-            isDisabled={busy !== null || !emoji.file_name}
-            onPress={() => {
+            disabled={busy !== null || !emoji.file_name}
+            onClick={() => {
               setBusy('suggest')
               void onSuggest(emoji.id).finally(() => setBusy(null))
             }}
@@ -167,8 +167,8 @@ function RowActions({
           <Button
             size="sm"
             variant="outline"
-            isDisabled={busy !== null || !shownName(emoji).trim()}
-            onPress={() => {
+            disabled={busy !== null || !shownName(emoji).trim()}
+            onClick={() => {
               setBusy('confirm')
               void onConfirm(emoji).finally(() => setBusy(null))
             }}
@@ -181,12 +181,12 @@ function RowActions({
       {canDelete && (
         <TooltipTrigger delay={0}>
           <Button
-            isIconOnly
+            iconOnly
             size="sm"
             variant="ghost"
             className="text-muted hover:text-danger"
             aria-label={t('settings.emoji.deleteEmoji')}
-            onPress={() => onDelete(emoji.id)}
+            onClick={() => onDelete(emoji.id)}
           >
             <TrashBin className="size-3.5" />
           </Button>
@@ -458,13 +458,13 @@ function PackCard({
                     {onImport && (
                       // The picker returns paths on this device and the import
                       // is read by whichever machine the backend is on.
-                      <Button variant="outline" onPress={onImport} isDisabled={!can.importFromDisk}>
+                      <Button variant="outline" onClick={onImport} disabled={!can.importFromDisk}>
                         <ArrowUpFromLine className="w-3.5 h-3.5" />
                         {t('settings.emoji.import')}
                       </Button>
                     )}
                     {onDelete && !detail.pack.is_builtin && (
-                      <Button variant="danger-soft" className="ml-auto" onPress={onDelete}>
+                      <Button variant="danger-soft" className="ml-auto" onClick={onDelete}>
                         <TrashBin className="w-3.5 h-3.5" />
                         {t('common.delete')}
                       </Button>
@@ -632,7 +632,7 @@ export function EmojiSettings() {
             if (e.key === 'Enter') handleCreate()
           }}
         />
-        <Button variant="outline" onPress={handleCreate} isDisabled={!newPackName.trim()}>
+        <Button variant="outline" onClick={handleCreate} disabled={!newPackName.trim()}>
           <Plus className="w-3.5 h-3.5" />
           {t('settings.emoji.newPack')}
         </Button>
@@ -679,7 +679,7 @@ export function EmojiSettings() {
             </span>
           </ActionBar.Prefix>
           <ActionBar.Content>
-            <Button variant="ghost" onPress={handleDeleteSelected}>
+            <Button variant="ghost" onClick={handleDeleteSelected}>
               <TrashBin className="text-danger" />
               {t('settings.emoji.deleteSelected')}
             </Button>
@@ -687,10 +687,10 @@ export function EmojiSettings() {
           <ActionBar.Suffix>
             <TooltipTrigger delay={0}>
               <Button
-                isIconOnly
+                iconOnly
                 variant="ghost"
                 aria-label={t('settings.emoji.clearSelection')}
-                onPress={() => setSelection(null)}
+                onClick={() => setSelection(null)}
               >
                 <Xmark />
               </Button>

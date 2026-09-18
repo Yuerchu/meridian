@@ -349,17 +349,17 @@ export function DeveloperSettings() {
               button here is the Android-only one — so the case with the most
               buttons is also the narrowest screen they ever appear on. */}
           <Card.Footer className="flex-wrap gap-2">
-            <Button size="sm" onPress={() => record(true)} isDisabled={busy}>
+            <Button size="small" onClick={() => record(true)} disabled={busy}>
               <Play className="w-4 h-4" />
               {t('settings.developer.probe.runWorklet')}
             </Button>
-            <Button variant="outline" size="sm" onPress={() => record(false)} isDisabled={busy}>
+            <Button variant="outline" size="small" onClick={() => record(false)} disabled={busy}>
               {t('settings.developer.probe.runScriptProcessor')}
             </Button>
             {/* Android only: the desktop transcribes from a Rust-side recording
                 session, and reaches it through the composer's own button. */}
             {isAndroid && (
-              <Button variant="outline" size="sm" onPress={transcribe} isDisabled={busy}>
+              <Button variant="outline" size="small" onClick={transcribe} disabled={busy}>
                 {t('settings.developer.probe.runTranscribe')}
               </Button>
             )}

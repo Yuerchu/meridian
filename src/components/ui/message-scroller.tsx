@@ -130,8 +130,7 @@ function MessageScrollerButton({
         // handlers against React Aria's synthetic events, which are the same
         // objects with a wider element type.
         ((buttonProps) => (
-          // eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- the caller wraps the tooltip
-          <Button isIconOnly variant={variant} size={size} {...(buttonProps as React.ComponentProps<typeof Button>)} />
+          <Button iconOnly variant={variant} size={size} {...(buttonProps as React.ComponentProps<typeof Button>)} />
         ))
       }
       {...props}

@@ -103,7 +103,7 @@ export function StickerImage({
           variant="ghost"
           size="sm"
           className="touch-hitbox px-1 text-xs"
-          onPress={() => setAttempt((current) => current + 1)}
+          onClick={() => setAttempt((current) => current + 1)}
         >
           <ArrowsRotateRight aria-hidden className="size-3.5" />
           {t('chat.emoji.retry')}

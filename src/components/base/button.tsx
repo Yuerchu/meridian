@@ -10,7 +10,7 @@ interface ButtonProps extends AriaButtonProps {
   ref?: ForwardedRef<HTMLButtonElement>
   variant?: ButtonVariant
   size?: ButtonSize
-  isIconOnly?: boolean
+  iconOnly?: boolean
   className?: string
 }
 
@@ -52,7 +52,7 @@ const sizeClasses: Record<ButtonSize, string> = {
   lg: 'h-11 text-base md:h-10 data-[pressed]:scale-[0.96]',
 }
 
-export function Button({ variant = 'primary', size = 'md', isIconOnly = false, className, ...props }: ButtonProps) {
+export function Button({ variant = 'primary', size = 'md', iconOnly = false, className, ...props }: ButtonProps) {
   return (
     <AriaButton
       data-slot="button"
@@ -65,9 +65,9 @@ export function Button({ variant = 'primary', size = 'md', isIconOnly = false, c
         '[&_svg:not([data-slot=spinner-icon])]:pointer-events-none [&_svg:not([data-slot=spinner-icon])]:-mx-0.5 [&_svg:not([data-slot=spinner-icon])]:size-5 [&_svg:not([data-slot=spinner-icon])]:shrink-0 sm:[&_svg:not([data-slot=spinner-icon])]:size-4',
         variantClasses[variant],
         sizeClasses[size],
-        isIconOnly && 'w-10 p-0 md:w-9',
-        isIconOnly && size === 'sm' && 'w-9 md:w-8',
-        isIconOnly && size === 'lg' && 'w-11 md:w-10',
+        iconOnly && 'w-10 p-0 md:w-9',
+        iconOnly && size === 'sm' && 'w-9 md:w-8',
+        iconOnly && size === 'lg' && 'w-11 md:w-10',
         className,
       )}
     />

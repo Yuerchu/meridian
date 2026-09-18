@@ -173,11 +173,11 @@ export function VoiceCorpusSettings() {
                 <ItemCard.Action>
                   <TooltipTrigger delay={0}>
                     <Button
-                      isIconOnly
+                      iconOnly
                       size="sm"
                       variant="ghost"
-                      isDisabled={busy}
-                      onPress={() => deleteSession(session)}
+                      disabled={busy}
+                      onClick={() => deleteSession(session)}
                       aria-label={t('settings.voiceCorpus.deleteSession')}
                     >
                       <TrashBin />
@@ -195,7 +195,7 @@ export function VoiceCorpusSettings() {
         <Label>{t('settings.voiceCorpus.forgetSender')}</Label>
         <div data-slot="voice-corpus-forget-row" className="flex gap-2">
           <Input value={senderInput} onChange={(e) => setSenderInput(e.target.value)} placeholder="12345" />
-          <Button variant="ghost" isDisabled={busy || !senderInput.trim()} onPress={forgetSender}>
+          <Button variant="ghost" disabled={busy || !senderInput.trim()} onClick={forgetSender}>
             {t('settings.voiceCorpus.forget')}
           </Button>
         </div>
@@ -211,7 +211,7 @@ export function VoiceCorpusSettings() {
             {t('settings.voiceCorpus.includeSender')}
           </Checkbox>
           <Description>{t('settings.voiceCorpus.exportHint')}</Description>
-          <Button variant="ghost" isDisabled={busy || sessions.length === 0} onPress={exportBundle}>
+          <Button variant="ghost" disabled={busy || sessions.length === 0} onClick={exportBundle}>
             {t('settings.voiceCorpus.export')}
           </Button>
         </div>

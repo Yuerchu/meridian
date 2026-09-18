@@ -220,24 +220,24 @@ export function MobileOptionsMenu({
                 <div data-slot="mobile-options-main" className="flex flex-col">
                   {supportsImages && (
                     <>
-                      <Button variant="ghost" className={itemCls} onPress={() => handleAction(onTakePhoto)}>
+                      <Button variant="ghost" className={itemCls} onClick={() => handleAction(onTakePhoto)}>
                         <Camera className="w-4 h-4 text-muted" />
                         {t('chat.takePhoto')}
                       </Button>
-                      <Button variant="ghost" className={itemCls} onPress={() => handleAction(onPickGallery)}>
+                      <Button variant="ghost" className={itemCls} onClick={() => handleAction(onPickGallery)}>
                         <Picture className="w-4 h-4 text-muted" />
                         {t('chat.pickFromGallery')}
                       </Button>
                     </>
                   )}
                   {onPickFile && (
-                    <Button variant="ghost" className={itemCls} onPress={() => handleAction(onPickFile)}>
+                    <Button variant="ghost" className={itemCls} onClick={() => handleAction(onPickFile)}>
                       <Paperclip className="w-4 h-4 text-muted" />
                       {t('chat.attachFile')}
                     </Button>
                   )}
                   <div data-slot="mobile-options-separator" className="h-px bg-border mx-4 my-1" />
-                  <Button variant="ghost" className={cn(itemCls, 'justify-between')} onPress={() => setPanel('mode')}>
+                  <Button variant="ghost" className={cn(itemCls, 'justify-between')} onClick={() => setPanel('mode')}>
                     <span data-slot="mobile-options-mode-summary" className="flex items-center gap-3">
                       {(() => {
                         const active = CHAT_MODES.find((m) => m.id === mode) ?? CHAT_MODES[0]
@@ -259,7 +259,7 @@ export function MobileOptionsMenu({
                   <Button
                     variant="ghost"
                     className={cn(itemCls, 'justify-between')}
-                    onPress={() => setPanel('assistant')}
+                    onClick={() => setPanel('assistant')}
                   >
                     <span data-slot="mobile-options-assistant-summary" className="flex items-center gap-3">
                       <FaceRobot className="w-4 h-4 text-muted" />
@@ -269,7 +269,7 @@ export function MobileOptionsMenu({
                     </span>
                     <ChevronRight className="w-4 h-4 text-muted" />
                   </Button>
-                  <Button variant="ghost" className={cn(itemCls, 'justify-between')} onPress={() => setPanel('model')}>
+                  <Button variant="ghost" className={cn(itemCls, 'justify-between')} onClick={() => setPanel('model')}>
                     <span data-slot="mobile-options-model-summary" className="flex items-center gap-3">
                       {currentModelId ? (
                         <ModelIcon model={currentModelId} size={16} />
@@ -286,7 +286,7 @@ export function MobileOptionsMenu({
                     <Button
                       variant="ghost"
                       className={cn(itemCls, 'justify-between')}
-                      onPress={() => setPanel('thinking')}
+                      onClick={() => setPanel('thinking')}
                     >
                       <span data-slot="mobile-options-thinking-summary" className="flex items-center gap-3">
                         <Bulb
@@ -359,11 +359,11 @@ export function MobileOptionsMenu({
                   >
                     <TooltipTrigger delay={0}>
                       <Button
-                        isIconOnly
+                        iconOnly
                         aria-label={t('common.back')}
                         variant="ghost"
                         className="size-auto p-1 rounded-md hover:bg-default"
-                        onPress={() => setPanel('main')}
+                        onClick={() => setPanel('main')}
                       >
                         <ChevronLeft className="w-4 h-4" />
                       </Button>
@@ -380,7 +380,7 @@ export function MobileOptionsMenu({
                         aria-pressed={a.id === currentAssistantId}
                         variant="ghost"
                         className={cn(itemCls, a.id === currentAssistantId && 'bg-default')}
-                        onPress={() => {
+                        onClick={() => {
                           onSelectAssistant(a.id)
                           close()
                         }}
@@ -409,11 +409,11 @@ export function MobileOptionsMenu({
                   >
                     <TooltipTrigger delay={0}>
                       <Button
-                        isIconOnly
+                        iconOnly
                         aria-label={t('common.back')}
                         variant="ghost"
                         className="size-auto p-1 rounded-md hover:bg-default"
-                        onPress={() => setPanel('main')}
+                        onClick={() => setPanel('main')}
                       >
                         <ChevronLeft className="w-4 h-4" />
                       </Button>
@@ -424,11 +424,11 @@ export function MobileOptionsMenu({
                     </span>
                     <TooltipTrigger delay={0}>
                       <Button
-                        isIconOnly
+                        iconOnly
                         aria-label={`${t('settings.about.logs.refresh')} ${t('toolbar.models')}`}
                         variant="ghost"
                         className="h-6 w-6"
-                        onPress={() => {
+                        onClick={() => {
                           setLoadingModels(true)
                           setGroups([])
                           Promise.allSettled(
@@ -448,7 +448,7 @@ export function MobileOptionsMenu({
                             setLoadingModels(false)
                           })
                         }}
-                        isDisabled={loadingModels}
+                        disabled={loadingModels}
                       >
                         {loadingModels ? (
                           <Spinner size="sm" color="current" />
@@ -479,7 +479,7 @@ export function MobileOptionsMenu({
                               itemCls,
                               m.id === currentModelId && g.provider.id === currentProviderId && 'bg-default',
                             )}
-                            onPress={() => {
+                            onClick={() => {
                               onSelectModel(m.id, g.provider.id)
                               close()
                             }}
@@ -512,11 +512,11 @@ export function MobileOptionsMenu({
                   >
                     <TooltipTrigger delay={0}>
                       <Button
-                        isIconOnly
+                        iconOnly
                         aria-label={t('common.back')}
                         variant="ghost"
                         className="size-auto p-1 rounded-md hover:bg-default"
-                        onPress={() => setPanel('main')}
+                        onClick={() => setPanel('main')}
                       >
                         <ChevronLeft className="w-4 h-4" />
                       </Button>
@@ -534,7 +534,7 @@ export function MobileOptionsMenu({
                         aria-pressed={m.id === mode}
                         variant="ghost"
                         className={cn(itemCls, 'justify-between', m.id === mode && 'bg-default')}
-                        onPress={() => {
+                        onClick={() => {
                           onSelectMode(m.id)
                           close()
                         }}
@@ -560,11 +560,11 @@ export function MobileOptionsMenu({
                   >
                     <TooltipTrigger delay={0}>
                       <Button
-                        isIconOnly
+                        iconOnly
                         aria-label={t('common.back')}
                         variant="ghost"
                         className="size-auto p-1 rounded-md hover:bg-default"
-                        onPress={() => setPanel('main')}
+                        onClick={() => setPanel('main')}
                       >
                         <ChevronLeft className="w-4 h-4" />
                       </Button>
@@ -580,7 +580,7 @@ export function MobileOptionsMenu({
                       aria-pressed={level.id === thinkingLevel}
                       variant="ghost"
                       className={cn(itemCls, 'justify-between', level.id === thinkingLevel && 'bg-default')}
-                      onPress={() => {
+                      onClick={() => {
                         onSelectThinkingLevel(level.id)
                         close()
                       }}

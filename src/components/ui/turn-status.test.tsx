@@ -41,7 +41,7 @@ describe('TurnBranchPager', () => {
   })
 
   it('goes fully inert while a stream is in flight', () => {
-    render(<TurnBranchPager index={2} total={3} isDisabled previousLabel="prev" nextLabel="next" />)
+    render(<TurnBranchPager index={2} total={3} disabled previousLabel="prev" nextLabel="next" />)
     expect(screen.getByLabelText('prev')).toBeDisabled()
     expect(screen.getByLabelText('next')).toBeDisabled()
   })

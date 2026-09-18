@@ -128,7 +128,7 @@ function ModelPicker({
         <Select
           aria-label={t('settings.assistant.model')}
           selectedKey={modelId || '_none'}
-          isDisabled={!providerId}
+          disabled={!providerId}
           onSelectionChange={(v) => emit(providerId, !v || v === '_none' ? '' : String(v))}
         >
           {modelOptions.map((o) => (
@@ -355,7 +355,7 @@ export function HooksSettings() {
             <Button
               size="sm"
               variant="outline"
-              onPress={() => {
+              onClick={() => {
                 setLoading(true)
                 void loadData()
               }}
@@ -498,10 +498,10 @@ export function HooksSettings() {
             value={config.token ?? ''}
             placeholder={t('settings.hooks.tokenPending')}
           />
-          <Button variant="outline" onPress={() => setRevealToken(!revealToken)}>
+          <Button variant="outline" onClick={() => setRevealToken(!revealToken)}>
             {revealToken ? t('settings.hooks.hide') : t('settings.hooks.reveal')}
           </Button>
-          <Button variant="outline" onPress={handleRegenerate}>
+          <Button variant="outline" onClick={handleRegenerate}>
             {t('settings.hooks.regenerate')}
           </Button>
         </div>
@@ -517,7 +517,7 @@ export function HooksSettings() {
       )}
 
       <div data-slot="hooks-actions" className="flex items-center gap-3 pt-2">
-        <Button variant="outline" onPress={handleSave} isDisabled={saving}>
+        <Button variant="outline" onClick={handleSave} disabled={saving}>
           {saved ? t('common.saved') : t('common.save')}
         </Button>
         {saved && (
@@ -526,11 +526,11 @@ export function HooksSettings() {
           </span>
         )}
         {running ? (
-          <Button variant="danger-soft" onPress={handleStop}>
+          <Button variant="danger-soft" onClick={handleStop}>
             {t('settings.hooks.stop')}
           </Button>
         ) : (
-          <Button onPress={handleStart}>{t('settings.hooks.start')}</Button>
+          <Button onClick={handleStart}>{t('settings.hooks.start')}</Button>
         )}
       </div>
 

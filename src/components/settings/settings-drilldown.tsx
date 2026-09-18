@@ -70,7 +70,7 @@ export function SettingsDrilldown({
               >
                 <Button
                   variant="ghost"
-                  onPress={() => setOpen(false)}
+                  onClick={() => setOpen(false)}
                   className="h-10 gap-1 rounded-xl px-2 text-sm font-normal text-muted hover:text-foreground"
                 >
                   <ArrowLeft className="size-4" />

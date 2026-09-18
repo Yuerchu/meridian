@@ -210,7 +210,7 @@ export function RemoteAccessSettings() {
               size="sm"
               variant="outline"
               className="mt-2"
-              onPress={() => {
+              onClick={() => {
                 setLoading(true)
                 void loadData()
               }}
@@ -291,10 +291,10 @@ export function RemoteAccessSettings() {
             value={config.token ?? ''}
             placeholder={t('settings.remote.tokenPending')}
           />
-          <Button variant="outline" onPress={() => setRevealToken(!revealToken)}>
+          <Button variant="outline" onClick={() => setRevealToken(!revealToken)}>
             {revealToken ? t('settings.remote.hide') : t('settings.remote.reveal')}
           </Button>
-          <Button variant="outline" onPress={handleRegenerate}>
+          <Button variant="outline" onClick={handleRegenerate}>
             {t('settings.remote.regenerate')}
           </Button>
         </div>
@@ -310,7 +310,7 @@ export function RemoteAccessSettings() {
       )}
 
       <div data-slot="remote-actions" className="flex items-center gap-3 pt-2">
-        <Button variant="outline" onPress={handleSave} isDisabled={saving}>
+        <Button variant="outline" onClick={handleSave} disabled={saving}>
           {saved ? t('common.saved') : t('common.save')}
         </Button>
         {saved && (
@@ -319,11 +319,11 @@ export function RemoteAccessSettings() {
           </span>
         )}
         {running ? (
-          <Button variant="danger-soft" onPress={handleStop}>
+          <Button variant="danger-soft" onClick={handleStop}>
             {t('settings.remote.stop')}
           </Button>
         ) : (
-          <Button onPress={handleStart}>{t('settings.remote.start')}</Button>
+          <Button onClick={handleStart}>{t('settings.remote.start')}</Button>
         )}
       </div>
 
@@ -373,11 +373,11 @@ export function RemoteAccessSettings() {
                     <ItemCard.Action>
                       <TooltipTrigger delay={0}>
                         <Button
-                          isIconOnly
+                          iconOnly
                           size="sm"
                           variant="ghost"
                           aria-label={t('settings.remote.copyAddress')}
-                          onPress={() => copyAddress(dialable)}
+                          onClick={() => copyAddress(dialable)}
                         >
                           {copied && copiedAddress === dialable ? (
                             <Check className="size-3.5" />

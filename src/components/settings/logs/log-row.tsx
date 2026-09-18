@@ -97,12 +97,12 @@ function LogRowImpl({ entry }: { entry: LogEntryInfoResponse }) {
 
       <TooltipTrigger delay={0}>
         <Button
-          isIconOnly
+          iconOnly
           data-slot="log-row-copy"
           variant="ghost"
           size="sm"
           aria-label={t('settings.about.logs.copyRecord')}
-          onPress={onCopy}
+          onClick={onCopy}
           // Focus-visible alone does not rescue this on a touch screen, where a
           // tap grants no focus ring — the only action on the row would be
           // permanently invisible.

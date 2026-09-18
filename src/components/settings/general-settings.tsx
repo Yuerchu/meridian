@@ -211,8 +211,8 @@ export function GeneralSettings() {
           <Button
             aria-label={t('settings.general.save')}
             variant={searchKeySaved ? 'primary' : 'outline'}
-            onPress={handleSaveSearchKey}
-            isDisabled={!searchApiKey.trim()}
+            onClick={handleSaveSearchKey}
+            disabled={!searchApiKey.trim()}
           >
             {searchKeySaved && <Check aria-hidden="true" className="w-4 h-4" />}
             {t('settings.general.save')}

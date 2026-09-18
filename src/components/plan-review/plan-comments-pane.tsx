@@ -80,7 +80,7 @@ export function PlanCommentsPane({
             <div data-slot="plan-comment-header" className="mb-2 flex items-start gap-2">
               <Link
                 className="min-w-0 flex-1 text-start text-xs font-normal text-muted"
-                onPress={() => onSelectComment(comment)}
+                onClick={() => onSelectComment(comment)}
               >
                 <q data-slot="plan-comment-quote" className="line-clamp-3 break-words">
                   {comment.anchor.quote || t('planReview.comments.emptyQuote')}
@@ -89,12 +89,12 @@ export function PlanCommentsPane({
               {!isReadOnly && (
                 <TooltipTrigger>
                   <Button
-                    isIconOnly
+                    iconOnly
                     size="sm"
                     variant="ghost"
                     aria-label={t('planReview.comments.delete')}
                     className="-me-1 -mt-1 shrink-0"
-                    onPress={() => onDeleteComment(comment.id)}
+                    onClick={() => onDeleteComment(comment.id)}
                   >
                     <TrashBin />
                   </Button>

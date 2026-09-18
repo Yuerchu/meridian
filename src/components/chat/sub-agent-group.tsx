@@ -372,7 +372,7 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
               key={row.call.call_id}
               id={row.call.call_id}
               textValue={row.delegation.description}
-              isDisabled={!row.call.sub_agent}
+              disabled={!row.call.sub_agent}
               data-state={state}
               className="rounded-lg px-2 py-1.5"
             >

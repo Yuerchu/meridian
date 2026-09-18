@@ -191,7 +191,7 @@ export function PlanReviewEditor({
             <RichTextEditor.CommandButton
               aria-label={t('planReview.comments.add')}
               tooltip={t('planReview.comments.add')}
-              isDisabled={(editor) => editor.state.selection.empty}
+              disabled={(editor) => editor.state.selection.empty}
               onCommand={(editor) => {
                 const { from, to } = editor.state.selection
                 if (from < to) onAddComment(proseMirrorAnchor(editor.state.doc, from, to))

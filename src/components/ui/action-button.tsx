@@ -31,12 +31,12 @@ const ActionButton = React.forwardRef<HTMLButtonElement, ActionButtonProps>(func
           context, so no wrapper is needed around a real focusable element. */}
       <Button
         ref={ref}
-        isIconOnly
+        iconOnly
         aria-label={label}
         aria-pressed={ariaPressed}
         data-slot="action-button"
         variant={variant}
-        onPress={onClick}
+        onClick={onClick}
         className={className}
       >
         {children}

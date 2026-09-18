@@ -249,11 +249,11 @@ function ApprovalToast({
           {/* Left of the decisions, and the only way past a row without making
               one. No `Toast.CloseButton` beside it: two ways to say "not now"
               where one of them is irreversible is how a question gets lost. */}
-          <Button size="sm" variant="ghost" onPress={() => defer(item.approvalId)}>
+          <Button size="small" variant="ghost" onClick={() => defer(item.approvalId)}>
             <Clock className="size-3.5" />
             {t('chat.approvalToast.defer')}
           </Button>
-          <Button size="sm" variant="ghost" onPress={view}>
+          <Button size="small" variant="ghost" onClick={view}>
             <ArrowRight className="size-3.5" />
             {item.kind === 'ask'
               ? t('chat.approvalToast.answer')
@@ -269,12 +269,12 @@ function ApprovalToast({
               <Button
                 size="sm"
                 variant="danger-soft"
-                onPress={() => decide(() => api.denyToolCall({ approvalId: item.approvalId, reason: null }))}
+                onClick={() => decide(() => api.denyToolCall({ approvalId: item.approvalId, reason: null }))}
               >
                 <Xmark className="size-3.5" />
                 {t('chat.tool.deny')}
               </Button>
-              <Button size="sm" onPress={() => decide(() => api.approveToolCall(item.approvalId))}>
+              <Button size="small" onClick={() => decide(() => api.approveToolCall(item.approvalId))}>
                 <Check className="size-3.5" />
                 {item.retryReason !== undefined ? t('chat.tool.retryWithoutSandbox') : t('chat.tool.allow')}
               </Button>

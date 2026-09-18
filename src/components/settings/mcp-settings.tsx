@@ -140,8 +140,8 @@ function JsonImportDialog({ onImport, onCancel }: { onImport: (data: McpServersJ
         </p>
       )}
       <div data-slot="mcp-import-actions" className="flex gap-2">
-        <Button onPress={handleSubmit}>{t('settings.mcp.importJsonSubmit')}</Button>
-        <Button variant="outline" onPress={onCancel}>
+        <Button onClick={handleSubmit}>{t('settings.mcp.importJsonSubmit')}</Button>
+        <Button variant="outline" onClick={onCancel}>
           {t('settings.mcp.importJsonCancel')}
         </Button>
       </div>
@@ -308,7 +308,7 @@ function McpServerEditor({
           <Button
             variant="ghost"
             aria-pressed={!isHttp}
-            onPress={() => setTransportType('stdio')}
+            onClick={() => setTransportType('stdio')}
             className={cn(
               'px-3 py-1.5 rounded-md text-sm transition-colors',
               !isHttp
@@ -321,7 +321,7 @@ function McpServerEditor({
           <Button
             variant="ghost"
             aria-pressed={isHttp}
-            onPress={() => setTransportType('streamablehttp')}
+            onClick={() => setTransportType('streamablehttp')}
             className={cn(
               'px-3 py-1.5 rounded-md text-sm transition-colors',
               isHttp
@@ -403,17 +403,17 @@ function McpServerEditor({
           desktop-only, so that is a width it really gets. The switch keeps its
           `ml-auto` and simply lands on the second line once there is one. */}
       <div data-slot="mcp-editor-actions" className="flex flex-wrap items-center gap-2">
-        <Button onPress={handleSave}>{saved ? t('common.saved') : t('common.save')}</Button>
+        <Button onClick={handleSave}>{saved ? t('common.saved') : t('common.save')}</Button>
         {connected ? (
-          <Button variant="outline" onPress={handleDisconnect}>
+          <Button variant="outline" onClick={handleDisconnect}>
             <PlugConnection className="w-3.5 h-3.5 mr-1.5" />
             {t('settings.mcp.disconnect')}
           </Button>
         ) : (
           <Button
             variant="outline"
-            onPress={handleConnect}
-            isDisabled={connecting || statusLoading}
+            onClick={handleConnect}
+            disabled={connecting || statusLoading}
             aria-busy={connecting}
           >
             {connecting ? (
@@ -463,7 +463,7 @@ function McpServerEditor({
       )}
 
       <div data-slot="mcp-danger-zone" className="pt-4 border-t border-border">
-        <Button variant="danger-soft" onPress={() => onDelete(server.id)}>
+        <Button variant="danger-soft" onClick={() => onDelete(server.id)}>
           <TrashBin className="w-3.5 h-3.5 mr-1.5" />
           {t('settings.mcp.deleteServer')}
         </Button>
@@ -599,18 +599,13 @@ export function McpSettings() {
   const headerActions = (
     <div data-slot="mcp-header-actions" className="flex items-center gap-1">
       <TooltipTrigger delay={0}>
-        <Button
-          isIconOnly
-          aria-label={t('settings.mcp.importJson')}
-          variant="outline"
-          onPress={() => openAux('import')}
-        >
+        <Button iconOnly aria-label={t('settings.mcp.importJson')} variant="outline" onClick={() => openAux('import')}>
           <ArrowDownToSquare className="w-4 h-4" />
         </Button>
         <Tooltip placement="top">{t('settings.mcp.importJson')}</Tooltip>
       </TooltipTrigger>
       <TooltipTrigger delay={0}>
-        <Button isIconOnly aria-label={t('settings.mcp.addServer')} variant="outline" onPress={handleAdd}>
+        <Button iconOnly aria-label={t('settings.mcp.addServer')} variant="outline" onClick={handleAdd}>
           <Plus className="w-4 h-4" />
         </Button>
         <Tooltip placement="top">{t('settings.mcp.addServer')}</Tooltip>
@@ -626,10 +621,10 @@ export function McpSettings() {
           <Alert.Content>
             <Alert.Description className="break-all">{t('settings.mcp.loadError')}</Alert.Description>
             <Button
-              size="sm"
+              size="small"
               variant="outline"
               className="mt-2"
-              onPress={() => {
+              onClick={() => {
                 setLoading(servers.length === 0)
                 void refresh()
               }}

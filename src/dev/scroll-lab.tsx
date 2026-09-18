@@ -785,57 +785,57 @@ export default function ScrollLab() {
         <span data-slot="scroll-lab-title" className="text-sm font-semibold">
           滚动行为实验场
         </span>
-        <Button size="sm" variant="outline" onPress={() => seedHistory()}>
+        <Button size="small" variant="outline" onClick={() => seedHistory()}>
           铺历史
         </Button>
         {/* Well past the transcript's window, so what this measures is the
             cost of a long conversation as the product actually renders one. */}
-        <Button size="sm" variant="outline" onPress={() => seedHistory(200)}>
+        <Button size="small" variant="outline" onClick={() => seedHistory(200)}>
           铺 200 轮
         </Button>
-        <Button size="sm" variant="outline" onPress={() => setHasTrailingRow((v) => !v)}>
+        <Button size="small" variant="outline" onClick={() => setHasTrailingRow((v) => !v)}>
           尾部状态行
         </Button>
-        <Button size="sm" variant="outline" onPress={() => sendUser(false)}>
+        <Button size="small" variant="outline" onClick={() => sendUser(false)}>
           发短消息
         </Button>
-        <Button size="sm" variant="outline" onPress={() => sendUser(true)}>
+        <Button size="small" variant="outline" onClick={() => sendUser(true)}>
           发长消息
         </Button>
-        <Button size="sm" variant="outline" onPress={() => sendUser(3)}>
+        <Button size="small" variant="outline" onClick={() => sendUser(3)}>
           发超长消息
         </Button>
-        <Button size="sm" variant="outline" onPress={startAssistant}>
+        <Button size="small" variant="outline" onClick={startAssistant}>
           助手开始
         </Button>
-        <Button size="sm" variant="outline" onPress={() => streamChunk()}>
+        <Button size="small" variant="outline" onClick={() => streamChunk()}>
           流式一块
         </Button>
-        <Button size="sm" variant="outline" onPress={streamAll}>
+        <Button size="small" variant="outline" onClick={streamAll}>
           流式到底
         </Button>
-        <Button size="sm" variant="outline" onPress={() => callTool()}>
+        <Button size="small" variant="outline" onClick={() => callTool()}>
           工具调用
         </Button>
-        <Button size="sm" variant="outline" onPress={finishTool}>
+        <Button size="small" variant="outline" onClick={finishTool}>
           工具返回
         </Button>
-        <Button size="sm" variant="outline" onPress={finishTurn}>
+        <Button size="small" variant="outline" onClick={finishTurn}>
           结束本轮
         </Button>
-        <Button size="sm" variant="ghost" onPress={reset}>
+        <Button size="small" variant="ghost" onClick={reset}>
           清空
         </Button>
         <Button
           size="sm"
-          onPress={() => {
+          onClick={() => {
             setResults(null)
             runScenarios().then(setResults)
           }}
         >
           跑全部场景
         </Button>
-        <Button size="sm" variant="ghost" onPress={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}>
+        <Button size="small" variant="ghost" onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}>
           主题
         </Button>
       </div>

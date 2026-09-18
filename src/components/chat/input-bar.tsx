@@ -233,7 +233,7 @@ function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAc
           variant="ghost"
           aria-label={t('chat.agentOptions')}
           data-slot="agent-options-trigger"
-          isDisabled={busy}
+          disabled={busy}
           className="h-8 max-w-56 gap-1 rounded-lg px-2 text-sm font-normal"
         >
           <span data-slot="agent-options-summary" className="truncate">
@@ -468,7 +468,7 @@ export function InputBar({
   // `disabled` is `streaming` at the call site, and the same two words mean two
   // different things: the field is live while a reply comes in, and only Send
   // turns into Stop. So this has to make the same exception `Composer` makes for
-  // its own `isDisabled` a few lines down — read literally it refuses every
+  // its own `disabled` a few lines down — read literally it refuses every
   // submit made during a run, which is precisely when a steer or a queued
   // message is submitted.
   const handleSubmit = useCallback(() => {
@@ -815,7 +815,7 @@ export function InputBar({
                           {onRemoveFile && (
                             <ChatAttachment.Remove
                               aria-label={t('chat.removeAttachment', { name: f.name })}
-                              onPress={() => onRemoveFile(i)}
+                              onClick={() => onRemoveFile(i)}
                             />
                           )}
                         </ChatAttachment>
@@ -833,12 +833,12 @@ export function InputBar({
                       {onRemoveSticker && (
                         <TooltipTrigger delay={0}>
                           <Button
-                            isIconOnly
+                            iconOnly
                             size="sm"
                             variant="primary"
                             aria-label={t('chat.removeSticker')}
                             className="touch-hitbox absolute -right-2 -top-2 min-w-0 size-6 rounded-full shadow-surface"
-                            onPress={onRemoveSticker}
+                            onClick={onRemoveSticker}
                           >
                             <Xmark className="size-3.5" />
                           </Button>

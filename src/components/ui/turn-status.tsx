@@ -37,7 +37,7 @@ interface TurnBranchPagerProps extends Omit<React.ComponentProps<'div'>, 'onSele
   total: number
   onPrevious?: () => void
   onNext?: () => void
-  isDisabled?: boolean
+  disabled?: boolean
   previousLabel?: string
   nextLabel?: string
 }
@@ -49,7 +49,7 @@ function TurnBranchPager({
   total,
   onPrevious,
   onNext,
-  isDisabled,
+  disabled,
   previousLabel,
   nextLabel,
   className,
@@ -71,7 +71,7 @@ function TurnBranchPager({
         type="button"
         data-slot="turn-branch-pager-prev"
         aria-label={previousLabel}
-        disabled={isDisabled || index <= 1}
+        disabled={disabled || index <= 1}
         onClick={onPrevious}
         className="touch-hitbox rounded-sm p-0.5 transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus/50 disabled:pointer-events-none disabled:opacity-40"
       >
@@ -84,7 +84,7 @@ function TurnBranchPager({
         type="button"
         data-slot="turn-branch-pager-next"
         aria-label={nextLabel}
-        disabled={isDisabled || index >= total}
+        disabled={disabled || index >= total}
         onClick={onNext}
         className="touch-hitbox rounded-sm p-0.5 transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus/50 disabled:pointer-events-none disabled:opacity-40"
       >

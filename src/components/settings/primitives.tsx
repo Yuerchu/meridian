@@ -206,7 +206,7 @@ type SettingsSelectBase<T extends string> = {
   description?: React.ReactNode
   placeholder?: string
   fullWidth?: boolean
-  isDisabled?: boolean
+  disabled?: boolean
   className?: string
   triggerClassName?: string
   /** Only the one caller that shrinks its rows needs this. */
@@ -241,7 +241,7 @@ export function SettingsSelect<T extends string>({
   description,
   placeholder,
   fullWidth: _fw,
-  isDisabled,
+  disabled,
   className,
   triggerClassName,
   itemClassName,
@@ -251,7 +251,7 @@ export function SettingsSelect<T extends string>({
       {label && <Label>{label}</Label>}
       <Select
         aria-label={ariaLabel}
-        isDisabled={isDisabled}
+        disabled={disabled}
         placeholder={placeholder}
         selectedKey={value}
         onSelectionChange={(key) => {

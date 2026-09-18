@@ -175,13 +175,13 @@ export function AcpSettings() {
       )}
 
       <div data-slot="acp-actions" className="flex items-center gap-2">
-        <Button variant="primary" onPress={() => void save()} isDisabled={!config.command.trim()}>
+        <Button variant="primary" onClick={() => void save()} disabled={!config.command.trim()}>
           {t('common.save')}
         </Button>
         {/* Refused while the fields are ahead of the file: the check starts
             the *saved* command, so a verdict now would be about the previous
             one and would read as being about what is on screen. */}
-        <Button variant="secondary" onPress={() => void runCheck()} isDisabled={checking || dirty}>
+        <Button variant="secondary" onClick={() => void runCheck()} disabled={checking || dirty}>
           {checking ? t('settings.acp.checking') : t('settings.acp.check')}
         </Button>
         {dirty && !checking && (

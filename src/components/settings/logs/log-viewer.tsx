@@ -47,7 +47,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
   return (
     <div data-slot="log-viewer" className="flex h-full flex-col gap-4">
       <div data-slot="log-viewer-header" className="flex flex-wrap items-center gap-2">
-        <Button variant="ghost" size="sm" onPress={onBack}>
+        <Button variant="ghost" size="small" onClick={onBack}>
           <ChevronLeft className="size-4" />
           {t('settings.about.logs.back')}
         </Button>
@@ -55,14 +55,14 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
           {t('settings.about.logs.title')}
         </h2>
         <div data-slot="log-viewer-actions" className="ml-auto flex items-center gap-2">
-          <Button variant="ghost" size="sm" onPress={logs.refresh} isDisabled={logs.loading}>
+          <Button variant="ghost" size="small" onClick={logs.refresh} disabled={logs.loading}>
             <ArrowsRotateRight className="size-4" />
             {t('settings.about.logs.refresh')}
           </Button>
           {/* The picker names a path on this device and the file is written by
               whichever machine the logs belong to. Reading them here still
               works — that is what the rows below are. */}
-          <Button variant="secondary" size="sm" onPress={onExport} isDisabled={!can.exportToDisk}>
+          <Button variant="secondary" size="small" onClick={onExport} disabled={!can.exportToDisk}>
             <ArrowDownToLine className="size-4" />
             {exported ? t('settings.about.logs.exported') : t('settings.about.logs.export')}
           </Button>
@@ -167,7 +167,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
                   {t('settings.about.logs.capped', { max: MAX_RENDERED })}
                 </p>
               ) : logs.canLoadOlder ? (
-                <Button variant="ghost" size="sm" onPress={logs.loadOlder} isDisabled={logs.loadingMore}>
+                <Button variant="ghost" size="small" onClick={logs.loadOlder} disabled={logs.loadingMore}>
                   {logs.loadingMore && <Spinner size="sm" color="current" />}
                   {t('settings.about.logs.loadOlder')}
                 </Button>

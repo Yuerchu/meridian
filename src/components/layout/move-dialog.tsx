@@ -48,8 +48,8 @@ export function MoveDialog({
     <Button
       key={id ?? 'none'}
       variant="ghost"
-      onPress={() => void choose(id)}
-      isDisabled={isPending || id === currentProjectId}
+      onClick={() => void choose(id)}
+      disabled={isPending || id === currentProjectId}
       className="w-full justify-start"
     >
       {icon}
@@ -83,7 +83,7 @@ export function MoveDialog({
             )}
           </Modal.Body>
           <Modal.Footer>
-            <Button slot="close" variant="secondary" isDisabled={isPending}>
+            <Button slot="close" variant="secondary" disabled={isPending}>
               {t('common.cancel')}
             </Button>
           </Modal.Footer>

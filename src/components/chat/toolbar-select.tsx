@@ -21,7 +21,7 @@ interface ToolbarSelectProps {
   value: string | null
   choices: ToolbarChoice[]
   onSelect: (value: string) => void
-  isDisabled?: boolean
+  disabled?: boolean
   className?: string
 }
 
@@ -45,7 +45,7 @@ export function ToolbarSelect({
   value,
   choices,
   onSelect,
-  isDisabled,
+  disabled,
   className,
 }: ToolbarSelectProps) {
   const current = choices.find((c) => c.value === value)
@@ -55,7 +55,7 @@ export function ToolbarSelect({
       aria-label={ariaLabel}
       data-slot="toolbar-select"
       value={value ?? ''}
-      isDisabled={isDisabled || choices.length === 0}
+      disabled={disabled || choices.length === 0}
       onChange={(key) => {
         if (typeof key === 'string' && key) onSelect(key)
       }}

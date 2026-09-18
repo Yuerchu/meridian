@@ -195,7 +195,7 @@ export function FileDiffCard({ diff, header = true }: { diff: FileDiff; header?:
               {!expanded && (
                 <span data-slot="file-diff-hidden-count">{t('chat.tool.diff.moreLines', { count: hidden })}</span>
               )}
-              <Link className="text-xs" onPress={() => setExpanded((current) => !current)}>
+              <Link className="text-xs" onClick={() => setExpanded((current) => !current)}>
                 {t(expanded ? 'chat.tool.diff.showLess' : 'chat.tool.diff.showAll')}
               </Link>
             </div>

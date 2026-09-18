@@ -185,11 +185,11 @@ export function VoiceSettings() {
               </Card.Header>
               <TooltipTrigger delay={0}>
                 <Button
-                  isIconOnly
+                  iconOnly
                   variant="ghost"
                   aria-label={t('settings.voice.deleteModel')}
-                  onPress={handleDelete}
-                  isDisabled={downloading}
+                  onClick={handleDelete}
+                  disabled={downloading}
                 >
                   <TrashBin className="w-4 h-4" />
                 </Button>
@@ -214,7 +214,7 @@ export function VoiceSettings() {
                 {formatSize(progress.downloaded, sizeNumber)}
                 {progress.total ? ` / ${formatSize(progress.total, sizeNumber)}` : ''}
               </span>
-              <Button variant="outline" size="sm" onPress={handleCancelDownload}>
+              <Button variant="outline" size="small" onClick={handleCancelDownload}>
                 {t('settings.voice.cancelDownload')}
               </Button>
             </div>
@@ -226,7 +226,7 @@ export function VoiceSettings() {
               </Card.Header>
               <Card.Footer className="flex-col items-start gap-2">
                 <div data-slot="voice-model-actions" className="flex gap-2">
-                  <Button size="sm" onPress={handleDownload}>
+                  <Button size="small" onClick={handleDownload}>
                     {t('settings.voice.download')}
                   </Button>
                   {/* Downloading still works remotely — the host fetches it to
@@ -235,8 +235,8 @@ export function VoiceSettings() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onPress={handleImport}
-                    isDisabled={importing || !can.importFromDisk}
+                    onClick={handleImport}
+                    disabled={importing || !can.importFromDisk}
                     aria-busy={importing}
                   >
                     {importing && <Spinner aria-hidden="true" size="sm" />}

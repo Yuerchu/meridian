@@ -135,20 +135,16 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
             )}
           </div>
           <div data-slot="memory-row-actions" className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              isDisabled={saving || draft === memory.content}
-              onPress={() => void saveDraft()}
-            >
+            <Button variant="secondary" disabled={saving || draft === memory.content} onClick={() => void saveDraft()}>
               {t('common.save')}
             </Button>
             <div data-slot="memory-row-actions-spacer" className="flex-1" />
             <TooltipTrigger delay={0}>
               <Button
                 variant="ghost"
-                isIconOnly
+                iconOnly
                 aria-label={t('settings.memory.delete')}
-                onPress={async () => {
+                onClick={async () => {
                   await api.deleteMemories([memory.id])
                   onChanged()
                 }}

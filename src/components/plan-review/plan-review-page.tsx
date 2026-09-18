@@ -183,12 +183,7 @@ function SourceEditor({
           <p data-slot="plan-source-editor-hint" className="text-xs text-muted">
             {t('planReview.source.hint')}
           </p>
-          <Button
-            size="sm"
-            variant="ghost"
-            isDisabled={!selection}
-            onPress={() => selection && onAddComment(selection)}
-          >
+          <Button size="sm" variant="ghost" disabled={!selection} onClick={() => selection && onAddComment(selection)}>
             <Comment />
             {t('planReview.comments.add')}
           </Button>
@@ -590,10 +585,10 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           {t('planReview.loadError', { error: pageError ?? t('planReview.unknownError') })}
         </p>
         <div data-slot="plan-review-load-error-actions" className="flex gap-2">
-          <Button variant="secondary" onPress={() => void loadReview()}>
+          <Button variant="secondary" onClick={() => void loadReview()}>
             {t('planReview.reload')}
           </Button>
-          <Button variant="ghost" onPress={onClose}>
+          <Button variant="ghost" onClick={onClose}>
             {t('common.close')}
           </Button>
         </div>
@@ -681,7 +676,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           </div>
 
           <Dropdown>
-            <Button variant="ghost" size="sm">
+            <Button variant="ghost" size="small">
               <Clock />
               {historicalRevision
                 ? t('planReview.revision', { number: historicalRevision.revision_no })
@@ -718,7 +713,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           </Dropdown>
 
           <TooltipTrigger>
-            <Button isIconOnly variant="ghost" size="sm" aria-label={t('common.close')} onPress={onClose}>
+            <Button iconOnly variant="ghost" size="small" aria-label={t('common.close')} onClick={onClose}>
               <Xmark />
             </Button>
             <Tooltip>{t('common.close')}</Tooltip>
@@ -746,8 +741,8 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
                   size="sm"
                   variant="secondary"
                   isPending={problem.action.pending}
-                  isDisabled={problem.action.pending}
-                  onPress={problem.action.run}
+                  disabled={problem.action.pending}
+                  onClick={problem.action.run}
                 >
                   {problem.action.label}
                 </Button>
@@ -771,8 +766,8 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
                 size="sm"
                 variant="secondary"
                 isPending={continuing}
-                isDisabled={continuing}
-                onPress={() => void continueDelivery()}
+                disabled={continuing}
+                onClick={() => void continueDelivery()}
               >
                 {t('planReview.continueDelivery')}
               </Button>
@@ -796,10 +791,10 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
             onSelectionChange={(key: Key) => setTab(key as ReviewTab)}
           >
             <Segment.Item id="plan">{t('planReview.tabs.plan')}</Segment.Item>
-            <Segment.Item id="changes" isDisabled={historicalRevision !== null}>
+            <Segment.Item id="changes" disabled={historicalRevision !== null}>
               {t('planReview.tabs.changes')}
             </Segment.Item>
-            <Segment.Item id="suggestions" isDisabled={historicalRevision !== null}>
+            <Segment.Item id="suggestions" disabled={historicalRevision !== null}>
               {t('planReview.tabs.suggestions')}
             </Segment.Item>
           </Segment>
@@ -814,7 +809,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
             size="sm"
             variant="ghost"
             className="plan-review-comments-trigger"
-            onPress={() => setCommentsOpen(true)}
+            onClick={() => setCommentsOpen(true)}
           >
             <Comment />
             {t('planReview.comments.title')}
@@ -951,23 +946,23 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           <div data-slot="plan-review-decision-actions" className="flex shrink-0 items-center justify-end gap-2">
             <Button
               variant="ghost"
-              isDisabled={deciding || effectiveSaveState !== 'saved' || rules.isPristine || isReadOnly}
-              onPress={() => void discard()}
+              disabled={deciding || effectiveSaveState !== 'saved' || rules.isPristine || isReadOnly}
+              onClick={() => void discard()}
             >
               {t('planReview.discard')}
             </Button>
             <Button
               variant="secondary"
-              isDisabled={deciding || !rules.canRequestChanges}
-              onPress={() => void decide('request_changes')}
+              disabled={deciding || !rules.canRequestChanges}
+              onClick={() => void decide('request_changes')}
             >
               {t('planReview.requestChanges')}
             </Button>
             <Button
               variant="primary"
               isPending={deciding}
-              isDisabled={deciding || !rules.canApprove}
-              onPress={() => void decide('approve')}
+              disabled={deciding || !rules.canApprove}
+              onClick={() => void decide('approve')}
             >
               {t('planReview.approve')}
             </Button>

@@ -109,7 +109,7 @@ export function TurnUsage({ tokens, usage }: { tokens: TokenTotals; usage?: Turn
           aria-label={t('chat.usage.openDetails', { summary })}
           aria-expanded={open}
           aria-controls={detailsId}
-          onPress={() => setOpen(true)}
+          onClick={() => setOpen(true)}
           className="touch-hitbox min-w-0 cursor-[var(--cursor-interactive)] rounded-sm px-0 font-normal tabular-nums hover:text-foreground"
         >
           {costLabel}

@@ -110,7 +110,7 @@ export function RemoteClientSettings() {
             </ItemCard.Description>
           </ItemCard.Content>
         </ItemCard>
-        <Button variant="outline" onPress={handleDisconnect}>
+        <Button variant="outline" onClick={handleDisconnect}>
           {t('settings.client.disconnect')}
         </Button>
         <p data-slot="remote-client-disconnect-hint" className="text-xs text-muted">
@@ -166,10 +166,10 @@ export function RemoteClientSettings() {
       </TextField>
 
       <div data-slot="remote-client-actions" className="flex items-center gap-2">
-        <Button variant="outline" onPress={handleTest} isDisabled={!host.trim() || probing} aria-busy={probing}>
+        <Button variant="outline" onClick={handleTest} disabled={!host.trim() || probing} aria-busy={probing}>
           {probing ? t('settings.client.testing') : t('settings.client.test')}
         </Button>
-        <Button onPress={handleConnect} isDisabled={!host.trim() || !token.trim()}>
+        <Button onClick={handleConnect} disabled={!host.trim() || !token.trim()}>
           {t('settings.client.connect')}
         </Button>
       </div>

@@ -299,7 +299,7 @@ function CodexAccount() {
         <p data-slot="codex-account-label" className="text-xs text-muted">
           {t('settings.provider.codexAccount')}
         </p>
-        <Button variant="outline" onPress={() => void check()} isDisabled={checking}>
+        <Button variant="outline" onClick={() => void check()} disabled={checking}>
           {checking ? <Spinner size="sm" color="current" /> : <ArrowsRotateRight className="w-3.5 h-3.5" />}
           {t('settings.provider.codexRecheck')}
         </Button>
@@ -508,7 +508,7 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
                 variant="ghost"
                 aria-label={t('settings.model.removeTier')}
                 className="h-7 pointer-coarse:h-10 rounded-md px-2 text-muted hover:text-danger"
-                onPress={() => onChange(tiers.filter((_, i) => i !== index))}
+                onClick={() => onChange(tiers.filter((_, i) => i !== index))}
               >
                 <TrashBin className="size-3.5" />
               </Button>
@@ -565,7 +565,7 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
         size="sm"
         variant="outline"
         className="h-7 pointer-coarse:h-10 rounded-md text-xs"
-        onPress={() => onChange([...tiers, { ...BLANK_TIER }])}
+        onClick={() => onChange([...tiers, { ...BLANK_TIER }])}
       >
         <Plus className="size-3.5" />
         {t('settings.model.addTier')}
@@ -948,7 +948,7 @@ function ModelConfigEditor({
                   size="sm"
                   aria-pressed={on}
                   className="h-6 pointer-coarse:h-9 rounded-md px-2 text-xs font-normal"
-                  onPress={() => {
+                  onClick={() => {
                     setServerTools(on ? serverTools.filter((x) => x !== name) : [...serverTools, name])
                     setDirty(true)
                   }}
@@ -1039,7 +1039,7 @@ function ModelConfigEditor({
                       size="sm"
                       aria-pressed={on}
                       className="h-6 pointer-coarse:h-9 px-2 text-xs font-normal"
-                      onPress={() => {
+                      onClick={() => {
                         // Rebuild from the ladder so the stored array stays in
                         // ascending order -- the median coercion ranks on position.
                         setEfforts(EFFORT_LADDER.filter((x) => (x === tier ? !on : efforts.includes(x))))
@@ -1076,7 +1076,7 @@ function ModelConfigEditor({
               variant="ghost"
               size="sm"
               className="h-6 pointer-coarse:h-9 px-0 text-xs text-muted hover:text-foreground"
-              onPress={resetOverrides}
+              onClick={resetOverrides}
             >
               {t('settings.model.capReset')}
             </Button>
@@ -1089,11 +1089,11 @@ function ModelConfigEditor({
         </p>
       )}
       <div data-slot="model-config-actions" className="flex items-center gap-2 pt-1">
-        <Button size="sm" className="h-7 pointer-coarse:h-10 text-xs" onPress={() => void handleSave()}>
+        <Button size="small" className="h-7 pointer-coarse:h-10 text-xs" onClick={() => void handleSave()}>
           {t('common.save')}
         </Button>
         {onDelete && (
-          <Button size="sm" variant="danger-soft" className="h-7 pointer-coarse:h-10 text-xs" onPress={onDelete}>
+          <Button size="small" variant="danger-soft" className="h-7 pointer-coarse:h-10 text-xs" onClick={onDelete}>
             {t('common.delete')}
           </Button>
         )}
@@ -1501,13 +1501,13 @@ function ProviderEditor({
           return (
             <TooltipTrigger delay={0}>
               <Button
-                isIconOnly
+                iconOnly
                 variant="ghost"
                 aria-label={label}
                 aria-controls={isEditing ? modelEditorId : undefined}
                 aria-expanded={isEditing}
                 className="touch-hitbox h-6 w-6"
-                onPress={() => void changeEditingModel(isEditing ? null : model.id)}
+                onClick={() => void changeEditingModel(isEditing ? null : model.id)}
               >
                 {isEditing ? <Xmark className="size-3.5" /> : <Sliders className="size-3.5" />}
               </Button>
@@ -1590,7 +1590,7 @@ function ProviderEditor({
       )}
 
       <div data-slot="provider-editor-actions" className="flex items-center gap-2">
-        <Button onPress={handleSave}>{t('common.save')}</Button>
+        <Button onClick={handleSave}>{t('common.save')}</Button>
         {saved && <SavedHint />}
       </div>
 
@@ -1621,8 +1621,8 @@ function ProviderEditor({
               />
               <Button
                 variant="outline"
-                onPress={handleSaveKey}
-                isDisabled={!apiKey.trim() || savingKey || keyStatus === 'loading'}
+                onClick={handleSaveKey}
+                disabled={!apiKey.trim() || savingKey || keyStatus === 'loading'}
               >
                 {savingKey ? <Spinner size="sm" color="current" /> : <Key className="w-3.5 h-3.5" />}
                 {keySaved ? t('common.saved') : t('settings.provider.saveKey')}
@@ -1663,7 +1663,7 @@ function ProviderEditor({
             <p data-slot="provider-balance-label" className="text-xs text-muted">
               {t('settings.provider.balance')}
             </p>
-            <Button variant="outline" onPress={handleFetchBalance} isDisabled={fetchingBalance || keyStatus !== 'set'}>
+            <Button variant="outline" onClick={handleFetchBalance} disabled={fetchingBalance || keyStatus !== 'set'}>
               {fetchingBalance ? <Spinner size="sm" color="current" /> : <ArrowsRotateRight className="w-3.5 h-3.5" />}
               {t('settings.provider.checkBalance')}
             </Button>
@@ -1724,8 +1724,8 @@ function ProviderEditor({
               was written for. */}
           <Button
             variant="outline"
-            onPress={handleFetchModels}
-            isDisabled={fetchingModels || (!usesChatGptLogin(provider) && keyStatus !== 'set')}
+            onClick={handleFetchModels}
+            disabled={fetchingModels || (!usesChatGptLogin(provider) && keyStatus !== 'set')}
           >
             {fetchingModels ? <Spinner size="sm" color="current" /> : <ArrowsRotateRight className="w-3.5 h-3.5" />}
             {t('settings.provider.fetchModels')}
@@ -1782,7 +1782,7 @@ function ProviderEditor({
       </div>
 
       <div data-slot="provider-danger-zone" className="border-t border-border pt-4">
-        <Button variant="danger-soft" onPress={handleDelete} isDisabled={deleting}>
+        <Button variant="danger-soft" onClick={handleDelete} disabled={deleting}>
           {deleting ? <Spinner size="sm" color="current" /> : <TrashBin className="w-3.5 h-3.5" />}
           {deleting ? t('settings.provider.deletingProvider') : t('settings.provider.deleteProvider')}
         </Button>
@@ -1892,7 +1892,7 @@ export function ProviderSettings() {
             <Button
               size="sm"
               variant="outline"
-              onPress={() => {
+              onClick={() => {
                 setLoadError(null)
                 setLoading(true)
                 void refresh()
@@ -1930,7 +1930,7 @@ export function ProviderSettings() {
             <EmptyState.Title>{t('settings.provider.noProviders')}</EmptyState.Title>
           </EmptyState.Header>
           <EmptyState.Content>
-            <Button variant="outline" onPress={handleCreate}>
+            <Button variant="outline" onClick={handleCreate}>
               <Plus className="w-4 h-4" />
               {t('settings.provider.addProvider')}
             </Button>
@@ -1974,7 +1974,7 @@ export function ProviderSettings() {
         title={t('settings.provider.title')}
         actions={
           <TooltipTrigger delay={0}>
-            <Button isIconOnly aria-label={t('settings.provider.addProvider')} variant="ghost" onPress={handleCreate}>
+            <Button iconOnly aria-label={t('settings.provider.addProvider')} variant="ghost" onClick={handleCreate}>
               <Plus className="w-4 h-4" />
             </Button>
             <Tooltip placement="top">{t('settings.provider.addProvider')}</Tooltip>

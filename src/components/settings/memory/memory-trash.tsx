@@ -94,7 +94,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                   <Alert.Indicator />
                   <Alert.Content>
                     <Alert.Description>{t('settings.memory.trash.loadError')}</Alert.Description>
-                    <Button size="sm" variant="outline" className="mt-2" onPress={() => void load()}>
+                    <Button size="small" variant="outline" className="mt-2" onClick={() => void load()}>
                       {t('settings.memory.retry')}
                     </Button>
                   </Alert.Content>
@@ -123,9 +123,9 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                       <TooltipTrigger delay={0}>
                         <Button
                           variant="ghost"
-                          isIconOnly
+                          iconOnly
                           aria-label={t('settings.memory.trash.restore')}
-                          onPress={async () => {
+                          onClick={async () => {
                             await api.restoreMemories([m.id])
                             void load()
                             onChanged()
@@ -139,9 +139,9 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                       <TooltipTrigger delay={0}>
                         <Button
                           variant="ghost"
-                          isIconOnly
+                          iconOnly
                           aria-label={t('settings.memory.trash.purge')}
-                          onPress={async () => {
+                          onClick={async () => {
                             const accepted = await confirm({
                               body: t('settings.memory.trash.purgeConfirm', { key: m.key }),
                             })

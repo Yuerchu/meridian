@@ -292,11 +292,11 @@ export function AppShell(props: ShellProps) {
               {activeId && !isMobile && page !== 'settings' && !activeReviewId && (
                 <TooltipTrigger>
                   <Button
-                    isIconOnly
+                    iconOnly
                     variant={changesOpen ? 'secondary' : 'ghost'}
                     aria-label={t('chat.changes.toggle')}
                     aria-pressed={changesOpen}
-                    onPress={() => setChangesOpen((open) => !open)}
+                    onClick={() => setChangesOpen((open) => !open)}
                     className="size-11 md:size-8"
                   >
                     <FolderTree />
@@ -306,11 +306,11 @@ export function AppShell(props: ShellProps) {
               )}
               <TooltipTrigger>
                 <Button
-                  isIconOnly
+                  iconOnly
                   variant="ghost"
                   aria-label={t('palette.title')}
                   aria-keyshortcuts="Meta+K Control+K"
-                  onPress={() => setPaletteOpen(true)}
+                  onClick={() => setPaletteOpen(true)}
                   className="size-11 md:size-8"
                 >
                   <Magnifier />
@@ -332,11 +332,11 @@ export function AppShell(props: ShellProps) {
                 </Alert.Content>
                 <TooltipTrigger>
                   <Button
-                    isIconOnly
+                    iconOnly
                     size="sm"
                     variant="ghost"
                     aria-label={t('common.close')}
-                    onPress={() => setActionError(null)}
+                    onClick={() => setActionError(null)}
                     className="touch-hitbox shrink-0"
                   >
                     <Xmark />

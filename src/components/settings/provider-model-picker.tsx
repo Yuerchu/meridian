@@ -106,13 +106,13 @@ export function ProviderModelPicker({
           options={modelOptions}
           onChange={pickModel}
           placeholder={t('settings.assistant.selectModel')}
-          isDisabled={isModelDisabledWithoutProvider && !providerId}
+          disabled={isModelDisabledWithoutProvider && !providerId}
           fullWidth
         />
       ) : (
         <TextField
           fullWidth
-          isDisabled={isModelDisabledWithoutProvider && !providerId}
+          disabled={isModelDisabledWithoutProvider && !providerId}
           aria-label={labelMode === 'aria' ? t('settings.assistant.model') : undefined}
         >
           {labelMode === 'label' && <Label>{t('settings.assistant.model')}</Label>}

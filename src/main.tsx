@@ -45,7 +45,7 @@ function renderAppCrashFallback(error: Error) {
       <p data-slot="app-crash-error" className="max-w-md break-all text-xs text-muted">
         {String(error)}
       </p>
-      <Button variant="secondary" onPress={() => window.location.reload()}>
+      <Button variant="secondary" onClick={() => window.location.reload()}>
         {i18n.t('errorBoundary.reload')}
       </Button>
     </main>

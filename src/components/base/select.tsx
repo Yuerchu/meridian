@@ -13,7 +13,7 @@ import { MENU_POPOVER_SURFACE } from './dropdown/menu-styles'
 interface SelectRootProps {
   'aria-label'?: string
   fullWidth?: boolean
-  isDisabled?: boolean
+  disabled?: boolean
   placeholder?: string
   value?: string
   defaultValue?: string
