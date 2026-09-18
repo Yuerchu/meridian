@@ -176,8 +176,8 @@ export function VoiceCorpusSettings() {
                       iconOnly
                       size="small"
                       variant="ghost"
-                      disabled={busy}
-                      onClick={() => deleteSession(session)}
+                      isDisabled={busy}
+                      onPress={() => deleteSession(session)}
                       aria-label={t('settings.voiceCorpus.deleteSession')}
                     >
                       <TrashBin />
@@ -191,11 +191,11 @@ export function VoiceCorpusSettings() {
         </ItemCardGroup>
       )}
 
-      <TextField fullWidth>
+      <TextField>
         <Label>{t('settings.voiceCorpus.forgetSender')}</Label>
         <div data-slot="voice-corpus-forget-row" className="flex gap-2">
           <Input value={senderInput} onChange={(e) => setSenderInput(e.target.value)} placeholder="12345" />
-          <Button variant="ghost" disabled={busy || !senderInput.trim()} onClick={forgetSender}>
+          <Button variant="ghost" isDisabled={busy || !senderInput.trim()} onPress={forgetSender}>
             {t('settings.voiceCorpus.forget')}
           </Button>
         </div>
@@ -211,7 +211,7 @@ export function VoiceCorpusSettings() {
             {t('settings.voiceCorpus.includeSender')}
           </Checkbox>
           <Description>{t('settings.voiceCorpus.exportHint')}</Description>
-          <Button variant="ghost" disabled={busy || sessions.length === 0} onClick={exportBundle}>
+          <Button variant="ghost" isDisabled={busy || sessions.length === 0} onPress={exportBundle}>
             {t('settings.voiceCorpus.export')}
           </Button>
         </div>

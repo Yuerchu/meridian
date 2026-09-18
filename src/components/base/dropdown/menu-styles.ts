@@ -20,7 +20,7 @@ export const MENU_POPOVER_WIDTH = 'w-[266px]'
 export const MENU_ITEMS_CONTAINER = 'flex w-full flex-col gap-1 outline-none'
 
 export const MENU_ITEM = [
-  'flex w-full cursor-pointer items-center gap-2 rounded-2lg p-2 text-left',
+  'flex w-full cursor-[var(--cursor-interactive)] items-center gap-2 rounded-2lg p-2 text-left',
   'text-text-primary outline-none transition-colors',
 ].join(' ')
 

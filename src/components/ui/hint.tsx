@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { Focusable } from 'react-aria-components'
 import { Tooltip, TooltipTrigger } from '@/components/base'
 
 import { cx } from '@/utils/cx'
@@ -17,6 +18,11 @@ import { cx } from '@/utils/cx'
  * of every bar in a chart — that is a tab stop per repetition and nothing for
  * a keyboard to do at any of them, so `focusable={false}` keeps those to hover
  * alone, which is exactly what `title` gave them.
+ *
+ * `Focusable` is what makes a plain span a tooltip trigger at all: React Aria's
+ * `TooltipTrigger` hands its hover and focus handlers down through context, and
+ * only a `useFocusable` consumer receives them — an unwrapped span never opens
+ * the tooltip, on hover or on focus.
  */
 export function Hint({
   label,
@@ -35,9 +41,11 @@ export function Hint({
   const Tag = as as 'span'
   return (
     <TooltipTrigger delay={0}>
-      <Tag {...props} tabIndex={focusable ? 0 : -1} className={cx('min-w-0', className)}>
-        {children}
-      </Tag>
+      <Focusable excludeFromTabOrder={!focusable}>
+        <Tag {...props} className={cx('min-w-0', className)}>
+          {children}
+        </Tag>
+      </Focusable>
       <Tooltip placement={placement}>{label}</Tooltip>
     </TooltipTrigger>
   )

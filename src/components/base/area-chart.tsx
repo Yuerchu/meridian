@@ -1,17 +1,24 @@
+import type { ComponentProps, ReactNode } from 'react'
 import {
-  AreaChart as RechartsAreaChart,
   Area as RechartsArea,
+  AreaChart as RechartsAreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip,
   XAxis as RechartsXAxis,
   YAxis as RechartsYAxis,
-  CartesianGrid,
-  Tooltip as RechartsTooltip,
-  ResponsiveContainer,
+  type CartesianGridProps,
   type XAxisProps,
   type YAxisProps,
-  type CartesianGridProps,
 } from 'recharts'
-import type { ComponentProps } from 'react'
 import { cx } from '@/utils/cx'
+
+/**
+ * recharts' area chart with the theme applied where recharts would otherwise
+ * draw its own defaults: grid and axes in the hairline and secondary text
+ * tokens, and a tooltip that is one of this app's panels. Series colours are
+ * the caller's — boardui's `chart-1..5` tokens are what they should pass.
+ */
 
 interface AreaChartRootProps extends ComponentProps<'div'> {
   data?: Record<string, unknown>[]
@@ -20,58 +27,103 @@ interface AreaChartRootProps extends ComponentProps<'div'> {
 
 function AreaChartRoot({ data, height = 200, children, className, ...props }: AreaChartRootProps) {
   return (
-    <div data-slot="area-chart" {...props} className={cx('', className)}>
+    <div data-slot="area-chart" {...props} className={cx('w-full text-caption-1-medium', className)}>
       <ResponsiveContainer width="100%" height={height}>
-        <RechartsAreaChart data={data}>{children}</RechartsAreaChart>
+        <RechartsAreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+          {children}
+        </RechartsAreaChart>
       </ResponsiveContainer>
     </div>
   )
 }
 
 function AreaChartGrid(props: CartesianGridProps) {
+  return <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-button-default)" {...props} />
+}
+
+function AreaChartXAxis(props: XAxisProps) {
   return (
-    <CartesianGrid
-      data-slot="area-chart-grid"
-      strokeDasharray="3 3"
-      stroke="var(--color-separator-border)"
+    <RechartsXAxis
+      axisLine={false}
+      tickLine={false}
+      tick={{ fill: 'var(--color-text-secondary)', fontSize: 12 }}
       {...props}
     />
   )
 }
 
-function AreaChartXAxis(props: XAxisProps) {
-  return <RechartsXAxis data-slot="area-chart-x-axis" stroke="var(--color-text-secondary)" fontSize={12} {...props} />
-}
-
 function AreaChartYAxis(props: YAxisProps) {
-  return <RechartsYAxis data-slot="area-chart-y-axis" stroke="var(--color-text-secondary)" fontSize={12} {...props} />
+  return (
+    <RechartsYAxis
+      axisLine={false}
+      tickLine={false}
+      tick={{ fill: 'var(--color-text-secondary)', fontSize: 12 }}
+      {...props}
+    />
+  )
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts generic types
-function AreaChartArea(props: any) {
-  return <RechartsArea data-slot="area-chart-area" type="monotone" {...props} />
+function AreaChartArea(props: ComponentProps<typeof RechartsArea>) {
+  return <RechartsArea type="monotone" {...props} />
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts generic types
-function AreaChartTooltip(props: any) {
-  return <RechartsTooltip data-slot="area-chart-tooltip" {...props} />
+function AreaChartTooltip(props: ComponentProps<typeof RechartsTooltip>) {
+  return <RechartsTooltip cursor={{ stroke: 'var(--color-border-button-hover)' }} {...props} />
 }
 
 interface AreaChartTooltipContentProps {
   indicator?: 'line' | 'dot'
   valueFormatter?: (value: string | number) => string
+  labelFormatter?: (label: ReactNode) => ReactNode
   className?: string
+  /* Injected by recharts when this element is handed to `Tooltip content`. */
+  active?: boolean
+  label?: ReactNode
+  payload?: ReadonlyArray<{
+    name?: string | number
+    value?: string | number
+    color?: string
+    dataKey?: string | number
+  }>
 }
 
-function AreaChartTooltipContent({ className }: AreaChartTooltipContentProps) {
+function AreaChartTooltipContent({
+  indicator = 'dot',
+  valueFormatter = (v) => String(v),
+  labelFormatter,
+  className,
+  active,
+  label,
+  payload,
+}: AreaChartTooltipContentProps) {
+  if (!active || !payload?.length) return null
   return (
     <div
       data-slot="area-chart-tooltip-content"
       className={cx(
-        'rounded-lg border border-border-button-default bg-background-primary-default p-2 shadow-dropdown',
+        'min-w-32 rounded-xl border border-border-button-default bg-background-primary-default p-2.5 shadow-dropdown',
         className,
       )}
-    />
+    >
+      {label != null && (
+        <div data-slot="area-chart-tooltip-label" className="mb-1.5 text-caption-1-medium text-text-secondary">
+          {labelFormatter ? labelFormatter(label) : label}
+        </div>
+      )}
+      <ul data-slot="area-chart-tooltip-series" className="flex flex-col gap-1">
+        {payload.map((entry, i) => (
+          <li key={entry.dataKey ?? i} className="flex items-center gap-2 text-body-2-medium text-text-primary">
+            <span
+              aria-hidden
+              className={cx('shrink-0', indicator === 'dot' ? 'size-2 rounded-full' : 'h-3 w-0.5 rounded-full')}
+              style={{ backgroundColor: entry.color }}
+            />
+            <span className="min-w-0 flex-1 truncate text-text-secondary">{entry.name}</span>
+            <span className="tabular-nums">{entry.value != null ? valueFormatter(entry.value) : '—'}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 

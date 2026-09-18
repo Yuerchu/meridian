@@ -13,7 +13,7 @@ interface InlineSelectProps {
   'data-slot'?: string
   value?: string
   onChange?: (value: string) => void
-  disabled?: boolean
+  isDisabled?: boolean
   children?: React.ReactNode
   className?: string
 }

@@ -205,7 +205,6 @@ export function AppShell(props: ShellProps) {
       <Sidebar.Provider
         open={sidebarOpen}
         onOpenChange={setSidebarOpen}
-        variant="inset"
         collapsible="icon"
         // Pro's provider is `min-h-svh`: a page that grows. This one is a fixed
         // viewport with its own scrollers inside, and the transcript's scroller
@@ -296,7 +295,7 @@ export function AppShell(props: ShellProps) {
                     variant={changesOpen ? 'secondary' : 'ghost'}
                     aria-label={t('chat.changes.toggle')}
                     aria-pressed={changesOpen}
-                    onClick={() => setChangesOpen((open) => !open)}
+                    onPress={() => setChangesOpen((open) => !open)}
                     className="size-11 md:size-8"
                   >
                     <FolderTree />
@@ -310,7 +309,7 @@ export function AppShell(props: ShellProps) {
                   variant="ghost"
                   aria-label={t('palette.title')}
                   aria-keyshortcuts="Meta+K Control+K"
-                  onClick={() => setPaletteOpen(true)}
+                  onPress={() => setPaletteOpen(true)}
                   className="size-11 md:size-8"
                 >
                   <Magnifier />
@@ -336,7 +335,7 @@ export function AppShell(props: ShellProps) {
                     size="small"
                     variant="ghost"
                     aria-label={t('common.close')}
-                    onClick={() => setActionError(null)}
+                    onPress={() => setActionError(null)}
                     className="touch-hitbox shrink-0"
                   >
                     <Xmark />

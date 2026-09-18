@@ -241,13 +241,7 @@ export function ClaudeSessionPicker({
               {/* HeroUI's own, rather than an Input with an icon stuck on the
                   front: it brings the magnifier, the clear button and Escape
                   clearing the field with it. */}
-              <SearchField
-                fullWidth
-                aria-label={t('sessionPicker.search')}
-                value={query}
-                onChange={setQuery}
-                className="flex-1"
-              >
+              <SearchField aria-label={t('sessionPicker.search')} value={query} onChange={setQuery} className="flex-1">
                 <SearchField.Group>
                   <SearchField.SearchIcon />
                   <SearchField.Input placeholder={t('sessionPicker.search')} />
@@ -262,7 +256,7 @@ export function ClaudeSessionPicker({
                   showing this device's folders points at the wrong filesystem —
                   the same split a project's path has. */}
               {can.browseForDirectory && (
-                <Button variant="outline" onClick={() => void browse()} className="shrink-0">
+                <Button variant="outline" onPress={() => void browse()} className="shrink-0">
                   <FolderOpen />
                   {t('sessionPicker.folder')}
                 </Button>
@@ -273,7 +267,7 @@ export function ClaudeSessionPicker({
                     iconOnly
                     variant="ghost"
                     aria-label={t('sessionPicker.allProjects')}
-                    onClick={() => scopeTo('')}
+                    onPress={() => scopeTo('')}
                     className="shrink-0"
                   >
                     <Xmark />
@@ -315,7 +309,7 @@ export function ClaudeSessionPicker({
                   <p data-slot="session-picker-error-message" role="alert" className="text-xs text-danger">
                     {error}
                   </p>
-                  <Button size="small" variant="outline" onClick={() => void load(folder)}>
+                  <Button size="small" variant="outline" onPress={() => void load(folder)}>
                     {t('sessionPicker.retry')}
                   </Button>
                 </div>
@@ -451,14 +445,14 @@ function SessionRow({
           {t('sessionPicker.taken')}
         </span>
       ) : taken ? (
-        <Button size="small" variant="ghost" onClick={onOpen} className="shrink-0">
+        <Button size="small" variant="ghost" onPress={onOpen} className="shrink-0">
           {t('sessionPicker.alreadyImported')}
         </Button>
       ) : (
         // The label stays while the spinner is up. Swapped for it, the button
         // is both disabled and nameless for the length of an adapter start,
         // which to a screen reader is a control that has stopped existing.
-        <Button size="small" variant="secondary" onClick={onAct} disabled={disabled} className="shrink-0">
+        <Button size="small" variant="secondary" onPress={onAct} isDisabled={disabled} className="shrink-0">
           {/* Hidden from the accessibility tree: HeroUI's Spinner carries
               `aria-label="Loading"`, which would rename the button to "Loading
               Import" for the length of an adapter start. The row's `aria-busy`

@@ -240,7 +240,7 @@ export function Composer({
               {/* Exactly when Send is not already a Stop, so the two are never
                   up at once and the run is never unstoppable. */}
               {streaming && onStop && !sendIsStop && (
-                <PromptInput.Action aria-label={t('chat.stop')} tooltip={t('chat.stop')} onClick={onStop}>
+                <PromptInput.Action aria-label={t('chat.stop')} tooltip={t('chat.stop')} onPress={onStop}>
                   <StopFill />
                 </PromptInput.Action>
               )}

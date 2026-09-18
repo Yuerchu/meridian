@@ -1,112 +1,116 @@
-import { useState, type ComponentProps, type Key, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
+import {
+  Button as AriaButton,
+  Tree,
+  TreeItem,
+  TreeItemContent,
+  type Key,
+  type TreeItemProps,
+  type TreeProps,
+} from 'react-aria-components'
+import { RiArrowRightSLine } from '@remixicon/react'
 import { cx } from '@/utils/cx'
 
-interface FileTreeProps extends Omit<ComponentProps<'div'>, 'children'> {
+/**
+ * Folders and files, on React Aria's `Tree`: arrow keys walk and open, one
+ * tab stop, `aria-expanded` on branches, `expandedKeys` in the caller's hands.
+ *
+ *   <FileTree aria-label="Changes" expandedKeys={…} onExpandedChange={…}>
+ *     <FileTree.Item id="src" textValue="src" title="src" icon={({ isExpanded }) => …}>
+ *       <FileTree.Item id="src/a.ts" textValue="a.ts" title="a.ts" icon={<FileGlyph />} />
+ *     </FileTree.Item>
+ *   </FileTree>
+ *
+ * Child items are the branch's own children after its content, which is how
+ * RAC nests a tree without a separate `children` collection prop.
+ */
+
+interface FileTreeProps<T extends object> extends Omit<TreeProps<T>, 'className' | 'style' | 'children'> {
   size?: 'sm' | 'md'
-  selectionMode?: 'none' | 'single' | 'multiple'
-  expandedKeys?: Iterable<Key>
-  onExpandedChange?: (keys: Set<Key>) => void
-  renderEmptyState?: () => ReactNode
+  className?: string
   children?: ReactNode
 }
 
-function FileTreeRoot({
+function FileTreeRoot<T extends object>({
   className,
-  size: _size,
-  selectionMode: _selectionMode,
-  expandedKeys,
-  onExpandedChange,
-  renderEmptyState,
+  size = 'md',
+  selectionMode = 'none',
   children,
   ...props
-}: FileTreeProps) {
-  const [internalKeys, setInternalKeys] = useState<Set<Key>>(new Set())
-  const keys = expandedKeys ? (expandedKeys instanceof Set ? expandedKeys : new Set(expandedKeys)) : internalKeys
-  const setKeys = onExpandedChange ?? setInternalKeys
-
-  const hasChildren = children != null && children !== false
-  if (!hasChildren && renderEmptyState) return <>{renderEmptyState()}</>
-
+}: FileTreeProps<T>) {
   return (
-    <FileTreeContext.Provider
-      value={{
-        expandedKeys: keys,
-        toggleKey: (k) => {
-          const next = new Set(keys)
-          if (next.has(k)) next.delete(k)
-          else next.add(k)
-          setKeys(next)
-        },
-      }}
+    <Tree
+      data-slot="file-tree"
+      data-size={size}
+      selectionMode={selectionMode}
+      {...props}
+      className={cx(
+        'group/file-tree flex flex-col outline-none',
+        'data-[empty]:px-2 data-[empty]:py-3 data-[empty]:text-caption-1-medium data-[empty]:text-text-tertiary',
+        className,
+      )}
     >
-      <div data-slot="file-tree" role="tree" {...props} className={cx('flex flex-col text-sm', className)}>
-        {children}
-      </div>
-    </FileTreeContext.Provider>
+      {children}
+    </Tree>
   )
 }
 
-import { createContext, useContext } from 'react'
-
-const FileTreeContext = createContext<{ expandedKeys: Set<Key>; toggleKey: (k: Key) => void }>({
-  expandedKeys: new Set(),
-  toggleKey: () => {},
-})
-
-interface FileTreeItemProps extends Omit<ComponentProps<'div'>, 'id' | 'title'> {
-  id: string
-  textValue?: string
+interface FileTreeItemProps extends Omit<TreeItemProps, 'className' | 'style' | 'children' | 'id'> {
+  id: Key
   icon?: ReactNode | ((opts: { isExpanded: boolean }) => ReactNode)
   title?: ReactNode
+  className?: string
   children?: ReactNode
 }
 
-function FileTreeItem({ id, className, icon, title, textValue, children, ...props }: FileTreeItemProps) {
-  const { expandedKeys, toggleKey } = useContext(FileTreeContext)
-  const hasChildren = children != null && children !== false
-  const isExpanded = expandedKeys.has(id)
-
+function FileTreeItem({ id, className, icon, title, children, ...props }: FileTreeItemProps) {
   return (
-    <div
+    <TreeItem
+      id={id}
       data-slot="file-tree-item"
-      role="treeitem"
-      aria-expanded={hasChildren ? isExpanded : undefined}
-      aria-label={props['aria-label'] ?? textValue}
       {...props}
-      className={cx('outline-none', className)}
-    >
-      <div
-        data-slot="file-tree-item-row"
-        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm hover:bg-background-secondary-default"
-        onClick={hasChildren ? () => toggleKey(id) : undefined}
-      >
-        {hasChildren && (
-          <span
-            data-slot="file-tree-chevron"
-            className={cx('text-text-secondary transition-transform', isExpanded && 'rotate-90')}
-          >
-            <svg data-slot="file-tree-chevron-icon" className="size-3" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M6 4l4 4-4 4" />
-            </svg>
-          </span>
-        )}
-        {icon && (
-          <span data-slot="file-tree-icon" className="flex shrink-0 text-text-secondary">
-            {typeof icon === 'function' ? icon({ isExpanded }) : icon}
-          </span>
-        )}
-        {title && (
-          <span data-slot="file-tree-title" className="min-w-0 truncate">
-            {title}
-          </span>
-        )}
-      </div>
-      {hasChildren && isExpanded && (
-        <div data-slot="file-tree-children" role="group" className="ps-4">
-          {children}
-        </div>
+      className={cx(
+        'group/item cursor-[var(--cursor-interactive)] outline-none',
+        'data-[focus-visible]:ring-2 data-[focus-visible]:ring-inset data-[focus-visible]:ring-border-focus-ring',
+        className,
       )}
-    </div>
+    >
+      <TreeItemContent>
+        {({ isExpanded, hasChildItems, level }) => (
+          <div
+            data-slot="file-tree-item-row"
+            className="flex min-h-7 items-center gap-1.5 rounded-lg px-1.5 py-0.5 text-body-2-medium text-text-primary group-data-[hovered]/item:bg-background-secondary-hover group-data-[size=sm]/file-tree:min-h-6"
+            style={{ paddingInlineStart: `${(level - 1) * 1 + 0.375}rem` }}
+          >
+            {hasChildItems ? (
+              <AriaButton
+                slot="chevron"
+                data-slot="file-tree-chevron"
+                className="flex size-4 shrink-0 cursor-[var(--cursor-interactive)] items-center justify-center rounded-sm text-foreground-icon-secondary outline-none data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring"
+              >
+                <RiArrowRightSLine
+                  aria-hidden
+                  className={cx('size-4 transition-transform duration-150', isExpanded && 'rotate-90')}
+                />
+              </AriaButton>
+            ) : (
+              <span aria-hidden className="size-4 shrink-0" />
+            )}
+            {icon && (
+              <span data-slot="file-tree-icon" className="flex shrink-0 text-foreground-icon-secondary [&_svg]:size-4">
+                {typeof icon === 'function' ? icon({ isExpanded }) : icon}
+              </span>
+            )}
+            {title && (
+              <span data-slot="file-tree-title" className="flex min-w-0 flex-1 items-center truncate">
+                {title}
+              </span>
+            )}
+          </div>
+        )}
+      </TreeItemContent>
+      {children}
+    </TreeItem>
   )
 }
 

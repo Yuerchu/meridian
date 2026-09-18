@@ -87,7 +87,7 @@ function FileReferenceButton({ reference }: { reference: MarkdownFileReference }
         data-slot="markdown-file-reference"
         aria-label={label}
         isDisabled={!preview}
-        onClick={() => preview?.openPreview(reference)}
+        onPress={() => preview?.openPreview(reference)}
         className="mx-0.5 inline-flex min-w-0 max-w-full gap-1 rounded-md px-1.5 py-0.5 align-baseline font-mono text-xs"
       >
         {icon && (

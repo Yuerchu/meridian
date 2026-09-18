@@ -282,21 +282,12 @@ export function ComposerMenu(props: ComposerMenuProps) {
         if (!o) setHovered(null)
       }}
     >
-      {/* Tooltip wraps the trigger rather than the other way round: React Aria
-          passes press and focus down through context, so the Button at the
-          bottom of this stack receives both the popover's and the tooltip's
-          behaviour without either needing to know about the other. */}
       <TooltipTrigger delay={0}>
         <Button
           iconOnly
           aria-label={t('composer.menu')}
           data-slot="composer-menu-trigger"
           variant="ghost"
-          // 40px at HeroUI's mobile size, which is four short of the 44 this
-          // project's own `touch-hitbox` targets — close enough to look fine and
-          // to have been missed by review, and caught by the harness at
-          // `#playground/responsive`. The toolbar's `py-1 -my-1` slack is
-          // exactly the 2px a side this needs, so nothing clips it.
           className={cn('touch-hitbox relative text-muted hover:text-foreground', open && 'bg-default text-foreground')}
         >
           <Plus className="size-4" />
@@ -484,7 +475,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
                             aria-label={opt.label}
                             aria-pressed={opt.selected}
                             variant="ghost"
-                            onClick={() => {
+                            onPress={() => {
                               opt.onSelect()
                               close()
                             }}

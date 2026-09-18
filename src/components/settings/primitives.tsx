@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Button, Description, Label, Select, SelectItem, Skeleton } from '@/components/base'
+import { Button, Select, SelectItem, Skeleton } from '@/components/base'
 import { Check, ChevronRight } from '@gravity-ui/icons'
 
 import { cn } from '@/lib/utils'
@@ -205,7 +205,6 @@ type SettingsSelectBase<T extends string> = {
   onChange: (value: T) => void
   description?: React.ReactNode
   placeholder?: string
-  fullWidth?: boolean
   disabled?: boolean
   className?: string
   triggerClassName?: string
@@ -240,32 +239,31 @@ export function SettingsSelect<T extends string>({
   ariaLabel,
   description,
   placeholder,
-  fullWidth: _fw,
   disabled,
   className,
   triggerClassName,
   itemClassName,
 }: SettingsSelectProps<T>) {
   return (
-    <div data-slot="settings-select" className={className}>
-      {label && <Label>{label}</Label>}
-      <Select
-        aria-label={ariaLabel}
-        isDisabled={disabled}
-        placeholder={placeholder}
-        selectedKey={value}
-        onSelectionChange={(key) => {
-          if (key != null) onChange(String(key) as T)
-        }}
-        triggerClassName={triggerClassName}
-      >
-        {options.map((option) => (
-          <SelectItem key={option.value} id={option.value} textValue={option.label} className={itemClassName}>
-            {option.label}
-          </SelectItem>
-        ))}
-      </Select>
-      {description && <Description>{description}</Description>}
-    </div>
+    <Select
+      data-slot="settings-select"
+      className={className}
+      label={label}
+      description={description}
+      aria-label={ariaLabel}
+      isDisabled={disabled}
+      placeholder={placeholder}
+      selectedKey={value}
+      onSelectionChange={(key) => {
+        if (key != null) onChange(String(key) as T)
+      }}
+      triggerClassName={triggerClassName}
+    >
+      {options.map((option) => (
+        <SelectItem key={option.value} id={option.value} textValue={option.label} className={itemClassName}>
+          {option.label}
+        </SelectItem>
+      ))}
+    </Select>
   )
 }

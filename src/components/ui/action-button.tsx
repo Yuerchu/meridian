@@ -36,7 +36,7 @@ const ActionButton = React.forwardRef<HTMLButtonElement, ActionButtonProps>(func
         aria-pressed={ariaPressed}
         data-slot="action-button"
         variant={variant}
-        onClick={onClick}
+        onPress={onClick}
         className={className}
       >
         {children}

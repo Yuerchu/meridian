@@ -299,8 +299,8 @@ function CodexAccount() {
         <p data-slot="codex-account-label" className="text-xs text-muted">
           {t('settings.provider.codexAccount')}
         </p>
-        <Button variant="outline" onClick={() => void check()} disabled={checking}>
-          {checking ? <Spinner size="sm" color="current" /> : <ArrowsRotateRight className="w-3.5 h-3.5" />}
+        <Button variant="outline" onPress={() => void check()} isPending={checking}>
+          <ArrowsRotateRight className="w-3.5 h-3.5" />
           {t('settings.provider.codexRecheck')}
         </Button>
       </div>
@@ -491,7 +491,7 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
       {tiers.map((tier, index) => (
         <div key={index} data-slot="price-tier" className="rounded-lg border border-border p-2 space-y-2">
           <div data-slot="price-tier-header" className="flex items-end gap-2">
-            <TextField fullWidth>
+            <TextField>
               <Label>{t('settings.model.tierThreshold')}</Label>
               <Input
                 name={`modelTierThreshold-${index}`}
@@ -508,7 +508,7 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
                 variant="ghost"
                 aria-label={t('settings.model.removeTier')}
                 className="h-7 pointer-coarse:h-10 rounded-md px-2 text-muted hover:text-danger"
-                onClick={() => onChange(tiers.filter((_, i) => i !== index))}
+                onPress={() => onChange(tiers.filter((_, i) => i !== index))}
               >
                 <TrashBin className="size-3.5" />
               </Button>
@@ -516,7 +516,7 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
             </TooltipTrigger>
           </div>
           <div data-slot="price-tier-rates" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
-            <TextField fullWidth>
+            <TextField>
               <Label>{t('settings.model.inputPrice')}</Label>
               <Input
                 name={`modelTierInputPrice-${index}`}
@@ -526,7 +526,7 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
                 className="h-7 pointer-coarse:h-10 text-xs"
               />
             </TextField>
-            <TextField fullWidth>
+            <TextField>
               <Label>{t('settings.model.outputPrice')}</Label>
               <Input
                 name={`modelTierOutputPrice-${index}`}
@@ -536,7 +536,7 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
                 className="h-7 pointer-coarse:h-10 text-xs"
               />
             </TextField>
-            <TextField fullWidth>
+            <TextField>
               <Label>{t('settings.model.cachePrice')}</Label>
               <Input
                 name={`modelTierCacheReadPrice-${index}`}
@@ -547,7 +547,7 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
                 className="h-7 pointer-coarse:h-10 text-xs"
               />
             </TextField>
-            <TextField fullWidth>
+            <TextField>
               <Label>{t('settings.model.cacheWritePrice')}</Label>
               <Input
                 name={`modelTierCacheWritePrice-${index}`}
@@ -565,7 +565,7 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
         size="small"
         variant="outline"
         className="h-7 pointer-coarse:h-10 rounded-md text-xs"
-        onClick={() => onChange([...tiers, { ...BLANK_TIER }])}
+        onPress={() => onChange([...tiers, { ...BLANK_TIER }])}
       >
         <Plus className="size-3.5" />
         {t('settings.model.addTier')}
@@ -823,7 +823,7 @@ function ModelConfigEditor({
     // finger is doing the aiming and leave the desktop exactly as it was.
     <div data-slot="model-config-editor" className="px-3 pb-3 space-y-2 bg-default/30">
       <div data-slot="model-config-limits" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
-        <TextField fullWidth>
+        <TextField>
           <Label>{t('settings.model.contextWindow')}</Label>
           <Input
             name={`modelContextWindow-${modelId}`}
@@ -836,7 +836,7 @@ function ModelConfigEditor({
             className="h-7 pointer-coarse:h-10 text-xs"
           />
         </TextField>
-        <TextField fullWidth>
+        <TextField>
           <Label>{t('settings.model.compactThreshold')}</Label>
           <Input
             name={`modelCompactThreshold-${modelId}`}
@@ -850,7 +850,7 @@ function ModelConfigEditor({
           />
         </TextField>
       </div>
-      <TextField fullWidth>
+      <TextField>
         <Label>{t('settings.model.maxOutput')}</Label>
         <Input
           name={`modelMaxOutput-${modelId}`}
@@ -868,7 +868,7 @@ function ModelConfigEditor({
           default and blank means "priced like input" — which is what every
           provider but Anthropic does, and what the usage report bills them at. */}
       <div data-slot="model-config-prices" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
-        <TextField fullWidth isInvalid={invalidPrices.has('input')}>
+        <TextField isInvalid={invalidPrices.has('input')}>
           <Label>{t('settings.model.inputPrice')}</Label>
           <Input
             ref={priceRefs.input}
@@ -882,7 +882,7 @@ function ModelConfigEditor({
             className="h-7 pointer-coarse:h-10 text-xs"
           />
         </TextField>
-        <TextField fullWidth isInvalid={invalidPrices.has('output')}>
+        <TextField isInvalid={invalidPrices.has('output')}>
           <Label>{t('settings.model.outputPrice')}</Label>
           <Input
             ref={priceRefs.output}
@@ -896,7 +896,7 @@ function ModelConfigEditor({
             className="h-7 pointer-coarse:h-10 text-xs"
           />
         </TextField>
-        <TextField fullWidth isInvalid={invalidPrices.has('cache')}>
+        <TextField isInvalid={invalidPrices.has('cache')}>
           <Label>{t('settings.model.cachePrice')}</Label>
           <Input
             ref={priceRefs.cache}
@@ -912,7 +912,7 @@ function ModelConfigEditor({
           />
           <Description className="text-xs">{t('settings.model.cachePriceHint')}</Description>
         </TextField>
-        <TextField fullWidth isInvalid={invalidPrices.has('cacheWrite')}>
+        <TextField isInvalid={invalidPrices.has('cacheWrite')}>
           <Label>{t('settings.model.cacheWritePrice')}</Label>
           <Input
             ref={priceRefs.cacheWrite}
@@ -948,7 +948,7 @@ function ModelConfigEditor({
                   size="small"
                   aria-pressed={on}
                   className="h-6 pointer-coarse:h-9 rounded-md px-2 text-xs font-normal"
-                  onClick={() => {
+                  onPress={() => {
                     setServerTools(on ? serverTools.filter((x) => x !== name) : [...serverTools, name])
                     setDirty(true)
                   }}
@@ -958,7 +958,7 @@ function ModelConfigEditor({
               )
             })}
           </div>
-          <TextField fullWidth isInvalid={invalidPrices.has('serverTool')}>
+          <TextField isInvalid={invalidPrices.has('serverTool')}>
             <Label>{t('settings.model.serverToolPrice')}</Label>
             <Input
               ref={priceRefs.serverTool}
@@ -1039,7 +1039,7 @@ function ModelConfigEditor({
                       size="small"
                       aria-pressed={on}
                       className="h-6 pointer-coarse:h-9 px-2 text-xs font-normal"
-                      onClick={() => {
+                      onPress={() => {
                         // Rebuild from the ladder so the stored array stays in
                         // ascending order -- the median coercion ranks on position.
                         setEfforts(EFFORT_LADDER.filter((x) => (x === tier ? !on : efforts.includes(x))))
@@ -1076,7 +1076,7 @@ function ModelConfigEditor({
               variant="ghost"
               size="small"
               className="h-6 pointer-coarse:h-9 px-0 text-xs text-muted hover:text-foreground"
-              onClick={resetOverrides}
+              onPress={resetOverrides}
             >
               {t('settings.model.capReset')}
             </Button>
@@ -1089,11 +1089,11 @@ function ModelConfigEditor({
         </p>
       )}
       <div data-slot="model-config-actions" className="flex items-center gap-2 pt-1">
-        <Button size="small" className="h-7 pointer-coarse:h-10 text-xs" onClick={() => void handleSave()}>
+        <Button size="small" className="h-7 pointer-coarse:h-10 text-xs" onPress={() => void handleSave()}>
           {t('common.save')}
         </Button>
         {onDelete && (
-          <Button size="small" variant="danger-soft" className="h-7 pointer-coarse:h-10 text-xs" onClick={onDelete}>
+          <Button size="small" variant="danger-soft" className="h-7 pointer-coarse:h-10 text-xs" onPress={onDelete}>
             {t('common.delete')}
           </Button>
         )}
@@ -1507,7 +1507,7 @@ function ProviderEditor({
                 aria-controls={isEditing ? modelEditorId : undefined}
                 aria-expanded={isEditing}
                 className="touch-hitbox h-6 w-6"
-                onClick={() => void changeEditingModel(isEditing ? null : model.id)}
+                onPress={() => void changeEditingModel(isEditing ? null : model.id)}
               >
                 {isEditing ? <Xmark className="size-3.5" /> : <Sliders className="size-3.5" />}
               </Button>
@@ -1525,7 +1525,7 @@ function ProviderEditor({
 
   return (
     <div data-slot="provider-editor" className="space-y-5">
-      <TextField fullWidth>
+      <TextField>
         <Label>{t('settings.provider.name')}</Label>
         <Input name={`providerName-${provider.id}`} value={name} onChange={(e) => setName(e.target.value)} />
       </TextField>
@@ -1535,7 +1535,6 @@ function ProviderEditor({
         value={providerType}
         options={typeOptions}
         onChange={handleProviderTypeChange}
-        fullWidth
       />
 
       {/* Only where the vendor lists more than one way in — which is OpenAI
@@ -1552,11 +1551,10 @@ function ProviderEditor({
           }))}
           onChange={handleAuthOptionChange}
           description={usesChatGptLogin(provider) ? t('settings.provider.authMethodCodexHint') : undefined}
-          fullWidth
         />
       )}
 
-      <TextField fullWidth type="url">
+      <TextField type="url">
         <Label>{t('settings.provider.baseUrl')}</Label>
         <Input
           name={`providerBaseUrl-${provider.id}`}
@@ -1585,12 +1583,11 @@ function ProviderEditor({
           }
           onChange={handleApiFormatChange}
           description={formatDescription}
-          fullWidth
         />
       )}
 
       <div data-slot="provider-editor-actions" className="flex items-center gap-2">
-        <Button onClick={handleSave}>{t('common.save')}</Button>
+        <Button onPress={handleSave}>{t('common.save')}</Button>
         {saved && <SavedHint />}
       </div>
 
@@ -1601,7 +1598,7 @@ function ProviderEditor({
         <CodexAccount />
       ) : (
         <div data-slot="provider-credentials" className="border-t border-border pt-4 space-y-3">
-          <TextField fullWidth type="password">
+          <TextField type="password">
             <Label>{t('settings.provider.apiKey')}</Label>
             <div data-slot="provider-api-key-row" className="flex gap-2">
               <Input
@@ -1621,10 +1618,11 @@ function ProviderEditor({
               />
               <Button
                 variant="outline"
-                onClick={handleSaveKey}
-                disabled={!apiKey.trim() || savingKey || keyStatus === 'loading'}
+                onPress={handleSaveKey}
+                isDisabled={!apiKey.trim() || keyStatus === 'loading'}
+                isPending={savingKey}
               >
-                {savingKey ? <Spinner size="sm" color="current" /> : <Key className="w-3.5 h-3.5" />}
+                <Key className="w-3.5 h-3.5" />
                 {keySaved ? t('common.saved') : t('settings.provider.saveKey')}
               </Button>
             </div>
@@ -1663,8 +1661,13 @@ function ProviderEditor({
             <p data-slot="provider-balance-label" className="text-xs text-muted">
               {t('settings.provider.balance')}
             </p>
-            <Button variant="outline" onClick={handleFetchBalance} disabled={fetchingBalance || keyStatus !== 'set'}>
-              {fetchingBalance ? <Spinner size="sm" color="current" /> : <ArrowsRotateRight className="w-3.5 h-3.5" />}
+            <Button
+              variant="outline"
+              onPress={handleFetchBalance}
+              isDisabled={keyStatus !== 'set'}
+              isPending={fetchingBalance}
+            >
+              <ArrowsRotateRight className="w-3.5 h-3.5" />
               {t('settings.provider.checkBalance')}
             </Button>
           </div>
@@ -1724,10 +1727,11 @@ function ProviderEditor({
               was written for. */}
           <Button
             variant="outline"
-            onClick={handleFetchModels}
-            disabled={fetchingModels || (!usesChatGptLogin(provider) && keyStatus !== 'set')}
+            onPress={handleFetchModels}
+            isDisabled={!usesChatGptLogin(provider) && keyStatus !== 'set'}
+            isPending={fetchingModels}
           >
-            {fetchingModels ? <Spinner size="sm" color="current" /> : <ArrowsRotateRight className="w-3.5 h-3.5" />}
+            <ArrowsRotateRight className="w-3.5 h-3.5" />
             {t('settings.provider.fetchModels')}
           </Button>
         </div>
@@ -1782,8 +1786,8 @@ function ProviderEditor({
       </div>
 
       <div data-slot="provider-danger-zone" className="border-t border-border pt-4">
-        <Button variant="danger-soft" onClick={handleDelete} disabled={deleting}>
-          {deleting ? <Spinner size="sm" color="current" /> : <TrashBin className="w-3.5 h-3.5" />}
+        <Button variant="danger-soft" onPress={handleDelete} isPending={deleting}>
+          <TrashBin className="w-3.5 h-3.5" />
           {deleting ? t('settings.provider.deletingProvider') : t('settings.provider.deleteProvider')}
         </Button>
       </div>
@@ -1892,7 +1896,7 @@ export function ProviderSettings() {
             <Button
               size="small"
               variant="outline"
-              onClick={() => {
+              onPress={() => {
                 setLoadError(null)
                 setLoading(true)
                 void refresh()
@@ -1930,7 +1934,7 @@ export function ProviderSettings() {
             <EmptyState.Title>{t('settings.provider.noProviders')}</EmptyState.Title>
           </EmptyState.Header>
           <EmptyState.Content>
-            <Button variant="outline" onClick={handleCreate}>
+            <Button variant="outline" onPress={handleCreate}>
               <Plus className="w-4 h-4" />
               {t('settings.provider.addProvider')}
             </Button>
@@ -1974,7 +1978,7 @@ export function ProviderSettings() {
         title={t('settings.provider.title')}
         actions={
           <TooltipTrigger delay={0}>
-            <Button iconOnly aria-label={t('settings.provider.addProvider')} variant="ghost" onClick={handleCreate}>
+            <Button iconOnly aria-label={t('settings.provider.addProvider')} variant="ghost" onPress={handleCreate}>
               <Plus className="w-4 h-4" />
             </Button>
             <Tooltip placement="top">{t('settings.provider.addProvider')}</Tooltip>

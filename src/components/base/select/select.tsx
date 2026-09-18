@@ -4,11 +4,13 @@ import { createContext, useContext, useRef, useState } from 'react'
 import type { ReactNode, Ref } from 'react'
 import {
   Button as AriaButton,
+  Label as AriaLabel,
   ListBox as AriaListBox,
   ListBoxItem as AriaListBoxItem,
   Popover as AriaPopover,
   Select as AriaSelect,
   SelectValue as AriaSelectValue,
+  Text as AriaText,
 } from 'react-aria-components'
 import type {
   ListBoxItemProps as AriaListBoxItemProps,
@@ -48,6 +50,10 @@ export type SelectSize = 'sm' | 'md'
 const SelectSizeContext = createContext<SelectSize>('md')
 
 export interface SelectProps<T extends object> extends Omit<AriaSelectProps<T>, 'children'> {
+  /** Visible name, wired to the trigger by React Aria. Without one, pass `aria-label`. */
+  label?: ReactNode
+  /** Caption under the trigger, wired as `aria-describedby`. */
+  description?: ReactNode
   /** Trigger width. Defaults to hug content; the menu uses the shared 266px width. */
   className?: string
   triggerClassName?: string
@@ -64,6 +70,8 @@ export interface SelectProps<T extends object> extends Omit<AriaSelectProps<T>, 
 }
 
 export function Select<T extends object>({
+  label,
+  description,
   className,
   triggerClassName,
   popoverClassName,
@@ -95,14 +103,19 @@ export function Select<T extends object>({
       {...props}
       isOpen={isOpen}
       onOpenChange={(o) => allowOpenChange(o) && setIsOpen(o)}
-      className={cx('group flex flex-col', className)}
+      className={cx('group flex flex-col gap-1', className)}
     >
       {({ isOpen }) => (
         <>
+          {label && (
+            <AriaLabel className="flex cursor-default items-center gap-0.5 text-body-medium text-text-primary">
+              {label}
+            </AriaLabel>
+          )}
           <AriaButton
             ref={triggerRef}
             className={cx(
-              'flex w-full cursor-pointer items-center justify-between rounded-2lg',
+              'flex w-full cursor-[var(--cursor-interactive)] items-center justify-between rounded-2lg',
               'border border-border-button-default bg-background-primary-default shadow-xs',
               'text-text-primary',
               'transition-[background-color,border-color,box-shadow,padding,font-size] duration-200 ease',
@@ -143,6 +156,11 @@ export function Select<T extends object>({
               <SelectSizeContext.Provider value={size}>{children}</SelectSizeContext.Provider>
             </AriaListBox>
           </AriaPopover>
+          {description && (
+            <AriaText slot="description" className="pt-px text-caption-1-medium text-text-secondary">
+              {description}
+            </AriaText>
+          )}
         </>
       )}
     </AriaSelect>

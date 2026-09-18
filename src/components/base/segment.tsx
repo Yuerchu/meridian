@@ -1,59 +1,49 @@
-import { ToggleButton, ToggleButtonGroup, type ToggleButtonProps } from 'react-aria-components'
+import type { ReactNode } from 'react'
 import { cx } from '@/utils/cx'
+import {
+  SegmentedControl,
+  SegmentedControlItem,
+  type SegmentedControlItemProps,
+  type SegmentedControlProps,
+} from './segmented-control/segmented-control'
 
-type SegmentSize = 'sm' | 'md'
-
-interface SegmentProps {
-  size?: SegmentSize
+/**
+ * A single-choice pill row, on the registry's `SegmentedControl` (React Aria
+ * `ToggleButtonGroup` underneath). Kept as a key-in / key-out API because
+ * every caller holds one selected key, not a `Set`.
+ */
+export interface SegmentProps extends Omit<SegmentedControlProps, 'selectedKeys' | 'onSelectionChange' | 'className'> {
+  size?: 'sm' | 'md'
   selectedKey?: string
   onSelectionChange?: (key: string) => void
   className?: string
-  children?: React.ReactNode
-  'aria-label'?: string
+  children?: ReactNode
 }
 
 function SegmentRoot({ size = 'md', className, selectedKey, onSelectionChange, children, ...props }: SegmentProps) {
-  const selectedKeys = selectedKey ? new Set([selectedKey]) : undefined
   return (
-    <ToggleButtonGroup
+    <SegmentedControl
       data-slot="segment"
-      selectionMode="single"
-      disallowEmptySelection
-      selectedKeys={selectedKeys}
+      data-size={size}
+      selectedKeys={selectedKey === undefined ? undefined : new Set([selectedKey])}
       onSelectionChange={(keys) => {
         const key = [...keys][0]
         if (typeof key === 'string') onSelectionChange?.(key)
       }}
       {...props}
-      className={cx(
-        'inline-flex items-center gap-0.5 rounded-xl bg-background-secondary-default p-0.5',
-        size === 'sm' && 'rounded-lg',
-        className,
-      )}
+      className={cx(size === 'sm' && '[&_[data-slot=segment-item]]:px-2 [&_[data-slot=segment-item]]:py-1', className)}
     >
       {children}
-    </ToggleButtonGroup>
+    </SegmentedControl>
   )
 }
 
-interface SegmentItemProps extends ToggleButtonProps {
+export interface SegmentItemProps extends Omit<SegmentedControlItemProps, 'className'> {
   className?: string
 }
 
 function SegmentItem({ className, ...props }: SegmentItemProps) {
-  return (
-    <ToggleButton
-      data-slot="segment-item"
-      {...props}
-      className={cx(
-        'inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-sm font-medium text-text-secondary outline-none transition-all select-none',
-        'data-[selected]:bg-background-primary-default data-[selected]:text-text-primary data-[selected]:shadow-xs',
-        'data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
-        'data-[disabled]:opacity-50',
-        className,
-      )}
-    />
-  )
+  return <SegmentedControlItem data-slot="segment-item" {...props} className={cx(className)} />
 }
 
 export const Segment = Object.assign(SegmentRoot, { Item: SegmentItem })

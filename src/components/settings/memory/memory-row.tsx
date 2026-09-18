@@ -109,7 +109,6 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
           render={(props) => <div {...props} data-slot="memory-row-body" className="border-t border-border p-3" />}
         >
           <TextArea
-            fullWidth
             aria-label={t('settings.memory.content')}
             name={`memoryContent-${memory.id}`}
             value={draft}
@@ -135,7 +134,11 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
             )}
           </div>
           <div data-slot="memory-row-actions" className="flex items-center gap-2">
-            <Button variant="secondary" disabled={saving || draft === memory.content} onClick={() => void saveDraft()}>
+            <Button
+              variant="secondary"
+              isDisabled={saving || draft === memory.content}
+              onPress={() => void saveDraft()}
+            >
               {t('common.save')}
             </Button>
             <div data-slot="memory-row-actions-spacer" className="flex-1" />
@@ -144,7 +147,7 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
                 variant="ghost"
                 iconOnly
                 aria-label={t('settings.memory.delete')}
-                onClick={async () => {
+                onPress={async () => {
                   await api.deleteMemories([memory.id])
                   onChanged()
                 }}

@@ -1,152 +1,146 @@
-import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ComponentType, ReactNode, Ref } from 'react'
+import type { ComponentType, CSSProperties, ReactNode, Ref } from 'react'
+import { Button as AriaButton, type ButtonProps as AriaButtonProps } from 'react-aria-components'
 import { cx, sortCx } from '@/utils/cx'
+import { Spinner } from '../spinner'
 
 /**
- * Figma source: Board UI → Buttons (node 3656:13819).
+ * boardui Button (Figma: Board UI → Buttons, node 3656:13819) on a React Aria
+ * `Button`.
  *
- * Variant matrix from Figma:
- *   Type     = Primary | Secondary | Ghost | Danger
- *   Size     = Medium  | Small | Xs
- *   State    = Default | Hover | Active | Disabled        (CSS pseudo)
- *   OnlyIcon = false   | true
- *
- * Sizing (1:1 with Figma):
+ * The registry renders a plain `<button>`. Here the element underneath is RAC's,
+ * and that is the whole reason this file differs from the registry copy: every
+ * trigger primitive in this app — `TooltipTrigger`, `MenuTrigger`,
+ * `DialogTrigger`, a `Dialog`'s `slot="close"` — hands its handlers and its ref
+ * down *through context*, and only a `usePress`/`useFocusable` consumer picks
+ * them up. A native button silently receives nothing: the tooltip never opens,
+ * the menu never appears, the close button closes nothing. So the interaction
+ * contract is RAC's (`onPress`, `isDisabled`, `isPending`, `slot`) and the
+ * visuals are boardui's, 1:1 with the registry table below.
  *
  *                       Medium                    Small                     Xs
  *   container          h=36, p=8,   r=10         h=32, px=8 py=6, r=8      h=24, px=8, r=4
- *   gap                 2px                       2px                      1.33px→1
  *   icon                20×20                     18×18                    14×14
  *   label wrapper       px=4                      px=2                     px=2
  *   text style          Body 1/Medium             Body 1/Medium            Caption 1/Semibold
  *   icon-only square    36×36 (content-derived)   32×32 (forced size)      24×24 (forced size)
  *
- * `xs` is the smallest tier — first needed for the calendar template's
- * event-details modal ("Join" / edit-icon buttons, node 3920:10954), which
- * scales every dimension down by the same ~0.667 factor from Figma; the
- * table above rounds those to clean pixel values rather than reproducing
- * the fractional source numbers.
+ * State is styled from RAC's data attributes rather than CSS pseudo-classes:
+ * `data-hovered` does not stick after a touch the way `:hover` does, and
+ * `data-pressed` fires for keyboard and virtual presses too.
  *
- * Icons are rendered by the component itself via the `leadingIcon` /
- * `trailingIcon` props so the consumer can't pass the wrong size. Pass
- * a Remix Icon component reference (`RiAddLine`, not `<RiAddLine />`).
+ * `isPending` keeps the button focusable, suppresses presses, sets
+ * `aria-disabled`, and swaps the leading slot for a spinner so the label stays
+ * where it was.
  *
- * For icon-only buttons:
- *   <Button iconOnly leadingIcon={RiAddLine} aria-label="Add" />
- *
- * The HTML `type` prop is preserved; Figma's "Type" enum is renamed to
- * `variant` to avoid the clash.
+ * Icons: pass a component reference (`leadingIcon={RiAddLine}`), never an
+ * element, so the size is the component's to decide.
  */
 
 export type ButtonVariant =
   'primary' | 'secondary' | 'tertiary' | 'outline' | 'ghost' | 'danger' | 'danger-soft' | 'transparent'
-type ButtonSize = 'medium' | 'small' | 'xs'
+export type ButtonSize = 'medium' | 'small' | 'xs'
 
 type IconComponent = ComponentType<{
   className?: string
   'aria-hidden'?: boolean | 'true' | 'false'
 }>
 
-export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> {
+export interface ButtonProps extends Omit<AriaButtonProps, 'className' | 'children' | 'style'> {
   variant?: ButtonVariant
   size?: ButtonSize
   iconOnly?: boolean
   leadingIcon?: IconComponent
   trailingIcon?: IconComponent
   children?: ReactNode
+  className?: string
+  style?: CSSProperties
   ref?: Ref<HTMLButtonElement>
-}
-
-export interface ButtonLinkProps extends Omit<AnchorHTMLAttributes<HTMLAnchorElement>, 'children'> {
-  variant?: ButtonVariant
-  size?: ButtonSize
-  iconOnly?: boolean
-  leadingIcon?: IconComponent
-  trailingIcon?: IconComponent
-  children?: ReactNode
-  ref?: Ref<HTMLAnchorElement>
 }
 
 const styles = sortCx({
   base: [
-    'inline-flex items-center justify-center gap-0.5 whitespace-nowrap overflow-hidden',
-    'font-sans select-none cursor-pointer',
+    'relative inline-flex items-center justify-center gap-0.5 whitespace-nowrap overflow-hidden',
+    'font-sans select-none cursor-[var(--cursor-interactive)]',
     'button-press-motion',
-    'outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-border-focus-ring',
-    'disabled:cursor-not-allowed aria-disabled:cursor-not-allowed',
+    'outline-none data-[focus-visible]:ring-2 data-[focus-visible]:ring-offset-2 data-[focus-visible]:ring-border-focus-ring',
+    'disabled:cursor-not-allowed data-[pending]:cursor-progress',
   ].join(' '),
 
-  // Base shape per size (used when label is present OR medium icon-only).
   size: {
     medium: 'h-9 rounded-2lg p-2 text-body-medium',
     small: 'h-8 rounded-lg px-2 py-1.5 text-body-medium',
     xs: 'h-6 rounded-sm px-2 text-caption-1-semibold',
   },
 
-  // Icon-only override:
-  //   Medium → keep p-2; w expands from content (8+20+8 = 36) → square.
-  //   Small  → Figma forces 32×32 even though 8+18+8=34, so we hard-set size-8
-  //            and zero the padding; the inner flex centers the 18px icon.
-  //   Xs     → forces 24×24, content-centered — used for the calendar
-  //            template's edit-icon buttons (timezone/participants/reminder).
+  // Icon-only: medium is already square from its padding; the two smaller
+  // tiers are forced square because Figma's 32/24 do not fall out of the
+  // padding arithmetic.
   iconOnlySize: {
-    medium: '', // base size already produces 36×36 with a 20px icon
-    small: 'size-8 p-0', // hard 32×32, content-centered
-    xs: 'size-6 p-0', // hard 24×24, content-centered
+    medium: '',
+    small: 'size-8 p-0',
+    xs: 'size-6 p-0',
   },
 
   icon: {
-    medium: 'size-5 shrink-0', // 20px
-    small: 'size-[18px] shrink-0', // 18px
-    xs: 'size-3.5 shrink-0', // 14px
+    medium: 'size-5 shrink-0',
+    small: 'size-[18px] shrink-0',
+    xs: 'size-3.5 shrink-0',
   },
 
   label: {
-    medium: 'inline-flex items-center justify-center px-1 shrink-0', // px=4
-    small: 'inline-flex items-center justify-center px-0.5 shrink-0', // px=2
-    xs: 'inline-flex items-center justify-center px-0.5 shrink-0', // px=2
+    medium: 'inline-flex items-center justify-center px-1 shrink-0',
+    small: 'inline-flex items-center justify-center px-0.5 shrink-0',
+    xs: 'inline-flex items-center justify-center px-0.5 shrink-0',
   },
 
   variant: {
     primary: [
       'bg-button-primary text-text-white shadow-xs',
       'disabled:text-button-primary-disabled-foreground disabled:shadow-none',
-      'aria-disabled:text-button-primary-disabled-foreground aria-disabled:shadow-none',
     ].join(' '),
     danger: [
       'bg-button-danger text-text-white shadow-xs',
       'disabled:text-foreground-disabled-danger disabled:shadow-none',
-      'aria-disabled:text-foreground-disabled-danger aria-disabled:shadow-none',
     ].join(' '),
     secondary: [
       'bg-background-primary-default text-text-primary',
       'border border-border-button-default shadow-xs',
-      'hover:bg-background-primary-hover  hover:border-border-button-hover',
-      'active:bg-background-primary-active active:border-border-button-active',
+      'data-[hovered]:bg-background-primary-hover data-[hovered]:border-border-button-hover',
+      'data-[pressed]:bg-background-primary-active data-[pressed]:border-border-button-active',
       'disabled:bg-background-primary-disabled disabled:border-border-button-default disabled:text-text-tertiary disabled:shadow-none',
-      'aria-disabled:bg-background-primary-disabled aria-disabled:border-border-button-default aria-disabled:text-text-tertiary aria-disabled:shadow-none',
     ].join(' '),
     tertiary: [
       'bg-background-secondary-default text-text-primary',
-      'hover:bg-background-secondary-hover',
-      'active:bg-background-secondary-hover',
+      'data-[hovered]:bg-background-secondary-hover',
+      'data-[pressed]:bg-background-tertiary-default',
       'disabled:text-text-tertiary',
-      'aria-disabled:text-text-tertiary',
     ].join(' '),
     outline: [
       'bg-transparent text-text-primary',
       'border border-border-button-default',
-      'hover:bg-background-primary-hover hover:border-border-button-hover',
-      'active:bg-background-primary-active',
+      'data-[hovered]:bg-background-primary-hover data-[hovered]:border-border-button-hover',
+      'data-[pressed]:bg-background-primary-active',
+      'disabled:text-text-tertiary',
     ].join(' '),
+    // The registry's ghost is an accent-tinted wash (`button-ghost-*`). In a
+    // chat toolbar that reads as every icon being "on", so ghost here is the
+    // neutral wash and the accent tint is left to `primary`.
     ghost: [
       'bg-transparent text-text-primary',
-      'hover:bg-background-secondary-default',
-      'active:bg-background-secondary-hover',
+      'data-[hovered]:bg-background-secondary-default',
+      'data-[pressed]:bg-background-secondary-hover',
       'disabled:text-text-tertiary',
-      'aria-disabled:text-text-tertiary',
     ].join(' '),
-    'danger-soft': ['bg-danger-soft text-danger-soft-foreground', 'hover:bg-danger-soft-hover'].join(' '),
-    transparent: 'bg-transparent text-text-primary hover:bg-background-secondary-default',
+    'danger-soft': [
+      'bg-status-danger-soft text-status-danger-soft-foreground',
+      'data-[hovered]:bg-status-danger-soft-hover',
+      'disabled:text-text-tertiary',
+    ].join(' '),
+    transparent: [
+      'bg-transparent text-text-primary',
+      'data-[hovered]:bg-background-secondary-default',
+      'disabled:text-text-tertiary',
+    ].join(' '),
   },
 })
 
@@ -156,16 +150,18 @@ export function Button({
   iconOnly = false,
   leadingIcon: Leading,
   trailingIcon: Trailing,
+  isPending = false,
   children,
   className,
-  type = 'button',
   ref,
   ...props
 }: ButtonProps) {
   return (
-    <button
+    <AriaButton
       ref={ref}
-      type={type}
+      isPending={isPending}
+      aria-disabled={isPending || undefined}
+      {...props}
       className={cx(
         styles.base,
         styles.size[size],
@@ -173,50 +169,20 @@ export function Button({
         iconOnly && styles.iconOnlySize[size],
         className,
       )}
-      {...props}
     >
-      {Leading ? <Leading className={styles.icon[size]} aria-hidden /> : null}
-      {iconOnly && !Leading ? children : null}
+      {isPending ? (
+        <Spinner size="sm" color="current" className={styles.icon[size]} />
+      ) : Leading ? (
+        <Leading className={styles.icon[size]} aria-hidden />
+      ) : null}
+      {iconOnly && !Leading && !isPending ? children : null}
       {!iconOnly && children !== undefined && children !== null && (
         <span className={styles.label[size]}>{children}</span>
       )}
       {!iconOnly && Trailing ? <Trailing className={styles.icon[size]} aria-hidden /> : null}
-    </button>
+    </AriaButton>
   )
 }
 
-/** Anchor counterpart to Button for navigational actions. */
-export function ButtonLink({
-  variant = 'primary',
-  size = 'medium',
-  iconOnly = false,
-  leadingIcon: Leading,
-  trailingIcon: Trailing,
-  children,
-  className,
-  ref,
-  ...props
-}: ButtonLinkProps) {
-  return (
-    <a
-      ref={ref}
-      className={cx(
-        styles.base,
-        styles.size[size],
-        styles.variant[variant],
-        iconOnly && styles.iconOnlySize[size],
-        className,
-      )}
-      {...props}
-    >
-      {Leading ? <Leading className={styles.icon[size]} aria-hidden /> : null}
-      {!iconOnly && children !== undefined && children !== null && (
-        <span className={styles.label[size]}>{children}</span>
-      )}
-      {!iconOnly && Trailing ? <Trailing className={styles.icon[size]} aria-hidden /> : null}
-    </a>
-  )
-}
-
-/** Style maps, exported for advanced composition and the dev Design Tuner. */
+/** Style maps, exported for composition (e.g. a `Link` drawn as a button). */
 export const buttonStyles = styles

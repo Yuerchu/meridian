@@ -1,80 +1,90 @@
-import type { ComponentProps } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
+import { ProgressBar as AriaProgressBar, type ProgressBarProps } from 'react-aria-components'
 import { cx } from '@/utils/cx'
 
-interface ProgressCircleProps extends ComponentProps<'div'> {
-  isIndeterminate?: boolean
-  value?: number
-  maxValue?: number
+/**
+ * A ring that fills. React Aria's `ProgressBar` supplies the `progressbar`
+ * role, the value attributes and the indeterminate state; the drawing is one
+ * SVG that scales with the element, so the size is set with `size-*` on the
+ * root (or the `size` preset) and never with a prop the SVG has to be told
+ * about twice. Indeterminate spins the arc.
+ *
+ * The stroke colour is `--progress-circle-stroke` (default accent); a status
+ * ring sets it on the root: `[--progress-circle-stroke:var(--color-status-warning)]`.
+ */
+export type ProgressCircleColor = 'accent' | 'neutral' | 'success' | 'warning' | 'danger' | 'info'
+
+export interface ProgressCircleProps extends Omit<ProgressBarProps, 'className' | 'children' | 'style'> {
   size?: 'sm' | 'md' | 'lg'
-  'aria-label'?: string
+  color?: ProgressCircleColor
+  className?: string
+  children?: ReactNode
 }
 
-const sizes = { sm: 16, md: 24, lg: 32 }
+const sizes = { sm: 'size-4', md: 'size-6', lg: 'size-8' }
 
-function ProgressCircleTrack({ children, className, ...props }: ComponentProps<'div'>) {
+const strokes: Record<ProgressCircleColor, string> = {
+  accent: '[--progress-circle-stroke:var(--color-accent-500)]',
+  neutral: '[--progress-circle-stroke:var(--color-text-tertiary)]',
+  success: '[--progress-circle-stroke:var(--color-status-success)]',
+  warning: '[--progress-circle-stroke:var(--color-status-warning)]',
+  danger: '[--progress-circle-stroke:var(--color-status-danger)]',
+  info: '[--progress-circle-stroke:var(--color-status-info)]',
+}
+
+const R = 10.5 // in a 24-unit box with a 3-unit stroke
+const C = 2 * Math.PI * R
+
+function ProgressCircleRoot({ size = 'md', color = 'accent', className, children, ...props }: ProgressCircleProps) {
   return (
-    <div data-slot="progress-circle-track" {...props} className={cx('', className)}>
-      {children}
-    </div>
-  )
-}
-function ProgressCircleTrackCircle({ className, ...props }: ComponentProps<'span'>) {
-  return <span data-slot="progress-circle-track-circle" {...props} className={cx('', className)} />
-}
-function ProgressCircleFillCircle({ className, ...props }: ComponentProps<'span'>) {
-  return <span data-slot="progress-circle-fill-circle" {...props} className={cx('', className)} />
-}
-
-function ProgressCircleRoot({
-  className,
-  value = 0,
-  maxValue = 100,
-  size = 'md',
-  isIndeterminate: _isIndeterminate,
-  ...props
-}: ProgressCircleProps) {
-  const s = sizes[size]
-  const r = (s - 3) / 2
-  const c = 2 * Math.PI * r
-  const pct = Math.min(value / maxValue, 1)
-
-  return (
-    <div
+    <AriaProgressBar
       data-slot="progress-circle"
-      role="progressbar"
-      aria-valuenow={value}
-      aria-valuemin={0}
-      aria-valuemax={maxValue}
+      data-color={color}
       {...props}
-      className={cx('inline-flex shrink-0', className)}
+      className={cx('inline-flex shrink-0 items-center justify-center', sizes[size], strokes[color], className)}
     >
-      <svg data-slot="progress-circle-svg" width={s} height={s} viewBox={`0 0 ${s} ${s}`} className="rotate-[-90deg]">
-        <circle
-          cx={s / 2}
-          cy={s / 2}
-          r={r}
-          fill="none"
-          stroke="var(--color-background-tertiary-default)"
-          strokeWidth={2.5}
-        />
-        <circle
-          cx={s / 2}
-          cy={s / 2}
-          r={r}
-          fill="none"
-          stroke="var(--progress-circle-stroke, var(--color-accent-500))"
-          strokeWidth={2.5}
-          strokeDasharray={c}
-          strokeDashoffset={c * (1 - pct)}
-          strokeLinecap="round"
-        />
-      </svg>
-    </div>
+      {({ percentage, isIndeterminate }) => (
+        <>
+          <svg
+            data-slot="progress-circle-svg"
+            viewBox="0 0 24 24"
+            className={cx('size-full -rotate-90', isIndeterminate && 'motion-safe:animate-spin-fast')}
+          >
+            <circle
+              cx={12}
+              cy={12}
+              r={R}
+              fill="none"
+              stroke="var(--color-background-tertiary-default)"
+              strokeWidth={3}
+            />
+            <circle
+              cx={12}
+              cy={12}
+              r={R}
+              fill="none"
+              stroke="var(--progress-circle-stroke, var(--color-accent-500))"
+              strokeWidth={3}
+              strokeLinecap="round"
+              strokeDasharray={C}
+              strokeDashoffset={isIndeterminate ? C * 0.75 : C * (1 - (percentage ?? 0) / 100)}
+              className="transition-[stroke-dashoffset] duration-300 ease-out"
+            />
+          </svg>
+          {children}
+        </>
+      )}
+    </AriaProgressBar>
   )
+}
+
+/** Kept for call-site compatibility: the ring is drawn by the root. */
+function ProgressCirclePart(_props: ComponentProps<'span'>) {
+  return null
 }
 
 export const ProgressCircle = Object.assign(ProgressCircleRoot, {
-  Track: ProgressCircleTrack,
-  TrackCircle: ProgressCircleTrackCircle,
-  FillCircle: ProgressCircleFillCircle,
+  Track: ProgressCirclePart,
+  TrackCircle: ProgressCirclePart,
+  FillCircle: ProgressCirclePart,
 })

@@ -116,7 +116,7 @@ export function ApprovalToastRegion({
   // passed to — the queue keeps its copy but hands the react-stately one
   // `MAX_SAFE_INTEGER`, so the stack depth is decided here or not at all.
   return (
-    <Toast.Provider placement="top" queue={approvalQueue} maxVisibleToasts={MAX_VISIBLE}>
+    <Toast.Provider placement="top" queue={approvalQueue}>
       {({ toast }: { toast: { content: ApprovalToastContent; key: string } }) => (
         <ApprovalToast toast={toast} onSelect={onSelect} />
       )}
@@ -249,11 +249,11 @@ function ApprovalToast({
           {/* Left of the decisions, and the only way past a row without making
               one. No `Toast.CloseButton` beside it: two ways to say "not now"
               where one of them is irreversible is how a question gets lost. */}
-          <Button size="small" variant="ghost" onClick={() => defer(item.approvalId)}>
+          <Button size="small" variant="ghost" onPress={() => defer(item.approvalId)}>
             <Clock className="size-3.5" />
             {t('chat.approvalToast.defer')}
           </Button>
-          <Button size="small" variant="ghost" onClick={view}>
+          <Button size="small" variant="ghost" onPress={view}>
             <ArrowRight className="size-3.5" />
             {item.kind === 'ask'
               ? t('chat.approvalToast.answer')
@@ -269,12 +269,12 @@ function ApprovalToast({
               <Button
                 size="small"
                 variant="danger-soft"
-                onClick={() => decide(() => api.denyToolCall({ approvalId: item.approvalId, reason: null }))}
+                onPress={() => decide(() => api.denyToolCall({ approvalId: item.approvalId, reason: null }))}
               >
                 <Xmark className="size-3.5" />
                 {t('chat.tool.deny')}
               </Button>
-              <Button size="small" onClick={() => decide(() => api.approveToolCall(item.approvalId))}>
+              <Button size="small" onPress={() => decide(() => api.approveToolCall(item.approvalId))}>
                 <Check className="size-3.5" />
                 {item.retryReason !== undefined ? t('chat.tool.retryWithoutSandbox') : t('chat.tool.allow')}
               </Button>

@@ -1,0 +1,159 @@
+/* Meridian's own semantic layer on top of boardui's theme.
+ *
+ * boardui (`theme.css`) has no generic status colours — it has chip and
+ * notification tints — and no notion of a chat bubble. What this app needs
+ * beyond the registry lives here, defined against boardui's primitives so a
+ * rebrand through `data-accent` or a palette change reaches it. Nothing in
+ * this file restates a token boardui already has.
+ */
+
+@theme {
+  /* boardui's ramp names Inter through a next/font variable that does not
+     exist here. The app's own stack, PingFang first (see the font note in
+     ~/.claude/rules/dev-environment.md), applies to every composite text
+     utility because those reference `--font-sans` rather than a family. */
+  --font-sans: 'PingFang SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'Maple Mono NF CN', ui-monospace, 'Cascadia Code', monospace;
+}
+
+:root {
+  /* The lint rule that bans `cursor-pointer` points at this variable so the
+     cursor is decided once. HeroUI used to define it; boardui does not. */
+  --cursor-interactive: pointer;
+
+  /* Status. `*-soft` is the tinted fill behind a status message or chip and
+     `*-soft-foreground` the text that sits on a light panel: the base colours
+     are tuned as fills and green/amber at that weight do not clear AA as text. */
+  --status-success: var(--color-green-600);
+  --status-success-foreground: var(--color-white);
+  --status-success-soft: color-mix(in srgb, var(--color-green-500) 14%, transparent);
+  --status-success-soft-hover: color-mix(in srgb, var(--color-green-500) 22%, transparent);
+  --status-success-soft-foreground: var(--color-green-700);
+
+  --status-warning: var(--color-amber-500);
+  --status-warning-foreground: var(--color-neutral-950);
+  --status-warning-soft: color-mix(in srgb, var(--color-amber-500) 16%, transparent);
+  --status-warning-soft-hover: color-mix(in srgb, var(--color-amber-500) 24%, transparent);
+  --status-warning-soft-foreground: var(--color-amber-700);
+
+  --status-danger: var(--color-red-600);
+  --status-danger-foreground: var(--color-white);
+  --status-danger-soft: color-mix(in srgb, var(--color-red-500) 12%, transparent);
+  --status-danger-soft-hover: color-mix(in srgb, var(--color-red-500) 20%, transparent);
+  --status-danger-soft-foreground: var(--color-red-700);
+
+  --status-info: var(--color-blue-500);
+  --status-info-foreground: var(--color-white);
+  --status-info-soft: color-mix(in srgb, var(--color-blue-500) 12%, transparent);
+  --status-info-soft-hover: color-mix(in srgb, var(--color-blue-500) 20%, transparent);
+  --status-info-soft-foreground: var(--color-blue-700);
+
+  /* Behind a modal or a sheet. */
+  --backdrop: var(--color-neutral-950);
+}
+
+.dark {
+  --status-success: var(--color-green-500);
+  --status-success-foreground: var(--color-neutral-950);
+  --status-success-soft: color-mix(in srgb, var(--color-green-500) 16%, transparent);
+  --status-success-soft-hover: color-mix(in srgb, var(--color-green-500) 24%, transparent);
+  --status-success-soft-foreground: var(--color-green-400);
+
+  --status-warning: var(--color-amber-400);
+  --status-warning-foreground: var(--color-neutral-950);
+  --status-warning-soft: color-mix(in srgb, var(--color-amber-400) 16%, transparent);
+  --status-warning-soft-hover: color-mix(in srgb, var(--color-amber-400) 24%, transparent);
+  --status-warning-soft-foreground: var(--color-amber-300);
+
+  --status-danger: var(--color-red-500);
+  --status-danger-foreground: var(--color-white);
+  --status-danger-soft: color-mix(in srgb, var(--color-red-500) 16%, transparent);
+  --status-danger-soft-hover: color-mix(in srgb, var(--color-red-500) 24%, transparent);
+  --status-danger-soft-foreground: var(--color-red-400);
+
+  --status-info: var(--color-blue-400);
+  --status-info-foreground: var(--color-neutral-950);
+  --status-info-soft: color-mix(in srgb, var(--color-blue-400) 16%, transparent);
+  --status-info-soft-hover: color-mix(in srgb, var(--color-blue-400) 24%, transparent);
+  --status-info-soft-foreground: var(--color-blue-300);
+
+  --backdrop: var(--color-black);
+}
+
+@theme inline {
+  --color-status-success: var(--status-success);
+  --color-status-success-foreground: var(--status-success-foreground);
+  --color-status-success-soft: var(--status-success-soft);
+  --color-status-success-soft-hover: var(--status-success-soft-hover);
+  --color-status-success-soft-foreground: var(--status-success-soft-foreground);
+
+  --color-status-warning: var(--status-warning);
+  --color-status-warning-foreground: var(--status-warning-foreground);
+  --color-status-warning-soft: var(--status-warning-soft);
+  --color-status-warning-soft-hover: var(--status-warning-soft-hover);
+  --color-status-warning-soft-foreground: var(--status-warning-soft-foreground);
+
+  --color-status-danger: var(--status-danger);
+  --color-status-danger-foreground: var(--status-danger-foreground);
+  --color-status-danger-soft: var(--status-danger-soft);
+  --color-status-danger-soft-hover: var(--status-danger-soft-hover);
+  --color-status-danger-soft-foreground: var(--status-danger-soft-foreground);
+
+  --color-status-info: var(--status-info);
+  --color-status-info-foreground: var(--status-info-foreground);
+  --color-status-info-soft: var(--status-info-soft);
+  --color-status-info-soft-hover: var(--status-info-soft-hover);
+  --color-status-info-soft-foreground: var(--status-info-soft-foreground);
+
+  --color-backdrop: var(--backdrop);
+}
+
+/* Motion boardui does not ship: a sheet's slide (a translate cannot be a
+   transition from `data-entering` alone) and a toast's rise. */
+@keyframes meridian-sheet-in-right {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes meridian-sheet-out-right {
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes meridian-sheet-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+}
+@keyframes meridian-sheet-out-left {
+  to {
+    transform: translateX(-100%);
+  }
+}
+@keyframes meridian-sheet-in-top {
+  from {
+    transform: translateY(-100%);
+  }
+}
+@keyframes meridian-sheet-out-top {
+  to {
+    transform: translateY(-100%);
+  }
+}
+@keyframes meridian-sheet-in-bottom {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes meridian-sheet-out-bottom {
+  to {
+    transform: translateY(100%);
+  }
+}
+@keyframes meridian-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+    filter: blur(3px);
+  }
+}

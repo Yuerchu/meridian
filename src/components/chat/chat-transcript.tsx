@@ -117,7 +117,7 @@ function LoadEarlierTurns({
       <Button
         size="small"
         variant="secondary"
-        onClick={() => {
+        onPress={() => {
           onLoad()
           if (oldFirstId) {
             requestAnimationFrame(() => {

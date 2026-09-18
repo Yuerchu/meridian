@@ -11,7 +11,6 @@ import {
   DisclosureGroup,
   Input,
   Label,
-  Spinner,
   TextArea,
   TextField,
   Tooltip,
@@ -107,7 +106,7 @@ function SkillEditor({
   return (
     <div data-slot="skill-editor" className="space-y-3">
       {!skill && (
-        <TextField fullWidth>
+        <TextField>
           <Label>{t('settings.skills.dirName')}</Label>
           <Input
             value={dirName}
@@ -124,7 +123,7 @@ function SkillEditor({
         </TextField>
       )}
 
-      <TextField fullWidth>
+      <TextField>
         <Label>{t('settings.skills.displayName')}</Label>
         <Input
           value={displayName}
@@ -133,7 +132,7 @@ function SkillEditor({
         />
       </TextField>
 
-      <TextField fullWidth>
+      <TextField>
         <Label>{t('settings.skills.description')}</Label>
         <TextArea
           value={description}
@@ -145,7 +144,7 @@ function SkillEditor({
         <Description>{t('settings.skills.descriptionHint')}</Description>
       </TextField>
 
-      <TextField fullWidth>
+      <TextField>
         <Label>{t('settings.skills.body')}</Label>
         {bodyLoading ? (
           <p data-slot="skill-editor-hint" className="text-xs text-muted">
@@ -176,7 +175,7 @@ function SkillEditor({
       )}
 
       <div data-slot="skill-editor-actions" className="flex items-center gap-2">
-        <Button onClick={handleSave} disabled={!canSave}>
+        <Button onPress={handleSave} isDisabled={!canSave}>
           {t('common.save')}
         </Button>
         {saved && <SavedHint data-slot="skill-editor-saved" />}
@@ -187,7 +186,7 @@ function SkillEditor({
               variant="ghost"
               aria-label={t('settings.skills.delete')}
               className="ml-auto text-muted hover:text-danger"
-              onClick={onDelete}
+              onPress={onDelete}
             >
               <TrashBin className="w-3.5 h-3.5" />
             </Button>
@@ -274,11 +273,11 @@ export function SkillSettings() {
         subtitle={t('settings.skills.subtitle')}
         actions={
           <>
-            <Button variant="outline" onClick={handleRescan} disabled={rescanning}>
-              {rescanning ? <Spinner size="sm" color="current" /> : <ArrowsRotateRight className="w-3.5 h-3.5" />}
+            <Button variant="outline" onPress={handleRescan} isPending={rescanning}>
+              <ArrowsRotateRight className="w-3.5 h-3.5" />
               {t('settings.skills.rescan')}
             </Button>
-            <Button variant="outline" onClick={() => setShowCreate(!showCreate)}>
+            <Button variant="outline" onPress={() => setShowCreate(!showCreate)}>
               <Plus className="w-3.5 h-3.5" />
               {t('settings.skills.new')}
             </Button>

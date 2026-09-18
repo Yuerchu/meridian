@@ -124,7 +124,7 @@ export function AndroidFileAccess() {
                     variant="ghost"
                     iconOnly
                     className="shrink-0"
-                    onClick={() => handleRemove(root.uri)}
+                    onPress={() => handleRemove(root.uri)}
                     aria-label={t('settings.fileAccess.removeDir')}
                   >
                     <Xmark className="h-3.5 w-3.5" />
@@ -135,7 +135,7 @@ export function AndroidFileAccess() {
             ))}
           </ul>
         )}
-        <Button variant="outline" onClick={handleAddDirectory} disabled={picking}>
+        <Button variant="outline" onPress={handleAddDirectory} isDisabled={picking}>
           <FolderOpen className="mr-1.5 h-3.5 w-3.5" />
           {t('settings.fileAccess.addDir')}
         </Button>

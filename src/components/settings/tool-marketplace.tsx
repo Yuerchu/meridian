@@ -128,7 +128,7 @@ function CustomToolEditor({
       }}
     >
       <div data-slot="custom-tool-fields" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
-        <TextField fullWidth isInvalid={invalid.has('name')}>
+        <TextField isInvalid={invalid.has('name')}>
           <Label>{t('settings.tools.name')}</Label>
           <Input
             ref={nameRef}
@@ -146,7 +146,7 @@ function CustomToolEditor({
           onChange={setPermission}
         />
       </div>
-      <TextField fullWidth isInvalid={invalid.has('description')}>
+      <TextField isInvalid={invalid.has('description')}>
         <Label>{t('settings.tools.description')}</Label>
         <Input
           ref={descriptionRef}
@@ -155,7 +155,7 @@ function CustomToolEditor({
           onChange={(e) => setDescription(e.target.value)}
         />
       </TextField>
-      <TextField fullWidth isInvalid={invalid.has('command')}>
+      <TextField isInvalid={invalid.has('command')}>
         <Label>{t('settings.tools.command')}</Label>
         <Input
           ref={commandRef}
@@ -166,7 +166,7 @@ function CustomToolEditor({
           className="font-mono text-xs"
         />
       </TextField>
-      <TextField fullWidth>
+      <TextField>
         <Label>{t('settings.tools.argsTemplate')}</Label>
         <Input
           name="customToolArgs"
@@ -210,7 +210,7 @@ function CustomToolEditor({
               variant="ghost"
               aria-label={t('settings.tools.delete')}
               className="ml-auto text-muted hover:text-danger"
-              onClick={onDelete}
+              onPress={onDelete}
             >
               <TrashBin className="w-3.5 h-3.5" />
             </Button>
@@ -268,7 +268,7 @@ export function ToolMarketplace() {
           <Alert.Indicator />
           <Alert.Content>
             <Alert.Description>{t('settings.tools.loadError')}</Alert.Description>
-            <Button size="small" variant="outline" onClick={() => void refresh()}>
+            <Button size="small" variant="outline" onPress={() => void refresh()}>
               {t('settings.tools.retry')}
             </Button>
           </Alert.Content>
@@ -339,7 +339,7 @@ export function ToolMarketplace() {
           <h3 data-slot="custom-tools-title" className="text-sm font-medium">
             {t('settings.tools.customSection')}
           </h3>
-          <Button variant="outline" onClick={() => setShowCreate(!showCreate)}>
+          <Button variant="outline" onPress={() => setShowCreate(!showCreate)}>
             <Plus className="w-3.5 h-3.5" />
             {t('settings.tools.new')}
           </Button>

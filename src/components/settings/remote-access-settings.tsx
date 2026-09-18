@@ -210,7 +210,7 @@ export function RemoteAccessSettings() {
               size="small"
               variant="outline"
               className="mt-2"
-              onClick={() => {
+              onPress={() => {
                 setLoading(true)
                 void loadData()
               }}
@@ -252,7 +252,7 @@ export function RemoteAccessSettings() {
       </div>
 
       <div data-slot="remote-endpoint" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
-        <TextField fullWidth>
+        <TextField>
           <Label>{t('settings.remote.host')}</Label>
           <Input
             name="remoteAccessHost"
@@ -262,7 +262,7 @@ export function RemoteAccessSettings() {
           />
           <Description>{t('settings.remote.hostHint')}</Description>
         </TextField>
-        <TextField fullWidth type="number">
+        <TextField type="number">
           <Label>{t('settings.remote.port')}</Label>
           <Input
             name="remoteAccessPort"
@@ -282,7 +282,6 @@ export function RemoteAccessSettings() {
         </p>
         <div data-slot="remote-token-row" className="flex flex-wrap items-center gap-2">
           <Input
-            fullWidth
             aria-label={t('settings.remote.token')}
             name="remoteAccessToken"
             autoComplete="off"
@@ -291,10 +290,10 @@ export function RemoteAccessSettings() {
             value={config.token ?? ''}
             placeholder={t('settings.remote.tokenPending')}
           />
-          <Button variant="outline" onClick={() => setRevealToken(!revealToken)}>
+          <Button variant="outline" onPress={() => setRevealToken(!revealToken)}>
             {revealToken ? t('settings.remote.hide') : t('settings.remote.reveal')}
           </Button>
-          <Button variant="outline" onClick={handleRegenerate}>
+          <Button variant="outline" onPress={handleRegenerate}>
             {t('settings.remote.regenerate')}
           </Button>
         </div>
@@ -310,7 +309,7 @@ export function RemoteAccessSettings() {
       )}
 
       <div data-slot="remote-actions" className="flex items-center gap-3 pt-2">
-        <Button variant="outline" onClick={handleSave} disabled={saving}>
+        <Button variant="outline" onPress={handleSave} isDisabled={saving}>
           {saved ? t('common.saved') : t('common.save')}
         </Button>
         {saved && (
@@ -319,11 +318,11 @@ export function RemoteAccessSettings() {
           </span>
         )}
         {running ? (
-          <Button variant="danger-soft" onClick={handleStop}>
+          <Button variant="danger-soft" onPress={handleStop}>
             {t('settings.remote.stop')}
           </Button>
         ) : (
-          <Button onClick={handleStart}>{t('settings.remote.start')}</Button>
+          <Button onPress={handleStart}>{t('settings.remote.start')}</Button>
         )}
       </div>
 
@@ -377,7 +376,7 @@ export function RemoteAccessSettings() {
                           size="small"
                           variant="ghost"
                           aria-label={t('settings.remote.copyAddress')}
-                          onClick={() => copyAddress(dialable)}
+                          onPress={() => copyAddress(dialable)}
                         >
                           {copied && copiedAddress === dialable ? (
                             <Check className="size-3.5" />

@@ -907,7 +907,7 @@ function ChatViewInner({
                     size="small"
                     variant="ghost"
                     aria-label={t('chat.convRef.remove', { name: ref.title })}
-                    onClick={() => setConversationRefs((prev) => prev.filter((r) => r.id !== ref.id))}
+                    onPress={() => setConversationRefs((prev) => prev.filter((r) => r.id !== ref.id))}
                     className="touch-hitbox size-5 min-w-0 rounded-full"
                   >
                     <Xmark className="size-3" />
@@ -928,7 +928,7 @@ function ChatViewInner({
               {reviewBlockedMessage}
             </p>
             {pendingPlanReview && (
-              <Button size="small" variant="ghost" onClick={() => openPlanReview(pendingPlanReview.review_id)}>
+              <Button size="small" variant="ghost" onPress={() => openPlanReview(pendingPlanReview.review_id)}>
                 {reviewBlockedAction}
               </Button>
             )}

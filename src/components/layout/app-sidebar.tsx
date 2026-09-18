@@ -36,7 +36,6 @@ import {
   DropdownPopover,
   Input,
   Label,
-  Spinner,
   ToggleButton,
   Tooltip,
   TooltipTrigger,
@@ -229,7 +228,6 @@ function NewProjectForm({
   return (
     <div data-slot="project-form" className="px-2 py-1.5 space-y-1.5">
       <Input
-        fullWidth
         type="text"
         aria-label={t('sidebar.projectName')}
         value={name}
@@ -252,8 +250,8 @@ function NewProjectForm({
         <Button
           type="button"
           variant="outline"
-          onClick={() => void handleBrowse()}
-          disabled={saving}
+          onPress={() => void handleBrowse()}
+          isDisabled={saving}
           className="w-full justify-start text-xs"
         >
           <FolderOpen className="text-muted" />
@@ -263,7 +261,6 @@ function NewProjectForm({
         </Button>
       ) : (
         <Input
-          fullWidth
           type="text"
           aria-label={t('sidebar.hostPath')}
           value={path}
@@ -286,17 +283,17 @@ function NewProjectForm({
         <Button
           variant="secondary"
           aria-busy={saving}
-          onClick={() => void submit()}
-          disabled={!name.trim() || !path.trim() || saving}
+          onPress={() => void submit()}
+          isDisabled={!name.trim() || !path.trim()}
+          isPending={saving}
           className="flex-1"
         >
-          {saving && <Spinner size="sm" aria-hidden />}
           {t('common.save')}
         </Button>
         {/* The glyph is not a name: a screen reader reads U+2715 as nothing, or
             as "multiplication x". */}
         <TooltipTrigger delay={0}>
-          <Button iconOnly variant="ghost" aria-label={t('common.cancel')} onClick={onCancel} disabled={saving}>
+          <Button iconOnly variant="ghost" aria-label={t('common.cancel')} onPress={onCancel} isDisabled={saving}>
             <Xmark />
           </Button>
           <Tooltip>{t('common.cancel')}</Tooltip>
@@ -360,7 +357,7 @@ function NewHostedSessionForm({
         <Button
           type="button"
           variant="outline"
-          onClick={() => void handleBrowse()}
+          onPress={() => void handleBrowse()}
           className="w-full justify-start text-xs"
         >
           <FolderOpen className="text-muted" />
@@ -370,7 +367,6 @@ function NewHostedSessionForm({
         </Button>
       ) : (
         <Input
-          fullWidth
           type="text"
           aria-label={t('sidebar.hostPath')}
           value={path}
@@ -394,15 +390,15 @@ function NewHostedSessionForm({
         <Button
           variant="secondary"
           aria-busy={starting}
-          onClick={() => void submit()}
-          disabled={!path.trim() || starting}
+          onPress={() => void submit()}
+          isDisabled={!path.trim()}
+          isPending={starting}
           className="flex-1"
         >
-          {starting && <Spinner size="sm" aria-hidden />}
           {t('sidebar.startHostedSession')}
         </Button>
         <TooltipTrigger delay={0}>
-          <Button iconOnly variant="ghost" aria-label={t('common.cancel')} onClick={onCancel} disabled={starting}>
+          <Button iconOnly variant="ghost" aria-label={t('common.cancel')} onPress={onCancel} isDisabled={starting}>
             <Xmark />
           </Button>
           <Tooltip>{t('common.cancel')}</Tooltip>
@@ -657,7 +653,7 @@ function ConversationGroup({
                 aria-label={
                   folded ? t('sidebar.unfoldGroup', { name: title }) : t('sidebar.foldGroup', { name: title })
                 }
-                onClick={onToggleFold}
+                onPress={onToggleFold}
                 className="touch-hitbox size-5 shrink-0 rounded-md text-muted"
               >
                 <ChevronRight className={cn('size-3 transition-transform', !folded && 'rotate-90')} />
@@ -696,7 +692,7 @@ function ConversationGroup({
                   size="small"
                   variant="ghost"
                   aria-label={projectId ? t('sidebar.newConversationIn', { name: title }) : t('sidebar.newChat')}
-                  onClick={onNewConversation}
+                  onPress={onNewConversation}
                   className="touch-hitbox size-6 rounded-md text-muted"
                 >
                   <Plus />
@@ -1427,7 +1423,7 @@ export function AppSidebar({
                 size="small"
                 variant="ghost"
                 aria-label={t('common.close')}
-                onClick={() => setActionError(null)}
+                onPress={() => setActionError(null)}
                 className="touch-hitbox shrink-0"
               >
                 <Xmark />

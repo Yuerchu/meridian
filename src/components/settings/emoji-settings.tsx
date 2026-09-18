@@ -82,7 +82,6 @@ function EditableCell({
   if (editing) {
     return (
       <Input
-        fullWidth
         autoFocus
         aria-label={ariaLabel}
         value={draft}
@@ -115,7 +114,7 @@ function EditableCell({
       variant="ghost"
       className="h-8 w-full min-w-0 justify-start rounded-md px-1.5 text-sm font-normal"
       aria-label={`${ariaLabel}: ${value || placeholder}`}
-      onClick={() => {
+      onPress={() => {
         setDraft(value)
         setEditing(true)
       }}
@@ -155,8 +154,8 @@ function RowActions({
           <Button
             size="small"
             variant="ghost"
-            disabled={busy !== null || !emoji.file_name}
-            onClick={() => {
+            isDisabled={busy !== null || !emoji.file_name}
+            onPress={() => {
               setBusy('suggest')
               void onSuggest(emoji.id).finally(() => setBusy(null))
             }}
@@ -167,8 +166,8 @@ function RowActions({
           <Button
             size="small"
             variant="outline"
-            disabled={busy !== null || !shownName(emoji).trim()}
-            onClick={() => {
+            isDisabled={busy !== null || !shownName(emoji).trim()}
+            onPress={() => {
               setBusy('confirm')
               void onConfirm(emoji).finally(() => setBusy(null))
             }}
@@ -186,7 +185,7 @@ function RowActions({
             variant="ghost"
             className="text-muted hover:text-danger"
             aria-label={t('settings.emoji.deleteEmoji')}
-            onClick={() => onDelete(emoji.id)}
+            onPress={() => onDelete(emoji.id)}
           >
             <TrashBin className="size-3.5" />
           </Button>
@@ -458,13 +457,13 @@ function PackCard({
                     {onImport && (
                       // The picker returns paths on this device and the import
                       // is read by whichever machine the backend is on.
-                      <Button variant="outline" onClick={onImport} disabled={!can.importFromDisk}>
+                      <Button variant="outline" onPress={onImport} isDisabled={!can.importFromDisk}>
                         <ArrowUpFromLine className="w-3.5 h-3.5" />
                         {t('settings.emoji.import')}
                       </Button>
                     )}
                     {onDelete && !detail.pack.is_builtin && (
-                      <Button variant="danger-soft" className="ml-auto" onClick={onDelete}>
+                      <Button variant="danger-soft" className="ml-auto" onPress={onDelete}>
                         <TrashBin className="w-3.5 h-3.5" />
                         {t('common.delete')}
                       </Button>
@@ -622,7 +621,6 @@ export function EmojiSettings() {
 
       <div data-slot="pack-create" className="flex gap-2">
         <Input
-          fullWidth
           value={newPackName}
           onChange={(e) => setNewPackName(e.target.value)}
           placeholder={t('settings.emoji.packName')}
@@ -632,7 +630,7 @@ export function EmojiSettings() {
             if (e.key === 'Enter') handleCreate()
           }}
         />
-        <Button variant="outline" onClick={handleCreate} disabled={!newPackName.trim()}>
+        <Button variant="outline" onPress={handleCreate} isDisabled={!newPackName.trim()}>
           <Plus className="w-3.5 h-3.5" />
           {t('settings.emoji.newPack')}
         </Button>
@@ -679,7 +677,7 @@ export function EmojiSettings() {
             </span>
           </ActionBar.Prefix>
           <ActionBar.Content>
-            <Button variant="ghost" onClick={handleDeleteSelected}>
+            <Button variant="ghost" onPress={handleDeleteSelected}>
               <TrashBin className="text-danger" />
               {t('settings.emoji.deleteSelected')}
             </Button>
@@ -690,7 +688,7 @@ export function EmojiSettings() {
                 iconOnly
                 variant="ghost"
                 aria-label={t('settings.emoji.clearSelection')}
-                onClick={() => setSelection(null)}
+                onPress={() => setSelection(null)}
               >
                 <Xmark />
               </Button>

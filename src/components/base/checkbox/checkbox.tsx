@@ -1,11 +1,8 @@
 'use client'
 
 import type { ReactNode, Ref } from 'react'
-import { Checkbox as AriaCheckbox, CheckboxGroup as AriaCheckboxGroup } from 'react-aria-components'
-import type {
-  CheckboxProps as AriaCheckboxProps,
-  CheckboxGroupProps as AriaCheckboxGroupProps,
-} from 'react-aria-components'
+import { Checkbox as AriaCheckbox } from 'react-aria-components'
+import type { CheckboxProps as AriaCheckboxProps } from 'react-aria-components'
 import { cx } from '@/utils/cx'
 import { CheckboxGlyph, checkboxSizes } from './checkbox-glyph'
 import type { CheckboxSize } from './checkbox-glyph'
@@ -48,7 +45,7 @@ export function Checkbox({ className, children, size = 'md', ref, ...props }: Ch
         cx(
           'group inline-flex items-center select-none',
           s.gap,
-          state.isDisabled ? 'cursor-not-allowed' : 'cursor-pointer',
+          state.isDisabled ? 'cursor-not-allowed' : 'cursor-[var(--cursor-interactive)]',
           typeof className === 'function' ? className(state) : className,
         )
       }
@@ -63,12 +60,4 @@ export function Checkbox({ className, children, size = 'md', ref, ...props }: Ch
       )}
     </AriaCheckbox>
   )
-}
-
-export interface CheckboxGroupProps extends Omit<AriaCheckboxGroupProps, 'className'> {
-  className?: string
-}
-
-export function CheckboxGroup({ className, ...props }: CheckboxGroupProps) {
-  return <AriaCheckboxGroup {...props} className={cx('flex flex-col gap-2', className)} />
 }

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import i18n from '@/i18n'
@@ -46,8 +46,9 @@ describe('EmojiPicker', () => {
     expect(await screen.findByRole('button', { name: 'Pack One' })).toBeInTheDocument()
     expect(mocks.listPacks).toHaveBeenCalledWith('assistant-1')
 
-    const nativeSelect = screen.getByTestId('hidden-select-container').querySelector('select')!
-    fireEvent.change(nativeSelect, { target: { value: 'emoji-1' } })
+    // The picker is a popover of buttons now, each named by its `textValue`
+    // (emoji name, tags, pack), so the sticker is chosen by pressing it.
+    await user.click(await screen.findByRole('button', { name: /^Wave\b/ }))
     expect(onSelect).toHaveBeenCalledWith(
       expect.objectContaining({ emoji: expect.objectContaining({ id: 'emoji-1' }), url: 'asset://wave.png' }),
     )
@@ -89,8 +90,10 @@ describe('EmojiPicker', () => {
 
     await waitFor(() => expect(mocks.listPacks).toHaveBeenCalledWith('assistant-2'))
     expect(screen.queryByRole('button', { name: 'Pack One' })).not.toBeInTheDocument()
-    const nativeSelect = screen.getByTestId('hidden-select-container').querySelector('select')!
-    fireEvent.change(nativeSelect, { target: { value: 'emoji-1' } })
+    // Nothing is selectable while the next assignment loads: the previous
+    // assistant's stickers are gone from the grid, so there is no button to
+    // press rather than a press that has to be ignored.
+    expect(screen.queryByRole('button', { name: /^Wave\b/ })).toBeNull()
     expect(onSelect).not.toHaveBeenCalled()
 
     resolveNext([])
@@ -118,8 +121,7 @@ describe('EmojiPicker', () => {
     await user.click(screen.getByRole('button', { name: 'Emoji' }))
 
     expect(await screen.findByRole('button', { name: 'Usable Pack' })).toHaveClass('bg-default')
-    const nativeSelect = screen.getByTestId('hidden-select-container').querySelector('select')!
-    expect(nativeSelect.querySelector('option[value="emoji-1"]')).toHaveTextContent('Wave')
+    expect(await screen.findByRole('button', { name: /^Wave\b/ })).toBeInTheDocument()
     expect(screen.queryByText('No emoji packs assigned to this assistant')).not.toBeInTheDocument()
   })
 })

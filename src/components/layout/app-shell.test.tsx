@@ -48,34 +48,49 @@ vi.mock('@/components/base', () => {
       Description: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
     },
   )
+  // One factory, not three. `vi.mock` keys on the module path, so a second
+  // call for `@/components/base` replaces the first outright — the shell then
+  // renders against whichever landed last and every other export is undefined.
+  const Button = ({
+    children,
+    onPress,
+    isDisabled,
+    isPending: _isPending,
+    iconOnly: _iconOnly,
+    leadingIcon: _leadingIcon,
+    variant: _variant,
+    size: _size,
+    ...props
+  }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+    onPress?: () => void
+    isDisabled?: boolean
+    isPending?: boolean
+    iconOnly?: boolean
+    leadingIcon?: React.ReactNode
+    variant?: string
+    size?: string
+  }) => (
+    <button {...props} disabled={isDisabled} onClick={onPress}>
+      {children}
+    </button>
+  )
   return {
     Alert,
     Kbd,
-    Button: ({
-      children,
-      onPress,
-      ...props
-    }: React.ButtonHTMLAttributes<HTMLButtonElement> & { onPress?: () => void }) => (
-      <button {...props} onClick={onPress}>
-        {children}
-      </button>
-    ),
+    Button,
     Tooltip,
+    TooltipTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    Sidebar: {
+      Provider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+      Main: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+      Trigger: (props: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props} />,
+    },
+    Resizable: Object.assign(({ children }: { children: React.ReactNode }) => <div>{children}</div>, {
+      Panel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+      Handle: (props: React.HTMLAttributes<HTMLDivElement>) => <div {...props} />,
+    }),
   }
 })
-vi.mock('@/components/base', () => ({
-  Sidebar: {
-    Provider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-    Main: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-    Trigger: (props: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props} />,
-  },
-}))
-vi.mock('@/components/base', () => ({
-  Resizable: Object.assign(({ children }: { children: React.ReactNode }) => <div>{children}</div>, {
-    Panel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-    Handle: (props: React.HTMLAttributes<HTMLDivElement>) => <div {...props} />,
-  }),
-}))
 
 vi.mock('./app-sidebar', () => ({
   AppSidebar: (props: SidebarCallbacks) => {

@@ -139,7 +139,6 @@ function ModelPicker({
         </Select>
       ) : (
         <Input
-          fullWidth
           aria-label={t('settings.assistant.model')}
           value={modelId}
           // Typed straight into local state and only committed on blur, so a
@@ -355,7 +354,7 @@ export function HooksSettings() {
             <Button
               size="small"
               variant="outline"
-              onClick={() => {
+              onPress={() => {
                 setLoading(true)
                 void loadData()
               }}
@@ -424,7 +423,7 @@ export function HooksSettings() {
       </div>
 
       <div data-slot="hooks-endpoint" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
-        <TextField fullWidth>
+        <TextField>
           <Label>{t('settings.hooks.host')}</Label>
           <Input
             name="hooksHost"
@@ -433,7 +432,7 @@ export function HooksSettings() {
             placeholder="127.0.0.1"
           />
         </TextField>
-        <TextField fullWidth type="number">
+        <TextField type="number">
           <Label>{t('settings.hooks.port')}</Label>
           <Input
             name="hooksPort"
@@ -448,7 +447,7 @@ export function HooksSettings() {
       </div>
 
       <div data-slot="hooks-timeout" className="space-y-1.5">
-        <TextField fullWidth type="number">
+        <TextField type="number">
           <Label>{t('settings.hooks.timeout')}</Label>
           <Input
             name="hooksTimeout"
@@ -467,7 +466,7 @@ export function HooksSettings() {
       </div>
 
       <div data-slot="hooks-max-rounds" className="space-y-1.5">
-        <TextField fullWidth type="number">
+        <TextField type="number">
           <Label>{t('settings.hooks.maxRounds')}</Label>
           <Input
             name="hooksMaxRounds"
@@ -489,7 +488,6 @@ export function HooksSettings() {
         </p>
         <div data-slot="hooks-token-row" className="flex items-center gap-2">
           <Input
-            fullWidth
             aria-label={t('settings.hooks.token')}
             name="hooksToken"
             autoComplete="off"
@@ -498,10 +496,10 @@ export function HooksSettings() {
             value={config.token ?? ''}
             placeholder={t('settings.hooks.tokenPending')}
           />
-          <Button variant="outline" onClick={() => setRevealToken(!revealToken)}>
+          <Button variant="outline" onPress={() => setRevealToken(!revealToken)}>
             {revealToken ? t('settings.hooks.hide') : t('settings.hooks.reveal')}
           </Button>
-          <Button variant="outline" onClick={handleRegenerate}>
+          <Button variant="outline" onPress={handleRegenerate}>
             {t('settings.hooks.regenerate')}
           </Button>
         </div>
@@ -517,7 +515,7 @@ export function HooksSettings() {
       )}
 
       <div data-slot="hooks-actions" className="flex items-center gap-3 pt-2">
-        <Button variant="outline" onClick={handleSave} disabled={saving}>
+        <Button variant="outline" onPress={handleSave} isDisabled={saving}>
           {saved ? t('common.saved') : t('common.save')}
         </Button>
         {saved && (
@@ -526,11 +524,11 @@ export function HooksSettings() {
           </span>
         )}
         {running ? (
-          <Button variant="danger-soft" onClick={handleStop}>
+          <Button variant="danger-soft" onPress={handleStop}>
             {t('settings.hooks.stop')}
           </Button>
         ) : (
-          <Button onClick={handleStart}>{t('settings.hooks.start')}</Button>
+          <Button onPress={handleStart}>{t('settings.hooks.start')}</Button>
         )}
       </div>
 

@@ -344,10 +344,8 @@ export const UserMessage = React.memo(function UserMessage({
 
   const userContent = (
     <ContextMenu onOpenChange={handleContextMenuOpenChange}>
-      {/* The group *is* the trigger. Pro's `render` is a function of the DOM
-          props rather than an element, and the ref in them has to reach the
-          div — which it does, because the group spreads everything it is
-          given. The group's own `flex` outranks the trigger's `inline-block`. */}
+      {/* The group *is* the trigger: `render` passes DOM props through to the
+          group, whose own `flex` display is preserved. */}
       <ContextMenu.Trigger className="pointer-coarse:select-none" render={(props) => <MessageGroupUser {...props} />}>
         <>
           {editing ? (
@@ -358,7 +356,6 @@ export const UserMessage = React.memo(function UserMessage({
             <Bubble align="end" variant="outline" className="w-full max-w-full">
               <BubbleContent>
                 <TextArea
-                  fullWidth
                   ref={editRef}
                   aria-label={t('chat.editMessage')}
                   value={editText}

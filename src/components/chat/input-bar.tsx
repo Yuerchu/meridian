@@ -221,19 +221,12 @@ function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAc
 
   return (
     <Popover>
-      {/* Tooltip inside the popover rather than around it, the same way
-          `ComposerMenu` does it: React Aria passes press and focus down through
-          context, so the one Button at the bottom picks up both behaviours
-          without either wrapper knowing about the other. */}
       <TooltipTrigger delay={0}>
-        {/* `h-*`/`px-*` and `rounded-*` overridden together: HeroUI's own radius
-            is much rounder than the composer this sits in, and changing the
-            height without the radius is how a hover fill gets clipped. */}
         <Button
           variant="ghost"
           aria-label={t('chat.agentOptions')}
           data-slot="agent-options-trigger"
-          disabled={busy}
+          isDisabled={busy}
           className="h-8 max-w-56 gap-1 rounded-lg px-2 text-sm font-normal"
         >
           <span data-slot="agent-options-summary" className="truncate">
@@ -815,7 +808,7 @@ export function InputBar({
                           {onRemoveFile && (
                             <ChatAttachment.Remove
                               aria-label={t('chat.removeAttachment', { name: f.name })}
-                              onClick={() => onRemoveFile(i)}
+                              onPress={() => onRemoveFile(i)}
                             />
                           )}
                         </ChatAttachment>
@@ -838,7 +831,7 @@ export function InputBar({
                             variant="primary"
                             aria-label={t('chat.removeSticker')}
                             className="touch-hitbox absolute -right-2 -top-2 min-w-0 size-6 rounded-full shadow-surface"
-                            onClick={onRemoveSticker}
+                            onPress={onRemoveSticker}
                           >
                             <Xmark className="size-3.5" />
                           </Button>

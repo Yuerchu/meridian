@@ -1,9 +1,28 @@
 import type { ComponentProps } from 'react'
 import { cx } from '@/utils/cx'
 
-function CardRoot({ className, variant: _variant, ...props }: ComponentProps<'div'> & { variant?: string }) {
+/**
+ * A panel. `primary` is the raised card (white, hairline, resting shadow);
+ * `secondary` sits flat on the panel colour for a row inside another card.
+ */
+function CardRoot({
+  className,
+  variant = 'primary',
+  ...props
+}: ComponentProps<'div'> & { variant?: 'primary' | 'secondary' }) {
   return (
-    <div data-slot="card" {...props} className={cx('rounded-xl bg-background-primary-default shadow-xs', className)} />
+    <div
+      data-slot="card"
+      data-variant={variant}
+      {...props}
+      className={cx(
+        'rounded-2xl',
+        variant === 'primary'
+          ? 'border border-border-button-default bg-background-primary-default shadow-xs'
+          : 'bg-background-secondary-default',
+        className,
+      )}
+    />
   )
 }
 

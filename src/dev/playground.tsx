@@ -468,7 +468,7 @@ function Gallery() {
               iconOnly
               aria-label="切换主题"
               variant="outline"
-              onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+              onPress={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
             >
               <Sun className="hidden size-4 dark:block" />
               <Moon className="size-4 dark:hidden" />
@@ -1426,7 +1426,7 @@ function HotkeyProbe() {
   return (
     <div data-slot="hotkey-probe" className="space-y-3">
       <div data-slot="hotkey-probe-controls" className="flex flex-wrap items-center gap-3">
-        <Button variant="outline" onClick={() => setPaletteOpen(true)}>
+        <Button variant="outline" onPress={() => setPaletteOpen(true)}>
           打开面板
         </Button>
         <Input

@@ -170,12 +170,12 @@ function AssistantEditor({
 
   return (
     <div data-slot="assistant-editor" className="space-y-4 px-1 pb-4">
-      <TextField fullWidth>
+      <TextField>
         <Label>{t('settings.assistant.name')}</Label>
         <Input name={`assistantName-${assistant.id}`} value={name} onChange={(e) => setName(e.target.value)} />
       </TextField>
 
-      <TextField fullWidth>
+      <TextField>
         <Label>{t('settings.assistant.systemPrompt')}</Label>
         <TextArea
           name={`assistantSystemPrompt-${assistant.id}`}
@@ -198,7 +198,7 @@ function AssistantEditor({
                 <Button
                   variant="outline"
                   className="text-xs px-1.5 py-0.5 bg-default/50 text-muted hover:bg-default font-mono"
-                  onClick={() => setSystemPrompt((prev) => prev + `{{${v.name}}}`)}
+                  onPress={() => setSystemPrompt((prev) => prev + `{{${v.name}}}`)}
                 >
                   {`{{${v.name}}}`}
                 </Button>
@@ -222,7 +222,7 @@ function AssistantEditor({
       />
 
       <div data-slot="assistant-params" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
-        <TextField fullWidth type="number">
+        <TextField type="number">
           <Label>{t('settings.assistant.temperature')}</Label>
           <Input
             name={`assistantTemperature-${assistant.id}`}
@@ -235,7 +235,7 @@ function AssistantEditor({
             step={0.1}
           />
         </TextField>
-        <TextField fullWidth type="number">
+        <TextField type="number">
           <Label>{t('settings.assistant.contextLimit')}</Label>
           <Input
             name={`assistantContextLimit-${assistant.id}`}
@@ -267,7 +267,6 @@ function AssistantEditor({
         {thinkingEnabled && (
           <div data-slot="assistant-thinking-budget" className="space-y-1 mt-2">
             <Input
-              fullWidth
               type="number"
               name={`assistantThinkingBudget-${assistant.id}`}
               aria-label={t('settings.assistant.thinkingBudget')}
@@ -319,7 +318,6 @@ function AssistantEditor({
             value={selectedPresetId || '_none'}
             options={presetOptions}
             onChange={(v) => setSelectedPresetId(v === '_none' ? '' : v)}
-            fullWidth
           />
         )}
         {toolMode === 'custom' && (
@@ -460,13 +458,13 @@ function AssistantEditor({
         </p>
       )}
       <div data-slot="assistant-editor-actions" className="flex items-center gap-2 pt-1">
-        <Button onClick={handleSave}>{t('common.save')}</Button>
+        <Button onPress={handleSave}>{t('common.save')}</Button>
         {saved && <SavedHint />}
         {onDelete && (
           <Button
             variant="danger-soft"
             className="ml-auto"
-            onClick={() => {
+            onPress={() => {
               setSaveError(null)
               void onDelete(assistant.id).catch((reason) => setSaveError(String(reason)))
             }}
@@ -568,7 +566,7 @@ export function AssistantSettings() {
             <Button
               size="small"
               variant="outline"
-              onClick={() => {
+              onPress={() => {
                 setLoadError(null)
                 setLoading(true)
                 void refresh()
@@ -590,7 +588,7 @@ export function AssistantSettings() {
         title={t('settings.assistant.title')}
         subtitle={t('settings.assistant.subtitle')}
         actions={
-          <Button variant="outline" onClick={handleCreate}>
+          <Button variant="outline" onPress={handleCreate}>
             <Plus className="w-3.5 h-3.5" />
             {t('settings.assistant.new')}
           </Button>

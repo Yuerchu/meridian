@@ -110,7 +110,7 @@ export function RemoteClientSettings() {
             </ItemCard.Description>
           </ItemCard.Content>
         </ItemCard>
-        <Button variant="outline" onClick={handleDisconnect}>
+        <Button variant="outline" onPress={handleDisconnect}>
           {t('settings.client.disconnect')}
         </Button>
         <p data-slot="remote-client-disconnect-hint" className="text-xs text-muted">
@@ -130,7 +130,7 @@ export function RemoteClientSettings() {
       </p>
 
       <div data-slot="remote-client-endpoint" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
-        <TextField fullWidth>
+        <TextField>
           <Label>{t('settings.client.host')}</Label>
           <Input
             name="remoteClientHost"
@@ -139,7 +139,7 @@ export function RemoteClientSettings() {
             placeholder="192.168.1.20"
           />
         </TextField>
-        <TextField fullWidth type="number">
+        <TextField type="number">
           <Label>{t('settings.client.port')}</Label>
           <Input
             min={1}
@@ -153,7 +153,7 @@ export function RemoteClientSettings() {
         </TextField>
       </div>
 
-      <TextField fullWidth type="password">
+      <TextField type="password">
         <Label>{t('settings.client.token')}</Label>
         <Input
           name="remoteClientToken"
@@ -166,10 +166,10 @@ export function RemoteClientSettings() {
       </TextField>
 
       <div data-slot="remote-client-actions" className="flex items-center gap-2">
-        <Button variant="outline" onClick={handleTest} disabled={!host.trim() || probing} aria-busy={probing}>
+        <Button variant="outline" onPress={handleTest} isDisabled={!host.trim() || probing} aria-busy={probing}>
           {probing ? t('settings.client.testing') : t('settings.client.test')}
         </Button>
-        <Button onClick={handleConnect} disabled={!host.trim() || !token.trim()}>
+        <Button onPress={handleConnect} isDisabled={!host.trim() || !token.trim()}>
           {t('settings.client.connect')}
         </Button>
       </div>

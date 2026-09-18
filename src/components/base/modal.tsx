@@ -1,65 +1,153 @@
-import { Dialog, DialogTrigger, Heading as AriaHeading, Modal as AriaModal, ModalOverlay } from 'react-aria-components'
-import type { ComponentProps } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
+import {
+  Dialog,
+  Heading as AriaHeading,
+  Modal as AriaModal,
+  ModalOverlay,
+  type DialogProps,
+} from 'react-aria-components'
 import { cx } from '@/utils/cx'
-import { Button } from './buttons/button'
+import { CloseButton } from './buttons/close-button'
+import {
+  BACKDROP_MOTION,
+  BACKDROP_VARIANT,
+  OVERLAY_MOTION,
+  OVERLAY_SURFACE,
+  type BackdropVariant,
+} from './overlay-motion'
 
-interface ModalProps {
+/**
+ * A centred dialog on React Aria's `ModalOverlay` / `Modal` / `Dialog`.
+ *
+ *   <Modal.Backdrop isOpen={open} onOpenChange={setOpen}>
+ *     <Modal.Container size="sm">
+ *       <Modal.Dialog aria-label="…">
+ *         <Modal.Header><Modal.Heading>…</Modal.Heading></Modal.Header>
+ *         <Modal.Body>…</Modal.Body>
+ *         <Modal.Footer><Button slot="close">Cancel</Button></Modal.Footer>
+ *       </Modal.Dialog>
+ *     </Modal.Container>
+ *   </Modal.Backdrop>
+ *
+ * `slot="close"` on any RAC button inside the `Dialog` closes it — the
+ * `Dialog` publishes that slot from the overlay's own state, which is why the
+ * base `Button` has to be a RAC button and not a native one. Focus is trapped
+ * and restored, Escape and outside press dismiss unless `isDismissable` is
+ * false, and the page behind is inert.
+ */
+
+export type ModalSize = 'sm' | 'md' | 'lg' | 'full' | 'cover'
+
+interface ModalBackdropProps {
   isOpen?: boolean
   onOpenChange?: (open: boolean) => void
   isDismissable?: boolean
-  children?: React.ReactNode
+  isKeyboardDismissDisabled?: boolean
+  variant?: BackdropVariant
+  className?: string
+  children?: ReactNode
 }
 
-function ModalRoot({ isOpen, onOpenChange, isDismissable = true, children }: ModalProps) {
+function ModalBackdrop({
+  isOpen,
+  onOpenChange,
+  isDismissable = true,
+  isKeyboardDismissDisabled,
+  variant = 'opaque',
+  className,
+  children,
+}: ModalBackdropProps) {
   return (
-    <DialogTrigger>
-      <ModalOverlay
-        data-slot="modal-backdrop"
-        isOpen={isOpen}
-        onOpenChange={onOpenChange}
-        isDismissable={isDismissable}
-        className="fixed inset-0 z-50 flex items-center justify-center bg-backdrop/50 data-[entering]:animate-in data-[entering]:fade-in-0 data-[exiting]:animate-out data-[exiting]:fade-out-0"
-      >
-        <AriaModal
-          data-slot="modal"
-          className="w-full max-w-lg overflow-hidden rounded-2xl border border-border-button-default bg-background-primary-default shadow-dropdown outline-none data-[entering]:animate-in data-[entering]:fade-in-0 data-[entering]:zoom-in-95 data-[entering]:duration-200 data-[exiting]:animate-out data-[exiting]:fade-out data-[exiting]:zoom-out-95 data-[exiting]:duration-150"
-        >
-          {children}
-        </AriaModal>
-      </ModalOverlay>
-    </DialogTrigger>
+    <ModalOverlay
+      data-slot="modal-backdrop"
+      isOpen={isOpen}
+      onOpenChange={onOpenChange}
+      isDismissable={isDismissable}
+      isKeyboardDismissDisabled={isKeyboardDismissDisabled}
+      className={cx(
+        'fixed inset-0 z-50 flex items-center justify-center p-4',
+        BACKDROP_VARIANT[variant],
+        BACKDROP_MOTION,
+        className,
+      )}
+    >
+      {children}
+    </ModalOverlay>
   )
 }
 
-function ModalDialog({
-  className,
-  ...props
-}: {
+const containerSize: Record<ModalSize, string> = {
+  sm: 'max-w-md',
+  md: 'max-w-lg',
+  lg: 'max-w-2xl',
+  // Edge to edge inside the backdrop's padding.
+  full: 'h-full max-w-none',
+  // Edge to edge, period: the backdrop's own padding is cancelled.
+  cover: '-m-4 h-[100dvh] w-[100vw] max-w-none rounded-none border-0',
+}
+
+interface ModalContainerProps {
+  size?: ModalSize
+  placement?: 'center' | 'top'
   className?: string
-  'aria-label'?: string
-  children?: React.ReactNode
-}) {
-  return <Dialog data-slot="modal-dialog" {...props} className={cx('flex flex-col outline-none', className)} />
+  children?: ReactNode
+}
+
+function ModalContainer({ size = 'md', placement = 'center', className, children }: ModalContainerProps) {
+  return (
+    <AriaModal
+      data-slot="modal"
+      data-size={size}
+      className={cx(
+        'flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden',
+        OVERLAY_SURFACE,
+        OVERLAY_MOTION,
+        containerSize[size],
+        placement === 'top' && 'mt-12 self-start',
+        className,
+      )}
+    >
+      {children}
+    </AriaModal>
+  )
+}
+
+interface ModalDialogProps extends Omit<DialogProps, 'className' | 'children'> {
+  className?: string
+  children?: ReactNode
+}
+
+function ModalDialog({ className, children, ...props }: ModalDialogProps) {
+  return (
+    <Dialog
+      data-slot="modal-dialog"
+      {...props}
+      className={cx('relative flex min-h-0 flex-1 flex-col outline-none', className)}
+    >
+      {children}
+    </Dialog>
+  )
 }
 
 function ModalHeader({ className, ...props }: ComponentProps<'div'>) {
   return (
-    <div
-      data-slot="modal-header"
-      {...props}
-      className={cx('flex items-center justify-between px-5 pt-4 pb-2', className)}
-    />
+    <div data-slot="modal-header" {...props} className={cx('flex shrink-0 flex-col gap-1 px-5 pt-4 pb-2', className)} />
   )
 }
 
 function ModalHeading({ className, ...props }: ComponentProps<'h2'>) {
   return (
-    <AriaHeading data-slot="modal-heading" slot="title" {...props} className={cx('text-lg font-semibold', className)} />
+    <AriaHeading
+      data-slot="modal-heading"
+      slot="title"
+      {...props}
+      className={cx('text-title-3-semibold text-text-primary', className)}
+    />
   )
 }
 
 function ModalBody({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="modal-body" {...props} className={cx('px-5 py-3', className)} />
+  return <div data-slot="modal-body" {...props} className={cx('min-h-0 flex-1 overflow-y-auto px-5 py-3', className)} />
 }
 
 function ModalFooter({ className, ...props }: ComponentProps<'div'>) {
@@ -67,52 +155,31 @@ function ModalFooter({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="modal-footer"
       {...props}
-      className={cx('flex items-center justify-end gap-2 px-5 pt-2 pb-4', className)}
+      className={cx('flex shrink-0 items-center justify-end gap-2 px-5 pt-2 pb-4', className)}
     />
   )
 }
 
-function ModalBackdrop({
-  children,
-  ...props
+function ModalCloseTrigger({
+  className,
+  'aria-label': ariaLabel = 'Close',
 }: {
-  isOpen?: boolean
-  onOpenChange?: (o: boolean) => void
-  children?: React.ReactNode
+  className?: string
+  'aria-label'?: string
 }) {
-  return <ModalRoot {...props}>{children}</ModalRoot>
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- passthrough
-function ModalContainer({ children }: any) {
-  return <>{children}</>
-}
-
-function ModalCloseTrigger({ className, 'aria-label': ariaLabel }: { className?: string; 'aria-label'?: string }) {
   return (
-    <Button
+    // eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- the X of a dialog is named by aria-label; a tooltip repeating it is noise
+    <CloseButton
       slot="close"
+      size="sm"
       data-slot="modal-close-trigger"
-      variant="ghost"
-      iconOnly
-      aria-label={ariaLabel ?? 'Close'}
-      className={cx('absolute top-3 right-3 text-text-secondary', className)}
-    >
-      <svg
-        data-slot="modal-close-icon"
-        className="size-4"
-        viewBox="0 0 16 16"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-      >
-        <path d="M4 4l8 8M12 4l-8 8" />
-      </svg>
-    </Button>
+      aria-label={ariaLabel}
+      className={cx('absolute top-3 right-3', className)}
+    />
   )
 }
 
-export const Modal = Object.assign(ModalRoot, {
+export const Modal = Object.assign(ModalBackdrop, {
   Backdrop: ModalBackdrop,
   Container: ModalContainer,
   Dialog: ModalDialog,

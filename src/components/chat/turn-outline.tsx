@@ -135,7 +135,7 @@ export function TurnOutline({ turns }: { turns: Turn[] }) {
               // `nowrap` with no width of its own: without a bound, one long
               // question stretches the popover across the transcript.
               className="max-w-72 overflow-hidden text-ellipsis"
-              onClick={() => scrollToMessage(entry.id, { align: 'start' })}
+              onPress={() => scrollToMessage(entry.id, { align: 'start' })}
             >
               {entry.text || t('chat.outline.untitled')}
             </FloatingToc.Item>

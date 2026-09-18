@@ -1,29 +1,29 @@
 import type { ComponentProps } from 'react'
 import { cx } from '@/utils/cx'
 
+/**
+ * A row with an icon, a title, a description and something at its end; a
+ * group of them is one surface with hairlines between the rows (Settings →
+ * About). `variant="outline"` is the bordered card; `transparent` keeps only
+ * the rows and their dividers.
+ */
+
+type ItemCardVariant = 'outline' | 'transparent'
+
 interface ItemCardProps extends ComponentProps<'div'> {
-  variant?: string
-  onClick?: () => void
+  variant?: ItemCardVariant
 }
 
-function ItemCardRoot({ className, variant: _variant, onClick, ...props }: ItemCardProps) {
+function ItemCardRoot({ className, variant = 'transparent', ...props }: ItemCardProps) {
   return (
     <div
       data-slot="item-card"
-      role={onClick ? 'button' : undefined}
-      tabIndex={onClick ? 0 : undefined}
-      onClick={onClick}
-      onKeyDown={
-        onClick
-          ? (e) => {
-              if (e.key === 'Enter' || e.key === ' ') onClick()
-            }
-          : undefined
-      }
+      data-variant={variant}
       {...props}
       className={cx(
-        'flex items-center gap-3 px-3 py-2.5 text-sm transition-colors',
-        onClick && 'cursor-[var(--cursor-interactive)] hover:bg-background-secondary-default',
+        'flex items-center gap-3 px-3 py-2.5 text-body-regular',
+        variant === 'outline' &&
+          'rounded-xl border border-border-button-default bg-background-primary-default shadow-xs',
         className,
       )}
     />
@@ -35,7 +35,7 @@ function ItemCardIcon({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="item-card-icon"
       {...props}
-      className={cx('flex shrink-0 items-center text-text-secondary', className)}
+      className={cx('flex shrink-0 items-center text-foreground-icon-secondary [&_svg]:size-5', className)}
     />
   )
 }
@@ -47,7 +47,13 @@ function ItemCardContent({ className, ...props }: ComponentProps<'div'>) {
 }
 
 function ItemCardTitle({ className, ...props }: ComponentProps<'span'>) {
-  return <span data-slot="item-card-title" {...props} className={cx('truncate font-medium', className)} />
+  return (
+    <span
+      data-slot="item-card-title"
+      {...props}
+      className={cx('truncate text-body-medium text-text-primary', className)}
+    />
+  )
 }
 
 function ItemCardDescription({ className, ...props }: ComponentProps<'span'>) {
@@ -55,13 +61,13 @@ function ItemCardDescription({ className, ...props }: ComponentProps<'span'>) {
     <span
       data-slot="item-card-description"
       {...props}
-      className={cx('truncate text-xs text-text-secondary', className)}
+      className={cx('truncate text-caption-1-medium text-text-secondary', className)}
     />
   )
 }
 
 function ItemCardAction({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="item-card-action" {...props} className={cx('flex shrink-0 items-center', className)} />
+  return <div data-slot="item-card-action" {...props} className={cx('flex shrink-0 items-center gap-1', className)} />
 }
 
 export const ItemCard = Object.assign(ItemCardRoot, {
@@ -72,13 +78,20 @@ export const ItemCard = Object.assign(ItemCardRoot, {
   Action: ItemCardAction,
 })
 
-function ItemCardGroupRoot({ className, variant: _variant, ...props }: ComponentProps<'div'> & { variant?: string }) {
+interface ItemCardGroupProps extends ComponentProps<'div'> {
+  variant?: ItemCardVariant
+}
+
+function ItemCardGroupRoot({ className, variant = 'outline', ...props }: ItemCardGroupProps) {
   return (
     <div
       data-slot="item-card-group"
+      data-variant={variant}
       {...props}
       className={cx(
-        'divide-y divide-separator-border overflow-hidden rounded-lg border border-border-button-default bg-background-primary-default shadow-xs',
+        'divide-y divide-border-button-default overflow-hidden',
+        variant === 'outline' &&
+          'rounded-2xl border border-border-button-default bg-background-primary-default shadow-xs',
         className,
       )}
     />
@@ -96,7 +109,7 @@ function ItemCardGroupTitle({ className, ...props }: ComponentProps<'span'>) {
     <span
       data-slot="item-card-group-title"
       {...props}
-      className={cx('text-xs font-medium text-text-secondary', className)}
+      className={cx('text-caption-1-medium text-text-secondary', className)}
     />
   )
 }

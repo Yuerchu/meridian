@@ -71,20 +71,22 @@ vi.mock('@/components/base', async () => {
   const Button = ({
     children,
     onPress,
-    disabled,
+    isDisabled,
     isPending: _isPending,
     iconOnly: _iconOnly,
     ...props
   }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
     onPress?: () => void
-    disabled?: boolean
+    isDisabled?: boolean
     isPending?: boolean
     iconOnly?: boolean
   }) => (
-    <button {...props} disabled={disabled} onClick={onPress}>
+    <button {...props} disabled={isDisabled} onClick={onPress}>
       {children}
     </button>
   )
+  // One factory, not three: `vi.mock` keys on the module path, so a later call
+  // for the same path replaces the earlier one entirely rather than merging.
   const Dropdown = Object.assign(pass, {
     Popover: pass,
     Menu: pass,
@@ -92,11 +94,16 @@ vi.mock('@/components/base', async () => {
       <button onClick={onAction}>{children}</button>
     ),
   })
+  const DropdownPopover = pass
+  const DropdownItem = ({ children, onAction }: { children?: React.ReactNode; onAction?: () => void }) => (
+    <button onClick={onAction}>{children}</button>
+  )
   const Tooltip = Object.assign(pass, {
     Content: pass,
     Trigger: ({ children, render }: { children?: React.ReactNode; render?: (props: object) => React.ReactNode }) =>
       render ? render({ children }) : <>{children}</>,
   })
+  const TooltipTrigger = ({ children }: { children?: React.ReactNode }) => <>{children}</>
   const Link = ({
     children,
     onPress,
@@ -106,28 +113,9 @@ vi.mock('@/components/base', async () => {
       {children}
     </a>
   )
-  return {
-    Button,
-    Chip: pass,
-    Dropdown,
-    Label,
-    Link,
-    Skeleton: () => <div />,
-    TextArea,
-    TextField,
-    Tooltip,
-  }
-})
-
-vi.mock('@/components/base', () => {
   const Segment = Object.assign(({ children }: { children?: React.ReactNode }) => <div>{children}</div>, {
     Item: ({ children }: { children?: React.ReactNode }) => <span>{children}</span>,
   })
-  return { Segment }
-})
-
-vi.mock('@/components/base', () => {
-  const pass = ({ children }: { children?: React.ReactNode }) => <>{children}</>
   const Sheet = Object.assign(
     ({ children, isOpen }: { children?: React.ReactNode; isOpen?: boolean }) => (isOpen ? <>{children}</> : null),
     {
@@ -140,7 +128,23 @@ vi.mock('@/components/base', () => {
       Body: pass,
     },
   )
-  return { Sheet }
+  return {
+    Button,
+    Chip: pass,
+    Description: pass,
+    Dropdown,
+    DropdownItem,
+    DropdownPopover,
+    Label,
+    Link,
+    Segment,
+    Sheet,
+    Skeleton: () => <div />,
+    TextArea,
+    TextField,
+    Tooltip,
+    TooltipTrigger,
+  }
 })
 
 function revision(id: string, revisionNo: number, markdown: string): PlanRevisionInfoResponse {

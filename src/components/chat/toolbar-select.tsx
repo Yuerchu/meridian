@@ -55,7 +55,7 @@ export function ToolbarSelect({
       aria-label={ariaLabel}
       data-slot="toolbar-select"
       value={value ?? ''}
-      disabled={disabled || choices.length === 0}
+      isDisabled={disabled || choices.length === 0}
       onChange={(key) => {
         if (typeof key === 'string' && key) onSelect(key)
       }}

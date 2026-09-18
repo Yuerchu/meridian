@@ -31,20 +31,18 @@ export interface LabelProps extends AriaLabelProps {
   ref?: Ref<HTMLLabelElement>
 }
 
-export function Label({
-  isRequired = false,
-  isInvalid: _isInvalid,
-  tooltip,
-  className,
-  children,
-  ...props
-}: LabelProps) {
-  void _isInvalid
+export function Label({ isRequired = false, isInvalid = false, tooltip, className, children, ...props }: LabelProps) {
   return (
     <AriaLabel
       data-label="true"
+      data-invalid={isInvalid || undefined}
       {...props}
-      className={cx('flex cursor-default items-center gap-0.5', 'text-body-medium text-text-primary', className)}
+      className={cx(
+        'flex cursor-default items-center gap-0.5',
+        'text-body-medium text-text-primary',
+        isInvalid && 'text-text-error-primary',
+        className,
+      )}
     >
       {children}
       {isRequired && (

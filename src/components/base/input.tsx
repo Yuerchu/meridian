@@ -1,80 +1,110 @@
+import type { ComponentProps, ReactNode, Ref } from 'react'
 import {
-  TextField as AriaTextField,
+  Button as AriaButton,
+  Group as AriaGroup,
+  Input as AriaInput,
   SearchField as AriaSearchField,
-  type TextFieldProps as AriaTextFieldProps,
+  TextArea as AriaTextArea,
+  type ButtonProps as AriaButtonProps,
+  type InputProps as AriaInputProps,
   type SearchFieldProps as AriaSearchFieldProps,
+  type TextAreaProps as AriaTextAreaProps,
 } from 'react-aria-components'
-import { forwardRef, type ComponentProps } from 'react'
 import { cx } from '@/utils/cx'
+import { InputBase, TextField, type InputBaseProps, type TextFieldProps } from './input/input'
+import { TextareaBase, type TextareaBaseProps } from './textarea/textarea'
 
-const INPUT_BASE = [
-  'w-full rounded-2lg border border-border-button-default bg-background-primary-default',
-  'px-2.5 py-2 text-body-medium text-text-primary shadow-xs',
-  'outline-none placeholder:text-text-placeholder',
-  'transition-[background-color,border-color,box-shadow] duration-200 ease',
-  'hover:border-border-button-hover',
-  'focus:ring-2 focus:ring-border-focus-ring focus:ring-offset-2',
-  'disabled:cursor-not-allowed disabled:bg-background-primary-disabled disabled:text-text-tertiary disabled:shadow-none',
-].join(' ')
+/**
+ * The text controls, all on the registry's field shell (`input/input.tsx`,
+ * `textarea/textarea.tsx`) so a form composes as boardui intends:
+ *
+ *   <TextField isInvalid={…}>
+ *     <Label>Name</Label>
+ *     <Input value={…} onChange={…} />
+ *     <Description>…</Description>
+ *   </TextField>
+ *
+ * Every control here is React Aria's element, which is what makes the
+ * composition work: `TextField` publishes label, description and validation
+ * state through context and only RAC's `Input`/`TextArea` read it. A native
+ * `<input>` in the same place looks identical and is labelled by nothing.
+ *
+ * `SearchField` is the same shell with the search affordances: RAC's
+ * `SearchField` owns the value, Escape clears it, and the clear button is any
+ * RAC button inside it (it receives its handler through context too).
+ */
 
-interface InputProps extends ComponentProps<'input'> {
-  fullWidth?: boolean
+export { TextField, type TextFieldProps }
+
+export type InputProps = InputBaseProps
+
+export function Input(props: InputProps) {
+  return <InputBase data-slot="input" {...props} />
 }
 
-export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { className, fullWidth: _fw, ...props },
-  ref,
-) {
-  return <input ref={ref} data-slot="input" {...props} className={cx(INPUT_BASE, className)} />
-})
-
-export function TextField({
-  className,
-  fullWidth: _fullWidth,
-  ...props
-}: AriaTextFieldProps & { className?: string; fullWidth?: boolean }) {
-  return <AriaTextField data-slot="text-field" {...props} className={cx('flex flex-col gap-1.5', className)} />
+export interface TextAreaProps extends TextareaBaseProps {
+  /** `secondary` sits the field on the panel's own colour rather than the tertiary well. */
+  variant?: 'primary' | 'secondary'
 }
 
-interface TextAreaProps extends ComponentProps<'textarea'> {
-  fullWidth?: boolean
-  variant?: string
-}
-
-export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(function TextArea(
-  { className, fullWidth: _fw, variant: _v, ...props },
-  ref,
-) {
+export function TextArea({ variant = 'primary', fieldClassName, ...props }: TextAreaProps) {
   return (
-    <textarea
-      ref={ref}
+    <TextareaBase
       data-slot="textarea"
+      fieldClassName={cx(variant === 'secondary' && 'bg-background-secondary-default', fieldClassName)}
       {...props}
-      className={cx(INPUT_BASE, 'min-h-[80px] resize-y', className)}
     />
   )
-})
-
-function SearchFieldRoot({
-  className,
-  fullWidth: _fw,
-  variant: _v,
-  ...props
-}: AriaSearchFieldProps & { className?: string; fullWidth?: boolean; variant?: string }) {
-  return <AriaSearchField data-slot="search-field" {...props} className={cx('flex flex-col gap-1.5', className)} />
 }
 
-function SearchFieldGroup({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="search-field-group" {...props} className={cx('flex items-center gap-1', className)} />
+/* ------------------------------------------------------------ SearchField */
+
+interface SearchFieldRootProps extends Omit<AriaSearchFieldProps, 'className'> {
+  className?: string
+  variant?: 'primary' | 'secondary'
+  children?: ReactNode
 }
 
-function SearchFieldInput({ className, ...props }: ComponentProps<'input'>) {
+function SearchFieldRoot({ className, variant = 'primary', children, ...props }: SearchFieldRootProps) {
   return (
-    <input
+    <AriaSearchField
+      data-slot="search-field"
+      data-variant={variant}
+      {...props}
+      className={cx('group/search flex w-full flex-col gap-1', className)}
+    >
+      {children}
+    </AriaSearchField>
+  )
+}
+
+/** The field shell; the same ring and fill rules as `InputBase`. */
+function SearchFieldGroup({ className, ...props }: ComponentProps<typeof AriaGroup>) {
+  return (
+    <AriaGroup
+      data-slot="search-field-group"
+      {...props}
+      className={cx(
+        'flex w-full items-center gap-2 rounded-2lg p-2 text-foreground-icon-tertiary',
+        'bg-background-tertiary-default group-data-[variant=secondary]/search:bg-background-secondary-default',
+        'ring-2 ring-transparent ring-inset transition-[background-color,box-shadow,color] duration-[var(--input-transition-ms)] ease',
+        'data-[hovered]:ring-border-button-hover data-[focus-within]:ring-border-button-active',
+        'group-data-[disabled]/search:bg-input-disabled-background',
+        className as string,
+      )}
+    />
+  )
+}
+
+function SearchFieldInput({ className, ...props }: Omit<AriaInputProps, 'className'> & { className?: string }) {
+  return (
+    <AriaInput
       data-slot="search-field-input"
       {...props}
       className={cx(
-        'flex-1 bg-transparent text-body-medium text-text-primary outline-none placeholder:text-text-placeholder',
+        'min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-body-regular text-text-primary outline-none',
+        'placeholder:text-text-tertiary focus:placeholder:text-text-primary disabled:cursor-not-allowed disabled:text-input-disabled-text',
+        '[&::-webkit-search-cancel-button]:hidden',
         className,
       )}
     />
@@ -82,16 +112,33 @@ function SearchFieldInput({ className, ...props }: ComponentProps<'input'>) {
 }
 
 function SearchFieldSearchIcon({ className, ...props }: ComponentProps<'span'>) {
-  return <span data-slot="search-field-search-icon" {...props} className={cx('text-text-secondary', className)} />
+  return (
+    <span
+      data-slot="search-field-search-icon"
+      aria-hidden
+      {...props}
+      className={cx('flex shrink-0 [&_svg]:size-4', className)}
+    />
+  )
 }
 
-function SearchFieldClearButton({ className, ...props }: ComponentProps<'button'>) {
+interface SearchFieldClearButtonProps extends Omit<AriaButtonProps, 'className' | 'children'> {
+  className?: string
+  children?: ReactNode
+}
+
+/** Clears the field. Hidden by RAC while the field is empty. */
+function SearchFieldClearButton({ className, ...props }: SearchFieldClearButtonProps) {
   return (
-    <button
+    <AriaButton
       data-slot="search-field-clear"
-      type="button"
       {...props}
-      className={cx('text-text-secondary hover:text-text-primary', className)}
+      className={cx(
+        'flex shrink-0 cursor-[var(--cursor-interactive)] items-center rounded-full text-text-secondary outline-none',
+        'data-[hovered]:text-text-primary data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
+        'group-data-[empty]/search:hidden [&_svg]:size-4',
+        className,
+      )}
     />
   )
 }
@@ -103,25 +150,78 @@ export const SearchField = Object.assign(SearchFieldRoot, {
   ClearButton: SearchFieldClearButton,
 })
 
-function InputGroupRoot({ className, fullWidth: _fw, ...props }: ComponentProps<'div'> & { fullWidth?: boolean }) {
-  return <div data-slot="input-group" {...props} className={cx('flex items-center gap-1', className)} />
+/* ------------------------------------------------------------- InputGroup */
+
+interface InputGroupRootProps extends Omit<ComponentProps<typeof AriaGroup>, 'className'> {
+  className?: string
+}
+
+/**
+ * One field shell around a bare control and its adornments, for a control that
+ * is not a form field — a log filter with an icon in front of it.
+ */
+function InputGroupRoot({ className, ...props }: InputGroupRootProps) {
+  return (
+    <AriaGroup
+      data-slot="input-group"
+      {...props}
+      className={cx(
+        'flex w-full items-center gap-2 rounded-2lg bg-background-tertiary-default p-2 text-foreground-icon-tertiary',
+        'ring-2 ring-transparent ring-inset transition-[background-color,box-shadow,color] duration-[var(--input-transition-ms)] ease',
+        'data-[hovered]:ring-border-button-hover data-[focus-within]:ring-border-button-active',
+        className,
+      )}
+    />
+  )
+}
+
+function InputGroupInput({
+  className,
+  ref,
+  ...props
+}: Omit<AriaInputProps, 'className'> & { className?: string; ref?: Ref<HTMLInputElement> }) {
+  return (
+    <AriaInput
+      ref={ref}
+      data-slot="input-group-input"
+      {...props}
+      className={cx(
+        'min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-body-regular text-text-primary outline-none placeholder:text-text-tertiary',
+        className,
+      )}
+    />
+  )
+}
+
+function InputGroupTextArea({
+  className,
+  ref,
+  ...props
+}: Omit<AriaTextAreaProps, 'className'> & { className?: string; ref?: Ref<HTMLTextAreaElement> }) {
+  return (
+    <AriaTextArea
+      ref={ref}
+      data-slot="input-group-textarea"
+      {...props}
+      className={cx(
+        'min-w-0 flex-1 resize-none border-0 bg-transparent p-0 font-sans text-body-regular text-text-primary outline-none placeholder:text-text-tertiary',
+        className,
+      )}
+    />
+  )
 }
 
 function InputGroupPrefix({ className, ...props }: ComponentProps<'span'>) {
-  return (
-    <span data-slot="input-group-prefix" {...props} className={cx('flex shrink-0 text-text-secondary', className)} />
-  )
+  return <span data-slot="input-group-prefix" {...props} className={cx('flex shrink-0 [&_svg]:size-4', className)} />
 }
 
 function InputGroupSuffix({ className, ...props }: ComponentProps<'span'>) {
-  return (
-    <span data-slot="input-group-suffix" {...props} className={cx('flex shrink-0 text-text-secondary', className)} />
-  )
+  return <span data-slot="input-group-suffix" {...props} className={cx('flex shrink-0 [&_svg]:size-4', className)} />
 }
 
 export const InputGroup = Object.assign(InputGroupRoot, {
-  Input,
-  TextArea,
+  Input: InputGroupInput,
+  TextArea: InputGroupTextArea,
   Prefix: InputGroupPrefix,
   Suffix: InputGroupSuffix,
 })

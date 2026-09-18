@@ -1,59 +1,94 @@
-import type { ComponentProps } from 'react'
+import { createContext, useContext, type ComponentProps, type ReactNode } from 'react'
+import { RiFileLine } from '@remixicon/react'
 import { cx } from '@/utils/cx'
+import { CloseButton } from './buttons/close-button'
 
-interface ChatAttachmentProps extends ComponentProps<'div'> {
+/**
+ * A file or image on a message or in the composer: a thumbnail (or a file
+ * glyph), the name, and — in the composer — a remove button. The root holds
+ * what it was given and the parts read it through context, so a caller can
+ * order or omit parts without repeating the data.
+ */
+
+interface AttachmentContextValue {
   name?: string
   src?: string
   mediaType?: string
 }
 
-function ChatAttachmentRoot({
-  className,
-  name: _name,
-  src: _src,
-  mediaType: _mediaType,
-  ...props
-}: ChatAttachmentProps) {
+const AttachmentContext = createContext<AttachmentContextValue>({})
+
+export interface ChatAttachmentProps extends ComponentProps<'div'> {
+  name?: string
+  src?: string
+  mediaType?: string
+}
+
+function ChatAttachmentRoot({ className, name, src, mediaType, children, ...props }: ChatAttachmentProps) {
   return (
-    <div
-      data-slot="chat-attachment"
-      {...props}
-      className={cx(
-        'relative flex items-center gap-2 rounded-lg border border-border-button-default bg-background-primary-default p-2',
-        className,
-      )}
-    />
+    <AttachmentContext.Provider value={{ name, src, mediaType }}>
+      <div
+        data-slot="chat-attachment"
+        data-media-type={mediaType}
+        {...props}
+        className={cx(
+          'relative flex max-w-64 items-center gap-2 rounded-xl border border-border-button-default bg-background-primary-default p-2 shadow-xs',
+          className,
+        )}
+      >
+        {children ?? (
+          <>
+            <ChatAttachmentPreview />
+            <ChatAttachmentInfo />
+          </>
+        )}
+      </div>
+    </AttachmentContext.Provider>
   )
 }
 
 function ChatAttachmentPreview({ className, ...props }: ComponentProps<'div'>) {
+  const { name, src, mediaType } = useContext(AttachmentContext)
+  const isImage = mediaType === 'image' || (!mediaType && !!src)
   return (
     <div
       data-slot="chat-attachment-preview"
       {...props}
-      className={cx('size-8 shrink-0 overflow-hidden rounded-md', className)}
-    />
+      className={cx(
+        'flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-background-tertiary-default text-foreground-icon-secondary',
+        className,
+      )}
+    >
+      {isImage && src ? (
+        <img src={src} alt={name ?? ''} className="size-full object-cover" />
+      ) : (
+        <RiFileLine className="size-5" aria-hidden />
+      )}
+    </div>
   )
 }
 
-function ChatAttachmentInfo({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="chat-attachment-info" {...props} className={cx('min-w-0 flex-1', className)} />
-}
-
-interface ChatAttachmentRemoveProps extends ComponentProps<'button'> {
-  onClick?: () => void
-}
-
-function ChatAttachmentRemove({ className, onClick, ...props }: ChatAttachmentRemoveProps) {
+function ChatAttachmentInfo({ className, children, ...props }: ComponentProps<'div'>) {
+  const { name } = useContext(AttachmentContext)
   return (
-    <button
-      data-slot="chat-attachment-remove"
-      type="button"
-      onClick={onClick}
-      {...props}
-      className={cx('shrink-0 rounded-full p-0.5 text-text-secondary hover:text-text-primary', className)}
-    />
+    <div data-slot="chat-attachment-info" {...props} className={cx('min-w-0 flex-1', className)}>
+      {children ?? (
+        <span data-slot="chat-attachment-name" className="block truncate text-body-2-medium text-text-primary">
+          {name}
+        </span>
+      )}
+    </div>
   )
+}
+
+interface ChatAttachmentRemoveProps {
+  'aria-label': string
+  onPress?: () => void
+  className?: string
+}
+
+function ChatAttachmentRemove({ className, ...props }: ChatAttachmentRemoveProps) {
+  return <CloseButton size="2xs" data-slot="chat-attachment-remove" {...props} className={cx('shrink-0', className)} />
 }
 
 export const ChatAttachment = Object.assign(ChatAttachmentRoot, {
@@ -62,6 +97,14 @@ export const ChatAttachment = Object.assign(ChatAttachmentRoot, {
   Remove: ChatAttachmentRemove,
 })
 
-export function ChatAttachmentGroup({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="chat-attachment-group" {...props} className={cx('flex flex-wrap gap-2', className)} />
+export function ChatAttachmentGroup({
+  className,
+  children,
+  ...props
+}: ComponentProps<'div'> & { children?: ReactNode }) {
+  return (
+    <div data-slot="chat-attachment-group" {...props} className={cx('flex flex-wrap gap-2', className)}>
+      {children}
+    </div>
+  )
 }

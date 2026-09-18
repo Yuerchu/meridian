@@ -6,7 +6,7 @@ import { ChangesPanelView } from './changes-panel'
 describe('ChangesPanelView', () => {
   beforeEach(() => i18n.changeLanguage('en'))
 
-  it('includes the file operation in each tree item accessible name', () => {
+  it('includes the file operation in each tree row accessible name', () => {
     render(
       <ChangesPanelView
         files={[
@@ -18,8 +18,8 @@ describe('ChangesPanelView', () => {
       />,
     )
 
-    expect(screen.getByRole('treeitem', { name: 'created.ts, created' })).toBeVisible()
-    expect(screen.getByRole('treeitem', { name: 'changed.ts, modified' })).toBeVisible()
-    expect(screen.getByRole('treeitem', { name: 'deleted.txt, deleted' })).toBeVisible()
+    expect(screen.getByRole('row', { name: 'created.ts, created' })).toBeVisible()
+    expect(screen.getByRole('row', { name: 'changed.ts, modified' })).toBeVisible()
+    expect(screen.getByRole('row', { name: 'deleted.txt, deleted' })).toBeVisible()
   })
 })

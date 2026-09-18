@@ -3,16 +3,19 @@ import type { ComponentProps } from 'react'
 import { cx } from '@/utils/cx'
 
 interface ListViewProps<T extends object> extends ListBoxProps<T> {
-  variant?: string
+  /** `secondary` sits on the panel colour instead of a raised white card. */
+  variant?: 'primary' | 'secondary'
 }
 
-function ListViewRoot<T extends object>({ className, variant: _variant, ...props }: ListViewProps<T>) {
+function ListViewRoot<T extends object>({ className, variant = 'primary', ...props }: ListViewProps<T>) {
   return (
     <ListBox
       data-slot="list-view"
+      data-variant={variant}
       {...props}
       className={cx(
-        'flex flex-col overflow-hidden rounded-lg border border-border-button-default bg-background-primary-default',
+        'flex flex-col overflow-hidden rounded-2xl border border-border-button-default',
+        variant === 'primary' ? 'bg-background-primary-default' : 'bg-background-secondary-default',
         className as string,
       )}
     />

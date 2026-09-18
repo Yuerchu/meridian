@@ -171,7 +171,6 @@ function ModelPicker({
         </Select>
       ) : (
         <Input
-          fullWidth
           aria-label={t('settings.assistant.model')}
           value={modelId}
           onChange={(e) => setModelId(e.target.value)}
@@ -198,7 +197,7 @@ function RuleBox({
   onChange: (next: string) => void
 }) {
   return (
-    <TextField fullWidth>
+    <TextField>
       <Label>{label}</Label>
       <TextArea rows={3} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
       <Description>{hint}</Description>
@@ -400,7 +399,7 @@ export function AutoReviewSettings() {
       )}
 
       <div data-slot="autoreview-actions" className="flex items-center gap-3">
-        <Button onClick={handleSave} disabled={saving}>
+        <Button onPress={handleSave} isDisabled={saving}>
           {t('common.save')}
         </Button>
         {saved && (

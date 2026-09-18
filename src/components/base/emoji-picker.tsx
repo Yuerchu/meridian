@@ -33,18 +33,18 @@ function EmojiPickerRoot({ isOpen, onOpenChange, selectedKey = null, onSelection
 interface EmojiPickerTriggerProps {
   'aria-label'?: string
   className?: string
-  onClick?: () => void
+  onPress?: () => void
   children?: ReactNode
 }
 
-function EmojiPickerTrigger({ className, onClick, children, ...props }: EmojiPickerTriggerProps) {
+function EmojiPickerTrigger({ className, onPress, children, ...props }: EmojiPickerTriggerProps) {
   return (
     <Button
       data-slot="emoji-picker-trigger"
       variant="ghost"
       iconOnly
       size="small"
-      onClick={onClick}
+      onPress={onPress}
       className={cx('text-text-secondary', className)}
       aria-label={props['aria-label']}
     >

@@ -452,7 +452,7 @@ function DetailPanel({
             </p>
           </div>
           <TooltipTrigger delay={0}>
-            <Button iconOnly aria-label="关闭详情" variant="ghost" size="small" className="ml-auto" onClick={onClose}>
+            <Button iconOnly aria-label="关闭详情" variant="ghost" size="small" className="ml-auto" onPress={onClose}>
               <Xmark className="size-4" />
             </Button>
             <Tooltip placement="left">关闭</Tooltip>
@@ -610,10 +610,10 @@ function Lab() {
           }}
           className="w-56"
         />
-        <Button variant={showSoft ? 'primary' : 'outline'} size="small" onClick={() => setShowSoft((v) => !v)}>
+        <Button variant={showSoft ? 'primary' : 'outline'} size="small" onPress={() => setShowSoft((v) => !v)}>
           逻辑引用
         </Button>
-        <Button variant="outline" size="small" onClick={() => void rf.fitView({ padding: 0.06, duration: 400 })}>
+        <Button variant="outline" size="small" onPress={() => void rf.fitView({ padding: 0.06, duration: 400 })}>
           适应画布
         </Button>
 
@@ -625,7 +625,7 @@ function Lab() {
                 <Button
                   variant="outline"
                   size="small"
-                  onClick={() => toggleGroup(g.id)}
+                  onPress={() => toggleGroup(g.id)}
                   aria-pressed={!off}
                   className={cn('h-7 gap-1.5 rounded-full px-2.5 text-xs font-normal', off && 'opacity-40')}
                 >
@@ -647,7 +647,7 @@ function Lab() {
               aria-label="切换主题"
               variant="outline"
               size="small"
-              onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+              onPress={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
             >
               <Sun className="hidden size-4 dark:block" />
               <Moon className="size-4 dark:hidden" />

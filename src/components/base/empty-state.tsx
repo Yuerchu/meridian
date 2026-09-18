@@ -46,8 +46,20 @@ interface EmptyStateMediaProps extends ComponentProps<'div'> {
   variant?: 'icon' | 'image'
 }
 
-function EmptyStateMedia({ className, variant: _variant, ...props }: EmptyStateMediaProps) {
-  return <div data-slot="empty-state-media" {...props} className={cx('flex items-center justify-center', className)} />
+function EmptyStateMedia({ className, variant = 'icon', ...props }: EmptyStateMediaProps) {
+  return (
+    <div
+      data-slot="empty-state-media"
+      data-variant={variant}
+      {...props}
+      className={cx(
+        'flex items-center justify-center',
+        variant === 'icon' &&
+          'size-12 rounded-2xl bg-background-secondary-default text-foreground-icon-secondary [&_svg]:size-6',
+        className,
+      )}
+    />
+  )
 }
 
 export const EmptyState = Object.assign(EmptyStateRoot, {

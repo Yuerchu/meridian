@@ -1,18 +1,7 @@
 import { useEffect, useId, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, PlugWire, PlugConnection, LogoMcp, TrashBin, ArrowDownToSquare } from '@gravity-ui/icons'
-import {
-  Alert,
-  Button,
-  Input,
-  Label,
-  Spinner,
-  Switch,
-  TextArea,
-  TextField,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
+import { Alert, Button, Input, Label, Switch, TextArea, TextField, Tooltip, TooltipTrigger } from '@/components/base'
 import { EmptyState } from '@/components/base'
 import { ListView } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
@@ -113,7 +102,7 @@ function JsonImportDialog({ onImport, onCancel }: { onImport: (data: McpServersJ
 
   return (
     <div data-slot="mcp-import-form" className="space-y-3">
-      <TextField fullWidth isInvalid={error}>
+      <TextField isInvalid={error}>
         <Label>{t('settings.mcp.importJson')}</Label>
         <TextArea
           name="mcpImportJson"
@@ -140,8 +129,8 @@ function JsonImportDialog({ onImport, onCancel }: { onImport: (data: McpServersJ
         </p>
       )}
       <div data-slot="mcp-import-actions" className="flex gap-2">
-        <Button onClick={handleSubmit}>{t('settings.mcp.importJsonSubmit')}</Button>
-        <Button variant="outline" onClick={onCancel}>
+        <Button onPress={handleSubmit}>{t('settings.mcp.importJsonSubmit')}</Button>
+        <Button variant="outline" onPress={onCancel}>
           {t('settings.mcp.importJsonCancel')}
         </Button>
       </div>
@@ -290,7 +279,7 @@ function McpServerEditor({
 
   return (
     <div data-slot="mcp-server-editor" className="space-y-4">
-      <TextField fullWidth>
+      <TextField>
         <Label>{t('settings.mcp.name')}</Label>
         <Input name={`mcpName-${server.id}`} value={name} onChange={(e) => setName(e.target.value)} />
       </TextField>
@@ -308,7 +297,7 @@ function McpServerEditor({
           <Button
             variant="ghost"
             aria-pressed={!isHttp}
-            onClick={() => setTransportType('stdio')}
+            onPress={() => setTransportType('stdio')}
             className={cn(
               'px-3 py-1.5 rounded-md text-sm transition-colors',
               !isHttp
@@ -321,7 +310,7 @@ function McpServerEditor({
           <Button
             variant="ghost"
             aria-pressed={isHttp}
-            onClick={() => setTransportType('streamablehttp')}
+            onPress={() => setTransportType('streamablehttp')}
             className={cn(
               'px-3 py-1.5 rounded-md text-sm transition-colors',
               isHttp
@@ -336,7 +325,7 @@ function McpServerEditor({
 
       {isHttp ? (
         <>
-          <TextField fullWidth type="url">
+          <TextField type="url">
             <Label>{t('settings.mcp.url')}</Label>
             <Input
               name={`mcpUrl-${server.id}`}
@@ -347,7 +336,7 @@ function McpServerEditor({
               placeholder="https://example.com/mcp"
             />
           </TextField>
-          <TextField fullWidth>
+          <TextField>
             <Label>{t('settings.mcp.headers')}</Label>
             <Input
               name={`mcpHeaders-${server.id}`}
@@ -361,7 +350,7 @@ function McpServerEditor({
         </>
       ) : (
         <>
-          <TextField fullWidth>
+          <TextField>
             <Label>{t('settings.mcp.command')}</Label>
             <Input
               name={`mcpCommand-${server.id}`}
@@ -371,7 +360,7 @@ function McpServerEditor({
               placeholder="npx"
             />
           </TextField>
-          <TextField fullWidth>
+          <TextField>
             <Label>{t('settings.mcp.args')}</Label>
             <Input
               name={`mcpArgs-${server.id}`}
@@ -381,7 +370,7 @@ function McpServerEditor({
               placeholder='["-y", "@modelcontextprotocol/server-filesystem", "/path"]'
             />
           </TextField>
-          <TextField fullWidth>
+          <TextField>
             <Label>{t('settings.mcp.env')}</Label>
             <Input
               name={`mcpEnv-${server.id}`}
@@ -403,24 +392,21 @@ function McpServerEditor({
           desktop-only, so that is a width it really gets. The switch keeps its
           `ml-auto` and simply lands on the second line once there is one. */}
       <div data-slot="mcp-editor-actions" className="flex flex-wrap items-center gap-2">
-        <Button onClick={handleSave}>{saved ? t('common.saved') : t('common.save')}</Button>
+        <Button onPress={handleSave}>{saved ? t('common.saved') : t('common.save')}</Button>
         {connected ? (
-          <Button variant="outline" onClick={handleDisconnect}>
+          <Button variant="outline" onPress={handleDisconnect}>
             <PlugConnection className="w-3.5 h-3.5 mr-1.5" />
             {t('settings.mcp.disconnect')}
           </Button>
         ) : (
           <Button
             variant="outline"
-            onClick={handleConnect}
-            disabled={connecting || statusLoading}
+            onPress={handleConnect}
+            isDisabled={statusLoading}
+            isPending={connecting}
             aria-busy={connecting}
           >
-            {connecting ? (
-              <Spinner aria-hidden="true" size="sm" color="current" className="mr-1.5" />
-            ) : (
-              <PlugWire aria-hidden="true" className="w-3.5 h-3.5 mr-1.5" />
-            )}
+            <PlugWire aria-hidden="true" className="w-3.5 h-3.5 mr-1.5" />
             {t('settings.mcp.connect')}
           </Button>
         )}
@@ -463,7 +449,7 @@ function McpServerEditor({
       )}
 
       <div data-slot="mcp-danger-zone" className="pt-4 border-t border-border">
-        <Button variant="danger-soft" onClick={() => onDelete(server.id)}>
+        <Button variant="danger-soft" onPress={() => onDelete(server.id)}>
           <TrashBin className="w-3.5 h-3.5 mr-1.5" />
           {t('settings.mcp.deleteServer')}
         </Button>
@@ -599,13 +585,13 @@ export function McpSettings() {
   const headerActions = (
     <div data-slot="mcp-header-actions" className="flex items-center gap-1">
       <TooltipTrigger delay={0}>
-        <Button iconOnly aria-label={t('settings.mcp.importJson')} variant="outline" onClick={() => openAux('import')}>
+        <Button iconOnly aria-label={t('settings.mcp.importJson')} variant="outline" onPress={() => openAux('import')}>
           <ArrowDownToSquare className="w-4 h-4" />
         </Button>
         <Tooltip placement="top">{t('settings.mcp.importJson')}</Tooltip>
       </TooltipTrigger>
       <TooltipTrigger delay={0}>
-        <Button iconOnly aria-label={t('settings.mcp.addServer')} variant="outline" onClick={handleAdd}>
+        <Button iconOnly aria-label={t('settings.mcp.addServer')} variant="outline" onPress={handleAdd}>
           <Plus className="w-4 h-4" />
         </Button>
         <Tooltip placement="top">{t('settings.mcp.addServer')}</Tooltip>
@@ -624,7 +610,7 @@ export function McpSettings() {
               size="small"
               variant="outline"
               className="mt-2"
-              onClick={() => {
+              onPress={() => {
                 setLoading(servers.length === 0)
                 void refresh()
               }}

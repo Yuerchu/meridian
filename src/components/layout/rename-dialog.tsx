@@ -65,7 +65,7 @@ export function RenameDialog({
             <Modal.Heading>{heading}</Modal.Heading>
           </Modal.Header>
           <Modal.Body>
-            <TextField fullWidth aria-label={heading} autoFocus>
+            <TextField aria-label={heading} autoFocus>
               <Input
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
@@ -83,7 +83,7 @@ export function RenameDialog({
             <Button slot="close" variant="secondary">
               {t('common.cancel')}
             </Button>
-            <Button onClick={submit} disabled={!canSave}>
+            <Button onPress={submit} isDisabled={!canSave}>
               {t('common.save')}
             </Button>
           </Modal.Footer>

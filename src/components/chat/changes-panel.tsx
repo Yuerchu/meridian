@@ -83,7 +83,7 @@ export function ChangesPanelView({ files, onClose }: { files: TouchedFile[]; onC
             variant="ghost"
             size="small"
             aria-label={t('common.close')}
-            onClick={onClose}
+            onPress={onClose}
             className="shrink-0"
           >
             <Xmark />

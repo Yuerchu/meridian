@@ -137,7 +137,7 @@ export function GeneralSettings() {
         value={i18n.language}
         options={LANGUAGE_OPTIONS}
         onChange={setLocale}
-        fullWidth
+
         triggerClassName="max-w-xs"
       />
 
@@ -146,7 +146,7 @@ export function GeneralSettings() {
         value={theme}
         options={themeOptions}
         onChange={setTheme}
-        fullWidth
+
         triggerClassName="max-w-xs"
       />
 
@@ -157,7 +157,7 @@ export function GeneralSettings() {
           options={SHELLS}
           onChange={handleShellChange}
           description={t('settings.general.shellHint')}
-          fullWidth
+
           triggerClassName="max-w-xs"
         />
       )}
@@ -172,7 +172,7 @@ export function GeneralSettings() {
           description={
             sandboxMode === 'container' ? t('settings.general.sandboxContainerHint') : t('settings.general.sandboxHint')
           }
-          fullWidth
+
           triggerClassName="max-w-xs"
         />
       )}
@@ -189,12 +189,11 @@ export function GeneralSettings() {
           value={searchProvider}
           options={SEARCH_PROVIDERS}
           onChange={(value) => void handleSearchProviderChange(value)}
-          fullWidth
+
           triggerClassName="max-w-xs"
         />
         <div data-slot="general-search-key-row" className="flex items-center gap-2">
           <Input
-            fullWidth
             type="password"
             aria-label={t('settings.provider.apiKey')}
             name="searchApiKey"
@@ -211,8 +210,8 @@ export function GeneralSettings() {
           <Button
             aria-label={t('settings.general.save')}
             variant={searchKeySaved ? 'primary' : 'outline'}
-            onClick={handleSaveSearchKey}
-            disabled={!searchApiKey.trim()}
+            onPress={handleSaveSearchKey}
+            isDisabled={!searchApiKey.trim()}
           >
             {searchKeySaved && <Check aria-hidden="true" className="w-4 h-4" />}
             {t('settings.general.save')}

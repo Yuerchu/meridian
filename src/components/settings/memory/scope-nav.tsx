@@ -66,7 +66,7 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
       aria-pressed={active}
       variant={active ? 'secondary' : 'ghost'}
       className={cn('w-full justify-between font-normal', indent && 'pl-6')}
-      onClick={onPress}
+      onPress={onPress}
       data-slot="memory-scope-row"
     >
       <span data-slot="memory-scope-row-label" className="truncate">
@@ -89,7 +89,7 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
       key={`${slot}-more`}
       variant="ghost"
       className="w-full justify-start pl-6 text-xs font-normal text-muted"
-      onClick={onToggle}
+      onPress={onToggle}
       data-slot={slot}
     >
       {expanded ? t('settings.memory.nav.showLess') : t('settings.memory.nav.showAll', { count: total })}
@@ -186,7 +186,7 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
           <Button
             variant="ghost"
             className="w-full justify-start font-normal"
-            onClick={async () => {
+            onPress={async () => {
               await api.setMemorySubjectFlags({
                 subjectScopeId: selectedPerson.scope_id,
                 isPinned: !selectedPerson.is_pinned,
@@ -203,7 +203,7 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
           <Button
             variant="ghost"
             className="w-full justify-start font-normal"
-            onClick={async () => {
+            onPress={async () => {
               const ok = await confirm({
                 title: t('settings.memory.person.forgetConfirmTitle'),
                 body: t('settings.memory.person.forgetConfirmBody'),

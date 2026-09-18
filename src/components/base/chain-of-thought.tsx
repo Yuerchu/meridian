@@ -9,7 +9,7 @@ interface ChainOfThoughtProps extends ComponentProps<'div'> {
 function ChainOfThoughtRoot({
   className,
   defaultExpanded = false,
-  isStreaming: _isStreaming,
+  isStreaming = false,
   ...props
 }: ChainOfThoughtProps) {
   const [expanded, setExpanded] = useState(defaultExpanded)
@@ -17,6 +17,7 @@ function ChainOfThoughtRoot({
     <div
       data-slot="chain-of-thought"
       data-expanded={expanded || undefined}
+      data-streaming={isStreaming || undefined}
       onClick={() => setExpanded((v) => !v)}
       {...props}
       className={cx('', className)}

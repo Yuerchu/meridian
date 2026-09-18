@@ -186,8 +186,8 @@ function SourceEditor({
           <Button
             size="small"
             variant="ghost"
-            disabled={!selection}
-            onClick={() => selection && onAddComment(selection)}
+            isDisabled={!selection}
+            onPress={() => selection && onAddComment(selection)}
           >
             <Comment />
             {t('planReview.comments.add')}
@@ -590,10 +590,10 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           {t('planReview.loadError', { error: pageError ?? t('planReview.unknownError') })}
         </p>
         <div data-slot="plan-review-load-error-actions" className="flex gap-2">
-          <Button variant="secondary" onClick={() => void loadReview()}>
+          <Button variant="secondary" onPress={() => void loadReview()}>
             {t('planReview.reload')}
           </Button>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" onPress={onClose}>
             {t('common.close')}
           </Button>
         </div>
@@ -718,7 +718,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           </Dropdown>
 
           <TooltipTrigger>
-            <Button iconOnly variant="ghost" size="small" aria-label={t('common.close')} onClick={onClose}>
+            <Button iconOnly variant="ghost" size="small" aria-label={t('common.close')} onPress={onClose}>
               <Xmark />
             </Button>
             <Tooltip>{t('common.close')}</Tooltip>
@@ -742,7 +742,12 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
                 {problem.message}
               </p>
               {problem.action && (
-                <Button size="small" variant="secondary" disabled={problem.action.pending} onClick={problem.action.run}>
+                <Button
+                  size="small"
+                  variant="secondary"
+                  isDisabled={problem.action.pending}
+                  onPress={problem.action.run}
+                >
                   {problem.action.label}
                 </Button>
               )}
@@ -761,7 +766,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
               {progress.message}
             </p>
             {progress.resumable && (
-              <Button size="small" variant="secondary" disabled={continuing} onClick={() => void continueDelivery()}>
+              <Button size="small" variant="secondary" isDisabled={continuing} onPress={() => void continueDelivery()}>
                 {t('planReview.continueDelivery')}
               </Button>
             )}
@@ -802,7 +807,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
             size="small"
             variant="ghost"
             className="plan-review-comments-trigger"
-            onClick={() => setCommentsOpen(true)}
+            onPress={() => setCommentsOpen(true)}
           >
             <Comment />
             {t('planReview.comments.title')}
@@ -939,19 +944,24 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           <div data-slot="plan-review-decision-actions" className="flex shrink-0 items-center justify-end gap-2">
             <Button
               variant="ghost"
-              disabled={deciding || effectiveSaveState !== 'saved' || rules.isPristine || isReadOnly}
-              onClick={() => void discard()}
+              isDisabled={deciding || effectiveSaveState !== 'saved' || rules.isPristine || isReadOnly}
+              onPress={() => void discard()}
             >
               {t('planReview.discard')}
             </Button>
             <Button
               variant="secondary"
-              disabled={deciding || !rules.canRequestChanges}
-              onClick={() => void decide('request_changes')}
+              isDisabled={deciding || !rules.canRequestChanges}
+              onPress={() => void decide('request_changes')}
             >
               {t('planReview.requestChanges')}
             </Button>
-            <Button variant="primary" disabled={deciding} onClick={() => void decide('approve')}>
+            <Button
+              variant="primary"
+              isPending={deciding}
+              isDisabled={!rules.canApprove}
+              onPress={() => void decide('approve')}
+            >
               {t('planReview.approve')}
             </Button>
           </div>

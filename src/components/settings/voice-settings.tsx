@@ -188,8 +188,8 @@ export function VoiceSettings() {
                   iconOnly
                   variant="ghost"
                   aria-label={t('settings.voice.deleteModel')}
-                  onClick={handleDelete}
-                  disabled={downloading}
+                  onPress={handleDelete}
+                  isDisabled={downloading}
                 >
                   <TrashBin className="w-4 h-4" />
                 </Button>
@@ -214,7 +214,7 @@ export function VoiceSettings() {
                 {formatSize(progress.downloaded, sizeNumber)}
                 {progress.total ? ` / ${formatSize(progress.total, sizeNumber)}` : ''}
               </span>
-              <Button variant="outline" size="small" onClick={handleCancelDownload}>
+              <Button variant="outline" size="small" onPress={handleCancelDownload}>
                 {t('settings.voice.cancelDownload')}
               </Button>
             </div>
@@ -226,7 +226,7 @@ export function VoiceSettings() {
               </Card.Header>
               <Card.Footer className="flex-col items-start gap-2">
                 <div data-slot="voice-model-actions" className="flex gap-2">
-                  <Button size="small" onClick={handleDownload}>
+                  <Button size="small" onPress={handleDownload}>
                     {t('settings.voice.download')}
                   </Button>
                   {/* Downloading still works remotely — the host fetches it to
@@ -235,11 +235,11 @@ export function VoiceSettings() {
                   <Button
                     variant="outline"
                     size="small"
-                    onClick={handleImport}
-                    disabled={importing || !can.importFromDisk}
+                    onPress={handleImport}
+                    isDisabled={!can.importFromDisk}
+                    isPending={importing}
                     aria-busy={importing}
                   >
-                    {importing && <Spinner aria-hidden="true" size="sm" />}
                     {t('settings.voice.import')}
                   </Button>
                 </div>
@@ -259,7 +259,7 @@ export function VoiceSettings() {
         </Card>
       </div>
 
-      <TextField fullWidth type="url">
+      <TextField type="url">
         <Label>{t('settings.voice.mirror')}</Label>
         <Input
           value={mirrorUrl}
@@ -281,7 +281,7 @@ export function VoiceSettings() {
         options={filterOptions}
         onChange={handleFilterChange}
         description={t('settings.voice.filterHint')}
-        fullWidth
+
         triggerClassName="max-w-xs"
       />
       {confirmDialog}

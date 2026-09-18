@@ -178,7 +178,7 @@ export function About() {
               </ItemCard.Description>
             </ItemCard.Content>
             <ItemCard.Action>
-              <Button size="small" variant="outline" onClick={() => setShowLogs(true)}>
+              <Button size="small" variant="outline" onPress={() => setShowLogs(true)}>
                 {t('settings.about.logs.open')}
                 <ChevronRight className="size-3 rtl:-scale-x-100" />
               </Button>
@@ -202,8 +202,8 @@ export function About() {
                 size="small"
                 variant="outline"
                 aria-label={t('settings.about.copyInfo.action')}
-                disabled={!info}
-                onClick={() => {
+                isDisabled={!info}
+                onPress={() => {
                   navigator.clipboard.writeText(diagnostics)
                   markCopied()
                 }}
@@ -242,7 +242,7 @@ export function About() {
                     size="small"
                     variant="ghost"
                     aria-label={t('settings.about.system.copyDataDir')}
-                    onClick={() => {
+                    onPress={() => {
                       navigator.clipboard.writeText(info.dataDir)
                       markPathCopied()
                     }}

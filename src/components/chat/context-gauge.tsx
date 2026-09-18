@@ -115,14 +115,9 @@ export function ContextGauge({
             value={used}
             maxValue={limit}
             isIndeterminate={compacting}
-            color={color}
-            className={color && !compacting ? undefined : '[--progress-circle-stroke:var(--muted)]'}
-          >
-            <ProgressCircle.Track className="size-4.5">
-              <ProgressCircle.TrackCircle />
-              <ProgressCircle.FillCircle />
-            </ProgressCircle.Track>
-          </ProgressCircle>
+            color={color && !compacting ? color : 'neutral'}
+            className="size-4.5"
+          />
         </Popover.Trigger>
         <Tooltip>{figures}</Tooltip>
       </TooltipTrigger>
@@ -175,7 +170,7 @@ export function ContextGauge({
                     <Link
                       data-slot="context-gauge-compact"
                       className="mt-1 text-xs font-normal underline underline-offset-2"
-                      onClick={onCompact}
+                      onPress={onCompact}
                     >
                       {t('chat.compact.manual')}
                     </Link>

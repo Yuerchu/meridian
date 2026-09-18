@@ -269,10 +269,10 @@ export default function ResponsiveLab() {
           </Field>
 
           <div data-slot="responsive-lab-actions" className="flex gap-2">
-            <Button size="small" onClick={measure}>
+            <Button size="small" onPress={measure}>
               Measure
             </Button>
-            <Button size="small" variant="outline" onClick={sweep}>
+            <Button size="small" variant="outline" onPress={sweep}>
               Sweep widths
             </Button>
           </div>
@@ -346,8 +346,6 @@ function Choices<T extends string | number>({
   return (
     <ToggleButtonGroup
       aria-label={label}
-      size="sm"
-      isDetached
       selectionMode="single"
       disallowEmptySelection
       selectedKeys={new Set([String(value)])}

@@ -243,7 +243,7 @@ export function OneBotSettings() {
               size="small"
               variant="outline"
               className="mt-2"
-              onClick={() => {
+              onPress={() => {
                 setLoading(true)
                 void loadData()
               }}
@@ -278,7 +278,7 @@ export function OneBotSettings() {
       </div>
 
       <div data-slot="onebot-endpoint" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
-        <TextField fullWidth>
+        <TextField>
           <Label>{t('settings.onebot.host')}</Label>
           <Input
             name="onebotHost"
@@ -287,7 +287,7 @@ export function OneBotSettings() {
             placeholder="127.0.0.1"
           />
         </TextField>
-        <TextField fullWidth type="number">
+        <TextField type="number">
           <Label>{t('settings.onebot.port')}</Label>
           <Input
             name="onebotPort"
@@ -301,7 +301,7 @@ export function OneBotSettings() {
         </TextField>
       </div>
 
-      <TextField fullWidth type="password">
+      <TextField type="password">
         <Label>{t('settings.onebot.accessToken')}</Label>
         <Input
           name="onebotAccessToken"
@@ -318,10 +318,9 @@ export function OneBotSettings() {
         options={assistantOptions}
         onChange={(v) => setConfig({ ...config, assistant_id: v === '_default' ? null : v })}
         description={t('settings.onebot.assistantHint')}
-        fullWidth
       />
 
-      <TextField fullWidth>
+      <TextField>
         <Label>{t('settings.onebot.adminUsers')}</Label>
         <Input
           name="onebotAdminUsers"
@@ -332,7 +331,7 @@ export function OneBotSettings() {
         <Description>{t('settings.onebot.adminUsersHint')}</Description>
       </TextField>
 
-      <TextField fullWidth>
+      <TextField>
         <Label>{t('settings.onebot.voiceCapture')}</Label>
         <Input
           name="onebotVoiceCapture"
@@ -362,7 +361,7 @@ export function OneBotSettings() {
 
       {config.voice_send_enabled && (
         <>
-          <TextField fullWidth>
+          <TextField>
             <Label>{t('settings.onebot.voiceSendGroups')}</Label>
             <Input
               name="onebotVoiceSendGroups"
@@ -374,7 +373,7 @@ export function OneBotSettings() {
           </TextField>
 
           <div data-slot="onebot-voice-tts" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
-            <TextField fullWidth>
+            <TextField>
               <Label>{t('settings.onebot.voiceTtsModel')}</Label>
               <Input
                 name="onebotVoiceModel"
@@ -384,7 +383,7 @@ export function OneBotSettings() {
               />
               <Description>{t('settings.onebot.voiceTtsModelHint')}</Description>
             </TextField>
-            <TextField fullWidth>
+            <TextField>
               <Label>{t('settings.onebot.voiceTtsVoice')}</Label>
               <Input
                 name="onebotVoiceReference"
@@ -396,7 +395,7 @@ export function OneBotSettings() {
             </TextField>
           </div>
 
-          <TextField fullWidth>
+          <TextField>
             <Label>{t('settings.onebot.fishKey')}</Label>
             <Input
               type="password"
@@ -434,7 +433,7 @@ export function OneBotSettings() {
         </>
       )}
 
-      <TextField fullWidth>
+      <TextField>
         <Label>{t('settings.onebot.ackEmoji')}</Label>
         <Input
           name="onebotAckEmoji"
@@ -452,7 +451,7 @@ export function OneBotSettings() {
       )}
 
       <div data-slot="onebot-actions" className="flex items-center gap-3 pt-2">
-        <Button variant="outline" onClick={handleSave} disabled={saving}>
+        <Button variant="outline" onPress={handleSave} isDisabled={saving}>
           {saved ? t('common.saved') : t('common.save')}
         </Button>
         {saved && (
@@ -461,11 +460,11 @@ export function OneBotSettings() {
           </span>
         )}
         {running ? (
-          <Button variant="danger-soft" onClick={handleStop}>
+          <Button variant="danger-soft" onPress={handleStop}>
             {t('settings.onebot.stop')}
           </Button>
         ) : (
-          <Button onClick={handleStart}>{t('settings.onebot.start')}</Button>
+          <Button onPress={handleStart}>{t('settings.onebot.start')}</Button>
         )}
       </div>
 

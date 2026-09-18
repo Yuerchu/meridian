@@ -80,7 +80,7 @@ export function PlanCommentsPane({
             <div data-slot="plan-comment-header" className="mb-2 flex items-start gap-2">
               <Link
                 className="min-w-0 flex-1 text-start text-xs font-normal text-muted"
-                onClick={() => onSelectComment(comment)}
+                onPress={() => onSelectComment(comment)}
               >
                 <q data-slot="plan-comment-quote" className="line-clamp-3 break-words">
                   {comment.anchor.quote || t('planReview.comments.emptyQuote')}
@@ -94,7 +94,7 @@ export function PlanCommentsPane({
                     variant="ghost"
                     aria-label={t('planReview.comments.delete')}
                     className="-me-1 -mt-1 shrink-0"
-                    onClick={() => onDeleteComment(comment.id)}
+                    onPress={() => onDeleteComment(comment.id)}
                   >
                     <TrashBin />
                   </Button>
@@ -116,7 +116,6 @@ export function PlanCommentsPane({
                 placeholder={t('planReview.comments.placeholder')}
                 value={comment.body}
                 rows={2}
-                fullWidth
                 variant="secondary"
                 className="resize-none"
                 onChange={(event) => onChangeComment(comment.id, event.target.value)}
@@ -144,13 +143,12 @@ export function PlanCommentsPane({
             </div>
           )
         ) : (
-          <TextField data-slot="plan-global-note-field" fullWidth className="space-y-1.5">
+          <TextField data-slot="plan-global-note-field" className="space-y-1.5">
             <Label className="text-sm font-medium">{t('planReview.comments.globalNote')}</Label>
             <TextArea
               placeholder={t('planReview.comments.globalPlaceholder')}
               value={globalNote}
               rows={2}
-              fullWidth
               variant="secondary"
               className="resize-none"
               onChange={(event) => onGlobalNoteChange(event.target.value)}

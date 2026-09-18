@@ -1,60 +1,102 @@
+import type { ReactNode, Ref } from 'react'
 import {
-  Popover as AriaPopover,
-  DialogTrigger,
+  Button as AriaButton,
   Dialog,
+  DialogTrigger,
+  Popover as AriaPopover,
+  type ButtonProps as AriaButtonProps,
+  type DialogProps,
   type PopoverProps as AriaPopoverProps,
 } from 'react-aria-components'
-import type { ComponentProps, ReactElement } from 'react'
 import { cx } from '@/utils/cx'
+import { OVERLAY_MOTION, OVERLAY_SURFACE } from './overlay-motion'
+
+/**
+ * A floating panel anchored to the thing that opened it.
+ *
+ *   <Popover>
+ *     <Button>Open</Button>           // any RAC pressable is the trigger
+ *     <Popover.Content placement="top">
+ *       <Popover.Dialog aria-label="…">…</Popover.Dialog>
+ *     </Popover.Content>
+ *   </Popover>
+ *
+ * The root is React Aria's `DialogTrigger`, which finds its trigger through
+ * context: the first pressable inside it — a base `Button`, even one wrapped
+ * in a `TooltipTrigger` — opens the panel and is what the panel is anchored
+ * to. `Popover.Trigger` exists for content that is not already a button (a
+ * gauge, a figure): it is an unstyled RAC button, so it is focusable, has
+ * `aria-expanded`, and takes the ring on focus. Do not put a `Button` inside
+ * it; nested buttons are invalid HTML and would toggle the panel twice.
+ */
 
 interface PopoverRootProps {
   isOpen?: boolean
+  defaultOpen?: boolean
   onOpenChange?: (open: boolean) => void
-  children?: React.ReactNode
+  children?: ReactNode
 }
 
-function PopoverRoot({ isOpen, onOpenChange, children }: PopoverRootProps) {
+function PopoverRoot({ isOpen, defaultOpen, onOpenChange, children }: PopoverRootProps) {
   return (
-    <DialogTrigger isOpen={isOpen} onOpenChange={onOpenChange}>
+    <DialogTrigger isOpen={isOpen} defaultOpen={defaultOpen} onOpenChange={onOpenChange}>
       {children}
     </DialogTrigger>
   )
 }
 
-interface PopoverTriggerProps extends ComponentProps<'span'> {
-  render?: (props: ComponentProps<'span'>) => ReactElement
+interface PopoverTriggerProps extends Omit<AriaButtonProps, 'className' | 'children' | 'style'> {
+  className?: string
+  children?: ReactNode
+  ref?: Ref<HTMLButtonElement>
 }
 
-function PopoverTrigger({ render, className, ...props }: PopoverTriggerProps) {
-  const domProps = { ...props, className: cx('inline-flex', className) }
-  if (render) return render(domProps)
-  return <span data-slot="popover-trigger" {...domProps} />
-}
-
-function PopoverContent({ className, ...props }: AriaPopoverProps & { className?: string }) {
+function PopoverTrigger({ className, children, ref, ...props }: PopoverTriggerProps) {
   return (
-    <AriaPopover
-      data-slot="popover"
+    <AriaButton
+      ref={ref}
+      data-slot="popover-trigger"
       {...props}
       className={cx(
-        'overflow-hidden rounded-xl border border-border-button-default bg-background-primary-default p-1 shadow-dropdown outline-none',
-        'data-[entering]:animate-in data-[entering]:fade-in-0 data-[entering]:zoom-in-95 data-[entering]:duration-150',
-        'data-[exiting]:animate-out data-[exiting]:fade-out data-[exiting]:zoom-out-95 data-[exiting]:duration-100',
+        'inline-flex cursor-[var(--cursor-interactive)] items-center outline-none',
+        'data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
         className,
       )}
-    />
+    >
+      {children}
+    </AriaButton>
   )
 }
 
-function PopoverDialog({
-  className,
-  ...props
-}: {
+interface PopoverContentProps extends Omit<AriaPopoverProps, 'className' | 'children'> {
   className?: string
-  'aria-label'?: string
-  children?: React.ReactNode
-}) {
-  return <Dialog data-slot="popover-dialog" {...props} className={cx('outline-none', className)} />
+  children?: ReactNode
+}
+
+function PopoverContent({ className, children, offset = 8, ...props }: PopoverContentProps) {
+  return (
+    <AriaPopover
+      data-slot="popover"
+      offset={offset}
+      {...props}
+      className={cx('max-w-[calc(100vw-32px)] p-2.5', OVERLAY_SURFACE, OVERLAY_MOTION, className)}
+    >
+      {children}
+    </AriaPopover>
+  )
+}
+
+interface PopoverDialogProps extends Omit<DialogProps, 'className' | 'children'> {
+  className?: string
+  children?: ReactNode
+}
+
+function PopoverDialog({ className, children, ...props }: PopoverDialogProps) {
+  return (
+    <Dialog data-slot="popover-dialog" {...props} className={cx('outline-none', className)}>
+      {children}
+    </Dialog>
+  )
 }
 
 export const Popover = Object.assign(PopoverRoot, {

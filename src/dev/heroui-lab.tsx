@@ -265,7 +265,7 @@ function SidebarProbe() {
         <HButton
           size="small"
           variant="secondary"
-          onClick={() =>
+          onPress={() =>
             setAttrs(
               Array.from(rootRef.current?.querySelectorAll('[data-row-id]') ?? []).map(
                 (el) => el.getAttribute('data-row-id') ?? '?',
@@ -357,11 +357,11 @@ function PromptInputProbe() {
           {stops}
         </span>
         {' · '}
-        <HButton size="small" variant="ghost" onClick={() => setStreaming((s) => !s)}>
+        <HButton size="small" variant="ghost" onPress={() => setStreaming((s) => !s)}>
           {streaming ? '结束流式' : '模拟流式'}
         </HButton>
         {' · '}
-        <HButton size="small" variant="ghost" onClick={() => setSteerable((s) => !s)}>
+        <HButton size="small" variant="ghost" onPress={() => setSteerable((s) => !s)}>
           {steerable ? '关掉可插话' : '开可插话'}
         </HButton>
       </p>
@@ -474,7 +474,7 @@ export default function HeroUiLab() {
           <div data-slot="heroui-lab-report-actions" className="flex gap-2">
             <HButton
               size="small"
-              onClick={() => {
+              onPress={() => {
                 setReport(collect())
                 navigator.clipboard?.writeText(asText).then(
                   () => {
@@ -504,7 +504,7 @@ export default function HeroUiLab() {
               <HButton>Primary</HButton>
               <HButton variant="secondary">Secondary</HButton>
               <HButton variant="ghost">Ghost</HButton>
-              <HButton disabled>Disabled</HButton>
+              <HButton isDisabled>Disabled</HButton>
               <HProgressCircle isIndeterminate aria-label="加载中" />
             </div>
 
@@ -516,8 +516,8 @@ export default function HeroUiLab() {
             </div>
 
             <div data-slot="heroui-lab-inputs" className="max-w-sm space-y-2">
-              <HInput fullWidth placeholder="Input：单行输入" />
-              <HTextArea fullWidth placeholder="TextArea：多行输入" rows={2} />
+              <HInput placeholder="Input：单行输入" />
+              <HTextArea placeholder="TextArea：多行输入" rows={2} />
             </div>
 
             {/* HeroUI declares `.button`'s height as a plain rule, not inside a
@@ -713,8 +713,8 @@ export default function HeroUiLab() {
                       类能不能压过它，取决于 index.css 里的 layer() 写没写对——上面
                       报告里那条 display 读数测的就是这件事。 */}
                   <ProContextMenu.Trigger className="block w-full">
-                    <HTextField fullWidth aria-label="发送消息">
-                      <HInputGroup fullWidth className="flex flex-col gap-2 rounded-2xl py-2">
+                    <HTextField aria-label="发送消息">
+                      <HInputGroup className="flex flex-col gap-2 rounded-2xl py-2">
                         <div data-slot="heroui-lab-composer-textarea" className="relative w-full">
                           <HInputGroup.TextArea
                             rows={1}

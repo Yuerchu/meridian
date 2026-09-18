@@ -1,12 +1,4 @@
 import {
-  Menu,
-  MenuItem,
-  MenuTrigger,
-  Popover,
-  Separator as AriaSeparator,
-  type MenuItemProps,
-} from 'react-aria-components'
-import {
   createContext,
   useCallback,
   useContext,
@@ -16,7 +8,39 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react'
+import {
+  Menu,
+  MenuItem,
+  MenuTrigger,
+  Popover as AriaPopover,
+  Separator as AriaSeparator,
+  type MenuItemProps,
+} from 'react-aria-components'
 import { cx } from '@/utils/cx'
+import { MENU_ITEM, MENU_ITEM_ACTIVE, MENU_POPOVER_SURFACE } from './dropdown/menu-styles'
+import { OVERLAY_MOTION } from './overlay-motion'
+
+/**
+ * A right-click menu: React Aria's `Menu` in a `Popover` anchored to where the
+ * pointer was, not to an element. The anchor is a zero-size fixed span moved to
+ * the event's coordinates; RAC positions and flips against it like any trigger.
+ *
+ *   <ContextMenu>
+ *     <ContextMenu.Trigger render={(props) => <Row {...props} />}>…</ContextMenu.Trigger>
+ *     <ContextMenu.Popover>
+ *       <ContextMenu.Menu aria-label="…">
+ *         <ContextMenu.Item id="copy" onAction={…}>Copy</ContextMenu.Item>
+ *       </ContextMenu.Menu>
+ *     </ContextMenu.Popover>
+ *   </ContextMenu>
+ *
+ * `Trigger` merges its own `onContextMenu` with whatever the caller passes
+ * (`onPointerDown`, `onContextMenuCapture`, …) rather than replacing it; the
+ * sidebar records which row was hit on those two events before the menu asks
+ * to open. Its `render` prop hands the DOM props to a caller's own element so
+ * a whole message group can be the trigger without a wrapper changing its
+ * layout.
+ */
 
 interface ContextMenuState {
   open: boolean
@@ -63,21 +87,23 @@ interface ContextMenuTriggerProps extends Omit<ComponentProps<'div'>, 'children'
   children?: ReactNode
 }
 
-function ContextMenuTrigger({ className, render, children, ...props }: ContextMenuTriggerProps) {
+function ContextMenuTrigger({ className, render, children, onContextMenu, ...props }: ContextMenuTriggerProps) {
   const { setOpen, setAnchorPoint } = useContext(ContextMenuContext)
 
   const handleContextMenu = useCallback(
-    (e: React.MouseEvent) => {
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      onContextMenu?.(e)
+      if (e.defaultPrevented) return
       e.preventDefault()
       setAnchorPoint({ x: e.clientX, y: e.clientY })
       setOpen(true)
     },
-    [setOpen, setAnchorPoint],
+    [onContextMenu, setOpen, setAnchorPoint],
   )
 
   const domProps: ComponentProps<'div'> = {
     ...props,
-    className: cx('block', className),
+    className: cx(className),
     onContextMenu: handleContextMenu,
     children,
   }
@@ -86,15 +112,16 @@ function ContextMenuTrigger({ className, render, children, ...props }: ContextMe
   return <div data-slot="context-menu-trigger" {...domProps} />
 }
 
-function ContextMenuPopover({ children }: { children?: ReactNode }) {
+function ContextMenuPopover({ className, children }: { className?: string; children?: ReactNode }) {
   const { open, anchorPoint, setOpen } = useContext(ContextMenuContext)
-  const triggerRef = useRef<HTMLSpanElement>(null)
+  const anchorRef = useRef<HTMLSpanElement>(null)
 
   return (
     <>
       <span
-        ref={triggerRef}
+        ref={anchorRef}
         data-slot="context-menu-anchor"
+        aria-hidden
         style={{
           position: 'fixed',
           left: anchorPoint.x,
@@ -105,18 +132,15 @@ function ContextMenuPopover({ children }: { children?: ReactNode }) {
         }}
       />
       <MenuTrigger isOpen={open} onOpenChange={setOpen}>
-        <Popover
-          triggerRef={triggerRef}
+        <AriaPopover
+          triggerRef={anchorRef}
           data-slot="context-menu-popover"
           placement="bottom start"
-          className={cx(
-            'min-w-[12rem] overflow-hidden rounded-xl border border-border-button-default bg-background-primary-default p-1 shadow-dropdown outline-none',
-            'data-[entering]:animate-in data-[entering]:fade-in-0 data-[entering]:zoom-in-95 data-[entering]:duration-150',
-            'data-[exiting]:animate-out data-[exiting]:fade-out data-[exiting]:zoom-out-95 data-[exiting]:duration-100',
-          )}
+          offset={2}
+          className={cx('min-w-48 p-2', MENU_POPOVER_SURFACE, OVERLAY_MOTION, 'w-auto', className)}
         >
           {children}
-        </Popover>
+        </AriaPopover>
       </MenuTrigger>
     </>
   )
@@ -129,37 +153,42 @@ interface ContextMenuMenuProps {
 }
 
 function ContextMenuMenu({ className, ...props }: ContextMenuMenuProps) {
-  return <Menu data-slot="context-menu" {...props} className={cx('outline-none', className)} />
+  return <Menu data-slot="context-menu" {...props} className={cx('flex flex-col gap-1 outline-none', className)} />
 }
 
-interface ContextMenuItemProps extends MenuItemProps {
+interface ContextMenuItemProps extends Omit<MenuItemProps, 'className' | 'style'> {
   variant?: 'default' | 'danger'
   className?: string
 }
 
-function ContextMenuItem({ className, variant, ...props }: ContextMenuItemProps) {
+function ContextMenuItem({ className, variant = 'default', ...props }: ContextMenuItemProps) {
   return (
     <MenuItem
       data-slot="context-menu-item"
+      data-variant={variant}
       {...props}
-      className={cx(
-        'flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm outline-none select-none',
-        'data-[focused]:bg-dropdown-item-hover-background data-[focused]:text-text-primary',
-        'data-[disabled]:opacity-50',
-        variant === 'danger' &&
-          'text-danger-soft-foreground data-[focused]:bg-danger-soft data-[focused]:text-danger-soft-foreground',
-        className,
-      )}
+      className={(state) =>
+        cx(
+          MENU_ITEM,
+          'px-2 py-1.5 text-body-medium',
+          state.isFocused && MENU_ITEM_ACTIVE,
+          state.isDisabled && 'cursor-not-allowed text-text-disabled',
+          variant === 'danger' && [
+            'text-status-danger-soft-foreground',
+            state.isFocused && 'bg-status-danger-soft text-status-danger-soft-foreground',
+          ],
+          className,
+        )
+      }
     />
   )
 }
 
-function ContextMenuSeparator({ className, ...props }: ComponentProps<'div'>) {
+function ContextMenuSeparator({ className }: { className?: string }) {
   return (
     <AriaSeparator
       data-slot="context-menu-separator"
-      {...props}
-      className={cx('my-1 h-px bg-separator-border', className)}
+      className={cx('-mx-2 my-1 h-px shrink-0 bg-border-button-default', className)}
     />
   )
 }

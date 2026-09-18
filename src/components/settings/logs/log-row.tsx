@@ -102,7 +102,7 @@ function LogRowImpl({ entry }: { entry: LogEntryInfoResponse }) {
           variant="ghost"
           size="small"
           aria-label={t('settings.about.logs.copyRecord')}
-          onClick={onCopy}
+          onPress={onCopy}
           // Focus-visible alone does not rescue this on a touch screen, where a
           // tap grants no focus ring — the only action on the row would be
           // permanently invisible.

@@ -163,7 +163,7 @@
   "chat.plan.enterTitle": "Suggests planning first",
   "chat.plan.startPlanning": "Plan first",
   "chat.plan.keepBuilding": "Just build it",
-  "chat.plan.title": "Proposed plan",
+  "chat.plan.title": "Plan",
   "chat.plan.approve": "Approve and start",
   "chat.plan.revise": "Send back",
   "chat.plan.sendBack": "Submit feedback",
@@ -1252,7 +1252,6 @@
   "common.apply": "Apply",
   "common.undo": "Undo",
   "common.redo": "Redo",
-  "chat.plan.title": "Plan",
   "chat.plan.review": "Review plan",
   "chat.plan.reviewReady": "The plan is ready for your review.",
   "chat.plan.continuationNeedsAttention": "The plan decision is saved, but continuing with the agent needs your attention.",
@@ -1345,5 +1344,7 @@
   "planReview.discard": "Discard draft",
   "planReview.requestChanges": "Request changes",
   "planReview.approve": "Approve plan",
-  "settings.about.grokBuildNotice": "Plan-review architecture is adapted from Grok Build. Copied Apache-2.0 code, where present, retains its license and modification notice."
+  "settings.about.grokBuildNotice": "Plan-review architecture is adapted from Grok Build. Copied Apache-2.0 code, where present, retains its license and modification notice.",
+  "dataGrid.expandRow": "Expand row {{label}}",
+  "dataGrid.collapseRow": "Collapse row {{label}}"
 }

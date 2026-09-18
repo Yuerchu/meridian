@@ -5,19 +5,18 @@ type AlertStatus = 'default' | 'success' | 'warning' | 'danger' | 'info'
 
 interface AlertProps extends ComponentProps<'div'> {
   status?: AlertStatus
-  variant?: string
   icon?: ReactNode
 }
 
 const statusClasses: Record<AlertStatus, string> = {
   default: 'bg-background-secondary-default text-text-primary',
-  success: 'bg-success-soft text-success-soft-foreground',
-  warning: 'bg-warning-soft text-warning-soft-foreground',
-  danger: 'bg-danger-soft text-danger-soft-foreground',
-  info: 'bg-[var(--info)]/10 text-[var(--info-soft-foreground)]',
+  success: 'bg-status-success-soft text-status-success-soft-foreground',
+  warning: 'bg-status-warning-soft text-status-warning-soft-foreground',
+  danger: 'bg-status-danger-soft text-status-danger-soft-foreground',
+  info: 'bg-status-info-soft text-status-info-soft-foreground',
 }
 
-function AlertRoot({ className, status = 'default', variant: _variant, icon, children, ...props }: AlertProps) {
+function AlertRoot({ className, status = 'default', icon, children, ...props }: AlertProps) {
   return (
     <div
       data-slot="alert"

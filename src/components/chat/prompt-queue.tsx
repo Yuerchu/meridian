@@ -109,7 +109,7 @@ export function PromptQueue({
           </span>
           {/* The only way to restart a held queue; the expanded hit area is
               what makes it reachable with a finger. */}
-          <Button size="small" variant="ghost" className="touch-hitbox px-2 text-xs" onClick={onRelease}>
+          <Button size="small" variant="ghost" className="touch-hitbox px-2 text-xs" onPress={onRelease}>
             {t('chat.queue.release')}
           </Button>
         </div>
@@ -179,14 +179,14 @@ export function PromptQueue({
                   {!pinned && (
                     <>
                       <PromptInput.Queue.Item.Action
-                        disabled={index === 0 || !movable(items[index - 1])}
-                        onClick={() => move(index, -1)}
+                        isDisabled={index === 0 || !movable(items[index - 1])}
+                        onPress={() => move(index, -1)}
                       >
                         {t('chat.queue.moveUp')}
                       </PromptInput.Queue.Item.Action>
                       <PromptInput.Queue.Item.Action
-                        disabled={index === items.length - 1 || !movable(items[index + 1])}
-                        onClick={() => move(index, 1)}
+                        isDisabled={index === items.length - 1 || !movable(items[index + 1])}
+                        onPress={() => move(index, 1)}
                       >
                         {t('chat.queue.moveDown')}
                       </PromptInput.Queue.Item.Action>
@@ -200,18 +200,18 @@ export function PromptQueue({
                       not optional: passing only the label replaces the default
                       children, which is how the mark disappeared. */}
                   {interject ? (
-                    <PromptInput.Queue.Item.Action onClick={() => onSetDelivery(item.id, 'follow_up')}>
+                    <PromptInput.Queue.Item.Action onPress={() => onSetDelivery(item.id, 'follow_up')}>
                       {t('chat.queue.followUp')}
                     </PromptInput.Queue.Item.Action>
                   ) : (
-                    <PromptInput.Queue.Item.Steer onClick={() => onSetDelivery(item.id, 'interject')}>
+                    <PromptInput.Queue.Item.Steer onPress={() => onSetDelivery(item.id, 'interject')}>
                       <SteerMark />
                       {t('chat.queue.interject')}
                     </PromptInput.Queue.Item.Steer>
                   )}
                   <PromptInput.Queue.Item.Remove
                     aria-label={t('chat.queue.remove')}
-                    onClick={() => onRemove(item.id)}
+                    onPress={() => onRemove(item.id)}
                   />
                 </PromptInput.Queue.Item.Actions>
               )}

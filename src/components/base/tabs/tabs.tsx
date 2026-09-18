@@ -133,7 +133,7 @@ export function Tab({ className, children, icon: Icon, count, ref, ...props }: T
       {...props}
       className={(state) =>
         cx(
-          'relative inline-flex cursor-pointer items-center gap-2.5 px-2.5 py-2 whitespace-nowrap',
+          'relative inline-flex cursor-[var(--cursor-interactive)] items-center gap-2.5 px-2.5 py-2 whitespace-nowrap',
           'outline-none transition-colors duration-150 ease',
           'focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-border-focus-ring',
           state.isDisabled && 'cursor-not-allowed opacity-50',
@@ -158,7 +158,7 @@ export function Tab({ className, children, icon: Icon, count, ref, ...props }: T
                 'inline-flex items-center justify-center rounded-sm px-1 py-px text-caption-1-medium whitespace-nowrap',
                 isSelected
                   ? 'bg-tab-count-selected-background text-accent-600'
-                  : 'bg-black/10 text-text-primary opacity-50',
+                  : 'bg-background-tertiary-default text-text-primary opacity-50',
               )}
             >
               {count}

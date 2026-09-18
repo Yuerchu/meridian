@@ -1,5 +1,7 @@
 /* boardui foundation: tailwindcss + theme tokens + typography + animations */
 @import './styles/globals.css';
+/* Meridian's own semantics on boardui primitives: fonts, status, backdrop. */
+@import './styles/meridian.css';
 /* tw-animate-css for shadcn-compatible enter/exit animations */
 @import 'tw-animate-css';
 /* Meridian token → Tailwind utility mapping (bridges Meridian's :root vars) */
