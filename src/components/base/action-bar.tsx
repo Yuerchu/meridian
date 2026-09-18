@@ -21,7 +21,9 @@ function ActionBarRoot({ className, isOpen, ...props }: ActionBarProps) {
 }
 
 function ActionBarPrefix({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="action-bar-prefix" {...props} className={cx('text-sm text-text-secondary', className)} />
+  return (
+    <div data-slot="action-bar-prefix" {...props} className={cx('text-body-regular text-text-secondary', className)} />
+  )
 }
 
 function ActionBarContent({ className, ...props }: ComponentProps<'div'>) {

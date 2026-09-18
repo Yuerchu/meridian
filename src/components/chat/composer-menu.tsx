@@ -364,7 +364,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
                         />
                         <CellSwitch.Label
                           data-slot="composer-menu-item-label"
-                          className="text-left text-sm font-normal text-inherit"
+                          className="text-left text-body-regular text-inherit"
                         >
                           {entry.label}
                         </CellSwitch.Label>
@@ -406,7 +406,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
                       // in a `p-1` list inside the 24px popover: at `rounded-md`
                       // the popover's own curve cuts into the first and last row's
                       // hover fill.
-                      'flex w-full items-center justify-start gap-2 rounded-2xl px-1.5 py-1 text-left text-sm font-normal outline-none',
+                      'flex w-full items-center justify-start gap-2 rounded-2xl px-1.5 py-1 text-left text-body-regular outline-none',
                       'focus-visible:ring-3 focus-visible:ring-border-focus-ring/50',
                       isHovered
                         ? 'bg-background-secondary-default text-text-primary'
@@ -427,7 +427,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
                       <span
                         data-slot="composer-menu-item-value"
                         className={cx(
-                          'text-xs truncate max-w-24',
+                          'text-caption-1-regular truncate max-w-24',
                           entry.tone === 'warning'
                             ? 'text-status-warning-soft-foreground'
                             : entry.tone === 'info'
@@ -468,7 +468,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
                           {heading && (
                             <div
                               data-slot="composer-menu-detail-heading"
-                              className="px-1.5 pt-2 pb-1 text-xs text-text-secondary"
+                              className="px-1.5 pt-2 pb-1 text-caption-1-regular text-text-secondary"
                             >
                               {heading}
                             </div>
@@ -484,7 +484,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
                             }}
                             className={cx(
                               // eslint-disable-next-line no-restricted-syntax -- a two-line option row: the label with its description underneath
-                              'w-full h-auto justify-start gap-2 rounded-2xl px-1.5 py-1 text-sm font-normal',
+                              'w-full h-auto justify-start gap-2 rounded-2xl px-1.5 py-1 text-body-regular',
                               opt.selected
                                 ? 'bg-background-secondary-default text-text-primary'
                                 : 'text-text-secondary hover:bg-background-primary-hover/50 hover:text-text-primary',
@@ -502,7 +502,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
                               {opt.description && (
                                 <span
                                   data-slot="composer-menu-detail-description"
-                                  className="block truncate text-xs text-text-secondary"
+                                  className="block truncate text-caption-1-regular text-text-secondary"
                                 >
                                   {opt.description}
                                 </span>

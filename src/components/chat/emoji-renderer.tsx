@@ -105,7 +105,7 @@ export function StickerImage({
         <Button
           variant="ghost"
           size="small"
-          className="touch-hitbox px-1 text-xs"
+          className="touch-hitbox px-1 text-caption-1-regular"
           onPress={() => setAttempt((current) => current + 1)}
         >
           <ArrowsRotateRight aria-hidden className="size-3.5" />

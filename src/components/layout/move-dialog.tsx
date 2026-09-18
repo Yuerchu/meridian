@@ -57,7 +57,10 @@ export function MoveDialog({
         {label}
       </span>
       {id === currentProjectId && (
-        <span data-slot="move-dialog-current-location" className="ml-auto shrink-0 text-xs text-text-secondary">
+        <span
+          data-slot="move-dialog-current-location"
+          className="ml-auto shrink-0 text-caption-1-regular text-text-secondary"
+        >
           {t('moveDialog.currentLocation')}
         </span>
       )}
@@ -73,7 +76,7 @@ export function MoveDialog({
           </Modal.Header>
           <Modal.Body className="flex flex-col gap-1">
             {error && (
-              <p data-slot="move-dialog-error" role="alert" className="mb-1 text-xs text-status-danger">
+              <p data-slot="move-dialog-error" role="alert" className="mb-1 text-caption-1-regular text-status-danger">
                 {error}
               </p>
             )}

@@ -33,7 +33,7 @@ interface PromptQueueProps {
  */
 function SteerMark() {
   return (
-    <span aria-hidden className="text-text-secondary text-xs" data-slot="queue-steer-mark">
+    <span aria-hidden className="text-text-secondary text-caption-1-regular" data-slot="queue-steer-mark">
       ↳
     </span>
   )
@@ -79,7 +79,7 @@ export function PromptQueue({
   ) : streaming ? (
     <div
       data-slot="queue-current"
-      className="flex items-center gap-2 border-b border-separator-border px-3 py-2 text-xs text-text-secondary"
+      className="flex items-center gap-2 border-b border-separator-border px-3 py-2 text-caption-1-regular text-text-secondary"
     >
       <Spinner size="sm" className="shrink-0" />
       <span data-slot="queue-running-label">{t('chat.queue.running')}</span>
@@ -104,7 +104,7 @@ export function PromptQueue({
       {held && (
         <div
           data-slot="queue-held"
-          className="flex items-center gap-2 px-3 py-2 text-xs text-status-warning"
+          className="flex items-center gap-2 px-3 py-2 text-caption-1-regular text-status-warning"
           role="status"
         >
           <TriangleExclamation className="size-4 shrink-0" />
@@ -113,7 +113,7 @@ export function PromptQueue({
           </span>
           {/* The only way to restart a held queue; the expanded hit area is
               what makes it reachable with a finger. */}
-          <Button size="small" variant="ghost" className="touch-hitbox px-2 text-xs" onPress={onRelease}>
+          <Button size="small" variant="ghost" className="touch-hitbox px-2 text-caption-1-regular" onPress={onRelease}>
             {t('chat.queue.release')}
           </Button>
         </div>

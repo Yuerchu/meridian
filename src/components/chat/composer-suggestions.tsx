@@ -80,14 +80,14 @@ export function ComposerSuggestions({
                   <span
                     data-slot="composer-suggestion-icon"
                     aria-hidden
-                    className="size-4 shrink-0 text-center text-xs text-text-secondary"
+                    className="size-4 shrink-0 text-center text-caption-1-regular text-text-secondary"
                   >
                     ·
                   </span>
                 )}
                 <span
                   data-slot="composer-suggestion-label"
-                  className={cx('min-w-0 truncate text-left text-sm font-medium', item.kind !== 'command' && 'flex-1')}
+                  className={cx('min-w-0 truncate text-left text-body-medium', item.kind !== 'command' && 'flex-1')}
                 >
                   {item.label}
                 </span>
@@ -95,7 +95,7 @@ export function ComposerSuggestions({
                   <span
                     data-slot="composer-suggestion-detail"
                     className={cx(
-                      'min-w-0 truncate text-left text-xs text-text-secondary',
+                      'min-w-0 truncate text-left text-caption-1-regular text-text-secondary',
                       item.kind !== 'command' && 'max-w-1/2',
                     )}
                   >

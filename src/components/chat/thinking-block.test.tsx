@@ -62,7 +62,7 @@ describe('ThinkingRow', () => {
     const title = screen.getByText('Filtering endpoint findings')
     expect(title.tagName).toBe('STRONG')
     const panel = title.closest('[data-slot="markdown-content"]')
-    expect(panel?.className).toContain('text-xs')
+    expect(panel?.className).toContain('text-caption-1-regular')
     expect(panel?.className).toContain('text-text-secondary')
     expect(screen.getByText('Only the auth ones.')).toBeInTheDocument()
   })

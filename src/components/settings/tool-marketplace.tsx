@@ -136,7 +136,7 @@ function CustomToolEditor({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="my_tool"
-            className="font-mono text-xs"
+            className="font-mono text-caption-1-regular"
           />
         </TextField>
         <SettingsSelect
@@ -163,7 +163,7 @@ function CustomToolEditor({
           value={command}
           onChange={(e) => setCommand(e.target.value)}
           placeholder="python script.py"
-          className="font-mono text-xs"
+          className="font-mono text-caption-1-regular"
         />
       </TextField>
       <TextField>
@@ -173,7 +173,7 @@ function CustomToolEditor({
           value={argsTemplate}
           onChange={(e) => setArgsTemplate(e.target.value)}
           placeholder="--input {{input}} --output {{output}}"
-          className="font-mono text-xs"
+          className="font-mono text-caption-1-regular"
         />
         <Description>{t('settings.tools.argsTemplateHint')}</Description>
       </TextField>
@@ -190,12 +190,16 @@ function CustomToolEditor({
         />
       </TextField>
       {invalid.size > 0 && (
-        <p data-slot="custom-tool-validation" role="alert" className="text-xs text-status-danger">
+        <p data-slot="custom-tool-validation" role="alert" className="text-caption-1-regular text-status-danger">
           {invalid.has('timeout') ? t('settings.tools.invalidTimeout') : t('settings.tools.requiredFields')}
         </p>
       )}
       {saveError && (
-        <p data-slot="custom-tool-save-error" role="alert" className="text-xs text-status-danger break-all">
+        <p
+          data-slot="custom-tool-save-error"
+          role="alert"
+          className="text-caption-1-regular text-status-danger break-all"
+        >
           {saveError}
         </p>
       )}
@@ -286,7 +290,7 @@ export function ToolMarketplace() {
               <div
                 key={tool.name}
                 data-slot="builtin-tool-row"
-                className="flex items-center gap-2 px-3 py-1.5 text-xs border border-border-button-default rounded-lg"
+                className="flex items-center gap-2 px-3 py-1.5 text-caption-1-regular border border-border-button-default rounded-lg"
               >
                 <Wrench className="w-3.5 h-3.5 text-text-secondary flex-shrink-0" />
                 <span data-slot="builtin-tool-name" className="font-mono flex-1">
@@ -305,7 +309,7 @@ export function ToolMarketplace() {
           title={t('settings.tools.onebotSection')}
           summary={builtinTools.filter((tool) => tool.source === 'onebot').length}
         >
-          <p data-slot="onebot-tool-hint" className="text-xs text-text-secondary">
+          <p data-slot="onebot-tool-hint" className="text-caption-1-regular text-text-secondary">
             {t('settings.tools.onebotHint')}
           </p>
           <div data-slot="onebot-tool-list" className="grid grid-cols-1 gap-1">
@@ -315,7 +319,7 @@ export function ToolMarketplace() {
                 <div
                   key={tool.name}
                   data-slot="onebot-tool-row"
-                  className="flex items-center gap-2 px-3 py-1.5 text-xs border border-border-button-default rounded-lg"
+                  className="flex items-center gap-2 px-3 py-1.5 text-caption-1-regular border border-border-button-default rounded-lg"
                 >
                   <Wrench className="w-3.5 h-3.5 text-text-secondary flex-shrink-0" />
                   <span data-slot="onebot-tool-name" className="font-mono flex-1">
@@ -344,7 +348,7 @@ export function ToolMarketplace() {
 
       <div data-slot="custom-tools">
         <div data-slot="custom-tools-header" className="flex items-center justify-between mb-2">
-          <h3 data-slot="custom-tools-title" className="text-sm font-medium">
+          <h3 data-slot="custom-tools-title" className="text-body-medium">
             {t('settings.tools.customSection')}
           </h3>
           <Button variant="outline" onPress={() => setShowCreate(!showCreate)}>
@@ -385,7 +389,7 @@ export function ToolMarketplace() {
                       `ms-auto` and `shrink-0`, which only mean anything inside a
                       flex container. `text-start` undoes the button element's
                       centred UA default. */}
-                  <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2 text-start text-xs transition-colors outline-none hover:bg-background-primary-hover/30 focus-visible:bg-background-secondary-default/30">
+                  <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2 text-start text-caption-1-regular transition-colors outline-none hover:bg-background-primary-hover/30 focus-visible:bg-background-secondary-default/30">
                     <Terminal className="w-3.5 h-3.5 shrink-0 text-text-secondary" />
                     <span data-slot="custom-tool-name" className="font-mono min-w-0 flex-1 truncate">
                       {ct.name}
@@ -438,7 +442,7 @@ export function ToolMarketplace() {
       </div>
 
       <div data-slot="tool-presets">
-        <h3 data-slot="tool-presets-title" className="text-sm font-medium mb-2">
+        <h3 data-slot="tool-presets-title" className="text-body-medium mb-2">
           {t('settings.tools.presetsSection')}
         </h3>
         <div data-slot="tool-preset-list" className="space-y-1">
@@ -448,9 +452,9 @@ export function ToolMarketplace() {
               <div
                 key={preset.id}
                 data-slot="tool-preset-row"
-                className="flex items-center gap-2 px-3 py-2 text-xs border border-border-button-default rounded-lg"
+                className="flex items-center gap-2 px-3 py-2 text-caption-1-regular border border-border-button-default rounded-lg"
               >
-                <span data-slot="tool-preset-name" className="font-medium flex-1">
+                <span data-slot="tool-preset-name" className="text-caption-1-medium flex-1">
                   {preset.name}
                 </span>
                 <span data-slot="tool-preset-count" className="text-text-secondary">

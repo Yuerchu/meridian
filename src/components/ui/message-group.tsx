@@ -18,7 +18,7 @@ import { cx } from '@/utils/cx'
  * siblings.
  */
 
-const base = 'group/message relative flex w-full min-w-0 text-sm'
+const base = 'group/message relative flex w-full min-w-0 text-body-regular'
 
 /** What the person said: a column against the right edge.
  *
@@ -95,7 +95,7 @@ function MessageGroupHeader({ className, ...props }: React.ComponentProps<'div'>
     <div
       data-slot="message-group-header"
       className={cx(
-        'mb-0.5 flex max-w-full min-w-0 items-center gap-2 text-xs font-medium text-button-ghost-foreground',
+        'mb-0.5 flex max-w-full min-w-0 items-center gap-2 text-caption-1-medium text-button-ghost-foreground',
         className,
       )}
       {...props}
@@ -110,7 +110,7 @@ function MessageGroupFooter({ className, ...props }: React.ComponentProps<'div'>
     <div
       data-slot="message-group-footer"
       className={cx(
-        'mt-1 flex max-w-full min-w-0 items-center gap-2 text-xs font-medium text-text-secondary opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 pointer-coarse:opacity-100',
+        'mt-1 flex max-w-full min-w-0 items-center gap-2 text-caption-1-medium text-text-secondary opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 pointer-coarse:opacity-100',
         className,
       )}
       {...props}

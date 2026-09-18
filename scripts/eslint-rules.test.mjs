@@ -163,6 +163,8 @@ describe('ui selector restrictions', () => {
     ['legacy bg-default under a variant', `<div className="hover:bg-default/50" />`, /HeroUI token/],
     ['legacy status', `<span className="text-danger-soft-foreground" />`, /HeroUI token/],
     ['legacy shadow', `<div className="shadow-surface" />`, /HeroUI token/],
+    ['tailwind type size', `<p className="text-sm text-text-secondary" />`, /composite scale/],
+    ['bare font weight', `<span className="truncate font-medium" />`, /Bare font weight/],
     [
       'Button text-danger',
       `<Button variant="ghost" className="ml-auto text-status-danger hover:text-status-danger" />`,
@@ -224,6 +226,8 @@ describe('ui selector restrictions', () => {
     ['ellipsis in text', `<p>Loading…</p>`],
     ['multiplication count', `<span>×{count}</span>`],
     ['Label component', `<Label>A</Label>`],
+    ['composite type', `<p className="text-body-medium text-caption-1-semibold" />`],
+    ['prefixed weight', `<p className="[&_strong]:font-medium prose-headings:font-semibold" />`],
   ]
   for (const [name, code] of clean) {
     it(`accepts ${name}`, () => {

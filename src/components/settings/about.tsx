@@ -74,7 +74,7 @@ function InfoRow({ label, value, action }: { label: string; value?: string; acti
           {value === undefined ? (
             <Skeleton className="h-4 w-28 rounded-md" />
           ) : (
-            <Hint className="text-text-secondary min-w-0 truncate text-xs select-text" label={value}>
+            <Hint className="text-text-secondary min-w-0 truncate text-caption-1-regular select-text" label={value}>
               {value}
             </Hint>
           )}
@@ -141,7 +141,7 @@ export function About() {
         </div>
         <div data-slot="about-identity" className="min-w-0 space-y-1.5">
           <div data-slot="about-name-row" className="flex flex-wrap items-center gap-2">
-            <span data-slot="about-name" className="shimmer shimmer-duration-3000 text-xl font-semibold">
+            <span data-slot="about-name" className="shimmer shimmer-duration-3000 text-title-2-semibold">
               {t('app.name')}
             </span>
             {info && (
@@ -150,7 +150,7 @@ export function About() {
               </Chip>
             )}
           </div>
-          <p data-slot="about-description" className="text-text-secondary text-sm leading-relaxed">
+          <p data-slot="about-description" className="text-text-secondary text-body-regular leading-relaxed">
             {t('settings.about.description')}
           </p>
         </div>
@@ -259,7 +259,7 @@ export function About() {
 
       <div
         data-slot="about-footer"
-        className="border-border-button-default text-text-secondary space-y-2 border-t pt-4 text-xs"
+        className="border-border-button-default text-text-secondary space-y-2 border-t pt-4 text-caption-1-regular"
       >
         <p data-slot="about-footer-line">{t('settings.about.copyright')}</p>
         <p data-slot="about-footer-line">{t('settings.about.notice')}</p>

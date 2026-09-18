@@ -39,7 +39,7 @@ export function SelectTextModal({
           <Modal.CloseTrigger />
           <Modal.Header>
             <Modal.Heading>{t('contextMenu.selectText')}</Modal.Heading>
-            <p data-slot="select-text-hint" className="mt-1.5 text-sm text-text-secondary">
+            <p data-slot="select-text-hint" className="mt-1.5 text-body-regular text-text-secondary">
               {t('contextMenu.selectTextHint')}
             </p>
           </Modal.Header>
@@ -49,7 +49,7 @@ export function SelectTextModal({
                 selection off, and this is the one place that must have it. */}
             <p
               data-slot="select-text-body"
-              className="text-sm leading-relaxed whitespace-pre-wrap wrap-break-word select-text"
+              className="text-body-regular leading-relaxed whitespace-pre-wrap wrap-break-word select-text"
             >
               {text}
             </p>

@@ -86,7 +86,7 @@ function ThinkingTitles({ titles, isStreaming }: { titles: string[]; isStreaming
     <div
       data-slot="bubble-thinking"
       data-shape="titles"
-      className="mb-1.5 flex min-w-0 flex-col gap-0.5 text-xs text-text-secondary"
+      className="mb-1.5 flex min-w-0 flex-col gap-0.5 text-caption-1-regular text-text-secondary"
     >
       {titles.map((title, i) => {
         const live = isStreaming && i === titles.length - 1
@@ -140,7 +140,7 @@ function ThinkingFold({ text, panelKey, isStreaming }: { text: string; panelKey:
             // Smaller and quieter than the answer under it, so the two read
             // as different things; a part's title is a heading of the thought,
             // not of the reply.
-            className="text-xs text-text-secondary [&_strong]:font-medium"
+            className="text-caption-1-regular text-text-secondary [&_strong]:font-medium"
           />
         </div>
       )}

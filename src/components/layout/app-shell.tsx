@@ -198,7 +198,7 @@ export function AppShell(props: ShellProps) {
           event.preventDefault()
           document.getElementById('main-content')?.focus({ preventScroll: true })
         }}
-        className="sr-only focus:not-sr-only focus:fixed focus:start-2 focus:top-2 focus:z-100 focus:rounded-md focus:bg-background-primary-default focus:px-3 focus:py-2 focus:text-sm focus:text-text-primary focus:shadow-dropdown focus:outline-none focus:ring-2 focus:ring-border-focus-ring"
+        className="sr-only focus:not-sr-only focus:fixed focus:start-2 focus:top-2 focus:z-100 focus:rounded-md focus:bg-background-primary-default focus:px-3 focus:py-2 focus:text-body-regular focus:text-text-primary focus:shadow-dropdown focus:outline-none focus:ring-2 focus:ring-border-focus-ring"
       >
         {t('app.skipToContent')}
       </a>
@@ -273,7 +273,7 @@ export function AppShell(props: ShellProps) {
               data-slot="app-title"
               ref={pageHeadingRef}
               tabIndex={-1}
-              className="truncate rounded-sm text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring/50"
+              className="truncate rounded-sm text-body-medium outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring/50"
             >
               {headerTitle}
             </h1>

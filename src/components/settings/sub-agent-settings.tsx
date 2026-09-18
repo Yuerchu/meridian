@@ -63,10 +63,10 @@ function KindRow({ kind, providers }: { kind: Kind; providers: ProviderInfoRespo
 
   return (
     <div data-slot="sub-agent-kind" className="space-y-1.5">
-      <p data-slot="sub-agent-kind-label" className="block text-xs text-text-secondary">
+      <p data-slot="sub-agent-kind-label" className="block text-caption-1-regular text-text-secondary">
         {t(`settings.subAgent.${kind}`)}
       </p>
-      <p data-slot="sub-agent-kind-hint" className="text-xs text-text-secondary">
+      <p data-slot="sub-agent-kind-hint" className="text-caption-1-regular text-text-secondary">
         {t(`settings.subAgent.${kind}Hint`)}
       </p>
       <ProviderModelPicker
@@ -87,7 +87,11 @@ function KindRow({ kind, providers }: { kind: Kind; providers: ProviderInfoRespo
         isModelDisabledWithoutProvider
       />
       {error && (
-        <p data-slot="sub-agent-kind-error" role="alert" className="text-xs text-status-danger break-all">
+        <p
+          data-slot="sub-agent-kind-error"
+          role="alert"
+          className="text-caption-1-regular text-status-danger break-all"
+        >
           {error}
         </p>
       )}

@@ -3,7 +3,7 @@ import { cx } from '@/utils/cx'
 import type { LogRecordLevel } from '@/types'
 
 const levelBadgeVariants = tv({
-  base: 'inline-flex shrink-0 items-center gap-1.5 font-mono text-xs tabular-nums',
+  base: 'inline-flex shrink-0 items-center gap-1.5 font-mono text-caption-1-regular tabular-nums',
   variants: {
     level: {
       error: 'text-status-danger',

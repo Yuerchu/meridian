@@ -31,11 +31,13 @@ function CardHeader({ className, ...props }: ComponentProps<'div'>) {
 }
 
 function CardTitle({ className, ...props }: ComponentProps<'h3'>) {
-  return <h3 data-slot="card-title" {...props} className={cx('text-base font-semibold', className)} />
+  return <h3 data-slot="card-title" {...props} className={cx('text-headline-semibold', className)} />
 }
 
 function CardDescription({ className, ...props }: ComponentProps<'p'>) {
-  return <p data-slot="card-description" {...props} className={cx('text-sm text-text-secondary', className)} />
+  return (
+    <p data-slot="card-description" {...props} className={cx('text-body-regular text-text-secondary', className)} />
+  )
 }
 
 function CardBody({ className, ...props }: ComponentProps<'div'>) {

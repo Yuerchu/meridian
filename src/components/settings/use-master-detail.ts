@@ -6,7 +6,7 @@ import { useHistoryLevel } from '@/hooks/use-history-level'
 
 // The left column at its widest (`w-48`, which MCP asks for), the wider of the
 // two gaps (`gap-6`), and 320px for the detail. That last number is a labelled
-// `text-xs` field plus the model editor's own `px-3` shell and border — below
+// `text-caption-1-regular` field plus the model editor's own `px-3` shell and border — below
 // it the list column takes more than it gives back, and the drilldown, which
 // hands the detail the whole container, is simply the better layout.
 //

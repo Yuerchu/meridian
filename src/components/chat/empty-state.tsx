@@ -189,7 +189,7 @@ export function EmptyState({ onSubmit, onCreate, onOpenSettingsTab, disabled, ac
     <div data-slot="empty-state" className="flex h-full overflow-y-auto px-4">
       <ProEmptyState size="lg" className="mx-auto my-auto w-full max-w-2xl gap-6 px-0 py-8">
         <ProEmptyState.Header>
-          <ProEmptyState.Title className="text-xl font-medium">{t('chat.empty.subtitle')}</ProEmptyState.Title>
+          <ProEmptyState.Title className="text-title-2-medium">{t('chat.empty.subtitle')}</ProEmptyState.Title>
         </ProEmptyState.Header>
         <ProEmptyState.Content className="w-full gap-4">
           <InputBar
@@ -226,7 +226,11 @@ export function EmptyState({ onSubmit, onCreate, onOpenSettingsTab, disabled, ac
             onRemoveSticker={() => setPendingSticker(null)}
           />
           {submitError && (
-            <p data-slot="empty-state-error" role="alert" className="break-words px-2 text-xs text-status-danger">
+            <p
+              data-slot="empty-state-error"
+              role="alert"
+              className="break-words px-2 text-caption-1-regular text-status-danger"
+            >
               {submitError}
             </p>
           )}

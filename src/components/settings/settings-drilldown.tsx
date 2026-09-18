@@ -49,7 +49,7 @@ export function SettingsDrilldown({
       // below is portalled to `body`, so it is not even a descendant of the
       // pane that rendered it.
       <section data-slot="settings-drilldown" className="@container/pane space-y-2">
-        <h3 data-slot="settings-drilldown-title" className="text-sm font-medium">
+        <h3 data-slot="settings-drilldown-title" className="text-body-medium">
           {title}
         </h3>
         {children}
@@ -71,12 +71,12 @@ export function SettingsDrilldown({
                 <Button
                   variant="ghost"
                   onPress={() => setOpen(false)}
-                  className="h-10 gap-1 rounded-xl px-2 text-sm font-normal text-text-secondary hover:text-text-primary"
+                  className="h-10 gap-1 rounded-xl px-2 text-body-regular text-text-secondary hover:text-text-primary"
                 >
                   <ArrowLeft className="size-4" />
                   {t('common.back')}
                 </Button>
-                <Modal.Heading className="min-w-0 flex-1 truncate text-sm font-medium">{title}</Modal.Heading>
+                <Modal.Heading className="min-w-0 flex-1 truncate text-body-medium">{title}</Modal.Heading>
               </div>
               <div
                 data-slot="settings-drilldown-body"

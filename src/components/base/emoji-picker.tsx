@@ -121,7 +121,7 @@ function EmojiPickerItem({ className, id, disabled, textValue, ...props }: Emoji
       onClick={() => id != null && onSelectionChange?.(id)}
       {...props}
       className={cx(
-        'flex size-8 items-center justify-center rounded-md text-lg hover:bg-background-secondary-default disabled:opacity-50',
+        'flex size-8 items-center justify-center rounded-md text-title-3-regular hover:bg-background-secondary-default disabled:opacity-50',
         className,
       )}
     />

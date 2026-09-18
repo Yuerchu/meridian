@@ -82,7 +82,7 @@ function ComposerCase() {
           />
         }
       />
-      <p data-slot="responsive-case-note" className="mt-2 text-xs text-text-secondary">
+      <p data-slot="responsive-case-note" className="mt-2 text-caption-1-regular text-text-secondary">
         Open the <code data-slot="responsive-case-note-code">+</code> menu before sweeping: it is portalled, and 464px
         of it is what the escape detector is here to catch.
       </p>
@@ -136,7 +136,7 @@ function SettingsCase() {
                 className="min-h-11 rounded-lg border-b-0 px-3 py-2 data-[selected=true]:bg-background-tertiary-default data-[selected=true]:text-text-primary"
               >
                 <ListView.ItemContent>
-                  <ListView.Title className="font-normal">{label}</ListView.Title>
+                  <ListView.Title className="text-body-regular">{label}</ListView.Title>
                 </ListView.ItemContent>
               </ListView.Item>
             ))}
@@ -156,7 +156,7 @@ function SettingsCase() {
             >
               <div data-slot="responsive-case-price-grid" className="grid grid-cols-1 gap-2 @sm/pane:grid-cols-2">
                 {['Input price', 'Output price', 'Cache read', 'Cache write'].map((label) => (
-                  <Label key={label} className="block text-xs">
+                  <Label key={label} className="block text-caption-1-regular">
                     <span data-slot="responsive-case-price-label" className="text-text-secondary">
                       {label}
                     </span>
@@ -178,7 +178,7 @@ function SettingsCase() {
 function VoiceCase() {
   return (
     <div data-slot="responsive-case-voice" className="relative h-full p-4">
-      <p data-slot="responsive-case-note" className="text-xs text-text-secondary">
+      <p data-slot="responsive-case-note" className="text-caption-1-regular text-text-secondary">
         Set an IME inset in the panel: this overlay is `fixed` and outside the shell that `app-shell` pads.
       </p>
       <VoiceOverlay state="recording-hold" elapsed={12} peak={0.6} />

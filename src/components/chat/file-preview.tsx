@@ -70,7 +70,7 @@ function FilePreviewLines({
   return (
     <div
       data-slot="file-preview-lines"
-      className="code-block__code min-w-max overflow-visible py-2 font-mono text-xs leading-5"
+      className="code-block__code min-w-max overflow-visible py-2 font-mono text-caption-1-regular leading-5"
     >
       {lines.map((line, index) => {
         // A source location only selects rows in the bounded whole-file
@@ -209,7 +209,11 @@ function PreviewSheet({
                 <FileGlyph path={reference.path} />
                 <Sheet.Heading className="truncate">{name}</Sheet.Heading>
               </div>
-              <Hint as="p" className="mt-1 truncate font-mono text-xs text-text-secondary" label={reference.path}>
+              <Hint
+                as="p"
+                className="mt-1 truncate font-mono text-caption-1-regular text-text-secondary"
+                label={reference.path}
+              >
                 {reference.path}
                 {reference.line
                   ? `:${reference.line}${reference.endLine ? `-${reference.endLine}` : ''}${reference.column ? `:${reference.column}` : ''}`
@@ -237,7 +241,7 @@ function PreviewSheet({
                 <div
                   data-slot="file-preview-loading"
                   role="status"
-                  className="flex h-full items-center justify-center gap-2 text-sm text-text-secondary"
+                  className="flex h-full items-center justify-center gap-2 text-body-regular text-text-secondary"
                 >
                   <Spinner size="sm" />
                   {t('chat.filePreview.loading')}
@@ -247,7 +251,7 @@ function PreviewSheet({
                 <div
                   data-slot="file-preview-error"
                   role="alert"
-                  className="p-6 text-sm text-status-danger wrap-break-word"
+                  className="p-6 text-body-regular text-status-danger wrap-break-word"
                 >
                   {t('chat.filePreview.loadError', { error: state.message })}
                 </div>
@@ -255,7 +259,7 @@ function PreviewSheet({
               {state.status === 'loaded' && state.file.binary && (
                 <div
                   data-slot="file-preview-binary"
-                  className="flex h-full items-center justify-center p-6 text-center text-sm text-text-secondary"
+                  className="flex h-full items-center justify-center p-6 text-center text-body-regular text-text-secondary"
                 >
                   {t('chat.filePreview.binary')}
                 </div>
@@ -276,7 +280,10 @@ function PreviewSheet({
             </Sheet.Body>
 
             <Sheet.Footer className="flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-              <div data-slot="file-preview-metadata" className="min-w-0 flex-1 text-xs text-text-secondary">
+              <div
+                data-slot="file-preview-metadata"
+                className="min-w-0 flex-1 text-caption-1-regular text-text-secondary"
+              >
                 {state.status === 'loaded' && (
                   <>
                     {t('chat.filePreview.metadata', {

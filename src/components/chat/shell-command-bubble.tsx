@@ -109,7 +109,7 @@ export function ShellCommandBubble({
       <BubbleContent className="w-full">
         <div data-slot="shell-command-head" className="flex min-w-0 items-center gap-2">
           <Terminal className="size-3.5 shrink-0 opacity-70" aria-hidden />
-          <Hint as="code" className="min-w-0 flex-1 truncate font-mono text-xs" label={command}>
+          <Hint as="code" className="min-w-0 flex-1 truncate font-mono text-caption-1-regular" label={command}>
             {command}
           </Hint>
           {state.status === 'loading' && <Spinner size="sm" color="current" aria-label={t('chat.shell.loading')} />}
@@ -117,7 +117,7 @@ export function ShellCommandBubble({
             <span
               data-slot="shell-command-outcome"
               className={cx(
-                'flex shrink-0 items-center gap-1 text-xs',
+                'flex shrink-0 items-center gap-1 text-caption-1-regular',
                 commandSucceeded(state.result) ? 'opacity-70' : 'text-status-danger',
               )}
               data-command-outcome={commandSucceeded(state.result) ? 'success' : 'failure'}
@@ -158,13 +158,17 @@ export function ShellCommandBubble({
           id={panelId}
           data-slot="shell-command-panel"
           data-bubble-block=""
-          className={cx(BUBBLE_BLOCK, 'w-full text-xs', failed && 'ring-1 ring-status-danger/40 ring-inset')}
+          className={cx(
+            BUBBLE_BLOCK,
+            'w-full text-caption-1-regular',
+            failed && 'ring-1 ring-status-danger/40 ring-inset',
+          )}
         >
           {state.status === 'loaded' && (
             <>
               <div
                 data-slot="shell-command-meta"
-                className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-3 pt-2 font-mono text-xs text-text-secondary"
+                className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-3 pt-2 font-mono text-caption-1-regular text-text-secondary"
               >
                 <Hint className="truncate" label={state.result.cwd}>
                   {state.result.cwd}
@@ -187,7 +191,7 @@ export function ShellCommandBubble({
               <pre
                 data-slot="shell-command-output"
                 className={cx(
-                  'max-h-80 min-h-10 overflow-auto px-3 py-2.5 font-mono text-xs leading-5 whitespace-pre-wrap wrap-break-word',
+                  'max-h-80 min-h-10 overflow-auto px-3 py-2.5 font-mono text-caption-1-regular leading-5 whitespace-pre-wrap wrap-break-word',
                   output ? 'text-text-primary' : 'text-text-secondary italic',
                 )}
               >
@@ -205,7 +209,11 @@ export function ShellCommandBubble({
             />
           )}
           {state.status === 'unavailable' && (
-            <p data-slot="shell-command-unavailable" role="status" className="px-3 py-3 text-xs text-text-secondary">
+            <p
+              data-slot="shell-command-unavailable"
+              role="status"
+              className="px-3 py-3 text-caption-1-regular text-text-secondary"
+            >
               {t('chat.shell.resultUnavailable')}
             </p>
           )}
@@ -213,7 +221,7 @@ export function ShellCommandBubble({
             <p
               data-slot="shell-command-error"
               role="alert"
-              className="px-3 py-3 text-xs wrap-break-word text-status-danger-soft-foreground"
+              className="px-3 py-3 text-caption-1-regular wrap-break-word text-status-danger-soft-foreground"
             >
               {t('chat.shell.resultError', { error: state.message })}
             </p>

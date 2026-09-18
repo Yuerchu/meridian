@@ -68,7 +68,7 @@ export function ToolbarSelect({
         data-slot="toolbar-select-trigger"
         className={cx(
           'h-8 max-w-44 min-w-0 items-center gap-1 rounded-lg border-0 bg-transparent px-2',
-          'text-sm font-normal shadow-none',
+          'text-body-regular shadow-none',
           'text-text-primary hover:bg-background-primary-hover data-hovered:bg-background-secondary-default transition-colors',
         )}
       >
@@ -93,11 +93,14 @@ export function ToolbarSelect({
             <ListBox.Item key={choice.value} id={choice.value} textValue={`${choice.label} ${choice.hint ?? ''}`}>
               <span data-slot="toolbar-select-option" className="flex min-w-0 flex-1 items-center gap-2">
                 {choice.icon}
-                <span data-slot="toolbar-select-option-label" className="truncate text-sm">
+                <span data-slot="toolbar-select-option-label" className="truncate text-body-regular">
                   {choice.label}
                 </span>
                 {choice.hint && (
-                  <span data-slot="toolbar-select-option-hint" className="truncate text-xs text-text-secondary">
+                  <span
+                    data-slot="toolbar-select-option-hint"
+                    className="truncate text-caption-1-regular text-text-secondary"
+                  >
                     {choice.hint}
                   </span>
                 )}

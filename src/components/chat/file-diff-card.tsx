@@ -119,7 +119,7 @@ export function FileDiffCard({ diff, header = true }: { diff: FileDiff; header?:
       {header && diff.path !== '' && (
         <div
           data-slot="file-diff-header"
-          className="flex items-center gap-2 border-b border-border-button-default/50 bg-background-secondary-default/30 px-3 py-1.5 text-xs text-text-secondary"
+          className="flex items-center gap-2 border-b border-border-button-default/50 bg-background-secondary-default/30 px-3 py-1.5 text-caption-1-regular text-text-secondary"
         >
           <FileIcon path={diff.path} />
           {/* A move used to arrive as one string with an arrow in the middle,
@@ -157,7 +157,10 @@ export function FileDiffCard({ diff, header = true }: { diff: FileDiff; header?:
         </div>
       )}
       <div data-slot="file-diff-content" className="max-h-72 overflow-auto">
-        <div data-slot="file-diff-lines" className="w-max min-w-full py-1 font-mono text-xs leading-relaxed">
+        <div
+          data-slot="file-diff-lines"
+          className="w-max min-w-full py-1 font-mono text-caption-1-regular leading-relaxed"
+        >
           {shown.map((line, i) => (
             <div
               key={i}
@@ -206,7 +209,7 @@ export function FileDiffCard({ diff, header = true }: { diff: FileDiff; header?:
               {!expanded && (
                 <span data-slot="file-diff-hidden-count">{t('chat.tool.diff.moreLines', { count: hidden })}</span>
               )}
-              <Link className="text-xs" onPress={() => setExpanded((current) => !current)}>
+              <Link className="text-caption-1-regular" onPress={() => setExpanded((current) => !current)}>
                 {t(expanded ? 'chat.tool.diff.showLess' : 'chat.tool.diff.showAll')}
               </Link>
             </div>

@@ -77,7 +77,7 @@ function SubAgentSheet({ request, onClose }: { request: SubAgentSheetRequest; on
           <Sheet.Dialog className="flex h-full min-h-0 flex-col">
             <Sheet.Header className="pe-14">
               <Sheet.Heading className="truncate">{request.title}</Sheet.Heading>
-              <p data-slot="sub-agent-sheet-kind" className="mt-1 text-xs text-text-secondary">
+              <p data-slot="sub-agent-sheet-kind" className="mt-1 text-caption-1-regular text-text-secondary">
                 {t(`chat.subAgent.${request.kind}`)}
               </p>
               <Sheet.CloseTrigger aria-label={t('common.close')} />
@@ -101,7 +101,10 @@ function SubAgentSheet({ request, onClose }: { request: SubAgentSheetRequest; on
                   streaming={streaming}
                   scrollToBottomLabel={t('chat.scrollToBottom')}
                   emptyState={
-                    <p data-slot="sub-agent-sheet-empty" className="px-6 py-8 text-center text-sm text-text-secondary">
+                    <p
+                      data-slot="sub-agent-sheet-empty"
+                      className="px-6 py-8 text-center text-body-regular text-text-secondary"
+                    >
                       {t('chat.tool.panel.processEmpty')}
                     </p>
                   }

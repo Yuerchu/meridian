@@ -163,13 +163,13 @@ export function AcpSettings() {
             if (event.nativeEvent.isComposing) return
             if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) void save()
           }}
-          className="font-mono text-xs"
+          className="font-mono text-caption-1-regular"
         />
         <Description>{t('settings.acp.argsHint')}</Description>
       </TextField>
 
       {saveError && (
-        <p data-slot="acp-save-error" role="alert" className="text-xs text-status-danger break-all">
+        <p data-slot="acp-save-error" role="alert" className="text-caption-1-regular text-status-danger break-all">
           {saveError}
         </p>
       )}
@@ -185,7 +185,7 @@ export function AcpSettings() {
           {checking ? t('settings.acp.checking') : t('settings.acp.check')}
         </Button>
         {dirty && !checking && (
-          <p data-slot="acp-save-before-check" className="text-xs text-text-secondary">
+          <p data-slot="acp-save-before-check" className="text-caption-1-regular text-text-secondary">
             {t('settings.acp.saveBeforeCheck')}
           </p>
         )}
@@ -196,7 +196,7 @@ export function AcpSettings() {
           data-slot="acp-check-result"
           role="status"
           className={cx(
-            'rounded-lg border px-3 py-2 text-xs',
+            'rounded-lg border px-3 py-2 text-caption-1-regular',
             check.ok
               ? 'border-status-success text-status-success-soft-foreground'
               : 'border-status-danger text-status-danger',
@@ -223,7 +223,7 @@ export function AcpSettings() {
         </div>
       )}
 
-      <p data-slot="acp-auth-note" className="text-xs text-text-secondary">
+      <p data-slot="acp-auth-note" className="text-caption-1-regular text-text-secondary">
         {t('settings.acp.authNote')}
       </p>
     </SettingsPane>

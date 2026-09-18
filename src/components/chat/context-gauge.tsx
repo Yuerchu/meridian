@@ -122,7 +122,10 @@ export function ContextGauge({
         <Tooltip>{figures}</Tooltip>
       </TooltipTrigger>
       <Popover.Content placement="top" className="max-w-64">
-        <Popover.Dialog aria-label={t('chat.context.title')} className="flex flex-col gap-1 text-xs tabular-nums">
+        <Popover.Dialog
+          aria-label={t('chat.context.title')}
+          className="flex flex-col gap-1 text-caption-1-regular tabular-nums"
+        >
           {compacting && !hosted ? (
             <span data-slot="context-gauge-compacting">{t('chat.compact.inProgress')}</span>
           ) : (
@@ -169,7 +172,7 @@ export function ContextGauge({
                   {onCompact && !streaming && (
                     <Link
                       data-slot="context-gauge-compact"
-                      className="mt-1 text-xs font-normal underline underline-offset-2"
+                      className="mt-1 text-caption-1-regular underline underline-offset-2"
                       onPress={onCompact}
                     >
                       {t('chat.compact.manual')}

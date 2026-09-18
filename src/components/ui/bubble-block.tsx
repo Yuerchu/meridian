@@ -37,7 +37,7 @@ import { BUBBLE_BLOCK } from './bubble'
 const bubbleBlockVariants = tv({
   base: [
     BUBBLE_BLOCK,
-    'flex w-fit min-h-9 items-center gap-2 px-3 py-2 text-left text-xs transition-colors outline-none',
+    'flex w-fit min-h-9 items-center gap-2 px-3 py-2 text-left text-caption-1-regular transition-colors outline-none',
     'data-[pressed]:bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--color-text-primary)_8%)]',
     'focus-visible:ring-2 focus-visible:ring-border-focus-ring/50',
     'disabled:opacity-60',
@@ -93,7 +93,7 @@ function BubbleFoldBadge({ expanded, className, ...props }: React.ComponentProps
       data-slot="bubble-fold-badge"
       aria-expanded={expanded}
       className={cx(
-        'inline-flex h-5 shrink-0 items-center gap-1 rounded-full bg-background-secondary-default/70 px-2 text-xs leading-none text-text-secondary transition-colors outline-none select-none',
+        'inline-flex h-5 shrink-0 items-center gap-1 rounded-full bg-background-secondary-default/70 px-2 text-caption-1-regular leading-none text-text-secondary transition-colors outline-none select-none',
         'hover:bg-background-primary-hover hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring/50',
         'aria-expanded:bg-background-tertiary-default aria-expanded:text-text-primary',
         className,

@@ -73,7 +73,7 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
             <Tooltip>{memory.key}</Tooltip>
           </TooltipTrigger>
         </Disclosure.Heading>
-        <span data-slot="memory-row-key" className="min-w-0 truncate font-mono text-sm">
+        <span data-slot="memory-row-key" className="min-w-0 truncate font-mono text-body-regular">
           {memory.key}
         </span>
         <Chip color="default">{memory.scope_type.replace('onebot_', '').replace('client_global', 'client')}</Chip>
@@ -94,7 +94,7 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
           </TooltipTrigger>
         )}
         <div data-slot="memory-row-spacer" className="flex-1" />
-        <span data-slot="memory-row-date" className="text-xs text-text-secondary">
+        <span data-slot="memory-row-date" className="text-caption-1-regular text-text-secondary">
           {date.format(new Date(memory.updated_at))}
         </span>
       </div>
@@ -129,7 +129,10 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
             rows={3}
             className="resize-y"
           />
-          <div data-slot="memory-row-meta" className="flex flex-wrap items-center gap-3 text-xs text-text-secondary">
+          <div
+            data-slot="memory-row-meta"
+            className="flex flex-wrap items-center gap-3 text-caption-1-regular text-text-secondary"
+          >
             <span data-slot="memory-row-learned-at">
               {t('settings.memory.learnedAt')}: {date.format(new Date(memory.created_at))}
             </span>

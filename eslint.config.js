@@ -41,8 +41,22 @@ const styleRestrictions = [
   ),
   {
     selector: 'Literal[value=/text-\\u005B[0-9.]+px\\u005D/]',
-    message: 'Arbitrary px font size. Use the Tailwind scale (text-xs/sm/base/lg) per CLAUDE.md UI conventions.',
+    message:
+      'Arbitrary px font size. Use a boardui composite text utility (text-caption-1-*, text-body-*, text-headline-*, text-title-*), which sets size, line-height and weight together.',
   },
+  // boardui's type scale is composite: `text-body-medium` is size, line-height,
+  // letter-spacing and weight in one. A Tailwind size or a bare weight is the
+  // scale being rebuilt by hand, and drifts from it one utility at a time.
+  ...forbiddenClass(
+    '(?<![\\w-])text-(?:xs|sm|base|lg|xl|2xl|3xl)(?![\\w-])',
+    'Tailwind type size. Use the composite scale: text-xs → text-caption-1-*, text-sm → text-body-*, text-base → text-headline-*, text-lg → text-title-3-*, text-xl → text-title-2-*, text-2xl → text-title-1-* (weight suffix regular/medium/semibold/bold).',
+  ),
+  // Unprefixed only: `[&_strong]:font-medium` or `prose-headings:font-semibold`
+  // reaches into markup the composite utilities cannot address.
+  ...forbiddenClass(
+    '(?<![\\w:\\]-])font-(?:normal|medium|semibold|bold)(?![\\w-])',
+    'Bare font weight. The weight is the suffix of the composite text utility (text-body-medium, text-caption-1-semibold); pick the family the text belongs to.',
+  ),
   ...forbiddenClass(
     '\\bcursor-pointer\\b',
     "cursor-pointer ignores the user's cursor preference. Use cursor-[var(--cursor-interactive)] on custom interactive elements; base components set it themselves.",

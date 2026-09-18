@@ -75,7 +75,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
               <Sheet.CloseTrigger />
               <Sheet.Header className="gap-1">
                 <Sheet.Heading>{t('settings.memory.trash.title')}</Sheet.Heading>
-                <p id={hintId} data-slot="memory-trash-hint" className="text-sm text-text-secondary">
+                <p id={hintId} data-slot="memory-trash-hint" className="text-body-regular text-text-secondary">
                   {t('settings.memory.trash.retentionHint')}
                 </p>
               </Sheet.Header>
@@ -115,7 +115,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                     <div data-slot="memory-trash-row-header" className="flex min-w-0 flex-wrap items-center gap-2">
                       <span
                         data-slot="memory-trash-row-key"
-                        className="min-w-0 flex-1 break-words font-mono text-sm [overflow-wrap:anywhere]"
+                        className="min-w-0 flex-1 break-words font-mono text-body-regular [overflow-wrap:anywhere]"
                       >
                         {m.key}
                       </span>

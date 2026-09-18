@@ -14,7 +14,7 @@ function EmptyStateRoot({ size = 'md', className, ...props }: EmptyStateProps) {
       {...props}
       className={cx(
         'flex flex-col items-center justify-center gap-2 p-6 text-center text-text-secondary',
-        size === 'sm' && 'gap-1 p-2 text-sm',
+        size === 'sm' && 'gap-1 p-2 text-body-regular',
         size === 'lg' && 'gap-3 p-8',
         className,
       )}
@@ -27,13 +27,17 @@ function EmptyStateHeader({ className, ...props }: ComponentProps<'div'>) {
 }
 
 function EmptyStateTitle({ className, ...props }: ComponentProps<'h3'>) {
-  return (
-    <h3 data-slot="empty-state-title" {...props} className={cx('text-sm font-medium text-text-primary', className)} />
-  )
+  return <h3 data-slot="empty-state-title" {...props} className={cx('text-body-medium text-text-primary', className)} />
 }
 
 function EmptyStateDescription({ className, ...props }: ComponentProps<'p'>) {
-  return <p data-slot="empty-state-description" {...props} className={cx('text-sm text-text-secondary', className)} />
+  return (
+    <p
+      data-slot="empty-state-description"
+      {...props}
+      className={cx('text-body-regular text-text-secondary', className)}
+    />
+  )
 }
 
 function EmptyStateContent({ className, ...props }: ComponentProps<'div'>) {

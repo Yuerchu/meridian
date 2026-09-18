@@ -64,7 +64,7 @@ function TurnBranchPager({
     // `overflow: hidden` cuts it back off.
     <div
       data-slot="turn-branch-pager"
-      className={cx('flex items-center gap-0.5 text-xs text-text-secondary', className)}
+      className={cx('flex items-center gap-0.5 text-caption-1-regular text-text-secondary', className)}
       {...props}
     >
       <button

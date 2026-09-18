@@ -83,7 +83,7 @@ export function VoiceOverlay({ state, elapsed, peak }: VoiceOverlayProps) {
       </span>
       <div data-slot="voice-overlay-state" className="flex flex-col items-center gap-3">
         {cancelling ? <TrashBin className="size-8" /> : <Microphone className="size-8" />}
-        <span data-slot="voice-overlay-label" aria-hidden="true" className="text-base font-medium">
+        <span data-slot="voice-overlay-label" aria-hidden="true" className="text-headline-medium">
           {statusText}
         </span>
       </div>
@@ -106,7 +106,11 @@ export function VoiceOverlay({ state, elapsed, peak }: VoiceOverlayProps) {
               )
             })}
           </div>
-          <span data-slot="voice-overlay-timer" aria-hidden="true" className="text-sm tabular-nums opacity-80">
+          <span
+            data-slot="voice-overlay-timer"
+            aria-hidden="true"
+            className="text-body-regular tabular-nums opacity-80"
+          >
             {remaining <= 10
               ? t('chat.voice.secondsLeft', { count: remaining })
               : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`}

@@ -189,7 +189,7 @@ function AssistantEditor({
             }
           }}
           rows={6}
-          className="resize-none font-mono text-xs"
+          className="resize-none font-mono text-caption-1-regular"
         />
         {templateVars.length > 0 && (
           <div data-slot="template-variables" className="flex flex-wrap gap-1">
@@ -197,7 +197,7 @@ function AssistantEditor({
               <TooltipTrigger key={v.name} delay={0}>
                 <Button
                   variant="outline"
-                  className="text-xs px-1.5 py-0.5 bg-background-secondary-default/50 text-text-secondary hover:bg-background-primary-hover font-mono"
+                  className="text-caption-1-regular px-1.5 py-0.5 bg-background-secondary-default/50 text-text-secondary hover:bg-background-primary-hover font-mono"
                   onPress={() => setSystemPrompt((prev) => prev + `{{${v.name}}}`)}
                 >
                   {`{{${v.name}}}`}
@@ -247,20 +247,20 @@ function AssistantEditor({
       </div>
 
       <div data-slot="assistant-auto-compact" className="space-y-1.5">
-        <p data-slot="assistant-auto-compact-label" className="block text-xs text-text-secondary">
+        <p data-slot="assistant-auto-compact-label" className="block text-caption-1-regular text-text-secondary">
           {t('settings.assistant.autoCompact')}
         </p>
-        <Checkbox className="text-xs" isSelected={autoCompactEnabled} onChange={setAutoCompactEnabled}>
+        <Checkbox className="text-caption-1-regular" isSelected={autoCompactEnabled} onChange={setAutoCompactEnabled}>
           {t('settings.assistant.autoCompactHint')}
         </Checkbox>
       </div>
 
       <div data-slot="assistant-thinking" className="space-y-1.5">
-        <p data-slot="assistant-thinking-label" className="block text-xs text-text-secondary">
+        <p data-slot="assistant-thinking-label" className="block text-caption-1-regular text-text-secondary">
           {t('settings.assistant.thinking')}
         </p>
         <div data-slot="assistant-thinking-toggle" className="flex items-center gap-3">
-          <Checkbox className="text-xs" isSelected={thinkingEnabled} onChange={setThinkingEnabled}>
+          <Checkbox className="text-caption-1-regular" isSelected={thinkingEnabled} onChange={setThinkingEnabled}>
             {t('settings.assistant.thinkingEnabled')}
           </Checkbox>
         </div>
@@ -275,7 +275,7 @@ function AssistantEditor({
               onChange={(e) => setThinkingBudget(e.target.value)}
               placeholder={t('settings.assistant.thinkingBudget')}
             />
-            <p data-slot="assistant-thinking-budget-hint" className="text-xs text-text-secondary">
+            <p data-slot="assistant-thinking-budget-hint" className="text-caption-1-regular text-text-secondary">
               {t('settings.assistant.thinkingBudgetHint')}
             </p>
           </div>
@@ -339,7 +339,7 @@ function AssistantEditor({
               {allTools.map((tool) => (
                 <Checkbox
                   key={tool.name}
-                  className="py-0.5 text-xs"
+                  className="py-0.5 text-caption-1-regular"
                   isSelected={selectedTools.has(tool.name)}
                   onChange={(selected) => {
                     const next = new Set(selectedTools)
@@ -352,7 +352,7 @@ function AssistantEditor({
                     {tool.name}
                   </span>
                   {tool.source === 'mcp' && (
-                    <span data-slot="tool-source" className="text-xs text-text-secondary">
+                    <span data-slot="tool-source" className="text-caption-1-regular text-text-secondary">
                       MCP
                     </span>
                   )}
@@ -374,7 +374,7 @@ function AssistantEditor({
             {allPacks.map((pack) => (
               <Checkbox
                 key={pack.id}
-                className="py-0.5 text-xs"
+                className="py-0.5 text-caption-1-regular"
                 isSelected={assignedPackIds.has(pack.id)}
                 onChange={async (selected) => {
                   if (selected) {
@@ -401,7 +401,7 @@ function AssistantEditor({
 
       {allSkills.length > 0 && (
         <SettingsDrilldown title={t('settings.skills.assistantSection')} summary={boundSkillDirs.size || undefined}>
-          <p data-slot="skill-hint" className="text-xs text-text-secondary">
+          <p data-slot="skill-hint" className="text-caption-1-regular text-text-secondary">
             {t('settings.skills.assistantHint')}
           </p>
           <div
@@ -417,7 +417,7 @@ function AssistantEditor({
               {allSkills.map((skill) => (
                 <Checkbox
                   key={skill.dir_name}
-                  className="py-0.5 text-xs"
+                  className="py-0.5 text-caption-1-regular"
                   isSelected={boundSkillDirs.has(skill.dir_name)}
                   isDisabled={!skill.is_enabled}
                   onChange={async (selected) => {
@@ -445,7 +445,7 @@ function AssistantEditor({
             </div>
           </div>
           {skillError && (
-            <p data-slot="skill-error" role="alert" className="text-xs text-status-danger">
+            <p data-slot="skill-error" role="alert" className="text-caption-1-regular text-status-danger">
               {skillError}
             </p>
           )}
@@ -453,7 +453,11 @@ function AssistantEditor({
       )}
 
       {saveError && (
-        <p data-slot="assistant-save-error" role="alert" className="text-xs text-status-danger break-all">
+        <p
+          data-slot="assistant-save-error"
+          role="alert"
+          className="text-caption-1-regular text-status-danger break-all"
+        >
           {saveError}
         </p>
       )}
@@ -618,7 +622,7 @@ export function AssistantSettings() {
                 {/* `flex` is not optional: HeroUI styles the indicator with `ms-auto`
                     and `shrink-0`, which only mean anything inside a flex container.
                     `text-start` undoes the button element's centred UA default. */}
-                <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm transition-colors outline-none hover:bg-background-primary-hover/30 focus-visible:bg-background-secondary-default/30">
+                <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-body-regular transition-colors outline-none hover:bg-background-primary-hover/30 focus-visible:bg-background-secondary-default/30">
                   <span data-slot="assistant-row-name" className="min-w-0 flex-1 truncate">
                     {a.name}
                   </span>
@@ -637,12 +641,18 @@ export function AssistantSettings() {
                       is for — was squeezed to nothing before either of them gave
                       up a character. */}
                   {providerName && (
-                    <span data-slot="assistant-row-provider" className="min-w-0 truncate text-xs text-text-secondary">
+                    <span
+                      data-slot="assistant-row-provider"
+                      className="min-w-0 truncate text-caption-1-regular text-text-secondary"
+                    >
                       {providerName}
                     </span>
                   )}
                   {a.model_id && (
-                    <span data-slot="assistant-row-model" className="min-w-0 truncate text-xs text-text-secondary">
+                    <span
+                      data-slot="assistant-row-model"
+                      className="min-w-0 truncate text-caption-1-regular text-text-secondary"
+                    >
                       {a.model_id}
                     </span>
                   )}

@@ -70,24 +70,24 @@ function LogRowImpl({ entry }: { entry: LogEntryInfoResponse }) {
         isError && 'bg-status-danger-soft',
       )}
     >
-      <span data-slot="log-row-time" className="font-mono text-xs tabular-nums text-text-secondary">
+      <span data-slot="log-row-time" className="font-mono text-caption-1-regular tabular-nums text-text-secondary">
         {time}
       </span>
 
       <div data-slot="log-row-body" className="min-w-0 space-y-1">
         <div data-slot="log-row-meta" className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <LogLevelBadge level={entry.level} />
-          <span data-slot="log-row-target" className="truncate font-mono text-xs text-text-secondary">
+          <span data-slot="log-row-target" className="truncate font-mono text-caption-1-regular text-text-secondary">
             {entry.target}
           </span>
         </div>
-        <p data-slot="log-row-message" className="text-sm break-words text-text-primary">
+        <p data-slot="log-row-message" className="text-body-regular break-words text-text-primary">
           {entry.msg}
         </p>
         {fields.length > 0 && (
           <div
             data-slot="log-row-fields"
-            className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-xs text-text-secondary"
+            className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-caption-1-regular text-text-secondary"
           >
             {fields.map(([key, value]) => (
               <span key={key} data-slot="log-row-field" className="break-all">

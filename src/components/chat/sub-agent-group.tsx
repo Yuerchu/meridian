@@ -282,7 +282,7 @@ function SubAgentRowLine({ row, state }: { row: Row; state: RowState }) {
       data-slot="sub-agent-row-line"
       data-tone={tone}
       className={cx(
-        'truncate text-xs',
+        'truncate text-caption-1-regular',
         tone === 'live' && 'shimmer',
         tone === 'warn' ? 'text-status-warning-soft-foreground' : 'text-text-secondary',
       )}
@@ -335,12 +335,16 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
     // like — a head row over its contents, in the bubble's own fill — while
     // being an item on a keyboard. Now it says so, and `bubble.tsx` gives it
     // the fill, the radius and the shared corners the rest of them get.
-    <div data-slot="sub-agent-group" data-bubble-block="" className={cx(BUBBLE_BLOCK, 'flex w-full flex-col text-xs')}>
+    <div
+      data-slot="sub-agent-group"
+      data-bubble-block=""
+      className={cx(BUBBLE_BLOCK, 'flex w-full flex-col text-caption-1-regular')}
+    >
       <div
         data-slot="sub-agent-group-header"
         className="flex items-center gap-2 border-b border-border-button-default/50 px-3 py-1.5 text-text-secondary"
       >
-        <span data-slot="sub-agent-group-title" className="font-medium text-text-primary">
+        <span data-slot="sub-agent-group-title" className="text-caption-1-medium text-text-primary">
           {t('chat.subAgent.group', { count: rows.length })}
         </span>
         {summary.length > 0 && <span data-slot="sub-agent-group-summary">{summary.join(' · ')}</span>}
@@ -385,7 +389,10 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
                   aria-hidden
                   className={cx('block size-2 rounded-full', DOT[state])}
                 />
-                <span data-slot="sub-agent-row-kind" className="flex items-center gap-1 font-medium text-text-primary">
+                <span
+                  data-slot="sub-agent-row-kind"
+                  className="flex items-center gap-1 text-caption-1-medium text-text-primary"
+                >
                   {readOnly ? (
                     <Compass aria-hidden className="size-3.5 text-text-secondary" />
                   ) : (
@@ -394,7 +401,7 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
                   {t(`chat.subAgent.${row.delegation.kind}`)}
                 </span>
                 <span data-slot="sub-agent-row-body" className="min-w-0">
-                  <span data-slot="sub-agent-row-title" className="block truncate text-sm text-text-primary">
+                  <span data-slot="sub-agent-row-title" className="block truncate text-body-regular text-text-primary">
                     {row.delegation.description}
                   </span>
                   <SubAgentRowLine row={row} state={state} />

@@ -177,10 +177,10 @@ export function MobileOptionsMenu({
     })
   }, [panel, modelsLoaded, providers])
 
-  // Also neutralizes ui Button defaults (h-8/rounded-lg/justify-center/font-medium)
+  // Also neutralizes ui Button defaults (h-8/rounded-lg/justify-center/text-body-medium)
   // so the drawer items keep their original full-width list layout.
   const itemCls =
-    'flex h-auto items-center justify-start gap-3 w-full rounded-none px-4 py-2.5 text-sm font-normal text-text-primary active:bg-background-tertiary-default transition-colors'
+    'flex h-auto items-center justify-start gap-3 w-full rounded-none px-4 py-2.5 text-body-regular text-text-primary active:bg-background-tertiary-default transition-colors'
 
   return (
     <Sheet
@@ -327,11 +327,11 @@ export function MobileOptionsMenu({
                             acceptEdits ? 'text-status-warning-soft-foreground' : 'text-text-secondary',
                           )}
                         />
-                        <CellSwitch.Label className="flex items-center justify-between gap-2 font-normal">
+                        <CellSwitch.Label className="flex items-center justify-between gap-2 text-body-regular">
                           <span data-slot="mobile-accept-edits-label">{t('toolbar.acceptEdits')}</span>
                           <span
                             data-slot="mobile-accept-edits-state"
-                            className="text-xs font-normal text-text-secondary"
+                            className="text-caption-1-regular text-text-secondary"
                           >
                             {acceptEdits ? t('toolbar.acceptEdits.on') : t('toolbar.acceptEdits.off')}
                           </span>
@@ -355,9 +355,9 @@ export function MobileOptionsMenu({
                             fastMode ? 'text-status-warning-soft-foreground' : 'text-text-secondary',
                           )}
                         />
-                        <CellSwitch.Label className="flex items-center justify-between gap-2 font-normal">
+                        <CellSwitch.Label className="flex items-center justify-between gap-2 text-body-regular">
                           <span data-slot="mobile-fast-label">{t('toolbar.fast')}</span>
-                          <span data-slot="mobile-fast-state" className="text-xs font-normal text-text-secondary">
+                          <span data-slot="mobile-fast-state" className="text-caption-1-regular text-text-secondary">
                             {fastMode ? t('toolbar.fast.on') : t('toolbar.fast.off')}
                           </span>
                         </CellSwitch.Label>
@@ -386,7 +386,7 @@ export function MobileOptionsMenu({
                       </Button>
                       <Tooltip>{t('common.back')}</Tooltip>
                     </TooltipTrigger>
-                    <span data-slot="mobile-options-assistant-title" className="text-sm font-medium">
+                    <span data-slot="mobile-options-assistant-title" className="text-body-medium">
                       {t('toolbar.selectAssistant')}
                     </span>
                   </div>
@@ -436,7 +436,7 @@ export function MobileOptionsMenu({
                       </Button>
                       <Tooltip>{t('common.back')}</Tooltip>
                     </TooltipTrigger>
-                    <span data-slot="mobile-options-model-title" className="text-sm font-medium flex-1">
+                    <span data-slot="mobile-options-model-title" className="text-body-medium flex-1">
                       {t('toolbar.models')}
                     </span>
                     <TooltipTrigger delay={0}>
@@ -474,13 +474,19 @@ export function MobileOptionsMenu({
                   </div>
                   <div data-slot="toolbar-model-list" className="max-h-[50vh] overflow-y-auto overscroll-contain">
                     {loadingModels && (
-                      <div data-slot="toolbar-model-loading" className="px-4 py-3 text-xs text-text-secondary">
+                      <div
+                        data-slot="toolbar-model-loading"
+                        className="px-4 py-3 text-caption-1-regular text-text-secondary"
+                      >
                         {t('toolbar.loadingModels')}
                       </div>
                     )}
                     {groups.map((g) => (
                       <div key={g.provider.id} data-slot="toolbar-model-group">
-                        <div data-slot="toolbar-model-provider" className="px-4 py-1 text-xs text-text-secondary">
+                        <div
+                          data-slot="toolbar-model-provider"
+                          className="px-4 py-1 text-caption-1-regular text-text-secondary"
+                        >
                           {g.provider.name}
                         </div>
                         {g.models.map((m) => (
@@ -511,7 +517,10 @@ export function MobileOptionsMenu({
                       </div>
                     ))}
                     {!loadingModels && groups.length === 0 && (
-                      <div data-slot="toolbar-model-empty" className="px-4 py-3 text-xs text-text-secondary">
+                      <div
+                        data-slot="toolbar-model-empty"
+                        className="px-4 py-3 text-caption-1-regular text-text-secondary"
+                      >
                         {t('toolbar.noModels')}
                       </div>
                     )}
@@ -537,7 +546,7 @@ export function MobileOptionsMenu({
                       </Button>
                       <Tooltip>{t('common.back')}</Tooltip>
                     </TooltipTrigger>
-                    <span data-slot="mobile-options-mode-title" className="text-sm font-medium">
+                    <span data-slot="mobile-options-mode-title" className="text-body-medium">
                       {t('toolbar.mode')}
                     </span>
                   </div>
@@ -558,7 +567,10 @@ export function MobileOptionsMenu({
                           <Icon className="w-4 h-4 text-text-secondary" />
                           <span data-slot="mobile-options-mode-choice-label">{t(m.labelKey)}</span>
                         </span>
-                        <span data-slot="mobile-options-mode-choice-desc" className="text-xs text-text-secondary">
+                        <span
+                          data-slot="mobile-options-mode-choice-desc"
+                          className="text-caption-1-regular text-text-secondary"
+                        >
                           {t(m.descKey)}
                         </span>
                       </Button>
@@ -585,7 +597,7 @@ export function MobileOptionsMenu({
                       </Button>
                       <Tooltip>{t('common.back')}</Tooltip>
                     </TooltipTrigger>
-                    <span data-slot="mobile-options-thinking-title" className="text-sm font-medium">
+                    <span data-slot="mobile-options-thinking-title" className="text-body-medium">
                       {t('toolbar.thinking')}
                     </span>
                   </div>
@@ -605,7 +617,10 @@ export function MobileOptionsMenu({
                       }}
                     >
                       <span data-slot="mobile-options-thinking-choice-label">{t(level.labelKey)}</span>
-                      <span data-slot="mobile-options-thinking-choice-desc" className="text-xs text-text-secondary">
+                      <span
+                        data-slot="mobile-options-thinking-choice-desc"
+                        className="text-caption-1-regular text-text-secondary"
+                      >
                         {t(level.descKey)}
                       </span>
                     </Button>

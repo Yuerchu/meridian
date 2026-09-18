@@ -4,7 +4,7 @@ import { dom, tv, type VariantProps } from '@/components/base'
 import { cx } from '@/utils/cx'
 
 const markerVariants = tv({
-  base: "group/marker relative flex min-h-4 w-full items-center gap-2 text-left text-sm text-text-secondary [&_svg:not([class*='size-'])]:size-4 [a]:underline [a]:underline-offset-3 [a]:hover:text-text-primary",
+  base: "group/marker relative flex min-h-4 w-full items-center gap-2 text-left text-body-regular text-text-secondary [&_svg:not([class*='size-'])]:size-4 [a]:underline [a]:underline-offset-3 [a]:hover:text-text-primary",
   variants: {
     variant: {
       default: '',

@@ -88,7 +88,7 @@ function FileReferenceButton({ reference }: { reference: MarkdownFileReference }
         aria-label={label}
         isDisabled={!preview}
         onPress={() => preview?.openPreview(reference)}
-        className="mx-0.5 inline-flex min-w-0 max-w-full gap-1 rounded-md px-1.5 py-0.5 align-baseline font-mono text-xs"
+        className="mx-0.5 inline-flex min-w-0 max-w-full gap-1 rounded-md px-1.5 py-0.5 align-baseline font-mono text-caption-1-regular"
       >
         {icon && (
           <img data-slot="markdown-file-reference-icon" src={icon} alt="" aria-hidden className="size-3.5 shrink-0" />
@@ -182,7 +182,7 @@ const CodeBlock: Components['code'] = ({ className, children, node, ...props }) 
     const fallback = (
       <code
         data-slot="markdown-inline-code"
-        className={cx('rounded-md bg-background-secondary-default px-1.5 py-0.5 text-xs', className)}
+        className={cx('rounded-md bg-background-secondary-default px-1.5 py-0.5 text-caption-1-regular', className)}
         {...props}
       >
         {children}
@@ -206,7 +206,7 @@ const CodeBlock: Components['code'] = ({ className, children, node, ...props }) 
     <div data-slot="markdown-code-block" className="code-block my-3 rounded-xl">
       <div data-slot="markdown-code-header" className="code-block__header">
         {icon && <img data-slot="markdown-code-icon" src={icon} alt="" aria-hidden className="size-4 shrink-0" />}
-        <span data-slot="markdown-code-language" className="text-xs text-text-secondary">
+        <span data-slot="markdown-code-language" className="text-caption-1-regular text-text-secondary">
           {language}
         </span>
         {/* The only way to copy a single block — the long-press menu copies the
@@ -251,9 +251,9 @@ const TableBlock: Components['table'] = ({ children, ...props }) => (
  * for a long one, which is most of what lands here.
  */
 const markdownClasses = cx(
-  'text-sm leading-relaxed',
+  'text-body-regular leading-relaxed',
   '[&_ul]:list-outside [&_ul]:ps-5 [&_ol]:list-outside [&_ol]:ps-5',
-  '[&_h3]:text-base',
+  '[&_h3]:text-headline-regular',
 )
 
 function preprocessEmojis(content: string, emojiMap?: EmojiMap): string {
@@ -577,7 +577,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({
             <Hint
               data-slot="markdown-blocked-image"
               label={src}
-              className="my-3 block max-w-full truncate rounded-lg bg-background-secondary-default/30 px-3 py-2 text-xs text-text-secondary"
+              className="my-3 block max-w-full truncate rounded-lg bg-background-secondary-default/30 px-3 py-2 text-caption-1-regular text-text-secondary"
             >
               {alt}
             </Hint>

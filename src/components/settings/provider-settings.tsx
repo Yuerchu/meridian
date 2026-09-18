@@ -296,7 +296,7 @@ function CodexAccount() {
   return (
     <div data-slot="codex-account" className="border-t border-border-button-default pt-4 space-y-3">
       <div data-slot="codex-account-header" className="flex items-center justify-between">
-        <p data-slot="codex-account-label" className="text-xs text-text-secondary">
+        <p data-slot="codex-account-label" className="text-caption-1-regular text-text-secondary">
           {t('settings.provider.codexAccount')}
         </p>
         <Button variant="outline" onPress={() => void check()} isPending={checking}>
@@ -322,22 +322,22 @@ function CodexAccount() {
           >
             {status.logged_in ? (
               <>
-                <p data-slot="codex-account-email" className="text-sm">
+                <p data-slot="codex-account-email" className="text-body-regular">
                   {status.email ?? t('settings.provider.codexSignedIn')}
                 </p>
                 {status.plan && (
-                  <p data-slot="codex-account-plan" className="text-xs text-text-secondary">
+                  <p data-slot="codex-account-plan" className="text-caption-1-regular text-text-secondary">
                     {status.plan}
                   </p>
                 )}
               </>
             ) : (
-              <p data-slot="codex-account-signed-out" className="text-sm text-status-warning-soft-foreground">
+              <p data-slot="codex-account-signed-out" className="text-body-regular text-status-warning-soft-foreground">
                 {t('settings.provider.codexSignedOut')}
               </p>
             )}
             {status.problem && (
-              <p data-slot="codex-account-problem" className="text-xs text-status-danger break-words">
+              <p data-slot="codex-account-problem" className="text-caption-1-regular text-status-danger break-words">
                 {status.problem}
               </p>
             )}
@@ -345,7 +345,7 @@ function CodexAccount() {
                 environment, so "logged in over there, not here" is otherwise
                 impossible for anyone to diagnose. */}
             {status.codex_home && (
-              <p data-slot="codex-account-home" className="text-xs text-text-secondary break-all">
+              <p data-slot="codex-account-home" className="text-caption-1-regular text-text-secondary break-all">
                 {status.codex_home}
                 {status.storage === 'keyring' && ` · ${t('settings.provider.codexInKeyring')}`}
               </p>
@@ -488,7 +488,7 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
 
   return (
     <div data-slot="price-tiers" className="space-y-2">
-      <p data-slot="price-tiers-hint" className="text-xs text-text-secondary">
+      <p data-slot="price-tiers-hint" className="text-caption-1-regular text-text-secondary">
         {t('settings.model.priceTiersHint')}
       </p>
       {tiers.map((tier, index) => (
@@ -506,7 +506,7 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
                 value={tier.threshold}
                 onChange={(e) => patch(index, 'threshold', e.target.value)}
                 placeholder="200000"
-                className="h-7 pointer-coarse:h-10 text-xs"
+                className="h-7 pointer-coarse:h-10 text-caption-1-regular"
               />
             </TextField>
             <TooltipTrigger>
@@ -530,7 +530,7 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
                 inputMode="decimal"
                 value={tier.input}
                 onChange={(e) => patch(index, 'input', e.target.value)}
-                className="h-7 pointer-coarse:h-10 text-xs"
+                className="h-7 pointer-coarse:h-10 text-caption-1-regular"
               />
             </TextField>
             <TextField>
@@ -540,7 +540,7 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
                 inputMode="decimal"
                 value={tier.output}
                 onChange={(e) => patch(index, 'output', e.target.value)}
-                className="h-7 pointer-coarse:h-10 text-xs"
+                className="h-7 pointer-coarse:h-10 text-caption-1-regular"
               />
             </TextField>
             <TextField>
@@ -551,7 +551,7 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
                 value={tier.cacheRead}
                 onChange={(e) => patch(index, 'cacheRead', e.target.value)}
                 placeholder="—"
-                className="h-7 pointer-coarse:h-10 text-xs"
+                className="h-7 pointer-coarse:h-10 text-caption-1-regular"
               />
             </TextField>
             <TextField>
@@ -562,7 +562,7 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
                 value={tier.cacheWrite}
                 onChange={(e) => patch(index, 'cacheWrite', e.target.value)}
                 placeholder="—"
-                className="h-7 pointer-coarse:h-10 text-xs"
+                className="h-7 pointer-coarse:h-10 text-caption-1-regular"
               />
             </TextField>
           </div>
@@ -571,7 +571,7 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
       <Button
         size="small"
         variant="outline"
-        className="h-7 pointer-coarse:h-10 rounded-md text-xs"
+        className="h-7 pointer-coarse:h-10 rounded-md text-caption-1-regular"
         onPress={() => onChange([...tiers, { ...BLANK_TIER }])}
       >
         <Plus className="size-3.5" />
@@ -590,7 +590,7 @@ function CapabilityTriRow({ label, value, onChange }: { label: string; value: Tr
   ]
   return (
     <div data-slot="capability-tri-row" className="flex items-center justify-between gap-2">
-      <p data-slot="capability-tri-label" className="text-xs text-text-secondary">
+      <p data-slot="capability-tri-label" className="text-caption-1-regular text-text-secondary">
         {label}
       </p>
       <SettingsSelect
@@ -598,8 +598,8 @@ function CapabilityTriRow({ label, value, onChange }: { label: string; value: Tr
         value={value}
         options={options}
         onChange={onChange}
-        triggerClassName="h-7 w-32 text-xs"
-        itemClassName="text-xs"
+        triggerClassName="h-7 w-32 text-caption-1-regular"
+        itemClassName="text-caption-1-regular"
       />
     </div>
   )
@@ -840,7 +840,7 @@ function ModelConfigEditor({
               setContextWindow(e.target.value)
               setDirty(true)
             }}
-            className="h-7 pointer-coarse:h-10 text-xs"
+            className="h-7 pointer-coarse:h-10 text-caption-1-regular"
           />
         </TextField>
         <TextField>
@@ -853,7 +853,7 @@ function ModelConfigEditor({
               setCompactThreshold(e.target.value)
               setDirty(true)
             }}
-            className="h-7 pointer-coarse:h-10 text-xs"
+            className="h-7 pointer-coarse:h-10 text-caption-1-regular"
           />
         </TextField>
       </div>
@@ -868,7 +868,7 @@ function ModelConfigEditor({
             setDirty(true)
           }}
           placeholder={t('settings.model.optional')}
-          className="h-7 pointer-coarse:h-10 text-xs"
+          className="h-7 pointer-coarse:h-10 text-caption-1-regular"
         />
       </TextField>
       {/* Four rates, all per million tokens. The two cache boxes are blank by
@@ -886,7 +886,7 @@ function ModelConfigEditor({
               setInputPrice(e.target.value)
               setDirty(true)
             }}
-            className="h-7 pointer-coarse:h-10 text-xs"
+            className="h-7 pointer-coarse:h-10 text-caption-1-regular"
           />
         </TextField>
         <TextField isInvalid={invalidPrices.has('output')}>
@@ -900,7 +900,7 @@ function ModelConfigEditor({
               setOutputPrice(e.target.value)
               setDirty(true)
             }}
-            className="h-7 pointer-coarse:h-10 text-xs"
+            className="h-7 pointer-coarse:h-10 text-caption-1-regular"
           />
         </TextField>
         <TextField isInvalid={invalidPrices.has('cache')}>
@@ -915,9 +915,9 @@ function ModelConfigEditor({
               setDirty(true)
             }}
             placeholder="—"
-            className="h-7 pointer-coarse:h-10 text-xs"
+            className="h-7 pointer-coarse:h-10 text-caption-1-regular"
           />
-          <Description className="text-xs">{t('settings.model.cachePriceHint')}</Description>
+          <Description className="text-caption-1-regular">{t('settings.model.cachePriceHint')}</Description>
         </TextField>
         <TextField isInvalid={invalidPrices.has('cacheWrite')}>
           <Label>{t('settings.model.cacheWritePrice')}</Label>
@@ -931,9 +931,9 @@ function ModelConfigEditor({
               setDirty(true)
             }}
             placeholder="—"
-            className="h-7 pointer-coarse:h-10 text-xs"
+            className="h-7 pointer-coarse:h-10 text-caption-1-regular"
           />
-          <Description className="text-xs">{t('settings.model.cacheWritePriceHint')}</Description>
+          <Description className="text-caption-1-regular">{t('settings.model.cacheWritePriceHint')}</Description>
         </TextField>
       </div>
       {/* Only where the model has any. Elsewhere this is not a switch that is
@@ -941,7 +941,7 @@ function ModelConfigEditor({
           a feature that failed to load. */}
       {(caps?.server_tools?.length ?? 0) > 0 && (
         <div data-slot="server-tools" className="space-y-1.5 pt-1">
-          <p data-slot="server-tools-label" className="text-xs text-text-secondary">
+          <p data-slot="server-tools-label" className="text-caption-1-regular text-text-secondary">
             {t('settings.model.serverTools')}
           </p>
           <div data-slot="server-tool-chips" className="flex flex-wrap gap-1">
@@ -954,7 +954,7 @@ function ModelConfigEditor({
                   variant={on ? 'primary' : 'outline'}
                   size="small"
                   aria-pressed={on}
-                  className="h-6 pointer-coarse:h-9 rounded-md px-2 text-xs font-normal"
+                  className="h-6 pointer-coarse:h-9 rounded-md px-2 text-caption-1-regular"
                   onPress={() => {
                     setServerTools(on ? serverTools.filter((x) => x !== name) : [...serverTools, name])
                     setDirty(true)
@@ -977,11 +977,11 @@ function ModelConfigEditor({
                 setDirty(true)
               }}
               placeholder="5"
-              className="h-7 pointer-coarse:h-10 text-xs"
+              className="h-7 pointer-coarse:h-10 text-caption-1-regular"
             />
-            <Description className="text-xs">{t('settings.model.serverToolPriceHint')}</Description>
+            <Description className="text-caption-1-regular">{t('settings.model.serverToolPriceHint')}</Description>
           </TextField>
-          <p data-slot="server-tools-hint" className="text-xs text-text-secondary">
+          <p data-slot="server-tools-hint" className="text-caption-1-regular text-text-secondary">
             {t('settings.model.serverToolsHint')}
           </p>
         </div>
@@ -993,7 +993,7 @@ function ModelConfigEditor({
         onExpandedChange={setShowTiers}
       >
         <Disclosure.Heading>
-          <Disclosure.Trigger className="inline-flex items-center gap-1 rounded-md text-xs text-text-secondary transition-colors outline-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring/50">
+          <Disclosure.Trigger className="inline-flex items-center gap-1 rounded-md text-caption-1-regular text-text-secondary transition-colors outline-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring/50">
             {tiers.length > 0
               ? t('settings.model.priceTiersCount', { count: tiers.length })
               : t('settings.model.priceTiers')}
@@ -1022,7 +1022,7 @@ function ModelConfigEditor({
           {/* `inline-flex`, not `flex`: a block-level flex row would stretch the
               trigger across the form and the indicator's own `ms-auto` would
               fling the chevron to the far edge. */}
-          <Disclosure.Trigger className="inline-flex items-center gap-1 rounded-md text-xs text-text-secondary transition-colors outline-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring/50">
+          <Disclosure.Trigger className="inline-flex items-center gap-1 rounded-md text-caption-1-regular text-text-secondary transition-colors outline-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring/50">
             {t('settings.model.capabilities')}
             <Disclosure.Indicator className="size-3.5" />
           </Disclosure.Trigger>
@@ -1032,7 +1032,7 @@ function ModelConfigEditor({
               so without it the overrides never collapse. */}
           <Disclosure.Body className="space-y-2">
             <div data-slot="effort-whitelist" className="space-y-1.5">
-              <p data-slot="effort-whitelist-label" className="text-xs text-text-secondary">
+              <p data-slot="effort-whitelist-label" className="text-caption-1-regular text-text-secondary">
                 {t('settings.model.supportedEfforts')}
               </p>
               <div data-slot="effort-chips" className="flex flex-wrap gap-1">
@@ -1045,7 +1045,7 @@ function ModelConfigEditor({
                       variant={on ? 'primary' : 'outline'}
                       size="small"
                       aria-pressed={on}
-                      className="h-6 pointer-coarse:h-9 px-2 text-xs font-normal"
+                      className="h-6 pointer-coarse:h-9 px-2 text-caption-1-regular"
                       onPress={() => {
                         // Rebuild from the ladder so the stored array stays in
                         // ascending order -- the median coercion ranks on position.
@@ -1076,13 +1076,13 @@ function ModelConfigEditor({
                 setDirty(true)
               }}
             />
-            <p data-slot="capabilities-hint" className="text-xs text-text-secondary">
+            <p data-slot="capabilities-hint" className="text-caption-1-regular text-text-secondary">
               {t('settings.model.capabilitiesHint')}
             </p>
             <Button
               variant="ghost"
               size="small"
-              className="h-6 pointer-coarse:h-9 px-0 text-xs text-text-secondary hover:text-text-primary"
+              className="h-6 pointer-coarse:h-9 px-0 text-caption-1-regular text-text-secondary hover:text-text-primary"
               onPress={resetOverrides}
             >
               {t('settings.model.capReset')}
@@ -1091,16 +1091,25 @@ function ModelConfigEditor({
         </Disclosure.Content>
       </Disclosure>
       {priceError && (
-        <p data-slot="model-config-error" role="alert" className="text-xs text-status-danger">
+        <p data-slot="model-config-error" role="alert" className="text-caption-1-regular text-status-danger">
           {priceError}
         </p>
       )}
       <div data-slot="model-config-actions" className="flex items-center gap-2 pt-1">
-        <Button size="small" className="h-7 pointer-coarse:h-10 text-xs" onPress={() => void handleSave()}>
+        <Button
+          size="small"
+          className="h-7 pointer-coarse:h-10 text-caption-1-regular"
+          onPress={() => void handleSave()}
+        >
           {t('common.save')}
         </Button>
         {onDelete && (
-          <Button size="small" variant="danger-soft" className="h-7 pointer-coarse:h-10 text-xs" onPress={onDelete}>
+          <Button
+            size="small"
+            variant="danger-soft"
+            className="h-7 pointer-coarse:h-10 text-caption-1-regular"
+            onPress={onDelete}
+          >
             {t('common.delete')}
           </Button>
         )}
@@ -1450,7 +1459,7 @@ function ProviderEditor({
         header: t('settings.provider.modelColumn'),
         isRowHeader: true,
         minWidth: 176,
-        cellClassName: 'text-xs',
+        cellClassName: 'text-caption-1-regular',
         cell: (model) => (
           <span
             data-slot="model-name"
@@ -1466,7 +1475,7 @@ function ProviderEditor({
         width: 112,
         minWidth: 112,
         headerClassName: 'whitespace-nowrap',
-        cellClassName: 'text-xs',
+        cellClassName: 'text-caption-1-regular',
         cell: (model) => {
           const config = modelConfigs.get(model.id)
           if (!config)
@@ -1643,23 +1652,33 @@ function ProviderEditor({
             </div>
           </TextField>
           {keyStatus === 'loading' && (
-            <p data-slot="provider-key-checking" className="flex items-center gap-1.5 text-xs text-text-secondary">
+            <p
+              data-slot="provider-key-checking"
+              className="flex items-center gap-1.5 text-caption-1-regular text-text-secondary"
+            >
               <Spinner size="sm" color="current" />
               {t('settings.provider.apiKeyChecking')}
             </p>
           )}
           {keyStatus === 'set' && (
-            <p data-slot="provider-key-saved" className="text-xs text-status-success-soft-foreground">
+            <p data-slot="provider-key-saved" className="text-caption-1-regular text-status-success-soft-foreground">
               {t('settings.provider.keySaved')}
             </p>
           )}
           {keyStatus === 'error' && (
-            <p data-slot="provider-key-check-failed" className="text-xs text-status-warning-soft-foreground">
+            <p
+              data-slot="provider-key-check-failed"
+              className="text-caption-1-regular text-status-warning-soft-foreground"
+            >
               {t('settings.provider.apiKeyCheckFailed')}
             </p>
           )}
           {credentialError && (
-            <p data-slot="provider-credential-error" role="alert" className="text-xs text-status-danger break-all">
+            <p
+              data-slot="provider-credential-error"
+              role="alert"
+              className="text-caption-1-regular text-status-danger break-all"
+            >
               {credentialError}
             </p>
           )}
@@ -1673,7 +1692,7 @@ function ProviderEditor({
       {balanceEntry(catalog, provider.catalog_id, providerType)?.balance === true && (
         <div data-slot="provider-balance" className="border-t border-border-button-default pt-4 space-y-3">
           <div data-slot="provider-balance-header" className="flex items-center justify-between">
-            <p data-slot="provider-balance-label" className="text-xs text-text-secondary">
+            <p data-slot="provider-balance-label" className="text-caption-1-regular text-text-secondary">
               {t('settings.provider.balance')}
             </p>
             <Button
@@ -1687,7 +1706,11 @@ function ProviderEditor({
             </Button>
           </div>
           {balanceError && (
-            <p data-slot="provider-balance-error" role="alert" className="text-xs text-status-danger break-all">
+            <p
+              data-slot="provider-balance-error"
+              role="alert"
+              className="text-caption-1-regular text-status-danger break-all"
+            >
               {balanceError}
             </p>
           )}
@@ -1697,7 +1720,7 @@ function ProviderEditor({
               className="rounded-lg border border-border-button-default p-3 space-y-1.5"
             >
               {!balance.is_available && (
-                <p data-slot="provider-balance-unavailable" className="text-xs text-status-danger">
+                <p data-slot="provider-balance-unavailable" className="text-caption-1-regular text-status-danger">
                   {t('settings.provider.balanceUnavailable')}
                 </p>
               )}
@@ -1707,13 +1730,13 @@ function ProviderEditor({
                   data-slot="provider-balance-account"
                   className="flex items-baseline justify-between gap-2"
                 >
-                  <span data-slot="provider-balance-total" className="text-sm">
+                  <span data-slot="provider-balance-total" className="text-body-regular">
                     {formatBalance(account.total_balance, account.currency)}
                   </span>
                   {/* The split is the point: a total held up by expiring
                       promotional credit is closer to empty than it looks. */}
                   {account.topped_up_balance != null && account.granted_balance != null && (
-                    <span data-slot="provider-balance-split" className="text-xs text-text-secondary">
+                    <span data-slot="provider-balance-split" className="text-caption-1-regular text-text-secondary">
                       {t('settings.provider.balanceSplit', {
                         toppedUp: formatDecimalAmount(account.topped_up_balance, locale, 2, 2),
                         granted: formatDecimalAmount(account.granted_balance, locale, 2, 2),
@@ -1723,7 +1746,7 @@ function ProviderEditor({
                 </div>
               ))}
               {balance.accounts.length === 0 && (
-                <p data-slot="provider-balance-no-detail" className="text-xs text-text-secondary">
+                <p data-slot="provider-balance-no-detail" className="text-caption-1-regular text-text-secondary">
                   {t('settings.provider.balanceNoDetail')}
                 </p>
               )}
@@ -1734,7 +1757,7 @@ function ProviderEditor({
 
       <div data-slot="provider-models" className="border-t border-border-button-default pt-4 space-y-3">
         <div data-slot="provider-models-header" className="flex items-center justify-between">
-          <p data-slot="provider-models-label" className="text-xs text-text-secondary">
+          <p data-slot="provider-models-label" className="text-caption-1-regular text-text-secondary">
             {t('settings.provider.models')}
           </p>
           {/* `keyStatus` is a proxy for "a request can be made", and it is only
@@ -1754,7 +1777,11 @@ function ProviderEditor({
           </Button>
         </div>
         {modelsError && (
-          <p data-slot="provider-models-error" role="alert" className="text-xs text-status-danger break-all">
+          <p
+            data-slot="provider-models-error"
+            role="alert"
+            className="text-caption-1-regular text-status-danger break-all"
+          >
             {modelsError}
           </p>
         )}
@@ -1775,7 +1802,7 @@ function ProviderEditor({
                 id={modelEditorId}
                 className="max-h-96 overflow-y-auto overscroll-contain rounded-lg border border-border-button-default pt-3"
               >
-                <h4 data-slot="model-config-panel-title" className="px-3 pb-3 text-xs font-medium">
+                <h4 data-slot="model-config-panel-title" className="px-3 pb-3 text-caption-1-medium">
                   {t('settings.provider.editModelConfig', { model: editingModel.name })}
                 </h4>
                 <ModelConfigEditor
@@ -1797,7 +1824,7 @@ function ProviderEditor({
           </div>
         )}
         {models.length === 0 && !fetchingModels && !modelsError && (
-          <p data-slot="provider-models-hint" className="text-xs text-text-secondary">
+          <p data-slot="provider-models-hint" className="text-caption-1-regular text-text-secondary">
             {t('settings.provider.fetchModelsHint')}
           </p>
         )}
@@ -1981,7 +2008,7 @@ export function ProviderSettings() {
               >
                 {iconModel ? <ModelIcon model={iconModel} size={16} /> : <Cloud className="size-4" />}
               </span>
-              <ListView.Title className="font-normal">{p.name}</ListView.Title>
+              <ListView.Title className="text-body-regular">{p.name}</ListView.Title>
             </ListView.ItemContent>
           </ListView.Item>
         )

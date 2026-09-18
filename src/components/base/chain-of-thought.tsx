@@ -31,7 +31,7 @@ function CotTrigger({ className, ...props }: ComponentProps<'button'>) {
       data-slot="chain-of-thought-trigger"
       type="button"
       {...props}
-      className={cx('text-xs font-medium text-text-secondary', className)}
+      className={cx('text-caption-1-medium text-text-secondary', className)}
     />
   )
 }
@@ -41,7 +41,7 @@ function CotContent({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="chain-of-thought-content"
       {...props}
-      className={cx('mt-1 text-sm text-text-secondary', className)}
+      className={cx('mt-1 text-body-regular text-text-secondary', className)}
     />
   )
 }
@@ -52,9 +52,9 @@ function CotSteps({ className, ...props }: ComponentProps<'div'>) {
 
 function CotStep({ className, label, ...props }: ComponentProps<'div'> & { label?: string }) {
   return (
-    <div data-slot="chain-of-thought-step" {...props} className={cx('text-sm', className)}>
+    <div data-slot="chain-of-thought-step" {...props} className={cx('text-body-regular', className)}>
       {label && (
-        <span data-slot="chain-of-thought-step-label" className="mr-1 font-medium text-text-primary">
+        <span data-slot="chain-of-thought-step-label" className="mr-1 text-body-medium text-text-primary">
           {label}:
         </span>
       )}

@@ -77,7 +77,7 @@ const CHAT_TOOL_CARD =
 
 const chatToolVariants = tv({
   slots: {
-    base: 'flex w-full flex-col text-xs',
+    base: 'flex w-full flex-col text-caption-1-regular',
     // Mirrors Pro's chat-tool rhythm. The inset focus ring remains visible
     // inside the clipped card and does not add another layout edge.
     trigger: [
@@ -127,7 +127,7 @@ const chatToolVariants = tv({
  * the playground, a fold panel — still looks like itself.
  */
 const toolBubbleVariants = tv({
-  base: [BUBBLE_BLOCK, 'w-fit flex-col text-xs', 'data-[expanded]:w-full'],
+  base: [BUBBLE_BLOCK, 'w-fit flex-col text-caption-1-regular', 'data-[expanded]:w-full'],
   variants: {
     state: {
       'input-streaming': '',
@@ -270,7 +270,7 @@ function ChatToolTrigger({ className, children, endContent, subtitle, ...props }
           {requiresAction && hasSubtitle && (
             <span
               data-slot="chat-tool-subtitle"
-              className="break-words text-left text-xs leading-snug text-text-secondary [overflow-wrap:anywhere]"
+              className="break-words text-left text-caption-1-regular leading-snug text-text-secondary [overflow-wrap:anywhere]"
             >
               {subtitle}
             </span>
@@ -278,7 +278,7 @@ function ChatToolTrigger({ className, children, endContent, subtitle, ...props }
         </div>
         <span
           data-slot="chat-tool-trigger-end"
-          className="flex shrink-0 items-center gap-1.5 text-xs text-text-secondary"
+          className="flex shrink-0 items-center gap-1.5 text-caption-1-regular text-text-secondary"
         >
           {endContent}
           <Disclosure.Indicator className="ms-0 size-3 shrink-0 text-text-secondary" />
@@ -329,13 +329,13 @@ function ChatToolTrigger({ className, children, endContent, subtitle, ...props }
           {hasSubtitle && (
             <span
               data-slot="chat-tool-subtitle"
-              className="line-clamp-2 break-words text-left text-xs leading-snug text-text-secondary [overflow-wrap:anywhere]"
+              className="line-clamp-2 break-words text-left text-caption-1-regular leading-snug text-text-secondary [overflow-wrap:anywhere]"
             >
               {subtitle}
             </span>
           )}
         </div>
-        <span data-slot="chat-tool-trigger-end" className="flex shrink-0 items-center gap-2 text-xs">
+        <span data-slot="chat-tool-trigger-end" className="flex shrink-0 items-center gap-2 text-caption-1-regular">
           {endContent}
           <Disclosure.Indicator className="size-3.5 shrink-0 text-text-secondary" />
         </span>
@@ -550,7 +550,7 @@ function ChatToolPanelHeader({
         {title != null && (
           <span
             data-slot="chat-tool-panel-title"
-            className="min-w-0 text-xs leading-5 font-medium break-words whitespace-pre-wrap text-text-primary [overflow-wrap:anywhere]"
+            className="min-w-0 text-caption-1-medium leading-5 break-words whitespace-pre-wrap text-text-primary [overflow-wrap:anywhere]"
           >
             {title}
           </span>
@@ -558,14 +558,17 @@ function ChatToolPanelHeader({
         {description != null && (
           <span
             data-slot="chat-tool-panel-description"
-            className="min-w-0 text-xs leading-4 break-words text-text-secondary"
+            className="min-w-0 text-caption-1-regular leading-4 break-words text-text-secondary"
           >
             {description}
           </span>
         )}
       </div>
       {end != null && (
-        <div data-slot="chat-tool-panel-end" className="flex shrink-0 items-center gap-1.5 text-xs text-text-secondary">
+        <div
+          data-slot="chat-tool-panel-end"
+          className="flex shrink-0 items-center gap-1.5 text-caption-1-regular text-text-secondary"
+        >
           {end}
         </div>
       )}
@@ -663,7 +666,7 @@ function ChatToolArgs({ value, text, className, children, ...props }: ChatToolPa
         (code !== undefined && (
           <pre
             data-slot="chat-tool-args-code"
-            className="font-mono text-xs leading-relaxed whitespace-pre-wrap text-text-primary/90 [overflow-wrap:anywhere]"
+            className="font-mono text-caption-1-regular leading-relaxed whitespace-pre-wrap text-text-primary/90 [overflow-wrap:anywhere]"
           >
             <JsonCode code={code} />
           </pre>
@@ -687,7 +690,7 @@ function ChatToolResult({ value, text, className, children, ...props }: ChatTool
         (code !== undefined && (
           <pre
             data-slot="chat-tool-result-code"
-            className="font-mono text-xs leading-relaxed whitespace-pre-wrap text-text-primary/90 [overflow-wrap:anywhere]"
+            className="font-mono text-caption-1-regular leading-relaxed whitespace-pre-wrap text-text-primary/90 [overflow-wrap:anywhere]"
           >
             <JsonCode code={code} />
           </pre>

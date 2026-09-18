@@ -124,7 +124,7 @@ function JsonImportDialog({ onImport, onCancel }: { onImport: (data: McpServersJ
         />
       </TextField>
       {error && (
-        <p id={errorId} data-slot="mcp-import-error" role="alert" className="text-sm text-status-danger">
+        <p id={errorId} data-slot="mcp-import-error" role="alert" className="text-body-regular text-status-danger">
           {t('settings.mcp.importJsonError')}
         </p>
       )}
@@ -285,7 +285,7 @@ function McpServerEditor({
       </TextField>
 
       <div data-slot="mcp-transport">
-        <p data-slot="mcp-transport-label" className="text-sm font-medium">
+        <p data-slot="mcp-transport-label" className="text-body-medium">
           {t('settings.mcp.transport')}
         </p>
         <div
@@ -299,7 +299,7 @@ function McpServerEditor({
             aria-pressed={!isHttp}
             onPress={() => setTransportType('stdio')}
             className={cx(
-              'px-3 py-1.5 rounded-md text-sm transition-colors',
+              'px-3 py-1.5 rounded-md text-body-regular transition-colors',
               !isHttp
                 ? 'bg-background-secondary-default text-text-primary hover:bg-background-primary-hover hover:text-text-primary'
                 : 'text-text-secondary hover:text-text-primary hover:bg-background-primary-hover/50',
@@ -312,7 +312,7 @@ function McpServerEditor({
             aria-pressed={isHttp}
             onPress={() => setTransportType('streamablehttp')}
             className={cx(
-              'px-3 py-1.5 rounded-md text-sm transition-colors',
+              'px-3 py-1.5 rounded-md text-body-regular transition-colors',
               isHttp
                 ? 'bg-background-secondary-default text-text-primary hover:bg-background-primary-hover hover:text-text-primary'
                 : 'text-text-secondary hover:text-text-primary hover:bg-background-primary-hover/50',
@@ -426,7 +426,7 @@ function McpServerEditor({
 
       {tools.length > 0 && (
         <div data-slot="mcp-tools">
-          <p data-slot="mcp-tools-label" className="text-sm font-medium">
+          <p data-slot="mcp-tools-label" className="text-body-medium">
             {t('settings.mcp.tools')} ({tools.length})
           </p>
           <div data-slot="mcp-tool-list" className="mt-1 space-y-1">
@@ -434,7 +434,7 @@ function McpServerEditor({
               <div
                 key={tool.qualified_name}
                 data-slot="mcp-tool-row"
-                className="flex items-center gap-2 px-2 py-1 rounded-lg bg-background-secondary-default/50 text-xs"
+                className="flex items-center gap-2 px-2 py-1 rounded-lg bg-background-secondary-default/50 text-caption-1-regular"
               >
                 <span data-slot="mcp-tool-name" className="font-mono">
                   {tool.name}
@@ -570,10 +570,10 @@ export function McpSettings() {
         >
           <ListView.ItemContent>
             <LogoMcp className="size-4" />
-            <ListView.Title className="font-normal">{s.name}</ListView.Title>
+            <ListView.Title className="text-body-regular">{s.name}</ListView.Title>
           </ListView.ItemContent>
           <ListView.ItemAction>
-            <span data-slot="mcp-server-transport" className="truncate text-xs text-text-secondary">
+            <span data-slot="mcp-server-transport" className="truncate text-caption-1-regular text-text-secondary">
               {s.transport_type === 'streamablehttp' ? 'HTTP' : 'stdio'}
             </span>
           </ListView.ItemAction>

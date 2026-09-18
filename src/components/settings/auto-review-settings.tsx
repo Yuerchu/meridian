@@ -311,7 +311,7 @@ export function AutoReviewSettings() {
         />
         <Description>{t('settings.approvals.ttlHint')}</Description>
         {normaliseTtl(settings.ttl) === 0 && (
-          <p data-slot="approvals-ttl-never" className="text-xs text-status-warning-soft-foreground">
+          <p data-slot="approvals-ttl-never" className="text-caption-1-regular text-status-warning-soft-foreground">
             {t('settings.approvals.ttlNever')}
           </p>
         )}
@@ -329,16 +329,20 @@ export function AutoReviewSettings() {
             <CellSwitch.Control />
           </CellSwitch.Trigger>
         </CellSwitch>
-        <p id="autoreview-enabled-hint" data-slot="autoreview-enable-hint" className="text-xs text-text-secondary">
+        <p
+          id="autoreview-enabled-hint"
+          data-slot="autoreview-enable-hint"
+          className="text-caption-1-regular text-text-secondary"
+        >
           {t('settings.autoReview.enableHint')}
         </p>
       </div>
 
       <div data-slot="autoreview-model" className="space-y-1.5">
-        <span data-slot="autoreview-model-label" className="text-sm font-medium">
+        <span data-slot="autoreview-model-label" className="text-body-medium">
           {t('settings.autoReview.model')}
         </span>
-        <p data-slot="autoreview-model-hint" className="text-xs text-text-secondary">
+        <p data-slot="autoreview-model-hint" className="text-caption-1-regular text-text-secondary">
           {t('settings.autoReview.modelHint')}
         </p>
         <ModelPicker
@@ -347,7 +351,7 @@ export function AutoReviewSettings() {
           onChange={(model) => setSettings({ ...settings, model })}
         />
         {incomplete && (
-          <p data-slot="autoreview-no-model" className="text-xs text-status-warning-soft-foreground">
+          <p data-slot="autoreview-no-model" className="text-caption-1-regular text-status-warning-soft-foreground">
             {t('settings.autoReview.noModel')}
           </p>
         )}
@@ -365,7 +369,11 @@ export function AutoReviewSettings() {
             <CellSwitch.Control />
           </CellSwitch.Trigger>
         </CellSwitch>
-        <p id="autoreview-escalate-hint" data-slot="autoreview-escalate-hint" className="text-xs text-text-secondary">
+        <p
+          id="autoreview-escalate-hint"
+          data-slot="autoreview-escalate-hint"
+          className="text-caption-1-regular text-text-secondary"
+        >
           {t('settings.autoReview.escalateHint')}
         </p>
       </div>
@@ -393,7 +401,7 @@ export function AutoReviewSettings() {
       />
 
       {error && (
-        <p data-slot="autoreview-error" className="text-xs text-status-danger">
+        <p data-slot="autoreview-error" className="text-caption-1-regular text-status-danger">
           {error}
         </p>
       )}
@@ -403,7 +411,7 @@ export function AutoReviewSettings() {
           {t('common.save')}
         </Button>
         {saved && (
-          <span data-slot="autoreview-saved" className="text-xs text-status-success">
+          <span data-slot="autoreview-saved" className="text-caption-1-regular text-status-success">
             {t('common.saved')}
           </span>
         )}

@@ -83,7 +83,7 @@ export function TodoItemRow({ item, className }: { item: TodoDraft; className?: 
       role="listitem"
       data-slot="todo-item"
       data-status={item.status}
-      className={cx('flex items-start gap-2 text-xs', className)}
+      className={cx('flex items-start gap-2 text-caption-1-regular', className)}
     >
       <TodoStatusIcon status={item.status} className="mt-px" />
       <span
@@ -91,7 +91,7 @@ export function TodoItemRow({ item, className }: { item: TodoDraft; className?: 
         className={cx(
           'min-w-0 flex-1',
           item.status === 'completed' && 'text-text-secondary line-through',
-          item.status === 'in_progress' && 'font-medium text-text-primary',
+          item.status === 'in_progress' && 'text-caption-1-medium text-text-primary',
           item.status === 'pending' && 'text-text-secondary',
         )}
       >

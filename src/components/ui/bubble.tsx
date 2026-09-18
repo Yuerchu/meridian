@@ -196,7 +196,7 @@ function BubbleContent({ className, render, ...props }: React.ComponentProps<typ
       data-bubble-block=""
       className={cx(
         BUBBLE_BLOCK,
-        'w-fit border border-[var(--bubble-edge,transparent)] px-3 py-2 text-sm leading-relaxed wrap-break-word group-data-[align=end]/bubble:self-end [button]:text-left [button,a]:transition-colors [button,a]:outline-none [button,a]:focus-visible:border-border-focus-ring [button,a]:focus-visible:ring-3 [button,a]:focus-visible:ring-border-focus-ring/50',
+        'w-fit border border-[var(--bubble-edge,transparent)] px-3 py-2 text-body-regular leading-relaxed wrap-break-word group-data-[align=end]/bubble:self-end [button]:text-left [button,a]:transition-colors [button,a]:outline-none [button,a]:focus-visible:border-border-focus-ring [button,a]:focus-visible:ring-3 [button,a]:focus-visible:ring-border-focus-ring/50',
         className,
       )}
       render={render}
@@ -219,7 +219,7 @@ function BubbleTime({ className, ...props }: React.ComponentProps<'time'>) {
   return (
     <time
       data-slot="bubble-time"
-      className={cx('text-xs leading-none whitespace-nowrap text-text-secondary select-none', className)}
+      className={cx('text-caption-1-regular leading-none whitespace-nowrap text-text-secondary select-none', className)}
       {...props}
     />
   )

@@ -782,7 +782,7 @@ export default function ScrollLab() {
   return (
     <div data-slot="scroll-lab" ref={rootRef} className="flex h-screen flex-col bg-background-full text-text-primary">
       <div data-slot="scroll-lab-toolbar" className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
-        <span data-slot="scroll-lab-title" className="text-sm font-semibold">
+        <span data-slot="scroll-lab-title" className="text-body-semibold">
           滚动行为实验场
         </span>
         <Button size="small" variant="outline" onPress={() => seedHistory()}>
@@ -860,7 +860,7 @@ export default function ScrollLab() {
         <div
           data-slot="scroll-lab-results"
           data-testid="scroll-lab-results"
-          className="max-h-48 overflow-y-auto border-t px-4 py-2 text-xs"
+          className="max-h-48 overflow-y-auto border-t px-4 py-2 text-caption-1-regular"
         >
           {results.map((r) => (
             <div data-slot="scroll-lab-result" key={r.name} className="flex gap-2 py-0.5">
@@ -870,7 +870,7 @@ export default function ScrollLab() {
               >
                 {r.pass ? 'PASS' : 'FAIL'}
               </span>
-              <span data-slot="scroll-lab-result-name" className="font-medium">
+              <span data-slot="scroll-lab-result-name" className="text-caption-1-medium">
                 {r.name}
               </span>
               <span data-slot="scroll-lab-result-detail" className="text-text-secondary">
@@ -884,7 +884,7 @@ export default function ScrollLab() {
       <div
         data-slot="scroll-lab-readout"
         data-testid="scroll-lab-readout"
-        className="border-t px-4 py-2 font-mono text-xs text-text-secondary"
+        className="border-t px-4 py-2 font-mono text-caption-1-regular text-text-secondary"
       >
         {readout}
       </div>

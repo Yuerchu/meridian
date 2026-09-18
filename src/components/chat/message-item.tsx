@@ -139,8 +139,11 @@ function speakerLabel(
 
 function QuotedMessageBlock({ sender, content }: { sender: string; content: string }) {
   return (
-    <div data-slot="quoted-message" className="mb-2 pl-3 border-l-2 border-text-white/30 text-xs text-text-white/70">
-      <span data-slot="quoted-message-sender" className="font-medium">
+    <div
+      data-slot="quoted-message"
+      className="mb-2 pl-3 border-l-2 border-text-white/30 text-caption-1-regular text-text-white/70"
+    >
+      <span data-slot="quoted-message-sender" className="text-caption-1-medium">
         {sender}
       </span>
       <p data-slot="quoted-message-content" className="mt-0.5 line-clamp-3 whitespace-pre-wrap">
@@ -366,7 +369,7 @@ export const UserMessage = React.memo(function UserMessage({
                     e.target.style.height = e.target.scrollHeight + 'px'
                   }}
                   onKeyDown={handleEditKeyDown}
-                  className="w-full min-w-[200px] min-h-0 rounded-none border-0 p-0 field-sizing-fixed bg-transparent dark:bg-transparent text-sm leading-relaxed resize-none outline-none focus-visible:ring-0"
+                  className="w-full min-w-[200px] min-h-0 rounded-none border-0 p-0 field-sizing-fixed bg-transparent dark:bg-transparent text-body-regular leading-relaxed resize-none outline-none focus-visible:ring-0"
                   rows={1}
                 />
                 <div data-slot="message-edit-actions" className="flex justify-end gap-1 mt-1.5">
@@ -750,7 +753,7 @@ function AssistantBubble({
       <Bubble variant="assistant" position={bubble.position} role="status" data-working="true">
         <BubbleContent className="flex items-center gap-2">
           <Spinner size="sm" color="current" className="text-text-secondary" />
-          <span data-slot="working-label" className="shimmer text-xs">
+          <span data-slot="working-label" className="shimmer text-caption-1-regular">
             {workingLabel}
           </span>
         </BubbleContent>
@@ -898,7 +901,7 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
   const [showSelectText, setShowSelectText] = useState(false)
   const coarse = isCoarsePointer()
   const renderError = (
-    <div data-slot="render-error" className="text-xs text-status-danger py-2">
+    <div data-slot="render-error" className="text-caption-1-regular text-status-danger py-2">
       {t('chat.renderError')}
     </div>
   )
@@ -1035,7 +1038,7 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
               made it read as still being worked out. */}
           <TurnUsage tokens={turn.tokens} usage={turn.usage} />
           {turn.durationMs != null && !isStreaming && (
-            <span data-slot="turn-duration" className="font-normal tabular-nums">
+            <span data-slot="turn-duration" className="text-caption-1-regular tabular-nums">
               {t('chat.turn.duration', { duration: formatDuration(turn.durationMs) })}
             </span>
           )}

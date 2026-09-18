@@ -11,7 +11,7 @@ const proseClasses = [
   'prose-headings:font-semibold prose-headings:text-text-primary',
   'prose-p:text-text-primary prose-p:leading-relaxed',
   'prose-a:text-button-ghost-foreground prose-a:no-underline hover:prose-a:underline',
-  'prose-code:rounded prose-code:bg-background-secondary-default prose-code:px-1 prose-code:py-0.5 prose-code:text-sm prose-code:font-normal prose-code:before:content-none prose-code:after:content-none',
+  'prose-code:rounded prose-code:bg-background-secondary-default prose-code:px-1 prose-code:py-0.5 prose-code:text-body-regular prose-code:before:content-none prose-code:after:content-none',
   'prose-pre:rounded-xl prose-pre:bg-background-secondary-default',
   'prose-blockquote:border-l-accent prose-blockquote:text-text-secondary',
   'prose-strong:text-text-primary',

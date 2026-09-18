@@ -72,12 +72,12 @@ function richText(source: string): ReactNode[] {
         <code
           key={key++}
           data-slot="schema-rich-code"
-          className="rounded-md bg-background-secondary-default px-1 py-0.5 font-mono text-xs wrap-anywhere"
+          className="rounded-md bg-background-secondary-default px-1 py-0.5 font-mono text-caption-1-regular wrap-anywhere"
         >
           {inner}
         </code>
       ) : (
-        <b key={key++} data-slot="schema-rich-strong" className="font-semibold text-text-primary">
+        <b key={key++} data-slot="schema-rich-strong" className="text-caption-1-semibold text-text-primary">
           {inner}
         </b>
       ),
@@ -141,13 +141,13 @@ function ColumnRow({ table, column, keyed }: { table: SchemaTable; column: Schem
       <span
         data-slot="schema-column-name"
         className={cx(
-          'truncate font-mono text-xs',
+          'truncate font-mono text-caption-1-regular',
           isPk ? 'text-status-warning' : keyed ? 'text-text-primary' : 'text-text-secondary',
         )}
       >
         {column.name}
       </span>
-      <span data-slot="schema-column-type" className="ml-auto font-mono text-xs text-text-secondary/60">
+      <span data-slot="schema-column-type" className="ml-auto font-mono text-caption-1-regular text-text-secondary/60">
         {column.type}
       </span>
     </div>
@@ -180,16 +180,19 @@ function TableNode({ data, selected }: NodeProps<Node<TableNodeData>>) {
           className="size-4 shrink-0 rounded-md"
           style={{ background: group?.color }}
         />
-        <span data-slot="schema-table-name" className="font-mono text-sm font-semibold">
+        <span data-slot="schema-table-name" className="font-mono text-body-semibold">
           {table.name}
         </span>
-        <span data-slot="schema-table-migration" className="ml-auto font-mono text-xs text-text-secondary/70">
+        <span
+          data-slot="schema-table-migration"
+          className="ml-auto font-mono text-caption-1-regular text-text-secondary/70"
+        >
           迁移 {table.mig}
         </span>
       </div>
       <div
         data-slot="schema-table-subtitle"
-        className="flex items-baseline gap-2 px-3 pt-1.5 pb-0.5 text-xs text-text-secondary"
+        className="flex items-baseline gap-2 px-3 pt-1.5 pb-0.5 text-caption-1-regular text-text-secondary"
       >
         <span data-slot="schema-table-title" className="truncate">
           {table.title}
@@ -386,7 +389,7 @@ function EdgeList({
             <span
               data-slot="schema-edge-path"
               className={cx(
-                'font-mono text-xs wrap-anywhere',
+                'font-mono text-caption-1-regular wrap-anywhere',
                 edge.kind === 'soft' ? 'text-status-warning' : 'text-text-primary',
               )}
             >
@@ -394,7 +397,7 @@ function EdgeList({
             </span>
             <span
               data-slot="schema-edge-action"
-              className="ml-auto font-mono text-xs text-text-secondary wrap-anywhere"
+              className="ml-auto font-mono text-caption-1-regular text-text-secondary wrap-anywhere"
             >
               {edge.kind === 'soft' ? '逻辑 · ' : ''}
               {edge.act}
@@ -408,7 +411,7 @@ function EdgeList({
 
 function SectionTitle({ children }: { children: ReactNode }) {
   return (
-    <h3 data-slot="schema-section-title" className="px-4 pt-4 pb-1 text-xs font-semibold text-text-secondary">
+    <h3 data-slot="schema-section-title" className="px-4 pt-4 pb-1 text-caption-1-semibold text-text-secondary">
       {children}
     </h3>
   )
@@ -427,11 +430,11 @@ function DetailPanel({
     return (
       <aside
         data-slot="schema-detail-empty"
-        className="flex w-[420px] shrink-0 items-center justify-center border-l border-border-button-default bg-background-primary-default p-8 text-center text-sm text-text-secondary"
+        className="flex w-[420px] shrink-0 items-center justify-center border-l border-border-button-default bg-background-primary-default p-8 text-center text-body-regular text-text-secondary"
       >
         <div data-slot="schema-detail-empty-body" className="space-y-2">
           <p data-slot="schema-detail-empty-hint">点一个表看它的全部字段、跨字段约束与关联关系</p>
-          <p data-slot="schema-detail-empty-tips" className="text-xs">
+          <p data-slot="schema-detail-empty-tips" className="text-caption-1-regular">
             拖动节点重新排布 · 滚轮缩放 · 选中一个表会把它的边挑出来
           </p>
         </div>
@@ -453,10 +456,10 @@ function DetailPanel({
       <header data-slot="schema-detail-header" className="border-b border-border-button-default px-4 py-3">
         <div data-slot="schema-detail-heading" className="flex items-start gap-2">
           <div data-slot="schema-detail-identity" className="min-w-0">
-            <h2 data-slot="schema-detail-name" className="font-mono text-base font-semibold">
+            <h2 data-slot="schema-detail-name" className="font-mono text-headline-semibold">
               {table.name}
             </h2>
-            <p data-slot="schema-detail-meta" className="text-xs text-text-secondary">
+            <p data-slot="schema-detail-meta" className="text-caption-1-regular text-text-secondary">
               {table.title} · {group?.title} · 迁移 {table.mig}
             </p>
           </div>
@@ -482,7 +485,7 @@ function DetailPanel({
         {table.note && (
           <p
             data-slot="schema-detail-note"
-            className="border-b border-border-button-default bg-background-secondary-default/40 px-4 py-3 text-xs leading-relaxed text-text-secondary"
+            className="border-b border-border-button-default bg-background-secondary-default/40 px-4 py-3 text-caption-1-regular leading-relaxed text-text-secondary"
           >
             {richText(table.note)}
           </p>
@@ -499,12 +502,12 @@ function DetailPanel({
               className="border-b border-border-button-default/50 px-4 py-2 hover:bg-background-primary-hover/40"
             >
               <div data-slot="schema-detail-column-heading" className="flex items-baseline gap-2">
-                <span data-slot="schema-detail-column-name" className="font-mono text-xs break-all">
+                <span data-slot="schema-detail-column-name" className="font-mono text-caption-1-regular break-all">
                   {c.name}
                 </span>
                 <span
                   data-slot="schema-detail-column-type"
-                  className="ml-auto shrink-0 font-mono text-xs text-status-info"
+                  className="ml-auto shrink-0 font-mono text-caption-1-regular text-status-info"
                 >
                   {c.type}
                 </span>
@@ -514,7 +517,10 @@ function DetailPanel({
                   <FlagChip key={f} flag={f} />
                 ))}
                 {c.def !== '—' && (
-                  <span data-slot="schema-detail-column-default" className="font-mono text-xs text-text-secondary/70">
+                  <span
+                    data-slot="schema-detail-column-default"
+                    className="font-mono text-caption-1-regular text-text-secondary/70"
+                  >
                     默认 {c.def}
                   </span>
                 )}
@@ -522,7 +528,7 @@ function DetailPanel({
               {c.desc && (
                 <p
                   data-slot="schema-detail-column-desc"
-                  className="mt-1 text-xs leading-relaxed break-words text-text-secondary"
+                  className="mt-1 text-caption-1-regular leading-relaxed break-words text-text-secondary"
                 >
                   {richText(c.desc)}
                 </p>
@@ -540,7 +546,7 @@ function DetailPanel({
             <SectionTitle>关联关系</SectionTitle>
             <ul
               data-slot="schema-detail-rels"
-              className="space-y-2 px-4 pl-8 text-xs leading-relaxed text-text-secondary"
+              className="space-y-2 px-4 pl-8 text-caption-1-regular leading-relaxed text-text-secondary"
             >
               {table.rels.map((r, i) => (
                 <li data-slot="schema-detail-rel" key={i} className="list-disc">
@@ -556,7 +562,7 @@ function DetailPanel({
             <SectionTitle>跨字段约束与不变式</SectionTitle>
             <ul
               data-slot="schema-detail-rules"
-              className="space-y-2 px-4 pl-8 text-xs leading-relaxed text-text-secondary"
+              className="space-y-2 px-4 pl-8 text-caption-1-regular leading-relaxed text-text-secondary"
             >
               {table.rules.map((r, i) => (
                 <li data-slot="schema-detail-rule" key={i} className="list-disc">
@@ -608,10 +614,13 @@ function Lab() {
         data-slot="schema-lab-header"
         className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border-button-default px-4 py-2"
       >
-        <h1 data-slot="schema-lab-title" className="text-sm font-semibold whitespace-nowrap">
+        <h1 data-slot="schema-lab-title" className="text-body-semibold whitespace-nowrap">
           数据库模型
         </h1>
-        <span data-slot="schema-lab-stats" className="font-mono text-xs whitespace-nowrap text-text-secondary">
+        <span
+          data-slot="schema-lab-stats"
+          className="font-mono text-caption-1-regular whitespace-nowrap text-text-secondary"
+        >
           {TABLES.length} 表 · {fkCount} 外键 · {softCount} 逻辑引用
         </span>
         <Input
@@ -645,7 +654,7 @@ function Lab() {
                   size="small"
                   onPress={() => toggleGroup(g.id)}
                   aria-pressed={!off}
-                  className={cx('h-7 gap-1.5 rounded-full px-2.5 text-xs font-normal', off && 'opacity-40')}
+                  className={cx('h-7 gap-1.5 rounded-full px-2.5 text-caption-1-regular', off && 'opacity-40')}
                 >
                   <span
                     data-slot="schema-lab-group-swatch"
@@ -686,7 +695,7 @@ function Lab() {
           />
           <p
             data-slot="schema-lab-legend"
-            className="pointer-events-none absolute bottom-3.5 left-14 z-5 rounded-md border border-border-button-default bg-background-full/80 px-2.5 py-1 text-xs text-text-secondary backdrop-blur-sm"
+            className="pointer-events-none absolute bottom-3.5 left-14 z-5 rounded-md border border-border-button-default bg-background-full/80 px-2.5 py-1 text-caption-1-regular text-text-secondary backdrop-blur-sm"
           >
             实线 = 真外键（标注 ON DELETE 行为） · 虚线 = 代码维护的逻辑引用，故意不建外键
           </p>
@@ -709,7 +718,7 @@ export default function SchemaLab() {
         .schema-edge-soft .react-flow__edge-path { stroke: var(--color-warning); stroke-dasharray: 5 4; opacity: .75; }
         .schema-edge-hl .react-flow__edge-path { stroke: var(--color-accent); stroke-width: 2.2px; opacity: 1; }
         .schema-edge-dim { opacity: .12; }
-        .react-flow__edge-text { fill: var(--color-muted); font-size: var(--text-xs); }
+        .react-flow__edge-text { fill: var(--color-muted); font-size: var(--text-caption-1-regular); }
         .react-flow__edge-textbg { fill: var(--color-background); opacity: .85; }
         .react-flow__handle { opacity: 0; min-width: 6px; min-height: 6px; width: 6px; height: 6px; border: 0; }
       `}</style>

@@ -28,7 +28,10 @@ export function RowActionDropdownItems({ actions }: { actions: RowAction[] }) {
               no pointer events, so a tooltip on one is unreachable by mouse and
               by screen reader alike. */}
           {action.disabledReason && (
-            <span data-slot="row-action-disabled-reason" className="ml-auto shrink-0 text-xs text-text-secondary">
+            <span
+              data-slot="row-action-disabled-reason"
+              className="ml-auto shrink-0 text-caption-1-regular text-text-secondary"
+            >
               {action.disabledReason}
             </span>
           )}

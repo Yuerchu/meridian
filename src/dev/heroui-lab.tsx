@@ -164,10 +164,10 @@ interface Report {
 function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
     <section data-slot="lab-section" className="space-y-2">
-      <h2 data-slot="lab-section-title" className="text-sm font-semibold">
+      <h2 data-slot="lab-section-title" className="text-body-semibold">
         {title}
         {hint && (
-          <span data-slot="lab-section-hint" className="ml-2 font-normal text-text-secondary">
+          <span data-slot="lab-section-hint" className="ml-2 text-body-regular text-text-secondary">
             {hint}
           </span>
         )}
@@ -276,7 +276,7 @@ function SidebarProbe() {
           读 data-row-id
         </HButton>
       </div>
-      <p className="font-mono text-xs" data-slot="probe-readout">
+      <p className="font-mono text-caption-1-regular" data-slot="probe-readout">
         onAction: {acted ?? '(未点)'} ／ 菜单开在: {hit ?? '(关着)'} ／ DOM 上的 row id:{' '}
         {attrs ? (attrs.length ? attrs.join(',') : '一个都没有') : '(未读)'}
       </p>
@@ -312,7 +312,7 @@ function PromptInputProbe() {
           <span
             data-slot="prompt-input-probe-slot-start"
             data-testid="slot-start"
-            className="text-xs text-text-secondary"
+            className="text-caption-1-regular text-text-secondary"
           >
             工具槽
           </span>
@@ -322,7 +322,7 @@ function PromptInputProbe() {
             <span
               data-slot="prompt-input-probe-slot-end"
               data-testid="slot-end"
-              className="text-xs text-text-secondary"
+              className="text-caption-1-regular text-text-secondary"
             >
               右槽
             </span>
@@ -348,14 +348,14 @@ function PromptInputProbe() {
                 </HPopover.Trigger>
                 <HTooltipContent>上下文用量</HTooltipContent>
               </HTooltip>
-              <HPopover.Content placement="top" className="p-3 text-xs">
+              <HPopover.Content placement="top" className="p-3 text-caption-1-regular">
                 用量面板
               </HPopover.Content>
             </HPopover>
           </>
         }
       />
-      <p data-slot="prompt-input-probe-counts" className="text-xs text-text-secondary">
+      <p data-slot="prompt-input-probe-counts" className="text-caption-1-regular text-text-secondary">
         提交{' '}
         <span data-slot="prompt-input-probe-submit-count" data-testid="submit-count">
           {submits}
@@ -373,7 +373,7 @@ function PromptInputProbe() {
           {steerable ? '关掉可插话' : '开可插话'}
         </HButton>
       </p>
-      <p data-slot="prompt-input-probe-note" className="text-xs text-text-secondary">
+      <p data-slot="prompt-input-probe-note" className="text-caption-1-regular text-text-secondary">
         「可插话」是子 agent 的模式：流式中 Enter 仍然提交，Send 保持 Send，Stop 单独出现在它左边——
         但只在框里有字的时候，框空了 Pro 会把 Stop 的行为还给 Send。
       </p>
@@ -469,10 +469,10 @@ export default function HeroUiLab() {
     <div data-slot="heroui-lab" className="h-full overflow-y-auto bg-background-full text-text-primary">
       <div data-slot="heroui-lab-body" className="mx-auto max-w-3xl space-y-8 px-6 py-8">
         <header data-slot="heroui-lab-header" className="space-y-1">
-          <h1 data-slot="heroui-lab-title" className="text-lg font-semibold">
+          <h1 data-slot="heroui-lab-title" className="text-title-3-semibold">
             HeroUI v3 在 WebView2 的落地探测
           </h1>
-          <p data-slot="heroui-lab-intro" className="text-xs text-text-secondary">
+          <p data-slot="heroui-lab-intro" className="text-caption-1-regular text-text-secondary">
             必须在 <code data-slot="heroui-lab-intro-code">pnpm tauri dev</code>{' '}
             的窗口里看。浏览器里跑出来的结果不作数。
           </p>
@@ -500,7 +500,7 @@ export default function HeroUiLab() {
           </div>
           <pre
             data-slot="heroui-lab-report"
-            className="max-h-96 overflow-auto rounded-lg border bg-background-secondary-default/30 p-3 font-mono text-xs whitespace-pre-wrap select-all"
+            className="max-h-96 overflow-auto rounded-lg border bg-background-secondary-default/30 p-3 font-mono text-caption-1-regular whitespace-pre-wrap select-all"
           >
             {asText}
           </pre>
@@ -559,7 +559,7 @@ export default function HeroUiLab() {
                 <HPopover.Trigger>
                   <HButton variant="secondary">点开 Popover</HButton>
                 </HPopover.Trigger>
-                <HPopover.Content className="p-3 text-sm">这里应该有边框和阴影</HPopover.Content>
+                <HPopover.Content className="p-3 text-body-regular">这里应该有边框和阴影</HPopover.Content>
               </HPopover>
 
               {/* Trigger 得自己放 Value 和 Indicator，否则是个空框；集合项必须带
@@ -590,7 +590,7 @@ export default function HeroUiLab() {
                 </HDisclosure.Trigger>
               </HDisclosure.Heading>
               <HDisclosure.Content>
-                <HDisclosure.Body className="text-sm text-text-secondary">
+                <HDisclosure.Body className="text-body-regular text-text-secondary">
                   展开时高度过渡是否平滑，有没有闪烁或跳动。
                 </HDisclosure.Body>
               </HDisclosure.Content>
@@ -637,7 +637,7 @@ export default function HeroUiLab() {
                     {icon && (
                       <img data-slot="heroui-lab-code-block-icon" src={icon} alt="" aria-hidden className="size-4" />
                     )}
-                    <span data-slot="heroui-lab-code-block-lang" className="text-xs text-text-secondary">
+                    <span data-slot="heroui-lab-code-block-lang" className="text-caption-1-regular text-text-secondary">
                       {lang}
                     </span>
                   </div>
@@ -658,7 +658,7 @@ export default function HeroUiLab() {
         <Section title="Markdown 两边对照" hint="重点看开头三行：右边会不会断成三行">
           <div data-slot="heroui-lab-markdown-compare" className="grid grid-cols-2 gap-4">
             <div data-slot="heroui-lab-markdown-ours" className="min-w-0 space-y-2">
-              <h3 data-slot="heroui-lab-markdown-heading" className="text-xs font-medium text-text-secondary">
+              <h3 data-slot="heroui-lab-markdown-heading" className="text-caption-1-medium text-text-secondary">
                 现在（react-markdown + remark-gfm）
               </h3>
               <div data-slot="heroui-lab-markdown-frame" className="rounded-lg border p-3">
@@ -666,7 +666,7 @@ export default function HeroUiLab() {
               </div>
             </div>
             <div data-slot="heroui-lab-markdown-pro" className="min-w-0 space-y-2">
-              <h3 data-slot="heroui-lab-markdown-heading" className="text-xs font-medium text-text-secondary">
+              <h3 data-slot="heroui-lab-markdown-heading" className="text-caption-1-medium text-text-secondary">
                 Pro（+ remark-breaks，改不掉）
               </h3>
               <div data-slot="heroui-lab-markdown-frame" className="rounded-lg border p-3">
@@ -706,7 +706,7 @@ export default function HeroUiLab() {
             upstream. */}
         <Section title="Sidebar 的 Tree 能不能带私货" hint="点一行、右键一行，再按「读 data-row-id」">
           <SidebarProbe />
-          <p data-slot="heroui-lab-sidebar-note" className="text-xs text-text-secondary">
+          <p data-slot="heroui-lab-sidebar-note" className="text-caption-1-regular text-text-secondary">
             三个读数都要有值。任何一个空，侧栏的选中或右键菜单就是坏的——而坏法是安静的，不报错也不掉类型。
           </p>
         </Section>
@@ -777,7 +777,7 @@ export default function HeroUiLab() {
               </div>
             </div>
           </div>
-          <p data-slot="heroui-lab-composer-note" className="text-xs text-text-secondary">
+          <p data-slot="heroui-lab-composer-note" className="text-caption-1-regular text-text-secondary">
             输入框必须满宽。把窗口拉矮再在靠底部处右键，看菜单是翻到上方去，还是原地压扁出滚动条。
           </p>
         </Section>
@@ -792,7 +792,7 @@ export default function HeroUiLab() {
             <Bubble>
               <BubbleContent>气泡的圆角、底色、内边距应当和迁移前一致。</BubbleContent>
             </Bubble>
-            <p data-slot="heroui-lab-composites-note" className="text-xs text-text-secondary">
+            <p data-slot="heroui-lab-composites-note" className="text-caption-1-regular text-text-secondary">
               这行是 text-muted，应当是灰的；如果变成正文色，说明 --muted 被抢了。
             </p>
           </div>
@@ -809,7 +809,7 @@ export default function HeroUiLab() {
                 <span
                   key={i}
                   data-slot="heroui-lab-perf-item"
-                  className="probe-item rounded-md bg-background-secondary-default px-1 text-xs"
+                  className="probe-item rounded-md bg-background-secondary-default px-1 text-caption-1-regular"
                 >
                   {i}
                 </span>

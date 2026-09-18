@@ -193,7 +193,7 @@ export function EmojiPicker({
                 ) : (
                   <span
                     data-slot="emoji-picker-name"
-                    className="line-clamp-2 text-center text-xs leading-tight text-text-secondary"
+                    className="line-clamp-2 text-center text-caption-1-regular leading-tight text-text-secondary"
                   >
                     {item.emoji.name}
                   </span>
@@ -213,8 +213,8 @@ export function EmojiPicker({
                       variant="ghost"
                       className={
                         pack.id === activePackId && !search.trim()
-                          ? 'h-7 shrink-0 bg-background-secondary-default px-2 text-xs text-text-primary'
-                          : 'h-7 shrink-0 px-2 text-xs text-text-secondary'
+                          ? 'h-7 shrink-0 bg-background-secondary-default px-2 text-caption-1-regular text-text-primary'
+                          : 'h-7 shrink-0 px-2 text-caption-1-regular text-text-secondary'
                       }
                       onPress={() => {
                         setActivePackId(pack.id)

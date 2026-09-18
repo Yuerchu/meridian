@@ -233,7 +233,7 @@ function NewProjectForm({
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder={t('sidebar.projectName')}
-        className="text-xs"
+        className="text-caption-1-regular"
         autoFocus
         onKeyDown={(e) => {
           if (e.nativeEvent.isComposing) return
@@ -252,7 +252,7 @@ function NewProjectForm({
           variant="outline"
           onPress={() => void handleBrowse()}
           isDisabled={saving}
-          className="w-full justify-start text-xs"
+          className="w-full justify-start text-caption-1-regular"
         >
           <FolderOpen className="text-text-secondary" />
           <span data-slot="project-form-path" className={path ? 'text-text-primary truncate' : 'text-text-secondary'}>
@@ -266,7 +266,7 @@ function NewProjectForm({
           value={path}
           onChange={(e) => setPath(e.target.value)}
           placeholder={t('sidebar.hostPathPlaceholder')}
-          className="text-xs"
+          className="text-caption-1-regular"
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return
             if (e.key === 'Enter') void submit()
@@ -275,7 +275,7 @@ function NewProjectForm({
         />
       )}
       {error && (
-        <p data-slot="project-form-error" role="alert" className="text-xs text-status-danger">
+        <p data-slot="project-form-error" role="alert" className="text-caption-1-regular text-status-danger">
           {error}
         </p>
       )}
@@ -358,7 +358,7 @@ function NewHostedSessionForm({
           type="button"
           variant="outline"
           onPress={() => void handleBrowse()}
-          className="w-full justify-start text-xs"
+          className="w-full justify-start text-caption-1-regular"
         >
           <FolderOpen className="text-text-secondary" />
           <span
@@ -375,7 +375,7 @@ function NewHostedSessionForm({
           value={path}
           onChange={(e) => setPath(e.target.value)}
           placeholder={t('sidebar.hostPathPlaceholder')}
-          className="text-xs"
+          className="text-caption-1-regular"
           autoFocus
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return
@@ -385,7 +385,7 @@ function NewHostedSessionForm({
         />
       )}
       {error && (
-        <p data-slot="hosted-session-form-error" role="alert" className="text-xs text-status-danger">
+        <p data-slot="hosted-session-form-error" role="alert" className="text-caption-1-regular text-status-danger">
           {error}
         </p>
       )}
@@ -487,7 +487,10 @@ function RowActionItems({ actions }: { actions: RowAction[] }) {
             <Label>{action.label}</Label>
             {/* Beside the label rather than in a tooltip — see `RowAction`. */}
             {action.disabledReason && (
-              <span data-slot="row-action-disabled-reason" className="ml-auto shrink-0 text-xs text-text-secondary">
+              <span
+                data-slot="row-action-disabled-reason"
+                className="ml-auto shrink-0 text-caption-1-regular text-text-secondary"
+              >
                 {action.disabledReason}
               </span>
             )}
@@ -563,7 +566,7 @@ function FoldedMenu({
     <Sidebar.Menu aria-label={label}>
       <Sidebar.MenuItem id={id} textValue={label} onAction={onToggle}>
         <Sidebar.MenuIcon>{icon}</Sidebar.MenuIcon>
-        <Sidebar.MenuLabel className="text-text-secondary text-xs">{label}</Sidebar.MenuLabel>
+        <Sidebar.MenuLabel className="text-text-secondary text-caption-1-regular">{label}</Sidebar.MenuLabel>
         <Sidebar.MenuChip>
           <ChevronRight className={cx('size-3 text-text-secondary transition-transform', expanded && 'rotate-90')} />
         </Sidebar.MenuChip>
@@ -675,7 +678,7 @@ function ConversationGroup({
                 // `aria-pressed` rather than `aria-current`.
                 isSelected={isCurrent}
                 className={cx(
-                  'h-6 min-w-0 flex-1 justify-start rounded-sm px-1 text-xs font-medium',
+                  'h-6 min-w-0 flex-1 justify-start rounded-sm px-1 text-caption-1-medium',
                   isCurrent ? 'text-text-primary' : 'text-text-secondary',
                 )}
               >
@@ -1174,12 +1177,12 @@ export function AppSidebar({
         onAction={() => selectConversation(conv.id)}
         className={conv.is_archived ? 'opacity-50' : undefined}
         tooltipProps={{
-          className: 'text-xs',
+          className: 'text-caption-1-regular',
           delay: 500,
           placement: 'right',
           content: (
             <div data-slot="conversation-tooltip" className="flex flex-col gap-1">
-              <span data-slot="conversation-tooltip-title" className="font-medium">
+              <span data-slot="conversation-tooltip-title" className="text-caption-1-medium">
                 {title}
               </span>
               <span data-slot="conversation-tooltip-meta" className="opacity-60">

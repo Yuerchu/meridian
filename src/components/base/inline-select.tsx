@@ -40,7 +40,7 @@ function InlineSelectTrigger({ className, ...props }: ComponentProps<'div'>) {
     <AriaButton
       data-slot="inline-select-trigger"
       className={cx(
-        'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-sm outline-none transition-colors hover:bg-background-secondary-default',
+        'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-body-regular outline-none transition-colors hover:bg-background-secondary-default',
         'data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
         className,
       )}

@@ -112,11 +112,11 @@ function SkillEditor({
             value={dirName}
             onChange={(e) => setDirName(e.target.value)}
             placeholder="my-skill"
-            className="font-mono text-xs"
+            className="font-mono text-caption-1-regular"
           />
           <Description>{t('settings.skills.dirNameHint')}</Description>
           {dirName.trim().length > 0 && !dirNameValid && (
-            <p data-slot="skill-editor-error" className="text-xs text-status-danger">
+            <p data-slot="skill-editor-error" className="text-caption-1-regular text-status-danger">
               {t('settings.skills.dirNameInvalid')}
             </p>
           )}
@@ -139,7 +139,7 @@ function SkillEditor({
           onChange={(e) => setDescription(e.target.value)}
           disabled={isBuiltin}
           rows={2}
-          className="resize-none text-xs"
+          className="resize-none text-caption-1-regular"
         />
         <Description>{t('settings.skills.descriptionHint')}</Description>
       </TextField>
@@ -147,7 +147,7 @@ function SkillEditor({
       <TextField>
         <Label>{t('settings.skills.body')}</Label>
         {bodyLoading ? (
-          <p data-slot="skill-editor-hint" className="text-xs text-text-secondary">
+          <p data-slot="skill-editor-hint" className="text-caption-1-regular text-text-secondary">
             {t('common.loading')}
           </p>
         ) : (
@@ -156,20 +156,20 @@ function SkillEditor({
             onChange={(e) => setBody(e.target.value)}
             disabled={isBuiltin}
             rows={10}
-            className="resize-none font-mono text-xs"
+            className="resize-none font-mono text-caption-1-regular"
           />
         )}
         <Description>{t('settings.skills.bodyHint')}</Description>
       </TextField>
 
       {isBuiltin && (
-        <p data-slot="skill-editor-builtin-notice" className="text-xs text-status-info-soft-foreground">
+        <p data-slot="skill-editor-builtin-notice" className="text-caption-1-regular text-status-info-soft-foreground">
           {t('settings.skills.builtinNotice')}
         </p>
       )}
 
       {error && (
-        <p data-slot="skill-editor-error" className="text-xs text-status-danger">
+        <p data-slot="skill-editor-error" className="text-caption-1-regular text-status-danger">
           {error}
         </p>
       )}
@@ -286,7 +286,7 @@ export function SkillSettings() {
       />
 
       {error && (
-        <p data-slot="skill-settings-error" className="text-xs text-status-danger">
+        <p data-slot="skill-settings-error" className="text-caption-1-regular text-status-danger">
           {error}
         </p>
       )}
@@ -345,7 +345,7 @@ export function SkillSettings() {
                       `ms-auto` and `shrink-0`, which only mean anything inside a
                       flex container. `text-start` undoes the button element's
                       centred UA default. */}
-                  <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2 text-start text-xs transition-colors outline-none hover:bg-background-primary-hover/30 focus-visible:bg-background-secondary-default/30">
+                  <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2 text-start text-caption-1-regular transition-colors outline-none hover:bg-background-primary-hover/30 focus-visible:bg-background-secondary-default/30">
                     <BookOpen className="w-3.5 h-3.5 shrink-0 text-text-secondary" />
                     {/* The label row absorbs the slack, so the badge and the
                         chevron sit at the right edge without a second auto
@@ -366,7 +366,7 @@ export function SkillSettings() {
                 </Disclosure.Heading>
                 <Checkbox
                   data-slot="skill-item-enabled"
-                  className="shrink-0 text-xs"
+                  className="shrink-0 text-caption-1-regular"
                   isSelected={skill.is_enabled}
                   onChange={(selected) => toggleEnabled(skill, selected)}
                 >
@@ -374,7 +374,7 @@ export function SkillSettings() {
                 </Checkbox>
                 <Checkbox
                   data-slot="skill-item-global"
-                  className="shrink-0 text-xs"
+                  className="shrink-0 text-caption-1-regular"
                   isSelected={globalBound.has(skill.dir_name)}
                   onChange={(selected) => toggleGlobal(skill.dir_name, selected)}
                 >
@@ -395,7 +395,7 @@ export function SkillSettings() {
                       read every skill's file on every visit to this page. */}
                   {isExpanded && (
                     <>
-                      <p data-slot="skill-item-description" className="text-xs text-text-secondary">
+                      <p data-slot="skill-item-description" className="text-caption-1-regular text-text-secondary">
                         {skill.llm_description}
                       </p>
                       <SkillEditor
@@ -433,7 +433,7 @@ export function SkillSettings() {
         )}
       </DisclosureGroup>
 
-      <p data-slot="skill-settings-global-hint" className="text-xs text-text-secondary">
+      <p data-slot="skill-settings-global-hint" className="text-caption-1-regular text-text-secondary">
         {t('settings.skills.globalBindingHint')}
       </p>
       {confirmDialog}

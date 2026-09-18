@@ -212,10 +212,14 @@ function QuestionBlock({
   if (skipped) {
     return (
       <div data-slot="question-skipped" className="flex items-center justify-between py-1">
-        <span data-slot="question-skipped-text" className="text-sm text-text-secondary line-through">
+        <span data-slot="question-skipped-text" className="text-body-regular text-text-secondary line-through">
           {q.question}
         </span>
-        <Button variant="ghost" onPress={() => onUnskip(q.id)} className="text-xs text-text-secondary shrink-0 ml-2">
+        <Button
+          variant="ghost"
+          onPress={() => onUnskip(q.id)}
+          className="text-caption-1-regular text-text-secondary shrink-0 ml-2"
+        >
           <ArrowUturnCcwLeft className="w-3.5 h-3.5" />
           {t('chat.tool.undo')}
         </Button>
@@ -226,7 +230,7 @@ function QuestionBlock({
   return (
     <div ref={(element) => registerField(q.id, element)} data-slot="question" className="space-y-1.5">
       <div data-slot="question-header" className="flex items-start justify-between gap-2">
-        <div id={questionId} data-slot="question-text" className="text-sm text-text-primary font-medium">
+        <div id={questionId} data-slot="question-text" className="text-body-medium text-text-primary">
           {q.question}
           {/* The mark and the withheld skip button are one decision: an asker
               that will not take an answer without this one leaves nothing to
@@ -242,7 +246,11 @@ function QuestionBlock({
           )}
         </div>
         {!q.required && (
-          <Button variant="ghost" onPress={() => onSkip(q.id)} className="text-xs text-text-secondary shrink-0 mt-0.5">
+          <Button
+            variant="ghost"
+            onPress={() => onSkip(q.id)}
+            className="text-caption-1-regular text-text-secondary shrink-0 mt-0.5"
+          >
             <ForwardStep className="w-3.5 h-3.5" />
             {t('chat.tool.skipQuestion')}
           </Button>
@@ -268,11 +276,14 @@ function QuestionBlock({
                 className="w-full items-start gap-2 rounded-lg px-2.5 py-1.5 whitespace-normal hover:bg-background-secondary-default/50 data-[selected]:bg-background-secondary-default/80"
               >
                 <span data-slot="question-option-body" className="min-w-0 flex-1 text-left">
-                  <span data-slot="question-option-label" className="text-xs font-medium text-text-primary">
+                  <span data-slot="question-option-label" className="text-caption-1-medium text-text-primary">
                     {opt.label}
                   </span>
                   {opt.description && (
-                    <span data-slot="question-option-description" className="block text-xs text-text-secondary">
+                    <span
+                      data-slot="question-option-description"
+                      className="block text-caption-1-regular text-text-secondary"
+                    >
                       {opt.description}
                     </span>
                   )}
@@ -298,11 +309,14 @@ function QuestionBlock({
                 className="w-full items-start gap-2 rounded-lg px-2.5 py-1.5 whitespace-normal hover:bg-background-secondary-default/50 data-[selected]:bg-background-secondary-default/80"
               >
                 <span data-slot="question-option-body" className="min-w-0 flex-1 text-left">
-                  <span data-slot="question-option-label" className="text-xs font-medium text-text-primary">
+                  <span data-slot="question-option-label" className="text-caption-1-medium text-text-primary">
                     {opt.label}
                   </span>
                   {opt.description && (
-                    <span data-slot="question-option-description" className="block text-xs text-text-secondary">
+                    <span
+                      data-slot="question-option-description"
+                      className="block text-caption-1-regular text-text-secondary"
+                    >
                       {opt.description}
                     </span>
                   )}
@@ -328,11 +342,11 @@ function QuestionBlock({
           value={value.notes}
           onChange={(e) => onChange(q.id, { ...value, notes: e.target.value })}
           placeholder={hasOptions ? t('chat.tool.notesPlaceholder') : t('chat.tool.askUserPlaceholder')}
-          className="text-xs"
+          className="text-caption-1-regular"
         />
       )}
       {invalid && (
-        <p id={errorId} role="alert" data-slot="question-error" className="text-xs text-status-danger">
+        <p id={errorId} role="alert" data-slot="question-error" className="text-caption-1-regular text-status-danger">
           {t('chat.tool.answerRequired')}
         </p>
       )}
@@ -493,7 +507,7 @@ export function AskUserBlock({
             />
           ))}
           {emptyFormError && (
-            <p role="alert" data-slot="ask-user-form-error" className="text-xs text-status-danger">
+            <p role="alert" data-slot="ask-user-form-error" className="text-caption-1-regular text-status-danger">
               {t('chat.tool.answerOrSkip')}
             </p>
           )}
@@ -506,7 +520,11 @@ export function AskUserBlock({
                 once something has been filled in, so it is a correction rather
                 than a demand made before anyone has started. */}
             {unanswered.length > 0 && questions.some((q) => hasContent(q, answers[q.id])) && (
-              <span role="status" data-slot="ask-user-required-pending" className="text-xs text-text-secondary">
+              <span
+                role="status"
+                data-slot="ask-user-required-pending"
+                className="text-caption-1-regular text-text-secondary"
+              >
                 {t('chat.tool.askUserRequiredPending', { count: unanswered.length })}
               </span>
             )}
@@ -535,7 +553,10 @@ export function AskUserBlock({
           <div data-slot="ask-user-result-scroll" className="max-h-40 overflow-y-auto ">
             <pre
               data-slot="ask-user-result-text"
-              className={cx('whitespace-pre-wrap text-text-primary text-xs', inCard ? 'px-4 py-3' : 'px-3 py-2')}
+              className={cx(
+                'whitespace-pre-wrap text-text-primary text-caption-1-regular',
+                inCard ? 'px-4 py-3' : 'px-3 py-2',
+              )}
             >
               {data.result}
             </pre>
@@ -558,7 +579,7 @@ export function AskUserBlock({
       <ChatTool state={mapChatToolState(data.status)} {...expansion}>
         <ChatToolTrigger>
           <CircleQuestion aria-hidden className="size-3.5 shrink-0 text-text-secondary" />
-          <span data-slot="ask-user-title" className="font-medium text-text-primary shrink-0">
+          <span data-slot="ask-user-title" className="text-caption-1-medium text-text-primary shrink-0">
             {t('chat.tool.askUser')}
           </span>
           {data.status === 'completed' && (
@@ -573,11 +594,11 @@ export function AskUserBlock({
   return (
     <div
       data-slot="ask-user-card"
-      className="my-3 overflow-hidden rounded-2xl bg-background-primary-default text-sm shadow-card ring-1 ring-border-button-default ring-inset"
+      className="my-3 overflow-hidden rounded-2xl bg-background-primary-default text-body-regular shadow-card ring-1 ring-border-button-default ring-inset"
     >
       <div data-slot="ask-user-header" className="flex items-center gap-2 bg-background-secondary-default px-4 py-3">
         <CircleQuestion className="w-3.5 h-3.5 text-text-secondary" />
-        <span data-slot="ask-user-title" className="font-medium text-text-primary">
+        <span data-slot="ask-user-title" className="text-body-medium text-text-primary">
           {t('chat.tool.askUser')}
         </span>
         {/* No spinner here for `running`: the body below says so in words, and
@@ -668,7 +689,7 @@ function ResultToggle({ expanded, onToggle }: { expanded: boolean; onToggle: () 
   const { t } = useTranslation()
   return (
     <div data-slot="result-toggle" className="border-t border-border-button-default/50 px-3 py-1.5">
-      <Button variant="ghost" size="small" className="rounded-lg px-2 text-xs" onPress={onToggle}>
+      <Button variant="ghost" size="small" className="rounded-lg px-2 text-caption-1-regular" onPress={onToggle}>
         {t(expanded ? 'chat.tool.showLess' : 'chat.tool.showFullResult')}
       </Button>
     </div>
@@ -680,7 +701,7 @@ function Footnote({ children }: { children: React.ReactNode }) {
   return (
     <div
       data-slot="tool-footnote"
-      className="border-t border-border-button-default/50 px-3 py-1.5 text-xs text-text-secondary"
+      className="border-t border-border-button-default/50 px-3 py-1.5 text-caption-1-regular text-text-secondary"
     >
       {children}
     </div>
@@ -691,7 +712,7 @@ function Footnote({ children }: { children: React.ReactNode }) {
  *  directory — said in the panel's own words rather than the tool's. */
 function EmptyLine({ children }: { children: React.ReactNode }) {
   return (
-    <div data-slot="tool-empty" className="px-3 py-2 text-xs text-text-secondary">
+    <div data-slot="tool-empty" className="px-3 py-2 text-caption-1-regular text-text-secondary">
       {children}
     </div>
   )
@@ -702,7 +723,7 @@ function PlainText({ text, className }: { text: string; className?: string }) {
     <pre
       data-slot="plain-text"
       className={cx(
-        'max-h-72 overflow-auto px-3 py-2 font-mono text-xs leading-relaxed whitespace-pre-wrap text-text-primary/90 [overflow-wrap:anywhere]',
+        'max-h-72 overflow-auto px-3 py-2 font-mono text-caption-1-regular leading-relaxed whitespace-pre-wrap text-text-primary/90 [overflow-wrap:anywhere]',
         className,
       )}
     >
@@ -776,7 +797,7 @@ function SearchResult({ result }: { result: string }) {
           >
             <div
               data-slot="search-result-file-header"
-              className="flex items-center gap-1.5 bg-background-secondary-default/30 px-3 py-1 text-xs text-text-secondary"
+              className="flex items-center gap-1.5 bg-background-secondary-default/30 px-3 py-1 text-caption-1-regular text-text-secondary"
             >
               <FileIcon path={file} />
               <PathLabel path={file} className="min-w-0 flex-1" />
@@ -788,7 +809,7 @@ function SearchResult({ result }: { result: string }) {
               <div
                 key={i}
                 data-slot="search-result-match"
-                className="flex w-max min-w-full gap-2 px-3 py-0.5 text-xs hover:bg-background-primary-hover/20"
+                className="flex w-max min-w-full gap-2 px-3 py-0.5 text-caption-1-regular hover:bg-background-primary-hover/20"
               >
                 <span
                   data-slot="search-result-line-no"
@@ -825,7 +846,7 @@ function GlobResult({ result }: { result: string }) {
           <div
             key={path}
             data-slot="glob-result-path"
-            className="flex items-center gap-1.5 px-3 py-0.5 text-xs hover:bg-background-primary-hover/20"
+            className="flex items-center gap-1.5 px-3 py-0.5 text-caption-1-regular hover:bg-background-primary-hover/20"
           >
             <FileIcon path={path} />
             <PathLabel path={path} className="min-w-0 flex-1" />
@@ -850,7 +871,7 @@ function DirectoryResult({ result }: { result: string }) {
         <div
           key={`${entry.kind}:${entry.name}`}
           data-slot="directory-entry"
-          className="flex items-center gap-1.5 px-3 py-0.5 text-xs hover:bg-background-primary-hover/20"
+          className="flex items-center gap-1.5 px-3 py-0.5 text-caption-1-regular hover:bg-background-primary-hover/20"
         >
           {entry.kind === 'dir' ? (
             <Folder aria-hidden className="size-3.5 shrink-0 text-text-secondary" />
@@ -892,7 +913,7 @@ function CommandOutputView({ output }: { output: CommandOutput }) {
         <div data-slot="command-stderr" className="border-t border-border-button-default/50 bg-status-danger-soft">
           <div
             data-slot="command-stderr-label"
-            className="px-3 pt-1.5 text-xs font-medium text-status-danger-soft-foreground"
+            className="px-3 pt-1.5 text-caption-1-medium text-status-danger-soft-foreground"
           >
             {t('chat.tool.panel.stderr')}
           </div>
@@ -953,7 +974,7 @@ function CollapsibleMarkdown({ content, blockId }: { content: string; blockId: s
         <Button
           variant="ghost"
           size="small"
-          className="mt-1 self-start rounded-lg px-2 text-xs"
+          className="mt-1 self-start rounded-lg px-2 text-caption-1-regular"
           onPress={() => setOpen((current) => !current)}
         >
           {t(open ? 'chat.tool.showLess' : 'chat.tool.showFullResult')}
@@ -1092,7 +1113,7 @@ function ArgsList({ entries }: { entries: [string, unknown][] }) {
   const { t } = useTranslation()
   if (entries.length === 0) return null
   return (
-    <dl data-slot="tool-args-list" className="flex flex-col gap-1.5 px-3 py-2 text-xs">
+    <dl data-slot="tool-args-list" className="flex flex-col gap-1.5 px-3 py-2 text-caption-1-regular">
       {entries.map(([key, value]) => (
         <Fragment key={key}>
           <dt data-slot="tool-args-list-label" className="text-text-secondary">
@@ -1195,7 +1216,7 @@ export function PendingApproval({
     return (
       <div data-slot="approval-sent" className="flex items-center gap-2 px-0.5 text-text-secondary">
         <Spinner size="sm" color="current" />
-        <span data-slot="approval-sent-text" className="text-xs">
+        <span data-slot="approval-sent-text" className="text-caption-1-regular">
           {t('chat.tool.running')}
         </span>
       </div>
@@ -1206,7 +1227,10 @@ export function PendingApproval({
     return (
       <>
         {isEscalation && (
-          <div data-slot="approval-escalation" className="flex items-start gap-1.5 px-0.5 text-xs text-text-secondary">
+          <div
+            data-slot="approval-escalation"
+            className="flex items-start gap-1.5 px-0.5 text-caption-1-regular text-text-secondary"
+          >
             <TriangleExclamation className="w-3.5 h-3.5 text-status-warning-soft-foreground shrink-0" />
             <span data-slot="approval-escalation-text">{t('chat.tool.sandboxRetryPrompt')}</span>
           </div>
@@ -1252,7 +1276,7 @@ export function PendingApproval({
           if (e.key === 'Enter') deny()
         }}
         placeholder={t('chat.tool.denyReasonPlaceholder')}
-        className="text-xs"
+        className="text-caption-1-regular"
         autoFocus
       />
       <ChatToolApproval className="pt-0">
@@ -1323,7 +1347,7 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
           }
         >
           <Globe aria-hidden className="size-3.5 shrink-0 text-text-secondary" />
-          <span data-slot="web-search-title" className="font-medium text-text-primary shrink-0">
+          <span data-slot="web-search-title" className="text-caption-1-medium text-text-primary shrink-0">
             {t('chat.tool.name.web_search')}
           </span>
           {query && (
@@ -1397,7 +1421,7 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
       <ChatTool state="requires-action" defaultExpanded className="my-3">
         <ChatToolTrigger>
           <ChatToolStatusIcon />
-          <span data-slot="web-search-title" className="font-medium text-text-primary shrink-0">
+          <span data-slot="web-search-title" className="text-caption-1-medium text-text-primary shrink-0">
             {t('chat.tool.name.web_search')}
           </span>
           {query && (
@@ -1432,7 +1456,7 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
       <ChatTool state="output-error" defaultExpanded={false} className="my-3">
         <ChatToolTrigger>
           <ChatToolStatusIcon />
-          <span data-slot="web-search-title" className="font-medium text-text-primary shrink-0">
+          <span data-slot="web-search-title" className="text-caption-1-medium text-text-primary shrink-0">
             {t('chat.tool.name.web_search')}
           </span>
           {query && (
@@ -1450,7 +1474,10 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
 
   if (data.status !== 'completed' && data.status !== 'denied' && data.status !== 'error') {
     return (
-      <div data-slot="web-search-searching" className="my-2 flex items-center gap-2 text-xs text-text-secondary">
+      <div
+        data-slot="web-search-searching"
+        className="my-2 flex items-center gap-2 text-caption-1-regular text-text-secondary"
+      >
         <Spinner size="sm" color="current" />
         <span data-slot="web-search-searching-text">{t('chat.tool.webSearch.searching')}</span>
         {query && (
@@ -1464,7 +1491,10 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
 
   if (data.status === 'denied') {
     return (
-      <div data-slot="web-search-denied" className="my-2 flex items-center gap-2 text-xs text-text-secondary">
+      <div
+        data-slot="web-search-denied"
+        className="my-2 flex items-center gap-2 text-caption-1-regular text-text-secondary"
+      >
         <Globe className="w-3.5 h-3.5" />
         <Xmark className="w-3.5 h-3.5 text-status-danger" />
       </div>
@@ -1473,7 +1503,7 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
 
   if (data.status === 'error' || sources === null) {
     return (
-      <div data-slot="web-search-failed" className="my-2 space-y-2 text-xs">
+      <div data-slot="web-search-failed" className="my-2 space-y-2 text-caption-1-regular">
         <div data-slot="web-search-failed-line" className="flex items-center gap-2">
           <Globe className="w-3.5 h-3.5 text-status-danger shrink-0" />
           <span data-slot="web-search-failed-text" className="text-status-danger">
@@ -1487,7 +1517,10 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
 
   if (sources.length === 0) {
     return (
-      <div data-slot="web-search-empty" className="my-2 flex items-center gap-2 text-xs text-text-secondary">
+      <div
+        data-slot="web-search-empty"
+        className="my-2 flex items-center gap-2 text-caption-1-regular text-text-secondary"
+      >
         <Globe className="w-3.5 h-3.5" />
         <span data-slot="web-search-empty-text">{t('chat.tool.webSearch.noResults')}</span>
         {query && (
@@ -1613,7 +1646,7 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
       <ChatTool state={mapChatToolState(data.status)} {...expansion}>
         <ChatToolTrigger>
           <Compass aria-hidden className="size-3.5 shrink-0 text-text-secondary" />
-          <span data-slot="enter-plan-title" className="font-medium text-text-primary shrink-0">
+          <span data-slot="enter-plan-title" className="text-caption-1-medium text-text-primary shrink-0">
             {t('chat.plan.enterTitle')}
           </span>
           {data.status === 'completed' && (
@@ -1636,13 +1669,13 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
       data-slot="enter-plan"
       data-status={data.status}
       className={cx(
-        'my-3 overflow-hidden rounded-2xl bg-background-primary-default text-sm shadow-card ring-1 ring-border-button-default ring-inset',
+        'my-3 overflow-hidden rounded-2xl bg-background-primary-default text-body-regular shadow-card ring-1 ring-border-button-default ring-inset',
         data.status === 'pending' && 'ring-status-info/40',
       )}
     >
       <div data-slot="enter-plan-header" className="flex items-center gap-2 bg-background-secondary-default px-4 py-3">
         <Compass aria-hidden className="size-3.5 shrink-0 text-text-secondary" />
-        <span data-slot="enter-plan-title" className="font-medium text-text-primary">
+        <span data-slot="enter-plan-title" className="text-body-medium text-text-primary">
           {t('chat.plan.enterTitle')}
         </span>
         {data.status === 'completed' && <Check className="ml-auto size-3.5 text-status-success-soft-foreground" />}
@@ -1711,7 +1744,7 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
                   if (e.key === 'Enter') sendBack()
                 }}
                 placeholder={t('chat.plan.feedbackPlaceholder')}
-                className="text-xs"
+                className="text-caption-1-regular"
                 autoFocus
               />
               <ChatToolApproval className="pt-0">
@@ -1762,7 +1795,7 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
       <ChatTool state={mapChatToolState(data.status)} {...expansion}>
         <ChatToolTrigger>
           <SquareListUl aria-hidden className="size-3.5 shrink-0 text-text-secondary" />
-          <span data-slot="exit-plan-title" className="font-medium text-text-primary shrink-0">
+          <span data-slot="exit-plan-title" className="text-caption-1-medium text-text-primary shrink-0">
             {t('chat.plan.title')}
           </span>
           {data.status === 'completed' && (
@@ -1780,14 +1813,14 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
       data-slot="exit-plan"
       data-status={data.status}
       className={cx(
-        'my-3 overflow-hidden rounded-2xl bg-background-primary-default text-sm shadow-card ring-1 ring-border-button-default ring-inset',
+        'my-3 overflow-hidden rounded-2xl bg-background-primary-default text-body-regular shadow-card ring-1 ring-border-button-default ring-inset',
         // Only while it is actually waiting on a decision — see `EnterPlanBlock`.
         data.status === 'pending' && 'ring-status-info/40',
       )}
     >
       <div data-slot="exit-plan-header" className="flex items-center gap-2 bg-background-secondary-default px-4 py-3">
         <SquareListUl aria-hidden className="size-3.5 shrink-0 text-text-secondary" />
-        <span data-slot="exit-plan-title" className="font-medium text-text-primary">
+        <span data-slot="exit-plan-title" className="text-body-medium text-text-primary">
           {t('chat.plan.title')}
         </span>
         {data.status === 'completed' && <Check className="ml-auto size-3.5 text-status-success-soft-foreground" />}
@@ -1816,7 +1849,7 @@ function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay; revie
         onClick={() => openReview(reviewId)}
       >
         <SquareListUl aria-hidden className="size-3.5 shrink-0" />
-        <span data-slot="plan-review-entry-title" className="font-medium shrink-0">
+        <span data-slot="plan-review-entry-title" className="text-caption-1-medium shrink-0">
           {t('chat.plan.title')}
         </span>
         <Chip size="sm" variant="secondary" className="ml-auto">
@@ -1833,7 +1866,7 @@ function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay; revie
       className={cx(
         // Same edge rule as CHAT_TOOL_CARD: a card in the transcript sits on
         // `--surface` and is invisible in the dark theme without a ring.
-        'my-3 rounded-xl bg-background-primary-default p-4 text-sm shadow-card ring-1 ring-inset',
+        'my-3 rounded-xl bg-background-primary-default p-4 text-body-regular shadow-card ring-1 ring-inset',
         status === 'pending' ? 'ring-status-info/40' : 'ring-border-button-default',
       )}
     >
@@ -1841,14 +1874,17 @@ function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay; revie
         <SquareListUl aria-hidden className="size-4 shrink-0 text-text-secondary" />
         <div data-slot="plan-review-entry-body" className="min-w-0 flex-1">
           <div data-slot="plan-review-entry-heading" className="flex flex-wrap items-center gap-2">
-            <span data-slot="plan-review-entry-title" className="font-medium text-text-primary">
+            <span data-slot="plan-review-entry-title" className="text-body-medium text-text-primary">
               {t('chat.plan.title')}
             </span>
             <Chip size="sm" variant="secondary">
               {t(`planReview.status.${status}`)}
             </Chip>
           </div>
-          <p data-slot="plan-review-entry-description" className="mt-1 line-clamp-2 text-xs text-text-secondary">
+          <p
+            data-slot="plan-review-entry-description"
+            className="mt-1 line-clamp-2 text-caption-1-regular text-text-secondary"
+          >
             {status === 'pending' ? t('chat.plan.reviewReady') : t('chat.plan.reviewHistory')}
           </p>
         </div>
@@ -1875,7 +1911,7 @@ function TodoListBlock({ data, title, todos }: { data: ToolCallDisplay; title: s
         }
       >
         <ListCheck aria-hidden className="size-3.5 shrink-0 text-text-secondary" />
-        <span data-slot="todo-title" className="truncate font-medium text-text-primary">
+        <span data-slot="todo-title" className="truncate text-caption-1-medium text-text-primary">
           {title}
         </span>
       </ChatToolTrigger>
@@ -2057,7 +2093,7 @@ export function ToolArgsSummary({
 }) {
   const arg = identifyingArg(toolName, args)
   if (arg === null) return null
-  const base = 'min-w-0 font-mono text-xs text-text-primary'
+  const base = 'min-w-0 font-mono text-caption-1-regular text-text-primary'
   if (arg.kind === 'path') {
     return (
       <span data-slot="tool-arg" className={cx(base, 'flex', className)}>
@@ -2122,7 +2158,7 @@ function HotkeyHint({ combo }: { combo: string }) {
   return (
     <Kbd
       aria-hidden
-      className="ml-1 hidden h-auto bg-transparent px-0 text-xs text-current opacity-60 pointer-fine:inline-flex"
+      className="ml-1 hidden h-auto bg-transparent px-0 text-caption-1-regular text-current opacity-60 pointer-fine:inline-flex"
     >
       {formatHotkey(combo)}
     </Kbd>
@@ -2134,7 +2170,10 @@ function HotkeyHint({ combo }: { combo: string }) {
 function OrphanedNotice() {
   const { t } = useTranslation()
   return (
-    <div data-slot="orphaned-notice" className="flex items-start gap-1.5 px-0.5 text-xs text-text-secondary">
+    <div
+      data-slot="orphaned-notice"
+      className="flex items-start gap-1.5 px-0.5 text-caption-1-regular text-text-secondary"
+    >
       <TriangleExclamation className="w-3.5 h-3.5 text-status-warning-soft-foreground shrink-0" />
       <span data-slot="orphaned-notice-text">{t('chat.tool.orphaned')}</span>
     </div>
@@ -2169,7 +2208,7 @@ function AutoReviewNotice({ verdict }: { verdict: AutoReviewVerdictInfoResponse 
     <div
       data-slot="auto-review"
       className={cx(
-        'space-y-1 rounded-lg px-2 py-1.5 text-xs',
+        'space-y-1 rounded-lg px-2 py-1.5 text-caption-1-regular',
         denied
           ? 'bg-status-danger-soft text-status-danger-soft-foreground'
           : 'bg-background-secondary-default text-text-secondary',
@@ -2183,7 +2222,7 @@ function AutoReviewNotice({ verdict }: { verdict: AutoReviewVerdictInfoResponse 
         ) : (
           <CircleCheck className="w-3.5 h-3.5 shrink-0" />
         )}
-        <span data-slot="auto-review-label" className="font-medium">
+        <span data-slot="auto-review-label" className="text-caption-1-medium">
           {label}
         </span>
         {verdict.risk && (
@@ -2253,14 +2292,17 @@ function CardOutcome({
   const { t } = useTranslation()
   const notice = (icon: React.ReactNode, text: string, withDetail = false) => (
     <div data-slot="card-outcome" className="space-y-1.5">
-      <div data-slot="card-outcome-line" className="flex items-start gap-1.5 px-0.5 text-xs text-text-secondary">
+      <div
+        data-slot="card-outcome-line"
+        className="flex items-start gap-1.5 px-0.5 text-caption-1-regular text-text-secondary"
+      >
         {icon}
         <span data-slot="card-outcome-text">{text}</span>
       </div>
       {withDetail && detail?.trim() && (
         <pre
           data-slot="card-outcome-detail"
-          className="max-h-40 overflow-y-auto whitespace-pre-wrap px-0.5 text-xs text-text-primary"
+          className="max-h-40 overflow-y-auto whitespace-pre-wrap px-0.5 text-caption-1-regular text-text-primary"
         >
           {detail}
         </pre>
@@ -2528,7 +2570,7 @@ export function ToolCallBlock({
           displaces the other — see `toolDescription`. */}
       <ChatToolTrigger subtitle={description}>
         <ChatToolStatusIcon />
-        <span data-slot="tool-label" className="font-medium text-text-primary shrink-0">
+        <span data-slot="tool-label" className="text-caption-1-medium text-text-primary shrink-0">
           {label}
         </span>
         <ToolArgsSummary toolName={data.tool_name} args={parsedArgs} compact={compact} />
@@ -2537,7 +2579,7 @@ export function ToolCallBlock({
             rest the whole answer on. The summary stays — with three commands
             queued, which one this is matters as much as that it is waiting. */}
         {data.status === 'queued' && (
-          <span data-slot="tool-queued" className="ml-auto shrink-0 text-xs text-text-secondary">
+          <span data-slot="tool-queued" className="ml-auto shrink-0 text-caption-1-regular text-text-secondary">
             {t('chat.tool.queued')}
           </span>
         )}

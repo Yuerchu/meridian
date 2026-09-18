@@ -43,7 +43,7 @@ export function SettingsSubPage({
           onPress={onBack}
           // `-ms-2` pulls the ghost button's own padding back to the content
           // edge, so the label lines up with the form below it.
-          className="-ms-2 h-9 gap-1 rounded-lg px-2 text-sm font-normal text-text-secondary hover:text-text-primary"
+          className="-ms-2 h-9 gap-1 rounded-lg px-2 text-body-regular text-text-secondary hover:text-text-primary"
         >
           <ArrowLeft className="size-4" />
           {t('common.back')}

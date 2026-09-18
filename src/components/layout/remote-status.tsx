@@ -27,7 +27,7 @@ export function RemoteStatus() {
       data-slot="remote-status"
       role="status"
       className={cx(
-        'flex shrink-0 items-center gap-1.5 text-xs',
+        'flex shrink-0 items-center gap-1.5 text-caption-1-regular',
         offline ? 'text-status-danger' : 'text-status-warning-soft-foreground',
       )}
     >

@@ -46,14 +46,16 @@ export default function TodoBoard({ todos, className }: { todos: TodoDraft[]; cl
               <Kanban.ColumnIndicator>
                 <TodoStatusIcon status={status} />
               </Kanban.ColumnIndicator>
-              <Kanban.ColumnTitle className="text-xs">{t(`chat.todo.status.${status}`)}</Kanban.ColumnTitle>
+              <Kanban.ColumnTitle className="text-caption-1-regular">
+                {t(`chat.todo.status.${status}`)}
+              </Kanban.ColumnTitle>
               <Kanban.ColumnCount>{items.length}</Kanban.ColumnCount>
             </Kanban.ColumnHeader>
             <Kanban.ColumnBody>
               <Kanban.CardList
                 aria-label={t(`chat.todo.status.${status}`)}
                 renderEmptyState={() => (
-                  <span data-slot="todo-board-empty" className="text-xs text-text-secondary">
+                  <span data-slot="todo-board-empty" className="text-caption-1-regular text-text-secondary">
                     {t('chat.todo.emptyColumn')}
                   </span>
                 )}
@@ -65,12 +67,12 @@ export default function TodoBoard({ todos, className }: { todos: TodoDraft[]; cl
                     and three columns of `0` are not. */}
                 {items.map((todo, i) => (
                   <Kanban.Card key={i} id={`${status}:${i}`} textValue={todo.content}>
-                    <div data-slot="todo-board-card-body" className="p-2.5 text-xs">
+                    <div data-slot="todo-board-card-body" className="p-2.5 text-caption-1-regular">
                       <span
                         data-slot="todo-board-card-text"
                         className={cx(
                           status === 'completed' && 'text-text-secondary line-through',
-                          status === 'in_progress' && 'font-medium text-text-primary',
+                          status === 'in_progress' && 'text-caption-1-medium text-text-primary',
                           status === 'pending' && 'text-text-secondary',
                         )}
                       >

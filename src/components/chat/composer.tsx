@@ -174,7 +174,7 @@ export function Composer({
             {inputMode === 'shell' && (
               <div
                 data-slot="composer-shell-badge"
-                className="flex items-center gap-1.5 px-3 pt-2 text-xs font-medium text-text-secondary"
+                className="flex items-center gap-1.5 px-3 pt-2 text-caption-1-medium text-text-secondary"
                 aria-hidden
               >
                 <span data-slot="composer-shell-prefix" className="font-mono text-button-ghost-foreground">

@@ -383,13 +383,13 @@ export function HooksSettings() {
             <CellSwitch.Control />
           </CellSwitch.Trigger>
         </CellSwitch>
-        <p data-slot="hooks-enable-hint" id={enableHintId} className="text-xs text-text-secondary">
+        <p data-slot="hooks-enable-hint" id={enableHintId} className="text-caption-1-regular text-text-secondary">
           {t('settings.hooks.enableHint')}
         </p>
       </div>
 
       <div data-slot="hooks-review-model" className="space-y-1.5">
-        <p data-slot="hooks-review-model-label" className="block text-xs font-medium text-text-secondary">
+        <p data-slot="hooks-review-model-label" className="block text-caption-1-medium text-text-secondary">
           {t('settings.hooks.reviewModel')}
         </p>
         <ModelPicker
@@ -398,13 +398,13 @@ export function HooksSettings() {
           onChange={(review_model) => setConfig({ ...config, review_model })}
           onDirtyChange={setModelDraftDirty}
         />
-        <p data-slot="hooks-review-model-hint" className="text-xs text-text-secondary">
+        <p data-slot="hooks-review-model-hint" className="text-caption-1-regular text-text-secondary">
           {t('settings.hooks.reviewModelHint')}
         </p>
       </div>
 
       <div data-slot="hooks-assistant" className="space-y-1.5">
-        <Label className="block text-xs font-medium text-text-secondary">{t('settings.hooks.assistant')}</Label>
+        <Label className="block text-caption-1-medium text-text-secondary">{t('settings.hooks.assistant')}</Label>
         <Select
           selectedKey={config.assistant_id ?? '_default'}
           onSelectionChange={(v) => {
@@ -417,7 +417,7 @@ export function HooksSettings() {
             </SelectItem>
           ))}
         </Select>
-        <p data-slot="hooks-assistant-hint" className="text-xs text-text-secondary">
+        <p data-slot="hooks-assistant-hint" className="text-caption-1-regular text-text-secondary">
           {t('settings.hooks.assistantHint')}
         </p>
       </div>
@@ -460,7 +460,7 @@ export function HooksSettings() {
             onChange={(e) => setTimeoutInput(e.target.value)}
           />
         </TextField>
-        <p data-slot="hooks-timeout-hint" className="text-xs text-text-secondary">
+        <p data-slot="hooks-timeout-hint" className="text-caption-1-regular text-text-secondary">
           {t('settings.hooks.timeoutHint')}
         </p>
       </div>
@@ -477,13 +477,13 @@ export function HooksSettings() {
             onChange={(e) => setRoundsInput(e.target.value)}
           />
         </TextField>
-        <p data-slot="hooks-max-rounds-hint" className="text-xs text-text-secondary">
+        <p data-slot="hooks-max-rounds-hint" className="text-caption-1-regular text-text-secondary">
           {roundsInput === '0' ? t('settings.hooks.maxRoundsUnlimited') : t('settings.hooks.maxRoundsHint')}
         </p>
       </div>
 
       <div data-slot="hooks-token" className="space-y-1.5">
-        <p data-slot="hooks-token-label" className="block text-xs font-medium text-text-secondary">
+        <p data-slot="hooks-token-label" className="block text-caption-1-medium text-text-secondary">
           {t('settings.hooks.token')}
         </p>
         <div data-slot="hooks-token-row" className="flex items-center gap-2">
@@ -503,13 +503,13 @@ export function HooksSettings() {
             {t('settings.hooks.regenerate')}
           </Button>
         </div>
-        <p data-slot="hooks-token-hint" className="text-xs text-text-secondary">
+        <p data-slot="hooks-token-hint" className="text-caption-1-regular text-text-secondary">
           {t('settings.hooks.tokenHint')}
         </p>
       </div>
 
       {error && (
-        <p data-slot="hooks-error" role="alert" className="text-xs text-status-danger break-all">
+        <p data-slot="hooks-error" role="alert" className="text-caption-1-regular text-status-danger break-all">
           {error}
         </p>
       )}

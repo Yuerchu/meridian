@@ -36,13 +36,13 @@ function renderAppCrashFallback(error: Error) {
       data-slot="app-crash-fallback"
       className="flex h-screen flex-col items-center justify-center gap-3 p-8 text-center"
     >
-      <h1 data-slot="app-crash-title" className="text-sm font-medium">
+      <h1 data-slot="app-crash-title" className="text-body-medium">
         {i18n.t('errorBoundary.title')}
       </h1>
-      <p data-slot="app-crash-description" className="max-w-md text-xs text-text-secondary">
+      <p data-slot="app-crash-description" className="max-w-md text-caption-1-regular text-text-secondary">
         {i18n.t('errorBoundary.description')}
       </p>
-      <p data-slot="app-crash-error" className="max-w-md break-all text-xs text-text-secondary">
+      <p data-slot="app-crash-error" className="max-w-md break-all text-caption-1-regular text-text-secondary">
         {String(error)}
       </p>
       <Button variant="secondary" onPress={() => window.location.reload()}>

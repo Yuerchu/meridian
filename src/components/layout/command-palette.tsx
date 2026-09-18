@@ -168,7 +168,10 @@ export function CommandPalette({
                         <span data-slot="palette-hit-title" className="truncate">
                           {hit.title ?? t('sidebar.newChat')}
                         </span>
-                        <span data-slot="palette-hit-snippet" className="truncate text-xs text-text-secondary">
+                        <span
+                          data-slot="palette-hit-snippet"
+                          className="truncate text-caption-1-regular text-text-secondary"
+                        >
                           {hit.snippet}
                         </span>
                       </div>

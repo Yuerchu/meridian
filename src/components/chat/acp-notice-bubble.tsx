@@ -38,15 +38,15 @@ export function AcpNoticeBubble({
     >
       <BubbleContent className={cx('space-y-2', !isError && 'text-status-warning-soft-foreground')}>
         <div data-slot="acp-notice-head" className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <span data-slot="acp-notice-category" className="text-xs opacity-80">
+          <span data-slot="acp-notice-category" className="text-caption-1-regular opacity-80">
             {t(`chat.acpNotice.category.${notice.category}`)}
           </span>
-          <span data-slot="acp-notice-title" className="font-medium">
+          <span data-slot="acp-notice-title" className="text-body-medium">
             {notice.title}
           </span>
         </div>
         {notice.details !== null && (
-          <p data-slot="acp-notice-details" className="text-xs whitespace-pre-wrap opacity-90">
+          <p data-slot="acp-notice-details" className="text-caption-1-regular whitespace-pre-wrap opacity-90">
             {notice.details}
           </p>
         )}
@@ -70,7 +70,7 @@ export function AcpNoticeBubble({
               </Button>
             )}
             {wantsLogin && (
-              <span data-slot="acp-notice-login-hint" className="text-xs opacity-80">
+              <span data-slot="acp-notice-login-hint" className="text-caption-1-regular opacity-80">
                 {t('chat.acpNotice.loginHint')}
               </span>
             )}

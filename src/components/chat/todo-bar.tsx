@@ -50,7 +50,7 @@ export function TodoBarView({
     <Disclosure
       data-slot="todo-bar"
       className={cx(
-        'w-full overflow-hidden text-sm',
+        'w-full overflow-hidden text-body-regular',
         framed && 'rounded-2xl bg-background-primary-default shadow-card ring-1 ring-border-button-default ring-inset',
       )}
     >
@@ -91,7 +91,7 @@ export function TodoBarView({
               so the count and chevron sit at the right edge without an
               ml-auto fighting for the free space. */}
           <div data-slot="todo-bar-summary" className="flex min-w-0 flex-1 items-center gap-2">
-            <span data-slot="todo-bar-title" className="max-w-40 shrink-0 truncate font-medium text-text-primary">
+            <span data-slot="todo-bar-title" className="max-w-40 shrink-0 truncate text-body-medium text-text-primary">
               {todos.title}
             </span>
             <span data-slot="todo-bar-current" className="truncate text-text-secondary">

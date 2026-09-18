@@ -379,10 +379,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
         <>
           <div data-slot="usage-kpis" className="grid grid-cols-1 @sm/pane:grid-cols-2 @2xl/pane:grid-cols-4 gap-3">
             <Kpi title={t('settings.usage.kpi.cost')}>
-              <span
-                data-slot="cost-total"
-                className="block truncate text-2xl font-semibold tracking-tight tabular-nums"
-              >
+              <span data-slot="cost-total" className="block truncate text-title-1-semibold tracking-tight tabular-nums">
                 {displayedCost(total, t, locale)}
               </span>
             </Kpi>
@@ -390,12 +387,12 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
                 the raw number leaves it ungrouped, and "13830144" sitting under
                 "1514.9万" reads as two different quantities. */}
             <Kpi title={t('settings.usage.kpi.input')} note={tokenNote}>
-              <span data-slot="input-total" className="block truncate text-2xl font-semibold tracking-tight">
+              <span data-slot="input-total" className="block truncate text-title-1-semibold tracking-tight">
                 {tokenTotal(total.input_tokens, total, t, compact)}
               </span>
             </Kpi>
             <Kpi title={t('settings.usage.kpi.output')}>
-              <span data-slot="output-total" className="block truncate text-2xl font-semibold tracking-tight">
+              <span data-slot="output-total" className="block truncate text-title-1-semibold tracking-tight">
                 {tokenTotal(total.output_tokens, total, t, compact)}
               </span>
             </Kpi>
@@ -403,7 +400,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
               title={t('settings.usage.kpi.cacheRate')}
               note={t('settings.usage.kpi.replies', { count: total.messages })}
             >
-              <span data-slot="cache-rate" className="block truncate text-2xl font-semibold tracking-tight">
+              <span data-slot="cache-rate" className="block truncate text-title-1-semibold tracking-tight">
                 {hitRate === null ? '—' : percent.format(hitRate)}
               </span>
             </Kpi>
@@ -412,7 +409,10 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
           {localQualifier !== 'exact' && (
             <p
               data-slot={total.unpriced_messages > 0 ? 'unpriced-warning' : 'estimated-warning'}
-              className={cx('text-xs', total.unpriced_messages > 0 ? 'text-status-warning' : 'text-text-secondary')}
+              className={cx(
+                'text-caption-1-regular',
+                total.unpriced_messages > 0 ? 'text-status-warning' : 'text-text-secondary',
+              )}
             >
               {localQualifier === 'partial_estimate'
                 ? t('settings.usage.partialEstimate', {
@@ -425,7 +425,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
             </p>
           )}
           {billingNote && (
-            <p data-slot="billing-coverage-warning" className="text-xs text-text-secondary">
+            <p data-slot="billing-coverage-warning" className="text-caption-1-regular text-text-secondary">
               {billingNote}
             </p>
           )}
@@ -450,7 +450,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
               panel renders, and `rows` is that dimension's data — the fetch is
               keyed on the same state the tab is. */}
           <section data-slot="usage-breakdown" className="space-y-2">
-            <h3 data-slot="usage-breakdown-title" className="text-sm font-medium">
+            <h3 data-slot="usage-breakdown-title" className="text-body-medium">
               {t('settings.usage.breakdown')}
             </h3>
             <Tabs selectedKey={breakdown} onSelectionChange={(key) => setBreakdown(key as Breakdown)}>
@@ -514,7 +514,7 @@ function Filter({
 }) {
   return (
     <div data-slot="usage-filter" className="space-y-1.5">
-      <Label className="text-xs text-text-secondary">{label}</Label>
+      <Label className="text-caption-1-regular text-text-secondary">{label}</Label>
       <div
         data-slot="usage-filter-group"
         role="group"
@@ -594,12 +594,12 @@ function Kpi({ title, note, children }: { title: string; note?: string; children
         {/* `min-w-0` here and `block truncate` on each value: `.kpi__content` is
             a `1fr auto` grid, so without the floor this column never narrows,
             and `truncate` does nothing to an inline span. A cost carries up to
-            six decimals, which is a long string at `text-2xl` —
+            six decimals, which is a long string at `text-title-1-regular` —
             it used to be drawn straight out through the side of the card. */}
         <div data-slot="kpi-body" className="min-w-0">
           {children}
           {note && (
-            <p data-slot="kpi-note" className="mt-0.5 truncate text-xs text-text-secondary">
+            <p data-slot="kpi-note" className="mt-0.5 truncate text-caption-1-regular text-text-secondary">
               {note}
             </p>
           )}
@@ -633,17 +633,17 @@ function CostBreakdown({ bucket }: { bucket: UsageBucketInfoResponse }) {
   return (
     <section data-slot="cost-breakdown" className="space-y-2" aria-labelledby="usage-cost-breakdown-title">
       <div data-slot="cost-breakdown-header" className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <h3 data-slot="cost-breakdown-title" id="usage-cost-breakdown-title" className="text-sm font-medium">
+        <h3 data-slot="cost-breakdown-title" id="usage-cost-breakdown-title" className="text-body-medium">
           {t('settings.usage.costBreakdown')}
         </h3>
         {note && (
-          <span data-slot="cost-breakdown-note" className="text-xs text-text-secondary">
+          <span data-slot="cost-breakdown-note" className="text-caption-1-regular text-text-secondary">
             {note}
           </span>
         )}
       </div>
       {bucket.metered_messages === 0 && nonLocalMessages(bucket) > 0 ? (
-        <p data-slot="cost-breakdown-empty" className="text-sm text-text-secondary">
+        <p data-slot="cost-breakdown-empty" className="text-body-regular text-text-secondary">
           {t('settings.usage.noLocalCostBreakdown')}
         </p>
       ) : (
@@ -652,7 +652,7 @@ function CostBreakdown({ bucket }: { bucket: UsageBucketInfoResponse }) {
             <div key={part.key} data-slot="cost-breakdown-part" className="min-w-0">
               <dt
                 data-slot="cost-breakdown-part-label"
-                className="flex items-center gap-1.5 text-xs text-text-secondary"
+                className="flex items-center gap-1.5 text-caption-1-regular text-text-secondary"
               >
                 <span
                   data-slot="cost-breakdown-swatch"
@@ -664,7 +664,7 @@ function CostBreakdown({ bucket }: { bucket: UsageBucketInfoResponse }) {
                   {t(part.labelKey)}
                 </span>
               </dt>
-              <dd data-slot="cost-breakdown-part-value" className="mt-0.5 truncate text-sm font-medium tabular-nums">
+              <dd data-slot="cost-breakdown-part-value" className="mt-0.5 truncate text-body-medium tabular-nums">
                 {qualifiedCost(bucket[part.key], componentQualifier(bucket, part.key), t, locale)}
               </dd>
             </div>
@@ -678,7 +678,7 @@ function CostBreakdown({ bucket }: { bucket: UsageBucketInfoResponse }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section data-slot="usage-section" className="space-y-2">
-      <h3 data-slot="usage-section-title" className="text-sm font-medium">
+      <h3 data-slot="usage-section-title" className="text-body-medium">
         {title}
       </h3>
       {children}
@@ -780,7 +780,7 @@ function CostBars({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
   )
   if (data.length === 0 || bands.length === 0 || compareDecimals(maximum, ZERO_DECIMAL) === 0) {
     return (
-      <p data-slot="cost-bars-empty" className="text-sm text-text-secondary">
+      <p data-slot="cost-bars-empty" className="text-body-regular text-text-secondary">
         {t('settings.usage.noPricedCost')}
       </p>
     )
@@ -789,7 +789,7 @@ function CostBars({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
     <>
       <Legend bands={bands} />
       {qualifier !== 'exact' && (
-        <p data-slot="cost-bars-note" className="text-xs text-text-secondary">
+        <p data-slot="cost-bars-note" className="text-caption-1-regular text-text-secondary">
           {t(
             qualifier === 'partial_estimate'
               ? 'settings.usage.costChartPartialEstimate'
@@ -808,7 +808,7 @@ function CostBars({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
             data-slot="cost-bar-row"
             className="grid grid-cols-[minmax(5rem,auto)_minmax(0,1fr)] items-center gap-2"
           >
-            <Hint className="max-w-40 truncate text-xs text-text-secondary" label={row.name}>
+            <Hint className="max-w-40 truncate text-caption-1-regular text-text-secondary" label={row.name}>
               {row.name}
             </Hint>
             <div
@@ -858,7 +858,7 @@ function Legend({ bands }: { bands: readonly { key: string; color: string; label
             className="size-2.5 rounded-full"
             style={{ backgroundColor: band.color }}
           />
-          <span data-slot="usage-legend-label" className="text-xs text-text-secondary">
+          <span data-slot="usage-legend-label" className="text-caption-1-regular text-text-secondary">
             {t(band.labelKey)}
           </span>
         </span>
@@ -1046,10 +1046,13 @@ function BucketTable({
         cell: (row) =>
           row.conversationCount > 1 ? (
             <span data-slot="usage-row-label-group" className="block min-w-0">
-              <span data-slot="usage-row-label" className="block truncate text-sm">
+              <span data-slot="usage-row-label" className="block truncate text-body-regular">
                 {row.displayLabel}
               </span>
-              <span data-slot="usage-row-label-summary" className="block truncate text-xs text-text-secondary">
+              <span
+                data-slot="usage-row-label-summary"
+                className="block truncate text-caption-1-regular text-text-secondary"
+              >
                 {t('settings.usage.conversationGroupSummary', {
                   conversations: row.conversationCount,
                   messages: row.messages,
@@ -1060,7 +1063,7 @@ function BucketTable({
             <Hint
               focusable={false}
               className={cx(
-                'block truncate text-sm',
+                'block truncate text-body-regular',
                 row.isDeleted && 'text-text-secondary italic',
                 row.isConversationInstance && 'text-text-secondary',
               )}
@@ -1077,7 +1080,7 @@ function BucketTable({
         width: 136,
         minWidth: 120,
         headerClassName: 'whitespace-nowrap',
-        cellClassName: 'whitespace-nowrap text-xs text-text-secondary tabular-nums',
+        cellClassName: 'whitespace-nowrap text-caption-1-regular text-text-secondary tabular-nums',
         cell: (row) => tokenTotal(row.input_tokens + row.output_tokens, row, t, compact),
       },
       {
@@ -1088,7 +1091,7 @@ function BucketTable({
         minWidth: 112,
         pinned: dimension === 'conversation' ? undefined : 'end',
         headerClassName: 'whitespace-nowrap',
-        cellClassName: 'whitespace-nowrap text-sm tabular-nums',
+        cellClassName: 'whitespace-nowrap text-body-regular tabular-nums',
         cell: (row) => {
           const qualifier = bucketCostQualifier(row)
           const localQualifier = costQualifier(row.unpriced_messages, row.estimated_messages)

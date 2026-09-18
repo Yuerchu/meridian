@@ -41,7 +41,10 @@ export function NumberedCode({
   return (
     <div
       data-slot="numbered-code"
-      className={cx('code-block__code w-max min-w-full overflow-visible py-1.5 font-mono text-xs leading-5', className)}
+      className={cx(
+        'code-block__code w-max min-w-full overflow-visible py-1.5 font-mono text-caption-1-regular leading-5',
+        className,
+      )}
     >
       {lines.map((line, index) => {
         const number = startLine + index

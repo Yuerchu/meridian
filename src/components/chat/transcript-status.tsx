@@ -40,7 +40,7 @@ export function TranscriptStatus({
       {redactionNotice && (
         <MessageScrollerItem messageId="__redaction_notice">
           <Bubble variant="muted">
-            <BubbleContent className="text-xs text-text-secondary">
+            <BubbleContent className="text-caption-1-regular text-text-secondary">
               {t('chat.redaction.notice', { count: redactionNotice.redactedCount })}
             </BubbleContent>
           </Bubble>
@@ -54,7 +54,7 @@ export function TranscriptStatus({
                   the spinner is 24px and overflows the row. */}
               <Spinner size="sm" />
             </MarkerIcon>
-            <MarkerContent className="shimmer text-xs">{t('chat.compact.inProgress')}</MarkerContent>
+            <MarkerContent className="shimmer text-caption-1-regular">{t('chat.compact.inProgress')}</MarkerContent>
           </Marker>
         </MessageScrollerItem>
       )}

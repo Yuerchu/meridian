@@ -272,7 +272,11 @@ export function OneBotSettings() {
             <CellSwitch.Control />
           </CellSwitch.Trigger>
         </CellSwitch>
-        <p id="onebot-enabled-hint" data-slot="onebot-enable-hint" className="text-xs text-text-secondary">
+        <p
+          id="onebot-enabled-hint"
+          data-slot="onebot-enable-hint"
+          className="text-caption-1-regular text-text-secondary"
+        >
           {t('settings.onebot.enableHint')}
         </p>
       </div>
@@ -354,7 +358,11 @@ export function OneBotSettings() {
             <CellSwitch.Control />
           </CellSwitch.Trigger>
         </CellSwitch>
-        <p id="onebot-voice-send-hint" data-slot="onebot-voice-send-hint" className="text-xs text-text-secondary">
+        <p
+          id="onebot-voice-send-hint"
+          data-slot="onebot-voice-send-hint"
+          className="text-caption-1-regular text-text-secondary"
+        >
           {t('settings.onebot.voiceSendHint')}
         </p>
       </div>
@@ -418,7 +426,7 @@ export function OneBotSettings() {
               because one of the four is a keychain entry this page never
               sees. */}
           {voiceReady && !voiceReady.ready && (
-            <p data-slot="onebot-voice-not-ready" role="status" className="text-xs text-status-warning">
+            <p data-slot="onebot-voice-not-ready" role="status" className="text-caption-1-regular text-status-warning">
               {t('settings.onebot.voiceNotReady', {
                 missing: [
                   !voiceReady.has_model && t('settings.onebot.voiceTtsModel'),
@@ -445,7 +453,7 @@ export function OneBotSettings() {
       </TextField>
 
       {error && (
-        <p data-slot="onebot-error" role="alert" className="text-xs text-status-danger break-all">
+        <p data-slot="onebot-error" role="alert" className="text-caption-1-regular text-status-danger break-all">
           {error}
         </p>
       )}

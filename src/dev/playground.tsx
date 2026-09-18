@@ -55,7 +55,7 @@ import type {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section data-slot="gallery-section" className="space-y-3">
-      <h2 data-slot="gallery-section-title" className="text-sm font-semibold text-text-secondary">
+      <h2 data-slot="gallery-section-title" className="text-body-semibold text-text-secondary">
         {title}
       </h2>
       {children}
@@ -201,7 +201,7 @@ function TurnItemCase({
       data-slot="turn-case"
       className="w-full max-w-2xl space-y-1 rounded-xl border border-dashed border-border-button-default/60 p-4"
     >
-      <div data-slot="turn-case-label" className="text-xs text-text-secondary">
+      <div data-slot="turn-case-label" className="text-caption-1-regular text-text-secondary">
         {label}
       </div>
       {turns.map((turn) => (
@@ -245,7 +245,7 @@ function ComposerMenuCase({
   const [fast, setFast] = useState(false)
   return (
     <div data-slot="composer-menu-case" className="flex flex-col gap-1">
-      <span data-slot="composer-menu-case-label" className="text-xs text-text-secondary">
+      <span data-slot="composer-menu-case-label" className="text-caption-1-regular text-text-secondary">
         {label}
       </span>
       <div
@@ -272,7 +272,7 @@ function ComposerMenuCase({
           onPickFile={() => {}}
         />
       </div>
-      <span data-slot="composer-menu-case-state" className="text-xs text-text-secondary">
+      <span data-slot="composer-menu-case-state" className="text-caption-1-regular text-text-secondary">
         {mode} · {acceptEdits ? 'accept-edits' : 'ask'}
       </span>
     </div>
@@ -463,7 +463,7 @@ function Gallery() {
     <div data-slot="gallery" className="h-full overflow-y-auto bg-background-full text-text-primary">
       <div data-slot="gallery-body" className="mx-auto max-w-2xl space-y-10 px-6 py-10">
         <header data-slot="gallery-header" className="flex items-center justify-between">
-          <h1 data-slot="gallery-title" className="text-lg font-semibold">
+          <h1 data-slot="gallery-title" className="text-title-3-semibold">
             组件预览
           </h1>
           <TooltipTrigger delay={0}>
@@ -499,7 +499,7 @@ function Gallery() {
         <Section title="ChainOfThought / 流式 (shimmer)">
           <ChainOfThought defaultExpanded isStreaming>
             <ChainOfThoughtTrigger>思考过程</ChainOfThoughtTrigger>
-            <ChainOfThoughtContent className="text-xs text-text-secondary leading-relaxed whitespace-pre-wrap">
+            <ChainOfThoughtContent className="text-caption-1-regular text-text-secondary leading-relaxed whitespace-pre-wrap">
               {'用户想要一个简单的登录页。这是一个直接的 UI 任务——我应该先生成一些设计灵感确保观感，然后再搭页面。'}
             </ChainOfThoughtContent>
           </ChainOfThought>
@@ -513,7 +513,7 @@ function Gallery() {
                 <span data-slot="chat-tool-verb" className="text-text-secondary">
                   Used tool:
                 </span>
-                <span data-slot="chat-tool-name" className="font-medium text-text-primary">
+                <span data-slot="chat-tool-name" className="text-caption-1-medium text-text-primary">
                   getWeather
                 </span>
               </ChatToolTrigger>
@@ -529,7 +529,7 @@ function Gallery() {
                 <span data-slot="chat-tool-verb" className="text-text-secondary">
                   Running tool:
                 </span>
-                <span data-slot="chat-tool-name" className="font-medium text-text-primary">
+                <span data-slot="chat-tool-name" className="text-caption-1-medium text-text-primary">
                   searchDocs
                 </span>
               </ChatToolTrigger>
@@ -544,7 +544,7 @@ function Gallery() {
                 <span data-slot="chat-tool-verb" className="text-text-secondary">
                   Failed tool:
                 </span>
-                <span data-slot="chat-tool-name" className="font-medium text-text-primary">
+                <span data-slot="chat-tool-name" className="text-caption-1-medium text-text-primary">
                   fetchPage
                 </span>
               </ChatToolTrigger>
@@ -560,7 +560,7 @@ function Gallery() {
                 <span data-slot="chat-tool-verb" className="text-text-secondary">
                   Approval needed:
                 </span>
-                <span data-slot="chat-tool-name" className="font-medium text-text-primary">
+                <span data-slot="chat-tool-name" className="text-caption-1-medium text-text-primary">
                   sendEmail
                 </span>
               </ChatToolTrigger>
@@ -1371,7 +1371,7 @@ function Gallery() {
                   <VoiceButton aria-label="语音输入" state={s} elapsed={s.startsWith('recording') ? 12.4 : 0} />
                   <Tooltip>语音输入</Tooltip>
                 </TooltipTrigger>
-                <span data-slot="gallery-voice-button-state" className="text-xs text-text-secondary">
+                <span data-slot="gallery-voice-button-state" className="text-caption-1-regular text-text-secondary">
                   {s}
                 </span>
               </div>
@@ -1448,7 +1448,7 @@ function HotkeyProbe() {
           className="min-w-64 flex-1"
         />
       </div>
-      <p data-slot="hotkey-probe-expectation" className="text-xs text-text-secondary">
+      <p data-slot="hotkey-probe-expectation" className="text-caption-1-regular text-text-secondary">
         预期：<code data-slot="hotkey-probe-code">mod+k</code> 在输入框里也触发，
         <code data-slot="hotkey-probe-code">mod+shift+k</code> 不触发（
         <code data-slot="hotkey-probe-code">ignoreInInput</code> 默认开）， 且{' '}
@@ -1457,7 +1457,7 @@ function HotkeyProbe() {
       </p>
       <div
         data-slot="hotkey-probe-log"
-        className="rounded-lg border border-border-button-default bg-background-primary-default p-3 text-xs"
+        className="rounded-lg border border-border-button-default bg-background-primary-default p-3 text-caption-1-regular"
       >
         <div data-slot="hotkey-probe-hits" className="text-text-secondary">
           最近命中：{log.length ? log.join(' · ') : '（无）'}

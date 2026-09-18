@@ -28,7 +28,7 @@ function ListViewItem({ className, ...props }: ListBoxItemProps) {
       data-slot="list-view-item"
       {...props}
       className={cx(
-        'flex items-center gap-3 border-b border-separator-border px-3 py-2.5 text-sm outline-none last:border-0',
+        'flex items-center gap-3 border-b border-separator-border px-3 py-2.5 text-body-regular outline-none last:border-0',
         'data-[selected]:bg-accent-100 data-[focus-visible]:ring-2 data-[focus-visible]:ring-inset data-[focus-visible]:ring-border-focus-ring',
         'data-[hovered]:bg-background-secondary-default/50',
         className as string,
@@ -42,7 +42,7 @@ function ListViewItemContent({ className, ...props }: ComponentProps<'div'>) {
 }
 
 function ListViewTitle({ className, ...props }: ComponentProps<'span'>) {
-  return <span data-slot="list-view-title" {...props} className={cx('font-medium', className)} />
+  return <span data-slot="list-view-title" {...props} className={cx('text-body-medium', className)} />
 }
 
 function ListViewItemAction({ className, ...props }: ComponentProps<'div'>) {

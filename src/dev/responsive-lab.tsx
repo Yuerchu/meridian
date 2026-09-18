@@ -100,7 +100,7 @@ export function ResponsiveFrame() {
   const active = CASES.find((c) => c.id === params.caseId)
   if (!active)
     return (
-      <div data-slot="responsive-frame-missing" className="p-4 text-sm text-status-danger">
+      <div data-slot="responsive-frame-missing" className="p-4 text-body-regular text-status-danger">
         No such case: {params.caseId}
       </div>
     )
@@ -186,10 +186,10 @@ export default function ResponsiveLab() {
   return (
     <div data-slot="responsive-lab" className="flex h-svh flex-col bg-background-full text-text-primary">
       <header data-slot="responsive-lab-header" className="shrink-0 border-b border-border-button-default px-4 py-2">
-        <h1 data-slot="responsive-lab-title" className="text-sm font-medium">
+        <h1 data-slot="responsive-lab-title" className="text-body-medium">
           Responsive harness
         </h1>
-        <p data-slot="responsive-lab-intro" className="mt-1 text-xs text-text-secondary">
+        <p data-slot="responsive-lab-intro" className="mt-1 text-caption-1-regular text-text-secondary">
           Overflow, escapes and short viewports are measured. Touch targets are{' '}
           <em data-slot="responsive-lab-intro-emphasis">computed</em> — coarse-pointer CSS does not apply in a desktop
           browser, so green is not a promise about a phone. The keyboard row checks the mechanism, not Android&rsquo;s
@@ -201,7 +201,7 @@ export default function ResponsiveLab() {
       <div data-slot="responsive-lab-body" className="flex min-h-0 flex-1">
         <aside
           data-slot="responsive-lab-controls"
-          className="w-72 shrink-0 space-y-4 overflow-y-auto border-r border-border-button-default p-3 text-xs"
+          className="w-72 shrink-0 space-y-4 overflow-y-auto border-r border-border-button-default p-3 text-caption-1-regular"
         >
           <Field label="Case">
             <ListBox
@@ -216,7 +216,12 @@ export default function ResponsiveLab() {
               }}
             >
               {CASES.map((c) => (
-                <ListBox.Item key={c.id} id={c.id} textValue={c.label} className="min-h-7 rounded-lg px-2 py-1 text-xs">
+                <ListBox.Item
+                  key={c.id}
+                  id={c.id}
+                  textValue={c.label}
+                  className="min-h-7 rounded-lg px-2 py-1 text-caption-1-regular"
+                >
                   {c.label}
                   <ListBox.ItemIndicator />
                 </ListBox.Item>
@@ -300,8 +305,8 @@ export default function ResponsiveLab() {
           />
 
           {sorted && (
-            <div data-slot="responsive-lab-findings" className="mt-4 space-y-1 text-xs">
-              <p data-slot="responsive-lab-findings-summary" className="font-medium">
+            <div data-slot="responsive-lab-findings" className="mt-4 space-y-1 text-caption-1-regular">
+              <p data-slot="responsive-lab-findings-summary" className="text-caption-1-medium">
                 {sorted.length === 0 ? 'Nothing found.' : `${sorted.length} finding(s)`}
               </p>
               {sorted.map((f, i) => (
@@ -323,7 +328,7 @@ export default function ResponsiveLab() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div data-slot="responsive-lab-field">
-      <p data-slot="responsive-lab-field-label" className="mb-1 font-medium">
+      <p data-slot="responsive-lab-field-label" className="mb-1 text-caption-1-medium">
         {label}
       </p>
       {children}
@@ -362,14 +367,14 @@ function Choices<T extends string | number>({
         const key = String(o.value)
         if (!o.hint) {
           return (
-            <ToggleButton key={key} id={key} className="text-xs font-normal tabular-nums">
+            <ToggleButton key={key} id={key} className="text-caption-1-regular tabular-nums">
               {o.label ?? o.value}
             </ToggleButton>
           )
         }
         return (
           <TooltipTrigger key={key} delay={0}>
-            <ToggleButton id={key} className="text-xs font-normal tabular-nums">
+            <ToggleButton id={key} className="text-caption-1-regular tabular-nums">
               {o.label ?? o.value}
             </ToggleButton>
             <Tooltip placement="bottom">{o.hint}</Tooltip>

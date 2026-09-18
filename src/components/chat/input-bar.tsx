@@ -227,7 +227,7 @@ function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAc
           aria-label={t('chat.agentOptions')}
           data-slot="agent-options-trigger"
           isDisabled={busy}
-          className="h-8 max-w-56 gap-1 rounded-lg px-2 text-sm font-normal"
+          className="h-8 max-w-56 gap-1 rounded-lg px-2 text-body-regular"
         >
           <span data-slot="agent-options-summary" className="truncate">
             {summary.length > 0 ? summary.join(' · ') : t('chat.agentOptions')}
@@ -240,11 +240,14 @@ function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAc
         <Popover.Dialog className="flex max-h-[min(420px,calc(100vh-6rem))] flex-col gap-3 overflow-y-auto">
           {pickers.map((option) => (
             <div key={option.id} data-slot="agent-knob">
-              <p data-slot="agent-knob-name" className="px-2 text-xs font-medium">
+              <p data-slot="agent-knob-name" className="px-2 text-caption-1-medium">
                 {knobName(t, option)}
               </p>
               {option.description && (
-                <p data-slot="agent-knob-description" className="px-2 pt-0.5 text-xs text-text-secondary">
+                <p
+                  data-slot="agent-knob-description"
+                  className="px-2 pt-0.5 text-caption-1-regular text-text-secondary"
+                >
                   {option.description}
                 </p>
               )}
@@ -265,7 +268,7 @@ function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAc
               >
                 {option.options.map((v) => (
                   <ListBox.Item key={v.value} id={v.value} textValue={knobValueName(t, option, v)}>
-                    <span data-slot="agent-knob-value" className="min-w-0 flex-1 truncate text-sm">
+                    <span data-slot="agent-knob-value" className="min-w-0 flex-1 truncate text-body-regular">
                       {knobValueName(t, option, v)}
                     </span>
                     <ListBox.ItemIndicator />
@@ -774,12 +777,12 @@ export function InputBar({
             // say about why reads as the app having broken.
             notice={
               offline ? (
-                <p data-slot="composer-notice" className="px-2 pb-1.5 text-xs text-status-danger">
+                <p data-slot="composer-notice" className="px-2 pb-1.5 text-caption-1-regular text-status-danger">
                   {t('settings.client.composerOffline')}
                 </p>
               ) : (
                 voiceNotice && (
-                  <p data-slot="composer-notice" className="px-2 pb-1.5 text-xs text-text-secondary">
+                  <p data-slot="composer-notice" className="px-2 pb-1.5 text-caption-1-regular text-text-secondary">
                     {voiceNotice}
                   </p>
                 )

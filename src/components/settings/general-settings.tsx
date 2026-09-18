@@ -178,7 +178,7 @@ export function GeneralSettings() {
       )}
 
       <div data-slot="general-web-search" className="space-y-3">
-        <p data-slot="general-section-label" className="block text-xs font-medium text-text-secondary">
+        <p data-slot="general-section-label" className="block text-caption-1-medium text-text-secondary">
           {t('settings.general.webSearch')}
         </p>
         {/* The heading above names the whole section, not this control, so both
@@ -217,18 +217,22 @@ export function GeneralSettings() {
             {t('settings.general.save')}
           </Button>
         </div>
-        <p data-slot="general-search-hint" className="text-xs text-text-secondary">
+        <p data-slot="general-search-hint" className="text-caption-1-regular text-text-secondary">
           {t('settings.general.searchHint')}
         </p>
         {searchKeyError && (
-          <p data-slot="general-search-key-error" role="alert" className="text-xs text-status-danger break-all">
+          <p
+            data-slot="general-search-key-error"
+            role="alert"
+            className="text-caption-1-regular text-status-danger break-all"
+          >
             {searchKeyError}
           </p>
         )}
       </div>
 
       {prefError && (
-        <p data-slot="general-pref-error" role="alert" className="text-xs text-status-danger break-all">
+        <p data-slot="general-pref-error" role="alert" className="text-caption-1-regular text-status-danger break-all">
           {prefError}
         </p>
       )}

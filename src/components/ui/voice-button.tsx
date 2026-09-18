@@ -47,7 +47,10 @@ export function VoiceButton({
   return (
     <div data-slot="voice-button" className="flex items-center gap-1.5">
       {recording && (
-        <span data-slot="voice-button-elapsed" className="text-xs tabular-nums text-status-danger select-none">
+        <span
+          data-slot="voice-button-elapsed"
+          className="text-caption-1-regular tabular-nums text-status-danger select-none"
+        >
           {Math.floor(elapsed / 60)}:{String(Math.floor(elapsed % 60)).padStart(2, '0')}
         </span>
       )}

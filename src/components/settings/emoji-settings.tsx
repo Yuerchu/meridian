@@ -86,7 +86,7 @@ function EditableCell({
         aria-label={ariaLabel}
         value={draft}
         placeholder={placeholder}
-        className="h-8 text-sm"
+        className="h-8 text-body-regular"
         onChange={(event) => setDraft(event.target.value)}
         onBlur={() => {
           setEditing(false)
@@ -112,7 +112,7 @@ function EditableCell({
   return (
     <Button
       variant="ghost"
-      className="h-8 w-full min-w-0 justify-start rounded-md px-1.5 text-sm font-normal"
+      className="h-8 w-full min-w-0 justify-start rounded-md px-1.5 text-body-regular"
       aria-label={`${ariaLabel}: ${value || placeholder}`}
       onPress={() => {
         setDraft(value)
@@ -373,7 +373,7 @@ function StickerGrid({
         )}
       />
       {error && (
-        <p data-slot="sticker-grid-error" className="text-xs text-status-danger">
+        <p data-slot="sticker-grid-error" className="text-caption-1-regular text-status-danger">
           {error}
         </p>
       )}
@@ -414,12 +414,12 @@ function PackCard({
             {/* `flex` is not optional: HeroUI styles the indicator with `ms-auto`
                 and `shrink-0`, which only mean anything inside a flex container.
                 `text-start` undoes the button element's centred UA default. */}
-            <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm transition-colors outline-none hover:bg-background-primary-hover/30 focus-visible:bg-background-secondary-default/30">
+            <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-body-regular transition-colors outline-none hover:bg-background-primary-hover/30 focus-visible:bg-background-secondary-default/30">
               <Sticker className="w-3.5 h-3.5 shrink-0 text-text-secondary" />
               <span data-slot="pack-name" className="flex-1 truncate">
                 {detail.pack.name}
               </span>
-              <span data-slot="pack-count" className="text-xs text-text-secondary">
+              <span data-slot="pack-count" className="text-caption-1-regular text-text-secondary">
                 {detail.emojis.length}
               </span>
               {pending > 0 && <Chip color="warning">{t('settings.emoji.pendingCount', { count: pending })}</Chip>}
@@ -444,7 +444,7 @@ function PackCard({
               {isExpanded && (
                 <>
                   {detail.pack.description && (
-                    <p data-slot="pack-description" className="text-xs text-text-secondary">
+                    <p data-slot="pack-description" className="text-caption-1-regular text-text-secondary">
                       {detail.pack.description}
                     </p>
                   )}
@@ -475,7 +475,7 @@ function PackCard({
                     )}
                   </div>
                   {onImport && !can.importFromDisk && (
-                    <p data-slot="pack-import-note" className="text-xs text-text-secondary">
+                    <p data-slot="pack-import-note" className="text-caption-1-regular text-text-secondary">
                       {t('capability.importFromDisk')}
                     </p>
                   )}
@@ -677,7 +677,7 @@ export function EmojiSettings() {
           <ActionBar.Prefix>
             {/* The count is the only thing that says a selection exists, so it
               announces itself rather than only appearing. */}
-            <span data-slot="emoji-selected-count" aria-live="polite" className="text-sm text-text-secondary">
+            <span data-slot="emoji-selected-count" aria-live="polite" className="text-body-regular text-text-secondary">
               {t('settings.emoji.selectedCount', { count: selectedIds.length })}
             </span>
           </ActionBar.Prefix>

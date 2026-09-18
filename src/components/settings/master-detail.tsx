@@ -177,7 +177,7 @@ export function MasterDetail<Aux extends string = never>({
                   and 208px of that width is one the editor never sees. */}
               <div data-slot="master-detail-detail-column" className="@container/pane min-w-0 flex-1">
                 {detail ?? (
-                  <div data-slot="master-detail-empty-detail" className="text-sm text-text-secondary">
+                  <div data-slot="master-detail-empty-detail" className="text-body-regular text-text-secondary">
                     {emptyDetail}
                   </div>
                 )}

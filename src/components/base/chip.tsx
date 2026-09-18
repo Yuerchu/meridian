@@ -56,7 +56,7 @@ function ChipRoot({ variant = 'primary', color = 'default', size = 'md', classNa
       data-slot="chip"
       {...props}
       className={cx(
-        'inline-flex w-fit shrink-0 items-center gap-0.5 rounded-md px-1.5 py-0.5 leading-5 font-medium',
+        'inline-flex w-fit shrink-0 items-center gap-0.5 rounded-md px-1.5 py-0.5 leading-5',
         variant === 'primary' && color === 'default' && 'bg-background-secondary-default text-text-primary',
         variant === 'secondary' && 'bg-background-secondary-default',
         variantColorClass,

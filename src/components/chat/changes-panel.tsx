@@ -71,10 +71,13 @@ export function ChangesPanelView({ files, onClose }: { files: TouchedFile[]; onC
         data-slot="changes-panel-header"
         className="flex shrink-0 items-center gap-2 border-b border-border-button-default px-3 py-2"
       >
-        <span data-slot="changes-panel-title" className="min-w-0 flex-1 truncate text-sm font-medium">
+        <span data-slot="changes-panel-title" className="min-w-0 flex-1 truncate text-body-medium">
           {t('chat.changes.title')}
         </span>
-        <span data-slot="changes-panel-count" className="shrink-0 text-xs tabular-nums text-text-secondary">
+        <span
+          data-slot="changes-panel-count"
+          className="shrink-0 text-caption-1-regular tabular-nums text-text-secondary"
+        >
           {files.length}
         </span>
         <TooltipTrigger delay={0}>
@@ -112,7 +115,7 @@ export function ChangesPanelView({ files, onClose }: { files: TouchedFile[]; onC
           right. */}
       <p
         data-slot="changes-panel-caveat"
-        className="shrink-0 border-t border-border-button-default px-3 py-2 text-xs text-text-secondary"
+        className="shrink-0 border-t border-border-button-default px-3 py-2 text-caption-1-regular text-text-secondary"
       >
         {t('chat.changes.caveat')}
       </p>
@@ -146,7 +149,10 @@ function renderNode(node: FileNode, t: TFunction) {
             {node.name}
           </span>
           {node.file && node.file.count > 1 && (
-            <span data-slot="changes-node-count" className="shrink-0 text-xs tabular-nums text-text-secondary">
+            <span
+              data-slot="changes-node-count"
+              className="shrink-0 text-caption-1-regular tabular-nums text-text-secondary"
+            >
               ×{node.file.count}
             </span>
           )}
@@ -154,7 +160,7 @@ function renderNode(node: FileNode, t: TFunction) {
             <span
               data-slot="changes-node-op"
               aria-hidden="true"
-              className={cx('shrink-0 font-mono text-xs', OP_CLASS[op])}
+              className={cx('shrink-0 font-mono text-caption-1-regular', OP_CLASS[op])}
             >
               {OP_LETTER[op]}
             </span>

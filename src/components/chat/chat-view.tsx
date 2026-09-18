@@ -528,10 +528,10 @@ function ChatViewInner({
                 <p data-slot="shell-retry-text">{t('chat.shell.retryBody')}</p>
                 <dl
                   data-slot="shell-retry-details"
-                  className="space-y-2 rounded-xl bg-background-secondary-default p-3 text-xs"
+                  className="space-y-2 rounded-xl bg-background-secondary-default p-3 text-caption-1-regular"
                 >
                   <div data-slot="shell-retry-detail">
-                    <dt data-slot="shell-retry-detail-label" className="font-medium text-text-secondary">
+                    <dt data-slot="shell-retry-detail-label" className="text-caption-1-medium text-text-secondary">
                       {t('chat.shell.commandLabel')}
                     </dt>
                     <dd data-slot="shell-retry-detail-value" className="mt-0.5 break-all font-mono text-text-primary">
@@ -539,7 +539,7 @@ function ChatViewInner({
                     </dd>
                   </div>
                   <div data-slot="shell-retry-detail">
-                    <dt data-slot="shell-retry-detail-label" className="font-medium text-text-secondary">
+                    <dt data-slot="shell-retry-detail-label" className="text-caption-1-medium text-text-secondary">
                       {t('chat.shell.cwdLabel')}
                     </dt>
                     <dd data-slot="shell-retry-detail-value" className="mt-0.5 break-all font-mono text-text-primary">
@@ -925,7 +925,7 @@ function ChatViewInner({
         {reviewBlocked && (
           <div
             data-slot="review-blocked-notice"
-            className="flex shrink-0 items-center gap-3 border-t border-border-button-default bg-button-ghost-background px-4 py-2 text-xs text-button-ghost-foreground"
+            className="flex shrink-0 items-center gap-3 border-t border-border-button-default bg-button-ghost-background px-4 py-2 text-caption-1-regular text-button-ghost-foreground"
           >
             <p data-slot="review-blocked-message" className="min-w-0 flex-1">
               {reviewBlockedMessage}

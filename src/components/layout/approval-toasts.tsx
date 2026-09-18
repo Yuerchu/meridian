@@ -201,12 +201,12 @@ function ApprovalToast({
         </Toast.Title>
         <Toast.Description data-slot="approval-toast-description" className="w-full">
           {item.kind === 'plan_review' ? (
-            <span data-slot="approval-toast-plan-message" className="font-medium leading-5">
+            <span data-slot="approval-toast-plan-message" className="text-body-2-medium leading-5">
               {planReviewMessage}
             </span>
           ) : (
             <span data-slot="approval-toast-call" className="flex min-w-0 items-start gap-1.5">
-              <span data-slot="approval-toast-tool-name" className="shrink-0 font-medium leading-5">
+              <span data-slot="approval-toast-tool-name" className="shrink-0 text-body-2-medium leading-5">
                 {toolLabel(t, item.toolName)}
               </span>
               {/* Two lines of the whole value, never the key's compact form:
@@ -225,7 +225,10 @@ function ApprovalToast({
               it is *for* gets the second — the reverse hid the path a
               `write_file` was being approved for. */}
           {description !== null && (
-            <span data-slot="approval-toast-tool-description" className="mt-0.5 line-clamp-2 break-words text-xs">
+            <span
+              data-slot="approval-toast-tool-description"
+              className="mt-0.5 line-clamp-2 break-words text-caption-1-regular"
+            >
               {description}
             </span>
           )}
@@ -233,7 +236,7 @@ function ApprovalToast({
               by a person. Without this the second question looks identical to
               the first. */}
           {item.kind !== 'plan_review' && item.retryReason !== undefined && (
-            <span data-slot="approval-toast-retry-prompt" className="mt-1 block text-xs">
+            <span data-slot="approval-toast-retry-prompt" className="mt-1 block text-caption-1-regular">
               {t('chat.tool.sandboxRetryPrompt')}
             </span>
           )}

@@ -14,7 +14,7 @@ import { cx } from '@/utils/cx'
  * There is deliberately no `SettingsField`: HeroUI's `TextField` is one, and
  * the panels use it directly. It wires the label to its control itself, which
  * is what retired the `useId` that every field used to carry, and its label is
- * left at HeroUI's own weight rather than pushed back down to `text-xs` — the
+ * left at HeroUI's own weight rather than pushed back down to `text-caption-1-regular` — the
  * four slightly different ways that override had been written are what made
  * the case for stopping.
  */
@@ -51,11 +51,11 @@ export function SettingsHeader({
   return (
     <div data-slot="settings-header" className={cx('flex items-start justify-between gap-2', className)} {...props}>
       <div data-slot="settings-header-text" className="min-w-0">
-        <h2 data-slot="settings-header-title" className="text-lg font-medium">
+        <h2 data-slot="settings-header-title" className="text-title-3-medium">
           {title}
         </h2>
         {subtitle && (
-          <p data-slot="settings-header-subtitle" className="mt-1 text-xs text-text-secondary">
+          <p data-slot="settings-header-subtitle" className="mt-1 text-caption-1-regular text-text-secondary">
             {subtitle}
           </p>
         )}
@@ -108,7 +108,7 @@ export function SettingsRow({
       aria-current={isActive || undefined}
       variant="ghost"
       className={cx(
-        'min-h-11 w-full justify-start gap-3 rounded-lg px-3 py-2 font-normal',
+        'min-h-11 w-full justify-start gap-3 rounded-lg px-3 py-2 text-body-regular',
         'data-active:bg-background-tertiary-default data-active:text-text-primary',
         className,
       )}
@@ -122,11 +122,11 @@ export function SettingsRow({
           {icon}
         </span>
       )}
-      <span data-slot="settings-row-label" className="min-w-0 flex-1 truncate text-start text-sm">
+      <span data-slot="settings-row-label" className="min-w-0 flex-1 truncate text-start text-body-regular">
         {label}
       </span>
       {value && (
-        <span data-slot="settings-row-value" className="shrink-0 truncate text-xs text-text-secondary">
+        <span data-slot="settings-row-value" className="shrink-0 truncate text-caption-1-regular text-text-secondary">
           {value}
         </span>
       )}
@@ -148,7 +148,7 @@ export function SavedHint({ className, ...props }: React.ComponentProps<'span'>)
     <span
       data-slot="saved-hint"
       role="status"
-      className={cx('flex items-center gap-1 text-xs text-status-success-soft-foreground', className)}
+      className={cx('flex items-center gap-1 text-caption-1-regular text-status-success-soft-foreground', className)}
       {...props}
     >
       <Check className="size-3.5" />
