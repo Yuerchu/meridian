@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 interface ScrollShadowProps extends ComponentProps<'div'> {
   orientation?: 'horizontal' | 'vertical'
@@ -12,5 +12,5 @@ export function ScrollShadow({
   hideScrollBar: _hsb,
   ...props
 }: ScrollShadowProps) {
-  return <div data-slot="scroll-shadow" {...props} className={cn('overflow-auto', className)} />
+  return <div data-slot="scroll-shadow" {...props} className={cx('overflow-auto', className)} />
 }

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ComponentProps } from 'react'
 import { createPortal } from 'react-dom'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 interface HoverCardProps {
   open?: boolean
@@ -30,7 +30,7 @@ function HoverCardRoot({ open = false, children }: HoverCardProps) {
 
 function HoverCardTrigger({ className, ...props }: ComponentProps<'span'>) {
   const { triggerRef } = useContext(HoverCardContext)
-  return <span ref={triggerRef} data-slot="hover-card-trigger" {...props} className={cn('inline-flex', className)} />
+  return <span ref={triggerRef} data-slot="hover-card-trigger" {...props} className={cx('inline-flex', className)} />
 }
 
 interface HoverCardContentProps extends ComponentProps<'div'> {
@@ -74,8 +74,8 @@ function HoverCardContent({ className, placement = 'top', children, ...props }: 
       data-slot="hover-card-content"
       {...props}
       style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999 }}
-      className={cn(
-        'rounded-xl border border-border bg-overlay shadow-overlay',
+      className={cx(
+        'rounded-xl border border-border-button-default bg-background-primary-default shadow-dropdown',
         'animate-in fade-in-0 zoom-in-95 duration-150',
         className,
       )}
@@ -88,7 +88,7 @@ function HoverCardContent({ className, placement = 'top', children, ...props }: 
 }
 
 function HoverCardArrow({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="hover-card-arrow" {...props} className={cn('', className)} />
+  return <div data-slot="hover-card-arrow" {...props} className={cx('', className)} />
 }
 
 export const HoverCard = Object.assign(HoverCardRoot, {

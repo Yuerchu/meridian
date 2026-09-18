@@ -1,6 +1,6 @@
 import { Dialog, DialogTrigger, Heading as AriaHeading, Modal, ModalOverlay } from 'react-aria-components'
 import type { ComponentProps } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { Button } from './button'
 
 type SheetPlacement = 'left' | 'right' | 'top' | 'bottom'
@@ -46,8 +46,8 @@ function SheetRoot({ isOpen, placement = 'right', onOpenChange, isDismissable = 
       >
         <Modal
           data-slot="sheet-content"
-          className={cn(
-            'fixed z-50 bg-overlay shadow-overlay outline-none',
+          className={cx(
+            'fixed z-50 bg-background-primary-default shadow-dropdown outline-none',
             'flex flex-col',
             'duration-300',
             positionClasses[placement],
@@ -72,7 +72,7 @@ function SheetBackdrop({ children }: SheetBackdropProps) {
 }
 
 function SheetContent({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="sheet-content-inner" {...props} className={cn('flex h-full flex-col', className)} />
+  return <div data-slot="sheet-content-inner" {...props} className={cx('flex h-full flex-col', className)} />
 }
 
 interface SheetDialogProps {
@@ -86,25 +86,25 @@ function SheetDialog({ className, ...props }: SheetDialogProps) {
     <Dialog
       data-slot="sheet-dialog"
       {...props}
-      className={cn('flex h-full min-h-0 flex-col outline-none', className)}
+      className={cx('flex h-full min-h-0 flex-col outline-none', className)}
     />
   )
 }
 
 function SheetHeader({ className, ...props }: ComponentProps<'div'>) {
   return (
-    <div data-slot="sheet-header" {...props} className={cn('flex shrink-0 flex-col gap-1 px-5 pt-4 pb-2', className)} />
+    <div data-slot="sheet-header" {...props} className={cx('flex shrink-0 flex-col gap-1 px-5 pt-4 pb-2', className)} />
   )
 }
 
 function SheetHeading({ className, ...props }: ComponentProps<'h2'>) {
   return (
-    <AriaHeading data-slot="sheet-heading" slot="title" {...props} className={cn('text-lg font-semibold', className)} />
+    <AriaHeading data-slot="sheet-heading" slot="title" {...props} className={cx('text-lg font-semibold', className)} />
   )
 }
 
 function SheetBody({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="sheet-body" {...props} className={cn('flex-auto overflow-y-auto px-5 py-2', className)} />
+  return <div data-slot="sheet-body" {...props} className={cx('flex-auto overflow-y-auto px-5 py-2', className)} />
 }
 
 function SheetFooter({ className, ...props }: ComponentProps<'div'>) {
@@ -112,21 +112,20 @@ function SheetFooter({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="sheet-footer"
       {...props}
-      className={cn('flex shrink-0 items-center justify-end gap-2 px-5 pt-2 pb-4', className)}
+      className={cx('flex shrink-0 items-center justify-end gap-2 px-5 pt-2 pb-4', className)}
     />
   )
 }
 
 function SheetCloseTrigger({ className, 'aria-label': ariaLabel }: { className?: string; 'aria-label'?: string }) {
   return (
-    // eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- caller provides context
     <Button
       slot="close"
       data-slot="sheet-close-trigger"
       variant="ghost"
       isIconOnly
       aria-label={ariaLabel ?? 'Close'}
-      className={cn('absolute top-3 right-3 text-muted', className)}
+      className={cx('absolute top-3 right-3 text-text-secondary', className)}
     >
       <svg
         data-slot="sheet-close-icon"

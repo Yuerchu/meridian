@@ -1,14 +1,14 @@
 import type { ComponentProps, ReactElement } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 interface SkeletonProps extends ComponentProps<'div'> {
   render?: (props: ComponentProps<'div'>) => ReactElement
 }
 
 export function Skeleton({ className, render, ...props }: SkeletonProps) {
-  const skeletonClass = cn(
-    'pointer-events-none relative overflow-hidden rounded-sm bg-surface-tertiary/70',
-    'after:absolute after:inset-0 after:-translate-x-full after:animate-skeleton after:bg-linear-to-r after:from-transparent after:via-surface-tertiary after:to-transparent after:content-[""]',
+  const skeletonClass = cx(
+    'pointer-events-none relative overflow-hidden rounded-sm bg-background-tertiary-default/70',
+    'after:absolute after:inset-0 after:-translate-x-full after:animate-skeleton after:bg-linear-to-r after:from-transparent after:via-background-tertiary-default after:to-transparent after:content-[""]',
     className,
   )
   if (render) return render({ ...props, className: skeletonClass })

@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 interface ProgressCircleProps extends ComponentProps<'div'> {
   isIndeterminate?: boolean
@@ -13,16 +13,16 @@ const sizes = { sm: 16, md: 24, lg: 32 }
 
 function ProgressCircleTrack({ children, className, ...props }: ComponentProps<'div'>) {
   return (
-    <div data-slot="progress-circle-track" {...props} className={cn('', className)}>
+    <div data-slot="progress-circle-track" {...props} className={cx('', className)}>
       {children}
     </div>
   )
 }
 function ProgressCircleTrackCircle({ className, ...props }: ComponentProps<'span'>) {
-  return <span data-slot="progress-circle-track-circle" {...props} className={cn('', className)} />
+  return <span data-slot="progress-circle-track-circle" {...props} className={cx('', className)} />
 }
 function ProgressCircleFillCircle({ className, ...props }: ComponentProps<'span'>) {
-  return <span data-slot="progress-circle-fill-circle" {...props} className={cn('', className)} />
+  return <span data-slot="progress-circle-fill-circle" {...props} className={cx('', className)} />
 }
 
 function ProgressCircleRoot({
@@ -46,16 +46,23 @@ function ProgressCircleRoot({
       aria-valuemin={0}
       aria-valuemax={maxValue}
       {...props}
-      className={cn('inline-flex shrink-0', className)}
+      className={cx('inline-flex shrink-0', className)}
     >
       <svg data-slot="progress-circle-svg" width={s} height={s} viewBox={`0 0 ${s} ${s}`} className="rotate-[-90deg]">
-        <circle cx={s / 2} cy={s / 2} r={r} fill="none" stroke="var(--default)" strokeWidth={2.5} />
         <circle
           cx={s / 2}
           cy={s / 2}
           r={r}
           fill="none"
-          stroke="var(--progress-circle-stroke, var(--accent))"
+          stroke="var(--color-background-tertiary-default)"
+          strokeWidth={2.5}
+        />
+        <circle
+          cx={s / 2}
+          cy={s / 2}
+          r={r}
+          fill="none"
+          stroke="var(--progress-circle-stroke, var(--color-accent-500))"
           strokeWidth={2.5}
           strokeDasharray={c}
           strokeDashoffset={c * (1 - pct)}

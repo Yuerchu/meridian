@@ -1,5 +1,5 @@
 import { useState, type ComponentProps } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 interface ChainOfThoughtProps extends ComponentProps<'div'> {
   defaultExpanded?: boolean
@@ -19,7 +19,7 @@ function ChainOfThoughtRoot({
       data-expanded={expanded || undefined}
       onClick={() => setExpanded((v) => !v)}
       {...props}
-      className={cn('', className)}
+      className={cx('', className)}
     />
   )
 }
@@ -30,24 +30,30 @@ function CotTrigger({ className, ...props }: ComponentProps<'button'>) {
       data-slot="chain-of-thought-trigger"
       type="button"
       {...props}
-      className={cn('text-xs font-medium text-muted', className)}
+      className={cx('text-xs font-medium text-text-secondary', className)}
     />
   )
 }
 
 function CotContent({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="chain-of-thought-content" {...props} className={cn('mt-1 text-sm text-muted', className)} />
+  return (
+    <div
+      data-slot="chain-of-thought-content"
+      {...props}
+      className={cx('mt-1 text-sm text-text-secondary', className)}
+    />
+  )
 }
 
 function CotSteps({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="chain-of-thought-steps" {...props} className={cn('flex flex-col gap-1', className)} />
+  return <div data-slot="chain-of-thought-steps" {...props} className={cx('flex flex-col gap-1', className)} />
 }
 
 function CotStep({ className, label, ...props }: ComponentProps<'div'> & { label?: string }) {
   return (
-    <div data-slot="chain-of-thought-step" {...props} className={cn('text-sm', className)}>
+    <div data-slot="chain-of-thought-step" {...props} className={cx('text-sm', className)}>
       {label && (
-        <span data-slot="chain-of-thought-step-label" className="mr-1 font-medium text-foreground">
+        <span data-slot="chain-of-thought-step-label" className="mr-1 font-medium text-text-primary">
           {label}:
         </span>
       )}

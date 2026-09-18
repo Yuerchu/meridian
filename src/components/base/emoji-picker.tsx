@@ -1,6 +1,6 @@
 import { createContext, useContext, type ComponentProps, type Key, type ReactNode } from 'react'
 import { Popover as AriaPopover, DialogTrigger, Dialog, type PopoverProps } from 'react-aria-components'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { Button } from './button'
 
 interface EmojiPickerCtx {
@@ -39,14 +39,13 @@ interface EmojiPickerTriggerProps {
 
 function EmojiPickerTrigger({ className, onPress, children, ...props }: EmojiPickerTriggerProps) {
   return (
-    // eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- caller supplies tooltip
     <Button
       data-slot="emoji-picker-trigger"
       variant="ghost"
       isIconOnly
       size="sm"
       onPress={onPress}
-      className={cn('text-muted', className)}
+      className={cx('text-text-secondary', className)}
       aria-label={props['aria-label']}
     >
       {children}
@@ -59,11 +58,11 @@ function EmojiPickerPopover({ className, ...props }: Omit<PopoverProps, 'childre
     <AriaPopover
       data-slot="emoji-picker-popover"
       {...props}
-      className={cn(
-        'w-72 overflow-hidden rounded-xl border border-border bg-overlay shadow-overlay',
+      className={cx(
+        'w-72 overflow-hidden rounded-xl border border-border-button-default bg-background-primary-default shadow-dropdown',
         'data-[entering]:animate-in data-[entering]:fade-in-0 data-[entering]:zoom-in-95 data-[entering]:duration-150',
         'data-[exiting]:animate-out data-[exiting]:fade-out data-[exiting]:zoom-out-95 data-[exiting]:duration-100',
-        className,
+        className as string,
       )}
     >
       <Dialog className="outline-none">{props.children}</Dialog>
@@ -72,7 +71,7 @@ function EmojiPickerPopover({ className, ...props }: Omit<PopoverProps, 'childre
 }
 
 function EmojiPickerContent({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="emoji-picker-content" {...props} className={cn('flex flex-col', className)} />
+  return <div data-slot="emoji-picker-content" {...props} className={cx('flex flex-col', className)} />
 }
 
 interface EmojiPickerGridProps<T> extends Omit<ComponentProps<'div'>, 'children'> {
@@ -94,7 +93,7 @@ function EmojiPickerGrid<T>({ className, items, children, renderEmptyState, ...p
       data-slot="emoji-picker-grid"
       role="grid"
       {...props}
-      className={cn('grid grid-cols-8 gap-0.5 overflow-y-auto p-2', className)}
+      className={cx('grid grid-cols-8 gap-0.5 overflow-y-auto p-2', className)}
     >
       {items?.map((item, i) => (
         <div data-slot="emoji-picker-grid-cell" key={i}>
@@ -121,8 +120,8 @@ function EmojiPickerItem({ className, id, isDisabled, textValue, ...props }: Emo
       aria-label={textValue}
       onClick={() => id != null && onSelectionChange?.(id)}
       {...props}
-      className={cn(
-        'flex size-8 items-center justify-center rounded-md text-lg hover:bg-default disabled:opacity-50',
+      className={cx(
+        'flex size-8 items-center justify-center rounded-md text-lg hover:bg-background-secondary-default disabled:opacity-50',
         className,
       )}
     />
@@ -130,7 +129,9 @@ function EmojiPickerItem({ className, id, isDisabled, textValue, ...props }: Emo
 }
 
 function EmojiPickerFooter({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="emoji-picker-footer" {...props} className={cn('border-t border-separator p-1', className)} />
+  return (
+    <div data-slot="emoji-picker-footer" {...props} className={cx('border-t border-separator-border p-1', className)} />
+  )
 }
 
 export const EmojiPicker = Object.assign(EmojiPickerRoot, {

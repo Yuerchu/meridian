@@ -1,5 +1,5 @@
 import { useState, type ComponentProps, type Key, type ReactNode } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 interface FileTreeProps extends Omit<ComponentProps<'div'>, 'children'> {
   size?: 'sm' | 'md'
@@ -39,7 +39,7 @@ function FileTreeRoot({
         },
       }}
     >
-      <div data-slot="file-tree" role="tree" {...props} className={cn('flex flex-col text-sm', className)}>
+      <div data-slot="file-tree" role="tree" {...props} className={cx('flex flex-col text-sm', className)}>
         {children}
       </div>
     </FileTreeContext.Provider>
@@ -73,17 +73,17 @@ function FileTreeItem({ id, className, icon, title, textValue, children, ...prop
       aria-expanded={hasChildren ? isExpanded : undefined}
       aria-label={props['aria-label'] ?? textValue}
       {...props}
-      className={cn('outline-none', className)}
+      className={cx('outline-none', className)}
     >
       <div
         data-slot="file-tree-item-row"
-        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm hover:bg-default"
+        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm hover:bg-background-secondary-default"
         onClick={hasChildren ? () => toggleKey(id) : undefined}
       >
         {hasChildren && (
           <span
             data-slot="file-tree-chevron"
-            className={cn('text-muted transition-transform', isExpanded && 'rotate-90')}
+            className={cx('text-text-secondary transition-transform', isExpanded && 'rotate-90')}
           >
             <svg data-slot="file-tree-chevron-icon" className="size-3" viewBox="0 0 16 16" fill="currentColor">
               <path d="M6 4l4 4-4 4" />
@@ -91,7 +91,7 @@ function FileTreeItem({ id, className, icon, title, textValue, children, ...prop
           </span>
         )}
         {icon && (
-          <span data-slot="file-tree-icon" className="flex shrink-0 text-muted">
+          <span data-slot="file-tree-icon" className="flex shrink-0 text-text-secondary">
             {typeof icon === 'function' ? icon({ isExpanded }) : icon}
           </span>
         )}

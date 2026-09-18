@@ -9,7 +9,8 @@ import {
   type MenuTriggerProps,
 } from 'react-aria-components'
 import type { ComponentProps } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
+import { MENU_ITEM, MENU_ITEM_INTERACTIVE, MENU_POPOVER_SURFACE, MENU_POPOVER_WIDTH } from './dropdown/menu-styles'
 
 interface DropdownRootProps extends MenuTriggerProps {
   'aria-label'?: string
@@ -24,11 +25,8 @@ function DropdownRoot({ 'aria-label': _al, 'data-slot': _ds, className: _cn, ...
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic menu
 function DropdownMenu({ className, ...props }: MenuProps<any> & { className?: string }) {
   return (
-    <AriaPopover
-      data-slot="dropdown-popover"
-      className="min-w-[10rem] overflow-hidden rounded-xl border border-border bg-overlay p-1 shadow-overlay outline-none data-[entering]:animate-in data-[entering]:fade-in-0 data-[entering]:zoom-in-95 data-[entering]:duration-150 data-[exiting]:animate-out data-[exiting]:fade-out data-[exiting]:zoom-out-95 data-[exiting]:duration-100"
-    >
-      <Menu data-slot="dropdown-menu" {...props} className={cn('outline-none', className)} />
+    <AriaPopover data-slot="dropdown-popover" className={cx(MENU_POPOVER_WIDTH, MENU_POPOVER_SURFACE)}>
+      <Menu data-slot="dropdown-menu" {...props} className={cx('flex flex-col gap-1 outline-none', className)} />
     </AriaPopover>
   )
 }
@@ -42,10 +40,11 @@ function DropdownItem({
     <MenuItem
       data-slot="dropdown-item"
       {...props}
-      className={cn(
-        'flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm outline-none select-none',
-        'data-[focused]:bg-default data-[focused]:text-foreground',
-        'data-[disabled]:opacity-50',
+      className={cx(
+        MENU_ITEM,
+        MENU_ITEM_INTERACTIVE,
+        'data-[focused]:bg-dropdown-item-hover-background',
+        'data-[disabled]:cursor-not-allowed data-[disabled]:text-text-disabled',
         className,
       )}
     />
@@ -53,7 +52,13 @@ function DropdownItem({
 }
 
 function DropdownSeparator({ className, ...props }: ComponentProps<'div'>) {
-  return <AriaSeparator data-slot="dropdown-separator" {...props} className={cn('my-1 h-px bg-separator', className)} />
+  return (
+    <AriaSeparator
+      data-slot="dropdown-separator"
+      {...props}
+      className={cx('-mx-2.5 my-1.5 h-px shrink-0 bg-border-button-default', className)}
+    />
+  )
 }
 
 function DropdownTrigger(props: ComponentProps<'div'>) {

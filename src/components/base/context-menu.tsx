@@ -16,7 +16,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 interface ContextMenuState {
   open: boolean
@@ -77,7 +77,7 @@ function ContextMenuTrigger({ className, render, children, ...props }: ContextMe
 
   const domProps: ComponentProps<'div'> = {
     ...props,
-    className: cn('block', className),
+    className: cx('block', className),
     onContextMenu: handleContextMenu,
     children,
   }
@@ -109,8 +109,8 @@ function ContextMenuPopover({ children }: { children?: ReactNode }) {
           triggerRef={triggerRef}
           data-slot="context-menu-popover"
           placement="bottom start"
-          className={cn(
-            'min-w-[12rem] overflow-hidden rounded-xl border border-border bg-overlay p-1 shadow-overlay outline-none',
+          className={cx(
+            'min-w-[12rem] overflow-hidden rounded-xl border border-border-button-default bg-background-primary-default p-1 shadow-dropdown outline-none',
             'data-[entering]:animate-in data-[entering]:fade-in-0 data-[entering]:zoom-in-95 data-[entering]:duration-150',
             'data-[exiting]:animate-out data-[exiting]:fade-out data-[exiting]:zoom-out-95 data-[exiting]:duration-100',
           )}
@@ -129,7 +129,7 @@ interface ContextMenuMenuProps {
 }
 
 function ContextMenuMenu({ className, ...props }: ContextMenuMenuProps) {
-  return <Menu data-slot="context-menu" {...props} className={cn('outline-none', className)} />
+  return <Menu data-slot="context-menu" {...props} className={cx('outline-none', className)} />
 }
 
 interface ContextMenuItemProps extends MenuItemProps {
@@ -142,9 +142,9 @@ function ContextMenuItem({ className, variant, ...props }: ContextMenuItemProps)
     <MenuItem
       data-slot="context-menu-item"
       {...props}
-      className={cn(
+      className={cx(
         'flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm outline-none select-none',
-        'data-[focused]:bg-default data-[focused]:text-foreground',
+        'data-[focused]:bg-dropdown-item-hover-background data-[focused]:text-text-primary',
         'data-[disabled]:opacity-50',
         variant === 'danger' &&
           'text-danger-soft-foreground data-[focused]:bg-danger-soft data-[focused]:text-danger-soft-foreground',
@@ -156,7 +156,11 @@ function ContextMenuItem({ className, variant, ...props }: ContextMenuItemProps)
 
 function ContextMenuSeparator({ className, ...props }: ComponentProps<'div'>) {
   return (
-    <AriaSeparator data-slot="context-menu-separator" {...props} className={cn('my-1 h-px bg-separator', className)} />
+    <AriaSeparator
+      data-slot="context-menu-separator"
+      {...props}
+      className={cx('my-1 h-px bg-separator-border', className)}
+    />
   )
 }
 

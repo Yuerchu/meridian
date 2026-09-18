@@ -1,6 +1,6 @@
 import { Button as AriaButton, type ButtonProps as AriaButtonProps } from 'react-aria-components'
 import type { ForwardedRef } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 export type ButtonVariant =
   'primary' | 'secondary' | 'tertiary' | 'outline' | 'ghost' | 'danger' | 'danger-soft' | 'transparent'
@@ -15,17 +15,35 @@ interface ButtonProps extends AriaButtonProps {
 }
 
 const variantClasses: Record<ButtonVariant, string> = {
-  primary: '[--button-bg:var(--accent)] [--button-bg-hover:var(--accent-hover)] [--button-fg:var(--accent-foreground)]',
-  secondary:
-    '[--button-bg:var(--default)] [--button-bg-hover:var(--default-hover)] [--button-fg:var(--accent-soft-foreground)]',
-  tertiary: '[--button-bg:var(--default)] [--button-bg-hover:var(--default-hover)]',
-  outline:
-    '[--button-bg:transparent] [--button-bg-hover:color-mix(in_srgb,var(--default)_60%,transparent)] border border-border',
-  ghost: '[--button-bg:transparent] [--button-bg-hover:var(--default)] [--button-fg:var(--default-foreground)]',
-  danger: '[--button-bg:var(--danger)] [--button-bg-hover:var(--danger-hover)] [--button-fg:var(--danger-foreground)]',
-  'danger-soft':
-    '[--button-bg:var(--danger-soft)] [--button-bg-hover:var(--danger-soft-hover)] [--button-fg:var(--danger-soft-foreground)]',
-  transparent: '[--button-bg:transparent] [--button-bg-hover:transparent]',
+  primary:
+    'bg-button-primary text-text-white shadow-xs disabled:text-button-primary-disabled-foreground disabled:shadow-none',
+  secondary: [
+    'bg-background-primary-default text-text-primary',
+    'border border-border-button-default shadow-xs',
+    'hover:bg-background-primary-hover hover:border-border-button-hover',
+    'data-[pressed]:bg-background-primary-active data-[pressed]:border-border-button-active',
+    'disabled:bg-background-primary-disabled disabled:border-border-button-default disabled:text-text-tertiary disabled:shadow-none',
+  ].join(' '),
+  tertiary: [
+    'bg-background-secondary-default text-text-primary',
+    'hover:bg-background-secondary-hover',
+    'data-[pressed]:bg-background-secondary-hover',
+  ].join(' '),
+  outline: [
+    'bg-transparent text-text-primary',
+    'border border-border-button-default',
+    'hover:bg-background-primary-hover hover:border-border-button-hover',
+    'data-[pressed]:bg-background-primary-active',
+  ].join(' '),
+  ghost: [
+    'bg-button-ghost-background text-button-ghost-foreground',
+    'hover:bg-button-ghost-hover',
+    'data-[pressed]:bg-button-ghost-active',
+    'disabled:bg-button-ghost-disabled disabled:text-button-ghost-disabled-foreground',
+  ].join(' '),
+  danger: 'bg-button-danger text-text-white shadow-xs disabled:text-foreground-disabled-danger disabled:shadow-none',
+  'danger-soft': ['bg-danger-soft text-danger-soft-foreground', 'hover:bg-danger-soft-hover'].join(' '),
+  transparent: 'bg-transparent text-text-primary hover:bg-background-secondary-default',
 }
 
 const sizeClasses: Record<ButtonSize, string> = {
@@ -39,14 +57,10 @@ export function Button({ variant = 'primary', size = 'md', isIconOnly = false, c
     <AriaButton
       data-slot="button"
       {...props}
-      className={cn(
+      className={cx(
         'relative isolate inline-flex h-10 w-fit origin-center items-center justify-center gap-2 rounded-3xl px-4 text-sm font-medium whitespace-nowrap outline-none select-none',
-        'transform-gpu will-change-transform motion-reduce:transition-none md:h-9',
-        'transition-[transform,background-color,box-shadow] duration-100',
-        'bg-[var(--button-bg,transparent)] text-[var(--button-fg,currentColor)]',
-        'hover:bg-[var(--button-bg-hover,var(--button-bg,transparent))]',
-        'data-[pressed]:bg-[var(--button-bg-hover,var(--button-bg,transparent))] data-[pressed]:scale-[0.97]',
-        'data-[focus-visible]:ring-2 data-[focus-visible]:ring-focus data-[focus-visible]:ring-offset-2 data-[focus-visible]:ring-offset-background',
+        'button-press-motion md:h-9',
+        'data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring data-[focus-visible]:ring-offset-2',
         'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
         '[&_svg:not([data-slot=spinner-icon])]:pointer-events-none [&_svg:not([data-slot=spinner-icon])]:-mx-0.5 [&_svg:not([data-slot=spinner-icon])]:size-5 [&_svg:not([data-slot=spinner-icon])]:shrink-0 sm:[&_svg:not([data-slot=spinner-icon])]:size-4',
         variantClasses[variant],

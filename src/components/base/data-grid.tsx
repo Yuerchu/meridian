@@ -10,7 +10,7 @@ import {
   type SortDescriptor,
 } from 'react-aria-components'
 import { type ReactNode } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 export interface DataGridColumn<T> {
   id?: string
@@ -86,7 +86,7 @@ export function DataGrid<T extends object>({
       onSelectionChange={onSelectionChange}
       sortDescriptor={sortDescriptor}
       onSortChange={onSortChange}
-      className={cn('w-full text-sm', className)}
+      className={cx('w-full text-sm', className)}
     >
       <TableHeader>
         {columns.map((col) => {
@@ -100,8 +100,8 @@ export function DataGrid<T extends object>({
               width={col.width}
               minWidth={col.minWidth}
               maxWidth={col.maxWidth}
-              className={cn(
-                'border-b border-separator px-3 py-2 text-left text-xs font-medium text-muted',
+              className={cx(
+                'border-b border-separator-border px-3 py-2 text-left text-xs font-medium text-text-secondary',
                 col.align === 'end' && 'text-right',
                 col.align === 'center' && 'text-center',
                 col.headerClassName,
@@ -117,14 +117,14 @@ export function DataGrid<T extends object>({
           <Row
             key={keyFn?.(item) ?? (item as Record<string, Key>).id}
             id={keyFn?.(item) ?? (item as Record<string, Key>).id}
-            className="border-b border-separator outline-none last:border-0 data-[selected]:bg-accent-soft data-[focus-visible]:ring-2 data-[focus-visible]:ring-inset data-[focus-visible]:ring-focus data-[hovered]:bg-default/50"
+            className="border-b border-separator-border outline-none last:border-0 data-[selected]:bg-accent-100 data-[focus-visible]:ring-2 data-[focus-visible]:ring-inset data-[focus-visible]:ring-border-focus-ring data-[hovered]:bg-background-secondary-default/50"
           >
             {columns.map((col) => {
               const key = resolveColumnKey(col)
               return (
                 <Cell
                   key={key}
-                  className={cn(
+                  className={cx(
                     'px-3 py-2',
                     col.align === 'end' && 'text-right',
                     col.align === 'center' && 'text-center',

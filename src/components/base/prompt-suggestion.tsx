@@ -1,12 +1,12 @@
 import type { ComponentProps } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 function PromptSuggestionRoot({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="prompt-suggestion" {...props} className={cn('', className)} />
+  return <div data-slot="prompt-suggestion" {...props} className={cx('', className)} />
 }
 
 function PromptSuggestionItems({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="prompt-suggestion-items" {...props} className={cn('flex flex-wrap gap-2', className)} />
+  return <div data-slot="prompt-suggestion-items" {...props} className={cx('flex flex-wrap gap-2', className)} />
 }
 
 interface PromptSuggestionItemProps extends ComponentProps<'button'> {
@@ -22,9 +22,9 @@ function PromptSuggestionItem({ className, isDisabled, onPress, ...props }: Prom
       disabled={isDisabled}
       onClick={onPress}
       {...props}
-      className={cn(
-        'rounded-xl border border-border bg-surface px-3 py-1.5 text-sm text-foreground transition-colors',
-        'hover:bg-default disabled:opacity-50',
+      className={cx(
+        'rounded-xl border border-border-button-default bg-background-primary-default px-3 py-1.5 text-body-medium text-text-primary transition-colors',
+        'hover:bg-background-secondary-default disabled:opacity-50',
         className,
       )}
     />

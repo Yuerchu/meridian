@@ -1,5 +1,5 @@
 import { ToggleButton, ToggleButtonGroup, type ToggleButtonProps } from 'react-aria-components'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 type SegmentSize = 'sm' | 'md'
 
@@ -25,8 +25,8 @@ function SegmentRoot({ size = 'md', className, selectedKey, onSelectionChange, c
         if (typeof key === 'string') onSelectionChange?.(key)
       }}
       {...props}
-      className={cn(
-        'inline-flex items-center gap-0.5 rounded-xl bg-default p-0.5',
+      className={cx(
+        'inline-flex items-center gap-0.5 rounded-xl bg-background-secondary-default p-0.5',
         size === 'sm' && 'rounded-lg',
         className,
       )}
@@ -45,10 +45,10 @@ function SegmentItem({ className, ...props }: SegmentItemProps) {
     <ToggleButton
       data-slot="segment-item"
       {...props}
-      className={cn(
-        'inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-sm font-medium text-muted outline-none transition-all select-none',
-        'data-[selected]:bg-surface data-[selected]:text-foreground data-[selected]:shadow-surface',
-        'data-[focus-visible]:ring-2 data-[focus-visible]:ring-focus',
+      className={cx(
+        'inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-sm font-medium text-text-secondary outline-none transition-all select-none',
+        'data-[selected]:bg-background-primary-default data-[selected]:text-text-primary data-[selected]:shadow-xs',
+        'data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
         'data-[disabled]:opacity-50',
         className,
       )}

@@ -11,7 +11,7 @@ import {
   type ListBoxItemProps,
 } from 'react-aria-components'
 import type { ComponentProps, ReactNode } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { Button } from './button'
 
 interface CommandBackdropProps {
@@ -50,8 +50,8 @@ function CommandContainer({ className, size = 'md', ...props }: CommandContainer
     <div
       data-slot="command-container"
       {...props}
-      className={cn(
-        'mx-auto overflow-hidden rounded-xl border border-border bg-overlay shadow-overlay',
+      className={cx(
+        'mx-auto overflow-hidden rounded-xl border border-border-button-default bg-background-primary-default shadow-dropdown',
         size === 'sm' && 'max-w-sm',
         size === 'md' && 'max-w-lg',
         size === 'lg' && 'max-w-2xl',
@@ -74,21 +74,23 @@ function CommandDialog({ className, inputValue: _iv, onInputChange: _oic, ...pro
     <Dialog
       data-slot="command-dialog"
       {...props}
-      className={cn('flex max-h-[60vh] flex-col outline-none', className)}
+      className={cx('flex max-h-[60vh] flex-col outline-none', className)}
     />
   )
 }
 
 function CommandHeader({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="command-header" {...props} className={cn('border-b border-separator px-3', className)} />
+  return (
+    <div data-slot="command-header" {...props} className={cx('border-b border-separator-border px-3', className)} />
+  )
 }
 
 function CommandInputGroupRoot({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="command-input-group" {...props} className={cn('flex items-center gap-2 py-2', className)} />
+  return <div data-slot="command-input-group" {...props} className={cx('flex items-center gap-2 py-2', className)} />
 }
 
 function CommandInputGroupPrefix({ className, ...props }: ComponentProps<'span'>) {
-  return <span data-slot="command-input-prefix" {...props} className={cn('text-muted', className)} />
+  return <span data-slot="command-input-prefix" {...props} className={cx('text-text-secondary', className)} />
 }
 
 function CommandInputGroupInput({ className, ...props }: ComponentProps<'input'>) {
@@ -96,7 +98,7 @@ function CommandInputGroupInput({ className, ...props }: ComponentProps<'input'>
     <AriaInput
       data-slot="command-input"
       {...props}
-      className={cn('flex-1 bg-transparent text-sm outline-none placeholder:text-muted', className)}
+      className={cx('flex-1 bg-transparent text-sm outline-none placeholder:text-text-placeholder', className)}
     />
   )
 }
@@ -109,14 +111,13 @@ function CommandInputGroupClearButton({
   'aria-label'?: string
 }) {
   return (
-    // eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- clear button within input group
     <Button
       data-slot="command-clear"
       variant="ghost"
       isIconOnly
       size="sm"
       aria-label={ariaLabel}
-      className={cn('size-6 text-muted', className)}
+      className={cx('size-6 text-text-secondary', className)}
     >
       <svg
         data-slot="command-clear-icon"
@@ -151,7 +152,7 @@ function CommandList({ className, renderEmptyState, children, ...props }: Comman
       data-slot="command-list"
       renderEmptyState={renderEmptyState}
       {...props}
-      className={cn('overflow-y-auto p-1', className)}
+      className={cx('overflow-y-auto p-1', className)}
     >
       {children}
     </ListBox>
@@ -166,9 +167,9 @@ interface CommandGroupProps {
 
 function CommandGroup({ heading, children, className }: CommandGroupProps) {
   return (
-    <ListBoxSection data-slot="command-group" className={cn('', className)}>
+    <ListBoxSection data-slot="command-group" className={cx('', className)}>
       {heading && (
-        <Header data-slot="command-group-heading" className="px-2 py-1.5 text-xs font-medium text-muted">
+        <Header data-slot="command-group-heading" className="px-2 py-1.5 text-xs font-medium text-text-secondary">
           {heading}
         </Header>
       )}
@@ -186,10 +187,10 @@ function CommandItem({ className, onAction: _onAction, ...props }: CommandItemPr
     <ListBoxItem
       data-slot="command-item"
       {...props}
-      className={cn(
+      className={cx(
         'flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm outline-none select-none',
-        'data-[focused]:bg-default data-[focused]:text-foreground',
-        className,
+        'data-[focused]:bg-background-secondary-default data-[focused]:text-text-primary',
+        className as string,
       )}
     />
   )
@@ -200,7 +201,10 @@ function CommandFooter({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="command-footer"
       {...props}
-      className={cn('flex items-center gap-2 border-t border-separator px-3 py-2 text-xs text-muted', className)}
+      className={cx(
+        'flex items-center gap-2 border-t border-separator-border px-3 py-2 text-xs text-text-secondary',
+        className,
+      )}
     />
   )
 }

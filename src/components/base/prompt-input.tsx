@@ -7,7 +7,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { Button } from './button'
 
 type PromptInputStatus = 'ready' | 'submitted' | 'streaming'
@@ -55,7 +55,7 @@ function PromptInputRoot({
 }: PromptInputProps) {
   return (
     <PromptInputCtx.Provider value={{ value, onValueChange, onSubmit, onStop, status, isDisabled }}>
-      <div data-slot="prompt-input" data-status={status} {...props} className={cn('flex flex-col', className)} />
+      <div data-slot="prompt-input" data-status={status} {...props} className={cx('flex flex-col', className)} />
     </PromptInputCtx.Provider>
   )
 }
@@ -65,18 +65,21 @@ function PromptInputShell({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="prompt-input-shell"
       {...props}
-      className={cn('rounded-2xl border border-field-border bg-field shadow-field', className)}
+      className={cx(
+        'rounded-2xl border border-border-button-default bg-background-primary-default shadow-xs',
+        className,
+      )}
     />
   )
 }
 
 function PromptInputContent({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="prompt-input-content" {...props} className={cn('flex flex-col', className)} />
+  return <div data-slot="prompt-input-content" {...props} className={cx('flex flex-col', className)} />
 }
 
 function PromptInputAttachments({ className, ...props }: ComponentProps<'div'>) {
   return (
-    <div data-slot="prompt-input-attachments" {...props} className={cn('flex flex-wrap gap-1 px-3 pt-2', className)} />
+    <div data-slot="prompt-input-attachments" {...props} className={cx('flex flex-wrap gap-1 px-3 pt-2', className)} />
   )
 }
 
@@ -108,8 +111,8 @@ function PromptInputTextArea({ className, ...props }: PromptInputTextAreaProps) 
       disabled={isDisabled}
       rows={1}
       {...props}
-      className={cn(
-        'w-full resize-none bg-transparent px-3 py-2.5 text-sm outline-none placeholder:text-field-placeholder',
+      className={cx(
+        'w-full resize-none bg-transparent px-3 py-2.5 text-sm outline-none placeholder:text-text-placeholder',
         className,
       )}
     />
@@ -118,17 +121,17 @@ function PromptInputTextArea({ className, ...props }: PromptInputTextAreaProps) 
 
 function PromptInputToolbar({ className, ...props }: ComponentProps<'div'>) {
   return (
-    <div data-slot="prompt-input-toolbar" {...props} className={cn('flex items-center gap-1 px-2 pb-2', className)} />
+    <div data-slot="prompt-input-toolbar" {...props} className={cx('flex items-center gap-1 px-2 pb-2', className)} />
   )
 }
 
 function PromptInputToolbarStart({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="prompt-input-toolbar-start" {...props} className={cn('flex items-center gap-1', className)} />
+  return <div data-slot="prompt-input-toolbar-start" {...props} className={cx('flex items-center gap-1', className)} />
 }
 
 function PromptInputToolbarEnd({ className, ...props }: ComponentProps<'div'>) {
   return (
-    <div data-slot="prompt-input-toolbar-end" {...props} className={cn('ml-auto flex items-center gap-1', className)} />
+    <div data-slot="prompt-input-toolbar-end" {...props} className={cx('ml-auto flex items-center gap-1', className)} />
   )
 }
 
@@ -142,14 +145,13 @@ interface PromptInputActionProps {
 
 function PromptInputAction({ className, onPress, children, ...props }: PromptInputActionProps) {
   return (
-    // eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- caller supplies tooltip
     <Button
       data-slot="prompt-input-action"
       variant="ghost"
       isIconOnly
       size="sm"
       onPress={onPress}
-      className={cn('text-muted', className)}
+      className={cx('text-text-secondary', className)}
       aria-label={props['aria-label']}
     >
       {children}
@@ -168,7 +170,6 @@ function PromptInputSend({ className, isDisabled, ...props }: PromptInputSendPro
   const isRunning = status === 'submitted' || status === 'streaming'
 
   return (
-    // eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- send button has aria-label
     <Button
       data-slot="prompt-input-send"
       variant="primary"
@@ -176,7 +177,7 @@ function PromptInputSend({ className, isDisabled, ...props }: PromptInputSendPro
       size="sm"
       isDisabled={isDisabled}
       onPress={isRunning ? onStop : onSubmit}
-      className={cn('', className)}
+      className={cx('', className)}
       aria-label={props['aria-label']}
     >
       {isRunning ? (
@@ -193,7 +194,13 @@ function PromptInputSend({ className, isDisabled, ...props }: PromptInputSendPro
 }
 
 function PromptInputFooter({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="prompt-input-footer" {...props} className={cn('px-3 pb-2 text-xs text-muted', className)} />
+  return (
+    <div
+      data-slot="prompt-input-footer"
+      {...props}
+      className={cx('px-3 pb-2 text-xs text-text-secondary', className)}
+    />
+  )
 }
 
 interface QueueRootProps extends ComponentProps<'div'> {
@@ -201,7 +208,7 @@ interface QueueRootProps extends ComponentProps<'div'> {
 }
 
 function QueueRoot({ className, actionsVisibility: _actionsVisibility, ...props }: QueueRootProps) {
-  return <div data-slot="prompt-input-queue" {...props} className={cn('', className)} />
+  return <div data-slot="prompt-input-queue" {...props} className={cx('', className)} />
 }
 
 interface QueueListProps extends ComponentProps<'div'> {
@@ -212,7 +219,7 @@ interface QueueListProps extends ComponentProps<'div'> {
 }
 
 function QueueList({ className, values: _values, onReorder: _onReorder, ...props }: QueueListProps) {
-  return <div data-slot="prompt-input-queue-list" {...props} className={cn('flex flex-col gap-1 p-2', className)} />
+  return <div data-slot="prompt-input-queue-list" {...props} className={cx('flex flex-col gap-1 p-2', className)} />
 }
 
 interface QueueItemProps extends ComponentProps<'div'> {
@@ -231,7 +238,7 @@ function QueueItemSteer({ className, onPress, ...props }: QueueItemSteerProps) {
       type="button"
       onClick={onPress}
       {...props}
-      className={cn('text-xs text-muted hover:text-foreground', className)}
+      className={cx('text-xs text-text-secondary hover:text-text-primary', className)}
     />
   )
 }
@@ -241,14 +248,21 @@ function QueueItemRoot({ className, value: _value, actionsVisibility: _actionsVi
     <div
       data-slot="prompt-input-queue-item"
       {...props}
-      className={cn('flex items-center gap-2 rounded-lg border border-border bg-surface p-2', className)}
+      className={cx(
+        'flex items-center gap-2 rounded-lg border border-border-button-default bg-background-primary-default p-2',
+        className,
+      )}
     />
   )
 }
 
 function QueueItemHandle({ className, ...props }: ComponentProps<'div'>) {
   return (
-    <div data-slot="prompt-input-queue-item-handle" {...props} className={cn('cursor-grab text-muted', className)} />
+    <div
+      data-slot="prompt-input-queue-item-handle"
+      {...props}
+      className={cx('cursor-grab text-text-secondary', className)}
+    />
   )
 }
 
@@ -257,13 +271,19 @@ function QueueItemBody({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="prompt-input-queue-item-body"
       {...props}
-      className={cn('flex min-w-0 flex-1 items-center gap-2', className)}
+      className={cx('flex min-w-0 flex-1 items-center gap-2', className)}
     />
   )
 }
 
 function QueueItemIcon({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="prompt-input-queue-item-icon" {...props} className={cn('shrink-0 text-muted', className)} />
+  return (
+    <div
+      data-slot="prompt-input-queue-item-icon"
+      {...props}
+      className={cx('shrink-0 text-text-secondary', className)}
+    />
+  )
 }
 
 function QueueItemContent({ className, ...props }: ComponentProps<'div'>) {
@@ -271,14 +291,18 @@ function QueueItemContent({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="prompt-input-queue-item-content"
       {...props}
-      className={cn('min-w-0 flex-1 truncate text-sm', className)}
+      className={cx('min-w-0 flex-1 truncate text-sm', className)}
     />
   )
 }
 
 function QueueItemDescription({ className, ...props }: ComponentProps<'span'>) {
   return (
-    <span data-slot="prompt-input-queue-item-description" {...props} className={cn('text-xs text-muted', className)} />
+    <span
+      data-slot="prompt-input-queue-item-description"
+      {...props}
+      className={cx('text-xs text-text-secondary', className)}
+    />
   )
 }
 
@@ -287,7 +311,7 @@ function QueueItemActions({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="prompt-input-queue-item-actions"
       {...props}
-      className={cn('flex shrink-0 items-center gap-1', className)}
+      className={cx('flex shrink-0 items-center gap-1', className)}
     />
   )
 }
@@ -302,7 +326,6 @@ interface QueueItemActionProps {
 
 function QueueItemAction({ className, onPress, isDisabled, children, ...props }: QueueItemActionProps) {
   return (
-    // eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- inline action
     <Button
       data-slot="prompt-input-queue-item-action"
       variant="ghost"
@@ -310,7 +333,7 @@ function QueueItemAction({ className, onPress, isDisabled, children, ...props }:
       size="sm"
       isDisabled={isDisabled}
       onPress={onPress}
-      className={cn('size-6 text-muted', className)}
+      className={cx('size-6 text-text-secondary', className)}
       aria-label={props['aria-label']}
     >
       {children}

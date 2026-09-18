@@ -1,6 +1,6 @@
 import { Dialog, DialogTrigger, Heading as AriaHeading, Modal as AriaModal, ModalOverlay } from 'react-aria-components'
 import type { ComponentProps } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { Button } from './button'
 
 interface ModalProps {
@@ -22,7 +22,7 @@ function ModalRoot({ isOpen, onOpenChange, isDismissable = true, children }: Mod
       >
         <AriaModal
           data-slot="modal"
-          className="w-full max-w-lg overflow-hidden rounded-2xl border border-border bg-overlay shadow-overlay outline-none data-[entering]:animate-in data-[entering]:fade-in-0 data-[entering]:zoom-in-95 data-[entering]:duration-200 data-[exiting]:animate-out data-[exiting]:fade-out data-[exiting]:zoom-out-95 data-[exiting]:duration-150"
+          className="w-full max-w-lg overflow-hidden rounded-2xl border border-border-button-default bg-background-primary-default shadow-dropdown outline-none data-[entering]:animate-in data-[entering]:fade-in-0 data-[entering]:zoom-in-95 data-[entering]:duration-200 data-[exiting]:animate-out data-[exiting]:fade-out data-[exiting]:zoom-out-95 data-[exiting]:duration-150"
         >
           {children}
         </AriaModal>
@@ -39,7 +39,7 @@ function ModalDialog({
   'aria-label'?: string
   children?: React.ReactNode
 }) {
-  return <Dialog data-slot="modal-dialog" {...props} className={cn('flex flex-col outline-none', className)} />
+  return <Dialog data-slot="modal-dialog" {...props} className={cx('flex flex-col outline-none', className)} />
 }
 
 function ModalHeader({ className, ...props }: ComponentProps<'div'>) {
@@ -47,19 +47,19 @@ function ModalHeader({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="modal-header"
       {...props}
-      className={cn('flex items-center justify-between px-5 pt-4 pb-2', className)}
+      className={cx('flex items-center justify-between px-5 pt-4 pb-2', className)}
     />
   )
 }
 
 function ModalHeading({ className, ...props }: ComponentProps<'h2'>) {
   return (
-    <AriaHeading data-slot="modal-heading" slot="title" {...props} className={cn('text-lg font-semibold', className)} />
+    <AriaHeading data-slot="modal-heading" slot="title" {...props} className={cx('text-lg font-semibold', className)} />
   )
 }
 
 function ModalBody({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="modal-body" {...props} className={cn('px-5 py-3', className)} />
+  return <div data-slot="modal-body" {...props} className={cx('px-5 py-3', className)} />
 }
 
 function ModalFooter({ className, ...props }: ComponentProps<'div'>) {
@@ -67,7 +67,7 @@ function ModalFooter({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="modal-footer"
       {...props}
-      className={cn('flex items-center justify-end gap-2 px-5 pt-2 pb-4', className)}
+      className={cx('flex items-center justify-end gap-2 px-5 pt-2 pb-4', className)}
     />
   )
 }
@@ -90,14 +90,13 @@ function ModalContainer({ children }: any) {
 
 function ModalCloseTrigger({ className, 'aria-label': ariaLabel }: { className?: string; 'aria-label'?: string }) {
   return (
-    // eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- modal close
     <Button
       slot="close"
       data-slot="modal-close-trigger"
       variant="ghost"
       isIconOnly
       aria-label={ariaLabel ?? 'Close'}
-      className={cn('absolute top-3 right-3 text-muted', className)}
+      className={cx('absolute top-3 right-3 text-text-secondary', className)}
     >
       <svg
         data-slot="modal-close-icon"

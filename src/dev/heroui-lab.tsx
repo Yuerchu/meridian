@@ -552,12 +552,7 @@ export default function HeroUiLab() {
               </HButton>
             </div>
 
-            <HSlider defaultValue={40} className="max-w-xs" aria-label="滑块">
-              <HSlider.Track>
-                <HSlider.Fill />
-                <HSlider.Thumb />
-              </HSlider.Track>
-            </HSlider>
+            <HSlider defaultValue={40} className="max-w-xs" aria-label="滑块" />
 
             <div data-slot="heroui-lab-overlays" className="flex flex-wrap items-center gap-3">
               <HTooltip delay={0}>

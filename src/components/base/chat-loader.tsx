@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 function ChatLoaderDots({ className, label, ...props }: ComponentProps<'span'> & { label?: string }) {
   return (
@@ -8,13 +8,13 @@ function ChatLoaderDots({ className, label, ...props }: ComponentProps<'span'> &
       role="status"
       aria-label={label}
       {...props}
-      className={cn('inline-flex items-center gap-1', className)}
+      className={cx('inline-flex items-center gap-1', className)}
     >
       {[0, 1, 2].map((i) => (
         <span
           key={i}
           data-slot="chat-loader-dot"
-          className="size-1.5 rounded-full bg-default animate-[pulse_1.5s_ease-in-out_infinite]"
+          className="size-1.5 rounded-full bg-background-tertiary-default animate-[pulse_1.5s_ease-in-out_infinite]"
           style={{ animationDelay: `${i * 200}ms` }}
         />
       ))}

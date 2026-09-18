@@ -11,7 +11,7 @@ import {
   type CartesianGridProps,
 } from 'recharts'
 import type { ComponentProps } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 interface AreaChartRootProps extends ComponentProps<'div'> {
   data?: Record<string, unknown>[]
@@ -20,7 +20,7 @@ interface AreaChartRootProps extends ComponentProps<'div'> {
 
 function AreaChartRoot({ data, height = 200, children, className, ...props }: AreaChartRootProps) {
   return (
-    <div data-slot="area-chart" {...props} className={cn('', className)}>
+    <div data-slot="area-chart" {...props} className={cx('', className)}>
       <ResponsiveContainer width="100%" height={height}>
         <RechartsAreaChart data={data}>{children}</RechartsAreaChart>
       </ResponsiveContainer>
@@ -29,15 +29,22 @@ function AreaChartRoot({ data, height = 200, children, className, ...props }: Ar
 }
 
 function AreaChartGrid(props: CartesianGridProps) {
-  return <CartesianGrid data-slot="area-chart-grid" strokeDasharray="3 3" stroke="var(--separator)" {...props} />
+  return (
+    <CartesianGrid
+      data-slot="area-chart-grid"
+      strokeDasharray="3 3"
+      stroke="var(--color-separator-border)"
+      {...props}
+    />
+  )
 }
 
 function AreaChartXAxis(props: XAxisProps) {
-  return <RechartsXAxis data-slot="area-chart-x-axis" stroke="var(--muted)" fontSize={12} {...props} />
+  return <RechartsXAxis data-slot="area-chart-x-axis" stroke="var(--color-text-secondary)" fontSize={12} {...props} />
 }
 
 function AreaChartYAxis(props: YAxisProps) {
-  return <RechartsYAxis data-slot="area-chart-y-axis" stroke="var(--muted)" fontSize={12} {...props} />
+  return <RechartsYAxis data-slot="area-chart-y-axis" stroke="var(--color-text-secondary)" fontSize={12} {...props} />
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts generic types
@@ -60,7 +67,10 @@ function AreaChartTooltipContent({ className }: AreaChartTooltipContentProps) {
   return (
     <div
       data-slot="area-chart-tooltip-content"
-      className={cn('rounded-lg border border-border bg-overlay p-2 shadow-overlay', className)}
+      className={cx(
+        'rounded-lg border border-border-button-default bg-background-primary-default p-2 shadow-dropdown',
+        className,
+      )}
     />
   )
 }

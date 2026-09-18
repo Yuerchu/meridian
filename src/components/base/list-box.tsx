@@ -5,11 +5,11 @@ import {
   type ListBoxItemProps as AriaListBoxItemProps,
 } from 'react-aria-components'
 import type { ComponentProps } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic listbox
 function ListBoxRoot({ className, ...props }: AriaListBoxProps<any> & { className?: string }) {
-  return <AriaListBox data-slot="listbox" {...props} className={cn('flex flex-col', className)} />
+  return <AriaListBox data-slot="listbox" {...props} className={cx('flex flex-col', className)} />
 }
 
 function ListBoxItem({ className, ...props }: AriaListBoxItemProps & { className?: string }) {
@@ -17,9 +17,9 @@ function ListBoxItem({ className, ...props }: AriaListBoxItemProps & { className
     <AriaListBoxItem
       data-slot="listbox-item"
       {...props}
-      className={cn(
+      className={cx(
         'flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm outline-none select-none',
-        'data-[selected]:bg-accent-soft data-[focused]:bg-default data-[focus-visible]:ring-2 data-[focus-visible]:ring-inset data-[focus-visible]:ring-focus',
+        'data-[selected]:bg-accent-100 data-[focused]:bg-background-secondary-default data-[focus-visible]:ring-2 data-[focus-visible]:ring-inset data-[focus-visible]:ring-border-focus-ring',
         'data-[disabled]:opacity-50',
         className,
       )}
@@ -28,7 +28,7 @@ function ListBoxItem({ className, ...props }: AriaListBoxItemProps & { className
 }
 
 function ListBoxItemIndicator({ className, ...props }: ComponentProps<'span'>) {
-  return <span data-slot="listbox-item-indicator" {...props} className={cn('ml-auto text-accent', className)} />
+  return <span data-slot="listbox-item-indicator" {...props} className={cx('ml-auto text-accent-600', className)} />
 }
 
 export const ListBox = Object.assign(ListBoxRoot, {

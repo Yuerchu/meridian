@@ -6,7 +6,9 @@ import {
   type SelectProps as AriaSelectProps,
 } from 'react-aria-components'
 import type { ComponentProps } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
+import { ChevronDownSmall } from '@/components/foundations/icons/chevrons'
+import { MENU_POPOVER_SURFACE } from './dropdown/menu-styles'
 
 interface SelectRootProps {
   'aria-label'?: string
@@ -44,7 +46,7 @@ function SelectRoot({
         onChange?.(k)
       }}
       {...(props as Omit<AriaSelectProps<object>, 'children'>)}
-      className={cn('flex flex-col gap-1.5', className)}
+      className={cx('group flex flex-col gap-1.5', className)}
     >
       {props.children}
     </AriaSelect>
@@ -55,9 +57,14 @@ function SelectTrigger({ className, ...props }: ComponentProps<'div'>) {
   return (
     <AriaButton
       data-slot="select-trigger"
-      className={cn(
-        'flex w-full items-center justify-between rounded-field border border-field-border bg-field px-3 py-2 text-sm outline-none',
-        'data-[focus-visible]:ring-2 data-[focus-visible]:ring-focus',
+      className={cx(
+        'flex w-full cursor-pointer items-center justify-between rounded-2lg',
+        'border border-border-button-default bg-background-primary-default px-2.5 py-2 text-body-medium shadow-xs',
+        'text-text-primary',
+        'transition-[background-color,border-color,box-shadow] duration-200 ease',
+        'hover:bg-background-primary-hover hover:border-border-button-hover',
+        'outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-border-focus-ring',
+        'disabled:cursor-not-allowed disabled:bg-background-primary-disabled disabled:text-text-tertiary disabled:shadow-none',
         className,
       )}
     >
@@ -67,15 +74,13 @@ function SelectTrigger({ className, ...props }: ComponentProps<'div'>) {
 }
 
 function SelectValue({ className, ...props }: ComponentProps<'span'>) {
-  return <AriaSelectValue data-slot="select-value" {...props} className={cn('truncate', className)} />
+  return <AriaSelectValue data-slot="select-value" {...props} className={cx('truncate', className)} />
 }
 
 function SelectIndicator({ className, ...props }: ComponentProps<'span'>) {
   return (
-    <span data-slot="select-indicator" {...props} className={cn('text-muted', className)}>
-      <svg data-slot="select-chevron" className="size-3" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M4.427 6.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 6H4.604a.25.25 0 00-.177.427z" />
-      </svg>
+    <span data-slot="select-indicator" {...props} className={cx('text-text-secondary', className)}>
+      <ChevronDownSmall className="size-4 transition-transform duration-200 ease group-data-[open]:rotate-180" />
     </span>
   )
 }
@@ -84,14 +89,10 @@ function SelectPopover({ className, ...props }: ComponentProps<'div'> & { placem
   return (
     <AriaPopover
       data-slot="select-popover"
+      offset={4}
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- popover props passthrough
       {...(props as any)}
-      className={cn(
-        'min-w-[var(--trigger-width)] overflow-hidden rounded-xl border border-border bg-overlay p-1 shadow-overlay',
-        'data-[entering]:animate-in data-[entering]:fade-in-0 data-[entering]:zoom-in-95',
-        'data-[exiting]:animate-out data-[exiting]:fade-out data-[exiting]:zoom-out-95',
-        className,
-      )}
+      className={cx('min-w-[var(--trigger-width)]', MENU_POPOVER_SURFACE, 'p-2', className)}
     />
   )
 }

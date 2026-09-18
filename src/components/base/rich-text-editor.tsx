@@ -5,7 +5,7 @@ import Underline from '@tiptap/extension-underline'
 import Link from '@tiptap/extension-link'
 import { Placeholder, CharacterCount } from '@tiptap/extensions'
 import type { Extension } from '@tiptap/core'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { Button } from './button'
 import { Tooltip } from './tooltip'
 
@@ -74,7 +74,7 @@ function RichTextEditorRoot({
 
   return (
     <RteContext.Provider value={{ editor }}>
-      <div data-slot="rich-text-editor" {...props} className={cn('flex flex-col', className)}>
+      <div data-slot="rich-text-editor" {...props} className={cx('flex flex-col', className)}>
         {children}
       </div>
     </RteContext.Provider>
@@ -86,7 +86,10 @@ function RteShell({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="rich-text-editor-shell"
       {...props}
-      className={cn('rich-text-editor__shell overflow-hidden rounded-xl border border-border bg-surface', className)}
+      className={cx(
+        'rich-text-editor__shell overflow-hidden rounded-xl border border-border-button-default bg-background-primary-default',
+        className,
+      )}
     />
   )
 }
@@ -97,8 +100,8 @@ function RteToolbar({ className, ...props }: ComponentProps<'div'>) {
       data-slot="rich-text-editor-toolbar"
       role="toolbar"
       {...props}
-      className={cn(
-        'rich-text-editor__toolbar flex items-center gap-0.5 border-b border-separator px-2 py-1',
+      className={cx(
+        'rich-text-editor__toolbar flex items-center gap-0.5 border-b border-separator-border px-2 py-1',
         className,
       )}
     />
@@ -107,7 +110,7 @@ function RteToolbar({ className, ...props }: ComponentProps<'div'>) {
 
 function RteToolbarGroup({ className, ...props }: ComponentProps<'div'>) {
   return (
-    <div data-slot="rich-text-editor-toolbar-group" {...props} className={cn('flex items-center gap-0.5', className)} />
+    <div data-slot="rich-text-editor-toolbar-group" {...props} className={cx('flex items-center gap-0.5', className)} />
   )
 }
 
@@ -116,7 +119,7 @@ function RteToolbarSeparator({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="rich-text-editor-toolbar-separator"
       {...props}
-      className={cn('mx-1 h-5 w-px bg-separator', className)}
+      className={cx('mx-1 h-5 w-px bg-separator-border', className)}
     />
   )
 }
@@ -164,14 +167,13 @@ function RteToggleButton({ command, tooltip, children, className, ...props }: Rt
   const isActive = editor ? activeCheck[command]?.(editor) : false
 
   const button = (
-    // eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- tooltip applied conditionally below
     <Button
       data-slot="rich-text-editor-toggle-button"
       variant={isActive ? 'secondary' : 'ghost'}
       isIconOnly
       size="sm"
       onPress={() => editor && commandMap[command]?.(editor)}
-      className={cn('size-7', className)}
+      className={cx('size-7', className)}
       aria-label={props['aria-label']}
       aria-pressed={isActive}
     >
@@ -201,7 +203,6 @@ function RteActionButton({ action, tooltip, children, className, ...props }: Rte
   const canDo = editor ? (action === 'undo' ? editor.can().undo() : editor.can().redo()) : false
 
   const button = (
-    // eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- tooltip applied conditionally below
     <Button
       data-slot="rich-text-editor-action-button"
       variant="ghost"
@@ -211,7 +212,7 @@ function RteActionButton({ action, tooltip, children, className, ...props }: Rte
       onPress={() =>
         editor && (action === 'undo' ? editor.chain().focus().undo().run() : editor.chain().focus().redo().run())
       }
-      className={cn('size-7', className)}
+      className={cx('size-7', className)}
       aria-label={props['aria-label']}
     >
       {children}
@@ -241,7 +242,6 @@ function RteCommandButton({ tooltip, isDisabled, onCommand, children, className,
   const disabled = typeof isDisabled === 'function' ? (editor ? isDisabled(editor) : true) : isDisabled
 
   const button = (
-    // eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- tooltip applied conditionally below
     <Button
       data-slot="rich-text-editor-command-button"
       variant="ghost"
@@ -249,7 +249,7 @@ function RteCommandButton({ tooltip, isDisabled, onCommand, children, className,
       size="sm"
       isDisabled={disabled}
       onPress={() => editor && onCommand?.(editor)}
-      className={cn('size-7', className)}
+      className={cx('size-7', className)}
       aria-label={props['aria-label']}
     >
       {children}
@@ -271,7 +271,7 @@ function RteLinkPopoverRoot({ children }: { children?: ReactNode }) {
 
 function RteLinkPopoverTrigger({ children, className, ...props }: ComponentProps<'div'>) {
   return (
-    <div data-slot="rich-text-editor-link-trigger" {...props} className={cn('', className)}>
+    <div data-slot="rich-text-editor-link-trigger" {...props} className={cx('', className)}>
       {children}
     </div>
   )
@@ -282,7 +282,10 @@ function RteLinkPopoverContent({ children, className, ...props }: ComponentProps
     <div
       data-slot="rich-text-editor-link-content"
       {...props}
-      className={cn('flex items-center gap-1 rounded-lg border border-border bg-overlay p-2 shadow-overlay', className)}
+      className={cx(
+        'flex items-center gap-1 rounded-lg border border-border-button-default bg-background-primary-default p-2 shadow-dropdown',
+        className,
+      )}
     >
       {children}
     </div>
@@ -295,14 +298,14 @@ function RteLinkPopoverInput({ className, ...props }: ComponentProps<'input'>) {
       data-slot="rich-text-editor-link-input"
       type="url"
       {...props}
-      className={cn('flex-1 bg-transparent text-sm outline-none placeholder:text-muted', className)}
+      className={cx('flex-1 bg-transparent text-sm outline-none placeholder:text-text-placeholder', className)}
     />
   )
 }
 
 function RteLinkPopoverActions({ children, className, ...props }: ComponentProps<'div'>) {
   return (
-    <div data-slot="rich-text-editor-link-actions" {...props} className={cn('flex items-center gap-1', className)}>
+    <div data-slot="rich-text-editor-link-actions" {...props} className={cx('flex items-center gap-1', className)}>
       {children}
     </div>
   )
@@ -318,7 +321,7 @@ function RteLinkPopoverUnsetButton({
       data-slot="rich-text-editor-link-unset"
       variant="ghost"
       size="sm"
-      className={cn('', className)}
+      className={cx('', className)}
       aria-label={props['aria-label']}
     >
       {children}
@@ -336,7 +339,7 @@ function RteLinkPopoverApplyButton({
       data-slot="rich-text-editor-link-apply"
       variant="primary"
       size="sm"
-      className={cn('', className)}
+      className={cx('', className)}
       aria-label={props['aria-label']}
     >
       {children}
@@ -360,7 +363,7 @@ function RteContent({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="rich-text-editor-content"
       {...props}
-      className={cn('rich-text-editor__prosemirror prose prose-sm max-w-none dark:prose-invert', className)}
+      className={cx('rich-text-editor__prosemirror prose prose-sm max-w-none dark:prose-invert', className)}
     >
       <EditorContent editor={editor} />
     </div>
@@ -372,8 +375,8 @@ function RteBubbleMenu({ children, className, ...props }: ComponentProps<'div'>)
     <div
       data-slot="rich-text-editor-bubble-menu"
       {...props}
-      className={cn(
-        'flex items-center gap-0.5 rounded-lg border border-border bg-overlay p-1 shadow-overlay',
+      className={cx(
+        'flex items-center gap-0.5 rounded-lg border border-border-button-default bg-background-primary-default p-1 shadow-dropdown',
         className,
       )}
     >

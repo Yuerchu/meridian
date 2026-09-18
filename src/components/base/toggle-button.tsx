@@ -4,7 +4,7 @@ import {
   type ToggleButtonProps as AriaToggleButtonProps,
   type ToggleButtonGroupProps as AriaToggleButtonGroupProps,
 } from 'react-aria-components'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 export function ToggleButton({
   className,
@@ -16,10 +16,10 @@ export function ToggleButton({
     <AriaToggleButton
       data-slot="toggle-button"
       {...props}
-      className={cn(
+      className={cx(
         'inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-sm font-medium outline-none select-none',
-        'data-[selected]:bg-default data-[selected]:text-foreground',
-        'data-[focus-visible]:ring-2 data-[focus-visible]:ring-focus',
+        'data-[selected]:bg-background-secondary-default data-[selected]:text-text-primary',
+        'data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
         'data-[disabled]:opacity-50',
         className,
       )}
@@ -37,7 +37,7 @@ export function ToggleButtonGroup({
     <AriaToggleButtonGroup
       data-slot="toggle-button-group"
       {...props}
-      className={cn('inline-flex items-center gap-1', className)}
+      className={cx('inline-flex items-center gap-1', className)}
     />
   )
 }

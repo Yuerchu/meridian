@@ -1,5 +1,5 @@
 import { Separator as AriaSeparator, type SeparatorProps } from 'react-aria-components'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 export function Separator({ className, orientation = 'horizontal', ...props }: SeparatorProps) {
   return (
@@ -7,8 +7,8 @@ export function Separator({ className, orientation = 'horizontal', ...props }: S
       data-slot="separator"
       orientation={orientation}
       {...props}
-      className={cn(
-        'shrink-0 rounded-sm bg-separator',
+      className={cx(
+        'shrink-0 bg-separator-border',
         orientation === 'vertical' ? 'h-auto min-h-2 w-px self-stretch' : 'h-px w-full',
         className,
       )}

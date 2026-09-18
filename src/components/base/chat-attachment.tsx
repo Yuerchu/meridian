@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 interface ChatAttachmentProps extends ComponentProps<'div'> {
   name?: string
@@ -18,7 +18,10 @@ function ChatAttachmentRoot({
     <div
       data-slot="chat-attachment"
       {...props}
-      className={cn('relative flex items-center gap-2 rounded-lg border border-border bg-surface p-2', className)}
+      className={cx(
+        'relative flex items-center gap-2 rounded-lg border border-border-button-default bg-background-primary-default p-2',
+        className,
+      )}
     />
   )
 }
@@ -28,13 +31,13 @@ function ChatAttachmentPreview({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="chat-attachment-preview"
       {...props}
-      className={cn('size-8 shrink-0 overflow-hidden rounded-md', className)}
+      className={cx('size-8 shrink-0 overflow-hidden rounded-md', className)}
     />
   )
 }
 
 function ChatAttachmentInfo({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="chat-attachment-info" {...props} className={cn('min-w-0 flex-1', className)} />
+  return <div data-slot="chat-attachment-info" {...props} className={cx('min-w-0 flex-1', className)} />
 }
 
 interface ChatAttachmentRemoveProps extends ComponentProps<'button'> {
@@ -48,7 +51,7 @@ function ChatAttachmentRemove({ className, onPress, ...props }: ChatAttachmentRe
       type="button"
       onClick={onPress}
       {...props}
-      className={cn('shrink-0 rounded-full p-0.5 text-muted hover:text-foreground', className)}
+      className={cx('shrink-0 rounded-full p-0.5 text-text-secondary hover:text-text-primary', className)}
     />
   )
 }
@@ -60,5 +63,5 @@ export const ChatAttachment = Object.assign(ChatAttachmentRoot, {
 })
 
 export function ChatAttachmentGroup({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="chat-attachment-group" {...props} className={cn('flex flex-wrap gap-2', className)} />
+  return <div data-slot="chat-attachment-group" {...props} className={cx('flex flex-wrap gap-2', className)} />
 }

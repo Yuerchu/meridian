@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 interface ActionBarProps extends ComponentProps<'div'> {
   isOpen?: boolean
@@ -11,8 +11,8 @@ function ActionBarRoot({ className, isOpen, ...props }: ActionBarProps) {
     <div
       data-slot="action-bar"
       {...props}
-      className={cn(
-        'fixed inset-x-0 bottom-4 z-50 mx-auto flex w-fit items-center gap-2 rounded-xl border border-border bg-overlay px-3 py-2 shadow-overlay',
+      className={cx(
+        'fixed inset-x-0 bottom-4 z-50 mx-auto flex w-fit items-center gap-2 rounded-xl border border-border-button-default bg-background-primary-default px-3 py-2 shadow-dropdown',
         'animate-in fade-in-0 slide-in-from-bottom-2 duration-200',
         className,
       )}
@@ -21,15 +21,15 @@ function ActionBarRoot({ className, isOpen, ...props }: ActionBarProps) {
 }
 
 function ActionBarPrefix({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="action-bar-prefix" {...props} className={cn('text-sm text-muted', className)} />
+  return <div data-slot="action-bar-prefix" {...props} className={cx('text-sm text-text-secondary', className)} />
 }
 
 function ActionBarContent({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="action-bar-content" {...props} className={cn('flex items-center gap-1', className)} />
+  return <div data-slot="action-bar-content" {...props} className={cx('flex items-center gap-1', className)} />
 }
 
 function ActionBarSuffix({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="action-bar-suffix" {...props} className={cn('flex items-center gap-1', className)} />
+  return <div data-slot="action-bar-suffix" {...props} className={cx('flex items-center gap-1', className)} />
 }
 
 export const ActionBar = Object.assign(ActionBarRoot, {

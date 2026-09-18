@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 type AlertStatus = 'default' | 'success' | 'warning' | 'danger' | 'info'
 
@@ -10,7 +10,7 @@ interface AlertProps extends ComponentProps<'div'> {
 }
 
 const statusClasses: Record<AlertStatus, string> = {
-  default: 'bg-default/30 text-default-foreground',
+  default: 'bg-background-secondary-default text-text-primary',
   success: 'bg-success-soft text-success-soft-foreground',
   warning: 'bg-warning-soft text-warning-soft-foreground',
   danger: 'bg-danger-soft text-danger-soft-foreground',
@@ -23,7 +23,7 @@ function AlertRoot({ className, status = 'default', variant: _variant, icon, chi
       data-slot="alert"
       role="alert"
       {...props}
-      className={cn('flex items-start gap-2 rounded-xl p-3 text-sm', statusClasses[status], className)}
+      className={cx('flex items-start gap-2 rounded-xl p-3 text-body-medium', statusClasses[status], className)}
     >
       {icon && (
         <span data-slot="alert-icon" className="mt-0.5 flex shrink-0">
@@ -38,19 +38,21 @@ function AlertRoot({ className, status = 'default', variant: _variant, icon, chi
 }
 
 function AlertIndicator({ className, ...props }: ComponentProps<'span'>) {
-  return <span data-slot="alert-indicator" {...props} className={cn('mt-0.5 flex shrink-0', className)} />
+  return <span data-slot="alert-indicator" {...props} className={cx('mt-0.5 flex shrink-0', className)} />
 }
 
 function AlertContent({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="alert-content" {...props} className={cn('flex-1', className)} />
+  return <div data-slot="alert-content" {...props} className={cx('flex-1', className)} />
 }
 
 function AlertTitle({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="alert-title" {...props} className={cn('font-medium', className)} />
+  return <div data-slot="alert-title" {...props} className={cx('text-body-medium', className)} />
 }
 
 function AlertDescription({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="alert-description" {...props} className={cn('mt-0.5 text-sm opacity-90', className)} />
+  return (
+    <div data-slot="alert-description" {...props} className={cx('mt-0.5 text-body-2-regular opacity-90', className)} />
+  )
 }
 
 export const Alert = Object.assign(AlertRoot, {

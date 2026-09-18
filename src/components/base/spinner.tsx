@@ -1,5 +1,5 @@
 import { useId, type ComponentProps } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 type SpinnerSize = 'sm' | 'md' | 'lg' | 'xl'
 type SpinnerColor = 'current' | 'accent' | 'danger' | 'success' | 'warning'
@@ -18,7 +18,7 @@ const sizeClasses: Record<SpinnerSize, string> = {
 
 const colorClasses: Record<SpinnerColor, string> = {
   current: 'text-current',
-  accent: 'text-accent',
+  accent: 'text-accent-500',
   danger: 'text-danger',
   success: 'text-success',
   warning: 'text-warning',
@@ -62,8 +62,7 @@ export function Spinner({ className, size = 'md', color = 'current', ...props }:
       data-slot="spinner"
       role="status"
       {...props}
-      className={cn(
-        // eslint-disable-next-line no-restricted-syntax -- this IS the Spinner component
+      className={cx(
         'pointer-events-none inline-flex shrink-0 animate-spin-fast motion-reduce:animate-none',
         sizeClasses[size],
         colorClasses[color],

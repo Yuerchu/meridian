@@ -36,7 +36,7 @@ const styleRestrictions = [
   },
   ...forbiddenClass(
     '\\bcursor-pointer\\b',
-    "cursor-pointer ignores the user's cursor preference. Use cursor-[var(--cursor-interactive)] on custom interactive elements; HeroUI controls set it themselves.",
+    "cursor-pointer ignores the user's cursor preference. Use cursor-[var(--cursor-interactive)] on custom interactive elements; base components set it themselves.",
   ),
   ...forbiddenClass(
     '\\bbg-muted\\b',
@@ -53,11 +53,11 @@ const styleRestrictions = [
   ),
   ...forbiddenClass(
     '\\banimate-pulse\\b',
-    'Hand-rolled animate-pulse placeholder. Use <Skeleton> from @heroui/react (with role="status" + aria-busy + a label on the group); a streaming caret disables this line with a reason.',
+    'Hand-rolled animate-pulse placeholder. Use <Skeleton> from @/components/base (with role="status" + aria-busy + a label on the group); a streaming caret disables this line with a reason.',
   ),
   ...forbiddenClass(
     '\\banimate-spin\\b',
-    'Hand-rolled animate-spin icon. Use <Spinner size="sm" color="current" /> from @heroui/react.',
+    'Hand-rolled animate-spin icon. Use <Spinner size="sm" color="current" /> from @/components/base.',
   ),
   ...forbiddenClass(
     '\\b(?:bg|border)-(?:danger|warning|success|info)\\/[0-9]+',
@@ -79,12 +79,12 @@ const styleRestrictions = [
     selector:
       "JSXOpeningElement[name.property.name=/^(?:Content|Control|Indicator)$/] > JSXAttribute[name.name='className'] Literal[value=/data-\\u005B?(?:selected|hovered|pressed|focus-visible|expanded)/]",
     message:
-      'HeroUI puts data-selected / data-hovered / data-pressed on the component root, not on its *.Content or *.Control slot — this selector never matches. Style from the root with a descendant selector.',
+      'React Aria puts data-selected / data-hovered / data-pressed on the component root, not on its *.Content or *.Control slot — this selector never matches. Style from the root with a descendant selector.',
   },
   {
     selector: "JSXOpeningElement[name.name=/^(?:H)?Button$/] > JSXAttribute[name.name='onClick']",
     message:
-      'HeroUI Button takes onPress, not onClick (React Aria press semantics: keyboard, touch, and no ghost clicks).',
+      'Button takes onPress, not onClick (React Aria press semantics: keyboard, touch, and no ghost clicks).',
   },
   {
     selector:
@@ -113,46 +113,46 @@ const styleRestrictions = [
   ),
 ]
 
-// Enforced outside src/components/ui/, which is where the components HeroUI
-// has no equivalent for live and native elements are the point.
+// Enforced outside src/components/ui/, which is where the domain-specific
+// components live and native elements are the point.
 const nativeElementRestrictions = [
   {
     selector: "JSXOpeningElement[name.name='button']",
-    message: 'Use <Button> from @heroui/react instead of the native <button>.',
+    message: 'Use <Button> from @/components/base instead of the native <button>.',
   },
   {
     selector: "JSXOpeningElement[name.name='input']",
-    message: 'Use <Input> (inside a <TextField>) or <Checkbox> from @heroui/react instead of the native <input>.',
+    message: 'Use <Input> (inside a <TextField>) or <Checkbox> from @/components/base instead of the native <input>.',
   },
   {
     selector: "JSXOpeningElement[name.name='textarea']",
-    message: 'Use <TextArea> (inside a <TextField>) from @heroui/react instead of the native <textarea>.',
+    message: 'Use <TextArea> (inside a <TextField>) from @/components/base instead of the native <textarea>.',
   },
   {
     selector: "JSXOpeningElement[name.name='select']",
-    message: 'Use <Select> from @heroui/react instead of the native <select>.',
+    message: 'Use <Select> from @/components/base instead of the native <select>.',
   },
   {
     selector: "JSXOpeningElement[name.name='hr']",
-    message: 'Use <Separator> from @heroui/react instead of the native <hr>.',
+    message: 'Use <Separator> from @/components/base instead of the native <hr>.',
   },
   {
     selector: "JSXOpeningElement[name.name='dialog']",
-    message: 'Use <AlertDialog>, <Modal> or <Drawer> from @heroui/react instead of the native <dialog>.',
+    message: 'Use <AlertDialog>, <Modal> or <Drawer> from @/components/base instead of the native <dialog>.',
   },
   {
     selector: "JSXOpeningElement[name.name='label']",
     message:
-      "Use <Label> from @heroui/react (inside a <TextField> / <Checkbox> / <Switch>, which wire the association) instead of the native <label htmlFor>. An enable/disable row is Pro's <CellSwitch>.",
+      "Use <Label> from @/components/base (inside a <TextField> / <Checkbox> / <Switch>, which wire the association) instead of the native <label htmlFor>. An enable/disable row is <CellSwitch>.",
   },
   {
     selector: "JSXOpeningElement[name.name='kbd']",
-    message: 'Use <Kbd> from @heroui/react instead of the native <kbd>.',
+    message: 'Use <Kbd> from @/components/base instead of the native <kbd>.',
   },
   {
     selector: "JSXOpeningElement[name.name=/^(?:button|Button)$/] > JSXAttribute[name.name='title']",
     message:
-      'Native title attribute on a button. Put the text in a <Tooltip> from @heroui/react — and give the button an aria-label, since a tooltip describes rather than names it.',
+      'Native title attribute on a button. Put the text in a <Tooltip> from @/components/base — and give the button an aria-label, since a tooltip describes rather than names it.',
   },
 ]
 
@@ -164,15 +164,15 @@ const nativeChromeRestrictions = [
   {
     selector: "JSXOpeningElement[name.name=/^[a-z]/][name.name!='iframe'] > JSXAttribute[name.name='title']",
     message:
-      "Native `title` draws the browser's own tooltip. Wrap the element in <Tooltip> from @heroui/react (Tooltip.Trigger with `render` for a focusable element, plain Tooltip.Trigger around a span), or drop the hint.",
+      "Native `title` draws the browser's own tooltip. Wrap the element in <Tooltip> from @/components/base (Tooltip.Trigger with `render` for a focusable element, plain Tooltip.Trigger around a span), or drop the hint.",
   },
   {
     selector: "JSXOpeningElement[name.object.name='dom'] > JSXAttribute[name.name='title']",
-    message: "Native `title` on a dom.* element draws the browser's own tooltip. Use <Tooltip> from @heroui/react.",
+    message: "Native `title` on a dom.* element draws the browser's own tooltip. Use <Tooltip> from @/components/base.",
   },
   {
     selector: 'JSXOpeningElement[name.name=/^(?:details|summary|progress|meter|datalist|marquee)$/]',
-    message: 'Native browser widget. Use the HeroUI equivalent (Disclosure, Progress, Listbox…).',
+    message: 'Native browser widget. Use the base component equivalent (Disclosure, ProgressCircle, ListBox…).',
   },
   // A bare `confirm(...)` in this codebase is the app's own `useConfirm`, which
   // is the replacement, so only `alert` and `prompt` are matched by bare name.

@@ -9,14 +9,14 @@ import {
   type TabPanelProps as AriaTabPanelProps,
 } from 'react-aria-components'
 import type { ComponentProps } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 function TabsRoot({ className, ...props }: AriaTabsProps & { className?: string }) {
-  return <AriaTabs data-slot="tabs" {...props} className={cn('flex flex-col', className)} />
+  return <AriaTabs data-slot="tabs" {...props} className={cx('flex w-full flex-col gap-4', className)} />
 }
 
 function TabsListContainer({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="tabs-list-container" {...props} className={cn('', className)} />
+  return <div data-slot="tabs-list-container" {...props} className={cx('relative w-full', className)} />
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic tab list
@@ -25,7 +25,7 @@ function TabsList({ className, ...props }: AriaTabListProps<any> & { className?:
     <AriaTabList
       data-slot="tabs-list"
       {...props}
-      className={cn('flex items-center gap-1 border-b border-separator', className)}
+      className={cx('flex w-full items-center gap-1 border-b border-separator-border', className)}
     />
   )
 }
@@ -35,10 +35,13 @@ function TabsTab({ className, ...props }: AriaTabProps & { className?: string })
     <AriaTab
       data-slot="tabs-tab"
       {...props}
-      className={cn(
-        'relative px-3 py-2 text-sm font-medium text-muted outline-none select-none',
-        'data-[selected]:text-foreground',
-        'data-[focus-visible]:ring-2 data-[focus-visible]:ring-focus',
+      className={cx(
+        'relative inline-flex cursor-pointer items-center gap-2.5 px-2.5 py-2 whitespace-nowrap',
+        'outline-none transition-colors duration-150 ease',
+        'text-body-regular text-text-primary',
+        'data-[selected]:text-body-medium data-[selected]:text-accent-600',
+        'data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50',
+        'focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-border-focus-ring',
         className,
       )}
     />
@@ -50,13 +53,26 @@ function TabsIndicator({ className, ...props }: ComponentProps<'span'>) {
     <span
       data-slot="tabs-indicator"
       {...props}
-      className={cn('absolute inset-x-0 bottom-0 h-0.5 bg-accent', className)}
+      className={cx(
+        'absolute inset-x-0 bottom-0 h-0.5 bg-accent-600',
+        'opacity-0 group-data-[selected]:opacity-100 data-[selected]:opacity-100',
+        className,
+      )}
     />
   )
 }
 
 function TabsPanel({ className, ...props }: AriaTabPanelProps & { className?: string }) {
-  return <AriaTabPanel data-slot="tabs-panel" {...props} className={cn('pt-3 outline-none', className)} />
+  return (
+    <AriaTabPanel
+      data-slot="tabs-panel"
+      {...props}
+      className={cx(
+        'outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-border-focus-ring',
+        className,
+      )}
+    />
+  )
 }
 
 export const Tabs = Object.assign(TabsRoot, {

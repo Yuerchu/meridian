@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useState, type ComponentProps, type ReactNode } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { Button } from './button'
 import { Sheet } from './sheet'
 
@@ -79,7 +79,7 @@ function SidebarProvider({
         data-slot="sidebar-provider"
         data-sidebar-open={open || undefined}
         data-sidebar-collapsed={collapsed || undefined}
-        className={cn('sidebar__provider flex h-full w-full', className)}
+        className={cx('sidebar__provider flex h-full w-full', className)}
         {...props}
       >
         {children}
@@ -90,21 +90,20 @@ function SidebarProvider({
 
 function SidebarMain({ className, ...props }: ComponentProps<'main'>) {
   return (
-    <main data-slot="sidebar-main" {...props} className={cn('sidebar__main flex min-w-0 flex-1 flex-col', className)} />
+    <main data-slot="sidebar-main" {...props} className={cx('sidebar__main flex min-w-0 flex-1 flex-col', className)} />
   )
 }
 
 function SidebarTrigger({ className, ...props }: ComponentProps<'button'> & { 'aria-label'?: string }) {
   const { open, setOpen } = useContext(SidebarContext)
   return (
-    // eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- sidebar toggle
     <Button
       data-slot="sidebar-trigger"
       variant="ghost"
       isIconOnly
       aria-label={props['aria-label'] ?? 'Toggle sidebar'}
       onPress={() => setOpen(!open)}
-      className={cn('', className)}
+      className={cx('', className)}
     >
       <svg
         data-slot="sidebar-trigger-icon"
@@ -125,13 +124,13 @@ function SidebarHeader({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="sidebar-header"
       {...props}
-      className={cn('flex shrink-0 items-center gap-2 px-3 py-2', className)}
+      className={cx('flex shrink-0 items-center gap-2 px-3 py-2', className)}
     />
   )
 }
 
 function SidebarContent({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="sidebar-content" {...props} className={cn('flex-1 overflow-y-auto', className)} />
+  return <div data-slot="sidebar-content" {...props} className={cx('flex-1 overflow-y-auto', className)} />
 }
 
 function SidebarFooter({ className, ...props }: ComponentProps<'div'>) {
@@ -139,13 +138,13 @@ function SidebarFooter({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="sidebar-footer"
       {...props}
-      className={cn('shrink-0 border-t border-separator px-3 py-2', className)}
+      className={cx('shrink-0 border-t border-separator-border px-3 py-2', className)}
     />
   )
 }
 
 function SidebarGroup({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="sidebar-group" {...props} className={cn('px-2 py-1', className)} />
+  return <div data-slot="sidebar-group" {...props} className={cx('px-2 py-1', className)} />
 }
 
 function SidebarGroupLabel({ className, ...props }: ComponentProps<'div'>) {
@@ -153,7 +152,10 @@ function SidebarGroupLabel({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="sidebar-group-label"
       {...props}
-      className={cn('sidebar__group-label flex items-center px-2 py-1 text-xs font-medium text-muted', className)}
+      className={cx(
+        'sidebar__group-label flex items-center px-2 py-1 text-xs font-medium text-text-secondary',
+        className,
+      )}
     />
   )
 }
@@ -175,7 +177,7 @@ function SidebarMenu({
       data-slot="sidebar-menu"
       role="tree"
       {...props}
-      className={cn('sidebar__menu flex flex-col gap-0.5', className)}
+      className={cx('sidebar__menu flex flex-col gap-0.5', className)}
     />
   )
 }
@@ -203,11 +205,11 @@ function SidebarMenuItem({
         }
       }}
       {...props}
-      className={cn(
+      className={cx(
         'sidebar__menu-item flex cursor-[var(--cursor-interactive)] items-center gap-2 rounded-lg px-2 py-1.5 text-sm outline-none',
-        'hover:bg-default/50',
-        'data-[selected=true]:bg-default data-[selected=true]:text-default-foreground',
-        'focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus',
+        'hover:bg-background-secondary-default/50',
+        'data-[selected=true]:bg-background-secondary-default data-[selected=true]:text-text-primary',
+        'focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-border-focus-ring',
         className,
       )}
     />
@@ -215,29 +217,34 @@ function SidebarMenuItem({
 }
 
 function SidebarMenuIcon({ className, ...props }: ComponentProps<'span'>) {
-  return <span data-slot="sidebar-menu-icon" {...props} className={cn('flex shrink-0 text-muted', className)} />
+  return (
+    <span data-slot="sidebar-menu-icon" {...props} className={cx('flex shrink-0 text-text-secondary', className)} />
+  )
 }
 
 function SidebarMenuLabel({ className, ...props }: ComponentProps<'span'>) {
-  return <span data-slot="sidebar-menu-label" {...props} className={cn('min-w-0 flex-1 truncate', className)} />
+  return <span data-slot="sidebar-menu-label" {...props} className={cx('min-w-0 flex-1 truncate', className)} />
 }
 
 function SidebarMenuChip({ className, ...props }: ComponentProps<'span'>) {
   return (
-    <span data-slot="sidebar-menu-chip" {...props} className={cn('ml-auto shrink-0 text-xs text-muted', className)} />
+    <span
+      data-slot="sidebar-menu-chip"
+      {...props}
+      className={cx('ml-auto shrink-0 text-xs text-text-secondary', className)}
+    />
   )
 }
 
 function SidebarMenuAction({ className, onPress, ...props }: any) {
   return (
-    // eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- sidebar action
     <Button
       data-slot="sidebar-menu-action"
       variant="ghost"
       isIconOnly
       size="sm"
       onPress={onPress}
-      className={cn('sidebar__menu-action size-6 shrink-0 text-muted', className)}
+      className={cx('sidebar__menu-action size-6 shrink-0 text-text-secondary', className)}
       {...props}
     />
   )
@@ -250,7 +257,7 @@ function SidebarMenuActions({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="sidebar-menu-actions"
       {...props}
-      className={cn('sidebar__menu-actions ml-auto flex shrink-0 items-center gap-0.5', className)}
+      className={cx('sidebar__menu-actions ml-auto flex shrink-0 items-center gap-0.5', className)}
     />
   )
 }
@@ -282,8 +289,8 @@ function SidebarRoot({ children, className, ...props }: ComponentProps<'aside'>)
     <aside
       data-slot="sidebar"
       {...props}
-      className={cn(
-        'sidebar flex h-full w-[var(--app-sidebar-width,240px)] shrink-0 flex-col bg-surface-secondary',
+      className={cx(
+        'sidebar flex h-full w-[var(--app-sidebar-width,240px)] shrink-0 flex-col bg-background-secondary-default',
         className,
       )}
     >

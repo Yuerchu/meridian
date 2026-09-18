@@ -5,7 +5,7 @@ import {
   type TooltipProps as AriaTooltipProps,
   type TooltipTriggerComponentProps,
 } from 'react-aria-components'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import type { ComponentProps, ReactElement } from 'react'
 
 interface TooltipRootProps extends TooltipTriggerComponentProps {
@@ -13,9 +13,10 @@ interface TooltipRootProps extends TooltipTriggerComponentProps {
   closeDelay?: number
 }
 
-interface TooltipContentProps extends Omit<AriaTooltipProps, 'children'> {
+interface TooltipContentProps extends Omit<AriaTooltipProps, 'children' | 'className'> {
   className?: string
   children?: React.ReactNode
+  showArrow?: boolean
 }
 
 interface TooltipTriggerProps extends ComponentProps<'span'> {
@@ -27,33 +28,34 @@ function TooltipRoot({ delay = 700, closeDelay = 0, ...props }: TooltipRootProps
   return <AriaTooltipTrigger delay={delay} closeDelay={closeDelay} {...props} />
 }
 
-function TooltipContent({ className, children, ...props }: TooltipContentProps) {
+function TooltipContent({ className, children, showArrow = true, offset = 10, ...props }: TooltipContentProps) {
   return (
     <AriaTooltip
       data-slot="tooltip"
+      offset={offset}
       {...props}
-      className={cn(
-        'max-w-xs origin-[var(--trigger-anchor-point)] rounded-xl bg-overlay p-2 text-xs shadow-overlay break-all',
-        'data-[entering]:animate-in data-[entering]:duration-150 data-[entering]:fade-in-0 data-[entering]:zoom-in-90',
-        'data-[entering]:data-[placement=top]:slide-in-from-bottom-1',
-        'data-[entering]:data-[placement=bottom]:slide-in-from-top-1',
-        'data-[entering]:data-[placement=left]:slide-in-from-right-1',
-        'data-[entering]:data-[placement=right]:slide-in-from-left-1',
-        'data-[exiting]:animate-out data-[exiting]:duration-100 data-[exiting]:zoom-out-95 data-[exiting]:fade-out',
+      className={cx(
+        'z-50 max-w-[240px] select-none rounded-lg border border-border-button-default',
+        'bg-background-primary-default px-2.5 py-1.5 text-caption-1-medium text-text-primary shadow-dropdown',
+        'transition duration-200 ease-out',
+        'data-[entering]:scale-90 data-[entering]:opacity-0 data-[entering]:blur-[4px]',
+        'data-[exiting]:scale-90 data-[exiting]:opacity-0 data-[exiting]:blur-[4px]',
         className,
       )}
     >
-      <OverlayArrow data-slot="overlay-arrow">
-        <svg
-          data-slot="overlay-arrow-svg"
-          width={8}
-          height={8}
-          viewBox="0 0 8 8"
-          className="stroke-border/40 fill-overlay"
-        >
-          <path d="M0 0 L4 4 L8 0" />
-        </svg>
-      </OverlayArrow>
+      {showArrow && (
+        <OverlayArrow data-slot="overlay-arrow">
+          <svg
+            data-slot="overlay-arrow-svg"
+            width={12}
+            height={7}
+            viewBox="0 0 12 7"
+            className="block overflow-visible fill-background-primary-default stroke-border-button-default"
+          >
+            <path d="M0 0 L6 6 L12 0" />
+          </svg>
+        </OverlayArrow>
+      )}
       {children}
     </AriaTooltip>
   )
@@ -62,7 +64,7 @@ function TooltipContent({ className, children, ...props }: TooltipContentProps) 
 function TooltipTrigger({ render, focusable, className, ...props }: TooltipTriggerProps) {
   const domProps = {
     ...props,
-    className: cn('inline-block', className),
+    className: cx('inline-block', className),
     ...(focusable === false ? { tabIndex: -1 } : {}),
   }
   if (render) return render(domProps)

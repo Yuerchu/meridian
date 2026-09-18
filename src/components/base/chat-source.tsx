@@ -1,5 +1,5 @@
 import React, { useId, useState, type ComponentProps } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 interface ChatSourceProps extends ComponentProps<'div'> {
   url?: string
@@ -22,7 +22,7 @@ function ChatSourceRoot({
   title: _title,
   ...props
 }: ChatSourceProps) {
-  return <div data-slot="chat-source" {...props} className={cn('', className)} />
+  return <div data-slot="chat-source" {...props} className={cx('', className)} />
 }
 
 function ChatSourceTrigger({ className, ...props }: ComponentProps<'a'>) {
@@ -30,7 +30,10 @@ function ChatSourceTrigger({ className, ...props }: ComponentProps<'a'>) {
     <a
       data-slot="chat-source-trigger"
       {...props}
-      className={cn('flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-default', className)}
+      className={cx(
+        'flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-background-secondary-default',
+        className,
+      )}
     />
   )
 }
@@ -42,15 +45,18 @@ function ChatSourceIcon({ className, faviconUrl, ...props }: ComponentProps<'img
       src={faviconUrl}
       alt=""
       {...props}
-      className={cn('size-4 shrink-0 rounded-sm', className)}
+      className={cx('size-4 shrink-0 rounded-sm', className)}
     />
   ) : (
-    <span data-slot="chat-source-icon" className={cn('size-4 shrink-0 rounded-sm bg-default', className)} />
+    <span
+      data-slot="chat-source-icon"
+      className={cx('size-4 shrink-0 rounded-sm bg-background-secondary-default', className)}
+    />
   )
 }
 
 function ChatSourceTitle({ className, ...props }: ComponentProps<'span'>) {
-  return <span data-slot="chat-source-title" {...props} className={cn('min-w-0 truncate', className)} />
+  return <span data-slot="chat-source-title" {...props} className={cx('min-w-0 truncate', className)} />
 }
 
 export const ChatSource = Object.assign(ChatSourceRoot, {
@@ -68,7 +74,7 @@ function ChatSourcesRoot({ className, defaultExpanded = false, children, ...prop
   const panelId = useId()
   return (
     <ChatSourcesContext.Provider value={{ expanded, toggle: () => setExpanded((v) => !v), panelId }}>
-      <div data-slot="chat-sources" data-expanded={expanded || undefined} {...props} className={cn('', className)}>
+      <div data-slot="chat-sources" data-expanded={expanded || undefined} {...props} className={cx('', className)}>
         {children}
       </div>
     </ChatSourcesContext.Provider>
@@ -91,7 +97,7 @@ function ChatSourcesTrigger({ className, ...props }: ComponentProps<'button'>) {
       aria-controls={panelId}
       onClick={toggle}
       {...props}
-      className={cn('flex items-center gap-1 text-xs font-medium text-muted', className)}
+      className={cx('flex items-center gap-1 text-xs font-medium text-text-secondary', className)}
     />
   )
 }
@@ -105,13 +111,13 @@ function ChatSourcesContent({ className, ...props }: ComponentProps<'div'>) {
       role="region"
       hidden={!expanded}
       {...props}
-      className={cn('mt-1', expanded ? '' : 'hidden', className)}
+      className={cx('mt-1', expanded ? '' : 'hidden', className)}
     />
   )
 }
 
 function ChatSourcesList({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="chat-sources-list" {...props} className={cn('flex flex-col', className)} />
+  return <div data-slot="chat-sources-list" {...props} className={cx('flex flex-col', className)} />
 }
 
 export const ChatSources = Object.assign(ChatSourcesRoot, {

@@ -1,5 +1,5 @@
 import React, { useState, type ComponentProps, type ReactElement } from 'react'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 type DisclosureChildren = React.ReactNode | ((opts: { isExpanded: boolean }) => React.ReactNode)
 
@@ -23,7 +23,7 @@ function DisclosureRoot({
   const [internal, _setInternal] = useState(defaultExpanded)
   const expanded = isExpanded ?? internal
   return (
-    <div data-slot="disclosure" data-expanded={expanded || undefined} {...props} className={cn('', className)}>
+    <div data-slot="disclosure" data-expanded={expanded || undefined} {...props} className={cx('', className)}>
       {typeof children === 'function' ? children({ isExpanded: expanded }) : children}
     </div>
   )
@@ -38,10 +38,10 @@ function DisclosureTrigger({ className, render, ...props }: DisclosureTriggerPro
     'data-slot': 'disclosure-trigger' as const,
     type: 'button' as const,
     ...props,
-    className: cn('flex w-full items-center gap-2 text-left', className),
+    className: cx('flex w-full items-center gap-2 text-left', className),
   }
   if (render) return render(domProps)
-  // eslint-disable-next-line meridian-ui/intrinsic-needs-data-slot -- data-slot is in domProps
+
   return <button {...domProps} />
 }
 
@@ -50,13 +50,13 @@ function DisclosureIndicator({ className, ...props }: ComponentProps<'span'>) {
     <span
       data-slot="disclosure-indicator"
       {...props}
-      className={cn('text-muted transition-transform [[data-expanded]_&]:rotate-90', className)}
+      className={cx('text-text-secondary transition-transform [[data-expanded]_&]:rotate-90', className)}
     />
   )
 }
 
 function DisclosureHeading({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="disclosure-heading" {...props} className={cn('', className)} />
+  return <div data-slot="disclosure-heading" {...props} className={cx('', className)} />
 }
 
 interface DisclosureContentProps extends ComponentProps<'div'> {
@@ -64,9 +64,9 @@ interface DisclosureContentProps extends ComponentProps<'div'> {
 }
 
 function DisclosureContent({ className, render, ...props }: DisclosureContentProps) {
-  const domProps = { 'data-slot': 'disclosure-content' as const, ...props, className: cn('', className) }
+  const domProps = { 'data-slot': 'disclosure-content' as const, ...props, className: cx('', className) }
   if (render) return render(domProps)
-  // eslint-disable-next-line meridian-ui/intrinsic-needs-data-slot -- data-slot is in domProps
+
   return <div {...domProps} />
 }
 
@@ -75,9 +75,9 @@ interface DisclosureBodyProps extends ComponentProps<'div'> {
 }
 
 function DisclosureBody({ className, render, ...props }: DisclosureBodyProps) {
-  const domProps = { 'data-slot': 'disclosure-body' as const, ...props, className: cn('', className) }
+  const domProps = { 'data-slot': 'disclosure-body' as const, ...props, className: cx('', className) }
   if (render) return render(domProps)
-  // eslint-disable-next-line meridian-ui/intrinsic-needs-data-slot -- data-slot is in domProps
+
   return <div {...domProps} />
 }
 
@@ -95,7 +95,7 @@ interface DisclosureGroupProps extends ComponentProps<'div'> {
 }
 
 function DisclosureGroupRoot({ className, expandedKeys: _ek, onExpandedChange: _oec, ...props }: DisclosureGroupProps) {
-  return <div data-slot="disclosure-group" {...props} className={cn('flex flex-col', className)} />
+  return <div data-slot="disclosure-group" {...props} className={cx('flex flex-col', className)} />
 }
 
 export const DisclosureGroup = DisclosureGroupRoot
