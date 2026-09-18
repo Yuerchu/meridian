@@ -1,7 +1,18 @@
 import { useEffect, useId, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, PlugWire, PlugConnection, LogoMcp, TrashBin, ArrowDownToSquare } from '@gravity-ui/icons'
-import { Alert, Button, Input, Label, Spinner, Switch, TextArea, TextField, Tooltip } from '@/components/base'
+import {
+  Alert,
+  Button,
+  Input,
+  Label,
+  Spinner,
+  Switch,
+  TextArea,
+  TextField,
+  Tooltip,
+  TooltipTrigger,
+} from '@/components/base'
 import { EmptyState } from '@/components/base'
 import { ListView } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
@@ -587,7 +598,7 @@ export function McpSettings() {
 
   const headerActions = (
     <div data-slot="mcp-header-actions" className="flex items-center gap-1">
-      <Tooltip delay={0}>
+      <TooltipTrigger delay={0}>
         <Button
           isIconOnly
           aria-label={t('settings.mcp.importJson')}
@@ -596,14 +607,14 @@ export function McpSettings() {
         >
           <ArrowDownToSquare className="w-4 h-4" />
         </Button>
-        <Tooltip.Content placement="top">{t('settings.mcp.importJson')}</Tooltip.Content>
-      </Tooltip>
-      <Tooltip delay={0}>
+        <Tooltip placement="top">{t('settings.mcp.importJson')}</Tooltip>
+      </TooltipTrigger>
+      <TooltipTrigger delay={0}>
         <Button isIconOnly aria-label={t('settings.mcp.addServer')} variant="outline" onPress={handleAdd}>
           <Plus className="w-4 h-4" />
         </Button>
-        <Tooltip.Content placement="top">{t('settings.mcp.addServer')}</Tooltip.Content>
-      </Tooltip>
+        <Tooltip placement="top">{t('settings.mcp.addServer')}</Tooltip>
+      </TooltipTrigger>
     </div>
   )
 

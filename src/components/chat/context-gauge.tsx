@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 
-import { Link, Popover, ProgressCircle, Tooltip } from '@/components/base'
+import { Link, Popover, ProgressCircle, Tooltip, TooltipTrigger } from '@/components/base'
 
 import type { AcpUsage } from '@/hooks/use-acp-config'
 import type { CompactCircuitBreakerState, ConversationAgentKind } from '@/types'
@@ -105,7 +105,7 @@ export function ContextGauge({
           is worth saying because it is the reason this is not simply a larger
           button: the toolbar row is 32px, and a control taller than that pushes
           the shell open. */}
-      <Tooltip delay={0}>
+      <TooltipTrigger delay={0}>
         <Popover.Trigger
           aria-label={figures}
           className="touch-hitbox inline-flex items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -124,8 +124,8 @@ export function ContextGauge({
             </ProgressCircle.Track>
           </ProgressCircle>
         </Popover.Trigger>
-        <Tooltip.Content>{figures}</Tooltip.Content>
-      </Tooltip>
+        <Tooltip>{figures}</Tooltip>
+      </TooltipTrigger>
       <Popover.Content placement="top" className="max-w-64">
         <Popover.Dialog aria-label={t('chat.context.title')} className="flex flex-col gap-1 text-xs tabular-nums">
           {compacting && !hosted ? (

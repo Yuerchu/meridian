@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Moon, Sun } from '@gravity-ui/icons'
 
-import { Button, Input, Tooltip } from '@/components/base'
+import { Button, Input, Tooltip, TooltipTrigger } from '@/components/base'
 import {
   ChainOfThought,
   ChainOfThoughtContent,
@@ -463,7 +463,7 @@ function Gallery() {
           <h1 data-slot="gallery-title" className="text-lg font-semibold">
             组件预览
           </h1>
-          <Tooltip delay={0}>
+          <TooltipTrigger delay={0}>
             <Button
               isIconOnly
               aria-label="切换主题"
@@ -473,8 +473,8 @@ function Gallery() {
               <Sun className="hidden size-4 dark:block" />
               <Moon className="size-4 dark:hidden" />
             </Button>
-            <Tooltip.Content placement="top">切换主题</Tooltip.Content>
-          </Tooltip>
+            <Tooltip placement="top">切换主题</Tooltip>
+          </TooltipTrigger>
         </header>
 
         <Section title="ChainOfThought / 基础 + Steps">
@@ -1358,10 +1358,10 @@ function Gallery() {
           <div data-slot="gallery-voice-buttons" className="flex flex-wrap items-center gap-6">
             {(['idle', 'recording-hold', 'recording-toggle', 'transcribing'] as VoiceButtonState[]).map((s) => (
               <div data-slot="gallery-voice-button" key={s} className="flex flex-col items-center gap-1">
-                <Tooltip delay={0}>
+                <TooltipTrigger delay={0}>
                   <VoiceButton aria-label="语音输入" state={s} elapsed={s.startsWith('recording') ? 12.4 : 0} />
-                  <Tooltip.Content>语音输入</Tooltip.Content>
-                </Tooltip>
+                  <Tooltip>语音输入</Tooltip>
+                </TooltipTrigger>
                 <span data-slot="gallery-voice-button-state" className="text-xs text-muted">
                   {s}
                 </span>

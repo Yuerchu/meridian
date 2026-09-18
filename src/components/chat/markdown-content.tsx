@@ -6,7 +6,7 @@ import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
 import { openExternalUrl } from '@/lib/external-link'
 import { Check, Copy } from '@gravity-ui/icons'
-import { Link, Skeleton, Tooltip } from '@/components/base'
+import { Link, Skeleton, Tooltip, TooltipTrigger } from '@/components/base'
 import type { Components } from 'react-markdown'
 
 import { markdownVariants } from '@/components/base'
@@ -82,7 +82,7 @@ function FileReferenceButton({ reference }: { reference: MarkdownFileReference }
   const label = referenceLabel(reference)
 
   return (
-    <Tooltip delay={0}>
+    <TooltipTrigger delay={0}>
       <Link
         data-slot="markdown-file-reference"
         aria-label={label}
@@ -97,8 +97,8 @@ function FileReferenceButton({ reference }: { reference: MarkdownFileReference }
           {markdownFileName(reference.path)}
         </span>
       </Link>
-      <Tooltip.Content>{label}</Tooltip.Content>
-    </Tooltip>
+      <Tooltip>{label}</Tooltip>
+    </TooltipTrigger>
   )
 }
 
@@ -336,24 +336,15 @@ const MarkdownAnchor: Components['a'] = ({ href, children, node: _node, ...props
     )
   }
 
-  // Where the link really goes, since `href` deliberately does not say. The
-  // anchor is its own trigger — rendered through `Tooltip.Trigger` rather than
-  // wrapped by it, so there is one tab stop and it is the link. `role` is put
-  // back: the trigger defaults to `button`, and this is not one.
   return (
-    <Tooltip delay={300}>
-      <Tooltip.Trigger
-        role="link"
-        render={(triggerProps) => (
-          <a data-slot="markdown-external-link" {...(triggerProps as React.ComponentProps<'a'>)} {...anchorProps}>
-            {children}
-          </a>
-        )}
-      />
-      <Tooltip.Content placement="top" className="max-w-xs break-all">
+    <TooltipTrigger delay={300}>
+      <a data-slot="markdown-external-link" role="link" {...anchorProps}>
+        {children}
+      </a>
+      <Tooltip placement="top" className="max-w-xs break-all">
         {target.url}
-      </Tooltip.Content>
-    </Tooltip>
+      </Tooltip>
+    </TooltipTrigger>
   )
 }
 

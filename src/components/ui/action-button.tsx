@@ -1,6 +1,6 @@
 import * as React from 'react'
 
-import { Button, Tooltip } from '@/components/base'
+import { Button, Tooltip, TooltipTrigger } from '@/components/base'
 
 /**
  * An icon button with a tooltip. Lives here rather than beside the message
@@ -26,11 +26,9 @@ const ActionButton = React.forwardRef<HTMLButtonElement, ActionButtonProps>(func
   ref,
 ) {
   return (
-    <Tooltip delay={0}>
-      {/* The button is the trigger. `Tooltip.Trigger` is for children that
-          cannot take focus themselves — it wraps them in a focusable
-          `role="button"` div, and around a real button that div becomes a
-          second tab stop that does nothing when pressed. */}
+    <TooltipTrigger delay={0}>
+      {/* The button is the trigger — RAC TooltipTrigger picks it up from
+          context, so no wrapper is needed around a real focusable element. */}
       <Button
         ref={ref}
         isIconOnly
@@ -43,8 +41,8 @@ const ActionButton = React.forwardRef<HTMLButtonElement, ActionButtonProps>(func
       >
         {children}
       </Button>
-      <Tooltip.Content placement="top">{label}</Tooltip.Content>
-    </Tooltip>
+      <Tooltip placement="top">{label}</Tooltip>
+    </TooltipTrigger>
   )
 })
 

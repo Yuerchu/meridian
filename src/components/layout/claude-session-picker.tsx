@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { Button, Modal, SearchField, Spinner, Tooltip } from '@/components/base'
+import { Button, Modal, SearchField, Spinner, Tooltip, TooltipTrigger } from '@/components/base'
 import { FolderOpen, Xmark } from '@gravity-ui/icons'
 
 import { api } from '@/api'
@@ -268,7 +268,7 @@ export function ClaudeSessionPicker({
                 </Button>
               )}
               {folder && (
-                <Tooltip delay={0}>
+                <TooltipTrigger delay={0}>
                   <Button
                     isIconOnly
                     variant="ghost"
@@ -278,8 +278,8 @@ export function ClaudeSessionPicker({
                   >
                     <Xmark />
                   </Button>
-                  <Tooltip.Content>{t('sessionPicker.allProjects')}</Tooltip.Content>
-                </Tooltip>
+                  <Tooltip>{t('sessionPicker.allProjects')}</Tooltip>
+                </TooltipTrigger>
               )}
             </div>
             {folder && (

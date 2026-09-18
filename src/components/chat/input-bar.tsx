@@ -4,7 +4,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { ArrowDownToSquare, ChevronDown, Copy, Scissors, SquareDashedText, Xmark } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
-import { Button, Kbd, Label, ListBox, Popover, Tooltip } from '@/components/base'
+import { Button, Kbd, Label, ListBox, Popover, Tooltip, TooltipTrigger } from '@/components/base'
 import { ContextMenu } from '@/components/base'
 import { ChatAttachment, ChatAttachmentGroup } from '@/components/base'
 
@@ -225,7 +225,7 @@ function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAc
           `ComposerMenu` does it: React Aria passes press and focus down through
           context, so the one Button at the bottom picks up both behaviours
           without either wrapper knowing about the other. */}
-      <Tooltip delay={0}>
+      <TooltipTrigger delay={0}>
         {/* `h-*`/`px-*` and `rounded-*` overridden together: HeroUI's own radius
             is much rounder than the composer this sits in, and changing the
             height without the radius is how a hover fill gets clipped. */}
@@ -241,8 +241,8 @@ function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAc
           </span>
           <ChevronDown className="size-4 shrink-0 text-muted" />
         </Button>
-        <Tooltip.Content placement="top">{t('chat.agentOptions')}</Tooltip.Content>
-      </Tooltip>
+        <Tooltip placement="top">{t('chat.agentOptions')}</Tooltip>
+      </TooltipTrigger>
       <Popover.Content placement="top start" className="w-72">
         <Popover.Dialog className="flex max-h-[min(420px,calc(100vh-6rem))] flex-col gap-3 overflow-y-auto">
           {pickers.map((option) => (
@@ -831,7 +831,7 @@ export function InputBar({
                         className="size-20 object-contain"
                       />
                       {onRemoveSticker && (
-                        <Tooltip delay={0}>
+                        <TooltipTrigger delay={0}>
                           <Button
                             isIconOnly
                             size="sm"
@@ -842,8 +842,8 @@ export function InputBar({
                           >
                             <Xmark className="size-3.5" />
                           </Button>
-                          <Tooltip.Content>{t('chat.removeSticker')}</Tooltip.Content>
-                        </Tooltip>
+                          <Tooltip>{t('chat.removeSticker')}</Tooltip>
+                        </TooltipTrigger>
                       )}
                     </div>
                   )}
@@ -971,10 +971,9 @@ export function InputBar({
                   <EmojiPicker assistantId={currentAssistantId} onSelect={(sticker) => onSelectSticker?.(sticker)} />
                 )}
                 {!isAndroid && onVoiceSend && (
-                  <Tooltip delay={0}>
-                    {/* The button inside picks the tooltip's trigger props up from
-                      context, so `Tooltip.Trigger` would only add a second,
-                      inert tab stop around a real button. */}
+                  <TooltipTrigger delay={0}>
+                    {/* The button is the trigger — TooltipTrigger picks it up
+                      from context, no wrapper needed. */}
                     <VoiceButton
                       aria-label={voice.state === 'idle' ? t('chat.voice.tooltip') : t('chat.voice.cancelHint')}
                       state={voice.state}
@@ -987,10 +986,10 @@ export function InputBar({
                       onPointerLeave={voice.handlePointerLeave}
                       onKeyboardPress={voice.handleKeyboardPress}
                     />
-                    <Tooltip.Content placement="top">
+                    <Tooltip placement="top">
                       {voice.state === 'idle' ? t('chat.voice.tooltip') : t('chat.voice.cancelHint')}
-                    </Tooltip.Content>
-                  </Tooltip>
+                    </Tooltip>
+                  </TooltipTrigger>
                 )}
                 <ContextGauge
                   context={contextInfo}

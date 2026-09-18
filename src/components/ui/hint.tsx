@@ -1,18 +1,16 @@
 import * as React from 'react'
-import { Tooltip } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/base'
 
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 /**
  * A piece of inert text with more to say on hover: a truncated path, a
  * shortened name, a figure with its qualifier.
  *
- * What a native `title` used to do, done with HeroUI's tooltip. The browser's
+ * What a native `title` used to do, done with boardui's tooltip. The browser's
  * own tooltip is the one thing on screen not drawn by this app — a different
  * font, a different delay, a different corner — and it is banned by the lint
- * for that reason. This composes `Tooltip` around a `Tooltip.Trigger` rendered
- * as the text's own element, so there is no wrapper in the flow: the span
- * *is* the trigger.
+ * for that reason.
  *
  * The trigger is focusable by default, which is how a keyboard reaches a
  * tooltip at all. Where one text is repeated many times over — every segment
@@ -32,21 +30,15 @@ export function Hint({
   label: React.ReactNode
   as?: 'span' | 'p' | 'code'
   focusable?: boolean
-  placement?: React.ComponentProps<typeof Tooltip.Content>['placement']
+  placement?: React.ComponentProps<typeof Tooltip>['placement']
 }) {
-  // Typed as a span whichever tag it is: the three take the same props, and
-  // the trigger's ref is typed for a span.
   const Tag = as as 'span'
   return (
-    <Tooltip delay={0}>
-      <Tooltip.Trigger
-        tabIndex={focusable ? undefined : -1}
-        render={(triggerProps) => <Tag {...(triggerProps as React.ComponentProps<'span'>)} {...props} />}
-        className={cn('min-w-0', className)}
-      >
+    <TooltipTrigger delay={0}>
+      <Tag {...props} tabIndex={focusable ? 0 : -1} className={cx('min-w-0', className)}>
         {children}
-      </Tooltip.Trigger>
-      <Tooltip.Content placement={placement}>{label}</Tooltip.Content>
-    </Tooltip>
+      </Tag>
+      <Tooltip placement={placement}>{label}</Tooltip>
+    </TooltipTrigger>
   )
 }

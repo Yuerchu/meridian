@@ -2,7 +2,18 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
 import { TrashBin } from '@gravity-ui/icons'
-import { Button, Checkbox, Description, Input, Label, Separator, Spinner, TextField, Tooltip } from '@/components/base'
+import {
+  Button,
+  Checkbox,
+  Description,
+  Input,
+  Label,
+  Separator,
+  Spinner,
+  TextField,
+  Tooltip,
+  TooltipTrigger,
+} from '@/components/base'
 import { ItemCard } from '@/components/base'
 import { ItemCardGroup } from '@/components/base'
 import { api } from '@/api'
@@ -160,7 +171,7 @@ export function VoiceCorpusSettings() {
                   </ItemCard.Description>
                 </ItemCard.Content>
                 <ItemCard.Action>
-                  <Tooltip delay={0}>
+                  <TooltipTrigger delay={0}>
                     <Button
                       isIconOnly
                       size="sm"
@@ -171,8 +182,8 @@ export function VoiceCorpusSettings() {
                     >
                       <TrashBin />
                     </Button>
-                    <Tooltip.Content>{t('settings.voiceCorpus.deleteSession')}</Tooltip.Content>
-                  </Tooltip>
+                    <Tooltip>{t('settings.voiceCorpus.deleteSession')}</Tooltip>
+                  </TooltipTrigger>
                 </ItemCard.Action>
               </ItemCard>
             </Fragment>

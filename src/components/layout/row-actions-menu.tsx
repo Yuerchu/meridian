@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Dropdown, Label, Tooltip } from '@/components/base'
+import { Dropdown, DropdownItem, DropdownPopover, Label, Tooltip, TooltipTrigger } from '@/components/base'
 import { EllipsisVertical } from '@gravity-ui/icons'
 import { Sidebar } from '@/components/base'
 
@@ -14,7 +14,7 @@ export function RowActionDropdownItems({ actions }: { actions: RowAction[] }) {
   return (
     <>
       {actions.map((action) => (
-        <Dropdown.Item
+        <DropdownItem
           key={action.key}
           id={action.key}
           textValue={action.label}
@@ -32,7 +32,7 @@ export function RowActionDropdownItems({ actions }: { actions: RowAction[] }) {
               {action.disabledReason}
             </span>
           )}
-        </Dropdown.Item>
+        </DropdownItem>
       ))}
     </>
   )
@@ -72,17 +72,15 @@ export function RowActionsMenu({
             the only way to a row's actions — right-click cannot be reached by
             touch — and a miss lands on the row itself, which switches
             conversation and closes the sheet. */}
-        <Tooltip delay={0}>
+        <TooltipTrigger delay={0}>
           <Sidebar.MenuAction className="touch-hitbox" aria-label={t('sidebar.moreActions', { name: label })}>
             <EllipsisVertical />
           </Sidebar.MenuAction>
-          <Tooltip.Content>{t('sidebar.moreActions', { name: label })}</Tooltip.Content>
-        </Tooltip>
-        <Dropdown.Popover placement="bottom end">
-          <Dropdown.Menu aria-label={t('sidebar.moreActions', { name: label })}>
-            <RowActionDropdownItems actions={actions} />
-          </Dropdown.Menu>
-        </Dropdown.Popover>
+          <Tooltip>{t('sidebar.moreActions', { name: label })}</Tooltip>
+        </TooltipTrigger>
+        <DropdownPopover placement="bottom end" aria-label={t('sidebar.moreActions', { name: label })}>
+          <RowActionDropdownItems actions={actions} />
+        </DropdownPopover>
       </Dropdown>
     </Sidebar.MenuActions>
   )

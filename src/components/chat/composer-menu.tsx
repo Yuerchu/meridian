@@ -14,7 +14,7 @@ import {
 } from '@gravity-ui/icons'
 import { ModelIcon } from '@/components/ui/model-icon'
 
-import { Button, Popover, Spinner, Tooltip } from '@/components/base'
+import { Button, Popover, Spinner, Tooltip, TooltipTrigger } from '@/components/base'
 import { CellSwitch } from '@/components/base'
 
 import { cn } from '@/lib/utils'
@@ -286,7 +286,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
           passes press and focus down through context, so the Button at the
           bottom of this stack receives both the popover's and the tooltip's
           behaviour without either needing to know about the other. */}
-      <Tooltip delay={0}>
+      <TooltipTrigger delay={0}>
         <Button
           isIconOnly
           aria-label={t('composer.menu')}
@@ -310,8 +310,8 @@ export function ComposerMenu(props: ComposerMenuProps) {
             />
           )}
         </Button>
-        <Tooltip.Content placement="top">{t('composer.menu')}</Tooltip.Content>
-      </Tooltip>
+        <Tooltip placement="top">{t('composer.menu')}</Tooltip>
+      </TooltipTrigger>
 
       {/* `max-w` against the viewport, matching `ToolbarSelect`. The two columns
           come to 464px, and React Aria only ever *moves* a popover that will not

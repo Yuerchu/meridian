@@ -12,6 +12,7 @@ import {
   TextArea,
   TextField,
   Tooltip,
+  TooltipTrigger,
 } from '@/components/base'
 import { Segment } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
@@ -193,7 +194,7 @@ function AssistantEditor({
         {templateVars.length > 0 && (
           <div data-slot="template-variables" className="flex flex-wrap gap-1">
             {templateVars.map((v) => (
-              <Tooltip key={v.name} delay={0}>
+              <TooltipTrigger key={v.name} delay={0}>
                 <Button
                   variant="outline"
                   className="text-xs px-1.5 py-0.5 bg-default/50 text-muted hover:bg-default font-mono"
@@ -201,8 +202,8 @@ function AssistantEditor({
                 >
                   {`{{${v.name}}}`}
                 </Button>
-                <Tooltip.Content placement="top">{v.description_en}</Tooltip.Content>
-              </Tooltip>
+                <Tooltip placement="top">{v.description_en}</Tooltip>
+              </TooltipTrigger>
             ))}
           </div>
         )}

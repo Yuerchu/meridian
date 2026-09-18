@@ -12,26 +12,43 @@ import type { ComponentProps } from 'react'
 import { cx } from '@/utils/cx'
 import { MENU_ITEM, MENU_ITEM_INTERACTIVE, MENU_POPOVER_SURFACE, MENU_POPOVER_WIDTH } from './dropdown/menu-styles'
 
-interface DropdownRootProps extends MenuTriggerProps {
+interface DropdownProps extends MenuTriggerProps {
   'aria-label'?: string
   'data-slot'?: string
   className?: string
 }
 
-function DropdownRoot({ 'aria-label': _al, 'data-slot': _ds, className: _cn, ...props }: DropdownRootProps) {
+export function Dropdown({ 'aria-label': _al, 'data-slot': _ds, className: _cn, ...props }: DropdownProps) {
   return <MenuTrigger data-slot="dropdown" {...props} />
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic menu
-function DropdownMenu({ className, ...props }: MenuProps<any> & { className?: string }) {
+export function DropdownTrigger(props: ComponentProps<'div'>) {
+  return <>{props.children}</>
+}
+
+export function DropdownPopover({
+  className,
+  'aria-label': ariaLabel,
+  placement = 'bottom start',
+  ...props
+}: MenuProps<object> & { className?: string; placement?: string; 'aria-label'?: string }) {
   return (
-    <AriaPopover data-slot="dropdown-popover" className={cx(MENU_POPOVER_WIDTH, MENU_POPOVER_SURFACE)}>
-      <Menu data-slot="dropdown-menu" {...props} className={cx('flex flex-col gap-1 outline-none', className)} />
+    <AriaPopover
+      data-slot="dropdown-popover"
+      placement={placement as never}
+      className={cx(MENU_POPOVER_WIDTH, MENU_POPOVER_SURFACE, className)}
+    >
+      <Menu
+        data-slot="dropdown-menu"
+        aria-label={ariaLabel}
+        {...props}
+        className={cx('flex flex-col gap-1 outline-none')}
+      />
     </AriaPopover>
   )
 }
 
-function DropdownItem({
+export function DropdownItem({
   className,
   variant: _variant,
   ...props
@@ -51,7 +68,7 @@ function DropdownItem({
   )
 }
 
-function DropdownSeparator({ className, ...props }: ComponentProps<'div'>) {
+export function DropdownDivider({ className, ...props }: ComponentProps<'div'>) {
   return (
     <AriaSeparator
       data-slot="dropdown-separator"
@@ -61,18 +78,19 @@ function DropdownSeparator({ className, ...props }: ComponentProps<'div'>) {
   )
 }
 
-function DropdownTrigger(props: ComponentProps<'div'>) {
-  return <>{props.children}</>
+export function DropdownGroup({
+  label,
+  className,
+  children,
+}: {
+  label?: string
+  className?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className={cx('flex w-full flex-col gap-1.5', label && 'pt-1', className)}>
+      {label && <span className="pl-2 text-body-medium text-text-secondary">{label}</span>}
+      <div className="flex w-full flex-col gap-1">{children}</div>
+    </div>
+  )
 }
-
-function DropdownPopover({ children }: ComponentProps<'div'> & { placement?: string }) {
-  return <>{children}</>
-}
-
-export const Dropdown = Object.assign(DropdownRoot, {
-  Trigger: DropdownTrigger,
-  Popover: DropdownPopover,
-  Menu: DropdownMenu,
-  Item: DropdownItem,
-  Separator: DropdownSeparator,
-})

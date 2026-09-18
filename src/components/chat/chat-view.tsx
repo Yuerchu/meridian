@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DropZone } from 'react-aria-components'
 import type { DropItem } from 'react-aria-components'
-import { Button, Chip, Tooltip } from '@/components/base'
+import { Button, Chip, Tooltip, TooltipTrigger } from '@/components/base'
 import { Comments, Xmark } from '@gravity-ui/icons'
 import { acceptsConversationDrop, CONVERSATION_DRAG_TYPE } from '@/components/layout/sidebar-dnd'
 import { EmptyState as ProEmptyState } from '@/components/base'
@@ -901,7 +901,7 @@ function ChatViewInner({
                 <span data-slot="conversation-ref-title" className="max-w-48 truncate">
                   {ref.title}
                 </span>
-                <Tooltip delay={0}>
+                <TooltipTrigger delay={0}>
                   <Button
                     isIconOnly
                     size="sm"
@@ -912,8 +912,8 @@ function ChatViewInner({
                   >
                     <Xmark className="size-3" />
                   </Button>
-                  <Tooltip.Content>{t('chat.convRef.remove', { name: ref.title })}</Tooltip.Content>
-                </Tooltip>
+                  <Tooltip>{t('chat.convRef.remove', { name: ref.title })}</Tooltip>
+                </TooltipTrigger>
               </Chip>
             ))}
           </div>

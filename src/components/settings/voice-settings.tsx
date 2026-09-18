@@ -3,7 +3,18 @@ import { useTranslation } from 'react-i18next'
 import { listen } from '@/lib/transport'
 import { open } from '@tauri-apps/plugin-dialog'
 import { TrashBin } from '@gravity-ui/icons'
-import { Button, Card, Description, Input, Label, ProgressCircle, Spinner, TextField, Tooltip } from '@/components/base'
+import {
+  Button,
+  Card,
+  Description,
+  Input,
+  Label,
+  ProgressCircle,
+  Spinner,
+  TextField,
+  Tooltip,
+  TooltipTrigger,
+} from '@/components/base'
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
 import type { VoiceModelDownloadEvent } from '@/lib/app-event'
@@ -172,7 +183,7 @@ export function VoiceSettings() {
                   {formatSize(status.size_bytes, sizeNumber)} · {status.path}
                 </Card.Description>
               </Card.Header>
-              <Tooltip delay={0}>
+              <TooltipTrigger delay={0}>
                 <Button
                   isIconOnly
                   variant="ghost"
@@ -182,8 +193,8 @@ export function VoiceSettings() {
                 >
                   <TrashBin className="w-4 h-4" />
                 </Button>
-                <Tooltip.Content>{t('settings.voice.deleteModel')}</Tooltip.Content>
-              </Tooltip>
+                <Tooltip>{t('settings.voice.deleteModel')}</Tooltip>
+              </TooltipTrigger>
             </div>
           ) : downloading ? (
             <div data-slot="voice-model-download" className="flex items-center gap-3">

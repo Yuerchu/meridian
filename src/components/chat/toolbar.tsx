@@ -19,7 +19,7 @@ import {
   Thunderbolt,
 } from '@gravity-ui/icons'
 import { ModelIcon } from '@/components/ui/model-icon'
-import { Button, Drawer, Spinner, Tooltip } from '@/components/base'
+import { Button, Drawer, Spinner, Tooltip, TooltipTrigger } from '@/components/base'
 import { CellSwitch } from '@/components/base'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
@@ -190,15 +190,15 @@ export function MobileOptionsMenu({
         if (!o) setTimeout(() => setPanel('main'), 200)
       }}
     >
-      <Tooltip delay={0}>
+      <TooltipTrigger delay={0}>
         <Drawer.Trigger
           aria-label={t('composer.menu')}
           className="inline-flex items-center justify-center rounded-md p-1 text-muted hover:text-foreground hover:bg-default transition-colors touch-hitbox"
         >
           <Plus className="w-4 h-4" />
         </Drawer.Trigger>
-        <Tooltip.Content>{t('composer.menu')}</Tooltip.Content>
-      </Tooltip>
+        <Tooltip>{t('composer.menu')}</Tooltip>
+      </TooltipTrigger>
       <Drawer.Backdrop>
         <Drawer.Content placement="bottom">
           <Drawer.Dialog
@@ -357,7 +357,7 @@ export function MobileOptionsMenu({
                     data-slot="mobile-options-assistant-header"
                     className="flex items-center gap-2 px-4 py-2.5 border-b border-border"
                   >
-                    <Tooltip delay={0}>
+                    <TooltipTrigger delay={0}>
                       <Button
                         isIconOnly
                         aria-label={t('common.back')}
@@ -367,8 +367,8 @@ export function MobileOptionsMenu({
                       >
                         <ChevronLeft className="w-4 h-4" />
                       </Button>
-                      <Tooltip.Content>{t('common.back')}</Tooltip.Content>
-                    </Tooltip>
+                      <Tooltip>{t('common.back')}</Tooltip>
+                    </TooltipTrigger>
                     <span data-slot="mobile-options-assistant-title" className="text-sm font-medium">
                       {t('toolbar.selectAssistant')}
                     </span>
@@ -407,7 +407,7 @@ export function MobileOptionsMenu({
                     data-slot="mobile-options-model-header"
                     className="flex items-center gap-2 px-4 py-2.5 border-b border-border"
                   >
-                    <Tooltip delay={0}>
+                    <TooltipTrigger delay={0}>
                       <Button
                         isIconOnly
                         aria-label={t('common.back')}
@@ -417,12 +417,12 @@ export function MobileOptionsMenu({
                       >
                         <ChevronLeft className="w-4 h-4" />
                       </Button>
-                      <Tooltip.Content>{t('common.back')}</Tooltip.Content>
-                    </Tooltip>
+                      <Tooltip>{t('common.back')}</Tooltip>
+                    </TooltipTrigger>
                     <span data-slot="mobile-options-model-title" className="text-sm font-medium flex-1">
                       {t('toolbar.models')}
                     </span>
-                    <Tooltip delay={0}>
+                    <TooltipTrigger delay={0}>
                       <Button
                         isIconOnly
                         aria-label={`${t('settings.about.logs.refresh')} ${t('toolbar.models')}`}
@@ -456,8 +456,8 @@ export function MobileOptionsMenu({
                           <ArrowsRotateRight className="w-3.5 h-3.5" />
                         )}
                       </Button>
-                      <Tooltip.Content>{`${t('settings.about.logs.refresh')} ${t('toolbar.models')}`}</Tooltip.Content>
-                    </Tooltip>
+                      <Tooltip>{`${t('settings.about.logs.refresh')} ${t('toolbar.models')}`}</Tooltip>
+                    </TooltipTrigger>
                   </div>
                   <div data-slot="toolbar-model-list" className="max-h-[50vh] overflow-y-auto overscroll-contain">
                     {loadingModels && (
@@ -510,7 +510,7 @@ export function MobileOptionsMenu({
                     data-slot="mobile-options-mode-header"
                     className="flex items-center gap-2 px-4 py-2.5 border-b border-border"
                   >
-                    <Tooltip delay={0}>
+                    <TooltipTrigger delay={0}>
                       <Button
                         isIconOnly
                         aria-label={t('common.back')}
@@ -520,8 +520,8 @@ export function MobileOptionsMenu({
                       >
                         <ChevronLeft className="w-4 h-4" />
                       </Button>
-                      <Tooltip.Content>{t('common.back')}</Tooltip.Content>
-                    </Tooltip>
+                      <Tooltip>{t('common.back')}</Tooltip>
+                    </TooltipTrigger>
                     <span data-slot="mobile-options-mode-title" className="text-sm font-medium">
                       {t('toolbar.mode')}
                     </span>
@@ -558,7 +558,7 @@ export function MobileOptionsMenu({
                     data-slot="mobile-options-thinking-header"
                     className="flex items-center gap-2 px-4 py-2.5 border-b border-border"
                   >
-                    <Tooltip delay={0}>
+                    <TooltipTrigger delay={0}>
                       <Button
                         isIconOnly
                         aria-label={t('common.back')}
@@ -568,8 +568,8 @@ export function MobileOptionsMenu({
                       >
                         <ChevronLeft className="w-4 h-4" />
                       </Button>
-                      <Tooltip.Content>{t('common.back')}</Tooltip.Content>
-                    </Tooltip>
+                      <Tooltip>{t('common.back')}</Tooltip>
+                    </TooltipTrigger>
                     <span data-slot="mobile-options-thinking-title" className="text-sm font-medium">
                       {t('toolbar.thinking')}
                     </span>

@@ -4,7 +4,18 @@ import { useTranslation } from 'react-i18next'
 import { Plus, TrashBin, Xmark, Check } from '@gravity-ui/icons'
 import { api } from '@/api'
 import type { MemoryType } from '@/types'
-import { Alert, Button, Card, DisclosureGroup, Input, Label, TextArea, TextField, Tooltip } from '@/components/base'
+import {
+  Alert,
+  Button,
+  Card,
+  DisclosureGroup,
+  Input,
+  Label,
+  TextArea,
+  TextField,
+  Tooltip,
+  TooltipTrigger,
+} from '@/components/base'
 import { EmptyState } from '@/components/base'
 import { ActionBar } from '@/components/base'
 import { useConfirm } from '@/hooks/use-confirm'
@@ -168,13 +179,13 @@ export function MemorySettings() {
                   triggerClassName="w-auto"
                 />
                 <div data-slot="memory-add-spacer" className="flex-1" />
-                <Tooltip delay={0}>
+                <TooltipTrigger delay={0}>
                   <Button variant="ghost" isIconOnly aria-label={t('common.cancel')} onPress={() => setShowAdd(false)}>
                     <Xmark />
                   </Button>
-                  <Tooltip.Content>{t('common.cancel')}</Tooltip.Content>
-                </Tooltip>
-                <Tooltip delay={0}>
+                  <Tooltip>{t('common.cancel')}</Tooltip>
+                </TooltipTrigger>
+                <TooltipTrigger delay={0}>
                   <Button
                     variant="secondary"
                     isIconOnly
@@ -184,8 +195,8 @@ export function MemorySettings() {
                   >
                     <Check />
                   </Button>
-                  <Tooltip.Content>{t('settings.memory.add')}</Tooltip.Content>
-                </Tooltip>
+                  <Tooltip>{t('settings.memory.add')}</Tooltip>
+                </TooltipTrigger>
               </div>
             </Card>
           )}
@@ -281,7 +292,7 @@ export function MemorySettings() {
                 </Button>
               </ActionBar.Content>
               <ActionBar.Suffix>
-                <Tooltip delay={0}>
+                <TooltipTrigger delay={0}>
                   <Button
                     isIconOnly
                     variant="ghost"
@@ -290,8 +301,8 @@ export function MemorySettings() {
                   >
                     <Xmark />
                   </Button>
-                  <Tooltip.Content>{t('settings.memory.clearSelection')}</Tooltip.Content>
-                </Tooltip>
+                  <Tooltip>{t('settings.memory.clearSelection')}</Tooltip>
+                </TooltipTrigger>
               </ActionBar.Suffix>
             </ActionBar>,
             document.body,

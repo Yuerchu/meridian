@@ -33,7 +33,8 @@ import {
   Switch as HSwitch,
   TextArea as HTextArea,
   TextField as HTextField,
-  Tooltip as HTooltip,
+  Tooltip as HTooltipContent,
+  TooltipTrigger as HTooltip,
 } from '@/components/base'
 
 import { ContextMenu as ProContextMenu, Markdown as ProMarkdown, Sidebar as ProSidebar } from '@/components/base'
@@ -337,7 +338,7 @@ function PromptInputProbe() {
                     </HProgressCircle.Track>
                   </HProgressCircle>
                 </HPopover.Trigger>
-                <HTooltip.Content>上下文用量</HTooltip.Content>
+                <HTooltipContent>上下文用量</HTooltipContent>
               </HTooltip>
               <HPopover.Content placement="top" className="p-3 text-xs">
                 用量面板
@@ -543,7 +544,7 @@ export default function HeroUiLab() {
             <div data-slot="heroui-lab-overlays" className="flex flex-wrap items-center gap-3">
               <HTooltip delay={0}>
                 <HButton variant="secondary">悬停看 Tooltip</HButton>
-                <HTooltip.Content>浮层定位对不对</HTooltip.Content>
+                <HTooltipContent>浮层定位对不对</HTooltipContent>
               </HTooltip>
 
               <HPopover>
@@ -726,14 +727,14 @@ export default function HeroUiLab() {
                             <HButton isIconOnly size="sm" variant="ghost" aria-label="加号" className="rounded-lg">
                               +
                             </HButton>
-                            <HTooltip.Content>加号</HTooltip.Content>
+                            <HTooltipContent>加号</HTooltipContent>
                           </HTooltip>
                           <span data-slot="heroui-lab-composer-spacer" className="flex-1" />
                           <HTooltip delay={0}>
                             <HButton isIconOnly size="sm" aria-label="发送" className="rounded-full">
                               <ArrowUp />
                             </HButton>
-                            <HTooltip.Content>发送</HTooltip.Content>
+                            <HTooltipContent>发送</HTooltipContent>
                           </HTooltip>
                         </HInputGroup.Suffix>
                       </HInputGroup>

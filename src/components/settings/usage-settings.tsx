@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button, Label, Skeleton, Spinner, Tab, TabList, TabPanel, Tabs, Tooltip } from '@/components/base'
+import {
+  Alert,
+  Button,
+  Label,
+  Skeleton,
+  Spinner,
+  Tab,
+  TabList,
+  TabPanel,
+  Tabs,
+  Tooltip,
+  TooltipTrigger,
+} from '@/components/base'
 import { EmptyState } from '@/components/base'
 import { KPI } from '@/components/base'
 import { AreaChart } from '@/components/base'
@@ -1122,12 +1134,12 @@ function BucketTable({
             id: conversationId,
           })
           return (
-            <Tooltip>
+            <TooltipTrigger>
               <Button isIconOnly variant="ghost" aria-label={label} onPress={() => onOpenConversation(conversationId)}>
                 <ArrowRightFromSquare className="size-4" />
               </Button>
-              <Tooltip.Content placement="left">{label}</Tooltip.Content>
-            </Tooltip>
+              <Tooltip placement="left">{label}</Tooltip>
+            </TooltipTrigger>
           )
         },
       })

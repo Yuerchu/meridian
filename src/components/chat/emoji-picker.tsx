@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FaceSmile, Magnifier } from '@gravity-ui/icons'
-import { Button, ScrollShadow, SearchField, Tooltip } from '@/components/base'
+import { Button, ScrollShadow, SearchField, Tooltip, TooltipTrigger } from '@/components/base'
 import { ChatLoader, EmojiPicker as ProEmojiPicker } from '@/components/base'
 
 import { api } from '@/api'
@@ -138,7 +138,7 @@ export function EmojiPicker({
       onOpenChange={handleOpenChange}
       onSelectionChange={handleSelect}
     >
-      <Tooltip delay={0}>
+      <TooltipTrigger delay={0}>
         <ProEmojiPicker.Trigger
           aria-label={t('chat.emoji')}
           className="touch-hitbox flex size-8 items-center justify-center rounded-lg text-muted hover:bg-default hover:text-foreground"
@@ -151,8 +151,8 @@ export function EmojiPicker({
         >
           <FaceSmile className="size-4" />
         </ProEmojiPicker.Trigger>
-        <Tooltip.Content>{t('chat.emoji')}</Tooltip.Content>
-      </Tooltip>
+        <Tooltip>{t('chat.emoji')}</Tooltip>
+      </TooltipTrigger>
       <ProEmojiPicker.Popover placement="top end">
         <ProEmojiPicker.Content>
           <SearchField

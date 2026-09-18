@@ -1,7 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Alert, Button, Kbd, Tooltip } from '@/components/base'
+import { Alert, Button, Kbd, Tooltip, TooltipTrigger } from '@/components/base'
 import { Sidebar } from '@/components/base'
 import { Resizable } from '@/components/base'
 import { FolderTree, Magnifier, Xmark } from '@gravity-ui/icons'
@@ -266,10 +266,10 @@ export function AppShell(props: ShellProps) {
           >
             {/* Below 768px this is the only way to the conversation list, so it
               is sized for a thumb rather than for a pointer. */}
-            <Tooltip>
+            <TooltipTrigger>
               <Sidebar.Trigger aria-label={t('sidebar.toggle')} className="-ml-1 size-11 md:size-8" />
-              <Tooltip.Content placement="bottom">{t('sidebar.toggle')}</Tooltip.Content>
-            </Tooltip>
+              <Tooltip placement="bottom">{t('sidebar.toggle')}</Tooltip>
+            </TooltipTrigger>
             <h1
               data-slot="app-title"
               ref={pageHeadingRef}
@@ -290,7 +290,7 @@ export function AppShell(props: ShellProps) {
             <div data-slot="app-header-actions" className="ml-auto flex shrink-0 items-center gap-1">
               {/* Only where the panel it toggles can open. */}
               {activeId && !isMobile && page !== 'settings' && !activeReviewId && (
-                <Tooltip>
+                <TooltipTrigger>
                   <Button
                     isIconOnly
                     variant={changesOpen ? 'secondary' : 'ghost'}
@@ -301,10 +301,10 @@ export function AppShell(props: ShellProps) {
                   >
                     <FolderTree />
                   </Button>
-                  <Tooltip.Content placement="bottom">{t('chat.changes.toggle')}</Tooltip.Content>
-                </Tooltip>
+                  <Tooltip placement="bottom">{t('chat.changes.toggle')}</Tooltip>
+                </TooltipTrigger>
               )}
-              <Tooltip>
+              <TooltipTrigger>
                 <Button
                   isIconOnly
                   variant="ghost"
@@ -315,11 +315,11 @@ export function AppShell(props: ShellProps) {
                 >
                   <Magnifier />
                 </Button>
-                <Tooltip.Content placement="bottom">
+                <Tooltip placement="bottom">
                   {t('palette.title')}
                   <Kbd className="ml-2">{commandShortcut}</Kbd>
-                </Tooltip.Content>
-              </Tooltip>
+                </Tooltip>
+              </TooltipTrigger>
             </div>
           </header>
 
@@ -330,7 +330,7 @@ export function AppShell(props: ShellProps) {
                 <Alert.Content className="min-w-0">
                   <Alert.Description className="break-words">{actionError}</Alert.Description>
                 </Alert.Content>
-                <Tooltip>
+                <TooltipTrigger>
                   <Button
                     isIconOnly
                     size="sm"
@@ -341,8 +341,8 @@ export function AppShell(props: ShellProps) {
                   >
                     <Xmark />
                   </Button>
-                  <Tooltip.Content placement="bottom">{t('common.close')}</Tooltip.Content>
-                </Tooltip>
+                  <Tooltip placement="bottom">{t('common.close')}</Tooltip>
+                </TooltipTrigger>
               </Alert>
             </div>
           )}

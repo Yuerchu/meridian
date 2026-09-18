@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { Button, ListBox, ToggleButton, ToggleButtonGroup, Tooltip } from '@/components/base'
+import { Button, ListBox, ToggleButton, ToggleButtonGroup, Tooltip, TooltipTrigger } from '@/components/base'
 
 import { CASES } from './responsive-cases'
 import { runDetectors, type Finding, type Severity } from './responsive-detectors'
@@ -367,12 +367,12 @@ function Choices<T extends string | number>({
           )
         }
         return (
-          <Tooltip key={key} delay={0}>
+          <TooltipTrigger key={key} delay={0}>
             <ToggleButton id={key} className="text-xs font-normal tabular-nums">
               {o.label ?? o.value}
             </ToggleButton>
-            <Tooltip.Content placement="bottom">{o.hint}</Tooltip.Content>
-          </Tooltip>
+            <Tooltip placement="bottom">{o.hint}</Tooltip>
+          </TooltipTrigger>
         )
       })}
     </ToggleButtonGroup>

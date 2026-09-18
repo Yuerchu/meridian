@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { Button, Tooltip } from '@/components/base'
+import { Button, Tooltip, TooltipTrigger } from '@/components/base'
 import { FileTree } from '@/components/base'
 import { File, Folder, FolderOpen, Xmark } from '@gravity-ui/icons'
 
@@ -77,7 +77,7 @@ export function ChangesPanelView({ files, onClose }: { files: TouchedFile[]; onC
         <span data-slot="changes-panel-count" className="shrink-0 text-xs tabular-nums text-muted">
           {files.length}
         </span>
-        <Tooltip delay={0}>
+        <TooltipTrigger delay={0}>
           <Button
             isIconOnly
             variant="ghost"
@@ -88,8 +88,8 @@ export function ChangesPanelView({ files, onClose }: { files: TouchedFile[]; onC
           >
             <Xmark />
           </Button>
-          <Tooltip.Content>{t('common.close')}</Tooltip.Content>
-        </Tooltip>
+          <Tooltip>{t('common.close')}</Tooltip>
+        </TooltipTrigger>
       </header>
 
       <FileTree

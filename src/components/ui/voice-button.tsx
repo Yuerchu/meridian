@@ -1,5 +1,5 @@
 import { Microphone, StopFill } from '@gravity-ui/icons'
-import { Button, Spinner, Tooltip } from '@/components/base'
+import { Button, Spinner, Tooltip, TooltipTrigger } from '@/components/base'
 import { cn } from '@/lib/utils'
 
 export type VoiceButtonState =
@@ -51,7 +51,7 @@ export function VoiceButton({
           {Math.floor(elapsed / 60)}:{String(Math.floor(elapsed % 60)).padStart(2, '0')}
         </span>
       )}
-      <Tooltip delay={0}>
+      <TooltipTrigger delay={0}>
         <Button
           isIconOnly
           aria-label={ariaLabel}
@@ -85,8 +85,8 @@ export function VoiceButton({
             <Microphone className="w-4 h-4" />
           )}
         </Button>
-        <Tooltip.Content>{ariaLabel}</Tooltip.Content>
-      </Tooltip>
+        <Tooltip>{ariaLabel}</Tooltip>
+      </TooltipTrigger>
     </div>
   )
 }

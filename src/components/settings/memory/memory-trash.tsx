@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TrashBin, ArrowUturnCcwLeft } from '@gravity-ui/icons'
 import { api } from '@/api'
-import { Alert, Button, Card, Chip, Drawer, Spinner, Tooltip } from '@/components/base'
+import { Alert, Button, Card, Chip, Drawer, Spinner, Tooltip, TooltipTrigger } from '@/components/base'
 import { EmptyState } from '@/components/base'
 import { INFO_CHIP } from './memory-row'
 import type { MemoryInfoResponse } from '@/types'
@@ -120,7 +120,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                     </span>
                     <Chip className={INFO_CHIP}>{deletedByLabel(m.deleted_by)}</Chip>
                     <div data-slot="memory-trash-row-actions" className="ms-auto flex shrink-0 items-center gap-1">
-                      <Tooltip delay={0}>
+                      <TooltipTrigger delay={0}>
                         <Button
                           variant="ghost"
                           isIconOnly
@@ -134,9 +134,9 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                         >
                           <ArrowUturnCcwLeft />
                         </Button>
-                        <Tooltip.Content>{t('settings.memory.trash.restore')}</Tooltip.Content>
-                      </Tooltip>
-                      <Tooltip delay={0}>
+                        <Tooltip>{t('settings.memory.trash.restore')}</Tooltip>
+                      </TooltipTrigger>
+                      <TooltipTrigger delay={0}>
                         <Button
                           variant="ghost"
                           isIconOnly
@@ -154,8 +154,8 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                         >
                           <TrashBin className="text-danger" />
                         </Button>
-                        <Tooltip.Content>{t('settings.memory.trash.purge')}</Tooltip.Content>
-                      </Tooltip>
+                        <Tooltip>{t('settings.memory.trash.purge')}</Tooltip>
+                      </TooltipTrigger>
                     </div>
                   </div>
                   <Card.Description className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">

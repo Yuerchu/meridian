@@ -15,6 +15,7 @@ import {
   TextArea,
   TextField,
   Tooltip,
+  TooltipTrigger,
 } from '@/components/base'
 import { EmptyState } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
@@ -180,7 +181,7 @@ function SkillEditor({
         </Button>
         {saved && <SavedHint data-slot="skill-editor-saved" />}
         {onDelete && !isBuiltin && (
-          <Tooltip delay={0}>
+          <TooltipTrigger delay={0}>
             <Button
               isIconOnly
               variant="ghost"
@@ -190,8 +191,8 @@ function SkillEditor({
             >
               <TrashBin className="w-3.5 h-3.5" />
             </Button>
-            <Tooltip.Content>{t('settings.skills.delete')}</Tooltip.Content>
-          </Tooltip>
+            <Tooltip>{t('settings.skills.delete')}</Tooltip>
+          </TooltipTrigger>
         )}
       </div>
     </div>

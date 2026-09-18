@@ -7,7 +7,7 @@ import { Placeholder, CharacterCount } from '@tiptap/extensions'
 import type { Extension } from '@tiptap/core'
 import { cx } from '@/utils/cx'
 import { Button } from './button'
-import { Tooltip } from './tooltip'
+import { Tooltip, TooltipTrigger } from './tooltip/tooltip'
 
 export type RichTextEditorFormatCommand =
   | 'heading-1'
@@ -183,10 +183,10 @@ function RteToggleButton({ command, tooltip, children, className, ...props }: Rt
 
   if (!tooltip) return button
   return (
-    <Tooltip delay={0}>
+    <TooltipTrigger delay={0}>
       {button}
-      <Tooltip.Content>{tooltip}</Tooltip.Content>
-    </Tooltip>
+      <Tooltip>{tooltip}</Tooltip>
+    </TooltipTrigger>
   )
 }
 
@@ -221,10 +221,10 @@ function RteActionButton({ action, tooltip, children, className, ...props }: Rte
 
   if (!tooltip) return button
   return (
-    <Tooltip delay={0}>
+    <TooltipTrigger delay={0}>
       {button}
-      <Tooltip.Content>{tooltip}</Tooltip.Content>
-    </Tooltip>
+      <Tooltip>{tooltip}</Tooltip>
+    </TooltipTrigger>
   )
 }
 
@@ -258,10 +258,10 @@ function RteCommandButton({ tooltip, isDisabled, onCommand, children, className,
 
   if (!tooltip) return button
   return (
-    <Tooltip delay={0}>
+    <TooltipTrigger delay={0}>
       {button}
-      <Tooltip.Content>{tooltip}</Tooltip.Content>
-    </Tooltip>
+      <Tooltip>{tooltip}</Tooltip>
+    </TooltipTrigger>
   )
 }
 

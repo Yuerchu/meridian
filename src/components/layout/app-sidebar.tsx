@@ -28,7 +28,19 @@ import { useTranslation } from 'react-i18next'
 import { DropZone, useDragAndDrop } from 'react-aria-components'
 import type { DropItem, Key } from 'react-aria-components'
 import { open } from '@tauri-apps/plugin-dialog'
-import { Alert, Button, Dropdown, Input, Label, Spinner, ToggleButton, Tooltip } from '@/components/base'
+import {
+  Alert,
+  Button,
+  Dropdown,
+  DropdownItem,
+  DropdownPopover,
+  Input,
+  Label,
+  Spinner,
+  ToggleButton,
+  Tooltip,
+  TooltipTrigger,
+} from '@/components/base'
 import { ContextMenu } from '@/components/base'
 import { Sidebar, useSidebar } from '@/components/base'
 import {
@@ -283,12 +295,12 @@ function NewProjectForm({
         </Button>
         {/* The glyph is not a name: a screen reader reads U+2715 as nothing, or
             as "multiplication x". */}
-        <Tooltip delay={0}>
+        <TooltipTrigger delay={0}>
           <Button isIconOnly variant="ghost" aria-label={t('common.cancel')} onPress={onCancel} isDisabled={saving}>
             <Xmark />
           </Button>
-          <Tooltip.Content>{t('common.cancel')}</Tooltip.Content>
-        </Tooltip>
+          <Tooltip>{t('common.cancel')}</Tooltip>
+        </TooltipTrigger>
       </div>
     </div>
   )
@@ -389,12 +401,12 @@ function NewHostedSessionForm({
           {starting && <Spinner size="sm" aria-hidden />}
           {t('sidebar.startHostedSession')}
         </Button>
-        <Tooltip delay={0}>
+        <TooltipTrigger delay={0}>
           <Button isIconOnly variant="ghost" aria-label={t('common.cancel')} onPress={onCancel} isDisabled={starting}>
             <Xmark />
           </Button>
-          <Tooltip.Content>{t('common.cancel')}</Tooltip.Content>
-        </Tooltip>
+          <Tooltip>{t('common.cancel')}</Tooltip>
+        </TooltipTrigger>
       </div>
     </div>
   )
@@ -636,7 +648,7 @@ function ConversationGroup({
             data-row-id={projectId ?? undefined}
             data-row-kind={projectId ? 'project' : undefined}
           >
-            <Tooltip delay={0}>
+            <TooltipTrigger delay={0}>
               <Button
                 isIconOnly
                 size="sm"
@@ -650,10 +662,10 @@ function ConversationGroup({
               >
                 <ChevronRight className={cn('size-3 transition-transform', !folded && 'rotate-90')} />
               </Button>
-              <Tooltip.Content>
+              <Tooltip>
                 {folded ? t('sidebar.unfoldGroup', { name: title }) : t('sidebar.foldGroup', { name: title })}
-              </Tooltip.Content>
-            </Tooltip>
+              </Tooltip>
+            </TooltipTrigger>
             {onSelectToggle ? (
               <ToggleButton
                 size="sm"
@@ -678,7 +690,7 @@ function ConversationGroup({
               </span>
             )}
             <span data-slot="sidebar-group-actions" className="sidebar-group-actions flex shrink-0 items-center">
-              <Tooltip delay={0}>
+              <TooltipTrigger delay={0}>
                 <Button
                   isIconOnly
                   size="sm"
@@ -689,29 +701,21 @@ function ConversationGroup({
                 >
                   <Plus />
                 </Button>
-                <Tooltip.Content>
-                  {projectId ? t('sidebar.newConversationIn', { name: title }) : t('sidebar.newChat')}
-                </Tooltip.Content>
-              </Tooltip>
+                <Tooltip>{projectId ? t('sidebar.newConversationIn', { name: title }) : t('sidebar.newChat')}</Tooltip>
+              </TooltipTrigger>
               {actions && actions.length > 0 && (
                 <Dropdown>
                   {/* Styled as a menu action — the docs' own pattern for a
                       dropdown trigger in a sidebar — so the two buttons match. */}
-                  <Tooltip delay={0}>
-                    <Dropdown.Trigger
-                      aria-label={moreLabel}
-                      className="sidebar__menu-action touch-hitbox"
-                      data-slot="sidebar-menu-action"
-                    >
+                  <TooltipTrigger delay={0}>
+                    <Sidebar.MenuAction className="touch-hitbox" aria-label={moreLabel}>
                       <EllipsisVertical className="size-4" />
-                    </Dropdown.Trigger>
-                    <Tooltip.Content>{moreLabel}</Tooltip.Content>
-                  </Tooltip>
-                  <Dropdown.Popover placement="bottom end">
-                    <Dropdown.Menu aria-label={moreLabel}>
-                      <RowActionDropdownItems actions={actions} />
-                    </Dropdown.Menu>
-                  </Dropdown.Popover>
+                    </Sidebar.MenuAction>
+                    <Tooltip>{moreLabel}</Tooltip>
+                  </TooltipTrigger>
+                  <DropdownPopover placement="bottom end" aria-label={moreLabel}>
+                    <RowActionDropdownItems actions={actions} />
+                  </DropdownPopover>
                 </Dropdown>
               )}
             </span>
@@ -1197,7 +1201,7 @@ export function AppSidebar({
             pointers because DnD is disabled there and the row-actions dialog
             is the touch path; on fine pointers it appears on hover, the way a
             file tree's handle does — see `conv-grip` in `index.css`. */}
-        <Tooltip delay={0}>
+        <TooltipTrigger delay={0}>
           <Sidebar.MenuAction
             slot="drag"
             aria-label={t('sidebar.dragConversation', { name: title })}
@@ -1205,8 +1209,8 @@ export function AppSidebar({
           >
             <Grip />
           </Sidebar.MenuAction>
-          <Tooltip.Content>{t('sidebar.dragConversation', { name: title })}</Tooltip.Content>
-        </Tooltip>
+          <Tooltip>{t('sidebar.dragConversation', { name: title })}</Tooltip>
+        </TooltipTrigger>
         <Sidebar.MenuChip className="gap-1">
           {/* Hover swaps this for the action buttons — see `conv-time`. */}
           <span data-slot="conversation-time" className="conv-time">
@@ -1242,38 +1246,36 @@ export function AppSidebar({
             {canHostSessions && (
               <Sidebar.MenuActions>
                 <Dropdown>
-                  <Tooltip delay={0}>
+                  <TooltipTrigger delay={0}>
                     <Sidebar.MenuAction className="touch-hitbox" aria-label={t('sidebar.newChatMore')}>
                       <EllipsisVertical />
                     </Sidebar.MenuAction>
-                    <Tooltip.Content>{t('sidebar.newChatMore')}</Tooltip.Content>
-                  </Tooltip>
-                  <Dropdown.Popover placement="bottom end">
-                    <Dropdown.Menu aria-label={t('sidebar.newChatMore')}>
-                      <Dropdown.Item
-                        id="new-hosted"
-                        textValue={t('sidebar.newHostedSession')}
-                        onAction={() => setShowNewHosted((open) => !open)}
-                      >
-                        <Terminal className="size-4" />
-                        <Label>{t('sidebar.newHostedSession')}</Label>
-                      </Dropdown.Item>
-                      {/* Beside starting one, because it is the other way a
-                          hosted conversation comes into being — and the more
-                          common one for anybody who already has terminals
-                          open. Also the one that works best from a phone: the
-                          list and the directories in it are the host's, so
-                          nothing here needs a local file picker. */}
-                      <Dropdown.Item
-                        id="import-hosted"
-                        textValue={t('sidebar.importHostedSession')}
-                        onAction={dismissing(() => setPicker({ mode: 'import' }))}
-                      >
-                        <ArrowDownToSquare className="size-4" />
-                        <Label>{t('sidebar.importHostedSession')}</Label>
-                      </Dropdown.Item>
-                    </Dropdown.Menu>
-                  </Dropdown.Popover>
+                    <Tooltip>{t('sidebar.newChatMore')}</Tooltip>
+                  </TooltipTrigger>
+                  <DropdownPopover placement="bottom end" aria-label={t('sidebar.newChatMore')}>
+                    <DropdownItem
+                      id="new-hosted"
+                      textValue={t('sidebar.newHostedSession')}
+                      onAction={() => setShowNewHosted((open) => !open)}
+                    >
+                      <Terminal className="size-4" />
+                      <Label>{t('sidebar.newHostedSession')}</Label>
+                    </DropdownItem>
+                    {/* Beside starting one, because it is the other way a
+                        hosted conversation comes into being — and the more
+                        common one for anybody who already has terminals
+                        open. Also the one that works best from a phone: the
+                        list and the directories in it are the host's, so
+                        nothing here needs a local file picker. */}
+                    <DropdownItem
+                      id="import-hosted"
+                      textValue={t('sidebar.importHostedSession')}
+                      onAction={dismissing(() => setPicker({ mode: 'import' }))}
+                    >
+                      <ArrowDownToSquare className="size-4" />
+                      <Label>{t('sidebar.importHostedSession')}</Label>
+                    </DropdownItem>
+                  </DropdownPopover>
                 </Dropdown>
               </Sidebar.MenuActions>
             )}
@@ -1419,7 +1421,7 @@ export function AppSidebar({
             <Alert.Content className="min-w-0">
               <Alert.Description className="break-words">{actionError}</Alert.Description>
             </Alert.Content>
-            <Tooltip delay={0}>
+            <TooltipTrigger delay={0}>
               <Button
                 isIconOnly
                 size="sm"
@@ -1430,8 +1432,8 @@ export function AppSidebar({
               >
                 <Xmark />
               </Button>
-              <Tooltip.Content>{t('common.close')}</Tooltip.Content>
-            </Tooltip>
+              <Tooltip>{t('common.close')}</Tooltip>
+            </TooltipTrigger>
           </Alert>
         )}
         <Sidebar.Menu aria-label={t('sidebar.settings')}>

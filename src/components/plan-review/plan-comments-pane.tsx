@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Comment, TrashBin } from '@gravity-ui/icons'
-import { Button, Chip, Label, Link, TextArea, TextField, Tooltip } from '@/components/base'
+import { Button, Chip, Label, Link, TextArea, TextField, Tooltip, TooltipTrigger } from '@/components/base'
 
 import type { PlanCommentInfoResponse } from '@/types'
 
@@ -87,7 +87,7 @@ export function PlanCommentsPane({
                 </q>
               </Link>
               {!isReadOnly && (
-                <Tooltip>
+                <TooltipTrigger>
                   <Button
                     isIconOnly
                     size="sm"
@@ -98,8 +98,8 @@ export function PlanCommentsPane({
                   >
                     <TrashBin />
                   </Button>
-                  <Tooltip.Content>{t('planReview.comments.delete')}</Tooltip.Content>
-                </Tooltip>
+                  <Tooltip>{t('planReview.comments.delete')}</Tooltip>
+                </TooltipTrigger>
               )}
             </div>
             {isReadOnly ? (

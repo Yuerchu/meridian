@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Disclosure, ProgressCircle, Tooltip } from '@/components/base'
+import { Disclosure, ProgressCircle, Tooltip, TooltipTrigger } from '@/components/base'
 import { Segment } from '@/components/base'
 import { LayoutColumns3, LayoutList } from '@gravity-ui/icons'
 import { useTranslation } from 'react-i18next'
@@ -117,18 +117,18 @@ export function TodoBarView({
                 if (next === 'list' || next === 'board') setView(next)
               }}
             >
-              <Tooltip delay={0}>
+              <TooltipTrigger delay={0}>
                 <Segment.Item id="list" aria-label={t('chat.todo.viewList')} className="w-7 px-0">
                   <LayoutList />
                 </Segment.Item>
-                <Tooltip.Content>{t('chat.todo.viewList')}</Tooltip.Content>
-              </Tooltip>
-              <Tooltip delay={0}>
+                <Tooltip>{t('chat.todo.viewList')}</Tooltip>
+              </TooltipTrigger>
+              <TooltipTrigger delay={0}>
                 <Segment.Item id="board" aria-label={t('chat.todo.viewBoard')} className="w-7 px-0">
                   <LayoutColumns3 />
                 </Segment.Item>
-                <Tooltip.Content>{t('chat.todo.viewBoard')}</Tooltip.Content>
-              </Tooltip>
+                <Tooltip>{t('chat.todo.viewBoard')}</Tooltip>
+              </TooltipTrigger>
             </Segment>
           </div>
           {view === 'board' ? (

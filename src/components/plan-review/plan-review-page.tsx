@@ -2,7 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState, type Key, type RefOb
 import { useTranslation } from 'react-i18next'
 
 import { ChevronDown, Clock, Comment, TriangleExclamation, Xmark } from '@gravity-ui/icons'
-import { Button, Chip, Dropdown, Skeleton, TextArea, Tooltip } from '@/components/base'
+import {
+  Button,
+  Chip,
+  Dropdown,
+  DropdownItem,
+  DropdownPopover,
+  Skeleton,
+  TextArea,
+  Tooltip,
+  TooltipTrigger,
+} from '@/components/base'
 import { Segment } from '@/components/base'
 import { Sheet } from '@/components/base'
 
@@ -678,42 +688,41 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
                 : t('planReview.history.current')}
               <ChevronDown />
             </Button>
-            <Dropdown.Popover placement="bottom end">
-              <Dropdown.Menu
-                aria-label={t('planReview.history.title')}
-                selectionMode="single"
-                selectedKeys={[historicalRevisionId ?? 'current']}
+            <DropdownPopover
+              placement="bottom end"
+              aria-label={t('planReview.history.title')}
+              selectionMode="single"
+              selectedKeys={[historicalRevisionId ?? 'current']}
+            >
+              <DropdownItem
+                id="current"
+                textValue={t('planReview.history.current')}
+                onAction={() => setHistoricalRevisionId(null)}
               >
-                <Dropdown.Item
-                  id="current"
-                  textValue={t('planReview.history.current')}
-                  onAction={() => setHistoricalRevisionId(null)}
+                {t('planReview.history.current')}
+              </DropdownItem>
+              {historyItems.map((revision) => (
+                <DropdownItem
+                  key={revision.id}
+                  id={revision.id}
+                  textValue={t('planReview.revision', { number: revision.revision_no })}
+                  onAction={() => {
+                    setHistoricalRevisionId(revision.id)
+                    setTab('plan')
+                  }}
                 >
-                  {t('planReview.history.current')}
-                </Dropdown.Item>
-                {historyItems.map((revision) => (
-                  <Dropdown.Item
-                    key={revision.id}
-                    id={revision.id}
-                    textValue={t('planReview.revision', { number: revision.revision_no })}
-                    onAction={() => {
-                      setHistoricalRevisionId(revision.id)
-                      setTab('plan')
-                    }}
-                  >
-                    {t('planReview.revision', { number: revision.revision_no })}
-                  </Dropdown.Item>
-                ))}
-              </Dropdown.Menu>
-            </Dropdown.Popover>
+                  {t('planReview.revision', { number: revision.revision_no })}
+                </DropdownItem>
+              ))}
+            </DropdownPopover>
           </Dropdown>
 
-          <Tooltip>
+          <TooltipTrigger>
             <Button isIconOnly variant="ghost" size="sm" aria-label={t('common.close')} onPress={onClose}>
               <Xmark />
             </Button>
-            <Tooltip.Content>{t('common.close')}</Tooltip.Content>
-          </Tooltip>
+            <Tooltip>{t('common.close')}</Tooltip>
+          </TooltipTrigger>
         </div>
       </header>
 

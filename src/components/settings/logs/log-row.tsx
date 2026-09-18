@@ -1,7 +1,7 @@
 import { memo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, Copy } from '@gravity-ui/icons'
-import { Button, Tooltip } from '@/components/base'
+import { Button, Tooltip, TooltipTrigger } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { cn } from '@/lib/utils'
 import type { LogEntryInfoResponse } from '@/types'
@@ -95,7 +95,7 @@ function LogRowImpl({ entry }: { entry: LogEntryInfoResponse }) {
         )}
       </div>
 
-      <Tooltip delay={0}>
+      <TooltipTrigger delay={0}>
         <Button
           isIconOnly
           data-slot="log-row-copy"
@@ -110,8 +110,8 @@ function LogRowImpl({ entry }: { entry: LogEntryInfoResponse }) {
         >
           {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
         </Button>
-        <Tooltip.Content>{t('settings.about.logs.copyRecord')}</Tooltip.Content>
-      </Tooltip>
+        <Tooltip>{t('settings.about.logs.copyRecord')}</Tooltip>
+      </TooltipTrigger>
     </div>
   )
 }

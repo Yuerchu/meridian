@@ -1,6 +1,16 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button, Description, Input, Label, Separator, TextField, Tooltip } from '@/components/base'
+import {
+  Alert,
+  Button,
+  Description,
+  Input,
+  Label,
+  Separator,
+  TextField,
+  Tooltip,
+  TooltipTrigger,
+} from '@/components/base'
 import { CellSwitch } from '@/components/base'
 import { ItemCard } from '@/components/base'
 import { ItemCardGroup } from '@/components/base'
@@ -361,7 +371,7 @@ export function RemoteAccessSettings() {
                       <ItemCard.Title className="w-full break-all font-mono">{dialable}</ItemCard.Title>
                     </ItemCard.Content>
                     <ItemCard.Action>
-                      <Tooltip delay={0}>
+                      <TooltipTrigger delay={0}>
                         <Button
                           isIconOnly
                           size="sm"
@@ -375,8 +385,8 @@ export function RemoteAccessSettings() {
                             <Copy className="size-3.5" />
                           )}
                         </Button>
-                        <Tooltip.Content>{t('settings.remote.copyAddress')}</Tooltip.Content>
-                      </Tooltip>
+                        <Tooltip>{t('settings.remote.copyAddress')}</Tooltip>
+                      </TooltipTrigger>
                     </ItemCard.Action>
                   </ItemCard>
                 </Fragment>

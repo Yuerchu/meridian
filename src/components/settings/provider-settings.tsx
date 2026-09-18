@@ -12,6 +12,7 @@ import {
   Spinner,
   TextField,
   Tooltip,
+  TooltipTrigger,
 } from '@/components/base'
 import { EmptyState } from '@/components/base'
 import { DataGrid, type DataGridColumn } from '@/components/base'
@@ -501,7 +502,7 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
                 className="h-7 pointer-coarse:h-10 text-xs"
               />
             </TextField>
-            <Tooltip>
+            <TooltipTrigger>
               <Button
                 size="sm"
                 variant="ghost"
@@ -511,8 +512,8 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
               >
                 <TrashBin className="size-3.5" />
               </Button>
-              <Tooltip.Content>{t('settings.model.removeTier')}</Tooltip.Content>
-            </Tooltip>
+              <Tooltip>{t('settings.model.removeTier')}</Tooltip>
+            </TooltipTrigger>
           </div>
           <div data-slot="price-tier-rates" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
             <TextField fullWidth>
@@ -1498,7 +1499,7 @@ function ProviderEditor({
             ? t('settings.provider.closeModelConfig', { model: model.name })
             : t('settings.provider.editModelConfig', { model: model.name })
           return (
-            <Tooltip delay={0}>
+            <TooltipTrigger delay={0}>
               <Button
                 isIconOnly
                 variant="ghost"
@@ -1510,8 +1511,8 @@ function ProviderEditor({
               >
                 {isEditing ? <Xmark className="size-3.5" /> : <Sliders className="size-3.5" />}
               </Button>
-              <Tooltip.Content placement="top">{label}</Tooltip.Content>
-            </Tooltip>
+              <Tooltip placement="top">{label}</Tooltip>
+            </TooltipTrigger>
           )
         },
       },
@@ -1972,12 +1973,12 @@ export function ProviderSettings() {
         nav={nav}
         title={t('settings.provider.title')}
         actions={
-          <Tooltip delay={0}>
+          <TooltipTrigger delay={0}>
             <Button isIconOnly aria-label={t('settings.provider.addProvider')} variant="ghost" onPress={handleCreate}>
               <Plus className="w-4 h-4" />
             </Button>
-            <Tooltip.Content placement="top">{t('settings.provider.addProvider')}</Tooltip.Content>
-          </Tooltip>
+            <Tooltip placement="top">{t('settings.provider.addProvider')}</Tooltip>
+          </TooltipTrigger>
         }
         list={providerList}
         detailTitle={selected?.name}

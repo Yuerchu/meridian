@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, ChevronRight, Copy, FileText } from '@gravity-ui/icons'
-import { Button, Chip, Separator, Skeleton, Tooltip } from '@/components/base'
+import { Button, Chip, Separator, Skeleton, Tooltip, TooltipTrigger } from '@/components/base'
 import { Hint } from '@/components/ui/hint'
 import { ItemCard } from '@/components/base'
 import { ItemCardGroup } from '@/components/base'
@@ -236,7 +236,7 @@ export function About() {
             value={info?.dataDir}
             action={
               info && (
-                <Tooltip delay={0}>
+                <TooltipTrigger delay={0}>
                   <Button
                     isIconOnly
                     size="sm"
@@ -249,8 +249,8 @@ export function About() {
                   >
                     {pathCopied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
                   </Button>
-                  <Tooltip.Content>{t('settings.about.system.copyDataDir')}</Tooltip.Content>
-                </Tooltip>
+                  <Tooltip>{t('settings.about.system.copyDataDir')}</Tooltip>
+                </TooltipTrigger>
               )
             }
           />

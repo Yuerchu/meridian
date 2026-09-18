@@ -25,7 +25,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
-import { Button, Chip, Input, ListBox, Tooltip } from '@/components/base'
+import { Button, Chip, Input, ListBox, Tooltip, TooltipTrigger } from '@/components/base'
 import { cn } from '@/lib/utils'
 import { useAppTheme } from '@/lib/theme'
 import {
@@ -451,12 +451,12 @@ function DetailPanel({
               {table.title} · {group?.title} · 迁移 {table.mig}
             </p>
           </div>
-          <Tooltip delay={0}>
+          <TooltipTrigger delay={0}>
             <Button isIconOnly aria-label="关闭详情" variant="ghost" size="sm" className="ml-auto" onPress={onClose}>
               <Xmark className="size-4" />
             </Button>
-            <Tooltip.Content placement="left">关闭</Tooltip.Content>
-          </Tooltip>
+            <Tooltip placement="left">关闭</Tooltip>
+          </TooltipTrigger>
         </div>
         {table.tags && table.tags.length > 0 && (
           <div data-slot="schema-detail-tags" className="mt-2 flex flex-wrap gap-1.5">
@@ -621,7 +621,7 @@ function Lab() {
           {GROUPS.map((g) => {
             const off = hiddenGroups.has(g.id)
             return (
-              <Tooltip key={g.id} delay={300}>
+              <TooltipTrigger key={g.id} delay={300}>
                 <Button
                   variant="outline"
                   size="sm"
@@ -637,11 +637,11 @@ function Lab() {
                   />
                   {g.title}
                 </Button>
-                <Tooltip.Content placement="bottom">{g.desc}</Tooltip.Content>
-              </Tooltip>
+                <Tooltip placement="bottom">{g.desc}</Tooltip>
+              </TooltipTrigger>
             )
           })}
-          <Tooltip delay={0}>
+          <TooltipTrigger delay={0}>
             <Button
               isIconOnly
               aria-label="切换主题"
@@ -652,8 +652,8 @@ function Lab() {
               <Sun className="hidden size-4 dark:block" />
               <Moon className="size-4 dark:hidden" />
             </Button>
-            <Tooltip.Content placement="bottom">切换主题</Tooltip.Content>
-          </Tooltip>
+            <Tooltip placement="bottom">切换主题</Tooltip>
+          </TooltipTrigger>
         </div>
       </header>
 

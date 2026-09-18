@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { createPortal } from 'react-dom'
-import { Disclosure, Spinner, Tooltip, tv, type VariantProps } from '@/components/base'
+import { Disclosure, Spinner, Tooltip, TooltipTrigger, tv, type VariantProps } from '@/components/base'
 import { DisclosureStateContext } from 'react-aria-components'
 import { CircleCheck, CircleExclamation, CircleXmark, Clock } from '@gravity-ui/icons'
 import { useShikiLanguage } from '@/hooks/use-shiki-language'
@@ -287,10 +287,10 @@ function ChatToolTrigger({ className, children, endContent, subtitle, ...props }
     // and the disclosure's own context reaches through.
     if (!requiresAction && hasSubtitle) {
       return (
-        <Tooltip delay={0}>
+        <TooltipTrigger delay={0}>
           {key}
-          <Tooltip.Content placement="top">{subtitle}</Tooltip.Content>
-        </Tooltip>
+          <Tooltip placement="top">{subtitle}</Tooltip>
+        </TooltipTrigger>
       )
     }
     return key

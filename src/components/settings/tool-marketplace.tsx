@@ -13,6 +13,7 @@ import {
   Label,
   TextField,
   Tooltip,
+  TooltipTrigger,
 } from '@/components/base'
 import { EmptyState } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
@@ -202,7 +203,7 @@ function CustomToolEditor({
         <Button type="submit">{t('common.save')}</Button>
         {saved && <SavedHint />}
         {onDelete && (
-          <Tooltip delay={0}>
+          <TooltipTrigger delay={0}>
             <Button
               type="button"
               isIconOnly
@@ -213,8 +214,8 @@ function CustomToolEditor({
             >
               <TrashBin className="w-3.5 h-3.5" />
             </Button>
-            <Tooltip.Content>{t('settings.tools.delete')}</Tooltip.Content>
-          </Tooltip>
+            <Tooltip>{t('settings.tools.delete')}</Tooltip>
+          </TooltipTrigger>
         )}
       </div>
     </form>

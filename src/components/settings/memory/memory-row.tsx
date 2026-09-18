@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TrashBin, TriangleExclamation } from '@gravity-ui/icons'
 import { api } from '@/api'
-import { Button, Checkbox, Chip, Disclosure, TextArea, Tooltip } from '@/components/base'
+import { Button, Checkbox, Chip, Disclosure, TextArea, Tooltip, TooltipTrigger } from '@/components/base'
 import type { MemoryInfoResponse } from '@/types'
 
 /**
@@ -55,7 +55,7 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
             shrink-wrapped rather than a fixed square so that the indicator's own
             `ms-auto` has no free space to push against. */}
         <Disclosure.Heading>
-          <Tooltip delay={0}>
+          <TooltipTrigger delay={0}>
             <Disclosure.Trigger
               data-slot="memory-row-toggle"
               aria-label={memory.key}
@@ -66,8 +66,8 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
             >
               <Disclosure.Indicator className="size-4" />
             </Disclosure.Trigger>
-            <Tooltip.Content>{memory.key}</Tooltip.Content>
-          </Tooltip>
+            <Tooltip>{memory.key}</Tooltip>
+          </TooltipTrigger>
         </Disclosure.Heading>
         <span data-slot="memory-row-key" className="min-w-0 truncate font-mono text-sm">
           {memory.key}
@@ -79,18 +79,15 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
         <Chip className={INFO_CHIP}>{memory.origin}</Chip>
         <Chip className="text-muted">{memory.memory_type}</Chip>
         {ownerOnly && (
-          <Tooltip delay={0}>
-            {/* A Chip cannot take focus, so it needs the wrapper to become a
-                tooltip trigger — unlike a real button, which would only gain a
-                second, inert tab stop from one. */}
-            <Tooltip.Trigger>
+          <TooltipTrigger delay={0}>
+            <span data-slot="memory-owner-trigger" tabIndex={0} className="inline-flex">
               <Chip color="warning">
                 <TriangleExclamation className="size-3.5" />
-                <Chip.Label>{t('settings.memory.ownerOnly')}</Chip.Label>
+                {t('settings.memory.ownerOnly')}
               </Chip>
-            </Tooltip.Trigger>
-            <Tooltip.Content>{t('settings.memory.ownerOnlyHint')}</Tooltip.Content>
-          </Tooltip>
+            </span>
+            <Tooltip>{t('settings.memory.ownerOnlyHint')}</Tooltip>
+          </TooltipTrigger>
         )}
         <div data-slot="memory-row-spacer" className="flex-1" />
         <span data-slot="memory-row-date" className="text-xs text-muted">
@@ -146,7 +143,7 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
               {t('common.save')}
             </Button>
             <div data-slot="memory-row-actions-spacer" className="flex-1" />
-            <Tooltip delay={0}>
+            <TooltipTrigger delay={0}>
               <Button
                 variant="ghost"
                 isIconOnly
@@ -159,8 +156,8 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
               >
                 <TrashBin className="text-danger" />
               </Button>
-              <Tooltip.Content>{t('settings.memory.delete')}</Tooltip.Content>
-            </Tooltip>
+              <Tooltip>{t('settings.memory.delete')}</Tooltip>
+            </TooltipTrigger>
           </div>
         </Disclosure.Body>
       </Disclosure.Content>

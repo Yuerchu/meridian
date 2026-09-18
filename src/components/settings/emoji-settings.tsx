@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowUpFromLine, Check, Plus, Sparkles, Sticker, TrashBin, Xmark } from '@gravity-ui/icons'
-import { Button, Chip, Disclosure, Input, Tooltip } from '@/components/base'
+import { Button, Chip, Disclosure, Input, Tooltip, TooltipTrigger } from '@/components/base'
 import { ActionBar } from '@/components/base'
 import { DataGrid, type DataGridColumn, type DataGridSelection } from '@/components/base'
 import { EmptyState } from '@/components/base'
@@ -179,7 +179,7 @@ function RowActions({
         </>
       )}
       {canDelete && (
-        <Tooltip delay={0}>
+        <TooltipTrigger delay={0}>
           <Button
             isIconOnly
             size="sm"
@@ -190,8 +190,8 @@ function RowActions({
           >
             <TrashBin className="size-3.5" />
           </Button>
-          <Tooltip.Content>{t('settings.emoji.deleteEmoji')}</Tooltip.Content>
-        </Tooltip>
+          <Tooltip>{t('settings.emoji.deleteEmoji')}</Tooltip>
+        </TooltipTrigger>
       )}
     </div>
   )
@@ -685,7 +685,7 @@ export function EmojiSettings() {
             </Button>
           </ActionBar.Content>
           <ActionBar.Suffix>
-            <Tooltip delay={0}>
+            <TooltipTrigger delay={0}>
               <Button
                 isIconOnly
                 variant="ghost"
@@ -694,8 +694,8 @@ export function EmojiSettings() {
               >
                 <Xmark />
               </Button>
-              <Tooltip.Content>{t('settings.emoji.clearSelection')}</Tooltip.Content>
-            </Tooltip>
+              <Tooltip>{t('settings.emoji.clearSelection')}</Tooltip>
+            </TooltipTrigger>
           </ActionBar.Suffix>
         </ActionBar>,
         document.body,
