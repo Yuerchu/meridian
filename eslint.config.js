@@ -11,7 +11,7 @@ import meridianUi from './scripts/eslint-rules/index.mjs'
 // `white` and `black` are palette colours too — `text-white` on a danger fill
 // is `text-danger-foreground` spelt wrong, and the 2026-09 audit found two.
 const PALETTE_PREFIX = '(?:text|bg|border|ring|fill|stroke|from|via|to|divide|outline|decoration|accent|caret)'
-const PALETTE_RE = `${PALETTE_PREFIX}-(?:(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-[0-9]{2,3}|(?:white|black)\\b)`
+const PALETTE_RE = `(?<![\\w-])${PALETTE_PREFIX}-(?:(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-[0-9]{2,3}|(?:white|black)\\b)`
 
 // A class that is wrong wherever it appears: matched in string literals and in
 // template chunks alike, so `cn()` arguments and template classNames both see
@@ -48,15 +48,15 @@ const styleRestrictions = [
     'Bare `rounded` (4px) is off the radius ladder (composer 2xl → chat/tool card xl → settings lg). Use <Chip> or the ladder step of the container.',
   ),
   ...forbiddenClass(
-    '\\bshadow-(?:xs|sm|md|lg|xl|2xl)\\b',
-    'Raw Tailwind shadow-* stacks on the theme. Use shadow-surface (cards) or shadow-overlay (popovers/menus), which the theme sizes per mode.',
+    '\\bshadow-(?:sm|md|lg|xl|2xl)\\b',
+    'Raw Tailwind shadow-* stacks on the theme. Use shadow-xs (a resting control), shadow-card (a card) or shadow-dropdown (a popover/menu), which the theme sizes per mode.',
   ),
   ...forbiddenClass(
     '\\banimate-pulse\\b',
     'Hand-rolled animate-pulse placeholder. Use <Skeleton> from @/components/base (with role="status" + aria-busy + a label on the group); a streaming caret disables this line with a reason.',
   ),
   ...forbiddenClass(
-    '\\banimate-spin\\b',
+    '\\banimate-spin(?![\\w-])',
     'Hand-rolled animate-spin icon. Use <Spinner size="sm" color="current" /> from @/components/base.',
   ),
   ...forbiddenClass(
@@ -82,9 +82,9 @@ const styleRestrictions = [
       'React Aria puts data-selected / data-hovered / data-pressed on the component root, not on its *.Content or *.Control slot — this selector never matches. Style from the root with a descendant selector.',
   },
   {
-    selector: "JSXOpeningElement[name.name=/^(?:H)?Button$/] > JSXAttribute[name.name='onPress']",
+    selector: 'JSXOpeningElement[name.name=/^(?:Close)?Button$/] > JSXAttribute[name.name=/^(?:onClick|disabled)$/]',
     message:
-      'Button takes onClick, not onPress (boardui uses native <button>).',
+      'Button is a React Aria button: onPress / isDisabled / isPending, not onClick / disabled. A native onClick on it bypasses press semantics (keyboard, touch, ghost clicks) and the trigger contexts (Tooltip, Menu, Dialog close) that reach it through usePress.',
   },
   {
     selector:
@@ -143,7 +143,7 @@ const nativeElementRestrictions = [
   {
     selector: "JSXOpeningElement[name.name='label']",
     message:
-      "Use <Label> from @/components/base (inside a <TextField> / <Checkbox> / <Switch>, which wire the association) instead of the native <label htmlFor>. An enable/disable row is <CellSwitch>.",
+      'Use <Label> from @/components/base (inside a <TextField> / <Checkbox> / <Switch>, which wire the association) instead of the native <label htmlFor>. An enable/disable row is <CellSwitch>.',
   },
   {
     selector: "JSXOpeningElement[name.name='kbd']",
@@ -230,12 +230,22 @@ export default tseslint.config(
       'meridian-ui/intrinsic-needs-data-slot': 'error',
     },
   },
+  // The base layer is a vendored boardui snapshot on React Aria: its files do
+  // not carry data-slot on every node (the registry does not), but every other
+  // convention applies, and one more — a prop it accepts, it honours.
+  {
+    files: ['src/components/base/**/*.tsx'],
+    rules: {
+      'meridian-ui/icon-only-needs-tooltip': 'error',
+      'meridian-ui/no-silent-prop-drop': 'error',
+    },
+  },
   // UI conventions from CLAUDE.md, machine-checkable subset. Two config blocks
   // because flat config REPLACES a rule wholesale when a later block redefines
   // it: the non-ui block must carry the full superset of restrictions.
   {
     files: ['src/**/*.{ts,tsx}'],
-    ignores: ['src/components/base/**', 'src/components/foundations/**'],
+    ignores: ['src/components/foundations/**'],
     rules: {
       'no-restricted-syntax': ['error', ...styleRestrictions, ...nativeChromeRestrictions],
     },

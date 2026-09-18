@@ -120,6 +120,29 @@ function lint(code) {
   return linter.verify(code, config, { filename: 'case.js' }).map((m) => m.message)
 }
 
+tester.run('no-silent-prop-drop', plugin.rules['no-silent-prop-drop'], {
+  valid: [
+    // Forwarded.
+    `function Field({ isInvalid, ...props }) { return <Input isInvalid={isInvalid} {...props} /> }`,
+    // An underscore-named prop is the caller's name, not a drop.
+    `function Row({ _internal }) { return <div>{_internal}</div> }`,
+  ],
+  invalid: [
+    {
+      code: `function Disclosure({ onExpandedChange: _onExpandedChange, ...props }) { return <div {...props} /> }`,
+      errors: [{ messageId: 'dropped' }],
+    },
+    {
+      code: `const Menu = ({ dragAndDropHooks: _dnd, selectedKeys: _sk, ...rest }) => <div {...rest} />`,
+      errors: [{ messageId: 'dropped' }, { messageId: 'dropped' }],
+    },
+    {
+      code: `function Trigger(props) { const { render: _render, ...dom } = props; return <div {...dom} /> }`,
+      errors: [{ messageId: 'dropped' }],
+    },
+  ],
+})
+
 describe('ui selector restrictions', () => {
   const flagged = [
     ['text-white', `<p className="text-white" />`, /palette/],
@@ -141,6 +164,7 @@ describe('ui selector restrictions', () => {
     ['Button h-auto', `<Button variant="ghost" className="h-auto w-full justify-start" />`, /h-auto/],
     ['state attr on Content', `<Checkbox.Content className="rounded-lg data-[selected=true]:bg-default/80" />`, /root/],
     ['Button onClick', `<Button onClick={go} />`, /onPress/],
+    ['Button disabled', `<Button disabled={busy} />`, /isDisabled/],
     ['Spinner className size', `<Spinner className="w-3.5 h-3.5" />`, /size prop/],
     ['template className', '<div className={`${base} rounded-xl`} />', /cn\(/],
     ['t().replace', `const s = t('toolbar.noAssistant').replace(/^No /, 'Select ')`, /translation/],
@@ -164,14 +188,15 @@ describe('ui selector restrictions', () => {
     ['gradient over a fill', `<div className="from-danger via-danger/80 to-transparent" />`],
     ['interactive cursor', `<span className="cursor-[var(--cursor-interactive)]" />`],
     ['rounded-lg', `<span className="rounded-lg rounded-t-none" />`],
-    ['shadow tokens', `<div className="shadow-surface shadow-overlay shadow-none" />`],
+    ['shadow tokens', `<div className="shadow-xs shadow-card shadow-dropdown shadow-none" />`],
     ['danger-soft variant', `<Button variant="danger-soft" />`],
     // Danger on hover only, for an icon in a row of ghost icons; and the soft
     // foreground, which is a different class.
     ['hover danger on a ghost icon', `<Button isIconOnly variant="ghost" className="text-muted hover:text-danger" />`],
     ['soft foreground', `<Button className={cn(selected ? 'text-danger-soft-foreground' : 'text-muted')} />`],
     ['state attr on root', `<Checkbox className="data-[selected=true]:bg-default" />`],
-    ['onPress', `<Button onPress={go} />`],
+    ['onPress', `<Button onPress={go} isDisabled={busy} />`],
+    ['boardui text-white token', `<span className="bg-button-primary text-text-white" />`],
     ['Spinner size prop', `<Spinner size="sm" className="shrink-0" />`],
     ['cn()', `<div className={cn('a', b)} />`],
     ['plain replace', `const s = value.replace(/a/, 'b')`],
