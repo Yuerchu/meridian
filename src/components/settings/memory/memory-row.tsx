@@ -49,13 +49,7 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
           every other panel sideways with it. */}
       <div data-slot="memory-row-header" className="flex flex-wrap items-center gap-2 p-3">
         {/* No label of its own — the row's key names it. */}
-        <Checkbox data-slot="memory-row-check" aria-label={memory.key} isSelected={checked} onChange={onToggleCheck}>
-          <Checkbox.Content>
-            <Checkbox.Control>
-              <Checkbox.Indicator />
-            </Checkbox.Control>
-          </Checkbox.Content>
-        </Checkbox>
+        <Checkbox data-slot="memory-row-check" aria-label={memory.key} isSelected={checked} onChange={onToggleCheck} />
         {/* Only the chevron toggles: the checkbox and the row's own buttons are
             siblings, and a `<button>` cannot hold another one. The trigger is
             shrink-wrapped rather than a fixed square so that the indicator's own

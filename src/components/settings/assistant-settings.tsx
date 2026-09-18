@@ -250,12 +250,7 @@ function AssistantEditor({
           {t('settings.assistant.autoCompact')}
         </p>
         <Checkbox className="text-xs" isSelected={autoCompactEnabled} onChange={setAutoCompactEnabled}>
-          <Checkbox.Content>
-            <Checkbox.Control>
-              <Checkbox.Indicator />
-            </Checkbox.Control>
-            {t('settings.assistant.autoCompactHint')}
-          </Checkbox.Content>
+          {t('settings.assistant.autoCompactHint')}
         </Checkbox>
       </div>
 
@@ -265,12 +260,7 @@ function AssistantEditor({
         </p>
         <div data-slot="assistant-thinking-toggle" className="flex items-center gap-3">
           <Checkbox className="text-xs" isSelected={thinkingEnabled} onChange={setThinkingEnabled}>
-            <Checkbox.Content>
-              <Checkbox.Control>
-                <Checkbox.Indicator />
-              </Checkbox.Control>
-              {t('settings.assistant.thinkingEnabled')}
-            </Checkbox.Content>
+            {t('settings.assistant.thinkingEnabled')}
           </Checkbox>
         </div>
         {thinkingEnabled && (
@@ -359,19 +349,14 @@ function AssistantEditor({
                     setSelectedTools(next)
                   }}
                 >
-                  <Checkbox.Content>
-                    <Checkbox.Control>
-                      <Checkbox.Indicator />
-                    </Checkbox.Control>
-                    <span data-slot="tool-name" className="truncate font-mono">
-                      {tool.name}
+                  <span data-slot="tool-name" className="truncate font-mono">
+                    {tool.name}
+                  </span>
+                  {tool.source === 'mcp' && (
+                    <span data-slot="tool-source" className="text-xs text-text-secondary">
+                      MCP
                     </span>
-                    {tool.source === 'mcp' && (
-                      <span data-slot="tool-source" className="text-xs text-muted">
-                        MCP
-                      </span>
-                    )}
-                  </Checkbox.Content>
+                  )}
                 </Checkbox>
               ))}
             </div>
@@ -406,14 +391,9 @@ function AssistantEditor({
                   }
                 }}
               >
-                <Checkbox.Content>
-                  <Checkbox.Control>
-                    <Checkbox.Indicator />
-                  </Checkbox.Control>
-                  <span data-slot="emoji-pack-name" className="truncate">
-                    {pack.name}
-                  </span>
-                </Checkbox.Content>
+                <span data-slot="emoji-pack-name" className="truncate">
+                  {pack.name}
+                </span>
               </Checkbox>
             ))}
           </div>
@@ -458,14 +438,9 @@ function AssistantEditor({
                     }
                   }}
                 >
-                  <Checkbox.Content>
-                    <Checkbox.Control>
-                      <Checkbox.Indicator />
-                    </Checkbox.Control>
-                    <span data-slot="skill-name" className="truncate">
-                      {skill.display_name}
-                    </span>
-                  </Checkbox.Content>
+                  <span data-slot="skill-name" className="truncate">
+                    {skill.display_name}
+                  </span>
                 </Checkbox>
               ))}
             </div>

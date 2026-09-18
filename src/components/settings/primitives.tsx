@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Button, Description, Label, ListBox, Select, Skeleton } from '@/components/base'
+import { Button, Description, Label, Select, SelectItem, Skeleton } from '@/components/base'
 import { Check, ChevronRight } from '@gravity-ui/icons'
 
 import { cn } from '@/lib/utils'
@@ -240,41 +240,32 @@ export function SettingsSelect<T extends string>({
   ariaLabel,
   description,
   placeholder,
-  fullWidth,
+  fullWidth: _fw,
   isDisabled,
   className,
   triggerClassName,
   itemClassName,
 }: SettingsSelectProps<T>) {
   return (
-    <Select
-      data-slot="settings-select"
-      aria-label={ariaLabel}
-      className={className}
-      fullWidth={fullWidth}
-      isDisabled={isDisabled}
-      placeholder={placeholder}
-      value={value}
-      onChange={(key) => {
-        if (key != null) onChange(String(key) as T)
-      }}
-    >
+    <div data-slot="settings-select" className={className}>
       {label && <Label>{label}</Label>}
-      <Select.Trigger className={triggerClassName}>
-        <Select.Value />
-        <Select.Indicator />
-      </Select.Trigger>
-      <Select.Popover>
-        <ListBox>
-          {options.map((option) => (
-            <ListBox.Item key={option.value} id={option.value} textValue={option.label} className={itemClassName}>
-              {option.label}
-              <ListBox.ItemIndicator />
-            </ListBox.Item>
-          ))}
-        </ListBox>
-      </Select.Popover>
+      <Select
+        aria-label={ariaLabel}
+        isDisabled={isDisabled}
+        placeholder={placeholder}
+        selectedKey={value}
+        onSelectionChange={(key) => {
+          if (key != null) onChange(String(key) as T)
+        }}
+        triggerClassName={triggerClassName}
+      >
+        {options.map((option) => (
+          <SelectItem key={option.value} id={option.value} textValue={option.label} className={itemClassName}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </Select>
       {description && <Description>{description}</Description>}
-    </Select>
+    </div>
   )
 }

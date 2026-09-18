@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button, Label, Skeleton, Spinner, Tabs, Tooltip } from '@/components/base'
+import { Alert, Button, Label, Skeleton, Spinner, Tab, TabList, TabPanel, Tabs, Tooltip } from '@/components/base'
 import { EmptyState } from '@/components/base'
 import { KPI } from '@/components/base'
 import { AreaChart } from '@/components/base'
@@ -442,18 +442,15 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
               {t('settings.usage.breakdown')}
             </h3>
             <Tabs selectedKey={breakdown} onSelectionChange={(key) => setBreakdown(key as Breakdown)}>
-              <Tabs.ListContainer className="w-fit">
-                <Tabs.List aria-label={t('settings.usage.breakdown')}>
-                  {BREAKDOWNS.map((value) => (
-                    <Tabs.Tab key={value} id={value} className={TAB}>
-                      {t(`settings.usage.by.${value}`)}
-                      <Tabs.Indicator />
-                    </Tabs.Tab>
-                  ))}
-                </Tabs.List>
-              </Tabs.ListContainer>
+              <TabList aria-label={t('settings.usage.breakdown')}>
+                {BREAKDOWNS.map((value) => (
+                  <Tab key={value} id={value} className={TAB}>
+                    {t(`settings.usage.by.${value}`)}
+                  </Tab>
+                ))}
+              </TabList>
               {BREAKDOWNS.map((value) => (
-                <Tabs.Panel key={value} id={value} className="p-0">
+                <TabPanel key={value} id={value} className="p-0">
                   <BucketTable
                     // Keep the old charts while the next dimension loads, but
                     // never put those old rows under the newly selected table
@@ -465,7 +462,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
                     isLoading={loading && report?.rowsDimension !== value}
                     onOpenConversation={onOpenConversation}
                   />
-                </Tabs.Panel>
+                </TabPanel>
               ))}
             </Tabs>
           </section>

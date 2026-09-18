@@ -265,24 +265,18 @@ function QuestionBlock({
               <Checkbox
                 key={opt.label}
                 value={opt.label}
-                variant="secondary"
-                className="w-full gap-0 data-[selected=true]:[&_[data-slot=checkbox-content]]:bg-default/80"
+                className="w-full items-start gap-2 rounded-lg px-2.5 py-1.5 whitespace-normal hover:bg-background-secondary-default/50 data-[selected]:bg-background-secondary-default/80"
               >
-                <Checkbox.Content className="w-full items-start gap-2 rounded-lg px-2.5 py-1.5 whitespace-normal hover:bg-default/50">
-                  <Checkbox.Control className="mt-0.5 shrink-0">
-                    <Checkbox.Indicator />
-                  </Checkbox.Control>
-                  <span data-slot="question-option-body" className="min-w-0 flex-1 text-left">
-                    <span data-slot="question-option-label" className="text-xs font-medium text-foreground">
-                      {opt.label}
-                    </span>
-                    {opt.description && (
-                      <span data-slot="question-option-description" className="block text-xs text-muted">
-                        {opt.description}
-                      </span>
-                    )}
+                <span data-slot="question-option-body" className="min-w-0 flex-1 text-left">
+                  <span data-slot="question-option-label" className="text-xs font-medium text-text-primary">
+                    {opt.label}
                   </span>
-                </Checkbox.Content>
+                  {opt.description && (
+                    <span data-slot="question-option-description" className="block text-xs text-text-secondary">
+                      {opt.description}
+                    </span>
+                  )}
+                </span>
               </Checkbox>
             ))}
           </CheckboxGroup>
@@ -301,23 +295,18 @@ function QuestionBlock({
               <Radio
                 key={opt.label}
                 value={opt.label}
-                className="w-full gap-0 data-[selected=true]:[&_[data-slot=radio-content]]:bg-default/80"
+                className="w-full items-start gap-2 rounded-lg px-2.5 py-1.5 whitespace-normal hover:bg-background-secondary-default/50 data-[selected]:bg-background-secondary-default/80"
               >
-                <Radio.Content className="w-full items-start gap-2 rounded-lg px-2.5 py-1.5 whitespace-normal hover:bg-default/50">
-                  <Radio.Control className="mt-0.5 shrink-0">
-                    <Radio.Indicator />
-                  </Radio.Control>
-                  <span data-slot="question-option-body" className="min-w-0 flex-1 text-left">
-                    <span data-slot="question-option-label" className="text-xs font-medium text-foreground">
-                      {opt.label}
-                    </span>
-                    {opt.description && (
-                      <span data-slot="question-option-description" className="block text-xs text-muted">
-                        {opt.description}
-                      </span>
-                    )}
+                <span data-slot="question-option-body" className="min-w-0 flex-1 text-left">
+                  <span data-slot="question-option-label" className="text-xs font-medium text-text-primary">
+                    {opt.label}
                   </span>
-                </Radio.Content>
+                  {opt.description && (
+                    <span data-slot="question-option-description" className="block text-xs text-text-secondary">
+                      {opt.description}
+                    </span>
+                  )}
+                </span>
               </Radio>
             ))}
           </RadioGroup>
@@ -2116,8 +2105,7 @@ function HotkeyHint({ combo }: { combo: string }) {
   return (
     <Kbd
       aria-hidden
-      variant="light"
-      className="ml-1 hidden h-auto px-0 text-xs text-current opacity-60 pointer-fine:inline-flex"
+      className="ml-1 hidden h-auto bg-transparent px-0 text-xs text-current opacity-60 pointer-fine:inline-flex"
     >
       {formatHotkey(combo)}
     </Kbd>

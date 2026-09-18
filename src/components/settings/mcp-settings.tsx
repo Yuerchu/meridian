@@ -414,12 +414,7 @@ function McpServerEditor({
           </Button>
         )}
         <Switch className="ml-auto" isSelected={autoConnect} onChange={handleToggleAutoConnect}>
-          <Switch.Content>
-            <Switch.Control>
-              <Switch.Thumb />
-            </Switch.Control>
-            {t('settings.mcp.autoConnect')}
-          </Switch.Content>
+          {t('settings.mcp.autoConnect')}
         </Switch>
       </div>
 

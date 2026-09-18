@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Description, Input, Label, ListBox, Select, TextArea, TextField } from '@/components/base'
+import { Button, Description, Input, Label, Select, SelectItem, TextArea, TextField } from '@/components/base'
 import { CellSwitch } from '@/components/base'
 import { api } from '@/api'
 import type { PreferenceModelSelectionRequest, ProviderInfoResponse, ProviderModelInfoResponse } from '@/types'
@@ -144,50 +144,30 @@ function ModelPicker({
   return (
     <div data-slot="model-picker" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
       <Select
-        fullWidth
         aria-label={t('settings.assistant.provider')}
-        value={providerId || '_none'}
-        onChange={(v) => emit(!v || v === '_none' ? '' : String(v), '')}
+        selectedKey={providerId || '_none'}
+        onSelectionChange={(v) => emit(!v || v === '_none' ? '' : String(v), '')}
       >
-        <Select.Trigger>
-          <Select.Value />
-          <Select.Indicator />
-        </Select.Trigger>
-        <Select.Popover>
-          <ListBox>
-            {providerOptions.map((o) => (
-              <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                {o.label}
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-            ))}
-          </ListBox>
-        </Select.Popover>
+        {providerOptions.map((o) => (
+          <SelectItem key={o.value} id={o.value} textValue={o.label}>
+            {o.label}
+          </SelectItem>
+        ))}
       </Select>
       {/* A provider whose model list has not been fetched yet still has to be
           usable, so this degrades to a plain id field rather than to nothing. */}
       {models.length > 0 ? (
         <Select
-          fullWidth
           aria-label={t('settings.assistant.model')}
-          value={modelId || '_none'}
+          selectedKey={modelId || '_none'}
           isDisabled={!providerId}
-          onChange={(v) => emit(providerId, !v || v === '_none' ? '' : String(v))}
+          onSelectionChange={(v) => emit(providerId, !v || v === '_none' ? '' : String(v))}
         >
-          <Select.Trigger>
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              {modelOptions.map((o) => (
-                <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                  {o.label}
-                  <ListBox.ItemIndicator />
-                </ListBox.Item>
-              ))}
-            </ListBox>
-          </Select.Popover>
+          {modelOptions.map((o) => (
+            <SelectItem key={o.value} id={o.value} textValue={o.label}>
+              {o.label}
+            </SelectItem>
+          ))}
         </Select>
       ) : (
         <Input

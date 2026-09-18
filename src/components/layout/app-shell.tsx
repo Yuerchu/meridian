@@ -317,9 +317,7 @@ export function AppShell(props: ShellProps) {
                 </Button>
                 <Tooltip.Content placement="bottom">
                   {t('palette.title')}
-                  <Kbd variant="light" className="ml-2">
-                    <Kbd.Content>{commandShortcut}</Kbd.Content>
-                  </Kbd>
+                  <Kbd className="ml-2">{commandShortcut}</Kbd>
                 </Tooltip.Content>
               </Tooltip>
             </div>

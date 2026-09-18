@@ -193,24 +193,11 @@ export function VoiceCorpusSettings() {
 
       {can.exportToDisk && (
         <div data-slot="voice-corpus-export" className="flex flex-col gap-2">
-          {/* HeroUI's Checkbox draws nothing on its own — the box and its input
-              live in Control/Indicator, so a bare one is a label you cannot
-              press. */}
           <Checkbox className="text-sm" isSelected={includeUntranscribed} onChange={setIncludeUntranscribed}>
-            <Checkbox.Content>
-              <Checkbox.Control>
-                <Checkbox.Indicator />
-              </Checkbox.Control>
-              {t('settings.voiceCorpus.includeUntranscribed')}
-            </Checkbox.Content>
+            {t('settings.voiceCorpus.includeUntranscribed')}
           </Checkbox>
           <Checkbox className="text-sm" isSelected={includeSender} onChange={setIncludeSender}>
-            <Checkbox.Content>
-              <Checkbox.Control>
-                <Checkbox.Indicator />
-              </Checkbox.Control>
-              {t('settings.voiceCorpus.includeSender')}
-            </Checkbox.Content>
+            {t('settings.voiceCorpus.includeSender')}
           </Checkbox>
           <Description>{t('settings.voiceCorpus.exportHint')}</Description>
           <Button variant="ghost" isDisabled={busy || sessions.length === 0} onPress={exportBundle}>

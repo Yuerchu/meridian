@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button, Input, Label, ListBox, Select, TextField } from '@/components/base'
+import { Alert, Button, Input, Label, Select, SelectItem, TextField } from '@/components/base'
 import { CellSwitch } from '@/components/base'
 import { ItemCard } from '@/components/base'
 import { api } from '@/api'
@@ -108,54 +108,34 @@ function ModelPicker({
   return (
     <div data-slot="model-picker" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
       <Select
-        fullWidth
         aria-label={t('settings.assistant.provider')}
-        value={providerId || '_none'}
-        onChange={(v) => {
+        selectedKey={providerId || '_none'}
+        onSelectionChange={(v) => {
           const next = !v || v === '_none' ? '' : String(v)
           emit(next, '')
         }}
       >
-        <Select.Trigger>
-          <Select.Value />
-          <Select.Indicator />
-        </Select.Trigger>
-        <Select.Popover>
-          <ListBox>
-            {providerOptions.map((o) => (
-              <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                {o.label}
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-            ))}
-          </ListBox>
-        </Select.Popover>
+        {providerOptions.map((o) => (
+          <SelectItem key={o.value} id={o.value} textValue={o.label}>
+            {o.label}
+          </SelectItem>
+        ))}
       </Select>
       {/* A provider whose model list has not been fetched yet still has to be
           usable, so the picker degrades to a plain id field rather than to
           nothing — the same fallback the sub-agent settings make. */}
       {models.length > 0 ? (
         <Select
-          fullWidth
           aria-label={t('settings.assistant.model')}
-          value={modelId || '_none'}
+          selectedKey={modelId || '_none'}
           isDisabled={!providerId}
-          onChange={(v) => emit(providerId, !v || v === '_none' ? '' : String(v))}
+          onSelectionChange={(v) => emit(providerId, !v || v === '_none' ? '' : String(v))}
         >
-          <Select.Trigger>
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              {modelOptions.map((o) => (
-                <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                  {o.label}
-                  <ListBox.ItemIndicator />
-                </ListBox.Item>
-              ))}
-            </ListBox>
-          </Select.Popover>
+          {modelOptions.map((o) => (
+            <SelectItem key={o.value} id={o.value} textValue={o.label}>
+              {o.label}
+            </SelectItem>
+          ))}
         </Select>
       ) : (
         <Input
@@ -425,28 +405,18 @@ export function HooksSettings() {
       </div>
 
       <div data-slot="hooks-assistant" className="space-y-1.5">
+        <Label className="block text-xs font-medium text-text-secondary">{t('settings.hooks.assistant')}</Label>
         <Select
-          fullWidth
-          value={config.assistant_id ?? '_default'}
-          onChange={(v) => {
+          selectedKey={config.assistant_id ?? '_default'}
+          onSelectionChange={(v) => {
             if (v) setConfig({ ...config, assistant_id: v === '_default' ? null : String(v) })
           }}
         >
-          <Label className="block text-xs font-medium text-muted">{t('settings.hooks.assistant')}</Label>
-          <Select.Trigger>
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              {assistantOptions.map((o) => (
-                <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                  {o.label}
-                  <ListBox.ItemIndicator />
-                </ListBox.Item>
-              ))}
-            </ListBox>
-          </Select.Popover>
+          {assistantOptions.map((o) => (
+            <SelectItem key={o.value} id={o.value} textValue={o.label}>
+              {o.label}
+            </SelectItem>
+          ))}
         </Select>
         <p data-slot="hooks-assistant-hint" className="text-xs text-muted">
           {t('settings.hooks.assistantHint')}

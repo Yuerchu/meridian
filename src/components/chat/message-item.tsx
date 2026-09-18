@@ -81,15 +81,13 @@ export function AssistantAvatar({
 }) {
   return (
     <MessageGroupAvatar className="size-8">
-      <Avatar className="size-full">
-        {!hosted && <Avatar.Image src={src ?? undefined} />}
-        {/* `ModelIcon` brings its own background, so `bg-default` underneath it
-            would only show through the rounding. A bare glyph does not, and
-            keeps the frame it is dropped into. */}
-        <Avatar.Fallback className={hosted ? undefined : 'bg-transparent'}>
+      {!hosted && src ? (
+        <Avatar src={src} className="size-full" />
+      ) : (
+        <Avatar className="size-full">
           {hosted ? <HostedAgentGlyph /> : <ModelIcon model={modelId ?? undefined} size={32} shape="circle" />}
-        </Avatar.Fallback>
-      </Avatar>
+        </Avatar>
+      )}
     </MessageGroupAvatar>
   )
 }

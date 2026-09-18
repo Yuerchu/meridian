@@ -370,12 +370,7 @@ export function SkillSettings() {
                   isSelected={skill.is_enabled}
                   onChange={(selected) => toggleEnabled(skill, selected)}
                 >
-                  <Checkbox.Content>
-                    <Checkbox.Control>
-                      <Checkbox.Indicator />
-                    </Checkbox.Control>
-                    {t('settings.skills.enabled')}
-                  </Checkbox.Content>
+                  {t('settings.skills.enabled')}
                 </Checkbox>
                 <Checkbox
                   data-slot="skill-item-global"
@@ -383,12 +378,7 @@ export function SkillSettings() {
                   isSelected={globalBound.has(skill.dir_name)}
                   onChange={(selected) => toggleGlobal(skill.dir_name, selected)}
                 >
-                  <Checkbox.Content>
-                    <Checkbox.Control>
-                      <Checkbox.Indicator />
-                    </Checkbox.Control>
-                    {t('settings.skills.globalBinding')}
-                  </Checkbox.Content>
+                  {t('settings.skills.globalBinding')}
                 </Checkbox>
               </div>
               {/* `min-h-0` is load-bearing: the card is a flex column, and a

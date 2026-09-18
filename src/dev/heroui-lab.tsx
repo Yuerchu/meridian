@@ -25,10 +25,10 @@ import {
   InputGroup as HInputGroup,
   Kbd as HKbd,
   Label as HLabel,
-  ListBox as HListBox,
   Popover as HPopover,
   ProgressCircle as HProgressCircle,
   Select as HSelect,
+  SelectItem as HSelectItem,
   Slider as HSlider,
   Switch as HSwitch,
   TextArea as HTextArea,
@@ -510,22 +510,8 @@ export default function HeroUiLab() {
             {/* Control 嵌在 Content 里面，不是它的兄弟：Content 是那个可点击的
                 <label>，Control 挪到外面就再也点不动了 */}
             <div data-slot="heroui-lab-toggles" className="flex flex-wrap items-center gap-6">
-              <HSwitch defaultSelected>
-                <HSwitch.Content>
-                  <HSwitch.Control>
-                    <HSwitch.Thumb />
-                  </HSwitch.Control>
-                  开关
-                </HSwitch.Content>
-              </HSwitch>
-              <HCheckbox defaultSelected>
-                <HCheckbox.Content>
-                  <HCheckbox.Control>
-                    <HCheckbox.Indicator />
-                  </HCheckbox.Control>
-                  复选
-                </HCheckbox.Content>
-              </HCheckbox>
+              <HSwitch defaultSelected>开关</HSwitch>
+              <HCheckbox defaultSelected>复选</HCheckbox>
             </div>
 
             <div data-slot="heroui-lab-inputs" className="max-w-sm space-y-2">
@@ -569,27 +555,16 @@ export default function HeroUiLab() {
 
               {/* Trigger 得自己放 Value 和 Indicator，否则是个空框；集合项必须带
                   id（不是 key/value），非纯文本内容还要补 textValue */}
-              <HSelect defaultValue="opus" aria-label="模型" className="w-44">
-                <HSelect.Trigger>
-                  <HSelect.Value />
-                  <HSelect.Indicator />
-                </HSelect.Trigger>
-                <HSelect.Popover>
-                  <HListBox>
-                    <HListBox.Item id="opus" textValue="Opus">
-                      Opus
-                      <HListBox.ItemIndicator />
-                    </HListBox.Item>
-                    <HListBox.Item id="sonnet" textValue="Sonnet">
-                      Sonnet
-                      <HListBox.ItemIndicator />
-                    </HListBox.Item>
-                    <HListBox.Item id="haiku" textValue="Haiku">
-                      Haiku
-                      <HListBox.ItemIndicator />
-                    </HListBox.Item>
-                  </HListBox>
-                </HSelect.Popover>
+              <HSelect defaultSelectedKey="opus" aria-label="模型" className="w-44">
+                <HSelectItem id="opus" textValue="Opus">
+                  Opus
+                </HSelectItem>
+                <HSelectItem id="sonnet" textValue="Sonnet">
+                  Sonnet
+                </HSelectItem>
+                <HSelectItem id="haiku" textValue="Haiku">
+                  Haiku
+                </HSelectItem>
               </HSelect>
             </div>
 
@@ -769,31 +744,23 @@ export default function HeroUiLab() {
                       <ProContextMenu.Item id="cut" textValue="剪切">
                         <Scissors className="size-4 text-muted" />
                         <HLabel>剪切</HLabel>
-                        <HKbd className="ms-auto" slot="keyboard" variant="light">
-                          <HKbd.Content>Ctrl+X</HKbd.Content>
-                        </HKbd>
+                        <HKbd className="ms-auto">Ctrl+X</HKbd>
                       </ProContextMenu.Item>
                       <ProContextMenu.Item id="copy" textValue="复制">
                         <Copy className="size-4 text-muted" />
                         <HLabel>复制</HLabel>
-                        <HKbd className="ms-auto" slot="keyboard" variant="light">
-                          <HKbd.Content>Ctrl+C</HKbd.Content>
-                        </HKbd>
+                        <HKbd className="ms-auto">Ctrl+C</HKbd>
                       </ProContextMenu.Item>
                       <ProContextMenu.Item id="paste" textValue="粘贴">
                         <ArrowDownToSquare className="size-4 text-muted" />
                         <HLabel>粘贴</HLabel>
-                        <HKbd className="ms-auto" slot="keyboard" variant="light">
-                          <HKbd.Content>Ctrl+V</HKbd.Content>
-                        </HKbd>
+                        <HKbd className="ms-auto">Ctrl+V</HKbd>
                       </ProContextMenu.Item>
                       <ProContextMenu.Separator />
                       <ProContextMenu.Item id="select-all" textValue="全选">
                         <SquareDashedText className="size-4 text-muted" />
                         <HLabel>全选</HLabel>
-                        <HKbd className="ms-auto" slot="keyboard" variant="light">
-                          <HKbd.Content>Ctrl+A</HKbd.Content>
-                        </HKbd>
+                        <HKbd className="ms-auto">Ctrl+A</HKbd>
                       </ProContextMenu.Item>
                     </ProContextMenu.Menu>
                   </ProContextMenu.Popover>

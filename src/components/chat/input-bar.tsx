@@ -316,11 +316,7 @@ function ComposerContextMenu({
 }
 
 function Shortcut({ keys }: { keys: string }) {
-  return (
-    <Kbd className="ms-auto" slot="keyboard" variant="light">
-      <Kbd.Content>{keys}</Kbd.Content>
-    </Kbd>
-  )
+  return <Kbd className="ms-auto">{keys}</Kbd>
 }
 
 export function InputBar({
