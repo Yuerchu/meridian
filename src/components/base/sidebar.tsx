@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useState, type ComponentProps, type ReactNode } from 'react'
 import { cx } from '@/utils/cx'
-import { Button } from './button'
+import { Button } from './buttons/button'
 import { Sheet } from './sheet'
 
 interface SidebarContextValue {
@@ -94,28 +94,39 @@ function SidebarMain({ className, ...props }: ComponentProps<'main'>) {
   )
 }
 
+function MenuIcon({
+  className,
+  'aria-hidden': ariaHidden,
+}: {
+  className?: string
+  'aria-hidden'?: boolean | 'true' | 'false'
+}) {
+  return (
+    <svg
+      className={className}
+      aria-hidden={ariaHidden}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
+      <path d="M2 4h12M2 8h12M2 12h12" />
+    </svg>
+  )
+}
+
 function SidebarTrigger({ className, ...props }: ComponentProps<'button'> & { 'aria-label'?: string }) {
   const { open, setOpen } = useContext(SidebarContext)
   return (
     <Button
       data-slot="sidebar-trigger"
       variant="ghost"
-      isIconOnly
+      iconOnly
+      leadingIcon={MenuIcon}
       aria-label={props['aria-label'] ?? 'Toggle sidebar'}
-      onPress={() => setOpen(!open)}
+      onClick={() => setOpen(!open)}
       className={cx('', className)}
-    >
-      <svg
-        data-slot="sidebar-trigger-icon"
-        className="size-4"
-        viewBox="0 0 16 16"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      >
-        <path d="M2 4h12M2 8h12M2 12h12" />
-      </svg>
-    </Button>
+    />
   )
 }
 
@@ -247,17 +258,22 @@ function SidebarMenuChip({ className, ...props }: ComponentProps<'span'>) {
   )
 }
 
-function SidebarMenuAction({ className, onPress, ...props }: any) {
+function SidebarMenuAction({ className, onClick, children, ...props }: any) {
   return (
-    <Button
+    <button
+      type="button"
       data-slot="sidebar-menu-action"
-      variant="ghost"
-      isIconOnly
-      size="sm"
-      onPress={onPress}
-      className={cx('sidebar__menu-action size-6 shrink-0 text-text-secondary', className)}
+      onClick={onClick}
+      className={cx(
+        'sidebar__menu-action inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-lg text-text-secondary outline-none',
+        'hover:bg-background-secondary-hover focus-visible:ring-2 focus-visible:ring-border-focus-ring',
+        '[&_svg]:size-4 [&_svg]:shrink-0',
+        className,
+      )}
       {...props}
-    />
+    >
+      {children}
+    </button>
   )
 }
 

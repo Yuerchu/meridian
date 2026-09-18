@@ -37,8 +37,9 @@ import { cx, sortCx } from '@/utils/cx'
  * `variant` to avoid the clash.
  */
 
-type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
-type ButtonSize = 'medium' | 'small' | 'xs'
+export type ButtonVariant =
+  'primary' | 'secondary' | 'tertiary' | 'outline' | 'ghost' | 'danger' | 'danger-soft' | 'transparent'
+type ButtonSize = 'medium' | 'small' | 'sm' | 'xs'
 
 type IconComponent = ComponentType<{
   className?: string
@@ -124,18 +125,34 @@ const styles = sortCx({
       'disabled:bg-background-primary-disabled disabled:border-border-button-default disabled:text-text-tertiary disabled:shadow-none',
       'aria-disabled:bg-background-primary-disabled aria-disabled:border-border-button-default aria-disabled:text-text-tertiary aria-disabled:shadow-none',
     ].join(' '),
-    ghost: [
-      'bg-button-ghost-background text-button-ghost-foreground',
-      'hover:bg-button-ghost-hover active:bg-button-ghost-active',
-      'disabled:bg-button-ghost-disabled disabled:text-button-ghost-disabled-foreground disabled:shadow-none',
-      'aria-disabled:bg-button-ghost-disabled aria-disabled:text-button-ghost-disabled-foreground aria-disabled:shadow-none',
+    tertiary: [
+      'bg-background-secondary-default text-text-primary',
+      'hover:bg-background-secondary-hover',
+      'active:bg-background-secondary-hover',
+      'disabled:text-text-tertiary',
+      'aria-disabled:text-text-tertiary',
     ].join(' '),
+    outline: [
+      'bg-transparent text-text-primary',
+      'border border-border-button-default',
+      'hover:bg-background-primary-hover hover:border-border-button-hover',
+      'active:bg-background-primary-active',
+    ].join(' '),
+    ghost: [
+      'bg-transparent text-text-primary',
+      'hover:bg-background-secondary-default',
+      'active:bg-background-secondary-hover',
+      'disabled:text-text-tertiary',
+      'aria-disabled:text-text-tertiary',
+    ].join(' '),
+    'danger-soft': ['bg-danger-soft text-danger-soft-foreground', 'hover:bg-danger-soft-hover'].join(' '),
+    transparent: 'bg-transparent text-text-primary hover:bg-background-secondary-default',
   },
 })
 
 export function Button({
   variant = 'primary',
-  size = 'medium',
+  size: rawSize = 'medium',
   iconOnly = false,
   leadingIcon: Leading,
   trailingIcon: Trailing,
@@ -145,6 +162,7 @@ export function Button({
   ref,
   ...props
 }: ButtonProps) {
+  const size = rawSize === 'sm' ? 'small' : rawSize
   return (
     <button
       ref={ref}
@@ -159,6 +177,7 @@ export function Button({
       {...props}
     >
       {Leading ? <Leading className={styles.icon[size]} aria-hidden /> : null}
+      {iconOnly && !Leading ? children : null}
       {!iconOnly && children !== undefined && children !== null && (
         <span className={styles.label[size]}>{children}</span>
       )}

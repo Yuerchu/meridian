@@ -41,15 +41,15 @@ function ChatAttachmentInfo({ className, ...props }: ComponentProps<'div'>) {
 }
 
 interface ChatAttachmentRemoveProps extends ComponentProps<'button'> {
-  onPress?: () => void
+  onClick?: () => void
 }
 
-function ChatAttachmentRemove({ className, onPress, ...props }: ChatAttachmentRemoveProps) {
+function ChatAttachmentRemove({ className, onClick, ...props }: ChatAttachmentRemoveProps) {
   return (
     <button
       data-slot="chat-attachment-remove"
       type="button"
-      onClick={onPress}
+      onClick={onClick}
       {...props}
       className={cx('shrink-0 rounded-full p-0.5 text-text-secondary hover:text-text-primary', className)}
     />

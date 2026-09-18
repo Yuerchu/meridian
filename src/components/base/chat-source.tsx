@@ -8,14 +8,14 @@ interface ChatSourceProps extends ComponentProps<'div'> {
   faviconUrl?: string
   href?: string
   title?: string
-  onPress?: () => void
+  onClick?: () => void
 }
 
 function ChatSourceRoot({
   className,
   url: _url,
   target: _target,
-  onPress: _onPress,
+  onClick: _onClick,
   description: _description,
   faviconUrl: _faviconUrl,
   href: _href,

@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react'
 import { cx } from '@/utils/cx'
-import { Button } from './button'
+import { Button } from './buttons/button'
 
 type PromptInputStatus = 'ready' | 'submitted' | 'streaming'
 
@@ -18,7 +18,7 @@ interface PromptInputContext {
   onSubmit: () => void
   onStop?: () => void
   status: PromptInputStatus
-  isDisabled?: boolean
+  disabled?: boolean
 }
 
 const PromptInputCtx = createContext<PromptInputContext>({
@@ -34,7 +34,7 @@ interface PromptInputProps extends Omit<ComponentProps<'div'>, 'onSubmit'> {
   onSubmit?: () => void
   onStop?: () => void
   status?: PromptInputStatus
-  isDisabled?: boolean
+  disabled?: boolean
   lockInputOnRun?: boolean
   allowSubmitWhileRunning?: boolean
   maxHeight?: number
@@ -47,14 +47,14 @@ function PromptInputRoot({
   onSubmit = () => {},
   onStop,
   status = 'ready',
-  isDisabled,
+  disabled,
   lockInputOnRun: _lockInputOnRun,
   allowSubmitWhileRunning: _allowSubmitWhileRunning,
   maxHeight: _maxHeight,
   ...props
 }: PromptInputProps) {
   return (
-    <PromptInputCtx.Provider value={{ value, onValueChange, onSubmit, onStop, status, isDisabled }}>
+    <PromptInputCtx.Provider value={{ value, onValueChange, onSubmit, onStop, status, disabled }}>
       <div data-slot="prompt-input" data-status={status} {...props} className={cx('flex flex-col', className)} />
     </PromptInputCtx.Provider>
   )
@@ -88,7 +88,7 @@ interface PromptInputTextAreaProps extends Omit<ComponentProps<'textarea'>, 'val
 }
 
 function PromptInputTextArea({ className, ...props }: PromptInputTextAreaProps) {
-  const { value, onValueChange, onSubmit, isDisabled } = useContext(PromptInputCtx)
+  const { value, onValueChange, onSubmit, disabled } = useContext(PromptInputCtx)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const handleKeyDown = useCallback(
@@ -108,7 +108,7 @@ function PromptInputTextArea({ className, ...props }: PromptInputTextAreaProps) 
       value={value}
       onChange={(e) => onValueChange(e.target.value)}
       onKeyDown={handleKeyDown}
-      disabled={isDisabled}
+      disabled={disabled}
       rows={1}
       {...props}
       className={cx(
@@ -138,19 +138,19 @@ function PromptInputToolbarEnd({ className, ...props }: ComponentProps<'div'>) {
 interface PromptInputActionProps {
   'aria-label'?: string
   tooltip?: string
-  onPress?: () => void
+  onClick?: () => void
   className?: string
   children?: ReactNode
 }
 
-function PromptInputAction({ className, onPress, children, ...props }: PromptInputActionProps) {
+function PromptInputAction({ className, onClick, children, ...props }: PromptInputActionProps) {
   return (
     <Button
       data-slot="prompt-input-action"
       variant="ghost"
-      isIconOnly
-      size="sm"
-      onPress={onPress}
+      iconOnly
+      size="small"
+      onClick={onClick}
       className={cx('text-text-secondary', className)}
       aria-label={props['aria-label']}
     >
@@ -161,11 +161,11 @@ function PromptInputAction({ className, onPress, children, ...props }: PromptInp
 
 interface PromptInputSendProps {
   'aria-label'?: string
-  isDisabled?: boolean
+  disabled?: boolean
   className?: string
 }
 
-function PromptInputSend({ className, isDisabled, ...props }: PromptInputSendProps) {
+function PromptInputSend({ className, disabled, ...props }: PromptInputSendProps) {
   const { onSubmit, onStop, status } = useContext(PromptInputCtx)
   const isRunning = status === 'submitted' || status === 'streaming'
 
@@ -173,10 +173,10 @@ function PromptInputSend({ className, isDisabled, ...props }: PromptInputSendPro
     <Button
       data-slot="prompt-input-send"
       variant="primary"
-      isIconOnly
-      size="sm"
-      isDisabled={isDisabled}
-      onPress={isRunning ? onStop : onSubmit}
+      iconOnly
+      size="small"
+      disabled={disabled}
+      onClick={isRunning ? onStop : onSubmit}
       className={cx('', className)}
       aria-label={props['aria-label']}
     >
@@ -228,15 +228,15 @@ interface QueueItemProps extends ComponentProps<'div'> {
 }
 
 interface QueueItemSteerProps extends ComponentProps<'button'> {
-  onPress?: () => void
+  onClick?: () => void
 }
 
-function QueueItemSteer({ className, onPress, ...props }: QueueItemSteerProps) {
+function QueueItemSteer({ className, onClick, ...props }: QueueItemSteerProps) {
   return (
     <button
       data-slot="prompt-input-queue-item-steer"
       type="button"
-      onClick={onPress}
+      onClick={onClick}
       {...props}
       className={cx('text-xs text-text-secondary hover:text-text-primary', className)}
     />
@@ -317,22 +317,22 @@ function QueueItemActions({ className, ...props }: ComponentProps<'div'>) {
 }
 
 interface QueueItemActionProps {
-  isDisabled?: boolean
-  onPress?: () => void
+  disabled?: boolean
+  onClick?: () => void
   className?: string
   children?: ReactNode
   'aria-label'?: string
 }
 
-function QueueItemAction({ className, onPress, isDisabled, children, ...props }: QueueItemActionProps) {
+function QueueItemAction({ className, onClick, disabled, children, ...props }: QueueItemActionProps) {
   return (
     <Button
       data-slot="prompt-input-queue-item-action"
       variant="ghost"
-      isIconOnly
-      size="sm"
-      isDisabled={isDisabled}
-      onPress={onPress}
+      iconOnly
+      size="small"
+      disabled={disabled}
+      onClick={onClick}
       className={cx('size-6 text-text-secondary', className)}
       aria-label={props['aria-label']}
     >

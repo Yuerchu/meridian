@@ -3,27 +3,27 @@ import { cx } from '@/utils/cx'
 
 interface ItemCardProps extends ComponentProps<'div'> {
   variant?: string
-  onPress?: () => void
+  onClick?: () => void
 }
 
-function ItemCardRoot({ className, variant: _variant, onPress, ...props }: ItemCardProps) {
+function ItemCardRoot({ className, variant: _variant, onClick, ...props }: ItemCardProps) {
   return (
     <div
       data-slot="item-card"
-      role={onPress ? 'button' : undefined}
-      tabIndex={onPress ? 0 : undefined}
-      onClick={onPress}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
       onKeyDown={
-        onPress
+        onClick
           ? (e) => {
-              if (e.key === 'Enter' || e.key === ' ') onPress()
+              if (e.key === 'Enter' || e.key === ' ') onClick()
             }
           : undefined
       }
       {...props}
       className={cx(
         'flex items-center gap-3 px-3 py-2.5 text-sm transition-colors',
-        onPress && 'cursor-[var(--cursor-interactive)] hover:bg-background-secondary-default',
+        onClick && 'cursor-[var(--cursor-interactive)] hover:bg-background-secondary-default',
         className,
       )}
     />

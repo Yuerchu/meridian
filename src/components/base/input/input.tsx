@@ -26,7 +26,7 @@ import { cx, sortCx } from '@/utils/cx'
  *   - aria-required, aria-invalid auto-applied
  *   - Form library / native validation integration
  *   - i18n, RTL, autofill edge cases handled
- *   - Render-prop state surfaces `isFocusWithin`, `isHovered`, `isDisabled`,
+ *   - Render-prop state surfaces `isFocusWithin`, `isHovered`, `disabled`,
  *     `isInvalid`, `isRequired` — no CSS pseudo gymnastics
  *
  * Visuals stay 1:1 with Figma — see `styles/theme.css` for the tokens.
@@ -166,7 +166,7 @@ export function InputBase({
         cx(
           inputStyles.field,
           hasAddon ? inputStyles.fieldWithAddonSize[size] : inputStyles.fieldSize[size],
-          // Hover: idle, no focus, no disabled, no invalid
+          // Hover: idle, no focus, no isDisabled, no invalid
           isHovered && !isFocusWithin && !isDisabled && !isInvalid && 'ring-border-button-hover',
           // Focus wins over hover
           isFocusWithin && !isDisabled && !isInvalid && 'ring-border-button-active',

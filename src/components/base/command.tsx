@@ -12,7 +12,7 @@ import {
 } from 'react-aria-components'
 import type { ComponentProps, ReactNode } from 'react'
 import { cx } from '@/utils/cx'
-import { Button } from './button'
+import { Button } from './buttons/button'
 
 interface CommandBackdropProps {
   isOpen?: boolean
@@ -114,8 +114,8 @@ function CommandInputGroupClearButton({
     <Button
       data-slot="command-clear"
       variant="ghost"
-      isIconOnly
-      size="sm"
+      iconOnly
+      size="small"
       aria-label={ariaLabel}
       className={cx('size-6 text-text-secondary', className)}
     >

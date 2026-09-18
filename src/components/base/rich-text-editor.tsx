@@ -6,7 +6,7 @@ import Link from '@tiptap/extension-link'
 import { Placeholder, CharacterCount } from '@tiptap/extensions'
 import type { Extension } from '@tiptap/core'
 import { cx } from '@/utils/cx'
-import { Button } from './button'
+import { Button } from './buttons/button'
 import { Tooltip, TooltipTrigger } from './tooltip/tooltip'
 
 export type RichTextEditorFormatCommand =
@@ -170,9 +170,9 @@ function RteToggleButton({ command, tooltip, children, className, ...props }: Rt
     <Button
       data-slot="rich-text-editor-toggle-button"
       variant={isActive ? 'secondary' : 'ghost'}
-      isIconOnly
-      size="sm"
-      onPress={() => editor && commandMap[command]?.(editor)}
+
+      size="small"
+      onClick={() => editor && commandMap[command]?.(editor)}
       className={cx('size-7', className)}
       aria-label={props['aria-label']}
       aria-pressed={isActive}
@@ -206,10 +206,10 @@ function RteActionButton({ action, tooltip, children, className, ...props }: Rte
     <Button
       data-slot="rich-text-editor-action-button"
       variant="ghost"
-      isIconOnly
-      size="sm"
-      isDisabled={!canDo}
-      onPress={() =>
+
+      size="small"
+      disabled={!canDo}
+      onClick={() =>
         editor && (action === 'undo' ? editor.chain().focus().undo().run() : editor.chain().focus().redo().run())
       }
       className={cx('size-7', className)}
@@ -231,24 +231,31 @@ function RteActionButton({ action, tooltip, children, className, ...props }: Rte
 interface RteCommandButtonProps {
   'aria-label'?: string
   tooltip?: string
-  isDisabled?: boolean | ((editor: Editor) => boolean)
+  disabled?: boolean | ((editor: Editor) => boolean)
   onCommand?: (editor: Editor) => void
   children?: ReactNode
   className?: string
 }
 
-function RteCommandButton({ tooltip, isDisabled, onCommand, children, className, ...props }: RteCommandButtonProps) {
+function RteCommandButton({
+  tooltip,
+  disabled: disabledProp,
+  onCommand,
+  children,
+  className,
+  ...props
+}: RteCommandButtonProps) {
   const { editor } = useContext(RteContext)
-  const disabled = typeof isDisabled === 'function' ? (editor ? isDisabled(editor) : true) : isDisabled
+  const isOff = typeof disabledProp === 'function' ? (editor ? disabledProp(editor) : true) : disabledProp
 
   const button = (
     <Button
       data-slot="rich-text-editor-command-button"
       variant="ghost"
-      isIconOnly
-      size="sm"
-      isDisabled={disabled}
-      onPress={() => editor && onCommand?.(editor)}
+
+      size="small"
+      disabled={isOff}
+      onClick={() => editor && onCommand?.(editor)}
       className={cx('size-7', className)}
       aria-label={props['aria-label']}
     >
@@ -320,7 +327,7 @@ function RteLinkPopoverUnsetButton({
     <Button
       data-slot="rich-text-editor-link-unset"
       variant="ghost"
-      size="sm"
+      size="small"
       className={cx('', className)}
       aria-label={props['aria-label']}
     >
@@ -338,7 +345,7 @@ function RteLinkPopoverApplyButton({
     <Button
       data-slot="rich-text-editor-link-apply"
       variant="primary"
-      size="sm"
+      size="small"
       className={cx('', className)}
       aria-label={props['aria-label']}
     >

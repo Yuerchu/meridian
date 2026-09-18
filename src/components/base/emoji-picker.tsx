@@ -1,7 +1,7 @@
 import { createContext, useContext, type ComponentProps, type Key, type ReactNode } from 'react'
 import { Popover as AriaPopover, DialogTrigger, Dialog, type PopoverProps } from 'react-aria-components'
 import { cx } from '@/utils/cx'
-import { Button } from './button'
+import { Button } from './buttons/button'
 
 interface EmojiPickerCtx {
   selectedKey: Key | null
@@ -33,18 +33,18 @@ function EmojiPickerRoot({ isOpen, onOpenChange, selectedKey = null, onSelection
 interface EmojiPickerTriggerProps {
   'aria-label'?: string
   className?: string
-  onPress?: () => void
+  onClick?: () => void
   children?: ReactNode
 }
 
-function EmojiPickerTrigger({ className, onPress, children, ...props }: EmojiPickerTriggerProps) {
+function EmojiPickerTrigger({ className, onClick, children, ...props }: EmojiPickerTriggerProps) {
   return (
     <Button
       data-slot="emoji-picker-trigger"
       variant="ghost"
-      isIconOnly
-      size="sm"
-      onPress={onPress}
+      iconOnly
+      size="small"
+      onClick={onClick}
       className={cx('text-text-secondary', className)}
       aria-label={props['aria-label']}
     >
@@ -106,17 +106,17 @@ function EmojiPickerGrid<T>({ className, items, children, renderEmptyState, ...p
 
 interface EmojiPickerItemProps extends Omit<ComponentProps<'button'>, 'id'> {
   id?: string | number
-  isDisabled?: boolean
+  disabled?: boolean
   textValue?: string
 }
 
-function EmojiPickerItem({ className, id, isDisabled, textValue, ...props }: EmojiPickerItemProps) {
+function EmojiPickerItem({ className, id, disabled, textValue, ...props }: EmojiPickerItemProps) {
   const { onSelectionChange } = useContext(EmojiPickerContext)
   return (
     <button
       data-slot="emoji-picker-item"
       type="button"
-      disabled={isDisabled}
+      disabled={disabled}
       aria-label={textValue}
       onClick={() => id != null && onSelectionChange?.(id)}
       {...props}

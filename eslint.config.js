@@ -82,9 +82,9 @@ const styleRestrictions = [
       'React Aria puts data-selected / data-hovered / data-pressed on the component root, not on its *.Content or *.Control slot — this selector never matches. Style from the root with a descendant selector.',
   },
   {
-    selector: "JSXOpeningElement[name.name=/^(?:H)?Button$/] > JSXAttribute[name.name='onClick']",
+    selector: "JSXOpeningElement[name.name=/^(?:H)?Button$/] > JSXAttribute[name.name='onPress']",
     message:
-      'Button takes onPress, not onClick (React Aria press semantics: keyboard, touch, and no ghost clicks).',
+      'Button takes onClick, not onPress (boardui uses native <button>).',
   },
   {
     selector:

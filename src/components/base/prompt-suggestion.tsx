@@ -10,17 +10,17 @@ function PromptSuggestionItems({ className, ...props }: ComponentProps<'div'>) {
 }
 
 interface PromptSuggestionItemProps extends ComponentProps<'button'> {
-  isDisabled?: boolean
-  onPress?: () => void
+  disabled?: boolean
+  onClick?: () => void
 }
 
-function PromptSuggestionItem({ className, isDisabled, onPress, ...props }: PromptSuggestionItemProps) {
+function PromptSuggestionItem({ className, disabled, onClick, ...props }: PromptSuggestionItemProps) {
   return (
     <button
       data-slot="prompt-suggestion-item"
       type="button"
-      disabled={isDisabled}
-      onClick={onPress}
+      disabled={disabled}
+      onClick={onClick}
       {...props}
       className={cx(
         'rounded-xl border border-border-button-default bg-background-primary-default px-3 py-1.5 text-body-medium text-text-primary transition-colors',

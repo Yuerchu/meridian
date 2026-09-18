@@ -3,7 +3,7 @@ export { Alert } from './alert'
 export { AlertDialog } from './alert-dialog'
 export { AreaChart } from './area-chart'
 export { Avatar } from './avatar/avatar'
-export { Button, type ButtonVariant } from './button'
+export { Button, type ButtonVariant, type ButtonProps, ButtonLink, buttonStyles } from './buttons/button'
 export { Card } from './card'
 export { CellSwitch } from './cell-switch'
 export {

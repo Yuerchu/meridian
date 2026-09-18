@@ -1,7 +1,7 @@
 import { Dialog, DialogTrigger, Heading as AriaHeading, Modal, ModalOverlay } from 'react-aria-components'
 import type { ComponentProps } from 'react'
 import { cx } from '@/utils/cx'
-import { Button } from './button'
+import { Button } from './buttons/button'
 
 type SheetPlacement = 'left' | 'right' | 'top' | 'bottom'
 
@@ -123,7 +123,7 @@ function SheetCloseTrigger({ className, 'aria-label': ariaLabel }: { className?:
       slot="close"
       data-slot="sheet-close-trigger"
       variant="ghost"
-      isIconOnly
+      iconOnly
       aria-label={ariaLabel ?? 'Close'}
       className={cx('absolute top-3 right-3 text-text-secondary', className)}
     >

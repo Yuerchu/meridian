@@ -33,15 +33,15 @@ function FloatingTocContent({ className, ...props }: ComponentProps<'div'>) {
 
 interface FloatingTocItemProps extends ComponentProps<'button'> {
   active?: boolean
-  onPress?: () => void
+  onClick?: () => void
 }
 
-function FloatingTocItem({ className, active: _active, onPress, ...props }: FloatingTocItemProps) {
+function FloatingTocItem({ className, active: _active, onClick, ...props }: FloatingTocItemProps) {
   return (
     <button
       data-slot="floating-toc-item"
       type="button"
-      onClick={onPress}
+      onClick={onClick}
       {...props}
       className={cx(
         'rounded-md px-2 py-1 text-left text-xs text-text-secondary hover:bg-background-secondary-default hover:text-text-primary',
