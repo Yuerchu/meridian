@@ -1,28 +1,13 @@
-@layer theme, base, components, utilities;
-
-@import 'tailwindcss';
+/* boardui foundation: tailwindcss + theme tokens + typography + animations */
+@import './styles/globals.css';
+/* tw-animate-css for shadcn-compatible enter/exit animations */
 @import 'tw-animate-css';
+/* Meridian token → Tailwind utility mapping (bridges Meridian's :root vars) */
 @import './styles/tokens.css';
+/* Meridian base styles (border-color defaults, scrollbar) */
 @import './styles/base.css';
 /* shimmer, no-scrollbar and data-* variants */
 @import 'shadcn/tailwind.css';
-/* Chart styling: recharts class names mapped onto the theme. Previously from
-   Pro CSS; inlined here until the AreaChart wrapper replicates it. */
-.recharts-cartesian-grid line {
-  stroke: var(--separator);
-}
-.recharts-cartesian-axis-tick-value {
-  fill: var(--muted);
-  font-size: 0.75rem;
-}
-.recharts-tooltip-cursor {
-  stroke: var(--border);
-}
-.recharts-default-tooltip {
-  background: var(--overlay) !important;
-  border-color: var(--border) !important;
-  border-radius: calc(var(--radius) * 1.5);
-}
 
 /* Plan review is a document surface with a sibling comment rail. The rail is
    selected by the page container, not by the window: a narrow split panel gets
@@ -215,18 +200,8 @@
   --sidebar-width: var(--app-sidebar-width, 240px);
 }
 
-/* HeroUI ships a `dark` variant that also falls back to `prefers-color-scheme`.
-   Ours is deliberate: the theme is an explicit setting, and a dark OS must not
-   darken an app the user asked to keep light. Declared after the import so it
-   wins. */
-@custom-variant dark (&:is(.dark *));
-
-/* HeroUI already maps every one of its own tokens to a Tailwind colour utility
-   (`themes/shared/theme.css`), including the whole radius scale. Only what the
-   project adds on top needs mapping here. */
+/* Meridian-specific token extensions beyond what boardui/tokens.css maps. */
 @theme inline {
-  --font-sans: 'Geist Variable', sans-serif;
-  /* HeroUI has success, warning and danger but no informational colour. */
   --color-info: var(--info);
   /* HeroUI derives a `-soft-foreground` for each status but maps none of them to
      a colour utility. These are what status *text* uses: the base tokens are

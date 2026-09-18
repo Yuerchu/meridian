@@ -1,15 +1,8 @@
-# Meridian
+---
+description: BoardUI design system rules. Always apply when writing or editing UI code in this project.
+alwaysApply: true
+---
 
-Read [CLAUDE.md](CLAUDE.md). It is the description of this project, and it is
-the one that is kept current.
-
-This file used to carry its own copy. The copy drifted — it was still calling
-the UI layer "shadcn/ui planned" well after the move to HeroUI v3, and it had
-never picked up the sections on the message tree, the transcript scroller,
-logging or Android. A second description earns nothing and goes stale in
-silence, so this one points at the first instead.
-
-<!-- boardui:rules:start -->
 # BoardUI design rules
 
 This project uses BoardUI (React + Tailwind CSS v4, source-owned components under `components/`). These rules always apply when writing UI code. MCP tools are on demand; these rules are not optional context.
@@ -50,4 +43,3 @@ This project uses BoardUI (React + Tailwind CSS v4, source-owned components unde
 - Focus states: `outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring`.
 
 When unsure about a token, a component's API, or working example code, ask the BoardUI MCP server: `get_theme`, `get_component`, `get_usage_examples`.
-<!-- boardui:rules:end -->
