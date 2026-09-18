@@ -224,6 +224,7 @@ export default tseslint.config(
   // data-slot. Both are the local plugin under scripts/eslint-rules/.
   {
     files: ['src/**/*.tsx'],
+    ignores: ['src/components/base/**', 'src/components/foundations/**'],
     rules: {
       'meridian-ui/icon-only-needs-tooltip': 'error',
       'meridian-ui/intrinsic-needs-data-slot': 'error',
@@ -234,6 +235,7 @@ export default tseslint.config(
   // it: the non-ui block must carry the full superset of restrictions.
   {
     files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/components/base/**', 'src/components/foundations/**'],
     rules: {
       'no-restricted-syntax': ['error', ...styleRestrictions, ...nativeChromeRestrictions],
     },

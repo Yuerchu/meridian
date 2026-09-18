@@ -107,7 +107,7 @@
     "maplibre-gl": "^6.3.0",
     "marked": "^18.0.9",
     "material-icon-theme": "^5.37.0",
-    "motion": "^13.1.0",
+    "motion": "^12.42.2",
     "react": "^19.2.8",
     "react-aria-components": "^1.20.0",
     "react-dom": "^19.2.8",
