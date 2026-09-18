@@ -72,7 +72,7 @@ export function VoiceButton({
             // React Aria reports screen-reader and other programmatic activation
             // as `virtual`; unlike mouse/touch/pen it has no pointer handler that
             // could otherwise start recording.
-            if (event.pointerType === 'keyboard' || event.pointerType === 'virtual') onKeyboardPress?.()
+            if (event.detail === 0) onKeyboardPress?.()
           }}
           // Keep focus in the textarea; the browser default would steal it.
           onMouseDown={(e) => e.preventDefault()}

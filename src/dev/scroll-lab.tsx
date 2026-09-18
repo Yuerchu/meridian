@@ -827,7 +827,7 @@ export default function ScrollLab() {
           清空
         </Button>
         <Button
-          size="sm"
+          size="small"
           onClick={() => {
             setResults(null)
             runScenarios().then(setResults)

@@ -524,7 +524,7 @@ function Filter({
         {items.map(([id, text]) => (
           <Button
             key={id}
-            size="sm"
+            size="small"
             variant={selectedKey === id ? 'secondary' : 'ghost'}
             aria-pressed={selectedKey === id}
             className={TAB}

@@ -504,7 +504,7 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
             </TextField>
             <TooltipTrigger>
               <Button
-                size="sm"
+                size="small"
                 variant="ghost"
                 aria-label={t('settings.model.removeTier')}
                 className="h-7 pointer-coarse:h-10 rounded-md px-2 text-muted hover:text-danger"
@@ -562,7 +562,7 @@ function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (n
         </div>
       ))}
       <Button
-        size="sm"
+        size="small"
         variant="outline"
         className="h-7 pointer-coarse:h-10 rounded-md text-xs"
         onClick={() => onChange([...tiers, { ...BLANK_TIER }])}
@@ -945,7 +945,7 @@ function ModelConfigEditor({
                   key={name}
                   data-slot="server-tool-chip"
                   variant={on ? 'primary' : 'outline'}
-                  size="sm"
+                  size="small"
                   aria-pressed={on}
                   className="h-6 pointer-coarse:h-9 rounded-md px-2 text-xs font-normal"
                   onClick={() => {
@@ -1036,7 +1036,7 @@ function ModelConfigEditor({
                       key={tier}
                       data-slot="effort-chip"
                       variant={on ? 'primary' : 'outline'}
-                      size="sm"
+                      size="small"
                       aria-pressed={on}
                       className="h-6 pointer-coarse:h-9 px-2 text-xs font-normal"
                       onClick={() => {
@@ -1074,7 +1074,7 @@ function ModelConfigEditor({
             </p>
             <Button
               variant="ghost"
-              size="sm"
+              size="small"
               className="h-6 pointer-coarse:h-9 px-0 text-xs text-muted hover:text-foreground"
               onClick={resetOverrides}
             >
@@ -1890,7 +1890,7 @@ export function ProviderSettings() {
             <Alert.Title>{t('settings.provider.loadError')}</Alert.Title>
             <Alert.Description className="break-all">{loadError}</Alert.Description>
             <Button
-              size="sm"
+              size="small"
               variant="outline"
               onClick={() => {
                 setLoadError(null)

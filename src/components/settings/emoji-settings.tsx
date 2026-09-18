@@ -153,7 +153,7 @@ function RowActions({
       {unconfirmed && (
         <>
           <Button
-            size="sm"
+            size="small"
             variant="ghost"
             disabled={busy !== null || !emoji.file_name}
             onClick={() => {
@@ -165,7 +165,7 @@ function RowActions({
             {busy === 'suggest' ? t('settings.emoji.suggesting') : t('settings.emoji.suggest')}
           </Button>
           <Button
-            size="sm"
+            size="small"
             variant="outline"
             disabled={busy !== null || !shownName(emoji).trim()}
             onClick={() => {
@@ -182,7 +182,7 @@ function RowActions({
         <TooltipTrigger delay={0}>
           <Button
             iconOnly
-            size="sm"
+            size="small"
             variant="ghost"
             className="text-muted hover:text-danger"
             aria-label={t('settings.emoji.deleteEmoji')}

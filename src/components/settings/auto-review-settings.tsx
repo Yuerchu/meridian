@@ -160,7 +160,7 @@ function ModelPicker({
         <Select
           aria-label={t('settings.assistant.model')}
           selectedKey={modelId || '_none'}
-          disabled={!providerId}
+          isDisabled={!providerId}
           onSelectionChange={(v) => emit(providerId, !v || v === '_none' ? '' : String(v))}
         >
           {modelOptions.map((o) => (

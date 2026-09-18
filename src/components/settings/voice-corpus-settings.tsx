@@ -174,7 +174,7 @@ export function VoiceCorpusSettings() {
                   <TooltipTrigger delay={0}>
                     <Button
                       iconOnly
-                      size="sm"
+                      size="small"
                       variant="ghost"
                       disabled={busy}
                       onClick={() => deleteSession(session)}

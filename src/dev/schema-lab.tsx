@@ -624,7 +624,7 @@ function Lab() {
               <TooltipTrigger key={g.id} delay={300}>
                 <Button
                   variant="outline"
-                  size="sm"
+                  size="small"
                   onClick={() => toggleGroup(g.id)}
                   aria-pressed={!off}
                   className={cn('h-7 gap-1.5 rounded-full px-2.5 text-xs font-normal', off && 'opacity-40')}
@@ -646,7 +646,7 @@ function Lab() {
               iconOnly
               aria-label="切换主题"
               variant="outline"
-              size="sm"
+              size="small"
               onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
             >
               <Sun className="hidden size-4 dark:block" />

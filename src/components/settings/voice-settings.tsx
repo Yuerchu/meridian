@@ -234,7 +234,7 @@ export function VoiceSettings() {
                       not: the archive is on the device the picker runs on. */}
                   <Button
                     variant="outline"
-                    size="sm"
+                    size="small"
                     onClick={handleImport}
                     disabled={importing || !can.importFromDisk}
                     aria-busy={importing}

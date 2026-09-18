@@ -240,7 +240,7 @@ export function OneBotSettings() {
             <Alert.Title>{t('settings.onebot.loadError')}</Alert.Title>
             {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
             <Button
-              size="sm"
+              size="small"
               variant="outline"
               className="mt-2"
               onClick={() => {

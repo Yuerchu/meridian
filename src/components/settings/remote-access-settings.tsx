@@ -207,7 +207,7 @@ export function RemoteAccessSettings() {
             <Alert.Title>{t('settings.remote.loadError')}</Alert.Title>
             {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
             <Button
-              size="sm"
+              size="small"
               variant="outline"
               className="mt-2"
               onClick={() => {
@@ -374,7 +374,7 @@ export function RemoteAccessSettings() {
                       <TooltipTrigger delay={0}>
                         <Button
                           iconOnly
-                          size="sm"
+                          size="small"
                           variant="ghost"
                           aria-label={t('settings.remote.copyAddress')}
                           onClick={() => copyAddress(dialable)}

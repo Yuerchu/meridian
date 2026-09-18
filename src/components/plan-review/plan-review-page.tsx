@@ -183,7 +183,12 @@ function SourceEditor({
           <p data-slot="plan-source-editor-hint" className="text-xs text-muted">
             {t('planReview.source.hint')}
           </p>
-          <Button size="sm" variant="ghost" disabled={!selection} onClick={() => selection && onAddComment(selection)}>
+          <Button
+            size="small"
+            variant="ghost"
+            disabled={!selection}
+            onClick={() => selection && onAddComment(selection)}
+          >
             <Comment />
             {t('planReview.comments.add')}
           </Button>
@@ -737,13 +742,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
                 {problem.message}
               </p>
               {problem.action && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  isPending={problem.action.pending}
-                  disabled={problem.action.pending}
-                  onClick={problem.action.run}
-                >
+                <Button size="small" variant="secondary" disabled={problem.action.pending} onClick={problem.action.run}>
                   {problem.action.label}
                 </Button>
               )}
@@ -762,13 +761,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
               {progress.message}
             </p>
             {progress.resumable && (
-              <Button
-                size="sm"
-                variant="secondary"
-                isPending={continuing}
-                disabled={continuing}
-                onClick={() => void continueDelivery()}
-              >
+              <Button size="small" variant="secondary" disabled={continuing} onClick={() => void continueDelivery()}>
                 {t('planReview.continueDelivery')}
               </Button>
             )}
@@ -791,10 +784,10 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
             onSelectionChange={(key: Key) => setTab(key as ReviewTab)}
           >
             <Segment.Item id="plan">{t('planReview.tabs.plan')}</Segment.Item>
-            <Segment.Item id="changes" disabled={historicalRevision !== null}>
+            <Segment.Item id="changes" isDisabled={historicalRevision !== null}>
               {t('planReview.tabs.changes')}
             </Segment.Item>
-            <Segment.Item id="suggestions" disabled={historicalRevision !== null}>
+            <Segment.Item id="suggestions" isDisabled={historicalRevision !== null}>
               {t('planReview.tabs.suggestions')}
             </Segment.Item>
           </Segment>
@@ -806,7 +799,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
                 : t(`planReview.save.${saveState}`)}
           </span>
           <Button
-            size="sm"
+            size="small"
             variant="ghost"
             className="plan-review-comments-trigger"
             onClick={() => setCommentsOpen(true)}
@@ -958,12 +951,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
             >
               {t('planReview.requestChanges')}
             </Button>
-            <Button
-              variant="primary"
-              isPending={deciding}
-              disabled={deciding || !rules.canApprove}
-              onClick={() => void decide('approve')}
-            >
+            <Button variant="primary" disabled={deciding} onClick={() => void decide('approve')}>
               {t('planReview.approve')}
             </Button>
           </div>

@@ -100,7 +100,7 @@ function LogRowImpl({ entry }: { entry: LogEntryInfoResponse }) {
           iconOnly
           data-slot="log-row-copy"
           variant="ghost"
-          size="sm"
+          size="small"
           aria-label={t('settings.about.logs.copyRecord')}
           onClick={onCopy}
           // Focus-visible alone does not rescue this on a touch screen, where a

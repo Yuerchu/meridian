@@ -104,7 +104,7 @@ export function TurnUsage({ tokens, usage }: { tokens: TokenTotals; usage?: Turn
       <HoverCard.Trigger className="inline-flex">
         <Button
           variant="ghost"
-          size="sm"
+          size="small"
           data-slot="turn-usage-summary"
           aria-label={t('chat.usage.openDetails', { summary })}
           aria-expanded={open}

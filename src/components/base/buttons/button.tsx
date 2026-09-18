@@ -39,7 +39,7 @@ import { cx, sortCx } from '@/utils/cx'
 
 export type ButtonVariant =
   'primary' | 'secondary' | 'tertiary' | 'outline' | 'ghost' | 'danger' | 'danger-soft' | 'transparent'
-type ButtonSize = 'medium' | 'small' | 'sm' | 'xs'
+type ButtonSize = 'medium' | 'small' | 'xs'
 
 type IconComponent = ComponentType<{
   className?: string
@@ -152,7 +152,7 @@ const styles = sortCx({
 
 export function Button({
   variant = 'primary',
-  size: rawSize = 'medium',
+  size = 'medium',
   iconOnly = false,
   leadingIcon: Leading,
   trailingIcon: Trailing,
@@ -162,7 +162,6 @@ export function Button({
   ref,
   ...props
 }: ButtonProps) {
-  const size = rawSize === 'sm' ? 'small' : rawSize
   return (
     <button
       ref={ref}

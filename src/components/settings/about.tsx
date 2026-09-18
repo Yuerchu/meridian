@@ -199,7 +199,7 @@ export function About() {
             </ItemCard.Content>
             <ItemCard.Action>
               <Button
-                size="sm"
+                size="small"
                 variant="outline"
                 aria-label={t('settings.about.copyInfo.action')}
                 disabled={!info}
@@ -239,7 +239,7 @@ export function About() {
                 <TooltipTrigger delay={0}>
                   <Button
                     iconOnly
-                    size="sm"
+                    size="small"
                     variant="ghost"
                     aria-label={t('settings.about.system.copyDataDir')}
                     onClick={() => {

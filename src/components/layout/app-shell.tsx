@@ -333,7 +333,7 @@ export function AppShell(props: ShellProps) {
                 <TooltipTrigger>
                   <Button
                     iconOnly
-                    size="sm"
+                    size="small"
                     variant="ghost"
                     aria-label={t('common.close')}
                     onClick={() => setActionError(null)}

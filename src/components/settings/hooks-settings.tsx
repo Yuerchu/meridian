@@ -128,7 +128,7 @@ function ModelPicker({
         <Select
           aria-label={t('settings.assistant.model')}
           selectedKey={modelId || '_none'}
-          disabled={!providerId}
+          isDisabled={!providerId}
           onSelectionChange={(v) => emit(providerId, !v || v === '_none' ? '' : String(v))}
         >
           {modelOptions.map((o) => (
@@ -353,7 +353,7 @@ export function HooksSettings() {
             <Alert.Title>{t('settings.hooks.loadError')}</Alert.Title>
             {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
             <Button
-              size="sm"
+              size="small"
               variant="outline"
               onClick={() => {
                 setLoading(true)

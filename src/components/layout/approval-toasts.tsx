@@ -267,7 +267,7 @@ function ApprovalToast({
           {item.kind === 'approval' && (
             <div data-slot="approval-toast-decisions" className="ml-auto flex items-center gap-2">
               <Button
-                size="sm"
+                size="small"
                 variant="danger-soft"
                 onClick={() => decide(() => api.denyToolCall({ approvalId: item.approvalId, reason: null }))}
               >

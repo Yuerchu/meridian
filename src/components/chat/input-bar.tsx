@@ -834,7 +834,7 @@ export function InputBar({
                         <TooltipTrigger delay={0}>
                           <Button
                             iconOnly
-                            size="sm"
+                            size="small"
                             variant="primary"
                             aria-label={t('chat.removeSticker')}
                             className="touch-hitbox absolute -right-2 -top-2 min-w-0 size-6 rounded-full shadow-surface"

@@ -101,7 +101,7 @@ export function StickerImage({
         <Picture aria-hidden className="size-6" />
         <Button
           variant="ghost"
-          size="sm"
+          size="small"
           className="touch-hitbox px-1 text-xs"
           onClick={() => setAttempt((current) => current + 1)}
         >

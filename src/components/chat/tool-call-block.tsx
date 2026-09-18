@@ -499,7 +499,7 @@ export function AskUserBlock({
             </p>
           )}
           <div data-slot="ask-user-actions" className="flex items-center gap-2 pt-1">
-            <Button type="submit" isPending={sending}>
+            <Button type="submit" disabled={sending}>
               {sending ? <Spinner color="current" size="sm" /> : <PaperPlane className="w-3.5 h-3.5" />}
               {t('chat.tool.askUserSubmit')}
             </Button>
@@ -939,7 +939,7 @@ function CollapsibleMarkdown({ content, blockId }: { content: string; blockId: s
         // content in place rather than going anywhere.
         <Button
           variant="ghost"
-          size="sm"
+          size="small"
           className="mt-1 self-start rounded-lg px-2 text-xs"
           onClick={() => setOpen((current) => !current)}
         >

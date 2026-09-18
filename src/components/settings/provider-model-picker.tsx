@@ -112,7 +112,7 @@ export function ProviderModelPicker({
       ) : (
         <TextField
           fullWidth
-          disabled={isModelDisabledWithoutProvider && !providerId}
+          isDisabled={isModelDisabledWithoutProvider && !providerId}
           aria-label={labelMode === 'aria' ? t('settings.assistant.model') : undefined}
         >
           {labelMode === 'label' && <Label>{t('settings.assistant.model')}</Label>}

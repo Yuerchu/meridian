@@ -481,7 +481,7 @@ function RowActionItems({ actions }: { actions: RowAction[] }) {
             id={action.key}
             textValue={action.label}
             variant={action.variant === 'destructive' ? 'danger' : undefined}
-            disabled={Boolean(action.disabledReason)}
+            isDisabled={Boolean(action.disabledReason)}
             onAction={() => void action.run()}
           >
             <action.icon className="size-4" />
@@ -615,7 +615,7 @@ function ConversationGroup({
   // no `onInsert` — because the order inside a group is pinned state and
   // recency, not something a person arranges.
   const { dragAndDropHooks } = useDragAndDrop({
-    disabled: dndDisabled,
+    isDisabled: dndDisabled,
     getItems: dragConversations,
     // 'move' first — the in-sidebar drops keep their refiling semantics — and
     // 'copy' beside it so the chat column's DropZone can accept the same drag

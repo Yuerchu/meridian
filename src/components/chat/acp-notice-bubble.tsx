@@ -54,7 +54,7 @@ export function AcpNoticeBubble({
           <div data-slot="acp-notice-actions" className="flex flex-wrap items-center gap-2 pt-1">
             {canRetry && (
               <Button
-                size="sm"
+                size="small"
                 variant="outline"
                 className="rounded-lg"
                 onClick={() => {

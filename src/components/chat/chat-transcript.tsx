@@ -115,7 +115,7 @@ function LoadEarlierTurns({
   return (
     <div data-slot="transcript-load-earlier" className="flex justify-center py-1">
       <Button
-        size="sm"
+        size="small"
         variant="secondary"
         onClick={() => {
           onLoad()

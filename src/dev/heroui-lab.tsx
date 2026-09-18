@@ -263,7 +263,7 @@ function SidebarProbe() {
       </div>
       <div data-slot="sidebar-probe-actions" className="flex flex-wrap gap-2">
         <HButton
-          size="sm"
+          size="small"
           variant="secondary"
           onClick={() =>
             setAttrs(
@@ -357,11 +357,11 @@ function PromptInputProbe() {
           {stops}
         </span>
         {' · '}
-        <HButton size="sm" variant="ghost" onClick={() => setStreaming((s) => !s)}>
+        <HButton size="small" variant="ghost" onClick={() => setStreaming((s) => !s)}>
           {streaming ? '结束流式' : '模拟流式'}
         </HButton>
         {' · '}
-        <HButton size="sm" variant="ghost" onClick={() => setSteerable((s) => !s)}>
+        <HButton size="small" variant="ghost" onClick={() => setSteerable((s) => !s)}>
           {steerable ? '关掉可插话' : '开可插话'}
         </HButton>
       </p>
@@ -473,7 +473,7 @@ export default function HeroUiLab() {
         <Section title="探测结果" hint="复制这段发回给我">
           <div data-slot="heroui-lab-report-actions" className="flex gap-2">
             <HButton
-              size="sm"
+              size="small"
               onClick={() => {
                 setReport(collect())
                 navigator.clipboard?.writeText(asText).then(
@@ -724,14 +724,14 @@ export default function HeroUiLab() {
                         </div>
                         <HInputGroup.Suffix className="w-full items-center gap-1 border-0 px-3 py-0">
                           <HTooltip delay={0}>
-                            <HButton iconOnly size="sm" variant="ghost" aria-label="加号" className="rounded-lg">
+                            <HButton iconOnly size="small" variant="ghost" aria-label="加号" className="rounded-lg">
                               +
                             </HButton>
                             <HTooltipContent>加号</HTooltipContent>
                           </HTooltip>
                           <span data-slot="heroui-lab-composer-spacer" className="flex-1" />
                           <HTooltip delay={0}>
-                            <HButton iconOnly size="sm" aria-label="发送" className="rounded-full">
+                            <HButton iconOnly size="small" aria-label="发送" className="rounded-full">
                               <ArrowUp />
                             </HButton>
                             <HTooltipContent>发送</HTooltipContent>

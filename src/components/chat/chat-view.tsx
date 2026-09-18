@@ -904,7 +904,7 @@ function ChatViewInner({
                 <TooltipTrigger delay={0}>
                   <Button
                     iconOnly
-                    size="sm"
+                    size="small"
                     variant="ghost"
                     aria-label={t('chat.convRef.remove', { name: ref.title })}
                     onClick={() => setConversationRefs((prev) => prev.filter((r) => r.id !== ref.id))}

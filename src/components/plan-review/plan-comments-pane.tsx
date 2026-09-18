@@ -90,7 +90,7 @@ export function PlanCommentsPane({
                 <TooltipTrigger>
                   <Button
                     iconOnly
-                    size="sm"
+                    size="small"
                     variant="ghost"
                     aria-label={t('planReview.comments.delete')}
                     className="-me-1 -mt-1 shrink-0"

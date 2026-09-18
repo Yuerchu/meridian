@@ -215,7 +215,7 @@ export function EmojiPicker({
                   {displayPacks.map(({ pack }) => (
                     <Button
                       key={pack.id}
-                      size="sm"
+                      size="small"
                       variant="ghost"
                       className={
                         pack.id === activePackId && !search.trim()

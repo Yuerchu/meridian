@@ -251,7 +251,7 @@ export function SettingsSelect<T extends string>({
       {label && <Label>{label}</Label>}
       <Select
         aria-label={ariaLabel}
-        disabled={disabled}
+        isDisabled={disabled}
         placeholder={placeholder}
         selectedKey={value}
         onSelectionChange={(key) => {

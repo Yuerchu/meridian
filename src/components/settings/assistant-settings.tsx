@@ -421,7 +421,7 @@ function AssistantEditor({
                   key={skill.dir_name}
                   className="py-0.5 text-xs"
                   isSelected={boundSkillDirs.has(skill.dir_name)}
-                  disabled={!skill.is_enabled}
+                  isDisabled={!skill.is_enabled}
                   onChange={async (selected) => {
                     setSkillError(null)
                     try {
@@ -566,7 +566,7 @@ export function AssistantSettings() {
             <Alert.Title>{t('settings.assistant.loadError')}</Alert.Title>
             <Alert.Description className="break-all">{loadError}</Alert.Description>
             <Button
-              size="sm"
+              size="small"
               variant="outline"
               onClick={() => {
                 setLoadError(null)
