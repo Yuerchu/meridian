@@ -85,6 +85,12 @@ function BubbleBlockButton({
  * the badge answers "which ten" and a block answers "what did that one say".
  * `aria-expanded` carries the state; the pressed look reads off the same
  * attribute so the two cannot disagree.
+ *
+ * The fill is a wash of the bubble's ink over the bubble's fill, the way a
+ * block's hover is, rather than a surface token: it sits *on* a bubble, and a
+ * surface token has no idea which. `background-secondary` was a dark hole in
+ * the assistant's bubble in the dark theme and the bubble's own colour in the
+ * light one.
  */
 function BubbleFoldBadge({ expanded, className, ...props }: React.ComponentProps<'button'> & { expanded: boolean }) {
   return (
@@ -93,9 +99,10 @@ function BubbleFoldBadge({ expanded, className, ...props }: React.ComponentProps
       data-slot="bubble-fold-badge"
       aria-expanded={expanded}
       className={cx(
-        'inline-flex h-5 shrink-0 items-center gap-1 rounded-full bg-background-secondary-default/70 px-2 text-caption-1-regular leading-none text-text-secondary transition-colors outline-none select-none',
-        'hover:bg-background-primary-hover hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring/50',
-        'aria-expanded:bg-background-tertiary-default aria-expanded:text-text-primary',
+        'inline-flex h-5 shrink-0 items-center gap-1 rounded-full px-2 text-caption-1-regular leading-none text-text-secondary transition-colors outline-none select-none',
+        'bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--bubble-ink,var(--color-text-primary))_6%)]',
+        'hover:bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--bubble-ink,var(--color-text-primary))_12%)] hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring/50',
+        'aria-expanded:bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--bubble-ink,var(--color-text-primary))_12%)] aria-expanded:text-text-primary',
         className,
       )}
       {...props}

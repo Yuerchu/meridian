@@ -180,11 +180,10 @@ const CodeBlock: Components['code'] = ({ className, children, node, ...props }) 
     const value = String(children ?? '').trim()
     const reference = !isStreaming ? parseMarkdownFileCandidate(value) : null
     const fallback = (
-      <code
-        data-slot="markdown-inline-code"
-        className={cx('rounded-md bg-background-secondary-default px-1.5 py-0.5 text-caption-1-regular', className)}
-        {...props}
-      >
+      // No classes of its own: the prose recipe's `prose-code:` variants
+      // (`markdown-variants.tsx`) outrank anything written here, so a fill or
+      // a size on this element was dead the whole time.
+      <code data-slot="markdown-inline-code" className={className} {...props}>
         {children}
       </code>
     )
@@ -203,7 +202,12 @@ const CodeBlock: Components['code'] = ({ className, children, node, ...props }) 
     //
     // The radius is ours: the old library's own was 16px, the composer's rung,
     // one above what a card inside the transcript may take.
-    <div data-slot="markdown-code-block" className="code-block my-3 rounded-xl">
+    //
+    // `not-prose`, because the prose recipe reaches the `pre` inside otherwise
+    // (`prose-pre:` fill and radius, typography's own padding and margin) and
+    // draws a second box inside the block. The block styles itself, in
+    // `meridian.css`.
+    <div data-slot="markdown-code-block" className="code-block not-prose my-3 rounded-xl">
       <div data-slot="markdown-code-header" className="code-block__header">
         {icon && <img data-slot="markdown-code-icon" src={icon} alt="" aria-hidden className="size-4 shrink-0" />}
         <span data-slot="markdown-code-language" className="text-caption-1-regular text-text-secondary">

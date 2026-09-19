@@ -184,7 +184,10 @@
 .dark {
   --bubble-user: var(--color-neutral-200);
   --bubble-user-foreground: var(--color-neutral-950);
-  --bubble-assistant: var(--color-neutral-800);
+  /* One step lighter than the panel the transcript sits on. boardui's dark
+     `background-primary-default` is neutral-800, and the assistant fill used
+     to be the same value — a bubble the colour of its background is no bubble. */
+  --bubble-assistant: var(--color-neutral-700);
   --bubble-assistant-foreground: var(--color-neutral-50);
 
   --scrollbar-thumb: color-mix(in srgb, var(--color-white) 12%, transparent);
@@ -226,6 +229,45 @@
   ::backdrop,
   ::file-selector-button {
     border-color: var(--color-border-button-default, currentColor);
+  }
+}
+
+/* The fenced code block. `markdown-content.tsx` draws the shell and the header;
+   `shiki-code.tsx`, `numbered-code.tsx` and `file-preview.tsx` share
+   `code-block__code` so a file read in a tool panel matches a fence in the
+   answer. The class names were HeroUI's and the rules left with its stylesheet:
+   the header lost its row, the block its well, and every token its colour —
+   Shiki writes both themes onto each span (`--shiki-light` / `--shiki-dark`,
+   `lib/shiki.ts`) and only a rule can pick the side. The well is boardui's own
+   code token. `components` rather than unlayered so a utility on the same
+   element still wins: `numbered-code` overrides the padding and the overflow. */
+@layer components {
+  .code-block {
+    overflow: clip;
+    border: 1px solid var(--color-border-button-default);
+    background-color: var(--color-docs-code-background);
+  }
+  .code-block__header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.25rem 0.25rem 0.75rem;
+    border-bottom: 1px solid var(--color-separator-border);
+  }
+  .code-block__code {
+    overflow-x: auto;
+    padding: 0.75rem;
+    font-family: var(--font-mono);
+    font-size: var(--text-caption-1-regular);
+    line-height: 1.25rem;
+  }
+  .code-block__code span[style] {
+    color: var(--shiki-light);
+    font-style: var(--shiki-light-font-style, inherit);
+  }
+  .dark .code-block__code span[style] {
+    color: var(--shiki-dark);
+    font-style: var(--shiki-dark-font-style, inherit);
   }
 }
 
