@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { Disclosure, ProgressCircle, Tooltip } from '@heroui/react'
-import { Segment } from '@heroui-pro/react/segment'
+import { Disclosure, ProgressCircle, Tooltip, TooltipTrigger } from '@/components/base'
+import { Segment } from '@/components/base'
 import { LayoutColumns3, LayoutList } from '@gravity-ui/icons'
 import { useTranslation } from 'react-i18next'
 
 import { useConversationStore } from '@/stores/conversation-store'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import TodoBoard from './todo-board'
 import { TodoItemList, todoProgress, type TodoArgs } from './todo-list'
 
@@ -49,24 +49,24 @@ export function TodoBarView({
     // and shadow alone. Off when the queue is already the card.
     <Disclosure
       data-slot="todo-bar"
-      className={cn(
-        'w-full overflow-hidden text-sm',
-        framed && 'rounded-2xl bg-surface shadow-surface ring-1 ring-border ring-inset',
+      className={cx(
+        'w-full overflow-hidden text-body-regular',
+        framed && 'rounded-2xl bg-background-primary-default shadow-card ring-1 ring-border-button-default ring-inset',
       )}
     >
       <Disclosure.Heading>
-        {/* `flex` is not optional: HeroUI styles the indicator with `ms-auto`
-            and `shrink-0`, which only mean anything inside a flex container. */}
+        {/* `flex` is not optional: Disclosure.Indicator carries `shrink-0`,
+            which only means something inside a flex container. */}
         <Disclosure.Trigger
           data-slot="todo-bar-trigger"
-          className={cn(
+          className={cx(
             'flex w-full items-center gap-2 p-4 text-left transition-colors outline-none',
-            'hover:bg-default focus-visible:bg-default',
+            'hover:bg-background-primary-hover focus-visible:bg-background-secondary-default',
           )}
         >
-          {/* `--info` has no `color` variant of its own — HeroUI's are
-              accent/default/success/warning/danger. The stroke reads a
-              custom property, so pointing that at the token is the
+          {/* `--info` has no `color` variant of its own — the usual named
+              values are accent/default/success/warning/danger. The stroke
+              reads a custom property, so pointing that at the token is the
               supported way in rather than restyling the circle. */}
           {/* Hidden from the accessibility tree: the trigger takes its name
               from its contents and the count is already spelled out to the
@@ -79,7 +79,7 @@ export function TodoBarView({
               aria-label={t('chat.todo.progress', { done, total })}
               value={done}
               maxValue={total}
-              className="[--progress-circle-stroke:var(--info)]"
+              className="[--progress-circle-stroke:var(--color-status-info)]"
             >
               <ProgressCircle.Track className="size-3.5">
                 <ProgressCircle.TrackCircle />
@@ -91,17 +91,17 @@ export function TodoBarView({
               so the count and chevron sit at the right edge without an
               ml-auto fighting for the free space. */}
           <div data-slot="todo-bar-summary" className="flex min-w-0 flex-1 items-center gap-2">
-            <span data-slot="todo-bar-title" className="max-w-40 shrink-0 truncate font-medium text-foreground">
+            <span data-slot="todo-bar-title" className="max-w-40 shrink-0 truncate text-body-medium text-text-primary">
               {todos.title}
             </span>
-            <span data-slot="todo-bar-current" className="truncate text-muted">
+            <span data-slot="todo-bar-current" className="truncate text-text-secondary">
               {current ? current.active_form : t('chat.todo.idle')}
             </span>
           </div>
-          <span data-slot="todo-bar-progress" className="shrink-0 tabular-nums text-muted">
+          <span data-slot="todo-bar-progress" className="shrink-0 tabular-nums text-text-secondary">
             {t('chat.todo.progress', { done, total })}
           </span>
-          <Disclosure.Indicator className="size-3.5 shrink-0 text-muted" />
+          <Disclosure.Indicator className="size-3.5 shrink-0 text-text-secondary" />
         </Disclosure.Trigger>
       </Disclosure.Heading>
       <Disclosure.Content data-slot="todo-bar-content">
@@ -117,18 +117,18 @@ export function TodoBarView({
                 if (next === 'list' || next === 'board') setView(next)
               }}
             >
-              <Tooltip delay={0}>
+              <TooltipTrigger delay={0}>
                 <Segment.Item id="list" aria-label={t('chat.todo.viewList')} className="w-7 px-0">
                   <LayoutList />
                 </Segment.Item>
-                <Tooltip.Content>{t('chat.todo.viewList')}</Tooltip.Content>
-              </Tooltip>
-              <Tooltip delay={0}>
+                <Tooltip>{t('chat.todo.viewList')}</Tooltip>
+              </TooltipTrigger>
+              <TooltipTrigger delay={0}>
                 <Segment.Item id="board" aria-label={t('chat.todo.viewBoard')} className="w-7 px-0">
                   <LayoutColumns3 />
                 </Segment.Item>
-                <Tooltip.Content>{t('chat.todo.viewBoard')}</Tooltip.Content>
-              </Tooltip>
+                <Tooltip>{t('chat.todo.viewBoard')}</Tooltip>
+              </TooltipTrigger>
             </Segment>
           </div>
           {view === 'board' ? (
@@ -152,7 +152,7 @@ export function TodoBarView({
   return (
     <div
       data-slot="todo-bar-shell"
-      className={cn('px-4 pt-2 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]', className)}
+      className={cx('px-4 pt-2 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]', className)}
     >
       <div data-slot="todo-bar-inner" className="mx-auto max-w-2xl">
         {bar}

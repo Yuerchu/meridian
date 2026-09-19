@@ -11,12 +11,12 @@ import {
   DisclosureGroup,
   Input,
   Label,
-  Spinner,
   TextArea,
   TextField,
   Tooltip,
-} from '@heroui/react'
-import { EmptyState } from '@heroui-pro/react/empty-state'
+  TooltipTrigger,
+} from '@/components/base'
+import { EmptyState } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
@@ -106,24 +106,24 @@ function SkillEditor({
   return (
     <div data-slot="skill-editor" className="space-y-3">
       {!skill && (
-        <TextField fullWidth>
+        <TextField>
           <Label>{t('settings.skills.dirName')}</Label>
           <Input
             value={dirName}
             onChange={(e) => setDirName(e.target.value)}
             placeholder="my-skill"
-            className="font-mono text-xs"
+            className="font-mono text-caption-1-regular"
           />
           <Description>{t('settings.skills.dirNameHint')}</Description>
           {dirName.trim().length > 0 && !dirNameValid && (
-            <p data-slot="skill-editor-error" className="text-xs text-danger">
+            <p data-slot="skill-editor-error" className="text-caption-1-regular text-status-danger">
               {t('settings.skills.dirNameInvalid')}
             </p>
           )}
         </TextField>
       )}
 
-      <TextField fullWidth>
+      <TextField>
         <Label>{t('settings.skills.displayName')}</Label>
         <Input
           value={displayName}
@@ -132,22 +132,22 @@ function SkillEditor({
         />
       </TextField>
 
-      <TextField fullWidth>
+      <TextField>
         <Label>{t('settings.skills.description')}</Label>
         <TextArea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           disabled={isBuiltin}
           rows={2}
-          className="resize-none text-xs"
+          className="resize-none text-caption-1-regular"
         />
         <Description>{t('settings.skills.descriptionHint')}</Description>
       </TextField>
 
-      <TextField fullWidth>
+      <TextField>
         <Label>{t('settings.skills.body')}</Label>
         {bodyLoading ? (
-          <p data-slot="skill-editor-hint" className="text-xs text-muted">
+          <p data-slot="skill-editor-hint" className="text-caption-1-regular text-text-secondary">
             {t('common.loading')}
           </p>
         ) : (
@@ -156,20 +156,20 @@ function SkillEditor({
             onChange={(e) => setBody(e.target.value)}
             disabled={isBuiltin}
             rows={10}
-            className="resize-none font-mono text-xs"
+            className="resize-none font-mono text-caption-1-regular"
           />
         )}
         <Description>{t('settings.skills.bodyHint')}</Description>
       </TextField>
 
       {isBuiltin && (
-        <p data-slot="skill-editor-builtin-notice" className="text-xs text-info-soft-foreground">
+        <p data-slot="skill-editor-builtin-notice" className="text-caption-1-regular text-status-info-soft-foreground">
           {t('settings.skills.builtinNotice')}
         </p>
       )}
 
       {error && (
-        <p data-slot="skill-editor-error" className="text-xs text-danger">
+        <p data-slot="skill-editor-error" className="text-caption-1-regular text-status-danger">
           {error}
         </p>
       )}
@@ -180,18 +180,18 @@ function SkillEditor({
         </Button>
         {saved && <SavedHint data-slot="skill-editor-saved" />}
         {onDelete && !isBuiltin && (
-          <Tooltip delay={0}>
+          <TooltipTrigger delay={0}>
             <Button
-              isIconOnly
+              iconOnly
               variant="ghost"
               aria-label={t('settings.skills.delete')}
-              className="ml-auto text-muted hover:text-danger"
+              className="ml-auto text-text-secondary hover:text-status-danger"
               onPress={onDelete}
             >
               <TrashBin className="w-3.5 h-3.5" />
             </Button>
-            <Tooltip.Content>{t('settings.skills.delete')}</Tooltip.Content>
-          </Tooltip>
+            <Tooltip>{t('settings.skills.delete')}</Tooltip>
+          </TooltipTrigger>
         )}
       </div>
     </div>
@@ -273,8 +273,8 @@ export function SkillSettings() {
         subtitle={t('settings.skills.subtitle')}
         actions={
           <>
-            <Button variant="outline" onPress={handleRescan} isDisabled={rescanning}>
-              {rescanning ? <Spinner size="sm" color="current" /> : <ArrowsRotateRight className="w-3.5 h-3.5" />}
+            <Button variant="outline" onPress={handleRescan} isPending={rescanning}>
+              <ArrowsRotateRight className="w-3.5 h-3.5" />
               {t('settings.skills.rescan')}
             </Button>
             <Button variant="outline" onPress={() => setShowCreate(!showCreate)}>
@@ -286,7 +286,7 @@ export function SkillSettings() {
       />
 
       {error && (
-        <p data-slot="skill-settings-error" className="text-xs text-danger">
+        <p data-slot="skill-settings-error" className="text-caption-1-regular text-status-danger">
           {error}
         </p>
       )}
@@ -319,7 +319,7 @@ export function SkillSettings() {
               key={skill.dir_name}
               id={skill.dir_name}
               data-slot="skill-item"
-              className="flex w-full flex-col overflow-hidden rounded-lg border border-border"
+              className="flex w-full flex-col overflow-hidden rounded-lg border border-border-button-default"
             >
               {/* A container query, not a viewport one. The row wraps when the
                   two labelled checkboxes (about 130px between them) would leave
@@ -341,54 +341,44 @@ export function SkillSettings() {
                     shorter one beside it fit. From 0 the row grows into whatever
                     is left and truncates instead. */}
                 <Disclosure.Heading className="min-w-0 flex-1 basis-full @sm/skill-row:basis-0">
-                  {/* `flex` is not optional: HeroUI styles the indicator with
-                      `ms-auto` and `shrink-0`, which only mean anything inside a
+                  {/* `flex` is not optional: Disclosure.Indicator carries
+                      `shrink-0`, which only means something inside a
                       flex container. `text-start` undoes the button element's
                       centred UA default. */}
-                  <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2 text-start text-xs transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30">
-                    <BookOpen className="w-3.5 h-3.5 shrink-0 text-muted" />
+                  <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2 text-start text-caption-1-regular transition-colors outline-none hover:bg-background-primary-hover/30 focus-visible:bg-background-secondary-default/30">
+                    <BookOpen className="w-3.5 h-3.5 shrink-0 text-text-secondary" />
                     {/* The label row absorbs the slack, so the badge and the
-                        chevron sit at the right edge without a second auto
-                        margin fighting the indicator's own `ms-auto`. */}
+                        chevron sit at the right edge without a separate
+                        spacer pushing them there. */}
                     <div data-slot="skill-item-label-row" className="flex min-w-0 flex-1 items-center gap-2">
                       <span data-slot="skill-item-name" className="truncate">
                         {skill.display_name}
                       </span>
-                      <span data-slot="skill-item-slug" className="font-mono text-muted truncate">
+                      <span data-slot="skill-item-slug" className="font-mono text-text-secondary truncate">
                         {skill.llm_name}
                       </span>
                     </div>
-                    <Chip data-slot="skill-item-source" className="shrink-0 text-muted">
+                    <Chip data-slot="skill-item-source" className="shrink-0 text-text-secondary">
                       {t(`settings.skills.source.${skill.source}`)}
                     </Chip>
-                    <Disclosure.Indicator className="size-3.5 shrink-0 text-muted" />
+                    <Disclosure.Indicator className="size-3.5 shrink-0 text-text-secondary" />
                   </Disclosure.Trigger>
                 </Disclosure.Heading>
                 <Checkbox
                   data-slot="skill-item-enabled"
-                  className="shrink-0 text-xs"
+                  className="shrink-0 text-caption-1-regular"
                   isSelected={skill.is_enabled}
                   onChange={(selected) => toggleEnabled(skill, selected)}
                 >
-                  <Checkbox.Content>
-                    <Checkbox.Control>
-                      <Checkbox.Indicator />
-                    </Checkbox.Control>
-                    {t('settings.skills.enabled')}
-                  </Checkbox.Content>
+                  {t('settings.skills.enabled')}
                 </Checkbox>
                 <Checkbox
                   data-slot="skill-item-global"
-                  className="shrink-0 text-xs"
+                  className="shrink-0 text-caption-1-regular"
                   isSelected={globalBound.has(skill.dir_name)}
                   onChange={(selected) => toggleGlobal(skill.dir_name, selected)}
                 >
-                  <Checkbox.Content>
-                    <Checkbox.Control>
-                      <Checkbox.Indicator />
-                    </Checkbox.Control>
-                    {t('settings.skills.globalBinding')}
-                  </Checkbox.Content>
+                  {t('settings.skills.globalBinding')}
                 </Checkbox>
               </div>
               {/* `min-h-0` is load-bearing: the card is a flex column, and a
@@ -405,7 +395,7 @@ export function SkillSettings() {
                       read every skill's file on every visit to this page. */}
                   {isExpanded && (
                     <>
-                      <p data-slot="skill-item-description" className="text-xs text-muted">
+                      <p data-slot="skill-item-description" className="text-caption-1-regular text-text-secondary">
                         {skill.llm_description}
                       </p>
                       <SkillEditor
@@ -443,7 +433,7 @@ export function SkillSettings() {
         )}
       </DisclosureGroup>
 
-      <p data-slot="skill-settings-global-hint" className="text-xs text-muted">
+      <p data-slot="skill-settings-global-hint" className="text-caption-1-regular text-text-secondary">
         {t('settings.skills.globalBindingHint')}
       </p>
       {confirmDialog}

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import i18n from '@/i18n'
@@ -234,8 +234,9 @@ describe('EmptyState welcome composer', () => {
 
     await waitFor(() => expect(mocks.fileUrl).toHaveBeenCalledWith('emoji-1'))
     await user.click(screen.getByRole('button', { name: 'Emoji' }))
-    const nativeSelect = screen.getByTestId('hidden-select-container').querySelector('select')!
-    fireEvent.change(nativeSelect, { target: { value: 'emoji-1' } })
+    // The picker's items are buttons named by their `textValue` (emoji name,
+    // tags, pack) since it stopped being a Select with a hidden native one.
+    await user.click(await screen.findByRole('button', { name: /^Wave\b/ }))
 
     expect(await screen.findByRole('img', { name: 'Wave' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Send' }))
@@ -262,8 +263,9 @@ describe('EmptyState welcome composer', () => {
     await waitFor(() => expect(mocks.fileUrl).toHaveBeenCalledWith('emoji-1'))
     await user.type(screen.getByRole('textbox', { name: 'Send a message...' }), 'Typed remainder')
     await user.click(screen.getByRole('button', { name: 'Emoji' }))
-    const nativeSelect = screen.getByTestId('hidden-select-container').querySelector('select')!
-    fireEvent.change(nativeSelect, { target: { value: 'emoji-1' } })
+    // The picker's items are buttons named by their `textValue` (emoji name,
+    // tags, pack) since it stopped being a Select with a hidden native one.
+    await user.click(await screen.findByRole('button', { name: /^Wave\b/ }))
     expect(await screen.findByRole('img', { name: 'Wave' })).toBeInTheDocument()
 
     act(() => mocks.voiceOnSend?.('  Dictated opening  '))

@@ -1,6 +1,6 @@
 import * as React from 'react'
 
-// Inclusive, matching Pro: its sidebar CSS hides the panel at
+// Inclusive, matching Sidebar: its own CSS hides the panel at
 // `@media (max-width: 768px)` and offers the drawer instead. This was `< 768`,
 // and on that one pixel the sidebar was already a drawer while the app was
 // still drawing the desktop — the changes toggle was offered, and the header

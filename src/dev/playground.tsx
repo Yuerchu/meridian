@@ -3,14 +3,14 @@
 import { useState } from 'react'
 import { Moon, Sun } from '@gravity-ui/icons'
 
-import { Button, Input, Tooltip } from '@heroui/react'
+import { Button, Input, Tooltip, TooltipTrigger } from '@/components/base'
 import {
   ChainOfThought,
   ChainOfThoughtContent,
   ChainOfThoughtStep,
   ChainOfThoughtSteps,
   ChainOfThoughtTrigger,
-} from '@heroui-pro/react/chain-of-thought'
+} from '@/components/base'
 import {
   ChatTool,
   ChatToolApproval,
@@ -21,7 +21,7 @@ import {
   ChatToolStatusIcon,
   ChatToolTrigger,
 } from '@/components/ui/chat-tool'
-import HeroUiLab from './heroui-lab'
+import WebViewLab from './webview-lab'
 import ResponsiveLab, { ResponsiveFrame } from './responsive-lab'
 import SchemaLab from './schema-lab'
 import ScrollLab from './scroll-lab'
@@ -55,7 +55,7 @@ import type {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section data-slot="gallery-section" className="space-y-3">
-      <h2 data-slot="gallery-section-title" className="text-sm font-semibold text-muted">
+      <h2 data-slot="gallery-section-title" className="text-body-semibold text-text-secondary">
         {title}
       </h2>
       {children}
@@ -199,9 +199,9 @@ function TurnItemCase({
   return (
     <div
       data-slot="turn-case"
-      className="w-full max-w-2xl space-y-1 rounded-xl border border-dashed border-border/60 p-4"
+      className="w-full max-w-2xl space-y-1 rounded-xl border border-dashed border-border-button-default/60 p-4"
     >
-      <div data-slot="turn-case-label" className="text-xs text-muted">
+      <div data-slot="turn-case-label" className="text-caption-1-regular text-text-secondary">
         {label}
       </div>
       {turns.map((turn) => (
@@ -245,10 +245,13 @@ function ComposerMenuCase({
   const [fast, setFast] = useState(false)
   return (
     <div data-slot="composer-menu-case" className="flex flex-col gap-1">
-      <span data-slot="composer-menu-case-label" className="text-xs text-muted">
+      <span data-slot="composer-menu-case-label" className="text-caption-1-regular text-text-secondary">
         {label}
       </span>
-      <div data-slot="composer-menu-case-frame" className="flex items-center rounded-lg border border-border px-2 py-1">
+      <div
+        data-slot="composer-menu-case-frame"
+        className="flex items-center rounded-lg border border-border-button-default px-2 py-1"
+      >
         <ComposerMenu
           assistants={[]}
           providers={[]}
@@ -269,7 +272,7 @@ function ComposerMenuCase({
           onPickFile={() => {}}
         />
       </div>
-      <span data-slot="composer-menu-case-state" className="text-xs text-muted">
+      <span data-slot="composer-menu-case-state" className="text-caption-1-regular text-text-secondary">
         {mode} · {acceptEdits ? 'accept-edits' : 'ask'}
       </span>
     </div>
@@ -298,7 +301,7 @@ const COMMAND_RESULT = [
 
 const WEB_SEARCH_RESULT = JSON.stringify({
   sources: [
-    { title: 'HeroUI Pro', url: 'https://heroui.pro', content: '', site_name: 'HeroUI' },
+    { title: 'boardui', url: 'https://boardui.com', content: '', site_name: 'boardui' },
     {
       title: 'Base UI Collapsible',
       url: 'https://base-ui.com/react/components/collapsible',
@@ -438,7 +441,7 @@ export default function Playground() {
   // scroll harness needs the full viewport height, which a page that scrolls as
   // a whole cannot give it.
   if (window.location.hash === '#playground/scroll') return <ScrollLab />
-  if (window.location.hash === '#playground/heroui') return <HeroUiLab />
+  if (window.location.hash === '#playground/webview') return <WebViewLab />
   if (window.location.hash === '#playground/schema') return <SchemaLab />
   // One route, two sides: the harness and the frame it drives are the same
   // document loaded twice, told apart by a query parameter rather than a second
@@ -457,15 +460,15 @@ function Gallery() {
   // will not remove.
   const { resolvedTheme, setTheme } = useAppTheme()
   return (
-    <div data-slot="gallery" className="h-full overflow-y-auto bg-background text-foreground">
+    <div data-slot="gallery" className="h-full overflow-y-auto bg-background-full text-text-primary">
       <div data-slot="gallery-body" className="mx-auto max-w-2xl space-y-10 px-6 py-10">
         <header data-slot="gallery-header" className="flex items-center justify-between">
-          <h1 data-slot="gallery-title" className="text-lg font-semibold">
+          <h1 data-slot="gallery-title" className="text-title-3-semibold">
             组件预览
           </h1>
-          <Tooltip delay={0}>
+          <TooltipTrigger delay={0}>
             <Button
-              isIconOnly
+              iconOnly
               aria-label="切换主题"
               variant="outline"
               onPress={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
@@ -473,8 +476,8 @@ function Gallery() {
               <Sun className="hidden size-4 dark:block" />
               <Moon className="size-4 dark:hidden" />
             </Button>
-            <Tooltip.Content placement="top">切换主题</Tooltip.Content>
-          </Tooltip>
+            <Tooltip placement="top">切换主题</Tooltip>
+          </TooltipTrigger>
         </header>
 
         <Section title="ChainOfThought / 基础 + Steps">
@@ -483,7 +486,7 @@ function Gallery() {
             <ChainOfThoughtContent>
               <ChainOfThoughtSteps>
                 <ChainOfThoughtStep label="Search">
-                  Looked up HeroUI Pro chat template patterns for message layout and composer spacing.
+                  Looked up boardui chat template patterns for message layout and composer spacing.
                 </ChainOfThoughtStep>
                 <ChainOfThoughtStep label="Plan">
                   Mapped the template structure to SDK-agnostic compound components.
@@ -496,7 +499,7 @@ function Gallery() {
         <Section title="ChainOfThought / 流式 (shimmer)">
           <ChainOfThought defaultExpanded isStreaming>
             <ChainOfThoughtTrigger>思考过程</ChainOfThoughtTrigger>
-            <ChainOfThoughtContent className="text-xs text-muted leading-relaxed whitespace-pre-wrap">
+            <ChainOfThoughtContent className="text-caption-1-regular text-text-secondary leading-relaxed whitespace-pre-wrap">
               {'用户想要一个简单的登录页。这是一个直接的 UI 任务——我应该先生成一些设计灵感确保观感，然后再搭页面。'}
             </ChainOfThoughtContent>
           </ChainOfThought>
@@ -507,10 +510,10 @@ function Gallery() {
             <ChatTool state="output-available" defaultExpanded>
               <ChatToolTrigger>
                 <ChatToolStatusIcon />
-                <span data-slot="chat-tool-verb" className="text-muted">
+                <span data-slot="chat-tool-verb" className="text-text-secondary">
                   Used tool:
                 </span>
-                <span data-slot="chat-tool-name" className="font-medium text-foreground">
+                <span data-slot="chat-tool-name" className="text-caption-1-medium text-text-primary">
                   getWeather
                 </span>
               </ChatToolTrigger>
@@ -523,25 +526,25 @@ function Gallery() {
             <ChatTool state="input-streaming" defaultExpanded>
               <ChatToolTrigger>
                 <ChatToolStatusIcon />
-                <span data-slot="chat-tool-verb" className="text-muted">
+                <span data-slot="chat-tool-verb" className="text-text-secondary">
                   Running tool:
                 </span>
-                <span data-slot="chat-tool-name" className="font-medium text-foreground">
+                <span data-slot="chat-tool-name" className="text-caption-1-medium text-text-primary">
                   searchDocs
                 </span>
               </ChatToolTrigger>
               <ChatToolContent>
-                <ChatToolArgs text='{"query":"HeroUI Pro' />
+                <ChatToolArgs text='{"query":"boardui' />
               </ChatToolContent>
             </ChatTool>
 
             <ChatTool state="output-error" defaultExpanded>
               <ChatToolTrigger>
                 <ChatToolStatusIcon />
-                <span data-slot="chat-tool-verb" className="text-muted">
+                <span data-slot="chat-tool-verb" className="text-text-secondary">
                   Failed tool:
                 </span>
-                <span data-slot="chat-tool-name" className="font-medium text-foreground">
+                <span data-slot="chat-tool-name" className="text-caption-1-medium text-text-primary">
                   fetchPage
                 </span>
               </ChatToolTrigger>
@@ -554,10 +557,10 @@ function Gallery() {
             <ChatTool state="requires-action" defaultExpanded>
               <ChatToolTrigger>
                 <ChatToolStatusIcon />
-                <span data-slot="chat-tool-verb" className="text-muted">
+                <span data-slot="chat-tool-verb" className="text-text-secondary">
                   Approval needed:
                 </span>
-                <span data-slot="chat-tool-name" className="font-medium text-foreground">
+                <span data-slot="chat-tool-name" className="text-caption-1-medium text-text-primary">
                   sendEmail
                 </span>
               </ChatToolTrigger>
@@ -873,14 +876,14 @@ function Gallery() {
               data={tool({
                 tool_name: 'web_search',
                 status: 'pending',
-                arguments: JSON.stringify({ query: 'HeroUI Pro chain of thought' }),
+                arguments: JSON.stringify({ query: 'boardui chain of thought' }),
               })}
             />
             <ToolCallBlock
               data={tool({
                 tool_name: 'web_search',
                 status: 'completed',
-                arguments: JSON.stringify({ query: 'HeroUI Pro chain of thought' }),
+                arguments: JSON.stringify({ query: 'boardui chain of thought' }),
                 result: WEB_SEARCH_RESULT,
               })}
             />
@@ -1346,10 +1349,16 @@ function Gallery() {
               to wrap, and both are two clicks deep otherwise. Boxed at 672px —
               the composer's width — because that is what decides whether three
               columns fit or the grid turns into a horizontal scroller. */}
-          <div data-slot="gallery-todo-board" className="w-full max-w-2xl rounded-2xl bg-surface p-4 shadow-surface">
+          <div
+            data-slot="gallery-todo-board"
+            className="w-full max-w-2xl rounded-2xl bg-background-primary-default p-4 shadow-card"
+          >
             <TodoBoard todos={(JSON.parse(TODO_RUNNING) as { todos: TodoDraft[] }).todos} />
           </div>
-          <div data-slot="gallery-todo-board-narrow" className="w-[360px] rounded-2xl bg-surface p-4 shadow-surface">
+          <div
+            data-slot="gallery-todo-board-narrow"
+            className="w-[360px] rounded-2xl bg-background-primary-default p-4 shadow-card"
+          >
             <TodoBoard todos={(JSON.parse(TODO_NO_CURRENT) as { todos: TodoDraft[] }).todos} />
           </div>
         </Section>
@@ -1358,11 +1367,11 @@ function Gallery() {
           <div data-slot="gallery-voice-buttons" className="flex flex-wrap items-center gap-6">
             {(['idle', 'recording-hold', 'recording-toggle', 'transcribing'] as VoiceButtonState[]).map((s) => (
               <div data-slot="gallery-voice-button" key={s} className="flex flex-col items-center gap-1">
-                <Tooltip delay={0}>
+                <TooltipTrigger delay={0}>
                   <VoiceButton aria-label="语音输入" state={s} elapsed={s.startsWith('recording') ? 12.4 : 0} />
-                  <Tooltip.Content>语音输入</Tooltip.Content>
-                </Tooltip>
-                <span data-slot="gallery-voice-button-state" className="text-xs text-muted">
+                  <Tooltip>语音输入</Tooltip>
+                </TooltipTrigger>
+                <span data-slot="gallery-voice-button-state" className="text-caption-1-regular text-text-secondary">
                   {s}
                 </span>
               </div>
@@ -1376,12 +1385,15 @@ function Gallery() {
               and all three verbs side by side. Boxed at the panel's own
               minimum width, which is where a long path decides whether it
               truncates or pushes the marker off the edge. */}
-          <div data-slot="gallery-changes-panel" className="h-96 w-[280px] rounded-2xl border border-border bg-surface">
+          <div
+            data-slot="gallery-changes-panel"
+            className="h-96 w-[280px] rounded-2xl border border-border-button-default bg-background-primary-default"
+          >
             <ChangesPanelView files={CHANGED_FILES} onClose={() => {}} />
           </div>
           <div
             data-slot="gallery-changes-panel-empty"
-            className="h-48 w-[280px] rounded-2xl border border-border bg-surface"
+            className="h-48 w-[280px] rounded-2xl border border-border-button-default bg-background-primary-default"
           >
             <ChangesPanelView files={[]} onClose={() => {}} />
           </div>
@@ -1436,15 +1448,18 @@ function HotkeyProbe() {
           className="min-w-64 flex-1"
         />
       </div>
-      <p data-slot="hotkey-probe-expectation" className="text-xs text-muted">
+      <p data-slot="hotkey-probe-expectation" className="text-caption-1-regular text-text-secondary">
         预期：<code data-slot="hotkey-probe-code">mod+k</code> 在输入框里也触发，
         <code data-slot="hotkey-probe-code">mod+shift+k</code> 不触发（
         <code data-slot="hotkey-probe-code">ignoreInInput</code> 默认开）， 且{' '}
         <code data-slot="hotkey-probe-code">mod+shift+k</code> 不会连带触发{' '}
         <code data-slot="hotkey-probe-code">mod+k</code>。
       </p>
-      <div data-slot="hotkey-probe-log" className="rounded-lg border border-border bg-surface p-3 text-xs">
-        <div data-slot="hotkey-probe-hits" className="text-muted">
+      <div
+        data-slot="hotkey-probe-log"
+        className="rounded-lg border border-border-button-default bg-background-primary-default p-3 text-caption-1-regular"
+      >
+        <div data-slot="hotkey-probe-hits" className="text-text-secondary">
           最近命中：{log.length ? log.join(' · ') : '（无）'}
         </div>
         <div data-slot="hotkey-probe-chosen" className="mt-1">

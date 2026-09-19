@@ -39,8 +39,8 @@ function toolCall(toolName: string, args: unknown, status: ToolCallDisplay['stat
  *  spans and `getByText` — which only reads a node's own text children — no
  *  longer sees a whole line. Read the rendered diff as one string instead.
  *
- *  The visibility check is not decoration: the card is a HeroUI `Disclosure`,
- *  which renders its panel collapsed or not, so a diff pulled straight out of
+ *  The visibility check is not decoration: the card is a `Disclosure`, which
+ *  renders its panel collapsed or not, so a diff pulled straight out of
  *  the DOM would read the same either way. */
 function diffText(container: HTMLElement): string {
   const lines = Array.from(container.querySelectorAll('[data-slot="file-diff-line"]'))
@@ -276,7 +276,7 @@ describe('large tool results', () => {
   })
 
   /// It opens content in place, so it is a button and has to answer a button's
-  /// keys. It was a HeroUI `Link` with `onPress` and no `href`, which renders
+  /// keys. It was a React Aria `Link` with `onPress` and no `href`, which renders
   /// `<span role="link">`: measured, that answers Enter and ignores Space, so a
   /// keyboard user pressing Space scrolled the page instead of expanding.
   it('answers both Enter and Space, the way a button must', async () => {
@@ -365,7 +365,7 @@ describe('the interactive cards say what became of them', () => {
     const slot = name === 'enter_plan' ? 'enter-plan' : 'exit-plan'
     const ringed = (status: ToolCallDisplay['status']) => {
       const { container, unmount } = render(<ToolCallBlock data={toolCall(name, args, status)} />)
-      const on = container.querySelector(`[data-slot="${slot}"]`)!.className.includes('ring-info')
+      const on = container.querySelector(`[data-slot="${slot}"]`)!.className.includes('ring-status-info')
       unmount()
       return on
     }
@@ -464,14 +464,14 @@ describe('the interactive cards say what became of them', () => {
 
 describe('web search sources', () => {
   const withSources = () => ({
-    ...toolCall('web_search', { query: 'heroui' }, 'completed'),
+    ...toolCall('web_search', { query: 'example' }, 'completed'),
     result: JSON.stringify({
       sources: [
         {
-          url: 'https://heroui.com/docs',
-          title: 'HeroUI documentation',
-          site_name: 'HeroUI',
-          favicon: 'https://heroui.com/f.ico',
+          url: 'https://example.com/docs',
+          title: 'Example documentation',
+          site_name: 'Example',
+          favicon: 'https://example.com/f.ico',
         },
         { url: 'https://react.dev', title: 'React', site_name: '', favicon: null },
       ],
@@ -480,7 +480,7 @@ describe('web search sources', () => {
 
   it('lists the sources behind a count', async () => {
     render(<ToolCallBlock data={withSources()} />)
-    // `ChatSources` is a HeroUI `Disclosure`, so the list is in the DOM either
+    // `ChatSources` is a `Disclosure`, so the list is in the DOM either
     // way — see `@/test/disclosure` for why presence cannot answer this.
     const trigger = screen.getByRole('button', {
       name: i18n.t('chat.tool.webSearch.sources', { count: 2 }),
@@ -489,7 +489,7 @@ describe('web search sources', () => {
 
     await userEvent.click(trigger)
     expectExpanded(trigger)
-    expect(screen.getByText('HeroUI')).toBeInTheDocument()
+    expect(screen.getByText('Example')).toBeInTheDocument()
     // No `site_name`, so the title carries the pill.
     expect(screen.getByText('React')).toBeInTheDocument()
   })
@@ -504,24 +504,24 @@ describe('web search sources', () => {
     render(<ToolCallBlock data={withSources()} />)
     await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.tool.webSearch.sources', { count: 2 }) }))
 
-    const link = screen.getByText('HeroUI').closest('a')!
+    const link = screen.getByText('Example').closest('a')!
     expect(link).toHaveAttribute('href', '#meridian-external')
     expect(link).not.toHaveAttribute('target')
     const event = new MouseEvent('click', { bubbles: true, cancelable: true })
     fireEvent(link, event)
     expect(event.defaultPrevented).toBe(true)
-    expect(shellOpen).toHaveBeenCalledWith('https://heroui.com/docs')
+    expect(shellOpen).toHaveBeenCalledWith('https://example.com/docs')
   })
 
   it('routes a middle-click through the native opener too', async () => {
     render(<ToolCallBlock data={withSources()} />)
     await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.tool.webSearch.sources', { count: 2 }) }))
 
-    const link = screen.getByText('HeroUI').closest('a')!
+    const link = screen.getByText('Example').closest('a')!
     const event = new MouseEvent('auxclick', { bubbles: true, button: 1, cancelable: true })
     fireEvent(link, event)
     expect(event.defaultPrevented).toBe(true)
-    expect(shellOpen).toHaveBeenCalledWith('https://heroui.com/docs')
+    expect(shellOpen).toHaveBeenCalledWith('https://example.com/docs')
   })
 })
 
@@ -930,7 +930,7 @@ describe('as bubble blocks', () => {
     const key = keyOf(container)
     expect(blockOf(container)).not.toHaveClass('w-full')
     expect(key.querySelector('[data-slot="chat-tool-subtitle"]')).toBeNull()
-    // HeroUI's tooltip, not the browser's: nothing on the key carries `title`.
+    // Tooltip, not the browser's: nothing on the key carries `title`.
     expect(container.querySelector('[title]')).toBeNull()
     await userEvent.hover(key)
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Recent history')
@@ -990,16 +990,16 @@ describe('as bubble blocks', () => {
 
   it('unifies a search into one key whatever its state', () => {
     const { container, rerender } = inBubble(
-      <ToolCallBlock data={toolCall('web_search', { query: 'heroui disclosure' }, 'running')} />,
+      <ToolCallBlock data={toolCall('web_search', { query: 'weather forecast' }, 'running')} />,
     )
-    expect(keyOf(container)).toHaveTextContent('heroui disclosure')
+    expect(keyOf(container)).toHaveTextContent('weather forecast')
     expect(keyOf(container)).toHaveAttribute('data-state', 'input-available')
     rerender(
       <ChatToolPresentationProvider value="bubble">
         <ToolCallBlock
           data={{
-            ...toolCall('web_search', { query: 'heroui disclosure' }, 'completed'),
-            result: JSON.stringify({ sources: [{ title: 'Docs', url: 'https://heroui.com/docs', content: '' }] }),
+            ...toolCall('web_search', { query: 'weather forecast' }, 'completed'),
+            result: JSON.stringify({ sources: [{ title: 'Docs', url: 'https://example.com/docs', content: '' }] }),
           }}
         />
       </ChatToolPresentationProvider>,

@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { Button, Tooltip } from '@heroui/react'
-import { FileTree } from '@heroui-pro/react/file-tree'
+import { Button, Tooltip, TooltipTrigger } from '@/components/base'
+import { FileTree } from '@/components/base'
 import { File, Folder, FolderOpen, Xmark } from '@gravity-ui/icons'
 
 import { useConversationStore } from '@/stores/conversation-store'
 import { fileIconUrl } from '@/lib/file-icon'
 import { buildFileTree, touchedFiles, type FileNode, type TouchedFile, type TouchedOp } from '@/lib/touched-files'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 /** Every directory in the tree, so a new one arrives already open. */
 function branchIds(nodes: FileNode[], out: string[] = []): string[] {
@@ -21,9 +21,9 @@ function branchIds(nodes: FileNode[], out: string[] = []): string[] {
 }
 
 const OP_CLASS: Record<TouchedOp, string> = {
-  create: 'text-success-soft-foreground',
-  modify: 'text-info-soft-foreground',
-  delete: 'text-danger-soft-foreground',
+  create: 'text-status-success-soft-foreground',
+  modify: 'text-status-info-soft-foreground',
+  delete: 'text-status-danger-soft-foreground',
 }
 
 /** A, M, D — the letters every diff viewer uses, so nothing has to explain them. */
@@ -69,27 +69,30 @@ export function ChangesPanelView({ files, onClose }: { files: TouchedFile[]; onC
     <div data-slot="changes-panel" className="flex h-full flex-col overflow-hidden">
       <header
         data-slot="changes-panel-header"
-        className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2"
+        className="flex shrink-0 items-center gap-2 border-b border-border-button-default px-3 py-2"
       >
-        <span data-slot="changes-panel-title" className="min-w-0 flex-1 truncate text-sm font-medium">
+        <span data-slot="changes-panel-title" className="min-w-0 flex-1 truncate text-body-medium">
           {t('chat.changes.title')}
         </span>
-        <span data-slot="changes-panel-count" className="shrink-0 text-xs tabular-nums text-muted">
+        <span
+          data-slot="changes-panel-count"
+          className="shrink-0 text-caption-1-regular tabular-nums text-text-secondary"
+        >
           {files.length}
         </span>
-        <Tooltip delay={0}>
+        <TooltipTrigger delay={0}>
           <Button
-            isIconOnly
+            iconOnly
             variant="ghost"
-            size="sm"
+            size="small"
             aria-label={t('common.close')}
             onPress={onClose}
             className="shrink-0"
           >
             <Xmark />
           </Button>
-          <Tooltip.Content>{t('common.close')}</Tooltip.Content>
-        </Tooltip>
+          <Tooltip>{t('common.close')}</Tooltip>
+        </TooltipTrigger>
       </header>
 
       <FileTree
@@ -110,7 +113,10 @@ export function ChangesPanelView({ files, onClose }: { files: TouchedFile[]; onC
       {/* Not a disclaimer for its own sake: a list of edited files that silently
           omits everything a command wrote is the kind of wrong that reads as
           right. */}
-      <p data-slot="changes-panel-caveat" className="shrink-0 border-t border-border px-3 py-2 text-xs text-muted">
+      <p
+        data-slot="changes-panel-caveat"
+        className="shrink-0 border-t border-border-button-default px-3 py-2 text-caption-1-regular text-text-secondary"
+      >
         {t('chat.changes.caveat')}
       </p>
     </div>
@@ -143,7 +149,10 @@ function renderNode(node: FileNode, t: TFunction) {
             {node.name}
           </span>
           {node.file && node.file.count > 1 && (
-            <span data-slot="changes-node-count" className="shrink-0 text-xs tabular-nums text-muted">
+            <span
+              data-slot="changes-node-count"
+              className="shrink-0 text-caption-1-regular tabular-nums text-text-secondary"
+            >
               ×{node.file.count}
             </span>
           )}
@@ -151,7 +160,7 @@ function renderNode(node: FileNode, t: TFunction) {
             <span
               data-slot="changes-node-op"
               aria-hidden="true"
-              className={cn('shrink-0 font-mono text-xs', OP_CLASS[op])}
+              className={cx('shrink-0 font-mono text-caption-1-regular', OP_CLASS[op])}
             >
               {OP_LETTER[op]}
             </span>

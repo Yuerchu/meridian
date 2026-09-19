@@ -6,7 +6,7 @@ import { ChangesPanelView } from './changes-panel'
 describe('ChangesPanelView', () => {
   beforeEach(() => i18n.changeLanguage('en'))
 
-  it('includes the file operation in each tree item accessible name', () => {
+  it('includes the file operation in each tree row accessible name', () => {
     render(
       <ChangesPanelView
         files={[

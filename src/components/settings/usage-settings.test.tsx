@@ -449,7 +449,7 @@ it('aggregates duplicate conversation titles and keeps each real conversation as
   const parentRow = parentHeader.closest('[role="row"]') as HTMLElement
   expect(within(parentRow).getByText('2 conversations · 5 replies')).toBeInTheDocument()
   expect(within(parentRow).getByText('4K')).toBeInTheDocument()
-  // The qualifier's explanation is a HeroUI tooltip, not the browser's.
+  // The qualifier's explanation is a Tooltip, not the browser's.
   const partial = within(parentRow).getByText('≥ 3.00')
   expect(partial).not.toHaveAttribute('title')
   await userEvent.hover(partial)

@@ -35,7 +35,7 @@ describe('which questions the queue offers', () => {
     expect(visible(attention, order, 'being-read').map((i) => i.approvalId)).toEqual(['b'])
   })
 
-  /** Three is what HeroUI stacks, and everything but the frontmost is
+  /** Three is what `ToastQueue` stacks, and everything but the frontmost is
    *  `pointer-events-none` — so this is a depth cue, not three things to
    *  answer. The rest wait their turn rather than becoming live toasts. */
   it('offers no more than the stack can show', () => {

@@ -4,9 +4,9 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { ArrowDownToSquare, ChevronDown, Copy, Scissors, SquareDashedText, Xmark } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
-import { Button, Kbd, Label, ListBox, Popover, Tooltip } from '@heroui/react'
-import { ContextMenu } from '@heroui-pro/react/context-menu'
-import { ChatAttachment, ChatAttachmentGroup } from '@heroui-pro/react/chat-attachment'
+import { Button, Kbd, Label, ListBox, Popover, Tooltip, TooltipTrigger } from '@/components/base'
+import { ContextMenu } from '@/components/base'
+import { ChatAttachment, ChatAttachmentGroup } from '@/components/base'
 
 import { localPreviewSrc } from '@/lib/asset-src'
 import { can } from '@/lib/capabilities'
@@ -221,37 +221,33 @@ function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAc
 
   return (
     <Popover>
-      {/* Tooltip inside the popover rather than around it, the same way
-          `ComposerMenu` does it: React Aria passes press and focus down through
-          context, so the one Button at the bottom picks up both behaviours
-          without either wrapper knowing about the other. */}
-      <Tooltip delay={0}>
-        {/* `h-*`/`px-*` and `rounded-*` overridden together: HeroUI's own radius
-            is much rounder than the composer this sits in, and changing the
-            height without the radius is how a hover fill gets clipped. */}
+      <TooltipTrigger delay={0}>
         <Button
           variant="ghost"
           aria-label={t('chat.agentOptions')}
           data-slot="agent-options-trigger"
           isDisabled={busy}
-          className="h-8 max-w-56 gap-1 rounded-lg px-2 text-sm font-normal"
+          className="h-8 max-w-56 gap-1 rounded-lg px-2 text-body-regular"
         >
           <span data-slot="agent-options-summary" className="truncate">
             {summary.length > 0 ? summary.join(' · ') : t('chat.agentOptions')}
           </span>
-          <ChevronDown className="size-4 shrink-0 text-muted" />
+          <ChevronDown className="size-4 shrink-0 text-text-secondary" />
         </Button>
-        <Tooltip.Content placement="top">{t('chat.agentOptions')}</Tooltip.Content>
-      </Tooltip>
+        <Tooltip placement="top">{t('chat.agentOptions')}</Tooltip>
+      </TooltipTrigger>
       <Popover.Content placement="top start" className="w-72">
         <Popover.Dialog className="flex max-h-[min(420px,calc(100vh-6rem))] flex-col gap-3 overflow-y-auto">
           {pickers.map((option) => (
             <div key={option.id} data-slot="agent-knob">
-              <p data-slot="agent-knob-name" className="px-2 text-xs font-medium">
+              <p data-slot="agent-knob-name" className="px-2 text-caption-1-medium">
                 {knobName(t, option)}
               </p>
               {option.description && (
-                <p data-slot="agent-knob-description" className="px-2 pt-0.5 text-xs text-muted">
+                <p
+                  data-slot="agent-knob-description"
+                  className="px-2 pt-0.5 text-caption-1-regular text-text-secondary"
+                >
                   {option.description}
                 </p>
               )}
@@ -272,7 +268,7 @@ function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAc
               >
                 {option.options.map((v) => (
                   <ListBox.Item key={v.value} id={v.value} textValue={knobValueName(t, option, v)}>
-                    <span data-slot="agent-knob-value" className="min-w-0 flex-1 truncate text-sm">
+                    <span data-slot="agent-knob-value" className="min-w-0 flex-1 truncate text-body-regular">
                       {knobValueName(t, option, v)}
                     </span>
                     <ListBox.ItemIndicator />
@@ -304,9 +300,8 @@ function ComposerContextMenu({
   if (!enabled) return children
   return (
     <ContextMenu onOpenChange={onOpenChange}>
-      {/* `block w-full` is not decoration: Pro's trigger is `inline-block`,
-          and around a full-width field it collapses to the content's width.
-          The lab's display probe measures whether these two still win. */}
+      {/* ContextMenu.Trigger renders a plain div when given no `render` prop;
+          `w-full` is what makes it span a full-width field. */}
       <ContextMenu.Trigger className="block w-full">{children}</ContextMenu.Trigger>
       <ContextMenu.Popover>
         <ContextMenu.Menu aria-label={label}>{items}</ContextMenu.Menu>
@@ -316,11 +311,7 @@ function ComposerContextMenu({
 }
 
 function Shortcut({ keys }: { keys: string }) {
-  return (
-    <Kbd className="ms-auto" slot="keyboard" variant="light">
-      <Kbd.Content>{keys}</Kbd.Content>
-    </Kbd>
-  )
+  return <Kbd className="ms-auto">{keys}</Kbd>
 }
 
 export function InputBar({
@@ -413,8 +404,8 @@ export function InputBar({
    * device that does not have one does not show a button for it.
    */
   const onVoiceSend = can.voiceInput ? onVoiceSendProp : undefined
-  // Filled by Composer once the field exists: Pro spreads incoming props after
-  // its own ref, so one passed down would displace theirs.
+  // Filled by Composer once the field exists: PromptInput.TextArea spreads
+  // incoming props after its own ref, so one passed down would displace theirs.
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const [selectedText, setSelectedText] = useState('')
 
@@ -472,7 +463,7 @@ export function InputBar({
   // `disabled` is `streaming` at the call site, and the same two words mean two
   // different things: the field is live while a reply comes in, and only Send
   // turns into Stop. So this has to make the same exception `Composer` makes for
-  // its own `isDisabled` a few lines down — read literally it refuses every
+  // its own `disabled` a few lines down — read literally it refuses every
   // submit made during a run, which is precisely when a steer or a queued
   // message is submitted.
   const handleSubmit = useCallback(() => {
@@ -680,25 +671,25 @@ export function InputBar({
       {selectedText && (
         <>
           <ContextMenu.Item id="cut" textValue={t('contextMenu.cut')} onAction={handleCut}>
-            <Scissors className="size-4 text-muted" />
+            <Scissors className="size-4 text-text-secondary" />
             <Label>{t('contextMenu.cut')}</Label>
             <Shortcut keys="Ctrl+X" />
           </ContextMenu.Item>
           <ContextMenu.Item id="copy" textValue={t('chat.copy')} onAction={handleCopy}>
-            <Copy className="size-4 text-muted" />
+            <Copy className="size-4 text-text-secondary" />
             <Label>{t('chat.copy')}</Label>
             <Shortcut keys="Ctrl+C" />
           </ContextMenu.Item>
         </>
       )}
       <ContextMenu.Item id="paste" textValue={t('contextMenu.paste')} onAction={() => void handlePaste()}>
-        <ArrowDownToSquare className="size-4 text-muted" />
+        <ArrowDownToSquare className="size-4 text-text-secondary" />
         <Label>{t('contextMenu.paste')}</Label>
         <Shortcut keys="Ctrl+V" />
       </ContextMenu.Item>
       <ContextMenu.Separator />
       <ContextMenu.Item id="select-all" textValue={t('contextMenu.selectAll')} onAction={handleSelectAll}>
-        <SquareDashedText className="size-4 text-muted" />
+        <SquareDashedText className="size-4 text-text-secondary" />
         <Label>{t('contextMenu.selectAll')}</Label>
         <Shortcut keys="Ctrl+A" />
       </ContextMenu.Item>
@@ -785,12 +776,12 @@ export function InputBar({
             // say about why reads as the app having broken.
             notice={
               offline ? (
-                <p data-slot="composer-notice" className="px-2 pb-1.5 text-xs text-danger">
+                <p data-slot="composer-notice" className="px-2 pb-1.5 text-caption-1-regular text-status-danger">
                   {t('settings.client.composerOffline')}
                 </p>
               ) : (
                 voiceNotice && (
-                  <p data-slot="composer-notice" className="px-2 pb-1.5 text-xs text-muted">
+                  <p data-slot="composer-notice" className="px-2 pb-1.5 text-caption-1-regular text-text-secondary">
                     {voiceNotice}
                   </p>
                 )
@@ -827,7 +818,10 @@ export function InputBar({
                     </ChatAttachmentGroup>
                   )}
                   {pendingSticker && (
-                    <div className="relative shrink-0 rounded-xl bg-default/40 p-2" data-slot="pending-sticker">
+                    <div
+                      className="relative shrink-0 rounded-xl bg-background-secondary-default/40 p-2"
+                      data-slot="pending-sticker"
+                    >
                       <img
                         data-slot="pending-sticker-image"
                         src={pendingSticker.url}
@@ -835,19 +829,19 @@ export function InputBar({
                         className="size-20 object-contain"
                       />
                       {onRemoveSticker && (
-                        <Tooltip delay={0}>
+                        <TooltipTrigger delay={0}>
                           <Button
-                            isIconOnly
-                            size="sm"
+                            iconOnly
+                            size="small"
                             variant="primary"
                             aria-label={t('chat.removeSticker')}
-                            className="touch-hitbox absolute -right-2 -top-2 min-w-0 size-6 rounded-full shadow-surface"
+                            className="touch-hitbox absolute -right-2 -top-2 min-w-0 size-6 rounded-full shadow-card"
                             onPress={onRemoveSticker}
                           >
                             <Xmark className="size-3.5" />
                           </Button>
-                          <Tooltip.Content>{t('chat.removeSticker')}</Tooltip.Content>
-                        </Tooltip>
+                          <Tooltip>{t('chat.removeSticker')}</Tooltip>
+                        </TooltipTrigger>
                       )}
                     </div>
                   )}
@@ -975,10 +969,9 @@ export function InputBar({
                   <EmojiPicker assistantId={currentAssistantId} onSelect={(sticker) => onSelectSticker?.(sticker)} />
                 )}
                 {!isAndroid && onVoiceSend && (
-                  <Tooltip delay={0}>
-                    {/* The button inside picks the tooltip's trigger props up from
-                      context, so `Tooltip.Trigger` would only add a second,
-                      inert tab stop around a real button. */}
+                  <TooltipTrigger delay={0}>
+                    {/* The button is the trigger — TooltipTrigger picks it up
+                      from context, no wrapper needed. */}
                     <VoiceButton
                       aria-label={voice.state === 'idle' ? t('chat.voice.tooltip') : t('chat.voice.cancelHint')}
                       state={voice.state}
@@ -991,10 +984,10 @@ export function InputBar({
                       onPointerLeave={voice.handlePointerLeave}
                       onKeyboardPress={voice.handleKeyboardPress}
                     />
-                    <Tooltip.Content placement="top">
+                    <Tooltip placement="top">
                       {voice.state === 'idle' ? t('chat.voice.tooltip') : t('chat.voice.cancelHint')}
-                    </Tooltip.Content>
-                  </Tooltip>
+                    </Tooltip>
+                  </TooltipTrigger>
                 )}
                 <ContextGauge
                   context={contextInfo}

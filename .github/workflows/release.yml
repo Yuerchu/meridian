@@ -124,11 +124,6 @@ jobs:
 
       - run: pnpm install
 
-      - name: Stage HeroUI Pro
-        env:
-          HEROUI_KEY: ${{ secrets.HEROUI_KEY }}
-        run: pnpm dlx hpsetup@latest react --auto
-
       - name: TypeScript check
         run: pnpm typecheck
 
@@ -199,11 +194,6 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
 
       - run: pnpm install
-
-      - name: Stage HeroUI Pro
-        env:
-          HEROUI_KEY: ${{ secrets.HEROUI_KEY }}
-        run: pnpm dlx hpsetup@latest react --auto
 
       - name: Drop a half-restored sherpa-onnx unpack
         shell: bash

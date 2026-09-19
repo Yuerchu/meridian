@@ -1,8 +1,8 @@
 import { useTranslation } from 'react-i18next'
-import { Button } from '@heroui/react'
+import { Button } from '@/components/base'
 import { ArrowLeft } from '@gravity-ui/icons'
 
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { SettingsHeader } from './primitives'
 
 /**
@@ -35,7 +35,7 @@ export function SettingsSubPage({
   return (
     // A `pane` container, like `SettingsPane` and the detail column: the same
     // editor renders in all three, and this is the width it gets in this one.
-    <div data-slot="settings-subpage" className={cn('@container/pane space-y-4', className)} {...props}>
+    <div data-slot="settings-subpage" className={cx('@container/pane space-y-4', className)} {...props}>
       <div data-slot="settings-subpage-bar" className="flex items-center gap-2">
         <Button
           data-slot="settings-subpage-back"
@@ -43,7 +43,7 @@ export function SettingsSubPage({
           onPress={onBack}
           // `-ms-2` pulls the ghost button's own padding back to the content
           // edge, so the label lines up with the form below it.
-          className="-ms-2 h-9 gap-1 rounded-lg px-2 text-sm font-normal text-muted hover:text-foreground"
+          className="-ms-2 h-9 gap-1 rounded-lg px-2 text-body-regular text-text-secondary hover:text-text-primary"
         >
           <ArrowLeft className="size-4" />
           {t('common.back')}

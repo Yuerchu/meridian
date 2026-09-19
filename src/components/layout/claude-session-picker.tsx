@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { Button, Modal, SearchField, Spinner, Tooltip } from '@heroui/react'
+import { Button, Modal, SearchField, Spinner, Tooltip, TooltipTrigger } from '@/components/base'
 import { FolderOpen, Xmark } from '@gravity-ui/icons'
 
 import { api } from '@/api'
@@ -226,7 +226,7 @@ export function ClaudeSessionPicker({
               <HostedAgentGlyph size={18} />
               {t(mode === 'attach' ? 'sessionPicker.attachHeading' : 'sessionPicker.importHeading')}
             </Modal.Heading>
-            <p data-slot="session-picker-hint" className="text-xs text-muted">
+            <p data-slot="session-picker-hint" className="text-caption-1-regular text-text-secondary">
               {t(mode === 'attach' ? 'sessionPicker.attachHint' : 'sessionPicker.importHint')}
             </p>
           </Modal.Header>
@@ -238,23 +238,13 @@ export function ClaudeSessionPicker({
               pushing it taller. */}
           <Modal.Body className="flex min-h-0 flex-col gap-3">
             <div data-slot="session-picker-toolbar" className="flex items-center gap-2">
-              {/* HeroUI's own, rather than an Input with an icon stuck on the
+              {/* SearchField, rather than an Input with an icon stuck on the
                   front: it brings the magnifier, the clear button and Escape
                   clearing the field with it. */}
-              <SearchField
-                fullWidth
-                aria-label={t('sessionPicker.search')}
-                value={query}
-                onChange={setQuery}
-                className="flex-1"
-              >
+              <SearchField aria-label={t('sessionPicker.search')} value={query} onChange={setQuery} className="flex-1">
                 <SearchField.Group>
                   <SearchField.SearchIcon />
                   <SearchField.Input placeholder={t('sessionPicker.search')} />
-                  {/* Named here because HeroUI's `CloseButton` hardcodes
-                      `aria-label="Close"` before its spread — untranslated, and
-                      wrong about what it does: this clears a field rather than
-                      closing anything. */}
                   <SearchField.ClearButton aria-label={t('sessionPicker.clearSearch')} />
                 </SearchField.Group>
               </SearchField>
@@ -268,9 +258,9 @@ export function ClaudeSessionPicker({
                 </Button>
               )}
               {folder && (
-                <Tooltip delay={0}>
+                <TooltipTrigger delay={0}>
                   <Button
-                    isIconOnly
+                    iconOnly
                     variant="ghost"
                     aria-label={t('sessionPicker.allProjects')}
                     onPress={() => scopeTo('')}
@@ -278,12 +268,12 @@ export function ClaudeSessionPicker({
                   >
                     <Xmark />
                   </Button>
-                  <Tooltip.Content>{t('sessionPicker.allProjects')}</Tooltip.Content>
-                </Tooltip>
+                  <Tooltip>{t('sessionPicker.allProjects')}</Tooltip>
+                </TooltipTrigger>
               )}
             </div>
             {folder && (
-              <p data-slot="session-picker-folder" className="truncate text-xs text-muted">
+              <p data-slot="session-picker-folder" className="truncate text-caption-1-regular text-text-secondary">
                 {folder}
               </p>
             )}
@@ -312,10 +302,14 @@ export function ClaudeSessionPicker({
                   otherwise nothing on screen that can ask again. */}
               {error ? (
                 <div data-slot="session-picker-error" className="flex flex-col items-start gap-2 p-4">
-                  <p data-slot="session-picker-error-message" role="alert" className="text-xs text-danger">
+                  <p
+                    data-slot="session-picker-error-message"
+                    role="alert"
+                    className="text-caption-1-regular text-status-danger"
+                  >
                     {error}
                   </p>
-                  <Button size="sm" variant="outline" onPress={() => void load(folder)}>
+                  <Button size="small" variant="outline" onPress={() => void load(folder)}>
                     {t('sessionPicker.retry')}
                   </Button>
                 </div>
@@ -327,12 +321,12 @@ export function ClaudeSessionPicker({
                   className="flex h-40 flex-col items-center justify-center gap-2"
                 >
                   <Spinner />
-                  <span data-slot="session-picker-loading-label" className="text-xs text-muted">
+                  <span data-slot="session-picker-loading-label" className="text-caption-1-regular text-text-secondary">
                     {t('sessionPicker.loading')}
                   </span>
                 </div>
               ) : rows.length === 0 ? (
-                <p data-slot="session-picker-empty" className="p-4 text-xs text-muted">
+                <p data-slot="session-picker-empty" className="p-4 text-caption-1-regular text-text-secondary">
                   {t('sessionPicker.empty')}
                 </p>
               ) : (
@@ -360,7 +354,10 @@ export function ClaudeSessionPicker({
                     />
                   ))}
                   {hidden > 0 && (
-                    <li data-slot="session-picker-more" className="px-3 py-2 text-xs text-muted">
+                    <li
+                      data-slot="session-picker-more"
+                      className="px-3 py-2 text-caption-1-regular text-text-secondary"
+                    >
                       {t('sessionPicker.more', { count: hidden })}
                     </li>
                   )}
@@ -414,52 +411,52 @@ function SessionRow({
     // and the row is what is working anyway.
     <li data-slot="session-row" aria-busy={busy} className="flex items-center gap-3 px-3 py-2">
       <div data-slot="session-row-body" className="min-w-0 flex-1">
-        {/* `text-foreground` because `.modal__body` sets `text-muted` on
+        {/* `text-text-primary` because `.modal__body` sets `text-text-secondary` on
             everything inside it: inherited, the title came out the same grey as
             the path under it and the two rows of a row read as one.
 
             An empty title is the same as none: the adapter sanitises whatever
             the SDK summarised, and a row with a blank first line is one nobody
             can tell from its neighbour. */}
-        <p data-slot="session-title" className="truncate text-sm text-foreground">
+        <p data-slot="session-title" className="truncate text-body-regular text-text-primary">
           {session.title?.trim() || leafOf(session.cwd)}
         </p>
-        <p data-slot="session-row-path" className="truncate text-xs text-muted">
+        <p data-slot="session-row-path" className="truncate text-caption-1-regular text-text-secondary">
           {session.cwd}
           {when && ` · ${when}`}
         </p>
         {error && (
-          <p data-slot="session-row-error" role="alert" className="mt-1 text-xs text-danger">
+          <p data-slot="session-row-error" role="alert" className="mt-1 text-caption-1-regular text-status-danger">
             {error}
           </p>
         )}
         {truncated && (
-          <p data-slot="session-row-truncated" className="mt-1 text-xs text-warning">
+          <p data-slot="session-row-truncated" className="mt-1 text-caption-1-regular text-status-warning">
             {t('sessionPicker.truncated')}
           </p>
         )}
       </div>
       {mine ? (
-        <span data-slot="session-row-current" className="shrink-0 text-xs text-muted">
+        <span data-slot="session-row-current" className="shrink-0 text-caption-1-regular text-text-secondary">
           {t('sessionPicker.current')}
         </span>
       ) : taken && mode === 'attach' ? (
         // Two conversations pointing at one session would be two transcripts
         // written from the same place, so the row says why rather than failing
         // when it is pressed.
-        <span data-slot="session-row-taken" className="shrink-0 text-xs text-muted">
+        <span data-slot="session-row-taken" className="shrink-0 text-caption-1-regular text-text-secondary">
           {t('sessionPicker.taken')}
         </span>
       ) : taken ? (
-        <Button size="sm" variant="ghost" onPress={onOpen} className="shrink-0">
+        <Button size="small" variant="ghost" onPress={onOpen} className="shrink-0">
           {t('sessionPicker.alreadyImported')}
         </Button>
       ) : (
         // The label stays while the spinner is up. Swapped for it, the button
         // is both disabled and nameless for the length of an adapter start,
         // which to a screen reader is a control that has stopped existing.
-        <Button size="sm" variant="secondary" onPress={onAct} isDisabled={disabled} className="shrink-0">
-          {/* Hidden from the accessibility tree: HeroUI's Spinner carries
+        <Button size="small" variant="secondary" onPress={onAct} isDisabled={disabled} className="shrink-0">
+          {/* Hidden from the accessibility tree: Spinner carries
               `aria-label="Loading"`, which would rename the button to "Loading
               Import" for the length of an adapter start. The row's `aria-busy`
               says the same thing without the control changing its name under

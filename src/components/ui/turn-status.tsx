@@ -1,8 +1,8 @@
 import * as React from 'react'
-import { Spinner } from '@heroui/react'
+import { Spinner } from '@/components/base'
 import { Ban, ChevronLeft, ChevronRight, CircleCheck, CircleExclamation, TriangleExclamation } from '@gravity-ui/icons'
 
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 // Imported rather than restated. This used to be a copy of the union in
 // `lib/turns`, structurally identical by luck, which meant a new status had to
 // be added in two places and nothing failed if it was added in one.
@@ -10,24 +10,24 @@ import type { TurnStatus } from '@/lib/turns'
 
 /** The one glyph a turn's status is drawn as, wherever it is drawn. */
 function TurnStatusIcon({ status, className }: { status: TurnStatus; className?: string }) {
-  const shared = cn('size-3.5 shrink-0', className)
+  const shared = cx('size-3.5 shrink-0', className)
   switch (status) {
     case 'streaming':
-      return <Spinner size="sm" color="current" aria-hidden className={cn('shrink-0 text-muted', className)} />
+      return <Spinner size="sm" color="current" aria-hidden className={cx('shrink-0 text-text-secondary', className)} />
     case 'awaiting-input':
-      return <CircleExclamation aria-hidden className={cn(shared, 'text-warning-soft-foreground')} />
+      return <CircleExclamation aria-hidden className={cx(shared, 'text-status-warning-soft-foreground')} />
     // Warning-coloured, unlike `interrupted`, which is grey. A turn the user
     // stopped needs no attention; one that stopped unexpectedly, part way
     // through whatever it was doing, may have left something half-done.
     case 'crashed':
-      return <TriangleExclamation aria-hidden className={cn(shared, 'text-warning-soft-foreground')} />
+      return <TriangleExclamation aria-hidden className={cx(shared, 'text-status-warning-soft-foreground')} />
     case 'interrupted':
-      return <Ban aria-hidden className={cn(shared, 'text-muted')} />
+      return <Ban aria-hidden className={cx(shared, 'text-text-secondary')} />
     case 'empty':
-      return <Ban aria-hidden className={cn(shared, 'text-muted')} />
+      return <Ban aria-hidden className={cx(shared, 'text-text-secondary')} />
     case 'complete':
     default:
-      return <CircleCheck aria-hidden className={cn(shared, 'text-muted')} />
+      return <CircleCheck aria-hidden className={cx(shared, 'text-text-secondary')} />
   }
 }
 
@@ -37,7 +37,7 @@ interface TurnBranchPagerProps extends Omit<React.ComponentProps<'div'>, 'onSele
   total: number
   onPrevious?: () => void
   onNext?: () => void
-  isDisabled?: boolean
+  disabled?: boolean
   previousLabel?: string
   nextLabel?: string
 }
@@ -49,7 +49,7 @@ function TurnBranchPager({
   total,
   onPrevious,
   onNext,
-  isDisabled,
+  disabled,
   previousLabel,
   nextLabel,
   className,
@@ -64,16 +64,16 @@ function TurnBranchPager({
     // `overflow: hidden` cuts it back off.
     <div
       data-slot="turn-branch-pager"
-      className={cn('flex items-center gap-0.5 text-xs text-muted', className)}
+      className={cx('flex items-center gap-0.5 text-caption-1-regular text-text-secondary', className)}
       {...props}
     >
       <button
         type="button"
         data-slot="turn-branch-pager-prev"
         aria-label={previousLabel}
-        disabled={isDisabled || index <= 1}
+        disabled={disabled || index <= 1}
         onClick={onPrevious}
-        className="touch-hitbox rounded-sm p-0.5 transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus/50 disabled:pointer-events-none disabled:opacity-40"
+        className="touch-hitbox rounded-sm p-0.5 transition-colors outline-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring/50 disabled:pointer-events-none disabled:opacity-40"
       >
         <ChevronLeft aria-hidden className="size-3.5" />
       </button>
@@ -84,9 +84,9 @@ function TurnBranchPager({
         type="button"
         data-slot="turn-branch-pager-next"
         aria-label={nextLabel}
-        disabled={isDisabled || index >= total}
+        disabled={disabled || index >= total}
         onClick={onNext}
-        className="touch-hitbox rounded-sm p-0.5 transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus/50 disabled:pointer-events-none disabled:opacity-40"
+        className="touch-hitbox rounded-sm p-0.5 transition-colors outline-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring/50 disabled:pointer-events-none disabled:opacity-40"
       >
         <ChevronRight aria-hidden className="size-3.5" />
       </button>

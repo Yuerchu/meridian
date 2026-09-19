@@ -2,10 +2,10 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
-import { Alert, Button, Description, Input, Label, TextField } from '@heroui/react'
-import { CellSwitch } from '@heroui-pro/react/cell-switch'
-import { ItemCard } from '@heroui-pro/react/item-card'
-import { cn } from '@/lib/utils'
+import { Alert, Button, Description, Input, Label, TextField } from '@/components/base'
+import { CellSwitch } from '@/components/base'
+import { ItemCard } from '@/components/base'
+import { cx } from '@/utils/cx'
 import type { AssistantInfoResponse, OneBotConfigInfoResponse, OneBotStatusInfoResponse } from '@/types'
 import { SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
 import { useSettingsDirtyRegistration } from './dirty-guard'
@@ -240,7 +240,7 @@ export function OneBotSettings() {
             <Alert.Title>{t('settings.onebot.loadError')}</Alert.Title>
             {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
             <Button
-              size="sm"
+              size="small"
               variant="outline"
               className="mt-2"
               onPress={() => {
@@ -272,13 +272,17 @@ export function OneBotSettings() {
             <CellSwitch.Control />
           </CellSwitch.Trigger>
         </CellSwitch>
-        <p id="onebot-enabled-hint" data-slot="onebot-enable-hint" className="text-xs text-muted">
+        <p
+          id="onebot-enabled-hint"
+          data-slot="onebot-enable-hint"
+          className="text-caption-1-regular text-text-secondary"
+        >
           {t('settings.onebot.enableHint')}
         </p>
       </div>
 
       <div data-slot="onebot-endpoint" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
-        <TextField fullWidth>
+        <TextField>
           <Label>{t('settings.onebot.host')}</Label>
           <Input
             name="onebotHost"
@@ -287,7 +291,7 @@ export function OneBotSettings() {
             placeholder="127.0.0.1"
           />
         </TextField>
-        <TextField fullWidth type="number">
+        <TextField type="number">
           <Label>{t('settings.onebot.port')}</Label>
           <Input
             name="onebotPort"
@@ -301,7 +305,7 @@ export function OneBotSettings() {
         </TextField>
       </div>
 
-      <TextField fullWidth type="password">
+      <TextField type="password">
         <Label>{t('settings.onebot.accessToken')}</Label>
         <Input
           name="onebotAccessToken"
@@ -318,10 +322,9 @@ export function OneBotSettings() {
         options={assistantOptions}
         onChange={(v) => setConfig({ ...config, assistant_id: v === '_default' ? null : v })}
         description={t('settings.onebot.assistantHint')}
-        fullWidth
       />
 
-      <TextField fullWidth>
+      <TextField>
         <Label>{t('settings.onebot.adminUsers')}</Label>
         <Input
           name="onebotAdminUsers"
@@ -332,7 +335,7 @@ export function OneBotSettings() {
         <Description>{t('settings.onebot.adminUsersHint')}</Description>
       </TextField>
 
-      <TextField fullWidth>
+      <TextField>
         <Label>{t('settings.onebot.voiceCapture')}</Label>
         <Input
           name="onebotVoiceCapture"
@@ -355,14 +358,18 @@ export function OneBotSettings() {
             <CellSwitch.Control />
           </CellSwitch.Trigger>
         </CellSwitch>
-        <p id="onebot-voice-send-hint" data-slot="onebot-voice-send-hint" className="text-xs text-muted">
+        <p
+          id="onebot-voice-send-hint"
+          data-slot="onebot-voice-send-hint"
+          className="text-caption-1-regular text-text-secondary"
+        >
           {t('settings.onebot.voiceSendHint')}
         </p>
       </div>
 
       {config.voice_send_enabled && (
         <>
-          <TextField fullWidth>
+          <TextField>
             <Label>{t('settings.onebot.voiceSendGroups')}</Label>
             <Input
               name="onebotVoiceSendGroups"
@@ -374,7 +381,7 @@ export function OneBotSettings() {
           </TextField>
 
           <div data-slot="onebot-voice-tts" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
-            <TextField fullWidth>
+            <TextField>
               <Label>{t('settings.onebot.voiceTtsModel')}</Label>
               <Input
                 name="onebotVoiceModel"
@@ -384,7 +391,7 @@ export function OneBotSettings() {
               />
               <Description>{t('settings.onebot.voiceTtsModelHint')}</Description>
             </TextField>
-            <TextField fullWidth>
+            <TextField>
               <Label>{t('settings.onebot.voiceTtsVoice')}</Label>
               <Input
                 name="onebotVoiceReference"
@@ -396,7 +403,7 @@ export function OneBotSettings() {
             </TextField>
           </div>
 
-          <TextField fullWidth>
+          <TextField>
             <Label>{t('settings.onebot.fishKey')}</Label>
             <Input
               type="password"
@@ -419,7 +426,7 @@ export function OneBotSettings() {
               because one of the four is a keychain entry this page never
               sees. */}
           {voiceReady && !voiceReady.ready && (
-            <p data-slot="onebot-voice-not-ready" role="status" className="text-xs text-warning">
+            <p data-slot="onebot-voice-not-ready" role="status" className="text-caption-1-regular text-status-warning">
               {t('settings.onebot.voiceNotReady', {
                 missing: [
                   !voiceReady.has_model && t('settings.onebot.voiceTtsModel'),
@@ -434,7 +441,7 @@ export function OneBotSettings() {
         </>
       )}
 
-      <TextField fullWidth>
+      <TextField>
         <Label>{t('settings.onebot.ackEmoji')}</Label>
         <Input
           name="onebotAckEmoji"
@@ -446,7 +453,7 @@ export function OneBotSettings() {
       </TextField>
 
       {error && (
-        <p data-slot="onebot-error" role="alert" className="text-xs text-danger break-all">
+        <p data-slot="onebot-error" role="alert" className="text-caption-1-regular text-status-danger break-all">
           {error}
         </p>
       )}
@@ -478,7 +485,10 @@ export function OneBotSettings() {
               <span
                 data-slot="onebot-status-dot"
                 aria-hidden
-                className={cn('inline-block size-2 shrink-0 rounded-full', running ? 'bg-success' : 'bg-default')}
+                className={cx(
+                  'inline-block size-2 shrink-0 rounded-full',
+                  running ? 'bg-status-success' : 'bg-background-secondary-default',
+                )}
               />
               {running ? t('settings.onebot.statusRunning') : t('settings.onebot.statusStopped')}
             </ItemCard.Title>

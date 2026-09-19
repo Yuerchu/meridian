@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 
-import { Link, Popover, ProgressCircle, Tooltip } from '@heroui/react'
+import { Link, Popover, ProgressCircle, Tooltip, TooltipTrigger } from '@/components/base'
 
 import type { AcpUsage } from '@/hooks/use-acp-config'
 import type { CompactCircuitBreakerState, ConversationAgentKind } from '@/types'
@@ -105,34 +105,32 @@ export function ContextGauge({
           is worth saying because it is the reason this is not simply a larger
           button: the toolbar row is 32px, and a control taller than that pushes
           the shell open. */}
-      <Tooltip delay={0}>
+      <TooltipTrigger delay={0}>
         <Popover.Trigger
           aria-label={figures}
-          className="touch-hitbox inline-flex items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          className="touch-hitbox inline-flex items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
         >
           <ProgressCircle
             aria-hidden
             value={used}
             maxValue={limit}
             isIndeterminate={compacting}
-            color={color}
-            className={color && !compacting ? undefined : '[--progress-circle-stroke:var(--muted)]'}
-          >
-            <ProgressCircle.Track className="size-4.5">
-              <ProgressCircle.TrackCircle />
-              <ProgressCircle.FillCircle />
-            </ProgressCircle.Track>
-          </ProgressCircle>
+            color={color && !compacting ? color : 'neutral'}
+            className="size-4.5"
+          />
         </Popover.Trigger>
-        <Tooltip.Content>{figures}</Tooltip.Content>
-      </Tooltip>
+        <Tooltip>{figures}</Tooltip>
+      </TooltipTrigger>
       <Popover.Content placement="top" className="max-w-64">
-        <Popover.Dialog aria-label={t('chat.context.title')} className="flex flex-col gap-1 text-xs tabular-nums">
+        <Popover.Dialog
+          aria-label={t('chat.context.title')}
+          className="flex flex-col gap-1 text-caption-1-regular tabular-nums"
+        >
           {compacting && !hosted ? (
             <span data-slot="context-gauge-compacting">{t('chat.compact.inProgress')}</span>
           ) : (
             <>
-              <span data-slot="context-gauge-model" className="text-muted">
+              <span data-slot="context-gauge-model" className="text-text-secondary">
                 {whose}
               </span>
               {/* Only for a conversation whose rows *are* the context. A
@@ -149,7 +147,7 @@ export function ContextGauge({
                 // this app has no say and no visibility. Saying so beats
                 // leaving a gap where every other conversation has a
                 // countdown.
-                <span data-slot="context-gauge-hosted-compaction" className="text-muted">
+                <span data-slot="context-gauge-hosted-compaction" className="text-text-secondary">
                   {t('chat.context.hostedCompaction')}
                 </span>
               ) : (
@@ -159,7 +157,7 @@ export function ContextGauge({
                     // auto-compact" next to a number that never moves reads as
                     // a bug in the indicator rather than as compaction having
                     // given up.
-                    <span data-slot="context-gauge-breaker" className="text-warning">
+                    <span data-slot="context-gauge-breaker" className="text-status-warning">
                       {t('chat.compact.circuitBreakerOpen')}
                     </span>
                   ) : (
@@ -174,7 +172,7 @@ export function ContextGauge({
                   {onCompact && !streaming && (
                     <Link
                       data-slot="context-gauge-compact"
-                      className="mt-1 text-xs font-normal underline underline-offset-2"
+                      className="mt-1 text-caption-1-regular underline underline-offset-2"
                       onPress={onCompact}
                     >
                       {t('chat.compact.manual')}

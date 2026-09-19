@@ -1,8 +1,8 @@
 import { useContext } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@heroui/react'
+import { Button } from '@/components/base'
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { AcpNoticeActionsContext } from './acp-notice-actions'
 import type { AcpSessionNoticeInfoResponse } from '@/types'
 
@@ -36,17 +36,17 @@ export function AcpNoticeBubble({
       variant={isError ? 'destructive' : 'muted'}
       className="max-w-[85%]"
     >
-      <BubbleContent className={cn('space-y-2', !isError && 'text-warning-soft-foreground')}>
+      <BubbleContent className={cx('space-y-2', !isError && 'text-status-warning-soft-foreground')}>
         <div data-slot="acp-notice-head" className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <span data-slot="acp-notice-category" className="text-xs opacity-80">
+          <span data-slot="acp-notice-category" className="text-caption-1-regular opacity-80">
             {t(`chat.acpNotice.category.${notice.category}`)}
           </span>
-          <span data-slot="acp-notice-title" className="font-medium">
+          <span data-slot="acp-notice-title" className="text-body-medium">
             {notice.title}
           </span>
         </div>
         {notice.details !== null && (
-          <p data-slot="acp-notice-details" className="text-xs whitespace-pre-wrap opacity-90">
+          <p data-slot="acp-notice-details" className="text-caption-1-regular whitespace-pre-wrap opacity-90">
             {notice.details}
           </p>
         )}
@@ -54,7 +54,7 @@ export function AcpNoticeBubble({
           <div data-slot="acp-notice-actions" className="flex flex-wrap items-center gap-2 pt-1">
             {canRetry && (
               <Button
-                size="sm"
+                size="small"
                 variant="outline"
                 className="rounded-lg"
                 onPress={() => {
@@ -65,12 +65,12 @@ export function AcpNoticeBubble({
               </Button>
             )}
             {canRestart && (
-              <Button size="sm" variant="outline" className="rounded-lg" onPress={() => actions?.restartAgent()}>
+              <Button size="small" variant="outline" className="rounded-lg" onPress={() => actions?.restartAgent()}>
                 {t('chat.acpNotice.action.newSession')}
               </Button>
             )}
             {wantsLogin && (
-              <span data-slot="acp-notice-login-hint" className="text-xs opacity-80">
+              <span data-slot="acp-notice-login-hint" className="text-caption-1-regular opacity-80">
                 {t('chat.acpNotice.loginHint')}
               </span>
             )}

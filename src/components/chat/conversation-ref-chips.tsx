@@ -1,8 +1,8 @@
 import { useTranslation } from 'react-i18next'
-import { Chip } from '@heroui/react'
+import { Chip } from '@/components/base'
 import { Comments } from '@gravity-ui/icons'
 
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import type { MessageContextInfoResponse } from '@/types'
 
 /**
@@ -23,7 +23,7 @@ export function ConversationRefChips({
   const refs = items.filter((item) => item.kind === 'conversation')
   if (refs.length === 0) return null
   return (
-    <div data-slot="conversation-ref-chips" className={cn('flex min-w-0 flex-wrap gap-1', className)}>
+    <div data-slot="conversation-ref-chips" className={cx('flex min-w-0 flex-wrap gap-1', className)}>
       {refs.map((ref) => (
         <Chip key={ref.id} size="sm" variant="soft" aria-label={t('chat.convRef.chip', { name: ref.display_path })}>
           <Comments className="size-3" aria-hidden />

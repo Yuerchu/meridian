@@ -1,8 +1,8 @@
 /**
- * The sidebar, on HeroUI Pro's — a panel on a wide window, a sheet on a narrow
- * one, and the phone's conversation list either way.
+ * The sidebar, on the base layer's `Sidebar` — a panel on a wide window, a
+ * sheet on a narrow one, and the phone's conversation list either way.
  *
- * The shape is HeroUI Pro's agent-workspace example: one `Sidebar.Group` per
+ * The shape follows an agent-workspace pattern: one `Sidebar.Group` per
  * project with the group label carrying the project's own affordances (fold,
  * select, new-conversation, actions, and the drop target a drag files into),
  * and a flat menu of conversation rows under it. There is no project row and
@@ -17,20 +17,32 @@
  * not at all, which is also what keeps the Android back key predictable.
  *
  * The consequence: `closeMobileOnAction` hangs off the href branch, and would
- * take `onAction` with it if we went there (Pro sets `onAction` to its own
- * dismiss handler when `href` is present, replacing ours). So the sheet is
+ * take `onAction` with it if we went there (React Aria sets `onAction` to its
+ * own dismiss handler when `href` is present, replacing ours). So the sheet is
  * closed by hand — see `dismissing` — and every row that navigates has to go
  * through it or the sheet stays open over the page it just opened.
  */
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DropZone, useDragAndDrop } from 'react-aria-components'
 import type { DropItem, Key } from 'react-aria-components'
 import { open } from '@tauri-apps/plugin-dialog'
-import { Alert, Button, Dropdown, Input, Label, Spinner, ToggleButton, Tooltip } from '@heroui/react'
-import { ContextMenu } from '@heroui-pro/react/context-menu'
-import { Sidebar, useSidebar } from '@heroui-pro/react/sidebar'
+import {
+  Alert,
+  Button,
+  Dropdown,
+  DropdownItem,
+  DropdownPopover,
+  Input,
+  Kbd,
+  Label,
+  ToggleButton,
+  Tooltip,
+  TooltipTrigger,
+} from '@/components/base'
+import { ContextMenu } from '@/components/base'
+import { Sidebar, useSidebar } from '@/components/base'
 import {
   Archive,
   ArrowDownToSquare,
@@ -53,7 +65,7 @@ import { ClaudeSessionPicker } from './claude-session-picker'
 
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { isRemote } from '@/lib/transport'
 import type { ConversationInfoResponse, ProjectInfoResponse } from '@/types'
 import type { Page } from './shell-props'
@@ -106,7 +118,7 @@ interface AppSidebarProps {
 /**
  * The draft, held above the two sidebars rather than inside them.
  *
- * Below 768px Pro renders this tree twice — the panel, hidden with
+ * Below 768px Sidebar renders this tree twice — the panel, hidden with
  * `display: none`, and the sheet — so a `useState` in the form is two pieces of
  * state, and crossing the breakpoint swaps which one is on screen. Typing a
  * project name in a narrow window and then widening it produced an empty form.
@@ -217,13 +229,13 @@ function NewProjectForm({
   return (
     <div data-slot="project-form" className="px-2 py-1.5 space-y-1.5">
       <Input
-        fullWidth
+        surface="secondary"
         type="text"
         aria-label={t('sidebar.projectName')}
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder={t('sidebar.projectName')}
-        className="text-xs"
+        className="text-caption-1-regular"
         autoFocus
         onKeyDown={(e) => {
           if (e.nativeEvent.isComposing) return
@@ -242,22 +254,22 @@ function NewProjectForm({
           variant="outline"
           onPress={() => void handleBrowse()}
           isDisabled={saving}
-          className="w-full justify-start text-xs"
+          className="w-full justify-start text-caption-1-regular"
         >
-          <FolderOpen className="text-muted" />
-          <span data-slot="project-form-path" className={path ? 'text-foreground truncate' : 'text-muted'}>
+          <FolderOpen className="text-text-secondary" />
+          <span data-slot="project-form-path" className={path ? 'text-text-primary truncate' : 'text-text-secondary'}>
             {path || t('sidebar.browsePath')}
           </span>
         </Button>
       ) : (
         <Input
-          fullWidth
+          surface="secondary"
           type="text"
           aria-label={t('sidebar.hostPath')}
           value={path}
           onChange={(e) => setPath(e.target.value)}
           placeholder={t('sidebar.hostPathPlaceholder')}
-          className="text-xs"
+          className="text-caption-1-regular"
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return
             if (e.key === 'Enter') void submit()
@@ -266,7 +278,7 @@ function NewProjectForm({
         />
       )}
       {error && (
-        <p data-slot="project-form-error" role="alert" className="text-xs text-danger">
+        <p data-slot="project-form-error" role="alert" className="text-caption-1-regular text-status-danger">
           {error}
         </p>
       )}
@@ -275,20 +287,20 @@ function NewProjectForm({
           variant="secondary"
           aria-busy={saving}
           onPress={() => void submit()}
-          isDisabled={!name.trim() || !path.trim() || saving}
+          isDisabled={!name.trim() || !path.trim()}
+          isPending={saving}
           className="flex-1"
         >
-          {saving && <Spinner size="sm" aria-hidden />}
           {t('common.save')}
         </Button>
         {/* The glyph is not a name: a screen reader reads U+2715 as nothing, or
             as "multiplication x". */}
-        <Tooltip delay={0}>
-          <Button isIconOnly variant="ghost" aria-label={t('common.cancel')} onPress={onCancel} isDisabled={saving}>
+        <TooltipTrigger delay={0}>
+          <Button iconOnly variant="ghost" aria-label={t('common.cancel')} onPress={onCancel} isDisabled={saving}>
             <Xmark />
           </Button>
-          <Tooltip.Content>{t('common.cancel')}</Tooltip.Content>
-        </Tooltip>
+          <Tooltip>{t('common.cancel')}</Tooltip>
+        </TooltipTrigger>
       </div>
     </div>
   )
@@ -349,22 +361,25 @@ function NewHostedSessionForm({
           type="button"
           variant="outline"
           onPress={() => void handleBrowse()}
-          className="w-full justify-start text-xs"
+          className="w-full justify-start text-caption-1-regular"
         >
-          <FolderOpen className="text-muted" />
-          <span data-slot="hosted-session-form-path" className={path ? 'text-foreground truncate' : 'text-muted'}>
+          <FolderOpen className="text-text-secondary" />
+          <span
+            data-slot="hosted-session-form-path"
+            className={path ? 'text-text-primary truncate' : 'text-text-secondary'}
+          >
             {path || t('sidebar.hostedSessionFolder')}
           </span>
         </Button>
       ) : (
         <Input
-          fullWidth
+          surface="secondary"
           type="text"
           aria-label={t('sidebar.hostPath')}
           value={path}
           onChange={(e) => setPath(e.target.value)}
           placeholder={t('sidebar.hostPathPlaceholder')}
-          className="text-xs"
+          className="text-caption-1-regular"
           autoFocus
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return
@@ -374,7 +389,7 @@ function NewHostedSessionForm({
         />
       )}
       {error && (
-        <p data-slot="hosted-session-form-error" role="alert" className="text-xs text-danger">
+        <p data-slot="hosted-session-form-error" role="alert" className="text-caption-1-regular text-status-danger">
           {error}
         </p>
       )}
@@ -383,18 +398,18 @@ function NewHostedSessionForm({
           variant="secondary"
           aria-busy={starting}
           onPress={() => void submit()}
-          isDisabled={!path.trim() || starting}
+          isDisabled={!path.trim()}
+          isPending={starting}
           className="flex-1"
         >
-          {starting && <Spinner size="sm" aria-hidden />}
           {t('sidebar.startHostedSession')}
         </Button>
-        <Tooltip delay={0}>
-          <Button isIconOnly variant="ghost" aria-label={t('common.cancel')} onPress={onCancel} isDisabled={starting}>
+        <TooltipTrigger delay={0}>
+          <Button iconOnly variant="ghost" aria-label={t('common.cancel')} onPress={onCancel} isDisabled={starting}>
             <Xmark />
           </Button>
-          <Tooltip.Content>{t('common.cancel')}</Tooltip.Content>
-        </Tooltip>
+          <Tooltip>{t('common.cancel')}</Tooltip>
+        </TooltipTrigger>
       </div>
     </div>
   )
@@ -476,7 +491,10 @@ function RowActionItems({ actions }: { actions: RowAction[] }) {
             <Label>{action.label}</Label>
             {/* Beside the label rather than in a tooltip — see `RowAction`. */}
             {action.disabledReason && (
-              <span data-slot="row-action-disabled-reason" className="ml-auto shrink-0 text-xs text-muted">
+              <span
+                data-slot="row-action-disabled-reason"
+                className="ml-auto shrink-0 text-caption-1-regular text-text-secondary"
+              >
                 {action.disabledReason}
               </span>
             )}
@@ -490,14 +508,6 @@ function RowActionItems({ actions }: { actions: RowAction[] }) {
 /** The loose group's key in the folded set. Project ids are uuids, so this
  *  cannot collide with one. */
 const LOOSE_KEY = 'loose'
-
-/**
- * The panel keeps the example's density; the mobile sheet keeps Pro's default,
- * because a finger needs the taller row. Withheld while settings fills the
- * pane — that side is a short nav list, and two densities inside one app read
- * as a bug.
- */
-const DENSITY = { '--spacing': '0.2rem' } as CSSProperties
 
 interface ConversationGroupProps {
   /** `null` is the loose group — the drop that unfiles. */
@@ -552,9 +562,9 @@ function FoldedMenu({
     <Sidebar.Menu aria-label={label}>
       <Sidebar.MenuItem id={id} textValue={label} onAction={onToggle}>
         <Sidebar.MenuIcon>{icon}</Sidebar.MenuIcon>
-        <Sidebar.MenuLabel className="text-muted text-xs">{label}</Sidebar.MenuLabel>
+        <Sidebar.MenuLabel className="text-text-secondary text-caption-1-regular">{label}</Sidebar.MenuLabel>
         <Sidebar.MenuChip>
-          <ChevronRight className={cn('size-3 text-muted transition-transform', expanded && 'rotate-90')} />
+          <ChevronRight className={cx('size-3 text-text-secondary transition-transform', expanded && 'rotate-90')} />
         </Sidebar.MenuChip>
       </Sidebar.MenuItem>
       {expanded && children}
@@ -636,36 +646,36 @@ function ConversationGroup({
             data-row-id={projectId ?? undefined}
             data-row-kind={projectId ? 'project' : undefined}
           >
-            <Tooltip delay={0}>
+            <TooltipTrigger delay={0}>
               <Button
-                isIconOnly
-                size="sm"
+                iconOnly
+                size="small"
                 variant="ghost"
                 aria-expanded={!folded}
                 aria-label={
                   folded ? t('sidebar.unfoldGroup', { name: title }) : t('sidebar.foldGroup', { name: title })
                 }
                 onPress={onToggleFold}
-                className="touch-hitbox size-5 shrink-0 rounded-md text-muted"
+                className="touch-hitbox size-5 shrink-0 rounded-md text-text-secondary"
               >
-                <ChevronRight className={cn('size-3 transition-transform', !folded && 'rotate-90')} />
+                <ChevronRight className={cx('size-3 transition-transform', !folded && 'rotate-90')} />
               </Button>
-              <Tooltip.Content>
+              <Tooltip>
                 {folded ? t('sidebar.unfoldGroup', { name: title }) : t('sidebar.foldGroup', { name: title })}
-              </Tooltip.Content>
-            </Tooltip>
+              </Tooltip>
+            </TooltipTrigger>
             {onSelectToggle ? (
               <ToggleButton
-                size="sm"
+                size="small"
                 variant="ghost"
                 onChange={onSelectToggle}
                 // The selection this toggles decides where a new conversation
                 // files and which workspace the empty state reads — state, so
                 // `aria-pressed` rather than `aria-current`.
                 isSelected={isCurrent}
-                className={cn(
-                  'h-6 min-w-0 flex-1 justify-start rounded-sm px-1 text-xs font-medium',
-                  isCurrent ? 'text-foreground' : 'text-muted',
+                className={cx(
+                  'h-6 min-w-0 flex-1 justify-start rounded-sm px-1 text-caption-1-medium',
+                  isCurrent ? 'text-text-primary' : 'text-text-secondary',
                 )}
               >
                 <span data-slot="sidebar-group-title" className="truncate">
@@ -678,40 +688,32 @@ function ConversationGroup({
               </span>
             )}
             <span data-slot="sidebar-group-actions" className="sidebar-group-actions flex shrink-0 items-center">
-              <Tooltip delay={0}>
+              <TooltipTrigger delay={0}>
                 <Button
-                  isIconOnly
-                  size="sm"
+                  iconOnly
+                  size="small"
                   variant="ghost"
                   aria-label={projectId ? t('sidebar.newConversationIn', { name: title }) : t('sidebar.newChat')}
                   onPress={onNewConversation}
-                  className="touch-hitbox size-6 rounded-md text-muted"
+                  className="touch-hitbox size-6 rounded-md text-text-secondary"
                 >
                   <Plus />
                 </Button>
-                <Tooltip.Content>
-                  {projectId ? t('sidebar.newConversationIn', { name: title }) : t('sidebar.newChat')}
-                </Tooltip.Content>
-              </Tooltip>
+                <Tooltip>{projectId ? t('sidebar.newConversationIn', { name: title }) : t('sidebar.newChat')}</Tooltip>
+              </TooltipTrigger>
               {actions && actions.length > 0 && (
                 <Dropdown>
                   {/* Styled as a menu action — the docs' own pattern for a
                       dropdown trigger in a sidebar — so the two buttons match. */}
-                  <Tooltip delay={0}>
-                    <Dropdown.Trigger
-                      aria-label={moreLabel}
-                      className="sidebar__menu-action touch-hitbox"
-                      data-slot="sidebar-menu-action"
-                    >
+                  <TooltipTrigger delay={0}>
+                    <Sidebar.MenuAction className="touch-hitbox" aria-label={moreLabel}>
                       <EllipsisVertical className="size-4" />
-                    </Dropdown.Trigger>
-                    <Tooltip.Content>{moreLabel}</Tooltip.Content>
-                  </Tooltip>
-                  <Dropdown.Popover placement="bottom end">
-                    <Dropdown.Menu aria-label={moreLabel}>
-                      <RowActionDropdownItems actions={actions} />
-                    </Dropdown.Menu>
-                  </Dropdown.Popover>
+                    </Sidebar.MenuAction>
+                    <Tooltip>{moreLabel}</Tooltip>
+                  </TooltipTrigger>
+                  <DropdownPopover placement="bottom end" aria-label={moreLabel}>
+                    <RowActionDropdownItems actions={actions} />
+                  </DropdownPopover>
                 </Dropdown>
               )}
             </span>
@@ -793,7 +795,7 @@ export function AppSidebar({
    */
   const canHostSessions = platform !== 'android' || isRemote
   const { isMobileOpen, setMobileOpen, isOpen, isMobile, collapsible } = useSidebar()
-  // Pro's own rail test, verbatim: the desktop panel is an icon rail only
+  // The rail test: the desktop panel is an icon rail only
   // under `collapsible="icon"`, and the mobile sheet is never one.
   const isIconCollapsed = collapsible === 'icon' && !isMobile && !isOpen
   const [showNewProject, setShowNewProject] = useState(false)
@@ -1078,17 +1080,16 @@ export function AppSidebar({
       <ContextMenu open={menu?.scope === scope} onOpenChange={(open) => setMenu(open ? hitRef.current : null)}>
         {/* Recorded on `pointerdown` as well as on `contextmenu`, because the
             two ways this menu opens do not agree on which event comes first. A
-            right-click fires `contextmenu` and Pro opens from it; a touch
-            starts Pro's own 500ms long-press timer, and the WebView's native
-            `contextmenu` is on roughly the same fuse. Whichever wins, the
-            controlled `open` below reads `hitRef` — and read before the row was
-            recorded it is null, so the menu is asked to open with nothing
-            selected and silently does not. `pointerdown` precedes both.
+            right-click fires `contextmenu` and the menu opens from it directly;
+            a touch starts the WebView's own ~500ms long-press-to-contextmenu
+            gesture. Whichever wins, the controlled `open` below reads `hitRef`
+            — and read before the row was recorded it is null, so the menu is
+            asked to open with nothing selected and silently does not.
+            `pointerdown` precedes both.
 
             The capture variant, and not `onContextMenu`: the Trigger spreads
             its props *after* its own handlers, so a bubbling handler here would
-            replace the one that opens the menu. `block`, because Pro's trigger
-            is `inline-block` and this one wraps the whole list. */}
+            replace the one that opens the menu. `block` wraps the whole list. */}
         <ContextMenu.Trigger
           className="block"
           onPointerDown={(e: React.PointerEvent) => recordHit(scope, e.target)}
@@ -1171,12 +1172,12 @@ export function AppSidebar({
         onAction={() => selectConversation(conv.id)}
         className={conv.is_archived ? 'opacity-50' : undefined}
         tooltipProps={{
-          className: 'text-xs',
+          className: 'text-caption-1-regular',
           delay: 500,
           placement: 'right',
           content: (
             <div data-slot="conversation-tooltip" className="flex flex-col gap-1">
-              <span data-slot="conversation-tooltip-title" className="font-medium">
+              <span data-slot="conversation-tooltip-title" className="text-caption-1-medium">
                 {title}
               </span>
               <span data-slot="conversation-tooltip-meta" className="opacity-60">
@@ -1197,7 +1198,7 @@ export function AppSidebar({
             pointers because DnD is disabled there and the row-actions dialog
             is the touch path; on fine pointers it appears on hover, the way a
             file tree's handle does — see `conv-grip` in `index.css`. */}
-        <Tooltip delay={0}>
+        <TooltipTrigger delay={0}>
           <Sidebar.MenuAction
             slot="drag"
             aria-label={t('sidebar.dragConversation', { name: title })}
@@ -1205,8 +1206,8 @@ export function AppSidebar({
           >
             <Grip />
           </Sidebar.MenuAction>
-          <Tooltip.Content>{t('sidebar.dragConversation', { name: title })}</Tooltip.Content>
-        </Tooltip>
+          <Tooltip>{t('sidebar.dragConversation', { name: title })}</Tooltip>
+        </TooltipTrigger>
         <Sidebar.MenuChip className="gap-1">
           {/* Hover swaps this for the action buttons — see `conv-time`. */}
           <span data-slot="conversation-time" className="conv-time">
@@ -1214,7 +1215,7 @@ export function AppSidebar({
           </span>
           {/* Pinned rows were sorted to the top and said nothing about why they
               were there. */}
-          {conv.is_pinned && <Pin aria-label={t('contextMenu.pin')} className="size-3 text-muted" />}
+          {conv.is_pinned && <Pin aria-label={t('contextMenu.pin')} className="size-3 text-text-secondary" />}
           <ConversationIndicator conversationId={conv.id} activeId={activeId} transcriptInert={page === 'settings'} />
         </Sidebar.MenuChip>
         <RowActionsMenu label={title} actions={conversationActions(conv)} />
@@ -1242,38 +1243,36 @@ export function AppSidebar({
             {canHostSessions && (
               <Sidebar.MenuActions>
                 <Dropdown>
-                  <Tooltip delay={0}>
+                  <TooltipTrigger delay={0}>
                     <Sidebar.MenuAction className="touch-hitbox" aria-label={t('sidebar.newChatMore')}>
                       <EllipsisVertical />
                     </Sidebar.MenuAction>
-                    <Tooltip.Content>{t('sidebar.newChatMore')}</Tooltip.Content>
-                  </Tooltip>
-                  <Dropdown.Popover placement="bottom end">
-                    <Dropdown.Menu aria-label={t('sidebar.newChatMore')}>
-                      <Dropdown.Item
-                        id="new-hosted"
-                        textValue={t('sidebar.newHostedSession')}
-                        onAction={() => setShowNewHosted((open) => !open)}
-                      >
-                        <Terminal className="size-4" />
-                        <Label>{t('sidebar.newHostedSession')}</Label>
-                      </Dropdown.Item>
-                      {/* Beside starting one, because it is the other way a
-                          hosted conversation comes into being — and the more
-                          common one for anybody who already has terminals
-                          open. Also the one that works best from a phone: the
-                          list and the directories in it are the host's, so
-                          nothing here needs a local file picker. */}
-                      <Dropdown.Item
-                        id="import-hosted"
-                        textValue={t('sidebar.importHostedSession')}
-                        onAction={dismissing(() => setPicker({ mode: 'import' }))}
-                      >
-                        <ArrowDownToSquare className="size-4" />
-                        <Label>{t('sidebar.importHostedSession')}</Label>
-                      </Dropdown.Item>
-                    </Dropdown.Menu>
-                  </Dropdown.Popover>
+                    <Tooltip>{t('sidebar.newChatMore')}</Tooltip>
+                  </TooltipTrigger>
+                  <DropdownPopover placement="bottom end" aria-label={t('sidebar.newChatMore')}>
+                    <DropdownItem
+                      id="new-hosted"
+                      textValue={t('sidebar.newHostedSession')}
+                      onAction={() => setShowNewHosted((open) => !open)}
+                    >
+                      <Terminal className="size-4" />
+                      <Label>{t('sidebar.newHostedSession')}</Label>
+                    </DropdownItem>
+                    {/* Beside starting one, because it is the other way a
+                        hosted conversation comes into being — and the more
+                        common one for anybody who already has terminals
+                        open. Also the one that works best from a phone: the
+                        list and the directories in it are the host's, so
+                        nothing here needs a local file picker. */}
+                    <DropdownItem
+                      id="import-hosted"
+                      textValue={t('sidebar.importHostedSession')}
+                      onAction={dismissing(() => setPicker({ mode: 'import' }))}
+                    >
+                      <ArrowDownToSquare className="size-4" />
+                      <Label>{t('sidebar.importHostedSession')}</Label>
+                    </DropdownItem>
+                  </DropdownPopover>
                 </Dropdown>
               </Sidebar.MenuActions>
             )}
@@ -1281,14 +1280,19 @@ export function AppSidebar({
           {/* The palette's third door, and the sheet's only one: a phone has
               no `mod` key to press and no header button while the sheet is
               open. The chip writes the shortcut down where a desktop reader
-              will look for it; Pro hides it in the rail on its own. */}
-          <Sidebar.MenuItem id={`${prefix}search`} textValue={t('sidebar.search')} onAction={openSearch}>
+              will look for it. */}
+          <Sidebar.MenuItem
+            id={`${prefix}search`}
+            textValue={t('sidebar.search')}
+            appearance="pill"
+            onAction={openSearch}
+          >
             <Sidebar.MenuIcon>
               <Magnifier />
             </Sidebar.MenuIcon>
             <Sidebar.MenuLabel>{t('sidebar.search')}</Sidebar.MenuLabel>
             <Sidebar.MenuChip>
-              <span data-slot="sidebar-search-shortcut">{searchShortcut}</span>
+              <Kbd data-slot="sidebar-search-shortcut">{searchShortcut}</Kbd>
             </Sidebar.MenuChip>
           </Sidebar.MenuItem>
         </Sidebar.Menu>
@@ -1316,12 +1320,12 @@ export function AppSidebar({
       </Sidebar.Header>
 
       <Sidebar.Content>
-        {/* Nothing below the header exists in the icon rail. Pro would keep
-            every conversation row as an anonymous icon — the group labels are
-            `display: none` there, so the rows lose the only thing that told
-            them apart — and a column of identical chat icons crowds out the
-            rail's real destinations. A conversation is reached through the
-            reopened panel or the palette either way. */}
+        {/* Nothing below the header exists in the icon rail. Keeping every
+            conversation row as an anonymous icon there — with the group
+            labels `display: none` — would lose the only thing that told
+            them apart, and a column of identical chat icons would crowd out
+            the rail's real destinations. A conversation is reached through
+            the reopened panel or the palette either way. */}
         {!collapsed &&
           rowMenu(
             `${prefix}groups`,
@@ -1387,7 +1391,7 @@ export function AppSidebar({
                     <Sidebar.MenuIcon>
                       <FolderPlus />
                     </Sidebar.MenuIcon>
-                    <Sidebar.MenuLabel className="text-muted">{t('sidebar.newProject')}</Sidebar.MenuLabel>
+                    <Sidebar.MenuLabel className="text-text-secondary">{t('sidebar.newProject')}</Sidebar.MenuLabel>
                   </Sidebar.MenuItem>
                 </Sidebar.Menu>
                 {showNewProject && (
@@ -1419,10 +1423,10 @@ export function AppSidebar({
             <Alert.Content className="min-w-0">
               <Alert.Description className="break-words">{actionError}</Alert.Description>
             </Alert.Content>
-            <Tooltip delay={0}>
+            <TooltipTrigger delay={0}>
               <Button
-                isIconOnly
-                size="sm"
+                iconOnly
+                size="small"
                 variant="ghost"
                 aria-label={t('common.close')}
                 onPress={() => setActionError(null)}
@@ -1430,8 +1434,8 @@ export function AppSidebar({
               >
                 <Xmark />
               </Button>
-              <Tooltip.Content>{t('common.close')}</Tooltip.Content>
-            </Tooltip>
+              <Tooltip>{t('common.close')}</Tooltip>
+            </TooltipTrigger>
           </Alert>
         )}
         <Sidebar.Menu aria-label={t('sidebar.settings')}>
@@ -1463,17 +1467,14 @@ export function AppSidebar({
 
   return (
     <>
-      {/* The safe-area padding sits on the panel rather than on its header and
-          footer: `[data-state=collapsed] .sidebar__header` sets its own inline
-          padding at a specificity a utility cannot reach, so a cutout would be
-          honoured until the sidebar was collapsed and then quietly stop being. */}
-      <Sidebar
-        style={page === 'settings' ? undefined : DENSITY}
-        className="pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)]"
-      >
-        {side('d-', isIconCollapsed)}
-      </Sidebar>
-      {/* Renders nothing above 768px. Below it Pro hides the panel outright, so
+      {/* No density override and no inset utilities here: the panel is drawn at
+          boardui's own scale (36px rows, 20px icons — the `--spacing: 0.2rem`
+          that used to shrink it to 80% is what made it look like nothing else
+          on the page), and it adds the device's safe-area insets to its own
+          padding itself, because a `pt-[var(--safe-top)]` passed in would
+          replace that padding rather than extend it. */}
+      <Sidebar>{side('d-', isIconCollapsed)}</Sidebar>
+      {/* Renders nothing above 768px. Below it Sidebar hides the panel outright, so
           without this a narrow window would have a toggle that toggles nothing.
           The sheet covers the full height including the cutout and the
           navigation bar, and it is a separate element from the panel above, so

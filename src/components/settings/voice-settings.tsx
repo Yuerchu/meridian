@@ -3,7 +3,18 @@ import { useTranslation } from 'react-i18next'
 import { listen } from '@/lib/transport'
 import { open } from '@tauri-apps/plugin-dialog'
 import { TrashBin } from '@gravity-ui/icons'
-import { Button, Card, Description, Input, Label, ProgressCircle, Spinner, TextField, Tooltip } from '@heroui/react'
+import {
+  Button,
+  Card,
+  Description,
+  Input,
+  Label,
+  ProgressCircle,
+  Spinner,
+  TextField,
+  Tooltip,
+  TooltipTrigger,
+} from '@/components/base'
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
 import type { VoiceModelDownloadEvent } from '@/lib/app-event'
@@ -150,7 +161,7 @@ export function VoiceSettings() {
       <SettingsHeader title={t('settings.voice.title')} subtitle={t('settings.voice.intro')} />
 
       <div data-slot="voice-model" className="space-y-1.5">
-        <p data-slot="voice-section-label" className="block text-xs font-medium text-muted">
+        <p data-slot="voice-section-label" className="block text-caption-1-medium text-text-secondary">
           {t('settings.voice.model')}
         </p>
         <Card>
@@ -159,7 +170,7 @@ export function VoiceSettings() {
               data-slot="voice-model-loading"
               role="status"
               aria-label={t('common.loading')}
-              className="flex items-center gap-2 p-4 text-sm text-muted"
+              className="flex items-center gap-2 p-4 text-body-regular text-text-secondary"
             >
               <Spinner aria-hidden="true" size="sm" />
               {t('common.loading')}
@@ -172,9 +183,9 @@ export function VoiceSettings() {
                   {formatSize(status.size_bytes, sizeNumber)} · {status.path}
                 </Card.Description>
               </Card.Header>
-              <Tooltip delay={0}>
+              <TooltipTrigger delay={0}>
                 <Button
-                  isIconOnly
+                  iconOnly
                   variant="ghost"
                   aria-label={t('settings.voice.deleteModel')}
                   onPress={handleDelete}
@@ -182,8 +193,8 @@ export function VoiceSettings() {
                 >
                   <TrashBin className="w-4 h-4" />
                 </Button>
-                <Tooltip.Content>{t('settings.voice.deleteModel')}</Tooltip.Content>
-              </Tooltip>
+                <Tooltip>{t('settings.voice.deleteModel')}</Tooltip>
+              </TooltipTrigger>
             </div>
           ) : downloading ? (
             <div data-slot="voice-model-download" className="flex items-center gap-3">
@@ -199,11 +210,11 @@ export function VoiceSettings() {
                   <ProgressCircle.FillCircle />
                 </ProgressCircle.Track>
               </ProgressCircle>
-              <span data-slot="voice-download-progress" className="text-xs text-muted flex-1">
+              <span data-slot="voice-download-progress" className="text-caption-1-regular text-text-secondary flex-1">
                 {formatSize(progress.downloaded, sizeNumber)}
                 {progress.total ? ` / ${formatSize(progress.total, sizeNumber)}` : ''}
               </span>
-              <Button variant="outline" size="sm" onPress={handleCancelDownload}>
+              <Button variant="outline" size="small" onPress={handleCancelDownload}>
                 {t('settings.voice.cancelDownload')}
               </Button>
             </div>
@@ -215,7 +226,7 @@ export function VoiceSettings() {
               </Card.Header>
               <Card.Footer className="flex-col items-start gap-2">
                 <div data-slot="voice-model-actions" className="flex gap-2">
-                  <Button size="sm" onPress={handleDownload}>
+                  <Button size="small" onPress={handleDownload}>
                     {t('settings.voice.download')}
                   </Button>
                   {/* Downloading still works remotely — the host fetches it to
@@ -223,17 +234,17 @@ export function VoiceSettings() {
                       not: the archive is on the device the picker runs on. */}
                   <Button
                     variant="outline"
-                    size="sm"
+                    size="small"
                     onPress={handleImport}
-                    isDisabled={importing || !can.importFromDisk}
+                    isDisabled={!can.importFromDisk}
+                    isPending={importing}
                     aria-busy={importing}
                   >
-                    {importing && <Spinner aria-hidden="true" size="sm" />}
                     {t('settings.voice.import')}
                   </Button>
                 </div>
                 {!can.importFromDisk && (
-                  <p data-slot="voice-import-unavailable" className="text-xs text-muted">
+                  <p data-slot="voice-import-unavailable" className="text-caption-1-regular text-text-secondary">
                     {t('capability.importFromDisk')}
                   </p>
                 )}
@@ -241,14 +252,14 @@ export function VoiceSettings() {
             </>
           )}
           {error && (
-            <p data-slot="voice-error" role="alert" className="text-xs text-danger">
+            <p data-slot="voice-error" role="alert" className="text-caption-1-regular text-status-danger">
               {error}
             </p>
           )}
         </Card>
       </div>
 
-      <TextField fullWidth type="url">
+      <TextField type="url">
         <Label>{t('settings.voice.mirror')}</Label>
         <Input
           value={mirrorUrl}
@@ -270,7 +281,7 @@ export function VoiceSettings() {
         options={filterOptions}
         onChange={handleFilterChange}
         description={t('settings.voice.filterHint')}
-        fullWidth
+
         triggerClassName="max-w-xs"
       />
       {confirmDialog}

@@ -1,9 +1,9 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Alert, Button, Kbd, Tooltip } from '@heroui/react'
-import { Sidebar } from '@heroui-pro/react/sidebar'
-import { Resizable } from '@heroui-pro/react/resizable'
+import { Alert, Button, Kbd, Tooltip, TooltipTrigger } from '@/components/base'
+import { Sidebar } from '@/components/base'
+import { Resizable } from '@/components/base'
 import { FolderTree, Magnifier, Xmark } from '@gravity-ui/icons'
 import { ChangesPanel } from '@/components/chat/changes-panel'
 import { ChatView } from '@/components/chat/chat-view'
@@ -38,7 +38,7 @@ const PlanReviewPage = lazy(() =>
  * tablet in landscape got the desktop shell it had not been designed for.
  *
  * One frame instead. The sidebar is the conversation list, as a panel above
- * 768px and as a sheet below it — Pro renders both from the same tree — and
+ * 768px and as a sheet below it — Sidebar renders both from the same tree — and
  * settings is a page beside the chat rather than a screen on top of it. What
  * the phone loses is nothing it had: the back gesture still closes the sheet,
  * because that is a level (`useHistoryLevel`), which is all the stack was
@@ -77,10 +77,11 @@ export function AppShell(props: ShellProps) {
     onInitialDraftConsumed,
   } = props
 
-  // Controlled on purpose. Left uncontrolled, Pro writes the state to a
-  // `sidebar_state` cookie on every toggle — a Next.js convention, useless here
-  // (nothing reads it back) and one more thing to have an opinion about under a
-  // custom protocol. Persisting the state is a store field if we ever want it.
+  // Controlled on purpose. Left uncontrolled, the old provider wrote the state
+  // to a `sidebar_state` cookie on every toggle — a Next.js convention, useless
+  // here (nothing reads it back) and one more thing to have an opinion about
+  // under a custom protocol. Persisting the state is a store field if we ever
+  // want it.
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [settingsHistoryClaimed, setSettingsHistoryClaimed] = useState(true)
@@ -198,19 +199,23 @@ export function AppShell(props: ShellProps) {
           event.preventDefault()
           document.getElementById('main-content')?.focus({ preventScroll: true })
         }}
-        className="sr-only focus:not-sr-only focus:fixed focus:start-2 focus:top-2 focus:z-100 focus:rounded-md focus:bg-overlay focus:px-3 focus:py-2 focus:text-sm focus:text-overlay-foreground focus:shadow-overlay focus:outline-none focus:ring-2 focus:ring-focus"
+        className="sr-only focus:not-sr-only focus:fixed focus:start-2 focus:top-2 focus:z-100 focus:rounded-md focus:bg-background-primary-default focus:px-3 focus:py-2 focus:text-body-regular focus:text-text-primary focus:shadow-dropdown focus:outline-none focus:ring-2 focus:ring-border-focus-ring"
       >
         {t('app.skipToContent')}
       </a>
       <Sidebar.Provider
         open={sidebarOpen}
         onOpenChange={setSidebarOpen}
-        variant="inset"
         collapsible="icon"
-        // Pro's provider is `min-h-svh`: a page that grows. This one is a fixed
-        // viewport with its own scrollers inside, and the transcript's scroller
-        // needs a container that does not move to measure against.
-        className="h-svh overflow-hidden pb-[var(--ime-bottom,0px)]"
+        // The old provider was `min-h-svh`: a page that grows. This one is a
+        // fixed viewport with its own scrollers inside, and the transcript's
+        // scroller needs a container that does not move to measure against.
+        //
+        // The keyboard inset is *added* to the frame's own 12px, not passed as
+        // `pb-[var(--ime-bottom)]` on its own: under `cx()` a `pb-*` utility
+        // replaces the bottom of the provider's `p-3`, and on a desktop the
+        // inset is 0px — which is how the frame lost its bottom edge once.
+        className="h-svh overflow-hidden pb-[calc(0.75rem+var(--ime-bottom,0px))]"
       >
         <AppSidebar
           conversations={conversations}
@@ -246,7 +251,7 @@ export function AppShell(props: ShellProps) {
             aria-orientation="vertical"
             tabIndex={-1}
             onDoubleClick={resetWidth}
-            className="relative hidden md:block w-0.5 shrink-0 cursor-col-resize bg-transparent hover:bg-focus/30 active:bg-focus/50 transition-colors before:absolute before:inset-y-0 before:-left-1 before:w-3 before:content-['']"
+            className="relative hidden md:block w-0.5 shrink-0 cursor-col-resize bg-transparent hover:bg-border-focus-ring/30 active:bg-border-focus-ring/50 transition-colors before:absolute before:inset-y-0 before:-left-1 before:w-3 before:content-['']"
             {...resizeHandleProps}
           />
         )}
@@ -261,20 +266,20 @@ export function AppShell(props: ShellProps) {
         <Sidebar.Main className="min-h-0 overflow-hidden">
           <header
             data-slot="app-header"
-            className="flex items-center min-h-12 gap-2 px-4 pt-[var(--safe-top)] pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))] border-b border-border select-none shrink-0"
+            className="flex items-center min-h-12 gap-2 px-4 pt-[var(--safe-top)] pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))] border-b border-border-button-default select-none shrink-0"
             data-tauri-drag-region={canDragWindow ? '' : undefined}
           >
             {/* Below 768px this is the only way to the conversation list, so it
               is sized for a thumb rather than for a pointer. */}
-            <Tooltip>
+            <TooltipTrigger>
               <Sidebar.Trigger aria-label={t('sidebar.toggle')} className="-ml-1 size-11 md:size-8" />
-              <Tooltip.Content placement="bottom">{t('sidebar.toggle')}</Tooltip.Content>
-            </Tooltip>
+              <Tooltip placement="bottom">{t('sidebar.toggle')}</Tooltip>
+            </TooltipTrigger>
             <h1
               data-slot="app-title"
               ref={pageHeadingRef}
               tabIndex={-1}
-              className="truncate rounded-sm text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-focus/50"
+              className="truncate rounded-sm text-body-medium outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring/50"
             >
               {headerTitle}
             </h1>
@@ -290,9 +295,9 @@ export function AppShell(props: ShellProps) {
             <div data-slot="app-header-actions" className="ml-auto flex shrink-0 items-center gap-1">
               {/* Only where the panel it toggles can open. */}
               {activeId && !isMobile && page !== 'settings' && !activeReviewId && (
-                <Tooltip>
+                <TooltipTrigger>
                   <Button
-                    isIconOnly
+                    iconOnly
                     variant={changesOpen ? 'secondary' : 'ghost'}
                     aria-label={t('chat.changes.toggle')}
                     aria-pressed={changesOpen}
@@ -301,12 +306,12 @@ export function AppShell(props: ShellProps) {
                   >
                     <FolderTree />
                   </Button>
-                  <Tooltip.Content placement="bottom">{t('chat.changes.toggle')}</Tooltip.Content>
-                </Tooltip>
+                  <Tooltip placement="bottom">{t('chat.changes.toggle')}</Tooltip>
+                </TooltipTrigger>
               )}
-              <Tooltip>
+              <TooltipTrigger>
                 <Button
-                  isIconOnly
+                  iconOnly
                   variant="ghost"
                   aria-label={t('palette.title')}
                   aria-keyshortcuts="Meta+K Control+K"
@@ -315,27 +320,25 @@ export function AppShell(props: ShellProps) {
                 >
                   <Magnifier />
                 </Button>
-                <Tooltip.Content placement="bottom">
+                <Tooltip placement="bottom">
                   {t('palette.title')}
-                  <Kbd variant="light" className="ml-2">
-                    <Kbd.Content>{commandShortcut}</Kbd.Content>
-                  </Kbd>
-                </Tooltip.Content>
-              </Tooltip>
+                  <Kbd className="ml-2">{commandShortcut}</Kbd>
+                </Tooltip>
+              </TooltipTrigger>
             </div>
           </header>
 
           {actionError && (
-            <div data-slot="app-action-error" className="shrink-0 border-b border-border px-4 py-2">
+            <div data-slot="app-action-error" className="shrink-0 border-b border-border-button-default px-4 py-2">
               <Alert status="danger" role="alert">
                 <Alert.Indicator />
                 <Alert.Content className="min-w-0">
                   <Alert.Description className="break-words">{actionError}</Alert.Description>
                 </Alert.Content>
-                <Tooltip>
+                <TooltipTrigger>
                   <Button
-                    isIconOnly
-                    size="sm"
+                    iconOnly
+                    size="small"
                     variant="ghost"
                     aria-label={t('common.close')}
                     onPress={() => setActionError(null)}
@@ -343,8 +346,8 @@ export function AppShell(props: ShellProps) {
                   >
                     <Xmark />
                   </Button>
-                  <Tooltip.Content placement="bottom">{t('common.close')}</Tooltip.Content>
-                </Tooltip>
+                  <Tooltip placement="bottom">{t('common.close')}</Tooltip>
+                </TooltipTrigger>
               </Alert>
             </div>
           )}
@@ -413,7 +416,7 @@ export function AppShell(props: ShellProps) {
                   nobody can get back. */}
                 {showChanges && activeId && (
                   <>
-                    {/* Pro's handle is a 1px line with an 8px hit area, which is a
+                    {/* The handle is a 1px line with an 8px hit area, which is a
                       pointer's measurement. This panel only mounts above 768px,
                       and a touch laptop or a tablet in landscape is squarely in
                       that range — the divider was there and could not be
@@ -431,11 +434,11 @@ export function AppShell(props: ShellProps) {
               </Resizable>
             </div>
 
-            {/* `bg-surface`, not `bg-background`: this covers `Sidebar.Main`,
-              which Pro paints `--surface`, and the two are different colours in
-              both themes. */}
+            {/* `bg-background-primary-default`, not `bg-background-full`: this covers `Sidebar.Main`,
+              which paints `bg-background-primary-default` itself, and the two
+              are different colours in both themes. */}
             {page === 'settings' && (
-              <div data-slot="settings-layer" className="absolute inset-0 z-20 bg-surface">
+              <div data-slot="settings-layer" className="absolute inset-0 z-20 bg-background-primary-default">
                 {/* No spinner: the chunk is on local disk and resolves within a
                   frame or two, where a flash of "loading" would read as jank. */}
                 <Suspense fallback={null}>
@@ -446,7 +449,7 @@ export function AppShell(props: ShellProps) {
               </div>
             )}
             {activeReviewId && (
-              <div data-slot="plan-review-layer" className="absolute inset-0 z-30 bg-surface">
+              <div data-slot="plan-review-layer" className="absolute inset-0 z-30 bg-background-primary-default">
                 <Suspense fallback={null}>
                   <PlanReviewPage key={activeReviewId} reviewId={activeReviewId} onClose={closePlanReview} />
                 </Suspense>

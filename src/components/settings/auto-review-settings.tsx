@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Description, Input, Label, ListBox, Select, TextArea, TextField } from '@heroui/react'
-import { CellSwitch } from '@heroui-pro/react/cell-switch'
+import { Button, Description, Input, Label, Select, SelectItem, TextArea, TextField } from '@/components/base'
+import { CellSwitch } from '@/components/base'
 import { api } from '@/api'
 import type { PreferenceModelSelectionRequest, ProviderInfoResponse, ProviderModelInfoResponse } from '@/types'
 import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
@@ -144,54 +144,33 @@ function ModelPicker({
   return (
     <div data-slot="model-picker" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
       <Select
-        fullWidth
         aria-label={t('settings.assistant.provider')}
-        value={providerId || '_none'}
-        onChange={(v) => emit(!v || v === '_none' ? '' : String(v), '')}
+        selectedKey={providerId || '_none'}
+        onSelectionChange={(v) => emit(!v || v === '_none' ? '' : String(v), '')}
       >
-        <Select.Trigger>
-          <Select.Value />
-          <Select.Indicator />
-        </Select.Trigger>
-        <Select.Popover>
-          <ListBox>
-            {providerOptions.map((o) => (
-              <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                {o.label}
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-            ))}
-          </ListBox>
-        </Select.Popover>
+        {providerOptions.map((o) => (
+          <SelectItem key={o.value} id={o.value} textValue={o.label}>
+            {o.label}
+          </SelectItem>
+        ))}
       </Select>
       {/* A provider whose model list has not been fetched yet still has to be
           usable, so this degrades to a plain id field rather than to nothing. */}
       {models.length > 0 ? (
         <Select
-          fullWidth
           aria-label={t('settings.assistant.model')}
-          value={modelId || '_none'}
+          selectedKey={modelId || '_none'}
           isDisabled={!providerId}
-          onChange={(v) => emit(providerId, !v || v === '_none' ? '' : String(v))}
+          onSelectionChange={(v) => emit(providerId, !v || v === '_none' ? '' : String(v))}
         >
-          <Select.Trigger>
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              {modelOptions.map((o) => (
-                <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                  {o.label}
-                  <ListBox.ItemIndicator />
-                </ListBox.Item>
-              ))}
-            </ListBox>
-          </Select.Popover>
+          {modelOptions.map((o) => (
+            <SelectItem key={o.value} id={o.value} textValue={o.label}>
+              {o.label}
+            </SelectItem>
+          ))}
         </Select>
       ) : (
         <Input
-          fullWidth
           aria-label={t('settings.assistant.model')}
           value={modelId}
           onChange={(e) => setModelId(e.target.value)}
@@ -218,7 +197,7 @@ function RuleBox({
   onChange: (next: string) => void
 }) {
   return (
-    <TextField fullWidth>
+    <TextField>
       <Label>{label}</Label>
       <TextArea rows={3} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
       <Description>{hint}</Description>
@@ -332,7 +311,7 @@ export function AutoReviewSettings() {
         />
         <Description>{t('settings.approvals.ttlHint')}</Description>
         {normaliseTtl(settings.ttl) === 0 && (
-          <p data-slot="approvals-ttl-never" className="text-xs text-warning-soft-foreground">
+          <p data-slot="approvals-ttl-never" className="text-caption-1-regular text-status-warning-soft-foreground">
             {t('settings.approvals.ttlNever')}
           </p>
         )}
@@ -350,16 +329,20 @@ export function AutoReviewSettings() {
             <CellSwitch.Control />
           </CellSwitch.Trigger>
         </CellSwitch>
-        <p id="autoreview-enabled-hint" data-slot="autoreview-enable-hint" className="text-xs text-muted">
+        <p
+          id="autoreview-enabled-hint"
+          data-slot="autoreview-enable-hint"
+          className="text-caption-1-regular text-text-secondary"
+        >
           {t('settings.autoReview.enableHint')}
         </p>
       </div>
 
       <div data-slot="autoreview-model" className="space-y-1.5">
-        <span data-slot="autoreview-model-label" className="text-sm font-medium">
+        <span data-slot="autoreview-model-label" className="text-body-medium">
           {t('settings.autoReview.model')}
         </span>
-        <p data-slot="autoreview-model-hint" className="text-xs text-muted">
+        <p data-slot="autoreview-model-hint" className="text-caption-1-regular text-text-secondary">
           {t('settings.autoReview.modelHint')}
         </p>
         <ModelPicker
@@ -368,7 +351,7 @@ export function AutoReviewSettings() {
           onChange={(model) => setSettings({ ...settings, model })}
         />
         {incomplete && (
-          <p data-slot="autoreview-no-model" className="text-xs text-warning-soft-foreground">
+          <p data-slot="autoreview-no-model" className="text-caption-1-regular text-status-warning-soft-foreground">
             {t('settings.autoReview.noModel')}
           </p>
         )}
@@ -386,7 +369,11 @@ export function AutoReviewSettings() {
             <CellSwitch.Control />
           </CellSwitch.Trigger>
         </CellSwitch>
-        <p id="autoreview-escalate-hint" data-slot="autoreview-escalate-hint" className="text-xs text-muted">
+        <p
+          id="autoreview-escalate-hint"
+          data-slot="autoreview-escalate-hint"
+          className="text-caption-1-regular text-text-secondary"
+        >
           {t('settings.autoReview.escalateHint')}
         </p>
       </div>
@@ -414,7 +401,7 @@ export function AutoReviewSettings() {
       />
 
       {error && (
-        <p data-slot="autoreview-error" className="text-xs text-danger">
+        <p data-slot="autoreview-error" className="text-caption-1-regular text-status-danger">
           {error}
         </p>
       )}
@@ -424,7 +411,7 @@ export function AutoReviewSettings() {
           {t('common.save')}
         </Button>
         {saved && (
-          <span data-slot="autoreview-saved" className="text-xs text-success">
+          <span data-slot="autoreview-saved" className="text-caption-1-regular text-status-success">
             {t('common.saved')}
           </span>
         )}

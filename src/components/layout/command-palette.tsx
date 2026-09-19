@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Command } from '@heroui-pro/react/command'
+import { Command } from '@/components/base'
 import { Archive, Comment, FolderOpen, Magnifier, Plus, TextAlignLeft } from '@gravity-ui/icons'
 
 import { api } from '@/api'
@@ -23,7 +23,7 @@ const RECENT = 20
 /**
  * Cmd+K, over what the app already has in memory.
  *
- * Filtering is Pro's: `Command.Dialog` wraps its children in React Aria's
+ * Filtering comes from `Command.Dialog`: it wraps its children in React Aria's
  * `Autocomplete`, which matches each item's `textValue` case-insensitively.
  * So the only rule here is that **`textValue` has to carry every word worth
  * searching for** — a settings row whose `textValue` is just its own label
@@ -168,7 +168,10 @@ export function CommandPalette({
                         <span data-slot="palette-hit-title" className="truncate">
                           {hit.title ?? t('sidebar.newChat')}
                         </span>
-                        <span data-slot="palette-hit-snippet" className="truncate text-xs text-muted">
+                        <span
+                          data-slot="palette-hit-snippet"
+                          className="truncate text-caption-1-regular text-text-secondary"
+                        >
                           {hit.snippet}
                         </span>
                       </div>

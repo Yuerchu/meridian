@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { dom } from '@heroui/react'
+import { dom } from '@/components/base'
 
 /**
  * The transcript scroller.

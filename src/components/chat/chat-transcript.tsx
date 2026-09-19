@@ -3,7 +3,7 @@ import { TranscriptConversationProvider } from '@/hooks/use-transcript-conversat
 import { useTranslation } from 'react-i18next'
 import { LazyMotion, domAnimation } from 'motion/react'
 import * as m from 'motion/react-m'
-import { Button, Tooltip } from '@heroui/react'
+import { Button, Tooltip, TooltipTrigger } from '@/components/base'
 
 import { useImeBottom } from '@/hooks/use-android-insets'
 import {
@@ -115,7 +115,7 @@ function LoadEarlierTurns({
   return (
     <div data-slot="transcript-load-earlier" className="flex justify-center py-1">
       <Button
-        size="sm"
+        size="small"
         variant="secondary"
         onPress={() => {
           onLoad()
@@ -409,10 +409,10 @@ export function ChatTranscript({
                   {emptyState}
                 </MessageScrollerContent>
               </MessageScrollerViewport>
-              <Tooltip delay={0}>
+              <TooltipTrigger delay={0}>
                 <MessageScrollerButton aria-label={scrollToBottomLabel} />
-                <Tooltip.Content>{scrollToBottomLabel}</Tooltip.Content>
-              </Tooltip>
+                <Tooltip>{scrollToBottomLabel}</Tooltip>
+              </TooltipTrigger>
               {/* Inside the scroller, not beside it: it reads the reading line off
                 the same context, and the root is already the positioned
                 ancestor. */}

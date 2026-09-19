@@ -1,6 +1,6 @@
 import * as React from 'react'
 
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { splitPath } from '@/lib/paths'
 
 /**
@@ -26,7 +26,7 @@ function PathLabel({
   return (
     <span
       data-slot="path-label"
-      className={cn(
+      className={cx(
         'max-w-full min-w-0 font-mono',
         wrap ? 'inline whitespace-pre-wrap break-all' : 'inline-flex whitespace-nowrap',
         className,
@@ -34,11 +34,11 @@ function PathLabel({
       {...props}
     >
       {dir !== '' && (
-        <span data-slot="path-dir" className={cn('text-muted', !wrap && 'min-w-0 truncate')}>
+        <span data-slot="path-dir" className={cx('text-text-secondary', !wrap && 'min-w-0 truncate')}>
           {dir}
         </span>
       )}
-      <span data-slot="path-name" className="shrink-0 text-foreground">
+      <span data-slot="path-name" className="shrink-0 text-text-primary">
         {name}
       </span>
     </span>

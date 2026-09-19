@@ -4,7 +4,7 @@ import { isCoarsePointer } from './use-coarse-pointer'
 /**
  * Suppresses the browser's own context menu.
  *
- * Every menu on the desktop is drawn by the app — Pro's `ContextMenu` on the
+ * Every menu on the desktop is drawn by the app — `ContextMenu` on the
  * sidebar rows, the transcript and the composer — and the one the WebView draws
  * where none of ours is mounted (back, reload, inspect) is not a menu anyone
  * here asked for. Devtools stays reachable with Ctrl+Shift+I in a dev build.

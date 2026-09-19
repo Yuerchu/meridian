@@ -2,15 +2,16 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TrashBin, TriangleExclamation } from '@gravity-ui/icons'
 import { api } from '@/api'
-import { Button, Checkbox, Chip, Disclosure, TextArea, Tooltip } from '@heroui/react'
+import { Button, Checkbox, Chip, Disclosure, TextArea, Tooltip, TooltipTrigger } from '@/components/base'
+import { Hint } from '@/components/ui/hint'
 import type { MemoryInfoResponse } from '@/types'
 
 /**
- * `--info` is a project extension: HeroUI has no `info` colour, so the property
- * its Chip reads is set directly. The same shape as the `--progress-circle-*`
+ * `--info` is a project extension: Chip has no `info` colour, so the property
+ * it reads is set directly. The same shape as the `--progress-circle-*`
  * override elsewhere, and for the same reason.
  */
-export const INFO_CHIP = '[--chip-fg:var(--info-soft-foreground)]'
+export const INFO_CHIP = '[--chip-fg:var(--color-status-info-soft-foreground)]'
 
 interface MemoryRowProps {
   memory: MemoryInfoResponse
@@ -42,64 +43,56 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
   return (
     // The enclosing DisclosureGroup names the open row by this id, which is
     // what keeps one open at a time.
-    <Disclosure id={memory.id} data-slot="memory-row" className="flex w-full flex-col rounded-lg border border-border">
+    <Disclosure
+      id={memory.id}
+      data-slot="memory-row"
+      className="flex w-full flex-col rounded-lg border border-border-button-default"
+    >
       {/* Wraps rather than overflows: a key, three or four badges and a date do
           not fit one line on a phone, and this scroller shares its horizontal
           overflow with the whole settings page — one long key here used to drag
           every other panel sideways with it. */}
       <div data-slot="memory-row-header" className="flex flex-wrap items-center gap-2 p-3">
         {/* No label of its own — the row's key names it. */}
-        <Checkbox data-slot="memory-row-check" aria-label={memory.key} isSelected={checked} onChange={onToggleCheck}>
-          <Checkbox.Content>
-            <Checkbox.Control>
-              <Checkbox.Indicator />
-            </Checkbox.Control>
-          </Checkbox.Content>
-        </Checkbox>
+        <Checkbox data-slot="memory-row-check" aria-label={memory.key} isSelected={checked} onChange={onToggleCheck} />
         {/* Only the chevron toggles: the checkbox and the row's own buttons are
             siblings, and a `<button>` cannot hold another one. The trigger is
             shrink-wrapped rather than a fixed square so that the indicator's own
             `ms-auto` has no free space to push against. */}
         <Disclosure.Heading>
-          <Tooltip delay={0}>
+          <TooltipTrigger delay={0}>
             <Disclosure.Trigger
               data-slot="memory-row-toggle"
               aria-label={memory.key}
               // Shrink-wrapped for the reason above, which leaves it at about
               // 32px — and since it is the only part of the row that opens it,
               // the hit area is expanded rather than the button.
-              className="touch-hitbox inline-flex shrink-0 items-center rounded-lg p-2 text-muted transition-colors outline-none hover:bg-default hover:text-foreground focus-visible:bg-default"
+              className="touch-hitbox inline-flex shrink-0 items-center rounded-lg p-2 text-text-secondary transition-colors outline-none hover:bg-background-primary-hover hover:text-text-primary focus-visible:bg-background-secondary-default"
             >
               <Disclosure.Indicator className="size-4" />
             </Disclosure.Trigger>
-            <Tooltip.Content>{memory.key}</Tooltip.Content>
-          </Tooltip>
+            <Tooltip>{memory.key}</Tooltip>
+          </TooltipTrigger>
         </Disclosure.Heading>
-        <span data-slot="memory-row-key" className="min-w-0 truncate font-mono text-sm">
+        <span data-slot="memory-row-key" className="min-w-0 truncate font-mono text-body-regular">
           {memory.key}
         </span>
         <Chip color="default">{memory.scope_type.replace('onebot_', '').replace('client_global', 'client')}</Chip>
-        {/* `--info` is a project token with no HeroUI colour behind it, so the
+        {/* `--info` is a project token with no Chip colour behind it, so the
             property the component reads is set directly rather than through a
             `color` that does not exist. */}
         <Chip className={INFO_CHIP}>{memory.origin}</Chip>
-        <Chip className="text-muted">{memory.memory_type}</Chip>
+        <Chip className="text-text-secondary">{memory.memory_type}</Chip>
         {ownerOnly && (
-          <Tooltip delay={0}>
-            {/* A Chip cannot take focus, so it needs the wrapper to become a
-                tooltip trigger — unlike a real button, which would only gain a
-                second, inert tab stop from one. */}
-            <Tooltip.Trigger>
-              <Chip color="warning">
-                <TriangleExclamation className="size-3.5" />
-                <Chip.Label>{t('settings.memory.ownerOnly')}</Chip.Label>
-              </Chip>
-            </Tooltip.Trigger>
-            <Tooltip.Content>{t('settings.memory.ownerOnlyHint')}</Tooltip.Content>
-          </Tooltip>
+          <Hint data-slot="memory-owner-trigger" label={t('settings.memory.ownerOnlyHint')} className="inline-flex">
+            <Chip color="warning">
+              <TriangleExclamation className="size-3.5" />
+              {t('settings.memory.ownerOnly')}
+            </Chip>
+          </Hint>
         )}
         <div data-slot="memory-row-spacer" className="flex-1" />
-        <span data-slot="memory-row-date" className="text-xs text-muted">
+        <span data-slot="memory-row-date" className="text-caption-1-regular text-text-secondary">
           {date.format(new Date(memory.updated_at))}
         </span>
       </div>
@@ -115,10 +108,11 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
         <Disclosure.Body
           data-slot="memory-row-editor"
           className="space-y-2"
-          render={(props) => <div {...props} data-slot="memory-row-body" className="border-t border-border p-3" />}
+          render={(props) => (
+            <div {...props} data-slot="memory-row-body" className="border-t border-border-button-default p-3" />
+          )}
         >
           <TextArea
-            fullWidth
             aria-label={t('settings.memory.content')}
             name={`memoryContent-${memory.id}`}
             value={draft}
@@ -133,7 +127,10 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
             rows={3}
             className="resize-y"
           />
-          <div data-slot="memory-row-meta" className="flex flex-wrap items-center gap-3 text-xs text-muted">
+          <div
+            data-slot="memory-row-meta"
+            className="flex flex-wrap items-center gap-3 text-caption-1-regular text-text-secondary"
+          >
             <span data-slot="memory-row-learned-at">
               {t('settings.memory.learnedAt')}: {date.format(new Date(memory.created_at))}
             </span>
@@ -152,10 +149,10 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
               {t('common.save')}
             </Button>
             <div data-slot="memory-row-actions-spacer" className="flex-1" />
-            <Tooltip delay={0}>
+            <TooltipTrigger delay={0}>
               <Button
                 variant="ghost"
-                isIconOnly
+                iconOnly
                 aria-label={t('settings.memory.delete')}
                 onPress={async () => {
                   await api.deleteMemories([memory.id])
@@ -163,10 +160,10 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
                 }}
                 data-slot="memory-row-delete"
               >
-                <TrashBin className="text-danger" />
+                <TrashBin className="text-status-danger" />
               </Button>
-              <Tooltip.Content>{t('settings.memory.delete')}</Tooltip.Content>
-            </Tooltip>
+              <Tooltip>{t('settings.memory.delete')}</Tooltip>
+            </TooltipTrigger>
           </div>
         </Disclosure.Body>
       </Disclosure.Content>

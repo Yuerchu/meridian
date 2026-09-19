@@ -25,8 +25,8 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
-import { Button, Chip, Input, ListBox, Tooltip } from '@heroui/react'
-import { cn } from '@/lib/utils'
+import { Button, Chip, Input, ListBox, Tooltip, TooltipTrigger } from '@/components/base'
+import { cx } from '@/utils/cx'
 import { useAppTheme } from '@/lib/theme'
 import {
   EDGES,
@@ -72,12 +72,12 @@ function richText(source: string): ReactNode[] {
         <code
           key={key++}
           data-slot="schema-rich-code"
-          className="rounded-md bg-default px-1 py-0.5 font-mono text-xs wrap-anywhere"
+          className="rounded-md bg-background-secondary-default px-1 py-0.5 font-mono text-caption-1-regular wrap-anywhere"
         >
           {inner}
         </code>
       ) : (
-        <b key={key++} data-slot="schema-rich-strong" className="font-semibold text-foreground">
+        <b key={key++} data-slot="schema-rich-strong" className="text-caption-1-semibold text-text-primary">
           {inner}
         </b>
       ),
@@ -123,28 +123,31 @@ function ColumnRow({ table, column, keyed }: { table: SchemaTable; column: Schem
   return (
     <div
       data-slot="schema-column"
-      className="relative flex items-center gap-2 px-3 hover:bg-default/60"
+      className="relative flex items-center gap-2 px-3 hover:bg-background-primary-hover/60"
       style={{ height: ROW_HEIGHT }}
     >
       {handles}
       <span
         data-slot="schema-column-mark"
         aria-hidden
-        className={cn(
+        className={cx(
           'size-1.5 shrink-0 rounded-full',
-          isPk && 'bg-warning',
-          isFk && 'bg-success',
-          isSoft && 'bg-warning-soft ring-1 ring-warning/60',
-          !isPk && !isFk && !isSoft && 'bg-border',
+          isPk && 'bg-status-warning',
+          isFk && 'bg-status-success',
+          isSoft && 'bg-status-warning-soft ring-1 ring-status-warning/60',
+          !isPk && !isFk && !isSoft && 'bg-border-button-default',
         )}
       />
       <span
         data-slot="schema-column-name"
-        className={cn('truncate font-mono text-xs', isPk ? 'text-warning' : keyed ? 'text-foreground' : 'text-muted')}
+        className={cx(
+          'truncate font-mono text-caption-1-regular',
+          isPk ? 'text-status-warning' : keyed ? 'text-text-primary' : 'text-text-secondary',
+        )}
       >
         {column.name}
       </span>
-      <span data-slot="schema-column-type" className="ml-auto font-mono text-xs text-muted/60">
+      <span data-slot="schema-column-type" className="ml-auto font-mono text-caption-1-regular text-text-secondary/60">
         {column.type}
       </span>
     </div>
@@ -159,17 +162,17 @@ function TableNode({ data, selected }: NodeProps<Node<TableNodeData>>) {
   return (
     <div
       data-slot="schema-table"
-      className={cn(
-        'overflow-hidden rounded-xl border bg-surface shadow-surface transition-opacity',
-        selected ? 'border-accent ring-1 ring-accent' : 'border-border',
-        hit && !selected && 'border-warning',
+      className={cx(
+        'overflow-hidden rounded-xl border bg-background-primary-default shadow-card transition-opacity',
+        selected ? 'border-accent-500 ring-1 ring-accent-500' : 'border-border-button-default',
+        hit && !selected && 'border-status-warning',
         dimmed && 'opacity-25',
       )}
       style={{ width: NODE_WIDTH }}
     >
       <div
         data-slot="schema-table-header"
-        className="flex items-center gap-2 border-b border-border bg-default/50 px-3 py-2"
+        className="flex items-center gap-2 border-b border-border-button-default bg-background-secondary-default/50 px-3 py-2"
       >
         <span
           data-slot="schema-table-swatch"
@@ -177,21 +180,24 @@ function TableNode({ data, selected }: NodeProps<Node<TableNodeData>>) {
           className="size-4 shrink-0 rounded-md"
           style={{ background: group?.color }}
         />
-        <span data-slot="schema-table-name" className="font-mono text-sm font-semibold">
+        <span data-slot="schema-table-name" className="font-mono text-body-semibold">
           {table.name}
         </span>
-        <span data-slot="schema-table-migration" className="ml-auto font-mono text-xs text-muted/70">
+        <span
+          data-slot="schema-table-migration"
+          className="ml-auto font-mono text-caption-1-regular text-text-secondary/70"
+        >
           迁移 {table.mig}
         </span>
       </div>
       <div
         data-slot="schema-table-subtitle"
-        className="flex items-baseline gap-2 px-3 pt-1.5 pb-0.5 text-xs text-muted"
+        className="flex items-baseline gap-2 px-3 pt-1.5 pb-0.5 text-caption-1-regular text-text-secondary"
       >
         <span data-slot="schema-table-title" className="truncate">
           {table.title}
         </span>
-        <span data-slot="schema-table-count" className="ml-auto shrink-0 font-mono text-muted/60">
+        <span data-slot="schema-table-count" className="ml-auto shrink-0 font-mono text-text-secondary/60">
           {table.columns.length} 列
         </span>
       </div>
@@ -223,7 +229,7 @@ function buildEdges(showSoft: boolean, selected: string | null): Edge[] {
       sourceHandle: `${e.col}__${side}s`,
       targetHandle: `${e.toCol}__${side === 'r' ? 'l' : 'r'}t`,
       type: e.self ? 'smoothstep' : 'default',
-      className: cn(
+      className: cx(
         e.kind === 'soft' && 'schema-edge-soft',
         related && 'schema-edge-hl',
         selected !== null && !related && 'schema-edge-dim',
@@ -327,7 +333,7 @@ function Canvas({
         zoomable
         nodeColor={(n) => {
           const t = TABLE_BY_NAME.get(n.id)
-          return t ? (GROUP_BY_ID.get(t.group)?.color ?? 'var(--muted)') : 'var(--muted)'
+          return t ? (GROUP_BY_ID.get(t.group)?.color ?? 'var(--color-text-secondary)') : 'var(--color-text-secondary)'
         }}
         nodeStrokeWidth={0}
       />
@@ -340,7 +346,7 @@ function Canvas({
 function FlagChip({ flag }: { flag: string }) {
   const color = flag === 'PK' ? 'warning' : flag === 'FK' ? 'success' : 'default'
   return (
-    <Chip size="sm" variant="soft" color={color} className={cn('font-mono', flag === 'UQ' && 'text-info')}>
+    <Chip size="sm" variant="soft" color={color} className={cx('font-mono', flag === 'UQ' && 'text-status-info')}>
       {flag}
     </Chip>
   )
@@ -382,14 +388,17 @@ function EdgeList({
           >
             <span
               data-slot="schema-edge-path"
-              className={cn(
-                'font-mono text-xs wrap-anywhere',
-                edge.kind === 'soft' ? 'text-warning' : 'text-foreground',
+              className={cx(
+                'font-mono text-caption-1-regular wrap-anywhere',
+                edge.kind === 'soft' ? 'text-status-warning' : 'text-text-primary',
               )}
             >
               {edgeText(edge, dir)}
             </span>
-            <span data-slot="schema-edge-action" className="ml-auto font-mono text-xs text-muted wrap-anywhere">
+            <span
+              data-slot="schema-edge-action"
+              className="ml-auto font-mono text-caption-1-regular text-text-secondary wrap-anywhere"
+            >
               {edge.kind === 'soft' ? '逻辑 · ' : ''}
               {edge.act}
             </span>
@@ -402,7 +411,7 @@ function EdgeList({
 
 function SectionTitle({ children }: { children: ReactNode }) {
   return (
-    <h3 data-slot="schema-section-title" className="px-4 pt-4 pb-1 text-xs font-semibold text-muted">
+    <h3 data-slot="schema-section-title" className="px-4 pt-4 pb-1 text-caption-1-semibold text-text-secondary">
       {children}
     </h3>
   )
@@ -421,11 +430,11 @@ function DetailPanel({
     return (
       <aside
         data-slot="schema-detail-empty"
-        className="flex w-[420px] shrink-0 items-center justify-center border-l border-border bg-surface p-8 text-center text-sm text-muted"
+        className="flex w-[420px] shrink-0 items-center justify-center border-l border-border-button-default bg-background-primary-default p-8 text-center text-body-regular text-text-secondary"
       >
         <div data-slot="schema-detail-empty-body" className="space-y-2">
           <p data-slot="schema-detail-empty-hint">点一个表看它的全部字段、跨字段约束与关联关系</p>
-          <p data-slot="schema-detail-empty-tips" className="text-xs">
+          <p data-slot="schema-detail-empty-tips" className="text-caption-1-regular">
             拖动节点重新排布 · 滚轮缩放 · 选中一个表会把它的边挑出来
           </p>
         </div>
@@ -440,28 +449,31 @@ function DetailPanel({
   const inc = EDGES.filter((e) => e.to === name)
 
   return (
-    <aside data-slot="schema-detail" className="flex w-[420px] shrink-0 flex-col border-l border-border bg-surface">
-      <header data-slot="schema-detail-header" className="border-b border-border px-4 py-3">
+    <aside
+      data-slot="schema-detail"
+      className="flex w-[420px] shrink-0 flex-col border-l border-border-button-default bg-background-primary-default"
+    >
+      <header data-slot="schema-detail-header" className="border-b border-border-button-default px-4 py-3">
         <div data-slot="schema-detail-heading" className="flex items-start gap-2">
           <div data-slot="schema-detail-identity" className="min-w-0">
-            <h2 data-slot="schema-detail-name" className="font-mono text-base font-semibold">
+            <h2 data-slot="schema-detail-name" className="font-mono text-headline-semibold">
               {table.name}
             </h2>
-            <p data-slot="schema-detail-meta" className="text-xs text-muted">
+            <p data-slot="schema-detail-meta" className="text-caption-1-regular text-text-secondary">
               {table.title} · {group?.title} · 迁移 {table.mig}
             </p>
           </div>
-          <Tooltip delay={0}>
-            <Button isIconOnly aria-label="关闭详情" variant="ghost" size="sm" className="ml-auto" onPress={onClose}>
+          <TooltipTrigger delay={0}>
+            <Button iconOnly aria-label="关闭详情" variant="ghost" size="small" className="ml-auto" onPress={onClose}>
               <Xmark className="size-4" />
             </Button>
-            <Tooltip.Content placement="left">关闭</Tooltip.Content>
-          </Tooltip>
+            <Tooltip placement="left">关闭</Tooltip>
+          </TooltipTrigger>
         </div>
         {table.tags && table.tags.length > 0 && (
           <div data-slot="schema-detail-tags" className="mt-2 flex flex-wrap gap-1.5">
             {table.tags.map((tag) => (
-              <Chip key={tag} size="sm" variant="secondary" className="font-mono text-muted">
+              <Chip key={tag} size="sm" variant="secondary" className="font-mono text-text-secondary">
                 {tag}
               </Chip>
             ))}
@@ -473,7 +485,7 @@ function DetailPanel({
         {table.note && (
           <p
             data-slot="schema-detail-note"
-            className="border-b border-border bg-default/40 px-4 py-3 text-xs leading-relaxed text-muted"
+            className="border-b border-border-button-default bg-background-secondary-default/40 px-4 py-3 text-caption-1-regular leading-relaxed text-text-secondary"
           >
             {richText(table.note)}
           </p>
@@ -487,13 +499,16 @@ function DetailPanel({
             <li
               data-slot="schema-detail-column"
               key={c.name}
-              className="border-b border-border/50 px-4 py-2 hover:bg-default/40"
+              className="border-b border-border-button-default/50 px-4 py-2 hover:bg-background-primary-hover/40"
             >
               <div data-slot="schema-detail-column-heading" className="flex items-baseline gap-2">
-                <span data-slot="schema-detail-column-name" className="font-mono text-xs break-all">
+                <span data-slot="schema-detail-column-name" className="font-mono text-caption-1-regular break-all">
                   {c.name}
                 </span>
-                <span data-slot="schema-detail-column-type" className="ml-auto shrink-0 font-mono text-xs text-info">
+                <span
+                  data-slot="schema-detail-column-type"
+                  className="ml-auto shrink-0 font-mono text-caption-1-regular text-status-info"
+                >
                   {c.type}
                 </span>
               </div>
@@ -502,7 +517,10 @@ function DetailPanel({
                   <FlagChip key={f} flag={f} />
                 ))}
                 {c.def !== '—' && (
-                  <span data-slot="schema-detail-column-default" className="font-mono text-xs text-muted/70">
+                  <span
+                    data-slot="schema-detail-column-default"
+                    className="font-mono text-caption-1-regular text-text-secondary/70"
+                  >
                     默认 {c.def}
                   </span>
                 )}
@@ -510,7 +528,7 @@ function DetailPanel({
               {c.desc && (
                 <p
                   data-slot="schema-detail-column-desc"
-                  className="mt-1 text-xs leading-relaxed break-words text-muted"
+                  className="mt-1 text-caption-1-regular leading-relaxed break-words text-text-secondary"
                 >
                   {richText(c.desc)}
                 </p>
@@ -526,7 +544,10 @@ function DetailPanel({
         {table.rels && table.rels.length > 0 && (
           <>
             <SectionTitle>关联关系</SectionTitle>
-            <ul data-slot="schema-detail-rels" className="space-y-2 px-4 pl-8 text-xs leading-relaxed text-muted">
+            <ul
+              data-slot="schema-detail-rels"
+              className="space-y-2 px-4 pl-8 text-caption-1-regular leading-relaxed text-text-secondary"
+            >
               {table.rels.map((r, i) => (
                 <li data-slot="schema-detail-rel" key={i} className="list-disc">
                   {richText(r)}
@@ -539,7 +560,10 @@ function DetailPanel({
         {table.rules && table.rules.length > 0 && (
           <>
             <SectionTitle>跨字段约束与不变式</SectionTitle>
-            <ul data-slot="schema-detail-rules" className="space-y-2 px-4 pl-8 text-xs leading-relaxed text-muted">
+            <ul
+              data-slot="schema-detail-rules"
+              className="space-y-2 px-4 pl-8 text-caption-1-regular leading-relaxed text-text-secondary"
+            >
               {table.rules.map((r, i) => (
                 <li data-slot="schema-detail-rule" key={i} className="list-disc">
                   {richText(r)}
@@ -585,15 +609,18 @@ function Lab() {
     })
 
   return (
-    <div data-slot="schema-lab" className="flex h-full flex-col bg-background text-foreground">
+    <div data-slot="schema-lab" className="flex h-full flex-col bg-background-full text-text-primary">
       <header
         data-slot="schema-lab-header"
-        className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-2"
+        className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border-button-default px-4 py-2"
       >
-        <h1 data-slot="schema-lab-title" className="text-sm font-semibold whitespace-nowrap">
+        <h1 data-slot="schema-lab-title" className="text-body-semibold whitespace-nowrap">
           数据库模型
         </h1>
-        <span data-slot="schema-lab-stats" className="font-mono text-xs whitespace-nowrap text-muted">
+        <span
+          data-slot="schema-lab-stats"
+          className="font-mono text-caption-1-regular whitespace-nowrap text-text-secondary"
+        >
           {TABLES.length} 表 · {fkCount} 外键 · {softCount} 逻辑引用
         </span>
         <Input
@@ -610,10 +637,10 @@ function Lab() {
           }}
           className="w-56"
         />
-        <Button variant={showSoft ? 'primary' : 'outline'} size="sm" onPress={() => setShowSoft((v) => !v)}>
+        <Button variant={showSoft ? 'primary' : 'outline'} size="small" onPress={() => setShowSoft((v) => !v)}>
           逻辑引用
         </Button>
-        <Button variant="outline" size="sm" onPress={() => void rf.fitView({ padding: 0.06, duration: 400 })}>
+        <Button variant="outline" size="small" onPress={() => void rf.fitView({ padding: 0.06, duration: 400 })}>
           适应画布
         </Button>
 
@@ -621,13 +648,13 @@ function Lab() {
           {GROUPS.map((g) => {
             const off = hiddenGroups.has(g.id)
             return (
-              <Tooltip key={g.id} delay={300}>
+              <TooltipTrigger key={g.id} delay={300}>
                 <Button
                   variant="outline"
-                  size="sm"
+                  size="small"
                   onPress={() => toggleGroup(g.id)}
                   aria-pressed={!off}
-                  className={cn('h-7 gap-1.5 rounded-full px-2.5 text-xs font-normal', off && 'opacity-40')}
+                  className={cx('h-7 gap-1.5 rounded-full px-2.5 text-caption-1-regular', off && 'opacity-40')}
                 >
                   <span
                     data-slot="schema-lab-group-swatch"
@@ -637,23 +664,23 @@ function Lab() {
                   />
                   {g.title}
                 </Button>
-                <Tooltip.Content placement="bottom">{g.desc}</Tooltip.Content>
-              </Tooltip>
+                <Tooltip placement="bottom">{g.desc}</Tooltip>
+              </TooltipTrigger>
             )
           })}
-          <Tooltip delay={0}>
+          <TooltipTrigger delay={0}>
             <Button
-              isIconOnly
+              iconOnly
               aria-label="切换主题"
               variant="outline"
-              size="sm"
+              size="small"
               onPress={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
             >
               <Sun className="hidden size-4 dark:block" />
               <Moon className="size-4 dark:hidden" />
             </Button>
-            <Tooltip.Content placement="bottom">切换主题</Tooltip.Content>
-          </Tooltip>
+            <Tooltip placement="bottom">切换主题</Tooltip>
+          </TooltipTrigger>
         </div>
       </header>
 
@@ -668,7 +695,7 @@ function Lab() {
           />
           <p
             data-slot="schema-lab-legend"
-            className="pointer-events-none absolute bottom-3.5 left-14 z-5 rounded-md border border-border bg-background/80 px-2.5 py-1 text-xs text-muted backdrop-blur-sm"
+            className="pointer-events-none absolute bottom-3.5 left-14 z-5 rounded-md border border-border-button-default bg-background-full/80 px-2.5 py-1 text-caption-1-regular text-text-secondary backdrop-blur-sm"
           >
             实线 = 真外键（标注 ON DELETE 行为） · 虚线 = 代码维护的逻辑引用，故意不建外键
           </p>
@@ -691,7 +718,7 @@ export default function SchemaLab() {
         .schema-edge-soft .react-flow__edge-path { stroke: var(--color-warning); stroke-dasharray: 5 4; opacity: .75; }
         .schema-edge-hl .react-flow__edge-path { stroke: var(--color-accent); stroke-width: 2.2px; opacity: 1; }
         .schema-edge-dim { opacity: .12; }
-        .react-flow__edge-text { fill: var(--color-muted); font-size: var(--text-xs); }
+        .react-flow__edge-text { fill: var(--color-muted); font-size: var(--text-caption-1-regular); }
         .react-flow__edge-textbg { fill: var(--color-background); opacity: .85; }
         .react-flow__handle { opacity: 0; min-width: 6px; min-height: 6px; width: 6px; height: 6px; border: 0; }
       `}</style>

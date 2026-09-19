@@ -2,10 +2,10 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DropZone } from 'react-aria-components'
 import type { DropItem } from 'react-aria-components'
-import { Button, Chip, Tooltip } from '@heroui/react'
+import { Button, Chip, Tooltip, TooltipTrigger } from '@/components/base'
 import { Comments, Xmark } from '@gravity-ui/icons'
 import { acceptsConversationDrop, CONVERSATION_DRAG_TYPE } from '@/components/layout/sidebar-dnd'
-import { EmptyState as ProEmptyState } from '@heroui-pro/react/empty-state'
+import { EmptyState as ProEmptyState } from '@/components/base'
 import { api } from '@/api'
 import { ChatTranscript } from './chat-transcript'
 import { CompactedRegion } from './compacted-region'
@@ -526,20 +526,23 @@ function ChatViewInner({
             body: (
               <div data-slot="shell-retry-body" className="space-y-3">
                 <p data-slot="shell-retry-text">{t('chat.shell.retryBody')}</p>
-                <dl data-slot="shell-retry-details" className="space-y-2 rounded-xl bg-surface-secondary p-3 text-xs">
+                <dl
+                  data-slot="shell-retry-details"
+                  className="space-y-2 rounded-xl bg-background-secondary-default p-3 text-caption-1-regular"
+                >
                   <div data-slot="shell-retry-detail">
-                    <dt data-slot="shell-retry-detail-label" className="font-medium text-muted">
+                    <dt data-slot="shell-retry-detail-label" className="text-caption-1-medium text-text-secondary">
                       {t('chat.shell.commandLabel')}
                     </dt>
-                    <dd data-slot="shell-retry-detail-value" className="mt-0.5 break-all font-mono text-foreground">
+                    <dd data-slot="shell-retry-detail-value" className="mt-0.5 break-all font-mono text-text-primary">
                       {command}
                     </dd>
                   </div>
                   <div data-slot="shell-retry-detail">
-                    <dt data-slot="shell-retry-detail-label" className="font-medium text-muted">
+                    <dt data-slot="shell-retry-detail-label" className="text-caption-1-medium text-text-secondary">
                       {t('chat.shell.cwdLabel')}
                     </dt>
-                    <dd data-slot="shell-retry-detail-value" className="mt-0.5 break-all font-mono text-foreground">
+                    <dd data-slot="shell-retry-detail-value" className="mt-0.5 break-all font-mono text-text-primary">
                       {result.cwd}
                     </dd>
                   </div>
@@ -813,7 +816,7 @@ function ChatViewInner({
         aria-label={t('chat.convRef.dropLabel')}
         getDropOperation={(types) => (acceptsConversationDrop(types) ? 'copy' : 'cancel')}
         onDrop={(e) => void handleConversationDrop(e.items)}
-        className="flex flex-col h-full data-[drop-target]:ring-2 data-[drop-target]:ring-accent data-[drop-target]:ring-inset"
+        className="flex flex-col h-full data-[drop-target]:ring-2 data-[drop-target]:ring-accent-500 data-[drop-target]:ring-inset"
       >
         <AcpNoticeActionsContext.Provider value={acpNoticeActions}>
           <ChatTranscript
@@ -879,8 +882,8 @@ function ChatViewInner({
           />
         </AcpNoticeActionsContext.Provider>
 
-        {/* Folded into the queue card when something is stacked: HeroUI's Queue
-          is current-plus-rows, and a TodoBar sitting above it made every
+        {/* Folded into the queue card when something is stacked: the queue is
+          current-plus-rows, and a TodoBar sitting above it made every
           queued message look nested under the checklist — interject and
           follow-up alike. Alone, the bar keeps its own card. */}
         {queue.items.length === 0 && <TodoBar conversationId={conversationId} />}
@@ -893,7 +896,7 @@ function ChatViewInner({
             data-slot="conversation-refs-pending"
             role="group"
             aria-label={t('chat.convRef.pending')}
-            className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-border px-4 py-2"
+            className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-border-button-default px-4 py-2"
           >
             {conversationRefs.map((ref) => (
               <Chip key={ref.id} size="sm" variant="soft" className="pr-0.5">
@@ -901,10 +904,10 @@ function ChatViewInner({
                 <span data-slot="conversation-ref-title" className="max-w-48 truncate">
                   {ref.title}
                 </span>
-                <Tooltip delay={0}>
+                <TooltipTrigger delay={0}>
                   <Button
-                    isIconOnly
-                    size="sm"
+                    iconOnly
+                    size="small"
                     variant="ghost"
                     aria-label={t('chat.convRef.remove', { name: ref.title })}
                     onPress={() => setConversationRefs((prev) => prev.filter((r) => r.id !== ref.id))}
@@ -912,8 +915,8 @@ function ChatViewInner({
                   >
                     <Xmark className="size-3" />
                   </Button>
-                  <Tooltip.Content>{t('chat.convRef.remove', { name: ref.title })}</Tooltip.Content>
-                </Tooltip>
+                  <Tooltip>{t('chat.convRef.remove', { name: ref.title })}</Tooltip>
+                </TooltipTrigger>
               </Chip>
             ))}
           </div>
@@ -922,13 +925,13 @@ function ChatViewInner({
         {reviewBlocked && (
           <div
             data-slot="review-blocked-notice"
-            className="flex shrink-0 items-center gap-3 border-t border-border bg-accent-soft px-4 py-2 text-xs text-accent"
+            className="flex shrink-0 items-center gap-3 border-t border-border-button-default bg-button-ghost-background px-4 py-2 text-caption-1-regular text-button-ghost-foreground"
           >
             <p data-slot="review-blocked-message" className="min-w-0 flex-1">
               {reviewBlockedMessage}
             </p>
             {pendingPlanReview && (
-              <Button size="sm" variant="ghost" onPress={() => openPlanReview(pendingPlanReview.review_id)}>
+              <Button size="small" variant="ghost" onPress={() => openPlanReview(pendingPlanReview.review_id)}>
                 {reviewBlockedAction}
               </Button>
             )}

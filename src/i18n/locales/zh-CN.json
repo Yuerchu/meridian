@@ -1200,7 +1200,7 @@
   "common.loading": "加载中…",
   "settings.developer.cssProbe": "CSS 支持",
   "settings.developer.cssProbeTitle": "这个 WebView 有 shimmer 需要的东西吗？",
-  "settings.developer.cssProbeHint": "两条都绿，思考过程的标题才能换成 HeroUI Pro 的 shimmer。缺 tan() 时文字不是回退成普通样式，而是直接看不见。",
+  "settings.developer.cssProbeHint": "两条都绿，思考过程的标题才能用流光文字。缺 tan() 时文字不是回退成普通样式，而是直接看不见。",
   "chat.commandSuggestions": "命令",
   "chat.referenceSuggestions": "项目文件",
   "chat.referenceFollowUpOnly": "工作区引用只能附加到新一轮或后续消息，不能注入已经运行中的一轮。",
@@ -1245,7 +1245,6 @@
   "common.apply": "应用",
   "common.undo": "撤销",
   "common.redo": "重做",
-  "chat.plan.title": "计划",
   "chat.plan.review": "审阅计划",
   "chat.plan.reviewReady": "计划已准备好，等待你的审阅。",
   "chat.plan.continuationNeedsAttention": "计划决定已保存，但继续交给 Agent 处理需要你介入。",
@@ -1338,5 +1337,7 @@
   "planReview.discard": "丢弃草稿",
   "planReview.requestChanges": "要求修改",
   "planReview.approve": "批准计划",
-  "settings.about.grokBuildNotice": "计划审阅架构借鉴自 Grok Build。若包含复制的 Apache-2.0 代码，将保留许可证与修改说明。"
+  "settings.about.grokBuildNotice": "计划审阅架构借鉴自 Grok Build。若包含复制的 Apache-2.0 代码，将保留许可证与修改说明。",
+  "dataGrid.expandRow": "展开行 {{label}}",
+  "dataGrid.collapseRow": "折叠行 {{label}}"
 }

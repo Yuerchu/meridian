@@ -4,9 +4,20 @@ import { useTranslation } from 'react-i18next'
 import { Plus, TrashBin, Xmark, Check } from '@gravity-ui/icons'
 import { api } from '@/api'
 import type { MemoryType } from '@/types'
-import { Alert, Button, Card, DisclosureGroup, Input, Label, TextArea, TextField, Tooltip } from '@heroui/react'
-import { EmptyState } from '@heroui-pro/react/empty-state'
-import { ActionBar } from '@heroui-pro/react/action-bar'
+import {
+  Alert,
+  Button,
+  Card,
+  DisclosureGroup,
+  Input,
+  Label,
+  TextArea,
+  TextField,
+  Tooltip,
+  TooltipTrigger,
+} from '@/components/base'
+import { EmptyState } from '@/components/base'
+import { ActionBar } from '@/components/base'
 import { useConfirm } from '@/hooks/use-confirm'
 import { MemoryRow } from './memory/memory-row'
 import { MemoryTrash } from './memory/memory-trash'
@@ -106,7 +117,6 @@ export function MemorySettings() {
         <div data-slot="memory-list" className="min-w-0 flex-1 space-y-2">
           <div data-slot="memory-toolbar" className="flex items-center gap-2">
             <Input
-              fullWidth
               type="text"
               aria-label={t('settings.memory.search')}
               name="memorySearch"
@@ -125,14 +135,18 @@ export function MemorySettings() {
           </div>
 
           {actionError && (
-            <p data-slot="memory-action-error" role="alert" className="text-xs text-danger break-all">
+            <p
+              data-slot="memory-action-error"
+              role="alert"
+              className="text-caption-1-regular text-status-danger break-all"
+            >
               {actionError}
             </p>
           )}
 
           {showAdd && (
             <Card data-slot="memory-add-form">
-              <TextField fullWidth>
+              <TextField>
                 <Label>{t('settings.memory.key')}</Label>
                 <Input
                   type="text"
@@ -142,7 +156,7 @@ export function MemorySettings() {
                   autoFocus
                 />
               </TextField>
-              <TextField fullWidth>
+              <TextField>
                 <Label>{t('settings.memory.content')}</Label>
                 <TextArea
                   name="memoryContent"
@@ -168,24 +182,24 @@ export function MemorySettings() {
                   triggerClassName="w-auto"
                 />
                 <div data-slot="memory-add-spacer" className="flex-1" />
-                <Tooltip delay={0}>
-                  <Button variant="ghost" isIconOnly aria-label={t('common.cancel')} onPress={() => setShowAdd(false)}>
+                <TooltipTrigger delay={0}>
+                  <Button variant="ghost" iconOnly aria-label={t('common.cancel')} onPress={() => setShowAdd(false)}>
                     <Xmark />
                   </Button>
-                  <Tooltip.Content>{t('common.cancel')}</Tooltip.Content>
-                </Tooltip>
-                <Tooltip delay={0}>
+                  <Tooltip>{t('common.cancel')}</Tooltip>
+                </TooltipTrigger>
+                <TooltipTrigger delay={0}>
                   <Button
                     variant="secondary"
-                    isIconOnly
+                    iconOnly
                     aria-label={t('settings.memory.add')}
                     onPress={handleAdd}
                     isDisabled={!newKey.trim() || !newContent.trim()}
                   >
                     <Check />
                   </Button>
-                  <Tooltip.Content>{t('settings.memory.add')}</Tooltip.Content>
-                </Tooltip>
+                  <Tooltip>{t('settings.memory.add')}</Tooltip>
+                </TooltipTrigger>
               </div>
             </Card>
           )}
@@ -197,7 +211,7 @@ export function MemorySettings() {
               <Alert.Indicator />
               <Alert.Content>
                 <Alert.Description className="break-words">{t('settings.memory.loadError')}</Alert.Description>
-                <Button size="sm" variant="outline" className="mt-2" onPress={() => void browser.refresh()}>
+                <Button size="small" variant="outline" className="mt-2" onPress={() => void browser.refresh()}>
                   {t('settings.memory.retry')}
                 </Button>
               </Alert.Content>
@@ -234,7 +248,7 @@ export function MemorySettings() {
               list, which is where it used to be — on a long list you had to
               scroll to the end to reach the actions for rows at the top.
 
-              Through a portal, because Pro renders `.action-bar` in place and it
+              Through a portal, because ActionBar renders itself in place and it
               is `position: fixed`. This panel is a query container now, and
               `container-type` brings `contain: layout` with it — which makes the
               container the containing block for its fixed descendants. Left
@@ -245,7 +259,11 @@ export function MemorySettings() {
               <ActionBar.Prefix>
                 {/* The count is the only thing that says a selection exists, so
                   it announces itself rather than only appearing. */}
-                <span data-slot="memory-selected-count" aria-live="polite" className="text-sm text-muted">
+                <span
+                  data-slot="memory-selected-count"
+                  aria-live="polite"
+                  className="text-body-regular text-text-secondary"
+                >
                   {t('settings.memory.selectedCount', { count: browser.selected.size })}
                 </span>
               </ActionBar.Prefix>
@@ -276,22 +294,22 @@ export function MemorySettings() {
                     browser.refresh()
                   }}
                 >
-                  <TrashBin className="text-danger" />
+                  <TrashBin className="text-status-danger" />
                   {t('settings.memory.deleteSelected')}
                 </Button>
               </ActionBar.Content>
               <ActionBar.Suffix>
-                <Tooltip delay={0}>
+                <TooltipTrigger delay={0}>
                   <Button
-                    isIconOnly
+                    iconOnly
                     variant="ghost"
                     aria-label={t('settings.memory.clearSelection')}
                     onPress={browser.clearSelection}
                   >
                     <Xmark />
                   </Button>
-                  <Tooltip.Content>{t('settings.memory.clearSelection')}</Tooltip.Content>
-                </Tooltip>
+                  <Tooltip>{t('settings.memory.clearSelection')}</Tooltip>
+                </TooltipTrigger>
               </ActionBar.Suffix>
             </ActionBar>,
             document.body,

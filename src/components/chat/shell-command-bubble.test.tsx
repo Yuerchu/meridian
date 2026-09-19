@@ -78,5 +78,5 @@ it('renders a completed command with a non-zero exit as a failure', async () => 
   await waitFor(() => expect(getUserCommandResult).toHaveBeenCalled())
   const outcome = document.querySelector('[data-command-outcome]')
   expect(outcome).toHaveAttribute('data-command-outcome', 'failure')
-  expect(outcome?.querySelector('svg')).toHaveClass('text-danger')
+  expect(outcome?.querySelector('svg')).toHaveClass('text-status-danger')
 })

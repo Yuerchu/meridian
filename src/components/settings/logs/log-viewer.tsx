@@ -5,8 +5,8 @@ import { ChevronLeft, ArrowDownToLine, ArrowsRotateRight, Magnifier } from '@gra
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
-import { Button, InputGroup, Skeleton, Spinner } from '@heroui/react'
-import { EmptyState } from '@heroui-pro/react/empty-state'
+import { Button, InputGroup, Skeleton } from '@/components/base'
+import { EmptyState } from '@/components/base'
 import { LogRow } from './log-row'
 import { SettingsSelect, type SettingsSelectOption } from '../primitives'
 import { MAX_RENDERED, useAppLogs, type LevelFilter, type RangeFilter } from './use-app-logs'
@@ -47,29 +47,29 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
   return (
     <div data-slot="log-viewer" className="flex h-full flex-col gap-4">
       <div data-slot="log-viewer-header" className="flex flex-wrap items-center gap-2">
-        <Button variant="ghost" size="sm" onPress={onBack}>
+        <Button variant="ghost" size="small" onPress={onBack}>
           <ChevronLeft className="size-4" />
           {t('settings.about.logs.back')}
         </Button>
-        <h2 data-slot="log-viewer-title" className="text-lg font-medium">
+        <h2 data-slot="log-viewer-title" className="text-title-3-medium">
           {t('settings.about.logs.title')}
         </h2>
         <div data-slot="log-viewer-actions" className="ml-auto flex items-center gap-2">
-          <Button variant="ghost" size="sm" onPress={logs.refresh} isDisabled={logs.loading}>
+          <Button variant="ghost" size="small" onPress={logs.refresh} isDisabled={logs.loading}>
             <ArrowsRotateRight className="size-4" />
             {t('settings.about.logs.refresh')}
           </Button>
           {/* The picker names a path on this device and the file is written by
               whichever machine the logs belong to. Reading them here still
               works — that is what the rows below are. */}
-          <Button variant="secondary" size="sm" onPress={onExport} isDisabled={!can.exportToDisk}>
+          <Button variant="secondary" size="small" onPress={onExport} isDisabled={!can.exportToDisk}>
             <ArrowDownToLine className="size-4" />
             {exported ? t('settings.about.logs.exported') : t('settings.about.logs.export')}
           </Button>
         </div>
       </div>
 
-      <p data-slot="log-viewer-export-hint" className="text-xs text-muted">
+      <p data-slot="log-viewer-export-hint" className="text-caption-1-regular text-text-secondary">
         {can.exportToDisk ? t('settings.about.logs.exportHint') : t('capability.exportToDisk')}
       </p>
 
@@ -90,7 +90,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
             aria-label={t('settings.about.logs.searchPlaceholder')}
             name="logSearch"
             value={logs.search}
-            onChange={(e) => logs.setSearch(e.target.value)}
+            onChange={(e: import('react').ChangeEvent<HTMLInputElement>) => logs.setSearch(e.target.value)}
             placeholder={t('settings.about.logs.searchPlaceholder')}
           />
         </InputGroup>
@@ -106,7 +106,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
         {logs.entries.length > 0 && (
           // Only what is on screen. The reader stops as soon as it has a page,
           // so a total would be a number nobody actually counted.
-          <span data-slot="log-viewer-count" className="ml-auto text-xs text-muted">
+          <span data-slot="log-viewer-count" className="ml-auto text-caption-1-regular text-text-secondary">
             {t('settings.about.logs.count', { shown: logs.entries.length })}
           </span>
         )}
@@ -117,7 +117,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
       <div
         data-slot="log-list"
         tabIndex={0}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-lg border border-border outline-none focus-visible:ring-2 focus-visible:ring-focus/50"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-lg border border-border-button-default outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring/50"
       >
         {unavailable ? (
           <EmptyState size="sm">
@@ -126,7 +126,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
             </EmptyState.Header>
           </EmptyState>
         ) : logs.error ? (
-          <p data-slot="log-viewer-error" role="alert" className="p-6 text-sm text-danger">
+          <p data-slot="log-viewer-error" role="alert" className="p-6 text-body-regular text-status-danger">
             {t('settings.about.logs.loadError')}
           </p>
         ) : logs.loading ? (
@@ -158,17 +158,16 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
             ))}
             <div data-slot="log-viewer-footer" className="flex flex-col items-center gap-2 p-3">
               {logs.truncated && (
-                <p data-slot="log-viewer-truncated" className="text-xs text-muted">
+                <p data-slot="log-viewer-truncated" className="text-caption-1-regular text-text-secondary">
                   {t('settings.about.logs.truncated')}
                 </p>
               )}
               {logs.capped ? (
-                <p data-slot="log-viewer-capped" className="text-xs text-muted">
+                <p data-slot="log-viewer-capped" className="text-caption-1-regular text-text-secondary">
                   {t('settings.about.logs.capped', { max: MAX_RENDERED })}
                 </p>
               ) : logs.canLoadOlder ? (
-                <Button variant="ghost" size="sm" onPress={logs.loadOlder} isDisabled={logs.loadingMore}>
-                  {logs.loadingMore && <Spinner size="sm" color="current" />}
+                <Button variant="ghost" size="small" onPress={logs.loadOlder} isPending={logs.loadingMore}>
                   {t('settings.about.logs.loadOlder')}
                 </Button>
               ) : null}

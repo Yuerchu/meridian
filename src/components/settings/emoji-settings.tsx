@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowUpFromLine, Check, Plus, Sparkles, Sticker, TrashBin, Xmark } from '@gravity-ui/icons'
-import { Button, Chip, Disclosure, Input, Tooltip } from '@heroui/react'
-import { ActionBar } from '@heroui-pro/react/action-bar'
-import { DataGrid, type DataGridColumn, type DataGridSelection } from '@heroui-pro/react/data-grid'
-import { EmptyState } from '@heroui-pro/react/empty-state'
+import { Button, Chip, Disclosure, Input, Tooltip, TooltipTrigger } from '@/components/base'
+import { ActionBar } from '@/components/base'
+import { DataGrid, type DataGridColumn, type DataGridSelection } from '@/components/base'
+import { EmptyState } from '@/components/base'
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
 import { useConfirm } from '@/hooks/use-confirm'
@@ -82,12 +82,11 @@ function EditableCell({
   if (editing) {
     return (
       <Input
-        fullWidth
         autoFocus
         aria-label={ariaLabel}
         value={draft}
         placeholder={placeholder}
-        className="h-8 text-sm"
+        className="h-8 text-body-regular"
         onChange={(event) => setDraft(event.target.value)}
         onBlur={() => {
           setEditing(false)
@@ -113,14 +112,14 @@ function EditableCell({
   return (
     <Button
       variant="ghost"
-      className="h-8 w-full min-w-0 justify-start rounded-md px-1.5 text-sm font-normal"
+      className="h-8 w-full min-w-0 justify-start rounded-md px-1.5 text-body-regular"
       aria-label={`${ariaLabel}: ${value || placeholder}`}
       onPress={() => {
         setDraft(value)
         setEditing(true)
       }}
     >
-      <span data-slot="editable-cell-value" className={value ? 'truncate' : 'truncate text-muted'}>
+      <span data-slot="editable-cell-value" className={value ? 'truncate' : 'truncate text-text-secondary'}>
         {value || placeholder}
       </span>
     </Button>
@@ -153,7 +152,7 @@ function RowActions({
       {unconfirmed && (
         <>
           <Button
-            size="sm"
+            size="small"
             variant="ghost"
             isDisabled={busy !== null || !emoji.file_name}
             onPress={() => {
@@ -165,7 +164,7 @@ function RowActions({
             {busy === 'suggest' ? t('settings.emoji.suggesting') : t('settings.emoji.suggest')}
           </Button>
           <Button
-            size="sm"
+            size="small"
             variant="outline"
             isDisabled={busy !== null || !shownName(emoji).trim()}
             onPress={() => {
@@ -179,19 +178,19 @@ function RowActions({
         </>
       )}
       {canDelete && (
-        <Tooltip delay={0}>
+        <TooltipTrigger delay={0}>
           <Button
-            isIconOnly
-            size="sm"
+            iconOnly
+            size="small"
             variant="ghost"
-            className="text-muted hover:text-danger"
+            className="text-text-secondary hover:text-status-danger"
             aria-label={t('settings.emoji.deleteEmoji')}
             onPress={() => onDelete(emoji.id)}
           >
             <TrashBin className="size-3.5" />
           </Button>
-          <Tooltip.Content>{t('settings.emoji.deleteEmoji')}</Tooltip.Content>
-        </Tooltip>
+          <Tooltip>{t('settings.emoji.deleteEmoji')}</Tooltip>
+        </TooltipTrigger>
       )}
     </div>
   )
@@ -268,7 +267,10 @@ function StickerGrid({
                 className="size-9 shrink-0 rounded-lg object-contain"
               />
             ) : (
-              <div data-slot="sticker-thumbnail-placeholder" className="size-9 shrink-0 rounded-lg bg-default/40" />
+              <div
+                data-slot="sticker-thumbnail-placeholder"
+                className="size-9 shrink-0 rounded-lg bg-background-secondary-default/40"
+              />
             )}
             <EditableCell
               value={shownName(emoji)}
@@ -371,7 +373,7 @@ function StickerGrid({
         )}
       />
       {error && (
-        <p data-slot="sticker-grid-error" className="text-xs text-danger">
+        <p data-slot="sticker-grid-error" className="text-caption-1-regular text-status-danger">
           {error}
         </p>
       )}
@@ -405,24 +407,26 @@ function PackCard({
     // Render prop rather than a controlled `isExpanded`: the open state is only
     // read one level down, so the card keeps its own uncontrolled state and no
     // caller has to hold it.
-    <Disclosure className="flex w-full flex-col overflow-hidden rounded-lg border border-border">
+    <Disclosure className="flex w-full flex-col overflow-hidden rounded-lg border border-border-button-default">
       {({ isExpanded }) => (
         <>
           <Disclosure.Heading>
-            {/* `flex` is not optional: HeroUI styles the indicator with `ms-auto`
-                and `shrink-0`, which only mean anything inside a flex container.
+            {/* `flex` is not optional: Disclosure.Indicator carries `shrink-0`,
+                which only means something inside a flex container.
                 `text-start` undoes the button element's centred UA default. */}
-            <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30">
-              <Sticker className="w-3.5 h-3.5 shrink-0 text-muted" />
+            <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-body-regular transition-colors outline-none hover:bg-background-primary-hover/30 focus-visible:bg-background-secondary-default/30">
+              <Sticker className="w-3.5 h-3.5 shrink-0 text-text-secondary" />
               <span data-slot="pack-name" className="flex-1 truncate">
                 {detail.pack.name}
               </span>
-              <span data-slot="pack-count" className="text-xs text-muted">
+              <span data-slot="pack-count" className="text-caption-1-regular text-text-secondary">
                 {detail.emojis.length}
               </span>
               {pending > 0 && <Chip color="warning">{t('settings.emoji.pendingCount', { count: pending })}</Chip>}
-              {detail.pack.is_builtin && <Chip className="shrink-0 text-muted">{t('settings.template.builtin')}</Chip>}
-              <Disclosure.Indicator className="size-4 shrink-0 text-muted" />
+              {detail.pack.is_builtin && (
+                <Chip className="shrink-0 text-text-secondary">{t('settings.template.builtin')}</Chip>
+              )}
+              <Disclosure.Indicator className="size-4 shrink-0 text-text-secondary" />
             </Disclosure.Trigger>
           </Disclosure.Heading>
 
@@ -440,7 +444,7 @@ function PackCard({
               {isExpanded && (
                 <>
                   {detail.pack.description && (
-                    <p data-slot="pack-description" className="text-xs text-muted">
+                    <p data-slot="pack-description" className="text-caption-1-regular text-text-secondary">
                       {detail.pack.description}
                     </p>
                   )}
@@ -471,7 +475,7 @@ function PackCard({
                     )}
                   </div>
                   {onImport && !can.importFromDisk && (
-                    <p data-slot="pack-import-note" className="text-xs text-muted">
+                    <p data-slot="pack-import-note" className="text-caption-1-regular text-text-secondary">
                       {t('capability.importFromDisk')}
                     </p>
                   )}
@@ -622,7 +626,6 @@ export function EmojiSettings() {
 
       <div data-slot="pack-create" className="flex gap-2">
         <Input
-          fullWidth
           value={newPackName}
           onChange={(e) => setNewPackName(e.target.value)}
           placeholder={t('settings.emoji.packName')}
@@ -663,7 +666,7 @@ export function EmojiSettings() {
         )}
       </div>
 
-      {/* Through a portal, because Pro renders `.action-bar` in place and it is
+      {/* Through a portal, because ActionBar renders itself in place and it is
           `position: fixed`. This pane is a query container now, and
           `container-type` brings `contain: layout` with it — which makes the
           container the containing block for its fixed descendants. Left here,
@@ -674,28 +677,28 @@ export function EmojiSettings() {
           <ActionBar.Prefix>
             {/* The count is the only thing that says a selection exists, so it
               announces itself rather than only appearing. */}
-            <span data-slot="emoji-selected-count" aria-live="polite" className="text-sm text-muted">
+            <span data-slot="emoji-selected-count" aria-live="polite" className="text-body-regular text-text-secondary">
               {t('settings.emoji.selectedCount', { count: selectedIds.length })}
             </span>
           </ActionBar.Prefix>
           <ActionBar.Content>
             <Button variant="ghost" onPress={handleDeleteSelected}>
-              <TrashBin className="text-danger" />
+              <TrashBin className="text-status-danger" />
               {t('settings.emoji.deleteSelected')}
             </Button>
           </ActionBar.Content>
           <ActionBar.Suffix>
-            <Tooltip delay={0}>
+            <TooltipTrigger delay={0}>
               <Button
-                isIconOnly
+                iconOnly
                 variant="ghost"
                 aria-label={t('settings.emoji.clearSelection')}
                 onPress={() => setSelection(null)}
               >
                 <Xmark />
               </Button>
-              <Tooltip.Content>{t('settings.emoji.clearSelection')}</Tooltip.Content>
-            </Tooltip>
+              <Tooltip>{t('settings.emoji.clearSelection')}</Tooltip>
+            </TooltipTrigger>
           </ActionBar.Suffix>
         </ActionBar>,
         document.body,

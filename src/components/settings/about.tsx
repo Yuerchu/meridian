@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, ChevronRight, Copy, FileText } from '@gravity-ui/icons'
-import { Button, Chip, Separator, Skeleton, Tooltip } from '@heroui/react'
+import { Button, Chip, Separator, Skeleton, Tooltip, TooltipTrigger } from '@/components/base'
 import { Hint } from '@/components/ui/hint'
-import { ItemCard } from '@heroui-pro/react/item-card'
-import { ItemCardGroup } from '@heroui-pro/react/item-card-group'
+import { ItemCard } from '@/components/base'
+import { ItemCardGroup } from '@/components/base'
 import { api } from '@/api'
 import { MeridianMark } from '@/components/ui/meridian-mark'
 import { useHistoryLevel } from '@/hooks/use-history-level'
@@ -36,12 +36,10 @@ const OS_LABELS: Record<string, string> = {
 /**
  * What a row's text has to be told, twice.
  *
- * Pro gives `.item-card__title` and `.item-card__description` both
- * `white-space: nowrap` and `width: fit-content`. `fit-content` resolves
- * against the *content*, so a description longer than the row lays itself out
- * at full width and paints straight over the button on the right — the
- * `text-overflow: ellipsis` that comes with it never fires, because nothing
- * ever constrained the width. `w-full` is what gives it a bound to overflow
+ * `ItemCard.Title` and `ItemCard.Description` are both `truncate`, which needs
+ * a bounded width to do anything — without one, a description longer than the
+ * row can grow past its container instead of ellipsizing, painting straight
+ * over the button on the right. `w-full` is what gives it a bound to overflow
  * against.
  *
  * Then they diverge. A title is two or three words and truncating it loses
@@ -74,7 +72,7 @@ function InfoRow({ label, value, action }: { label: string; value?: string; acti
           {value === undefined ? (
             <Skeleton className="h-4 w-28 rounded-md" />
           ) : (
-            <Hint className="text-muted min-w-0 truncate text-xs select-text" label={value}>
+            <Hint className="text-text-secondary min-w-0 truncate text-caption-1-regular select-text" label={value}>
               {value}
             </Hint>
           )}
@@ -135,13 +133,13 @@ export function About() {
       <div data-slot="about-hero" className="flex items-start gap-4">
         <div
           data-slot="about-mark"
-          className="bg-accent/10 text-accent flex size-14 shrink-0 items-center justify-center rounded-2xl"
+          className="bg-button-primary/10 text-button-ghost-foreground flex size-14 shrink-0 items-center justify-center rounded-2xl"
         >
           <MeridianMark intro className="size-8" />
         </div>
         <div data-slot="about-identity" className="min-w-0 space-y-1.5">
           <div data-slot="about-name-row" className="flex flex-wrap items-center gap-2">
-            <span data-slot="about-name" className="shimmer shimmer-duration-3000 text-xl font-semibold">
+            <span data-slot="about-name" className="shimmer shimmer-duration-3000 text-title-2-semibold">
               {t('app.name')}
             </span>
             {info && (
@@ -150,7 +148,7 @@ export function About() {
               </Chip>
             )}
           </div>
-          <p data-slot="about-description" className="text-muted text-sm leading-relaxed">
+          <p data-slot="about-description" className="text-text-secondary text-body-regular leading-relaxed">
             {t('settings.about.description')}
           </p>
         </div>
@@ -162,7 +160,7 @@ export function About() {
         </ItemCardGroup.Header>
 
         <ItemCardGroup className="overflow-hidden">
-          {/* Pro's own example makes a whole row pressable by rendering a native
+          {/* The upstream example makes a whole row pressable by rendering a native
               `<button>`; an eslint rule here forbids one, and the row would have
               had to stay free of controls anyway. So both rows carry their
               action on the right instead, which is also the only shape that
@@ -178,7 +176,7 @@ export function About() {
               </ItemCard.Description>
             </ItemCard.Content>
             <ItemCard.Action>
-              <Button size="sm" variant="outline" onPress={() => setShowLogs(true)}>
+              <Button size="small" variant="outline" onPress={() => setShowLogs(true)}>
                 {t('settings.about.logs.open')}
                 <ChevronRight className="size-3 rtl:-scale-x-100" />
               </Button>
@@ -199,7 +197,7 @@ export function About() {
             </ItemCard.Content>
             <ItemCard.Action>
               <Button
-                size="sm"
+                size="small"
                 variant="outline"
                 aria-label={t('settings.about.copyInfo.action')}
                 isDisabled={!info}
@@ -236,10 +234,10 @@ export function About() {
             value={info?.dataDir}
             action={
               info && (
-                <Tooltip delay={0}>
+                <TooltipTrigger delay={0}>
                   <Button
-                    isIconOnly
-                    size="sm"
+                    iconOnly
+                    size="small"
                     variant="ghost"
                     aria-label={t('settings.about.system.copyDataDir')}
                     onPress={() => {
@@ -249,15 +247,18 @@ export function About() {
                   >
                     {pathCopied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
                   </Button>
-                  <Tooltip.Content>{t('settings.about.system.copyDataDir')}</Tooltip.Content>
-                </Tooltip>
+                  <Tooltip>{t('settings.about.system.copyDataDir')}</Tooltip>
+                </TooltipTrigger>
               )
             }
           />
         </ItemCardGroup>
       </ItemCardGroup>
 
-      <div data-slot="about-footer" className="border-border text-muted space-y-2 border-t pt-4 text-xs">
+      <div
+        data-slot="about-footer"
+        className="border-border-button-default text-text-secondary space-y-2 border-t pt-4 text-caption-1-regular"
+      >
         <p data-slot="about-footer-line">{t('settings.about.copyright')}</p>
         <p data-slot="about-footer-line">{t('settings.about.notice')}</p>
         <p data-slot="about-footer-line">{t('settings.about.grokBuildNotice')}</p>

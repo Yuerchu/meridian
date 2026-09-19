@@ -2,7 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { invoke } from '@tauri-apps/api/core'
 import { MotionConfig } from 'motion/react'
-import { Button } from '@heroui/react'
+import { Button } from '@/components/base'
 import App from './App'
 import { ErrorBoundary } from './components/error-boundary'
 import { ThemeProvider } from './lib/theme'
@@ -36,13 +36,13 @@ function renderAppCrashFallback(error: Error) {
       data-slot="app-crash-fallback"
       className="flex h-screen flex-col items-center justify-center gap-3 p-8 text-center"
     >
-      <h1 data-slot="app-crash-title" className="text-sm font-medium">
+      <h1 data-slot="app-crash-title" className="text-body-medium">
         {i18n.t('errorBoundary.title')}
       </h1>
-      <p data-slot="app-crash-description" className="max-w-md text-xs text-muted">
+      <p data-slot="app-crash-description" className="max-w-md text-caption-1-regular text-text-secondary">
         {i18n.t('errorBoundary.description')}
       </p>
-      <p data-slot="app-crash-error" className="max-w-md break-all text-xs text-muted">
+      <p data-slot="app-crash-error" className="max-w-md break-all text-caption-1-regular text-text-secondary">
         {String(error)}
       </p>
       <Button variant="secondary" onPress={() => window.location.reload()}>
@@ -52,7 +52,7 @@ function renderAppCrashFallback(error: Error) {
   )
 }
 
-// A Tauri window has no address bar, so `VITE_PLAYGROUND=heroui pnpm tauri dev`
+// A Tauri window has no address bar, so `VITE_PLAYGROUND=webview pnpm tauri dev`
 // is the only way in. Written with replaceState rather than by assigning the
 // hash, which would fire the reload listener below and loop.
 const wantedPlayground = isDev ? import.meta.env.VITE_PLAYGROUND : undefined

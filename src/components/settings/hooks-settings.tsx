@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button, Input, Label, ListBox, Select, TextField } from '@heroui/react'
-import { CellSwitch } from '@heroui-pro/react/cell-switch'
-import { ItemCard } from '@heroui-pro/react/item-card'
+import { Alert, Button, Input, Label, Select, SelectItem, TextField } from '@/components/base'
+import { CellSwitch } from '@/components/base'
+import { ItemCard } from '@/components/base'
 import { api } from '@/api'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import type {
   AssistantInfoResponse,
   HookConfigInfoResponse,
@@ -108,58 +108,37 @@ function ModelPicker({
   return (
     <div data-slot="model-picker" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
       <Select
-        fullWidth
         aria-label={t('settings.assistant.provider')}
-        value={providerId || '_none'}
-        onChange={(v) => {
+        selectedKey={providerId || '_none'}
+        onSelectionChange={(v) => {
           const next = !v || v === '_none' ? '' : String(v)
           emit(next, '')
         }}
       >
-        <Select.Trigger>
-          <Select.Value />
-          <Select.Indicator />
-        </Select.Trigger>
-        <Select.Popover>
-          <ListBox>
-            {providerOptions.map((o) => (
-              <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                {o.label}
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-            ))}
-          </ListBox>
-        </Select.Popover>
+        {providerOptions.map((o) => (
+          <SelectItem key={o.value} id={o.value} textValue={o.label}>
+            {o.label}
+          </SelectItem>
+        ))}
       </Select>
       {/* A provider whose model list has not been fetched yet still has to be
           usable, so the picker degrades to a plain id field rather than to
           nothing — the same fallback the sub-agent settings make. */}
       {models.length > 0 ? (
         <Select
-          fullWidth
           aria-label={t('settings.assistant.model')}
-          value={modelId || '_none'}
+          selectedKey={modelId || '_none'}
           isDisabled={!providerId}
-          onChange={(v) => emit(providerId, !v || v === '_none' ? '' : String(v))}
+          onSelectionChange={(v) => emit(providerId, !v || v === '_none' ? '' : String(v))}
         >
-          <Select.Trigger>
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              {modelOptions.map((o) => (
-                <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                  {o.label}
-                  <ListBox.ItemIndicator />
-                </ListBox.Item>
-              ))}
-            </ListBox>
-          </Select.Popover>
+          {modelOptions.map((o) => (
+            <SelectItem key={o.value} id={o.value} textValue={o.label}>
+              {o.label}
+            </SelectItem>
+          ))}
         </Select>
       ) : (
         <Input
-          fullWidth
           aria-label={t('settings.assistant.model')}
           value={modelId}
           // Typed straight into local state and only committed on blur, so a
@@ -373,7 +352,7 @@ export function HooksSettings() {
             <Alert.Title>{t('settings.hooks.loadError')}</Alert.Title>
             {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
             <Button
-              size="sm"
+              size="small"
               variant="outline"
               onPress={() => {
                 setLoading(true)
@@ -404,13 +383,13 @@ export function HooksSettings() {
             <CellSwitch.Control />
           </CellSwitch.Trigger>
         </CellSwitch>
-        <p data-slot="hooks-enable-hint" id={enableHintId} className="text-xs text-muted">
+        <p data-slot="hooks-enable-hint" id={enableHintId} className="text-caption-1-regular text-text-secondary">
           {t('settings.hooks.enableHint')}
         </p>
       </div>
 
       <div data-slot="hooks-review-model" className="space-y-1.5">
-        <p data-slot="hooks-review-model-label" className="block text-xs font-medium text-muted">
+        <p data-slot="hooks-review-model-label" className="block text-caption-1-medium text-text-secondary">
           {t('settings.hooks.reviewModel')}
         </p>
         <ModelPicker
@@ -419,42 +398,34 @@ export function HooksSettings() {
           onChange={(review_model) => setConfig({ ...config, review_model })}
           onDirtyChange={setModelDraftDirty}
         />
-        <p data-slot="hooks-review-model-hint" className="text-xs text-muted">
+        <p data-slot="hooks-review-model-hint" className="text-caption-1-regular text-text-secondary">
           {t('settings.hooks.reviewModelHint')}
         </p>
       </div>
 
       <div data-slot="hooks-assistant" className="space-y-1.5">
+        {/* Through the `label` slot rather than a sibling `Label`: only inside
+            the Select's own context does React Aria wire it to the trigger. */}
         <Select
-          fullWidth
-          value={config.assistant_id ?? '_default'}
-          onChange={(v) => {
+          label={t('settings.hooks.assistant')}
+          selectedKey={config.assistant_id ?? '_default'}
+          onSelectionChange={(v) => {
             if (v) setConfig({ ...config, assistant_id: v === '_default' ? null : String(v) })
           }}
         >
-          <Label className="block text-xs font-medium text-muted">{t('settings.hooks.assistant')}</Label>
-          <Select.Trigger>
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              {assistantOptions.map((o) => (
-                <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                  {o.label}
-                  <ListBox.ItemIndicator />
-                </ListBox.Item>
-              ))}
-            </ListBox>
-          </Select.Popover>
+          {assistantOptions.map((o) => (
+            <SelectItem key={o.value} id={o.value} textValue={o.label}>
+              {o.label}
+            </SelectItem>
+          ))}
         </Select>
-        <p data-slot="hooks-assistant-hint" className="text-xs text-muted">
+        <p data-slot="hooks-assistant-hint" className="text-caption-1-regular text-text-secondary">
           {t('settings.hooks.assistantHint')}
         </p>
       </div>
 
       <div data-slot="hooks-endpoint" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
-        <TextField fullWidth>
+        <TextField>
           <Label>{t('settings.hooks.host')}</Label>
           <Input
             name="hooksHost"
@@ -463,7 +434,7 @@ export function HooksSettings() {
             placeholder="127.0.0.1"
           />
         </TextField>
-        <TextField fullWidth type="number">
+        <TextField type="number">
           <Label>{t('settings.hooks.port')}</Label>
           <Input
             name="hooksPort"
@@ -478,7 +449,7 @@ export function HooksSettings() {
       </div>
 
       <div data-slot="hooks-timeout" className="space-y-1.5">
-        <TextField fullWidth type="number">
+        <TextField type="number">
           <Label>{t('settings.hooks.timeout')}</Label>
           <Input
             name="hooksTimeout"
@@ -491,13 +462,13 @@ export function HooksSettings() {
             onChange={(e) => setTimeoutInput(e.target.value)}
           />
         </TextField>
-        <p data-slot="hooks-timeout-hint" className="text-xs text-muted">
+        <p data-slot="hooks-timeout-hint" className="text-caption-1-regular text-text-secondary">
           {t('settings.hooks.timeoutHint')}
         </p>
       </div>
 
       <div data-slot="hooks-max-rounds" className="space-y-1.5">
-        <TextField fullWidth type="number">
+        <TextField type="number">
           <Label>{t('settings.hooks.maxRounds')}</Label>
           <Input
             name="hooksMaxRounds"
@@ -508,18 +479,17 @@ export function HooksSettings() {
             onChange={(e) => setRoundsInput(e.target.value)}
           />
         </TextField>
-        <p data-slot="hooks-max-rounds-hint" className="text-xs text-muted">
+        <p data-slot="hooks-max-rounds-hint" className="text-caption-1-regular text-text-secondary">
           {roundsInput === '0' ? t('settings.hooks.maxRoundsUnlimited') : t('settings.hooks.maxRoundsHint')}
         </p>
       </div>
 
       <div data-slot="hooks-token" className="space-y-1.5">
-        <p data-slot="hooks-token-label" className="block text-xs font-medium text-muted">
+        <p data-slot="hooks-token-label" className="block text-caption-1-medium text-text-secondary">
           {t('settings.hooks.token')}
         </p>
         <div data-slot="hooks-token-row" className="flex items-center gap-2">
           <Input
-            fullWidth
             aria-label={t('settings.hooks.token')}
             name="hooksToken"
             autoComplete="off"
@@ -535,13 +505,13 @@ export function HooksSettings() {
             {t('settings.hooks.regenerate')}
           </Button>
         </div>
-        <p data-slot="hooks-token-hint" className="text-xs text-muted">
+        <p data-slot="hooks-token-hint" className="text-caption-1-regular text-text-secondary">
           {t('settings.hooks.tokenHint')}
         </p>
       </div>
 
       {error && (
-        <p data-slot="hooks-error" role="alert" className="text-xs text-danger break-all">
+        <p data-slot="hooks-error" role="alert" className="text-caption-1-regular text-status-danger break-all">
           {error}
         </p>
       )}
@@ -571,7 +541,10 @@ export function HooksSettings() {
               <span
                 data-slot="hooks-status-dot"
                 aria-hidden
-                className={cn('inline-block size-2 shrink-0 rounded-full', running ? 'bg-success' : 'bg-default')}
+                className={cx(
+                  'inline-block size-2 shrink-0 rounded-full',
+                  running ? 'bg-status-success' : 'bg-background-secondary-default',
+                )}
               />
               {running ? t('settings.hooks.statusRunning') : t('settings.hooks.statusStopped')}
             </ItemCard.Title>

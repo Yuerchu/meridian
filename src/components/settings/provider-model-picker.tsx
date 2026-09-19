@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Input, Label, TextField } from '@heroui/react'
+import { Input, Label, TextField } from '@/components/base'
 
 import { SettingsSelect } from './primitives'
 import type { ProviderInfoResponse, ProviderModelInfoResponse } from '@/types'
@@ -97,7 +97,6 @@ export function ProviderModelPicker({
         value={providerId || NO_PROVIDER}
         options={providerOptions}
         onChange={pickProvider}
-        fullWidth
       />
       {models.length > 0 ? (
         <SettingsSelect
@@ -106,12 +105,10 @@ export function ProviderModelPicker({
           options={modelOptions}
           onChange={pickModel}
           placeholder={t('settings.assistant.selectModel')}
-          isDisabled={isModelDisabledWithoutProvider && !providerId}
-          fullWidth
+          disabled={isModelDisabledWithoutProvider && !providerId}
         />
       ) : (
         <TextField
-          fullWidth
           isDisabled={isModelDisabledWithoutProvider && !providerId}
           aria-label={labelMode === 'aria' ? t('settings.assistant.model') : undefined}
         >

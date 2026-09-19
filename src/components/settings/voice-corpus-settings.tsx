@@ -2,9 +2,20 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
 import { TrashBin } from '@gravity-ui/icons'
-import { Button, Checkbox, Description, Input, Label, Separator, Spinner, TextField, Tooltip } from '@heroui/react'
-import { ItemCard } from '@heroui-pro/react/item-card'
-import { ItemCardGroup } from '@heroui-pro/react/item-card-group'
+import {
+  Button,
+  Checkbox,
+  Description,
+  Input,
+  Label,
+  Separator,
+  Spinner,
+  TextField,
+  Tooltip,
+  TooltipTrigger,
+} from '@/components/base'
+import { ItemCard } from '@/components/base'
+import { ItemCardGroup } from '@/components/base'
 import { api } from '@/api'
 import type { VoiceCorpusDeleteResponse, VoiceCorpusSessionInfoResponse } from '@/types'
 import { can } from '@/lib/capabilities'
@@ -117,12 +128,12 @@ export function VoiceCorpusSettings() {
       <SettingsHeader title={t('settings.voiceCorpus.title')} subtitle={t('settings.voiceCorpus.description')} />
 
       {error && (
-        <p data-slot="voice-corpus-error" role="alert" className="text-danger text-sm">
+        <p data-slot="voice-corpus-error" role="alert" className="text-status-danger text-body-regular">
           {error}
         </p>
       )}
       {notice && (
-        <p data-slot="voice-corpus-notice" role="status" className="text-muted text-sm">
+        <p data-slot="voice-corpus-notice" role="status" className="text-text-secondary text-body-regular">
           {notice}
         </p>
       )}
@@ -132,13 +143,13 @@ export function VoiceCorpusSettings() {
           data-slot="voice-corpus-loading"
           role="status"
           aria-label={t('common.loading')}
-          className="flex items-center gap-2 text-sm text-muted"
+          className="flex items-center gap-2 text-body-regular text-text-secondary"
         >
           <Spinner aria-hidden="true" size="sm" />
           {t('common.loading')}
         </div>
       ) : sessions.length === 0 ? (
-        <p data-slot="voice-corpus-empty" className="text-muted text-sm">
+        <p data-slot="voice-corpus-empty" className="text-text-secondary text-body-regular">
           {t('settings.voiceCorpus.empty')}
         </p>
       ) : (
@@ -160,10 +171,10 @@ export function VoiceCorpusSettings() {
                   </ItemCard.Description>
                 </ItemCard.Content>
                 <ItemCard.Action>
-                  <Tooltip delay={0}>
+                  <TooltipTrigger delay={0}>
                     <Button
-                      isIconOnly
-                      size="sm"
+                      iconOnly
+                      size="small"
                       variant="ghost"
                       isDisabled={busy}
                       onPress={() => deleteSession(session)}
@@ -171,8 +182,8 @@ export function VoiceCorpusSettings() {
                     >
                       <TrashBin />
                     </Button>
-                    <Tooltip.Content>{t('settings.voiceCorpus.deleteSession')}</Tooltip.Content>
-                  </Tooltip>
+                    <Tooltip>{t('settings.voiceCorpus.deleteSession')}</Tooltip>
+                  </TooltipTrigger>
                 </ItemCard.Action>
               </ItemCard>
             </Fragment>
@@ -180,7 +191,7 @@ export function VoiceCorpusSettings() {
         </ItemCardGroup>
       )}
 
-      <TextField fullWidth>
+      <TextField>
         <Label>{t('settings.voiceCorpus.forgetSender')}</Label>
         <div data-slot="voice-corpus-forget-row" className="flex gap-2">
           <Input value={senderInput} onChange={(e) => setSenderInput(e.target.value)} placeholder="12345" />
@@ -193,24 +204,11 @@ export function VoiceCorpusSettings() {
 
       {can.exportToDisk && (
         <div data-slot="voice-corpus-export" className="flex flex-col gap-2">
-          {/* HeroUI's Checkbox draws nothing on its own — the box and its input
-              live in Control/Indicator, so a bare one is a label you cannot
-              press. */}
-          <Checkbox className="text-sm" isSelected={includeUntranscribed} onChange={setIncludeUntranscribed}>
-            <Checkbox.Content>
-              <Checkbox.Control>
-                <Checkbox.Indicator />
-              </Checkbox.Control>
-              {t('settings.voiceCorpus.includeUntranscribed')}
-            </Checkbox.Content>
+          <Checkbox className="text-body-regular" isSelected={includeUntranscribed} onChange={setIncludeUntranscribed}>
+            {t('settings.voiceCorpus.includeUntranscribed')}
           </Checkbox>
-          <Checkbox className="text-sm" isSelected={includeSender} onChange={setIncludeSender}>
-            <Checkbox.Content>
-              <Checkbox.Control>
-                <Checkbox.Indicator />
-              </Checkbox.Control>
-              {t('settings.voiceCorpus.includeSender')}
-            </Checkbox.Content>
+          <Checkbox className="text-body-regular" isSelected={includeSender} onChange={setIncludeSender}>
+            {t('settings.voiceCorpus.includeSender')}
           </Checkbox>
           <Description>{t('settings.voiceCorpus.exportHint')}</Description>
           <Button variant="ghost" isDisabled={busy || sessions.length === 0} onPress={exportBundle}>

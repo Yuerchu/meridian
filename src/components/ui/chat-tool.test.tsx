@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Button } from '@heroui/react'
+import { Button } from '@/components/base'
 import { describe, expect, it } from 'vitest'
 import { expectCollapsed, expectExpanded } from '@/test/disclosure'
 import {
@@ -55,7 +55,7 @@ describe('ChatTool', () => {
     expect(screen.getByText('Exact change')).toBeVisible()
   })
 
-  it('wraps approval actions in the Pro-style actions region', () => {
+  it('wraps approval actions in the actions region', () => {
     const { container } = render(
       <ChatToolApproval>
         <Button>Reject</Button>
@@ -106,9 +106,9 @@ describe('ChatTool as a bubble block', () => {
     const block = container.querySelector('[data-slot="chat-tool"]')!
     // A decision takes the column whatever else is true, and the ring is on the
     // block rather than on either half — one outline, not two.
-    expect(block.className).toContain('ring-warning')
+    expect(block.className).toContain('ring-status-warning')
     expect(block.className).toContain('w-full')
-    expect(container.querySelector('[data-slot="chat-tool-content"]')!.className).not.toContain('ring-warning')
+    expect(container.querySelector('[data-slot="chat-tool-content"]')!.className).not.toContain('ring-status-warning')
   })
 
   it('closes on Escape from inside the panel and hands focus back to the key', async () => {

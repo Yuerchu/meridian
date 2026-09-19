@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CircleCheck, CircleXmark, Play } from '@gravity-ui/icons'
-import { Button, Card, Meter } from '@heroui/react'
+import { Button, Card, Meter } from '@/components/base'
 
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { encodePcm16Base64, openCapture } from '@/lib/web-audio-capture'
 import { SettingsHeader, SettingsPane } from './primitives'
 
@@ -58,18 +58,16 @@ registerProcessor('probe', ProbeProcessor)
 `
 
 /**
- * The two CSS features Pro's `TextShimmer` needs, asked on the device itself.
+ * The two CSS features `TextShimmer` needs, asked on the device itself.
  *
- * `#playground/heroui` asks the same question, but only a dev server can reach
+ * `#playground/webview` asks the same question, but only a dev server can reach
  * that — and the answer that matters is Android's, where the WebView ships with
  * the system and an old phone can be years behind. This is why the probe lives
  * in Settings: a plain release APK can open it.
  *
  * What rides on it: if `tan()` is missing, the shimmer's `background` shorthand
  * fails to parse while `-webkit-text-fill-color: transparent` beside it applies
- * regardless. The text does not fall back to plain — it goes invisible. Both
- * green here is what would let `ChainOfThought` move onto Pro's, which pulls
- * `TextShimmer` in with it.
+ * regardless. The text does not fall back to plain — it goes invisible.
  */
 const CSS_PROBES: Array<{ name: string; note: string; test: () => boolean }> = [
   {
@@ -303,7 +301,7 @@ export function DeveloperSettings() {
       <SettingsHeader title={t('settings.developer.title')} subtitle={t('settings.developer.intro')} />
 
       <div data-slot="developer-css-probe" className="space-y-1.5">
-        <p data-slot="developer-section-label" className="text-xs font-medium text-muted">
+        <p data-slot="developer-section-label" className="text-caption-1-medium text-text-secondary">
           {t('settings.developer.cssProbe')}
         </p>
         <Card>
@@ -315,16 +313,16 @@ export function DeveloperSettings() {
             {CSS_PROBES.map((probe) => {
               const ok = probe.test()
               return (
-                <div key={probe.name} data-slot="css-probe-line" className="flex items-center gap-2 text-sm">
+                <div key={probe.name} data-slot="css-probe-line" className="flex items-center gap-2 text-body-regular">
                   {ok ? (
-                    <CircleCheck className="size-4 shrink-0 text-success" />
+                    <CircleCheck className="size-4 shrink-0 text-status-success" />
                   ) : (
-                    <CircleXmark className="size-4 shrink-0 text-danger" />
+                    <CircleXmark className="size-4 shrink-0 text-status-danger" />
                   )}
-                  <span data-slot="css-probe-name" className="font-mono text-xs">
+                  <span data-slot="css-probe-name" className="font-mono text-caption-1-regular">
                     {probe.name}
                   </span>
-                  <span data-slot="css-probe-note" className="text-xs text-muted">
+                  <span data-slot="css-probe-note" className="text-caption-1-regular text-text-secondary">
                     {probe.note}
                   </span>
                 </div>
@@ -337,7 +335,7 @@ export function DeveloperSettings() {
       <div data-slot="developer-mic-probe" className="space-y-1.5">
         {/* Names the section, not a control — there is no field under it, only a
             card that titles itself. It was a `<label>` pointing at nothing. */}
-        <p data-slot="developer-section-label" className="text-xs font-medium text-muted">
+        <p data-slot="developer-section-label" className="text-caption-1-medium text-text-secondary">
           {t('settings.developer.micProbe')}
         </p>
         <Card>
@@ -349,17 +347,17 @@ export function DeveloperSettings() {
               button here is the Android-only one — so the case with the most
               buttons is also the narrowest screen they ever appear on. */}
           <Card.Footer className="flex-wrap gap-2">
-            <Button size="sm" onPress={() => record(true)} isDisabled={busy}>
+            <Button size="small" onPress={() => record(true)} isDisabled={busy}>
               <Play className="w-4 h-4" />
               {t('settings.developer.probe.runWorklet')}
             </Button>
-            <Button variant="outline" size="sm" onPress={() => record(false)} isDisabled={busy}>
+            <Button variant="outline" size="small" onPress={() => record(false)} isDisabled={busy}>
               {t('settings.developer.probe.runScriptProcessor')}
             </Button>
             {/* Android only: the desktop transcribes from a Rust-side recording
                 session, and reaches it through the composer's own button. */}
             {isAndroid && (
-              <Button variant="outline" size="sm" onPress={transcribe} isDisabled={busy}>
+              <Button variant="outline" size="small" onPress={transcribe} isDisabled={busy}>
                 {t('settings.developer.probe.runTranscribe')}
               </Button>
             )}
@@ -367,7 +365,7 @@ export function DeveloperSettings() {
 
           {recording && (
             <div data-slot="mic-probe-level" className="space-y-1">
-              <p data-slot="mic-probe-speak-now" className="text-xs text-danger">
+              <p data-slot="mic-probe-speak-now" className="text-caption-1-regular text-status-danger">
                 {t('settings.developer.probe.speakNow')}
               </p>
               {/* A meter, not a progress bar: this is a level within a known
@@ -378,32 +376,35 @@ export function DeveloperSettings() {
                 value={Math.min(100, peak * 140)}
                 className="w-full"
               >
-                <Meter.Track className="h-2 rounded-full bg-default">
-                  <Meter.Fill className="bg-success transition-[width] duration-75" />
+                <Meter.Track className="h-2 rounded-full bg-background-secondary-default">
+                  <Meter.Fill className="bg-status-success transition-[width] duration-75" />
                 </Meter.Track>
               </Meter>
             </div>
           )}
 
           {lines.length > 0 && (
-            <ul data-slot="mic-probe-lines" className="space-y-1.5 text-xs">
+            <ul data-slot="mic-probe-lines" className="space-y-1.5 text-caption-1-regular">
               {lines.map((l) => (
                 <li key={l.id} data-slot="mic-probe-line" className="flex items-start gap-2">
                   {l.verdict === 'pass' ? (
-                    <CircleCheck className="mt-0.5 w-3.5 h-3.5 shrink-0 text-success" />
+                    <CircleCheck className="mt-0.5 w-3.5 h-3.5 shrink-0 text-status-success" />
                   ) : l.verdict === 'fail' ? (
-                    <CircleXmark className="mt-0.5 w-3.5 h-3.5 shrink-0 text-danger" />
+                    <CircleXmark className="mt-0.5 w-3.5 h-3.5 shrink-0 text-status-danger" />
                   ) : (
-                    <span data-slot="mic-probe-pending-mark" className="mt-0.5 w-3.5 shrink-0 text-center text-muted">
+                    <span
+                      data-slot="mic-probe-pending-mark"
+                      className="mt-0.5 w-3.5 shrink-0 text-center text-text-secondary"
+                    >
                       ·
                     </span>
                   )}
                   <span data-slot="mic-probe-line-text" className="min-w-0">
-                    <span data-slot="mic-probe-line-label" className={cn(l.verdict === 'fail' && 'text-danger')}>
+                    <span data-slot="mic-probe-line-label" className={cx(l.verdict === 'fail' && 'text-status-danger')}>
                       {l.label}
                     </span>
                     {l.detail && (
-                      <span data-slot="mic-probe-line-detail" className="ml-1 break-all text-muted">
+                      <span data-slot="mic-probe-line-detail" className="ml-1 break-all text-text-secondary">
                         — {l.detail}
                       </span>
                     )}

@@ -17,13 +17,13 @@ import {
 } from '@gravity-ui/icons'
 import { ModelIcon } from '@/components/ui/model-icon'
 import { HostedAgentGlyph } from '@/components/ui/agent-icon'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { ActionButton } from '@/components/ui/action-button'
 import { useConfirm } from '@/hooks/use-confirm'
 import { ConversationRefChips } from './conversation-ref-chips'
 import { CopyButton, MarkdownContent } from './markdown-content'
-import { Avatar, Label, Spinner, TextArea } from '@heroui/react'
-import { ContextMenu } from '@heroui-pro/react/context-menu'
+import { Avatar, Label, Spinner, TextArea } from '@/components/base'
+import { ContextMenu } from '@/components/base'
 import {
   MessageGroupAssistant,
   MessageGroupAvatar,
@@ -37,7 +37,7 @@ import { BubbleFoldBadge } from '@/components/ui/bubble-block'
 import { ChatToolPresentationProvider } from '@/components/ui/chat-tool'
 import { useConversationStore } from '@/stores/conversation-store'
 import { useTranscriptConversationId } from '@/hooks/use-transcript-conversation'
-import { ChatAttachment, ChatAttachmentGroup } from '@heroui-pro/react/chat-attachment'
+import { ChatAttachment, ChatAttachmentGroup } from '@/components/base'
 import { ErrorBoundary } from '@/components/error-boundary'
 
 import { assetSrc } from '@/lib/asset-src'
@@ -81,14 +81,11 @@ export function AssistantAvatar({
 }) {
   return (
     <MessageGroupAvatar className="size-8">
-      <Avatar className="size-full">
-        {!hosted && <Avatar.Image src={src ?? undefined} />}
-        {/* `ModelIcon` brings its own background, so `bg-default` underneath it
-            would only show through the rounding. A bare glyph does not, and
-            keeps the frame it is dropped into. */}
-        <Avatar.Fallback className={hosted ? undefined : 'bg-transparent'}>
-          {hosted ? <HostedAgentGlyph /> : <ModelIcon model={modelId ?? undefined} size={32} shape="circle" />}
-        </Avatar.Fallback>
+      {/* The glyph is always given: it is what `Avatar` shows when the photo
+          fails to load, so a stale URL costs a model icon rather than a
+          broken image on every message. */}
+      <Avatar src={!hosted && src ? src : undefined} className="size-full">
+        {hosted ? <HostedAgentGlyph /> : <ModelIcon model={modelId ?? undefined} size={32} shape="circle" />}
       </Avatar>
     </MessageGroupAvatar>
   )
@@ -143,9 +140,9 @@ function QuotedMessageBlock({ sender, content }: { sender: string; content: stri
   return (
     <div
       data-slot="quoted-message"
-      className="mb-2 pl-3 border-l-2 border-accent-foreground/30 text-xs text-accent-foreground/70"
+      className="mb-2 pl-3 border-l-2 border-text-white/30 text-caption-1-regular text-text-white/70"
     >
-      <span data-slot="quoted-message-sender" className="font-medium">
+      <span data-slot="quoted-message-sender" className="text-caption-1-medium">
         {sender}
       </span>
       <p data-slot="quoted-message-content" className="mt-0.5 line-clamp-3 whitespace-pre-wrap">
@@ -333,7 +330,11 @@ export const UserMessage = React.memo(function UserMessage({
           <MessageGroupFooter className="gap-1">
             <CopyButton text={copyText} />
             {onDelete && (
-              <ActionButton label={t('chat.delete')} onClick={requestDelete} className="text-muted hover:text-danger">
+              <ActionButton
+                label={t('chat.delete')}
+                onClick={requestDelete}
+                className="text-text-secondary hover:text-status-danger"
+              >
                 <TrashBin className="size-3.5" />
               </ActionButton>
             )}
@@ -346,10 +347,8 @@ export const UserMessage = React.memo(function UserMessage({
 
   const userContent = (
     <ContextMenu onOpenChange={handleContextMenuOpenChange}>
-      {/* The group *is* the trigger. Pro's `render` is a function of the DOM
-          props rather than an element, and the ref in them has to reach the
-          div — which it does, because the group spreads everything it is
-          given. The group's own `flex` outranks the trigger's `inline-block`. */}
+      {/* The group *is* the trigger: `render` passes DOM props through to the
+          group, whose own `flex` display is preserved. */}
       <ContextMenu.Trigger className="pointer-coarse:select-none" render={(props) => <MessageGroupUser {...props} />}>
         <>
           {editing ? (
@@ -360,7 +359,6 @@ export const UserMessage = React.memo(function UserMessage({
             <Bubble align="end" variant="outline" className="w-full max-w-full">
               <BubbleContent>
                 <TextArea
-                  fullWidth
                   ref={editRef}
                   aria-label={t('chat.editMessage')}
                   value={editText}
@@ -370,14 +368,18 @@ export const UserMessage = React.memo(function UserMessage({
                     e.target.style.height = e.target.scrollHeight + 'px'
                   }}
                   onKeyDown={handleEditKeyDown}
-                  className="w-full min-w-[200px] min-h-0 rounded-none border-0 p-0 field-sizing-fixed bg-transparent dark:bg-transparent text-sm leading-relaxed resize-none outline-none focus-visible:ring-0"
+                  className="w-full min-w-[200px] min-h-0 rounded-none border-0 p-0 field-sizing-fixed bg-transparent dark:bg-transparent text-body-regular leading-relaxed resize-none outline-none focus-visible:ring-0"
                   rows={1}
                 />
                 <div data-slot="message-edit-actions" className="flex justify-end gap-1 mt-1.5">
-                  <ActionButton label={t('chat.cancelEdit')} onClick={handleCancelEdit} className="text-muted">
+                  <ActionButton label={t('chat.cancelEdit')} onClick={handleCancelEdit} className="text-text-secondary">
                     <Xmark className="w-3.5 h-3.5" />
                   </ActionButton>
-                  <ActionButton label={t('chat.saveEdit')} onClick={handleSaveEdit} className="text-accent">
+                  <ActionButton
+                    label={t('chat.saveEdit')}
+                    onClick={handleSaveEdit}
+                    className="text-button-ghost-foreground"
+                  >
                     <Check className="w-3.5 h-3.5" />
                   </ActionButton>
                 </div>
@@ -454,7 +456,7 @@ export const UserMessage = React.memo(function UserMessage({
                     ref={editButtonRef}
                     label={t('chat.edit')}
                     onClick={handleStartEdit}
-                    className="text-muted hover:text-foreground"
+                    className="text-text-secondary hover:text-text-primary"
                   >
                     <Pencil className="w-3.5 h-3.5" />
                   </ActionButton>
@@ -464,7 +466,7 @@ export const UserMessage = React.memo(function UserMessage({
                   <ActionButton
                     label={t('chat.delete')}
                     onClick={requestDelete}
-                    className="text-muted hover:text-danger"
+                    className="text-text-secondary hover:text-status-danger"
                   >
                     <TrashBin className="w-3.5 h-3.5" />
                   </ActionButton>
@@ -483,7 +485,7 @@ export const UserMessage = React.memo(function UserMessage({
                 textValue={t('contextMenu.copySelection')}
                 onAction={() => void navigator.clipboard.writeText(selectedText)}
               >
-                <Copy className="size-4 text-muted" />
+                <Copy className="size-4 text-text-secondary" />
                 <Label>{t('contextMenu.copySelection')}</Label>
               </ContextMenu.Item>
               <ContextMenu.Separator />
@@ -491,7 +493,7 @@ export const UserMessage = React.memo(function UserMessage({
           )}
           {canEdit && (
             <ContextMenu.Item id="edit" textValue={t('chat.edit')} onAction={handleStartEdit}>
-              <Pencil className="size-4 text-muted" />
+              <Pencil className="size-4 text-text-secondary" />
               <Label>{t('chat.edit')}</Label>
             </ContextMenu.Item>
           )}
@@ -500,7 +502,7 @@ export const UserMessage = React.memo(function UserMessage({
             textValue={t('chat.copy')}
             onAction={() => void navigator.clipboard.writeText(copyText)}
           >
-            <Copy className="size-4 text-muted" />
+            <Copy className="size-4 text-text-secondary" />
             <Label>{t('chat.copy')}</Label>
           </ContextMenu.Item>
           {coarse && (
@@ -509,7 +511,7 @@ export const UserMessage = React.memo(function UserMessage({
               textValue={t('contextMenu.selectText')}
               onAction={() => setShowSelectText(true)}
             >
-              <SquareDashedText className="size-4 text-muted" />
+              <SquareDashedText className="size-4 text-text-secondary" />
               <Label>{t('contextMenu.selectText')}</Label>
             </ContextMenu.Item>
           )}
@@ -749,8 +751,8 @@ function AssistantBubble({
       // the tests can find the sign of life without knowing its wording.
       <Bubble variant="assistant" position={bubble.position} role="status" data-working="true">
         <BubbleContent className="flex items-center gap-2">
-          <Spinner size="sm" color="current" className="text-muted" />
-          <span data-slot="working-label" className="shimmer text-xs">
+          <Spinner size="sm" color="current" className="text-text-secondary" />
+          <span data-slot="working-label" className="shimmer text-caption-1-regular">
             {workingLabel}
           </span>
         </BubbleContent>
@@ -820,8 +822,8 @@ function AssistantBubble({
     // A bubble with a keyboard takes the column's width, so its keys have
     // room to sit two to a row; one with badges takes it so the time sits at
     // the far edge of the row; one with neither is as wide as what it says.
-    <Bubble variant="assistant" position={bubble.position} className={cn((hasKeys || hasFolds) && 'w-full')}>
-      <BubbleContent className={cn((hasKeys || hasFolds) && 'w-full')}>
+    <Bubble variant="assistant" position={bubble.position} className={cx((hasKeys || hasFolds) && 'w-full')}>
+      <BubbleContent className={cx((hasKeys || hasFolds) && 'w-full')}>
         {header && <MessageGroupHeader>{header}</MessageGroupHeader>}
         {bubble.thinking.length > 0 && (
           // Finished by definition: there is prose under it.
@@ -898,7 +900,7 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
   const [showSelectText, setShowSelectText] = useState(false)
   const coarse = isCoarsePointer()
   const renderError = (
-    <div data-slot="render-error" className="text-xs text-danger py-2">
+    <div data-slot="render-error" className="text-caption-1-regular text-status-danger py-2">
       {t('chat.renderError')}
     </div>
   )
@@ -960,7 +962,7 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
                   textValue={t('contextMenu.copySelection')}
                   onAction={() => void navigator.clipboard.writeText(selectedText)}
                 >
-                  <Copy className="size-4 text-muted" />
+                  <Copy className="size-4 text-text-secondary" />
                   <Label>{t('contextMenu.copySelection')}</Label>
                 </ContextMenu.Item>
                 <ContextMenu.Separator />
@@ -971,7 +973,7 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
               textValue={t('chat.copy')}
               onAction={() => void navigator.clipboard.writeText(copyText)}
             >
-              <Copy className="size-4 text-muted" />
+              <Copy className="size-4 text-text-secondary" />
               <Label>{t('chat.copy')}</Label>
             </ContextMenu.Item>
             {coarse && (
@@ -980,25 +982,30 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
                 textValue={t('contextMenu.selectText')}
                 onAction={() => setShowSelectText(true)}
               >
-                <SquareDashedText className="size-4 text-muted" />
+                <SquareDashedText className="size-4 text-text-secondary" />
                 <Label>{t('contextMenu.selectText')}</Label>
               </ContextMenu.Item>
             )}
             {canRate && (
               <>
                 <ContextMenu.Item id="thumbs-up" textValue={t('chat.thumbsUp')} onAction={() => rate(1)}>
-                  <ThumbsUp className={cn('size-4', rating === 1 ? 'text-success-soft-foreground' : 'text-muted')} />
+                  <ThumbsUp
+                    className={cx(
+                      'size-4',
+                      rating === 1 ? 'text-status-success-soft-foreground' : 'text-text-secondary',
+                    )}
+                  />
                   <Label>{t('chat.thumbsUp')}</Label>
                 </ContextMenu.Item>
                 <ContextMenu.Item id="thumbs-down" textValue={t('chat.thumbsDown')} onAction={() => rate(-1)}>
-                  <ThumbsDown className={cn('size-4', rating === -1 ? 'text-danger' : 'text-muted')} />
+                  <ThumbsDown className={cx('size-4', rating === -1 ? 'text-status-danger' : 'text-text-secondary')} />
                   <Label>{t('chat.thumbsDown')}</Label>
                 </ContextMenu.Item>
               </>
             )}
             {onRegenerate && !isStreaming && (
               <ContextMenu.Item id="regenerate" textValue={t('chat.regenerate')} onAction={onRegenerate}>
-                <ArrowsRotateRight className="size-4 text-muted" />
+                <ArrowsRotateRight className="size-4 text-text-secondary" />
                 <Label>{t('chat.regenerate')}</Label>
               </ContextMenu.Item>
             )}
@@ -1030,7 +1037,7 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
               made it read as still being worked out. */}
           <TurnUsage tokens={turn.tokens} usage={turn.usage} />
           {turn.durationMs != null && !isStreaming && (
-            <span data-slot="turn-duration" className="font-normal tabular-nums">
+            <span data-slot="turn-duration" className="text-caption-1-regular tabular-nums">
               {t('chat.turn.duration', { duration: formatDuration(turn.durationMs) })}
             </span>
           )}
@@ -1042,7 +1049,11 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
                   label={t('chat.thumbsUp')}
                   aria-pressed={rating === 1}
                   onClick={() => rate(1)}
-                  className={cn(rating === 1 ? 'text-success-soft-foreground' : 'text-muted hover:text-foreground')}
+                  className={cx(
+                    rating === 1
+                      ? 'text-status-success-soft-foreground'
+                      : 'text-text-secondary hover:text-text-primary',
+                  )}
                 >
                   <ThumbsUp className="w-3.5 h-3.5" />
                 </ActionButton>
@@ -1050,7 +1061,11 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
                   label={t('chat.thumbsDown')}
                   aria-pressed={rating === -1}
                   onClick={() => rate(-1)}
-                  className={cn(rating === -1 ? 'text-danger-soft-foreground' : 'text-muted hover:text-foreground')}
+                  className={cx(
+                    rating === -1
+                      ? 'text-status-danger-soft-foreground'
+                      : 'text-text-secondary hover:text-text-primary',
+                  )}
                 >
                   <ThumbsDown className="w-3.5 h-3.5" />
                 </ActionButton>
@@ -1060,13 +1075,17 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
               <ActionButton
                 label={t('chat.regenerate')}
                 onClick={onRegenerate}
-                className="text-muted hover:text-foreground"
+                className="text-text-secondary hover:text-text-primary"
               >
                 <ArrowsRotateRight className="w-3.5 h-3.5" />
               </ActionButton>
             )}
             {onDelete && (
-              <ActionButton label={t('chat.delete')} onClick={requestDelete} className="text-muted hover:text-danger">
+              <ActionButton
+                label={t('chat.delete')}
+                onClick={requestDelete}
+                className="text-text-secondary hover:text-status-danger"
+              >
                 <TrashBin className="w-3.5 h-3.5" />
               </ActionButton>
             )}

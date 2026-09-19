@@ -2,10 +2,10 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Pin, PersonXmark } from '@gravity-ui/icons'
 import { api } from '@/api'
-import { Button, Card } from '@heroui/react'
+import { Button, Card } from '@/components/base'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useRelativeTime } from '@/hooks/use-relative-time'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import type { MemorySubjectInfoResponse, ProjectInfoResponse } from '@/types'
 import type { ScopeFilter } from './use-memory-browser'
 
@@ -65,7 +65,7 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
       key={id}
       aria-pressed={active}
       variant={active ? 'secondary' : 'ghost'}
-      className={cn('w-full justify-between font-normal', indent && 'pl-6')}
+      className={cx('w-full justify-between text-body-regular', indent && 'pl-6')}
       onPress={onPress}
       data-slot="memory-scope-row"
     >
@@ -73,7 +73,7 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
         {label}
       </span>
       {count !== null && (
-        <span data-slot="memory-scope-row-count" className="text-xs text-muted">
+        <span data-slot="memory-scope-row-count" className="text-caption-1-regular text-text-secondary">
           {count}
         </span>
       )}
@@ -88,7 +88,7 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
     <Button
       key={`${slot}-more`}
       variant="ghost"
-      className="w-full justify-start pl-6 text-xs font-normal text-muted"
+      className="w-full justify-start pl-6 text-caption-1-regular text-text-secondary"
       onPress={onToggle}
       data-slot={slot}
     >
@@ -105,7 +105,7 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
     // and they have to stay that way: on different stops there is a width where
     // this is 224px wide inside a column layout, lying across the list.
     <div data-slot="memory-scope-nav" className="flex w-full shrink-0 flex-col gap-0.5 @xl/pane:w-56">
-      <div data-slot="memory-scope-nav-title" className="px-2 pb-1 text-xs font-medium text-muted">
+      <div data-slot="memory-scope-nav-title" className="px-2 pb-1 text-caption-1-medium text-text-secondary">
         {t('settings.memory.nav.scope')}
       </div>
 
@@ -178,14 +178,17 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
             </Card.Description>
           </Card.Header>
           {selectedPerson.opted_out && (
-            <div data-slot="memory-person-opted-out" className="text-xs text-warning-soft-foreground">
+            <div
+              data-slot="memory-person-opted-out"
+              className="text-caption-1-regular text-status-warning-soft-foreground"
+            >
               {t('settings.memory.person.optedOut')}
             </div>
           )}
 
           <Button
             variant="ghost"
-            className="w-full justify-start font-normal"
+            className="w-full justify-start text-body-regular"
             onPress={async () => {
               await api.setMemorySubjectFlags({
                 subjectScopeId: selectedPerson.scope_id,
@@ -196,13 +199,13 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
             }}
             data-slot="memory-pin-toggle"
           >
-            <Pin className={selectedPerson.is_pinned ? 'text-foreground' : 'text-muted'} />
+            <Pin className={selectedPerson.is_pinned ? 'text-text-primary' : 'text-text-secondary'} />
             {selectedPerson.is_pinned ? t('settings.memory.unpin') : t('settings.memory.pin')}
           </Button>
 
           <Button
             variant="ghost"
-            className="w-full justify-start font-normal"
+            className="w-full justify-start text-body-regular"
             onPress={async () => {
               const ok = await confirm({
                 title: t('settings.memory.person.forgetConfirmTitle'),
@@ -213,7 +216,7 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
               onChanged()
             }}
           >
-            <PersonXmark className="text-danger" />
+            <PersonXmark className="text-status-danger" />
             {t('settings.memory.person.forget')}
           </Button>
         </Card>

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowsRotateRight, Picture } from '@gravity-ui/icons'
-import { Button, Skeleton } from '@heroui/react'
+import { Button, Skeleton } from '@/components/base'
 import { api } from '@/api'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import type { EmojiInfoResponse } from '@/types'
 
 export interface EmojiMap {
@@ -83,7 +83,7 @@ export function StickerImage({
     return (
       <Skeleton
         data-slot="sticker-placeholder"
-        className={cn(className, 'rounded-xl')}
+        className={cx(className, 'rounded-xl')}
         role="status"
         aria-busy
         aria-label={t('chat.emoji.loading', { name: name ?? t('chat.emoji.sticker') })}
@@ -94,15 +94,18 @@ export function StickerImage({
     return (
       <div
         data-slot="sticker-error"
-        className={cn(className, 'flex flex-col items-center justify-center gap-1 rounded-xl bg-default/40 text-muted')}
+        className={cx(
+          className,
+          'flex flex-col items-center justify-center gap-1 rounded-xl bg-background-secondary-default/40 text-text-secondary',
+        )}
         role="group"
         aria-label={t('chat.emoji.loadFailed', { name: name ?? t('chat.emoji.sticker') })}
       >
         <Picture aria-hidden className="size-6" />
         <Button
           variant="ghost"
-          size="sm"
-          className="touch-hitbox px-1 text-xs"
+          size="small"
+          className="touch-hitbox px-1 text-caption-1-regular"
           onPress={() => setAttempt((current) => current + 1)}
         >
           <ArrowsRotateRight aria-hidden className="size-3.5" />
@@ -119,7 +122,7 @@ export function StickerImage({
       loading="lazy"
       width={128}
       height={128}
-      className={cn(className, 'object-contain')}
+      className={cx(className, 'object-contain')}
     />
   )
 }

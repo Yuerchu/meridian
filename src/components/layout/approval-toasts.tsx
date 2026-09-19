@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Button, Toast, ToastQueue } from '@heroui/react'
+import { Button, Toast, ToastQueue } from '@/components/base'
 import type { QueuedToast } from 'react-aria-components'
 import { ArrowRight, Check, Clock, Xmark } from '@gravity-ui/icons'
 
@@ -116,8 +116,10 @@ export function ApprovalToastRegion({
   // passed to — the queue keeps its copy but hands the react-stately one
   // `MAX_SAFE_INTEGER`, so the stack depth is decided here or not at all.
   return (
-    <Toast.Provider placement="top" queue={approvalQueue} maxVisibleToasts={MAX_VISIBLE}>
-      {({ toast }) => <ApprovalToast toast={toast} onSelect={onSelect} />}
+    <Toast.Provider placement="top" queue={approvalQueue}>
+      {({ toast }: { toast: { content: ApprovalToastContent; key: string } }) => (
+        <ApprovalToast toast={toast} onSelect={onSelect} />
+      )}
     </Toast.Provider>
   )
 }
@@ -199,12 +201,12 @@ function ApprovalToast({
         </Toast.Title>
         <Toast.Description data-slot="approval-toast-description" className="w-full">
           {item.kind === 'plan_review' ? (
-            <span data-slot="approval-toast-plan-message" className="font-medium leading-5">
+            <span data-slot="approval-toast-plan-message" className="text-body-2-medium leading-5">
               {planReviewMessage}
             </span>
           ) : (
             <span data-slot="approval-toast-call" className="flex min-w-0 items-start gap-1.5">
-              <span data-slot="approval-toast-tool-name" className="shrink-0 font-medium leading-5">
+              <span data-slot="approval-toast-tool-name" className="shrink-0 text-body-2-medium leading-5">
                 {toolLabel(t, item.toolName)}
               </span>
               {/* Two lines of the whole value, never the key's compact form:
@@ -223,7 +225,10 @@ function ApprovalToast({
               it is *for* gets the second — the reverse hid the path a
               `write_file` was being approved for. */}
           {description !== null && (
-            <span data-slot="approval-toast-tool-description" className="mt-0.5 line-clamp-2 break-words text-xs">
+            <span
+              data-slot="approval-toast-tool-description"
+              className="mt-0.5 line-clamp-2 break-words text-caption-1-regular"
+            >
               {description}
             </span>
           )}
@@ -231,7 +236,7 @@ function ApprovalToast({
               by a person. Without this the second question looks identical to
               the first. */}
           {item.kind !== 'plan_review' && item.retryReason !== undefined && (
-            <span data-slot="approval-toast-retry-prompt" className="mt-1 block text-xs">
+            <span data-slot="approval-toast-retry-prompt" className="mt-1 block text-caption-1-regular">
               {t('chat.tool.sandboxRetryPrompt')}
             </span>
           )}
@@ -240,18 +245,18 @@ function ApprovalToast({
             `calc(100vw - 2rem)` wide and its padding leaves about 264px at
             360px, against four buttons whose labels are set by whatever the
             question is — the sandbox retry spells its Allow "Retry without
-            sandbox" on its own. HeroUI buttons are `whitespace-nowrap`, and a
+            sandbox" on its own. Buttons are `whitespace-nowrap`, and a
             frontmost toast does not clip, so the overflow was drawn outside the
             rounded edge rather than being hidden. */}
         <div data-slot="approval-toast-actions" className="mt-2 flex flex-wrap items-center gap-2">
           {/* Left of the decisions, and the only way past a row without making
               one. No `Toast.CloseButton` beside it: two ways to say "not now"
               where one of them is irreversible is how a question gets lost. */}
-          <Button size="sm" variant="ghost" onPress={() => defer(item.approvalId)}>
+          <Button size="small" variant="ghost" onPress={() => defer(item.approvalId)}>
             <Clock className="size-3.5" />
             {t('chat.approvalToast.defer')}
           </Button>
-          <Button size="sm" variant="ghost" onPress={view}>
+          <Button size="small" variant="ghost" onPress={view}>
             <ArrowRight className="size-3.5" />
             {item.kind === 'ask'
               ? t('chat.approvalToast.answer')
@@ -265,14 +270,14 @@ function ApprovalToast({
           {item.kind === 'approval' && (
             <div data-slot="approval-toast-decisions" className="ml-auto flex items-center gap-2">
               <Button
-                size="sm"
+                size="small"
                 variant="danger-soft"
                 onPress={() => decide(() => api.denyToolCall({ approvalId: item.approvalId, reason: null }))}
               >
                 <Xmark className="size-3.5" />
                 {t('chat.tool.deny')}
               </Button>
-              <Button size="sm" onPress={() => decide(() => api.approveToolCall(item.approvalId))}>
+              <Button size="small" onPress={() => decide(() => api.approveToolCall(item.approvalId))}>
                 <Check className="size-3.5" />
                 {item.retryReason !== undefined ? t('chat.tool.retryWithoutSandbox') : t('chat.tool.allow')}
               </Button>

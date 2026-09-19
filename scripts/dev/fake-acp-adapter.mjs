@@ -258,7 +258,11 @@ rl.on('line', async (line) => {
     // end of the turn that generated it.
     if (asked === 'title') {
       upd({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'named' } })
-      upd({ sessionUpdate: 'session_info_update', title: 'Fix the flaky title test', updatedAt: '2026-09-12T02:00:00.000Z' })
+      upd({
+        sessionUpdate: 'session_info_update',
+        title: 'Fix the flaky title test',
+        updatedAt: '2026-09-12T02:00:00.000Z',
+      })
       send({ jsonrpc: '2.0', id: msg.id, result: { stopReason: 'end_turn' } })
       return
     }

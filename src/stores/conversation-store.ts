@@ -1148,7 +1148,7 @@ export interface ConversationStore {
   //
   // Left standing for now because the only way to notice is the system back key
   // on a phone, and the whole navigation layer is about to be rewritten with
-  // HeroUI Pro.
+  // boardui.
   navigationStack: string[]
 
   setActiveId: (id: string | null) => void

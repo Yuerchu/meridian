@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react'
-import { ListBox } from '@heroui/react'
-import { InlineSelect } from '@heroui-pro/react/inline-select'
+import { ListBox } from '@/components/base'
+import { InlineSelect } from '@/components/base'
 
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 export interface ToolbarChoice {
   value: string
@@ -21,7 +21,7 @@ interface ToolbarSelectProps {
   value: string | null
   choices: ToolbarChoice[]
   onSelect: (value: string) => void
-  isDisabled?: boolean
+  disabled?: boolean
   className?: string
 }
 
@@ -45,7 +45,7 @@ export function ToolbarSelect({
   value,
   choices,
   onSelect,
-  isDisabled,
+  disabled,
   className,
 }: ToolbarSelectProps) {
   const current = choices.find((c) => c.value === value)
@@ -55,27 +55,27 @@ export function ToolbarSelect({
       aria-label={ariaLabel}
       data-slot="toolbar-select"
       value={value ?? ''}
-      isDisabled={isDisabled || choices.length === 0}
+      isDisabled={disabled || choices.length === 0}
       onChange={(key) => {
         if (typeof key === 'string' && key) onSelect(key)
       }}
-      className={cn('w-auto min-w-0', className)}
+      className={cx('w-auto min-w-0', className)}
     >
-      {/* Pro supplies the inline-select interaction and density; the composer
+      {/* InlineSelect supplies the interaction and density; the composer
           gives it a fixed 32px target. Height and radius move together so the
           toolbar's hover fill follows the surrounding shell. */}
       <InlineSelect.Trigger
         data-slot="toolbar-select-trigger"
-        className={cn(
+        className={cx(
           'h-8 max-w-44 min-w-0 items-center gap-1 rounded-lg border-0 bg-transparent px-2',
-          'text-sm font-normal shadow-none',
-          'text-foreground hover:bg-default data-hovered:bg-default transition-colors',
+          'text-body-regular shadow-none',
+          'text-text-primary hover:bg-background-primary-hover data-hovered:bg-background-secondary-default transition-colors',
         )}
       >
         <InlineSelect.Value className="min-w-0 flex-1 overflow-hidden">
           <span data-slot="toolbar-select-current" className="flex min-w-0 items-center gap-1.5">
             {current?.icon}
-            <span data-slot="toolbar-select-label" className={cn('truncate', !current && 'text-muted')}>
+            <span data-slot="toolbar-select-label" className={cx('truncate', !current && 'text-text-secondary')}>
               {current?.label ?? placeholder}
             </span>
           </span>
@@ -93,11 +93,14 @@ export function ToolbarSelect({
             <ListBox.Item key={choice.value} id={choice.value} textValue={`${choice.label} ${choice.hint ?? ''}`}>
               <span data-slot="toolbar-select-option" className="flex min-w-0 flex-1 items-center gap-2">
                 {choice.icon}
-                <span data-slot="toolbar-select-option-label" className="truncate text-sm">
+                <span data-slot="toolbar-select-option-label" className="truncate text-body-regular">
                   {choice.label}
                 </span>
                 {choice.hint && (
-                  <span data-slot="toolbar-select-option-hint" className="truncate text-xs text-muted">
+                  <span
+                    data-slot="toolbar-select-option-hint"
+                    className="truncate text-caption-1-regular text-text-secondary"
+                  >
                     {choice.hint}
                   </span>
                 )}

@@ -120,27 +120,65 @@ function lint(code) {
   return linter.verify(code, config, { filename: 'case.js' }).map((m) => m.message)
 }
 
+tester.run('no-silent-prop-drop', plugin.rules['no-silent-prop-drop'], {
+  valid: [
+    // Forwarded.
+    `function Field({ isInvalid, ...props }) { return <Input isInvalid={isInvalid} {...props} /> }`,
+    // An underscore-named prop is the caller's name, not a drop.
+    `function Row({ _internal }) { return <div>{_internal}</div> }`,
+  ],
+  invalid: [
+    {
+      code: `function Disclosure({ onExpandedChange: _onExpandedChange, ...props }) { return <div {...props} /> }`,
+      errors: [{ messageId: 'dropped' }],
+    },
+    {
+      code: `const Menu = ({ dragAndDropHooks: _dnd, selectedKeys: _sk, ...rest }) => <div {...rest} />`,
+      errors: [{ messageId: 'dropped' }, { messageId: 'dropped' }],
+    },
+    {
+      code: `function Trigger(props) { const { render: _render, ...dom } = props; return <div {...dom} /> }`,
+      errors: [{ messageId: 'dropped' }],
+    },
+  ],
+})
+
 describe('ui selector restrictions', () => {
   const flagged = [
     ['text-white', `<p className="text-white" />`, /palette/],
     ['bg-black/50', `<p className="bg-black/50" />`, /palette/],
     ['cursor-pointer', `<label className="text-sm cursor-pointer" />`, /cursor-pointer/],
-    ['bg-muted', `<i className="size-2 rounded-full bg-muted" />`, /--muted is secondary/],
+    ['bg-muted', `<i className="size-2 rounded-full bg-muted" />`, /no muted fill/],
     ['uppercase', `<h3 className="text-xs uppercase" />`, /ALL CAPS/],
     ['bare rounded', `<span className="px-1 rounded shrink-0" />`, /Bare `rounded`/],
     ['shadow-md', `<div className="focus:shadow-md" />`, /shadow-/],
-    ['animate-pulse', `<div className="h-16 animate-pulse bg-default/30" />`, /animate-pulse/],
+    ['animate-pulse', `<div className="h-16 animate-pulse bg-background-secondary-default/30" />`, /animate-pulse/],
     ['animate-spin', `<Icon className="w-3.5 h-3.5 animate-spin" />`, /animate-spin/],
-    ['bg-danger/10', `<div className="rounded-lg border border-danger/30 bg-danger/10" />`, /alpha/],
+    [
+      'bg-status-danger/10',
+      `<div className="rounded-lg border border-status-danger/30 bg-status-danger/10" />`,
+      /alpha/,
+    ],
+    ['legacy text-muted', `<p className="text-xs text-muted" />`, /HeroUI token/],
+    ['legacy bg-default under a variant', `<div className="hover:bg-default/50" />`, /HeroUI token/],
+    ['legacy status', `<span className="text-danger-soft-foreground" />`, /HeroUI token/],
+    ['legacy shadow', `<div className="shadow-surface" />`, /HeroUI token/],
+    ['tailwind type size', `<p className="text-sm text-text-secondary" />`, /composite scale/],
+    ['bare font weight', `<span className="truncate font-medium" />`, /Bare font weight/],
     [
       'Button text-danger',
-      `<Button variant="ghost" className="ml-auto text-danger hover:text-danger" />`,
+      `<Button variant="ghost" className="ml-auto text-status-danger hover:text-status-danger" />`,
       /danger-soft/,
     ],
-    ['Button text-danger in cn()', `<Button className={cn('text-danger', x)} />`, /danger-soft/],
+    ['Button text-danger in cx()', `<Button className={cx('text-status-danger', x)} />`, /danger-soft/],
     ['Button h-auto', `<Button variant="ghost" className="h-auto w-full justify-start" />`, /h-auto/],
-    ['state attr on Content', `<Checkbox.Content className="rounded-lg data-[selected=true]:bg-default/80" />`, /root/],
+    [
+      'state attr on Content',
+      `<Checkbox.Content className="rounded-lg data-[selected=true]:bg-background-secondary-default/80" />`,
+      /root/,
+    ],
     ['Button onClick', `<Button onClick={go} />`, /onPress/],
+    ['Button disabled', `<Button disabled={busy} />`, /isDisabled/],
     ['Spinner className size', `<Spinner className="w-3.5 h-3.5" />`, /size prop/],
     ['template className', '<div className={`${base} rounded-xl`} />', /cn\(/],
     ['t().replace', `const s = t('toolbar.noAssistant').replace(/^No /, 'Select ')`, /translation/],
@@ -160,24 +198,36 @@ describe('ui selector restrictions', () => {
   }
 
   const clean = [
-    ['token colours', `<p className="text-danger-foreground bg-danger-soft" />`],
-    ['gradient over a fill', `<div className="from-danger via-danger/80 to-transparent" />`],
+    [
+      'token colours',
+      `<p className="text-status-danger-foreground bg-status-danger-soft text-text-secondary bg-background-primary-default border-border-button-default" />`,
+    ],
+    ['gradient over a fill', `<div className="from-status-danger via-status-danger/80 to-transparent" />`],
     ['interactive cursor', `<span className="cursor-[var(--cursor-interactive)]" />`],
     ['rounded-lg', `<span className="rounded-lg rounded-t-none" />`],
-    ['shadow tokens', `<div className="shadow-surface shadow-overlay shadow-none" />`],
+    ['shadow tokens', `<div className="shadow-xs shadow-card shadow-dropdown shadow-none" />`],
     ['danger-soft variant', `<Button variant="danger-soft" />`],
     // Danger on hover only, for an icon in a row of ghost icons; and the soft
     // foreground, which is a different class.
-    ['hover danger on a ghost icon', `<Button isIconOnly variant="ghost" className="text-muted hover:text-danger" />`],
-    ['soft foreground', `<Button className={cn(selected ? 'text-danger-soft-foreground' : 'text-muted')} />`],
-    ['state attr on root', `<Checkbox className="data-[selected=true]:bg-default" />`],
-    ['onPress', `<Button onPress={go} />`],
+    [
+      'hover danger on a ghost icon',
+      `<Button isIconOnly variant="ghost" className="text-text-secondary hover:text-status-danger" />`,
+    ],
+    [
+      'soft foreground',
+      `<Button className={cx(selected ? 'text-status-danger-soft-foreground' : 'text-text-secondary')} />`,
+    ],
+    ['state attr on root', `<Checkbox className="data-[selected=true]:bg-background-tertiary-default" />`],
+    ['onPress', `<Button onPress={go} isDisabled={busy} />`],
+    ['boardui text-white token', `<span className="bg-button-primary text-text-white" />`],
     ['Spinner size prop', `<Spinner size="sm" className="shrink-0" />`],
-    ['cn()', `<div className={cn('a', b)} />`],
+    ['cx()', `<div className={cx('a', b)} />`],
     ['plain replace', `const s = value.replace(/a/, 'b')`],
     ['ellipsis in text', `<p>Loading…</p>`],
     ['multiplication count', `<span>×{count}</span>`],
     ['Label component', `<Label>A</Label>`],
+    ['composite type', `<p className="text-body-medium text-caption-1-semibold" />`],
+    ['prefixed weight', `<p className="[&_strong]:font-medium prose-headings:font-semibold" />`],
   ]
   for (const [name, code] of clean) {
     it(`accepts ${name}`, () => {

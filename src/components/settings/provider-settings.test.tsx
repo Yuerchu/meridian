@@ -139,7 +139,7 @@ describe('ProviderSettings list/detail navigation', () => {
     const user = userEvent.setup()
     render(<ProviderSettings />)
 
-    await user.click(await screen.findByRole('row', { name: 'Provider Two' }))
+    await user.click(await screen.findByRole('option', { name: 'Provider Two' }))
     expect(await screen.findByRole('heading', { name: 'Provider Two' })).toBeInTheDocument()
   })
 
@@ -170,8 +170,8 @@ describe('ProviderSettings list/detail navigation', () => {
     ])
     render(<ProviderSettings />)
 
-    const list = await screen.findByRole('grid', { name: i18n.t('settings.provider.title') })
-    const rows = within(list).getAllByRole('row')
+    const list = await screen.findByRole('listbox', { name: i18n.t('settings.provider.title') })
+    const rows = within(list).getAllByRole('option')
     expect(rows).toHaveLength(2)
     expect(rows[0]).toHaveAttribute('data-key', 'p1')
     expect(rows[1]).toHaveAccessibleName('Provider Two')
@@ -338,8 +338,8 @@ describe('ProviderSettings list/detail navigation', () => {
     expect(within(grid).getByText(i18n.t('settings.provider.modelPriced'))).toBeInTheDocument()
     expect(within(grid).getByText(i18n.t('settings.provider.modelPriceMissing'))).toBeInTheDocument()
     expect(within(grid).getByText(i18n.t('settings.provider.modelNotConfigured'))).toBeInTheDocument()
-    expect(within(grid).getByText('gpt-5.6-mini')).not.toHaveClass('text-muted')
-    expect(within(grid).getByText('gpt-unconfigured')).toHaveClass('text-muted')
+    expect(within(grid).getByText('gpt-5.6-mini')).not.toHaveClass('text-text-secondary')
+    expect(within(grid).getByText('gpt-unconfigured')).toHaveClass('text-text-secondary')
 
     await user.click(
       within(grid).getByRole('button', {

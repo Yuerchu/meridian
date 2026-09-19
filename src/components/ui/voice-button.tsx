@@ -1,6 +1,6 @@
 import { Microphone, StopFill } from '@gravity-ui/icons'
-import { Button, Spinner, Tooltip } from '@heroui/react'
-import { cn } from '@/lib/utils'
+import { Button, Tooltip, TooltipTrigger } from '@/components/base'
+import { cx } from '@/utils/cx'
 
 export type VoiceButtonState =
   | 'idle'
@@ -47,21 +47,25 @@ export function VoiceButton({
   return (
     <div data-slot="voice-button" className="flex items-center gap-1.5">
       {recording && (
-        <span data-slot="voice-button-elapsed" className="text-xs tabular-nums text-danger select-none">
+        <span
+          data-slot="voice-button-elapsed"
+          className="text-caption-1-regular tabular-nums text-status-danger select-none"
+        >
           {Math.floor(elapsed / 60)}:{String(Math.floor(elapsed % 60)).padStart(2, '0')}
         </span>
       )}
-      <Tooltip delay={0}>
+      <TooltipTrigger delay={0}>
         <Button
-          isIconOnly
+          iconOnly
           aria-label={ariaLabel}
           aria-pressed={recording}
           variant={recording ? 'danger-soft' : 'ghost'}
-          isDisabled={disabled || state === 'transcribing'}
-          className={cn(
+          isDisabled={disabled}
+          isPending={state === 'transcribing'}
+          className={cx(
             'touch-hitbox touch-none select-none',
-            state === 'starting' && 'text-muted',
-            state !== 'starting' && !recording && 'text-muted hover:text-foreground',
+            state === 'starting' && 'text-text-secondary',
+            state !== 'starting' && !recording && 'text-text-secondary hover:text-text-primary',
           )}
           onPointerDown={onPointerDown}
           onPointerUp={onPointerUp}
@@ -77,16 +81,10 @@ export function VoiceButton({
           // Keep focus in the textarea; the browser default would steal it.
           onMouseDown={(e) => e.preventDefault()}
         >
-          {state === 'transcribing' ? (
-            <Spinner size="sm" />
-          ) : state === 'recording-toggle' ? (
-            <StopFill className="w-4 h-4" />
-          ) : (
-            <Microphone className="w-4 h-4" />
-          )}
+          {state === 'recording-toggle' ? <StopFill className="w-4 h-4" /> : <Microphone className="w-4 h-4" />}
         </Button>
-        <Tooltip.Content>{ariaLabel}</Tooltip.Content>
-      </Tooltip>
+        <Tooltip>{ariaLabel}</Tooltip>
+      </TooltipTrigger>
     </div>
   )
 }

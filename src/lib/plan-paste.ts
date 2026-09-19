@@ -2,7 +2,7 @@ import { Fragment, Slice, type Node as ProseMirrorNode } from '@tiptap/pm/model'
 
 /**
  * Marks the Markdown codec has no spelling for, removed from pasted content
- * before it reaches the document. HeroUI Pro's editor bundles `Underline`, so
+ * before it reaches the document. RichTextEditor bundles `Underline`, so
  * anything copied out of Word, Docs or a web page with `<u>` or
  * `text-decoration: underline` on it arrives as a mark `serializePlanDocument`
  * refuses — and a refused document stops every save until the paste is undone.

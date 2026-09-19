@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Link } from '@heroui/react'
+import { Button, Link } from '@/components/base'
 import { MessageScrollerItem } from '@/components/ui/message-scroller'
 import { Marker, MarkerContent } from '@/components/ui/marker'
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
@@ -56,7 +56,7 @@ export function CompactedRegion({
           <Button
             variant="ghost"
             onPress={() => setShowCompactedMessages(false)}
-            className="w-full rounded-lg text-center text-xs text-muted hover:text-muted py-2"
+            className="w-full rounded-lg text-center text-caption-1-regular text-text-secondary hover:text-text-secondary py-2"
           >
             {t('chat.compact.hideCompacted', { count: compactedCount })}
           </Button>
@@ -79,7 +79,7 @@ export function CompactedRegion({
         <Button
           variant="ghost"
           onPress={() => setShowCompactedMessages(true)}
-          className="w-full rounded-lg text-center text-xs text-muted hover:text-muted py-2"
+          className="w-full rounded-lg text-center text-caption-1-regular text-text-secondary hover:text-text-secondary py-2"
         >
           {t('chat.compact.showCompacted', { count: compactedCount })}
         </Button>
@@ -91,7 +91,7 @@ export function CompactedRegion({
           <Link
             data-slot="compact-boundary-toggle"
             onPress={() => setShowCompactSummary((v) => !v)}
-            className="touch-hitbox text-xs font-normal text-muted whitespace-nowrap px-2"
+            className="touch-hitbox text-caption-1-regular text-text-secondary whitespace-nowrap px-2"
           >
             {t('chat.compact.boundary', { count: compactedCount })}
           </Link>
@@ -99,7 +99,9 @@ export function CompactedRegion({
       </Marker>
       {compactSummary && showCompactSummary && (
         <Bubble variant="muted" data-slot="compact-summary" className="mb-2 max-w-full">
-          <BubbleContent className="text-xs whitespace-pre-wrap text-muted">{compactSummary.content}</BubbleContent>
+          <BubbleContent className="text-caption-1-regular whitespace-pre-wrap text-text-secondary">
+            {compactSummary.content}
+          </BubbleContent>
         </Bubble>
       )}
     </MessageScrollerItem>

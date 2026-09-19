@@ -64,7 +64,7 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
   // `use-global-event-listener.ts`'s notification title, which have the same
   // hole. Not `conversations.push(...)`: that array *is* the sidebar.
   //
-  // Deferred with the rest of the navigation work until the HeroUI Pro change
+  // Deferred with the rest of the navigation work until the boardui change
   // lands, since it is the layer that will move.
   const conversationAssistantId = useConversationStore(
     (s) => s.conversations.find((c) => c.id === conversationId)?.assistant_id ?? null,

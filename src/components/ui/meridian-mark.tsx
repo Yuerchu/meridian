@@ -12,7 +12,7 @@ import {
   prefersReducedMotion,
   type RingFrame,
 } from '@/lib/meridian-ring'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 /**
  * The Meridian mark, optionally arriving as the ring it is a pose of.
@@ -89,7 +89,7 @@ export function MeridianMark({
       strokeWidth={STROKE}
       strokeLinecap="butt"
       aria-hidden
-      className={cn(className)}
+      className={cx(className)}
       {...props}
     >
       {intro ? (

@@ -1,6 +1,6 @@
 import * as React from 'react'
 
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 /**
  * A run of messages from one speaker, drawn the way a messenger draws one:
@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils'
  * siblings.
  */
 
-const base = 'group/message relative flex w-full min-w-0 text-sm'
+const base = 'group/message relative flex w-full min-w-0 text-body-regular'
 
 /** What the person said: a column against the right edge.
  *
@@ -29,7 +29,7 @@ function MessageGroupUser({ className, ...props }: React.ComponentProps<'div'>) 
     <div
       data-slot="message-group"
       data-align="end"
-      className={cn(base, 'flex-col items-end gap-0.5', className)}
+      className={cx(base, 'flex-col items-end gap-0.5', className)}
       {...props}
     />
   )
@@ -45,7 +45,7 @@ function MessageGroupUser({ className, ...props }: React.ComponentProps<'div'>) 
  *  bottom of the viewport up the run and is beside whatever is being read. */
 function MessageGroupAssistant({ className, ...props }: React.ComponentProps<'div'>) {
   return (
-    <div data-slot="message-group" data-align="start" className={cn(base, 'items-end gap-2', className)} {...props} />
+    <div data-slot="message-group" data-align="start" className={cx(base, 'items-end gap-2', className)} {...props} />
   )
 }
 
@@ -65,8 +65,8 @@ function MessageGroupAvatar({ className, ...props }: React.ComponentProps<'div'>
   return (
     <div
       data-slot="message-group-avatar"
-      className={cn(
-        'sticky bottom-2 flex w-fit min-w-8 shrink-0 items-center justify-center self-end overflow-hidden rounded-full bg-default',
+      className={cx(
+        'sticky bottom-2 flex w-fit min-w-8 shrink-0 items-center justify-center self-end overflow-hidden rounded-full bg-background-secondary-default',
         className,
       )}
       {...props}
@@ -80,7 +80,7 @@ function MessageGroupBubbles({ className, ...props }: React.ComponentProps<'div'
   return (
     <div
       data-slot="message-group-bubbles"
-      className={cn('flex w-full min-w-0 flex-col gap-0.5 wrap-break-word', className)}
+      className={cx('flex w-full min-w-0 flex-col gap-0.5 wrap-break-word', className)}
       {...props}
     />
   )
@@ -94,7 +94,10 @@ function MessageGroupHeader({ className, ...props }: React.ComponentProps<'div'>
   return (
     <div
       data-slot="message-group-header"
-      className={cn('mb-0.5 flex max-w-full min-w-0 items-center gap-2 text-xs font-medium text-accent', className)}
+      className={cx(
+        'mb-0.5 flex max-w-full min-w-0 items-center gap-2 text-caption-1-medium text-button-ghost-foreground',
+        className,
+      )}
       {...props}
     />
   )
@@ -106,8 +109,8 @@ function MessageGroupFooter({ className, ...props }: React.ComponentProps<'div'>
   return (
     <div
       data-slot="message-group-footer"
-      className={cn(
-        'mt-1 flex max-w-full min-w-0 items-center gap-2 text-xs font-medium text-muted opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 pointer-coarse:opacity-100',
+      className={cx(
+        'mt-1 flex max-w-full min-w-0 items-center gap-2 text-caption-1-medium text-text-secondary opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 pointer-coarse:opacity-100',
         className,
       )}
       {...props}

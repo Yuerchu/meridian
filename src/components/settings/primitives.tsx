@@ -1,8 +1,8 @@
 import { useTranslation } from 'react-i18next'
-import { Button, Description, Label, ListBox, Select, Skeleton } from '@heroui/react'
+import { Button, Select, SelectItem, Skeleton } from '@/components/base'
 import { Check, ChevronRight } from '@gravity-ui/icons'
 
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 
 /**
  * The three shapes every settings panel was already drawing by hand.
@@ -11,10 +11,10 @@ import { cn } from '@/lib/utils'
  * "a settings row is 44px tall" are single edits here and a dozen edits spread
  * across eleven files otherwise.
  *
- * There is deliberately no `SettingsField`: HeroUI's `TextField` is one, and
+ * There is deliberately no `SettingsField`: `TextField` is one, and
  * the panels use it directly. It wires the label to its control itself, which
  * is what retired the `useId` that every field used to carry, and its label is
- * left at HeroUI's own weight rather than pushed back down to `text-xs` — the
+ * left at Label's own weight rather than pushed back down to `text-caption-1-regular` — the
  * four slightly different ways that override had been written are what made
  * the case for stopping.
  */
@@ -30,11 +30,11 @@ import { cn } from '@/lib/utils'
  * knowing which that is.
  *
  * Note that `container-type` implies `contain: layout`, which makes this the
- * containing block for any `position: fixed` descendant. Pro's `ActionBar` is
+ * containing block for any `position: fixed` descendant. `ActionBar` is
  * one and does not portal itself — see the two call sites, which do it for it.
  */
 export function SettingsPane({ className, ...props }: React.ComponentProps<'div'>) {
-  return <div data-slot="settings-pane" className={cn('@container/pane space-y-6 max-w-lg', className)} {...props} />
+  return <div data-slot="settings-pane" className={cx('@container/pane space-y-6 max-w-lg', className)} {...props} />
 }
 
 export function SettingsHeader({
@@ -49,13 +49,13 @@ export function SettingsHeader({
   actions?: React.ReactNode
 }) {
   return (
-    <div data-slot="settings-header" className={cn('flex items-start justify-between gap-2', className)} {...props}>
+    <div data-slot="settings-header" className={cx('flex items-start justify-between gap-2', className)} {...props}>
       <div data-slot="settings-header-text" className="min-w-0">
-        <h2 data-slot="settings-header-title" className="text-lg font-medium">
+        <h2 data-slot="settings-header-title" className="text-title-3-medium">
           {title}
         </h2>
         {subtitle && (
-          <p data-slot="settings-header-subtitle" className="mt-1 text-xs text-muted">
+          <p data-slot="settings-header-subtitle" className="mt-1 text-caption-1-regular text-text-secondary">
             {subtitle}
           </p>
         )}
@@ -72,13 +72,12 @@ export function SettingsHeader({
 /**
  * One tappable line in a settings list.
  *
- * A HeroUI `Button` underneath rather than `ListBox.Item`: the item ships
- * `rounded-2xl`, which overshoots the radius ladder our settings cards sit at,
- * and its click semantics run through a selection collection — while every
- * caller here (and the one test that guards them) drives plain clicks on text.
+ * A `Button` underneath rather than `ListBox.Item`: the item's click
+ * semantics run through a selection collection, while every caller here (and
+ * the one test that guards them) drives plain clicks on text.
  *
- * `h-*`/`px-*` are overridden together with `rounded-*` on purpose. HeroUI's
- * base is `rounded-3xl`; changing the height without the radius is how a hover
+ * `h-*`/`px-*` are overridden together with `rounded-*` on purpose. Button's
+ * default is `rounded-2lg`; changing the height without the radius is how a hover
  * fill ends up clipped at the corners of a rounded container.
  */
 export function SettingsRow({
@@ -107,27 +106,30 @@ export function SettingsRow({
       // missing it.
       aria-current={isActive || undefined}
       variant="ghost"
-      className={cn(
-        'min-h-11 w-full justify-start gap-3 rounded-lg px-3 py-2 font-normal',
-        'data-active:bg-default data-active:text-default-foreground',
+      className={cx(
+        'min-h-11 w-full justify-start gap-3 rounded-lg px-3 py-2 text-body-regular',
+        'data-active:bg-background-tertiary-default data-active:text-text-primary',
         className,
       )}
       {...props}
     >
       {icon && (
-        <span data-slot="settings-row-icon" className="flex size-4 shrink-0 items-center justify-center text-muted">
+        <span
+          data-slot="settings-row-icon"
+          className="flex size-4 shrink-0 items-center justify-center text-text-secondary"
+        >
           {icon}
         </span>
       )}
-      <span data-slot="settings-row-label" className="min-w-0 flex-1 truncate text-start text-sm">
+      <span data-slot="settings-row-label" className="min-w-0 flex-1 truncate text-start text-body-regular">
         {label}
       </span>
       {value && (
-        <span data-slot="settings-row-value" className="shrink-0 truncate text-xs text-muted">
+        <span data-slot="settings-row-value" className="shrink-0 truncate text-caption-1-regular text-text-secondary">
           {value}
         </span>
       )}
-      {trailing === undefined ? <ChevronRight className="size-4 shrink-0 text-muted" /> : trailing}
+      {trailing === undefined ? <ChevronRight className="size-4 shrink-0 text-text-secondary" /> : trailing}
     </Button>
   )
 }
@@ -145,7 +147,7 @@ export function SavedHint({ className, ...props }: React.ComponentProps<'span'>)
     <span
       data-slot="saved-hint"
       role="status"
-      className={cn('flex items-center gap-1 text-xs text-success-soft-foreground', className)}
+      className={cx('flex items-center gap-1 text-caption-1-regular text-status-success-soft-foreground', className)}
       {...props}
     >
       <Check className="size-3.5" />
@@ -178,7 +180,7 @@ export function SettingsSkeleton({ rows = 4, className, ...props }: React.Compon
       role="status"
       aria-busy="true"
       aria-label={t('common.loading')}
-      className={cn('space-y-6 max-w-lg', className)}
+      className={cx('space-y-6 max-w-lg', className)}
       {...props}
     >
       <div data-slot="settings-skeleton-header" className="space-y-2">
@@ -205,8 +207,7 @@ type SettingsSelectBase<T extends string> = {
   onChange: (value: T) => void
   description?: React.ReactNode
   placeholder?: string
-  fullWidth?: boolean
-  isDisabled?: boolean
+  disabled?: boolean
   className?: string
   triggerClassName?: string
   /** Only the one caller that shrinks its rows needs this. */
@@ -226,7 +227,7 @@ export type SettingsSelectProps<T extends string> = SettingsSelectBase<T> &
 /**
  * The seven-layer `Select` every panel was writing out by hand.
  *
- * The lines saved are not the reason. HeroUI hands `onChange` a `Key | null`,
+ * The lines saved are not the reason. React Aria hands `onChange` a `Key | null`,
  * and the twenty call sites had five different ways of narrowing it back —
  * `String(v)`, `if (v)`, `?? ''`, a cast, or some pair of those. A caller here
  * gets its own value type back and never sees the null: an empty selection is
@@ -240,8 +241,7 @@ export function SettingsSelect<T extends string>({
   ariaLabel,
   description,
   placeholder,
-  fullWidth,
-  isDisabled,
+  disabled,
   className,
   triggerClassName,
   itemClassName,
@@ -249,32 +249,23 @@ export function SettingsSelect<T extends string>({
   return (
     <Select
       data-slot="settings-select"
-      aria-label={ariaLabel}
       className={className}
-      fullWidth={fullWidth}
-      isDisabled={isDisabled}
+      label={label}
+      description={description}
+      aria-label={ariaLabel}
+      isDisabled={disabled}
       placeholder={placeholder}
-      value={value}
-      onChange={(key) => {
+      selectedKey={value}
+      onSelectionChange={(key) => {
         if (key != null) onChange(String(key) as T)
       }}
+      triggerClassName={triggerClassName}
     >
-      {label && <Label>{label}</Label>}
-      <Select.Trigger className={triggerClassName}>
-        <Select.Value />
-        <Select.Indicator />
-      </Select.Trigger>
-      <Select.Popover>
-        <ListBox>
-          {options.map((option) => (
-            <ListBox.Item key={option.value} id={option.value} textValue={option.label} className={itemClassName}>
-              {option.label}
-              <ListBox.ItemIndicator />
-            </ListBox.Item>
-          ))}
-        </ListBox>
-      </Select.Popover>
-      {description && <Description>{description}</Description>}
+      {options.map((option) => (
+        <SelectItem key={option.value} id={option.value} textValue={option.label} className={itemClassName}>
+          {option.label}
+        </SelectItem>
+      ))}
     </Select>
   )
 }

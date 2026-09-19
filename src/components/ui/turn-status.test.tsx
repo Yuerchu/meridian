@@ -41,7 +41,7 @@ describe('TurnBranchPager', () => {
   })
 
   it('goes fully inert while a stream is in flight', () => {
-    render(<TurnBranchPager index={2} total={3} isDisabled previousLabel="prev" nextLabel="next" />)
+    render(<TurnBranchPager index={2} total={3} disabled previousLabel="prev" nextLabel="next" />)
     expect(screen.getByLabelText('prev')).toBeDisabled()
     expect(screen.getByLabelText('next')).toBeDisabled()
   })
@@ -52,8 +52,8 @@ describe('TurnStatusIcon', () => {
   /// may have left something half-done, and is coloured to say so.
   it('colours a crash as a warning and a stop as nothing', () => {
     const { container, rerender } = render(<TurnStatusIcon status="crashed" />)
-    expect(container.querySelector('svg')).toHaveClass('text-warning-soft-foreground')
+    expect(container.querySelector('svg')).toHaveClass('text-status-warning-soft-foreground')
     rerender(<TurnStatusIcon status="interrupted" />)
-    expect(container.querySelector('svg')).toHaveClass('text-muted')
+    expect(container.querySelector('svg')).toHaveClass('text-text-secondary')
   })
 })

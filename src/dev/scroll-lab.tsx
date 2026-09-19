@@ -11,7 +11,7 @@
 // step through a scenario deterministically instead of racing a timer.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { Button } from '@heroui/react'
+import { Button } from '@/components/base'
 import { ChatTranscript } from '@/components/chat/chat-transcript'
 import { useTurns } from '@/hooks/use-turns'
 import { useAppTheme } from '@/lib/theme'
@@ -780,54 +780,54 @@ export default function ScrollLab() {
   }, [metrics])
 
   return (
-    <div data-slot="scroll-lab" ref={rootRef} className="flex h-screen flex-col bg-background text-foreground">
+    <div data-slot="scroll-lab" ref={rootRef} className="flex h-screen flex-col bg-background-full text-text-primary">
       <div data-slot="scroll-lab-toolbar" className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
-        <span data-slot="scroll-lab-title" className="text-sm font-semibold">
+        <span data-slot="scroll-lab-title" className="text-body-semibold">
           滚动行为实验场
         </span>
-        <Button size="sm" variant="outline" onPress={() => seedHistory()}>
+        <Button size="small" variant="outline" onPress={() => seedHistory()}>
           铺历史
         </Button>
         {/* Well past the transcript's window, so what this measures is the
             cost of a long conversation as the product actually renders one. */}
-        <Button size="sm" variant="outline" onPress={() => seedHistory(200)}>
+        <Button size="small" variant="outline" onPress={() => seedHistory(200)}>
           铺 200 轮
         </Button>
-        <Button size="sm" variant="outline" onPress={() => setHasTrailingRow((v) => !v)}>
+        <Button size="small" variant="outline" onPress={() => setHasTrailingRow((v) => !v)}>
           尾部状态行
         </Button>
-        <Button size="sm" variant="outline" onPress={() => sendUser(false)}>
+        <Button size="small" variant="outline" onPress={() => sendUser(false)}>
           发短消息
         </Button>
-        <Button size="sm" variant="outline" onPress={() => sendUser(true)}>
+        <Button size="small" variant="outline" onPress={() => sendUser(true)}>
           发长消息
         </Button>
-        <Button size="sm" variant="outline" onPress={() => sendUser(3)}>
+        <Button size="small" variant="outline" onPress={() => sendUser(3)}>
           发超长消息
         </Button>
-        <Button size="sm" variant="outline" onPress={startAssistant}>
+        <Button size="small" variant="outline" onPress={startAssistant}>
           助手开始
         </Button>
-        <Button size="sm" variant="outline" onPress={() => streamChunk()}>
+        <Button size="small" variant="outline" onPress={() => streamChunk()}>
           流式一块
         </Button>
-        <Button size="sm" variant="outline" onPress={streamAll}>
+        <Button size="small" variant="outline" onPress={streamAll}>
           流式到底
         </Button>
-        <Button size="sm" variant="outline" onPress={() => callTool()}>
+        <Button size="small" variant="outline" onPress={() => callTool()}>
           工具调用
         </Button>
-        <Button size="sm" variant="outline" onPress={finishTool}>
+        <Button size="small" variant="outline" onPress={finishTool}>
           工具返回
         </Button>
-        <Button size="sm" variant="outline" onPress={finishTurn}>
+        <Button size="small" variant="outline" onPress={finishTurn}>
           结束本轮
         </Button>
-        <Button size="sm" variant="ghost" onPress={reset}>
+        <Button size="small" variant="ghost" onPress={reset}>
           清空
         </Button>
         <Button
-          size="sm"
+          size="small"
           onPress={() => {
             setResults(null)
             runScenarios().then(setResults)
@@ -835,7 +835,7 @@ export default function ScrollLab() {
         >
           跑全部场景
         </Button>
-        <Button size="sm" variant="ghost" onPress={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}>
+        <Button size="small" variant="ghost" onPress={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}>
           主题
         </Button>
       </div>
@@ -860,20 +860,20 @@ export default function ScrollLab() {
         <div
           data-slot="scroll-lab-results"
           data-testid="scroll-lab-results"
-          className="max-h-48 overflow-y-auto border-t px-4 py-2 text-xs"
+          className="max-h-48 overflow-y-auto border-t px-4 py-2 text-caption-1-regular"
         >
           {results.map((r) => (
             <div data-slot="scroll-lab-result" key={r.name} className="flex gap-2 py-0.5">
               <span
                 data-slot="scroll-lab-result-verdict"
-                className={r.pass ? 'text-success-soft-foreground' : 'text-danger'}
+                className={r.pass ? 'text-status-success-soft-foreground' : 'text-status-danger'}
               >
                 {r.pass ? 'PASS' : 'FAIL'}
               </span>
-              <span data-slot="scroll-lab-result-name" className="font-medium">
+              <span data-slot="scroll-lab-result-name" className="text-caption-1-medium">
                 {r.name}
               </span>
-              <span data-slot="scroll-lab-result-detail" className="text-muted">
+              <span data-slot="scroll-lab-result-detail" className="text-text-secondary">
                 {r.detail}
               </span>
             </div>
@@ -884,7 +884,7 @@ export default function ScrollLab() {
       <div
         data-slot="scroll-lab-readout"
         data-testid="scroll-lab-readout"
-        className="border-t px-4 py-2 font-mono text-xs text-muted"
+        className="border-t px-4 py-2 font-mono text-caption-1-regular text-text-secondary"
       >
         {readout}
       </div>

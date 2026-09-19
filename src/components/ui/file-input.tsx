@@ -3,7 +3,7 @@ import { useImperativeHandle, useRef, type RefObject } from 'react'
 /**
  * The browser's own file picker, opened from somewhere else.
  *
- * There is no HeroUI equivalent and there could not be: the point is the native
+ * There is no component-library equivalent and there could not be: the point is the native
  * element, which is the only thing that can hand JavaScript a `File` rather
  * than a path. Connected to another machine that distinction is the whole
  * feature — a path names a file on the wrong computer — so this is what the

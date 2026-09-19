@@ -10,10 +10,9 @@ import { useEffect, useEffectEvent } from 'react'
  *
  * `mod` matches either Command or Control rather than picking one from the user
  * agent. Sniffing the platform for this is guesswork — a Mac keyboard on a
- * Windows machine is not exotic — and accepting both is what Pro's own
- * `Sidebar.Provider` does for `mod+b`, which is the only other shortcut in the
- * app. Two shortcuts that disagree about what `mod` means would be worse than
- * either answer.
+ * Windows machine is not exotic — and accepting both means two shortcuts can
+ * never disagree about what `mod` means, which would be worse than either
+ * answer alone.
  */
 export interface Hotkey {
   key: string

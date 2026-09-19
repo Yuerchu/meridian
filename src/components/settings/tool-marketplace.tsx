@@ -13,8 +13,9 @@ import {
   Label,
   TextField,
   Tooltip,
-} from '@heroui/react'
-import { EmptyState } from '@heroui-pro/react/empty-state'
+  TooltipTrigger,
+} from '@/components/base'
+import { EmptyState } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
@@ -127,7 +128,7 @@ function CustomToolEditor({
       }}
     >
       <div data-slot="custom-tool-fields" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
-        <TextField fullWidth isInvalid={invalid.has('name')}>
+        <TextField isInvalid={invalid.has('name')}>
           <Label>{t('settings.tools.name')}</Label>
           <Input
             ref={nameRef}
@@ -135,7 +136,7 @@ function CustomToolEditor({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="my_tool"
-            className="font-mono text-xs"
+            className="font-mono text-caption-1-regular"
           />
         </TextField>
         <SettingsSelect
@@ -145,7 +146,7 @@ function CustomToolEditor({
           onChange={setPermission}
         />
       </div>
-      <TextField fullWidth isInvalid={invalid.has('description')}>
+      <TextField isInvalid={invalid.has('description')}>
         <Label>{t('settings.tools.description')}</Label>
         <Input
           ref={descriptionRef}
@@ -154,7 +155,7 @@ function CustomToolEditor({
           onChange={(e) => setDescription(e.target.value)}
         />
       </TextField>
-      <TextField fullWidth isInvalid={invalid.has('command')}>
+      <TextField isInvalid={invalid.has('command')}>
         <Label>{t('settings.tools.command')}</Label>
         <Input
           ref={commandRef}
@@ -162,17 +163,17 @@ function CustomToolEditor({
           value={command}
           onChange={(e) => setCommand(e.target.value)}
           placeholder="python script.py"
-          className="font-mono text-xs"
+          className="font-mono text-caption-1-regular"
         />
       </TextField>
-      <TextField fullWidth>
+      <TextField>
         <Label>{t('settings.tools.argsTemplate')}</Label>
         <Input
           name="customToolArgs"
           value={argsTemplate}
           onChange={(e) => setArgsTemplate(e.target.value)}
           placeholder="--input {{input}} --output {{output}}"
-          className="font-mono text-xs"
+          className="font-mono text-caption-1-regular"
         />
         <Description>{t('settings.tools.argsTemplateHint')}</Description>
       </TextField>
@@ -189,12 +190,16 @@ function CustomToolEditor({
         />
       </TextField>
       {invalid.size > 0 && (
-        <p data-slot="custom-tool-validation" role="alert" className="text-xs text-danger">
+        <p data-slot="custom-tool-validation" role="alert" className="text-caption-1-regular text-status-danger">
           {invalid.has('timeout') ? t('settings.tools.invalidTimeout') : t('settings.tools.requiredFields')}
         </p>
       )}
       {saveError && (
-        <p data-slot="custom-tool-save-error" role="alert" className="text-xs text-danger break-all">
+        <p
+          data-slot="custom-tool-save-error"
+          role="alert"
+          className="text-caption-1-regular text-status-danger break-all"
+        >
           {saveError}
         </p>
       )}
@@ -202,19 +207,19 @@ function CustomToolEditor({
         <Button type="submit">{t('common.save')}</Button>
         {saved && <SavedHint />}
         {onDelete && (
-          <Tooltip delay={0}>
+          <TooltipTrigger delay={0}>
             <Button
               type="button"
-              isIconOnly
+              iconOnly
               variant="ghost"
               aria-label={t('settings.tools.delete')}
-              className="ml-auto text-muted hover:text-danger"
+              className="ml-auto text-text-secondary hover:text-status-danger"
               onPress={onDelete}
             >
               <TrashBin className="w-3.5 h-3.5" />
             </Button>
-            <Tooltip.Content>{t('settings.tools.delete')}</Tooltip.Content>
-          </Tooltip>
+            <Tooltip>{t('settings.tools.delete')}</Tooltip>
+          </TooltipTrigger>
         )}
       </div>
     </form>
@@ -267,7 +272,7 @@ export function ToolMarketplace() {
           <Alert.Indicator />
           <Alert.Content>
             <Alert.Description>{t('settings.tools.loadError')}</Alert.Description>
-            <Button size="sm" variant="outline" onPress={() => void refresh()}>
+            <Button size="small" variant="outline" onPress={() => void refresh()}>
               {t('settings.tools.retry')}
             </Button>
           </Alert.Content>
@@ -285,13 +290,13 @@ export function ToolMarketplace() {
               <div
                 key={tool.name}
                 data-slot="builtin-tool-row"
-                className="flex items-center gap-2 px-3 py-1.5 text-xs border border-border rounded-lg"
+                className="flex items-center gap-2 px-3 py-1.5 text-caption-1-regular border border-border-button-default rounded-lg"
               >
-                <Wrench className="w-3.5 h-3.5 text-muted flex-shrink-0" />
+                <Wrench className="w-3.5 h-3.5 text-text-secondary flex-shrink-0" />
                 <span data-slot="builtin-tool-name" className="font-mono flex-1">
                   {tool.name}
                 </span>
-                <span data-slot="builtin-tool-description" className="text-muted truncate max-w-48">
+                <span data-slot="builtin-tool-description" className="text-text-secondary truncate max-w-48">
                   {tool.description}
                 </span>
               </div>
@@ -304,7 +309,7 @@ export function ToolMarketplace() {
           title={t('settings.tools.onebotSection')}
           summary={builtinTools.filter((tool) => tool.source === 'onebot').length}
         >
-          <p data-slot="onebot-tool-hint" className="text-xs text-muted">
+          <p data-slot="onebot-tool-hint" className="text-caption-1-regular text-text-secondary">
             {t('settings.tools.onebotHint')}
           </p>
           <div data-slot="onebot-tool-list" className="grid grid-cols-1 gap-1">
@@ -314,19 +319,27 @@ export function ToolMarketplace() {
                 <div
                   key={tool.name}
                   data-slot="onebot-tool-row"
-                  className="flex items-center gap-2 px-3 py-1.5 text-xs border border-border rounded-lg"
+                  className="flex items-center gap-2 px-3 py-1.5 text-caption-1-regular border border-border-button-default rounded-lg"
                 >
-                  <Wrench className="w-3.5 h-3.5 text-muted flex-shrink-0" />
+                  <Wrench className="w-3.5 h-3.5 text-text-secondary flex-shrink-0" />
                   <span data-slot="onebot-tool-name" className="font-mono flex-1">
                     {tool.name}
                   </span>
-                  <span data-slot="onebot-tool-description" className="text-muted truncate max-w-40">
+                  <span data-slot="onebot-tool-description" className="text-text-secondary truncate max-w-40">
                     {t(`settings.tools.qq.${tool.name}`)}
                   </span>
-                  {tool.scope === 'group' && <Chip className="text-muted">{t('settings.tools.qqGroupOnly')}</Chip>}
-                  {tool.scope === 'private' && <Chip className="text-muted">{t('settings.tools.qqPrivateOnly')}</Chip>}
-                  {tool.admin_only === true && <Chip className="text-muted">{t('settings.tools.qqAdminOnly')}</Chip>}
-                  {tool.needs_approval === true && <Chip className="text-muted">{t('settings.tools.qqApproval')}</Chip>}
+                  {tool.scope === 'group' && (
+                    <Chip className="text-text-secondary">{t('settings.tools.qqGroupOnly')}</Chip>
+                  )}
+                  {tool.scope === 'private' && (
+                    <Chip className="text-text-secondary">{t('settings.tools.qqPrivateOnly')}</Chip>
+                  )}
+                  {tool.admin_only === true && (
+                    <Chip className="text-text-secondary">{t('settings.tools.qqAdminOnly')}</Chip>
+                  )}
+                  {tool.needs_approval === true && (
+                    <Chip className="text-text-secondary">{t('settings.tools.qqApproval')}</Chip>
+                  )}
                 </div>
               ))}
           </div>
@@ -335,7 +348,7 @@ export function ToolMarketplace() {
 
       <div data-slot="custom-tools">
         <div data-slot="custom-tools-header" className="flex items-center justify-between mb-2">
-          <h3 data-slot="custom-tools-title" className="text-sm font-medium">
+          <h3 data-slot="custom-tools-title" className="text-body-medium">
             {t('settings.tools.customSection')}
           </h3>
           <Button variant="outline" onPress={() => setShowCreate(!showCreate)}>
@@ -369,23 +382,25 @@ export function ToolMarketplace() {
               <Disclosure
                 key={ct.id}
                 id={ct.id}
-                className="flex w-full flex-col overflow-hidden rounded-lg border border-border"
+                className="flex w-full flex-col overflow-hidden rounded-lg border border-border-button-default"
               >
                 <Disclosure.Heading>
-                  {/* `flex` is not optional: HeroUI styles the indicator with
-                      `ms-auto` and `shrink-0`, which only mean anything inside a
+                  {/* `flex` is not optional: Disclosure.Indicator carries
+                      `shrink-0`, which only means something inside a
                       flex container. `text-start` undoes the button element's
                       centred UA default. */}
-                  <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2 text-start text-xs transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30">
-                    <Terminal className="w-3.5 h-3.5 shrink-0 text-muted" />
+                  <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2 text-start text-caption-1-regular transition-colors outline-none hover:bg-background-primary-hover/30 focus-visible:bg-background-secondary-default/30">
+                    <Terminal className="w-3.5 h-3.5 shrink-0 text-text-secondary" />
                     <span data-slot="custom-tool-name" className="font-mono min-w-0 flex-1 truncate">
                       {ct.name}
                     </span>
-                    <span data-slot="custom-tool-command" className="text-muted truncate">
+                    <span data-slot="custom-tool-command" className="text-text-secondary truncate">
                       {ct.command}
                     </span>
-                    {!ct.is_enabled && <Chip className="shrink-0 text-muted">{t('settings.tools.disabled')}</Chip>}
-                    <Disclosure.Indicator className="size-3.5 shrink-0 text-muted" />
+                    {!ct.is_enabled && (
+                      <Chip className="shrink-0 text-text-secondary">{t('settings.tools.disabled')}</Chip>
+                    )}
+                    <Disclosure.Indicator className="size-3.5 shrink-0 text-text-secondary" />
                   </Disclosure.Trigger>
                 </Disclosure.Heading>
                 {/* `min-h-0` is load-bearing: the card is a flex column, and a
@@ -427,7 +442,7 @@ export function ToolMarketplace() {
       </div>
 
       <div data-slot="tool-presets">
-        <h3 data-slot="tool-presets-title" className="text-sm font-medium mb-2">
+        <h3 data-slot="tool-presets-title" className="text-body-medium mb-2">
           {t('settings.tools.presetsSection')}
         </h3>
         <div data-slot="tool-preset-list" className="space-y-1">
@@ -437,15 +452,15 @@ export function ToolMarketplace() {
               <div
                 key={preset.id}
                 data-slot="tool-preset-row"
-                className="flex items-center gap-2 px-3 py-2 text-xs border border-border rounded-lg"
+                className="flex items-center gap-2 px-3 py-2 text-caption-1-regular border border-border-button-default rounded-lg"
               >
-                <span data-slot="tool-preset-name" className="font-medium flex-1">
+                <span data-slot="tool-preset-name" className="text-caption-1-medium flex-1">
                   {preset.name}
                 </span>
-                <span data-slot="tool-preset-count" className="text-muted">
+                <span data-slot="tool-preset-count" className="text-text-secondary">
                   {t('settings.tools.presetCount', { count: toolNames.length })}
                 </span>
-                {preset.is_builtin && <Chip className="text-muted">{t('settings.template.builtin')}</Chip>}
+                {preset.is_builtin && <Chip className="text-text-secondary">{t('settings.template.builtin')}</Chip>}
               </div>
             )
           })}

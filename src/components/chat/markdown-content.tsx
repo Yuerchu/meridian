@@ -4,12 +4,13 @@ import { marked } from 'marked'
 import ReactMarkdown, { defaultUrlTransform, type UrlTransform } from 'react-markdown'
 import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
+import { Focusable } from 'react-aria-components'
 import { openExternalUrl } from '@/lib/external-link'
 import { Check, Copy } from '@gravity-ui/icons'
-import { Link, Skeleton, Tooltip } from '@heroui/react'
+import { Link, Skeleton, Tooltip, TooltipTrigger } from '@/components/base'
 import type { Components } from 'react-markdown'
 
-import { markdownVariants } from '@heroui-pro/react/markdown'
+import { markdownVariants } from '@/components/base'
 
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { ActionButton } from '@/components/ui/action-button'
@@ -24,7 +25,7 @@ import {
   remarkFileReferences,
   type MarkdownFileReference,
 } from '@/lib/markdown-target'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { useFilePreview, type FilePreviewContextValue } from './file-preview-context'
 import { ShikiCode } from './shiki-code'
 import type { EmojiMap } from './emoji-renderer'
@@ -82,13 +83,13 @@ function FileReferenceButton({ reference }: { reference: MarkdownFileReference }
   const label = referenceLabel(reference)
 
   return (
-    <Tooltip delay={0}>
+    <TooltipTrigger delay={0}>
       <Link
         data-slot="markdown-file-reference"
         aria-label={label}
         isDisabled={!preview}
         onPress={() => preview?.openPreview(reference)}
-        className="mx-0.5 inline-flex min-w-0 max-w-full gap-1 rounded-md px-1.5 py-0.5 align-baseline font-mono text-xs"
+        className="mx-0.5 inline-flex min-w-0 max-w-full gap-1 rounded-md px-1.5 py-0.5 align-baseline font-mono text-caption-1-regular"
       >
         {icon && (
           <img data-slot="markdown-file-reference-icon" src={icon} alt="" aria-hidden className="size-3.5 shrink-0" />
@@ -97,8 +98,8 @@ function FileReferenceButton({ reference }: { reference: MarkdownFileReference }
           {markdownFileName(reference.path)}
         </span>
       </Link>
-      <Tooltip.Content>{label}</Tooltip.Content>
-    </Tooltip>
+      <Tooltip>{label}</Tooltip>
+    </TooltipTrigger>
   )
 }
 
@@ -149,7 +150,7 @@ export function CopyButton({ text, className }: { text: string; className?: stri
     <ActionButton
       label={t('chat.copy')}
       onClick={handleCopy}
-      className={cn('text-muted hover:text-foreground', className)}
+      className={cx('text-text-secondary hover:text-text-primary', className)}
     >
       {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
     </ActionButton>
@@ -163,7 +164,7 @@ function fenceLanguage(className: string | undefined): string {
 /**
  * A fenced block, or inline code when it fits on one line.
  *
- * The line test comes from Pro's own renderer, and is what the old
+ * The line test comes from the old renderer's own logic, and is what the old
  * `!className && !code.includes('\n')` guess was standing in for: a fence
  * without a language has no className either, so the two cases were only ever
  * distinguishable by their newline. The position is exact.
@@ -180,11 +181,10 @@ const CodeBlock: Components['code'] = ({ className, children, node, ...props }) 
     const value = String(children ?? '').trim()
     const reference = !isStreaming ? parseMarkdownFileCandidate(value) : null
     const fallback = (
-      <code
-        data-slot="markdown-inline-code"
-        className={cn('rounded-md bg-default px-1.5 py-0.5 text-xs', className)}
-        {...props}
-      >
+      // No classes of its own: the prose recipe's `prose-code:` variants
+      // (`markdown-variants.tsx`) outrank anything written here, so a fill or
+      // a size on this element was dead the whole time.
+      <code data-slot="markdown-inline-code" className={className} {...props}>
         {children}
       </code>
     )
@@ -196,17 +196,22 @@ const CodeBlock: Components['code'] = ({ className, children, node, ...props }) 
   const icon = languageIconUrl(language)
 
   return (
-    // Pro's classes without Pro's components: importing `CodeBlock` for its
-    // header would drag in `CodeBlock.Code`, and with it Shiki's full entry
-    // point — the whole reason `lib/shiki` exists. The stylesheet is already
-    // loaded, so the markup below looks the same either way.
+    // The old library's classes without its components: importing `CodeBlock`
+    // for its header would drag in `CodeBlock.Code`, and with it Shiki's full
+    // entry point — the whole reason `lib/shiki` exists. The stylesheet is
+    // already loaded, so the markup below looks the same either way.
     //
-    // The radius is ours: Pro's own is 16px, the composer's rung, one above
-    // what a card inside the transcript may take.
-    <div data-slot="markdown-code-block" className="code-block my-3 rounded-xl">
+    // The radius is ours: the old library's own was 16px, the composer's rung,
+    // one above what a card inside the transcript may take.
+    //
+    // `not-prose`, because the prose recipe reaches the `pre` inside otherwise
+    // (`prose-pre:` fill and radius, typography's own padding and margin) and
+    // draws a second box inside the block. The block styles itself, in
+    // `meridian.css`.
+    <div data-slot="markdown-code-block" className="code-block not-prose my-3 rounded-xl">
       <div data-slot="markdown-code-header" className="code-block__header">
         {icon && <img data-slot="markdown-code-icon" src={icon} alt="" aria-hidden className="size-4 shrink-0" />}
-        <span data-slot="markdown-code-language" className="text-xs text-muted">
+        <span data-slot="markdown-code-language" className="text-caption-1-regular text-text-secondary">
           {language}
         </span>
         {/* The only way to copy a single block — the long-press menu copies the
@@ -224,7 +229,7 @@ const CodeBlock: Components['code'] = ({ className, children, node, ...props }) 
 /**
  * A table, with somewhere for it to go when it does not fit.
  *
- * Pro styles `.markdown table` at `width: 100%` and stops there, which is an
+ * The old `.markdown table` style stopped at `width: 100%`, which is an
  * answer only for a table narrower than its column. Past that the cells stop at
  * their minimum content width and the table runs over the edge — and the bubble
  * around it is `overflow-hidden`, so the columns on the end were not clipped
@@ -246,14 +251,14 @@ const TableBlock: Components['table'] = ({ children, ...props }) => (
 )
 
 /**
- * Pro sets `list-inside`, which tucks a wrapped list item under its own marker,
- * and sizes `h3` at the body size. Both are fine for a short answer and wrong
- * for a long one, which is most of what lands here.
+ * The old defaults set `list-inside`, which tucks a wrapped list item under
+ * its own marker, and sized `h3` at the body size. Both are fine for a short
+ * answer and wrong for a long one, which is most of what lands here.
  */
-const markdownClasses = cn(
-  'text-sm leading-relaxed',
+const markdownClasses = cx(
+  'text-body-regular leading-relaxed',
   '[&_ul]:list-outside [&_ul]:ps-5 [&_ol]:list-outside [&_ol]:ps-5',
-  '[&_h3]:text-base',
+  '[&_h3]:text-headline-regular',
 )
 
 function preprocessEmojis(content: string, emojiMap?: EmojiMap): string {
@@ -336,24 +341,21 @@ const MarkdownAnchor: Components['a'] = ({ href, children, node: _node, ...props
     )
   }
 
-  // Where the link really goes, since `href` deliberately does not say. The
-  // anchor is its own trigger — rendered through `Tooltip.Trigger` rather than
-  // wrapped by it, so there is one tab stop and it is the link. `role` is put
-  // back: the trigger defaults to `button`, and this is not one.
+  // `Focusable` is what lets the anchor receive the trigger's hover and focus
+  // handlers, which React Aria hands down through context: a bare `<a>` never
+  // opened the tooltip — and the tooltip is the only place the real URL is
+  // shown, the visible `href` being a sentinel.
   return (
-    <Tooltip delay={300}>
-      <Tooltip.Trigger
-        role="link"
-        render={(triggerProps) => (
-          <a data-slot="markdown-external-link" {...(triggerProps as React.ComponentProps<'a'>)} {...anchorProps}>
-            {children}
-          </a>
-        )}
-      />
-      <Tooltip.Content placement="top" className="max-w-xs break-all">
+    <TooltipTrigger delay={300}>
+      <Focusable>
+        <a data-slot="markdown-external-link" role="link" {...anchorProps}>
+          {children}
+        </a>
+      </Focusable>
+      <Tooltip placement="top" className="max-w-xs break-all">
         {target.url}
-      </Tooltip.Content>
-    </Tooltip>
+      </Tooltip>
+    </TooltipTrigger>
   )
 }
 
@@ -400,7 +402,7 @@ function TrailedParagraph({
   ...props
 }: React.HTMLAttributes<HTMLParagraphElement> & { trailer: React.ReactNode; node?: unknown }) {
   return (
-    <p data-slot="markdown-trailed-paragraph" {...props} className={cn('flow-root', props.className)}>
+    <p data-slot="markdown-trailed-paragraph" {...props} className={cx('flow-root', props.className)}>
       {children}
       <span data-slot="markdown-trailer" className="float-right ml-2 mt-1.5">
         {trailer}
@@ -409,7 +411,7 @@ function TrailedParagraph({
   )
 }
 
-/** Pro's renderer with one deliberate seam: safe URL and text-node transforms. */
+/** A markdown renderer with one deliberate seam: safe URL and text-node transforms. */
 function LocalMarkdown({
   children,
   components,
@@ -497,8 +499,8 @@ function MarkdownImage({ alt = '', className, onError, onLoad, ...props }: React
       role={loaded ? undefined : 'status'}
       aria-busy={loaded ? undefined : true}
       aria-label={loaded ? undefined : t('common.loading')}
-      className={cn(
-        'relative my-3 block w-fit max-w-full overflow-hidden rounded-lg bg-default/20',
+      className={cx(
+        'relative my-3 block w-fit max-w-full overflow-hidden rounded-lg bg-background-secondary-default/20',
         !loaded && 'min-h-24 min-w-24',
       )}
     >
@@ -508,7 +510,7 @@ function MarkdownImage({ alt = '', className, onError, onLoad, ...props }: React
         alt={alt}
         loading="lazy"
         decoding="async"
-        className={cn(
+        className={cx(
           'block h-auto max-h-[70svh] max-w-full object-contain transition-opacity motion-reduce:transition-none',
           !loaded && 'opacity-0',
           className,
@@ -586,7 +588,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({
             <Hint
               data-slot="markdown-blocked-image"
               label={src}
-              className="my-3 block max-w-full truncate rounded-lg bg-default/30 px-3 py-2 text-xs text-muted"
+              className="my-3 block max-w-full truncate rounded-lg bg-background-secondary-default/30 px-3 py-2 text-caption-1-regular text-text-secondary"
             >
               {alt}
             </Hint>
@@ -614,7 +616,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({
   )
 
   return (
-    <div data-slot="markdown-content" className={cn(markdownClasses, className)}>
+    <div data-slot="markdown-content" className={cx(markdownClasses, className)}>
       {/* `id` seeds the keys of the memoised blocks, so it only has to be unique
           between renderers on screen — the key itself already hashes the block's
           own content. Falls back to a generated one. */}
@@ -632,7 +634,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({
         <span
           data-slot="markdown-cursor"
           // eslint-disable-next-line no-restricted-syntax -- the streaming caret blinks; it is a cursor, not a placeholder for content
-          className="ml-0.5 inline-block h-4 w-2 animate-pulse bg-current text-muted motion-reduce:animate-none"
+          className="ml-0.5 inline-block h-4 w-2 animate-pulse bg-current text-text-secondary motion-reduce:animate-none"
         />
       )}
     </div>

@@ -1,73 +1,8 @@
-/* HeroUI brings Tailwind and tw-animate-css with it, and declares the layer
-   order (theme, base, components, utilities) — importing Tailwind again here
-   would fight it. */
-@import '@heroui/styles';
-/* Kept for `shimmer`, `no-scrollbar` and the `data-*` variants; it defines no
-   colour tokens of its own, so it cannot collide with the theme above. */
-@import 'shadcn/tailwind.css';
-/* Pro ships its styles per component, and those files are *unlayered* — only
-   the full `@heroui-pro/react/css` bundle declares `@layer components`, and it
-   carries all seventy components. An unlayered rule outranks every layered one,
-   so without the explicit `layer()` here `.context-menu__trigger`'s
-   `display: inline-block` would beat any utility we put on the same element,
-   silently. One line per component we actually use. */
-@import '@heroui-pro/react/css/components/command.css' layer(components);
-@import '@heroui-pro/react/css/components/file-tree.css' layer(components);
-@import '@heroui-pro/react/css/components/list-view.css' layer(components);
-@import '@heroui-pro/react/css/components/inline-select.css' layer(components);
-@import '@heroui-pro/react/css/components/segment.css' layer(components);
-@import '@heroui-pro/react/css/components/cell-switch.css' layer(components);
-@import '@heroui-pro/react/css/components/floating-toc.css' layer(components);
-@import '@heroui-pro/react/css/components/resizable.css' layer(components);
-@import '@heroui-pro/react/css/components/kanban.css' layer(components);
-@import '@heroui-pro/react/css/components/context-menu.css' layer(components);
-@import '@heroui-pro/react/css/components/sidebar.css' layer(components);
-/* `Sidebar.Mobile` is a Pro `Sheet` underneath, and below 768px it is the only
-   way to reach the sidebar at all — Pro hides the panel itself at that width.
-   `sidebar.css` only dresses the sheet (width, corners); everything that
-   positions it lives here, so without this the drawer opened correctly and drew
-   nothing. */
-@import '@heroui-pro/react/css/components/sheet.css' layer(components);
-@import '@heroui-pro/react/css/components/emoji-picker.css' layer(components);
-@import '@heroui-pro/react/css/components/markdown.css' layer(components);
-@import '@heroui-pro/react/css/components/code-block.css' layer(components);
-@import '@heroui-pro/react/css/components/prompt-input.css' layer(components);
-@import '@heroui-pro/react/css/components/prompt-suggestion.css' layer(components);
-@import '@heroui-pro/react/css/components/chat-attachment.css' layer(components);
-@import '@heroui-pro/react/css/components/chat-loader.css' layer(components);
-@import '@heroui-pro/react/css/components/chat-source.css' layer(components);
-/* `ChatSource` renders its hover preview through Pro's HoverCard, and styles
-   only the trigger side of it (`.chat-source .hover-card__trigger`). Without
-   this the preview opens as unstyled text over the page. */
-@import '@heroui-pro/react/css/components/hover-card.css' layer(components);
-@import '@heroui-pro/react/css/components/empty-state.css' layer(components);
-@import '@heroui-pro/react/css/components/action-bar.css' layer(components);
-@import '@heroui-pro/react/css/components/chain-of-thought.css' layer(components);
-@import '@heroui-pro/react/css/components/rich-text-editor.css' layer(components);
-/* `ChainOfThought` renders `TextShimmer` while reasoning streams, so its styles
-   come along whether or not anything imports the component directly. */
-@import '@heroui-pro/react/css/components/text-shimmer.css' layer(components);
-/* The usage report. `kpi.css` dresses the cards; the two chart files map
-   recharts' own class names onto the theme, so without them the axes, grid and
-   tooltip cursor draw in recharts' defaults rather than in ours. */
-@import '@heroui-pro/react/css/components/kpi.css' layer(components);
-@import '@heroui-pro/react/css/components/bar-chart.css' layer(components);
-@import '@heroui-pro/react/css/components/area-chart.css' layer(components);
-@import '@heroui-pro/react/css/components/chart-tooltip.css' layer(components);
-/* The sticker table. `data-grid.css` only adds what the grid puts on top of a
-   table — the selection column, the sort caret, pinning — and reads
-   `.table__*`, which comes from `@heroui/styles` above; Pro's own `table.css`
-   is one rule, dropping the border under the last row, and without it the
-   grid's scroll container ends on a line that belongs to no row. */
-/* Settings → About groups its rows with these two. `item-card-group.css` is
-   what turns a column of cards into one surface with dividers; without it the
-   rows keep their own background and shadow and read as five separate cards. */
-@import '@heroui-pro/react/css/components/item-card.css' layer(components);
-@import '@heroui-pro/react/css/components/item-card-group.css' layer(components);
-@import '@heroui-pro/react/css/components/data-grid.css' layer(components);
-@import '@heroui-pro/react/css/components/table.css' layer(components);
-@import '@heroui-pro/react/css/components/widget.css' layer(components);
-@import '@fontsource-variable/geist';
+/* boardui foundation: tailwindcss, theme tokens, typography, animations. */
+@import './styles/globals.css';
+/* Meridian's own semantics on boardui primitives: fonts, status, bubbles,
+   scrollbars, safe-area insets, the motion boardui does not ship. */
+@import './styles/meridian.css';
 
 /* Plan review is a document surface with a sibling comment rail. The rail is
    selected by the page container, not by the window: a narrow split panel gets
@@ -95,18 +30,18 @@
   }
 }
 
-/* Pro's standalone RTE is a rounded field. Here the page already owns the
+/* The standalone editor is a rounded field. Here the page already owns the
    surface and scroll boundary, so the document uses the same tokens without
    stacking another card inside it. */
 .plan-review-rich-editor .rich-text-editor__shell {
   border: 0;
   border-radius: 0;
-  background: var(--surface);
+  background: var(--color-background-primary-default);
 }
 
 .plan-review-rich-editor .rich-text-editor__toolbar {
   flex-shrink: 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--color-border-button-default);
 }
 
 .plan-review-rich-editor .rich-text-editor__prosemirror {
@@ -120,30 +55,27 @@
 /* A comment anchor is both tinted and underlined, so it remains identifiable
    when status colours cannot be distinguished. */
 .plan-comment-highlight {
-  border-radius: calc(var(--radius) * 0.5);
-  background: color-mix(in oklab, var(--accent) 12%, transparent);
-  box-shadow: inset 0 -2px 0 var(--accent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--color-accent-500) 12%, transparent);
+  box-shadow: inset 0 -2px 0 var(--color-accent-500);
 }
 
 .plan-comment-highlight:hover {
-  outline: 1px solid var(--accent);
+  outline: 1px solid var(--color-accent-500);
   outline-offset: 1px;
-  cursor: pointer;
+  cursor: var(--cursor-interactive);
 }
 
 [data-slot='plan-review-page'] article[data-state='orphaned'] {
-  border-inline-start: 3px dashed var(--warning);
+  border-inline-start: 3px dashed var(--color-status-warning);
 }
 
-.plan-review-source,
-.plan-review-source > div,
-.plan-review-source [data-slot='textarea-wrapper'],
+/* `.plan-review-source` is the field shell (a `flex-col` and the column's
+   `flex-1` child); the textarea fills it. */
 .plan-review-source textarea {
-  min-height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
   height: 100%;
-}
-
-.plan-review-source textarea {
   resize: none;
   border-radius: 0;
   padding: 1.5rem clamp(1rem, 4cqi, 3rem) 6rem;
@@ -155,15 +87,13 @@
    are independent declarations: where `tan()` is unsupported the gradient's
    width cannot be resolved and the whole `background` shorthand is dropped —
    but the transparent fill still applies, and the text disappears rather than
-   degrading. Pro ships a fallback for `prefers-reduced-motion` and nothing
-   else, so this is the same set of declarations keyed on the feature instead.
-   Deliberately unlayered, to outrank the import above.
+   degrading. Keyed on the feature rather than on reduced motion.
 
    Android WebView tracks the system, so a device old enough to lack `tan()` is
    a device this would otherwise show blank labels on. Settings → Developer
    probes for both this and `oklch(from …)`. */
 @supports not (width: calc(1px * tan(45deg))) {
-  .text-shimmer {
+  [data-slot='text-shimmer'] {
     -webkit-text-fill-color: unset;
     color: currentColor;
     background: none;
@@ -171,38 +101,12 @@
   }
 }
 
-/* Pro hides the sidebar panel outright below 768px and offers it as a drawer
-   instead, but the inset look on the main area is keyed on the panel merely
-   being in the DOM (`:has(.sidebar--inset)`), which a hidden element still
-   satisfies. So a narrow window got a rounded, bordered card floating inside
-   its own frame with nothing beside it to be inset from.
-
-   Unlayered on purpose, to outrank the import.
-
-   Chrome only — no height. This block used to restore `min-height: 100svh`
-   here, to undo the `- 1rem` Pro subtracts for margins that are being removed
-   two lines up. Being unlayered, that outranked every utility, including the
-   `min-h-0` on `Sidebar.Main` that lets the frame shrink when the soft keyboard
-   opens: below 768px the pane stayed a full screen tall, the keyboard inset on
-   the provider pushed the composer out through `overflow-hidden`, and the
-   keyboard covered it. Nothing needs a floor at all — the pane is a stretched
-   flex item and takes the provider's height either way. Height belongs to
-   `app-shell.tsx`, in one place, where the keyboard can reach it. */
-@media (max-width: 768px) {
-  .sidebar__provider:has(.sidebar--inset) .sidebar__main {
-    margin: 0;
-    border-width: 0;
-    border-radius: 0;
-  }
-}
-
 /* A group header's own buttons — new-conversation and the "…" menu — appear on
-   hover, the way Pro shows a row's `.sidebar__menu-actions`; a group label is
-   not a menu item, so that rule cannot reach it and this one stands in.
-   Opacity rather than `display`, because a `display: none` button is skipped
-   by the tab order and these have to stay reachable by keyboard —
-   `:focus-within` is what shows them to it. Always visible in the mobile
-   sheet, where there is no hover to reveal them. */
+   hover, the way a row's `.sidebar__menu-actions` do; a group label is not a
+   tree row, so that rule cannot reach it and this one stands in. Opacity rather
+   than `display`, because a `display: none` button is skipped by the tab order
+   and these have to stay reachable by keyboard — `:focus-within` is what shows
+   them to it. Always visible in the mobile sheet, where there is no hover. */
 .sidebar-group-actions {
   opacity: 0;
 }
@@ -226,7 +130,7 @@
 }
 
 /* Hovering a row swaps the time-ago chip for the action buttons. At the
-   panel's density a 240px row cannot hold the title, the chip *and* the
+   panel's density a 260px row cannot hold the title, the chip *and* the
    hover-revealed grip and menu button; the time is the one of those a pointer
    resting on the row has the least need of, and the tooltip repeats it in
    full. */
@@ -236,234 +140,35 @@
 
 /* Where a dragged conversation would land. React Aria marks the row under the
    pointer with `data-drop-target`, the whole list when the drop is a root
-   drop, and a group header's `DropZone` likewise; Pro has no styles for any of
-   them, so an unstyled drag gives no sign of what letting go would do.
-   `--accent` is the action colour. */
+   drop, and a group header's `DropZone` likewise. */
 .sidebar__menu-item[data-drop-target] .sidebar__menu-item-content {
-  box-shadow: inset 0 0 0 1px var(--accent);
+  box-shadow: inset 0 0 0 1px var(--color-accent-500);
 }
 .sidebar__menu[data-drop-target] {
-  outline: 1px dashed var(--accent);
+  outline: 1px dashed var(--color-accent-500);
   outline-offset: -1px;
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
 }
 .sidebar-group-drop[data-drop-target] {
-  box-shadow: inset 0 0 0 1px var(--accent);
-  background-color: color-mix(in srgb, var(--accent) 10%, transparent);
-}
-
-/* Pro declares `--sidebar-width: 240px` on both `.sidebar` and the wrapper
-   independently. Redirect both to a custom property so a single assignment
-   on any ancestor controls the width. Unlayered to outrank the import. */
-.sidebar,
-.sidebar__offcanvas-wrapper {
-  --sidebar-width: var(--app-sidebar-width, 240px);
-}
-
-/* HeroUI ships a `dark` variant that also falls back to `prefers-color-scheme`.
-   Ours is deliberate: the theme is an explicit setting, and a dark OS must not
-   darken an app the user asked to keep light. Declared after the import so it
-   wins. */
-@custom-variant dark (&:is(.dark *));
-
-/* HeroUI already maps every one of its own tokens to a Tailwind colour utility
-   (`themes/shared/theme.css`), including the whole radius scale. Only what the
-   project adds on top needs mapping here. */
-@theme inline {
-  --font-sans: 'Geist Variable', sans-serif;
-  /* HeroUI has success, warning and danger but no informational colour. */
-  --color-info: var(--info);
-  /* HeroUI derives a `-soft-foreground` for each status but maps none of them to
-     a colour utility. These are what status *text* uses: the base tokens are
-     tuned as fills, and green and amber at that weight are unreadable on a light
-     panel (2.2:1 and 2.1:1 measured). Mixed with the foreground they clear AA in
-     both themes without the fills moving. */
-  --color-success-soft-foreground: var(--success-soft-foreground);
-  --color-warning-soft-foreground: var(--warning-soft-foreground);
-  --color-danger-soft-foreground: var(--danger-soft-foreground);
-  --color-info-soft-foreground: var(--info-soft-foreground);
-}
-
-/*
- * Theme values.
- *
- * Deliberately outside `@layer`: HeroUI defines its defaults in `layer(theme)`,
- * and an unlayered rule outranks every layer. This is the documented way to
- * override them.
- *
- * The palette is neutral grey by design — HeroUI's own defaults carry a
- * blue-violet cast (the 285.89 hue running through its greys) that does not
- * belong here.
- */
-:root {
-  --font-sans: 'PingFang SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'Maple Mono NF CN', ui-monospace, 'Cascadia Code', monospace;
-
-  --radius: 0.5rem;
-
-  /* Not white. A HeroUI card carries no border — it is told apart by being
-     lighter than the page beneath it, plus a soft shadow. With the page at
-     white there was nothing for `--surface` to lift off, and every `bg-surface`
-     in the app resolved to the same colour as the page. The ladder below is
-     HeroUI's: the page in the middle, panels above it, wells below. */
-  --background: oklch(0.97 0 0);
-  --foreground: oklch(0.145 0 0);
-
-  /* Panels — cards, disclosure groups, anything non-floating. Above the page. */
-  --surface: oklch(1 0 0);
-  --surface-foreground: oklch(0.145 0 0);
-  /* Below the page: wells sunk into a panel, not panels themselves. */
-  --surface-secondary: oklch(0.952 0 0);
-  --surface-secondary-foreground: oklch(0.205 0 0);
-  --surface-tertiary: oklch(0.937 0 0);
-  --surface-tertiary-foreground: oklch(0.205 0 0);
-
-  /* Floating things — tooltips, popovers, menus, modals. */
-  --overlay: oklch(1 0 0);
-  --overlay-foreground: oklch(0.145 0 0);
-
-  /* `muted` is a *text* colour in HeroUI, the opposite of what it meant under
-     shadcn. What used to be `--muted` (a pale background) is `--default`. */
-  --muted: oklch(0.556 0 0);
-  /* Darker than the page, so a hover wash still reads once the page is grey. */
-  --default: oklch(0.94 0 0);
-  --default-foreground: oklch(0.205 0 0);
-
-  /* The main action colour: HeroUI reads it for Button primary, Switch and
-     Slider fills, and focus rings. Meridian has no brand colour, so this stays
-     the near-black it has always been — a brand colour later is this one value. */
-  --accent: oklch(0.205 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-
-  --danger: oklch(0.577 0.245 27.325);
-  --danger-foreground: oklch(0.985 0 0);
-  --success: oklch(72.3% 0.219 149.579);
-  --success-foreground: oklch(0.145 0 0);
-  --warning: oklch(76.9% 0.188 70.08);
-  --warning-foreground: oklch(0.145 0 0);
-  /* Project extension: HeroUI has no informational colour. The soft foreground
-     follows the formula HeroUI uses for its own three (`themes/default`). */
-  --info: oklch(62.3% 0.214 259.815);
-  --info-soft-foreground: color-mix(in oklab, var(--info) 80%, var(--foreground) 60%);
-
-  /* Project extension. Pro's charts read `--chart-1`..`--chart-4` and nothing
-     defines them here: they live in Pro's own base theme, which this project
-     does not import — only the per-component files below the layer note above.
-     Undefined they resolve to nothing and every series draws transparent.
-
-     Categorical, not a ramp of one hue: these separate series that have no
-     order between them (a provider, a model), so they have to be told apart at
-     a glance and by someone who cannot tell red from green. Kept clear of
-     `--success` / `--warning` / `--danger`, which mean something in this app —
-     a series that happened to land on the warning colour would read as a
-     warning. `--chart-3` is deliberately `--info`, so a chart of one series
-     matches the informational accent everything else uses. */
-  --chart-1: oklch(70.2% 0.183 293.5);
-  --chart-2: oklch(74.6% 0.136 196.1);
-  --chart-3: var(--info);
-  --chart-4: oklch(66.8% 0.196 330.2);
-
-  /* Project extension. The two bubble fills of the transcript, as tokens of
-     their own rather than `bg-accent` and `bg-default` written at the call
-     site. What a message bubble is filled with is a first-class decision — it
-     is the one colour on screen that says who is speaking — and it is not the
-     same decision as "the main action colour" or "the neutral hover wash",
-     even while it happens to share their values. Referenced, so the dark theme
-     follows without a second definition; retune here, not in the component. */
-  --bubble-user: var(--accent);
-  --bubble-user-foreground: var(--accent-foreground);
-  --bubble-assistant: var(--default);
-  --bubble-assistant-foreground: var(--foreground);
-
-  --border: oklch(0.922 0 0);
-  --separator: oklch(0.922 0 0);
-  /* Not `var(--accent)` as HeroUI defaults it: a near-black focus ring on a
-     near-black button is invisible. */
-  --focus: oklch(0.708 0 0);
-
-  --field-background: oklch(1 0 0);
-  --field-foreground: oklch(0.145 0 0);
-  --field-border: oklch(0.922 0 0);
-  --field-placeholder: oklch(0.556 0 0);
-  /* HeroUI defaults this to 0 and tells a field apart by its fill and a soft
-     shadow instead. That reads on their surfaces; here the page is grey, panels
-     are white and so are fields, which leaves the shadow doing the work alone —
-     and `--field-border` was already set to a colour nothing was drawing.
-     Everything that reads it follows: Input, TextArea, Select's trigger, and
-     Pro's PromptInput shell. */
-  --field-border-width: 1px;
-
-  --scrollbar-thumb: oklch(0.922 0 0);
-  --scrollbar-track: transparent;
-}
-
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-
-  --surface: oklch(0.205 0 0);
-  --surface-foreground: oklch(0.985 0 0);
-  --surface-secondary: oklch(0.269 0 0);
-  --surface-secondary-foreground: oklch(0.985 0 0);
-  --surface-tertiary: oklch(0.31 0 0);
-  --surface-tertiary-foreground: oklch(0.985 0 0);
-
-  --overlay: oklch(0.205 0 0);
-  --overlay-foreground: oklch(0.985 0 0);
-
-  --muted: oklch(0.708 0 0);
-  --default: oklch(0.269 0 0);
-  --default-foreground: oklch(0.985 0 0);
-
-  --accent: oklch(0.922 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-
-  --danger: oklch(0.704 0.191 22.216);
-  --danger-foreground: oklch(0.985 0 0);
-  --success: oklch(79.2% 0.209 151.711);
-  --success-foreground: oklch(0.145 0 0);
-  --warning: oklch(82.8% 0.189 84.429);
-  --warning-foreground: oklch(0.145 0 0);
-  --info: oklch(70.7% 0.165 254.624);
-  /* Less foreground in the mix than the light theme takes, matching the ratio
-     HeroUI uses for its own three: on a dark panel the hue already reads. */
-  --info-soft-foreground: color-mix(in oklab, var(--info) 80%, var(--foreground) 30%);
-
-  /* Lifted and desaturated against the dark panel, the same way the four above
-     are tuned for a white one. */
-  --chart-1: oklch(76.9% 0.152 293.5);
-  --chart-2: oklch(80.4% 0.114 196.1);
-  --chart-3: var(--info);
-  --chart-4: oklch(73.1% 0.163 330.2);
-
-  --border: oklch(1 0 0 / 10%);
-  --separator: oklch(1 0 0 / 10%);
-  --focus: oklch(0.556 0 0);
-
-  --field-background: oklch(0.205 0 0);
-  --field-foreground: oklch(0.985 0 0);
-  --field-border: oklch(1 0 0 / 15%);
-  --field-placeholder: oklch(0.708 0 0);
-
-  --scrollbar-thumb: oklch(1 0 0 / 10%);
-  --scrollbar-track: transparent;
-}
-
-body {
-  margin: 0;
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
+  box-shadow: inset 0 0 0 1px var(--color-accent-500);
+  background-color: color-mix(in srgb, var(--color-accent-500) 10%, transparent);
 }
 
 @layer base {
   * {
-    @apply border-border outline-focus/50;
+    outline-color: color-mix(in srgb, var(--color-border-focus-ring) 50%, transparent);
   }
   body {
-    @apply bg-background text-foreground;
+    margin: 0;
+    background-color: var(--color-background-full);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
   }
   html {
-    @apply font-sans overflow-hidden h-full;
+    height: 100%;
+    overflow: hidden;
+    font-family: var(--font-sans);
     -webkit-tap-highlight-color: transparent;
     overscroll-behavior: none;
     /* Kills double-tap-to-zoom, which the viewport meta alone does not always
@@ -474,15 +179,15 @@ body {
   }
   body,
   #root {
-    @apply h-full overflow-hidden;
+    height: 100%;
+    overflow: hidden;
     overscroll-behavior: none;
   }
-  /* 全局把原生滚动条对齐 HeroUI 的 --scrollbar-thumb。
-     注意这些规则是全局的最终答案，不是可以被覆盖的默认值：Chromium 一旦发现
-     ::-webkit-scrollbar 被指定了宽度，就整个忽略 scrollbar-width，所以
-     HeroUI 的 `scrollbar` / `scrollbar-thin` 在本项目里不产生任何效果。
-     `scrollbar-none` 是例外——隐藏滚动条仍然生效。要改某处滚动条的样子，
-     写 ::-webkit-scrollbar 而不是加 scrollbar-* utility。 */
+  /* Native scrollbars, globally. Chromium ignores `scrollbar-width` once
+     ::-webkit-scrollbar has a size, so these are the final answer rather than a
+     default: to change a scrollbar somewhere, write ::-webkit-scrollbar rules,
+     not a `scrollbar-*` utility. `scrollbar-none` is the exception — hiding
+     still works. */
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
@@ -501,7 +206,7 @@ body {
     background-clip: content-box;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background-color: var(--focus);
+    background-color: var(--color-border-button-hover);
   }
 }
 
@@ -512,67 +217,6 @@ img.emoji-sticker {
   max-height: 120px;
   width: auto;
   height: auto;
-}
-
-:root {
-  --safe-top: var(--native-inset-top, env(safe-area-inset-top, 0px));
-  --safe-bottom: var(--native-inset-bottom, env(safe-area-inset-bottom, 0px));
-  /* Zero in portrait, which is why these went unnoticed: a cutout only takes a
-     side once the phone is turned, and then it takes a whole column of text
-     with it. */
-  --safe-left: var(--native-inset-left, env(safe-area-inset-left, 0px));
-  --safe-right: var(--native-inset-right, env(safe-area-inset-right, 0px));
-}
-
-/* HeroUI places the top toast region at a flat `top: 1rem`, which on a phone is
-   behind the status bar and, on one with a cutout, behind the cutout. Nothing
-   else in the app has this problem: every other frame element is inside the
-   shell, which pads itself. The region is `fixed` and therefore is not. */
-@layer components {
-  .toast-region--top,
-  .toast-region--top-start,
-  .toast-region--top-end {
-    top: max(1rem, var(--safe-top));
-  }
-  /* The sides matter in landscape and only there: the region is
-     `calc(100vw - 2rem)` wide and centred, so it leaves 16px each side — less
-     than a cutout takes once the phone is turned, and the cutout is on the long
-     edge. Zero in portrait, which is why this went unnoticed alongside the
-     `top` rule above. */
-  .toast-region--top,
-  .toast-region--top-start,
-  .toast-region--top-end,
-  .toast-region--bottom,
-  .toast-region--bottom-start,
-  .toast-region--bottom-end {
-    padding-left: var(--safe-left);
-    padding-right: var(--safe-right);
-  }
-  .toast-region--bottom,
-  .toast-region--bottom-start,
-  .toast-region--bottom-end {
-    bottom: max(1rem, var(--safe-bottom));
-  }
-}
-
-/* HeroUI ships `scrollbar`, `scrollbar-thin`, `scrollbar-default` and
-   `scrollbar-none`; these three are the ones it has no equivalent for. */
-@utility scrollbar-gutter-stable {
-  scrollbar-gutter: stable;
-}
-
-@utility scrollbar-thumb-transparent {
-  scrollbar-color: transparent transparent;
-  &::-webkit-scrollbar-thumb {
-    background-color: transparent;
-  }
-}
-
-@utility scrollbar-track-transparent {
-  scrollbar-color: transparent transparent;
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
 }
 
 /* `any-pointer`, not `pointer`. `pointer` describes the *primary* pointer only,
@@ -602,6 +246,7 @@ img.emoji-sticker {
    final backstop. The icon or status text remains visible; only movement stops. */
 @media (prefers-reduced-motion: reduce) {
   .animate-spin,
+  .animate-spin-fast,
   .animate-pulse,
   .animate-bounce {
     animation: none !important;

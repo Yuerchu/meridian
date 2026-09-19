@@ -1,9 +1,9 @@
 import { memo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, Copy } from '@gravity-ui/icons'
-import { Button, Tooltip } from '@heroui/react'
+import { Button, Tooltip, TooltipTrigger } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import type { LogEntryInfoResponse } from '@/types'
 import { LogLevelBadge } from './log-level-badge'
 
@@ -65,27 +65,30 @@ function LogRowImpl({ entry }: { entry: LogEntryInfoResponse }) {
   return (
     <div
       data-slot="log-row"
-      className={cn(
-        'group grid grid-cols-[auto_1fr_auto] items-start gap-x-3 gap-y-1 border-b border-border px-3 py-2 last:border-b-0',
-        isError && 'bg-danger-soft',
+      className={cx(
+        'group grid grid-cols-[auto_1fr_auto] items-start gap-x-3 gap-y-1 border-b border-border-button-default px-3 py-2 last:border-b-0',
+        isError && 'bg-status-danger-soft',
       )}
     >
-      <span data-slot="log-row-time" className="font-mono text-xs tabular-nums text-muted">
+      <span data-slot="log-row-time" className="font-mono text-caption-1-regular tabular-nums text-text-secondary">
         {time}
       </span>
 
       <div data-slot="log-row-body" className="min-w-0 space-y-1">
         <div data-slot="log-row-meta" className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <LogLevelBadge level={entry.level} />
-          <span data-slot="log-row-target" className="truncate font-mono text-xs text-muted">
+          <span data-slot="log-row-target" className="truncate font-mono text-caption-1-regular text-text-secondary">
             {entry.target}
           </span>
         </div>
-        <p data-slot="log-row-message" className="text-sm break-words text-foreground">
+        <p data-slot="log-row-message" className="text-body-regular break-words text-text-primary">
           {entry.msg}
         </p>
         {fields.length > 0 && (
-          <div data-slot="log-row-fields" className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-xs text-muted">
+          <div
+            data-slot="log-row-fields"
+            className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-caption-1-regular text-text-secondary"
+          >
             {fields.map(([key, value]) => (
               <span key={key} data-slot="log-row-field" className="break-all">
                 {key}={renderValue(value)}
@@ -95,12 +98,12 @@ function LogRowImpl({ entry }: { entry: LogEntryInfoResponse }) {
         )}
       </div>
 
-      <Tooltip delay={0}>
+      <TooltipTrigger delay={0}>
         <Button
-          isIconOnly
+          iconOnly
           data-slot="log-row-copy"
           variant="ghost"
-          size="sm"
+          size="small"
           aria-label={t('settings.about.logs.copyRecord')}
           onPress={onCopy}
           // Focus-visible alone does not rescue this on a touch screen, where a
@@ -110,8 +113,8 @@ function LogRowImpl({ entry }: { entry: LogEntryInfoResponse }) {
         >
           {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
         </Button>
-        <Tooltip.Content>{t('settings.about.logs.copyRecord')}</Tooltip.Content>
-      </Tooltip>
+        <Tooltip>{t('settings.about.logs.copyRecord')}</Tooltip>
+      </TooltipTrigger>
     </div>
   )
 }

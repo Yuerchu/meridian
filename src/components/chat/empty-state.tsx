@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { EmptyState as ProEmptyState, PromptSuggestion } from '@heroui-pro/react'
+import { EmptyState as ProEmptyState } from '@/components/base'
+import { PromptSuggestion } from '@/components/base'
 
 import { useIsOffline } from '@/hooks/use-connection-state'
 import { usePlatform } from '@/hooks/use-platform'
@@ -25,7 +26,7 @@ export function StarterPrompts({ disabled, onSelect }: { disabled?: boolean; onS
     <PromptSuggestion>
       <PromptSuggestion.Items>
         {STARTER_PROMPT_KEYS.map((key) => (
-          <PromptSuggestion.Item key={key} isDisabled={disabled} onPress={() => onSelect(t(key))}>
+          <PromptSuggestion.Item key={key} disabled={disabled} onClick={() => onSelect(t(key))}>
             {t(key)}
           </PromptSuggestion.Item>
         ))}
@@ -188,7 +189,7 @@ export function EmptyState({ onSubmit, onCreate, onOpenSettingsTab, disabled, ac
     <div data-slot="empty-state" className="flex h-full overflow-y-auto px-4">
       <ProEmptyState size="lg" className="mx-auto my-auto w-full max-w-2xl gap-6 px-0 py-8">
         <ProEmptyState.Header>
-          <ProEmptyState.Title className="text-xl font-medium">{t('chat.empty.subtitle')}</ProEmptyState.Title>
+          <ProEmptyState.Title className="text-title-2-medium">{t('chat.empty.subtitle')}</ProEmptyState.Title>
         </ProEmptyState.Header>
         <ProEmptyState.Content className="w-full gap-4">
           <InputBar
@@ -225,7 +226,11 @@ export function EmptyState({ onSubmit, onCreate, onOpenSettingsTab, disabled, ac
             onRemoveSticker={() => setPendingSticker(null)}
           />
           {submitError && (
-            <p data-slot="empty-state-error" role="alert" className="break-words px-2 text-xs text-danger">
+            <p
+              data-slot="empty-state-error"
+              role="alert"
+              className="break-words px-2 text-caption-1-regular text-status-danger"
+            >
               {submitError}
             </p>
           )}

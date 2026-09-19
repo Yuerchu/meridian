@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { Microphone, TrashBin } from '@gravity-ui/icons'
 
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import type { AndroidVoiceState } from '@/hooks/use-android-voice-recorder'
 
 interface VoiceOverlayProps {
@@ -67,13 +67,13 @@ export function VoiceOverlay({ state, elapsed, peak }: VoiceOverlayProps) {
       // and someone then held the button. The variable is set on `<html>`
       // (`use-android-insets`), so anything portalled can still read it, and it
       // is undefined everywhere but Android — hence the fallback.
-      className={cn(
+      className={cx(
         'pointer-events-none fixed inset-x-0 bottom-0 z-50 flex h-1/2 flex-col items-center justify-end gap-6',
         'pb-[calc(6rem+var(--ime-bottom,0px))]',
         'bg-gradient-to-t',
         cancelling
-          ? 'from-danger via-danger/80 to-transparent text-danger-foreground'
-          : 'from-overlay via-overlay/85 to-transparent text-overlay-foreground',
+          ? 'from-status-danger via-status-danger/80 to-transparent text-status-danger-foreground'
+          : 'from-background-primary-default via-background-primary-default/85 to-transparent text-text-primary',
       )}
     >
       {/* Only state transitions are announced. The timer and level meter update
@@ -83,7 +83,7 @@ export function VoiceOverlay({ state, elapsed, peak }: VoiceOverlayProps) {
       </span>
       <div data-slot="voice-overlay-state" className="flex flex-col items-center gap-3">
         {cancelling ? <TrashBin className="size-8" /> : <Microphone className="size-8" />}
-        <span data-slot="voice-overlay-label" aria-hidden="true" className="text-base font-medium">
+        <span data-slot="voice-overlay-label" aria-hidden="true" className="text-headline-medium">
           {statusText}
         </span>
       </div>
@@ -106,7 +106,11 @@ export function VoiceOverlay({ state, elapsed, peak }: VoiceOverlayProps) {
               )
             })}
           </div>
-          <span data-slot="voice-overlay-timer" aria-hidden="true" className="text-sm tabular-nums opacity-80">
+          <span
+            data-slot="voice-overlay-timer"
+            aria-hidden="true"
+            className="text-body-regular tabular-nums opacity-80"
+          >
             {remaining <= 10
               ? t('chat.voice.secondsLeft', { count: remaining })
               : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`}

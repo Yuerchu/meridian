@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { PromptInput } from '@heroui-pro/react/prompt-input'
+import { PromptInput } from '@/components/base'
 
 import i18n from '@/i18n'
 import { PromptQueue } from './prompt-queue'
@@ -57,7 +57,7 @@ function rowFor(text: string) {
 }
 
 describe('PromptQueue', () => {
-  it('nests an interjection under the current run with Pro’s ↳, and leaves a follow-up as a sibling', () => {
+  it('nests an interjection under the current run with the ↳ mark, and leaves a follow-up as a sibling', () => {
     mount(
       <PromptQueue
         {...NOOP}

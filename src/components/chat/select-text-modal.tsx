@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Button, Modal } from '@heroui/react'
+import { Button, Modal } from '@/components/base'
 
 /**
  * Somewhere to select part of a message with a finger.
@@ -29,7 +29,7 @@ export function SelectTextModal({
   return (
     <Modal.Backdrop isOpen={isOpen} onOpenChange={onOpenChange}>
       <Modal.Container size="cover" placement="center">
-        {/* Portalled to the body, so no ancestor's inset reaches it: HeroUI's
+        {/* Portalled to the body, so no ancestor's inset reaches it: Modal's
             own padding is all that stands between the footer buttons and the
             navigation bar, and under 3-button navigation that is not enough. */}
         <Modal.Dialog
@@ -39,7 +39,7 @@ export function SelectTextModal({
           <Modal.CloseTrigger />
           <Modal.Header>
             <Modal.Heading>{t('contextMenu.selectText')}</Modal.Heading>
-            <p data-slot="select-text-hint" className="mt-1.5 text-sm text-muted">
+            <p data-slot="select-text-hint" className="mt-1.5 text-body-regular text-text-secondary">
               {t('contextMenu.selectTextHint')}
             </p>
           </Modal.Header>
@@ -49,7 +49,7 @@ export function SelectTextModal({
                 selection off, and this is the one place that must have it. */}
             <p
               data-slot="select-text-body"
-              className="text-sm leading-relaxed whitespace-pre-wrap wrap-break-word select-text"
+              className="text-body-regular leading-relaxed whitespace-pre-wrap wrap-break-word select-text"
             >
               {text}
             </p>

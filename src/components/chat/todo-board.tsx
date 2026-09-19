@@ -1,8 +1,8 @@
 import { useTranslation } from 'react-i18next'
-import { Kanban } from '@heroui-pro/react/kanban'
+import { Kanban } from '@/components/base'
 
 import type { TodoItemStatus } from '@/types'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { TodoStatusIcon, type TodoDraft } from './todo-list'
 
 const COLUMNS: readonly TodoItemStatus[] = ['pending', 'in_progress', 'completed']
@@ -36,7 +36,7 @@ export default function TodoBoard({ todos, className }: { todos: TodoDraft[]; cl
     <Kanban
       size="sm"
       aria-label={t('chat.todo.board')}
-      className={cn('[--kanban-column-min-width:200px] [--kanban-column-height:auto]', className)}
+      className={cx('[--kanban-column-min-width:200px] [--kanban-column-height:auto]', className)}
     >
       {COLUMNS.map((status) => {
         const items = todos.filter((todo) => todo.status === status)
@@ -46,14 +46,16 @@ export default function TodoBoard({ todos, className }: { todos: TodoDraft[]; cl
               <Kanban.ColumnIndicator>
                 <TodoStatusIcon status={status} />
               </Kanban.ColumnIndicator>
-              <Kanban.ColumnTitle className="text-xs">{t(`chat.todo.status.${status}`)}</Kanban.ColumnTitle>
+              <Kanban.ColumnTitle className="text-caption-1-regular">
+                {t(`chat.todo.status.${status}`)}
+              </Kanban.ColumnTitle>
               <Kanban.ColumnCount>{items.length}</Kanban.ColumnCount>
             </Kanban.ColumnHeader>
             <Kanban.ColumnBody>
               <Kanban.CardList
                 aria-label={t(`chat.todo.status.${status}`)}
                 renderEmptyState={() => (
-                  <span data-slot="todo-board-empty" className="text-xs text-muted">
+                  <span data-slot="todo-board-empty" className="text-caption-1-regular text-text-secondary">
                     {t('chat.todo.emptyColumn')}
                   </span>
                 )}
@@ -65,13 +67,13 @@ export default function TodoBoard({ todos, className }: { todos: TodoDraft[]; cl
                     and three columns of `0` are not. */}
                 {items.map((todo, i) => (
                   <Kanban.Card key={i} id={`${status}:${i}`} textValue={todo.content}>
-                    <div data-slot="todo-board-card-body" className="p-2.5 text-xs">
+                    <div data-slot="todo-board-card-body" className="p-2.5 text-caption-1-regular">
                       <span
                         data-slot="todo-board-card-text"
-                        className={cn(
-                          status === 'completed' && 'text-muted line-through',
-                          status === 'in_progress' && 'font-medium text-foreground',
-                          status === 'pending' && 'text-muted',
+                        className={cx(
+                          status === 'completed' && 'text-text-secondary line-through',
+                          status === 'in_progress' && 'text-caption-1-medium text-text-primary',
+                          status === 'pending' && 'text-text-secondary',
                         )}
                       >
                         {todo.content}

@@ -1,6 +1,6 @@
 // An icon-only pressable needs a <Tooltip> around it *and* an accessible name.
 //
-// Two obligations, checked independently, because HeroUI's Tooltip contributes
+// Two obligations, checked independently, because a React Aria tooltip contributes
 // `aria-describedby` only: it describes the control and never names it. The
 // first version of this rule accepted a tooltip ancestor as the whole answer
 // and returned before it ever looked for a name, so
@@ -75,9 +75,9 @@ function hasNoVisibleText(element) {
 function isTooltipElement(node) {
   if (node.type !== 'JSXElement') return false
   const n = node.openingElement.name
-  if (n.type === 'JSXIdentifier') return /Tooltip$/.test(n.name)
+  if (n.type === 'JSXIdentifier') return /Tooltip$|^TooltipTrigger$|TooltipTrigger$/.test(n.name)
   if (n.type === 'JSXMemberExpression') {
-    return n.object.type === 'JSXIdentifier' && /Tooltip$/.test(n.object.name)
+    return n.object.type === 'JSXIdentifier' && /Tooltip$|^TooltipTrigger$|TooltipTrigger$/.test(n.object.name)
   }
   return false
 }
@@ -96,7 +96,7 @@ export default {
     schema: [],
     messages: {
       needsTooltip:
-        'Icon-only control without a <Tooltip>. Wrap it: <Tooltip delay={0}>…<Tooltip.Content>label</Tooltip.Content></Tooltip>, keeping aria-label on the control (a tooltip describes, it does not name). A wrapper that expects its caller to supply the tooltip disables this line with a reason.',
+        'Icon-only control without a <TooltipTrigger>. Wrap it: <TooltipTrigger>…<Tooltip>label</Tooltip></TooltipTrigger>, keeping aria-label on the control (a tooltip describes, it does not name). A wrapper that expects its caller to supply the tooltip disables this line with a reason.',
       needsLabel:
         'Icon-only control with no accessible name. Add aria-label (or aria-labelledby) to the control itself — a Tooltip only contributes aria-describedby, so it describes the control without naming it, and a wrapped button is still anonymous to a screen reader. A wrapper whose caller supplies the name disables this line with a reason.',
     },

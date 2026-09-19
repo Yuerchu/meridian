@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FaceSmile, Magnifier } from '@gravity-ui/icons'
-import { Button, ScrollShadow, SearchField, Tooltip } from '@heroui/react'
-import { ChatLoader, EmojiPicker as ProEmojiPicker } from '@heroui-pro/react'
+import { Button, ScrollShadow, SearchField, Tooltip, TooltipTrigger } from '@/components/base'
+import { ChatLoader, EmojiPicker as ProEmojiPicker } from '@/components/base'
 
 import { api } from '@/api'
 import type { EmojiInfoResponse, EmojiPackInfoResponse } from '@/types'
@@ -105,10 +105,18 @@ export function EmojiPicker({
   // Searching spans every assigned pack. At rest the footer acts as category
   // navigation, keeping the grid compact without losing the pack names that
   // the previous hand-built picker showed above every row.
-  const visibleItems = useMemo(
-    () => (search.trim() ? allItems : allItems.filter((item) => activePackId === null || item.packId === activePackId)),
-    [activePackId, allItems, search],
-  )
+  //
+  // The match is made here, against the same name, tags and pack name the
+  // item's `textValue` carries: the base grid draws what it is given and
+  // filters nothing (the Pro picker it replaced matched `textValue` itself,
+  // which is how every search came to show every sticker).
+  const visibleItems = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    if (!query) return allItems.filter((item) => activePackId === null || item.packId === activePackId)
+    return allItems.filter((item) =>
+      `${item.emoji.name} ${item.emoji.tags ?? ''} ${item.packName}`.toLowerCase().includes(query),
+    )
+  }, [activePackId, allItems, search])
 
   const handleSelect = useCallback(
     (id: React.Key | null) => {
@@ -138,10 +146,10 @@ export function EmojiPicker({
       onOpenChange={handleOpenChange}
       onSelectionChange={handleSelect}
     >
-      <Tooltip delay={0}>
+      <TooltipTrigger delay={0}>
         <ProEmojiPicker.Trigger
           aria-label={t('chat.emoji')}
-          className="touch-hitbox flex size-8 items-center justify-center rounded-lg text-muted hover:bg-default hover:text-foreground"
+          className="touch-hitbox flex size-8 items-center justify-center rounded-lg text-text-secondary hover:bg-background-primary-hover hover:text-text-primary"
           onPress={() => {
             // RAC Select normally declines to open an empty collection. This
             // picker still has useful content in that state: the assigned-pack
@@ -151,17 +159,11 @@ export function EmojiPicker({
         >
           <FaceSmile className="size-4" />
         </ProEmojiPicker.Trigger>
-        <Tooltip.Content>{t('chat.emoji')}</Tooltip.Content>
-      </Tooltip>
+        <Tooltip>{t('chat.emoji')}</Tooltip>
+      </TooltipTrigger>
       <ProEmojiPicker.Popover placement="top end">
         <ProEmojiPicker.Content>
-          <SearchField
-            fullWidth
-            aria-label={t('chat.emojiSearch')}
-            value={search}
-            variant="secondary"
-            onChange={setSearch}
-          >
+          <SearchField aria-label={t('chat.emojiSearch')} value={search} onChange={setSearch}>
             <SearchField.Group>
               <SearchField.SearchIcon />
               <SearchField.Input autoFocus placeholder={t('chat.emojiSearch')} />
@@ -186,7 +188,7 @@ export function EmojiPicker({
             {(item) => (
               <ProEmojiPicker.Item
                 id={item.emoji.id}
-                isDisabled={!item.url}
+                disabled={!item.url}
                 textValue={`${item.emoji.name} ${item.emoji.tags ?? ''} ${item.packName}`}
               >
                 {item.url ? (
@@ -199,7 +201,7 @@ export function EmojiPicker({
                 ) : (
                   <span
                     data-slot="emoji-picker-name"
-                    className="line-clamp-2 text-center text-xs leading-tight text-muted"
+                    className="line-clamp-2 text-center text-caption-1-regular leading-tight text-text-secondary"
                   >
                     {item.emoji.name}
                   </span>
@@ -215,12 +217,12 @@ export function EmojiPicker({
                   {displayPacks.map(({ pack }) => (
                     <Button
                       key={pack.id}
-                      size="sm"
+                      size="small"
                       variant="ghost"
                       className={
                         pack.id === activePackId && !search.trim()
-                          ? 'h-7 shrink-0 bg-default px-2 text-xs text-foreground'
-                          : 'h-7 shrink-0 px-2 text-xs text-muted'
+                          ? 'h-7 shrink-0 bg-background-secondary-default px-2 text-caption-1-regular text-text-primary'
+                          : 'h-7 shrink-0 px-2 text-caption-1-regular text-text-secondary'
                       }
                       onPress={() => {
                         setActivePackId(pack.id)

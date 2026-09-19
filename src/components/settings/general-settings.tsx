@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Input } from '@heroui/react'
+import { Button, Input } from '@/components/base'
 import { Check } from '@gravity-ui/icons'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { LANGUAGES, setLocale } from '@/i18n'
@@ -137,7 +137,7 @@ export function GeneralSettings() {
         value={i18n.language}
         options={LANGUAGE_OPTIONS}
         onChange={setLocale}
-        fullWidth
+
         triggerClassName="max-w-xs"
       />
 
@@ -146,7 +146,7 @@ export function GeneralSettings() {
         value={theme}
         options={themeOptions}
         onChange={setTheme}
-        fullWidth
+
         triggerClassName="max-w-xs"
       />
 
@@ -157,7 +157,7 @@ export function GeneralSettings() {
           options={SHELLS}
           onChange={handleShellChange}
           description={t('settings.general.shellHint')}
-          fullWidth
+
           triggerClassName="max-w-xs"
         />
       )}
@@ -172,13 +172,13 @@ export function GeneralSettings() {
           description={
             sandboxMode === 'container' ? t('settings.general.sandboxContainerHint') : t('settings.general.sandboxHint')
           }
-          fullWidth
+
           triggerClassName="max-w-xs"
         />
       )}
 
       <div data-slot="general-web-search" className="space-y-3">
-        <p data-slot="general-section-label" className="block text-xs font-medium text-muted">
+        <p data-slot="general-section-label" className="block text-caption-1-medium text-text-secondary">
           {t('settings.general.webSearch')}
         </p>
         {/* The heading above names the whole section, not this control, so both
@@ -189,12 +189,11 @@ export function GeneralSettings() {
           value={searchProvider}
           options={SEARCH_PROVIDERS}
           onChange={(value) => void handleSearchProviderChange(value)}
-          fullWidth
+
           triggerClassName="max-w-xs"
         />
         <div data-slot="general-search-key-row" className="flex items-center gap-2">
           <Input
-            fullWidth
             type="password"
             aria-label={t('settings.provider.apiKey')}
             name="searchApiKey"
@@ -218,18 +217,22 @@ export function GeneralSettings() {
             {t('settings.general.save')}
           </Button>
         </div>
-        <p data-slot="general-search-hint" className="text-xs text-muted">
+        <p data-slot="general-search-hint" className="text-caption-1-regular text-text-secondary">
           {t('settings.general.searchHint')}
         </p>
         {searchKeyError && (
-          <p data-slot="general-search-key-error" role="alert" className="text-xs text-danger break-all">
+          <p
+            data-slot="general-search-key-error"
+            role="alert"
+            className="text-caption-1-regular text-status-danger break-all"
+          >
             {searchKeyError}
           </p>
         )}
       </div>
 
       {prefError && (
-        <p data-slot="general-pref-error" role="alert" className="text-xs text-danger break-all">
+        <p data-slot="general-pref-error" role="alert" className="text-caption-1-regular text-status-danger break-all">
           {prefError}
         </p>
       )}

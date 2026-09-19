@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Sidebar } from '@heroui-pro/react/sidebar'
+import { Sidebar } from '@/components/base'
 
 import { AppSidebar } from './app-sidebar'
 import i18n from '@/i18n'

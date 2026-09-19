@@ -1,8 +1,8 @@
 import { useTranslation } from 'react-i18next'
 
 import { Check, CircleQuestion, Clock, TriangleExclamation } from '@gravity-ui/icons'
-import { Button, Spinner } from '@heroui/react'
-import { PromptInput } from '@heroui-pro/react/prompt-input'
+import { Button, Spinner } from '@/components/base'
+import { PromptInput } from '@/components/base'
 
 import { isCoarsePointer } from '@/hooks/use-coarse-pointer'
 import { queueState } from '@/hooks/use-prompt-queue'
@@ -26,14 +26,13 @@ interface PromptQueueProps {
 }
 
 /**
- * Pro's own mark for a steered row. The Steer button's default children are
- * this plus the English word "Steer"; overriding the children without it
- * loses the only thing that tells an interjection from a follow-up at a
- * glance, which is why both the icon and the action rebuild it.
+ * The mark for a steered row, shared by the row's own icon and the Steer
+ * button's children so both draw the same glyph rather than two copies of the
+ * raw "↳" drifting apart.
  */
 function SteerMark() {
   return (
-    <span aria-hidden className="text-muted text-xs" data-slot="queue-steer-mark">
+    <span aria-hidden className="text-text-secondary text-caption-1-regular" data-slot="queue-steer-mark">
       ↳
     </span>
   )
@@ -42,14 +41,14 @@ function SteerMark() {
 /**
  * The messages stacked up above the composer, in the order they will be sent.
  *
- * HeroUI's Queue is one card with the *current* run at the top and the stacked
- * messages under it. The two delivery modes are not urgency levels, and they
- * are not the same shape either:
+ * One card with the *current* run at the top and the stacked messages under
+ * it. The two delivery modes are not urgency levels, and they are not the
+ * same shape either:
  *
- * - **`interject`** hangs off the current row with Pro's `↳`, because it goes
+ * - **`interject`** hangs off the current row with `↳`, because it goes
  *   in at the next gap of the turn already running.
  * - **`follow_up`** is an ordinary queued row, and its one action is Steer —
- *   Pro's own word for switching it to an interjection, which also delivers it.
+ *   the word for switching it to an interjection, which also delivers it.
  *
  * Drawing them as a flat list next to a separate TodoBar made both modes look
  * like the nested one: the checklist sat where "current" belongs, and every
@@ -73,13 +72,13 @@ export function PromptQueue({
   if (items.length === 0) return null
 
   const current = currentTodos ? (
-    <div data-slot="queue-current" className="border-b border-separator">
+    <div data-slot="queue-current" className="border-b border-separator-border">
       <TodoBarView todos={currentTodos} framed={false} />
     </div>
   ) : streaming ? (
     <div
       data-slot="queue-current"
-      className="flex items-center gap-2 border-b border-separator px-3 py-2 text-xs text-muted"
+      className="flex items-center gap-2 border-b border-separator-border px-3 py-2 text-caption-1-regular text-text-secondary"
     >
       <Spinner size="sm" className="shrink-0" />
       <span data-slot="queue-running-label">{t('chat.queue.running')}</span>
@@ -102,14 +101,18 @@ export function PromptQueue({
   return (
     <PromptInput.Queue actionsVisibility={isCoarsePointer() ? 'always' : 'hover'}>
       {held && (
-        <div data-slot="queue-held" className="flex items-center gap-2 px-3 py-2 text-xs text-warning" role="status">
+        <div
+          data-slot="queue-held"
+          className="flex items-center gap-2 px-3 py-2 text-caption-1-regular text-status-warning"
+          role="status"
+        >
           <TriangleExclamation className="size-4 shrink-0" />
           <span data-slot="queue-held-label" className="min-w-0 flex-1">
             {t('chat.queue.held')}
           </span>
           {/* The only way to restart a held queue; the expanded hit area is
               what makes it reachable with a finger. */}
-          <Button size="sm" variant="ghost" className="touch-hitbox px-2 text-xs" onPress={onRelease}>
+          <Button size="small" variant="ghost" className="touch-hitbox px-2 text-caption-1-regular" onPress={onRelease}>
             {t('chat.queue.release')}
           </Button>
         </div>
@@ -145,14 +148,14 @@ export function PromptQueue({
                 {/* For a doubtful row the icon is the doubt rather than the
                     mode: what happens to it next is the only thing about it
                     still undecided, and the mode no longer decides anything.
-                    An interjection uses Pro's ↳, not a different arrow — that
-                    mark is what Steer itself draws, so a row that will
+                    An interjection uses the same ↳, not a different arrow —
+                    that mark is what Steer itself draws, so a row that will
                     interrupt and the button that makes one look the same. */}
                 <PromptInput.Queue.Item.Icon>
                   {doubtful ? (
-                    <CircleQuestion className="size-3.5 text-warning" />
+                    <CircleQuestion className="size-3.5 text-status-warning" />
                   ) : taken ? (
-                    <Check className="size-3.5 text-muted" />
+                    <Check className="size-3.5 text-text-secondary" />
                   ) : interject ? (
                     <SteerMark />
                   ) : (
@@ -161,7 +164,7 @@ export function PromptQueue({
                 </PromptInput.Queue.Item.Icon>
                 <PromptInput.Queue.Item.Content>{item.content}</PromptInput.Queue.Item.Content>
                 {doubtful && (
-                  <PromptInput.Queue.Item.Description className="text-warning">
+                  <PromptInput.Queue.Item.Description className="text-status-warning">
                     {t('chat.queue.inDoubt')}
                   </PromptInput.Queue.Item.Description>
                 )}
@@ -192,13 +195,13 @@ export function PromptQueue({
                       </PromptInput.Queue.Item.Action>
                     </>
                   )}
-                  {/* Pro's own word for it, and it does what it says: switching
+                  {/* Steer does what it says: switching
                       a row to `interject` also delivers it, so this is "now"
                       rather than a setting that takes effect eventually. Its
                       opposite is a plain action rather than a menu — with two
                       modes, a menu is a click to reach a single item. The ↳ is
-                      not optional: passing only the label replaces the default
-                      children, which is how the mark disappeared. */}
+                      not optional: passing only the label loses the only thing
+                      that tells an interjection from a follow-up at a glance. */}
                   {interject ? (
                     <PromptInput.Queue.Item.Action onPress={() => onSetDelivery(item.id, 'follow_up')}>
                       {t('chat.queue.followUp')}

@@ -14,10 +14,10 @@ import {
 } from '@gravity-ui/icons'
 import { ModelIcon } from '@/components/ui/model-icon'
 
-import { Button, Popover, Spinner, Tooltip } from '@heroui/react'
-import { CellSwitch } from '@heroui-pro/react/cell-switch'
+import { Button, Popover, Spinner, Tooltip, TooltipTrigger } from '@/components/base'
+import { CellSwitch } from '@/components/base'
 
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { api } from '@/api'
 import { allowedEfforts } from '@/lib/thinking'
 import type {
@@ -282,36 +282,30 @@ export function ComposerMenu(props: ComposerMenuProps) {
         if (!o) setHovered(null)
       }}
     >
-      {/* Tooltip wraps the trigger rather than the other way round: React Aria
-          passes press and focus down through context, so the Button at the
-          bottom of this stack receives both the popover's and the tooltip's
-          behaviour without either needing to know about the other. */}
-      <Tooltip delay={0}>
+      <TooltipTrigger delay={0}>
         <Button
-          isIconOnly
+          iconOnly
           aria-label={t('composer.menu')}
           data-slot="composer-menu-trigger"
           variant="ghost"
-          // 40px at HeroUI's mobile size, which is four short of the 44 this
-          // project's own `touch-hitbox` targets — close enough to look fine and
-          // to have been missed by review, and caught by the harness at
-          // `#playground/responsive`. The toolbar's `py-1 -my-1` slack is
-          // exactly the 2px a side this needs, so nothing clips it.
-          className={cn('touch-hitbox relative text-muted hover:text-foreground', open && 'bg-default text-foreground')}
+          className={cx(
+            'touch-hitbox relative text-text-secondary hover:text-text-primary',
+            open && 'bg-background-secondary-default text-text-primary',
+          )}
         >
           <Plus className="size-4" />
           {alert && (
             <span
               data-slot="composer-menu-alert"
-              className={cn(
+              className={cx(
                 'absolute right-1 top-1 size-1.5 rounded-full',
-                alert === 'warning' ? 'bg-warning' : 'bg-info',
+                alert === 'warning' ? 'bg-status-warning' : 'bg-status-info',
               )}
             />
           )}
         </Button>
-        <Tooltip.Content placement="top">{t('composer.menu')}</Tooltip.Content>
-      </Tooltip>
+        <Tooltip placement="top">{t('composer.menu')}</Tooltip>
+      </TooltipTrigger>
 
       {/* `max-w` against the viewport, matching `ToolbarSelect`. The two columns
           come to 464px, and React Aria only ever *moves* a popover that will not
@@ -351,26 +345,26 @@ export function ComposerMenu(props: ComposerMenuProps) {
                       onChange={() => entry.onSelect?.()}
                       onMouseEnter={() => setHovered(entry.key)}
                       onFocus={() => setHovered(entry.key)}
-                      className="w-full [--switch-control-bg-checked:var(--warning)]"
+                      className="w-full [--switch-control-bg-checked:var(--color-status-warning)]"
                     >
                       <CellSwitch.Trigger
-                        className={cn(
+                        className={cx(
                           'h-auto min-h-8 gap-2 rounded-2xl border-0 bg-transparent px-1.5 py-1 shadow-none',
                           isHovered
-                            ? 'bg-default text-default-foreground'
-                            : 'text-muted hover:bg-default/50 hover:text-foreground',
+                            ? 'bg-background-secondary-default text-text-primary'
+                            : 'text-text-secondary hover:bg-background-primary-hover/50 hover:text-text-primary',
                         )}
                       >
                         <Icon
-                          className={cn(
+                          className={cx(
                             'size-4 shrink-0',
-                            entry.tone === 'warning' && 'text-warning-soft-foreground',
-                            entry.tone === 'info' && 'text-info-soft-foreground',
+                            entry.tone === 'warning' && 'text-status-warning-soft-foreground',
+                            entry.tone === 'info' && 'text-status-info-soft-foreground',
                           )}
                         />
                         <CellSwitch.Label
                           data-slot="composer-menu-item-label"
-                          className="text-left text-sm font-normal text-inherit"
+                          className="text-left text-body-regular text-inherit"
                         >
                           {entry.label}
                         </CellSwitch.Label>
@@ -382,7 +376,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
 
                 return (
                   // This is a plain button because these compact rows sit inside
-                  // a two-column picker. Boolean rows above use Pro CellSwitch so
+                  // a two-column picker. Boolean rows above use CellSwitch so
                   // the entire row has native switch semantics.
                   // eslint-disable-next-line no-restricted-syntax -- the compact picker row owns this deliberately flattened layout
                   <button
@@ -407,23 +401,23 @@ export function ComposerMenu(props: ComposerMenuProps) {
                       // a keyboard or click just opened.
                       setHovered(entry.key)
                     }}
-                    className={cn(
+                    className={cx(
                       // `rounded-2xl` is what `.menu-item` uses for a row sitting
                       // in a `p-1` list inside the 24px popover: at `rounded-md`
                       // the popover's own curve cuts into the first and last row's
                       // hover fill.
-                      'flex w-full items-center justify-start gap-2 rounded-2xl px-1.5 py-1 text-left text-sm font-normal outline-none',
-                      'focus-visible:ring-3 focus-visible:ring-focus/50',
+                      'flex w-full items-center justify-start gap-2 rounded-2xl px-1.5 py-1 text-left text-body-regular outline-none',
+                      'focus-visible:ring-3 focus-visible:ring-border-focus-ring/50',
                       isHovered
-                        ? 'bg-default text-default-foreground'
-                        : 'text-muted hover:bg-default/50 hover:text-foreground',
+                        ? 'bg-background-secondary-default text-text-primary'
+                        : 'text-text-secondary hover:bg-background-primary-hover/50 hover:text-text-primary',
                     )}
                   >
                     <Icon
-                      className={cn(
+                      className={cx(
                         'size-4 shrink-0',
-                        entry.tone === 'warning' && 'text-warning-soft-foreground',
-                        entry.tone === 'info' && 'text-info-soft-foreground',
+                        entry.tone === 'warning' && 'text-status-warning-soft-foreground',
+                        entry.tone === 'info' && 'text-status-info-soft-foreground',
                       )}
                     />
                     <span data-slot="composer-menu-item-label" className="flex-1 text-left truncate">
@@ -432,19 +426,19 @@ export function ComposerMenu(props: ComposerMenuProps) {
                     {entry.value && (
                       <span
                         data-slot="composer-menu-item-value"
-                        className={cn(
-                          'text-xs truncate max-w-24',
+                        className={cx(
+                          'text-caption-1-regular truncate max-w-24',
                           entry.tone === 'warning'
-                            ? 'text-warning-soft-foreground'
+                            ? 'text-status-warning-soft-foreground'
                             : entry.tone === 'info'
-                              ? 'text-info-soft-foreground'
-                              : 'text-muted',
+                              ? 'text-status-info-soft-foreground'
+                              : 'text-text-secondary',
                         )}
                       >
                         {entry.value}
                       </span>
                     )}
-                    {expandable && <ChevronRight className="size-4 shrink-0 text-muted" />}
+                    {expandable && <ChevronRight className="size-4 shrink-0 text-text-secondary" />}
                   </button>
                 )
               })}
@@ -459,7 +453,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
               <div
                 id={detailPanelId}
                 data-slot="composer-menu-detail"
-                className="min-w-0 flex-1 basis-60 overflow-hidden border-l border-border"
+                className="min-w-0 flex-1 basis-60 overflow-hidden border-l border-border-button-default"
               >
                 <div data-slot="composer-menu-detail-scroll" className="h-full overflow-y-auto p-1">
                   {hoveredEntry?.loading ? (
@@ -474,7 +468,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
                           {heading && (
                             <div
                               data-slot="composer-menu-detail-heading"
-                              className="px-1.5 pt-2 pb-1 text-xs text-muted"
+                              className="px-1.5 pt-2 pb-1 text-caption-1-regular text-text-secondary"
                             >
                               {heading}
                             </div>
@@ -488,12 +482,12 @@ export function ComposerMenu(props: ComposerMenuProps) {
                               opt.onSelect()
                               close()
                             }}
-                            className={cn(
+                            className={cx(
                               // eslint-disable-next-line no-restricted-syntax -- a two-line option row: the label with its description underneath
-                              'w-full h-auto justify-start gap-2 rounded-2xl px-1.5 py-1 text-sm font-normal',
+                              'w-full h-auto justify-start gap-2 rounded-2xl px-1.5 py-1 text-body-regular',
                               opt.selected
-                                ? 'bg-default text-default-foreground'
-                                : 'text-muted hover:bg-default/50 hover:text-foreground',
+                                ? 'bg-background-secondary-default text-text-primary'
+                                : 'text-text-secondary hover:bg-background-primary-hover/50 hover:text-text-primary',
                             )}
                           >
                             {opt.icon && (
@@ -508,7 +502,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
                               {opt.description && (
                                 <span
                                   data-slot="composer-menu-detail-description"
-                                  className="block truncate text-xs text-muted"
+                                  className="block truncate text-caption-1-regular text-text-secondary"
                                 >
                                   {opt.description}
                                 </span>

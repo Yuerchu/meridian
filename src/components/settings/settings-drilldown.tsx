@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Modal } from '@heroui/react'
+import { Button, Modal } from '@/components/base'
 import { ArrowLeft } from '@gravity-ui/icons'
 
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -49,7 +49,7 @@ export function SettingsDrilldown({
       // below is portalled to `body`, so it is not even a descendant of the
       // pane that rendered it.
       <section data-slot="settings-drilldown" className="@container/pane space-y-2">
-        <h3 data-slot="settings-drilldown-title" className="text-sm font-medium">
+        <h3 data-slot="settings-drilldown-title" className="text-body-medium">
           {title}
         </h3>
         {children}
@@ -66,17 +66,17 @@ export function SettingsDrilldown({
             <div data-slot="settings-drilldown-frame" className="flex h-full flex-col">
               <div
                 data-slot="settings-drilldown-bar"
-                className="flex shrink-0 items-center gap-2 border-b border-border px-1 pt-[var(--safe-top)]"
+                className="flex shrink-0 items-center gap-2 border-b border-border-button-default px-1 pt-[var(--safe-top)]"
               >
                 <Button
                   variant="ghost"
                   onPress={() => setOpen(false)}
-                  className="h-10 gap-1 rounded-xl px-2 text-sm font-normal text-muted hover:text-foreground"
+                  className="h-10 gap-1 rounded-xl px-2 text-body-regular text-text-secondary hover:text-text-primary"
                 >
                   <ArrowLeft className="size-4" />
                   {t('common.back')}
                 </Button>
-                <Modal.Heading className="min-w-0 flex-1 truncate text-sm font-medium">{title}</Modal.Heading>
+                <Modal.Heading className="min-w-0 flex-1 truncate text-body-medium">{title}</Modal.Heading>
               </div>
               <div
                 data-slot="settings-drilldown-body"

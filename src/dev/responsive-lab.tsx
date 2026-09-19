@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { Button, ListBox, ToggleButton, ToggleButtonGroup, Tooltip } from '@heroui/react'
+import { Button, ListBox, ToggleButton, ToggleButtonGroup, Tooltip, TooltipTrigger } from '@/components/base'
 
 import { CASES } from './responsive-cases'
 import { runDetectors, type Finding, type Severity } from './responsive-detectors'
@@ -10,7 +10,7 @@ import { runDetectors, type Finding, type Severity } from './responsive-detector
  *
  * **Why an iframe.** Every responsive decision in this app is keyed to the
  * *viewport* — `useIsMobile` reads `innerWidth`, Tailwind's `md:` is a media
- * query, and Pro hides the sidebar panel at `max-width: 768px`. Nothing else
+ * query, and Sidebar hides the panel at `max-width: 768px`. Nothing else
  * moves those: `transform: scale` is a visual lie, element `zoom` leaves media
  * queries and `innerWidth` disagreeing with each other, and a resizable `div`
  * only reaches the container queries that the settings pane has just started
@@ -37,7 +37,7 @@ const WIDTHS: Array<{ px: number; note: string }> = [
   { px: 360, note: 'Android portrait — unreachable on this desktop' },
   { px: 400, note: 'Large Android portrait' },
   { px: 640, note: 'The window minimum (tauri.conf.json)' },
-  { px: 768, note: 'Pro drops the sidebar panel at or below here' },
+  { px: 768, note: 'Sidebar drops the panel at or below here' },
   { px: 900, note: 'Two columns, but the layer is only ~660px' },
   { px: 1000, note: 'Top of the squeeze' },
   { px: 1280, note: 'Ordinary desktop' },
@@ -100,7 +100,7 @@ export function ResponsiveFrame() {
   const active = CASES.find((c) => c.id === params.caseId)
   if (!active)
     return (
-      <div data-slot="responsive-frame-missing" className="p-4 text-sm text-danger">
+      <div data-slot="responsive-frame-missing" className="p-4 text-body-regular text-status-danger">
         No such case: {params.caseId}
       </div>
     )
@@ -108,7 +108,7 @@ export function ResponsiveFrame() {
     <div
       data-slot="responsive-frame-content"
       data-responsive-probe="content"
-      className="h-svh overflow-y-auto bg-background text-foreground"
+      className="h-svh overflow-y-auto bg-background-full text-text-primary"
     >
       {active.render()}
     </div>
@@ -122,9 +122,9 @@ export function ResponsiveFrame() {
 const SEVERITY_ORDER: Record<Severity, number> = { fail: 0, warn: 1, info: 2 }
 
 const SEVERITY_CLASS: Record<Severity, string> = {
-  fail: 'text-danger',
-  warn: 'text-warning',
-  info: 'text-muted',
+  fail: 'text-status-danger',
+  warn: 'text-status-warning',
+  info: 'text-text-secondary',
 }
 
 export default function ResponsiveLab() {
@@ -184,12 +184,12 @@ export default function ResponsiveLab() {
   const active = CASES.find((c) => c.id === caseId)
 
   return (
-    <div data-slot="responsive-lab" className="flex h-svh flex-col bg-background text-foreground">
-      <header data-slot="responsive-lab-header" className="shrink-0 border-b border-border px-4 py-2">
-        <h1 data-slot="responsive-lab-title" className="text-sm font-medium">
+    <div data-slot="responsive-lab" className="flex h-svh flex-col bg-background-full text-text-primary">
+      <header data-slot="responsive-lab-header" className="shrink-0 border-b border-border-button-default px-4 py-2">
+        <h1 data-slot="responsive-lab-title" className="text-body-medium">
           Responsive harness
         </h1>
-        <p data-slot="responsive-lab-intro" className="mt-1 text-xs text-muted">
+        <p data-slot="responsive-lab-intro" className="mt-1 text-caption-1-regular text-text-secondary">
           Overflow, escapes and short viewports are measured. Touch targets are{' '}
           <em data-slot="responsive-lab-intro-emphasis">computed</em> — coarse-pointer CSS does not apply in a desktop
           browser, so green is not a promise about a phone. The keyboard row checks the mechanism, not Android&rsquo;s
@@ -201,7 +201,7 @@ export default function ResponsiveLab() {
       <div data-slot="responsive-lab-body" className="flex min-h-0 flex-1">
         <aside
           data-slot="responsive-lab-controls"
-          className="w-72 shrink-0 space-y-4 overflow-y-auto border-r border-border p-3 text-xs"
+          className="w-72 shrink-0 space-y-4 overflow-y-auto border-r border-border-button-default p-3 text-caption-1-regular"
         >
           <Field label="Case">
             <ListBox
@@ -216,14 +216,19 @@ export default function ResponsiveLab() {
               }}
             >
               {CASES.map((c) => (
-                <ListBox.Item key={c.id} id={c.id} textValue={c.label} className="min-h-7 rounded-lg px-2 py-1 text-xs">
+                <ListBox.Item
+                  key={c.id}
+                  id={c.id}
+                  textValue={c.label}
+                  className="min-h-7 rounded-lg px-2 py-1 text-caption-1-regular"
+                >
                   {c.label}
                   <ListBox.ItemIndicator />
                 </ListBox.Item>
               ))}
             </ListBox>
             {active && (
-              <p data-slot="responsive-lab-watch-for" className="mt-1 text-muted">
+              <p data-slot="responsive-lab-watch-for" className="mt-1 text-text-secondary">
                 {active.watchFor}
               </p>
             )}
@@ -252,7 +257,7 @@ export default function ResponsiveLab() {
                 { value: 'js', label: 'coarse (JS only)' },
               ]}
             />
-            <p data-slot="responsive-lab-pointer-note" className="mt-1 text-muted">
+            <p data-slot="responsive-lab-pointer-note" className="mt-1 text-text-secondary">
               Moves <code data-slot="responsive-lab-pointer-note-code">isCoarsePointer()</code>. CSS{' '}
               <code data-slot="responsive-lab-pointer-note-code">@media (pointer: coarse)</code> is untouched — that is
               why hit areas are computed rather than measured.
@@ -269,23 +274,26 @@ export default function ResponsiveLab() {
           </Field>
 
           <div data-slot="responsive-lab-actions" className="flex gap-2">
-            <Button size="sm" onPress={measure}>
+            <Button size="small" onPress={measure}>
               Measure
             </Button>
-            <Button size="sm" variant="outline" onPress={sweep}>
+            <Button size="small" variant="outline" onPress={sweep}>
               Sweep widths
             </Button>
           </div>
 
           {reading && (
-            <p data-slot="responsive-lab-reading" className="text-muted">
+            <p data-slot="responsive-lab-reading" className="text-text-secondary">
               innerWidth {reading.inner} · clientWidth {reading.client}
               {reading.inner !== reading.client && ` (${reading.inner - reading.client}px of scrollbar)`}
             </p>
           )}
         </aside>
 
-        <main data-slot="responsive-lab-stage" className="min-w-0 flex-1 overflow-auto bg-surface-secondary p-4">
+        <main
+          data-slot="responsive-lab-stage"
+          className="min-w-0 flex-1 overflow-auto bg-background-secondary-default p-4"
+        >
           <iframe
             data-slot="responsive-frame"
             ref={frameRef}
@@ -293,12 +301,12 @@ export default function ResponsiveLab() {
             src={src}
             title="Responsive frame"
             style={{ width, height }}
-            className="border border-border bg-background"
+            className="border border-border-button-default bg-background-full"
           />
 
           {sorted && (
-            <div data-slot="responsive-lab-findings" className="mt-4 space-y-1 text-xs">
-              <p data-slot="responsive-lab-findings-summary" className="font-medium">
+            <div data-slot="responsive-lab-findings" className="mt-4 space-y-1 text-caption-1-regular">
+              <p data-slot="responsive-lab-findings-summary" className="text-caption-1-medium">
                 {sorted.length === 0 ? 'Nothing found.' : `${sorted.length} finding(s)`}
               </p>
               {sorted.map((f, i) => (
@@ -320,7 +328,7 @@ export default function ResponsiveLab() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div data-slot="responsive-lab-field">
-      <p data-slot="responsive-lab-field-label" className="mb-1 font-medium">
+      <p data-slot="responsive-lab-field-label" className="mb-1 text-caption-1-medium">
         {label}
       </p>
       {children}
@@ -346,8 +354,6 @@ function Choices<T extends string | number>({
   return (
     <ToggleButtonGroup
       aria-label={label}
-      size="sm"
-      isDetached
       selectionMode="single"
       disallowEmptySelection
       selectedKeys={new Set([String(value)])}
@@ -361,18 +367,18 @@ function Choices<T extends string | number>({
         const key = String(o.value)
         if (!o.hint) {
           return (
-            <ToggleButton key={key} id={key} className="text-xs font-normal tabular-nums">
+            <ToggleButton key={key} id={key} className="text-caption-1-regular tabular-nums">
               {o.label ?? o.value}
             </ToggleButton>
           )
         }
         return (
-          <Tooltip key={key} delay={0}>
-            <ToggleButton id={key} className="text-xs font-normal tabular-nums">
+          <TooltipTrigger key={key} delay={0}>
+            <ToggleButton id={key} className="text-caption-1-regular tabular-nums">
               {o.label ?? o.value}
             </ToggleButton>
-            <Tooltip.Content placement="bottom">{o.hint}</Tooltip.Content>
-          </Tooltip>
+            <Tooltip placement="bottom">{o.hint}</Tooltip>
+          </TooltipTrigger>
         )
       })}
     </ToggleButtonGroup>

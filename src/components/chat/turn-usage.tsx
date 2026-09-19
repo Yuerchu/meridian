@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Separator } from '@heroui/react'
-import { HoverCard } from '@heroui-pro/react/hover-card'
+import { Button, Separator } from '@/components/base'
+import { HoverCard } from '@/components/base'
 
 import { costQualifier, formatCostAmount, type CostQualifier } from '@/lib/cost-format'
 import type { DecimalString, TurnUsageInfoResponse } from '@/types'
@@ -78,7 +78,7 @@ export function TurnUsage({ tokens, usage }: { tokens: TokenTotals; usage?: Turn
   const tokensLabel = usage ? persistedTokenText(usage, t) : tokenText(tokens, t)
   if (!usage) {
     return tokensLabel ? (
-      <span data-slot="turn-usage-summary" className="font-normal tabular-nums">
+      <span data-slot="turn-usage-summary" className="text-caption-1-regular tabular-nums">
         {tokensLabel}
       </span>
     ) : null
@@ -104,13 +104,13 @@ export function TurnUsage({ tokens, usage }: { tokens: TokenTotals; usage?: Turn
       <HoverCard.Trigger className="inline-flex">
         <Button
           variant="ghost"
-          size="sm"
+          size="small"
           data-slot="turn-usage-summary"
           aria-label={t('chat.usage.openDetails', { summary })}
           aria-expanded={open}
           aria-controls={detailsId}
           onPress={() => setOpen(true)}
-          className="touch-hitbox min-w-0 cursor-[var(--cursor-interactive)] rounded-sm px-0 font-normal tabular-nums hover:text-foreground"
+          className="touch-hitbox min-w-0 cursor-[var(--cursor-interactive)] rounded-sm px-0 text-body-regular tabular-nums hover:text-text-primary"
         >
           {costLabel}
         </Button>
@@ -125,16 +125,16 @@ export function TurnUsage({ tokens, usage }: { tokens: TokenTotals; usage?: Turn
           className="space-y-3"
         >
           <div data-slot="turn-usage-header" className="space-y-0.5">
-            <h3 data-slot="turn-usage-title" className="text-sm font-medium text-foreground">
+            <h3 data-slot="turn-usage-title" className="text-body-medium text-text-primary">
               {t('chat.usage.title')}
             </h3>
             {tokensLabel && (
-              <p data-slot="turn-usage-tokens" className="text-xs text-muted tabular-nums">
+              <p data-slot="turn-usage-tokens" className="text-caption-1-regular text-text-secondary tabular-nums">
                 {tokensLabel}
               </p>
             )}
             {usage.incomplete_token_usage_messages > 0 && (
-              <p data-slot="turn-usage-tokens-hint" className="text-xs text-muted">
+              <p data-slot="turn-usage-tokens-hint" className="text-caption-1-regular text-text-secondary">
                 {t(
                   usage.missing_token_usage_messages >= usage.messages
                     ? 'chat.usage.tokensUnknownHint'
@@ -148,11 +148,15 @@ export function TurnUsage({ tokens, usage }: { tokens: TokenTotals; usage?: Turn
             <>
               <dl data-slot="turn-usage-breakdown" className="space-y-1.5">
                 {parts.map(([key, label, gapKey, kind]) => (
-                  <div key={key} data-slot="turn-usage-row" className="flex items-center justify-between gap-4 text-xs">
-                    <dt data-slot="turn-usage-row-label" className="text-muted">
+                  <div
+                    key={key}
+                    data-slot="turn-usage-row"
+                    className="flex items-center justify-between gap-4 text-caption-1-regular"
+                  >
+                    <dt data-slot="turn-usage-row-label" className="text-text-secondary">
                       {t(label)}
                     </dt>
-                    <dd data-slot="turn-usage-row-value" className="text-foreground tabular-nums">
+                    <dd data-slot="turn-usage-row-value" className="text-text-primary tabular-nums">
                       {usage[key] == null
                         ? t('chat.usage.unknownAmount')
                         : qualifiedAmount(
@@ -169,7 +173,7 @@ export function TurnUsage({ tokens, usage }: { tokens: TokenTotals; usage?: Turn
               </dl>
               <Separator />
               <dl data-slot="turn-usage-total">
-                <div data-slot="turn-usage-row" className="flex items-center justify-between gap-4 text-sm font-medium">
+                <div data-slot="turn-usage-row" className="flex items-center justify-between gap-4 text-body-medium">
                   <dt data-slot="turn-usage-row-label">{t('chat.usage.cost.total')}</dt>
                   <dd data-slot="turn-usage-row-value" className="tabular-nums">
                     {usage.total_cost == null
@@ -179,7 +183,7 @@ export function TurnUsage({ tokens, usage }: { tokens: TokenTotals; usage?: Turn
                 </div>
               </dl>
               {totalQualifier !== 'exact' && (
-                <p data-slot="turn-usage-qualifier" className="text-xs text-muted">
+                <p data-slot="turn-usage-qualifier" className="text-caption-1-regular text-text-secondary">
                   {t(
                     totalQualifier === 'partial_estimate'
                       ? 'chat.usage.partialEstimate'
@@ -191,7 +195,7 @@ export function TurnUsage({ tokens, usage }: { tokens: TokenTotals; usage?: Turn
               )}
             </>
           ) : (
-            <p data-slot="turn-usage-status-hint" className="text-xs text-muted">
+            <p data-slot="turn-usage-status-hint" className="text-caption-1-regular text-text-secondary">
               {t(`chat.usage.statusHint.${usage.pricing_status}`)}
             </p>
           )}

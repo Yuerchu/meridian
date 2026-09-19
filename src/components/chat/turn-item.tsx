@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { ErrorBoundary } from '@/components/error-boundary'
 import { AssistantGroupView, UserMessage } from './message-item'
 import { AcpNoticeList } from './acp-notice-bubble'
@@ -99,7 +99,7 @@ export const TurnItem = React.memo(function TurnItem({
   const dateLabel = useDateLabel()
   const assistants = turn.assistantMessages
   const renderError = (
-    <div data-slot="turn-render-error" className="text-xs text-danger py-2">
+    <div data-slot="turn-render-error" className="text-caption-1-regular text-status-danger py-2">
       {t('chat.renderError')}
     </div>
   )
@@ -162,7 +162,7 @@ export const TurnItem = React.memo(function TurnItem({
         onNext={() => go(1)}
         // Switching mid-stream would leave the running turn writing into a path
         // that is no longer on screen.
-        isDisabled={switching || streaming}
+        disabled={switching || streaming}
         previousLabel={t('chat.turn.branchPrev')}
         nextLabel={t('chat.turn.branchNext')}
       />
@@ -189,7 +189,7 @@ export const TurnItem = React.memo(function TurnItem({
   // Not past a date separator, which is a break of its own.
   const continuesRun = (questionPosition === 'middle' || questionPosition === 'last') && !showDate
   const question = turn.userMessage && (
-    <div data-slot="turn-question" className={cn(continuesRun && '-mt-5')}>
+    <div data-slot="turn-question" className={cx(continuesRun && '-mt-5')}>
       <ErrorBoundary fallback={renderError}>
         <UserMessage
           message={turn.userMessage}
@@ -242,20 +242,20 @@ export const TurnItem = React.memo(function TurnItem({
   // left something half-done that nothing on screen accounts for.
   const statusLine =
     turn.status === 'crashed' || turn.status === 'interrupted' ? (
-      <Marker data-slot="turn-status" data-status={turn.status} role="status" className="pl-10 text-xs">
+      <Marker data-slot="turn-status" data-status={turn.status} role="status" className="pl-10 text-caption-1-regular">
         <MarkerIcon>
           <TurnStatusIcon status={turn.status} />
         </MarkerIcon>
-        <MarkerContent className={cn(turn.status === 'crashed' && 'text-warning-soft-foreground')}>
+        <MarkerContent className={cx(turn.status === 'crashed' && 'text-status-warning-soft-foreground')}>
           {t(turn.status === 'crashed' ? 'chat.turn.crashed' : 'chat.turn.interrupted')}
         </MarkerContent>
       </Marker>
     ) : null
 
   return (
-    <div ref={heightRef} data-slot="turn" data-status={turn.status} className={cn('space-y-6', className)}>
+    <div ref={heightRef} data-slot="turn" data-status={turn.status} className={cx('space-y-6', className)}>
       {showDate && (
-        <Marker variant="separator" data-slot="turn-date" className="text-xs">
+        <Marker variant="separator" data-slot="turn-date" className="text-caption-1-regular">
           <MarkerContent>{dateLabel(startedAt)}</MarkerContent>
         </Marker>
       )}

@@ -1,15 +1,15 @@
-import { tv, type VariantProps } from '@heroui/react'
-import { cn } from '@/lib/utils'
+import { tv, type VariantProps } from '@/components/base'
+import { cx } from '@/utils/cx'
 import type { LogRecordLevel } from '@/types'
 
 const levelBadgeVariants = tv({
-  base: 'inline-flex shrink-0 items-center gap-1.5 font-mono text-xs tabular-nums',
+  base: 'inline-flex shrink-0 items-center gap-1.5 font-mono text-caption-1-regular tabular-nums',
   variants: {
     level: {
-      error: 'text-danger',
-      warn: 'text-warning-soft-foreground',
-      info: 'text-info-soft-foreground',
-      muted: 'text-muted',
+      error: 'text-status-danger',
+      warn: 'text-status-warning-soft-foreground',
+      info: 'text-status-info-soft-foreground',
+      muted: 'text-text-secondary',
     },
   },
   defaultVariants: { level: 'muted' },
@@ -19,10 +19,10 @@ const dotVariants = tv({
   base: 'size-1.5 shrink-0 rounded-full',
   variants: {
     level: {
-      error: 'bg-danger',
-      warn: 'bg-warning',
-      info: 'bg-info',
-      muted: 'bg-default',
+      error: 'bg-status-danger',
+      warn: 'bg-status-warning',
+      info: 'bg-status-info',
+      muted: 'bg-background-secondary-default',
     },
   },
   defaultVariants: { level: 'muted' },
@@ -48,7 +48,7 @@ export function toneFor(level: LogRecordLevel): Tone {
 export function LogLevelBadge({ level, className }: { level: LogRecordLevel; className?: string }) {
   const tone = toneFor(level)
   return (
-    <span data-slot="log-level-badge" className={cn(levelBadgeVariants({ level: tone }), className)}>
+    <span data-slot="log-level-badge" className={cx(levelBadgeVariants({ level: tone }), className)}>
       <span data-slot="log-level-dot" className={dotVariants({ level: tone })} />
       {level}
     </span>

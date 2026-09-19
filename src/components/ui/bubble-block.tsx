@@ -1,7 +1,7 @@
 import * as React from 'react'
-import { tv, type VariantProps } from '@heroui/react'
+import { tv, type VariantProps } from '@/components/base'
 
-import { cn } from '@/lib/utils'
+import { cx } from '@/utils/cx'
 import { BUBBLE_BLOCK } from './bubble'
 
 /**
@@ -31,28 +31,28 @@ import { BUBBLE_BLOCK } from './bubble'
  *
  * Sized like a shut tool block — as wide as its content — except where it is
  * still waiting on the reader, which takes the column so it cannot be missed.
- * The ring rather than a fill for that: a filled `bg-accent` block is a solid
+ * The ring rather than a fill for that: a filled `bg-button-primary` block is a solid
  * white bar in the dark theme, louder than an approval sitting beside it.
  */
 const bubbleBlockVariants = tv({
   base: [
     BUBBLE_BLOCK,
-    'flex w-fit min-h-9 items-center gap-2 px-3 py-2 text-left text-xs transition-colors outline-none',
-    'data-[pressed]:bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--foreground)_8%)]',
-    'focus-visible:ring-2 focus-visible:ring-focus/50',
+    'flex w-fit min-h-9 items-center gap-2 px-3 py-2 text-left text-caption-1-regular transition-colors outline-none',
+    'data-[pressed]:bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--color-text-primary)_8%)]',
+    'focus-visible:ring-2 focus-visible:ring-border-focus-ring/50',
     'disabled:opacity-60',
   ],
   variants: {
     state: {
       'input-streaming': '',
       'input-available': '',
-      queued: 'text-muted',
+      queued: 'text-text-secondary',
       'output-available': '',
-      'output-error': 'ring-1 ring-danger/40 ring-inset',
-      'requires-action': 'w-full ring-1 ring-warning/50 ring-inset',
+      'output-error': 'ring-1 ring-status-danger/40 ring-inset',
+      'requires-action': 'w-full ring-1 ring-status-warning/50 ring-inset',
       /** Somewhere to go, while the page it leads to is still waiting on the
        *  reader. Info rather than warning, matching the page. */
-      navigate: 'w-full ring-1 ring-info/40 ring-inset',
+      navigate: 'w-full ring-1 ring-status-info/40 ring-inset',
     },
   },
   defaultVariants: {
@@ -71,7 +71,7 @@ function BubbleBlockButton({
       data-slot="bubble-block-button"
       data-bubble-block=""
       data-state={state ?? 'input-available'}
-      className={cn(bubbleBlockVariants({ state }), className)}
+      className={cx(bubbleBlockVariants({ state }), className)}
       {...props}
     />
   )
@@ -85,6 +85,12 @@ function BubbleBlockButton({
  * the badge answers "which ten" and a block answers "what did that one say".
  * `aria-expanded` carries the state; the pressed look reads off the same
  * attribute so the two cannot disagree.
+ *
+ * The fill is a wash of the bubble's ink over the bubble's fill, the way a
+ * block's hover is, rather than a surface token: it sits *on* a bubble, and a
+ * surface token has no idea which. `background-secondary` was a dark hole in
+ * the assistant's bubble in the dark theme and the bubble's own colour in the
+ * light one.
  */
 function BubbleFoldBadge({ expanded, className, ...props }: React.ComponentProps<'button'> & { expanded: boolean }) {
   return (
@@ -92,10 +98,11 @@ function BubbleFoldBadge({ expanded, className, ...props }: React.ComponentProps
       type="button"
       data-slot="bubble-fold-badge"
       aria-expanded={expanded}
-      className={cn(
-        'inline-flex h-5 shrink-0 items-center gap-1 rounded-full bg-default/70 px-2 text-xs leading-none text-muted transition-colors outline-none select-none',
-        'hover:bg-default hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus/50',
-        'aria-expanded:bg-default aria-expanded:text-foreground',
+      className={cx(
+        'inline-flex h-5 shrink-0 items-center gap-1 rounded-full px-2 text-caption-1-regular leading-none text-text-secondary transition-colors outline-none select-none',
+        'bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--bubble-ink,var(--color-text-primary))_6%)]',
+        'hover:bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--bubble-ink,var(--color-text-primary))_12%)] hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring/50',
+        'aria-expanded:bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--bubble-ink,var(--color-text-primary))_12%)] aria-expanded:text-text-primary',
         className,
       )}
       {...props}

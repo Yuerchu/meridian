@@ -11,7 +11,7 @@ import meridianUi from './scripts/eslint-rules/index.mjs'
 // `white` and `black` are palette colours too — `text-white` on a danger fill
 // is `text-danger-foreground` spelt wrong, and the 2026-09 audit found two.
 const PALETTE_PREFIX = '(?:text|bg|border|ring|fill|stroke|from|via|to|divide|outline|decoration|accent|caret)'
-const PALETTE_RE = `${PALETTE_PREFIX}-(?:(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-[0-9]{2,3}|(?:white|black)\\b)`
+const PALETTE_RE = `(?<![\\w-])${PALETTE_PREFIX}-(?:(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-[0-9]{2,3}|(?:white|black)\\b)`
 
 // A class that is wrong wherever it appears: matched in string literals and in
 // template chunks alike, so `cn()` arguments and template classNames both see
@@ -23,24 +23,47 @@ function forbiddenClass(re, message) {
   ]
 }
 
+// HeroUI's token vocabulary, which `styles/tokens.css` used to bridge. Every
+// name here has a boardui or meridian.css spelling (see the table in the
+// commit that removed the bridge); the utilities below now resolve to nothing.
+const LEGACY_TOKEN_RE = `(?<![\\w-])${PALETTE_PREFIX}-(?:muted|foreground|surface(?:-secondary|-tertiary|-foreground)?|overlay(?:-foreground)?|default(?:-foreground|-soft)?|field(?:-border)?|separator|focus|link|accent(?:-foreground|-soft(?:-foreground|-hover)?)?|(?:danger|warning|success|info)(?:-foreground|-soft(?:-foreground|-hover)?)?)(?![\\w-])|\\bshadow-(?:surface|overlay)\\b|(?<![\\w-])border-border(?![\\w-])`
+
 // Enforced everywhere, including src/components/ui/. Each entry is a shape the
 // 2026-09 design audit found in the tree, with the replacement in the message.
 const styleRestrictions = [
   ...forbiddenClass(
     PALETTE_RE,
-    'Raw Tailwind palette class. Use theme tokens (--success/--warning/--info/--danger/...) per CLAUDE.md UI conventions.',
+    'Raw Tailwind palette class. Use boardui tokens (text-text-*, bg-background-*, border-border-*, accent-*) or meridian.css status tokens (status-success/-warning/-danger/-info).',
+  ),
+  ...forbiddenClass(
+    LEGACY_TOKEN_RE,
+    'HeroUI token name; nothing defines it any more. text-muted → text-text-secondary, text-foreground → text-text-primary, bg-default → bg-background-secondary-default, bg-surface → bg-background-primary-default, border-border → border-border-button-default, ring-focus → ring-border-focus-ring, *-danger/-warning/-success/-info → *-status-…',
   ),
   {
     selector: 'Literal[value=/text-\\u005B[0-9.]+px\\u005D/]',
-    message: 'Arbitrary px font size. Use the Tailwind scale (text-xs/sm/base/lg) per CLAUDE.md UI conventions.',
+    message:
+      'Arbitrary px font size. Use a boardui composite text utility (text-caption-1-*, text-body-*, text-headline-*, text-title-*), which sets size, line-height and weight together.',
   },
+  // boardui's type scale is composite: `text-body-medium` is size, line-height,
+  // letter-spacing and weight in one. A Tailwind size or a bare weight is the
+  // scale being rebuilt by hand, and drifts from it one utility at a time.
+  ...forbiddenClass(
+    '(?<![\\w-])text-(?:xs|sm|base|lg|xl|2xl|3xl)(?![\\w-])',
+    'Tailwind type size. Use the composite scale: text-xs → text-caption-1-*, text-sm → text-body-*, text-base → text-headline-*, text-lg → text-title-3-*, text-xl → text-title-2-*, text-2xl → text-title-1-* (weight suffix regular/medium/semibold/bold).',
+  ),
+  // Unprefixed only: `[&_strong]:font-medium` or `prose-headings:font-semibold`
+  // reaches into markup the composite utilities cannot address.
+  ...forbiddenClass(
+    '(?<![\\w:\\]-])font-(?:normal|medium|semibold|bold)(?![\\w-])',
+    'Bare font weight. The weight is the suffix of the composite text utility (text-body-medium, text-caption-1-semibold); pick the family the text belongs to.',
+  ),
   ...forbiddenClass(
     '\\bcursor-pointer\\b',
-    "cursor-pointer ignores the user's cursor preference. Use cursor-[var(--cursor-interactive)] on custom interactive elements; HeroUI controls set it themselves.",
+    "cursor-pointer ignores the user's cursor preference. Use cursor-[var(--cursor-interactive)] on custom interactive elements; base components set it themselves.",
   ),
   ...forbiddenClass(
     '\\bbg-muted\\b',
-    '--muted is secondary *text*, not a fill (see the token note in CLAUDE.md). A dot or a caret takes bg-default, bg-border or bg-current.',
+    'There is no muted fill. A dot or a caret takes bg-background-tertiary-default, bg-border-button-default or bg-current.',
   ),
   ...forbiddenClass('\\buppercase\\b', 'No ALL CAPS headings or labels; write the label in Title Case instead.'),
   ...forbiddenClass(
@@ -48,26 +71,26 @@ const styleRestrictions = [
     'Bare `rounded` (4px) is off the radius ladder (composer 2xl → chat/tool card xl → settings lg). Use <Chip> or the ladder step of the container.',
   ),
   ...forbiddenClass(
-    '\\bshadow-(?:xs|sm|md|lg|xl|2xl)\\b',
-    'Raw Tailwind shadow-* stacks on the theme. Use shadow-surface (cards) or shadow-overlay (popovers/menus), which the theme sizes per mode.',
+    '\\bshadow-(?:sm|md|lg|xl|2xl)\\b',
+    'Raw Tailwind shadow-* stacks on the theme. Use shadow-xs (a resting control), shadow-card (a card) or shadow-dropdown (a popover/menu), which the theme sizes per mode.',
   ),
   ...forbiddenClass(
     '\\banimate-pulse\\b',
-    'Hand-rolled animate-pulse placeholder. Use <Skeleton> from @heroui/react (with role="status" + aria-busy + a label on the group); a streaming caret disables this line with a reason.',
+    'Hand-rolled animate-pulse placeholder. Use <Skeleton> from @/components/base (with role="status" + aria-busy + a label on the group); a streaming caret disables this line with a reason.',
   ),
   ...forbiddenClass(
-    '\\banimate-spin\\b',
-    'Hand-rolled animate-spin icon. Use <Spinner size="sm" color="current" /> from @heroui/react.',
+    '\\banimate-spin(?![\\w-])',
+    'Hand-rolled animate-spin icon. Use <Spinner size="sm" color="current" /> from @/components/base.',
   ),
   ...forbiddenClass(
-    '\\b(?:bg|border)-(?:danger|warning|success|info)\\/[0-9]+',
-    'Status colour at alpha is a hand-drawn soft fill. Use bg-*-soft / text-*-soft-foreground, or <Alert status="…"> for a message box.',
+    '\\b(?:bg|border)-status-(?:danger|warning|success|info)\\/[0-9]+',
+    'Status colour at alpha is a hand-drawn soft fill. Use bg-status-*-soft / text-status-*-soft-foreground, or <Alert status="…"> for a message box.',
   ),
   {
     selector:
-      "JSXOpeningElement[name.name=/Button$/] > JSXAttribute[name.name='className'] Literal[value=/(?:^|\\s)text-danger(?:\\s|$)/]",
+      "JSXOpeningElement[name.name=/Button$/] > JSXAttribute[name.name='className'] Literal[value=/(?:^|\\s)text-status-danger(?:\\s|$)/]",
     message:
-      'A labelled destructive Button is variant="danger-soft", not ghost/outline painted text-danger by hand. An icon-only one in a row of ghost icons stays ghost and turns danger on hover (hover:text-danger) — a red pill among grey icons is louder than the action.',
+      'A labelled destructive Button is variant="danger-soft", not ghost/outline painted text-status-danger by hand. An icon-only one in a row of ghost icons stays ghost and turns danger on hover (hover:text-status-danger) — a red pill among grey icons is louder than the action.',
   },
   {
     selector:
@@ -79,12 +102,12 @@ const styleRestrictions = [
     selector:
       "JSXOpeningElement[name.property.name=/^(?:Content|Control|Indicator)$/] > JSXAttribute[name.name='className'] Literal[value=/data-\\u005B?(?:selected|hovered|pressed|focus-visible|expanded)/]",
     message:
-      'HeroUI puts data-selected / data-hovered / data-pressed on the component root, not on its *.Content or *.Control slot — this selector never matches. Style from the root with a descendant selector.',
+      'React Aria puts data-selected / data-hovered / data-pressed on the component root, not on its *.Content or *.Control slot — this selector never matches. Style from the root with a descendant selector.',
   },
   {
-    selector: "JSXOpeningElement[name.name=/^(?:H)?Button$/] > JSXAttribute[name.name='onClick']",
+    selector: 'JSXOpeningElement[name.name=/^(?:Close)?Button$/] > JSXAttribute[name.name=/^(?:onClick|disabled)$/]',
     message:
-      'HeroUI Button takes onPress, not onClick (React Aria press semantics: keyboard, touch, and no ghost clicks).',
+      'Button is a React Aria button: onPress / isDisabled / isPending, not onClick / disabled. A native onClick on it bypasses press semantics (keyboard, touch, ghost clicks) and the trigger contexts (Tooltip, Menu, Dialog close) that reach it through usePress.',
   },
   {
     selector:
@@ -113,46 +136,46 @@ const styleRestrictions = [
   ),
 ]
 
-// Enforced outside src/components/ui/, which is where the components HeroUI
-// has no equivalent for live and native elements are the point.
+// Enforced outside src/components/ui/, which is where the domain-specific
+// components live and native elements are the point.
 const nativeElementRestrictions = [
   {
     selector: "JSXOpeningElement[name.name='button']",
-    message: 'Use <Button> from @heroui/react instead of the native <button>.',
+    message: 'Use <Button> from @/components/base instead of the native <button>.',
   },
   {
     selector: "JSXOpeningElement[name.name='input']",
-    message: 'Use <Input> (inside a <TextField>) or <Checkbox> from @heroui/react instead of the native <input>.',
+    message: 'Use <Input> (inside a <TextField>) or <Checkbox> from @/components/base instead of the native <input>.',
   },
   {
     selector: "JSXOpeningElement[name.name='textarea']",
-    message: 'Use <TextArea> (inside a <TextField>) from @heroui/react instead of the native <textarea>.',
+    message: 'Use <TextArea> (inside a <TextField>) from @/components/base instead of the native <textarea>.',
   },
   {
     selector: "JSXOpeningElement[name.name='select']",
-    message: 'Use <Select> from @heroui/react instead of the native <select>.',
+    message: 'Use <Select> from @/components/base instead of the native <select>.',
   },
   {
     selector: "JSXOpeningElement[name.name='hr']",
-    message: 'Use <Separator> from @heroui/react instead of the native <hr>.',
+    message: 'Use <Separator> from @/components/base instead of the native <hr>.',
   },
   {
     selector: "JSXOpeningElement[name.name='dialog']",
-    message: 'Use <AlertDialog>, <Modal> or <Drawer> from @heroui/react instead of the native <dialog>.',
+    message: 'Use <AlertDialog>, <Modal> or <Drawer> from @/components/base instead of the native <dialog>.',
   },
   {
     selector: "JSXOpeningElement[name.name='label']",
     message:
-      "Use <Label> from @heroui/react (inside a <TextField> / <Checkbox> / <Switch>, which wire the association) instead of the native <label htmlFor>. An enable/disable row is Pro's <CellSwitch>.",
+      'Use <Label> from @/components/base (inside a <TextField> / <Checkbox> / <Switch>, which wire the association) instead of the native <label htmlFor>. An enable/disable row is <CellSwitch>.',
   },
   {
     selector: "JSXOpeningElement[name.name='kbd']",
-    message: 'Use <Kbd> from @heroui/react instead of the native <kbd>.',
+    message: 'Use <Kbd> from @/components/base instead of the native <kbd>.',
   },
   {
     selector: "JSXOpeningElement[name.name=/^(?:button|Button)$/] > JSXAttribute[name.name='title']",
     message:
-      'Native title attribute on a button. Put the text in a <Tooltip> from @heroui/react — and give the button an aria-label, since a tooltip describes rather than names it.',
+      'Native title attribute on a button. Put the text in a <Tooltip> from @/components/base — and give the button an aria-label, since a tooltip describes rather than names it.',
   },
 ]
 
@@ -164,15 +187,15 @@ const nativeChromeRestrictions = [
   {
     selector: "JSXOpeningElement[name.name=/^[a-z]/][name.name!='iframe'] > JSXAttribute[name.name='title']",
     message:
-      "Native `title` draws the browser's own tooltip. Wrap the element in <Tooltip> from @heroui/react (Tooltip.Trigger with `render` for a focusable element, plain Tooltip.Trigger around a span), or drop the hint.",
+      "Native `title` draws the browser's own tooltip. Wrap the element in <Tooltip> from @/components/base (Tooltip.Trigger with `render` for a focusable element, plain Tooltip.Trigger around a span), or drop the hint.",
   },
   {
     selector: "JSXOpeningElement[name.object.name='dom'] > JSXAttribute[name.name='title']",
-    message: "Native `title` on a dom.* element draws the browser's own tooltip. Use <Tooltip> from @heroui/react.",
+    message: "Native `title` on a dom.* element draws the browser's own tooltip. Use <Tooltip> from @/components/base.",
   },
   {
     selector: 'JSXOpeningElement[name.name=/^(?:details|summary|progress|meter|datalist|marquee)$/]',
-    message: 'Native browser widget. Use the HeroUI equivalent (Disclosure, Progress, Listbox…).',
+    message: 'Native browser widget. Use the base component equivalent (Disclosure, ProgressCircle, ListBox…).',
   },
   // A bare `confirm(...)` in this codebase is the app's own `useConfirm`, which
   // is the replacement, so only `alert` and `prompt` are matched by bare name.
@@ -213,14 +236,31 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
     },
   },
+  {
+    files: ['src/components/base/**/*.{ts,tsx}'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
   // The two UI conventions that need to see more than one node: an icon-only
   // control needs a <Tooltip> ancestor, and every intrinsic element carries
   // data-slot. Both are the local plugin under scripts/eslint-rules/.
   {
     files: ['src/**/*.tsx'],
+    ignores: ['src/components/base/**', 'src/components/foundations/**'],
     rules: {
       'meridian-ui/icon-only-needs-tooltip': 'error',
       'meridian-ui/intrinsic-needs-data-slot': 'error',
+    },
+  },
+  // The base layer is a vendored boardui snapshot on React Aria: its files do
+  // not carry data-slot on every node (the registry does not), but every other
+  // convention applies, and one more — a prop it accepts, it honours.
+  {
+    files: ['src/components/base/**/*.tsx'],
+    rules: {
+      'meridian-ui/icon-only-needs-tooltip': 'error',
+      'meridian-ui/no-silent-prop-drop': 'error',
     },
   },
   // UI conventions from CLAUDE.md, machine-checkable subset. Two config blocks
@@ -228,13 +268,14 @@ export default tseslint.config(
   // it: the non-ui block must carry the full superset of restrictions.
   {
     files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/components/foundations/**'],
     rules: {
       'no-restricted-syntax': ['error', ...styleRestrictions, ...nativeChromeRestrictions],
     },
   },
   {
     files: ['src/**/*.{ts,tsx}'],
-    ignores: ['src/components/ui/**'],
+    ignores: ['src/components/ui/**', 'src/components/base/**'],
     rules: {
       'no-restricted-syntax': [
         'error',
