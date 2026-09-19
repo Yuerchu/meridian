@@ -116,7 +116,6 @@ export function PlanCommentsPane({
                 placeholder={t('planReview.comments.placeholder')}
                 value={comment.body}
                 rows={2}
-                variant="secondary"
                 className="resize-none"
                 onChange={(event) => onChangeComment(comment.id, event.target.value)}
               />
@@ -149,7 +148,6 @@ export function PlanCommentsPane({
               placeholder={t('planReview.comments.globalPlaceholder')}
               value={globalNote}
               rows={2}
-              variant="secondary"
               className="resize-none"
               onChange={(event) => onGlobalNoteChange(event.target.value)}
             />

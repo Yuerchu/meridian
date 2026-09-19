@@ -167,7 +167,6 @@ function SourceEditor({
         aria-label={t('planReview.source.label')}
         value={value}
         readOnly={isReadOnly}
-        variant="secondary"
         className="plan-review-source min-h-0 flex-1 font-mono"
         onChange={(event) => onChange(event.target.value)}
         onSelect={(event) => {
@@ -753,12 +752,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
                 {problem.message}
               </p>
               {problem.action && (
-                <Button
-                  size="small"
-                  variant="secondary"
-                  isDisabled={problem.action.pending}
-                  onPress={problem.action.run}
-                >
+                <Button size="small" isDisabled={problem.action.pending} onPress={problem.action.run}>
                   {problem.action.label}
                 </Button>
               )}
@@ -967,11 +961,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
             >
               {t('planReview.discard')}
             </Button>
-            <Button
-              variant="secondary"
-              isDisabled={deciding || !rules.canRequestChanges}
-              onPress={() => void decide('request_changes')}
-            >
+            <Button isDisabled={deciding || !rules.canRequestChanges} onPress={() => void decide('request_changes')}>
               {t('planReview.requestChanges')}
             </Button>
             <Button

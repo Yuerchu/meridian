@@ -36,40 +36,53 @@ import { TextareaBase, type TextareaBaseProps } from './textarea/textarea'
 
 export { TextField, type TextFieldProps }
 
-export type InputProps = InputBaseProps
+/**
+ * Which surface the field sits on, which decides its fill. boardui's field is
+ * the tertiary well, and in the dark theme that is the same neutral as the
+ * primary surface — a field on a card, a modal or this app's main panel is
+ * invisible until hovered. boardui's own settings page answers that by giving a
+ * field on the lighter surface the secondary fill (`settings-storage`), and
+ * that is the rule here: the well is always one step darker than what it is on.
+ *
+ * `primary` is the default because that is where almost every field in this
+ * app lives; the sidebar's forms say `secondary`.
+ */
+export type FieldSurface = 'primary' | 'secondary'
 
-export function Input(props: InputProps) {
-  return <InputBase data-slot="input" {...props} />
+const WELL: Record<FieldSurface, string> = {
+  primary: 'bg-background-secondary-default',
+  secondary: 'bg-background-tertiary-default',
+}
+
+export interface InputProps extends InputBaseProps {
+  surface?: FieldSurface
+}
+
+export function Input({ surface = 'primary', fieldClassName, ...props }: InputProps) {
+  return <InputBase data-slot="input" fieldClassName={cx(WELL[surface], fieldClassName)} {...props} />
 }
 
 export interface TextAreaProps extends TextareaBaseProps {
-  /** `secondary` sits the field on the panel's own colour rather than the tertiary well. */
-  variant?: 'primary' | 'secondary'
+  surface?: FieldSurface
 }
 
-export function TextArea({ variant = 'primary', fieldClassName, ...props }: TextAreaProps) {
-  return (
-    <TextareaBase
-      data-slot="textarea"
-      fieldClassName={cx(variant === 'secondary' && 'bg-background-secondary-default', fieldClassName)}
-      {...props}
-    />
-  )
+export function TextArea({ surface = 'primary', fieldClassName, ...props }: TextAreaProps) {
+  return <TextareaBase data-slot="textarea" fieldClassName={cx(WELL[surface], fieldClassName)} {...props} />
 }
 
 /* ------------------------------------------------------------ SearchField */
 
 interface SearchFieldRootProps extends Omit<AriaSearchFieldProps, 'className'> {
   className?: string
-  variant?: 'primary' | 'secondary'
+  surface?: FieldSurface
   children?: ReactNode
 }
 
-function SearchFieldRoot({ className, variant = 'primary', children, ...props }: SearchFieldRootProps) {
+function SearchFieldRoot({ className, surface = 'primary', children, ...props }: SearchFieldRootProps) {
   return (
     <AriaSearchField
       data-slot="search-field"
-      data-variant={variant}
+      data-surface={surface}
       {...props}
       className={cx('group/search flex w-full flex-col gap-1', className)}
     >
@@ -86,7 +99,7 @@ function SearchFieldGroup({ className, ...props }: ComponentProps<typeof AriaGro
       {...props}
       className={cx(
         'flex w-full items-center gap-2 rounded-2lg p-2 text-foreground-icon-tertiary',
-        'bg-background-tertiary-default group-data-[variant=secondary]/search:bg-background-secondary-default',
+        'bg-background-secondary-default group-data-[surface=secondary]/search:bg-background-tertiary-default',
         'ring-2 ring-transparent ring-inset transition-[background-color,box-shadow,color] duration-[var(--input-transition-ms)] ease',
         'data-[hovered]:ring-border-button-hover data-[focus-within]:ring-border-button-active',
         'group-data-[disabled]/search:bg-input-disabled-background',
@@ -154,19 +167,21 @@ export const SearchField = Object.assign(SearchFieldRoot, {
 
 interface InputGroupRootProps extends Omit<ComponentProps<typeof AriaGroup>, 'className'> {
   className?: string
+  surface?: FieldSurface
 }
 
 /**
  * One field shell around a bare control and its adornments, for a control that
  * is not a form field — a log filter with an icon in front of it.
  */
-function InputGroupRoot({ className, ...props }: InputGroupRootProps) {
+function InputGroupRoot({ className, surface = 'primary', ...props }: InputGroupRootProps) {
   return (
     <AriaGroup
       data-slot="input-group"
       {...props}
       className={cx(
-        'flex w-full items-center gap-2 rounded-2lg bg-background-tertiary-default p-2 text-foreground-icon-tertiary',
+        'flex w-full items-center gap-2 rounded-2lg p-2 text-foreground-icon-tertiary',
+        WELL[surface],
         'ring-2 ring-transparent ring-inset transition-[background-color,box-shadow,color] duration-[var(--input-transition-ms)] ease',
         'data-[hovered]:ring-border-button-hover data-[focus-within]:ring-border-button-active',
         className,

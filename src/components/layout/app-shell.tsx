@@ -210,7 +210,12 @@ export function AppShell(props: ShellProps) {
         // The old provider was `min-h-svh`: a page that grows. This one is a
         // fixed viewport with its own scrollers inside, and the transcript's
         // scroller needs a container that does not move to measure against.
-        className="h-svh overflow-hidden pb-[var(--ime-bottom,0px)]"
+        //
+        // The keyboard inset is *added* to the frame's own 12px, not passed as
+        // `pb-[var(--ime-bottom)]` on its own: under `cx()` a `pb-*` utility
+        // replaces the bottom of the provider's `p-3`, and on a desktop the
+        // inset is 0px — which is how the frame lost its bottom edge once.
+        className="h-svh overflow-hidden pb-[calc(0.75rem+var(--ime-bottom,0px))]"
       >
         <AppSidebar
           conversations={conversations}

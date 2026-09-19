@@ -155,7 +155,7 @@ export function EmojiPicker({
       </TooltipTrigger>
       <ProEmojiPicker.Popover placement="top end">
         <ProEmojiPicker.Content>
-          <SearchField aria-label={t('chat.emojiSearch')} value={search} variant="secondary" onChange={setSearch}>
+          <SearchField aria-label={t('chat.emojiSearch')} value={search} onChange={setSearch}>
             <SearchField.Group>
               <SearchField.SearchIcon />
               <SearchField.Input autoFocus placeholder={t('chat.emojiSearch')} />

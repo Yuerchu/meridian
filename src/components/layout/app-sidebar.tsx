@@ -23,7 +23,7 @@
  * through it or the sheet stays open over the page it just opened.
  */
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DropZone, useDragAndDrop } from 'react-aria-components'
 import type { DropItem, Key } from 'react-aria-components'
@@ -35,6 +35,7 @@ import {
   DropdownItem,
   DropdownPopover,
   Input,
+  Kbd,
   Label,
   ToggleButton,
   Tooltip,
@@ -228,6 +229,7 @@ function NewProjectForm({
   return (
     <div data-slot="project-form" className="px-2 py-1.5 space-y-1.5">
       <Input
+        surface="secondary"
         type="text"
         aria-label={t('sidebar.projectName')}
         value={name}
@@ -261,6 +263,7 @@ function NewProjectForm({
         </Button>
       ) : (
         <Input
+          surface="secondary"
           type="text"
           aria-label={t('sidebar.hostPath')}
           value={path}
@@ -370,6 +373,7 @@ function NewHostedSessionForm({
         </Button>
       ) : (
         <Input
+          surface="secondary"
           type="text"
           aria-label={t('sidebar.hostPath')}
           value={path}
@@ -504,14 +508,6 @@ function RowActionItems({ actions }: { actions: RowAction[] }) {
 /** The loose group's key in the folded set. Project ids are uuids, so this
  *  cannot collide with one. */
 const LOOSE_KEY = 'loose'
-
-/**
- * The panel keeps the example's density; the mobile sheet keeps Sidebar's
- * default, because a finger needs the taller row. Withheld while settings fills the
- * pane — that side is a short nav list, and two densities inside one app read
- * as a bug.
- */
-const DENSITY = { '--spacing': '0.2rem' } as CSSProperties
 
 interface ConversationGroupProps {
   /** `null` is the loose group — the drop that unfiles. */
@@ -1285,13 +1281,18 @@ export function AppSidebar({
               no `mod` key to press and no header button while the sheet is
               open. The chip writes the shortcut down where a desktop reader
               will look for it. */}
-          <Sidebar.MenuItem id={`${prefix}search`} textValue={t('sidebar.search')} onAction={openSearch}>
+          <Sidebar.MenuItem
+            id={`${prefix}search`}
+            textValue={t('sidebar.search')}
+            appearance="pill"
+            onAction={openSearch}
+          >
             <Sidebar.MenuIcon>
               <Magnifier />
             </Sidebar.MenuIcon>
             <Sidebar.MenuLabel>{t('sidebar.search')}</Sidebar.MenuLabel>
             <Sidebar.MenuChip>
-              <span data-slot="sidebar-search-shortcut">{searchShortcut}</span>
+              <Kbd data-slot="sidebar-search-shortcut">{searchShortcut}</Kbd>
             </Sidebar.MenuChip>
           </Sidebar.MenuItem>
         </Sidebar.Menu>
@@ -1466,16 +1467,13 @@ export function AppSidebar({
 
   return (
     <>
-      {/* The safe-area padding sits on the panel rather than on its header and
-          footer: `[data-state=collapsed] .sidebar__header` sets its own inline
-          padding at a specificity a utility cannot reach, so a cutout would be
-          honoured until the sidebar was collapsed and then quietly stop being. */}
-      <Sidebar
-        style={page === 'settings' ? undefined : DENSITY}
-        className="pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)]"
-      >
-        {side('d-', isIconCollapsed)}
-      </Sidebar>
+      {/* No density override and no inset utilities here: the panel is drawn at
+          boardui's own scale (36px rows, 20px icons — the `--spacing: 0.2rem`
+          that used to shrink it to 80% is what made it look like nothing else
+          on the page), and it adds the device's safe-area insets to its own
+          padding itself, because a `pt-[var(--safe-top)]` passed in would
+          replace that padding rather than extend it. */}
+      <Sidebar>{side('d-', isIconCollapsed)}</Sidebar>
       {/* Renders nothing above 768px. Below it Sidebar hides the panel outright, so
           without this a narrow window would have a toggle that toggles nothing.
           The sheet covers the full height including the cutout and the

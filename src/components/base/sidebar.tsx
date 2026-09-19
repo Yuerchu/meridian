@@ -164,7 +164,7 @@ function SidebarTrigger({
 }
 
 function SidebarHeader({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="sidebar-header" {...props} className={cx('flex shrink-0 flex-col gap-1', className)} />
+  return <div data-slot="sidebar-header" {...props} className={cx('flex shrink-0 flex-col gap-3', className)} />
 }
 
 function SidebarContent({ className, ...props }: ComponentProps<'div'>) {
@@ -178,7 +178,7 @@ function SidebarContent({ className, ...props }: ComponentProps<'div'>) {
 }
 
 function SidebarFooter({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="sidebar-footer" {...props} className={cx('flex shrink-0 flex-col gap-1 pt-2', className)} />
+  return <div data-slot="sidebar-footer" {...props} className={cx('flex shrink-0 flex-col gap-3', className)} />
 }
 
 function SidebarGroup({ className, ...props }: ComponentProps<'div'>) {
@@ -191,7 +191,7 @@ function SidebarGroupLabel({ className, ...props }: ComponentProps<'div'>) {
       data-slot="sidebar-group-label"
       {...props}
       className={cx(
-        'sidebar__group-label flex min-h-7 items-center px-2 text-caption-1-medium text-text-secondary',
+        'sidebar__group-label flex min-h-7 items-center px-2 text-body-medium text-text-secondary',
         className,
       )}
     />
@@ -210,32 +210,61 @@ function SidebarMenu<T extends object>({ className, selectionMode = 'none', chil
       data-slot="sidebar-menu"
       selectionMode={selectionMode}
       {...props}
-      className={cx('sidebar__menu flex flex-col gap-0.5 outline-none', className)}
+      className={cx('sidebar__menu flex flex-col gap-1 outline-none', className)}
     >
       {children}
     </Tree>
   )
 }
 
+/**
+ * What collapses when the panel becomes the icon rail: the label, the chip and
+ * the actions blur and shrink to nothing while the icon stays where it was, so
+ * nothing jumps to the centre — boardui's `Collapsible` slot, expressed as
+ * classes keyed on the panel's `data-state` rather than as a wrapper.
+ */
+const COLLAPSIBLE = cx(
+  'max-w-full transition-[max-width,opacity,filter] duration-300 ease-in-out',
+  'group-data-[state=collapsed]/sidebar:max-w-0 group-data-[state=collapsed]/sidebar:opacity-0 group-data-[state=collapsed]/sidebar:blur-[3px]',
+)
+
 interface SidebarMenuItemProps extends Omit<TreeItemProps, 'className' | 'style' | 'children'> {
   /** The row for what is on screen now. Drawn filled; announced `aria-current`. */
   isCurrent?: boolean
+  /**
+   * `pill` is boardui's quick-search affordance: fully rounded on the tertiary
+   * fill, for the one row that opens something rather than going somewhere.
+   */
+  appearance?: 'row' | 'pill'
   /** A tooltip on the row — for a title the row had to truncate. */
   tooltipProps?: Pick<TooltipProps, 'placement' | 'className'> & { content: ReactNode; delay?: number }
   className?: string
   children?: ReactNode
 }
 
-function SidebarMenuItem({ className, isCurrent = false, tooltipProps, children, ...props }: SidebarMenuItemProps) {
+function SidebarMenuItem({
+  className,
+  isCurrent = false,
+  appearance = 'row',
+  tooltipProps,
+  children,
+  ...props
+}: SidebarMenuItemProps) {
   const row = (
     <div
       data-slot="sidebar-menu-item-content"
       data-current={isCurrent || undefined}
+      data-appearance={appearance}
       aria-current={isCurrent ? 'page' : undefined}
       className={cx(
-        'sidebar__menu-item-content group/menu-item flex min-h-9 w-full items-center gap-2 rounded-2lg px-2 py-1.5',
-        'text-body-medium text-text-secondary transition-[background-color] duration-150',
-        'group-data-[hovered]/tree-item:bg-background-secondary-hover',
+        // boardui's NavItem: `p-2` around a 20px icon is the 36px row, and the
+        // rail's row is the same element at `w-9` with its label collapsed.
+        'sidebar__menu-item-content group/menu-item flex min-h-9 w-full items-center gap-2 overflow-hidden p-2',
+        'text-body-medium text-text-secondary transition-[width,background-color] duration-300 ease-in-out',
+        'group-data-[state=collapsed]/sidebar:w-9',
+        appearance === 'pill'
+          ? 'rounded-full bg-background-tertiary-default group-data-[hovered]/tree-item:bg-background-tertiary-hover/55'
+          : 'rounded-2lg group-data-[hovered]/tree-item:bg-background-secondary-hover',
         'data-[current]:bg-linear-to-b data-[current]:from-accent-500 data-[current]:to-accent-600 data-[current]:text-text-white data-[current]:shadow-nav-selected',
       )}
     >
@@ -287,7 +316,11 @@ function SidebarMenuLabel({ className, ...props }: ComponentProps<'span'>) {
     <span
       data-slot="sidebar-menu-label"
       {...props}
-      className={cx('min-w-0 flex-1 truncate group-data-[current]/menu-item:text-text-white', className)}
+      className={cx(
+        'min-w-0 flex-1 truncate whitespace-nowrap group-data-[current]/menu-item:text-text-white',
+        COLLAPSIBLE,
+        className,
+      )}
     />
   )
 }
@@ -299,6 +332,7 @@ function SidebarMenuChip({ className, ...props }: ComponentProps<'span'>) {
       {...props}
       className={cx(
         'ml-auto flex shrink-0 items-center text-caption-1-medium text-text-tertiary group-data-[current]/menu-item:text-text-white/70',
+        COLLAPSIBLE,
         className,
       )}
     />
@@ -317,7 +351,10 @@ function SidebarMenuAction({ className, children, ...props }: SidebarMenuActionP
       data-slot="sidebar-menu-action"
       {...props}
       className={cx(
-        'sidebar__menu-action inline-flex size-6 shrink-0 cursor-[var(--cursor-interactive)] items-center justify-center rounded-lg text-text-secondary outline-none',
+        // `-my-0.5`: a 24px button in a row whose padding is sized for a 20px
+        // icon would make every row carrying one 40px tall, and the rows
+        // without one 36px.
+        'sidebar__menu-action -my-0.5 inline-flex size-6 shrink-0 cursor-[var(--cursor-interactive)] items-center justify-center rounded-lg text-text-secondary outline-none',
         'data-[hovered]:bg-background-secondary-hover data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
         'group-data-[current]/menu-item:text-text-white/70 group-data-[current]/menu-item:data-[hovered]:bg-foreground-full/10',
         '[&_svg]:size-4 [&_svg]:shrink-0',
@@ -334,7 +371,7 @@ function SidebarMenuActions({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="sidebar-menu-actions"
       {...props}
-      className={cx('sidebar__menu-actions ml-auto flex shrink-0 items-center gap-0.5', className)}
+      className={cx('sidebar__menu-actions ml-auto flex shrink-0 items-center gap-0.5', COLLAPSIBLE, className)}
     />
   )
 }
@@ -368,10 +405,18 @@ function SidebarRoot({ children, className, ...props }: ComponentProps<'aside'>)
       data-state={rail ? 'collapsed' : 'expanded'}
       {...props}
       className={cx(
-        'sidebar hidden h-full shrink-0 flex-col overflow-hidden md:flex',
+        'sidebar group/sidebar hidden h-full shrink-0 flex-col gap-3 overflow-hidden md:flex',
         'rounded-3xl border border-border-button-white bg-background-secondary-default shadow-sidebar',
         'transition-[width] duration-300 ease-in-out',
-        rail ? 'w-[60px] px-[11px] py-3' : 'w-[var(--app-sidebar-width,260px)] p-3',
+        // boardui's 12px, plus whatever the device cuts off. The insets are
+        // added here rather than passed as `pt-[var(--safe-top)]` from outside:
+        // a padding utility on the same side *replaces* this one under `cx()`,
+        // and on a desktop the inset is 0px — which is how the panel lost all
+        // three edges once. The rail keeps its 11px so its column stays 36px.
+        'pt-[calc(0.75rem+var(--safe-top,0px))] pb-[calc(0.75rem+var(--safe-bottom,0px))]',
+        rail
+          ? 'w-[60px] pl-[calc(11px+var(--safe-left,0px))] pr-[11px]'
+          : 'w-[var(--app-sidebar-width,260px)] pl-[calc(0.75rem+var(--safe-left,0px))] pr-3',
         className,
       )}
     >
