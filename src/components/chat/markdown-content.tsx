@@ -4,6 +4,7 @@ import { marked } from 'marked'
 import ReactMarkdown, { defaultUrlTransform, type UrlTransform } from 'react-markdown'
 import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
+import { Focusable } from 'react-aria-components'
 import { openExternalUrl } from '@/lib/external-link'
 import { Check, Copy } from '@gravity-ui/icons'
 import { Link, Skeleton, Tooltip, TooltipTrigger } from '@/components/base'
@@ -340,11 +341,17 @@ const MarkdownAnchor: Components['a'] = ({ href, children, node: _node, ...props
     )
   }
 
+  // `Focusable` is what lets the anchor receive the trigger's hover and focus
+  // handlers, which React Aria hands down through context: a bare `<a>` never
+  // opened the tooltip — and the tooltip is the only place the real URL is
+  // shown, the visible `href` being a sentinel.
   return (
     <TooltipTrigger delay={300}>
-      <a data-slot="markdown-external-link" role="link" {...anchorProps}>
-        {children}
-      </a>
+      <Focusable>
+        <a data-slot="markdown-external-link" role="link" {...anchorProps}>
+          {children}
+        </a>
+      </Focusable>
       <Tooltip placement="top" className="max-w-xs break-all">
         {target.url}
       </Tooltip>

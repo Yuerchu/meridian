@@ -81,13 +81,12 @@ export function AssistantAvatar({
 }) {
   return (
     <MessageGroupAvatar className="size-8">
-      {!hosted && src ? (
-        <Avatar src={src} className="size-full" />
-      ) : (
-        <Avatar className="size-full">
-          {hosted ? <HostedAgentGlyph /> : <ModelIcon model={modelId ?? undefined} size={32} shape="circle" />}
-        </Avatar>
-      )}
+      {/* The glyph is always given: it is what `Avatar` shows when the photo
+          fails to load, so a stale URL costs a model icon rather than a
+          broken image on every message. */}
+      <Avatar src={!hosted && src ? src : undefined} className="size-full">
+        {hosted ? <HostedAgentGlyph /> : <ModelIcon model={modelId ?? undefined} size={32} shape="circle" />}
+      </Avatar>
     </MessageGroupAvatar>
   )
 }

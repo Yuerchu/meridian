@@ -167,7 +167,11 @@ function SourceEditor({
         aria-label={t('planReview.source.label')}
         value={value}
         readOnly={isReadOnly}
-        className="plan-review-source min-h-0 flex-1 font-mono"
+        // The layout classes go on the field shell, which is the flex child
+        // of the column; `className` reaches only the `<textarea>` inside it,
+        // and a percentage height there cannot stretch a content-sized shell.
+        fieldClassName="plan-review-source min-h-0 flex-1 rounded-none p-0"
+        className="font-mono"
         onChange={(event) => onChange(event.target.value)}
         onSelect={(event) => {
           const target = event.currentTarget

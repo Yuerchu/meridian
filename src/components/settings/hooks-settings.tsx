@@ -404,8 +404,10 @@ export function HooksSettings() {
       </div>
 
       <div data-slot="hooks-assistant" className="space-y-1.5">
-        <Label className="block text-caption-1-medium text-text-secondary">{t('settings.hooks.assistant')}</Label>
+        {/* Through the `label` slot rather than a sibling `Label`: only inside
+            the Select's own context does React Aria wire it to the trigger. */}
         <Select
+          label={t('settings.hooks.assistant')}
           selectedKey={config.assistant_id ?? '_default'}
           onSelectionChange={(v) => {
             if (v) setConfig({ ...config, assistant_id: v === '_default' ? null : String(v) })

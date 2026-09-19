@@ -7,6 +7,8 @@ import { Button } from './buttons/button'
 interface EmojiPickerCtx {
   selectedKey: Key | null
   onSelectionChange?: (key: Key) => void
+  /** The root's `aria-label`, which names the popover's dialog. */
+  label?: string
 }
 
 const EmojiPickerContext = createContext<EmojiPickerCtx>({ selectedKey: null })
@@ -21,9 +23,16 @@ interface EmojiPickerProps {
   children?: ReactNode
 }
 
-function EmojiPickerRoot({ isOpen, onOpenChange, selectedKey = null, onSelectionChange, children }: EmojiPickerProps) {
+function EmojiPickerRoot({
+  isOpen,
+  onOpenChange,
+  selectedKey = null,
+  onSelectionChange,
+  children,
+  'aria-label': label,
+}: EmojiPickerProps) {
   return (
-    <EmojiPickerContext.Provider value={{ selectedKey, onSelectionChange }}>
+    <EmojiPickerContext.Provider value={{ selectedKey, onSelectionChange, label }}>
       <DialogTrigger isOpen={isOpen} onOpenChange={onOpenChange}>
         {children}
       </DialogTrigger>
@@ -55,6 +64,7 @@ function EmojiPickerTrigger({ className, onPress, children, ...props }: EmojiPic
 }
 
 function EmojiPickerPopover({ className, ...props }: Omit<PopoverProps, 'children'> & { children?: ReactNode }) {
+  const { label } = useContext(EmojiPickerContext)
   return (
     <AriaPopover
       data-slot="emoji-picker-popover"
@@ -65,7 +75,9 @@ function EmojiPickerPopover({ className, ...props }: Omit<PopoverProps, 'childre
         className as string,
       )}
     >
-      <Dialog className="outline-none">{props.children}</Dialog>
+      <Dialog aria-label={label} className="outline-none">
+        {props.children}
+      </Dialog>
     </AriaPopover>
   )
 }

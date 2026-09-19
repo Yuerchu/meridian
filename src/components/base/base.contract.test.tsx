@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import '@/i18n'
@@ -11,6 +11,7 @@ import {
   Description,
   Disclosure,
   Dropdown,
+  EmojiPicker,
   DropdownItem,
   DropdownPopover,
   Input,
@@ -274,6 +275,46 @@ describe('Presentation parts honour their props', () => {
     )
     expect(screen.getByTestId('glyph')).toBeInTheDocument()
     expect(screen.queryByText('M')).toBeNull()
+  })
+
+  it('Avatar falls back to its glyph when the photo fails to load', () => {
+    render(
+      <Avatar src="https://example.invalid/a.png">
+        <svg data-testid="glyph" />
+      </Avatar>,
+    )
+    expect(screen.queryByTestId('glyph')).toBeNull()
+    fireEvent.error(screen.getByRole('presentation'))
+    expect(screen.getByTestId('glyph')).toBeInTheDocument()
+    expect(screen.queryByRole('presentation')).toBeNull()
+  })
+
+  it('DataGrid shows the property a column names by accessorKey alone', () => {
+    type Row = { id: string; seen: number }
+    render(
+      <DataGrid<Row>
+        aria-label="Counts"
+        columns={[
+          { id: 'id', header: 'Id', isRowHeader: true, cell: (r) => r.id },
+          { id: 'seen', header: 'Seen', accessorKey: 'seen' },
+        ]}
+        data={[{ id: 'a', seen: 42 }]}
+        getRowId={(r) => r.id}
+      />,
+    )
+    expect(screen.getByRole('gridcell', { name: '42' })).toBeInTheDocument()
+  })
+
+  it('EmojiPicker names its dialog from the root label', async () => {
+    render(
+      <EmojiPicker aria-label="Stickers" isOpen>
+        <EmojiPicker.Trigger aria-label="Open">+</EmojiPicker.Trigger>
+        <EmojiPicker.Popover>
+          <EmojiPicker.Content>body</EmojiPicker.Content>
+        </EmojiPicker.Popover>
+      </EmojiPicker>,
+    )
+    expect(await screen.findByRole('dialog', { name: 'Stickers' })).toBeInTheDocument()
   })
 
   it('Meter.Fill is as wide as the value', () => {

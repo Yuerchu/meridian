@@ -70,15 +70,12 @@
   border-inline-start: 3px dashed var(--color-status-warning);
 }
 
-.plan-review-source,
-.plan-review-source > div,
-.plan-review-source [data-slot='textarea-wrapper'],
+/* `.plan-review-source` is the field shell (a `flex-col` and the column's
+   `flex-1` child); the textarea fills it. */
 .plan-review-source textarea {
-  min-height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
   height: 100%;
-}
-
-.plan-review-source textarea {
   resize: none;
   border-radius: 0;
   padding: 1.5rem clamp(1rem, 4cqi, 3rem) 6rem;

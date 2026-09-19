@@ -1,5 +1,6 @@
 import { createContext, useContext, useMemo, useState, type ComponentProps, type ReactNode } from 'react'
 import { EditorContent, useEditor, useEditorState, type Editor, type JSONContent } from '@tiptap/react'
+import { BubbleMenu } from '@tiptap/react/menus'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
 import Link from '@tiptap/extension-link'
@@ -468,15 +469,26 @@ function RteContent({ className, ...props }: ComponentProps<'div'>) {
   )
 }
 
+/**
+ * The toolbar that appears beside a non-empty selection.
+ *
+ * Tiptap's own `BubbleMenu`: the plugin shows and positions the element off
+ * the editor's selection and hides it otherwise. It used to be an ordinary
+ * in-flow `div`, always visible at the bottom of the editor.
+ */
 function RteBubbleMenu({ children, className, ...props }: ComponentProps<'div'>) {
+  const { editor } = useContext(RteContext)
+  if (!editor) return null
   return (
-    <div
+    <BubbleMenu
+      editor={editor}
+      options={{ placement: 'top' }}
       data-slot="rich-text-editor-bubble-menu"
       {...props}
-      className={cx('flex items-center gap-0.5 p-1', OVERLAY_SURFACE, className)}
+      className={cx('z-50 flex items-center gap-0.5 p-1', OVERLAY_SURFACE, className)}
     >
       {children}
-    </div>
+    </BubbleMenu>
   )
 }
 

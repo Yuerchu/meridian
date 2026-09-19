@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { TrashBin, TriangleExclamation } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { Button, Checkbox, Chip, Disclosure, TextArea, Tooltip, TooltipTrigger } from '@/components/base'
+import { Hint } from '@/components/ui/hint'
 import type { MemoryInfoResponse } from '@/types'
 
 /**
@@ -83,15 +84,12 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
         <Chip className={INFO_CHIP}>{memory.origin}</Chip>
         <Chip className="text-text-secondary">{memory.memory_type}</Chip>
         {ownerOnly && (
-          <TooltipTrigger delay={0}>
-            <span data-slot="memory-owner-trigger" tabIndex={0} className="inline-flex">
-              <Chip color="warning">
-                <TriangleExclamation className="size-3.5" />
-                {t('settings.memory.ownerOnly')}
-              </Chip>
-            </span>
-            <Tooltip>{t('settings.memory.ownerOnlyHint')}</Tooltip>
-          </TooltipTrigger>
+          <Hint data-slot="memory-owner-trigger" label={t('settings.memory.ownerOnlyHint')} className="inline-flex">
+            <Chip color="warning">
+              <TriangleExclamation className="size-3.5" />
+              {t('settings.memory.ownerOnly')}
+            </Chip>
+          </Hint>
         )}
         <div data-slot="memory-row-spacer" className="flex-1" />
         <span data-slot="memory-row-date" className="text-caption-1-regular text-text-secondary">

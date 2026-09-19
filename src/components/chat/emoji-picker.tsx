@@ -105,10 +105,18 @@ export function EmojiPicker({
   // Searching spans every assigned pack. At rest the footer acts as category
   // navigation, keeping the grid compact without losing the pack names that
   // the previous hand-built picker showed above every row.
-  const visibleItems = useMemo(
-    () => (search.trim() ? allItems : allItems.filter((item) => activePackId === null || item.packId === activePackId)),
-    [activePackId, allItems, search],
-  )
+  //
+  // The match is made here, against the same name, tags and pack name the
+  // item's `textValue` carries: the base grid draws what it is given and
+  // filters nothing (the Pro picker it replaced matched `textValue` itself,
+  // which is how every search came to show every sticker).
+  const visibleItems = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    if (!query) return allItems.filter((item) => activePackId === null || item.packId === activePackId)
+    return allItems.filter((item) =>
+      `${item.emoji.name} ${item.emoji.tags ?? ''} ${item.packName}`.toLowerCase().includes(query),
+    )
+  }, [activePackId, allItems, search])
 
   const handleSelect = useCallback(
     (id: React.Key | null) => {

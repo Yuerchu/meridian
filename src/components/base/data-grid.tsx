@@ -89,6 +89,16 @@ function columnKey<T>(col: DataGridColumn<T>): string {
   return col.key ?? col.id ?? col.accessorKey ?? ''
 }
 
+/** What a cell shows: the renderer if the column has one, otherwise the
+ *  property `accessorKey` names — a column declared by key alone is a real
+ *  column, not an empty one. */
+function cellContent<T>(col: DataGridColumn<T>, item: T): ReactNode {
+  if (col.cell) return col.cell(item)
+  if (!col.accessorKey) return null
+  const value = (item as Record<string, unknown>)[col.accessorKey]
+  return value == null ? null : String(value)
+}
+
 interface FlatRow<T> {
   item: T
   key: Key
@@ -308,10 +318,10 @@ export function DataGrid<T extends object>({
                         ) : (
                           <span aria-hidden className="size-5 shrink-0" />
                         )}
-                        <span className="min-w-0 flex-1">{col.cell?.(row.item)}</span>
+                        <span className="min-w-0 flex-1">{cellContent(col, row.item)}</span>
                       </span>
                     ) : (
-                      col.cell?.(row.item)
+                      cellContent(col, row.item)
                     )}
                   </Cell>
                 )

@@ -1,4 +1,4 @@
-import type { HTMLAttributes, Ref } from 'react'
+import { useState, type HTMLAttributes, type Ref } from 'react'
 import { cx, sortCx } from '@/utils/cx'
 
 /**
@@ -65,10 +65,20 @@ export function Avatar({
   ref,
   ...props
 }: AvatarProps) {
+  // A photo that fails to load falls back to the glyph or initials rather
+  // than staying a broken image; keyed by URL so a new `src` gets its chance.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null)
   return (
     <span ref={ref} className={cx(styles.base, styles.size[size], styles.color[color], className)} {...props}>
-      {src ? (
-        <img src={src} alt={alt ?? ''} loading="lazy" decoding="async" className="size-full object-cover" />
+      {src && failedSrc !== src ? (
+        <img
+          src={src}
+          alt={alt ?? ''}
+          loading="lazy"
+          decoding="async"
+          className="size-full object-cover"
+          onError={() => setFailedSrc(src)}
+        />
       ) : (
         // A caller's own glyph (a model icon) wins over initials — the explicit
         // child is the more specific instruction.
