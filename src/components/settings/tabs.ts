@@ -8,6 +8,7 @@ import {
   FaceSmile,
   LogoMcp,
   Flask,
+  Keyboard,
   Link,
   Microphone,
   ShieldCheck,
@@ -46,6 +47,7 @@ export type SettingsTab =
   | 'hooks'
   | 'acp'
   | 'remote'
+  | 'ime'
   | 'general'
   | 'developer'
   | 'about'
@@ -84,6 +86,9 @@ const settingsTabs: SettingsTabDef[] = [
   // three times, and a user looking for "what is this machine serving" should
   // find them together.
   { id: 'remote', labelKey: 'settings.remote', icon: Smartphone },
+  // The one panel that is about this machine's keyboard rather than its
+  // network. Windows only, and only where the backend is this machine.
+  { id: 'ime', labelKey: 'settings.ime', icon: Keyboard },
   { id: 'general', labelKey: 'settings.general', icon: Sliders },
   { id: 'developer', labelKey: 'settings.developer', icon: Flask },
   { id: 'about', labelKey: 'settings.about', icon: CircleInfo },
@@ -137,9 +142,18 @@ const DESKTOP_ONLY: SettingsTab[] = ['onebot', 'hooks', 'acp', 'remote']
  */
 const ANDROID_ONLY_HIDDEN: SettingsTab[] = ['voiceCorpus']
 
+/**
+ * The input method is a Windows text service; there is nothing to show for it
+ * anywhere else, and a remote client is looking at a desktop whose keyboard is
+ * not the one in its hand. `platform` is null for the first frame and that
+ * frame shows the row, for the reason given above.
+ */
+const WINDOWS_ONLY: SettingsTab[] = ['ime']
+
 export function visibleSettingsTabs(platform: string | null): SettingsTabDef[] {
   const hidden = new Set<SettingsTab>()
   if (platform === 'android' || !can.manageServers) DESKTOP_ONLY.forEach((id) => hidden.add(id))
   if (platform === 'android' && !isRemote) ANDROID_ONLY_HIDDEN.forEach((id) => hidden.add(id))
+  if ((platform !== null && platform !== 'windows') || !can.manageServers) WINDOWS_ONLY.forEach((id) => hidden.add(id))
   return hidden.size === 0 ? settingsTabs : settingsTabs.filter((tab) => !hidden.has(tab.id))
 }

@@ -1,0 +1,16 @@
+{
+  "bundle": {
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine",
+        "template": "./nsis/installer.nsi",
+        "installerHooks": "./nsis/ime-hooks.nsh"
+      },
+      "wix": {
+        "template": "./wix/main.wxs",
+        "fragmentPaths": ["./wix/ime.wxs"],
+        "featureRefs": ["IME"]
+      }
+    }
+  }
+}

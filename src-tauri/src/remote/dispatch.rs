@@ -567,6 +567,17 @@ mod tests {
             // launch on this machine, which a socket must not be able to ask
             // for.
             "open_in_editor",
+            // The input method: this machine's keyboard. Importing reads a path
+            // here, registering asks for elevation here, and the host is a
+            // process here. Filtered out by `COMMAND_NAMES` off Windows.
+            "save_ime_config",
+            "import_ime_dictionary",
+            "set_ime_dictionary_enabled",
+            "remove_ime_dictionary",
+            "start_ime_host",
+            "stop_ime_host",
+            "set_ime_profile_enabled",
+            "register_ime",
         ];
         expected.sort_unstable();
         expected.retain(|name| COMMAND_NAMES.contains(name));

@@ -7,6 +7,7 @@ import { OneBotSettings } from './onebot-settings'
 import { HooksSettings } from './hooks-settings'
 import { AcpSettings } from './acp-settings'
 import { RemoteAccessSettings } from './remote-access-settings'
+import { ImeSettings } from './ime-settings'
 import { EmojiSettings } from './emoji-settings'
 import { ToolMarketplace } from './tool-marketplace'
 import { AutoReviewSettings } from './auto-review-settings'
@@ -75,6 +76,9 @@ export default function SettingsPage({
       break
     case 'remote':
       panel = <RemoteAccessSettings />
+      break
+    case 'ime':
+      panel = <ImeSettings />
       break
     case 'general':
       panel = <GeneralSettings />

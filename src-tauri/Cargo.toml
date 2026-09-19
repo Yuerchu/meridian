@@ -1,5 +1,21 @@
 [workspace]
-members = ["."]
+# `ime/*` is the input method: the engine, the wire protocol, the TSF text
+# service and its host process. They live in the shell workspace rather than
+# in the core submodule because a headless server or `meridiand` must not
+# carry an input method, and they are listed one by one because the root
+# package deliberately depends on none of them — the Android check never
+# compiles them, and the desktop build only stages the artifacts they produce.
+members = [
+    ".",
+    "ime/dict",
+    "ime/engine",
+    "ime/proto",
+    "ime/session",
+    "ime/config",
+    "ime/cli",
+    "ime/tsf",
+    "ime/host",
+]
 # `crates/` is the meridian-core submodule (github.com/Yuerchu/meridian-core)
 # and a workspace of its own. A package may belong to one workspace only, so
 # the directory is excluded here and its crates are reached by path — which
@@ -83,3 +99,24 @@ futures = { version = "0.3", default-features = false, features = ["std"] }
 # different crate, so the core's own test configuration is invisible to them.
 meridian-core = { path = "crates/core", features = ["test-support"] }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "test-util"] }
+
+# The input method: Meridian's side of it is a settings page, an importer and
+# a control client for the host process. The engine, the DLL and the host are
+# workspace members of their own (`ime/`), built and shipped separately; the
+# shell only depends on the contract crates.
+[target.'cfg(windows)'.dependencies]
+meridian-ime-config = { path = "ime/config" }
+meridian-ime-dict = { path = "ime/dict" }
+meridian-ime-proto = { path = "ime/proto" }
+windows-registry = "0.6"
+windows-core = "0.62"
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_System_RemoteDesktop",
+    "Win32_System_Threading",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_TextServices",
+    "Win32_UI_WindowsAndMessaging",
+] }

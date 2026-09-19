@@ -51,6 +51,9 @@ jobs:
           # The action installs a minimal profile; the style gates below need
           # both components.
           components: rustfmt, clippy
+          # The input method's TSF DLL ships as x86 too (32-bit apps load a
+          # 32-bit text service), and nothing else in CI compiles for it.
+          targets: ${{ matrix.os == 'windows-latest' && 'i686-pc-windows-msvc' || '' }}
 
       - uses: swatinem/rust-cache@v2
         with:
@@ -148,6 +151,14 @@ jobs:
       - name: Rust tests
         working-directory: src-tauri
         run: cargo test
+
+      # The one target the release build uses that nothing above compiles
+      # for. A check rather than a build: the DLL's 32-bit linkage is what
+      # can rot unnoticed, and it is the same source as the x64 one.
+      - name: Check IME TSF (x86)
+        if: matrix.os == 'windows-latest'
+        working-directory: src-tauri
+        run: cargo check -p meridian-ime-tsf --target i686-pc-windows-msvc
 
       - name: Rust tests (core)
         working-directory: src-tauri/crates

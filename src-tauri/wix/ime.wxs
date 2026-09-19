@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Meridian input method: the optional MSI feature. Referenced from wix/main.wxs
+  (Meridian's fork of Tauri's template) through bundle > windows > wix >
+  fragmentPaths + featureRefs in tauri.ime.conf.json.
+
+  The DLL names carry the version because a text service is mapped into every
+  process with a text field and cannot be replaced in place. That version, and
+  where build.rs staged the files, come from resources/ime.wxi, which build.rs
+  writes (write_ime_wxi): Tauri does not render Handlebars into a fragment
+  (the pass over it only looks for extension namespaces), and light resolves a
+  relative Source against target/<profile>/wix/<arch>, not against this file.
+
+  Registration is the SelfReg table (SelfRegCost on the two DLLs): Windows
+  Installer calls DllRegisterServer on install and DllUnregisterServer on
+  removal, in a surrogate of the DLL's own bitness. That is why the 32-bit
+  DLL sits in a Win64="no" component even though the package is x64. No
+  custom action registers anything. Titles and descriptions are ASCII because
+  the database is code page 1252 (Tauri's en-US locale).
+-->
+<?include $(sys.SOURCEFILEDIR)..\resources\ime.wxi ?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+  <Fragment>
+    <DirectoryRef Id="INSTALLDIR">
+      <Directory Id="IMEDIR" Name="ime">
+        <Component Id="IMEHost" Guid="*" Win64="yes">
+          <File Id="IMEHostExe" Source="$(var.IMESourceDir)\meridian-ime-host.exe" KeyPath="yes" />
+          <!-- Stray versioned DLLs an NSIS install of the same directory may
+               have left; the MSI's own are in the File table already. -->
+          <RemoveFile Id="IMEStaleDlls" Name="meridian_ime_tsf*.dll" On="uninstall" />
+          <RemoveFolder Id="IMEDIR" On="uninstall" />
+        </Component>
+        <Component Id="IMEIconFile" Guid="*" Win64="yes">
+          <File Id="IMEIconFile" Source="$(var.IMESourceDir)\meridian-ime.ico" KeyPath="yes" />
+        </Component>
+        <Component Id="IMETsf64" Guid="*" Win64="yes">
+          <File Id="IMETsf64Dll" Source="$(var.IMESourceDir)\meridian_ime_tsf-$(var.IMEVersion).dll" KeyPath="yes" SelfRegCost="1" />
+        </Component>
+      </Directory>
+    </DirectoryRef>
+
+    <!-- 32-bit apps (WPS, the 32-bit QQ) load a 32-bit text service. It has to
+         be a 32-bit component for SelfReg to use the 32-bit surrogate, and
+         ICE80 refuses a 32-bit component under ProgramFiles64Folder (error,
+         not warning, and Tauri passes light no -sice), so it lives where the
+         rule wants it: Program Files (x86)\Meridian\ime, with its own copy of
+         the icon, which DllRegisterServer looks for beside the DLL. The NSIS
+         installer keeps both DLLs in one ime\ directory; regsvr32 does not
+         care. -->
+    <DirectoryRef Id="TARGETDIR">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLDIR32" Name="Meridian">
+          <Directory Id="IMEDIR32" Name="ime">
+            <Component Id="IMETsf32" Guid="*" Win64="no">
+              <File Id="IMETsf32Dll" Source="$(var.IMESourceDir)\meridian_ime_tsf32-$(var.IMEVersion).dll" KeyPath="yes" SelfRegCost="1" />
+              <RemoveFolder Id="IMEDIR32" On="uninstall" />
+              <RemoveFolder Id="RemoveINSTALLDIR32" Directory="INSTALLDIR32" On="uninstall" />
+            </Component>
+            <Component Id="IMEIconFile32" Guid="*" Win64="no">
+              <File Id="IMEIconFile32" Source="$(var.IMESourceDir)\meridian-ime.ico" KeyPath="yes" />
+            </Component>
+          </Directory>
+        </Directory>
+      </Directory>
+    </DirectoryRef>
+
+    <!-- The host holds the engine and draws the candidate window; a text
+         service with no host is a keyboard that swallows keys. All users'
+         Startup, since the package is perMachine. Non-advertised shortcuts
+         need a registry key path (ICE43), the way the template's own
+         shortcut components do it. -->
+    <DirectoryRef Id="TARGETDIR">
+      <Directory Id="StartupFolder" Name="Startup">
+        <Component Id="IMEStartupShortcut" Guid="*">
+          <Shortcut Id="IMEStartupLnk" Name="Meridian IME" Description="Meridian input method host"
+                    Target="[IMEDIR]meridian-ime-host.exe" WorkingDirectory="IMEDIR" Icon="MeridianIME.ico" />
+          <!-- The key the template's own shortcuts use: Software\<manufacturer>\<product>,
+               spelled out because a fragment is not rendered. -->
+          <RegistryValue Root="HKCU" Key="Software\yuxiaoqiu\Meridian" Name="IME Startup Shortcut" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </DirectoryRef>
+    <Icon Id="MeridianIME.ico" SourceFile="$(var.IMESourceDir)\meridian-ime.ico" />
+
+    <!-- Level 1: selected by default, and a row of its own in the feature
+         tree (CustomizeDlg) where it can be unticked; msiexec REMOVE=IME or
+         ADDLOCAL=MainProgram does the same without a UI. -->
+    <Feature Id="IME" Title="Meridian IME (Chinese input method)"
+             Description="A Chinese (pinyin) input method usable in every application, with its candidates served by a background process. Registered as a text service for all users of this computer."
+             Level="1" AllowAdvertise="no" Display="expand">
+      <ComponentRef Id="IMEHost" />
+      <ComponentRef Id="IMEIconFile" />
+      <ComponentRef Id="IMETsf64" />
+      <ComponentRef Id="IMETsf32" />
+      <ComponentRef Id="IMEIconFile32" />
+      <ComponentRef Id="IMEStartupShortcut" />
+    </Feature>
+
+    <!-- The host keeps its name across versions, so the running copy is the
+         one about to be overwritten. Killed rather than asked to close: it
+         has no window to receive the message. -->
+    <util:CloseApplication Id="IMECloseHost" Target="meridian-ime-host.exe"
+                           CloseMessage="no" TerminateProcess="0" RebootPrompt="no" />
+
+    <!-- AppContainer processes (UWP apps, the Store builds of things) load the
+         text service too, as "ALL APPLICATION PACKAGES" (S-1-15-2-1), which
+         Program Files grants by inheritance but a custom install directory
+         need not. By SID, because the name is localised; icacls rather than
+         util:PermissionEx, whose account lookup is by name. Deferred, so it
+         runs with the files in place and as SYSTEM; Return="ignore" because a
+         failed ACL costs UWP apps the input method and nothing else. -->
+    <CustomAction Id="IMEGrantAppContainer" Directory="INSTALLDIR"
+                  ExeCommand="&quot;[System64Folder]icacls.exe&quot; &quot;[IMEDIR]&quot; /grant *S-1-15-2-1:(OI)(CI)RX /T /C /Q"
+                  Execute="deferred" Impersonate="no" Return="ignore" />
+    <InstallExecuteSequence>
+      <Custom Action="IMEGrantAppContainer" After="InstallFiles">&amp;IME=3</Custom>
+    </InstallExecuteSequence>
+
+    <!-- Started from the finish page as the user, the way the template starts
+         the app itself. A silent install does not start it: the text service
+         starts the host on the first keystroke anyway. -->
+    <CustomAction Id="IMELaunchHost" Impersonate="yes" FileKey="IMEHostExe" ExeCommand="" Return="asyncNoWait" />
+    <UI>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="IMELaunchHost">&amp;IME=3 AND NOT Installed</Publish>
+    </UI>
+  </Fragment>
+</Wix>

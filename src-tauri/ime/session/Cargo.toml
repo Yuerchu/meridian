@@ -1,0 +1,17 @@
+[package]
+name = "meridian-ime-session"
+version = "0.1.0"
+edition = "2024"
+license = "LicenseRef-Proprietary-Yuerchu"
+authors = ["于小丘 Yuerchu <admin@yuxiaoqiu.cn>"]
+description = "Meridian 输入法的按键状态机与多会话分派"
+
+[dependencies]
+meridian-ime-dict = { path = "../dict" }
+meridian-ime-engine = { path = "../engine" }
+meridian-ime-proto = { path = "../proto" }
+meridian-ime-config = { path = "../config" }
+tracing = "0.1"
+
+[dev-dependencies]
+tempfile = "3"

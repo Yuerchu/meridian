@@ -486,6 +486,41 @@ macro_rules! with_all_commands {
             #[cfg(not(target_os = "android"))]
             sync commands::remote => get_listen_addresses(),
 
+            // The input method. All `local`: what they configure is this machine's
+            // keyboard, and several run a process or ask for elevation on it.
+            #[cfg(windows)]
+            async commands::ime => get_ime_status(),
+            #[cfg(windows)]
+            async commands::ime => get_ime_config(),
+            #[cfg(windows)]
+            local commands::ime => save_ime_config(
+                request: $crate::commands::ime::ImeConfigUpdateRequest,
+            ),
+            #[cfg(windows)]
+            async commands::ime => list_ime_dictionaries(),
+            #[cfg(windows)]
+            local commands::ime => import_ime_dictionary(
+                request: $crate::commands::ime::ImeDictionaryImportRequest,
+            ),
+            #[cfg(windows)]
+            local commands::ime => set_ime_dictionary_enabled(
+                request: $crate::commands::ime::ImeDictionaryToggleRequest,
+            ),
+            #[cfg(windows)]
+            local commands::ime => remove_ime_dictionary(
+                request: $crate::commands::ime::ImeDictionaryRemoveRequest,
+            ),
+            #[cfg(windows)]
+            local commands::ime => start_ime_host(),
+            #[cfg(windows)]
+            local commands::ime => stop_ime_host(),
+            #[cfg(windows)]
+            local commands::ime => set_ime_profile_enabled(
+                request: $crate::commands::ime::ImeProfileUpdateRequest,
+            ),
+            #[cfg(windows)]
+            local commands::ime => register_ime(),
+
             local commands::dev => voice_probe_echo(
                 request: $crate::commands::dev::VoiceProbeEchoRequest,
             ),
