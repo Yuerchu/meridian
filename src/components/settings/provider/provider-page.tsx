@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowsRotateRight, Plus, TrashBin, Key } from '@gravity-ui/icons'
 import {
@@ -21,6 +21,7 @@ import { SavedHint, SettingsSelect, SettingsSkeleton } from '../primitives'
 import { SettingsPage } from '../settings-page'
 import { useSettingsDraft } from '../settings-stack'
 import { CodexAccount } from './codex-account'
+import { ProviderIconPicker } from './icon-picker'
 import {
   authFor,
   authMethodLabel,
@@ -141,11 +142,14 @@ function ProviderEditor({
   const [providerType, setProviderType] = useState(provider.provider_type)
   const [baseUrl, setBaseUrl] = useState(provider.base_url)
   const [apiFormat, setApiFormat] = useState(provider.api_format || 'chat_completions')
+  const [icon, setIcon] = useState(provider.icon)
+  const iconLabelId = useId()
   const [savedDraft, setSavedDraft] = useState(() => ({
     name: provider.name,
     providerType: provider.provider_type,
     baseUrl: provider.base_url,
     apiFormat: provider.api_format || 'chat_completions',
+    icon: provider.icon,
   }))
   const [apiKey, setApiKey] = useState('')
   const { confirm, confirmDialog } = useConfirm()
@@ -178,6 +182,7 @@ function ProviderEditor({
     providerType !== savedDraft.providerType ||
     baseUrl !== savedDraft.baseUrl ||
     apiFormat !== savedDraft.apiFormat ||
+    icon !== savedDraft.icon ||
     apiKey.trim().length > 0
 
   // Registered with the tab *and* with the page this is on: the shell refuses
@@ -241,11 +246,15 @@ function ProviderEditor({
       apiFormat,
       credentialKind: activeAuth?.credential_kind,
       transportProfile: activeAuth?.transport_profile,
+      // Sent on every save, `null` included: null is the picker's own default
+      // entry — "derive the mark from the vendor" — and omitting it would mean
+      // "leave the logo alone", so choosing that entry would do nothing.
+      icon,
     })
-    setSavedDraft({ name, providerType, baseUrl, apiFormat })
+    setSavedDraft({ name, providerType, baseUrl, apiFormat, icon })
     markSaved()
     onUpdate()
-  }, [provider.id, name, providerType, baseUrl, apiFormat, activeAuth, onUpdate, markSaved])
+  }, [provider.id, name, providerType, baseUrl, apiFormat, icon, activeAuth, onUpdate, markSaved])
 
   const handleProviderTypeChange = useCallback(
     (raw: string) => {
@@ -542,6 +551,21 @@ function ProviderEditor({
         <Label>{t('settings.provider.name')}</Label>
         <Input name={`providerName-${provider.id}`} value={name} onChange={(e) => setName(e.target.value)} />
       </TextField>
+
+      {/* Beside the name because it is the other half of "which row is
+          this": a second Anthropic row for Vertex and a relay in front of
+          OpenAI both draw the vendor's own mark, or a generic cloud, until
+          somebody says otherwise. */}
+      <div data-slot="provider-icon-field" className="space-y-1.5">
+        <Label id={iconLabelId}>{t('settings.provider.icon')}</Label>
+        <ProviderIconPicker
+          value={icon}
+          catalogId={provider.catalog_id}
+          providerType={providerType}
+          onChange={setIcon}
+          labelledBy={iconLabelId}
+        />
+      </div>
 
       <SettingsSelect
         label={t('settings.provider.type')}

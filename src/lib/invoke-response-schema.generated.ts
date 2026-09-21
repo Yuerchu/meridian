@@ -3921,6 +3921,13 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
             "id": 103
           }
         },
+        "icon": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
         "id": {
           "optional": false,
           "schema": {

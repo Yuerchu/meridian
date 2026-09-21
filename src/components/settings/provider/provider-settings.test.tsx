@@ -42,6 +42,7 @@ function makeProvider(id: string, name: string): ProviderInfoResponse {
     catalog_id: 'openai',
     credential_kind: 'api_key',
     transport_profile: 'standard',
+    icon: null,
   }
 }
 
@@ -535,6 +536,43 @@ describe('ProviderSettings list/detail navigation', () => {
 
     expect(await screen.findByRole('heading', { name: 'gpt-6-preview' })).toBeInTheDocument()
     expect(mockApi.saveModelConfig).not.toHaveBeenCalled()
+  })
+
+  /**
+   * A row reaching Claude through Vertex, or any relay, names no vendor the
+   * catalog knows, so its mark was a generic cloud with no way to say
+   * otherwise. Picking one writes a name; picking the default entry writes
+   * `null`.
+   *
+   * The second half is the one worth a test. `null` and "key absent" mean
+   * different things to the backend — put it back to the vendor's mark, versus
+   * leave the logo alone — so a save that sent `undefined` for the default
+   * entry would report success and change nothing, and the picker would go on
+   * showing the default as selected while the row kept the old mark.
+   */
+  it('writes a chosen logo, and writes null to go back to the vendor', async () => {
+    const user = userEvent.setup()
+    mockApi.updateProvider.mockResolvedValue(makeProvider('p1', 'Provider One'))
+    render(<ProviderSettings />)
+    await openFirstProvider(user)
+
+    await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.icon')) }))
+    await user.click(await screen.findByRole('option', { name: 'vertexai' }))
+    // The chosen name has to reach the mark, not just the request: a row that
+    // saves correctly and goes on drawing the old logo is the visible half of
+    // this feature failing.
+    expect(document.querySelector('[data-slot="provider-icon"][data-provider="vertexai"]')).not.toBeNull()
+    await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
+    await waitFor(() =>
+      expect(mockApi.updateProvider).toHaveBeenCalledWith(expect.objectContaining({ icon: 'vertexai' })),
+    )
+
+    await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.icon')) }))
+    await user.click(await screen.findByRole('option', { name: i18n.t('settings.provider.iconDefault') }))
+    await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
+    await waitFor(() =>
+      expect(mockApi.updateProvider).toHaveBeenLastCalledWith(expect.objectContaining({ icon: null })),
+    )
   })
 
   /** A page with unsaved work does not go quietly. */

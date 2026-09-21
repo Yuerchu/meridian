@@ -394,7 +394,34 @@ pub struct ProviderUpdateRequest {
     api_format: Option<ApiFormat>,
     credential_kind: Option<CredentialKind>,
     transport_profile: Option<TransportProfile>,
+    /// Absent leaves the logo alone, `null` puts it back to whatever the
+    /// catalog says this vendor is, and a string names a mark.
+    #[serde(default, deserialize_with = "patch_nullable")]
+    icon: Option<RequiredNullable<String>>,
 }
+
+/// A patch key with three states: absent, null, or a value.
+///
+/// `Option<RequiredNullable<T>>` cannot express it on its own — serde's derive
+/// for `Option` answers a JSON `null` with `None` before the inner type is
+/// reached, so "put it back to the default" and "leave it alone" arrive
+/// identical, and the picker's own default entry would silently do nothing.
+/// `default` supplies the absent case; this is called only when the key is
+/// present, so a null reaching it is an answer somebody gave.
+fn patch_nullable<'de, D, T>(deserializer: D) -> Result<Option<RequiredNullable<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::de::DeserializeOwned,
+{
+    <RequiredNullable<T> as serde::Deserialize>::deserialize(deserializer).map(Some)
+}
+
+/// The longest logo name worth storing.
+///
+/// Not a claim about the icon set — it is a bound on a free-text column whose
+/// only writer is a picker offering a fixed list. A value past this is a caller
+/// doing something other than picking.
+const MAX_ICON_NAME: usize = 64;
 
 /// The shipped vendor catalog, for the panel that offers a list to create from.
 ///
@@ -546,6 +573,9 @@ pub async fn create_provider(
                 catalog_id: catalog.map(|entry| entry.id.as_str()),
                 credential_kind,
                 transport_profile,
+                // A new row follows its vendor's mark. Choosing another one is
+                // an edit on the provider page, not part of creating it.
+                icon: None,
             },
         )
         .map_err(|e| e.to_string())?;
@@ -589,6 +619,25 @@ pub async fn update_provider(
         || api_format.is_some()
         || credential_kind.is_some()
         || transport_profile.is_some();
+    // Deliberately not part of the line above: a logo decides nothing about
+    // which adapter answers or what it can be asked, so changing one must not
+    // throw away a model list that costs a round trip to rebuild.
+    //
+    // An empty string is refused rather than read as "back to the default":
+    // null already says that, and accepting a second spelling of it is the
+    // kind of forward-compatible guess that makes a contract unreadable.
+    let icon = match request.icon {
+        Some(RequiredNullable(Some(name))) => {
+            if name.trim().is_empty() || name.len() > MAX_ICON_NAME {
+                return Err(format!(
+                    "provider icon name is empty or longer than {MAX_ICON_NAME} characters"
+                ));
+            }
+            Some(Some(name))
+        }
+        Some(RequiredNullable(None)) => Some(None),
+        None => None,
+    };
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         let current = db::ops::provider::get_provider(&mut conn, &request.id).map_err(|e| e.to_string())?;
@@ -625,6 +674,7 @@ pub async fn update_provider(
             credential_kind,
             transport_profile,
             catalog_id,
+            icon,
             ..Default::default()
         };
         let row = finish_guarded_provider_mutation(
@@ -978,6 +1028,7 @@ mod response_contract_tests {
                 catalog_id: None,
                 credential_kind: "api_key",
                 transport_profile: "standard",
+                icon: None,
             },
         )
         .unwrap();
@@ -1136,5 +1187,30 @@ mod response_contract_tests {
         assert_eq!(value["accounts"][0]["total_balance"], "12.34");
         assert_eq!(value["accounts"][0]["granted_balance"], "0.1");
         assert!(value["accounts"][0]["topped_up_balance"].is_null());
+    }
+
+    /// The logo key has three states and the wire has to keep them apart.
+    ///
+    /// Absent means "leave it", `null` means "put it back to the vendor's own
+    /// mark", and a string names one. Serde's derive for `Option` answers a
+    /// JSON `null` with `None` before the inner type is reached, so written the
+    /// obvious way the second collapses into the first — the picker's default
+    /// entry would save successfully and change nothing, while going on
+    /// showing itself as selected.
+    #[test]
+    fn the_logo_patch_key_keeps_absent_null_and_a_name_apart() {
+        let absent: ProviderUpdateRequest = serde_json::from_value(serde_json::json!({ "id": "p1" })).unwrap();
+        assert!(absent.icon.is_none(), "an omitted key leaves the logo alone");
+
+        let cleared: ProviderUpdateRequest =
+            serde_json::from_value(serde_json::json!({ "id": "p1", "icon": null })).unwrap();
+        assert!(
+            matches!(cleared.icon, Some(RequiredNullable(None))),
+            "null is an answer: follow the vendor again"
+        );
+
+        let named: ProviderUpdateRequest =
+            serde_json::from_value(serde_json::json!({ "id": "p1", "icon": "vertexai" })).unwrap();
+        assert!(matches!(named.icon, Some(RequiredNullable(Some(ref name))) if name == "vertexai"));
     }
 }

@@ -12,6 +12,11 @@ import { installResizeObserverStub } from './resize'
 vi.mock('@lobehub/icons', () => ({
   ModelIcon: ({ model }: { model?: string }) =>
     createElement('span', { 'data-slot': 'model-icon', 'data-model': model }),
+  ProviderIcon: ({ provider }: { provider?: string }) =>
+    createElement('span', { 'data-slot': 'provider-icon', 'data-provider': provider }),
+  // Three of the hundred and fifty, which is enough for the picker to have a
+  // list, a filter that excludes something, and a name to choose.
+  ModelProvider: { Anthropic: 'anthropic', OpenAI: 'openai', VertexAI: 'vertexai' },
 }))
 
 // jsdom ships neither observer. `message-scroller` uses both — an

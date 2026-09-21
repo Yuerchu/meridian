@@ -964,6 +964,15 @@ pub struct ProviderInfoResponse {
     pub catalog_id: Option<String>,
     pub credential_kind: meridian_core::provider::registry::CredentialKind,
     pub transport_profile: meridian_core::provider::registry::TransportProfile,
+    /// Which logo to draw, or `None` to derive one from `catalog_id`.
+    ///
+    /// Free text rather than an enum, and the one field on this response that
+    /// is: the value names a mark in a third-party icon set that gains and
+    /// loses entries between releases, so a closed set here would refuse a row
+    /// the user configured under a later version of it. Nothing but the
+    /// renderer reads it, and a name the set does not know draws a generic
+    /// mark — the cost of being wrong is one wrong logo.
+    pub icon: Option<String>,
 }
 
 impl TryFrom<ProviderRow> for ProviderInfoResponse {
@@ -990,6 +999,7 @@ impl TryFrom<ProviderRow> for ProviderInfoResponse {
             catalog_id: row.catalog_id,
             credential_kind: meridian_core::provider::registry::CredentialKind::parse(&row.credential_kind)?,
             transport_profile: meridian_core::provider::registry::TransportProfile::parse(&row.transport_profile)?,
+            icon: row.icon,
         })
     }
 }

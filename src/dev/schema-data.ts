@@ -518,6 +518,7 @@ const RAW_TABLES: RawTable[] = [
         "'standard'",
         '怎么发请求；与 provider_type + api_format 一起选适配器（迁移 41）',
       ],
+      ['icon', 'TEXT', ['NULL'], 'NULL', '画哪个 logo；NULL 表示由 catalog_id 推导（迁移 62）'],
     ],
     rels: [
       '<code>assistants.provider_id</code>、<code>messages.provider_id</code> → <b>SET NULL</b>。',
@@ -533,6 +534,9 @@ const RAW_TABLES: RawTable[] = [
       '<code>transport_profile</code> 存在的理由是 <code>api_format</code> 扛不住这个区分：OpenAI 自家 API 和 ChatGPT 的 Codex 后端<b>都是 responses</b>，但端点不同、接受的请求字段不同、采样参数在后者根本没有意义。',
       '迁移 40 的回填<b>刻意只认厂商自己的地址原样</b>。<code>provider_type</code> 单独识别不了厂商——<code>openai</code> 同时涵盖官方 API、自建代理和各家兼容中转——猜错会静默贴上错身份，比留空更糟：面板会显示错误的图标，并给出一个用户根本没在用的服务的取密钥链接。',
       '那串 URL 写死在迁移里而不是从目录读：<b>迁移必须在五年后重放出同样结果</b>，而目录是会被编辑的数据。<code>catalog::identify()</code> 则跟随目录。两者只在迁移发布当天跑在同一批数据上，之后各自演化是预期的。',
+      '<code>icon</code> 是这张表里<b>唯一一个自由文本、不做任何校验</b>的列，这是刻意的：它存的是 <code>@lobehub/icons</code> 里某个 logo 的名字，而那是个每个版本都会增删条目的第三方集合——写成封闭枚举，就会在升级后拒绝掉用户自己配好的行。它不参与任何决策（不选适配器、不决定地址、不影响凭证），认不出的名字退化成一个通用图标，代价上限就是「画错一个 logo」。',
+      '<code>NULL</code> 同样是<b>常态而非待填</b>：有列之前所有行都是这个行为，指向已知厂商的行也应该继续跟随目录。它需要三态更新（缺省=不动 / null=回到跟随目录 / 字符串=指定），因为「恢复默认」是用户在选择器里按下的一个真实动作，塌成两态就会静默什么都不做。',
+      '为什么会需要它：接 Vertex 或 Azure 的第二个 Anthropic 行、任何中转，<code>catalog_id</code> 都是 NULL，推导出来只能是一朵通用的云，而用户屏幕上可能同时有三四个这样的行。',
     ],
   },
   {

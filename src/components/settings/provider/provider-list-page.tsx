@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Cloud } from '@gravity-ui/icons'
 import { Alert, Button, EmptyState, ListView, Tooltip, TooltipTrigger } from '@/components/base'
-import { ModelIcon } from '@/components/ui/model-icon'
+import { ProviderMark } from '@/components/ui/provider-icon'
 import { api } from '@/api'
 import type { ProviderInfoResponse } from '@/types'
 import { SettingsSkeleton } from '../primitives'
@@ -142,7 +142,6 @@ export function ProviderListPage({ onOpen }: { onOpen: (providerId: string) => v
         )}
       >
         {providers.map((provider) => {
-          const iconModel = provider.catalog_id ?? provider.provider_type
           return (
             <ListView.Item
               key={provider.id}
@@ -155,7 +154,12 @@ export function ProviderListPage({ onOpen }: { onOpen: (providerId: string) => v
                   data-slot="provider-row-icon"
                   className="flex size-4 shrink-0 items-center justify-center text-text-secondary"
                 >
-                  {iconModel ? <ModelIcon model={iconModel} size={16} /> : <Cloud className="size-4" />}
+                  <ProviderMark
+                    icon={provider.icon}
+                    catalogId={provider.catalog_id}
+                    providerType={provider.provider_type}
+                    size={16}
+                  />
                 </span>
                 <ListView.Title className="text-body-regular">{provider.name}</ListView.Title>
               </ListView.ItemContent>

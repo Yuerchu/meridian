@@ -233,6 +233,15 @@ export interface ProviderUpdateRequest {
   apiFormat?: ProviderApiFormat
   credentialKind?: ProviderCredentialKind
   transportProfile?: ProviderTransportProfile
+  /**
+   * Which logo the provider draws.
+   *
+   * Three states, and the backend reads all three: omitted leaves it alone,
+   * `null` puts it back to whatever the catalog says this vendor is, and a
+   * string names a mark in the icon set. Sending `undefined` to mean "back to
+   * the default" does nothing — that is what `null` is for.
+   */
+  icon?: string | null
 }
 
 export interface ProviderKeyUpdateRequest {
@@ -1863,6 +1872,16 @@ export interface ProviderInfoResponse {
    * separate OpenAI's API from ChatGPT's Codex backend — both are `responses`.
    */
   transport_profile: ProviderTransportProfile
+  /**
+   * Which logo to draw, or null to derive one from `catalog_id`.
+   *
+   * Free text rather than a union, and the one field here that is: the value
+   * names a mark in `@lobehub/icons`, a third-party set that gains and loses
+   * entries between releases, so a closed union would refuse a row configured
+   * under a later version of it. Nothing but the renderer reads it, and a name
+   * the set does not know draws a generic mark.
+   */
+  icon: string | null
 }
 
 /**

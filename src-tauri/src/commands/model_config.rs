@@ -578,6 +578,7 @@ mod tests {
                 catalog_id: None,
                 credential_kind: "api_key",
                 transport_profile: "standard",
+                icon: None,
             },
         )
         .unwrap();
@@ -599,6 +600,7 @@ mod tests {
                 catalog_id: None,
                 credential_kind: "api_key",
                 transport_profile: "standard",
+                icon: None,
             },
         )
         .unwrap();
