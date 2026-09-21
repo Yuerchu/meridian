@@ -123,6 +123,10 @@ export function useHotkey(combo: string, handler: (event: KeyboardEvent) => void
     if (!spec) return
 
     const onKeyDown = (event: KeyboardEvent) => {
+      // Somebody nearer the key has already answered it. This listener is on
+      // `window`, so it sees everything that was not stopped — including an
+      // Escape a dialog has handled and an arrow key a menu has consumed.
+      if (event.defaultPrevented) return
       if (!matchesHotkey(event, spec)) return
       if (ignoreInInput && isTyping(event.target)) return
       event.preventDefault()

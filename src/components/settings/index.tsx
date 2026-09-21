@@ -95,7 +95,7 @@ export default function SettingsPage({
   // where the 3-button bar moves to one edge.
   return (
     <div
-      data-slot="settings-page"
+      data-slot="settings-scroller"
       className="@container/settings h-full overflow-y-auto overscroll-contain pb-[var(--safe-bottom)] pl-[var(--safe-left)] pr-[var(--safe-right)]"
     >
       {/* Against the layer, not the window: this is the chat's width minus the

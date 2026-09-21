@@ -24,7 +24,7 @@ function useDrilldownScroll(root: HTMLElement | null, showsDetail: boolean) {
   useLayoutEffect(() => {
     if (wasShowing.current === showsDetail) return
     wasShowing.current = showsDetail
-    const scroller = root?.closest<HTMLElement>('[data-slot="settings-page"]')
+    const scroller = root?.closest<HTMLElement>('[data-slot="settings-scroller"]')
     if (!scroller) return
 
     if (showsDetail) {
