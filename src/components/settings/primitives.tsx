@@ -245,10 +245,18 @@ export function SettingsNavRow({
   trailing?: React.ReactNode
   isActive?: boolean
 }) {
+  const labelId = React.useId()
+  const valueId = React.useId()
   return (
     <Button
       data-slot="settings-nav-row"
       data-active={isActive || undefined}
+      // The label names the row and the value describes it, rather than both
+      // running together into one name. Left to the default, a row reading
+      // "gpt-5.6" beside "Priced" is announced as `gpt-5.6Priced`: the two
+      // spans are adjacent, and nothing puts a boundary between them.
+      aria-labelledby={labelId}
+      aria-describedby={value ? valueId : undefined}
       // The background says which row is selected to anyone looking at it, and
       // said it to nobody else. Both places that had built this by hand were
       // missing it.
@@ -269,12 +277,17 @@ export function SettingsNavRow({
           {icon}
         </span>
       )}
-      <span data-slot="settings-nav-row-label" className="min-w-0 flex-1 truncate text-start text-body-regular">
+      <span
+        data-slot="settings-nav-row-label"
+        id={labelId}
+        className="min-w-0 flex-1 truncate text-start text-body-regular"
+      >
         {label}
       </span>
       {value && (
         <span
           data-slot="settings-nav-row-value"
+          id={valueId}
           className="shrink-0 truncate text-caption-1-regular text-text-secondary"
         >
           {value}
@@ -376,7 +389,13 @@ type SettingsSelectBase<T extends string> = {
  * twenty this replaces were exactly that. Here it does not compile.
  */
 export type SettingsSelectProps<T extends string> = SettingsSelectBase<T> &
-  ({ label: React.ReactNode; ariaLabel?: never } | { label?: never; ariaLabel: string })
+  (
+    | { label: React.ReactNode; ariaLabel?: never; ariaLabelledBy?: never }
+    | { label?: never; ariaLabel: string; ariaLabelledBy?: never }
+    // Named by something already on screen — a `SettingsRow`'s label, which is
+    // a `<p>` and cannot label a control itself.
+    | { label?: never; ariaLabel?: never; ariaLabelledBy: string }
+  )
 
 /**
  * The seven-layer `Select` every panel was writing out by hand.
@@ -393,6 +412,7 @@ export function SettingsSelect<T extends string>({
   onChange,
   label,
   ariaLabel,
+  ariaLabelledBy,
   description,
   placeholder,
   disabled,
@@ -407,6 +427,7 @@ export function SettingsSelect<T extends string>({
       label={label}
       description={description}
       aria-label={ariaLabel}
+      aria-labelledby={ariaLabelledBy}
       isDisabled={disabled}
       placeholder={placeholder}
       selectedKey={value}

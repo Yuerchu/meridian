@@ -1,27 +1,15 @@
-import { useEffect, useState, useCallback, useId, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowsRotateRight, TrashBin, Key, Sliders, Xmark } from '@gravity-ui/icons'
-import {
-  Alert,
-  Button,
-  Description,
-  Disclosure,
-  Input,
-  Label,
-  Spinner,
-  TextField,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
-import { DataGrid, type DataGridColumn } from '@/components/base'
-import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
-import { formatCurrencyAmount, formatDecimalAmount } from '@/lib/cost-format'
-import { assertDecimal38_18 } from '@/lib/decimal'
-import { cx } from '@/utils/cx'
+import { ArrowsRotateRight, TrashBin, Key } from '@gravity-ui/icons'
+import { Alert, Button, Input, Label, Spinner, TextField } from '@/components/base'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
-import { SavedHint, SettingsSelect, SettingsSkeleton } from '../primitives'
-import { EFFORT_LADDER } from '@/lib/thinking'
+import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
+import { formatCurrencyAmount, formatDecimalAmount } from '@/lib/cost-format'
+import { SavedHint, SettingsCard, SettingsNavRow, SettingsSelect, SettingsSkeleton } from '../primitives'
+import { SettingsPage } from '../settings-page'
+import { useSettingsDraft } from '../settings-stack'
+import { CodexAccount } from './codex-account'
 import {
   authFor,
   authMethodLabel,
@@ -36,596 +24,71 @@ import {
   useProviderCatalog,
   usesChatGptLogin,
 } from './catalog'
-import { safeThreshold, triFrom, triTo, type Tri } from './capabilities'
-import { isPriced, optionalPrice, tiersFrom, tiersTo, type PriceField, type TierDraft } from './pricing'
-
+import { isPriced } from './pricing'
 import type {
   DecimalString,
   ModelConfigInfoResponse,
-  ModelConfigUpsertRequest,
-  PriceTier,
   ProviderInfoResponse,
   ProviderBalanceInfoResponse,
-  ProviderCapabilityOverrides,
-  ProviderCapabilitiesInfoResponse,
-  ProviderModelInfoResponse,
   ProviderApiFormat,
-  ServerToolKind,
-  ThinkingEffort,
 } from '@/types'
 
-import { CodexAccount } from './codex-account'
-import { PriceTierEditor } from './price-tier-editor'
-
-import { SettingsPage } from '../settings-page'
-import { useSettingsDraft } from '../settings-stack'
-
-function CapabilityTriRow({ label, value, onChange }: { label: string; value: Tri; onChange: (next: Tri) => void }) {
+/**
+ * Whether a model is configured, priced, and announced by this provider.
+ *
+ * The rates shown are the ones in force rather than the row's own: a model
+ * priced by its profile — which is almost all of them — carries null on the row
+ * and would otherwise be reported as having no price at all.
+ */
+function ModelStatus({ config, listed }: { config?: ModelConfigInfoResponse; listed: boolean }) {
   const { t } = useTranslation()
-  const options: Array<{ value: Tri; label: string }> = [
-    { value: 'auto', label: t('settings.model.capAuto') },
-    { value: 'on', label: t('settings.model.capOn') },
-    { value: 'off', label: t('settings.model.capOff') },
-  ]
+  if (!config) {
+    return (
+      <span data-slot="model-status-unconfigured" className="text-text-secondary">
+        {t('settings.provider.modelNotConfigured')}
+      </span>
+    )
+  }
   return (
-    <div data-slot="capability-tri-row" className="flex items-center justify-between gap-2">
-      <p data-slot="capability-tri-label" className="text-caption-1-regular text-text-secondary">
-        {label}
-      </p>
-      <SettingsSelect
-        ariaLabel={label}
-        value={value}
-        options={options}
-        onChange={onChange}
-        triggerClassName="h-7 w-32 text-caption-1-regular"
-        itemClassName="text-caption-1-regular"
-      />
-    </div>
-  )
-}
-
-function ModelConfigEditor({
-  providerId,
-  modelId,
-  apiFormat,
-  existing,
-  onSave,
-  onDelete,
-  onDirtyChange,
-}: {
-  providerId: string
-  modelId: string
-  /** Not read directly — it is here so the capability lookup re-runs when the
-   *  dialect changes, which is what decides whether this model has any
-   *  provider-side tools at all. */
-  apiFormat: string
-  existing?: ModelConfigInfoResponse
-  onSave: (input: ModelConfigUpsertRequest) => Promise<void>
-  onDelete?: () => void
-  onDirtyChange?: (dirty: boolean) => void
-}) {
-  const { t } = useTranslation()
-  const [caps, setCaps] = useState<ProviderCapabilitiesInfoResponse | null>(null)
-
-  useEffect(() => {
-    api
-      .getProviderCapabilities({ providerId, modelId })
-      .then(setCaps)
-      .catch(() => {})
-  }, [providerId, modelId, apiFormat])
-
-  // The window, the prices and the capability patch describe the *model*, so
-  // they live on its profile and are shared by every provider reaching it.
-  const profile = existing?.profile ?? null
-  const defaultCtx = profile?.context_window ?? caps?.max_context_tokens ?? 128000
-  const defaultMaxOut = profile?.max_output_tokens ?? caps?.max_output_tokens ?? null
-  const defaultThreshold = profile?.compact_threshold ?? safeThreshold(defaultCtx, defaultMaxOut)
-
-  const [contextWindow, setContextWindow] = useState(defaultCtx.toString())
-  const [compactThreshold, setCompactThreshold] = useState(defaultThreshold.toString())
-  const [maxOutput, setMaxOutput] = useState(defaultMaxOut?.toString() ?? '')
-  const [inputPrice, setInputPrice] = useState(
-    profile?.input_price == null ? '' : assertDecimal38_18(profile.input_price),
-  )
-  const [outputPrice, setOutputPrice] = useState(
-    profile?.output_price == null ? '' : assertDecimal38_18(profile.output_price),
-  )
-  const [cachePrice, setCachePrice] = useState(
-    profile?.cache_read_price == null ? '' : assertDecimal38_18(profile.cache_read_price),
-  )
-  const [cacheWritePrice, setCacheWritePrice] = useState(
-    profile?.cache_write_price == null ? '' : assertDecimal38_18(profile.cache_write_price),
-  )
-  const [initialTiers] = useState(() => {
-    try {
-      return { values: tiersFrom(profile?.pricing_tiers ?? []), error: null as string | null }
-    } catch (error) {
-      return { values: [] as TierDraft[], error: error instanceof Error ? error.message : String(error) }
-    }
-  })
-  const [tiers, setTiers] = useState<TierDraft[]>(initialTiers.values)
-  const [serverTools, setServerTools] = useState<ServerToolKind[]>(() => existing?.server_tools ?? [])
-  const [serverToolPrice, setServerToolPrice] = useState(
-    existing?.server_tool_price == null ? '' : assertDecimal38_18(existing.server_tool_price),
-  )
-  // Open when there is something in it, so a tiered model does not look
-  // single-priced until someone thinks to expand a collapsed section.
-  const [showTiers, setShowTiers] = useState(tiers.length > 0)
-
-  const [showCaps, setShowCaps] = useState(false)
-  const [efforts, setEfforts] = useState<ThinkingEffort[]>([])
-  // Tracks whether the whitelist was touched. Untouched means the key is left
-  // out of the patch entirely, so the model keeps following catalog updates.
-  // A ref, not state: it is only ever read back when the patch is built on
-  // save, so flipping it has nothing to redraw.
-  const effortsDirty = useRef(false)
-  const [capThinking, setCapThinking] = useState<Tri>('auto')
-  const [capFast, setCapFast] = useState<Tri>('auto')
-  const [dirty, setDirty] = useState(false)
-  const [priceError, setPriceError] = useState<string | null>(initialTiers.error)
-  // Which price boxes the last save attempt refused. The pair rule fails on a
-  // field the reader may have scrolled past, so the box is marked and brought
-  // into view rather than named only in a sentence under the button.
-  const [invalidPrices, setInvalidPrices] = useState<ReadonlySet<PriceField>>(() => new Set())
-  const priceRefs = {
-    input: useRef<HTMLInputElement>(null),
-    output: useRef<HTMLInputElement>(null),
-    cache: useRef<HTMLInputElement>(null),
-    cacheWrite: useRef<HTMLInputElement>(null),
-    serverTool: useRef<HTMLInputElement>(null),
-  } satisfies Record<PriceField, React.RefObject<HTMLInputElement | null>>
-
-  useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange])
-  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange])
-
-  useEffect(() => {
-    if (!existing && caps) {
-      setContextWindow((caps.max_context_tokens ?? 128000).toString())
-      setCompactThreshold(safeThreshold(caps.max_context_tokens ?? 128000, caps.max_output_tokens ?? null).toString())
-      if (caps.max_output_tokens) setMaxOutput(caps.max_output_tokens.toString())
-    }
-  }, [caps, existing])
-
-  // Seed the override editor from the *resolved* capabilities so the user edits
-  // a diff of reality rather than a blank slate.
-  useEffect(() => {
-    if (!caps) return
-    const saved = profile?.capability_overrides ?? {}
-    setEfforts(EFFORT_LADDER.filter((e) => caps.supported_efforts.includes(e)))
-    effortsDirty.current = saved.supported_efforts !== undefined
-    setCapThinking(triFrom(saved.supports_thinking))
-    setCapFast(triFrom(saved.supports_fast))
-  }, [caps, profile])
-
-  const buildOverrides = (): ProviderCapabilityOverrides | null => {
-    const next: ProviderCapabilityOverrides = { ...(profile?.capability_overrides ?? {}) }
-    if (effortsDirty.current) next.supported_efforts = efforts
-    else delete next.supported_efforts
-    const thinking = triTo(capThinking)
-    if (thinking === undefined) delete next.supports_thinking
-    else next.supports_thinking = thinking
-    const fast = triTo(capFast)
-    if (fast === undefined) delete next.supports_fast
-    else next.supports_fast = fast
-    return Object.keys(next).length > 0 ? next : null
-  }
-
-  const resetOverrides = () => {
-    effortsDirty.current = false
-    setCapThinking('auto')
-    setCapFast('auto')
-    if (caps) setEfforts(EFFORT_LADDER.filter((e) => caps.supported_efforts.includes(e)))
-    setDirty(true)
-  }
-
-  const handleSave = async () => {
-    const refuse = (message: string, fields: PriceField[]) => {
-      setPriceError(message)
-      setInvalidPrices(new Set(fields))
-      const first = fields.map((field) => priceRefs[field].current).find((el) => el !== null)
-      first?.scrollIntoView({ block: 'center' })
-      first?.focus()
-    }
-    const labels: Record<PriceField, string> = {
-      input: t('settings.model.inputPrice'),
-      output: t('settings.model.outputPrice'),
-      cache: t('settings.model.cachePrice'),
-      cacheWrite: t('settings.model.cacheWritePrice'),
-      serverTool: t('settings.model.serverToolPrice'),
-    }
-    const parsed: Partial<Record<PriceField, DecimalString | null>> = {}
-    for (const [field, raw] of [
-      ['input', inputPrice],
-      ['output', outputPrice],
-      ['cache', cachePrice],
-      ['cacheWrite', cacheWritePrice],
-      ['serverTool', serverToolPrice],
-    ] as const) {
-      try {
-        parsed[field] = optionalPrice(raw)
-      } catch {
-        refuse(t('settings.model.priceInvalidError', { field: labels[field] }), [field])
-        return
-      }
-    }
-    const input = parsed.input ?? null
-    const output = parsed.output ?? null
-    if ((input == null) !== (output == null)) {
-      refuse(t('settings.model.pricePairError'), [input == null ? 'input' : 'output'])
-      return
-    }
-    let priceTiers: PriceTier[]
-    try {
-      priceTiers = tiersTo(tiers)
-    } catch (error) {
-      refuse(error instanceof Error ? error.message : String(error), [])
-      return
-    }
-    if (priceTiers.length > 0 && input == null) {
-      refuse(t('settings.model.tierNeedsBaseError'), ['input', 'output'])
-      return
-    }
-    const prices = {
-      input_price: input,
-      output_price: output,
-      cache_read_price: parsed.cache ?? null,
-      cache_write_price: parsed.cacheWrite ?? null,
-      pricing_tiers: priceTiers,
-    }
-    setPriceError(null)
-    setInvalidPrices(new Set())
-    try {
-      await onSave({
-        provider_id: providerId,
-        model_id: modelId,
-        profile: {
-          // Editing in place. Pointing this model at a *different* profile —
-          // which is how a second provider stops repeating the first — is the
-          // model page's job, two commits from here.
-          id: profile?.id ?? null,
-          name: profile?.name ?? modelId,
-          context_window: parseInt(contextWindow) || 128000,
-          compact_threshold: parseInt(compactThreshold) || 100000,
-          max_output_tokens: maxOutput ? parseInt(maxOutput) : null,
-          ...prices,
-          capability_overrides: buildOverrides(),
-        },
-        // No per-provider override yet: this form edits one door to a model and
-        // has nowhere to say "this relay charges its own rates".
-        overrides_pricing: false,
-        input_price: null,
-        output_price: null,
-        cache_read_price: null,
-        cache_write_price: null,
-        pricing_tiers: [],
-        server_tool_price: parsed.serverTool ?? null,
-        // What the user asked for, not what is currently supported. Filtering here
-        // against `caps` looked like defence and was a way to lose the setting:
-        // capabilities load asynchronously, so a save while that request was still
-        // in flight — or after it failed — silently wrote an empty list over a
-        // switch the user had just turned on. The narrowing that matters happens
-        // per turn in `resolve_turn_params`, where the model's support is known
-        // for certain and a stale name costs nothing.
-        server_tools: serverTools.length > 0 ? serverTools : null,
-      })
-    } catch (error) {
-      // The backend refuses for reasons the form cannot see — a plan review
-      // holding the model, a conversation set that moved mid-save. Unsaid, the
-      // editor stays open with nothing changed and reads as a dead button.
-      setPriceError(error instanceof Error ? error.message : String(error))
-      return
-    }
-    setDirty(false)
-  }
-
-  return (
-    // Every control in here overrides the default height down to 28px, which
-    // is a deliberate density for a form of this many fields and a pointer.
-    // The coarse-pointer variants put the extra height back where a finger is
-    // doing the aiming and leave the desktop exactly as it was.
-    <div data-slot="model-config-editor" className="px-3 pb-3 space-y-2 bg-background-secondary-default/30">
-      <div data-slot="model-config-limits" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
-        <TextField>
-          <Label>{t('settings.model.contextWindow')}</Label>
-          <Input
-            name={`modelContextWindow-${modelId}`}
-            inputMode="numeric"
-            value={contextWindow}
-            onChange={(e) => {
-              setContextWindow(e.target.value)
-              setDirty(true)
-            }}
-            className="h-7 pointer-coarse:h-10 text-caption-1-regular"
-          />
-        </TextField>
-        <TextField>
-          <Label>{t('settings.model.compactThreshold')}</Label>
-          <Input
-            name={`modelCompactThreshold-${modelId}`}
-            inputMode="numeric"
-            value={compactThreshold}
-            onChange={(e) => {
-              setCompactThreshold(e.target.value)
-              setDirty(true)
-            }}
-            className="h-7 pointer-coarse:h-10 text-caption-1-regular"
-          />
-        </TextField>
-      </div>
-      <TextField>
-        <Label>{t('settings.model.maxOutput')}</Label>
-        <Input
-          name={`modelMaxOutput-${modelId}`}
-          inputMode="numeric"
-          value={maxOutput}
-          onChange={(e) => {
-            setMaxOutput(e.target.value)
-            setDirty(true)
-          }}
-          placeholder={t('settings.model.optional')}
-          className="h-7 pointer-coarse:h-10 text-caption-1-regular"
-        />
-      </TextField>
-      {/* Four rates, all per million tokens. The two cache boxes are blank by
-          default and blank means "priced like input" — which is what every
-          provider but Anthropic does, and what the usage report bills them at. */}
-      <div data-slot="model-config-prices" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
-        <TextField isInvalid={invalidPrices.has('input')}>
-          <Label>{t('settings.model.inputPrice')}</Label>
-          <Input
-            ref={priceRefs.input}
-            name={`modelInputPrice-${modelId}`}
-            inputMode="decimal"
-            value={inputPrice}
-            onChange={(e) => {
-              setInputPrice(e.target.value)
-              setDirty(true)
-            }}
-            className="h-7 pointer-coarse:h-10 text-caption-1-regular"
-          />
-        </TextField>
-        <TextField isInvalid={invalidPrices.has('output')}>
-          <Label>{t('settings.model.outputPrice')}</Label>
-          <Input
-            ref={priceRefs.output}
-            name={`modelOutputPrice-${modelId}`}
-            inputMode="decimal"
-            value={outputPrice}
-            onChange={(e) => {
-              setOutputPrice(e.target.value)
-              setDirty(true)
-            }}
-            className="h-7 pointer-coarse:h-10 text-caption-1-regular"
-          />
-        </TextField>
-        <TextField isInvalid={invalidPrices.has('cache')}>
-          <Label>{t('settings.model.cachePrice')}</Label>
-          <Input
-            ref={priceRefs.cache}
-            name={`modelCachePrice-${modelId}`}
-            inputMode="decimal"
-            value={cachePrice}
-            onChange={(e) => {
-              setCachePrice(e.target.value)
-              setDirty(true)
-            }}
-            placeholder="—"
-            className="h-7 pointer-coarse:h-10 text-caption-1-regular"
-          />
-          <Description className="text-caption-1-regular">{t('settings.model.cachePriceHint')}</Description>
-        </TextField>
-        <TextField isInvalid={invalidPrices.has('cacheWrite')}>
-          <Label>{t('settings.model.cacheWritePrice')}</Label>
-          <Input
-            ref={priceRefs.cacheWrite}
-            name={`modelCacheWritePrice-${modelId}`}
-            inputMode="decimal"
-            value={cacheWritePrice}
-            onChange={(e) => {
-              setCacheWritePrice(e.target.value)
-              setDirty(true)
-            }}
-            placeholder="—"
-            className="h-7 pointer-coarse:h-10 text-caption-1-regular"
-          />
-          <Description className="text-caption-1-regular">{t('settings.model.cacheWritePriceHint')}</Description>
-        </TextField>
-      </div>
-      {/* Only where the model has any. Elsewhere this is not a switch that is
-          off, it is a thing that does not exist — and an empty section reads as
-          a feature that failed to load. */}
-      {(caps?.server_tools?.length ?? 0) > 0 && (
-        <div data-slot="server-tools" className="space-y-1.5 pt-1">
-          <p data-slot="server-tools-label" className="text-caption-1-regular text-text-secondary">
-            {t('settings.model.serverTools')}
-          </p>
-          <div data-slot="server-tool-chips" className="flex flex-wrap gap-1">
-            {caps?.server_tools?.map((name) => {
-              const on = serverTools.includes(name)
-              return (
-                <Button
-                  key={name}
-                  data-slot="server-tool-chip"
-                  variant={on ? 'primary' : 'outline'}
-                  size="small"
-                  aria-pressed={on}
-                  className="h-6 pointer-coarse:h-9 rounded-md px-2 text-caption-1-regular"
-                  onPress={() => {
-                    setServerTools(on ? serverTools.filter((x) => x !== name) : [...serverTools, name])
-                    setDirty(true)
-                  }}
-                >
-                  {t(`settings.model.serverTool.${name}`, name)}
-                </Button>
-              )
-            })}
-          </div>
-          <TextField isInvalid={invalidPrices.has('serverTool')}>
-            <Label>{t('settings.model.serverToolPrice')}</Label>
-            <Input
-              ref={priceRefs.serverTool}
-              name={`modelServerToolPrice-${modelId}`}
-              inputMode="decimal"
-              value={serverToolPrice}
-              onChange={(e) => {
-                setServerToolPrice(e.target.value)
-                setDirty(true)
-              }}
-              placeholder="5"
-              className="h-7 pointer-coarse:h-10 text-caption-1-regular"
-            />
-            <Description className="text-caption-1-regular">{t('settings.model.serverToolPriceHint')}</Description>
-          </TextField>
-          <p data-slot="server-tools-hint" className="text-caption-1-regular text-text-secondary">
-            {t('settings.model.serverToolsHint')}
-          </p>
-        </div>
+    <span data-slot="model-status" className="inline-flex items-center gap-1.5">
+      {!listed && (
+        <span data-slot="model-status-unlisted" className="text-text-secondary">
+          {t('settings.provider.modelNotListed')}
+        </span>
       )}
-      <Disclosure
-        data-slot="price-tier-section"
-        className="pt-1"
-        isExpanded={showTiers}
-        onExpandedChange={setShowTiers}
-      >
-        <Disclosure.Heading>
-          <Disclosure.Trigger className="inline-flex items-center gap-1 rounded-md text-caption-1-regular text-text-secondary transition-colors outline-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring/50">
-            {tiers.length > 0
-              ? t('settings.model.priceTiersCount', { count: tiers.length })
-              : t('settings.model.priceTiers')}
-            <Disclosure.Indicator className="size-3.5" />
-          </Disclosure.Trigger>
-        </Disclosure.Heading>
-        <Disclosure.Content className="min-h-0 w-full">
-          <Disclosure.Body className="pt-1">
-            <PriceTierEditor
-              tiers={tiers}
-              onChange={(next) => {
-                setTiers(next)
-                setDirty(true)
-              }}
-            />
-          </Disclosure.Body>
-        </Disclosure.Content>
-      </Disclosure>
-      <Disclosure
-        data-slot="capability-overrides"
-        className="pt-1"
-        isExpanded={showCaps}
-        onExpandedChange={setShowCaps}
-      >
-        <Disclosure.Heading>
-          {/* `inline-flex`, not `flex`: a block-level flex row would stretch the
-              trigger across the form and the indicator's own `ms-auto` would
-              fling the chevron to the far edge. */}
-          <Disclosure.Trigger className="inline-flex items-center gap-1 rounded-md text-caption-1-regular text-text-secondary transition-colors outline-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring/50">
-            {t('settings.model.capabilities')}
-            <Disclosure.Indicator className="size-3.5" />
-          </Disclosure.Trigger>
-        </Disclosure.Heading>
-        <Disclosure.Content className="min-h-0 w-full">
-          {/* Body, not a plain wrapper: it is what keeps the panel measurable,
-              so without it the overrides never collapse. */}
-          <Disclosure.Body className="space-y-2">
-            <div data-slot="effort-whitelist" className="space-y-1.5">
-              <p data-slot="effort-whitelist-label" className="text-caption-1-regular text-text-secondary">
-                {t('settings.model.supportedEfforts')}
-              </p>
-              <div data-slot="effort-chips" className="flex flex-wrap gap-1">
-                {EFFORT_LADDER.map((tier) => {
-                  const on = efforts.includes(tier)
-                  return (
-                    <Button
-                      key={tier}
-                      data-slot="effort-chip"
-                      variant={on ? 'primary' : 'outline'}
-                      size="small"
-                      aria-pressed={on}
-                      className="h-6 pointer-coarse:h-9 px-2 text-caption-1-regular"
-                      onPress={() => {
-                        // Rebuild from the ladder so the stored array stays in
-                        // ascending order -- the median coercion ranks on position.
-                        setEfforts(EFFORT_LADDER.filter((x) => (x === tier ? !on : efforts.includes(x))))
-                        effortsDirty.current = true
-                        setDirty(true)
-                      }}
-                    >
-                      {t(`toolbar.thinking.${tier}`)}
-                    </Button>
-                  )
-                })}
-              </div>
-            </div>
-            <CapabilityTriRow
-              label={t('settings.model.capThinking')}
-              value={capThinking}
-              onChange={(value) => {
-                setCapThinking(value)
-                setDirty(true)
-              }}
-            />
-            <CapabilityTriRow
-              label={t('settings.model.capFast')}
-              value={capFast}
-              onChange={(value) => {
-                setCapFast(value)
-                setDirty(true)
-              }}
-            />
-            <p data-slot="capabilities-hint" className="text-caption-1-regular text-text-secondary">
-              {t('settings.model.capabilitiesHint')}
-            </p>
-            <Button
-              variant="ghost"
-              size="small"
-              className="h-6 pointer-coarse:h-9 px-0 text-caption-1-regular text-text-secondary hover:text-text-primary"
-              onPress={resetOverrides}
-            >
-              {t('settings.model.capReset')}
-            </Button>
-          </Disclosure.Body>
-        </Disclosure.Content>
-      </Disclosure>
-      {priceError && (
-        <p data-slot="model-config-error" role="alert" className="text-caption-1-regular text-status-danger">
-          {priceError}
-        </p>
-      )}
-      <div data-slot="model-config-actions" className="flex items-center gap-2 pt-1">
-        <Button
-          size="small"
-          className="h-7 pointer-coarse:h-10 text-caption-1-regular"
-          onPress={() => void handleSave()}
+      {isPriced(config.effective_pricing) ? (
+        <span
+          data-slot="model-status-priced"
+          className="inline-flex items-center gap-1.5 text-status-success-soft-foreground"
         >
-          {t('common.save')}
-        </Button>
-        {onDelete && (
-          <Button
-            size="small"
-            variant="danger-soft"
-            className="h-7 pointer-coarse:h-10 text-caption-1-regular"
-            onPress={onDelete}
-          >
-            {t('common.delete')}
-          </Button>
-        )}
-      </div>
-    </div>
+          <span data-slot="model-status-dot" aria-hidden className="size-1.5 shrink-0 rounded-full bg-status-success" />
+          {t('settings.provider.modelPriced')}
+        </span>
+      ) : (
+        <span data-slot="model-status-unpriced" className="inline-flex items-center gap-1.5 text-status-warning">
+          <span data-slot="model-status-dot" aria-hidden className="size-1.5 shrink-0 rounded-full bg-status-warning" />
+          {t('settings.provider.modelPriceMissing')}
+        </span>
+      )}
+    </span>
   )
 }
 
 function ProviderEditor({
   provider,
   onUpdate,
+  onOpenModel,
   onDeleted,
 }: {
   provider: ProviderInfoResponse
   onUpdate: () => void
+  /// Opens a model's own page.
+  onOpenModel: (modelId: string) => void
   /// Unwinds the stack. The list refetches on the way back, so there is
   /// nothing to tell it.
   onDeleted: () => void
 }) {
   const { t, i18n } = useTranslation()
-  const modelEditorId = useId()
   const locale = i18n.resolvedLanguage ?? i18n.language
   const formatBalance = useCallback(
     (value: DecimalString, currency: string) => formatCurrencyAmount(value, currency, locale),
@@ -655,23 +118,23 @@ function ProviderEditor({
   const [savingKey, setSavingKey] = useState(false)
   const [keySaved, markKeySaved] = useTemporaryFlag()
   const [saved, markSaved] = useTemporaryFlag()
-  const [models, setModels] = useState<ProviderModelInfoResponse[]>([])
+  const [models, setModels] = useState<{ id: string; name: string }[]>([])
   const [fetchingModels, setFetchingModels] = useState(false)
   const [modelsError, setModelsError] = useState<string | null>(null)
   const [balance, setBalance] = useState<ProviderBalanceInfoResponse | null>(null)
   const [fetchingBalance, setFetchingBalance] = useState(false)
   const [balanceError, setBalanceError] = useState<string | null>(null)
   const [modelConfigs, setModelConfigs] = useState<Map<string, ModelConfigInfoResponse>>(new Map())
-  const [editingModelId, setEditingModelId] = useState<string | null>(null)
+  const [modelFilter, setModelFilter] = useState('')
+  /** Above this many, a filter box appears. */
+  const FILTER_THRESHOLD = 8
   const [deleting, setDeleting] = useState(false)
-  const [modelConfigDirty, setModelConfigDirty] = useState(false)
   const dirty =
     name !== savedDraft.name ||
     providerType !== savedDraft.providerType ||
     baseUrl !== savedDraft.baseUrl ||
     apiFormat !== savedDraft.apiFormat ||
-    apiKey.trim().length > 0 ||
-    modelConfigDirty
+    apiKey.trim().length > 0
 
   // Registered with the tab *and* with the page this is on: the shell refuses
   // to leave settings while it is dirty, and the stack refuses to pop this
@@ -889,38 +352,30 @@ function ProviderEditor({
     loadModelConfigs()
   }, [loadModelConfigs])
 
-  const handleSaveModelConfig = useCallback(
-    async (input: ModelConfigUpsertRequest) => {
-      await api.saveModelConfig(input)
-      await loadModelConfigs()
-      setEditingModelId(null)
-    },
-    [loadModelConfigs],
-  )
+  /**
+   * What this provider announced, plus anything already configured on it.
+   *
+   * The two have deliberately never been joined in the database — one is a
+   * fetch result, the other is what the user configured — and reading only the
+   * first is what made a preview model impossible to configure at all: it is
+   * absent from `/v1/models`, so it never appeared in a list, so it could
+   * never be given a window or a price.
+   */
+  const listedIds = useMemo(() => new Set(models.map((model) => model.id)), [models])
+  const allModels = useMemo(() => {
+    const extra = [...modelConfigs.values()]
+      .filter((config) => !listedIds.has(config.model_id))
+      .map((config) => ({ id: config.model_id, name: config.profile.name || config.model_id }))
+    return [...models, ...extra].sort((a, b) => a.name.localeCompare(b.name))
+  }, [models, modelConfigs, listedIds])
 
-  const handleDeleteModelConfig = useCallback(
-    async (id: string) => {
-      if (!(await confirm({ body: t('settings.confirmDelete.modelConfig') }))) return
-      try {
-        await api.deleteModelConfig(id)
-      } catch (err) {
-        setModelsError(String(err))
-        return
-      }
-      await loadModelConfigs()
-      setEditingModelId(null)
-    },
-    [confirm, t, loadModelConfigs],
-  )
-
-  const changeEditingModel = useCallback(
-    async (nextId: string | null) => {
-      if (modelConfigDirty && !(await confirm({ body: t('settings.unsavedChanges'), status: 'warning' }))) return
-      setModelConfigDirty(false)
-      setEditingModelId(nextId)
-    },
-    [confirm, modelConfigDirty, t],
-  )
+  const visibleModels = useMemo(() => {
+    const query = modelFilter.trim().toLowerCase()
+    if (!query) return allModels
+    return allModels.filter(
+      (model) => model.name.toLowerCase().includes(query) || model.id.toLowerCase().includes(query),
+    )
+  }, [allModels, modelFilter])
 
   // Straight from the catalog, and not translated: these are brand names. The
   // i18n keys they replaced held the same strings in every locale, and a vendor
@@ -949,104 +404,6 @@ function ProviderEditor({
         ? t('settings.provider.apiFormatGeminiGenerateContentHint')
         : t('settings.provider.apiFormatOpenAICompatibleHint')
       : undefined
-
-  const modelColumns = useMemo<DataGridColumn<ProviderModelInfoResponse>[]>(
-    () => [
-      {
-        id: 'model',
-        header: t('settings.provider.modelColumn'),
-        isRowHeader: true,
-        minWidth: 176,
-        cellClassName: 'text-caption-1-regular',
-        cell: (model) => (
-          <span
-            data-slot="model-name"
-            className={cx('block truncate', modelConfigs.has(model.id) ? 'text-text-primary' : 'text-text-secondary')}
-          >
-            {model.name}
-          </span>
-        ),
-      },
-      {
-        id: 'status',
-        header: t('settings.provider.modelStatusColumn'),
-        width: 112,
-        minWidth: 112,
-        headerClassName: 'whitespace-nowrap',
-        cellClassName: 'text-caption-1-regular',
-        cell: (model) => {
-          const config = modelConfigs.get(model.id)
-          if (!config)
-            return (
-              <span data-slot="model-status-unconfigured" className="text-text-secondary">
-                {t('settings.provider.modelNotConfigured')}
-              </span>
-            )
-          // The rates in force, not the row's own: a model priced by its
-          // profile — which is almost all of them — carries null here and
-          // would otherwise be reported as having no price at all.
-          const priced = config.effective_pricing
-          return isPriced(priced) ? (
-            <span
-              data-slot="model-status-priced"
-              className="inline-flex items-center gap-1.5 text-status-success-soft-foreground"
-            >
-              <span
-                data-slot="model-status-dot"
-                aria-hidden
-                className="size-1.5 shrink-0 rounded-full bg-status-success"
-              />
-              {t('settings.provider.modelPriced')}
-            </span>
-          ) : (
-            <span data-slot="model-status-unpriced" className="inline-flex items-center gap-1.5 text-status-warning">
-              <span
-                data-slot="model-status-dot"
-                aria-hidden
-                className="size-1.5 shrink-0 rounded-full bg-status-warning"
-              />
-              {t('settings.provider.modelPriceMissing')}
-            </span>
-          )
-        },
-      },
-      {
-        id: 'actions',
-        header: t('settings.provider.modelActionsColumn'),
-        align: 'end',
-        width: 72,
-        minWidth: 72,
-        pinned: 'end',
-        headerClassName: 'whitespace-nowrap',
-        cell: (model) => {
-          const isEditing = editingModelId === model.id
-          const label = isEditing
-            ? t('settings.provider.closeModelConfig', { model: model.name })
-            : t('settings.provider.editModelConfig', { model: model.name })
-          return (
-            <TooltipTrigger delay={0}>
-              <Button
-                iconOnly
-                variant="ghost"
-                aria-label={label}
-                aria-controls={isEditing ? modelEditorId : undefined}
-                aria-expanded={isEditing}
-                className="touch-hitbox h-6 w-6"
-                onPress={() => void changeEditingModel(isEditing ? null : model.id)}
-              >
-                {isEditing ? <Xmark className="size-3.5" /> : <Sliders className="size-3.5" />}
-              </Button>
-              <Tooltip placement="top">{label}</Tooltip>
-            </TooltipTrigger>
-          )
-        },
-      },
-    ],
-    [changeEditingModel, editingModelId, modelConfigs, modelEditorId, t],
-  )
-
-  const editingModel = editingModelId == null ? undefined : models.find((model) => model.id === editingModelId)
-  const editingModelConfig = editingModel == null ? undefined : modelConfigs.get(editingModel.id)
 
   return (
     <div data-slot="provider-editor" className="space-y-5">
@@ -1286,45 +643,39 @@ function ProviderEditor({
             {modelsError}
           </p>
         )}
-        {models.length > 0 && (
+        {visibleModels.length > 0 && (
           <div data-slot="provider-model-list" className="space-y-2">
-            <DataGrid<ProviderModelInfoResponse>
-              aria-label={t('settings.provider.models')}
-              variant="secondary"
-              columns={modelColumns}
-              data={models}
-              getRowId={(model) => model.id}
-              contentClassName="min-w-96"
-              scrollContainerClassName="max-h-60 overflow-y-auto overscroll-contain"
-            />
-            {editingModel && (
-              <div
-                data-slot="model-config-panel"
-                id={modelEditorId}
-                className="max-h-96 overflow-y-auto overscroll-contain rounded-lg border border-border-button-default pt-3"
-              >
-                <h4 data-slot="model-config-panel-title" className="px-3 pb-3 text-caption-1-medium">
-                  {t('settings.provider.editModelConfig', { model: editingModel.name })}
-                </h4>
-                <ModelConfigEditor
-                  key={editingModel.id}
-                  providerId={provider.id}
-                  modelId={editingModel.id}
-                  // Which provider-side tools exist depends on the dialect,
-                  // so the capability lookup has to be redone when it
-                  // changes — otherwise switching to Responses leaves the
-                  // panel insisting this model has none.
-                  apiFormat={apiFormat}
-                  existing={editingModelConfig}
-                  onSave={handleSaveModelConfig}
-                  onDelete={editingModelConfig ? () => handleDeleteModelConfig(editingModelConfig.id) : undefined}
-                  onDirtyChange={setModelConfigDirty}
-                />
-              </div>
+            {/* A filter rather than a scroller: a provider that answers with
+                two hundred models is common, and a box inside a box is what
+                the page grammar exists to stop. */}
+            {models.length > FILTER_THRESHOLD && (
+              <Input
+                aria-label={t('settings.provider.filterModels')}
+                name={`modelFilter-${provider.id}`}
+                value={modelFilter}
+                onChange={(event) => setModelFilter(event.target.value)}
+                placeholder={t('settings.provider.filterModels')}
+              />
             )}
+            <SettingsCard>
+              {visibleModels.map((model) => {
+                const config = modelConfigs.get(model.id)
+                return (
+                  <SettingsNavRow
+                    key={model.id}
+                    id={model.id}
+                    data-key={model.id}
+                    label={model.name}
+                    className="rounded-none border-b border-separator-border last:border-b-0"
+                    value={<ModelStatus config={config} listed={listedIds.has(model.id)} />}
+                    onPress={() => onOpenModel(model.id)}
+                  />
+                )
+              })}
+            </SettingsCard>
           </div>
         )}
-        {models.length === 0 && !fetchingModels && !modelsError && (
+        {allModels.length === 0 && !fetchingModels && !modelsError && (
           <p data-slot="provider-models-hint" className="text-caption-1-regular text-text-secondary">
             {t('settings.provider.fetchModelsHint')}
           </p>
@@ -1351,7 +702,15 @@ function ProviderEditor({
  * list narrowed; adding one to save a round trip would be a new IPC surface for
  * a request that is already cheap.
  */
-export function ProviderPage({ providerId, onDeleted }: { providerId: string; onDeleted: () => void }) {
+export function ProviderPage({
+  providerId,
+  onOpenModel,
+  onDeleted,
+}: {
+  providerId: string
+  onOpenModel: (modelId: string, apiFormat: string) => void
+  onDeleted: () => void
+}) {
   const { t } = useTranslation()
   const [provider, setProvider] = useState<ProviderInfoResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -1384,7 +743,16 @@ export function ProviderPage({ providerId, onDeleted }: { providerId: string; on
 
   return (
     <SettingsPage title={provider.name} width="wide">
-      <ProviderEditor key={provider.id} provider={provider} onUpdate={() => void refresh()} onDeleted={onDeleted} />
+      <ProviderEditor
+        key={provider.id}
+        provider={provider}
+        onUpdate={() => void refresh()}
+        // The dialect goes with it: which provider-side tools a model has
+        // depends on it, and the model page's capability lookup needs to be
+        // redone when it changes.
+        onOpenModel={(modelId) => onOpenModel(modelId, provider.api_format || 'chat_completions')}
+        onDeleted={onDeleted}
+      />
     </SettingsPage>
   )
 }

@@ -17,6 +17,8 @@ vi.mock('@/api', () => ({
     updateProvider: vi.fn(),
     fetchProviderModels: vi.fn(),
     listModelConfigs: vi.fn(),
+    getModelConfig: vi.fn(),
+    listModelProfiles: vi.fn(),
     getProviderCapabilities: vi.fn(),
     saveModelConfig: vi.fn(),
     deleteModelConfig: vi.fn(),
@@ -178,6 +180,8 @@ describe('ProviderSettings list/detail navigation', () => {
     mockApi.listProviderCatalog.mockResolvedValue(CATALOG)
     mockApi.getProviderKeyExists.mockResolvedValue(false)
     mockApi.listModelConfigs.mockResolvedValue([])
+    mockApi.getModelConfig.mockResolvedValue(null)
+    mockApi.listModelProfiles.mockResolvedValue([])
     mockApi.getProviderCapabilities.mockRejectedValue(new Error('No capabilities in this test'))
   })
 
@@ -318,7 +322,7 @@ describe('ProviderSettings list/detail navigation', () => {
     expect(mockApi.fetchProviderModels).toHaveBeenCalledWith({ providerId: 'codex-1', forceRefresh: true })
   })
 
-  it('renders fetched models as a data grid and keeps model configuration accessible', async () => {
+  it('renders fetched models as rows saying where each one stands', async () => {
     const user = userEvent.setup()
     mockApi.getProviderKeyExists.mockResolvedValue(true)
     mockApi.fetchProviderModels.mockResolvedValue([
@@ -335,49 +339,143 @@ describe('ProviderSettings list/detail navigation', () => {
 
     await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
 
-    const grid = await screen.findByRole('grid', { name: i18n.t('settings.provider.models') })
-    expect(
-      within(grid).getByRole('columnheader', { name: i18n.t('settings.provider.modelColumn') }),
-    ).toBeInTheDocument()
-    expect(
-      within(grid).getByRole('columnheader', { name: i18n.t('settings.provider.modelStatusColumn') }),
-    ).toBeInTheDocument()
-    expect(
-      within(grid).getByRole('columnheader', { name: i18n.t('settings.provider.modelActionsColumn') }),
-    ).toBeInTheDocument()
-    expect(within(grid).getByText(i18n.t('settings.provider.modelPriced'))).toBeInTheDocument()
-    expect(within(grid).getByText(i18n.t('settings.provider.modelPriceMissing'))).toBeInTheDocument()
-    expect(within(grid).getByText(i18n.t('settings.provider.modelNotConfigured'))).toBeInTheDocument()
-    expect(within(grid).getByText('gpt-5.6-mini')).not.toHaveClass('text-text-secondary')
-    expect(within(grid).getByText('gpt-unconfigured')).toHaveClass('text-text-secondary')
+    // Every model this provider answered with, each saying where it stands.
+    expect(await screen.findByRole('button', { name: /gpt-5\.6$/ })).toBeInTheDocument()
+    expect(screen.getByText(i18n.t('settings.provider.modelPriced'))).toBeInTheDocument()
+    expect(screen.getByText(i18n.t('settings.provider.modelPriceMissing'))).toBeInTheDocument()
+    expect(screen.getByText(i18n.t('settings.provider.modelNotConfigured'))).toBeInTheDocument()
+  })
 
-    await user.click(
-      within(grid).getByRole('button', {
-        name: i18n.t('settings.provider.editModelConfig', { model: 'gpt-5.6' }),
-      }),
+  /**
+   * A model configured here but absent from what the provider announced.
+   *
+   * `cached_models` and `model_configs` have deliberately never been joined,
+   * and reading only the first is what made a preview model impossible to
+   * configure at all: it is not in `/v1/models`, so it never appeared in a
+   * list, so it could never be given a window or a price.
+   */
+  it('lists a configured model the provider did not announce', async () => {
+    const user = userEvent.setup()
+    mockApi.getProviderKeyExists.mockResolvedValue(true)
+    mockApi.fetchProviderModels.mockResolvedValue([{ id: 'gpt-5.6', name: 'gpt-5.6' }])
+    mockApi.listModelConfigs.mockResolvedValue([
+      modelConfig({ id: 'config-1', model_id: 'gpt-5.6', input_price: decimal('1'), output_price: decimal('2') }),
+      modelConfig({ id: 'config-preview', model_id: 'gpt-6-preview' }),
+    ])
+    render(<ProviderSettings />)
+    await openFirstProvider(user)
+    await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
+
+    expect(await screen.findByRole('button', { name: /gpt-6-preview/ })).toBeInTheDocument()
+    expect(screen.getByText(i18n.t('settings.provider.modelNotListed'))).toBeInTheDocument()
+  })
+
+  it('opens a model on its own page, and the back button returns to the provider', async () => {
+    const user = userEvent.setup()
+    mockApi.getProviderKeyExists.mockResolvedValue(true)
+    mockApi.fetchProviderModels.mockResolvedValue([{ id: 'gpt-5.6', name: 'gpt-5.6' }])
+    mockApi.getModelConfig.mockResolvedValue(
+      modelConfig({ id: 'config-1', model_id: 'gpt-5.6', input_price: decimal('1'), output_price: decimal('2') }),
     )
-    expect(
-      within(grid).getByRole('button', {
-        name: i18n.t('settings.provider.closeModelConfig', { model: 'gpt-5.6' }),
-      }),
-    ).toHaveAttribute('aria-expanded', 'true')
-    expect(
-      screen.getByRole('heading', {
-        name: i18n.t('settings.provider.editModelConfig', { model: 'gpt-5.6' }),
-      }),
-    ).toBeInTheDocument()
-    const contextWindow = screen.getByRole('textbox', { name: i18n.t('settings.model.contextWindow') })
+    mockApi.listModelProfiles.mockResolvedValue([])
+    render(<ProviderSettings />)
+    await openFirstProvider(user)
+    await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
+
+    await user.click(await screen.findByRole('button', { name: /gpt-5\.6$/ }))
+    expect(await screen.findByRole('heading', { name: 'gpt-5.6' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: i18n.t('settings.model.contextWindow') })).toHaveValue('128000')
+
+    await user.click(screen.getByRole('button', { name: i18n.t('common.back') }))
+    expect(await screen.findByRole('heading', { name: 'Provider One' })).toBeInTheDocument()
+  })
+
+  /**
+   * The point of the whole split: a second provider reaching the same model
+   * points at the description that already exists instead of typing the window
+   * and the prices again.
+   *
+   * Choosing one replaces the form with that profile's values. Keeping what was
+   * typed would save the old numbers onto the chosen description and silently
+   * rewrite what every other provider reading it sees.
+   */
+  it('points a model at an existing description, and takes its values', async () => {
+    const user = userEvent.setup()
+    mockApi.getProviderKeyExists.mockResolvedValue(true)
+    mockApi.fetchProviderModels.mockResolvedValue([{ id: 'claude-sonnet-5@vertex', name: 'claude-sonnet-5@vertex' }])
+    mockApi.getModelConfig.mockResolvedValue(null)
+    mockApi.listModelProfiles.mockResolvedValue([
+      {
+        id: 'prof-sonnet',
+        name: 'Claude Sonnet 5',
+        context_window: 200000,
+        compact_threshold: 150000,
+        max_output_tokens: 64000,
+        input_price: decimal('3'),
+        output_price: decimal('15'),
+        cache_read_price: null,
+        cache_write_price: null,
+        pricing_tiers: [],
+        capability_overrides: null,
+        model_count: 2,
+        created_at: 0,
+        updated_at: 0,
+      },
+    ])
+    mockApi.saveModelConfig.mockResolvedValue(undefined as never)
+    render(<ProviderSettings />)
+    await openFirstProvider(user)
+    await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
+    await user.click(await screen.findByRole('button', { name: 'claude-sonnet-5@vertex' }))
+
+    // React Aria names a select trigger from its label *and* its current
+    // value, so the match is on the label rather than equal to it.
+    await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.model.useProfile')) }))
+    await user.click(await screen.findByRole('option', { name: 'Claude Sonnet 5' }))
+
+    // The window came from the description rather than from the catalog.
+    expect(screen.getByRole('textbox', { name: i18n.t('settings.model.contextWindow') })).toHaveValue('200000')
+    expect(screen.getByRole('textbox', { name: i18n.t('settings.model.inputPrice') })).toHaveValue('3')
+    // And it says how far an edit here reaches.
+    expect(screen.getByText(i18n.t('settings.model.sharedBy', { count: 2 }))).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
+    await waitFor(() =>
+      expect(mockApi.saveModelConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model_id: 'claude-sonnet-5@vertex',
+          profile: expect.objectContaining({ id: 'prof-sonnet', name: 'Claude Sonnet 5', context_window: 200000 }),
+        }),
+      ),
+    )
+  })
+
+  /** A page with unsaved work does not go quietly. */
+  it('asks before the back button discards a model draft', async () => {
+    const user = userEvent.setup()
+    mockApi.getProviderKeyExists.mockResolvedValue(true)
+    mockApi.fetchProviderModels.mockResolvedValue([{ id: 'gpt-5.6', name: 'gpt-5.6' }])
+    mockApi.getModelConfig.mockResolvedValue(null)
+    mockApi.listModelProfiles.mockResolvedValue([])
+    render(<ProviderSettings />)
+    await openFirstProvider(user)
+    await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
+    await user.click(await screen.findByRole('button', { name: /gpt-5\.6$/ }))
+
+    const contextWindow = await screen.findByRole('textbox', { name: i18n.t('settings.model.contextWindow') })
     await user.clear(contextWindow)
     await user.type(contextWindow, '42')
 
+    await user.click(screen.getByRole('button', { name: i18n.t('common.back') }))
+    const discard = await screen.findByRole('alertdialog', { name: i18n.t('confirm.title') })
+    await user.click(within(discard).getByRole('button', { name: i18n.t('common.cancel') }))
+    expect(screen.getByRole('textbox', { name: i18n.t('settings.model.contextWindow') })).toHaveValue('42')
+
+    await user.click(screen.getByRole('button', { name: i18n.t('common.back') }))
     await user.click(
-      within(grid).getByRole('button', {
-        name: i18n.t('settings.provider.editModelConfig', { model: 'gpt-5.6-mini' }),
-      }),
+      within(await screen.findByRole('alertdialog')).getByRole('button', { name: i18n.t('common.confirm') }),
     )
-    const discard = screen.getByRole('alertdialog', { name: i18n.t('confirm.title') })
-    await user.click(within(discard).getByRole('button', { name: i18n.t('common.confirm') }))
-    expect(await screen.findByRole('textbox', { name: i18n.t('settings.model.contextWindow') })).toHaveValue('128000')
+    expect(await screen.findByRole('heading', { name: 'Provider One' })).toBeInTheDocument()
   })
 
   it('sends canonical decimal strings and typed price tiers to IPC', async () => {
@@ -389,12 +487,7 @@ describe('ProviderSettings list/detail navigation', () => {
     await openFirstProvider(user)
 
     await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
-    const grid = await screen.findByRole('grid', { name: i18n.t('settings.provider.models') })
-    await user.click(
-      within(grid).getByRole('button', {
-        name: i18n.t('settings.provider.editModelConfig', { model: 'Priced model' }),
-      }),
-    )
+    await user.click(await screen.findByRole('button', { name: 'Priced model' }))
 
     const inputPrice = screen.getByRole('textbox', { name: i18n.t('settings.model.inputPrice') })
     const outputPrice = screen.getByRole('textbox', { name: i18n.t('settings.model.outputPrice') })
@@ -412,8 +505,7 @@ describe('ProviderSettings list/detail navigation', () => {
     fireEvent.change(tierInput, { target: { value: '04.2500' } })
     fireEvent.change(tierOutput, { target: { value: '12.500' } })
 
-    const saveButtons = screen.getAllByRole('button', { name: i18n.t('common.save') })
-    await user.click(saveButtons[saveButtons.length - 1])
+    await user.click(await screen.findByRole('button', { name: i18n.t('common.save') }))
 
     await waitFor(() =>
       expect(mockApi.saveModelConfig).toHaveBeenCalledWith(
@@ -446,14 +538,16 @@ describe('ProviderSettings list/detail navigation', () => {
     const user = userEvent.setup()
     mockApi.getProviderKeyExists.mockResolvedValue(true)
     mockApi.fetchProviderModels.mockResolvedValue([{ id: 'structured-model', name: 'Structured model' }])
-    mockApi.listModelConfigs.mockResolvedValue([
-      modelConfig({
-        id: 'structured-config',
-        model_id: 'structured-model',
-        capability_overrides: { supports_thinking: false, default_effort: null },
-        server_tools: ['web_search'],
-      }),
-    ])
+    const structured = modelConfig({
+      id: 'structured-config',
+      model_id: 'structured-model',
+      capability_overrides: { supports_thinking: false, default_effort: null },
+      server_tools: ['web_search'],
+    })
+    mockApi.listModelConfigs.mockResolvedValue([structured])
+    // The model page reads its own row by id rather than taking it off the
+    // provider's list.
+    mockApi.getModelConfig.mockResolvedValue(structured)
     mockApi.getProviderCapabilities.mockResolvedValue({
       supports_tools: true,
       supports_streaming_tools: true,
@@ -479,14 +573,8 @@ describe('ProviderSettings list/detail navigation', () => {
     await openFirstProvider(user)
 
     await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
-    const grid = await screen.findByRole('grid', { name: i18n.t('settings.provider.models') })
-    await user.click(
-      within(grid).getByRole('button', {
-        name: i18n.t('settings.provider.editModelConfig', { model: 'Structured model' }),
-      }),
-    )
-    const saveButtons = screen.getAllByRole('button', { name: i18n.t('common.save') })
-    await user.click(saveButtons[saveButtons.length - 1])
+    await user.click(await screen.findByRole('button', { name: 'Structured model' }))
+    await user.click(await screen.findByRole('button', { name: i18n.t('common.save') }))
     await waitFor(() =>
       expect(mockApi.saveModelConfig).toHaveBeenCalledWith(
         expect.objectContaining({
