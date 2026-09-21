@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import i18n from '@/i18n'
 import { useHistoryStore } from '@/stores/history-store'
 import { attachHistory } from '@/lib/history-bridge'
+import { resizeViewportTo } from '@/test/viewport'
 import { useConfirm } from './use-confirm'
 
 /**
@@ -27,7 +28,49 @@ function Harness({ onAnswer, askRef }: { onAnswer: (ok: boolean) => void; askRef
 
 const click = (name: string) => userEvent.click(screen.getByRole('button', { name }))
 
+const sheet = () => document.querySelector('[data-slot="sheet-content"][data-placement="bottom"]')
+const centred = () => document.querySelector('[data-slot="alert-dialog"]')
+
 describe('useConfirm', () => {
+  afterEach(() => resizeViewportTo(1024))
+
+  /**
+   * A question reaches for the bottom edge on a phone and the middle of the
+   * screen on a desktop, and is the same question either way: same role, same
+   * two buttons, same answer on a dismissal.
+   */
+  it('rises from the bottom edge on a phone and sits centred elsewhere', async () => {
+    resizeViewportTo(500)
+    const answer = vi.fn()
+    render(<Harness onAnswer={answer} />)
+    await click('ask')
+
+    expect(sheet()).not.toBeNull()
+    expect(centred()).toBeNull()
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+
+    await click(i18n.t('common.cancel'))
+    expect(answer).toHaveBeenCalledWith(false)
+  })
+
+  it('stays centred on a phone when the asker says so', async () => {
+    resizeViewportTo(500)
+    function Centred() {
+      const { confirm, confirmDialog } = useConfirm()
+      return (
+        <>
+          <button onClick={() => void confirm({ body: 'Sure?', presentation: 'center' })}>ask</button>
+          {confirmDialog}
+        </>
+      )
+    }
+    render(<Centred />)
+    await click('ask')
+
+    expect(centred()).not.toBeNull()
+    expect(sheet()).toBeNull()
+  })
+
   it('renders nothing until something is asked', () => {
     const { container } = render(<Harness onAnswer={() => {}} />)
     expect(container.textContent).toBe('ask')
