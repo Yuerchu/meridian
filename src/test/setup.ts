@@ -49,6 +49,15 @@ if (typeof Element.prototype.getAnimations !== 'function') {
   Element.prototype.getAnimations = () => []
 }
 
+// jsdom has `PointerEvent` but none of pointer capture. A sheet's drag handle
+// captures on pointerdown so a finger that slides off the pill keeps dragging;
+// here the capture is a no-op and `fireEvent` addresses the handle directly.
+if (typeof Element.prototype.setPointerCapture !== 'function') {
+  Element.prototype.setPointerCapture = () => {}
+  Element.prototype.releasePointerCapture = () => {}
+  Element.prototype.hasPointerCapture = () => false
+}
+
 // `useIsMobile` calls `matchMedia` and subscribes with `addEventListener`.
 // Where jsdom has the method at all it returns a list that never matches and
 // only carries the deprecated `addListener`, so the check is for a usable one

@@ -12,6 +12,17 @@ export const OVERLAY_MOTION = [
   'data-[exiting]:opacity-0 data-[exiting]:scale-95 data-[exiting]:blur-[2px]',
 ].join(' ')
 
+/**
+ * A bottom sheet's drag layer: it follows the finger while `data-dragging`,
+ * and springs home on release along the same curve it slid in on. The
+ * transition is switched off *during* the drag, or every pointer sample would
+ * be animated towards and the panel would lag the thumb.
+ */
+export const SHEET_SPRING = [
+  'transition-transform duration-[320ms] ease-[var(--ease-sheet)] will-change-transform',
+  'data-[dragging]:transition-none motion-reduce:transition-none',
+].join(' ')
+
 export const BACKDROP_MOTION =
   'transition-opacity duration-150 ease-out data-[entering]:opacity-0 data-[exiting]:opacity-0'
 

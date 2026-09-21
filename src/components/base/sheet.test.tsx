@@ -1,4 +1,4 @@
-import { render, screen, act } from '@testing-library/react'
+import { render, screen, act, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import i18n from '@/i18n'
@@ -33,6 +33,34 @@ function Panel({ isDirty, onOpenChange }: { isDirty?: boolean; onOpenChange: (op
 
 const discard = () => screen.queryByRole('alertdialog', { name: i18n.t('sheet.discard.title') })
 const click = (name: string) => userEvent.click(screen.getByRole('button', { name }))
+const handle = () => document.querySelector('[data-slot="sheet-handle"]')!
+const layer = () => document.querySelector<HTMLElement>('[data-slot="sheet-drag-layer"]')!
+
+/**
+ * One pointer, top to bottom, in `steps` samples `gap` milliseconds apart.
+ *
+ * `timeStamp` is not a constructor option — a browser stamps it and jsdom
+ * stamps its own — so it is defined onto each event. Without that every sample
+ * lands in the same fraction of a millisecond and the measured velocity is
+ * whatever the machine was doing, which turns a deliberate slow drag into a
+ * flick.
+ */
+function pointer(type: string, target: Element, at: number, props: Record<string, unknown>) {
+  const event = new PointerEvent(type, { bubbles: true, cancelable: true, ...props })
+  Object.defineProperty(event, 'timeStamp', { value: at })
+  fireEvent(target, event)
+}
+
+function drag(from: number, to: number, { steps = 3, gap = 50 }: { steps?: number; gap?: number } = {}) {
+  const target = handle()
+  let at = 1000
+  pointer('pointerdown', target, at, { clientY: from, pointerId: 1, pointerType: 'touch', button: 0 })
+  for (let i = 1; i <= steps; i++) {
+    at += gap
+    pointer('pointermove', target, at, { clientY: from + ((to - from) * i) / steps, pointerId: 1 })
+  }
+  pointer('pointerup', target, at, { clientY: to, pointerId: 1 })
+}
 
 /** `go(-n)` delivers the popstate synchronously; jsdom's own does neither. */
 function installFakeHistory() {
@@ -57,6 +85,82 @@ function installFakeHistory() {
 }
 
 describe('Sheet', () => {
+  /**
+   * The gesture a bottom sheet is expected to answer, and the one that has to
+   * not fire by accident: a short pull is a mis-touch, and springing back is
+   * the whole of what tells the reader so.
+   */
+  it('closes when the handle is pulled past the threshold', () => {
+    const onOpenChange = vi.fn()
+    render(<Panel onOpenChange={onOpenChange} />)
+    // Slowly, so it is the distance that dismisses rather than a flick.
+    drag(100, 300, { gap: 400 })
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    // The offset stays: the exit keyframe carries on from where the finger
+    // left it rather than snapping the panel home and then sliding it out.
+    expect(layer().style.transform).toBe('translateY(200px)')
+  })
+
+  it('springs back from a short pull without closing', () => {
+    const onOpenChange = vi.fn()
+    render(<Panel onOpenChange={onOpenChange} />)
+    drag(100, 160, { gap: 400 })
+    expect(onOpenChange).not.toHaveBeenCalled()
+    expect(layer().style.transform).toBe('')
+    expect(layer()).not.toHaveAttribute('data-dragging')
+  })
+
+  it('ignores an upward pull and a cancelled gesture', () => {
+    const onOpenChange = vi.fn()
+    render(<Panel onOpenChange={onOpenChange} />)
+    drag(300, 100)
+    expect(onOpenChange).not.toHaveBeenCalled()
+
+    // What Android sends when the WebView takes the gesture for a scroll.
+    pointer('pointerdown', handle(), 2000, { clientY: 100, pointerId: 2, pointerType: 'touch', button: 0 })
+    pointer('pointermove', handle(), 2100, { clientY: 400, pointerId: 2 })
+    pointer('pointercancel', handle(), 2200, { clientY: 400, pointerId: 2 })
+    expect(onOpenChange).not.toHaveBeenCalled()
+    expect(layer().style.transform).toBe('')
+  })
+
+  it('flicks away on speed alone, well short of the threshold', () => {
+    const onOpenChange = vi.fn()
+    render(<Panel onOpenChange={onOpenChange} />)
+    // 60px in 12ms: nowhere near 120, and unmistakably a throw.
+    drag(100, 160, { steps: 3, gap: 4 })
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it('asks before a drag loses unsaved work, and springs back meanwhile', () => {
+    const onOpenChange = vi.fn()
+    render(<Panel isDirty onOpenChange={onOpenChange} />)
+    drag(100, 300, { gap: 400 })
+    expect(onOpenChange).not.toHaveBeenCalled()
+    expect(discard()).not.toBeNull()
+    // Refused, so the panel returns to rest rather than sitting half off-screen
+    // behind the question.
+    expect(layer().style.transform).toBe('')
+  })
+
+  it('leaves the handle inert on every other edge', () => {
+    const onOpenChange = vi.fn()
+    render(
+      <Sheet isOpen onOpenChange={onOpenChange} placement="right">
+        <Sheet.Backdrop>
+          <Sheet.Content>
+            <Sheet.Dialog aria-label="panel">
+              <Sheet.Handle />
+            </Sheet.Dialog>
+          </Sheet.Content>
+        </Sheet.Backdrop>
+      </Sheet>,
+    )
+    drag(100, 400, { gap: 400 })
+    expect(onOpenChange).not.toHaveBeenCalled()
+    expect(layer().style.transform).toBe('')
+  })
+
   it('closes from the scrim, Escape and the close button when there is nothing to lose', async () => {
     const onOpenChange = vi.fn()
     const { unmount } = render(<Panel onOpenChange={onOpenChange} />)

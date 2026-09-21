@@ -21,7 +21,8 @@ import { useHistoryLevel } from '@/hooks/use-history-level'
 import { AlertDialog } from './alert-dialog'
 import { Button } from './buttons/button'
 import { CloseButton } from './buttons/close-button'
-import { BACKDROP_MOTION, BACKDROP_VARIANT, type BackdropVariant } from './overlay-motion'
+import { BACKDROP_MOTION, BACKDROP_VARIANT, SHEET_SPRING, type BackdropVariant } from './overlay-motion'
+import { useSheetDrag, type SheetDragApi } from './use-sheet-drag'
 
 /**
  * A panel sliding in from one edge, on the same React Aria overlay stack as
@@ -229,13 +230,22 @@ const position: Record<SheetPlacement, string> = {
   bottom: 'inset-x-0 bottom-0 max-h-[85dvh] rounded-t-2xl',
 }
 
-const EASE = 'cubic-bezier(0.32,0.72,0,1)'
+const EASE = 'var(--ease-sheet)'
 const slide: Record<SheetPlacement, string> = {
   right: `data-[entering]:animate-[meridian-sheet-in-right_320ms_${EASE}] data-[exiting]:animate-[meridian-sheet-out-right_200ms_ease-in]`,
   left: `data-[entering]:animate-[meridian-sheet-in-left_320ms_${EASE}] data-[exiting]:animate-[meridian-sheet-out-left_200ms_ease-in]`,
   top: `data-[entering]:animate-[meridian-sheet-in-top_320ms_${EASE}] data-[exiting]:animate-[meridian-sheet-out-top_200ms_ease-in]`,
   bottom: `data-[entering]:animate-[meridian-sheet-in-bottom_320ms_${EASE}] data-[exiting]:animate-[meridian-sheet-out-bottom_200ms_ease-in]`,
 }
+
+/**
+ * The drag gesture, published to `Sheet.Handle` — which is a grandchild, and
+ * the one part of the panel a finger is meant to take hold of.
+ */
+const SheetDragContext = createContext<{ handleProps: SheetDragApi['handleProps'] | null; isDragging: boolean }>({
+  handleProps: null,
+  isDragging: false,
+})
 
 interface SheetContentProps {
   /** Overrides the root's edge for this panel. */
@@ -245,8 +255,14 @@ interface SheetContentProps {
 }
 
 function SheetContent({ placement: own, className, children }: SheetContentProps) {
-  const { placement: root } = useContext(SheetContext)
+  const { placement: root, isDismissable, requestClose } = useContext(SheetContext)
   const placement = own ?? root
+  const draggable = placement === 'bottom' && isDismissable
+  const drag = useSheetDrag({ enabled: draggable, requestClose })
+  const dragValue = useMemo(
+    () => ({ handleProps: draggable ? drag.handleProps : null, isDragging: drag.isDragging }),
+    [draggable, drag.handleProps, drag.isDragging],
+  )
   return (
     <AriaModal
       data-slot="sheet-content"
@@ -258,7 +274,19 @@ function SheetContent({ placement: own, className, children }: SheetContentProps
         className,
       )}
     >
-      {children}
+      {/* The live transform goes on a child, not on the Modal: the entrance and
+          exit keyframes own the Modal's own transform, and two of them on one
+          element is the animation fighting the finger. Leaving the offset in
+          place after a real close is what lets the exit carry on from where the
+          finger left it rather than snapping home first. */}
+      <div
+        ref={drag.layerRef}
+        data-slot="sheet-drag-layer"
+        data-dragging={drag.isDragging || undefined}
+        className={cx('flex min-h-0 flex-1 flex-col', draggable && SHEET_SPRING)}
+      >
+        <SheetDragContext.Provider value={dragValue}>{children}</SheetDragContext.Provider>
+      </div>
     </AriaModal>
   )
 }
@@ -280,15 +308,34 @@ function SheetDialog({ className, children, ...props }: SheetDialogProps) {
   )
 }
 
-/** The pill at the top of a bottom sheet. Decoration: it does not drag. */
+/**
+ * The pill at the top of a bottom sheet, and what a finger takes hold of.
+ *
+ * Pull it past a third of the sheet, or flick it, and the sheet goes — through
+ * the same `requestClose` as every other way out, so unsaved work is asked
+ * about here too. On any other edge, and on a sheet that cannot be dismissed at
+ * all, it stays what it was: decoration.
+ *
+ * Hidden from assistive technology. The keyboard's way out is Escape and the
+ * close button; a drag handle it cannot use would only be noise.
+ */
 function SheetHandle({ className, ...props }: ComponentProps<'div'>) {
+  const { handleProps, isDragging } = useContext(SheetDragContext)
   return (
     <div
       data-slot="sheet-handle"
       aria-hidden
       {...props}
-      className={cx('mx-auto mt-2 mb-1 h-1 w-9 shrink-0 rounded-full bg-border-button-default', className)}
-    />
+      {...handleProps}
+      className={cx(
+        'flex h-6 shrink-0 items-center justify-center select-none',
+        handleProps && 'touch-none cursor-grab',
+        isDragging && 'cursor-grabbing',
+        className,
+      )}
+    >
+      <span data-slot="sheet-handle-pill" className="h-1 w-9 rounded-full bg-border-button-default" />
+    </div>
   )
 }
 
