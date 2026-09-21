@@ -1,4 +1,14 @@
-import { createContext, useContext, type ComponentProps, type ReactNode } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useId,
+  useMemo,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Dialog,
   Heading as AriaHeading,
@@ -7,6 +17,9 @@ import {
   type DialogProps,
 } from 'react-aria-components'
 import { cx } from '@/utils/cx'
+import { useHistoryLevel } from '@/hooks/use-history-level'
+import { AlertDialog } from './alert-dialog'
+import { Button } from './buttons/button'
 import { CloseButton } from './buttons/close-button'
 import { BACKDROP_MOTION, BACKDROP_VARIANT, type BackdropVariant } from './overlay-motion'
 
@@ -29,6 +42,15 @@ import { BACKDROP_MOTION, BACKDROP_VARIANT, type BackdropVariant } from './overl
  * edge in `styles/meridian.css` (`meridian-sheet-in-*`), because a translate
  * cannot be expressed as a transition from `data-entering` alone without the
  * panel first painting at its resting place.
+ *
+ * **Every way out that is not the caller's own button arrives at one place.**
+ * React Aria hands the scrim, Escape and `slot="close"` to `onOpenChange`
+ * alike, so `requestClose` wraps that one callback and `isDirty` is answered
+ * once for all three. The back gesture is the exception: it reaches
+ * `useHistoryLevel`, which is why the root claims that level rather than each
+ * call site. Claimed at both, the call site's would sit *above* the root's —
+ * child effects run first — and answer the gesture by closing directly, with
+ * the unsaved-work question never asked.
  */
 
 export type SheetPlacement = 'left' | 'right' | 'top' | 'bottom'
@@ -37,22 +59,140 @@ interface SheetContextValue {
   isOpen?: boolean
   onOpenChange?: (open: boolean) => void
   isDismissable: boolean
+  isKeyboardDismissDisabled: boolean
   placement: SheetPlacement
+  /**
+   * The one funnel for every dismissal that is not the caller's own button.
+   * Returns true when it forwarded the close, false when it asked first.
+   */
+  requestClose: () => boolean
 }
 
-const SheetContext = createContext<SheetContextValue>({ isDismissable: true, placement: 'right' })
+const SheetContext = createContext<SheetContextValue>({
+  isDismissable: true,
+  isKeyboardDismissDisabled: false,
+  placement: 'right',
+  requestClose: () => true,
+})
 
 interface SheetProps {
   isOpen?: boolean
   onOpenChange?: (open: boolean) => void
   placement?: SheetPlacement
   isDismissable?: boolean
+  /** Escape stops dismissing. Parity with `Modal.Backdrop`. */
+  isKeyboardDismissDisabled?: boolean
+  /**
+   * There is unsaved work inside.
+   *
+   * Every way out that is not the caller's own footer button — the scrim,
+   * Escape, the close button, the back gesture, and a downward drag once
+   * `Sheet.Handle` has one — asks whether to discard it first. The sheet stays
+   * open while the question is up: its `isOpen` must not flicker, or the
+   * history hand-over path fires and the entry it is holding is spent.
+   *
+   * Needs a controlled `isOpen`. Every consumer is.
+   */
+  isDirty?: boolean
   children?: ReactNode
 }
 
-function SheetRoot({ isOpen, placement = 'right', onOpenChange, isDismissable = true, children }: SheetProps) {
+function SheetRoot({
+  isOpen,
+  placement = 'right',
+  onOpenChange,
+  isDismissable = true,
+  isKeyboardDismissDisabled = false,
+  isDirty = false,
+  children,
+}: SheetProps) {
+  const [asking, setAsking] = useState(false)
+
+  const requestClose = useCallback((): boolean => {
+    if (!isDirty) {
+      onOpenChange?.(false)
+      return true
+    }
+    setAsking(true)
+    return false
+  }, [isDirty, onOpenChange])
+
+  // `!asking` is what lets a refused close give the entry back.
+  //
+  // The back gesture reaches here *after* the store has already dropped this
+  // level — `settleTo` retires a level and then calls its `dismiss` — so a
+  // refusal would otherwise leave the sheet open holding nothing, and the next
+  // press would leave the app. Dropping to false and back to true is a fresh
+  // edge, which is the only thing `useHistoryLevel` re-registers on; while the
+  // question is up its own level stands in, so the depth never changes.
+  useHistoryLevel(isOpen === true && !asking, requestClose)
+
+  const value = useMemo(
+    () => ({ isOpen, onOpenChange, isDismissable, isKeyboardDismissDisabled, placement, requestClose }),
+    [isOpen, onOpenChange, isDismissable, isKeyboardDismissDisabled, placement, requestClose],
+  )
+
   return (
-    <SheetContext.Provider value={{ isOpen, onOpenChange, isDismissable, placement }}>{children}</SheetContext.Provider>
+    <SheetContext.Provider value={value}>
+      {children}
+      <SheetDiscardDialog
+        isOpen={asking}
+        onKeep={() => setAsking(false)}
+        onDiscard={() => {
+          setAsking(false)
+          onOpenChange?.(false)
+        }}
+      />
+    </SheetContext.Provider>
+  )
+}
+
+/**
+ * "Discard what you typed?", for a sheet that is being closed out from under it.
+ *
+ * Drawn here rather than through `useConfirm` on purpose. That hook lives above
+ * the base layer and renders this same dialog, so reaching for it from inside
+ * `Sheet` would have the base layer importing its own consumer. What it would
+ * buy is a promise, and there is nothing here to await: two buttons and two
+ * outcomes.
+ *
+ * Centred, never a second sheet: a panel rising over a panel leaves the drag
+ * gesture ambiguous about which one it has hold of.
+ */
+function SheetDiscardDialog({
+  isOpen,
+  onKeep,
+  onDiscard,
+}: {
+  isOpen: boolean
+  onKeep: () => void
+  onDiscard: () => void
+}) {
+  const { t } = useTranslation()
+  const descId = `${useId()}-discard`
+  // Its own level, so one back press answers the question and the next one
+  // closes the sheet — rather than the gesture reaching past an open question.
+  useHistoryLevel(isOpen, onKeep)
+  return (
+    <AlertDialog.Backdrop isOpen={isOpen} onOpenChange={(open) => !open && onKeep()}>
+      <AlertDialog.Container>
+        <AlertDialog.Dialog aria-describedby={descId}>
+          <AlertDialog.Header>
+            <AlertDialog.Icon status="warning" />
+            <AlertDialog.Heading>{t('sheet.discard.title')}</AlertDialog.Heading>
+          </AlertDialog.Header>
+          <AlertDialog.Body id={descId}>{t('sheet.discard.body')}</AlertDialog.Body>
+          <AlertDialog.Footer>
+            <Button slot="close" variant="tertiary">
+              {t('common.cancel')}
+            </Button>
+            <Button variant="danger" onPress={onDiscard}>
+              {t('sheet.discard.confirm')}
+            </Button>
+          </AlertDialog.Footer>
+        </AlertDialog.Dialog>
+      </AlertDialog.Container>
+    </AlertDialog.Backdrop>
   )
 }
 
@@ -63,13 +203,18 @@ interface SheetBackdropProps {
 }
 
 function SheetBackdrop({ variant = 'opaque', className, children }: SheetBackdropProps) {
-  const { isOpen, onOpenChange, isDismissable } = useContext(SheetContext)
+  const { isOpen, onOpenChange, isDismissable, isKeyboardDismissDisabled, requestClose } = useContext(SheetContext)
   return (
     <ModalOverlay
       data-slot="sheet-backdrop"
       isOpen={isOpen}
-      onOpenChange={onOpenChange}
+      // Every close React Aria asks for — the scrim, Escape, a `slot="close"`
+      // button — arrives here as `false`, and a dirty sheet answers with a
+      // question instead of going. `true` never arrives from a Modal;
+      // forwarded anyway rather than silently swallowed.
+      onOpenChange={(open) => (open ? onOpenChange?.(true) : void requestClose())}
       isDismissable={isDismissable}
+      isKeyboardDismissDisabled={isKeyboardDismissDisabled}
       className={cx('fixed inset-0 z-50', BACKDROP_VARIANT[variant], BACKDROP_MOTION, className)}
     >
       {children}

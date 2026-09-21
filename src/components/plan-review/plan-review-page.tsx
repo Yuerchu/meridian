@@ -19,7 +19,6 @@ import { Sheet } from '@/components/base'
 import { api } from '@/api'
 import { FileDiffCard } from '@/components/chat/file-diff-card'
 import { Hint } from '@/components/ui/hint'
-import { useHistoryLevel } from '@/hooks/use-history-level'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useIsNarrow } from '@/hooks/use-narrow'
 import { remapSourceRange, sourceRangeAnchor } from '@/lib/plan-comment-decorations'
@@ -251,7 +250,8 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
   // as long as nothing can be measured.
   const { ref: pageRef, isNarrow: railFolded } = useIsNarrow(COMMENT_RAIL_MIN, useIsMobile())
 
-  useHistoryLevel(commentsOpen, () => setCommentsOpen(false))
+  // The comment rail's back gesture is the Sheet's own level — see
+  // `base/sheet.tsx`.
 
   const applyReview = useCallback(
     (next: PlanReviewInfoResponse) => {

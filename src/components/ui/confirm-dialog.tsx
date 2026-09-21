@@ -55,10 +55,11 @@ export function ConfirmDialog({
   const isMobile = useIsMobile()
   const asSheet = presentation === 'auto' && isMobile
 
-  // Claimed here rather than in `useConfirm`, because the two presentations
-  // have to end up with one level between them and only this component knows
-  // which one is on screen.
-  useHistoryLevel(isOpen, () => onOpenChange(false))
+  // Claimed here rather than in `useConfirm`, and only for the centred form:
+  // the sheet variant *is* a `Sheet`, which claims one of its own. Two levels
+  // for one question would take two presses of the back key to answer, the
+  // first of which appears to do nothing.
+  useHistoryLevel(isOpen && !asSheet, () => onOpenChange(false))
 
   const heading = title ?? t('confirm.title')
   const buttons = (

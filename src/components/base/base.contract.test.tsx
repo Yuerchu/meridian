@@ -87,6 +87,29 @@ describe('Button is a React Aria pressable', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
+  /**
+   * The close button is React Aria's `slot="close"`, which reaches the overlay
+   * directly. A dirty sheet has to intercept it there or the promise it makes
+   * about unsaved work is one the base layer quietly does not keep.
+   */
+  it('asks before a dirty Sheet closes from its CloseTrigger', async () => {
+    const onOpenChange = vi.fn()
+    render(
+      <Sheet isOpen isDirty onOpenChange={onOpenChange} placement="bottom">
+        <Sheet.Backdrop>
+          <Sheet.Content>
+            <Sheet.Dialog aria-label="panel">
+              <Sheet.CloseTrigger aria-label="Close panel" />
+            </Sheet.Dialog>
+          </Sheet.Content>
+        </Sheet.Backdrop>
+      </Sheet>,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Close panel' }))
+    expect(onOpenChange).not.toHaveBeenCalled()
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+  })
+
   it('announces pending and refuses the press', async () => {
     const onPress = vi.fn()
     render(

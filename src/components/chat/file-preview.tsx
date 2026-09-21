@@ -9,7 +9,6 @@ import { useTranslation } from 'react-i18next'
 import { api } from '@/api'
 import type { WorkspaceFileContentResponse } from '@/types'
 import { usePlatform } from '@/hooks/use-platform'
-import { useHistoryLevel } from '@/hooks/use-history-level'
 import { useReferenceProbe } from '@/hooks/use-reference-probe'
 import { useShikiLanguage } from '@/hooks/use-shiki-language'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
@@ -346,9 +345,8 @@ export function FilePreviewProvider({
     setState({ status: 'idle' })
   }, [])
 
-  // On Android/iOS an overlay is a history level. Without this claim the
-  // system back gesture skips past the preview sheet to the page underneath.
-  useHistoryLevel(request !== null, closePreview)
+  // The back gesture is the Sheet's own level now — see `base/sheet.tsx`. It
+  // closes through `onOpenChange`, which is `closePreview`.
 
   const openPreview = React.useCallback(
     (reference: MarkdownFileReference) => {

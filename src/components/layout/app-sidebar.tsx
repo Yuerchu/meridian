@@ -73,7 +73,6 @@ import type { Page } from './shell-props'
 // pull the whole lazily-loaded settings chunk into the main bundle.
 import { visibleSettingsTabs, type SettingsTab } from '@/components/settings/tabs'
 import { usePlatform } from '@/hooks/use-platform'
-import { useHistoryLevel } from '@/hooks/use-history-level'
 import { useRelativeTime } from '@/hooks/use-relative-time'
 import { useConfirm } from '@/hooks/use-confirm'
 import { isCoarsePointer } from '@/hooks/use-coarse-pointer'
@@ -794,7 +793,7 @@ export function AppSidebar({
    * that works, which is what this used to do and called conservative.
    */
   const canHostSessions = platform !== 'android' || isRemote
-  const { isMobileOpen, setMobileOpen, isOpen, isMobile, collapsible } = useSidebar()
+  const { setMobileOpen, isOpen, isMobile, collapsible } = useSidebar()
   // The rail test: the desktop panel is an icon rail only
   // under `collapsible="icon"`, and the mobile sheet is never one.
   const isIconCollapsed = collapsible === 'icon' && !isMobile && !isOpen
@@ -870,10 +869,9 @@ export function AppSidebar({
     })
   }, [])
 
-  // The sheet is a level of its own, so the back key closes it before it
-  // reaches whatever is behind. A no-op on a desktop, where the panel never
-  // opens as a sheet in the first place.
-  useHistoryLevel(isMobileOpen, () => setMobileOpen(false))
+  // The sheet is a level of its own, claimed by `Sheet` itself — see
+  // `base/sheet.tsx`. A no-op on a desktop, where the panel never opens as a
+  // sheet in the first place.
 
   /**
    * Wraps a row's action so that the mobile sheet gets out of the way.

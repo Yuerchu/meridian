@@ -166,4 +166,24 @@ describe('useConfirm', () => {
       vi.unstubAllGlobals()
     }
   })
+
+  /**
+   * One question, one press of the back key.
+   *
+   * On a phone the dialog *is* a `Sheet`, which claims a level of its own. A
+   * second claim beside it would leave the first press appearing to do nothing.
+   */
+  it('costs one history level as a sheet, the same as centred', async () => {
+    resizeViewportTo(500)
+    useHistoryStore.setState({ enabled: true, levels: [] })
+    try {
+      render(<Harness onAnswer={() => {}} />)
+      await click('ask')
+      await act(async () => {})
+      expect(sheet()).not.toBeNull()
+      expect(useHistoryStore.getState().levels).toHaveLength(1)
+    } finally {
+      useHistoryStore.setState({ enabled: false, levels: [] })
+    }
+  })
 })

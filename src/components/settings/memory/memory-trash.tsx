@@ -6,7 +6,6 @@ import { Alert, Button, Card, Chip, Sheet, Spinner, Tooltip, TooltipTrigger } fr
 import { EmptyState } from '@/components/base'
 import { INFO_CHIP } from './memory-row'
 import type { MemoryInfoResponse } from '@/types'
-import { useHistoryLevel } from '@/hooks/use-history-level'
 import { useConfirm } from '@/hooks/use-confirm'
 
 interface MemoryTrashProps {
@@ -45,9 +44,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
     if (open) load()
   }, [open, load])
 
-  // Without this the back gesture would close the settings screen out from
-  // under an open drawer instead of closing the drawer.
-  useHistoryLevel(open, () => onOpenChange(false))
+  // The back gesture is the Sheet's own level now — see `base/sheet.tsx`.
 
   const deletedByLabel = (by: string | null) => {
     switch (by) {

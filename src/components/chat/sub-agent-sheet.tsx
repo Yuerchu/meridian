@@ -4,7 +4,6 @@ import { Alert, Button, Skeleton } from '@/components/base'
 import { Sheet } from '@/components/base'
 import { useConversationStore } from '@/stores/conversation-store'
 import { useTurns } from '@/hooks/use-turns'
-import { useHistoryLevel } from '@/hooks/use-history-level'
 import { ChatTranscript } from './chat-transcript'
 import { SubAgentSheetContext, type SubAgentSheetRequest } from './sub-agent-sheet-context'
 import type { MessageViewModel } from '@/types'
@@ -136,9 +135,8 @@ function SubAgentSheet({ request, onClose }: { request: SubAgentSheetRequest; on
 export function SubAgentSheetProvider({ children }: { children: React.ReactNode }) {
   const [request, setRequest] = React.useState<SubAgentSheetRequest | null>(null)
   const close = React.useCallback(() => setRequest(null), [])
-  // On Android/iOS an overlay is a history level, so the back gesture closes
-  // the sheet rather than leaving the conversation under it.
-  useHistoryLevel(request !== null, close)
+  // The back gesture is the Sheet's own level now — see `base/sheet.tsx`. It
+  // closes through `onOpenChange`, which is `close`.
   const value = React.useMemo(() => ({ open: setRequest }), [])
   return (
     <SubAgentSheetContext value={value}>
