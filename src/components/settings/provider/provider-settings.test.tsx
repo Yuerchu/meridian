@@ -5,8 +5,6 @@ import i18n from '@/i18n'
 import { api } from '@/api'
 import { decimal } from '@/lib/decimal'
 import type { DecimalString, ProviderCatalogEntryInfoResponse, ProviderInfoResponse } from '@/types'
-import { resizeViewportTo } from '@/test/viewport'
-import { setContainerWidth } from '@/test/resize'
 
 vi.mock('@/api', () => ({
   api: {
@@ -104,15 +102,6 @@ const CATALOG: ProviderCatalogEntryInfoResponse[] = [
 ]
 
 /**
- * jsdom lays nothing out, so the pane measures zero and `useIsNarrow` answers
- * from the viewport — which is what makes the viewport-driven cases below still
- * mean what they always did. The last one drives the pane itself.
- */
-function mockViewport(mobile: boolean) {
-  resizeViewportTo(mobile ? 500 : 1024)
-}
-
-/**
  * A configured model, as the backend now answers.
  *
  * The window, the prices and the capability patch belong to the model's
@@ -170,6 +159,14 @@ function modelConfig(overrides: {
   } as never
 }
 
+/**
+ * There is no second column to fill, so nothing opens on its own: every case
+ * about the editor says which provider it is about.
+ */
+async function openFirstProvider(user: ReturnType<typeof userEvent.setup>, name = 'Provider One') {
+  await user.click(await screen.findByRole('option', { name }))
+}
+
 describe('ProviderSettings list/detail navigation', () => {
   beforeAll(async () => {
     await i18n.changeLanguage('en')
@@ -184,16 +181,14 @@ describe('ProviderSettings list/detail navigation', () => {
     mockApi.getProviderCapabilities.mockRejectedValue(new Error('No capabilities in this test'))
   })
 
-  it('mobile: shows the list first without auto-selecting a provider', async () => {
-    mockViewport(true)
+  it('shows the list first, and opens nothing on its own', async () => {
     render(<ProviderSettings />)
     expect(await screen.findByText('Provider One')).toBeInTheDocument()
     expect(screen.getByText('Provider Two')).toBeInTheDocument()
     expect(screen.queryByText(i18n.t('common.back'))).not.toBeInTheDocument()
   })
 
-  it('mobile: the first click can open the second provider', async () => {
-    mockViewport(true)
+  it('the first click can open the second provider', async () => {
     const user = userEvent.setup()
     render(<ProviderSettings />)
 
@@ -201,8 +196,7 @@ describe('ProviderSettings list/detail navigation', () => {
     expect(await screen.findByRole('heading', { name: 'Provider Two' })).toBeInTheDocument()
   })
 
-  it('mobile: back button returns from detail to the list', async () => {
-    mockViewport(true)
+  it('the back button returns from a provider to the list', async () => {
     const user = userEvent.setup()
     render(<ProviderSettings />)
 
@@ -214,14 +208,7 @@ describe('ProviderSettings list/detail navigation', () => {
     expect(screen.queryByText(i18n.t('common.back'))).not.toBeInTheDocument()
   })
 
-  it('desktop: auto-selects the first provider', async () => {
-    mockViewport(false)
-    render(<ProviderSettings />)
-    expect(await screen.findByText(i18n.t('settings.provider.deleteProvider'))).toBeInTheDocument()
-  })
-
-  it('renders providers as a controlled single-select list with provider icons', async () => {
-    mockViewport(false)
+  it('renders providers as a list of ways in, with provider icons', async () => {
     mockApi.listProviders.mockResolvedValue([
       makeProvider('p1', 'Provider One'),
       { ...makeProvider('p2', 'Provider Two'), catalog_id: null, provider_type: 'google' },
@@ -234,7 +221,7 @@ describe('ProviderSettings list/detail navigation', () => {
     expect(rows[0]).toHaveAttribute('data-key', 'p1')
     expect(rows[1]).toHaveAccessibleName('Provider Two')
     expect(within(list).queryByRole('checkbox')).not.toBeInTheDocument()
-    await waitFor(() => expect(rows[0]).toHaveAttribute('aria-selected', 'true'))
+    expect(rows[0]).not.toHaveAttribute('aria-selected', 'true')
 
     await waitFor(() => {
       const icons = list.querySelectorAll('[data-slot="model-icon"]')
@@ -249,7 +236,6 @@ describe('ProviderSettings list/detail navigation', () => {
   // the row at a relay afterwards, and the identity is what decides the logo and
   // the key-issuing link.
   it('creating a provider prefills from the catalog and states which vendor it is', async () => {
-    mockViewport(false)
     const user = userEvent.setup()
     mockApi.createProvider.mockResolvedValue(makeProvider('p3', 'OpenAI'))
     render(<ProviderSettings />)
@@ -269,7 +255,7 @@ describe('ProviderSettings list/detail navigation', () => {
   // `SINGLE_FORMAT_TYPES` denylist; it is now read off the entry, so a vendor
   // added to the catalog gets the right answer without a code change.
   it('hides the dialect selector for a vendor that offers one', async () => {
-    mockViewport(false)
+    const user = userEvent.setup()
     mockApi.listProviderCatalog.mockResolvedValue([
       {
         ...CATALOG[0],
@@ -279,6 +265,7 @@ describe('ProviderSettings list/detail navigation', () => {
       },
     ])
     render(<ProviderSettings />)
+    await openFirstProvider(user)
     await screen.findByText(i18n.t('settings.provider.deleteProvider'))
     expect(screen.queryByText(i18n.t('settings.provider.apiFormat'))).not.toBeInTheDocument()
   })
@@ -287,7 +274,7 @@ describe('ProviderSettings list/detail navigation', () => {
   // type, and an empty one reads as a step left undone. What replaces it is the
   // account the session belongs to.
   it('a ChatGPT login is shown its account instead of a key field', async () => {
-    mockViewport(false)
+    const user = userEvent.setup()
     mockApi.listProviders.mockResolvedValue([
       { ...makeProvider('codex-1', 'Codex'), credential_kind: 'codex_cli', transport_profile: 'chatgpt_codex' },
     ])
@@ -300,6 +287,7 @@ describe('ProviderSettings list/detail navigation', () => {
       problem: null,
     })
     render(<ProviderSettings />)
+    await openFirstProvider(user, 'Codex')
 
     expect(await screen.findByText('someone@example.com')).toBeInTheDocument()
     expect(screen.getByText('pro')).toBeInTheDocument()
@@ -314,7 +302,6 @@ describe('ProviderSettings list/detail navigation', () => {
   // grey on the one kind of row the exemption exists for, with the model list
   // unreachable from the UI.
   it('a ChatGPT login can fetch its model list without a stored key', async () => {
-    mockViewport(false)
     const user = userEvent.setup()
     mockApi.listProviders.mockResolvedValue([
       { ...makeProvider('codex-1', 'Codex'), credential_kind: 'codex_cli', transport_profile: 'chatgpt_codex' },
@@ -322,6 +309,7 @@ describe('ProviderSettings list/detail navigation', () => {
     mockApi.getProviderKeyExists.mockResolvedValue(false)
     mockApi.fetchProviderModels.mockResolvedValue([{ id: 'gpt-5.6', name: 'gpt-5.6' }])
     render(<ProviderSettings />)
+    await openFirstProvider(user, 'Codex')
     await screen.findByText(i18n.t('settings.provider.deleteProvider'))
 
     const fetchButton = screen.getByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) })
@@ -331,7 +319,6 @@ describe('ProviderSettings list/detail navigation', () => {
   })
 
   it('renders fetched models as a data grid and keeps model configuration accessible', async () => {
-    mockViewport(false)
     const user = userEvent.setup()
     mockApi.getProviderKeyExists.mockResolvedValue(true)
     mockApi.fetchProviderModels.mockResolvedValue([
@@ -344,6 +331,7 @@ describe('ProviderSettings list/detail navigation', () => {
       modelConfig({ id: 'config-2', model_id: 'gpt-5.6-mini', input_price: decimal('0'), output_price: decimal('0') }),
     ])
     render(<ProviderSettings />)
+    await openFirstProvider(user)
 
     await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
 
@@ -393,12 +381,12 @@ describe('ProviderSettings list/detail navigation', () => {
   })
 
   it('sends canonical decimal strings and typed price tiers to IPC', async () => {
-    mockViewport(false)
     const user = userEvent.setup()
     mockApi.getProviderKeyExists.mockResolvedValue(true)
     mockApi.fetchProviderModels.mockResolvedValue([{ id: 'priced-model', name: 'Priced model' }])
     mockApi.saveModelConfig.mockResolvedValue(undefined as never)
     render(<ProviderSettings />)
+    await openFirstProvider(user)
 
     await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
     const grid = await screen.findByRole('grid', { name: i18n.t('settings.provider.models') })
@@ -455,7 +443,6 @@ describe('ProviderSettings list/detail navigation', () => {
   })
 
   it('keeps model capability overrides and server tools structured across IPC', async () => {
-    mockViewport(false)
     const user = userEvent.setup()
     mockApi.getProviderKeyExists.mockResolvedValue(true)
     mockApi.fetchProviderModels.mockResolvedValue([{ id: 'structured-model', name: 'Structured model' }])
@@ -489,6 +476,7 @@ describe('ProviderSettings list/detail navigation', () => {
     })
     mockApi.saveModelConfig.mockResolvedValue(undefined as never)
     render(<ProviderSettings />)
+    await openFirstProvider(user)
 
     await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
     const grid = await screen.findByRole('grid', { name: i18n.t('settings.provider.models') })
@@ -518,7 +506,7 @@ describe('ProviderSettings list/detail navigation', () => {
   // each is a different failure — a button that always errors, and a working
   // upstream with no way to ask.
   it('the balance button follows the row’s vendor rather than its adapter family', async () => {
-    mockViewport(false)
+    const user = userEvent.setup()
     const catalog: ProviderCatalogEntryInfoResponse[] = [
       { ...CATALOG[0], id: 'openai', name: 'OpenAI', balance: false },
       { ...CATALOG[0], id: 'moonshot', name: 'Moonshot (Kimi)', balance: true },
@@ -528,12 +516,14 @@ describe('ProviderSettings list/detail navigation', () => {
       { ...makeProvider('kimi-1', 'Kimi'), catalog_id: 'moonshot', base_url: 'https://api.moonshot.cn/v1' },
     ])
     const { unmount } = render(<ProviderSettings />)
+    await openFirstProvider(user, 'Kimi')
     expect(await screen.findByText(i18n.t('settings.provider.balance'))).toBeInTheDocument()
     unmount()
 
     // Same type, same catalog, different vendor.
     mockApi.listProviders.mockResolvedValue([{ ...makeProvider('oa-1', 'OpenAI'), catalog_id: 'openai' }])
     render(<ProviderSettings />)
+    await openFirstProvider(user, 'OpenAI')
     await screen.findByText(i18n.t('settings.provider.deleteProvider'))
     expect(screen.queryByText(i18n.t('settings.provider.balance'))).not.toBeInTheDocument()
   })
@@ -542,20 +532,22 @@ describe('ProviderSettings list/detail navigation', () => {
   // nothing here knows whose it is, so offering an account lookup would mean
   // posting the key to an endpoint its operator never published.
   it('an unidentified row is offered no balance button', async () => {
-    mockViewport(false)
+    const user = userEvent.setup()
     mockApi.listProviderCatalog.mockResolvedValue([{ ...CATALOG[0], id: 'moonshot', balance: true }])
     mockApi.listProviders.mockResolvedValue([
       { ...makeProvider('relay-1', 'Relay'), catalog_id: null, base_url: 'https://relay.example/v1' },
     ])
     render(<ProviderSettings />)
+    await openFirstProvider(user, 'Relay')
     await screen.findByText(i18n.t('settings.provider.deleteProvider'))
     expect(screen.queryByText(i18n.t('settings.provider.balance'))).not.toBeInTheDocument()
   })
 
   /** An API-key provider keeps the field it has always had. */
   it('an API-key provider still gets a key field', async () => {
-    mockViewport(false)
+    const user = userEvent.setup()
     render(<ProviderSettings />)
+    await openFirstProvider(user)
     expect(await screen.findByText(i18n.t('settings.provider.apiKey'))).toBeInTheDocument()
     expect(screen.queryByText(i18n.t('settings.provider.codexAccount'))).not.toBeInTheDocument()
   })
@@ -565,7 +557,6 @@ describe('ProviderSettings list/detail navigation', () => {
   // only by editing the database by hand: `create_provider` always took the
   // entry's default, and nothing on the panel could change it afterwards.
   it('a vendor with two sign-ins gets a selector, and choosing one writes the row', async () => {
-    mockViewport(false)
     const user = userEvent.setup()
     mockApi.listProviderCatalog.mockResolvedValue([
       {
@@ -584,6 +575,7 @@ describe('ProviderSettings list/detail navigation', () => {
     ])
     mockApi.updateProvider.mockResolvedValue(makeProvider('p1', 'Provider One'))
     render(<ProviderSettings />)
+    await openFirstProvider(user)
     await screen.findByText(i18n.t('settings.provider.deleteProvider'))
 
     // A vendor with one way in never shows this — asserted by the tests above
@@ -603,7 +595,7 @@ describe('ProviderSettings list/detail navigation', () => {
   })
 
   it('shows the native GenerateContent protocol for Google connections', async () => {
-    mockViewport(false)
+    const user = userEvent.setup()
     mockApi.listProviders.mockResolvedValue([
       {
         ...makeProvider('google-1', 'Gemini Relay'),
@@ -613,6 +605,7 @@ describe('ProviderSettings list/detail navigation', () => {
       },
     ])
     render(<ProviderSettings />)
+    await openFirstProvider(user, 'Gemini Relay')
     expect(await screen.findAllByText(i18n.t('settings.provider.apiFormatGeminiGenerateContent'))).not.toHaveLength(0)
     expect(screen.getByText(i18n.t('settings.provider.apiFormatGeminiGenerateContentHint'))).toBeInTheDocument()
     // The placeholder is the vendor's real address for the dialect in use.
@@ -623,29 +616,5 @@ describe('ProviderSettings list/detail navigation', () => {
     // address carries strictly more of what the hint was for: whether this
     // dialect wants a path suffix.
     expect(screen.getByPlaceholderText('https://generativelanguage.googleapis.com')).toBeInTheDocument()
-  })
-
-  // The old name for this was "desktop shrunk to mobile", and after the move to
-  // a measured container that describes the wrong thing: the viewport does not
-  // move here at all. What narrows is the pane — the sidebar being opened, or a
-  // window drag that leaves the layer under two columns while the viewport is
-  // still comfortably a desktop. The invariant it pins is unchanged, and it is
-  // the one `useMasterDetail` calls load-bearing: the selection survives the
-  // switch, and back returns to the list rather than out of settings.
-  it('the pane narrowing below two columns: back still returns to the list', async () => {
-    mockViewport(false)
-    const user = userEvent.setup()
-    const { act } = await import('@testing-library/react')
-    render(<ProviderSettings />)
-
-    expect(await screen.findByText(i18n.t('settings.provider.deleteProvider'))).toBeInTheDocument()
-
-    const pane = document.querySelector('[data-slot="master-detail"]')!
-    act(() => setContainerWidth(pane, 420))
-
-    expect(await screen.findByText(i18n.t('common.back'))).toBeInTheDocument()
-    await user.click(screen.getByText(i18n.t('common.back')))
-    expect(await screen.findByText('Provider Two')).toBeInTheDocument()
-    expect(screen.queryByText(i18n.t('common.back'))).not.toBeInTheDocument()
   })
 })
