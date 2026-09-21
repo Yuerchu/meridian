@@ -169,6 +169,17 @@ async function openFirstProvider(user: ReturnType<typeof userEvent.setup>, name 
   await user.click(await screen.findByRole('option', { name }))
 }
 
+/**
+ * The model list is a table, so a model is a row rather than a button.
+ *
+ * React Aria labels a row from its row-header cell alone rather than from
+ * every cell, so the name is the model's own — and its wire id after it, on a
+ * second line, whenever the two differ. Hence a pattern where they do.
+ */
+async function openModel(user: ReturnType<typeof userEvent.setup>, name: string | RegExp) {
+  await user.click(await screen.findByRole('row', { name }))
+}
+
 describe('ProviderSettings list/detail navigation', () => {
   beforeAll(async () => {
     await i18n.changeLanguage('en')
@@ -340,10 +351,27 @@ describe('ProviderSettings list/detail navigation', () => {
     await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
 
     // Every model this provider answered with, each saying where it stands.
-    expect(await screen.findByRole('button', { name: /gpt-5\.6$/ })).toBeInTheDocument()
+    const priced = await screen.findByRole('row', { name: 'gpt-5.6' })
     expect(screen.getByText(i18n.t('settings.provider.modelPriced'))).toBeInTheDocument()
     expect(screen.getByText(i18n.t('settings.provider.modelPriceMissing'))).toBeInTheDocument()
     expect(screen.getByText(i18n.t('settings.provider.modelNotConfigured'))).toBeInTheDocument()
+
+    // The window and the two base rates are the reason this is a table rather
+    // than a list of names: comparing four relays selling one model is what
+    // the page is for, and a row saying only "Priced" makes that a tour of
+    // four pages. The rates are the effective ones, so a model priced by its
+    // shared description still shows figures.
+    expect(priced).toHaveTextContent('128K')
+    expect(priced).toHaveTextContent('1.25')
+    expect(priced).toHaveTextContent('10.00')
+
+    // An explicit zero is a free model and a null is a price nobody has set;
+    // the chip calls both of them unpriced, and the columns may not. Reading
+    // the first as the second is how a free model looks unconfigured.
+    expect(screen.getByRole('row', { name: 'gpt-5.6-mini' })).toHaveTextContent('0.00')
+    expect(screen.getByRole('row', { name: 'gpt-unconfigured' })).toHaveTextContent(
+      i18n.t('settings.provider.modelNoValue'),
+    )
   })
 
   /**
@@ -366,7 +394,7 @@ describe('ProviderSettings list/detail navigation', () => {
     await openFirstProvider(user)
     await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
 
-    expect(await screen.findByRole('button', { name: /gpt-6-preview/ })).toBeInTheDocument()
+    expect(await screen.findByRole('row', { name: /gpt-6-preview/ })).toBeInTheDocument()
     expect(screen.getByText(i18n.t('settings.provider.modelNotListed'))).toBeInTheDocument()
   })
 
@@ -382,7 +410,7 @@ describe('ProviderSettings list/detail navigation', () => {
     await openFirstProvider(user)
     await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
 
-    await user.click(await screen.findByRole('button', { name: /gpt-5\.6$/ }))
+    await openModel(user, 'gpt-5.6')
     expect(await screen.findByRole('heading', { name: 'gpt-5.6' })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: i18n.t('settings.model.contextWindow') })).toHaveValue('128000')
 
@@ -426,7 +454,7 @@ describe('ProviderSettings list/detail navigation', () => {
     render(<ProviderSettings />)
     await openFirstProvider(user)
     await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
-    await user.click(await screen.findByRole('button', { name: 'claude-sonnet-5@vertex' }))
+    await openModel(user, 'claude-sonnet-5@vertex')
 
     // React Aria names a select trigger from its label *and* its current
     // value, so the match is on the label rather than equal to it.
@@ -466,7 +494,7 @@ describe('ProviderSettings list/detail navigation', () => {
     render(<ProviderSettings />)
     await openFirstProvider(user)
     await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
-    await user.click(await screen.findByRole('button', { name: 'relayed' }))
+    await openModel(user, 'relayed')
 
     // Off: the four fields are not even on screen.
     expect(screen.queryByRole('textbox', { name: i18n.t('settings.model.inputPrice') })).toBeInTheDocument()
@@ -519,7 +547,7 @@ describe('ProviderSettings list/detail navigation', () => {
     render(<ProviderSettings />)
     await openFirstProvider(user)
     await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
-    await user.click(await screen.findByRole('button', { name: /gpt-5\.6$/ }))
+    await openModel(user, 'gpt-5.6')
 
     const contextWindow = await screen.findByRole('textbox', { name: i18n.t('settings.model.contextWindow') })
     await user.clear(contextWindow)
@@ -546,7 +574,7 @@ describe('ProviderSettings list/detail navigation', () => {
     await openFirstProvider(user)
 
     await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
-    await user.click(await screen.findByRole('button', { name: 'Priced model' }))
+    await openModel(user, /^Priced model/)
 
     const inputPrice = screen.getByRole('textbox', { name: i18n.t('settings.model.inputPrice') })
     const outputPrice = screen.getByRole('textbox', { name: i18n.t('settings.model.outputPrice') })
@@ -632,7 +660,7 @@ describe('ProviderSettings list/detail navigation', () => {
     await openFirstProvider(user)
 
     await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
-    await user.click(await screen.findByRole('button', { name: 'Structured model' }))
+    await openModel(user, /^Structured model/)
     await user.click(await screen.findByRole('button', { name: i18n.t('common.save') }))
     await waitFor(() =>
       expect(mockApi.saveModelConfig).toHaveBeenCalledWith(

@@ -76,6 +76,8 @@ export interface DataGridProps<T extends object> {
   showSelectionCheckboxes?: boolean
   sortDescriptor?: SortDescriptor
   onSortChange?: (descriptor: SortDescriptor) => void
+  /** Makes a row pressable. RAC gives it Enter and a click; the cursor is ours. */
+  onRowAction?: (key: Key) => void
   renderEmptyState?: () => ReactNode
   variant?: 'primary' | 'secondary'
   className?: string
@@ -124,6 +126,7 @@ export function DataGrid<T extends object>({
   showSelectionCheckboxes = false,
   sortDescriptor: controlledSort,
   onSortChange,
+  onRowAction,
   renderEmptyState,
   variant = 'primary',
   className,
@@ -204,6 +207,7 @@ export function DataGrid<T extends object>({
         selectedKeys={selectedKeys}
         onSelectionChange={onSelectionChange}
         sortDescriptor={sortDescriptor}
+        onRowAction={onRowAction}
         onSortChange={(d) => {
           setUncontrolledSort(d)
           onSortChange?.(d)
@@ -271,6 +275,7 @@ export function DataGrid<T extends object>({
               aria-posinset={isTree ? row.posInSet : undefined}
               className={cx(
                 'outline-none',
+                onRowAction && 'cursor-[var(--cursor-interactive)]',
                 'data-[hovered]:bg-background-primary-hover data-[selected]:bg-button-ghost-background',
                 'data-[focus-visible]:ring-2 data-[focus-visible]:ring-inset data-[focus-visible]:ring-border-focus-ring',
               )}

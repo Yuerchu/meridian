@@ -8,12 +8,18 @@ import { useSettingsLevel } from './settings-stack'
 /**
  * Three widths, all centred by the page below and all under the one cap the
  * settings column carries (`--container-settings`).
+ *
+ * `wide` went from `3xl` to `4xl` when the model list became a table: five
+ * columns in 768px left the model's own name about thirty characters, and a
+ * wire id like `anthropic/claude-sonnet-5-20260514` is then truncated on every
+ * row — the column that identifies the row is the worst place to spend the
+ * shortage.
  */
 const WIDTH = {
   /** An editor. boardui's settings column, and what most panels want. */
   narrow: 'max-w-lg',
-  /** A list with room for a status beside each row. */
-  wide: 'max-w-3xl',
+  /** A list, or a table with a few columns beside each row. */
+  wide: 'max-w-4xl',
   /** The full column: a table wide enough to need it. */
   full: 'max-w-settings',
 } as const

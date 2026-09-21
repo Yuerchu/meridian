@@ -1,12 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowsRotateRight, Plus, TrashBin, Key } from '@gravity-ui/icons'
-import { Alert, Button, Description, Input, Label, Sheet, Spinner, TextField } from '@/components/base'
+import {
+  Alert,
+  Button,
+  DataGrid,
+  Description,
+  Input,
+  Label,
+  Sheet,
+  Spinner,
+  TextField,
+  type DataGridColumn,
+} from '@/components/base'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { formatCurrencyAmount, formatDecimalAmount } from '@/lib/cost-format'
-import { SavedHint, SettingsCard, SettingsNavRow, SettingsSelect, SettingsSkeleton } from '../primitives'
+import { SavedHint, SettingsSelect, SettingsSkeleton } from '../primitives'
 import { SettingsPage } from '../settings-page'
 import { useSettingsDraft } from '../settings-stack'
 import { CodexAccount } from './codex-account'
@@ -32,6 +43,37 @@ import type {
   ProviderBalanceInfoResponse,
   ProviderApiFormat,
 } from '@/types'
+
+/** One line of the model table: what the provider announced, joined to what we configured. */
+interface ModelRow {
+  id: string
+  name: string
+  config?: ModelConfigInfoResponse
+  listed: boolean
+}
+
+/**
+ * A context window as a magnitude.
+ *
+ * `200K` rather than `200,000`: beside two rates the exact digits are noise,
+ * and the column only has to let four rows be told apart at a glance. `Intl`
+ * is safe here in a way it is not for money — this is a count, not an amount,
+ * and nothing is billed against it.
+ */
+function formatTokenCount(tokens: number, locale: string): string {
+  return new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 }).format(tokens)
+}
+
+/**
+ * A rate, or a dash.
+ *
+ * `null` is an unknown price and an explicit `"0"` is free, so the two may not
+ * collapse: a dash where a zero belongs reads as a model nobody has priced.
+ */
+function formatRate(price: DecimalString | null, locale: string, t: (key: string) => string): string {
+  if (price === null) return t('settings.provider.modelNoValue')
+  return formatDecimalAmount(price, locale, 2, 4)
+}
 
 /**
  * Whether a model is configured, priced, and announced by this provider.
@@ -380,11 +422,18 @@ function ProviderEditor({
    * never be given a window or a price.
    */
   const listedIds = useMemo(() => new Set(models.map((model) => model.id)), [models])
-  const allModels = useMemo(() => {
+  const allModels = useMemo<ModelRow[]>(() => {
     const extra = [...modelConfigs.values()]
       .filter((config) => !listedIds.has(config.model_id))
       .map((config) => ({ id: config.model_id, name: config.profile.name || config.model_id }))
-    return [...models, ...extra].sort((a, b) => a.name.localeCompare(b.name))
+    return [...models, ...extra]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((model) => ({
+        id: model.id,
+        name: model.name,
+        config: modelConfigs.get(model.id),
+        listed: listedIds.has(model.id),
+      }))
   }, [models, modelConfigs, listedIds])
 
   const visibleModels = useMemo(() => {
@@ -394,6 +443,70 @@ function ProviderEditor({
       (model) => model.name.toLowerCase().includes(query) || model.id.toLowerCase().includes(query),
     )
   }, [allModels, modelFilter])
+
+  /**
+   * What a row says without being opened.
+   *
+   * The window and the two base rates are why a table replaced a list of
+   * names: comparing four relays selling the same model is the thing this page
+   * is for, and a row that says only "Priced" makes it a tour of five pages.
+   * The rates are the effective ones — a model priced by its profile carries
+   * null on its own row — and the column header carries the unit, because the
+   * stored figure names no currency and inventing one here would be a claim
+   * the database does not make.
+   */
+  const modelColumns = useMemo<DataGridColumn<ModelRow>[]>(
+    () => [
+      {
+        id: 'model',
+        isRowHeader: true,
+        header: t('settings.provider.modelColumn'),
+        cell: (row) => (
+          <span data-slot="model-row-name" className="flex min-w-0 flex-col">
+            <span data-slot="model-row-label" className="truncate text-body-regular text-text-primary">
+              {row.name}
+            </span>
+            {row.name !== row.id && (
+              <span data-slot="model-row-id" className="truncate text-caption-1-regular text-text-secondary">
+                {row.id}
+              </span>
+            )}
+          </span>
+        ),
+      },
+      {
+        id: 'context',
+        header: t('settings.provider.modelContextColumn'),
+        align: 'end',
+        cellClassName: 'tabular-nums text-text-secondary',
+        cell: (row) =>
+          row.config
+            ? formatTokenCount(row.config.profile.context_window, locale)
+            : t('settings.provider.modelNoValue'),
+      },
+      {
+        id: 'input',
+        header: t('settings.provider.modelInputColumn'),
+        align: 'end',
+        cellClassName: 'tabular-nums text-text-secondary',
+        cell: (row) => formatRate(row.config?.effective_pricing.input_price ?? null, locale, t),
+      },
+      {
+        id: 'output',
+        header: t('settings.provider.modelOutputColumn'),
+        align: 'end',
+        cellClassName: 'tabular-nums text-text-secondary',
+        cell: (row) => formatRate(row.config?.effective_pricing.output_price ?? null, locale, t),
+      },
+      {
+        id: 'status',
+        header: t('settings.provider.modelStatusColumn'),
+        align: 'end',
+        cell: (row) => <ModelStatus config={row.config} listed={row.listed} />,
+      },
+    ],
+    [t, locale],
+  )
 
   // Straight from the catalog, and not translated: these are brand names. The
   // i18n keys they replaced held the same strings in every locale, and a vendor
@@ -679,22 +792,19 @@ function ProviderEditor({
                 placeholder={t('settings.provider.filterModels')}
               />
             )}
-            <SettingsCard>
-              {visibleModels.map((model) => {
-                const config = modelConfigs.get(model.id)
-                return (
-                  <SettingsNavRow
-                    key={model.id}
-                    id={model.id}
-                    data-key={model.id}
-                    label={model.name}
-                    className="rounded-none border-b border-separator-border last:border-b-0"
-                    value={<ModelStatus config={config} listed={listedIds.has(model.id)} />}
-                    onPress={() => onOpenModel(model.id)}
-                  />
-                )
-              })}
-            </SettingsCard>
+            {/* A row is still a way into the model's page — `onRowAction`
+                rather than selection, for the reason the provider list gives:
+                a selected row would keep a highlight on a page nobody is
+                looking at. The minimum width is what makes the five columns
+                scroll sideways on a phone instead of each collapsing to two
+                characters. */}
+            <DataGrid<ModelRow>
+              aria-label={t('settings.provider.models')}
+              items={visibleModels}
+              columns={modelColumns}
+              contentClassName="min-w-xl"
+              onRowAction={(key) => typeof key === 'string' && onOpenModel(key)}
+            />
           </div>
         )}
         <Sheet
