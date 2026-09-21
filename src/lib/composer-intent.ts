@@ -147,6 +147,31 @@ export function referenceInputs(references: ComposerReference[]): WorkspaceRefer
   }))
 }
 
+/**
+ * Keep the mentions that name something the workspace actually holds.
+ *
+ * `@` is written in prose beside code, and a Python decorator, a Java
+ * annotation or a framework attribute parses as a path exactly as a real
+ * mention does: `@field_validator('x')` and `@src/main.ts` are the same shape.
+ * Which of the two a token is cannot be read off its spelling — `@Makefile` is
+ * a real file and `@dataclass` may be one — so the workspace is the judge, and
+ * a mention naming nothing reachable stays ordinary text rather than becoming a
+ * path that fails the turn.
+ *
+ * The order of what survives is the order it was written in. The backend
+ * validates the submitted list against its own parse of the visible text and
+ * requires an ordered subsequence of it, so dropping entries is allowed and
+ * reordering them is not.
+ */
+export async function selectExistingReferences(
+  references: ComposerReference[],
+  probe: (path: string) => Promise<boolean>,
+): Promise<WorkspaceReferenceRequest[]> {
+  if (references.length === 0) return []
+  const exists = await Promise.all(references.map((reference) => probe(reference.path)))
+  return referenceInputs(references.filter((_, index) => exists[index]))
+}
+
 export function insertReferenceToken(
   value: string,
   token: ActiveComposerToken,

@@ -12,6 +12,12 @@ const mocks = vi.hoisted(() => {
   const stopChat = vi.fn()
   const confirm = vi.fn(() => Promise.resolve(false))
   const enqueue = vi.fn(() => Promise.resolve({}))
+  // The workspace decides which `@` tokens are references. Held paths are the
+  // ones a test declares; everything else answers the way a decorator does.
+  const held = new Set<string>()
+  const workspaceProbeRef = vi.fn(({ path }: { path: string }) =>
+    held.has(path) ? Promise.resolve({ kind: 'project_file', path }) : Promise.reject(new Error(`missing: ${path}`)),
+  )
   const sessions = {
     'conversation-1': {
       messages: [] as MessageViewModel[],
@@ -61,6 +67,8 @@ const mocks = vi.hoisted(() => {
     stopChat,
     confirm,
     enqueue,
+    held,
+    workspaceProbeRef,
     sessions,
     beginShellCommand,
     abortShellCommand,
@@ -89,6 +97,7 @@ vi.mock('@/api', () => ({
     fetchProviderModels: mocks.fetchProviderModels,
     runUserCommand: mocks.runUserCommand,
     stopChat: mocks.stopChat,
+    workspaceProbeRef: mocks.workspaceProbeRef,
   },
 }))
 
@@ -396,6 +405,7 @@ describe('ChatView composer dispatch', () => {
     mocks.sessions['conversation-1'].streaming = false
     mocks.sessions['conversation-1'].activeShellTurnId = null
     mocks.confirm.mockResolvedValue(false)
+    mocks.held.clear()
   })
 
   it('sends an explicit empty context list for an escaped literal mention', async () => {
@@ -410,20 +420,67 @@ describe('ChatView composer dispatch', () => {
   })
 
   it('forwards frozen references when queueing a prompt', async () => {
+    mocks.held.add('src/api.ts')
     mocks.sessions['conversation-1'].streaming = true
     render(<ChatView conversationId="conversation-1" />)
     await waitFor(() => expect(mocks.inputBarProps).toHaveBeenCalled())
 
     act(() => latestInputBar().onChange('Review @src/api.ts'))
     await waitFor(() => expect(latestInputBar().value).toBe('Review @src/api.ts'))
-    act(() => latestInputBar().onSubmit())
+    await act(async () => latestInputBar().onSubmit())
 
-    expect(mocks.enqueue).toHaveBeenCalledWith(
-      'Review @src/api.ts',
-      'follow_up',
-      [{ path: 'src/api.ts', lineStart: null, lineEnd: null }],
-      [],
+    await waitFor(() =>
+      expect(mocks.enqueue).toHaveBeenCalledWith(
+        'Review @src/api.ts',
+        'follow_up',
+        [{ path: 'src/api.ts', lineStart: null, lineEnd: null }],
+        [],
+      ),
     )
+  })
+
+  // A decorator is written with the same `@` a mention uses, and the parser
+  // cannot tell them apart: `@field_validator('x')` loses its `)` as trailing
+  // prose and becomes a path with an unbalanced quote. Resolved against the
+  // workspace it is simply not there, so it stays prose — it used to be sent as
+  // a reference, and the backend failed the whole turn trying to stat it.
+  it('does not turn a decorator into a workspace reference', async () => {
+    mocks.held.add('src/models.py')
+    render(<ChatView conversationId="conversation-1" />)
+    await waitFor(() => expect(mocks.inputBarProps).toHaveBeenCalled())
+
+    const draft = "给 @src/models.py 的 @field_validator('time_created') 加上空串转 None"
+    act(() => latestInputBar().onChange(draft))
+    await waitFor(() => expect(latestInputBar().value).toBe(draft))
+    await act(async () => latestInputBar().onSubmit())
+
+    await waitFor(() =>
+      expect(mocks.sendMessage).toHaveBeenCalledWith(
+        draft,
+        true,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        [{ path: 'src/models.py', lineStart: null, lineEnd: null }],
+        [],
+      ),
+    )
+  })
+
+  // The same mistake used to refuse the message outright: a decorator counted
+  // towards `hasWorkspaceReferences`, and references may not interject.
+  it('lets a message mentioning a decorator interject a running turn', async () => {
+    mocks.sessions['conversation-1'].streaming = true
+    render(<ChatView conversationId="conversation-1" />)
+    await waitFor(() => expect(mocks.inputBarProps).toHaveBeenCalled())
+
+    act(() => latestInputBar().onChange('改成 @field_validator 的写法'))
+    await waitFor(() => expect(latestInputBar().value).toBe('改成 @field_validator 的写法'))
+    await act(async () => latestInputBar().onSubmit())
+
+    await waitFor(() => expect(mocks.enqueue).toHaveBeenCalledWith('改成 @field_validator 的写法', 'follow_up', [], []))
+    expect(mocks.setError).not.toHaveBeenCalledWith('conversation-1', expect.stringContaining('reference'))
   })
 
   it('guards an awaited slash command and preserves a newer draft', async () => {
