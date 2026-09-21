@@ -35,7 +35,13 @@ import { cx } from '@/utils/cx'
  * one and does not portal itself — see the two call sites, which do it for it.
  */
 export function SettingsPane({ className, ...props }: React.ComponentProps<'div'>) {
-  return <div data-slot="settings-pane" className={cx('@container/pane space-y-6 max-w-lg', className)} {...props} />
+  return (
+    <div
+      data-slot="settings-pane"
+      className={cx('@container/pane mx-auto w-full space-y-6 max-w-lg', className)}
+      {...props}
+    />
+  )
 }
 
 export function SettingsHeader({
@@ -344,7 +350,7 @@ export function SettingsSkeleton({ rows = 4, className, ...props }: React.Compon
       role="status"
       aria-busy="true"
       aria-label={t('common.loading')}
-      className={cx('space-y-6 max-w-lg', className)}
+      className={cx('mx-auto w-full space-y-6 max-w-lg', className)}
       {...props}
     >
       <div data-slot="settings-skeleton-header" className="space-y-2">

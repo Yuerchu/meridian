@@ -5,13 +5,17 @@ import { cx } from '@/utils/cx'
 import { SettingsHeader } from './primitives'
 import { useSettingsLevel } from './settings-stack'
 
+/**
+ * Three widths, all centred by the page below and all under the one cap the
+ * settings column carries (`--container-settings`).
+ */
 const WIDTH = {
   /** An editor. boardui's settings column, and what most panels want. */
   narrow: 'max-w-lg',
   /** A list with room for a status beside each row. */
   wide: 'max-w-3xl',
-  /** A table: usage, stickers. */
-  full: 'max-w-4xl',
+  /** The full column: a table wide enough to need it. */
+  full: 'max-w-settings',
 } as const
 
 /**
@@ -54,7 +58,7 @@ export function SettingsPage({
   return (
     <div
       data-slot="settings-page"
-      className={cx('@container/pane flex w-full flex-col gap-6', WIDTH[width], className)}
+      className={cx('@container/pane mx-auto flex w-full flex-col gap-6', WIDTH[width], className)}
       {...props}
     >
       {index > 0 && (

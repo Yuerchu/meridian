@@ -35,7 +35,7 @@ export function SettingsSubPage({
   return (
     // A `pane` container, like `SettingsPane` and the detail column: the same
     // editor renders in all three, and this is the width it gets in this one.
-    <div data-slot="settings-subpage" className={cx('@container/pane space-y-4', className)} {...props}>
+    <div data-slot="settings-subpage" className={cx('@container/pane mx-auto w-full space-y-4', className)} {...props}>
       <div data-slot="settings-subpage-bar" className="flex items-center gap-2">
         <Button
           data-slot="settings-subpage-back"
