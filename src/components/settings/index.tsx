@@ -1,4 +1,4 @@
-import { ProviderSettings } from './provider-settings'
+import { ProviderSettings } from './provider'
 import { UsageSettings } from './usage-settings'
 import { AssistantSettings } from './assistant-settings'
 import { GeneralSettings } from './general-settings'

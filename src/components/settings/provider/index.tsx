@@ -8,7 +8,6 @@ import {
   Disclosure,
   Input,
   Label,
-  Skeleton,
   Spinner,
   TextField,
   Tooltip,
@@ -24,10 +23,10 @@ import { assertDecimal38_18 } from '@/lib/decimal'
 import { cx } from '@/utils/cx'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
-import { MasterDetail } from './master-detail'
-import { SavedHint, SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
-import { useMasterDetail } from './use-master-detail'
-import { useSettingsDirtyRegistration } from './dirty-guard'
+import { MasterDetail } from '../master-detail'
+import { SavedHint, SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from '../primitives'
+import { useMasterDetail } from '../use-master-detail'
+import { useSettingsDirtyRegistration } from '../dirty-guard'
 import { EFFORT_LADDER } from '@/lib/thinking'
 import {
   authFor,
@@ -43,20 +42,11 @@ import {
   URL_PLACEHOLDERS,
   useProviderCatalog,
   usesChatGptLogin,
-} from './provider/catalog'
-import { safeThreshold, triFrom, triTo, type Tri } from './provider/capabilities'
-import {
-  BLANK_TIER,
-  isPriced,
-  optionalPrice,
-  tiersFrom,
-  tiersTo,
-  type PriceField,
-  type TierDraft,
-} from './provider/pricing'
+} from './catalog'
+import { safeThreshold, triFrom, triTo, type Tri } from './capabilities'
+import { isPriced, optionalPrice, tiersFrom, tiersTo, type PriceField, type TierDraft } from './pricing'
 
 import type {
-  CodexAuthStatusResponse,
   DecimalString,
   ModelConfigInfoResponse,
   ModelConfigUpsertRequest,
@@ -71,212 +61,8 @@ import type {
   ThinkingEffort,
 } from '@/types'
 
-/**
- * Which ChatGPT account this provider is signed in as.
- *
- * Read-only: signing in happens in a terminal, and this reports what is there.
- * It never triggers a refresh — opening a settings page must not spend a
- * refresh token, and a session that has lapsed is something to be told about
- * rather than quietly repaired from a screen nobody is watching.
- */
-function CodexAccount() {
-  const { t } = useTranslation()
-  const [status, setStatus] = useState<CodexAuthStatusResponse | null>(null)
-  const [checking, setChecking] = useState(true)
-
-  const check = useCallback(async () => {
-    setChecking(true)
-    try {
-      setStatus(await api.codexAuthStatus())
-    } catch (err) {
-      console.error('Failed to read the Codex login:', err)
-      setStatus({
-        logged_in: false,
-        email: null,
-        plan: null,
-        storage: null,
-        codex_home: null,
-        problem: String(err),
-      })
-    } finally {
-      setChecking(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void check()
-  }, [check])
-
-  return (
-    <div data-slot="codex-account" className="border-t border-border-button-default pt-4 space-y-3">
-      <div data-slot="codex-account-header" className="flex items-center justify-between">
-        <p data-slot="codex-account-label" className="text-caption-1-regular text-text-secondary">
-          {t('settings.provider.codexAccount')}
-        </p>
-        <Button variant="outline" onPress={() => void check()} isPending={checking}>
-          <ArrowsRotateRight className="w-3.5 h-3.5" />
-          {t('settings.provider.codexRecheck')}
-        </Button>
-      </div>
-
-      {checking && !status ? (
-        <div
-          data-slot="codex-account-skeleton"
-          role="status"
-          aria-busy="true"
-          aria-label={t('settings.provider.codexAccount')}
-        >
-          <Skeleton className="h-16 w-full rounded-lg" />
-        </div>
-      ) : (
-        status && (
-          <div
-            data-slot="codex-account-card"
-            className="rounded-lg border border-border-button-default p-3 space-y-1.5"
-          >
-            {status.logged_in ? (
-              <>
-                <p data-slot="codex-account-email" className="text-body-regular">
-                  {status.email ?? t('settings.provider.codexSignedIn')}
-                </p>
-                {status.plan && (
-                  <p data-slot="codex-account-plan" className="text-caption-1-regular text-text-secondary">
-                    {status.plan}
-                  </p>
-                )}
-              </>
-            ) : (
-              <p data-slot="codex-account-signed-out" className="text-body-regular text-status-warning-soft-foreground">
-                {t('settings.provider.codexSignedOut')}
-              </p>
-            )}
-            {status.problem && (
-              <p data-slot="codex-account-problem" className="text-caption-1-regular text-status-danger break-words">
-                {status.problem}
-              </p>
-            )}
-            {/* Where we looked. A GUI process need not inherit a terminal's
-                environment, so "logged in over there, not here" is otherwise
-                impossible for anyone to diagnose. */}
-            {status.codex_home && (
-              <p data-slot="codex-account-home" className="text-caption-1-regular text-text-secondary break-all">
-                {status.codex_home}
-                {status.storage === 'keyring' && ` · ${t('settings.provider.codexInKeyring')}`}
-              </p>
-            )}
-          </div>
-        )
-      )}
-    </div>
-  )
-}
-
-/**
- * The rates that take over above a prompt size.
- *
- * Laid out one tier per card rather than one per row: five numbers across the
- * detail pane would each be too narrow to read a price in, and this list is
- * nearly always empty or one entry long.
- */
-function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (next: TierDraft[]) => void }) {
-  const { t } = useTranslation()
-  const patch = (index: number, field: keyof TierDraft, value: string) =>
-    onChange(tiers.map((tier, i) => (i === index ? { ...tier, [field]: value } : tier)))
-
-  return (
-    <div data-slot="price-tiers" className="space-y-2">
-      <p data-slot="price-tiers-hint" className="text-caption-1-regular text-text-secondary">
-        {t('settings.model.priceTiersHint')}
-      </p>
-      {tiers.map((tier, index) => (
-        <div
-          key={index}
-          data-slot="price-tier"
-          className="rounded-lg border border-border-button-default p-2 space-y-2"
-        >
-          <div data-slot="price-tier-header" className="flex items-end gap-2">
-            <TextField>
-              <Label>{t('settings.model.tierThreshold')}</Label>
-              <Input
-                name={`modelTierThreshold-${index}`}
-                inputMode="numeric"
-                value={tier.threshold}
-                onChange={(e) => patch(index, 'threshold', e.target.value)}
-                placeholder="200000"
-                className="h-7 pointer-coarse:h-10 text-caption-1-regular"
-              />
-            </TextField>
-            <TooltipTrigger>
-              <Button
-                size="small"
-                variant="ghost"
-                aria-label={t('settings.model.removeTier')}
-                className="h-7 pointer-coarse:h-10 rounded-md px-2 text-text-secondary hover:text-status-danger"
-                onPress={() => onChange(tiers.filter((_, i) => i !== index))}
-              >
-                <TrashBin className="size-3.5" />
-              </Button>
-              <Tooltip>{t('settings.model.removeTier')}</Tooltip>
-            </TooltipTrigger>
-          </div>
-          <div data-slot="price-tier-rates" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
-            <TextField>
-              <Label>{t('settings.model.inputPrice')}</Label>
-              <Input
-                name={`modelTierInputPrice-${index}`}
-                inputMode="decimal"
-                value={tier.input}
-                onChange={(e) => patch(index, 'input', e.target.value)}
-                className="h-7 pointer-coarse:h-10 text-caption-1-regular"
-              />
-            </TextField>
-            <TextField>
-              <Label>{t('settings.model.outputPrice')}</Label>
-              <Input
-                name={`modelTierOutputPrice-${index}`}
-                inputMode="decimal"
-                value={tier.output}
-                onChange={(e) => patch(index, 'output', e.target.value)}
-                className="h-7 pointer-coarse:h-10 text-caption-1-regular"
-              />
-            </TextField>
-            <TextField>
-              <Label>{t('settings.model.cachePrice')}</Label>
-              <Input
-                name={`modelTierCacheReadPrice-${index}`}
-                inputMode="decimal"
-                value={tier.cacheRead}
-                onChange={(e) => patch(index, 'cacheRead', e.target.value)}
-                placeholder="—"
-                className="h-7 pointer-coarse:h-10 text-caption-1-regular"
-              />
-            </TextField>
-            <TextField>
-              <Label>{t('settings.model.cacheWritePrice')}</Label>
-              <Input
-                name={`modelTierCacheWritePrice-${index}`}
-                inputMode="decimal"
-                value={tier.cacheWrite}
-                onChange={(e) => patch(index, 'cacheWrite', e.target.value)}
-                placeholder="—"
-                className="h-7 pointer-coarse:h-10 text-caption-1-regular"
-              />
-            </TextField>
-          </div>
-        </div>
-      ))}
-      <Button
-        size="small"
-        variant="outline"
-        className="h-7 pointer-coarse:h-10 rounded-md text-caption-1-regular"
-        onPress={() => onChange([...tiers, { ...BLANK_TIER }])}
-      >
-        <Plus className="size-3.5" />
-        {t('settings.model.addTier')}
-      </Button>
-    </div>
-  )
-}
+import { CodexAccount } from './codex-account'
+import { PriceTierEditor } from './price-tier-editor'
 
 function CapabilityTriRow({ label, value, onChange }: { label: string; value: Tri; onChange: (next: Tri) => void }) {
   const { t } = useTranslation()

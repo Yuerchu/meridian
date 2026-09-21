@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { ProviderSettings } from './provider-settings'
+import { ProviderSettings } from '.'
 import i18n from '@/i18n'
 import { api } from '@/api'
 import { decimal } from '@/lib/decimal'
