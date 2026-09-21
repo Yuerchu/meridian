@@ -1625,6 +1625,7 @@ async fn chat_inner(
                         cache_write_tokens: None,
                         server_tool_calls: None,
                         provider_name: None,
+                        response_model_id: None,
                     },
                     parent.as_deref(),
                 )?;

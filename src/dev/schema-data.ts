@@ -362,6 +362,13 @@ const RAW_TABLES: RawTable[] = [
         'NULL',
         'hosted Claude Code 的 Edit/Write 跑完后报告的 diff，<b>按 call id 建键</b>：<code>{"toolu_1":[{path,old_text,new_text,line}]}</code>，每个 hunk 一项，<code>old_text</code> null = 新建文件，<code>line</code> 是 hunk 改后的首行。同 call 整体替换、其他 call 保留。NULL = agent 没报过，不写 <code>{}</code>；不进 audit 副本。不放进 <code>tool_calls</code>：那列是严格 OpenAI 线格式，会原样回送给模型（迁移 56）',
       ],
+      [
+        'response_model_id',
+        'TEXT',
+        ['NULL'],
+        'NULL',
+        '上游响应报告的实际模型名；与 <code>model_id</code>（请求模型）对照，用来发现代理或负载均衡器的静默换模。NULL = 上游未提供，或是迁移 60 之前写入的旧行',
+      ],
     ],
     rels: [
       '自引用两次：<code>parent_id</code>（逻辑边，无外键）与 <code>compact_anchor_id</code>（真外键，只有一层深，不会链式递归）。',
@@ -1948,6 +1955,13 @@ const RAW_TABLES: RawTable[] = [
         ['NN'],
         "'metered'",
         'metered / subscription / external——这次请求<b>欠不欠单价</b>（迁移 41）。同样是写入时快照',
+      ],
+      [
+        'response_model_id',
+        'TEXT',
+        ['NULL'],
+        'NULL',
+        '上游响应报告的实际模型名快照；与 <code>model_id</code>（请求模型）对照，用来发现代理或负载均衡器的静默换模。NULL = 上游未提供，或是迁移 60 之前写入的旧行',
       ],
     ],
     rels: [

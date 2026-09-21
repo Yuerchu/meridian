@@ -947,6 +947,7 @@ fn append_native_review_result(
             cache_write_tokens: None,
             server_tool_calls: None,
             provider_name: None,
+            response_model_id: None,
         },
         Some(assistant_message_id),
     )?;
