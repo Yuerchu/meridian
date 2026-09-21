@@ -14,6 +14,7 @@ use meridian_core::db::models::{
     mcp_server::McpServerRow,
     memory::{MemoryRow, MemorySubjectRow},
     model_config::ModelConfigRow,
+    model_profile::ModelProfileRow,
     project::ProjectRow,
     provider::ProviderRow,
     queue::QueuedPromptRow,
@@ -784,31 +785,34 @@ strict_bool_entity_response!(MemorySubjectRow, MemorySubjectInfoResponse, Memory
     opted_out,
 });
 
+/// What a model is, independent of who serves it.
+///
+/// One of these is shared by every provider that reaches the same model, which
+/// is why the count travels with it: an editor changing a window shared by
+/// three providers should say so before it is changed.
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct ModelConfigInfoResponse {
+pub struct ModelProfileInfoResponse {
     pub id: String,
-    pub provider_id: String,
-    pub model_id: String,
-    pub display_name: Option<String>,
+    pub name: String,
     pub context_window: i32,
     pub compact_threshold: i32,
     pub max_output_tokens: Option<i32>,
     pub input_price: Option<meridian_core::decimal::Decimal>,
     pub output_price: Option<meridian_core::decimal::Decimal>,
     pub cache_read_price: Option<meridian_core::decimal::Decimal>,
-    pub created_at: i64,
-    pub updated_at: i64,
-    pub capability_overrides: Option<ProviderCapabilityOverrides>,
     pub cache_write_price: Option<meridian_core::decimal::Decimal>,
     pub pricing_tiers: Vec<meridian_core::agent::pricing::PriceTier>,
-    pub server_tools: Option<Vec<meridian_core::provider::ServerToolKind>>,
-    pub server_tool_price: Option<meridian_core::decimal::Decimal>,
+    pub capability_overrides: Option<ProviderCapabilityOverrides>,
+    /// How many provider rows point at this profile. Zero never reaches a
+    /// client: a profile nothing describes is collected when the last model
+    /// leaves it.
+    pub model_count: i64,
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
-impl TryFrom<ModelConfigRow> for ModelConfigInfoResponse {
-    type Error = String;
-
-    fn try_from(row: ModelConfigRow) -> Result<Self, Self::Error> {
+impl ModelProfileInfoResponse {
+    pub fn from_row(row: ModelProfileRow, model_count: i64) -> Result<Self, String> {
         let pricing_tiers = meridian_core::agent::pricing::parse_tiers(row.pricing_tiers.as_deref())
             .map_err(|error| error.to_string())?;
         let capability_overrides = row
@@ -816,25 +820,96 @@ impl TryFrom<ModelConfigRow> for ModelConfigInfoResponse {
             .as_deref()
             .map(ProviderCapabilityOverrides::from_storage_json)
             .transpose()?;
-        let server_tools = row.server_tools.as_deref().map(parse_model_server_tools).transpose()?;
         Ok(Self {
             id: row.id,
-            provider_id: row.provider_id,
-            model_id: row.model_id,
-            display_name: row.display_name,
+            name: row.name,
             context_window: row.context_window,
             compact_threshold: row.compact_threshold,
             max_output_tokens: row.max_output_tokens,
             input_price: row.input_price,
             output_price: row.output_price,
             cache_read_price: row.cache_read_price,
+            cache_write_price: row.cache_write_price,
+            pricing_tiers,
+            capability_overrides,
+            model_count,
             created_at: row.created_at,
             updated_at: row.updated_at,
-            capability_overrides,
+        })
+    }
+}
+
+pub type ModelProfileListResponse = Vec<ModelProfileInfoResponse>;
+
+/// The rates that actually apply to this model through this provider.
+///
+/// Computed by `agent::model_config::effective`, never by the client: which
+/// side of the override switch a price comes from is one rule, and a second
+/// copy of it in TypeScript would be a second answer to "what does this cost".
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ModelPricingInfoResponse {
+    pub input_price: Option<meridian_core::decimal::Decimal>,
+    pub output_price: Option<meridian_core::decimal::Decimal>,
+    pub cache_read_price: Option<meridian_core::decimal::Decimal>,
+    pub cache_write_price: Option<meridian_core::decimal::Decimal>,
+    pub pricing_tiers: Vec<meridian_core::agent::pricing::PriceTier>,
+    pub server_tool_price: Option<meridian_core::decimal::Decimal>,
+}
+
+/// One provider's door to a model.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ModelConfigInfoResponse {
+    pub id: String,
+    pub provider_id: String,
+    /// What this provider calls the model on the wire, which is rarely what a
+    /// person calls it — see `profile.name`.
+    pub model_id: String,
+    pub profile: ModelProfileInfoResponse,
+    /// Whether the five price fields below are read at all.
+    pub overrides_pricing: bool,
+    pub input_price: Option<meridian_core::decimal::Decimal>,
+    pub output_price: Option<meridian_core::decimal::Decimal>,
+    pub cache_read_price: Option<meridian_core::decimal::Decimal>,
+    pub cache_write_price: Option<meridian_core::decimal::Decimal>,
+    pub pricing_tiers: Vec<meridian_core::agent::pricing::PriceTier>,
+    pub server_tools: Option<Vec<meridian_core::provider::ServerToolKind>>,
+    pub server_tool_price: Option<meridian_core::decimal::Decimal>,
+    pub effective_pricing: ModelPricingInfoResponse,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+impl ModelConfigInfoResponse {
+    pub fn from_rows(row: ModelConfigRow, profile: ModelProfileRow, model_count: i64) -> Result<Self, String> {
+        let resolved = meridian_core::agent::model_config::effective(&row, &profile);
+        let effective_pricing = ModelPricingInfoResponse {
+            input_price: resolved.input_price,
+            output_price: resolved.output_price,
+            cache_read_price: resolved.cache_read_price,
+            cache_write_price: resolved.cache_write_price,
+            pricing_tiers: meridian_core::agent::pricing::parse_tiers(resolved.pricing_tiers.as_deref())
+                .map_err(|error| error.to_string())?,
+            server_tool_price: resolved.server_tool_price,
+        };
+        let pricing_tiers = meridian_core::agent::pricing::parse_tiers(row.pricing_tiers.as_deref())
+            .map_err(|error| error.to_string())?;
+        let server_tools = row.server_tools.as_deref().map(parse_model_server_tools).transpose()?;
+        Ok(Self {
+            id: row.id,
+            provider_id: row.provider_id,
+            model_id: row.model_id,
+            profile: ModelProfileInfoResponse::from_row(profile, model_count)?,
+            overrides_pricing: row.overrides_pricing,
+            input_price: row.input_price,
+            output_price: row.output_price,
+            cache_read_price: row.cache_read_price,
             cache_write_price: row.cache_write_price,
             pricing_tiers,
             server_tools,
             server_tool_price: row.server_tool_price,
+            effective_pricing,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
         })
     }
 }
@@ -1316,55 +1391,77 @@ mod tests {
             id: "config".into(),
             provider_id: "provider".into(),
             model_id: "model".into(),
-            display_name: None,
+            profile_id: "profile".into(),
+            overrides_pricing: false,
+            input_price: None,
+            output_price: None,
+            cache_read_price: None,
+            cache_write_price: None,
+            pricing_tiers: None,
+            server_tools: Some(r#"["web_search","x_search"]"#.into()),
+            server_tool_price: None,
+            created_at: 1,
+            updated_at: 2,
+        }
+    }
+
+    fn model_profile_row() -> ModelProfileRow {
+        ModelProfileRow {
+            id: "profile".into(),
+            name: "Model".into(),
             context_window: 128_000,
             compact_threshold: 100_000,
             max_output_tokens: None,
             input_price: None,
             output_price: None,
             cache_read_price: None,
-            created_at: 1,
-            updated_at: 2,
+            cache_write_price: None,
+            pricing_tiers: None,
             capability_overrides: Some(
                 r#"{"supports_thinking":true,"supported_efforts":["low","high"],"default_effort":null}"#.into(),
             ),
-            cache_write_price: None,
-            pricing_tiers: None,
-            server_tools: Some(r#"["web_search","x_search"]"#.into()),
-            server_tool_price: None,
+            created_at: 1,
+            updated_at: 2,
         }
+    }
+
+    fn model_config_response(row: ModelConfigRow) -> Result<ModelConfigInfoResponse, String> {
+        ModelConfigInfoResponse::from_rows(row, model_profile_row(), 1)
     }
 
     #[test]
     fn model_config_json_fields_leave_ipc_as_objects_and_arrays() {
-        let response = ModelConfigInfoResponse::try_from(model_config_row()).unwrap();
+        let response = model_config_response(model_config_row()).unwrap();
         let value = serde_json::to_value(response).unwrap();
-        assert!(value["capability_overrides"].is_object());
-        assert_eq!(value["capability_overrides"]["supports_thinking"], true);
+        assert!(value["profile"]["capability_overrides"].is_object());
+        assert_eq!(value["profile"]["capability_overrides"]["supports_thinking"], true);
         assert!(
-            value["capability_overrides"]
+            value["profile"]["capability_overrides"]
                 .get("default_effort")
                 .is_some_and(serde_json::Value::is_null)
         );
         assert_eq!(value["server_tools"], serde_json::json!(["web_search", "x_search"]));
+        // Resolved by the backend, so the client never re-decides which side of
+        // the override switch a price came from.
+        assert!(value["effective_pricing"].is_object());
     }
 
     #[test]
     fn corrupt_model_config_json_fails_at_the_response_boundary() {
-        let mut unknown_override = model_config_row();
+        let mut unknown_override = model_profile_row();
         unknown_override.capability_overrides = Some(r#"{"future_capability":true}"#.into());
-        assert!(ModelConfigInfoResponse::try_from(unknown_override).is_err());
+        assert!(ModelConfigInfoResponse::from_rows(model_config_row(), unknown_override, 1).is_err());
 
         let mut malformed_tools = model_config_row();
         malformed_tools.server_tools = Some(r#"{"web_search":true}"#.into());
-        assert!(ModelConfigInfoResponse::try_from(malformed_tools).is_err());
+        assert!(model_config_response(malformed_tools).is_err());
 
         let mut duplicate_tools = model_config_row();
         duplicate_tools.server_tools = Some(r#"["web_search","web_search"]"#.into());
-        assert!(ModelConfigInfoResponse::try_from(duplicate_tools).is_err());
+        assert!(model_config_response(duplicate_tools).is_err());
 
         let mut unknown_tools = model_config_row();
         unknown_tools.server_tools = Some(r#"["future_search"]"#.into());
-        assert!(ModelConfigInfoResponse::try_from(unknown_tools).is_err());
+        assert!(model_config_response(unknown_tools).is_err());
     }
 }

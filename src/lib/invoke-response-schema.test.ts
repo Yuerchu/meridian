@@ -7,8 +7,8 @@ function validate(command: string, value: unknown, args?: Record<string, unknown
 
 describe('invoke response schema', () => {
   it('covers every invoke declared by api.ts', () => {
-    expect(INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT).toBe(212)
-    expect(Object.keys(invokeResponseSchemaDocument.commands)).toHaveLength(212)
+    expect(INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT).toBe(213)
+    expect(Object.keys(invokeResponseSchemaDocument.commands)).toHaveLength(213)
     expect(() => validate('toString', 'prototype value')).toThrow('No response schema is registered')
   })
 
@@ -66,11 +66,9 @@ describe('invoke response schema', () => {
   })
 
   it('allows omitted optional fields but validates them when present', () => {
-    const model = {
-      id: 'config-1',
-      provider_id: 'provider-1',
-      model_id: 'model-1',
-      display_name: null,
+    const profile = {
+      id: 'profile-1',
+      name: 'Model One',
       context_window: 128_000,
       compact_threshold: 100_000,
       max_output_tokens: null,
@@ -78,24 +76,47 @@ describe('invoke response schema', () => {
       output_price: '2.5',
       cache_read_price: null,
       cache_write_price: null,
+      pricing_tiers: [],
+      capability_overrides: { supports_tools: true },
+      model_count: 1,
       created_at: 1,
       updated_at: 1,
-      capability_overrides: { supports_tools: true },
+    }
+    const model = {
+      id: 'config-1',
+      provider_id: 'provider-1',
+      model_id: 'model-1',
+      profile,
+      overrides_pricing: false,
+      input_price: null,
+      output_price: null,
+      cache_read_price: null,
+      cache_write_price: null,
       pricing_tiers: [],
       server_tools: null,
       server_tool_price: null,
+      effective_pricing: {
+        input_price: '1.25',
+        output_price: '2.5',
+        cache_read_price: null,
+        cache_write_price: null,
+        pricing_tiers: [],
+        server_tool_price: null,
+      },
+      created_at: 1,
+      updated_at: 1,
     }
     expect(() => validate('get_model_config', model)).not.toThrow()
     expect(() =>
       validate('get_model_config', {
         ...model,
-        capability_overrides: { supports_tools: true, supports_pdf: undefined },
+        profile: { ...profile, capability_overrides: { supports_tools: true, supports_pdf: undefined } },
       }),
     ).toThrow('must be a boolean')
     expect(() =>
       validate('get_model_config', {
         ...model,
-        capability_overrides: { supports_tools: true, future: true },
+        profile: { ...profile, capability_overrides: { supports_tools: true, future: true } },
       }),
     ).toThrow('unknown field "future"')
   })

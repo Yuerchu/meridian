@@ -1,9 +1,11 @@
 use crate::ServicesExt;
 use crate::commands::entity_response::{
-    ModelConfigInfoResponse, ModelConfigListResponse, ProviderCapabilityOverrides, validate_model_server_tools,
+    ModelConfigInfoResponse, ModelConfigListResponse, ModelProfileInfoResponse, ModelProfileListResponse,
+    ProviderCapabilityOverrides, validate_model_server_tools,
 };
 use meridian_core::db;
 use meridian_core::db::models::model_config::ModelConfigInsert;
+use meridian_core::db::models::model_profile::{ModelProfileChangeset, ModelProfileInsert, ModelProfileRow};
 use meridian_core::util::{get_conn, now_ms};
 
 const PLAN_REVIEW_MODEL_CONFIG_BARRIER: &str = "This model configuration is frozen into a plan review or its continuation. Finish that review before changing or deleting it.";
@@ -16,11 +18,19 @@ enum GuardedModelConfigMutation<T> {
     ModelChanged,
 }
 
+/// The profile and the config are written in one transaction, and the profile
+/// goes first: the config's `profile_id` is a foreign key, so a half-applied
+/// save would either point at nothing or leave a profile nothing describes.
+type SavedModelConfig = (db::models::model_config::ModelConfigRow, ModelProfileRow);
+
 fn upsert_model_config_unless_plan_barrier(
     conn: &mut diesel::sqlite::SqliteConnection,
     expected_conversation_ids: &[String],
+    profile_id: &str,
+    profile_is_new: bool,
+    profile: &ProfileWrite<'_>,
     new: &ModelConfigInsert<'_>,
-) -> diesel::QueryResult<GuardedModelConfigMutation<db::models::model_config::ModelConfigRow>> {
+) -> diesel::QueryResult<GuardedModelConfigMutation<SavedModelConfig>> {
     conn.immediate_transaction(|conn| {
         let mut current = db::ops::conversation::all_ids(conn)?;
         current.sort();
@@ -33,8 +43,69 @@ fn upsert_model_config_unless_plan_barrier(
         {
             return Ok(GuardedModelConfigMutation::PlanReviewBarrier);
         }
-        db::ops::model_config::upsert(conn, new).map(GuardedModelConfigMutation::Applied)
+        let saved_profile = if profile_is_new {
+            db::ops::model_profile::insert(conn, &profile.insert(profile_id))?
+        } else {
+            if db::ops::model_profile::get(conn, profile_id)?.is_none() {
+                return Ok(GuardedModelConfigMutation::ModelChanged);
+            }
+            db::ops::model_profile::update(conn, profile_id, &profile.changeset())?
+        };
+        let row = db::ops::model_config::upsert(conn, new)?;
+        Ok(GuardedModelConfigMutation::Applied((row, saved_profile)))
     })
+}
+
+/// The profile half of a save, already encoded, so the transaction above can
+/// both insert and update it without re-deciding anything.
+struct ProfileWrite<'a> {
+    name: &'a str,
+    context_window: i32,
+    compact_threshold: i32,
+    max_output_tokens: Option<i32>,
+    input_price: Option<meridian_core::decimal::Decimal>,
+    output_price: Option<meridian_core::decimal::Decimal>,
+    cache_read_price: Option<meridian_core::decimal::Decimal>,
+    cache_write_price: Option<meridian_core::decimal::Decimal>,
+    pricing_tiers: Option<&'a str>,
+    capability_overrides: Option<&'a str>,
+    now: i64,
+}
+
+impl<'a> ProfileWrite<'a> {
+    fn insert(&self, id: &'a str) -> ModelProfileInsert<'a> {
+        ModelProfileInsert {
+            id,
+            name: self.name,
+            context_window: self.context_window,
+            compact_threshold: self.compact_threshold,
+            max_output_tokens: self.max_output_tokens,
+            input_price: self.input_price.clone(),
+            output_price: self.output_price.clone(),
+            cache_read_price: self.cache_read_price.clone(),
+            cache_write_price: self.cache_write_price.clone(),
+            pricing_tiers: self.pricing_tiers,
+            capability_overrides: self.capability_overrides,
+            created_at: self.now,
+            updated_at: self.now,
+        }
+    }
+
+    fn changeset(&self) -> ModelProfileChangeset<'a> {
+        ModelProfileChangeset {
+            name: self.name,
+            context_window: self.context_window,
+            compact_threshold: self.compact_threshold,
+            max_output_tokens: self.max_output_tokens,
+            input_price: self.input_price.clone(),
+            output_price: self.output_price.clone(),
+            cache_read_price: self.cache_read_price.clone(),
+            cache_write_price: self.cache_write_price.clone(),
+            pricing_tiers: self.pricing_tiers,
+            capability_overrides: self.capability_overrides,
+            updated_at: self.now,
+        }
+    }
 }
 
 fn delete_model_config_unless_plan_barrier(
@@ -137,19 +208,37 @@ where
     Ok(requests.into_iter().map(Into::into).collect())
 }
 
+/// The model half of a save: what this model is, wherever it is served from.
+///
+/// `id` absent means a new profile; naming an existing one is how two providers
+/// come to share a single description, which is the whole point of the split.
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ModelConfigUpsertRequest {
-    pub provider_id: String,
-    pub model_id: String,
-    pub display_name: RequiredNullable<String>,
+pub struct ModelProfileUpsertRequest {
+    pub id: RequiredNullable<String>,
+    pub name: String,
     pub context_window: i32,
     pub compact_threshold: i32,
     pub max_output_tokens: RequiredNullable<i32>,
     pub input_price: RequiredNullable<meridian_core::decimal::Decimal>,
     pub output_price: RequiredNullable<meridian_core::decimal::Decimal>,
     pub cache_read_price: RequiredNullable<meridian_core::decimal::Decimal>,
+    pub cache_write_price: RequiredNullable<meridian_core::decimal::Decimal>,
+    #[serde(deserialize_with = "deserialize_price_tiers")]
+    pub pricing_tiers: Vec<meridian_core::agent::pricing::PriceTier>,
     pub capability_overrides: RequiredNullable<ProviderCapabilityOverrides>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelConfigUpsertRequest {
+    pub provider_id: String,
+    pub model_id: String,
+    pub profile: ModelProfileUpsertRequest,
+    pub overrides_pricing: bool,
+    pub input_price: RequiredNullable<meridian_core::decimal::Decimal>,
+    pub output_price: RequiredNullable<meridian_core::decimal::Decimal>,
+    pub cache_read_price: RequiredNullable<meridian_core::decimal::Decimal>,
     pub cache_write_price: RequiredNullable<meridian_core::decimal::Decimal>,
     #[serde(deserialize_with = "deserialize_price_tiers")]
     pub pricing_tiers: Vec<meridian_core::agent::pricing::PriceTier>,
@@ -157,10 +246,10 @@ pub struct ModelConfigUpsertRequest {
     pub server_tool_price: RequiredNullable<meridian_core::decimal::Decimal>,
 }
 
-impl ModelConfigUpsertRequest {
+impl ModelProfileUpsertRequest {
     fn validate(mut self) -> Result<Self, String> {
-        if self.provider_id.trim().is_empty() || self.model_id.trim().is_empty() {
-            return Err("provider_id and model_id are required".into());
+        if self.name.trim().is_empty() {
+            return Err("profile.name is required".into());
         }
         if self.context_window <= 0 {
             return Err("context_window must be positive".into());
@@ -170,6 +259,52 @@ impl ModelConfigUpsertRequest {
         }
         if self.max_output_tokens.0.is_some_and(|value| value <= 0) {
             return Err("max_output_tokens must be positive".into());
+        }
+        if self.input_price.0.is_some() != self.output_price.0.is_some() {
+            return Err("input_price and output_price must be configured together".into());
+        }
+        for (field, value) in [
+            ("input_price", self.input_price.0.as_ref()),
+            ("output_price", self.output_price.0.as_ref()),
+            ("cache_read_price", self.cache_read_price.0.as_ref()),
+            ("cache_write_price", self.cache_write_price.0.as_ref()),
+        ] {
+            if value.is_some_and(meridian_core::decimal::Decimal::is_negative) {
+                return Err(format!("profile.{field} must be non-negative"));
+            }
+        }
+        if !self.pricing_tiers.is_empty() && self.input_price.0.is_none() {
+            return Err("pricing_tiers requires configured input_price and output_price".into());
+        }
+        self.pricing_tiers =
+            meridian_core::agent::pricing::validate_tiers(self.pricing_tiers).map_err(|error| error.to_string())?;
+        if let Some(overrides) = self.capability_overrides.0.as_ref() {
+            overrides.storage_json()?;
+        }
+        Ok(self)
+    }
+}
+
+impl ModelConfigUpsertRequest {
+    fn validate(mut self) -> Result<Self, String> {
+        if self.provider_id.trim().is_empty() || self.model_id.trim().is_empty() {
+            return Err("provider_id and model_id are required".into());
+        }
+        self.profile = self.profile.validate()?;
+
+        // Blank-and-ignored and blank-and-meaningful are different states, and
+        // the switch is what says which. A row carrying rates it has switched
+        // off would be a second answer to "what does this cost" — the thing the
+        // profile split exists to prevent.
+        if !self.overrides_pricing {
+            let carried = self.input_price.0.is_some()
+                || self.output_price.0.is_some()
+                || self.cache_read_price.0.is_some()
+                || self.cache_write_price.0.is_some()
+                || !self.pricing_tiers.is_empty();
+            if carried {
+                return Err("overrides_pricing is off, so the provider price fields must be null".into());
+            }
         }
         if self.input_price.0.is_some() != self.output_price.0.is_some() {
             return Err("input_price and output_price must be configured together".into());
@@ -192,10 +327,6 @@ impl ModelConfigUpsertRequest {
         self.pricing_tiers =
             meridian_core::agent::pricing::validate_tiers(self.pricing_tiers).map_err(|error| error.to_string())?;
 
-        if let Some(overrides) = self.capability_overrides.0.as_ref() {
-            overrides.storage_json()?;
-        }
-
         if let Some(tools) = self.server_tools.0.as_ref() {
             validate_model_server_tools(tools)?;
             if tools.is_empty() {
@@ -206,15 +337,55 @@ impl ModelConfigUpsertRequest {
     }
 }
 
+/// Every model configured on one provider, each beside the profile describing
+/// it and how many providers share that profile.
 #[tauri::command]
 pub async fn list_model_configs(app: tauri::AppHandle, provider_id: String) -> Result<ModelConfigListResponse, String> {
     let services = app.services();
     let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = get_conn(&pool)?;
-        let rows =
-            db::ops::model_config::list_by_provider(&mut conn, &provider_id).map_err(|error| error.to_string())?;
-        rows.into_iter().map(TryInto::try_into).collect()
+        let rows = db::ops::model_config::list_by_provider_with_profiles(&mut conn, &provider_id)
+            .map_err(|error| error.to_string())?;
+        let counts = profile_model_counts(&mut conn)?;
+        rows.into_iter()
+            .map(|(row, profile)| {
+                let count = counts.get(&profile.id).copied().unwrap_or(0);
+                ModelConfigInfoResponse::from_rows(row, profile, count)
+            })
+            .collect()
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// How many providers reach each profile, for the responses that carry it.
+fn profile_model_counts(
+    conn: &mut diesel::sqlite::SqliteConnection,
+) -> Result<std::collections::HashMap<String, i64>, String> {
+    Ok(db::ops::model_profile::list_with_model_counts(conn)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(|(profile, count)| (profile.id, count))
+        .collect())
+}
+
+/// The profiles a model page offers to point at.
+///
+/// Configuring the same model on a second provider is choosing one of these
+/// rather than typing the window and the prices again — which is the whole
+/// reason the two tables are separate.
+#[tauri::command]
+pub async fn list_model_profiles(app: tauri::AppHandle) -> Result<ModelProfileListResponse, String> {
+    let services = app.services();
+    let pool = services.db.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = get_conn(&pool)?;
+        db::ops::model_profile::list_with_model_counts(&mut conn)
+            .map_err(|error| error.to_string())?
+            .into_iter()
+            .map(|(profile, count)| ModelProfileInfoResponse::from_row(profile, count))
+            .collect()
     })
     .await
     .map_err(|e| e.to_string())?
@@ -236,9 +407,14 @@ pub async fn get_model_config(
     let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = get_conn(&pool)?;
-        let row = db::ops::model_config::get_by_provider_and_model(&mut conn, &request.provider_id, &request.model_id)
+        let found = db::ops::model_config::get_with_profile(&mut conn, &request.provider_id, &request.model_id)
             .map_err(|error| error.to_string())?;
-        row.map(TryInto::try_into).transpose()
+        let Some((row, profile)) = found else {
+            return Ok(None);
+        };
+        let counts = profile_model_counts(&mut conn)?;
+        let count = counts.get(&profile.id).copied().unwrap_or(0);
+        ModelConfigInfoResponse::from_rows(row, profile, count).map(Some)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -271,14 +447,40 @@ pub async fn save_model_config(
         let mut conn = get_conn(&pool)?;
         let id = uuid::Uuid::new_v4().to_string();
         let now = now_ms();
-        let pricing_tiers = (!request.pricing_tiers.is_empty())
-            .then(|| serde_json::to_string(&request.pricing_tiers).expect("PriceTier always serializes"));
+        // A profile the request did not name is a new one. The id is minted
+        // here rather than by the client so a retried save cannot create two.
+        let profile_is_new = request.profile.id.0.is_none();
+        let profile_id = request
+            .profile
+            .id
+            .0
+            .clone()
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let profile_tiers = (!request.profile.pricing_tiers.is_empty())
+            .then(|| serde_json::to_string(&request.profile.pricing_tiers).expect("PriceTier always serializes"));
         let capability_overrides = request
+            .profile
             .capability_overrides
             .0
             .as_ref()
             .map(ProviderCapabilityOverrides::storage_json)
             .transpose()?;
+        let profile = ProfileWrite {
+            name: request.profile.name.trim(),
+            context_window: request.profile.context_window,
+            compact_threshold: request.profile.compact_threshold,
+            max_output_tokens: request.profile.max_output_tokens.0,
+            input_price: request.profile.input_price.0.clone(),
+            output_price: request.profile.output_price.0.clone(),
+            cache_read_price: request.profile.cache_read_price.0.clone(),
+            cache_write_price: request.profile.cache_write_price.0.clone(),
+            pricing_tiers: profile_tiers.as_deref(),
+            capability_overrides: capability_overrides.as_deref(),
+            now,
+        };
+
+        let pricing_tiers = (!request.pricing_tiers.is_empty())
+            .then(|| serde_json::to_string(&request.pricing_tiers).expect("PriceTier always serializes"));
         let server_tools = request
             .server_tools
             .0
@@ -290,26 +492,32 @@ pub async fn save_model_config(
             id: &id,
             provider_id: &request.provider_id,
             model_id: &request.model_id,
-            display_name: request.display_name.0.as_deref(),
-            context_window: request.context_window,
-            compact_threshold: request.compact_threshold,
-            max_output_tokens: request.max_output_tokens.0,
-            input_price: request.input_price.0,
-            output_price: request.output_price.0,
-            cache_read_price: request.cache_read_price.0,
-            cache_write_price: request.cache_write_price.0,
-            created_at: now,
-            updated_at: now,
-            capability_overrides: capability_overrides.as_deref(),
+            profile_id: &profile_id,
+            overrides_pricing: request.overrides_pricing,
+            input_price: request.input_price.0.clone(),
+            output_price: request.output_price.0.clone(),
+            cache_read_price: request.cache_read_price.0.clone(),
+            cache_write_price: request.cache_write_price.0.clone(),
             pricing_tiers: pricing_tiers.as_deref(),
             server_tools: server_tools.as_deref(),
-            server_tool_price: request.server_tool_price.0,
+            server_tool_price: request.server_tool_price.0.clone(),
+            created_at: now,
+            updated_at: now,
         };
-        let row = finish_guarded_model_config_mutation(
-            upsert_model_config_unless_plan_barrier(&mut conn, &conversation_ids, &new)
-                .map_err(|error| error.to_string())?,
+        let (row, saved_profile) = finish_guarded_model_config_mutation(
+            upsert_model_config_unless_plan_barrier(
+                &mut conn,
+                &conversation_ids,
+                &profile_id,
+                profile_is_new,
+                &profile,
+                &new,
+            )
+            .map_err(|error| error.to_string())?,
         )?;
-        row.try_into()
+        let counts = profile_model_counts(&mut conn)?;
+        let count = counts.get(&saved_profile.id).copied().unwrap_or(0);
+        ModelConfigInfoResponse::from_rows(row, saved_profile, count)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -353,6 +561,27 @@ pub async fn delete_model_config(app: tauri::AppHandle, id: String) -> Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn seed_provider(conn: &mut diesel::sqlite::SqliteConnection) {
+        db::ops::provider::create_provider(
+            conn,
+            &db::models::provider::ProviderInsert {
+                id: "provider",
+                name: "Provider",
+                provider_type: "openai",
+                base_url: "https://example.invalid",
+                is_enabled: 1,
+                sort_order: 0,
+                created_at: 1,
+                updated_at: 1,
+                api_format: "responses",
+                catalog_id: None,
+                credential_kind: "api_key",
+                transport_profile: "standard",
+            },
+        )
+        .unwrap();
+    }
 
     fn seed_pending_model_review(conn: &mut diesel::sqlite::SqliteConnection) {
         db::ops::provider::create_provider(
@@ -423,7 +652,23 @@ mod tests {
             id: "model-config-1",
             provider_id: "provider",
             model_id: "model",
-            display_name: None,
+            profile_id: "profile-1",
+            overrides_pricing: false,
+            input_price: None,
+            output_price: None,
+            cache_read_price: None,
+            cache_write_price: None,
+            pricing_tiers: None,
+            server_tools: None,
+            server_tool_price: None,
+            created_at: 4,
+            updated_at: 4,
+        }
+    }
+
+    fn profile_write<'a>() -> ProfileWrite<'a> {
+        ProfileWrite {
+            name: "Model",
             context_window: 128_000,
             compact_threshold: 100_000,
             max_output_tokens: None,
@@ -431,12 +676,9 @@ mod tests {
             output_price: None,
             cache_read_price: None,
             cache_write_price: None,
-            created_at: 4,
-            updated_at: 4,
-            capability_overrides: None,
             pricing_tiers: None,
-            server_tools: None,
-            server_tool_price: None,
+            capability_overrides: None,
+            now: 4,
         }
     }
 
@@ -444,19 +686,96 @@ mod tests {
         serde_json::json!({
             "provider_id": "provider",
             "model_id": "model",
-            "display_name": null,
-            "context_window": 128000,
-            "compact_threshold": 100000,
-            "max_output_tokens": null,
+            "profile": {
+                "id": null,
+                "name": "Model",
+                "context_window": 128000,
+                "compact_threshold": 100000,
+                "max_output_tokens": null,
+                "input_price": null,
+                "output_price": null,
+                "cache_read_price": null,
+                "cache_write_price": null,
+                "pricing_tiers": [],
+                "capability_overrides": null
+            },
+            "overrides_pricing": false,
             "input_price": null,
             "output_price": null,
             "cache_read_price": null,
-            "capability_overrides": null,
             "cache_write_price": null,
             "pricing_tiers": [],
             "server_tools": null,
             "server_tool_price": null
         })
+    }
+
+    /// A request that overrides nothing may not carry rates anyway.
+    ///
+    /// Blank-and-ignored and blank-and-meaningful are different states, and the
+    /// switch is what tells them apart. Without this a client could write the
+    /// profile's rates onto the row as well, and the two copies would be free to
+    /// drift — which is the duplication the split exists to end.
+    #[test]
+    fn a_row_that_does_not_override_may_not_carry_prices() {
+        let mut carried = request();
+        carried["input_price"] = serde_json::json!("3");
+        carried["output_price"] = serde_json::json!("15");
+        let error = serde_json::from_value::<ModelConfigUpsertRequest>(carried)
+            .unwrap()
+            .validate()
+            .unwrap_err();
+        assert!(error.contains("overrides_pricing"), "{error}");
+
+        let mut overriding = request();
+        overriding["overrides_pricing"] = serde_json::json!(true);
+        overriding["input_price"] = serde_json::json!("3");
+        overriding["output_price"] = serde_json::json!("15");
+        assert!(
+            serde_json::from_value::<ModelConfigUpsertRequest>(overriding)
+                .unwrap()
+                .validate()
+                .is_ok()
+        );
+    }
+
+    /// Both halves of a save land, and they land together.
+    #[test]
+    fn a_save_writes_the_profile_and_the_row_in_one_transaction() {
+        let pool = db::test_db();
+        let mut conn = pool.get().unwrap();
+        seed_provider(&mut conn);
+
+        let applied = upsert_model_config_unless_plan_barrier(
+            &mut conn,
+            &[],
+            "profile-1",
+            true,
+            &profile_write(),
+            &model_insert(),
+        )
+        .unwrap();
+        assert!(matches!(applied, GuardedModelConfigMutation::Applied(_)));
+        assert_eq!(
+            db::ops::model_profile::get(&mut conn, "profile-1")
+                .unwrap()
+                .unwrap()
+                .name,
+            "Model"
+        );
+
+        // Naming a profile that is not there is a stale form, not a new profile:
+        // minting one under an id the client chose would let a retry create two.
+        let stale = upsert_model_config_unless_plan_barrier(
+            &mut conn,
+            &[],
+            "profile-gone",
+            false,
+            &profile_write(),
+            &model_insert(),
+        )
+        .unwrap();
+        assert!(matches!(stale, GuardedModelConfigMutation::ModelChanged));
     }
 
     #[test]
@@ -476,9 +795,18 @@ mod tests {
         seed_pending_model_review(&mut conn);
         let conversations = vec!["conversation-1".to_string()];
 
-        let save = upsert_model_config_unless_plan_barrier(&mut conn, &conversations, &model_insert()).unwrap();
+        let save = upsert_model_config_unless_plan_barrier(
+            &mut conn,
+            &conversations,
+            "profile-1",
+            true,
+            &profile_write(),
+            &model_insert(),
+        )
+        .unwrap();
         assert!(matches!(save, GuardedModelConfigMutation::PlanReviewBarrier));
 
+        db::ops::model_profile::insert(&mut conn, &profile_write().insert("profile-1")).unwrap();
         db::ops::model_config::upsert(&mut conn, &model_insert()).unwrap();
         let delete =
             delete_model_config_unless_plan_barrier(&mut conn, "model-config-1", "provider", "model", &conversations)
@@ -493,9 +821,9 @@ mod tests {
 
     #[test]
     fn non_monetary_nullable_fields_and_read_requests_are_strict() {
-        for field in ["display_name", "max_output_tokens"] {
+        for field in ["id", "max_output_tokens"] {
             let mut missing = request();
-            missing.as_object_mut().unwrap().remove(field);
+            missing["profile"].as_object_mut().unwrap().remove(field);
             assert!(
                 serde_json::from_value::<ModelConfigUpsertRequest>(missing).is_err(),
                 "{field}"
@@ -517,6 +845,7 @@ mod tests {
     #[test]
     fn tier_nullable_prices_must_be_present() {
         let mut value = request();
+        value["overrides_pricing"] = serde_json::json!(true);
         value["input_price"] = serde_json::json!("1");
         value["output_price"] = serde_json::json!("2");
         value["pricing_tiers"] = serde_json::json!([{
@@ -537,17 +866,19 @@ mod tests {
 
     #[test]
     fn structured_nullable_fields_are_required_and_reject_json_text() {
-        for field in ["capability_overrides", "server_tools"] {
-            let mut missing = request();
-            missing.as_object_mut().unwrap().remove(field);
-            assert!(
-                serde_json::from_value::<ModelConfigUpsertRequest>(missing).is_err(),
-                "{field}"
-            );
-        }
+        let mut missing_overrides = request();
+        missing_overrides["profile"]
+            .as_object_mut()
+            .unwrap()
+            .remove("capability_overrides");
+        assert!(serde_json::from_value::<ModelConfigUpsertRequest>(missing_overrides).is_err());
+
+        let mut missing_tools = request();
+        missing_tools.as_object_mut().unwrap().remove("server_tools");
+        assert!(serde_json::from_value::<ModelConfigUpsertRequest>(missing_tools).is_err());
 
         let mut text = request();
-        text["capability_overrides"] = serde_json::json!(r#"{"supports_thinking":true}"#);
+        text["profile"]["capability_overrides"] = serde_json::json!(r#"{"supports_thinking":true}"#);
         text["server_tools"] = serde_json::json!(r#"["web_search"]"#);
         assert!(serde_json::from_value::<ModelConfigUpsertRequest>(text).is_err());
     }
@@ -555,7 +886,7 @@ mod tests {
     #[test]
     fn capability_overrides_and_server_tools_use_closed_typed_shapes() {
         let mut value = request();
-        value["capability_overrides"] = serde_json::json!({
+        value["profile"]["capability_overrides"] = serde_json::json!({
             "supports_thinking": true,
             "supported_efforts": ["low", "high"],
             "default_effort": null
@@ -565,21 +896,31 @@ mod tests {
             .unwrap()
             .validate()
             .unwrap();
-        let stored: serde_json::Value =
-            serde_json::from_str(&parsed.capability_overrides.0.as_ref().unwrap().storage_json().unwrap()).unwrap();
+        let stored: serde_json::Value = serde_json::from_str(
+            &parsed
+                .profile
+                .capability_overrides
+                .0
+                .as_ref()
+                .unwrap()
+                .storage_json()
+                .unwrap(),
+        )
+        .unwrap();
         assert_eq!(stored["supports_thinking"], true);
         assert!(stored.get("default_effort").is_some_and(serde_json::Value::is_null));
 
         let mut unknown = request();
-        unknown["capability_overrides"] = serde_json::json!({"future_capability": true});
+        unknown["profile"]["capability_overrides"] = serde_json::json!({"future_capability": true});
         assert!(serde_json::from_value::<ModelConfigUpsertRequest>(unknown).is_err());
 
         let mut null_boolean = request();
-        null_boolean["capability_overrides"] = serde_json::json!({"supports_thinking": null});
+        null_boolean["profile"]["capability_overrides"] = serde_json::json!({"supports_thinking": null});
         assert!(serde_json::from_value::<ModelConfigUpsertRequest>(null_boolean).is_err());
 
         let mut unknown_override_tool = request();
-        unknown_override_tool["capability_overrides"] = serde_json::json!({"server_tools": ["future_search"]});
+        unknown_override_tool["profile"]["capability_overrides"] =
+            serde_json::json!({"server_tools": ["future_search"]});
         assert!(serde_json::from_value::<ModelConfigUpsertRequest>(unknown_override_tool).is_err());
 
         let mut unknown_model_tool = request();

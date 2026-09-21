@@ -937,10 +937,12 @@ pub async fn get_provider_capabilities(
         tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
             let p = db::ops::provider::get_provider(&mut conn, &pid).map_err(|e| e.to_string())?;
-            let overrides = db::ops::model_config::get_by_provider_and_model(&mut conn, &pid, &mid)
+            // The patch is the model's, not this provider's door to it: the
+            // same correction applies wherever that model is reached.
+            let overrides = meridian_core::agent::model_config::load(&mut conn, &pid, &mid)
                 .ok()
                 .flatten()
-                .and_then(|mc| mc.capability_overrides);
+                .and_then(|config| config.capability_overrides);
             Ok::<_, String>((p.provider_type, p.api_format, p.transport_profile, overrides))
         })
         .await

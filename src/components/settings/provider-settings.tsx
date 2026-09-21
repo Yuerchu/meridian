@@ -635,28 +635,31 @@ function ModelConfigEditor({
       .catch(() => {})
   }, [providerId, modelId, apiFormat])
 
-  const defaultCtx = existing?.context_window ?? caps?.max_context_tokens ?? 128000
-  const defaultMaxOut = existing?.max_output_tokens ?? caps?.max_output_tokens ?? null
-  const defaultThreshold = existing?.compact_threshold ?? safeThreshold(defaultCtx, defaultMaxOut)
+  // The window, the prices and the capability patch describe the *model*, so
+  // they live on its profile and are shared by every provider reaching it.
+  const profile = existing?.profile ?? null
+  const defaultCtx = profile?.context_window ?? caps?.max_context_tokens ?? 128000
+  const defaultMaxOut = profile?.max_output_tokens ?? caps?.max_output_tokens ?? null
+  const defaultThreshold = profile?.compact_threshold ?? safeThreshold(defaultCtx, defaultMaxOut)
 
   const [contextWindow, setContextWindow] = useState(defaultCtx.toString())
   const [compactThreshold, setCompactThreshold] = useState(defaultThreshold.toString())
   const [maxOutput, setMaxOutput] = useState(defaultMaxOut?.toString() ?? '')
   const [inputPrice, setInputPrice] = useState(
-    existing?.input_price == null ? '' : assertDecimal38_18(existing.input_price),
+    profile?.input_price == null ? '' : assertDecimal38_18(profile.input_price),
   )
   const [outputPrice, setOutputPrice] = useState(
-    existing?.output_price == null ? '' : assertDecimal38_18(existing.output_price),
+    profile?.output_price == null ? '' : assertDecimal38_18(profile.output_price),
   )
   const [cachePrice, setCachePrice] = useState(
-    existing?.cache_read_price == null ? '' : assertDecimal38_18(existing.cache_read_price),
+    profile?.cache_read_price == null ? '' : assertDecimal38_18(profile.cache_read_price),
   )
   const [cacheWritePrice, setCacheWritePrice] = useState(
-    existing?.cache_write_price == null ? '' : assertDecimal38_18(existing.cache_write_price),
+    profile?.cache_write_price == null ? '' : assertDecimal38_18(profile.cache_write_price),
   )
   const [initialTiers] = useState(() => {
     try {
-      return { values: tiersFrom(existing?.pricing_tiers ?? []), error: null as string | null }
+      return { values: tiersFrom(profile?.pricing_tiers ?? []), error: null as string | null }
     } catch (error) {
       return { values: [] as TierDraft[], error: error instanceof Error ? error.message : String(error) }
     }
@@ -708,7 +711,7 @@ function ModelConfigEditor({
   // a diff of reality rather than a blank slate.
   useEffect(() => {
     if (!caps) return
-    const saved = existing?.capability_overrides ?? {}
+    const saved = profile?.capability_overrides ?? {}
     setEfforts(EFFORT_LADDER.filter((e) => caps.supported_efforts.includes(e)))
     effortsDirty.current = saved.supported_efforts !== undefined
     setCapThinking(triFrom(saved.supports_thinking))
@@ -716,7 +719,7 @@ function ModelConfigEditor({
   }, [caps, existing])
 
   const buildOverrides = (): ProviderCapabilityOverrides | null => {
-    const next: ProviderCapabilityOverrides = { ...(existing?.capability_overrides ?? {}) }
+    const next: ProviderCapabilityOverrides = { ...(profile?.capability_overrides ?? {}) }
     if (effortsDirty.current) next.supported_efforts = efforts
     else delete next.supported_efforts
     const thinking = triTo(capThinking)
@@ -789,7 +792,6 @@ function ModelConfigEditor({
       cache_read_price: parsed.cache ?? null,
       cache_write_price: parsed.cacheWrite ?? null,
       pricing_tiers: priceTiers,
-      server_tool_price: parsed.serverTool ?? null,
     }
     setPriceError(null)
     setInvalidPrices(new Set())
@@ -797,12 +799,27 @@ function ModelConfigEditor({
       await onSave({
         provider_id: providerId,
         model_id: modelId,
-        display_name: existing?.display_name ?? null,
-        context_window: parseInt(contextWindow) || 128000,
-        compact_threshold: parseInt(compactThreshold) || 100000,
-        max_output_tokens: maxOutput ? parseInt(maxOutput) : null,
-        ...prices,
-        capability_overrides: buildOverrides(),
+        profile: {
+          // Editing in place. Pointing this model at a *different* profile —
+          // which is how a second provider stops repeating the first — is the
+          // model page's job, two commits from here.
+          id: profile?.id ?? null,
+          name: profile?.name ?? modelId,
+          context_window: parseInt(contextWindow) || 128000,
+          compact_threshold: parseInt(compactThreshold) || 100000,
+          max_output_tokens: maxOutput ? parseInt(maxOutput) : null,
+          ...prices,
+          capability_overrides: buildOverrides(),
+        },
+        // No per-provider override yet: this form edits one door to a model and
+        // has nowhere to say "this relay charges its own rates".
+        overrides_pricing: false,
+        input_price: null,
+        output_price: null,
+        cache_read_price: null,
+        cache_write_price: null,
+        pricing_tiers: [],
+        server_tool_price: parsed.serverTool ?? null,
         // What the user asked for, not what is currently supported. Filtering here
         // against `caps` looked like defence and was a way to lose the setting:
         // capabilities load asynchronously, so a save while that request was still
@@ -1483,8 +1500,12 @@ function ProviderEditor({
                 {t('settings.provider.modelNotConfigured')}
               </span>
             )
-          return (config.input_price != null && compareDecimals(config.input_price, ZERO_DECIMAL) > 0) ||
-            (config.output_price != null && compareDecimals(config.output_price, ZERO_DECIMAL) > 0) ? (
+          // The rates in force, not the row's own: a model priced by its
+          // profile — which is almost all of them — carries null here and
+          // would otherwise be reported as having no price at all.
+          const priced = config.effective_pricing
+          return (priced.input_price != null && compareDecimals(priced.input_price, ZERO_DECIMAL) > 0) ||
+            (priced.output_price != null && compareDecimals(priced.output_price, ZERO_DECIMAL) > 0) ? (
             <span
               data-slot="model-status-priced"
               className="inline-flex items-center gap-1.5 text-status-success-soft-foreground"

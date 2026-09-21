@@ -4,7 +4,7 @@ import { ProviderSettings } from './provider-settings'
 import i18n from '@/i18n'
 import { api } from '@/api'
 import { decimal } from '@/lib/decimal'
-import type { ProviderCatalogEntryInfoResponse, ProviderInfoResponse } from '@/types'
+import type { DecimalString, ProviderCatalogEntryInfoResponse, ProviderInfoResponse } from '@/types'
 import { resizeViewportTo } from '@/test/viewport'
 import { setContainerWidth } from '@/test/resize'
 
@@ -110,6 +110,64 @@ const CATALOG: ProviderCatalogEntryInfoResponse[] = [
  */
 function mockViewport(mobile: boolean) {
   resizeViewportTo(mobile ? 500 : 1024)
+}
+
+/**
+ * A configured model, as the backend now answers.
+ *
+ * The window, the prices and the capability patch belong to the model's
+ * profile; `effective_pricing` is what the backend resolved from it, which is
+ * what the panel reads rather than re-deciding.
+ */
+function modelConfig(overrides: {
+  id: string
+  model_id: string
+  input_price?: DecimalString | null
+  output_price?: DecimalString | null
+  capability_overrides?: Record<string, unknown> | null
+  server_tools?: string[] | null
+}) {
+  const input = overrides.input_price ?? null
+  const output = overrides.output_price ?? null
+  return {
+    id: overrides.id,
+    provider_id: 'p1',
+    model_id: overrides.model_id,
+    profile: {
+      id: `${overrides.id}-profile`,
+      name: overrides.model_id,
+      context_window: 128000,
+      compact_threshold: 100000,
+      max_output_tokens: null,
+      input_price: input,
+      output_price: output,
+      cache_read_price: null,
+      cache_write_price: null,
+      pricing_tiers: [],
+      capability_overrides: overrides.capability_overrides ?? null,
+      model_count: 1,
+      created_at: 0,
+      updated_at: 0,
+    },
+    overrides_pricing: false,
+    input_price: null,
+    output_price: null,
+    cache_read_price: null,
+    cache_write_price: null,
+    pricing_tiers: [],
+    server_tools: overrides.server_tools ?? null,
+    server_tool_price: null,
+    effective_pricing: {
+      input_price: input,
+      output_price: output,
+      cache_read_price: null,
+      cache_write_price: null,
+      pricing_tiers: [],
+      server_tool_price: null,
+    },
+    created_at: 0,
+    updated_at: 0,
+  } as never
 }
 
 describe('ProviderSettings list/detail navigation', () => {
@@ -282,44 +340,8 @@ describe('ProviderSettings list/detail navigation', () => {
       { id: 'gpt-unconfigured', name: 'gpt-unconfigured' },
     ])
     mockApi.listModelConfigs.mockResolvedValue([
-      {
-        id: 'config-1',
-        provider_id: 'p1',
-        model_id: 'gpt-5.6',
-        display_name: null,
-        context_window: 128000,
-        compact_threshold: 100000,
-        max_output_tokens: null,
-        input_price: decimal('1.25'),
-        output_price: decimal('10'),
-        cache_read_price: null,
-        cache_write_price: null,
-        created_at: 0,
-        updated_at: 0,
-        capability_overrides: null,
-        pricing_tiers: [],
-        server_tools: null,
-        server_tool_price: null,
-      },
-      {
-        id: 'config-2',
-        provider_id: 'p1',
-        model_id: 'gpt-5.6-mini',
-        display_name: null,
-        context_window: 128000,
-        compact_threshold: 100000,
-        max_output_tokens: null,
-        input_price: decimal('0'),
-        output_price: decimal('0'),
-        cache_read_price: null,
-        cache_write_price: null,
-        created_at: 0,
-        updated_at: 0,
-        capability_overrides: null,
-        pricing_tiers: [],
-        server_tools: null,
-        server_tool_price: null,
-      },
+      modelConfig({ id: 'config-1', model_id: 'gpt-5.6', input_price: decimal('1.25'), output_price: decimal('10') }),
+      modelConfig({ id: 'config-2', model_id: 'gpt-5.6-mini', input_price: decimal('0'), output_price: decimal('0') }),
     ])
     render(<ProviderSettings />)
 
@@ -410,20 +432,23 @@ describe('ProviderSettings list/detail navigation', () => {
         expect.objectContaining({
           provider_id: 'p1',
           model_id: 'priced-model',
-          input_price: '1.23',
-          output_price: '2.5',
-          cache_read_price: '0.125',
-          cache_write_price: null,
-          pricing_tiers: [
-            {
-              min_prompt_tokens: 200000,
-              input_price: '4.25',
-              output_price: '12.5',
-              cache_read_price: null,
-              cache_write_price: null,
-            },
-          ],
+          overrides_pricing: false,
           server_tool_price: null,
+          profile: expect.objectContaining({
+            input_price: '1.23',
+            output_price: '2.5',
+            cache_read_price: '0.125',
+            cache_write_price: null,
+            pricing_tiers: [
+              {
+                min_prompt_tokens: 200000,
+                input_price: '4.25',
+                output_price: '12.5',
+                cache_read_price: null,
+                cache_write_price: null,
+              },
+            ],
+          }),
         }),
       ),
     )
@@ -435,25 +460,12 @@ describe('ProviderSettings list/detail navigation', () => {
     mockApi.getProviderKeyExists.mockResolvedValue(true)
     mockApi.fetchProviderModels.mockResolvedValue([{ id: 'structured-model', name: 'Structured model' }])
     mockApi.listModelConfigs.mockResolvedValue([
-      {
+      modelConfig({
         id: 'structured-config',
-        provider_id: 'p1',
         model_id: 'structured-model',
-        display_name: null,
-        context_window: 128000,
-        compact_threshold: 100000,
-        max_output_tokens: null,
-        input_price: null,
-        output_price: null,
-        cache_read_price: null,
-        cache_write_price: null,
-        created_at: 0,
-        updated_at: 0,
         capability_overrides: { supports_thinking: false, default_effort: null },
-        pricing_tiers: [],
         server_tools: ['web_search'],
-        server_tool_price: null,
-      },
+      }),
     ])
     mockApi.getProviderCapabilities.mockResolvedValue({
       supports_tools: true,
@@ -490,8 +502,10 @@ describe('ProviderSettings list/detail navigation', () => {
     await waitFor(() =>
       expect(mockApi.saveModelConfig).toHaveBeenCalledWith(
         expect.objectContaining({
-          capability_overrides: { supports_thinking: false, default_effort: null },
           server_tools: ['web_search'],
+          profile: expect.objectContaining({
+            capability_overrides: { supports_thinking: false, default_effort: null },
+          }),
         }),
       ),
     )

@@ -106,6 +106,7 @@ import type {
   MessageRatingUpdateRequest,
   ModelConfigInfoResponse,
   ModelConfigListResponse,
+  ModelProfileListResponse,
   ModelConfigReadRequest,
   ModelConfigUpsertRequest,
   OneBotConfigInfoResponse,
@@ -257,6 +258,9 @@ export const api = {
   getContextInfo: (conversationId: string) => invoke<ContextInfoResponse>('get_context_info', { conversationId }),
 
   listModelConfigs: (providerId: string) => invoke<ModelConfigListResponse>('list_model_configs', { providerId }),
+
+  /** The model descriptions a provider's model page can point at. */
+  listModelProfiles: () => invoke<ModelProfileListResponse>('list_model_profiles'),
 
   getModelConfig: (request: ModelConfigReadRequest) =>
     invoke<ModelConfigInfoResponse | null>('get_model_config', { request }),
