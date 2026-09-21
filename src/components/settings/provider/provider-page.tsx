@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowsRotateRight, TrashBin, Key } from '@gravity-ui/icons'
-import { Alert, Button, Input, Label, Spinner, TextField } from '@/components/base'
+import { ArrowsRotateRight, Plus, TrashBin, Key } from '@gravity-ui/icons'
+import { Alert, Button, Description, Input, Label, Sheet, Spinner, TextField } from '@/components/base'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
@@ -126,6 +126,8 @@ function ProviderEditor({
   const [balanceError, setBalanceError] = useState<string | null>(null)
   const [modelConfigs, setModelConfigs] = useState<Map<string, ModelConfigInfoResponse>>(new Map())
   const [modelFilter, setModelFilter] = useState('')
+  const [addingModel, setAddingModel] = useState(false)
+  const [newModelId, setNewModelId] = useState('')
   /** Above this many, a filter box appears. */
   const FILTER_THRESHOLD = 8
   const [deleting, setDeleting] = useState(false)
@@ -351,6 +353,22 @@ function ProviderEditor({
   useEffect(() => {
     loadModelConfigs()
   }, [loadModelConfigs])
+
+  /**
+   * A model the provider never announced.
+   *
+   * Nothing is written here: the id goes straight to its own page, which is
+   * where a window and a price are given and where the row is created by the
+   * ordinary save. Creating an empty configuration first would leave a model
+   * in the list that no turn could run.
+   */
+  const handleAddModel = () => {
+    const id = newModelId.trim()
+    if (!id) return
+    setAddingModel(false)
+    setNewModelId('')
+    onOpenModel(id)
+  }
 
   /**
    * What this provider announced, plus anything already configured on it.
@@ -624,6 +642,10 @@ function ProviderEditor({
               from needing one for exactly this call — so gating on the key
               here kept the button permanently grey on the rows the exemption
               was written for. */}
+          <Button variant="ghost" onPress={() => setAddingModel(true)}>
+            <Plus className="w-3.5 h-3.5" />
+            {t('settings.provider.addModel')}
+          </Button>
           <Button
             variant="outline"
             onPress={handleFetchModels}
@@ -675,6 +697,53 @@ function ProviderEditor({
             </SettingsCard>
           </div>
         )}
+        <Sheet
+          isOpen={addingModel}
+          onOpenChange={(open) => {
+            setAddingModel(open)
+            if (!open) setNewModelId('')
+          }}
+          placement="bottom"
+          // Typed but unsubmitted is unsaved work: dragging the sheet away
+          // would lose it silently, which is the one thing the drag must not do.
+          isDirty={newModelId.trim().length > 0}
+        >
+          <Sheet.Backdrop>
+            <Sheet.Content className="mx-auto sm:max-w-lg sm:rounded-b-2xl">
+              <Sheet.Dialog aria-label={t('settings.provider.addModel')} className="pb-[max(1rem,var(--safe-bottom))]">
+                <Sheet.Handle />
+                <Sheet.Header>
+                  <Sheet.Heading>{t('settings.provider.addModel')}</Sheet.Heading>
+                </Sheet.Header>
+                <Sheet.Body className="space-y-2">
+                  <TextField>
+                    <Label>{t('settings.provider.modelId')}</Label>
+                    <Input
+                      name={`newModelId-${provider.id}`}
+                      autoComplete="off"
+                      value={newModelId}
+                      onChange={(event) => setNewModelId(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.nativeEvent.isComposing) return
+                        if (event.key === 'Enter' && newModelId.trim()) handleAddModel()
+                      }}
+                      placeholder="gpt-6-preview"
+                    />
+                    <Description className="text-caption-1-regular">{t('settings.provider.addModelHint')}</Description>
+                  </TextField>
+                </Sheet.Body>
+                <Sheet.Footer>
+                  <Button slot="close" variant="tertiary">
+                    {t('common.cancel')}
+                  </Button>
+                  <Button isDisabled={!newModelId.trim()} onPress={handleAddModel}>
+                    {t('common.confirm')}
+                  </Button>
+                </Sheet.Footer>
+              </Sheet.Dialog>
+            </Sheet.Content>
+          </Sheet.Backdrop>
+        </Sheet>
         {allModels.length === 0 && !fetchingModels && !modelsError && (
           <p data-slot="provider-models-hint" className="text-caption-1-regular text-text-secondary">
             {t('settings.provider.fetchModelsHint')}

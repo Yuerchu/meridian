@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Description, Disclosure, Input, Label, TextField } from '@/components/base'
+import { Button, Description, Disclosure, Input, Label, Switch, TextField } from '@/components/base'
 import { api } from '@/api'
 import { assertDecimal38_18 } from '@/lib/decimal'
 import { EFFORT_LADDER } from '@/lib/thinking'
@@ -133,6 +133,23 @@ function ModelConfigEditor({
   // and it replaces every field below with that profile's.
   const [profileId, setProfileId] = useState<string | null>(profile?.id ?? null)
   const [profileName, setProfileName] = useState(profile?.name ?? modelId)
+  // Whether this provider charges its own rates. Off is the ordinary case and
+  // the four fields below stay blank rather than holding a copy of the
+  // profile's — a number kept in two places is a number that comes to disagree,
+  // and the backend refuses a row that carries rates it has switched off.
+  const [overridesPricing, setOverridesPricing] = useState(existing?.overrides_pricing ?? false)
+  const [overrideInput, setOverrideInput] = useState(
+    existing?.input_price == null ? '' : assertDecimal38_18(existing.input_price),
+  )
+  const [overrideOutput, setOverrideOutput] = useState(
+    existing?.output_price == null ? '' : assertDecimal38_18(existing.output_price),
+  )
+  const [overrideCache, setOverrideCache] = useState(
+    existing?.cache_read_price == null ? '' : assertDecimal38_18(existing.cache_read_price),
+  )
+  const [overrideCacheWrite, setOverrideCacheWrite] = useState(
+    existing?.cache_write_price == null ? '' : assertDecimal38_18(existing.cache_write_price),
+  )
   const [priceError, setPriceError] = useState<string | null>(initialTiers.error)
   // Which price boxes the last save attempt refused. The pair rule fails on a
   // field the reader may have scrolled past, so the box is marked and brought
@@ -144,6 +161,10 @@ function ModelConfigEditor({
     cache: useRef<HTMLInputElement>(null),
     cacheWrite: useRef<HTMLInputElement>(null),
     serverTool: useRef<HTMLInputElement>(null),
+    overrideInput: useRef<HTMLInputElement>(null),
+    overrideOutput: useRef<HTMLInputElement>(null),
+    overrideCache: useRef<HTMLInputElement>(null),
+    overrideCacheWrite: useRef<HTMLInputElement>(null),
   } satisfies Record<PriceField, React.RefObject<HTMLInputElement | null>>
 
   // The page's own draft. Keyed by provider and model, so the same model on
@@ -253,6 +274,10 @@ function ModelConfigEditor({
       cache: t('settings.model.cachePrice'),
       cacheWrite: t('settings.model.cacheWritePrice'),
       serverTool: t('settings.model.serverToolPrice'),
+      overrideInput: t('settings.model.inputPrice'),
+      overrideOutput: t('settings.model.outputPrice'),
+      overrideCache: t('settings.model.cachePrice'),
+      overrideCacheWrite: t('settings.model.cacheWritePrice'),
     }
     const parsed: Partial<Record<PriceField, DecimalString | null>> = {}
     for (const [field, raw] of [
@@ -261,6 +286,10 @@ function ModelConfigEditor({
       ['cache', cachePrice],
       ['cacheWrite', cacheWritePrice],
       ['serverTool', serverToolPrice],
+      ['overrideInput', overrideInput],
+      ['overrideOutput', overrideOutput],
+      ['overrideCache', overrideCache],
+      ['overrideCacheWrite', overrideCacheWrite],
     ] as const) {
       try {
         parsed[field] = optionalPrice(raw)
@@ -284,6 +313,14 @@ function ModelConfigEditor({
     }
     if (priceTiers.length > 0 && input == null) {
       refuse(t('settings.model.tierNeedsBaseError'), ['input', 'output'])
+      return
+    }
+    // The same pairing rule as the profile's, on this provider's own rates:
+    // half a rate set prices nothing.
+    const overrideIn = overridesPricing ? (parsed.overrideInput ?? null) : null
+    const overrideOut = overridesPricing ? (parsed.overrideOutput ?? null) : null
+    if ((overrideIn == null) !== (overrideOut == null)) {
+      refuse(t('settings.model.pricePairError'), [overrideIn == null ? 'overrideInput' : 'overrideOutput'])
       return
     }
     const prices = {
@@ -311,13 +348,14 @@ function ModelConfigEditor({
           ...prices,
           capability_overrides: buildOverrides(),
         },
-        // No per-provider override yet: this form edits one door to a model and
-        // has nowhere to say "this relay charges its own rates".
-        overrides_pricing: false,
-        input_price: null,
-        output_price: null,
-        cache_read_price: null,
-        cache_write_price: null,
+        overrides_pricing: overridesPricing,
+        // Blank whenever the switch is off, which the backend enforces too: the
+        // columns are read at all only when it is on, so leaving a copy of the
+        // profile's rates in them would be a second answer to what this costs.
+        input_price: overrideIn,
+        output_price: overrideOut,
+        cache_read_price: overridesPricing ? (parsed.overrideCache ?? null) : null,
+        cache_write_price: overridesPricing ? (parsed.overrideCacheWrite ?? null) : null,
         pricing_tiers: [],
         server_tool_price: parsed.serverTool ?? null,
         // What the user asked for, not what is currently supported. Filtering here
@@ -609,6 +647,60 @@ function ModelConfigEditor({
     </div>
   )
 
+  /**
+   * What is different about reaching this model *here*.
+   *
+   * Almost nothing usually, which is why it is one switch and four fields
+   * rather than a copy of the form above. A relay that resells at its own
+   * margin is the case it exists for; everything else is the model's, and
+   * saying so twice is how the two come to disagree.
+   */
+  const providerSection = (
+    <SettingsSection label={t('settings.model.sectionThisProvider')}>
+      <SettingsRow label={t('settings.model.overridePricing')} description={t('settings.model.overridePricingHint')}>
+        {({ labelId, descriptionId }) => (
+          <Switch
+            aria-labelledby={labelId}
+            aria-describedby={descriptionId}
+            isSelected={overridesPricing}
+            onChange={(next) => {
+              setOverridesPricing(next)
+              setDirty(true)
+            }}
+          />
+        )}
+      </SettingsRow>
+      {overridesPricing &&
+        (
+          [
+            ['overrideInput', t('settings.model.inputPrice'), overrideInput, setOverrideInput],
+            ['overrideOutput', t('settings.model.outputPrice'), overrideOutput, setOverrideOutput],
+            ['overrideCache', t('settings.model.cachePrice'), overrideCache, setOverrideCache],
+            ['overrideCacheWrite', t('settings.model.cacheWritePrice'), overrideCacheWrite, setOverrideCacheWrite],
+          ] as const
+        ).map(([field, label, value, setValue]) => (
+          <SettingsRow key={field} label={label}>
+            {({ labelId }) => (
+              <TextField isInvalid={invalidPrices.has(field)}>
+                <Input
+                  ref={priceRefs[field]}
+                  aria-labelledby={labelId}
+                  name={`modelOverride-${field}-${modelId}`}
+                  inputMode="decimal"
+                  value={value}
+                  onChange={(event) => {
+                    setValue(event.target.value)
+                    setDirty(true)
+                  }}
+                  className="w-[202px]"
+                />
+              </TextField>
+            )}
+          </SettingsRow>
+        ))}
+    </SettingsSection>
+  )
+
   return (
     <SettingsPage
       title={profileName || modelId}
@@ -658,6 +750,7 @@ function ModelConfigEditor({
         </SettingsRow>
       </SettingsSection>
       {form}
+      {providerSection}
     </SettingsPage>
   )
 }

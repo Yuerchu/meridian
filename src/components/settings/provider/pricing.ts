@@ -20,8 +20,23 @@ import type { DecimalString, PriceTier } from '@/types'
  */
 export type TierDraft = { threshold: string; input: string; output: string; cacheRead: string; cacheWrite: string }
 
-/** The five base price boxes, named so a refusal can point at one. */
-export type PriceField = 'input' | 'output' | 'cache' | 'cacheWrite' | 'serverTool'
+/**
+ * Every price box on the model page, named so a refusal can point at one.
+ *
+ * The first five are the model's own; the `override*` four are what this one
+ * provider charges instead, and exist separately because a refusal has to say
+ * which of the two sets it is about.
+ */
+export type PriceField =
+  | 'input'
+  | 'output'
+  | 'cache'
+  | 'cacheWrite'
+  | 'serverTool'
+  | 'overrideInput'
+  | 'overrideOutput'
+  | 'overrideCache'
+  | 'overrideCacheWrite'
 
 export const BLANK_TIER: TierDraft = { threshold: '', input: '', output: '', cacheRead: '', cacheWrite: '' }
 

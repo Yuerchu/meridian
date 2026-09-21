@@ -450,6 +450,65 @@ describe('ProviderSettings list/detail navigation', () => {
     )
   })
 
+  /**
+   * A relay that resells at its own margin is the one case a provider's rates
+   * differ from the model's. With the switch off the columns stay null — the
+   * backend refuses a row carrying rates it has switched off, because a number
+   * kept in two places is a number that comes to disagree.
+   */
+  it('sends this provider own rates only while the override is on', async () => {
+    const user = userEvent.setup()
+    mockApi.getProviderKeyExists.mockResolvedValue(true)
+    mockApi.fetchProviderModels.mockResolvedValue([{ id: 'relayed', name: 'relayed' }])
+    mockApi.getModelConfig.mockResolvedValue(null)
+    mockApi.listModelProfiles.mockResolvedValue([])
+    mockApi.saveModelConfig.mockResolvedValue(undefined as never)
+    render(<ProviderSettings />)
+    await openFirstProvider(user)
+    await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
+    await user.click(await screen.findByRole('button', { name: 'relayed' }))
+
+    // Off: the four fields are not even on screen.
+    expect(screen.queryByRole('textbox', { name: i18n.t('settings.model.inputPrice') })).toBeInTheDocument()
+    await user.click(await screen.findByRole('switch', { name: i18n.t('settings.model.overridePricing') }))
+
+    const overrideFields = screen.getAllByRole('textbox', { name: i18n.t('settings.model.inputPrice') })
+    expect(overrideFields).toHaveLength(2)
+    await user.type(overrideFields[1], '9')
+    const outputs = screen.getAllByRole('textbox', { name: i18n.t('settings.model.outputPrice') })
+    await user.type(outputs[1], '18')
+
+    await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
+    await waitFor(() =>
+      expect(mockApi.saveModelConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ overrides_pricing: true, input_price: '9', output_price: '18' }),
+      ),
+    )
+  })
+
+  /**
+   * The backend has always allowed configuring a model `/v1/models` does not
+   * list; nothing offered it. Nothing is written when the sheet is confirmed
+   * either — an empty configuration would put a model in the list that no turn
+   * could run, so the id goes straight to the page where it is given a window
+   * and a price.
+   */
+  it('takes a model the provider never announced straight to its page', async () => {
+    const user = userEvent.setup()
+    mockApi.getProviderKeyExists.mockResolvedValue(true)
+    mockApi.getModelConfig.mockResolvedValue(null)
+    mockApi.listModelProfiles.mockResolvedValue([])
+    render(<ProviderSettings />)
+    await openFirstProvider(user)
+
+    await user.click(await screen.findByRole('button', { name: i18n.t('settings.provider.addModel') }))
+    await user.type(await screen.findByRole('textbox', { name: i18n.t('settings.provider.modelId') }), 'gpt-6-preview')
+    await user.click(screen.getByRole('button', { name: i18n.t('common.confirm') }))
+
+    expect(await screen.findByRole('heading', { name: 'gpt-6-preview' })).toBeInTheDocument()
+    expect(mockApi.saveModelConfig).not.toHaveBeenCalled()
+  })
+
   /** A page with unsaved work does not go quietly. */
   it('asks before the back button discards a model draft', async () => {
     const user = userEvent.setup()
