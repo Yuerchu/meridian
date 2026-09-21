@@ -6,6 +6,7 @@ import {
   insertReferenceToken,
   parseComposerIntent,
   referenceInputs,
+  selectExistingReferences,
 } from './composer-intent'
 
 describe('composer intent', () => {
@@ -39,6 +40,40 @@ describe('composer intent', () => {
       { path: 'src/a.ts', lineStart: null, lineEnd: null },
       { path: 'src/b.ts', lineStart: 3, lineEnd: 3 },
     ])
+  })
+
+  it('keeps only the mentions the workspace holds, in the order they were written', async () => {
+    // A decorator parses as a path exactly as a real mention does, and this is
+    // the shape that used to fail a whole turn: the trailing `)` is stripped as
+    // prose, leaving an unbalanced quote that the backend then tried to stat.
+    const draft = "把 @field_validator('time_created') 的写法挪到 @src/a.ts 参考 @docs/b.md"
+    const mentions = extractComposerReferences(draft)
+    expect(mentions.map((m) => m.path)).toEqual(["field_validator('time_created'", 'src/a.ts', 'docs/b.md'])
+
+    const held = new Set(['src/a.ts', 'docs/b.md'])
+    expect(await selectExistingReferences(mentions, (path) => Promise.resolve(held.has(path)))).toEqual([
+      { path: 'src/a.ts', lineStart: null, lineEnd: null },
+      { path: 'docs/b.md', lineStart: null, lineEnd: null },
+    ])
+  })
+
+  // Only the prose that ends a token is stripped, so CJK punctuation written
+  // without a space keeps whatever follows it inside the path. Existence is the
+  // judge here too: no such file, so the mention is text.
+  it('drops a mention that ran into the words after it', async () => {
+    const mentions = extractComposerReferences('挪到 @src/a.ts，参考一下')
+    expect(mentions.map((m) => m.path)).toEqual(['src/a.ts，参考一下'])
+    expect(await selectExistingReferences(mentions, (path) => Promise.resolve(path === 'src/a.ts'))).toEqual([])
+  })
+
+  it('treats an unreachable or unprobeable mention as prose rather than a path', async () => {
+    const mentions = extractComposerReferences('@dataclass @pytest.mark.asyncio @src/a.ts')
+    // A probe answers false for "does not exist" and "not reachable from here"
+    // alike; neither is a reference, and neither may fail the turn.
+    expect(await selectExistingReferences(mentions, (path) => Promise.resolve(path === 'src/a.ts'))).toEqual([
+      { path: 'src/a.ts', lineStart: null, lineEnd: null },
+    ])
+    expect(await selectExistingReferences(mentions, () => Promise.resolve(false))).toEqual([])
   })
 
   it('separates shell, slash, paths and escaped prefixes', () => {

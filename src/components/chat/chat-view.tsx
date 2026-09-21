@@ -26,9 +26,10 @@ import { useSendMessage } from '@/hooks/use-send-message'
 import { useContextInfo } from '@/hooks/use-context-info'
 import { useConfirm } from '@/hooks/use-confirm'
 import { usePlatform } from '@/hooks/use-platform'
+import { useReferenceProbe } from '@/hooks/use-reference-probe'
 import { useConversationStore } from '@/stores/conversation-store'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
-import { parseComposerIntent, referenceInputs } from '@/lib/composer-intent'
+import { parseComposerIntent, selectExistingReferences } from '@/lib/composer-intent'
 import { findComposerCommand } from '@/lib/composer-commands'
 import { allowedEfforts } from '@/lib/thinking'
 import { visibleSettingsTabs, type SettingsTab } from '@/components/settings/tabs'
@@ -40,6 +41,7 @@ import type {
   MessageViewModel,
   QueueDelivery,
   ThinkingLevel,
+  WorkspaceReferenceRequest,
 } from '@/types'
 import { StarterPrompts } from './empty-state'
 import type { InitialTurnDraft } from './conversation-draft'
@@ -115,6 +117,11 @@ function ChatViewInner({
   const [commandPending, setCommandPending] = useState(false)
   const commandPendingRef = useRef(false)
   const shellSubmittingRef = useRef(false)
+  // Submission waits on the workspace probes that decide which `@` tokens are
+  // references. Without this a second Enter during that window sends the same
+  // draft twice: the field is still full, and `sendMessage`'s own lock is not
+  // taken until after the probes come back.
+  const referenceResolvingRef = useRef(false)
   // A negative snapshot is not proof that the backend never accepted an
   // invoke whose response was lost. Keep that submission's idempotency key so
   // restoring or manually retyping the exact command cannot mint a new turn.
@@ -128,6 +135,7 @@ function ChatViewInner({
   // going, which is not a thing to do by accident.
   const [queueDelivery, setQueueDelivery] = useState<QueueDelivery>('follow_up')
   const settings = useTurnSettings(conversationId, initialDraft?.settings)
+  const probeReference = useReferenceProbe(conversationId)
   const platform = usePlatform()
   const emojiMap = useEmojiMap(settings.selectedAssistantId)
   // Only a OneBot conversation has more than one speaker; a desktop row has no
@@ -662,15 +670,22 @@ function ChatViewInner({
           name: initialDraft.pendingSticker.emoji.name,
         }
       : undefined
-    const firstReferences = intent.kind === 'prompt' ? referenceInputs(intent.references) : []
     const files = initialDraft.attachedFiles.length > 0 ? initialDraft.attachedFiles : undefined
-    void sendMessage(text, true, files, undefined, initialDraft.voice || undefined, sticker, firstReferences)
+    // The same question the composer asks, on the draft that opened this
+    // conversation: a mention the workspace does not hold is prose.
+    const references = intent.kind === 'prompt' ? intent.references : []
+    void selectExistingReferences(references, probeReference)
+      .then((firstReferences) =>
+        sendMessage(text, true, files, undefined, initialDraft.voice || undefined, sticker, firstReferences),
+      )
+      .catch((error) => storeSetError(conversationId, String(error)))
   }, [
     conversationId,
     executeShellCommand,
     executeSlashCommand,
     initialDraft,
     onInitialDraftConsumed,
+    probeReference,
     sendMessage,
     storeSetError,
     reviewBlocked,
@@ -699,6 +714,76 @@ function ChatViewInner({
     [conversationId, storeSetError, t],
   )
 
+  // The half of submission that runs once the workspace has said which `@`
+  // tokens are real. Split out rather than inlined because that answer is
+  // asynchronous and everything below branches on it.
+  const submitPrompt = useCallback(
+    (text: string, references: WorkspaceReferenceRequest[], refIds: string[]) => {
+      // Both kinds freeze at a turn boundary, so both are refused where there is
+      // no new boundary to attach them to (interject, steer).
+      const hasWorkspaceReferences = references.length > 0 || refIds.length > 0
+
+      // Ahead of everything else, including the slash commands: while the agent
+      // is working there is no turn for any of them to reshape. The field is
+      // cleared only once the row exists, so a refusal is not the user paying
+      // for it by retyping.
+      if (queueing) {
+        if (!text) return
+        if (hasWorkspaceReferences && queueDelivery === 'interject') {
+          storeSetError(conversationId, t('chat.referenceFollowUpOnly'))
+          return
+        }
+        void queue
+          .enqueue(text, queueDelivery, references, refIds)
+          .then(() => {
+            setInput('')
+            setConversationRefs([])
+          })
+          .catch((error) => storeSetError(conversationId, String(error)))
+        return
+      }
+
+      // Before the slash commands, which all ask for a turn to be started or
+      // reshaped and so have nowhere to land mid-run. The field is cleared only
+      // once the run has taken the text: a refusal means it was written down
+      // nowhere, and retyping it would be the user paying for that.
+      if (steering) {
+        if (!text) return
+        if (hasWorkspaceReferences) {
+          storeSetError(conversationId, t('chat.referenceFollowUpOnly'))
+          return
+        }
+        void steerMessage(text).then((sent) => {
+          if (sent) setInput('')
+        })
+        return
+      }
+
+      const files = [...attachedFiles]
+      setInput('')
+      setAttachedFiles([])
+      const sticker = pendingSticker
+        ? { type: 'sticker' as const, sticker_id: pendingSticker.emoji.id, name: pendingSticker.emoji.name }
+        : undefined
+      setPendingSticker(null)
+      setConversationRefs([])
+      sendMessage(text, true, files.length > 0 ? files : undefined, undefined, undefined, sticker, references, refIds)
+    },
+    [
+      sendMessage,
+      attachedFiles,
+      pendingSticker,
+      storeSetError,
+      conversationId,
+      steering,
+      steerMessage,
+      queueing,
+      queue,
+      queueDelivery,
+      t,
+    ],
+  )
+
   const handleSubmit = useCallback(() => {
     if (reviewBlocked) {
       storeSetError(conversationId, reviewBlockedMessage)
@@ -715,11 +800,7 @@ function ChatViewInner({
     }
     const intent = parseComposerIntent(input)
     const text = intent.kind === 'prompt' ? intent.text.trim() : input.trim()
-    const references = intent.kind === 'prompt' ? referenceInputs(intent.references) : []
     const refIds = conversationRefs.map((ref) => ref.id)
-    // Both kinds freeze at a turn boundary, so both are refused where there is
-    // no new boundary to attach them to (interject, steer).
-    const hasWorkspaceReferences = references.length > 0 || refIds.length > 0
     if (!text && !pendingSticker) return
 
     // Commands are local control input. Resolve them before queue/steer so a
@@ -737,54 +818,27 @@ function ChatViewInner({
       return
     }
 
-    // Ahead of everything else, including the slash commands: while the agent
-    // is working there is no turn for any of them to reshape. The field is
-    // cleared only once the row exists, so a refusal is not the user paying
-    // for it by retyping.
-    if (queueing) {
-      if (!text) return
-      if (hasWorkspaceReferences && queueDelivery === 'interject') {
-        storeSetError(conversationId, t('chat.referenceFollowUpOnly'))
-        return
-      }
-      void queue
-        .enqueue(text, queueDelivery, references, refIds)
-        .then(() => {
-          setInput('')
-          setConversationRefs([])
-        })
+    // Which `@` tokens are references is the workspace's answer, not the
+    // parser's, so it has to be asked before anything here branches on the
+    // count: whether this message may interject turns on it. Probes are
+    // metadata-only and coalesced, and the field is not cleared until they are
+    // back — a message held for a few milliseconds is invisible, while one
+    // cleared early and then refused is retyped by the user.
+    const mentions = intent.kind === 'prompt' ? intent.references : []
+    if (mentions.length > 0) {
+      if (referenceResolvingRef.current) return
+      referenceResolvingRef.current = true
+      void selectExistingReferences(mentions, probeReference)
+        .then((references) => submitPrompt(text, references, refIds))
         .catch((error) => storeSetError(conversationId, String(error)))
+        .finally(() => {
+          referenceResolvingRef.current = false
+        })
       return
     }
-
-    // Before the slash commands, which all ask for a turn to be started or
-    // reshaped and so have nowhere to land mid-run. The field is cleared only
-    // once the run has taken the text: a refusal means it was written down
-    // nowhere, and retyping it would be the user paying for that.
-    if (steering) {
-      if (!text) return
-      if (hasWorkspaceReferences) {
-        storeSetError(conversationId, t('chat.referenceFollowUpOnly'))
-        return
-      }
-      void steerMessage(text).then((sent) => {
-        if (sent) setInput('')
-      })
-      return
-    }
-
-    const files = [...attachedFiles]
-    setInput('')
-    setAttachedFiles([])
-    const sticker = pendingSticker
-      ? { type: 'sticker' as const, sticker_id: pendingSticker.emoji.id, name: pendingSticker.emoji.name }
-      : undefined
-    setPendingSticker(null)
-    setConversationRefs([])
-    sendMessage(text, true, files.length > 0 ? files : undefined, undefined, undefined, sticker, references, refIds)
+    submitPrompt(text, [], refIds)
   }, [
     input,
-    sendMessage,
     attachedFiles,
     pendingSticker,
     conversationRefs,
@@ -792,11 +846,8 @@ function ChatViewInner({
     executeShellCommand,
     storeSetError,
     conversationId,
-    steering,
-    steerMessage,
-    queueing,
-    queue,
-    queueDelivery,
+    probeReference,
+    submitPrompt,
     t,
     reviewBlocked,
     reviewBlockedMessage,

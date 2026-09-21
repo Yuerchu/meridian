@@ -10,6 +10,7 @@ import { api } from '@/api'
 import type { WorkspaceFileContentResponse } from '@/types'
 import { usePlatform } from '@/hooks/use-platform'
 import { useHistoryLevel } from '@/hooks/use-history-level'
+import { useReferenceProbe } from '@/hooks/use-reference-probe'
 import { useShikiLanguage } from '@/hooks/use-shiki-language'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { fileIconUrl } from '@/lib/file-icon'
@@ -338,7 +339,7 @@ export function FilePreviewProvider({
     reference: MarkdownFileReference
   } | null>(null)
   const [state, setState] = React.useState<PreviewState>({ status: 'idle' })
-  const probeCache = React.useRef(new Map<string, Promise<boolean>>())
+  const probeReference = useReferenceProbe(conversationId)
 
   const closePreview = React.useCallback(() => {
     setRequest(null)
@@ -356,33 +357,6 @@ export function FilePreviewProvider({
     },
     [conversationId],
   )
-
-  const probeReference = React.useCallback(
-    (path: string) => {
-      const key = `${conversationId}\0${path}`
-      const cached = probeCache.current.get(key)
-      if (cached) return cached
-      const probe = api
-        .workspaceProbeRef({ conversationId, projectId: null, path })
-        .then(
-          () => true,
-          () => false,
-        )
-        .finally(() => {
-          // Deduplicate only concurrent probes. A later message must observe
-          // files created or removed since an earlier render, and a transient
-          // failure must not keep the path inert for the whole conversation.
-          if (probeCache.current.get(key) === probe) probeCache.current.delete(key)
-        })
-      probeCache.current.set(key, probe)
-      return probe
-    },
-    [conversationId],
-  )
-
-  React.useEffect(() => {
-    probeCache.current.clear()
-  }, [conversationId])
 
   React.useEffect(() => {
     if (!request) return

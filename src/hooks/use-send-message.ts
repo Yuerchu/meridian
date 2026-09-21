@@ -5,7 +5,8 @@ import { uploadAttachment } from '@/lib/upload'
 import type { AttachedFile } from '@/components/chat/input-bar'
 import type { ChatMode, StickerContentPart, ThinkingLevel } from '@/types'
 import type { WorkspaceReferenceRequest } from '@/types'
-import { extractComposerReferences, referenceInputs } from '@/lib/composer-intent'
+import { extractComposerReferences, selectExistingReferences } from '@/lib/composer-intent'
+import { useReferenceProbe } from '@/hooks/use-reference-probe'
 
 /** The toolbar's answer to "how should this turn be sent", read at send time. */
 export interface SendOptions {
@@ -108,6 +109,7 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
   const storeLoadMessages = useConversationStore((s) => s.loadMessages)
   const storeSetError = useConversationStore((s) => s.setError)
   const submittingRef = useRef(false)
+  const probeReference = useReferenceProbe(conversationId)
   // A hosted session's turn runs in another process, so it goes to another
   // command. Everything either side of that — the optimistic bubble, the turn
   // id, the abort path — is the same, which is why this is one branch rather
@@ -303,10 +305,14 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
   // reachable through the pager.
   const handleEdit = useCallback(
     (id: string, content: string) => {
-      const refs = referenceInputs(extractComposerReferences(content))
-      sendMessage(content, true, undefined, id, undefined, undefined, refs)
+      // Re-asked from the edited wording, so the mentions are resolved against
+      // the workspace again rather than copied: the edit may have added one,
+      // and a token that is only prose must not become a path here either.
+      void selectExistingReferences(extractComposerReferences(content), probeReference)
+        .then((refs) => sendMessage(content, true, undefined, id, undefined, undefined, refs))
+        .catch((error) => storeSetError(conversationId, String(error)))
     },
-    [sendMessage],
+    [conversationId, probeReference, sendMessage, storeSetError],
   )
 
   // Voice input sends directly, bypassing the textarea and any attachments.
