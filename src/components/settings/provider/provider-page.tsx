@@ -19,7 +19,7 @@ import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { formatCurrencyAmount, formatDecimalAmount } from '@/lib/cost-format'
 import { SavedHint, SettingsSelect, SettingsSkeleton } from '../primitives'
 import { SettingsPage } from '../settings-page'
-import { useSettingsDraft } from '../settings-stack'
+import { useSettingsDraft, useSettingsResume } from '../settings-stack'
 import { CodexAccount } from './codex-account'
 import { ProviderIconPicker } from './icon-picker'
 import {
@@ -127,8 +127,8 @@ function ProviderEditor({
   onUpdate: () => void
   /// Opens a model's own page.
   onOpenModel: (modelId: string) => void
-  /// Unwinds the stack. The list refetches on the way back, so there is
-  /// nothing to tell it.
+  /// Unwinds the stack. The list refetches when it becomes the top page
+  /// again, so there is nothing to tell it.
   onDeleted: () => void
 }) {
   const { t, i18n } = useTranslation()
@@ -404,6 +404,12 @@ function ProviderEditor({
   useEffect(() => {
     loadModelConfigs()
   }, [loadModelConfigs])
+
+  // Coming back from a model page: it may have been given a price, pointed at
+  // another description or deleted, and every one of those changes a chip in
+  // the table below. This page has been mounted the whole time it was covered,
+  // so nothing else would notice.
+  useSettingsResume(loadModelConfigs)
 
   /**
    * A model the provider never announced.

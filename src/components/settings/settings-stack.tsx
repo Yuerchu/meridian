@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import { useConfirm } from '@/hooks/use-confirm'
 import { useHistoryLevel } from '@/hooks/use-history-level'
@@ -85,6 +85,15 @@ export function useSettingsStack<L>(): SettingsStack<L> {
   // Bumped on every move, so a `replace` at an unchanged depth still scrolls to
   // the top and moves focus.
   const [generation, setGeneration] = useState(0)
+  // Which level is momentarily holding no history entry, so a refused back
+  // gesture can be given its entry back on the next frame.
+  //
+  // Known limitation: one level at a time. A single `popstate` that retires
+  // two levels at once, with a dirty page in the middle that then refuses,
+  // gives one entry back rather than two. It needs the browser history to be
+  // out of step with the stack to reach at all — a gesture only ever retires
+  // one entry — so it is recorded rather than fixed; making it a set would
+  // mean reasoning about which of several claims the next frame restores.
   const [unclaimed, setUnclaimed] = useState<number | null>(null)
   // Not state: read inside callbacks that would otherwise need it as a
   // dependency, and written from an effect on every page that has a draft.
@@ -308,11 +317,43 @@ export function useSettingsDraft(tab: SettingsTab, source: string, dirty: boolea
 }
 
 /** What a page needs to know about where it sits. */
-export function useSettingsLevel(): { index: number; pop: () => Promise<boolean> } {
+export function useSettingsLevel(): { index: number; pop: () => Promise<boolean>; isTop: boolean } {
   const index = useContext(SettingsLevelContext)
   const stack = useContext(SettingsStackContext)
   const pop = useCallback(() => stack?.pop() ?? Promise.resolve(false), [stack])
-  return { index, pop }
+  // Outside a stack a panel is the only thing on screen, so it is always the
+  // top. That is what every panel that has not moved over yet still sees.
+  return { index, pop, isTop: stack ? index === stack.depth : true }
+}
+
+/**
+ * Run something when this page becomes the top one again.
+ *
+ * The levels all stay mounted, so a page returned to is the same React tree it
+ * was when it was covered: its mount effect does not run a second time and its
+ * data is as old as the last time anyone looked at it. Without this a delete
+ * leaves the deleted row in the list behind it, and a model saved for the
+ * first time still reads "not configured" on the provider page underneath.
+ *
+ * This is what the "each page fetches what it needs by id" rule actually rests
+ * on. It was written as "a list refetches on every return", which was never
+ * true of a stack that unmounts nothing — the note said what the design wanted
+ * rather than what the code did, which is the worst kind of comment.
+ *
+ * Deliberately not fired on mount: arriving is the page's own effect's job,
+ * and firing here too would double every first fetch.
+ */
+export function useSettingsResume(onResume: () => void): void {
+  const { isTop } = useSettingsLevel()
+  const wasTop = useRef(isTop)
+  // Read through a ref so a caller passing an inline closure does not have to
+  // memoise it to avoid re-running this.
+  const latest = useRef(onResume)
+  latest.current = onResume
+  useEffect(() => {
+    if (isTop && !wasTop.current) latest.current()
+    wasTop.current = isTop
+  }, [isTop])
 }
 
 /**

@@ -10,7 +10,16 @@ import { BLANK_TIER, type TierDraft } from './pricing'
  * detail pane would each be too narrow to read a price in, and this list is
  * nearly always empty or one entry long.
  */
-export function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (next: TierDraft[]) => void }) {
+export function PriceTierEditor({
+  tiers,
+  onChange,
+  namePrefix = 'model',
+}: {
+  tiers: TierDraft[]
+  onChange: (next: TierDraft[]) => void
+  /** Distinguishes two editors on one page; a `name` has to be unique in a form. */
+  namePrefix?: string
+}) {
   const { t } = useTranslation()
   const patch = (index: number, field: keyof TierDraft, value: string) =>
     onChange(tiers.map((tier, i) => (i === index ? { ...tier, [field]: value } : tier)))
@@ -30,7 +39,7 @@ export function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onCha
             <TextField>
               <Label>{t('settings.model.tierThreshold')}</Label>
               <Input
-                name={`modelTierThreshold-${index}`}
+                name={`${namePrefix}TierThreshold-${index}`}
                 inputMode="numeric"
                 value={tier.threshold}
                 onChange={(e) => patch(index, 'threshold', e.target.value)}
@@ -55,7 +64,7 @@ export function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onCha
             <TextField>
               <Label>{t('settings.model.inputPrice')}</Label>
               <Input
-                name={`modelTierInputPrice-${index}`}
+                name={`${namePrefix}TierInputPrice-${index}`}
                 inputMode="decimal"
                 value={tier.input}
                 onChange={(e) => patch(index, 'input', e.target.value)}
@@ -65,7 +74,7 @@ export function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onCha
             <TextField>
               <Label>{t('settings.model.outputPrice')}</Label>
               <Input
-                name={`modelTierOutputPrice-${index}`}
+                name={`${namePrefix}TierOutputPrice-${index}`}
                 inputMode="decimal"
                 value={tier.output}
                 onChange={(e) => patch(index, 'output', e.target.value)}
@@ -75,7 +84,7 @@ export function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onCha
             <TextField>
               <Label>{t('settings.model.cachePrice')}</Label>
               <Input
-                name={`modelTierCacheReadPrice-${index}`}
+                name={`${namePrefix}TierCacheReadPrice-${index}`}
                 inputMode="decimal"
                 value={tier.cacheRead}
                 onChange={(e) => patch(index, 'cacheRead', e.target.value)}
@@ -86,7 +95,7 @@ export function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onCha
             <TextField>
               <Label>{t('settings.model.cacheWritePrice')}</Label>
               <Input
-                name={`modelTierCacheWritePrice-${index}`}
+                name={`${namePrefix}TierCacheWritePrice-${index}`}
                 inputMode="decimal"
                 value={tier.cacheWrite}
                 onChange={(e) => patch(index, 'cacheWrite', e.target.value)}

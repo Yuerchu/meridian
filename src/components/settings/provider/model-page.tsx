@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Description, Disclosure, Input, Label, Switch, TextField } from '@/components/base'
 import { api } from '@/api'
@@ -117,6 +117,15 @@ function ModelConfigEditor({
   // Open when there is something in it, so a tiered model does not look
   // single-priced until someone thinks to expand a collapsed section.
   const [showTiers, setShowTiers] = useState(tiers.length > 0)
+  const [initialOverrideTiers] = useState(() => {
+    try {
+      return { values: tiersFrom(existing?.pricing_tiers ?? []), error: null as string | null }
+    } catch (error) {
+      return { values: [] as TierDraft[], error: error instanceof Error ? error.message : String(error) }
+    }
+  })
+  const [overrideTiers, setOverrideTiers] = useState<TierDraft[]>(initialOverrideTiers.values)
+  const [showOverrideTiers, setShowOverrideTiers] = useState(overrideTiers.length > 0)
 
   const [showCaps, setShowCaps] = useState(false)
   const [efforts, setEfforts] = useState<ThinkingEffort[]>([])
@@ -150,7 +159,10 @@ function ModelConfigEditor({
   const [overrideCacheWrite, setOverrideCacheWrite] = useState(
     existing?.cache_write_price == null ? '' : assertDecimal38_18(existing.cache_write_price),
   )
-  const [priceError, setPriceError] = useState<string | null>(initialTiers.error)
+  // Either stored tier table can be unreadable, and a decode failure is an
+  // error rather than an empty table — the same rule the backend keeps. The
+  // profile's is reported first because it is the one almost every row has.
+  const [priceError, setPriceError] = useState<string | null>(initialTiers.error ?? initialOverrideTiers.error)
   // Which price boxes the last save attempt refused. The pair rule fails on a
   // field the reader may have scrolled past, so the box is marked and brought
   // into view rather than named only in a sentence under the button.
@@ -179,16 +191,39 @@ function ModelConfigEditor({
     }
   }, [caps, existing])
 
-  // Seed the override editor from the *resolved* capabilities so the user edits
-  // a diff of reality rather than a blank slate.
+  /**
+   * Show one description's capability patch.
+   *
+   * The efforts list is seeded from the *resolved* capabilities so the user
+   * edits a diff of reality rather than a blank slate; the two tri-states come
+   * from the patch itself, because `auto` and an explicit value are what they
+   * exist to tell apart.
+   *
+   * Called from two places, and it has to be: the picker below replaces every
+   * other field with the chosen description's, and `buildOverrides` starts
+   * from that description's own map and then *deletes* every key this form
+   * reports as `auto`. Left seeded from the description the page opened on, a
+   * switch to another one saves it with its own overrides removed — which is
+   * exactly the "silently rewrite what three other providers read" the
+   * picker's note promises not to do.
+   */
+  const showCapabilities = useCallback(
+    (saved: ProviderCapabilityOverrides | null | undefined) => {
+      const patch = saved ?? {}
+      setEfforts(
+        patch.supported_efforts ?? (caps ? EFFORT_LADDER.filter((e) => caps.supported_efforts.includes(e)) : []),
+      )
+      effortsDirty.current = patch.supported_efforts !== undefined
+      setCapThinking(triFrom(patch.supports_thinking))
+      setCapFast(triFrom(patch.supports_fast))
+    },
+    [caps],
+  )
+
   useEffect(() => {
     if (!caps) return
-    const saved = profile?.capability_overrides ?? {}
-    setEfforts(EFFORT_LADDER.filter((e) => caps.supported_efforts.includes(e)))
-    effortsDirty.current = saved.supported_efforts !== undefined
-    setCapThinking(triFrom(saved.supports_thinking))
-    setCapFast(triFrom(saved.supports_fast))
-  }, [caps, profile])
+    showCapabilities(profile?.capability_overrides)
+  }, [caps, profile, showCapabilities])
 
   const profileOptions = useMemo(
     () => [
@@ -221,10 +256,15 @@ function ModelConfigEditor({
     if (next === NEW_PROFILE) {
       setProfileId(null)
       setProfileName(modelId)
+      // A description that does not exist yet carries no patch. Leaving the
+      // old one's tri-states in place would pin the new description with
+      // overrides nobody chose for it.
+      showCapabilities(null)
       return
     }
     const chosen = profiles.find((candidate) => candidate.id === next)
     if (!chosen) return
+    showCapabilities(chosen.capability_overrides)
     setProfileId(chosen.id)
     setProfileName(chosen.name)
     setContextWindow(chosen.context_window.toString())
@@ -323,6 +363,22 @@ function ModelConfigEditor({
       refuse(t('settings.model.pricePairError'), [overrideIn == null ? 'overrideInput' : 'overrideOutput'])
       return
     }
+    // And the same tier rules, on this provider's own rates. Tiers replace a
+    // base rate above a threshold, so without one underneath them there is
+    // nothing for them to replace.
+    let overridePriceTiers: PriceTier[] = []
+    if (overridesPricing) {
+      try {
+        overridePriceTiers = tiersTo(overrideTiers)
+      } catch (error) {
+        refuse(error instanceof Error ? error.message : String(error), [])
+        return
+      }
+      if (overridePriceTiers.length > 0 && overrideIn == null) {
+        refuse(t('settings.model.tierNeedsBaseError'), ['overrideInput', 'overrideOutput'])
+        return
+      }
+    }
     const prices = {
       input_price: input,
       output_price: output,
@@ -356,7 +412,11 @@ function ModelConfigEditor({
         output_price: overrideOut,
         cache_read_price: overridesPricing ? (parsed.overrideCache ?? null) : null,
         cache_write_price: overridesPricing ? (parsed.overrideCacheWrite ?? null) : null,
-        pricing_tiers: [],
+        // Blank with the switch off, like the four rates above it. Overriding
+        // takes the whole rate set rather than filling blanks in from the
+        // profile, so a relay with its own long-context threshold has to be
+        // able to say so here — sending `[]` unconditionally dropped it.
+        pricing_tiers: overridePriceTiers,
         server_tool_price: parsed.serverTool ?? null,
         // What the user asked for, not what is currently supported. Filtering here
         // against `caps` looked like defence and was a way to lose the setting:
@@ -655,6 +715,36 @@ function ModelConfigEditor({
    * margin is the case it exists for; everything else is the model's, and
    * saying so twice is how the two come to disagree.
    */
+  const overrideTierSection = (
+    <Disclosure
+      data-slot="override-price-tier-section"
+      className="px-4 pb-3"
+      isExpanded={showOverrideTiers}
+      onExpandedChange={setShowOverrideTiers}
+    >
+      <Disclosure.Heading>
+        <Disclosure.Trigger className="inline-flex items-center gap-1 rounded-md text-caption-1-regular text-text-secondary transition-colors outline-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring/50">
+          {overrideTiers.length > 0
+            ? t('settings.model.priceTiersCount', { count: overrideTiers.length })
+            : t('settings.model.priceTiers')}
+          <Disclosure.Indicator className="size-3.5" />
+        </Disclosure.Trigger>
+      </Disclosure.Heading>
+      <Disclosure.Content className="min-h-0 w-full">
+        <Disclosure.Body className="pt-1">
+          <PriceTierEditor
+            namePrefix="modelOverride"
+            tiers={overrideTiers}
+            onChange={(next) => {
+              setOverrideTiers(next)
+              setDirty(true)
+            }}
+          />
+        </Disclosure.Body>
+      </Disclosure.Content>
+    </Disclosure>
+  )
+
   const providerSection = (
     <SettingsSection label={t('settings.model.sectionThisProvider')}>
       <SettingsRow label={t('settings.model.overridePricing')} description={t('settings.model.overridePricingHint')}>
@@ -698,6 +788,7 @@ function ModelConfigEditor({
             )}
           </SettingsRow>
         ))}
+      {overridesPricing && overrideTierSection}
     </SettingsSection>
   )
 

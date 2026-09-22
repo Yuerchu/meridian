@@ -420,6 +420,145 @@ describe('ProviderSettings list/detail navigation', () => {
   })
 
   /**
+   * A page returned to shows what is true now, not what was true when it was
+   * covered.
+   *
+   * The stack keeps every level mounted, so the list behind a provider page is
+   * the same React tree it was before — its mount effect will not run again,
+   * and nothing else was ever going to tell it. Deleting a provider therefore
+   * used to unwind onto a list still showing the row that no longer exists,
+   * and pressing it opened a page for a deleted id.
+   */
+  it('drops a deleted provider from the list it unwinds onto', async () => {
+    const user = userEvent.setup()
+    mockApi.deleteProvider.mockResolvedValue(undefined as never)
+    render(<ProviderSettings />)
+    await openFirstProvider(user)
+    expect(await screen.findByRole('heading', { name: 'Provider One' })).toBeInTheDocument()
+
+    // What the list will answer with once the delete has happened.
+    mockApi.listProviders.mockResolvedValue([makeProvider('p2', 'Provider Two')])
+    await user.click(screen.getByRole('button', { name: i18n.t('settings.provider.deleteProvider') }))
+    await user.click(await screen.findByRole('button', { name: i18n.t('common.confirm') }))
+
+    await waitFor(() => expect(screen.queryByRole('option', { name: 'Provider One' })).not.toBeInTheDocument())
+    expect(screen.getByRole('option', { name: 'Provider Two' })).toBeInTheDocument()
+  })
+
+  /**
+   * The same rule one level down: a model given a price for the first time
+   * changes a chip on the page underneath, which has been mounted throughout.
+   */
+  it('refreshes the model table when a model page is left', async () => {
+    const user = userEvent.setup()
+    mockApi.getProviderKeyExists.mockResolvedValue(true)
+    mockApi.fetchProviderModels.mockResolvedValue([{ id: 'gpt-5.6', name: 'gpt-5.6' }])
+    mockApi.listModelConfigs.mockResolvedValue([])
+    mockApi.getModelConfig.mockResolvedValue(null)
+    mockApi.listModelProfiles.mockResolvedValue([])
+    mockApi.saveModelConfig.mockResolvedValue(undefined as never)
+    render(<ProviderSettings />)
+    await openFirstProvider(user)
+    await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
+    expect(await screen.findByText(i18n.t('settings.provider.modelNotConfigured'))).toBeInTheDocument()
+
+    await openModel(user, 'gpt-5.6')
+    const input = await screen.findByRole('textbox', { name: i18n.t('settings.model.inputPrice') })
+    fireEvent.change(input, { target: { value: '1.25' } })
+    fireEvent.change(screen.getByRole('textbox', { name: i18n.t('settings.model.outputPrice') }), {
+      target: { value: '10' },
+    })
+    // What the provider page will read once the save has landed.
+    mockApi.listModelConfigs.mockResolvedValue([
+      modelConfig({ id: 'config-1', model_id: 'gpt-5.6', input_price: decimal('1.25'), output_price: decimal('10') }),
+    ])
+    await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
+    await waitFor(() => expect(mockApi.saveModelConfig).toHaveBeenCalled())
+
+    await user.click(screen.getByRole('button', { name: i18n.t('common.back') }))
+    expect(await screen.findByText(i18n.t('settings.provider.modelPriced'))).toBeInTheDocument()
+  })
+
+  /**
+   * Pointing at a description must not quietly strip its capability patch.
+   *
+   * `buildOverrides` starts from the chosen description's own map and then
+   * *deletes* every key the form reports as `auto`. The form is seeded from
+   * the description the page opened on, so without replaying that seeding at
+   * the moment of the switch, choosing a description with
+   * `{supports_thinking: false}` saves it back with the key gone — and three
+   * other providers reading it silently start offering reasoning again.
+   *
+   * The failure is invisible from this page: the save succeeds, the window and
+   * the prices are visibly correct, and nothing on screen ever mentioned the
+   * capability the switch erased.
+   */
+  it('replays the capability patch of the description it is pointed at', async () => {
+    const user = userEvent.setup()
+    mockApi.getProviderKeyExists.mockResolvedValue(true)
+    mockApi.fetchProviderModels.mockResolvedValue([{ id: 'relayed', name: 'relayed' }])
+    mockApi.getModelConfig.mockResolvedValue(null)
+    mockApi.getProviderCapabilities.mockResolvedValue({
+      supports_tools: true,
+      supports_streaming_tools: true,
+      supports_thinking: true,
+      supports_thinking_off: true,
+      supports_images: false,
+      max_context_tokens: 128000,
+      max_output_tokens: 32000,
+      supports_pdf: false,
+      supports_temperature: true,
+      supports_top_p: true,
+      max_temperature: 2,
+      thinking_style: 'effort_only',
+      supported_efforts: ['low', 'medium', 'high'],
+      default_effort: 'medium',
+      supports_fast: false,
+      supports_verbosity: false,
+      default_verbosity: null,
+      server_tools: [],
+    })
+    mockApi.listModelProfiles.mockResolvedValue([
+      {
+        id: 'prof-quiet',
+        name: 'Quiet model',
+        context_window: 200000,
+        compact_threshold: 150000,
+        max_output_tokens: 64000,
+        input_price: decimal('3'),
+        output_price: decimal('15'),
+        cache_read_price: null,
+        cache_write_price: null,
+        pricing_tiers: [],
+        capability_overrides: { supports_thinking: false, supported_efforts: ['low'] },
+        model_count: 3,
+        created_at: 0,
+        updated_at: 0,
+      },
+    ])
+    mockApi.saveModelConfig.mockResolvedValue(undefined as never)
+    render(<ProviderSettings />)
+    await openFirstProvider(user)
+    await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
+    await openModel(user, 'relayed')
+
+    await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.model.useProfile')) }))
+    await user.click(await screen.findByRole('option', { name: 'Quiet model' }))
+    await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
+
+    await waitFor(() =>
+      expect(mockApi.saveModelConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          profile: expect.objectContaining({
+            id: 'prof-quiet',
+            capability_overrides: { supports_thinking: false, supported_efforts: ['low'] },
+          }),
+        }),
+      ),
+    )
+  })
+
+  /**
    * The point of the whole split: a second provider reaching the same model
    * points at the description that already exists instead of typing the window
    * and the prices again.
@@ -511,6 +650,59 @@ describe('ProviderSettings list/detail navigation', () => {
     await waitFor(() =>
       expect(mockApi.saveModelConfig).toHaveBeenCalledWith(
         expect.objectContaining({ overrides_pricing: true, input_price: '9', output_price: '18' }),
+      ),
+    )
+  })
+
+  /**
+   * A relay that charges its own rates may also have its own long-context
+   * threshold, and overriding takes the whole rate set rather than filling
+   * blanks in from the description. The editor sent `pricing_tiers: []`
+   * unconditionally, so those rates were dropped on every save with no way to
+   * enter them — the backend and the DTO had supported them all along.
+   */
+  it('sends this provider own long-context tiers when the override is on', async () => {
+    const user = userEvent.setup()
+    mockApi.getProviderKeyExists.mockResolvedValue(true)
+    mockApi.fetchProviderModels.mockResolvedValue([{ id: 'relayed', name: 'relayed' }])
+    mockApi.getModelConfig.mockResolvedValue(null)
+    mockApi.listModelProfiles.mockResolvedValue([])
+    mockApi.saveModelConfig.mockResolvedValue(undefined as never)
+    render(<ProviderSettings />)
+    await openFirstProvider(user)
+    await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
+    await openModel(user, 'relayed')
+
+    await user.click(await screen.findByRole('switch', { name: i18n.t('settings.model.overridePricing') }))
+    const inputs = screen.getAllByRole('textbox', { name: i18n.t('settings.model.inputPrice') })
+    fireEvent.change(inputs[1], { target: { value: '9' } })
+    fireEvent.change(screen.getAllByRole('textbox', { name: i18n.t('settings.model.outputPrice') })[1], {
+      target: { value: '18' },
+    })
+
+    // The override section has its own tier table; the profile's is a separate
+    // disclosure above it, which is why both are addressed by index.
+    const tierSections = screen.getAllByRole('button', { name: i18n.t('settings.model.priceTiers') })
+    await user.click(tierSections[tierSections.length - 1])
+    const addButtons = await screen.findAllByRole('button', { name: i18n.t('settings.model.addTier') })
+    await user.click(addButtons[addButtons.length - 1])
+    fireEvent.change(screen.getByRole('textbox', { name: i18n.t('settings.model.tierThreshold') }), {
+      target: { value: '200000' },
+    })
+    const tierInputs = screen.getAllByRole('textbox', { name: i18n.t('settings.model.inputPrice') })
+    fireEvent.change(tierInputs[tierInputs.length - 1], { target: { value: '18' } })
+    const tierOutputs = screen.getAllByRole('textbox', { name: i18n.t('settings.model.outputPrice') })
+    fireEvent.change(tierOutputs[tierOutputs.length - 1], { target: { value: '36' } })
+
+    await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
+    await waitFor(() =>
+      expect(mockApi.saveModelConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          overrides_pricing: true,
+          pricing_tiers: [
+            expect.objectContaining({ min_prompt_tokens: 200000, input_price: '18', output_price: '36' }),
+          ],
+        }),
       ),
     )
   })

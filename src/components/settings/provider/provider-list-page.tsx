@@ -7,15 +7,21 @@ import { api } from '@/api'
 import type { ProviderInfoResponse } from '@/types'
 import { SettingsSkeleton } from '../primitives'
 import { SettingsPage } from '../settings-page'
+import { useSettingsResume } from '../settings-stack'
 import { defaultUrlFor, loadProviderCatalog } from './catalog'
 
 /**
  * Every provider, and the way into one.
  *
- * Refetches on mount, which is every time the stack comes back to it — so a
- * rename, a delete or a provider created on another device is picked up with no
- * callback threaded down and no cache to invalidate. That is the whole reason
- * the pages fetch by id rather than being handed rows.
+ * Fetches on mount and again whenever the stack comes back to it
+ * (`useSettingsResume`) — so a rename, a delete or a provider created on
+ * another device is picked up with no callback threaded down and no cache to
+ * invalidate. That is the whole reason the pages fetch by id rather than being
+ * handed rows.
+ *
+ * The second half is not decoration. Levels stay mounted, so this component is
+ * never remounted by a `pop`; without the resume, a delete unwound onto a list
+ * still showing the row that no longer exists.
  *
  * Nothing is auto-selected. The list used to open its first row on a wide
  * screen because the second column would otherwise be empty; there is no second
@@ -40,6 +46,10 @@ export function ProviderListPage({ onOpen }: { onOpen: (providerId: string) => v
       .catch((reason) => setLoadError(String(reason)))
       .finally(() => setLoading(false))
   }, [refresh])
+
+  // Coming back from a provider page: it may have been renamed or deleted, and
+  // this list has been mounted the whole time it was covered.
+  useSettingsResume(() => void refresh().catch((reason) => setLoadError(String(reason))))
 
   /**
    * A new row starts as the first vendor in the catalog, prefilled from it and
