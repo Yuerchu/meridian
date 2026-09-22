@@ -7,8 +7,8 @@ function validate(command: string, value: unknown, args?: Record<string, unknown
 
 describe('invoke response schema', () => {
   it('covers every invoke declared by api.ts', () => {
-    expect(INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT).toBe(213)
-    expect(Object.keys(invokeResponseSchemaDocument.commands)).toHaveLength(213)
+    expect(INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT).toBe(224)
+    expect(Object.keys(invokeResponseSchemaDocument.commands)).toHaveLength(224)
     expect(() => validate('toString', 'prototype value')).toThrow('No response schema is registered')
   })
 

@@ -166,7 +166,10 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          # Windows adds the 32-bit target for the input method's TSF DLL:
+          # 32-bit apps load a 32-bit text service, and Tauri's own build
+          # has one target. See the Packaging section in CLAUDE.md.
+          targets: ${{ matrix.target }}${{ matrix.os == 'windows-latest' && ',i686-pc-windows-msvc' || '' }}
 
       - uses: swatinem/rust-cache@v2
         with:
@@ -199,9 +202,30 @@ jobs:
         shell: bash
         run: bash .github/scripts/require-sherpa-libs.sh
 
+      # The input method is two workspace members the app does not depend on,
+      # built before the app so `build.rs` can stage them under
+      # `resources/ime/`. Its own target directory under the cached one: the
+      # MSI bundler ships every `*.dll` beside the main binary, so an
+      # unversioned copy in the app's directory would be packaged a second
+      # time. The x86 DLL is the one thing here Tauri's build cannot produce:
+      # a second target in the same run.
+      - name: Build IME (x64)
+        if: matrix.os == 'windows-latest'
+        working-directory: src-tauri
+        run: cargo build --release --target-dir target/ime --target ${{ matrix.target }} -p meridian-ime-tsf -p meridian-ime-host
+
+      - name: Build IME TSF (x86)
+        if: matrix.os == 'windows-latest'
+        working-directory: src-tauri
+        run: cargo build --release --target-dir target/ime --target i686-pc-windows-msvc -p meridian-ime-tsf
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Turns a missing input method artifact from a build-script warning
+          # into a failure, so a Windows installer without it cannot be
+          # released by accident. Empty elsewhere, where there is none.
+          MERIDIAN_IME_REQUIRED: ${{ matrix.os == 'windows-latest' && '1' || '' }}
           # linuxdeploy resolves the binary's dependencies against the copy it
           # has already placed in the AppDir, where `$ORIGIN` — the rpath
           # sherpa-onnx-sys emits — points at a directory holding only the
@@ -223,7 +247,12 @@ jobs:
           # failure there arrives as the bare string "failed to run
           # linuxdeploy" with the reason thrown away. Any other level takes the
           # branch that reports it (`linuxdeploy.rs`, `run_appimage_bundler`).
-          args: --target ${{ matrix.target }}${{ matrix.os == 'ubuntu-latest' && ' --verbose' || '' }}
+          #
+          # `--config src-tauri/tauri.ime.conf.json` on Windows only: it adds
+          # the input method's resources and NSIS hooks and switches the
+          # installer to perMachine, which the TSF registration needs. Linux
+          # is unchanged.
+          args: --target ${{ matrix.target }}${{ matrix.os == 'ubuntu-latest' && ' --verbose' || '' }}${{ matrix.os == 'windows-latest' && ' --config src-tauri/tauri.ime.conf.json' || '' }}
           tauriScript: pnpm tauri
 
   build-android:

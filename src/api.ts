@@ -75,6 +75,15 @@ import type {
   JournalVersionContentResponse,
   JournalVersionListResponse,
   ListenStatusResponse,
+  ImeConfigInfoResponse,
+  ImeConfigUpdateRequest,
+  ImeDictionaryImportReportResponse,
+  ImeDictionaryImportRequest,
+  ImeDictionaryListResponse,
+  ImeDictionaryRemoveRequest,
+  ImeDictionaryToggleRequest,
+  ImeProfileUpdateRequest,
+  ImeStatusInfoResponse,
   LogFileListResponse,
   LogLevelUpdateRequest,
   LogExportRequest,
@@ -769,6 +778,35 @@ export const api = {
 
   // The addresses another device could dial, so nobody has to read `ipconfig`.
   getListenAddresses: () => invoke<ListenAddressesResponse>('get_listen_addresses'),
+
+  // Input method (Windows). All of it is local: it configures this machine's
+  // keyboard, and a remote client is refused by the dispatcher.
+  getImeStatus: () => invoke<ImeStatusInfoResponse>('get_ime_status'),
+
+  getImeConfig: () => invoke<ImeConfigInfoResponse>('get_ime_config'),
+
+  saveImeConfig: (request: ImeConfigUpdateRequest) => invoke<ImeConfigInfoResponse>('save_ime_config', { request }),
+
+  listImeDictionaries: () => invoke<ImeDictionaryListResponse>('list_ime_dictionaries'),
+
+  importImeDictionary: (request: ImeDictionaryImportRequest) =>
+    invoke<ImeDictionaryImportReportResponse>('import_ime_dictionary', { request }),
+
+  setImeDictionaryEnabled: (request: ImeDictionaryToggleRequest) =>
+    invoke<ImeDictionaryListResponse>('set_ime_dictionary_enabled', { request }),
+
+  removeImeDictionary: (request: ImeDictionaryRemoveRequest) =>
+    invoke<ImeDictionaryListResponse>('remove_ime_dictionary', { request }),
+
+  startImeHost: () => invoke<ImeStatusInfoResponse>('start_ime_host'),
+
+  stopImeHost: () => invoke<ImeStatusInfoResponse>('stop_ime_host'),
+
+  setImeProfileEnabled: (request: ImeProfileUpdateRequest) =>
+    invoke<ImeStatusInfoResponse>('set_ime_profile_enabled', { request }),
+
+  // One UAC prompt: `regsvr32` on the DLL.
+  registerIme: () => invoke<ImeStatusInfoResponse>('register_ime'),
 
   // Prompt Templates
   listTemplateVariables: () => invoke<TemplateVariableListResponse>('list_template_variables'),

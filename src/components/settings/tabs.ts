@@ -8,6 +8,7 @@ import {
   FaceSmile,
   LogoMcp,
   Flask,
+  Keyboard,
   Link,
   Microphone,
   ShieldCheck,
@@ -46,6 +47,7 @@ export type SettingsTab =
   | 'hooks'
   | 'acp'
   | 'remote'
+  | 'ime'
   | 'general'
   | 'developer'
   | 'about'
@@ -73,6 +75,7 @@ const TAB_DEFS: Record<SettingsTab, Omit<SettingsTabDef, 'id'>> = {
   hooks: { labelKey: 'settings.hooks', icon: Link },
   acp: { labelKey: 'settings.acp', icon: Terminal },
   remote: { labelKey: 'settings.remote', icon: Smartphone },
+  ime: { labelKey: 'settings.ime', icon: Keyboard },
   general: { labelKey: 'settings.general', icon: Sliders },
   developer: { labelKey: 'settings.developer', icon: Flask },
   about: { labelKey: 'settings.about', icon: CircleInfo },
@@ -129,8 +132,9 @@ export const settingsTabGroups: readonly SettingsTabGroupDef[] = [
     // OneBot, the hook endpoint and remote access are the same decision made
     // three times; somebody asking "what is this machine serving" should find
     // them together. `acp` serves nothing but belongs beside the hook gates,
-    // which are about the same other coding agent.
-    tabs: ['voice', 'voiceCorpus', 'onebot', 'hooks', 'acp', 'remote'],
+    // which are about the same other coding agent. `ime` sits by voice: both
+    // are ways of typing, and the input method is a service outside this window.
+    tabs: ['voice', 'voiceCorpus', 'ime', 'onebot', 'hooks', 'acp', 'remote'],
   },
   { id: 'app', labelKey: 'settings.group.app', tabs: ['general', 'developer', 'about'] },
 ]
@@ -187,10 +191,19 @@ const DESKTOP_ONLY: SettingsTab[] = ['onebot', 'hooks', 'acp', 'remote']
  */
 const ANDROID_ONLY_HIDDEN: SettingsTab[] = ['voiceCorpus']
 
+/**
+ * The input method is a Windows text service; there is nothing to show for it
+ * anywhere else, and a remote client is looking at a desktop whose keyboard is
+ * not the one in its hand. `platform` is null for the first frame and that
+ * frame shows the row, for the reason given above.
+ */
+const WINDOWS_ONLY: SettingsTab[] = ['ime']
+
 function hiddenTabs(platform: string | null): Set<SettingsTab> {
   const hidden = new Set<SettingsTab>()
   if (platform === 'android' || !can.manageServers) DESKTOP_ONLY.forEach((id) => hidden.add(id))
   if (platform === 'android' && !isRemote) ANDROID_ONLY_HIDDEN.forEach((id) => hidden.add(id))
+  if ((platform !== null && platform !== 'windows') || !can.manageServers) WINDOWS_ONLY.forEach((id) => hidden.add(id))
   return hidden
 }
 

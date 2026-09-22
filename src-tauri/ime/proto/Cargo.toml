@@ -1,0 +1,12 @@
+[package]
+name = "meridian-ime-proto"
+version = "0.1.0"
+edition = "2024"
+license = "LicenseRef-Proprietary-Yuerchu"
+authors = ["于小丘 Yuerchu <admin@yuxiaoqiu.cn>"]
+description = "Meridian 输入法 TSF 文本服务与宿主进程之间的线协议"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
