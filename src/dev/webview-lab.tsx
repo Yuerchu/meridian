@@ -571,7 +571,7 @@ export default function WebViewLab() {
               </Select>
             </div>
 
-            {/* 与聊天里的折叠卡片同类，foxlinepro_dash 在这上面踩过虚拟滚动的坑 */}
+            {/* 与聊天里的折叠卡片同类，之前在虚拟滚动上踩过坑 */}
             <Disclosure>
               <Disclosure.Heading>
                 <Disclosure.Trigger className="flex w-full items-center gap-2">

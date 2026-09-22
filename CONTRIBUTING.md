@@ -1,4 +1,16 @@
-# 编码规范
+# Contributing to Meridian
+
+## License & CLA
+
+Meridian is dual-licensed under **AGPL-3.0-or-later** and a commercial
+license. See [LICENSING.md](LICENSING.md) for details.
+
+By submitting a pull request you agree to the
+[Contributor License Agreement](.github/CLA.md). This grants the project
+the right to distribute your contribution under both the AGPL and commercial
+licenses. You retain copyright over your work.
+
+## 编码规范
 
 规范尽量做成机器可验证的:能被工具管住的都在工具配置里,这份文档只说工具本身
 和少数管不住的约定。提交钩子在 `pnpm install` 后自动生效(husky),CI 上同样的

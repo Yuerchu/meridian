@@ -92,11 +92,10 @@ describe('tool panels', () => {
     expect(panel(container).textContent).not.toMatch(/exit \d/)
   })
 
-  /// The other screenshot: `C:/Users/Administrator/Documents/Code/foxline-pro-
-  /// backend-server/.claude/worktrees/feat-ttapi-suno-…` on a write waiting to
+  /// The other screenshot: a deeply nested worktree path on a write waiting to
   /// be approved.
   it('shows a key waiting on a decision its whole path, unclamped', () => {
-    const path = '/home/me/Documents/Code/foxline-pro-backend-server/.claude/worktrees/feat-ttapi/ttapi/__init__.py'
+    const path = '/home/user/projects/acme-backend/.worktrees/feat-api/api/__init__.py'
     const { container } = inBubble(<ToolCallBlock data={call('write_file', { path, content: 'x' }, 'pending')} />)
     const key = container.querySelector<HTMLElement>('[data-slot="chat-tool-trigger"]')!
     const arg = key.querySelector<HTMLElement>('[data-slot="tool-arg"]')!

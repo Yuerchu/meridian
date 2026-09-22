@@ -12,7 +12,7 @@ Multi-provider AI desktop client with coding agent capabilities.
 | Backend | Rust (tokio async runtime) |
 | AI Streaming | reqwest + eventsource-stream (SSE) |
 | Database | SQLite (planned) |
-| License | Proprietary (LicenseRef-Proprietary-Yuerchu) |
+| License | AGPL-3.0-or-later (dual licensing available) |
 
 ## Architecture
 

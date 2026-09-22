@@ -39,7 +39,7 @@ import type {
  * until three of them are labelled at once, at which point the row is doing the
  * job of a menu without being one.
  *
- * The shape is borrowed from the generator's model picker in foxlinepro_dash: a
+ * The shape is borrowed from an earlier project's model picker: a
  * single popover split into a list on the left and a detail column on the right
  * that is driven by whichever row is hovered. Notably *not* nested submenus —
  * one popover means one thing to dismiss, one place to look, and no stack of

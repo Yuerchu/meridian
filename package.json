@@ -40,7 +40,7 @@
   "engines": {
     "node": ">=22.18"
   },
-  "license": "LicenseRef-Proprietary-Yuerchu",
+  "license": "AGPL-3.0-or-later",
   "author": "于小丘 Yuerchu <admin@yuxiaoqiu.cn>",
   "packageManager": "pnpm@10.18.2",
   "pnpm": {
