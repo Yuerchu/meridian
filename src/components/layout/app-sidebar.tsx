@@ -71,9 +71,8 @@ import type { ConversationInfoResponse, ProjectInfoResponse } from '@/types'
 import type { Page } from './shell-props'
 // Not from the settings barrel: this is a value import, and the barrel would
 // pull the whole lazily-loaded settings chunk into the main bundle.
-import { visibleSettingsTabs, type SettingsTab } from '@/components/settings/tabs'
+import { visibleSettingsTabGroups, type SettingsTab } from '@/components/settings/tabs'
 import { usePlatform } from '@/hooks/use-platform'
-import { useHistoryLevel } from '@/hooks/use-history-level'
 import { useRelativeTime } from '@/hooks/use-relative-time'
 import { useConfirm } from '@/hooks/use-confirm'
 import { isCoarsePointer } from '@/hooks/use-coarse-pointer'
@@ -794,7 +793,7 @@ export function AppSidebar({
    * that works, which is what this used to do and called conservative.
    */
   const canHostSessions = platform !== 'android' || isRemote
-  const { isMobileOpen, setMobileOpen, isOpen, isMobile, collapsible } = useSidebar()
+  const { setMobileOpen, isOpen, isMobile, collapsible } = useSidebar()
   // The rail test: the desktop panel is an icon rail only
   // under `collapsible="icon"`, and the mobile sheet is never one.
   const isIconCollapsed = collapsible === 'icon' && !isMobile && !isOpen
@@ -870,10 +869,9 @@ export function AppSidebar({
     })
   }, [])
 
-  // The sheet is a level of its own, so the back key closes it before it
-  // reaches whatever is behind. A no-op on a desktop, where the panel never
-  // opens as a sheet in the first place.
-  useHistoryLevel(isMobileOpen, () => setMobileOpen(false))
+  // The sheet is a level of its own, claimed by `Sheet` itself — see
+  // `base/sheet.tsx`. A no-op on a desktop, where the panel never opens as a
+  // sheet in the first place.
 
   /**
    * Wraps a row's action so that the mobile sheet gets out of the way.
@@ -1115,7 +1113,7 @@ export function AppSidebar({
           archivedConversations.find((c) => c.id === renameTarget?.id)
         )?.title ?? '')
 
-  const settingsSide = (prefix: string) => (
+  const settingsSide = (prefix: string, collapsed: boolean) => (
     <>
       <Sidebar.Header>
         <Sidebar.Menu aria-label={t('settings.backToApp')}>
@@ -1128,26 +1126,35 @@ export function AppSidebar({
         </Sidebar.Menu>
       </Sidebar.Header>
 
+      {/* One `Sidebar.Menu` per group rather than one for all eighteen: each is
+          a React Aria `Tree`, so the arrow keys walk a group and stop at its
+          end, which is the same as the chat side. Item ids stay prefixed,
+          because both sides are rendered twice — panel and mobile sheet — and
+          reconciling a tree into one with different ids throws. */}
       <Sidebar.Content>
-        <Sidebar.Group>
-          <Sidebar.GroupLabel>{t('settings.title')}</Sidebar.GroupLabel>
-          <Sidebar.Menu aria-label={t('settings.title')}>
-            {visibleSettingsTabs(platform).map((tab) => (
-              <Sidebar.MenuItem
-                key={tab.id}
-                id={`${prefix}${tab.id}`}
-                textValue={t(tab.labelKey)}
-                isCurrent={settingsTab === tab.id}
-                onAction={() => changeSettingsTab(tab.id)}
-              >
-                <Sidebar.MenuIcon>
-                  <tab.icon />
-                </Sidebar.MenuIcon>
-                <Sidebar.MenuLabel>{t(tab.labelKey)}</Sidebar.MenuLabel>
-              </Sidebar.MenuItem>
-            ))}
-          </Sidebar.Menu>
-        </Sidebar.Group>
+        {visibleSettingsTabGroups(platform).map(({ group, tabs }) => (
+          <Sidebar.Group key={group.id}>
+            {/* The rail has no room for a heading, and the icons are the
+                destinations there. Same call the chat side makes. */}
+            {!collapsed && <Sidebar.GroupLabel>{t(group.labelKey)}</Sidebar.GroupLabel>}
+            <Sidebar.Menu aria-label={t(group.labelKey)}>
+              {tabs.map((tab) => (
+                <Sidebar.MenuItem
+                  key={tab.id}
+                  id={`${prefix}${tab.id}`}
+                  textValue={t(tab.labelKey)}
+                  isCurrent={settingsTab === tab.id}
+                  onAction={() => changeSettingsTab(tab.id)}
+                >
+                  <Sidebar.MenuIcon>
+                    <tab.icon />
+                  </Sidebar.MenuIcon>
+                  <Sidebar.MenuLabel>{t(tab.labelKey)}</Sidebar.MenuLabel>
+                </Sidebar.MenuItem>
+              ))}
+            </Sidebar.Menu>
+          </Sidebar.Group>
+        ))}
       </Sidebar.Content>
     </>
   )
@@ -1461,7 +1468,7 @@ export function AppSidebar({
   // never need to fold away.
   const side = (prefix: string, collapsed: boolean) => (
     <Fragment key={page === 'settings' ? 'settings' : 'chat'}>
-      {page === 'settings' ? settingsSide(prefix) : chatSide(prefix, collapsed)}
+      {page === 'settings' ? settingsSide(prefix, collapsed) : chatSide(prefix, collapsed)}
     </Fragment>
   )
 

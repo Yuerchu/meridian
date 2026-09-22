@@ -5,7 +5,7 @@ import { ArrowLeft } from '@gravity-ui/icons'
 
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useHistoryLevel } from '@/hooks/use-history-level'
-import { SettingsRow } from './primitives'
+import { SettingsNavRow } from './primitives'
 
 /**
  * A block of settings that is a section on a desktop and a screen on a phone.
@@ -59,7 +59,7 @@ export function SettingsDrilldown({
 
   return (
     <>
-      <SettingsRow label={title} value={summary} onClick={() => setOpen(true)} />
+      <SettingsNavRow label={title} value={summary} onPress={() => setOpen(true)} />
       <Modal.Backdrop isOpen={open} onOpenChange={setOpen}>
         <Modal.Container size="full">
           <Modal.Dialog data-slot="settings-drilldown-page" className="p-0">

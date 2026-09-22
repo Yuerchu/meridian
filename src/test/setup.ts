@@ -12,6 +12,11 @@ import { installResizeObserverStub } from './resize'
 vi.mock('@lobehub/icons', () => ({
   ModelIcon: ({ model }: { model?: string }) =>
     createElement('span', { 'data-slot': 'model-icon', 'data-model': model }),
+  ProviderIcon: ({ provider }: { provider?: string }) =>
+    createElement('span', { 'data-slot': 'provider-icon', 'data-provider': provider }),
+  // Three of the hundred and fifty, which is enough for the picker to have a
+  // list, a filter that excludes something, and a name to choose.
+  ModelProvider: { Anthropic: 'anthropic', OpenAI: 'openai', VertexAI: 'vertexai' },
 }))
 
 // jsdom ships neither observer. `message-scroller` uses both — an
@@ -47,6 +52,15 @@ installResizeObserverStub()
 // nothing here can.
 if (typeof Element.prototype.getAnimations !== 'function') {
   Element.prototype.getAnimations = () => []
+}
+
+// jsdom has `PointerEvent` but none of pointer capture. A sheet's drag handle
+// captures on pointerdown so a finger that slides off the pill keeps dragging;
+// here the capture is a no-op and `fireEvent` addresses the handle directly.
+if (typeof Element.prototype.setPointerCapture !== 'function') {
+  Element.prototype.setPointerCapture = () => {}
+  Element.prototype.releasePointerCapture = () => {}
+  Element.prototype.hasPointerCapture = () => false
 }
 
 // `useIsMobile` calls `matchMedia` and subscribes with `addEventListener`.

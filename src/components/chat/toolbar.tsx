@@ -213,7 +213,9 @@ export function MobileOptionsMenu({
             // whole reason the native bridge writes these variables. With
             // 3-button navigation that bar is 48dp of opaque buttons, so the
             // last row here was landing under it and could not be tapped.
-            className="max-h-[70vh] px-0 pt-2 pb-[max(1rem,var(--safe-bottom))]"
+            // No top padding of its own: `Sheet.Handle` is a 24px hit target
+            // now rather than a 4px pill, and supplies the breathing room.
+            className="max-h-[70vh] px-0 pb-[max(1rem,var(--safe-bottom))]"
           >
             <Sheet.Handle />
             <Sheet.Body className="text-text-primary">

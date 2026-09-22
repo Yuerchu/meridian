@@ -1,4 +1,4 @@
-import { ProviderSettings } from './provider-settings'
+import { ProviderSettings } from './provider'
 import { UsageSettings } from './usage-settings'
 import { AssistantSettings } from './assistant-settings'
 import { GeneralSettings } from './general-settings'
@@ -95,15 +95,22 @@ export default function SettingsPage({
   // where the 3-button bar moves to one edge.
   return (
     <div
-      data-slot="settings-page"
+      data-slot="settings-scroller"
       className="@container/settings h-full overflow-y-auto overscroll-contain pb-[var(--safe-bottom)] pl-[var(--safe-left)] pr-[var(--safe-right)]"
     >
       {/* Against the layer, not the window: this is the chat's width minus the
           sidebar, so a 769px window leaves 519px here and the roomier padding
           was taking 9% of it. The container is declared on the scroller above
           rather than here — a query resolves against an ancestor container, so
-          an element carrying both would look past its own. */}
-      <div data-slot="settings-panel" className="p-4 @2xl/settings:p-6">
+          an element carrying both would look past its own.
+
+          Centred, and capped once here rather than per panel. Left-aligned, a
+          narrow editor on a wide window is a strip against one edge with the
+          whole page empty beside it, and a table is a line of cells running
+          off towards the far side; `max-w-settings` is where a row stops
+          reading as a pair and starts reading as two things. Panels keep
+          their own narrower caps and centre inside this one. */}
+      <div data-slot="settings-panel" className="mx-auto w-full max-w-settings p-4 @2xl/settings:p-6">
         {panel}
       </div>
     </div>

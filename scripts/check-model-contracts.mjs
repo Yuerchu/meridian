@@ -410,9 +410,20 @@ requireRustFields('src-tauri/src/commands/tool_system.rs', 'ToolPresetCreateRequ
   tool_names: /^Vec<String>$/,
 })
 requireRustFields(entityResponseFile, 'ModelConfigInfoResponse', {
-  capability_overrides: /^Option<(?:[\w:]+::)*ProviderCapabilityOverrides>$/,
+  profile: /^ModelProfileInfoResponse$/,
+  overrides_pricing: /^bool$/,
   pricing_tiers: /^Vec<(?:[\w:]+::)*PriceTier>$/,
   server_tools: /^Option<Vec<(?:[\w:]+::)*ServerToolKind>>$/,
+  effective_pricing: /^ModelPricingInfoResponse$/,
+})
+// The model's own description, shared by every provider that reaches it.
+requireRustFields(entityResponseFile, 'ModelProfileInfoResponse', {
+  capability_overrides: /^Option<(?:[\w:]+::)*ProviderCapabilityOverrides>$/,
+  pricing_tiers: /^Vec<(?:[\w:]+::)*PriceTier>$/,
+  model_count: /^i64$/,
+})
+requireRustFields(entityResponseFile, 'ModelPricingInfoResponse', {
+  pricing_tiers: /^Vec<(?:[\w:]+::)*PriceTier>$/,
 })
 requireRustFields('src-tauri/crates/core/src/provider/mod.rs', 'ProviderCapabilities', {
   server_tools: /^Vec<ServerToolKind>$/,
@@ -423,11 +434,17 @@ requireRustFields(entityResponseFile, 'ProviderCapabilityOverrides', {
 requireRustFields('src-tauri/src/commands/model_config.rs', 'ModelConfigUpsertRequest', {
   provider_id: /^String$/,
   model_id: /^String$/,
-  display_name: /^RequiredNullable<String>$/,
+  profile: /^ModelProfileUpsertRequest$/,
+  overrides_pricing: /^bool$/,
+  pricing_tiers: /^Vec<(?:[\w:]+::)*PriceTier>$/,
+  server_tools: /^RequiredNullable<Vec<(?:[\w:]+::)*ServerToolKind>>$/,
+})
+requireRustFields('src-tauri/src/commands/model_config.rs', 'ModelProfileUpsertRequest', {
+  id: /^RequiredNullable<String>$/,
+  name: /^String$/,
   max_output_tokens: /^RequiredNullable<i32>$/,
   capability_overrides: /^RequiredNullable<(?:[\w:]+::)*ProviderCapabilityOverrides>$/,
   pricing_tiers: /^Vec<(?:[\w:]+::)*PriceTier>$/,
-  server_tools: /^RequiredNullable<Vec<(?:[\w:]+::)*ServerToolKind>>$/,
 })
 requireRustFields('src-tauri/src/commands/model_config.rs', 'ModelConfigReadRequest', {
   provider_id: /^String$/,
@@ -1723,7 +1740,15 @@ for (const file of [...filesUnder('src-tauri/crates/core/src', ['.rs']), ...file
   for (const declaration of rustStructDeclarations(productionSource)) {
     const type = rustStructFields(productionSource, declaration.name)?.get('server_tools')
     if (type == null || /\bServerToolKind\b/.test(type)) continue
-    if (file === 'src-tauri/crates/core/src/db/models/model_config.rs' && /\b(?:str|String)\b/.test(type)) continue
+    // The storage representations: the row itself, the resolved view the turn
+    // loop reads, and the flat shape tests seed through. All three hold the
+    // JSON array as text and none of them crosses the command boundary.
+    const storageFiles = [
+      'src-tauri/crates/core/src/db/models/model_config.rs',
+      'src-tauri/crates/core/src/agent/model_config.rs',
+      'src-tauri/crates/core/src/db/ops/model_config.rs',
+    ]
+    if (storageFiles.includes(file) && /\b(?:str|String)\b/.test(type)) continue
     add(file, `${declaration.name}.server_tools 必须使用 ServerToolKind，当前为 ${type}`)
   }
 }
@@ -2316,9 +2341,19 @@ requireTypescriptFields(typesFile, 'ToolPresetCreateRequest', {
 })
 requireTypescriptRequiredFields(typesFile, 'ToolPresetCreateRequest', ['description'])
 requireTypescriptFields(typesFile, 'ModelConfigInfoResponse', {
-  capability_overrides: /^ProviderCapabilityOverrides \| null$/,
+  profile: /^ModelProfileInfoResponse$/,
+  overrides_pricing: /^boolean$/,
   pricing_tiers: /^PriceTier\[\]$/,
   server_tools: /^ServerToolKind\[\] \| null$/,
+  effective_pricing: /^ModelPricingInfoResponse$/,
+})
+requireTypescriptFields(typesFile, 'ModelProfileInfoResponse', {
+  capability_overrides: /^ProviderCapabilityOverrides \| null$/,
+  pricing_tiers: /^PriceTier\[\]$/,
+  model_count: /^number$/,
+})
+requireTypescriptFields(typesFile, 'ModelPricingInfoResponse', {
+  pricing_tiers: /^PriceTier\[\]$/,
 })
 requireTypescriptFields(typesFile, 'ProviderCapabilitiesInfoResponse', {
   server_tools: /^ServerToolKind\[\]$/,
@@ -2370,13 +2405,19 @@ requireTypescriptFields(typesFile, 'ProviderCapabilitiesReadRequest', {
 requireTypescriptFields(typesFile, 'ModelConfigUpsertRequest', {
   provider_id: /^string$/,
   model_id: /^string$/,
-  display_name: /^string \| null$/,
-  max_output_tokens: /^number \| null$/,
-  capability_overrides: /^ProviderCapabilityOverrides \| null$/,
+  profile: /^ModelProfileUpsertRequest$/,
+  overrides_pricing: /^boolean$/,
   pricing_tiers: /^PriceTier\[\]$/,
   server_tools: /^ServerToolKind\[\] \| null$/,
 })
-requireTypescriptRequiredFields(typesFile, 'ModelConfigUpsertRequest', ['display_name', 'max_output_tokens'])
+requireTypescriptFields(typesFile, 'ModelProfileUpsertRequest', {
+  id: /^string \| null$/,
+  name: /^string$/,
+  max_output_tokens: /^number \| null$/,
+  capability_overrides: /^ProviderCapabilityOverrides \| null$/,
+  pricing_tiers: /^PriceTier\[\]$/,
+})
+requireTypescriptRequiredFields(typesFile, 'ModelProfileUpsertRequest', ['id', 'max_output_tokens'])
 requireTypescriptFields(typesFile, 'ModelConfigReadRequest', {
   providerId: /^string$/,
   modelId: /^string$/,

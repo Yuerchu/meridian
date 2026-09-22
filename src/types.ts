@@ -233,6 +233,15 @@ export interface ProviderUpdateRequest {
   apiFormat?: ProviderApiFormat
   credentialKind?: ProviderCredentialKind
   transportProfile?: ProviderTransportProfile
+  /**
+   * Which logo the provider draws.
+   *
+   * Three states, and the backend reads all three: omitted leaves it alone,
+   * `null` puts it back to whatever the catalog says this vendor is, and a
+   * string names a mark in the icon set. Sending `undefined` to mean "back to
+   * the default" does nothing — that is what `null` is for.
+   */
+  icon?: string | null
 }
 
 export interface ProviderKeyUpdateRequest {
@@ -1863,6 +1872,16 @@ export interface ProviderInfoResponse {
    * separate OpenAI's API from ChatGPT's Codex backend — both are `responses`.
    */
   transport_profile: ProviderTransportProfile
+  /**
+   * Which logo to draw, or null to derive one from `catalog_id`.
+   *
+   * Free text rather than a union, and the one field here that is: the value
+   * names a mark in `@lobehub/icons`, a third-party set that gains and loses
+   * entries between releases, so a closed union would refuse a row configured
+   * under a later version of it. Nothing but the renderer reads it, and a name
+   * the set does not know draws a generic mark.
+   */
+  icon: string | null
 }
 
 /**
@@ -2292,11 +2311,17 @@ export interface ProviderCapabilityOverrides {
   max_temperature?: number | null
 }
 
-export interface ModelConfigInfoResponse {
+/**
+ * What a model is, independent of who serves it.
+ *
+ * The same Claude answers on Anthropic, Vertex and Azure; its window, what it
+ * can be asked to do and usually its prices are facts about the model, held
+ * once and pointed at by every provider that reaches it.
+ */
+export interface ModelProfileInfoResponse {
   id: string
-  provider_id: string
-  model_id: string
-  display_name: string | null
+  /** What a person calls this model, which is rarely any provider's wire id. */
+  name: string
   context_window: number
   compact_threshold: number
   max_output_tokens: number | null
@@ -2310,15 +2335,54 @@ export interface ModelConfigInfoResponse {
    * charges a premium, which is what null means.
    */
   cache_write_price: DecimalString | null
-  created_at: number
-  updated_at: number
-  /** Strict patch over the built-in catalog; malformed or unknown persisted fields fail the read. */
-  capability_overrides: ProviderCapabilityOverrides | null
   /**
    * Rates that take over above a prompt size. An empty array means one price at
    * every size. Crossing a threshold re-prices the *whole* request, not the
    * excess.
    */
+  pricing_tiers: PriceTier[]
+  /** Strict patch over the built-in catalog; malformed or unknown persisted fields fail the read. */
+  capability_overrides: ProviderCapabilityOverrides | null
+  /** How many providers reach this model. Editing it reaches all of them. */
+  model_count: number
+  created_at: number
+  updated_at: number
+}
+
+export type ModelProfileListResponse = ModelProfileInfoResponse[]
+
+/**
+ * The rates that actually apply, with the override switch already read.
+ *
+ * Computed by the backend. Deciding it here as well would be a second answer to
+ * "what does this cost", and the two would be free to disagree.
+ */
+export interface ModelPricingInfoResponse {
+  input_price: DecimalString | null
+  output_price: DecimalString | null
+  cache_read_price: DecimalString | null
+  cache_write_price: DecimalString | null
+  pricing_tiers: PriceTier[]
+  server_tool_price: DecimalString | null
+}
+
+/** One provider's door to a model. */
+export interface ModelConfigInfoResponse {
+  id: string
+  provider_id: string
+  /** What this provider answers to. See `profile.name` for the readable one. */
+  model_id: string
+  profile: ModelProfileInfoResponse
+  /**
+   * Whether the five price fields below are read at all. Off is ordinary and
+   * means the profile's rates apply; the fields stay null rather than holding a
+   * copy, because a number kept twice is a number that comes to disagree.
+   */
+  overrides_pricing: boolean
+  input_price: DecimalString | null
+  output_price: DecimalString | null
+  cache_read_price: DecimalString | null
+  cache_write_price: DecimalString | null
   pricing_tiers: PriceTier[]
   /**
    * Provider-side tools switched on for this model. Narrowed against the
@@ -2332,6 +2396,10 @@ export interface ModelConfigInfoResponse {
    * zero: a searching turn priced at nothing is under-reported, not free.
    */
   server_tool_price: DecimalString | null
+  /** The rates in force, whichever side of the switch they came from. */
+  effective_pricing: ModelPricingInfoResponse
+  created_at: number
+  updated_at: number
 }
 
 /**
@@ -2389,10 +2457,15 @@ export interface PriceTier {
   cache_write_price: DecimalString | null
 }
 
-export interface ModelConfigUpsertRequest {
-  provider_id: string
-  model_id: string
-  display_name: string | null
+/**
+ * The model half of a save.
+ *
+ * A null `id` creates a profile; naming an existing one is how a second
+ * provider comes to share a description rather than repeating it.
+ */
+export interface ModelProfileUpsertRequest {
+  id: string | null
+  name: string
   context_window: number
   compact_threshold: number
   max_output_tokens: number | null
@@ -2400,7 +2473,20 @@ export interface ModelConfigUpsertRequest {
   output_price: DecimalString | null
   cache_read_price: DecimalString | null
   cache_write_price: DecimalString | null
+  pricing_tiers: PriceTier[]
   capability_overrides: ProviderCapabilityOverrides | null
+}
+
+export interface ModelConfigUpsertRequest {
+  provider_id: string
+  model_id: string
+  profile: ModelProfileUpsertRequest
+  /** With this off, every price field below must be null. */
+  overrides_pricing: boolean
+  input_price: DecimalString | null
+  output_price: DecimalString | null
+  cache_read_price: DecimalString | null
+  cache_write_price: DecimalString | null
   pricing_tiers: PriceTier[]
   server_tools: ServerToolKind[] | null
   server_tool_price: DecimalString | null

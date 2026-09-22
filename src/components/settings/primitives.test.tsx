@@ -1,7 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-import { SettingsRow, SettingsSelect } from './primitives'
+import { Switch } from '@/components/base'
+import { SettingsNavRow, SettingsRow, SettingsSelect } from './primitives'
 
 type Level = 'all' | 'warn' | 'error'
 
@@ -11,16 +12,62 @@ const OPTIONS = [
   { value: 'error', label: 'Errors' },
 ] as const satisfies readonly { value: Level; label: string }[]
 
-describe('SettingsRow', () => {
+describe('SettingsNavRow', () => {
   it('uses the default chevron only when trailing content is omitted', () => {
-    const { container, rerender } = render(<SettingsRow label="Provider" />)
-    expect(container.querySelector('[data-slot="settings-row"] svg')).toBeInTheDocument()
+    const { container, rerender } = render(<SettingsNavRow label="Provider" />)
+    expect(container.querySelector('[data-slot="settings-nav-row"] svg')).toBeInTheDocument()
 
     // `null` is intentional absence, not a missing value. Provider and MCP peer
     // rows used it to opt out of navigation chrome, but nullish coalescing put
     // the chevron straight back.
-    rerender(<SettingsRow label="Provider" trailing={null} />)
-    expect(container.querySelector('[data-slot="settings-row"] svg')).not.toBeInTheDocument()
+    rerender(<SettingsNavRow label="Provider" trailing={null} />)
+    expect(container.querySelector('[data-slot="settings-nav-row"] svg')).not.toBeInTheDocument()
+  })
+})
+
+describe('SettingsRow', () => {
+  /**
+   * The label is a `<p>`, so it names nothing on its own. A row whose control
+   * does not take the ids — or carry its own `aria-label` — is a switch a
+   * screen reader announces as "switch", with no indication of what it turns
+   * on. The function child is the mechanism, so this pins that it is wired.
+   */
+  it('lends its label and description to a control that asks for them', () => {
+    render(
+      <SettingsRow label="Auto-connect" description="Reconnects on launch">
+        {({ labelId, descriptionId }) => (
+          <Switch aria-labelledby={labelId} aria-describedby={descriptionId} isSelected={false} onChange={() => {}} />
+        )}
+      </SettingsRow>,
+    )
+    const control = screen.getByRole('switch', { name: 'Auto-connect' })
+    expect(control).toHaveAccessibleDescription('Reconnects on launch')
+  })
+
+  it('offers no description id when there is no description', () => {
+    const seen: Array<string | undefined> = []
+    render(
+      <SettingsRow label="Shell">
+        {({ descriptionId }) => {
+          seen.push(descriptionId)
+          return <span>bash</span>
+        }}
+      </SettingsRow>,
+    )
+    expect(seen).toEqual([undefined])
+  })
+
+  /** A field that cannot shrink drops under its label on a narrow pane. */
+  it('stacks only when asked', () => {
+    const { container, rerender } = render(<SettingsRow label="Base URL">field</SettingsRow>)
+    expect(container.querySelector('[data-slot="settings-row"]')).not.toHaveClass('flex-col')
+
+    rerender(
+      <SettingsRow label="Base URL" stacked>
+        field
+      </SettingsRow>,
+    )
+    expect(container.querySelector('[data-slot="settings-row"]')).toHaveClass('flex-col')
   })
 })
 

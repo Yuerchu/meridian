@@ -182,6 +182,7 @@ macro_rules! with_all_commands {
             async commands::provider => get_provider_balance(provider_id: String),
 
             async commands::model_config => list_model_configs(provider_id: String),
+            async commands::model_config => list_model_profiles(),
             async commands::model_config => get_model_config(
                 request: $crate::commands::model_config::ModelConfigReadRequest,
             ),

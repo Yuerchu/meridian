@@ -24,7 +24,7 @@ function useDrilldownScroll(root: HTMLElement | null, showsDetail: boolean) {
   useLayoutEffect(() => {
     if (wasShowing.current === showsDetail) return
     wasShowing.current = showsDetail
-    const scroller = root?.closest<HTMLElement>('[data-slot="settings-page"]')
+    const scroller = root?.closest<HTMLElement>('[data-slot="settings-scroller"]')
     if (!scroller) return
 
     if (showsDetail) {
@@ -146,7 +146,7 @@ export function MasterDetail<Aux extends string = never>({
     // measurement each time it flipped. Its width comes from the parent and
     // never from what is rendered inside it, so the observer cannot be fed its
     // own output. The three layouts differ below this line.
-    <div data-slot="master-detail" ref={setRoot} className={cx('max-w-3xl', className)}>
+    <div data-slot="master-detail" ref={setRoot} className={cx('mx-auto w-full max-w-3xl', className)}>
       {nav.isNarrow ? (
         nav.showsDetail ? (
           <SettingsSubPage title={nav.aux !== null ? auxTitle : detailTitle} onBack={nav.back}>

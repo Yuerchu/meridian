@@ -56,38 +56,88 @@ export interface SettingsTabDef {
   icon: React.ElementType
 }
 
-const settingsTabs: SettingsTabDef[] = [
-  { id: 'provider', labelKey: 'settings.provider', icon: Cloud },
-  // Beside the providers rather than near the logs: it is priced entirely by
-  // what that page was filled in with, and the two are read together.
-  { id: 'usage', labelKey: 'settings.usage', icon: ChartColumn },
-  { id: 'assistants', labelKey: 'settings.assistants', icon: FaceRobot },
-  { id: 'emoji', labelKey: 'settings.emoji', icon: FaceSmile },
-  { id: 'tools', labelKey: 'settings.toolsTab', icon: Wrench },
-  // Beside the tools rather than beside the servers: what it configures is who
-  // answers a tool's approval, and the row above is where the user just decided
-  // which tools exist. Not desktop-only — a phone runs the same turn loop and
-  // gets the same interruptions.
-  { id: 'autoreview', labelKey: 'settings.autoReview', icon: ShieldCheck },
-  { id: 'skills', labelKey: 'settings.skillsTab', icon: Sparkles },
-  { id: 'mcp', labelKey: 'settings.mcp', icon: LogoMcp },
-  { id: 'memories', labelKey: 'settings.memories', icon: Bulb },
-  { id: 'voice', labelKey: 'settings.voice', icon: Microphone },
-  { id: 'voiceCorpus', labelKey: 'settings.voiceCorpus', icon: Microphone },
-  { id: 'onebot', labelKey: 'settings.onebot', icon: BroadcastSignal },
-  { id: 'hooks', labelKey: 'settings.hooks', icon: Link },
-  // Next to the hook gates because both are about another coding agent, and
-  // whoever is setting one up is usually setting up the other.
-  { id: 'acp', labelKey: 'settings.acp', icon: Terminal },
-  // Last of the three panels that open a socket, and beside them for that
-  // reason: OneBot, the hook endpoint and this one are the same decision made
-  // three times, and a user looking for "what is this machine serving" should
-  // find them together.
-  { id: 'remote', labelKey: 'settings.remote', icon: Smartphone },
-  { id: 'general', labelKey: 'settings.general', icon: Sliders },
-  { id: 'developer', labelKey: 'settings.developer', icon: Flask },
-  { id: 'about', labelKey: 'settings.about', icon: CircleInfo },
+/** Everything a tab is, except where it sits — which is the group's to say. */
+const TAB_DEFS: Record<SettingsTab, Omit<SettingsTabDef, 'id'>> = {
+  provider: { labelKey: 'settings.provider', icon: Cloud },
+  usage: { labelKey: 'settings.usage', icon: ChartColumn },
+  assistants: { labelKey: 'settings.assistants', icon: FaceRobot },
+  emoji: { labelKey: 'settings.emoji', icon: FaceSmile },
+  tools: { labelKey: 'settings.toolsTab', icon: Wrench },
+  autoreview: { labelKey: 'settings.autoReview', icon: ShieldCheck },
+  skills: { labelKey: 'settings.skillsTab', icon: Sparkles },
+  mcp: { labelKey: 'settings.mcp', icon: LogoMcp },
+  memories: { labelKey: 'settings.memories', icon: Bulb },
+  voice: { labelKey: 'settings.voice', icon: Microphone },
+  voiceCorpus: { labelKey: 'settings.voiceCorpus', icon: Microphone },
+  onebot: { labelKey: 'settings.onebot', icon: BroadcastSignal },
+  hooks: { labelKey: 'settings.hooks', icon: Link },
+  acp: { labelKey: 'settings.acp', icon: Terminal },
+  remote: { labelKey: 'settings.remote', icon: Smartphone },
+  general: { labelKey: 'settings.general', icon: Sliders },
+  developer: { labelKey: 'settings.developer', icon: Flask },
+  about: { labelKey: 'settings.about', icon: CircleInfo },
+}
+
+/**
+ * Every tab there is, from the one table that has to name them all.
+ *
+ * `TAB_DEFS` is a `Record<SettingsTab, ...>`, so the compiler refuses a new tab
+ * that has no definition. This is how the *groups* are held to the same
+ * standard: a tab defined and then left out of every group would compile, and
+ * would simply never appear in the sidebar.
+ */
+export const settingsTabIds = Object.keys(TAB_DEFS) as SettingsTab[]
+
+export type SettingsTabGroupId = 'models' | 'agent' | 'integrations' | 'app'
+
+export interface SettingsTabGroupDef {
+  id: SettingsTabGroupId
+  labelKey: string
+  tabs: readonly SettingsTab[]
+}
+
+/**
+ * Eighteen rows in one list is a list nobody reads to the end of.
+ *
+ * Four groups, and the cut is by what a person is trying to do rather than by
+ * what the code shares. *Models* is what answers and what it costs — usage sits
+ * there because it is priced entirely by what the provider page was filled in
+ * with, and the two are read together. *Agent* is what the model can reach:
+ * tools, the reviewer that answers their approvals, skills, MCP servers,
+ * memory, stickers. *Integrations* is everything that talks to something
+ * outside this window — the three panels that open a socket, the child process,
+ * and voice, which is a service on the far end of a key. *App* is the window
+ * itself.
+ *
+ * This is also the one order: the flat list every other consumer reads is
+ * derived from it, so the sidebar, the command palette and the composer's
+ * typeahead cannot disagree about where a tab lives.
+ */
+export const settingsTabGroups: readonly SettingsTabGroupDef[] = [
+  { id: 'models', labelKey: 'settings.group.models', tabs: ['provider', 'usage', 'assistants'] },
+  {
+    id: 'agent',
+    labelKey: 'settings.group.agent',
+    // `autoreview` beside the tools rather than beside the servers: what it
+    // configures is who answers a tool's approval, and the row above is where
+    // the user just decided which tools exist.
+    tabs: ['tools', 'autoreview', 'skills', 'mcp', 'memories', 'emoji'],
+  },
+  {
+    id: 'integrations',
+    labelKey: 'settings.group.integrations',
+    // OneBot, the hook endpoint and remote access are the same decision made
+    // three times; somebody asking "what is this machine serving" should find
+    // them together. `acp` serves nothing but belongs beside the hook gates,
+    // which are about the same other coding agent.
+    tabs: ['voice', 'voiceCorpus', 'onebot', 'hooks', 'acp', 'remote'],
+  },
+  { id: 'app', labelKey: 'settings.group.app', tabs: ['general', 'developer', 'about'] },
 ]
+
+const settingsTabs: SettingsTabDef[] = settingsTabGroups.flatMap((group) =>
+  group.tabs.map((id) => ({ id, ...TAB_DEFS[id] })),
+)
 
 /**
  * Panels for things Android cannot run: three listening sockets, and one child
@@ -137,9 +187,33 @@ const DESKTOP_ONLY: SettingsTab[] = ['onebot', 'hooks', 'acp', 'remote']
  */
 const ANDROID_ONLY_HIDDEN: SettingsTab[] = ['voiceCorpus']
 
-export function visibleSettingsTabs(platform: string | null): SettingsTabDef[] {
+function hiddenTabs(platform: string | null): Set<SettingsTab> {
   const hidden = new Set<SettingsTab>()
   if (platform === 'android' || !can.manageServers) DESKTOP_ONLY.forEach((id) => hidden.add(id))
   if (platform === 'android' && !isRemote) ANDROID_ONLY_HIDDEN.forEach((id) => hidden.add(id))
+  return hidden
+}
+
+export function visibleSettingsTabs(platform: string | null): SettingsTabDef[] {
+  const hidden = hiddenTabs(platform)
   return hidden.size === 0 ? settingsTabs : settingsTabs.filter((tab) => !hidden.has(tab.id))
+}
+
+/**
+ * The same list, in its groups, for the one consumer that draws them.
+ *
+ * A group whose every tab is hidden is dropped rather than left as a heading
+ * over nothing — on a standalone Android build that is most of *Integrations*,
+ * and an empty section reads as something failing to load.
+ */
+export function visibleSettingsTabGroups(
+  platform: string | null,
+): { group: SettingsTabGroupDef; tabs: SettingsTabDef[] }[] {
+  const hidden = hiddenTabs(platform)
+  return settingsTabGroups
+    .map((group) => ({
+      group,
+      tabs: group.tabs.filter((id) => !hidden.has(id)).map((id) => ({ id, ...TAB_DEFS[id] })),
+    }))
+    .filter(({ tabs }) => tabs.length > 0)
 }
