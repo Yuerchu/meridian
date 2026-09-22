@@ -37,6 +37,12 @@ src-tauri/
         bootstrap.rs        # bootstrap(data_dir, events) -> Services
     sandbox-types/          # sandbox policy types
     sandbox-windows/        # Windows sandbox implementation
+  ime/                      # the input method: workspace members of the shell, not of core
+    dict/ engine/ session/  # platform-free: .mdict format + Rime import, keys→candidates, the key state machine
+    proto/ config/          # the pipe protocol; host.json and the data directory
+    tsf/                    # meridian_ime_tsf.dll: the TSF text service (no engine inside)
+    host/                   # meridian-ime-host.exe: engine, pipe server, candidate window
+    cli/                    # meridian-ime: import / lookup / type, with no OS in the loop
 ```
 
 **`src-tauri/crates` is another repository.** Everything below the Tauri line is
@@ -1306,6 +1312,103 @@ work they did.
 - Known gap: a QQ turn started from the chat side drains its own inbox and not this table,
   so an interjection queued during one waits for something else to pump.
 
+## The input method
+
+`src-tauri/ime/` is a Windows input method — pinyin and zhuyin — that installs
+with Meridian and does not need it running. It is in the shell workspace and
+not in core because a headless server and `meridiand` must not carry one, and
+it is eight crates rather than one because the boundaries are the design.
+
+- **The DLL holds no engine, reads no file and computes no path.** A text
+  service is loaded into every process with a text field, including store
+  apps in an AppContainer that cannot see `%APPDATA%`, and a panic in it is a
+  crash in Word. So `meridian-ime-tsf` forwards keys over a named pipe, applies
+  the answers to the document, and nothing else; settings it must know before
+  the first key (`page_size`, punctuation, the scheme) arrive in `Welcome`.
+  Every COM entry point is under `catch_unwind` and a key whose handling
+  panicked is passed through. The crate boundary is what enforces it: the DLL
+  depends on `meridian-ime-proto` alone.
+- **One host per login session, one `Session` per text field.** The pipe is
+  `\\.\pipe\meridian-ime-s<session id>`, so a remote-desktop session and a
+  fast-switched second user each get their own host, and the first instance is
+  created with `FILE_FLAG_FIRST_PIPE_INSTANCE` so the kernel, not a mutex,
+  refuses a second host. Its ACL names the user, `ALL APPLICATION PACKAGES` and
+  `ALL RESTRICTED APPLICATION PACKAGES` with a low mandatory label, which is
+  exactly the set that has to reach it: an AppContainer's access check needs
+  the user *and* the package SID, a browser renderer is at low integrity, and
+  the prototype's `Everyone` was not a boundary. The DLL starts the host when
+  the pipe is absent — from a medium-integrity process only, behind a named
+  mutex and a cooldown — and while it is absent letters go into the document
+  as typed rather than vanishing.
+- **Edit sessions are asynchronous, always.** `TF_ES_SYNC` inside the key sink
+  is documented as allowed and measured (by qingjian) to crash applications
+  whose text store lives in another process, which is the current Notepad. So
+  `OnKeyDown` updates the local "are we composing" view from the host's reply
+  and then requests the session; the document catches up a moment later on the
+  same thread, and `OnTestKeyDown` never contradicts it. A key the DLL promised
+  to eat and the host then declined is inserted by the DLL itself, because some
+  applications drop a key that was declared eaten and then was not.
+- **Privacy is two gates, and neither is a filter.** The DLL reads
+  `GUID_COMPARTMENT_KEYBOARD_DISABLED` per key and the input scope
+  (`IS_PASSWORD`, `IS_PRIVATE`, the PIN scopes) per focus change, and the host
+  wraps the learner in `Muted` for that session: reads unchanged, writes
+  swallowed, no flag anywhere that a write path could forget to check.
+  `private_apps` in `host.json` is the same wrapper keyed on the executable.
+  Nothing an input method sees reaches Meridian's memory yet; when it does, it
+  goes through `services.redaction` first and lands as `UserProvidedContext`.
+- **Dictionaries are imported, not shipped.** A Rime `.dict.yaml` (rime-ice is
+  the one to start with) is converted by `meridian-ime-dict::rime` into an
+  `.mdict` — one memory-mapped file whose layout is its in-memory layout, with a
+  `META` section carrying the source's own SPDX licence — and cached by a hash
+  over every file it imported plus the format, importer and syllable-table
+  versions. The importer reads the YAML header's `columns` rather than
+  assuming them: rime-ice's `tencent` table is `text weight` with no code, and
+  the prototype, assuming `text code weight`, filed half its dictionary under
+  the code `100`. Codes are validated against the syllable table; an ASCII-only
+  text (`A A`, the capital-letter rows) is refused rather than filed under `a`.
+  `POST.entry_count` is 32 bits because the prototype packed 16 into the FST
+  value and overflowed it, and the test that writes seventy thousand entries
+  under one code is what keeps it that way.
+- **Two schemes, one lattice.** Pinyin and zhuyin are two `SchemeParser`s that
+  turn keys into the same syllable DAG — an edge is a canonical pinyin
+  syllable, `complete` or the start of one — so the dictionary, the lattice,
+  the beam search and the learner never know which keyboard was used. A bare
+  initial anywhere and an unfinished syllable at the end are edges too, which
+  is what puts candidates on screen from the first key. Under zhuyin the tone
+  keys are boundaries and the tone value is ignored, since the dictionaries are
+  toneless; digits are bopomofo keys there, so candidates are chosen with
+  Up/Down and Enter, and Space after a toneless syllable is the first tone.
+- **Frequencies are normalised against the total of every file together.**
+  Against its own total, a two-hundred-word domain table makes each of its
+  words commoner than 你好 and the composer prefers them everywhere. A user's
+  own word is scored as `USER_WEIGHT_SCALE` per lesson so one lesson makes it
+  a common word, not a negligible one.
+- **Learning is four readable TSV files with an undo for each write.** A
+  commit records the word, the choice for its key string, and the transitions
+  between its words (twice for an explicit choice, once for a composed
+  sentence, so the composer's own output does not echo back at full weight);
+  the last four commits are kept so that deleting one with Backspace and
+  retyping the same keys with a different choice takes the lesson back. A
+  buffer chosen in several pieces is remembered whole, and after two
+  repetitions becomes a user word. Files are written atomically and flushed
+  every minute and at exit; a store that cannot be opened degrades to learning
+  in memory, never to writing an empty table over the user's.
+- **`host.json` is the one source of truth and the host polls it.** Meridian's
+  settings page writes it, the host reloads it within a second, and nothing is
+  mirrored into the preferences table where it could disagree. Dictionaries
+  live in `catalog.toml` beside the files for the same reason.
+- **`meridian-ime` is the harness.** `type "nihao<space>"` replays a key
+  script through the same `Session` the host runs, `lookup` ranks candidates
+  against the imported dictionaries and says how long it took, `bench` scores
+  the composer against expected sentences (28/30 top-1 on rime-ice at ~2 ms a
+  query). The golden tests in `session/tests/golden.rs` are the same scripts.
+
+Measured but not built: a language-model reranker (the `SentenceScorer` hook
+is where it plugs in; LiteRT-LM exposes no logprobs, so it would be generative),
+a language-bar button, traditional output, `ITfTextLayoutSink` for the cases
+where `GetTextExt` answers `TF_E_NOLAYOUT`, and `uiAccess` so the candidate
+window can sit over the Start menu's search box.
+
 ## Remote access
 
 `src-tauri/src/remote/` serves this desktop to another device: the phone runs the same
@@ -1781,6 +1884,112 @@ Give the export its own process rather than the session:
 The variable holds one ABI at a time by design — see the header of that
 script — which is the same reason it should not hold one across two platforms.
 
+### The input method
+
+**Both Windows installers carry it as an optional component, and both are
+built from forked templates.** `tauri.ime.conf.json` is the whole switch:
+`pnpm tauri build --config src-tauri/tauri.ime.conf.json`, which the
+release workflow passes on Windows, points `bundle.windows.nsis.template`
+at `src-tauri/nsis/installer.nsi` and `bundle.windows.wix.template` at
+`src-tauri/wix/main.wxs` — each a verbatim copy of tauri-bundler 2.9.4's
+template (the bundler inside `@tauri-apps/cli` 2.11.4) with every change
+marked `Meridian:`, and a header saying to re-diff against upstream on a
+Tauri upgrade. A plain `pnpm tauri build` uses the stock templates and
+produces the old per-user installer without the input method, which is
+what a development build wants. The artifacts are *not* in
+`bundle.resources`: the stock resource list lands in the mandatory part of
+both installers, which is exactly what optional means they must not do.
+
+**NSIS: a components page, a read-only main section, and everything the
+input method does in `nsis/ime-hooks.nsh`.** The fork adds
+`MUI_PAGE_COMPONENTS`, names the stock `Section Install` and marks it
+`SectionIn RO`, and adds `Section "Meridian 输入法" SecIME` whose body is
+`IME_SECTION_INSTALL` from the hooks file — copy the files, `icacls`
+`*S-1-15-2-1` (AppContainer apps must read the DLL, and the name of that
+group is localised), `regsvr32 /s` both DLLs, prune older versions, an
+all-users Startup shortcut for `meridian-ime-host.exe`, and
+`nsis_tauri_utils::RunAsUser` to start the host. The section body stays in
+the hooks file rather than the template so the template's diff against
+upstream is a few dozen lines, and the hooks include is moved below the
+`!define` block because the hooks file names the DLL after `${VERSION}` at
+include time — where upstream puts it, at the top, that define does not
+exist yet. `${SecIME}` likewise only exists once the section has been read,
+so the `.onInit` logic is a function defined after the sections.
+`IMEInstalled=1` under the product's uninstall key is the marker: `.onInit`
+preselects the section from it, so an update — the updater's `/UPDATE /P`
+never shows the page — keeps the input method exactly when it was there
+before, and a hidden section after `SecIME` takes an earlier install's
+input method out when the box was unticked. `/NOIME` on the command line
+deselects it, for silent and passive installs. The uninstaller unregisters
+only what it finds on disk, and only when not updating. Bundling with the
+config and without the staged artifacts is a `!error` at makensis time,
+not an installer whose section copies nothing.
+
+**The DLL is version-named and the old one is never unregistered.** A text
+service is mapped into every process with a text field, so the file in use
+cannot be replaced in place: `build.rs` stages
+`meridian_ime_tsf-<version>.dll` (and `meridian_ime_tsf32-<version>.dll`),
+the new version registers the same CLSID over the old, and older files are
+deleted with `/REBOOTOK` once nothing holds them. `regsvr32 /u` on an old
+file would remove the registration the new one had just written, because
+they share it. That is also why `build.rs` asserts `tauri.conf.json`'s
+version equals `Cargo.toml`'s: the NSIS `${VERSION}` names the file.
+
+**`$WINDIR\Sysnative\regsvr32.exe`, not `$SYSDIR`.** The installer is a
+32-bit process, so `$SYSDIR` is redirected to `SysWOW64` and would register
+the 64-bit DLL with the wrong loader; `Sysnative` is the alias that reaches
+the real `System32` from a 32-bit caller. The x86 DLL goes through
+`SysWOW64\regsvr32.exe` explicitly. TSF profile registration is what makes
+the installer `perMachine`: `DllRegisterServer` writes the CLSID and the
+zh-CN / zh-TW profiles under HKLM, and there is no HKCU registration path
+that `ctfmon` honours. The hooks run the previous per-user copy's
+uninstaller first so the machine install does not leave two copies.
+
+**MSI: a `Feature Id="IME"` in `wix/ime.wxs`, registered by the SelfReg
+table.** `SelfRegCost="1"` on the two DLLs has Windows Installer call
+`DllRegisterServer` / `DllUnregisterServer` itself, in a surrogate of the
+DLL's own bitness — so the 32-bit DLL has to be a `Win64="no"` component,
+and ICE80 refuses one of those under `ProgramFiles64Folder` as an error
+(Tauri passes light no `-sice`), so it lives in
+`Program Files (x86)\Meridian\ime` with its own copy of the icon, which
+`DllRegisterServer` looks for beside the DLL. No custom action registers
+anything; the one deferred custom action is the `icacls` grant,
+`Return="ignore"`. The feature is `Level="1"` (selected by default) with
+`AllowAdvertise="no"`, and `msiexec REMOVE=IME` leaves it out. Three things
+the stock template could not give it. The fork swaps `WixUI_InstallDir` for
+`WixUI_FeatureTree`, because the stock UI has no dialog in which a feature
+can be unticked (the directory is still changeable, through Browse on the
+`ConfigurableDirectory` feature). It hoists `featureRefs` to top level,
+because the stock template makes them children of the untitled `External`
+feature. And the versioned file names come through `resources/ime.wxi`,
+which `build.rs` writes (`write_ime_wxi`): Tauri runs a fragment through
+Handlebars only to scan it for extension namespaces, so `{{version}}` stays
+literal there, and light resolves a relative `Source` against
+`target/<profile>/wix/<arch>`, so the include also carries the absolute
+staging directory. The feature title is ASCII because the database is code
+page 1252. Across a major upgrade the old product's `SelfUnreg` runs before
+the new `SelfReg` (`Schedule="afterInstallInitialize"`), so the
+registration is briefly absent and then rewritten; the NSIS path never has
+that gap.
+
+**The x86 DLL is a second cargo invocation outside Tauri's build, and the
+whole input method builds into `target/ime/`.** 32-bit apps (WPS, the
+32-bit QQ) load a 32-bit text service, and Tauri's build has one target.
+`pnpm ime:build` builds the x64 DLL and host, then the DLL again with
+`--target i686-pc-windows-msvc` (`rustup target add` it first), all under
+`--target-dir target/ime`; `build.rs` copies whatever it finds there into
+the gitignored `resources/ime/`, warns when something is missing, and
+panics instead under `MERIDIAN_IME_REQUIRED=1`, which the release workflow
+sets so an installer without the input method cannot ship by accident.
+The separate target directory is not tidiness: the MSI bundler ships every
+`*.dll` it finds beside the main binary, so an unversioned
+`meridian_ime_tsf.dll` in `target/release` would be packaged a second time,
+in the root, registered by nothing. `resources/ime.stamp`, touched by
+`pnpm ime:build`, is what makes `build.rs` re-run for artifacts that did
+not exist on the previous build — cargo treats a missing
+`rerun-if-changed` path as always changed, so the artifacts themselves are
+only watched once they exist.
+
 ## Android
 
 - **File access model**: tools resolve paths through `ToolContext::resolve_and_validate` (`src-tauri/src/tools/mod.rs`). Desktop = `FileAccess::Unrestricted` (legacy working_directory check). Android = `FileAccess::Roots` whitelist built in `build_file_access` (lib.rs) from preferences `android.manage_storage_enabled` / `android.saf_roots` + the system grant. SAF I/O goes through `src/android_bridge.rs` (JNI) → `FileBridge.kt`.
@@ -1797,6 +2006,14 @@ script — which is the same reason it should not hold one across two platforms.
 - **Codex CLI** (`codex-rs/`): Apache 2.0. Port provider abstraction, SSE parsing, MCP patterns. Don't depend on it directly.
 - **foxline-pro-backend-server**: Our Python SaaS backend. Borrow provider design (STI polymorphism), streaming architecture (Kafka+Redis), tool system patterns. Rewrite in Rust.
 - **Cherry Studio**: AGPL, do NOT use any code. Reference for feature scope only.
+- **sunime** (`~/Documents/Code/sunime`): the author's own 2026-07 input method
+  prototype (GPL-3.0-only, sole author). Its FST dictionary, syllable DAG and
+  beam search were the starting point of `ime/dict` and `ime/engine`; its IPC
+  and host were replaced.
+- **qingjian** (`~/Documents/Code/qingjian`): GPL-3.0-or-later. Design read for
+  the input method — engine out of the DLL, host-drawn candidates, settings
+  over the protocol, asynchronous edit sessions, Windows packaging pitfalls —
+  no code taken.
 
 ## Development
 

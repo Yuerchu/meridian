@@ -4,6 +4,9 @@ mod command_table;
 #[cfg(target_os = "android")]
 mod android_bridge;
 mod commands;
+/// Meridian's side of the input method (the DLL and host are separate binaries).
+#[cfg(windows)]
+mod ime;
 mod platform;
 /// Serving another device. Desktop only: Android is the client here, never the
 /// host.
@@ -149,6 +152,18 @@ pub fn run() {
                 let handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     handle.manage(remote::maybe_start(services, remote_config, handle.clone()).await);
+                });
+            }
+
+            // The input method's host belongs to the login session, not to this
+            // window: it is started here if the DLL is registered and nothing is
+            // serving the pipe yet, and never stopped on exit.
+            #[cfg(windows)]
+            {
+                let services = services.clone();
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    handle.manage(ime::maybe_start(services, handle.clone()).await);
                 });
             }
 

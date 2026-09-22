@@ -1,0 +1,52 @@
+[package]
+name = "meridian-ime-host"
+version = "0.1.0"
+edition = "2024"
+license = "LicenseRef-Proprietary-Yuerchu"
+authors = ["于小丘 Yuerchu <admin@yuxiaoqiu.cn>"]
+description = "Meridian 输入法宿主进程：持有引擎、服务命名管道、绘制候选窗"
+
+[[bin]]
+name = "meridian-ime-host"
+path = "src/main.rs"
+
+[lints.clippy]
+# Win32 and Direct2D calls whose contracts are Microsoft's; see the TSF crate.
+missing_safety_doc = "allow"
+# COM interface methods take raw pointers by the interface definition and cannot
+# be marked `unsafe`; the dereferences are inside `unsafe` blocks with notes.
+not_unsafe_ptr_arg_deref = "allow"
+
+[dependencies]
+meridian-ime-dict = { path = "../dict" }
+meridian-ime-engine = { path = "../engine" }
+meridian-ime-proto = { path = "../proto" }
+meridian-ime-session = { path = "../session" }
+meridian-ime-config = { path = "../config" }
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Direct2D",
+    "Win32_Graphics_Direct2D_Common",
+    "Win32_Graphics_DirectWrite",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_IO",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Pipes",
+    "Win32_System_RemoteDesktop",
+    "Win32_System_Threading",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
+windows-core = "0.62"

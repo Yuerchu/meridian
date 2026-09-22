@@ -26,6 +26,7 @@
     "responses:check": "node scripts/generate-invoke-response-schema.mjs --check",
     "contracts:check": "node scripts/check-model-contracts.mjs",
     "contracts:check:staged": "node scripts/check-model-contracts.mjs --staged",
+    "ime:build": "cargo build --release --manifest-path src-tauri/Cargo.toml --target-dir src-tauri/target/ime -p meridian-ime-tsf -p meridian-ime-host && cargo build --release --manifest-path src-tauri/Cargo.toml --target-dir src-tauri/target/ime -p meridian-ime-tsf --target i686-pc-windows-msvc && node -e \"const fs=require('fs'),p='src-tauri/resources/ime.stamp';fs.mkdirSync('src-tauri/resources',{recursive:true});fs.closeSync(fs.openSync(p,'a'));fs.utimesSync(p,new Date(),new Date())\"",
     "prepare": "husky"
   },
   "lint-staged": {

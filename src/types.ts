@@ -2836,3 +2836,87 @@ export type ChatStreamEvent =
       input_tokens: number | null
       output_tokens: number | null
     }
+
+// ── Input method (Windows) ──────────────────────────────────────────────
+
+export interface ImeStatusInfoResponse {
+  /** The DLL and the host were found beside the app. */
+  installed: boolean
+  registered_x64: boolean
+  registered_x86: boolean
+  /** The profile is switched on for the current user (per-user, no elevation). */
+  enabled_for_user: boolean
+  host_running: boolean
+  host_version: string | null
+  /** The running host speaks this build's protocol. */
+  protocol_compatible: boolean
+  sessions: number
+  data_dir: string
+  host_path: string | null
+  dll_path: string | null
+  /** What the registry points the 64-bit registration at, if anything. */
+  registered_dll_path: string | null
+}
+
+export type ImeScheme = 'pinyin' | 'zhuyin'
+export type ImePunctuation = 'full_width' | 'half_width'
+
+export interface ImeConfigInfoResponse {
+  scheme: ImeScheme
+  page_size: number
+  punctuation: ImePunctuation
+  learning: boolean
+  private_apps: string[]
+  debug_log: boolean
+}
+
+export interface ImeConfigUpdateRequest {
+  scheme: ImeScheme
+  page_size: number
+  punctuation: ImePunctuation
+  learning: boolean
+  private_apps: string[]
+  debug_log: boolean
+}
+
+export interface ImeDictionaryInfoResponse {
+  file: string
+  name: string
+  entries: number
+  size_bytes: number
+  enabled: boolean
+  license: string
+  source: string
+}
+
+export type ImeDictionaryListResponse = ImeDictionaryInfoResponse[]
+
+export interface ImeDictionaryImportRequest {
+  path: string
+  license: string | null
+  name: string | null
+}
+
+export interface ImeDictionaryImportReportResponse {
+  file: string
+  name: string
+  accepted: number
+  duplicates: number
+  skipped: number
+  cache_hit: boolean
+  /** One line per file with something to say. */
+  notes: string[]
+}
+
+export interface ImeDictionaryToggleRequest {
+  file: string
+  enabled: boolean
+}
+
+export interface ImeDictionaryRemoveRequest {
+  file: string
+}
+
+export interface ImeProfileUpdateRequest {
+  enabled: boolean
+}
