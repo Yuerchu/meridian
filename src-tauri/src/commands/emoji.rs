@@ -251,13 +251,7 @@ pub async fn suggest_sticker_semantics(app: tauri::AppHandle, id: String) -> Res
         { "type": "image_url", "image_url": { "url": data_uri } }
     ])
     .to_string();
-    let provider = provider::registry::create_provider(
-        &resolved.provider_type,
-        &resolved.base_url,
-        &resolved.credential,
-        &resolved.api_format,
-        &resolved.transport_profile,
-    )?;
+    let provider = provider::registry::create_provider(resolved.wire())?;
     let response = provider
         .chat(
             vec![provider::ChatMessage::user(&content)],

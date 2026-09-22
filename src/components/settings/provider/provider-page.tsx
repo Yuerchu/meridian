@@ -4,6 +4,7 @@ import { ArrowsRotateRight, Plus, TrashBin, Key } from '@gravity-ui/icons'
 import {
   Alert,
   Button,
+  CellSwitch,
   DataGrid,
   Description,
   Input,
@@ -143,13 +144,25 @@ function ProviderEditor({
   const [baseUrl, setBaseUrl] = useState(provider.base_url)
   const [apiFormat, setApiFormat] = useState(provider.api_format || 'chat_completions')
   const [icon, setIcon] = useState(provider.icon)
+  const [codexRequestShape, setCodexRequestShape] = useState(provider.codex_request_shape)
+  /**
+   * The Codex release this install claims to be.
+   *
+   * A preference rather than a column: one install has one identity, and a
+   * second answer per provider row would be two. Loaded and saved beside the
+   * switch because that is the only place it means anything — empty is the
+   * ordinary state and takes whatever version this build shipped with.
+   */
+  const [codexClientVersion, setCodexClientVersion] = useState('')
   const iconLabelId = useId()
+  const codexShapeHintId = useId()
   const [savedDraft, setSavedDraft] = useState(() => ({
     name: provider.name,
     providerType: provider.provider_type,
     baseUrl: provider.base_url,
     apiFormat: provider.api_format || 'chat_completions',
     icon: provider.icon,
+    codexRequestShape: provider.codex_request_shape,
   }))
   const [apiKey, setApiKey] = useState('')
   const { confirm, confirmDialog } = useConfirm()
@@ -183,6 +196,7 @@ function ProviderEditor({
     baseUrl !== savedDraft.baseUrl ||
     apiFormat !== savedDraft.apiFormat ||
     icon !== savedDraft.icon ||
+    codexRequestShape !== savedDraft.codexRequestShape ||
     apiKey.trim().length > 0
 
   // Registered with the tab *and* with the page this is on: the shell refuses
@@ -205,6 +219,25 @@ function ProviderEditor({
       setDeleting(false)
     }
   }, [confirm, t, onDeleted, provider.id])
+
+  // Loaded once per page, not per keystroke: the field is a preference and the
+  // switch it sits under is what decides whether it is ever shown.
+  useEffect(() => {
+    let cancelled = false
+    api
+      .getPreference({ key: 'codex.client_version' })
+      .then((preference) => {
+        if (!cancelled) setCodexClientVersion(preference.value ?? '')
+      })
+      .catch((err) => {
+        // Decorative: the default is a working version, so an unreadable
+        // override costs the field its current value and nothing else.
+        console.error('Failed to read the Codex client version override:', err)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -233,6 +266,12 @@ function ProviderEditor({
   // here.
   const activeAuth = authFor(rowEntry, provider.credential_kind)
 
+  // Only the Responses adapter reads the column, so only a Responses row is
+  // offered the switch. A `chatgpt_codex` row is the shape already — it goes to
+  // `CodexProvider`, which does not consult the setting — and showing a
+  // control there that changes nothing is worse than not showing one.
+  const offersCodexRequestShape = apiFormat === 'responses' && !usesChatGptLogin(provider)
+
   const handleSave = useCallback(async () => {
     // A changed type can leave the row under a sign-in its new vendor does not
     // offer — a Codex login on an Anthropic row answers to no adapter. The
@@ -250,11 +289,44 @@ function ProviderEditor({
       // entry — "derive the mark from the vendor" — and omitting it would mean
       // "leave the logo alone", so choosing that entry would do nothing.
       icon,
+      // Restated even when the switch is not on screen. A row moved off
+      // `responses` hides the control, and leaving the column as it was would
+      // keep a setting the user can no longer see or turn off.
+      codexRequestShape: offersCodexRequestShape ? codexRequestShape : false,
     })
-    setSavedDraft({ name, providerType, baseUrl, apiFormat, icon })
+    // After the row, and only where the field was on screen: a save from a page
+    // that never showed it must not clear somebody else's override. `null` is
+    // the blank field, which means "back to the shipped default".
+    if (offersCodexRequestShape && codexRequestShape) {
+      await api.setPreference({
+        key: 'codex.client_version',
+        value: codexClientVersion.trim() || null,
+      })
+    }
+    setSavedDraft({
+      name,
+      providerType,
+      baseUrl,
+      apiFormat,
+      icon,
+      codexRequestShape: offersCodexRequestShape ? codexRequestShape : false,
+    })
     markSaved()
     onUpdate()
-  }, [provider.id, name, providerType, baseUrl, apiFormat, icon, activeAuth, onUpdate, markSaved])
+  }, [
+    provider.id,
+    name,
+    providerType,
+    baseUrl,
+    apiFormat,
+    icon,
+    codexRequestShape,
+    codexClientVersion,
+    offersCodexRequestShape,
+    activeAuth,
+    onUpdate,
+    markSaved,
+  ])
 
   const handleProviderTypeChange = useCallback(
     (raw: string) => {
@@ -627,6 +699,46 @@ function ProviderEditor({
           onChange={handleApiFormatChange}
           description={formatDescription}
         />
+      )}
+
+      {offersCodexRequestShape && (
+        <div data-slot="provider-codex-request-shape" className="space-y-1.5">
+          <CellSwitch
+            aria-label={t('settings.provider.codexRequestShape')}
+            aria-describedby={codexShapeHintId}
+            isSelected={codexRequestShape}
+            onChange={setCodexRequestShape}
+          >
+            <CellSwitch.Trigger className="pointer-coarse:h-11">
+              <CellSwitch.Label>{t('settings.provider.codexRequestShape')}</CellSwitch.Label>
+              <CellSwitch.Control />
+            </CellSwitch.Trigger>
+          </CellSwitch>
+          <p
+            id={codexShapeHintId}
+            data-slot="provider-codex-request-shape-hint"
+            className="text-caption-1-regular text-text-secondary"
+          >
+            {t('settings.provider.codexRequestShapeHint')}
+          </p>
+          {/* Only once the shape is on: an override for a version nothing is
+              claiming reads as a setting that does nothing. The field itself is
+              global — one install claims one Codex version — which the
+              description says rather than the layout implying. */}
+          {codexRequestShape && (
+            <TextField className="pt-1">
+              <Label>{t('settings.provider.codexClientVersion')}</Label>
+              <Input
+                name="codexClientVersion"
+                spellCheck={false}
+                value={codexClientVersion}
+                onChange={(e) => setCodexClientVersion(e.target.value)}
+                placeholder={t('settings.provider.codexClientVersionPlaceholder')}
+              />
+              <Description>{t('settings.provider.codexClientVersionHint')}</Description>
+            </TextField>
+          )}
+        </div>
       )}
 
       <div data-slot="provider-editor-actions" className="flex items-center gap-2">

@@ -1040,21 +1040,17 @@ async fn chat_inner(
         .await
         .map_err(|e| e.to_string())??
     };
-    let model = resolved.model;
-
     // Filled in now rather than declared at entry: which model a turn actually
     // used is the first thing a provider error needs explaining.
-    tracing::Span::current().record("model", model.as_str());
+    tracing::Span::current().record("model", resolved.model.as_str());
     tracing::Span::current().record("provider_type", resolved.provider_type.as_str());
     tracing::Span::current().record("api_format", resolved.api_format.as_str());
 
-    let provider = provider::registry::create_provider(
-        &resolved.provider_type,
-        &resolved.base_url,
-        &resolved.credential,
-        &resolved.api_format,
-        &resolved.transport_profile,
-    )?;
+    // Before the field is taken out of `resolved`: the wire borrows the whole
+    // row, so moving anything out of it first makes this a borrow of a
+    // partially moved value.
+    let provider = provider::registry::create_provider(resolved.wire())?;
+    let model = resolved.model.clone();
 
     // Needed before the tool set is assembled, unlike the other two prefs which
     // only matter once the request parameters are built.
@@ -1187,6 +1183,7 @@ async fn chat_inner(
         let pt = resolved.provider_type.clone();
         let af = resolved.api_format.clone();
         let tp = resolved.transport_profile.clone();
+        let crs = resolved.codex_request_shape;
         let mid = model.clone();
         let level = effective_level.clone();
         let fast = effective_fast;
@@ -1200,6 +1197,9 @@ async fn chat_inner(
                     api_format: &af,
 
                     transport_profile: &tp,
+                    codex_request_shape: crs,
+                    codex_request_kind: meridian_core::provider::codex_metadata::CodexRequestKind::Turn,
+                    codex_thread_source: meridian_core::provider::codex_metadata::CodexThreadSource::User,
                     model: &mid,
                     thinking_level: level.as_deref(),
                     fast,
@@ -1214,6 +1214,12 @@ async fn chat_inner(
     // is also what the summariser and the token estimator go through: neither
     // sends the transcript's prefix, so pinning them to it buys nothing.
     turn_params.params.cache_key = Some(conversation_id.clone());
+    // The three things only this layer knows, for a row that asked for the
+    // Codex shape. `take`n and put back rather than mutated in place because
+    // `in_turn` consumes; `None` here is the ordinary row and stays `None`.
+    if let Some(metadata) = turn_params.params.codex_turn.take() {
+        turn_params.params.codex_turn = Some(metadata.in_turn(&turn_id, now_ms(), project_id.is_some()));
+    }
     // A model that cannot take tools is sent none at all — several providers
     // refuse any request carrying a tools field. Decided here rather than by
     // emptying the list afterwards, because `offered` is what authorises a call

@@ -973,6 +973,10 @@ pub struct ProviderInfoResponse {
     /// renderer reads it, and a name the set does not know draws a generic
     /// mark — the cost of being wrong is one wrong logo.
     pub icon: Option<String>,
+    /// Whether this row's requests are shaped exactly the way Codex shapes its
+    /// own — see migration 63. Meaningful only where `api_format` is
+    /// `responses`; the settings page offers it nowhere else.
+    pub codex_request_shape: bool,
 }
 
 impl TryFrom<ProviderRow> for ProviderInfoResponse {
@@ -1000,6 +1004,7 @@ impl TryFrom<ProviderRow> for ProviderInfoResponse {
             credential_kind: meridian_core::provider::registry::CredentialKind::parse(&row.credential_kind)?,
             transport_profile: meridian_core::provider::registry::TransportProfile::parse(&row.transport_profile)?,
             icon: row.icon,
+            codex_request_shape: decode_sqlite_bool(row.codex_request_shape, "provider.codex_request_shape")?,
         })
     }
 }

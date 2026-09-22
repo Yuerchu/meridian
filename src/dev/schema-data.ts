@@ -519,6 +519,13 @@ const RAW_TABLES: RawTable[] = [
         '怎么发请求；与 provider_type + api_format 一起选适配器（迁移 41）',
       ],
       ['icon', 'TEXT', ['NULL'], 'NULL', '画哪个 logo；NULL 表示由 catalog_id 推导（迁移 62）'],
+      [
+        'codex_request_shape',
+        'INTEGER',
+        ['NN'],
+        '0',
+        '请求体与请求头是否照 Codex 原样发；只有 Responses 适配器读它（迁移 63）',
+      ],
     ],
     rels: [
       '<code>assistants.provider_id</code>、<code>messages.provider_id</code> → <b>SET NULL</b>。',
@@ -537,6 +544,9 @@ const RAW_TABLES: RawTable[] = [
       '<code>icon</code> 是这张表里<b>唯一一个自由文本、不做任何校验</b>的列，这是刻意的：它存的是 <code>@lobehub/icons</code> 里某个 logo 的名字，而那是个每个版本都会增删条目的第三方集合——写成封闭枚举，就会在升级后拒绝掉用户自己配好的行。它不参与任何决策（不选适配器、不决定地址、不影响凭证），认不出的名字退化成一个通用图标，代价上限就是「画错一个 logo」。',
       '<code>NULL</code> 同样是<b>常态而非待填</b>：有列之前所有行都是这个行为，指向已知厂商的行也应该继续跟随目录。它需要三态更新（缺省=不动 / null=回到跟随目录 / 字符串=指定），因为「恢复默认」是用户在选择器里按下的一个真实动作，塌成两态就会静默什么都不做。',
       '为什么会需要它：接 Vertex 或 Azure 的第二个 Anthropic 行、任何中转，<code>catalog_id</code> 都是 NULL，推导出来只能是一朵通用的云，而用户屏幕上可能同时有三四个这样的行。',
+      '<code>codex_request_shape</code> 存在的场景，是<b>有人把 Codex 后端反代成了普通 API</b>。那一行在这里配成 <code>openai</code> / <code>responses</code> / <code>standard</code>——因为从外面看它就长这样——于是拿到的是本应用的 Responses 请求而不是 Codex 的。两边的差是双向的：我们多发 <code>temperature</code> / <code>top_p</code> / <code>max_output_tokens</code>（Codex 的请求结构体里<b>根本没有这三个字段</b>），少发 <code>include: ["reasoning.encrypted_content"]</code> 和 <code>parallel_tool_calls</code>（Codex 恒发）。两半都不会被拒绝——请求照样成功——唯一的迹象是回答变差。',
+      '<b>刻意不由 <code>transport_profile</code> 推导</b>。那一列说的是怎么认证、到哪个端点；这一列说的是到了之后请求体和请求头长什么样。反代出来的 Codex 正是这两个答案分叉的那一行，从另一列算出来的标志表达不了它。',
+      '只有 Responses 适配器读它。<code>chatgpt_codex</code> 的行走 <code>CodexProvider</code>，那个适配器本来就是这个形状、不查这一列；chat-completions 的行没有这个形状可循。',
     ],
   },
   {

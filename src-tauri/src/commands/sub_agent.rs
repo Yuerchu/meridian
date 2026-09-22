@@ -340,6 +340,9 @@ impl DesktopSubAgents {
                     api_format: &resolved.api_format,
 
                     transport_profile: &resolved.transport_profile,
+                    codex_request_shape: resolved.codex_request_shape,
+                    codex_request_kind: meridian_core::provider::codex_metadata::CodexRequestKind::Turn,
+                    codex_thread_source: meridian_core::provider::codex_metadata::CodexThreadSource::SubAgent,
                     model: &resolved.model,
                     thinking_level: None,
                     fast: false,
@@ -668,13 +671,7 @@ impl DesktopSubAgents {
         })
         .await
         .map_err(|e| e.to_string())??;
-        let provider = meridian_core::provider::registry::create_provider(
-            &resolved.provider_type,
-            &resolved.base_url,
-            &resolved.credential,
-            &resolved.api_format,
-            &resolved.transport_profile,
-        )?;
+        let provider = meridian_core::provider::registry::create_provider(resolved.wire())?;
         // The whole resolution travels back, not just the type: the rows this run
         // writes record which upstream answered, and a sub-agent can be pointed
         // at a different one than its parent.

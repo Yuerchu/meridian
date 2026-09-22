@@ -68,6 +68,9 @@ pub enum PreferenceKey {
     SubAgentExploreModel,
     #[serde(rename = "sub_agent.agent.model")]
     SubAgentAgentModel,
+    /// Which Codex release this install claims to be, under `codex_request_shape`.
+    #[serde(rename = "codex.client_version")]
+    CodexClientVersion,
 }
 
 impl PreferenceKey {
@@ -88,6 +91,7 @@ impl PreferenceKey {
             Self::ApprovalsTtlMinutes => "approvals.ttl_minutes",
             Self::SubAgentExploreModel => "sub_agent.explore.model",
             Self::SubAgentAgentModel => "sub_agent.agent.model",
+            Self::CodexClientVersion => "codex.client_version",
         }
     }
 
@@ -219,6 +223,11 @@ pub enum PreferenceUpdateRequest {
     SubAgentAgentModel {
         value: RequiredNullable<PreferenceModelSelectionRequest>,
     },
+    /// Free text: the override exists to answer a backend that started
+    /// refusing a particular version, and a closed list we maintain would be
+    /// the reason it could not be used. `null` clears it back to the default.
+    #[serde(rename = "codex.client_version")]
+    CodexClientVersion { value: RequiredNullable<String> },
 }
 
 /// Typed current value. `null` means the row is absent; it is not a second
@@ -256,6 +265,8 @@ pub enum PreferenceInfoResponse {
     SubAgentExploreModel(Option<PreferenceModelSelectionInfoResponse>),
     #[serde(rename = "sub_agent.agent.model")]
     SubAgentAgentModel(Option<PreferenceModelSelectionInfoResponse>),
+    #[serde(rename = "codex.client_version")]
+    CodexClientVersion(Option<String>),
 }
 
 fn optional_bool(key: PreferenceKey, raw: Option<String>) -> Result<Option<bool>, String> {
@@ -378,6 +389,9 @@ fn decode_preference(key: PreferenceKey, raw: Option<String>) -> Result<Preferen
         PreferenceKey::SubAgentAgentModel => {
             PreferenceInfoResponse::SubAgentAgentModel(parse_model_selection(key, raw)?)
         }
+        // Free text, read back as stored. A value this build has never heard of
+        // is exactly what the override is for.
+        PreferenceKey::CodexClientVersion => PreferenceInfoResponse::CodexClientVersion(raw),
     })
 }
 
@@ -429,6 +443,13 @@ impl PreferenceUpdateRequest {
             Self::SubAgentAgentModel { value } => (
                 PreferenceKey::SubAgentAgentModel,
                 encode_model_selection(PreferenceKey::SubAgentAgentModel, value.0)?,
+            ),
+            // A blank field is "back to the shipped default", which is the row
+            // being absent — stored as an empty string it would be a version of
+            // `""`, and the resolver would have to guess which was meant.
+            Self::CodexClientVersion { value } => (
+                PreferenceKey::CodexClientVersion,
+                value.0.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
             ),
         })
     }

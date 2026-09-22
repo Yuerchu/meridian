@@ -3908,6 +3908,12 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
             "id": 2
           }
         },
+        "codex_request_shape": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
         "created_at": {
           "optional": false,
           "schema": {
@@ -9411,6 +9417,10 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     "autoreview.model": {
       "kind": "ref",
       "id": 3
+    },
+    "codex.client_version": {
+      "kind": "ref",
+      "id": 2
     },
     "sandbox.enabled": {
       "kind": "ref",

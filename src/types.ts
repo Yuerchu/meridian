@@ -242,6 +242,12 @@ export interface ProviderUpdateRequest {
    * the default" does nothing — that is what `null` is for.
    */
   icon?: string | null
+  /**
+   * Two states rather than `icon`'s three: the column is non-null with two
+   * values, so omitted means "leave it alone" and there is no third answer to
+   * be confused with.
+   */
+  codexRequestShape?: boolean
 }
 
 export interface ProviderKeyUpdateRequest {
@@ -357,6 +363,7 @@ export type PreferenceKey =
   | 'approvals.ttl_minutes'
   | 'sub_agent.explore.model'
   | 'sub_agent.agent.model'
+  | 'codex.client_version'
 
 export type ShellType = 'bash' | 'powershell' | 'cmd'
 export type SandboxMode = 'auto' | 'container' | 'off'
@@ -393,6 +400,16 @@ export interface PreferenceInfoValueByKey {
   'approvals.ttl_minutes': number | null
   'sub_agent.explore.model': PreferenceModelSelectionInfoResponse | null
   'sub_agent.agent.model': PreferenceModelSelectionInfoResponse | null
+  /**
+   * The Codex release this install claims to be, or null to take whatever
+   * version this build shipped with.
+   *
+   * Free text rather than a union: the point of the override is to answer a
+   * backend that started refusing or degrading a particular version, which
+   * happens between our releases -- a closed list we maintain would be the
+   * reason the override could not be used.
+   */
+  'codex.client_version': string | null
 }
 
 export type PreferenceInfoResponse<K extends PreferenceKey = PreferenceKey> = {
@@ -415,6 +432,7 @@ export interface PreferenceUpdateValueByKey {
   'approvals.ttl_minutes': number
   'sub_agent.explore.model': PreferenceModelSelectionRequest | null
   'sub_agent.agent.model': PreferenceModelSelectionRequest | null
+  'codex.client_version': string | null
 }
 
 export type PreferenceUpdateRequest = {
@@ -1882,6 +1900,18 @@ export interface ProviderInfoResponse {
    * the set does not know draws a generic mark.
    */
   icon: string | null
+  /**
+   * Whether requests to this row are shaped exactly the way Codex shapes its
+   * own: no `temperature`, `top_p` or `max_output_tokens`, always
+   * `include: ["reasoning.encrypted_content"]` and `parallel_tool_calls`, and
+   * Codex's own request headers.
+   *
+   * For a Codex backend put behind an ordinary API key — a row configured here
+   * as `openai` / `responses` / `standard`, because that is what it looks like
+   * from outside. Meaningful only where `api_format` is `responses`; the
+   * settings page offers it nowhere else.
+   */
+  codex_request_shape: boolean
 }
 
 /**
