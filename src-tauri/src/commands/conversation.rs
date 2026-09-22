@@ -803,6 +803,7 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
                 model,
                 api_format,
                 transport_profile,
+                codex_request_shape,
                 ..
             } = resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())?;
             let turn = resolve_turn_params(
@@ -814,6 +815,9 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
                     api_format: &api_format,
 
                     transport_profile: &transport_profile,
+                    codex_request_shape,
+                    codex_request_kind: meridian_core::provider::codex_metadata::CodexRequestKind::Background,
+                    codex_thread_source: meridian_core::provider::codex_metadata::CodexThreadSource::User,
                     model: &model,
                     thinking_level: None,
                     fast: false,

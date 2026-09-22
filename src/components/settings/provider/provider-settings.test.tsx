@@ -23,6 +23,8 @@ vi.mock('@/api', () => ({
     saveModelConfig: vi.fn(),
     deleteModelConfig: vi.fn(),
     setProviderKey: vi.fn(),
+    getPreference: vi.fn(),
+    setPreference: vi.fn(),
   },
 }))
 
@@ -43,6 +45,7 @@ function makeProvider(id: string, name: string): ProviderInfoResponse {
     credential_kind: 'api_key',
     transport_profile: 'standard',
     icon: null,
+    codex_request_shape: false,
   }
 }
 
@@ -195,6 +198,8 @@ describe('ProviderSettings list/detail navigation', () => {
     mockApi.getModelConfig.mockResolvedValue(null)
     mockApi.listModelProfiles.mockResolvedValue([])
     mockApi.getProviderCapabilities.mockRejectedValue(new Error('No capabilities in this test'))
+    mockApi.getPreference.mockResolvedValue({ key: 'codex.client_version', value: null })
+    mockApi.setPreference.mockResolvedValue(undefined)
   })
 
   it('shows the list first, and opens nothing on its own', async () => {
@@ -1021,5 +1026,41 @@ describe('ProviderSettings list/detail navigation', () => {
     // address carries strictly more of what the hint was for: whether this
     // dialect wants a path suffix.
     expect(screen.getByPlaceholderText('https://generativelanguage.googleapis.com')).toBeInTheDocument()
+  })
+
+  /**
+   * The Codex shape is offered to the one kind of row it can mean anything
+   * for: an API-key `responses` provider, which is what a reverse-proxied
+   * Codex backend is configured as. A chat-completions row has no such shape
+   * to follow, and showing a switch that changes nothing is worse than
+   * showing none.
+   */
+  it('offers the Codex request shape only to a Responses row', async () => {
+    const user = userEvent.setup()
+    mockApi.listProviders.mockResolvedValue([
+      { ...makeProvider('p1', 'Chat Row'), api_format: 'chat_completions' },
+      { ...makeProvider('p2', 'Responses Row'), api_format: 'responses' },
+    ])
+    render(<ProviderSettings />)
+
+    await openFirstProvider(user, 'Chat Row')
+    expect(screen.queryByLabelText(i18n.t('settings.provider.codexRequestShape'))).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: i18n.t('common.back') }))
+
+    await openFirstProvider(user, 'Responses Row')
+    const shape = await screen.findByLabelText(i18n.t('settings.provider.codexRequestShape'))
+    expect(shape).not.toBeChecked()
+    // The version override only appears once something is claiming one.
+    expect(screen.queryByLabelText(i18n.t('settings.provider.codexClientVersion'))).not.toBeInTheDocument()
+    await user.click(shape)
+    expect(await screen.findByLabelText(i18n.t('settings.provider.codexClientVersion'))).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
+    await waitFor(() =>
+      expect(mockApi.updateProvider).toHaveBeenLastCalledWith(expect.objectContaining({ codexRequestShape: true })),
+    )
+    // Blank means "the version this build shipped with", which is the row
+    // being absent rather than a version of `""`.
+    expect(mockApi.setPreference).toHaveBeenLastCalledWith({ key: 'codex.client_version', value: null })
   })
 })

@@ -398,6 +398,10 @@ pub struct ProviderUpdateRequest {
     /// catalog says this vendor is, and a string names a mark.
     #[serde(default, deserialize_with = "patch_nullable")]
     icon: Option<RequiredNullable<String>>,
+    /// A plain `Option`, unlike `icon` above: the column is `NOT NULL` with two
+    /// values, so there is no third state to distinguish and absent means
+    /// "leave it alone" with nothing to be confused with.
+    codex_request_shape: Option<bool>,
 }
 
 /// A patch key with three states: absent, null, or a value.
@@ -576,6 +580,9 @@ pub async fn create_provider(
                 // A new row follows its vendor's mark. Choosing another one is
                 // an edit on the provider page, not part of creating it.
                 icon: None,
+                // Likewise: a new row is an ordinary one until somebody says
+                // the address behind it is a relay for a Codex backend.
+                codex_request_shape: 0,
             },
         )
         .map_err(|e| e.to_string())?;
@@ -675,6 +682,7 @@ pub async fn update_provider(
             transport_profile,
             catalog_id,
             icon,
+            codex_request_shape: request.codex_request_shape.map(i32::from),
             ..Default::default()
         };
         let row = finish_guarded_provider_mutation(
@@ -981,7 +989,7 @@ pub async fn get_provider_capabilities(
     let pool = services.db.clone();
     let provider_id = request.provider_id;
     let model_id = request.model_id;
-    let (provider_type, api_format, transport_profile, overrides) = {
+    let (provider_type, api_format, transport_profile, codex_request_shape, overrides) = {
         let pid = provider_id.clone();
         let mid = model_id.clone();
         tokio::task::spawn_blocking(move || {
@@ -993,7 +1001,13 @@ pub async fn get_provider_capabilities(
                 .ok()
                 .flatten()
                 .and_then(|config| config.capability_overrides);
-            Ok::<_, String>((p.provider_type, p.api_format, p.transport_profile, overrides))
+            Ok::<_, String>((
+                p.provider_type,
+                p.api_format,
+                p.transport_profile,
+                p.codex_request_shape != 0,
+                overrides,
+            ))
         })
         .await
         .map_err(|e| e.to_string())??
@@ -1005,6 +1019,13 @@ pub async fn get_provider_capabilities(
         &model_id,
     )?;
     meridian_core::provider::capabilities::apply_overrides(&mut caps, overrides.as_deref())?;
+    // After the model's own patch, not before: the shape decides what this
+    // adapter is able to put on the wire, and no per-model correction can hand
+    // back a field the request will not carry. A temperature slider that
+    // renders and then changes nothing is worse than one that is absent.
+    if codex_request_shape {
+        meridian_core::provider::capabilities::narrow_to_codex_shape(&mut caps);
+    }
     caps.try_into()
 }
 
@@ -1029,6 +1050,7 @@ mod response_contract_tests {
                 credential_kind: "api_key",
                 transport_profile: "standard",
                 icon: None,
+                codex_request_shape: 0,
             },
         )
         .unwrap();
