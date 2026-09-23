@@ -53,7 +53,7 @@ export function SwitchCard({
           'group flex w-full items-center justify-between gap-3 rounded-xl border border-border-button-default py-3 pr-5 pl-4 select-none',
           'transition-colors duration-150 ease',
           state.isHovered && !state.isDisabled ? 'bg-background-primary-hover' : 'bg-background-primary-default',
-          state.isDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-[var(--cursor-interactive)]',
+          state.isDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
           typeof className === 'function' ? className(state) : className,
         )
       }

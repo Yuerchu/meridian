@@ -18,7 +18,6 @@ import {
 } from 'react-aria-components'
 import { cx } from '@/utils/cx'
 import { MENU_ITEM, MENU_ITEM_ACTIVE, MENU_POPOVER_SURFACE } from './dropdown/menu-styles'
-import { OVERLAY_MOTION } from './overlay-motion'
 
 /**
  * A right-click menu: React Aria's `Menu` in a `Popover` anchored to where the
@@ -137,7 +136,7 @@ function ContextMenuPopover({ className, children }: { className?: string; child
           data-slot="context-menu-popover"
           placement="bottom start"
           offset={2}
-          className={cx('min-w-48 p-2', MENU_POPOVER_SURFACE, OVERLAY_MOTION, 'w-auto', className)}
+          className={cx('min-w-48', MENU_POPOVER_SURFACE, className)}
         >
           {children}
         </AriaPopover>

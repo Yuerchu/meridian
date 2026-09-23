@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode, Ref } from 'react'
-import { RiInformationFill } from '@remixicon/react'
+import { Info } from '@keyline-icons/react/two-tone'
 import type { LabelProps as AriaLabelProps } from 'react-aria-components'
 import { Label as AriaLabel } from 'react-aria-components'
 import { cx } from '@/utils/cx'
@@ -31,18 +31,21 @@ export interface LabelProps extends AriaLabelProps {
   ref?: Ref<HTMLLabelElement>
 }
 
-export function Label({ isRequired = false, isInvalid = false, tooltip, className, children, ...props }: LabelProps) {
+export function Label({
+  isRequired = false,
+  // eslint-disable-next-line meridian-ui/no-silent-prop-drop -- registry API, kept for symmetry with HintText; the label does not recolour
+  isInvalid: _isInvalid,
+  tooltip,
+  className,
+  children,
+  ...props
+}: LabelProps) {
+  void _isInvalid
   return (
     <AriaLabel
       data-label="true"
-      data-invalid={isInvalid || undefined}
       {...props}
-      className={cx(
-        'flex cursor-default items-center gap-0.5',
-        'text-body-medium text-text-primary',
-        isInvalid && 'text-text-error-primary',
-        className,
-      )}
+      className={cx('flex cursor-default items-center gap-0.5', 'text-body-medium text-text-primary', className)}
     >
       {children}
       {isRequired && (
@@ -50,7 +53,7 @@ export function Label({ isRequired = false, isInvalid = false, tooltip, classNam
           *
         </span>
       )}
-      {tooltip && <RiInformationFill className="size-4 shrink-0 text-foreground-icon-quaternary" aria-hidden />}
+      {tooltip && <Info className="size-4 shrink-0 text-foreground-icon-quaternary" aria-hidden />}
     </AriaLabel>
   )
 }

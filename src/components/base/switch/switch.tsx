@@ -154,7 +154,7 @@ export function Switch({ className, children, size = 'md', shape = 'pill', ref, 
       className={(state) =>
         cx(
           'group inline-flex items-center gap-2 select-none',
-          state.isDisabled ? 'cursor-not-allowed' : 'cursor-[var(--cursor-interactive)]',
+          state.isDisabled ? 'cursor-not-allowed' : 'cursor-pointer',
           typeof className === 'function' ? className(state) : className,
         )
       }

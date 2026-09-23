@@ -833,30 +833,19 @@
   --input-transition-ms: 150ms;
 }
 
-/* Keep color feedback quick while the physical press motion remains soft.
- * The transform uses a shorter duration on press and the slower duration only
- * when returning to rest, so hover styles never inherit the 700ms timing. */
+/* Meridian: upstream also scales the button to 0.98 on :active. Removed —
+ * references/motion.md: "Press feedback is a color step, not a scale …
+ * BoardUI buttons never shrink on press". Where the doc and the code
+ * disagree the doc wins (recorded in boardui.json). */
 @utility button-press-motion {
   transition:
     background-color var(--button-transition-ms) ease,
     border-color var(--button-transition-ms) ease,
     box-shadow var(--button-transition-ms) ease,
-    color var(--button-transition-ms) ease,
-    transform 420ms cubic-bezier(0.4, 0, 0.2, 1);
-
-  &:active:not(:disabled):not([aria-disabled='true']) {
-    transform: scale(0.98);
-    transition-duration: 150ms, 150ms, 150ms, 150ms, 220ms;
-  }
-
-  &:disabled,
-  &[aria-disabled='true'] {
-    transform: none;
-  }
+    color var(--button-transition-ms) ease;
 
   @media (prefers-reduced-motion: reduce) {
     transition: none;
-    transform: none;
   }
 }
 

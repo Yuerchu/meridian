@@ -7,13 +7,13 @@
  * this file restates a token boardui already has.
  */
 
+/* Markdown bubbles and the plan editor use `prose`. globals.css is the
+   registry's file and does not load this plugin, so it is loaded here. */
+@plugin "@tailwindcss/typography";
+
 @theme {
-  /* boardui's ramp names Inter through a next/font variable that does not
-     exist here. The app's own stack, PingFang first (see the font note in
-     ~/.claude/rules/dev-environment.md), applies to every composite text
-     utility because those reference `--font-sans` rather than a family. */
-  --font-sans: 'PingFang SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'Maple Mono NF CN', ui-monospace, 'Cascadia Code', monospace;
+  /* Fonts are not set here: theme.css reads --font-inter and
+     --font-mono-source, which src/styles/fonts.css defines. */
 
   /* A sheet's slide and its spring back after a drag share one curve, so the
      panel returning to rest reads as the same object that slid in. */
@@ -28,10 +28,6 @@
 }
 
 :root {
-  /* The lint rule that bans `cursor-pointer` points at this variable so the
-     cursor is decided once; boardui defines no cursor token of its own. */
-  --cursor-interactive: pointer;
-
   /* Status. `*-soft` is the tinted fill behind a status message or chip and
      `*-soft-foreground` the text that sits on a light panel: the base colours
      are tuned as fills and green/amber at that weight do not clear AA as text. */
@@ -58,9 +54,6 @@
   --status-info-soft: color-mix(in srgb, var(--color-blue-500) 12%, transparent);
   --status-info-soft-hover: color-mix(in srgb, var(--color-blue-500) 20%, transparent);
   --status-info-soft-foreground: var(--color-blue-700);
-
-  /* Behind a modal or a sheet. */
-  --backdrop: var(--color-neutral-950);
 }
 
 .dark {
@@ -87,8 +80,6 @@
   --status-info-soft: color-mix(in srgb, var(--color-blue-400) 16%, transparent);
   --status-info-soft-hover: color-mix(in srgb, var(--color-blue-400) 24%, transparent);
   --status-info-soft-foreground: var(--color-blue-300);
-
-  --backdrop: var(--color-black);
 }
 
 @theme inline {
@@ -115,12 +106,10 @@
   --color-status-info-soft: var(--status-info-soft);
   --color-status-info-soft-hover: var(--status-info-soft-hover);
   --color-status-info-soft-foreground: var(--status-info-soft-foreground);
-
-  --color-backdrop: var(--backdrop);
 }
 
 /* Motion boardui does not ship: a sheet's slide (a translate cannot be a
-   transition from `data-entering` alone) and a toast's rise. */
+   transition from `data-entering` alone). */
 @keyframes meridian-sheet-in-right {
   from {
     transform: translateX(100%);
@@ -176,9 +165,18 @@
      on screen that carries meaning, so it is a token of its own rather than the
      action colour or the hover wash written at the call site — and it stays
      neutral while `accent` is boardui blue. */
-  --bubble-user: var(--color-neutral-950);
-  --bubble-user-foreground: var(--color-white);
-  --bubble-assistant: var(--color-neutral-100);
+  /* The person's bubble is the registry's user message
+     (`agent-chat-message.tsx`): a white card, `text-text-primary`,
+     `shadow-card`, on the chat's `background-secondary` surface. Semantic
+     tokens, so the dark theme needs no override of its own. */
+  --bubble-user: var(--color-background-primary-default);
+  --bubble-user-foreground: var(--color-text-primary);
+  --bubble-user-shadow: var(--shadow-card);
+  /* The registry draws no bubble for the model; ours stays, and has to read
+     against the chat surface (`background-secondary-default`, neutral-100 in
+     light) *and* against the white user card. One step darker than the
+     surface does both. */
+  --bubble-assistant: var(--color-neutral-200);
   --bubble-assistant-foreground: var(--color-neutral-950);
 
   --scrollbar-thumb: var(--color-neutral-200);
@@ -193,11 +191,10 @@
 }
 
 .dark {
-  --bubble-user: var(--color-neutral-200);
-  --bubble-user-foreground: var(--color-neutral-950);
-  /* One step lighter than the panel the transcript sits on. boardui's dark
-     `background-primary-default` is neutral-800, and the assistant fill used
-     to be the same value — a bubble the colour of its background is no bubble. */
+  /* Two steps lighter than the chat surface (boardui's dark
+     `background-secondary-default` is neutral-900) and one past the user card
+     (`background-primary-default`, neutral-800) — a bubble the colour of its
+     background, or of the other speaker's, is no bubble. */
   --bubble-assistant: var(--color-neutral-700);
   --bubble-assistant-foreground: var(--color-neutral-50);
 

@@ -147,7 +147,7 @@ function ChatSourcesTrigger({ className, children, ...props }: ComponentProps<'b
       onClick={toggle}
       {...props}
       className={cx(
-        'flex cursor-[var(--cursor-interactive)] items-center gap-1 rounded-md text-caption-1-medium text-text-secondary outline-none',
+        'flex cursor-pointer items-center gap-1 rounded-md text-caption-1-medium text-text-secondary outline-none',
         'hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring',
         className,
       )}

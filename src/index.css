@@ -1,5 +1,8 @@
 /* boardui foundation: tailwindcss, theme tokens, typography, animations. */
 @import './styles/globals.css';
+/* The typefaces, and the `--font-inter` / `--font-mono-source` that theme.css
+   reads them through. */
+@import './styles/fonts.css';
 /* Meridian's own semantics on boardui primitives: fonts, status, bubbles,
    scrollbars, safe-area insets, the motion boardui does not ship. */
 @import './styles/meridian.css';
@@ -63,7 +66,7 @@
 .plan-comment-highlight:hover {
   outline: 1px solid var(--color-accent-500);
   outline-offset: 1px;
-  cursor: var(--cursor-interactive);
+  cursor: pointer;
 }
 
 [data-slot='plan-review-page'] article[data-state='orphaned'] {
@@ -80,25 +83,6 @@
   border-radius: 0;
   padding: 1.5rem clamp(1rem, 4cqi, 3rem) 6rem;
   line-height: 1.6;
-}
-
-/* TextShimmer paints its text with a moving gradient and sets
-   `-webkit-text-fill-color: transparent` so the gradient shows through. Those
-   are independent declarations: where `tan()` is unsupported the gradient's
-   width cannot be resolved and the whole `background` shorthand is dropped —
-   but the transparent fill still applies, and the text disappears rather than
-   degrading. Keyed on the feature rather than on reduced motion.
-
-   Android WebView tracks the system, so a device old enough to lack `tan()` is
-   a device this would otherwise show blank labels on. Settings → Developer
-   probes for both this and `oklch(from …)`. */
-@supports not (width: calc(1px * tan(45deg))) {
-  [data-slot='text-shimmer'] {
-    -webkit-text-fill-color: unset;
-    color: currentColor;
-    background: none;
-    animation: none;
-  }
 }
 
 /* A group header's own buttons — new-conversation and the "…" menu — appear on

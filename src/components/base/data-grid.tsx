@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { RiArrowRightSLine } from '@remixicon/react'
+import { ChevronRight } from '@keyline-icons/react/two-tone'
 import {
   Button as AriaButton,
   Cell,
@@ -244,7 +244,7 @@ export function DataGrid<T extends object>({
                   <span className="inline-flex items-center gap-1">
                     {typeof col.header === 'function' ? col.header() : col.header}
                     {allowsSorting && (
-                      <RiArrowRightSLine
+                      <ChevronRight
                         aria-hidden
                         className={cx(
                           'size-3.5 transition-transform',
@@ -275,7 +275,7 @@ export function DataGrid<T extends object>({
               aria-posinset={isTree ? row.posInSet : undefined}
               className={cx(
                 'outline-none',
-                onRowAction && 'cursor-[var(--cursor-interactive)]',
+                onRowAction && 'cursor-pointer',
                 'data-[hovered]:bg-background-primary-hover data-[selected]:bg-button-ghost-background',
                 'data-[focus-visible]:ring-2 data-[focus-visible]:ring-inset data-[focus-visible]:ring-border-focus-ring',
               )}
@@ -306,16 +306,15 @@ export function DataGrid<T extends object>({
                         style={{ paddingInlineStart: `${(row.level - 1) * 1.25}rem` }}
                       >
                         {row.hasChildren ? (
-                          // eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- named per row by aria-label; one tooltip per row is noise
                           <AriaButton
                             data-slot="data-grid-expand"
                             aria-label={t(row.expanded ? 'dataGrid.collapseRow' : 'dataGrid.expandRow', {
                               label: rowLabel(row.item, columns, treeKey),
                             })}
                             onPress={() => toggle(row.key)}
-                            className="flex size-5 shrink-0 cursor-[var(--cursor-interactive)] items-center justify-center rounded-md text-foreground-icon-secondary outline-none data-[hovered]:bg-background-secondary-hover data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring"
+                            className="flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-foreground-icon-secondary outline-none data-[hovered]:bg-background-secondary-hover data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring"
                           >
-                            <RiArrowRightSLine
+                            <ChevronRight
                               aria-hidden
                               className={cx('size-4 transition-transform duration-150', row.expanded && 'rotate-90')}
                             />

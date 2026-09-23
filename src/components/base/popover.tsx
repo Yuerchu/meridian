@@ -58,7 +58,7 @@ function PopoverTrigger({ className, children, ref, ...props }: PopoverTriggerPr
       data-slot="popover-trigger"
       {...props}
       className={cx(
-        'inline-flex cursor-[var(--cursor-interactive)] items-center outline-none',
+        'inline-flex cursor-pointer items-center outline-none',
         'data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
         className,
       )}

@@ -93,7 +93,7 @@ function FloatingTocItem({ className, active, children, ...props }: FloatingTocI
       aria-current={active ? 'true' : undefined}
       {...props}
       className={cx(
-        'cursor-[var(--cursor-interactive)] rounded-lg px-2 py-1 text-left text-caption-1-medium whitespace-nowrap text-text-secondary outline-none',
+        'cursor-pointer rounded-lg px-2 py-1 text-left text-caption-1-medium whitespace-nowrap text-text-secondary outline-none',
         'data-[hovered]:bg-background-secondary-hover data-[hovered]:text-text-primary data-[active]:text-text-primary',
         'data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
         className,

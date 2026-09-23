@@ -1,0 +1,257 @@
+{
+  "registry": "https://www.boardui.com/r",
+  "items": {
+    "theme": {
+      "files": ["src/styles/theme.css"],
+      "upstream": {
+        "src/styles/theme.css": "c6e9e53959bb87dc09c85d90c3f4fa400912644b04ba6a4897143971d7908a5b"
+      },
+      "patches": [
+        "button-press-motion: the scale(0.98) :active transform (and its transition/disabled/reduced-motion resets) is removed, color transitions kept. references/motion.md: \"Press feedback is a color step, not a scale … BoardUI buttons never shrink on press\" — where the doc and the code disagree the doc wins."
+      ]
+    },
+    "typography": {
+      "files": ["src/styles/typography.css"],
+      "upstream": {
+        "src/styles/typography.css": "dfd4e9b446998d063efe96a47fc31fd2492639bf641d0da1b60645fe4dcc32a1"
+      },
+      "patches": []
+    },
+    "globals": {
+      "files": ["src/styles/globals.css"],
+      "upstream": {
+        "src/styles/globals.css": "f3c44bfce35316ce4c6d74f9f1706e127ad16aa1db079013b5002ec6cfec773e"
+      },
+      "patches": []
+    },
+    "cx": {
+      "files": ["src/utils/cx.ts"],
+      "upstream": {
+        "src/utils/cx.ts": "db35ea5afa8b2e0fd51319bc49288c4df7c98ec53440b43903636a32e3319d9d"
+      },
+      "patches": []
+    },
+    "use-dismiss-on-outside-press": {
+      "files": ["src/utils/use-dismiss-on-outside-press.ts"],
+      "upstream": {
+        "src/utils/use-dismiss-on-outside-press.ts": "01c70c3b25018e9c8d1d6d84ca67facb9392b5d4baf1c7207bbcfe13d4b33699"
+      },
+      "patches": []
+    },
+    "chevrons": {
+      "files": ["src/components/foundations/icons/chevrons.tsx"],
+      "upstream": {
+        "src/components/foundations/icons/chevrons.tsx": "daa432c30cf80fbfef15f929a2b7ca459c007f5611785286937528d4b7565b97"
+      },
+      "patches": []
+    },
+    "button": {
+      "files": ["src/components/base/buttons/button.tsx"],
+      "upstream": {
+        "src/components/base/buttons/button.tsx": "a49800d5cc58a9f8a98c07a7251e5923904b483b2f3e6e63e4fa0797acff101d"
+      },
+      "patches": [
+        "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): renders react-aria-components Button instead of a native <button>; props are AriaButtonProps (onPress/isDisabled/isPending/slot) plus className/style; hover:/active:/focus-visible: become data-[hovered]/data-[pressed]/data-[focus-visible].",
+        "isPending (RAC): sets aria-disabled and swaps the leading icon for <Spinner> (Meridian spinner) so the label does not move.",
+        "Extra variant neutral: the grey round icon control, copied from the Dropdown usage example in references/components.md (DropdownTrigger `flex size-9 items-center justify-center rounded-full bg-background-secondary-default p-2 hover:bg-background-secondary-hover`, icon `size-5 text-foreground-icon-secondary`). hover/pressed ride RAC data-[hovered]/data-[pressed]; pressed is the next ladder step bg-background-tertiary-hover; disabled text-text-disabled. Size and padding stay the Button size tier. The former tertiary/danger-soft variants are removed (callers use the registry secondary/danger).",
+        "ButtonVariant/ButtonSize are exported (toggle-button.tsx composes buttonStyles).",
+        "ButtonLink is kept as the registry's native <a> (no callers)."
+      ]
+    },
+    "close-button": {
+      "files": ["src/components/base/buttons/close-button.tsx"],
+      "upstream": {
+        "src/components/base/buttons/close-button.tsx": "0cfe4372b4990726e0819095f690506d5d6b1ceabbc8319c7dab12e3ee524f06"
+      },
+      "patches": [
+        "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): react-aria-components Button (Dialog slot=\"close\", TooltipTrigger child); hover:/focus-visible: → data-[hovered]/data-[focus-visible]; props are AriaButtonProps."
+      ]
+    },
+    "input": {
+      "files": [
+        "src/components/base/input/hint-text.tsx",
+        "src/components/base/input/input.tsx",
+        "src/components/base/input/label.tsx"
+      ],
+      "upstream": {
+        "src/components/base/input/hint-text.tsx": "0426d70de74274486166cf3fd2279b8c70ce184012d613f87c44dbaa484ba8c3",
+        "src/components/base/input/input.tsx": "7f42e9bbd54ef8db46b280d6fa2f0936ba064f222b7e4c9084a5cfd6cf219920",
+        "src/components/base/input/label.tsx": "a053bec8ad9f79f15ad8d7f031eac740588781d4e1b34d1cb1b3c5d44a4b2199"
+      },
+      "patches": [
+        "input/label.tsx: the registry drops isInvalid (`isInvalid: _isInvalid`); an eslint-disable for meridian-ui/no-silent-prop-drop documents that, code unchanged.",
+        "Icons: keyline two-tone replaces @remixicon/react (project icon decision 2026-09-23)"
+      ]
+    },
+    "textarea": {
+      "files": ["src/components/base/textarea/textarea.tsx"],
+      "upstream": {
+        "src/components/base/textarea/textarea.tsx": "a4896f7460fbb0b6d5b65299ad9ace8d664c2771cc44cb77b0bd96c8ab871c33"
+      },
+      "patches": []
+    },
+    "checkbox": {
+      "files": ["src/components/base/checkbox/checkbox-glyph.tsx", "src/components/base/checkbox/checkbox.tsx"],
+      "upstream": {
+        "src/components/base/checkbox/checkbox-glyph.tsx": "e71bdc6f0dd28e792be233950df90f7f8ee68252a63e3f2da46d19f84bdf7584",
+        "src/components/base/checkbox/checkbox.tsx": "592651a10aaf0e186a08862391fa99fa7d45ee75e8bfd0bc134408bb1c076f5e"
+      },
+      "patches": []
+    },
+    "radio": {
+      "files": ["src/components/base/radio/radio.tsx"],
+      "upstream": {
+        "src/components/base/radio/radio.tsx": "2d0d68454e0dfb9a836fc5f76089ea602aeaf427517885ddff2b568ac2a691ec"
+      },
+      "patches": []
+    },
+    "switch": {
+      "files": ["src/components/base/switch/switch.tsx"],
+      "upstream": {
+        "src/components/base/switch/switch.tsx": "4b853b8886c471f482e3b2c5a4a6c6436ab30f7d6122f43f571f94d10f5d6c22"
+      },
+      "patches": []
+    },
+    "switch-card": {
+      "files": ["src/components/base/switch/switch-card.tsx"],
+      "upstream": {
+        "src/components/base/switch/switch-card.tsx": "4c7cbbbf636ea92a9b2318a655e1ab38c88b85018be4d3a978f6383476c095f4"
+      },
+      "patches": []
+    },
+    "select": {
+      "files": ["src/components/base/dropdown/menu-styles.ts", "src/components/base/select/select.tsx"],
+      "upstream": {
+        "src/components/base/dropdown/menu-styles.ts": "95c1dd4c81cb48560ba206012314b2ca9a3742bee2d6c38b26548b6b893219b1",
+        "src/components/base/select/select.tsx": "c56abf0ad7b554a363a6e2b46045489b6a94c18718324cbf06e64edf0540b116"
+      },
+      "patches": [
+        "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): trigger hover:/focus-visible: → data-[hovered]/data-[focus-visible] (menu-styles MENU_ITEM_INTERACTIVE likewise).",
+        "label / description props render the registry's own input/label Label and input/hint-text HintText inside the RAC Select (named/described trigger); root gets gap-1 like TextField. Used by settings primitives and hooks settings."
+      ]
+    },
+    "dropdown": {
+      "files": ["src/components/base/dropdown/dropdown.tsx", "src/components/base/dropdown/menu-styles.ts"],
+      "upstream": {
+        "src/components/base/dropdown/dropdown.tsx": "b57a21bb7075d5bc8a63676e9116c6a918a5d9941d7bacda1b55b64af660cdf6",
+        "src/components/base/dropdown/menu-styles.ts": "95c1dd4c81cb48560ba206012314b2ca9a3742bee2d6c38b26548b6b893219b1"
+      },
+      "patches": [
+        "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): the registry panel is DialogTrigger + native <button> rows (no role=menu, arrow keys, typeahead or selection). Here: Dropdown = MenuTrigger, DropdownPopover = Popover + Menu (menu props pass through: selectionMode, selectedKeys, onAction…), DropdownGroup = MenuSection + Header, DropdownItem = MenuItem (onAction instead of onSelect, selection from the menu instead of `selected`), DropdownDivider = Separator. MenuTrigger owns dismissal, so the isNonModal + useDismissOnOutsidePress bridge is not used. Surface and row classes unchanged.",
+        "menu-styles MENU_ITEM_INTERACTIVE: hover:/focus-visible: → data-[hovered]/data-[focus-visible].",
+        "DropdownItem variant=\"danger\" (row-actions-menu destructive actions): text-text-error-primary; isDisabled rows: cursor-not-allowed text-text-disabled."
+      ]
+    },
+    "slider": {
+      "files": ["src/components/base/slider/slider.tsx"],
+      "upstream": {
+        "src/components/base/slider/slider.tsx": "7f2c73bcf5adafd1e3783051f527a0e3d2878ed98594bfed42a55c17ec5c7573"
+      },
+      "patches": []
+    },
+    "segmented-control": {
+      "files": ["src/components/base/segmented-control/segmented-control.tsx"],
+      "upstream": {
+        "src/components/base/segmented-control/segmented-control.tsx": "9f12eaf790a646a1fe422b35a1a26492146563d031cd5627ca00cbabac4cdb3f"
+      },
+      "patches": [
+        "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): SegmentedControlItem (RAC ToggleButton) hover:/focus-visible: → data-[hovered]/data-[focus-visible]."
+      ]
+    },
+    "tabs": {
+      "files": ["src/components/base/tabs/pill-tab.tsx", "src/components/base/tabs/tabs.tsx"],
+      "upstream": {
+        "src/components/base/tabs/pill-tab.tsx": "59d973a6fb97f0382d892b7978db62bb19406ab7f5d039a944162cc40d12ab38",
+        "src/components/base/tabs/tabs.tsx": "4b6e1c407ba833ad1ce6b85fa5cf199dabc77f09da46c73183a1646278107f90"
+      },
+      "patches": [
+        "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): Tab/TabPanel focus-visible: → data-[focus-visible]; PillTab is a react-aria-components Button (onPress, group-data-[hovered]) instead of a native <button onClick>."
+      ]
+    },
+    "tooltip": {
+      "files": ["src/components/base/tooltip/tooltip.tsx"],
+      "upstream": {
+        "src/components/base/tooltip/tooltip.tsx": "eff98b8177aab4449c87654743d42d2a4f398377b0f559709c64849fe079588c"
+      },
+      "patches": []
+    },
+    "avatar": {
+      "files": ["src/components/base/avatar/avatar.tsx"],
+      "upstream": {
+        "src/components/base/avatar/avatar.tsx": "548bb7e2a5e80bf066b8cad70b8b40774fa80452e21afa89bc33e8e1bb251d4c"
+      },
+      "patches": [
+        "Draws children (a model glyph) in place of initials, and falls back to them when the photo fails to load (onError) — message-item.tsx; contract-tested.",
+        "The registry's `/* eslint-disable @next/next/no-img-element */` header is dropped: no Next ESLint plugin here, and ESLint errors on an unknown rule."
+      ]
+    },
+    "kbd": {
+      "files": ["src/components/base/kbd/kbd.tsx"],
+      "upstream": {
+        "src/components/base/kbd/kbd.tsx": "17cecce3fbadd59b497eefee65140cd7b831f2f3fd98b363b1db15576e0ca1a6"
+      },
+      "patches": []
+    },
+    "notification": {
+      "files": ["src/components/base/notification/notification.tsx"],
+      "upstream": {
+        "src/components/base/notification/notification.tsx": "c309bb137803d1ebab638a9e84dd8947a2ac4d2a41738319b85125bb60d39926"
+      },
+      "patches": [
+        "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): Button and CloseButton are RAC here, so the action buttons and the close button are wired with onPress instead of onClick, and NotificationAction.onClick is renamed onPress to match.",
+        "Icons: keyline /fill replaces @remixicon/react (project icon decision 2026-09-23): neutral Bell, information Info, success CircleCheck, error CircleAlert."
+      ]
+    },
+    "notification-center": {
+      "files": ["src/components/application/notification-center/notification-center.tsx"],
+      "upstream": {
+        "src/components/application/notification-center/notification-center.tsx": "2a53fc130251b6578ed9006522ee4a8f48651afcb802ede73f01cdd29c9f5108"
+      },
+      "patches": [
+        "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): Button is RAC here, so \"Mark all read\" and the row actions are wired with onPress/isDisabled instead of onClick/disabled.",
+        "Icons: keyline replaces @remixicon/react (project icon decision 2026-09-23): status glyphs are /fill (neutral Bell, information Info, success CircleCheck, error CircleAlert); the empty state's outline RiNotificationOffLine is two-tone BellOff.",
+        "i18n (user ruling 2026-09-23): the hard-coded English — \"N unread\", \"No unread notifications\", \"Mark all read\", the empty state's second line, the dot's \"Unread\" aria-label and the SegmentedControl's \"Notification category\" aria-label — reads from an optional `labels` prop (Partial<NotificationCenterLabels>). DEFAULT_LABELS holds the registry's exact strings, so an uncustomised call renders what the registry does. `title` and `emptyMessage` were already props.",
+        "Tabs (user ruling 2026-09-23): an optional `tabs` prop replaces the fixed TABS constant (default: the registry's All/Mentions/System). `all` lists everything and any other id filters on `category`, which is how the three registry tabs already behaved; tab counts are computed from the same list. To let a caller name its own categories, `category`, `tab`, `defaultTab` and `onTabChange` widen to `NotificationCenterTabId` (the registry union | string).",
+        "Read state (user ruling 2026-09-23): an optional `readable` prop, default true. `readable={false}` removes the internal readIds bookkeeping and the \"Mark all read\" button, so the dot means exactly what `item.unread` says. Meridian's inbox lists questions waiting on a person: they are never \"read\", only answered, and an answered one leaves the list.",
+        "description widens from string to ReactNode (Meridian need): the inbox draws the same call summary as the approval notification (ToolArgsSummary with its whitespace-pre-wrap command). As a plain string a multi-line command would render with its newlines collapsed, and the decision rules require that what is approved is shown as it will run.",
+        "Groups (user ruling 2026-09-23): an optional `showGroups` prop, default false (the registry's flat list). When true the visible list is stably reordered so each `group` sits where its first item stood, items keep their order within it, and a label is drawn before each group's first item — `<p className=\"px-2 pb-1 text-body-2-medium text-text-tertiary\">`, the registry's own group label from agent-chat-history (\"Recent\"). The rows are wrapped in a keyed Fragment for that label; the article itself is unchanged. Meridian's inbox turns it on to list questions under their conversation."
+      ]
+    },
+    "app-shell": {
+      "files": ["src/components/application/app-shell/notification-bell.tsx"],
+      "upstream": {
+        "src/components/application/app-shell/notification-bell.tsx": "44cb4e43de5aca00e29eff4cf2aeba0a3b8a2b19703cd1a3b07a5c044adfc755"
+      },
+      "patches": [
+        "Partial install: of the registry app-shell item only notification-bell.tsx is vendored — the header bell that opens NotificationCenter. The shell, catalog, starter data and the rest are not used here, so drift lists them as \"registry now also ships\".",
+        "React Aria interaction contract + user ruling 2026-09-23: the registry IconButton (native <button>, white bordered square) is replaced by the base RAC Button as the project's icon-only control — iconOnly, variant=\"neutral\" (the grey round control), size small with className \"size-11 md:size-8\" to match the header's other icon buttons — wired with onPress. ref, aria-expanded and aria-haspopup are passed exactly as before.",
+        "Icons: keyline two-tone Bell replaces the line glyph RiNotificationLine (project icon decision 2026-09-23).",
+        "Data (Meridian need): `notifications` is required and STARTER_NOTIFICATIONS (demo data) is not installed; `centerProps` passes the center everything besides its items (tabs, labels, readable, title, emptyMessage, onAction); `before` renders a node inside the dialog above the center (the \"this conversation has N pending\" line); `isOpen`/`onOpenChange` make the open state optionally controlled so an action that navigates away can close it. Uncontrolled it behaves as the registry's.",
+        "i18n (user ruling 2026-09-23): `triggerLabel` and `dialogLabel` replace the two hard-coded \"Notifications\" aria-labels; both default to the registry's string.",
+        "Motion: OVERLAY_MOTION (components/base/overlay-motion.ts) is added to the Popover className through cx. motion.md: popovers fade + scale-95 + 2px blur over 150ms; the registry bell's popover ships no transition, and where BoardUI's documents and its code disagree the documents win (CLAUDE.md, UI Conventions).",
+        "Badge (user ruling 2026-09-23): a count over 99 is drawn as `99+`; the badge is `h-4 min-w-4 px-0.5` instead of `size-4` (inner span loses `w-4`) so it widens with its content, colours, border and type unchanged. It is positioned from the button's centre — `top-1/2 right-1/2 -mt-3.5 -mr-4.5` — instead of `top-0.5 left-[18px]`: identical to the registry at the 32px size (top 2px, right edge 34px) and at the glyph's top-right corner at 44px too, where the fixed left offset put it over the glyph's middle. Wider content grows leftward over the glyph rather than out of the button."
+      ]
+    },
+    "agent-thinking": {
+      "files": ["src/components/application/agent-thinking/agent-thinking.tsx"],
+      "upstream": {
+        "src/components/application/agent-thinking/agent-thinking.tsx": "95cfe65a888ba5d42690496ce522fd0f6a58dcf6b4a8f19e9460a12668a4f62e"
+      },
+      "patches": []
+    },
+    "composer-loader": {
+      "files": ["src/components/application/composer-loader/composer-loader.tsx"],
+      "upstream": {
+        "src/components/application/composer-loader/composer-loader.tsx": "81536d56d4858487defced6ad3e61f792fe20b4e47c877bc020e41562c3ae10b"
+      },
+      "patches": []
+    },
+    "agent-log": {
+      "files": ["src/components/application/agent-log/agent-log.tsx"],
+      "upstream": {
+        "src/components/application/agent-log/agent-log.tsx": "481bc2c9fe76c598b9a6f07bddbd1706904f5c187893814396540016f346684c"
+      },
+      "patches": []
+    }
+  }
+}

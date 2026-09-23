@@ -122,12 +122,12 @@ export function SegmentedControlItem({ className, children, ref, ...props }: Seg
       {...props}
       className={(state) =>
         cx(
-          'relative z-10 inline-flex cursor-[var(--cursor-interactive)] items-center justify-center rounded-md px-2.5 py-1 text-center whitespace-nowrap',
+          'relative z-10 inline-flex cursor-pointer items-center justify-center rounded-md px-2.5 py-1 text-center whitespace-nowrap',
           'transition-colors duration-200 ease',
-          'outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring',
+          'outline-none data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
           state.isSelected
             ? 'text-body-medium text-text-primary'
-            : 'text-body-regular text-text-secondary hover:text-text-primary',
+            : 'text-body-regular text-text-secondary data-[hovered]:text-text-primary',
           state.isDisabled && 'cursor-not-allowed opacity-50',
           typeof className === 'function' ? className(state) : className,
         )

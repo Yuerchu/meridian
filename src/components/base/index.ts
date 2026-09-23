@@ -7,15 +7,7 @@ export { Button, type ButtonVariant, type ButtonProps, buttonStyles } from './bu
 export { CloseButton } from './buttons/close-button'
 export { Card } from './card'
 export { CellSwitch } from './cell-switch'
-export {
-  ChainOfThought,
-  ChainOfThoughtTrigger,
-  ChainOfThoughtContent,
-  ChainOfThoughtSteps,
-  ChainOfThoughtStep,
-} from './chain-of-thought'
 export { ChatAttachment, ChatAttachmentGroup } from './chat-attachment'
-export { ChatLoader } from './chat-loader'
 export { ChatSource, ChatSources } from './chat-source'
 export { Checkbox } from './checkbox/checkbox'
 export { CheckboxGroup } from './checkbox/checkbox-group'
@@ -26,7 +18,14 @@ export { DataGrid, type DataGridColumn, type DataGridSelection } from './data-gr
 export { Description } from './description'
 export { Disclosure, DisclosureGroup } from './disclosure'
 export { dom } from './dom'
-export { Dropdown, DropdownPopover, DropdownItem, DropdownSeparator } from './dropdown/dropdown'
+export {
+  Dropdown,
+  DropdownTrigger,
+  DropdownPopover,
+  DropdownGroup,
+  DropdownItem,
+  DropdownDivider,
+} from './dropdown/dropdown'
 export { EmojiPicker } from './emoji-picker'
 export { EmptyState } from './empty-state'
 export { FileTree } from './file-tree'
@@ -45,6 +44,14 @@ export { ListView } from './list-view'
 export { Markdown, markdownVariants } from './markdown-variants'
 export { Meter } from './meter'
 export { Modal } from './modal'
+export {
+  Notification,
+  NotificationViewport,
+  type NotificationAction,
+  type NotificationPosition,
+  type NotificationProps,
+  type NotificationStatus,
+} from './notification/notification'
 export { Popover } from './popover'
 export { ProgressCircle } from './progress-circle'
 export { PromptInput } from './prompt-input'
@@ -63,8 +70,6 @@ export { Slider } from './slider/slider'
 export { Spinner } from './spinner'
 export { Switch } from './switch/switch'
 export { Tabs, TabList, Tab, TabPanel } from './tabs/tabs'
-export { TextShimmer } from './text-shimmer'
-export { Toast, ToastQueue } from './toast'
 export { ToggleButton, ToggleButtonGroup } from './toggle-button'
 export { Tooltip, TooltipTrigger } from './tooltip/tooltip'
 

@@ -7,6 +7,7 @@ import {
   type ComponentProps,
   type KeyboardEvent,
   type ReactNode,
+  type Ref,
 } from 'react'
 import {
   Button as AriaButton,
@@ -17,8 +18,11 @@ import {
   type GridListItemProps,
   type Key,
 } from 'react-aria-components'
+import { ArrowUp, X } from '@keyline-icons/react/two-tone'
+import { Stop } from '@keyline-icons/react/fill'
 import { cx } from '@/utils/cx'
 import { Button, type ButtonProps } from './buttons/button'
+import { Spinner } from './spinner'
 import { Tooltip, TooltipTrigger } from './tooltip/tooltip'
 
 /**
@@ -106,13 +110,22 @@ function PromptInputRoot({
 }
 
 function PromptInputShell({ className, ...props }: ComponentProps<'div'>) {
+  const { status } = useContext(PromptInputCtx)
+  const running = isRunning(status)
   return (
     <div
       data-slot="prompt-input-shell"
+      data-running={running || undefined}
       {...props}
       className={cx(
         'rounded-3xl border border-border-button-default bg-background-primary-default shadow-xs',
         'transition-[box-shadow,border-color] duration-150 focus-within:border-border-button-active',
+        // boardui's composer-loader paints the pill surface itself and runs its
+        // light between that surface and the content, so while a turn runs the
+        // shell steps aside — the registry's agent-composer does the same with
+        // `busy ? "bg-transparent" : "bg-background-primary-default shadow-xs"`.
+        // The edge goes transparent rather than away, so nothing moves.
+        running && 'border-transparent bg-transparent shadow-none focus-within:border-transparent',
         'data-[dragging=true]:border-dashed data-[dragging=true]:border-accent-500 data-[dragging=true]:bg-button-ghost-background',
         className,
       )}
@@ -201,23 +214,80 @@ function PromptInputToolbarEnd({ className, ...props }: ComponentProps<'div'>) {
   )
 }
 
-interface PromptInputActionProps extends Omit<ButtonProps, 'variant' | 'size' | 'iconOnly'> {
+/**
+ * A round control in the composer's toolbar (`+`, emoji, voice).
+ *
+ * The recipe is the registry's AI Chat starter
+ * (`components/application/agent-chat/agent-composer.tsx`, the attachment
+ * button): 36px, a full pill, the Pro composer's `ai-chat-composer-add-*`
+ * tokens and primary icon ink. Upstream's note on those tokens: they resolve
+ * one step lighter than the pill in dark and one step darker in light, so one
+ * pair serves both themes. The element is React Aria's `Button` (the
+ * interaction contract), so `hover:` is `data-[hovered]`, and a
+ * `MenuTrigger`/`DialogTrigger`/`TooltipTrigger` reaches it through context.
+ * `tone="danger"` is the recording microphone; `isPending` swaps the icon for
+ * a spinner, the way `Button` does.
+ */
+const CONTROL = cx(
+  'flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full',
+  'bg-ai-chat-composer-add-background text-foreground-icon-primary transition-colors duration-150 ease',
+  'data-[hovered]:bg-ai-chat-composer-add-hover-background',
+  // Disabled dims the whole control and keeps its ink, the way the registry's
+  // AI Chat starter draws the icon controls it disables while a turn runs
+  // (`agent-chat-actions.tsx`: `disabled:opacity-40`). `text-text-disabled` is
+  // neutral-800 in dark — the pill's own colour — so on the neutral-700 chip
+  // the microphone turned black the moment streaming disabled it.
+  'data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40',
+  'outline-none data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
+)
+
+const CONTROL_DANGER = 'bg-button-danger text-text-white data-[hovered]:bg-button-danger'
+
+interface PromptInputControlProps extends Omit<AriaButtonProps, 'className' | 'children' | 'style'> {
+  leadingIcon: ButtonProps['leadingIcon']
+  tone?: 'default' | 'danger'
+  className?: string
+  ref?: Ref<HTMLButtonElement>
+}
+
+function PromptInputControl({
+  leadingIcon: Icon,
+  tone = 'default',
+  isPending,
+  className,
+  ...props
+}: PromptInputControlProps) {
+  return (
+    <AriaButton
+      data-slot="prompt-input-control"
+      isPending={isPending}
+      {...props}
+      className={cx(CONTROL, tone === 'danger' && CONTROL_DANGER, className)}
+    >
+      {isPending ? (
+        <Spinner size="sm" color="current" />
+      ) : Icon ? (
+        <Icon aria-hidden className="size-5 shrink-0" />
+      ) : null}
+    </AriaButton>
+  )
+}
+
+interface PromptInputActionProps extends Omit<ButtonProps, 'variant' | 'size' | 'iconOnly' | 'children'> {
   /** Shown on hover/focus; the `aria-label` remains the name. */
   tooltip?: ReactNode
 }
 
-function PromptInputAction({ className, tooltip, children, ...props }: PromptInputActionProps) {
+/**
+ * The toolbar's Stop, beside a Send that is steering. Grey, as the registry's
+ * agent-composer draws its stop button (`size-9 rounded-full
+ * bg-background-secondary-default text-foreground-icon-secondary`, hover one
+ * step up) — which is `Button`'s `neutral` variant at `medium`.
+ */
+function PromptInputAction({ className, tooltip, ...props }: PromptInputActionProps) {
   const button = (
-    <Button
-      data-slot="prompt-input-action"
-      variant="ghost"
-      iconOnly
-      size="small"
-      {...props}
-      className={cx('text-text-secondary', className)}
-    >
-      {children}
-    </Button>
+    // eslint-disable-next-line meridian-ui/icon-only-needs-name -- wrapper: the caller's aria-label arrives through {...props}
+    <Button data-slot="prompt-input-action" variant="neutral" iconOnly size="medium" {...props} className={className} />
   )
   if (!tooltip) return button
   return (
@@ -237,13 +307,17 @@ interface PromptInputSendProps {
 function PromptInputSend({ className, disabled, ...props }: PromptInputSendProps) {
   const { onSubmit, onStop, status } = useContext(PromptInputCtx)
   const running = isRunning(status)
+  // Send is the primary pill; Stop is the registry agent-composer's grey one
+  // (`bg-background-secondary-default text-foreground-icon-secondary`, which is
+  // the `neutral` variant). Both 36px round, as upstream.
+  const stopping = running && !!onStop
   return (
     <Button
       data-slot="prompt-input-send"
       data-running={running || undefined}
-      variant="primary"
+      variant={stopping ? 'neutral' : 'primary'}
       iconOnly
-      size="small"
+      size="medium"
       // `submitted` is the wait for the first token: a spinner, no press.
       // `streaming` is the stop button; without an onStop it is a wait too.
       isPending={status === 'submitted'}
@@ -251,27 +325,8 @@ function PromptInputSend({ className, disabled, ...props }: PromptInputSendProps
       onPress={running ? onStop : onSubmit}
       className={cx('rounded-full', className)}
       aria-label={props['aria-label']}
-    >
-      {running ? (
-        <svg data-slot="prompt-input-stop-icon" className="size-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
-          <rect x="4" y="4" width="8" height="8" rx="1.5" />
-        </svg>
-      ) : (
-        <svg
-          data-slot="prompt-input-send-icon"
-          className="size-4"
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.75"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-        >
-          <path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" />
-        </svg>
-      )}
-    </Button>
+      leadingIcon={running ? Stop : ArrowUp}
+    />
   )
 }
 
@@ -452,18 +507,34 @@ function QueueItemActions({ className, ...props }: ComponentProps<'div'>) {
 
 type QueueItemActionProps = Omit<ButtonProps, 'variant' | 'size' | 'iconOnly'>
 
-function QueueItemAction({ className, children, ...props }: QueueItemActionProps) {
+/** A labelled row action (move up, move down, deliver after). */
+function QueueItemAction({ className, ...props }: QueueItemActionProps) {
   return (
     <Button
       data-slot="prompt-input-queue-item-action"
-      variant="ghost"
-      iconOnly
+      variant="secondary"
       size="xs"
       {...props}
       className={cx('text-text-secondary', className)}
-    >
-      {children}
-    </Button>
+    />
+  )
+}
+
+type QueueItemRemoveProps = Omit<ButtonProps, 'variant' | 'size' | 'iconOnly' | 'leadingIcon' | 'children'>
+
+/** The row's one icon-only action: an X, named by the caller's `aria-label`. */
+function QueueItemRemove({ className, ...props }: QueueItemRemoveProps) {
+  return (
+    // eslint-disable-next-line meridian-ui/icon-only-needs-name -- wrapper: the caller's aria-label arrives through {...props}
+    <Button
+      data-slot="prompt-input-queue-item-remove"
+      variant="neutral"
+      iconOnly
+      leadingIcon={X}
+      size="xs"
+      {...props}
+      className={className}
+    />
   )
 }
 
@@ -479,7 +550,7 @@ function QueueItemSteer({ className, children, ...props }: QueueItemSteerProps) 
       data-slot="prompt-input-queue-item-steer"
       {...props}
       className={cx(
-        'cursor-[var(--cursor-interactive)] rounded-md px-1.5 py-0.5 text-caption-1-medium text-text-secondary outline-none',
+        'cursor-pointer rounded-md px-1.5 py-0.5 text-caption-1-medium text-text-secondary outline-none',
         'data-[hovered]:bg-background-secondary-hover data-[hovered]:text-text-primary data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
         className,
       )}
@@ -492,7 +563,7 @@ function QueueItemSteer({ className, children, ...props }: QueueItemSteerProps) 
 const QueueItem = Object.assign(QueueItemRoot, {
   Handle: QueueItemHandle,
   Steer: QueueItemSteer,
-  Remove: QueueItemAction,
+  Remove: QueueItemRemove,
   Body: QueueItemBody,
   Icon: QueueItemIcon,
   Content: QueueItemContent,
@@ -515,6 +586,7 @@ export const PromptInput = Object.assign(PromptInputRoot, {
   ToolbarStart: PromptInputToolbarStart,
   ToolbarEnd: PromptInputToolbarEnd,
   Action: PromptInputAction,
+  Control: PromptInputControl,
   Send: PromptInputSend,
   Footer: PromptInputFooter,
   Queue,

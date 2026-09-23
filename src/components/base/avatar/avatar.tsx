@@ -17,6 +17,10 @@ import { cx, sortCx } from '@/utils/cx'
  *   blue    → bg color/blue/300,    text color/blue/900
  *   lime    → bg color/lime/200,    text color/lime/700
  *   pink    → bg color/pink/200,    text color/pink/500
+ *
+ * Meridian (boardui.json patches): a child glyph (a model icon) is drawn in
+ * place of initials, and a photo that fails to load falls back to it rather
+ * than staying a broken image.
  */
 
 type AvatarSize = 'xs' | 'sm' | 'md' | 'lg'
@@ -36,20 +40,15 @@ export interface AvatarProps extends HTMLAttributes<HTMLSpanElement> {
 const styles = sortCx({
   base: 'inline-flex shrink-0 select-none items-center justify-center overflow-hidden rounded-full text-center align-middle transition-[width,height,font-size] duration-200 ease',
   size: {
-    xs: 'size-5 text-caption-2-semibold',
+    xs: 'size-5 text-[10px] leading-[15px] font-semibold',
     sm: 'size-6 text-caption-1-semibold tracking-normal',
     md: 'size-8 text-headline-semibold',
-    lg: 'size-9 text-title-3-semibold',
+    lg: 'size-9 text-[18px] leading-6 font-semibold',
   },
-  // The three tints are the registry's Figma palette for initials; no
-  // semantic token names them and inventing three would be a token per user.
   color: {
     neutral: 'bg-avatar-neutral-background text-text-secondary',
-    // eslint-disable-next-line no-restricted-syntax -- registry avatar tint (Figma palette)
     blue: 'bg-blue-300 text-blue-900',
-    // eslint-disable-next-line no-restricted-syntax -- registry avatar tint (Figma palette)
     lime: 'bg-lime-200 text-lime-700',
-    // eslint-disable-next-line no-restricted-syntax -- registry avatar tint (Figma palette)
     pink: 'bg-pink-200 text-pink-500',
   },
 })
@@ -65,8 +64,7 @@ export function Avatar({
   ref,
   ...props
 }: AvatarProps) {
-  // A photo that fails to load falls back to the glyph or initials rather
-  // than staying a broken image; keyed by URL so a new `src` gets its chance.
+  // Keyed by URL so a new `src` gets its own chance to load.
   const [failedSrc, setFailedSrc] = useState<string | null>(null)
   return (
     <span ref={ref} className={cx(styles.base, styles.size[size], styles.color[color], className)} {...props}>
@@ -80,8 +78,6 @@ export function Avatar({
           onError={() => setFailedSrc(src)}
         />
       ) : (
-        // A caller's own glyph (a model icon) wins over initials — the explicit
-        // child is the more specific instruction.
         (children ?? initials)
       )}
     </span>
