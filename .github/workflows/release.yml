@@ -198,6 +198,20 @@ jobs:
 
       - run: pnpm install
 
+      # The fonts are not in git (MiSans may not be redistributed on its own), so
+      # `pnpm build` fetches them through its `prebuild` hook. Run here as well so
+      # a download or hash failure is its own named step rather than a line deep in
+      # the Tauri build's output, and cached by the script that pins the hashes:
+      # ~450 MB of archives that only change when a pin does.
+      - name: Cache bundled font archives
+        uses: actions/cache@v4
+        with:
+          path: .cache/fonts
+          key: fonts-${{ hashFiles('scripts/fetch-fonts.mjs') }}
+
+      - name: Fetch bundled fonts
+        run: pnpm fonts
+
       - name: Drop a half-restored sherpa-onnx unpack
         shell: bash
         run: bash .github/scripts/require-sherpa-libs.sh
@@ -300,6 +314,20 @@ jobs:
           key: build-android-aarch64
 
       - run: pnpm install
+
+      # The fonts are not in git (MiSans may not be redistributed on its own), so
+      # `pnpm build` fetches them through its `prebuild` hook. Run here as well so
+      # a download or hash failure is its own named step rather than a line deep in
+      # the Tauri build's output, and cached by the script that pins the hashes:
+      # ~450 MB of archives that only change when a pin does.
+      - name: Cache bundled font archives
+        uses: actions/cache@v4
+        with:
+          path: .cache/fonts
+          key: fonts-${{ hashFiles('scripts/fetch-fonts.mjs') }}
+
+      - name: Fetch bundled fonts
+        run: pnpm fonts
 
       - name: Decode keystore
         env:
