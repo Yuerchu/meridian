@@ -24,82 +24,42 @@ const languageOptions = {
 
 const tester = new RuleTester({ languageOptions })
 
-tester.run('icon-only-needs-tooltip', plugin.rules['icon-only-needs-tooltip'], {
+tester.run('icon-only-needs-name', plugin.rules['icon-only-needs-name'], {
   valid: [
-    // The pattern the project already uses.
-    `<Tooltip delay={0}><Button isIconOnly aria-label="Close"><Xmark /></Button><Tooltip.Content>Close</Tooltip.Content></Tooltip>`,
-    // Through a render prop.
-    `<Tooltip><Tooltip.Trigger render={<Button isIconOnly aria-label="x"><Icon /></Button>} /><Tooltip.Content>x</Tooltip.Content></Tooltip>`,
-    // Aliased in the dev lab.
-    `<HTooltip><HButton isIconOnly aria-label="x"><Icon /></HButton></HTooltip>`,
-    // Text beside the icon is a labelled button, not an icon-only one.
-    `<Button aria-label="Save"><Check />Save</Button>`,
-    `<Dropdown.Trigger aria-label="More">{label}</Dropdown.Trigger>`,
-    // An intrinsic child carries text; only a component child is read as an icon.
-    `<Button aria-label="Edit name: x"><span data-slot="cell-value">{name}</span></Button>`,
-    // Not a pressable: a menu with an aria-label and element children.
-    `<Sidebar.Menu aria-label="Conversations"><Sidebar.MenuItem /></Sidebar.Menu>`,
-    // A pressable with no aria-label is somebody else's problem (a11y lint).
-    `<Button isDisabled><Icon /></Button>`,
-    // `aria-labelledby` names it just as well as `aria-label`.
-    `<Tooltip><Button isIconOnly aria-labelledby="h"><Icon /></Button><Tooltip.Content>x</Tooltip.Content></Tooltip>`,
+    `<Button iconOnly aria-label="Close"><X /></Button>`,
+    `<Button isIconOnly aria-labelledby="h"><Icon /></Button>`,
+    // BoardUI names an icon button with aria-label alone; no tooltip is required.
+    `<div><Button iconOnly aria-label="More"><MoreVertical /></Button></div>`,
+    // A labelled button is not icon-only.
+    `<Button><Check />Save</Button>`,
   ],
   invalid: [
-    { code: `<Button isIconOnly aria-label="Close"><Xmark /></Button>`, errors: [{ messageId: 'needsTooltip' }] },
+    // A tooltip describes, it does not name: still anonymous.
     {
-      code: `<Dropdown><Dropdown.Trigger aria-label="More"><EllipsisVertical /></Dropdown.Trigger></Dropdown>`,
-      errors: [{ messageId: 'needsTooltip' }],
-    },
-    {
-      code: `<Sidebar.MenuAction aria-label="More"><Ellipsis /></Sidebar.MenuAction>`,
-      errors: [{ messageId: 'needsTooltip' }],
-    },
-    {
-      code: `<Segment.Item id="list" aria-label="List"><LayoutList /></Segment.Item>`,
-      errors: [{ messageId: 'needsTooltip' }],
-    },
-    // A wrapper that draws its own icon, at the call site.
-    { code: `<MessageScrollerButton aria-label="Scroll to bottom" />`, errors: [{ messageId: 'needsTooltip' }] },
-    // A sibling tooltip is not a wrapping one.
-    {
-      code: `<div><Tooltip><span>hint</span></Tooltip><Button isIconOnly aria-label="x"><Icon /></Button></div>`,
-      errors: [{ messageId: 'needsTooltip' }],
-    },
-    // The two obligations are independent, and a tooltip settles only one of
-    // them. This is what the rule used to let through: wrapped, and anonymous
-    // to a screen reader, because it returned on the tooltip before it ever
-    // looked for a name.
-    {
-      code: `<Tooltip><Button isIconOnly><Icon /></Button><Tooltip.Content>Close</Tooltip.Content></Tooltip>`,
+      code: `<Tooltip><Button iconOnly><Icon /></Button><Tooltip.Content>Close</Tooltip.Content></Tooltip>`,
       errors: [{ messageId: 'needsLabel' }],
     },
-    // Neither obligation met: both are reported, so fixing one still leaves
-    // the other on screen.
-    {
-      code: `<Button isIconOnly><Icon /></Button>`,
-      errors: [{ messageId: 'needsTooltip' }, { messageId: 'needsLabel' }],
-    },
+    { code: `<Button isIconOnly><Icon /></Button>`, errors: [{ messageId: 'needsLabel' }] },
   ],
 })
 
-tester.run('intrinsic-needs-data-slot', plugin.rules['intrinsic-needs-data-slot'], {
+tester.run('animation-needs-keyframes', plugin.rules['animation-needs-keyframes'], {
   valid: [
-    `<div data-slot="composer-footer" />`,
-    `<dom.span data-slot="hint" {...props} />`,
-    // Components are not intrinsic.
-    `<Button><Icon /></Button>`,
-    `<Card.Header>x</Card.Header>`,
-    // SVG innards and void inline elements.
-    `<svg data-slot="logo"><path d="M0 0" /><circle r="1" /></svg>`,
-    `<p data-slot="note">a<br />b</p>`,
+    `<span className="animate-spin" />`,
+    `<span className="motion-safe:animate-skeleton" />`,
+    `<span className="animate-[ai-chat-text-shimmer_2s_linear_infinite]" />`,
+    `<span className="data-animate-x" />`,
+    // Defined as a plain class in the registry globals.css.
+    `<path className="animate-check-draw" />`,
   ],
   invalid: [
-    { code: `<div className="flex" />`, errors: [{ messageId: 'needsSlot', data: { name: 'div' } }] },
-    { code: `<span>{x}</span>`, errors: [{ messageId: 'needsSlot', data: { name: 'span' } }] },
-    { code: `<dom.button {...props} />`, errors: [{ messageId: 'needsSlot', data: { name: 'button' } }] },
-    // The spread might carry one; the rule cannot see it and does not guess.
-    { code: `<div {...props} />`, errors: [{ messageId: 'needsSlot', data: { name: 'div' } }] },
-    { code: `<svg><path d="" /></svg>`, errors: [{ messageId: 'needsSlot', data: { name: 'svg' } }] },
+    // The shape that shipped: HeroUI's shimmer, whose keyframes left with HeroUI.
+    {
+      code: `<span className="bg-clip-text animate-[shimmer_2s_linear_infinite]" />`,
+      errors: [{ messageId: 'noKeyframes' }],
+    },
+    { code: `<span className="animate-shimmer" />`, errors: [{ messageId: 'noUtility' }] },
+    { code: 'const c = `x ${y} animate-[nope_1s]`', errors: [{ messageId: 'noKeyframes' }] },
   ],
 })
 
@@ -119,6 +79,73 @@ function lint(code) {
   ]
   return linter.verify(code, config, { filename: 'case.js' }).map((m) => m.message)
 }
+
+tester.run('no-variant-as-state', plugin.rules['no-variant-as-state'], {
+  valid: [
+    // A different action, not a state: Send vs Stop, Register vs Re-register.
+    `<Button variant={stopping ? 'neutral' : 'primary'} />`,
+    `<Button variant={registered ? 'secondary' : 'primary'} />`,
+    // A destructive kind of the same dialog.
+    `<Button variant={status === 'danger' ? 'danger' : 'primary'} />`,
+    `<Button variant={action.variant === 'destructive' ? 'danger' : undefined} />`,
+    // Not a literal pair: nothing to judge.
+    `<Button variant={action.variant ?? 'secondary'} />`,
+    // Not a Button.
+    `<Bubble variant={isError ? 'destructive' : 'muted'} />`,
+  ],
+  invalid: [
+    // The shape the audit kept finding.
+    { code: `<Button variant={selected ? 'secondary' : 'ghost'} />`, errors: [{ messageId: 'variantAsState' }] },
+    {
+      code: `<Button variant={changesOpen ? 'ghost' : 'neutral'} aria-pressed={changesOpen} />`,
+      errors: [{ messageId: 'variantAsState' }],
+    },
+    // Emphasis used as "selected", betrayed by the state it announces.
+    {
+      code: `<Button variant={m.id === mode ? 'primary' : 'secondary'} aria-pressed={m.id === mode} />`,
+      errors: [{ messageId: 'variantAsState' }],
+    },
+    { code: `<Foo.Button variant={on ? 'neutral' : undefined} />`, errors: [{ messageId: 'variantAsState' }] },
+  ],
+})
+
+tester.run('field-fill-follows-surface', plugin.rules['field-fill-follows-surface'], {
+  valid: [
+    // The registry field as it is.
+    `<Input value={v} />`,
+    // BoardUI's one field fill (data-table.tsx / settings-storage.tsx).
+    `<Input fieldClassName="w-[153px] rounded-full bg-background-secondary-default" />`,
+    `<SearchField.Group className="bg-background-secondary-default" />`,
+    `const FIELD_ON_CARD = 'bg-background-secondary-default'; <TextArea fieldClassName={FIELD_ON_CARD} />`,
+    // Layout on a field is not a fill.
+    `<Input fieldClassName="min-w-0 flex-1" />`,
+    // Not a field.
+    `<div className="bg-background-primary-default" />`,
+  ],
+  invalid: [
+    // Painting the field to fight the surface: the shape both recurrences took.
+    {
+      code: `<Input fieldClassName="bg-background-primary-default" />`,
+      errors: [{ messageId: 'fieldFill' }],
+    },
+    {
+      code: `<TextArea fieldClassName={cx('min-h-0', dark && 'bg-background-tertiary-hover')} />`,
+      errors: [{ messageId: 'fieldFill' }],
+    },
+    {
+      code: `<SearchField.Group className="data-[hovered]:bg-background-secondary-default" />`,
+      errors: [{ messageId: 'fieldFill' }],
+    },
+    {
+      code: `const WELL = 'rounded-none bg-background-secondary-default/40'; <InputGroup className={WELL} />`,
+      errors: [{ messageId: 'fieldFill' }],
+    },
+    {
+      code: 'const x = 1; <Input className={`h-8 bg-background-quaternary-default`} />',
+      errors: [{ messageId: 'fieldFill' }],
+    },
+  ],
+})
 
 tester.run('no-silent-prop-drop', plugin.rules['no-silent-prop-drop'], {
   valid: [
@@ -147,10 +174,7 @@ describe('ui selector restrictions', () => {
   const flagged = [
     ['text-white', `<p className="text-white" />`, /palette/],
     ['bg-black/50', `<p className="bg-black/50" />`, /palette/],
-    ['cursor-pointer', `<label className="text-sm cursor-pointer" />`, /cursor-pointer/],
     ['bg-muted', `<i className="size-2 rounded-full bg-muted" />`, /no muted fill/],
-    ['uppercase', `<h3 className="text-xs uppercase" />`, /ALL CAPS/],
-    ['bare rounded', `<span className="px-1 rounded shrink-0" />`, /Bare `rounded`/],
     ['shadow-md', `<div className="focus:shadow-md" />`, /shadow-/],
     ['animate-pulse', `<div className="h-16 animate-pulse bg-background-secondary-default/30" />`, /animate-pulse/],
     ['animate-spin', `<Icon className="w-3.5 h-3.5 animate-spin" />`, /animate-spin/],
@@ -168,9 +192,9 @@ describe('ui selector restrictions', () => {
     [
       'Button text-danger',
       `<Button variant="ghost" className="ml-auto text-status-danger hover:text-status-danger" />`,
-      /danger-soft/,
+      /variant="danger"/,
     ],
-    ['Button text-danger in cx()', `<Button className={cx('text-status-danger', x)} />`, /danger-soft/],
+    ['Button text-danger in cx()', `<Button className={cx('text-status-danger', x)} />`, /variant="danger"/],
     ['Button h-auto', `<Button variant="ghost" className="h-auto w-full justify-start" />`, /h-auto/],
     [
       'state attr on Content',
@@ -180,10 +204,9 @@ describe('ui selector restrictions', () => {
     ['Button onClick', `<Button onClick={go} />`, /onPress/],
     ['Button disabled', `<Button disabled={busy} />`, /isDisabled/],
     ['Spinner className size', `<Spinner className="w-3.5 h-3.5" />`, /size prop/],
-    ['template className', '<div className={`${base} rounded-xl`} />', /cn\(/],
+    ['template className', '<div className={`${base} rounded-xl`} />', /cx\(/],
     ['t().replace', `const s = t('toolbar.noAssistant').replace(/^No /, 'Select ')`, /translation/],
     ['glyph icon', `<Button aria-label="Cancel">✕</Button>`, /icon/],
-    ['max-w px', `<Modal.Dialog className="sm:max-w-[360px]" />`, /size/],
     ['native label', `<label htmlFor="a">A</label>`, /<Label>/],
     ['native kbd', `<kbd>Ctrl</kbd>`, /<Kbd>/],
   ]
@@ -203,16 +226,18 @@ describe('ui selector restrictions', () => {
       `<p className="text-status-danger-foreground bg-status-danger-soft text-text-secondary bg-background-primary-default border-border-button-default" />`,
     ],
     ['gradient over a fill', `<div className="from-status-danger via-status-danger/80 to-transparent" />`],
-    ['interactive cursor', `<span className="cursor-[var(--cursor-interactive)]" />`],
+    // BoardUI's own spellings, which the HeroUI-era gates used to refuse.
+    ['cursor-pointer', `<span className="cursor-pointer" />`],
+    ['uppercase', `<span className="uppercase" />`],
+    ['bare rounded', `<span className="rounded px-1" />`],
+    ['px max-width', `<div className="max-w-[360px]" />`],
+    ['native title', `<span title="hint" />`],
     ['rounded-lg', `<span className="rounded-lg rounded-t-none" />`],
     ['shadow tokens', `<div className="shadow-xs shadow-card shadow-dropdown shadow-none" />`],
-    ['danger-soft variant', `<Button variant="danger-soft" />`],
-    // Danger on hover only, for an icon in a row of ghost icons; and the soft
-    // foreground, which is a different class.
-    [
-      'hover danger on a ghost icon',
-      `<Button isIconOnly variant="ghost" className="text-text-secondary hover:text-status-danger" />`,
-    ],
+    ['danger variant', `<Button variant="danger" />`],
+    // Danger on hover only, for an inline icon-only delete among neutral
+    // icons; and the soft foreground, which is a different class.
+    ['hover danger on a neutral icon', `<Button iconOnly variant="neutral" className="hover:text-status-danger" />`],
     [
       'soft foreground',
       `<Button className={cx(selected ? 'text-status-danger-soft-foreground' : 'text-text-secondary')} />`,
