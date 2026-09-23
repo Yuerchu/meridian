@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { Folder, Terminal } from '@gravity-ui/icons'
+import { Folder, Terminal } from '@keyline-icons/react/two-tone'
 import { ListBox } from '@/components/base'
 
 import { fileIconUrl } from '@/lib/file-icon'
@@ -58,7 +58,7 @@ export function ComposerSuggestions({
               id={item.id}
               textValue={`${item.label} ${item.detail ?? ''}`}
               className={cx(
-                'min-h-10 cursor-[var(--cursor-interactive)] rounded-xl px-2.5 py-2',
+                'min-h-10 cursor-pointer rounded-xl px-2.5 py-2',
                 index === activeIndex && 'bg-button-primary/10',
               )}
             >

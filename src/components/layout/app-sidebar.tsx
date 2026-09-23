@@ -45,21 +45,21 @@ import { ContextMenu } from '@/components/base'
 import { Sidebar, useSidebar } from '@/components/base'
 import {
   Archive,
-  ArrowDownToSquare,
+  ArrowInDownDashedPanel,
   ArrowLeft,
+  Bookmark,
   ChevronRight,
-  CodePullRequestCheck,
-  EllipsisVertical,
   FolderOpen,
   FolderPlus,
-  Gear,
-  Grip,
-  Magnifier,
-  Pin,
+  GitPullRequest,
+  GripVertical,
+  MoreVertical,
   Plus,
+  Search,
+  Settings,
   Terminal,
-  Xmark,
-} from '@gravity-ui/icons'
+  X,
+} from '@keyline-icons/react/two-tone'
 import { ConversationIcon } from '@/components/ui/agent-icon'
 import { ClaudeSessionPicker } from './claude-session-picker'
 
@@ -228,7 +228,6 @@ function NewProjectForm({
   return (
     <div data-slot="project-form" className="px-2 py-1.5 space-y-1.5">
       <Input
-        surface="secondary"
         type="text"
         aria-label={t('sidebar.projectName')}
         value={name}
@@ -250,19 +249,18 @@ function NewProjectForm({
       {can.browseForDirectory ? (
         <Button
           type="button"
-          variant="outline"
+          variant="secondary"
           onPress={() => void handleBrowse()}
           isDisabled={saving}
           className="w-full justify-start text-caption-1-regular"
         >
-          <FolderOpen className="text-text-secondary" />
+          <FolderOpen className="size-4 text-text-secondary" />
           <span data-slot="project-form-path" className={path ? 'text-text-primary truncate' : 'text-text-secondary'}>
             {path || t('sidebar.browsePath')}
           </span>
         </Button>
       ) : (
         <Input
-          surface="secondary"
           type="text"
           aria-label={t('sidebar.hostPath')}
           value={path}
@@ -295,9 +293,15 @@ function NewProjectForm({
         {/* The glyph is not a name: a screen reader reads U+2715 as nothing, or
             as "multiplication x". */}
         <TooltipTrigger delay={0}>
-          <Button iconOnly variant="ghost" aria-label={t('common.cancel')} onPress={onCancel} isDisabled={saving}>
-            <Xmark />
-          </Button>
+          <Button
+            iconOnly
+            leadingIcon={X}
+            size="small"
+            variant="neutral"
+            aria-label={t('common.cancel')}
+            onPress={onCancel}
+            isDisabled={saving}
+          />
           <Tooltip>{t('common.cancel')}</Tooltip>
         </TooltipTrigger>
       </div>
@@ -358,11 +362,11 @@ function NewHostedSessionForm({
       {can.browseForDirectory ? (
         <Button
           type="button"
-          variant="outline"
+          variant="secondary"
           onPress={() => void handleBrowse()}
           className="w-full justify-start text-caption-1-regular"
         >
-          <FolderOpen className="text-text-secondary" />
+          <FolderOpen className="size-4 text-text-secondary" />
           <span
             data-slot="hosted-session-form-path"
             className={path ? 'text-text-primary truncate' : 'text-text-secondary'}
@@ -372,7 +376,6 @@ function NewHostedSessionForm({
         </Button>
       ) : (
         <Input
-          surface="secondary"
           type="text"
           aria-label={t('sidebar.hostPath')}
           value={path}
@@ -404,9 +407,15 @@ function NewHostedSessionForm({
           {t('sidebar.startHostedSession')}
         </Button>
         <TooltipTrigger delay={0}>
-          <Button iconOnly variant="ghost" aria-label={t('common.cancel')} onPress={onCancel} isDisabled={starting}>
-            <Xmark />
-          </Button>
+          <Button
+            iconOnly
+            leadingIcon={X}
+            size="small"
+            variant="neutral"
+            aria-label={t('common.cancel')}
+            onPress={onCancel}
+            isDisabled={starting}
+          />
           <Tooltip>{t('common.cancel')}</Tooltip>
         </TooltipTrigger>
       </div>
@@ -648,17 +657,16 @@ function ConversationGroup({
             <TooltipTrigger delay={0}>
               <Button
                 iconOnly
-                size="small"
-                variant="ghost"
+                leadingIcon={ChevronRight}
+                size="xs"
+                variant="neutral"
                 aria-expanded={!folded}
                 aria-label={
                   folded ? t('sidebar.unfoldGroup', { name: title }) : t('sidebar.foldGroup', { name: title })
                 }
                 onPress={onToggleFold}
-                className="touch-hitbox size-5 shrink-0 rounded-md text-text-secondary"
-              >
-                <ChevronRight className={cx('size-3 transition-transform', !folded && 'rotate-90')} />
-              </Button>
+                className={cx('touch-hitbox shrink-0 [&>svg]:transition-transform', !folded && '[&>svg]:rotate-90')}
+              />
               <Tooltip>
                 {folded ? t('sidebar.unfoldGroup', { name: title }) : t('sidebar.foldGroup', { name: title })}
               </Tooltip>
@@ -666,23 +674,24 @@ function ConversationGroup({
             {onSelectToggle ? (
               <ToggleButton
                 size="small"
-                variant="ghost"
                 onChange={onSelectToggle}
                 // The selection this toggles decides where a new conversation
                 // files and which workspace the empty state reads — state, so
                 // `aria-pressed` rather than `aria-current`.
                 isSelected={isCurrent}
-                className={cx(
-                  'h-6 min-w-0 flex-1 justify-start rounded-sm px-1 text-caption-1-medium',
-                  isCurrent ? 'text-text-primary' : 'text-text-secondary',
-                )}
+                // `text-body-2-medium`: the registry's chat history labels its
+                // group ("Recent") in body-2 medium, tertiary ink.
+                className="h-6 min-w-0 flex-1 justify-start rounded-sm px-1 text-body-2-medium text-text-tertiary"
               >
                 <span data-slot="sidebar-group-title" className="truncate">
                   {title}
                 </span>
               </ToggleButton>
             ) : (
-              <span data-slot="sidebar-group-title" className="min-w-0 flex-1 truncate px-1">
+              <span
+                data-slot="sidebar-group-title"
+                className="min-w-0 flex-1 truncate px-1 text-body-2-medium text-text-tertiary"
+              >
                 {title}
               </span>
             )}
@@ -690,14 +699,13 @@ function ConversationGroup({
               <TooltipTrigger delay={0}>
                 <Button
                   iconOnly
-                  size="small"
-                  variant="ghost"
+                  leadingIcon={Plus}
+                  size="xs"
+                  variant="neutral"
                   aria-label={projectId ? t('sidebar.newConversationIn', { name: title }) : t('sidebar.newChat')}
                   onPress={onNewConversation}
-                  className="touch-hitbox size-6 rounded-md text-text-secondary"
-                >
-                  <Plus />
-                </Button>
+                  className="touch-hitbox"
+                />
                 <Tooltip>{projectId ? t('sidebar.newConversationIn', { name: title }) : t('sidebar.newChat')}</Tooltip>
               </TooltipTrigger>
               {actions && actions.length > 0 && (
@@ -706,7 +714,7 @@ function ConversationGroup({
                       dropdown trigger in a sidebar — so the two buttons match. */}
                   <TooltipTrigger delay={0}>
                     <Sidebar.MenuAction className="touch-hitbox" aria-label={moreLabel}>
-                      <EllipsisVertical className="size-4" />
+                      <MoreVertical className="size-4" />
                     </Sidebar.MenuAction>
                     <Tooltip>{moreLabel}</Tooltip>
                   </TooltipTrigger>
@@ -731,7 +739,7 @@ function ConversationGroup({
       {!folded && reviewConversations.length > 0 && (
         <FoldedMenu
           id={`reviews-toggle-${projectId ?? 'loose'}`}
-          icon={<CodePullRequestCheck />}
+          icon={<GitPullRequest className="size-4" />}
           label={t('sidebar.reviewsCount', { count: reviewConversations.length })}
           expanded={reviewsExpanded}
           onToggle={onToggleReviewsExpanded}
@@ -742,7 +750,7 @@ function ConversationGroup({
       {!folded && archivedConversations.length > 0 && (
         <FoldedMenu
           id={`archived-toggle-${projectId ?? 'loose'}`}
-          icon={<Archive />}
+          icon={<Archive className="size-4" />}
           label={t('sidebar.archivedCount', { count: archivedConversations.length })}
           expanded={archivedExpanded}
           onToggle={onToggleArchivedExpanded}
@@ -950,7 +958,7 @@ export function AppSidebar({
       return next
     })
   }, [activeGroupKey])
-  // The same for the review fold: a review opened from a toast or the palette
+  // The same for the review fold: a review opened from a notification or the palette
   // is current inside a fold that is shut.
   const activeReviewGroup =
     activeConversation && isReview(activeConversation) ? activeConversation.project_id : undefined
@@ -1119,7 +1127,7 @@ export function AppSidebar({
         <Sidebar.Menu aria-label={t('settings.backToApp')}>
           <Sidebar.MenuItem id={`${prefix}back`} textValue={t('settings.backToApp')} onAction={closeSettings}>
             <Sidebar.MenuIcon>
-              <ArrowLeft />
+              <ArrowLeft className="size-4" />
             </Sidebar.MenuIcon>
             <Sidebar.MenuLabel>{t('settings.backToApp')}</Sidebar.MenuLabel>
           </Sidebar.MenuItem>
@@ -1176,6 +1184,9 @@ export function AppSidebar({
         data-row-kind="conversation"
         textValue={title}
         isCurrent={conv.id === activeId}
+        // The registry's chat history row: neutral selection, body-2 title.
+        // The accent gradient stays with navigation (settings, new chat).
+        appearance="thread"
         onAction={() => selectConversation(conv.id)}
         className={conv.is_archived ? 'opacity-50' : undefined}
         tooltipProps={{
@@ -1196,7 +1207,7 @@ export function AppSidebar({
         }}
       >
         <Sidebar.MenuIcon>
-          {conv.is_archived ? <Archive /> : <ConversationIcon agentKind={conv.agent_kind} />}
+          {conv.is_archived ? <Archive className="size-4" /> : <ConversationIcon agentKind={conv.agent_kind} />}
         </Sidebar.MenuIcon>
         <Sidebar.MenuLabel>{title}</Sidebar.MenuLabel>
         {/* React Aria's Tree drag contract is a real button, not merely a
@@ -1211,7 +1222,7 @@ export function AppSidebar({
             aria-label={t('sidebar.dragConversation', { name: title })}
             className="conv-grip hidden pointer-fine:flex cursor-grab active:cursor-grabbing"
           >
-            <Grip />
+            <GripVertical className="size-4" />
           </Sidebar.MenuAction>
           <Tooltip>{t('sidebar.dragConversation', { name: title })}</Tooltip>
         </TooltipTrigger>
@@ -1222,7 +1233,7 @@ export function AppSidebar({
           </span>
           {/* Pinned rows were sorted to the top and said nothing about why they
               were there. */}
-          {conv.is_pinned && <Pin aria-label={t('contextMenu.pin')} className="size-3 text-text-secondary" />}
+          {conv.is_pinned && <Bookmark aria-label={t('contextMenu.pin')} className="size-3 text-text-secondary" />}
           <ConversationIndicator conversationId={conv.id} activeId={activeId} transcriptInert={page === 'settings'} />
         </Sidebar.MenuChip>
         <RowActionsMenu label={title} actions={conversationActions(conv)} />
@@ -1242,7 +1253,7 @@ export function AppSidebar({
               every conversation row already carries. */}
           <Sidebar.MenuItem id={`${prefix}new`} textValue={t('sidebar.newChat')} onAction={() => createConversation()}>
             <Sidebar.MenuIcon>
-              <Plus />
+              <Plus className="size-4" />
             </Sidebar.MenuIcon>
             <Sidebar.MenuLabel>{t('sidebar.newChat')}</Sidebar.MenuLabel>
             {/* See `canHostSessions`: the question is what the machine running
@@ -1252,7 +1263,7 @@ export function AppSidebar({
                 <Dropdown>
                   <TooltipTrigger delay={0}>
                     <Sidebar.MenuAction className="touch-hitbox" aria-label={t('sidebar.newChatMore')}>
-                      <EllipsisVertical />
+                      <MoreVertical className="size-4" />
                     </Sidebar.MenuAction>
                     <Tooltip>{t('sidebar.newChatMore')}</Tooltip>
                   </TooltipTrigger>
@@ -1276,7 +1287,7 @@ export function AppSidebar({
                       textValue={t('sidebar.importHostedSession')}
                       onAction={dismissing(() => setPicker({ mode: 'import' }))}
                     >
-                      <ArrowDownToSquare className="size-4" />
+                      <ArrowInDownDashedPanel className="size-4" />
                       <Label>{t('sidebar.importHostedSession')}</Label>
                     </DropdownItem>
                   </DropdownPopover>
@@ -1295,7 +1306,7 @@ export function AppSidebar({
             onAction={openSearch}
           >
             <Sidebar.MenuIcon>
-              <Magnifier />
+              <Search className="size-4" />
             </Sidebar.MenuIcon>
             <Sidebar.MenuLabel>{t('sidebar.search')}</Sidebar.MenuLabel>
             <Sidebar.MenuChip>
@@ -1396,7 +1407,7 @@ export function AppSidebar({
                     onAction={() => setShowNewProject(true)}
                   >
                     <Sidebar.MenuIcon>
-                      <FolderPlus />
+                      <FolderPlus className="size-4" />
                     </Sidebar.MenuIcon>
                     <Sidebar.MenuLabel className="text-text-secondary">{t('sidebar.newProject')}</Sidebar.MenuLabel>
                   </Sidebar.MenuItem>
@@ -1433,14 +1444,13 @@ export function AppSidebar({
             <TooltipTrigger delay={0}>
               <Button
                 iconOnly
+                leadingIcon={X}
                 size="small"
-                variant="ghost"
+                variant="neutral"
                 aria-label={t('common.close')}
                 onPress={() => setActionError(null)}
                 className="touch-hitbox shrink-0"
-              >
-                <Xmark />
-              </Button>
+              />
               <Tooltip>{t('common.close')}</Tooltip>
             </TooltipTrigger>
           </Alert>
@@ -1448,7 +1458,7 @@ export function AppSidebar({
         <Sidebar.Menu aria-label={t('sidebar.settings')}>
           <Sidebar.MenuItem id={`${prefix}settings`} textValue={t('sidebar.settings')} onAction={openSettings}>
             <Sidebar.MenuIcon>
-              <Gear />
+              <Settings className="size-4" />
             </Sidebar.MenuIcon>
             <Sidebar.MenuLabel>{t('sidebar.settings')}</Sidebar.MenuLabel>
           </Sidebar.MenuItem>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Key, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { ChevronDown, Clock, Comment, TriangleExclamation, Xmark } from '@gravity-ui/icons'
+import { ChevronDown, Clock, Message, TriangleAlert, X } from '@keyline-icons/react/two-tone'
 import {
   Button,
   Chip,
@@ -98,7 +98,7 @@ function PlanReviewSkeleton() {
       role="status"
       aria-busy="true"
       aria-label={t('common.loading')}
-      className="flex h-full min-h-0 flex-col bg-background-primary-default"
+      className="flex h-full min-h-0 flex-col bg-background-full"
     >
       <div
         data-slot="plan-review-skeleton-header"
@@ -187,11 +187,11 @@ function SourceEditor({
           </p>
           <Button
             size="small"
-            variant="ghost"
+            variant="secondary"
             isDisabled={!selection}
             onPress={() => selection && onAddComment(selection)}
           >
-            <Comment />
+            <Message className="size-4" />
             {t('planReview.comments.add')}
           </Button>
         </div>
@@ -600,7 +600,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           <Button variant="secondary" onPress={() => void loadReview()}>
             {t('planReview.reload')}
           </Button>
-          <Button variant="ghost" onPress={onClose}>
+          <Button variant="secondary" onPress={onClose}>
             {t('common.close')}
           </Button>
         </div>
@@ -665,7 +665,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
     <div
       ref={pageRef}
       data-slot="plan-review-page"
-      className="@container flex h-full min-h-0 flex-col bg-background-primary-default"
+      className="@container flex h-full min-h-0 flex-col bg-background-full"
     >
       <header data-slot="plan-review-header" className="shrink-0 border-b border-border-button-default">
         <div
@@ -695,12 +695,12 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           </div>
 
           <Dropdown>
-            <Button variant="ghost" size="small">
-              <Clock />
+            <Button variant="secondary" size="small">
+              <Clock className="size-4" />
               {historicalRevision
                 ? t('planReview.revision', { number: historicalRevision.revision_no })
                 : t('planReview.history.current')}
-              <ChevronDown />
+              <ChevronDown className="size-4" />
             </Button>
             <DropdownPopover
               placement="bottom end"
@@ -732,9 +732,14 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           </Dropdown>
 
           <TooltipTrigger>
-            <Button iconOnly variant="ghost" size="small" aria-label={t('common.close')} onPress={onClose}>
-              <Xmark />
-            </Button>
+            <Button
+              iconOnly
+              leadingIcon={X}
+              variant="neutral"
+              size="small"
+              aria-label={t('common.close')}
+              onPress={onClose}
+            />
             <Tooltip>{t('common.close')}</Tooltip>
           </TooltipTrigger>
         </div>
@@ -751,12 +756,17 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
               key={problem.key}
               className="mx-auto flex max-w-[96rem] items-center gap-3 px-4 py-2"
             >
-              <TriangleExclamation className="shrink-0" />
+              <TriangleAlert className="size-4 shrink-0" />
               <p data-slot="plan-review-problem-message" role="alert" className="min-w-0 flex-1 break-words">
                 {problem.message}
               </p>
               {problem.action && (
-                <Button size="small" isDisabled={problem.action.pending} onPress={problem.action.run}>
+                <Button
+                  variant="secondary"
+                  size="small"
+                  isDisabled={problem.action.pending}
+                  onPress={problem.action.run}
+                >
                   {problem.action.label}
                 </Button>
               )}
@@ -818,11 +828,11 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           </span>
           <Button
             size="small"
-            variant="ghost"
+            variant="secondary"
             className="plan-review-comments-trigger"
             onPress={() => setCommentsOpen(true)}
           >
-            <Comment />
+            <Message className="size-4" />
             {t('planReview.comments.title')}
           </Button>
         </div>
@@ -936,7 +946,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
 
       <footer
         data-slot="plan-review-footer"
-        className="shrink-0 border-t border-border-button-default bg-background-primary-default px-3 py-3 @sm:px-5"
+        className="shrink-0 border-t border-border-button-default bg-background-full px-3 py-3 @sm:px-5"
       >
         <div
           data-slot="plan-review-footer-row"
@@ -959,13 +969,17 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           </div>
           <div data-slot="plan-review-decision-actions" className="flex shrink-0 items-center justify-end gap-2">
             <Button
-              variant="ghost"
+              variant="secondary"
               isDisabled={deciding || effectiveSaveState !== 'saved' || rules.isPristine || isReadOnly}
               onPress={() => void discard()}
             >
               {t('planReview.discard')}
             </Button>
-            <Button isDisabled={deciding || !rules.canRequestChanges} onPress={() => void decide('request_changes')}>
+            <Button
+              variant="secondary"
+              isDisabled={deciding || !rules.canRequestChanges}
+              onPress={() => void decide('request_changes')}
+            >
               {t('planReview.requestChanges')}
             </Button>
             <Button
@@ -983,8 +997,11 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
       {/* Portalled to `body`, so this is the one width here that really is
           about the viewport rather than the page. */}
       <Sheet isOpen={commentsOpen} placement="right" onOpenChange={setCommentsOpen} isDismissable>
-        <Sheet.Backdrop variant="blur">
-          <Sheet.Content className="w-full sm:max-w-md">
+        <Sheet.Backdrop>
+          {/* The modal surface (`MODAL_SURFACE` is `background-full`), not the
+            sheet's default `background-primary`: a field's tertiary well is the same
+            neutral-800 as primary in dark, so on the default the field had no edge. */}
+          <Sheet.Content className="w-full bg-background-full sm:max-w-md">
             <Sheet.Dialog className="flex h-full min-h-0 flex-col">
               <Sheet.Header>
                 <Sheet.Heading>{t('planReview.comments.title')}</Sheet.Heading>

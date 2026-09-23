@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
-import { ChevronLeft, ArrowDownToLine, ArrowsRotateRight, Magnifier } from '@gravity-ui/icons'
+import { ChevronLeft, Download, RefreshCw, Search } from '@keyline-icons/react/two-tone'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
@@ -47,7 +47,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
   return (
     <div data-slot="log-viewer" className="flex h-full flex-col gap-4">
       <div data-slot="log-viewer-header" className="flex flex-wrap items-center gap-2">
-        <Button variant="ghost" size="small" onPress={onBack}>
+        <Button variant="secondary" size="small" onPress={onBack}>
           <ChevronLeft className="size-4" />
           {t('settings.about.logs.back')}
         </Button>
@@ -55,15 +55,15 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
           {t('settings.about.logs.title')}
         </h2>
         <div data-slot="log-viewer-actions" className="ml-auto flex items-center gap-2">
-          <Button variant="ghost" size="small" onPress={logs.refresh} isDisabled={logs.loading}>
-            <ArrowsRotateRight className="size-4" />
+          <Button variant="secondary" size="small" onPress={logs.refresh} isDisabled={logs.loading}>
+            <RefreshCw className="size-4" />
             {t('settings.about.logs.refresh')}
           </Button>
           {/* The picker names a path on this device and the file is written by
               whichever machine the logs belong to. Reading them here still
               works — that is what the rows below are. */}
           <Button variant="secondary" size="small" onPress={onExport} isDisabled={!can.exportToDisk}>
-            <ArrowDownToLine className="size-4" />
+            <Download className="size-4" />
             {exported ? t('settings.about.logs.exported') : t('settings.about.logs.export')}
           </Button>
         </div>
@@ -84,7 +84,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
 
         <InputGroup className="max-w-xs flex-1">
           <InputGroup.Prefix>
-            <Magnifier className="size-4" />
+            <Search className="size-4" />
           </InputGroup.Prefix>
           <InputGroup.Input
             aria-label={t('settings.about.logs.searchPlaceholder')}
@@ -167,7 +167,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
                   {t('settings.about.logs.capped', { max: MAX_RENDERED })}
                 </p>
               ) : logs.canLoadOlder ? (
-                <Button variant="ghost" size="small" onPress={logs.loadOlder} isPending={logs.loadingMore}>
+                <Button variant="secondary" size="small" onPress={logs.loadOlder} isPending={logs.loadingMore}>
                   {t('settings.about.logs.loadOlder')}
                 </Button>
               ) : null}

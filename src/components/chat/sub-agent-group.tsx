@@ -2,7 +2,8 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { Alert, Chip, ListBox, Spinner } from '@/components/base'
-import { Ban, CircleCheck, CircleQuestion, Compass, ForwardStep, TriangleExclamation } from '@gravity-ui/icons'
+import { ShimmerText } from '@/components/application/agent-log/agent-log'
+import { Ban, CircleCheck, CircleQuestion, Compass, SkipForward, TriangleAlert } from '@keyline-icons/react/two-tone'
 import { ChatToolArgs } from '@/components/ui/chat-tool'
 import { BUBBLE_BLOCK } from '@/components/ui/bubble'
 import { useTranscriptConversationId } from '@/hooks/use-transcript-conversation'
@@ -123,7 +124,7 @@ export function SubAgentStatusChip({ outcome }: { outcome: SubAgentVerdict }) {
     ) : outcome === 'done' ? (
       <CircleCheck className="size-3" />
     ) : outcome === 'failed' ? (
-      <TriangleExclamation className="size-3" />
+      <TriangleAlert className="size-3" />
     ) : (
       <Ban className="size-3" />
     )
@@ -283,11 +284,10 @@ function SubAgentRowLine({ row, state }: { row: Row; state: RowState }) {
       data-tone={tone}
       className={cx(
         'truncate text-caption-1-regular',
-        tone === 'live' && 'shimmer',
         tone === 'warn' ? 'text-status-warning-soft-foreground' : 'text-text-secondary',
       )}
     >
-      {text}
+      {tone === 'live' ? <ShimmerText>{text}</ShimmerText> : text}
     </div>
   )
 }
@@ -396,7 +396,7 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
                   {readOnly ? (
                     <Compass aria-hidden className="size-3.5 text-text-secondary" />
                   ) : (
-                    <ForwardStep aria-hidden className="size-3.5 text-text-secondary" />
+                    <SkipForward aria-hidden className="size-3.5 text-text-secondary" />
                   )}
                   {t(`chat.subAgent.${row.delegation.kind}`)}
                 </span>

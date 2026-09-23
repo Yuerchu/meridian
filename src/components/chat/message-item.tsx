@@ -1,20 +1,20 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  ArrowsRotateRight,
+  Bin,
   Check,
   Copy,
+  CursorText,
   File,
-  Magnifier,
-  Microphone,
-  Pencil,
-  SquareDashedText,
-  TerminalLine,
+  Mic,
+  Pen,
+  RefreshCw,
+  Search,
+  SquareTerminal,
   ThumbsDown,
   ThumbsUp,
-  TrashBin,
-  Xmark,
-} from '@gravity-ui/icons'
+  X,
+} from '@keyline-icons/react/two-tone'
 import { ModelIcon } from '@/components/ui/model-icon'
 import { HostedAgentGlyph } from '@/components/ui/agent-icon'
 import { cx } from '@/utils/cx'
@@ -22,7 +22,8 @@ import { ActionButton } from '@/components/ui/action-button'
 import { useConfirm } from '@/hooks/use-confirm'
 import { ConversationRefChips } from './conversation-ref-chips'
 import { CopyButton, MarkdownContent } from './markdown-content'
-import { Avatar, Label, Spinner, TextArea } from '@/components/base'
+import { Avatar, Label, TextArea } from '@/components/base'
+import { AgentThinking } from '@/components/application/agent-thinking/agent-thinking'
 import { ContextMenu } from '@/components/base'
 import {
   MessageGroupAssistant,
@@ -48,12 +49,12 @@ import { ToolCallBlock } from './tool-call-block'
 import { ThinkingRow } from './thinking-block'
 import { SubAgentGroup, delegationOf } from './sub-agent-group'
 import { renderEmojisInText, StickerImage } from './emoji-renderer'
-import { formatDuration, type Turn } from '@/lib/turns'
+import type { Turn } from '@/lib/turns'
 import type { AssistantGroup, BubbleModel, BubblePosition, FoldKind, FoldedCalls } from '@/lib/message-groups'
 import type { MessageRating, MessageViewModel as MessageData } from '@/types'
 import type { SenderNames } from '@/hooks/use-sender-names'
 import type { EmojiMap } from './emoji-renderer'
-import { TurnUsage } from './turn-usage'
+import { TurnInfo } from './turn-info'
 import { ShellCommandBubble } from './shell-command-bubble'
 
 /**
@@ -140,7 +141,10 @@ function QuotedMessageBlock({ sender, content }: { sender: string; content: stri
   return (
     <div
       data-slot="quoted-message"
-      className="mb-2 pl-3 border-l-2 border-text-white/30 text-caption-1-regular text-text-white/70"
+      // Washes of the bubble's own ink over its fill, not a fixed colour: the
+      // person's bubble was black once and is the white card now, and
+      // `text-white/70` is invisible on the second.
+      className="mb-2 border-l-2 border-[color-mix(in_oklch,var(--bubble-fill),var(--bubble-ink)_30%)] pl-3 text-caption-1-regular text-[color-mix(in_oklch,var(--bubble-fill),var(--bubble-ink)_70%)]"
     >
       <span data-slot="quoted-message-sender" className="text-caption-1-medium">
         {sender}
@@ -333,10 +337,9 @@ export const UserMessage = React.memo(function UserMessage({
               <ActionButton
                 label={t('chat.delete')}
                 onClick={requestDelete}
-                className="text-text-secondary hover:text-status-danger"
-              >
-                <TrashBin className="size-3.5" />
-              </ActionButton>
+                className="data-[hovered]:text-status-danger"
+                icon={Bin}
+              />
             )}
           </MessageGroupFooter>
         </MessageGroupUser>
@@ -372,16 +375,8 @@ export const UserMessage = React.memo(function UserMessage({
                   rows={1}
                 />
                 <div data-slot="message-edit-actions" className="flex justify-end gap-1 mt-1.5">
-                  <ActionButton label={t('chat.cancelEdit')} onClick={handleCancelEdit} className="text-text-secondary">
-                    <Xmark className="w-3.5 h-3.5" />
-                  </ActionButton>
-                  <ActionButton
-                    label={t('chat.saveEdit')}
-                    onClick={handleSaveEdit}
-                    className="text-button-ghost-foreground"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                  </ActionButton>
+                  <ActionButton label={t('chat.cancelEdit')} onClick={handleCancelEdit} icon={X} />
+                  <ActionButton label={t('chat.saveEdit')} onClick={handleSaveEdit} icon={Check} />
                 </div>
               </BubbleContent>
             </Bubble>
@@ -423,7 +418,7 @@ export const UserMessage = React.memo(function UserMessage({
                       // own padding wraps it instead of clipping it.
                       <div data-slot="user-message-body" className="flow-root whitespace-pre-wrap">
                         {message.source === 'voice' && (
-                          <Microphone
+                          <Mic
                             className="inline-block size-3.5 mr-1 -mt-0.5 opacity-60"
                             aria-label={t('chat.voice.badge')}
                           />
@@ -452,24 +447,16 @@ export const UserMessage = React.memo(function UserMessage({
                 ))}
               <MessageGroupFooter className="gap-1">
                 {canEdit && (
-                  <ActionButton
-                    ref={editButtonRef}
-                    label={t('chat.edit')}
-                    onClick={handleStartEdit}
-                    className="text-text-secondary hover:text-text-primary"
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </ActionButton>
+                  <ActionButton ref={editButtonRef} label={t('chat.edit')} onClick={handleStartEdit} icon={Pen} />
                 )}
                 <CopyButton text={copyText} />
                 {onDelete && (
                   <ActionButton
                     label={t('chat.delete')}
                     onClick={requestDelete}
-                    className="text-text-secondary hover:text-status-danger"
-                  >
-                    <TrashBin className="w-3.5 h-3.5" />
-                  </ActionButton>
+                    className="data-[hovered]:text-status-danger"
+                    icon={Bin}
+                  />
                 )}
               </MessageGroupFooter>
             </>
@@ -493,7 +480,7 @@ export const UserMessage = React.memo(function UserMessage({
           )}
           {canEdit && (
             <ContextMenu.Item id="edit" textValue={t('chat.edit')} onAction={handleStartEdit}>
-              <Pencil className="size-4 text-text-secondary" />
+              <Pen className="size-4 text-text-secondary" />
               <Label>{t('chat.edit')}</Label>
             </ContextMenu.Item>
           )}
@@ -511,7 +498,7 @@ export const UserMessage = React.memo(function UserMessage({
               textValue={t('contextMenu.selectText')}
               onAction={() => setShowSelectText(true)}
             >
-              <SquareDashedText className="size-4 text-text-secondary" />
+              <CursorText className="size-4 text-text-secondary" />
               <Label>{t('contextMenu.selectText')}</Label>
             </ContextMenu.Item>
           )}
@@ -524,7 +511,7 @@ export const UserMessage = React.memo(function UserMessage({
                 variant="danger"
                 onAction={() => void requestDelete()}
               >
-                <TrashBin className="size-4" />
+                <Bin className="size-4" />
                 <Label>{t('chat.delete')}</Label>
               </ContextMenu.Item>
             </>
@@ -544,9 +531,9 @@ export const UserMessage = React.memo(function UserMessage({
 })
 
 const FOLD_ICONS: Record<FoldKind, React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>> = {
-  commands: TerminalLine,
+  commands: SquareTerminal,
   files: File,
-  searches: Magnifier,
+  searches: Search,
 }
 
 /**
@@ -746,15 +733,14 @@ function AssistantBubble({
   }
   if (bubble.kind === 'working') {
     return (
-      // The typing indicator: the next bubble of the run, with the spinner
-      // where the words will be. `role="status"` so it is announced, and so
-      // the tests can find the sign of life without knowing its wording.
-      <Bubble variant="assistant" position={bubble.position} role="status" data-working="true">
-        <BubbleContent className="flex items-center gap-2">
-          <Spinner size="sm" color="current" className="text-text-secondary" />
-          <span data-slot="working-label" className="shimmer text-caption-1-regular">
-            {workingLabel}
-          </span>
+      // The typing indicator: the next bubble of the run, with boardui's
+      // `agent-thinking` where the words will be. That component is the
+      // `role="status"` (so it is announced once, not twice), and
+      // `data-working` is how the tests find the sign of life without
+      // knowing its wording.
+      <Bubble variant="assistant" position={bubble.position} data-working="true">
+        <BubbleContent>
+          <AgentThinking variant="infinity" label={workingLabel ?? undefined} />
         </BubbleContent>
       </Bubble>
     )
@@ -982,7 +968,7 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
                 textValue={t('contextMenu.selectText')}
                 onAction={() => setShowSelectText(true)}
               >
-                <SquareDashedText className="size-4 text-text-secondary" />
+                <CursorText className="size-4 text-text-secondary" />
                 <Label>{t('contextMenu.selectText')}</Label>
               </ContextMenu.Item>
             )}
@@ -1005,7 +991,7 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
             )}
             {onRegenerate && !isStreaming && (
               <ContextMenu.Item id="regenerate" textValue={t('chat.regenerate')} onAction={onRegenerate}>
-                <ArrowsRotateRight className="size-4 text-text-secondary" />
+                <RefreshCw className="size-4 text-text-secondary" />
                 <Label>{t('chat.regenerate')}</Label>
               </ContextMenu.Item>
             )}
@@ -1018,7 +1004,7 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
                   variant="danger"
                   onAction={() => void requestDelete()}
                 >
-                  <TrashBin className="size-4" />
+                  <Bin className="size-4" />
                   <Label>{t('chat.delete')}</Label>
                 </ContextMenu.Item>
               </>
@@ -1027,20 +1013,10 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
         </ContextMenu.Popover>
       </ContextMenu>
       {showFooter && (
-        // Under the bubbles, indented past the avatar column. Cost and duration
-        // only: the token counts are a ledger line, and they are one hover
-        // away inside the usage card.
-        <MessageGroupFooter className="pl-10">
-          {/* Printed, not counted up to. The number is settled by the time the
-              footer exists, and the footer only appears on hover — so the
-              animation ran while the reader looked at a finished total, and
-              made it read as still being worked out. */}
-          <TurnUsage tokens={turn.tokens} usage={turn.usage} />
-          {turn.durationMs != null && !isStreaming && (
-            <span data-slot="turn-duration" className="text-caption-1-regular tabular-nums">
-              {t('chat.turn.duration', { duration: formatDuration(turn.durationMs) })}
-            </span>
-          )}
+        // Under the bubbles, indented past the avatar column: the actions
+        // alone. Duration, tokens and cost are one press away behind the info
+        // action, which is where a new metric goes too.
+        <MessageGroupFooter className="pl-10 has-[[aria-expanded=true]]:opacity-100">
           <div data-slot="assistant-actions" className="flex gap-1">
             <CopyButton text={copyText} />
             {canRate && (
@@ -1049,45 +1025,29 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
                   label={t('chat.thumbsUp')}
                   aria-pressed={rating === 1}
                   onClick={() => rate(1)}
-                  className={cx(
-                    rating === 1
-                      ? 'text-status-success-soft-foreground'
-                      : 'text-text-secondary hover:text-text-primary',
-                  )}
-                >
-                  <ThumbsUp className="w-3.5 h-3.5" />
-                </ActionButton>
+                  className={cx(rating === 1 && 'text-status-success-soft-foreground')}
+                  icon={ThumbsUp}
+                />
                 <ActionButton
                   label={t('chat.thumbsDown')}
                   aria-pressed={rating === -1}
                   onClick={() => rate(-1)}
-                  className={cx(
-                    rating === -1
-                      ? 'text-status-danger-soft-foreground'
-                      : 'text-text-secondary hover:text-text-primary',
-                  )}
-                >
-                  <ThumbsDown className="w-3.5 h-3.5" />
-                </ActionButton>
+                  className={cx(rating === -1 && 'text-status-danger-soft-foreground')}
+                  icon={ThumbsDown}
+                />
               </>
             )}
             {onRegenerate && !isStreaming && (
-              <ActionButton
-                label={t('chat.regenerate')}
-                onClick={onRegenerate}
-                className="text-text-secondary hover:text-text-primary"
-              >
-                <ArrowsRotateRight className="w-3.5 h-3.5" />
-              </ActionButton>
+              <ActionButton label={t('chat.regenerate')} onClick={onRegenerate} icon={RefreshCw} />
             )}
+            <TurnInfo tokens={turn.tokens} usage={turn.usage} durationMs={turn.durationMs} isStreaming={isStreaming} />
             {onDelete && (
               <ActionButton
                 label={t('chat.delete')}
                 onClick={requestDelete}
-                className="text-text-secondary hover:text-status-danger"
-              >
-                <TrashBin className="w-3.5 h-3.5" />
-              </ActionButton>
+                className="data-[hovered]:text-status-danger"
+                icon={Bin}
+              />
             )}
           </div>
         </MessageGroupFooter>

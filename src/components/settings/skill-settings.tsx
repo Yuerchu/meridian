@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, TrashBin, BookOpen, ArrowsRotateRight } from '@gravity-ui/icons'
+import { Bin, BookOpen, Plus, RefreshCw } from '@keyline-icons/react/two-tone'
 import {
   Button,
   Card,
@@ -183,13 +183,13 @@ function SkillEditor({
           <TooltipTrigger delay={0}>
             <Button
               iconOnly
-              variant="ghost"
+              leadingIcon={Bin}
+              size="small"
+              variant="neutral"
               aria-label={t('settings.skills.delete')}
-              className="ml-auto text-text-secondary hover:text-status-danger"
+              className="ml-auto hover:text-status-danger"
               onPress={onDelete}
-            >
-              <TrashBin className="w-3.5 h-3.5" />
-            </Button>
+            />
             <Tooltip>{t('settings.skills.delete')}</Tooltip>
           </TooltipTrigger>
         )}
@@ -273,11 +273,11 @@ export function SkillSettings() {
         subtitle={t('settings.skills.subtitle')}
         actions={
           <>
-            <Button variant="outline" onPress={handleRescan} isPending={rescanning}>
-              <ArrowsRotateRight className="w-3.5 h-3.5" />
+            <Button variant="secondary" onPress={handleRescan} isPending={rescanning}>
+              <RefreshCw className="w-3.5 h-3.5" />
               {t('settings.skills.rescan')}
             </Button>
-            <Button variant="outline" onPress={() => setShowCreate(!showCreate)}>
+            <Button variant="secondary" onPress={() => setShowCreate(!showCreate)}>
               <Plus className="w-3.5 h-3.5" />
               {t('settings.skills.new')}
             </Button>
@@ -292,7 +292,7 @@ export function SkillSettings() {
       )}
 
       {showCreate && (
-        <Card>
+        <Card variant="secondary">
           <SkillEditor
             onSave={async () => {
               setShowCreate(false)

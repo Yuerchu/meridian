@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { TrashBin, TriangleExclamation } from '@gravity-ui/icons'
+import { Bin, TriangleAlert } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
 import { Button, Checkbox, Chip, Disclosure, TextArea, Tooltip, TooltipTrigger } from '@/components/base'
 import { Hint } from '@/components/ui/hint'
@@ -86,7 +86,7 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
         {ownerOnly && (
           <Hint data-slot="memory-owner-trigger" label={t('settings.memory.ownerOnlyHint')} className="inline-flex">
             <Chip color="warning">
-              <TriangleExclamation className="size-3.5" />
+              <TriangleAlert className="size-3.5" />
               {t('settings.memory.ownerOnly')}
             </Chip>
           </Hint>
@@ -151,17 +151,18 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
             <div data-slot="memory-row-actions-spacer" className="flex-1" />
             <TooltipTrigger delay={0}>
               <Button
-                variant="ghost"
+                variant="neutral"
                 iconOnly
+                leadingIcon={Bin}
+                size="small"
+                className="hover:text-status-danger"
                 aria-label={t('settings.memory.delete')}
                 onPress={async () => {
                   await api.deleteMemories([memory.id])
                   onChanged()
                 }}
                 data-slot="memory-row-delete"
-              >
-                <TrashBin className="text-status-danger" />
-              </Button>
+              />
               <Tooltip>{t('settings.memory.delete')}</Tooltip>
             </TooltipTrigger>
           </div>

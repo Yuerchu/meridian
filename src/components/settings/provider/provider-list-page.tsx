@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Cloud } from '@gravity-ui/icons'
+import { Cloud, Plus } from '@keyline-icons/react/two-tone'
 import { Alert, Button, EmptyState, ListView, Tooltip, TooltipTrigger } from '@/components/base'
 import { ProviderMark } from '@/components/ui/provider-icon'
 import { api } from '@/api'
@@ -88,7 +88,7 @@ export function ProviderListPage({ onOpen }: { onOpen: (providerId: string) => v
             <Alert.Description className="break-all">{loadError}</Alert.Description>
             <Button
               size="small"
-              variant="outline"
+              variant="secondary"
               onPress={() => {
                 setLoadError(null)
                 setLoading(true)
@@ -113,12 +113,12 @@ export function ProviderListPage({ onOpen }: { onOpen: (providerId: string) => v
         <TooltipTrigger delay={0}>
           <Button
             iconOnly
+            leadingIcon={Plus}
+            size="small"
             aria-label={t('settings.provider.addProvider')}
-            variant="ghost"
+            variant="neutral"
             onPress={() => void handleCreate()}
-          >
-            <Plus className="w-4 h-4" />
-          </Button>
+          />
           <Tooltip placement="top">{t('settings.provider.addProvider')}</Tooltip>
         </TooltipTrigger>
       }
@@ -137,13 +137,13 @@ export function ProviderListPage({ onOpen }: { onOpen: (providerId: string) => v
           // empty state has an action slot for.
           <EmptyState size="sm">
             <EmptyState.Media variant="icon">
-              <Cloud />
+              <Cloud className="size-4" />
             </EmptyState.Media>
             <EmptyState.Header>
               <EmptyState.Title>{t('settings.provider.noProviders')}</EmptyState.Title>
             </EmptyState.Header>
             <EmptyState.Content>
-              <Button variant="outline" onPress={() => void handleCreate()}>
+              <Button variant="secondary" onPress={() => void handleCreate()}>
                 <Plus className="w-4 h-4" />
                 {t('settings.provider.addProvider')}
               </Button>

@@ -357,8 +357,8 @@ describe('AppSidebar project groups', () => {
 
       const dialog = await screen.findByRole('dialog')
       // Loose already: "no project" is where it is, not somewhere to go.
-      expect(within(dialog).getByRole('button', { name: /不归属项目/ })).toBeDisabled()
-      await user.click(within(dialog).getByRole('button', { name: /Meridian/ }))
+      expect(within(dialog).getByRole('option', { name: /不归属项目/ })).toHaveAttribute('aria-disabled', 'true')
+      await user.click(within(dialog).getByRole('option', { name: /Meridian/ }))
 
       expect(props.onMoveToProject).toHaveBeenCalledWith('c-loose', 'p-code')
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
@@ -375,8 +375,8 @@ describe('AppSidebar project groups', () => {
       await user.click(within(await screen.findByRole('menu')).getByText('移动到项目…'))
 
       const dialog = await screen.findByRole('dialog')
-      expect(within(dialog).getByRole('button', { name: /Meridian/ })).toBeDisabled()
-      await user.click(within(dialog).getByRole('button', { name: /不归属项目/ }))
+      expect(within(dialog).getByRole('option', { name: /Meridian/ })).toHaveAttribute('aria-disabled', 'true')
+      await user.click(within(dialog).getByRole('option', { name: /不归属项目/ }))
 
       expect(props.onMoveToProject).toHaveBeenCalledWith('c-1', null)
     })
@@ -388,7 +388,7 @@ describe('AppSidebar project groups', () => {
 
       await user.click(within(await screen.findByRole('menu')).getByText('移动到项目…'))
       const dialog = await screen.findByRole('dialog')
-      await user.click(within(dialog).getByRole('button', { name: /Meridian/ }))
+      await user.click(within(dialog).getByRole('option', { name: /Meridian/ }))
 
       expect(await within(dialog).findByRole('alert')).toHaveTextContent('conversation is busy')
       expect(dialog).toBeInTheDocument()

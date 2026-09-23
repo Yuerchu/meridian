@@ -241,7 +241,7 @@ export function OneBotSettings() {
             {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
             <Button
               size="small"
-              variant="outline"
+              variant="secondary"
               className="mt-2"
               onPress={() => {
                 setLoading(true)
@@ -459,7 +459,7 @@ export function OneBotSettings() {
       )}
 
       <div data-slot="onebot-actions" className="flex items-center gap-3 pt-2">
-        <Button variant="outline" onPress={handleSave} isDisabled={saving}>
+        <Button variant="secondary" onPress={handleSave} isDisabled={saving}>
           {saved ? t('common.saved') : t('common.save')}
         </Button>
         {saved && (
@@ -468,7 +468,7 @@ export function OneBotSettings() {
           </span>
         )}
         {running ? (
-          <Button variant="danger-soft" onPress={handleStop}>
+          <Button variant="danger" onPress={handleStop}>
             {t('settings.onebot.stop')}
           </Button>
         ) : (

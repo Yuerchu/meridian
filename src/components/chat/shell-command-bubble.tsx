@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { ChevronDown, CircleCheck, CircleExclamation, CircleXmark, Clock, Terminal } from '@gravity-ui/icons'
+import { ChevronDown, CircleAlert, CircleCheck, CircleX, Clock, Terminal } from '@keyline-icons/react/two-tone'
 import { Skeleton, Spinner } from '@/components/base'
 import { useTranslation } from 'react-i18next'
 
@@ -38,8 +38,8 @@ function StatusIcon({ result }: { result: UserCommandResultResponse }) {
   if (result.status === 'timed_out' || result.status === 'cancelled') {
     return <Clock className="size-3.5 text-status-warning" />
   }
-  if (result.status === 'in_doubt') return <CircleExclamation className="size-3.5 text-status-warning" />
-  return <CircleXmark className="size-3.5 text-status-danger" />
+  if (result.status === 'in_doubt') return <CircleAlert className="size-3.5 text-status-warning" />
+  return <CircleX className="size-3.5 text-status-danger" />
 }
 
 /**

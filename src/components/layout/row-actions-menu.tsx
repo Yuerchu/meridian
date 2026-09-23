@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { Dropdown, DropdownItem, DropdownPopover, Label, Tooltip, TooltipTrigger } from '@/components/base'
-import { EllipsisVertical } from '@gravity-ui/icons'
+import { MoreVertical } from '@keyline-icons/react/two-tone'
 import { Sidebar } from '@/components/base'
 
 import type { RowAction } from './row-actions'
@@ -75,7 +75,7 @@ export function RowActionsMenu({
             conversation and closes the sheet. */}
         <TooltipTrigger delay={0}>
           <Sidebar.MenuAction className="touch-hitbox" aria-label={t('sidebar.moreActions', { name: label })}>
-            <EllipsisVertical />
+            <MoreVertical className="size-4" />
           </Sidebar.MenuAction>
           <Tooltip>{t('sidebar.moreActions', { name: label })}</Tooltip>
         </TooltipTrigger>

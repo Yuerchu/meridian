@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { ArrowDownToSquare, ChevronDown, Copy, Scissors, SquareDashedText, Xmark } from '@gravity-ui/icons'
+import { ArrowInDownDashedPanel, ChevronDown, Copy, CursorText, Scissors, X } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
 import { Button, Kbd, Label, ListBox, Popover, Tooltip, TooltipTrigger } from '@/components/base'
@@ -223,7 +223,7 @@ function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAc
     <Popover>
       <TooltipTrigger delay={0}>
         <Button
-          variant="ghost"
+          variant="secondary"
           aria-label={t('chat.agentOptions')}
           data-slot="agent-options-trigger"
           isDisabled={busy}
@@ -683,13 +683,13 @@ export function InputBar({
         </>
       )}
       <ContextMenu.Item id="paste" textValue={t('contextMenu.paste')} onAction={() => void handlePaste()}>
-        <ArrowDownToSquare className="size-4 text-text-secondary" />
+        <ArrowInDownDashedPanel className="size-4 text-text-secondary" />
         <Label>{t('contextMenu.paste')}</Label>
         <Shortcut keys="Ctrl+V" />
       </ContextMenu.Item>
       <ContextMenu.Separator />
       <ContextMenu.Item id="select-all" textValue={t('contextMenu.selectAll')} onAction={handleSelectAll}>
-        <SquareDashedText className="size-4 text-text-secondary" />
+        <CursorText className="size-4 text-text-secondary" />
         <Label>{t('contextMenu.selectAll')}</Label>
         <Shortcut keys="Ctrl+A" />
       </ContextMenu.Item>
@@ -832,14 +832,13 @@ export function InputBar({
                         <TooltipTrigger delay={0}>
                           <Button
                             iconOnly
-                            size="small"
-                            variant="primary"
+                            leadingIcon={X}
+                            size="xs"
+                            variant="neutral"
                             aria-label={t('chat.removeSticker')}
                             className="touch-hitbox absolute -right-2 -top-2 min-w-0 size-6 rounded-full shadow-card"
                             onPress={onRemoveSticker}
-                          >
-                            <Xmark className="size-3.5" />
-                          </Button>
+                          />
                           <Tooltip>{t('chat.removeSticker')}</Tooltip>
                         </TooltipTrigger>
                       )}

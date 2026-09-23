@@ -39,7 +39,7 @@ const bubbleBlockVariants = tv({
     BUBBLE_BLOCK,
     'flex w-fit min-h-9 items-center gap-2 px-3 py-2 text-left text-caption-1-regular transition-colors outline-none',
     'data-[pressed]:bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--color-text-primary)_8%)]',
-    'focus-visible:ring-2 focus-visible:ring-border-focus-ring/50',
+    'focus-visible:ring-2 focus-visible:ring-border-focus-ring',
     'disabled:opacity-60',
   ],
   variants: {
@@ -101,7 +101,7 @@ function BubbleFoldBadge({ expanded, className, ...props }: React.ComponentProps
       className={cx(
         'inline-flex h-5 shrink-0 items-center gap-1 rounded-full px-2 text-caption-1-regular leading-none text-text-secondary transition-colors outline-none select-none',
         'bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--bubble-ink,var(--color-text-primary))_6%)]',
-        'hover:bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--bubble-ink,var(--color-text-primary))_12%)] hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring/50',
+        'hover:bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--bubble-ink,var(--color-text-primary))_12%)] hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring',
         'aria-expanded:bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--bubble-ink,var(--color-text-primary))_12%)] aria-expanded:text-text-primary',
         className,
       )}

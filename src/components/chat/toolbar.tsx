@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Menu as AriaMenu, MenuSection as AriaMenuSection } from 'react-aria-components'
 import {
-  ArrowsRotateRight,
-  Bulb,
+  Bot,
   Camera,
   Check,
   ChevronLeft,
@@ -10,17 +10,18 @@ import {
   ChevronsRight,
   Compass,
   Cpu,
-  FaceRobot,
   Hammer,
+  Image,
+  Lightbulb,
   Paperclip,
-  Picture,
   Plus,
-  StarFill,
-  Thunderbolt,
-} from '@gravity-ui/icons'
+  RefreshCw,
+  Zap,
+} from '@keyline-icons/react/two-tone'
+import { Star } from '@keyline-icons/react/fill'
 import { ModelIcon } from '@/components/ui/model-icon'
-import { Button, Sheet, Tooltip, TooltipTrigger } from '@/components/base'
-import { CellSwitch } from '@/components/base'
+import { Button, DropdownDivider, DropdownGroup, DropdownItem, Sheet, Tooltip, TooltipTrigger } from '@/components/base'
+import { MENU_ITEMS_CONTAINER } from '@/components/base/dropdown/menu-styles'
 import { cx } from '@/utils/cx'
 import { api } from '@/api'
 import { allowedEfforts } from '@/lib/thinking'
@@ -140,6 +141,8 @@ export function MobileOptionsMenu({
   const supportsThinking = capabilities?.supports_thinking !== false
   const supportsFast = capabilities?.supports_fast === true
   const levels = levelsFor(capabilities)
+  const activeMode = CHAT_MODES.find((m) => m.id === mode) ?? CHAT_MODES[0]
+  const ActiveModeIcon = activeMode.icon
   const thinkingLabel =
     thinkingLevel === 'default' ? t('toolbar.thinking.default') : t(`toolbar.thinking.${thinkingLevel}`)
 
@@ -177,10 +180,13 @@ export function MobileOptionsMenu({
     })
   }, [panel, modelsLoaded, providers])
 
-  // Also neutralizes ui Button defaults (h-8/rounded-lg/justify-center/text-body-medium)
-  // so the drawer items keep their original full-width list layout.
-  const itemCls =
-    'flex h-auto items-center justify-start gap-3 w-full rounded-none px-4 py-2.5 text-body-regular text-text-primary active:bg-background-tertiary-default transition-colors'
+  // Every list in the sheet is a React Aria `Menu` of the registry's dropdown
+  // rows (`DropdownItem`): the main panel's rows are actions and ways into a
+  // panel, each panel's rows a `selectionMode="single"` choice whose current
+  // value is a checked `menuitemradio`, and the two booleans a
+  // `selectionMode="multiple"` section of `menuitemcheckbox` rows.
+  const listCls = cx(MENU_ITEMS_CONTAINER, 'px-2.5')
+  const panelListCls = cx(MENU_ITEMS_CONTAINER, 'max-h-[50vh] overflow-y-auto overscroll-contain px-2.5 pt-2')
 
   return (
     <Sheet
@@ -193,15 +199,14 @@ export function MobileOptionsMenu({
     >
       <TooltipTrigger delay={0}>
         <Button
-          variant="ghost"
+          variant="neutral"
           iconOnly
+          leadingIcon={Plus}
           size="small"
           aria-label={t('composer.menu')}
           onPress={() => setOpen(true)}
-          className="touch-hitbox text-text-secondary"
-        >
-          <Plus className="size-4" />
-        </Button>
+          className="touch-hitbox"
+        />
         <Tooltip>{t('composer.menu')}</Tooltip>
       </TooltipTrigger>
       <Sheet.Backdrop>
@@ -220,150 +225,148 @@ export function MobileOptionsMenu({
             <Sheet.Handle />
             <Sheet.Body className="text-text-primary">
               {panel === 'main' && (
-                <div data-slot="mobile-options-main" className="flex flex-col">
-                  {supportsImages && (
-                    <>
-                      <Button variant="ghost" className={itemCls} onPress={() => handleAction(onTakePhoto)}>
-                        <Camera className="w-4 h-4 text-text-secondary" />
-                        {t('chat.takePhoto')}
-                      </Button>
-                      <Button variant="ghost" className={itemCls} onPress={() => handleAction(onPickGallery)}>
-                        <Picture className="w-4 h-4 text-text-secondary" />
-                        {t('chat.pickFromGallery')}
-                      </Button>
-                    </>
-                  )}
-                  {onPickFile && (
-                    <Button variant="ghost" className={itemCls} onPress={() => handleAction(onPickFile)}>
-                      <Paperclip className="w-4 h-4 text-text-secondary" />
-                      {t('chat.attachFile')}
-                    </Button>
-                  )}
-                  <div data-slot="mobile-options-separator" className="h-px bg-border-button-default mx-4 my-1" />
-                  <Button variant="ghost" className={cx(itemCls, 'justify-between')} onPress={() => setPanel('mode')}>
-                    <span data-slot="mobile-options-mode-summary" className="flex items-center gap-3">
-                      {(() => {
-                        const active = CHAT_MODES.find((m) => m.id === mode) ?? CHAT_MODES[0]
-                        const Icon = active.icon
-                        return (
-                          <>
-                            <Icon
-                              className={cx(
-                                'w-4 h-4',
-                                mode === 'work' ? 'text-text-secondary' : 'text-status-info-soft-foreground',
-                              )}
-                            />
-                            <span data-slot="mobile-options-mode-label">
-                              {t('toolbar.mode')}: {t(active.labelKey)}
-                            </span>
-                          </>
-                        )
-                      })()}
-                    </span>
-                    <ChevronRight className="w-4 h-4 text-text-secondary" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className={cx(itemCls, 'justify-between')}
-                    onPress={() => setPanel('assistant')}
+                <AriaMenu data-slot="mobile-options-main" aria-label={t('composer.menu')} className={listCls}>
+                  {supportsImages ? (
+                    <DropdownItem id="photo" textValue={t('chat.takePhoto')} onAction={() => handleAction(onTakePhoto)}>
+                      <Camera aria-hidden className="size-4 shrink-0 text-text-secondary" />
+                      <span data-slot="mobile-options-label">{t('chat.takePhoto')}</span>
+                    </DropdownItem>
+                  ) : null}
+                  {supportsImages ? (
+                    <DropdownItem
+                      id="gallery"
+                      textValue={t('chat.pickFromGallery')}
+                      onAction={() => handleAction(onPickGallery)}
+                    >
+                      <Image aria-hidden className="size-4 shrink-0 text-text-secondary" />
+                      <span data-slot="mobile-options-label">{t('chat.pickFromGallery')}</span>
+                    </DropdownItem>
+                  ) : null}
+                  {onPickFile ? (
+                    <DropdownItem id="file" textValue={t('chat.attachFile')} onAction={() => handleAction(onPickFile)}>
+                      <Paperclip aria-hidden className="size-4 shrink-0 text-text-secondary" />
+                      <span data-slot="mobile-options-label">{t('chat.attachFile')}</span>
+                    </DropdownItem>
+                  ) : null}
+                  {supportsImages || onPickFile ? <DropdownDivider /> : null}
+                  <DropdownItem
+                    id="mode"
+                    textValue={`${t('toolbar.mode')}: ${t(activeMode.labelKey)}`}
+                    onAction={() => setPanel('mode')}
                   >
-                    <span data-slot="mobile-options-assistant-summary" className="flex items-center gap-3">
-                      <FaceRobot className="w-4 h-4 text-text-secondary" />
-                      <span data-slot="mobile-options-assistant-name">
-                        {currentAssistant?.name ?? t('toolbar.noAssistant')}
-                      </span>
-                    </span>
-                    <ChevronRight className="w-4 h-4 text-text-secondary" />
-                  </Button>
-                  <Button variant="ghost" className={cx(itemCls, 'justify-between')} onPress={() => setPanel('model')}>
-                    <span data-slot="mobile-options-model-summary" className="flex items-center gap-3">
-                      {currentModelId ? (
-                        <ModelIcon model={currentModelId} size={16} />
-                      ) : (
-                        <Cpu className="w-4 h-4 text-text-secondary" />
+                    <ActiveModeIcon
+                      aria-hidden
+                      className={cx(
+                        'size-4 shrink-0',
+                        mode === 'work' ? 'text-text-secondary' : 'text-status-info-soft-foreground',
                       )}
-                      <span data-slot="mobile-options-model-name" className="truncate max-w-48">
-                        {currentModelId ?? t('toolbar.selectModel')}
-                      </span>
+                    />
+                    <span data-slot="mobile-options-mode-label" className="min-w-0 flex-1 truncate">
+                      {t('toolbar.mode')}: {t(activeMode.labelKey)}
                     </span>
-                    <ChevronRight className="w-4 h-4 text-text-secondary" />
-                  </Button>
-                  {supportsThinking && (
-                    <Button
-                      variant="ghost"
-                      className={cx(itemCls, 'justify-between')}
-                      onPress={() => setPanel('thinking')}
+                    <ChevronRight aria-hidden className="size-4 shrink-0 text-text-secondary" />
+                  </DropdownItem>
+                  <DropdownItem
+                    id="assistant"
+                    textValue={currentAssistant?.name ?? t('toolbar.noAssistant')}
+                    onAction={() => setPanel('assistant')}
+                  >
+                    <Bot aria-hidden className="size-4 shrink-0 text-text-secondary" />
+                    <span data-slot="mobile-options-assistant-name" className="min-w-0 flex-1 truncate">
+                      {currentAssistant?.name ?? t('toolbar.noAssistant')}
+                    </span>
+                    <ChevronRight aria-hidden className="size-4 shrink-0 text-text-secondary" />
+                  </DropdownItem>
+                  <DropdownItem
+                    id="model"
+                    textValue={currentModelId ?? t('toolbar.selectModel')}
+                    onAction={() => setPanel('model')}
+                  >
+                    {currentModelId ? (
+                      <ModelIcon model={currentModelId} size={16} className="shrink-0" />
+                    ) : (
+                      <Cpu aria-hidden className="size-4 shrink-0 text-text-secondary" />
+                    )}
+                    <span data-slot="mobile-options-model-name" className="min-w-0 flex-1 truncate">
+                      {currentModelId ?? t('toolbar.selectModel')}
+                    </span>
+                    <ChevronRight aria-hidden className="size-4 shrink-0 text-text-secondary" />
+                  </DropdownItem>
+                  {supportsThinking ? (
+                    <DropdownItem
+                      id="thinking"
+                      textValue={`${t('toolbar.thinking')}: ${thinkingLabel}`}
+                      onAction={() => setPanel('thinking')}
                     >
-                      <span data-slot="mobile-options-thinking-summary" className="flex items-center gap-3">
-                        <Bulb
-                          className={cx(
-                            'w-4 h-4',
-                            thinkingLevel !== 'default' && thinkingLevel !== 'off'
-                              ? 'text-status-info-soft-foreground'
-                              : 'text-text-secondary',
-                          )}
-                        />
-                        <span data-slot="mobile-options-thinking-label">
-                          {t('toolbar.thinking')}: {thinkingLabel}
-                        </span>
+                      <Lightbulb
+                        aria-hidden
+                        className={cx(
+                          'size-4 shrink-0',
+                          thinkingLevel !== 'default' && thinkingLevel !== 'off'
+                            ? 'text-status-info-soft-foreground'
+                            : 'text-text-secondary',
+                        )}
+                      />
+                      <span data-slot="mobile-options-thinking-label" className="min-w-0 flex-1 truncate">
+                        {t('toolbar.thinking')}: {thinkingLabel}
                       </span>
-                      <ChevronRight className="w-4 h-4 text-text-secondary" />
-                    </Button>
-                  )}
-                  {mode !== 'plan' && (
-                    <CellSwitch
-                      data-slot="mobile-accept-edits-row"
-                      aria-label={t('toolbar.acceptEdits')}
-                      isSelected={acceptEdits}
-                      onChange={onToggleAcceptEdits}
-                      className="w-full [--switch-control-bg-checked:var(--color-status-warning)]"
+                      <ChevronRight aria-hidden className="size-4 shrink-0 text-text-secondary" />
+                    </DropdownItem>
+                  ) : null}
+                  {mode !== 'plan' || supportsFast ? (
+                    // Booleans: `menuitemcheckbox` rows, toggled in place.
+                    <AriaMenuSection
+                      selectionMode="multiple"
+                      selectedKeys={[
+                        ...(mode !== 'plan' && acceptEdits ? ['accept-edits'] : []),
+                        ...(supportsFast && fastMode ? ['fast'] : []),
+                      ]}
+                      className="flex w-full flex-col gap-1"
                     >
-                      <CellSwitch.Trigger className="h-auto min-h-10 w-full gap-3 rounded-none border-0 bg-transparent px-4 py-2.5 text-text-primary shadow-none transition-colors active:bg-background-tertiary-default pointer-coarse:min-h-11">
-                        <ChevronsRight
-                          className={cx(
-                            'w-4 h-4',
-                            acceptEdits ? 'text-status-warning-soft-foreground' : 'text-text-secondary',
-                          )}
-                        />
-                        <CellSwitch.Label className="flex items-center justify-between gap-2 text-body-regular">
-                          <span data-slot="mobile-accept-edits-label">{t('toolbar.acceptEdits')}</span>
+                      {mode !== 'plan' ? (
+                        <DropdownItem
+                          id="accept-edits"
+                          textValue={t('toolbar.acceptEdits')}
+                          onAction={() => onToggleAcceptEdits(!acceptEdits)}
+                        >
+                          <ChevronsRight
+                            aria-hidden
+                            className={cx(
+                              'size-4 shrink-0',
+                              acceptEdits ? 'text-status-warning-soft-foreground' : 'text-text-secondary',
+                            )}
+                          />
+                          <span data-slot="mobile-accept-edits-label" className="min-w-0 flex-1 truncate">
+                            {t('toolbar.acceptEdits')}
+                          </span>
                           <span
                             data-slot="mobile-accept-edits-state"
                             className="text-caption-1-regular text-text-secondary"
                           >
                             {acceptEdits ? t('toolbar.acceptEdits.on') : t('toolbar.acceptEdits.off')}
                           </span>
-                        </CellSwitch.Label>
-                        <CellSwitch.Control />
-                      </CellSwitch.Trigger>
-                    </CellSwitch>
-                  )}
-                  {supportsFast && (
-                    <CellSwitch
-                      data-slot="mobile-fast-row"
-                      aria-label={t('toolbar.fast')}
-                      isSelected={fastMode}
-                      onChange={onToggleFast}
-                      className="w-full [--switch-control-bg-checked:var(--color-status-warning)]"
-                    >
-                      <CellSwitch.Trigger className="h-auto min-h-10 w-full gap-3 rounded-none border-0 bg-transparent px-4 py-2.5 text-text-primary shadow-none transition-colors active:bg-background-tertiary-default pointer-coarse:min-h-11">
-                        <Thunderbolt
-                          className={cx(
-                            'w-4 h-4',
-                            fastMode ? 'text-status-warning-soft-foreground' : 'text-text-secondary',
-                          )}
-                        />
-                        <CellSwitch.Label className="flex items-center justify-between gap-2 text-body-regular">
-                          <span data-slot="mobile-fast-label">{t('toolbar.fast')}</span>
+                        </DropdownItem>
+                      ) : null}
+                      {supportsFast ? (
+                        <DropdownItem id="fast" textValue={t('toolbar.fast')} onAction={() => onToggleFast(!fastMode)}>
+                          <Zap
+                            aria-hidden
+                            className={cx(
+                              'size-4 shrink-0',
+                              fastMode ? 'text-status-warning-soft-foreground' : 'text-text-secondary',
+                            )}
+                          />
+                          <span data-slot="mobile-fast-label" className="min-w-0 flex-1 truncate">
+                            {t('toolbar.fast')}
+                          </span>
                           <span data-slot="mobile-fast-state" className="text-caption-1-regular text-text-secondary">
                             {fastMode ? t('toolbar.fast.on') : t('toolbar.fast.off')}
                           </span>
-                        </CellSwitch.Label>
-                        <CellSwitch.Control />
-                      </CellSwitch.Trigger>
-                    </CellSwitch>
-                  )}
-                </div>
+                        </DropdownItem>
+                      ) : null}
+                    </AriaMenuSection>
+                  ) : null}
+                </AriaMenu>
               )}
 
               {panel === 'assistant' && (
@@ -375,44 +378,52 @@ export function MobileOptionsMenu({
                     <TooltipTrigger delay={0}>
                       <Button
                         iconOnly
+                        leadingIcon={ChevronLeft}
+                        size="small"
                         aria-label={t('common.back')}
-                        variant="ghost"
-                        className="size-auto p-1 rounded-md hover:bg-background-primary-hover"
+                        variant="neutral"
                         onPress={() => setPanel('main')}
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                      </Button>
+                      />
                       <Tooltip>{t('common.back')}</Tooltip>
                     </TooltipTrigger>
                     <span data-slot="mobile-options-assistant-title" className="text-body-medium">
                       {t('toolbar.selectAssistant')}
                     </span>
                   </div>
-                  <div data-slot="toolbar-assistant-list" className="max-h-[50vh] overflow-y-auto overscroll-contain">
+                  <AriaMenu
+                    data-slot="toolbar-assistant-list"
+                    aria-label={t('toolbar.selectAssistant')}
+                    selectionMode="single"
+                    disallowEmptySelection
+                    selectedKeys={currentAssistantId ? [currentAssistantId] : []}
+                    className={panelListCls}
+                  >
                     {assistants.map((a) => (
-                      <Button
+                      <DropdownItem
                         key={a.id}
-                        aria-pressed={a.id === currentAssistantId}
-                        variant="ghost"
-                        className={cx(itemCls, a.id === currentAssistantId && 'bg-background-secondary-default')}
-                        onPress={() => {
+                        id={a.id}
+                        textValue={a.name}
+                        onAction={() => {
                           onSelectAssistant(a.id)
                           close()
                         }}
                       >
                         {a.is_default && (
-                          <StarFill
+                          <Star
+                            aria-hidden
                             // eslint-disable-next-line no-restricted-syntax -- CLAUDE.md whitelist: gold-star semantics
-                            className="w-3.5 h-3.5 text-amber-500 flex-shrink-0"
+                            className="size-3.5 shrink-0 text-amber-500"
                           />
                         )}
-                        <span data-slot="toolbar-assistant-name" className="flex-1 truncate">
+                        <span data-slot="toolbar-assistant-name" className="min-w-0 flex-1 truncate">
                           {a.name}
                         </span>
-                        {a.id === currentAssistantId && <Check className="w-4 h-4 text-text-secondary" />}
-                      </Button>
+                        {a.id === currentAssistantId && (
+                          <Check aria-hidden className="size-4 shrink-0 text-text-secondary" />
+                        )}
+                      </DropdownItem>
                     ))}
-                  </div>
+                  </AriaMenu>
                 </div>
               )}
 
@@ -425,13 +436,12 @@ export function MobileOptionsMenu({
                     <TooltipTrigger delay={0}>
                       <Button
                         iconOnly
+                        leadingIcon={ChevronLeft}
+                        size="small"
                         aria-label={t('common.back')}
-                        variant="ghost"
-                        className="size-auto p-1 rounded-md hover:bg-background-primary-hover"
+                        variant="neutral"
                         onPress={() => setPanel('main')}
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                      </Button>
+                      />
                       <Tooltip>{t('common.back')}</Tooltip>
                     </TooltipTrigger>
                     <span data-slot="mobile-options-model-title" className="text-body-medium flex-1">
@@ -440,9 +450,10 @@ export function MobileOptionsMenu({
                     <TooltipTrigger delay={0}>
                       <Button
                         iconOnly
+                        leadingIcon={RefreshCw}
+                        size="xs"
                         aria-label={`${t('settings.about.logs.refresh')} ${t('toolbar.models')}`}
-                        variant="ghost"
-                        className="h-6 w-6"
+                        variant="neutral"
                         onPress={() => {
                           setLoadingModels(true)
                           setGroups([])
@@ -464,65 +475,53 @@ export function MobileOptionsMenu({
                           })
                         }}
                         isPending={loadingModels}
-                      >
-                        <ArrowsRotateRight className="w-3.5 h-3.5" />
-                      </Button>
+                      />
                       <Tooltip>{`${t('settings.about.logs.refresh')} ${t('toolbar.models')}`}</Tooltip>
                     </TooltipTrigger>
                   </div>
-                  <div data-slot="toolbar-model-list" className="max-h-[50vh] overflow-y-auto overscroll-contain">
-                    {loadingModels && (
+                  <AriaMenu
+                    data-slot="toolbar-model-list"
+                    aria-label={t('toolbar.models')}
+                    selectionMode="single"
+                    disallowEmptySelection
+                    selectedKeys={currentModelId && currentProviderId ? [`${currentProviderId}:${currentModelId}`] : []}
+                    renderEmptyState={() => (
                       <div
-                        data-slot="toolbar-model-loading"
-                        className="px-4 py-3 text-caption-1-regular text-text-secondary"
+                        data-slot={loadingModels ? 'toolbar-model-loading' : 'toolbar-model-empty'}
+                        className="px-2 py-3 text-caption-1-regular text-text-secondary"
                       >
-                        {t('toolbar.loadingModels')}
+                        {loadingModels ? t('toolbar.loadingModels') : t('toolbar.noModels')}
                       </div>
                     )}
+                    className={panelListCls}
+                  >
                     {groups.map((g) => (
-                      <div key={g.provider.id} data-slot="toolbar-model-group">
-                        <div
-                          data-slot="toolbar-model-provider"
-                          className="px-4 py-1 text-caption-1-regular text-text-secondary"
-                        >
-                          {g.provider.name}
-                        </div>
-                        {g.models.map((m) => (
-                          <Button
-                            key={`${g.provider.id}-${m.id}`}
-                            aria-pressed={m.id === currentModelId && g.provider.id === currentProviderId}
-                            variant="ghost"
-                            className={cx(
-                              itemCls,
-                              m.id === currentModelId &&
-                                g.provider.id === currentProviderId &&
-                                'bg-background-secondary-default',
-                            )}
-                            onPress={() => {
-                              onSelectModel(m.id, g.provider.id)
-                              close()
-                            }}
-                          >
-                            <ModelIcon model={m.id} size={16} className="flex-shrink-0" />
-                            <span data-slot="toolbar-model-name" className="flex-1 truncate">
-                              {m.name}
-                            </span>
-                            {m.id === currentModelId && g.provider.id === currentProviderId && (
-                              <Check className="w-4 h-4 text-text-secondary flex-shrink-0" />
-                            )}
-                          </Button>
-                        ))}
-                      </div>
+                      <DropdownGroup key={g.provider.id} label={g.provider.name}>
+                        {g.models.map((m) => {
+                          const key = `${g.provider.id}:${m.id}`
+                          return (
+                            <DropdownItem
+                              key={key}
+                              id={key}
+                              textValue={m.name || m.id}
+                              onAction={() => {
+                                onSelectModel(m.id, g.provider.id)
+                                close()
+                              }}
+                            >
+                              <ModelIcon model={m.id} size={16} className="shrink-0" />
+                              <span data-slot="toolbar-model-name" className="min-w-0 flex-1 truncate">
+                                {m.name}
+                              </span>
+                              {m.id === currentModelId && g.provider.id === currentProviderId && (
+                                <Check aria-hidden className="size-4 shrink-0 text-text-secondary" />
+                              )}
+                            </DropdownItem>
+                          )
+                        })}
+                      </DropdownGroup>
                     ))}
-                    {!loadingModels && groups.length === 0 && (
-                      <div
-                        data-slot="toolbar-model-empty"
-                        className="px-4 py-3 text-caption-1-regular text-text-secondary"
-                      >
-                        {t('toolbar.noModels')}
-                      </div>
-                    )}
-                  </div>
+                  </AriaMenu>
                 </div>
               )}
 
@@ -535,45 +534,52 @@ export function MobileOptionsMenu({
                     <TooltipTrigger delay={0}>
                       <Button
                         iconOnly
+                        leadingIcon={ChevronLeft}
+                        size="small"
                         aria-label={t('common.back')}
-                        variant="ghost"
-                        className="size-auto p-1 rounded-md hover:bg-background-primary-hover"
+                        variant="neutral"
                         onPress={() => setPanel('main')}
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                      </Button>
+                      />
                       <Tooltip>{t('common.back')}</Tooltip>
                     </TooltipTrigger>
                     <span data-slot="mobile-options-mode-title" className="text-body-medium">
                       {t('toolbar.mode')}
                     </span>
                   </div>
-                  {CHAT_MODES.map((m) => {
-                    const Icon = m.icon
-                    return (
-                      <Button
-                        key={m.id}
-                        aria-pressed={m.id === mode}
-                        variant="ghost"
-                        className={cx(itemCls, 'justify-between', m.id === mode && 'bg-background-secondary-default')}
-                        onPress={() => {
-                          onSelectMode(m.id)
-                          close()
-                        }}
-                      >
-                        <span data-slot="mobile-options-mode-choice" className="flex items-center gap-3">
-                          <Icon className="w-4 h-4 text-text-secondary" />
-                          <span data-slot="mobile-options-mode-choice-label">{t(m.labelKey)}</span>
-                        </span>
-                        <span
-                          data-slot="mobile-options-mode-choice-desc"
-                          className="text-caption-1-regular text-text-secondary"
+                  <AriaMenu
+                    data-slot="mobile-options-mode-list"
+                    aria-label={t('toolbar.mode')}
+                    selectionMode="single"
+                    disallowEmptySelection
+                    selectedKeys={[mode]}
+                    className={panelListCls}
+                  >
+                    {CHAT_MODES.map((m) => {
+                      const Icon = m.icon
+                      return (
+                        <DropdownItem
+                          key={m.id}
+                          id={m.id}
+                          textValue={t(m.labelKey)}
+                          onAction={() => {
+                            onSelectMode(m.id)
+                            close()
+                          }}
                         >
-                          {t(m.descKey)}
-                        </span>
-                      </Button>
-                    )
-                  })}
+                          <Icon aria-hidden className="size-4 shrink-0 text-text-secondary" />
+                          <span data-slot="mobile-options-mode-choice-label" className="min-w-0 flex-1 truncate">
+                            {t(m.labelKey)}
+                          </span>
+                          <span
+                            data-slot="mobile-options-mode-choice-desc"
+                            className="text-caption-1-regular text-text-secondary"
+                          >
+                            {t(m.descKey)}
+                          </span>
+                        </DropdownItem>
+                      )
+                    })}
+                  </AriaMenu>
                 </div>
               )}
 
@@ -586,43 +592,48 @@ export function MobileOptionsMenu({
                     <TooltipTrigger delay={0}>
                       <Button
                         iconOnly
+                        leadingIcon={ChevronLeft}
+                        size="small"
                         aria-label={t('common.back')}
-                        variant="ghost"
-                        className="size-auto p-1 rounded-md hover:bg-background-primary-hover"
+                        variant="neutral"
                         onPress={() => setPanel('main')}
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                      </Button>
+                      />
                       <Tooltip>{t('common.back')}</Tooltip>
                     </TooltipTrigger>
                     <span data-slot="mobile-options-thinking-title" className="text-body-medium">
                       {t('toolbar.thinking')}
                     </span>
                   </div>
-                  {levels.map((level) => (
-                    <Button
-                      key={level.id}
-                      aria-pressed={level.id === thinkingLevel}
-                      variant="ghost"
-                      className={cx(
-                        itemCls,
-                        'justify-between',
-                        level.id === thinkingLevel && 'bg-background-secondary-default',
-                      )}
-                      onPress={() => {
-                        onSelectThinkingLevel(level.id)
-                        close()
-                      }}
-                    >
-                      <span data-slot="mobile-options-thinking-choice-label">{t(level.labelKey)}</span>
-                      <span
-                        data-slot="mobile-options-thinking-choice-desc"
-                        className="text-caption-1-regular text-text-secondary"
+                  <AriaMenu
+                    data-slot="mobile-options-thinking-list"
+                    aria-label={t('toolbar.thinking')}
+                    selectionMode="single"
+                    disallowEmptySelection
+                    selectedKeys={[thinkingLevel]}
+                    className={panelListCls}
+                  >
+                    {levels.map((level) => (
+                      <DropdownItem
+                        key={level.id}
+                        id={level.id}
+                        textValue={t(level.labelKey)}
+                        onAction={() => {
+                          onSelectThinkingLevel(level.id)
+                          close()
+                        }}
                       >
-                        {t(level.descKey)}
-                      </span>
-                    </Button>
-                  ))}
+                        <span data-slot="mobile-options-thinking-choice-label" className="min-w-0 flex-1 truncate">
+                          {t(level.labelKey)}
+                        </span>
+                        <span
+                          data-slot="mobile-options-thinking-choice-desc"
+                          className="text-caption-1-regular text-text-secondary"
+                        >
+                          {t(level.descKey)}
+                        </span>
+                      </DropdownItem>
+                    ))}
+                  </AriaMenu>
                 </div>
               )}
             </Sheet.Body>

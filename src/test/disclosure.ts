@@ -1,7 +1,7 @@
 import { expect } from 'vitest'
 
 /**
- * Assertions for disclosures — `Turn`, `ChatTool`, `ChainOfThought`.
+ * Assertions for disclosures — `Turn`, `ChatTool`.
  *
  * base-ui's `Collapsible` returned `null` while collapsed, so "is it hidden"
  * and "is it in the DOM" were the same question and `queryByText` answered

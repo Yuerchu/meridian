@@ -1,8 +1,9 @@
 import { useEffect, useId, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, PlugWire, PlugConnection, LogoMcp, TrashBin, ArrowDownToSquare } from '@gravity-ui/icons'
+import { ArrowInDownDashedPanel, Bin, Cable, Plug, Plus } from '@keyline-icons/react/two-tone'
 import { Alert, Button, Input, Label, Switch, TextArea, TextField, Tooltip, TooltipTrigger } from '@/components/base'
 import { EmptyState } from '@/components/base'
+import { SegmentedControl, SegmentedControlItem } from '@/components/base/segmented-control/segmented-control'
 import { ListView } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import {
@@ -13,7 +14,6 @@ import {
   requireKnownKeys,
   requireRecord,
 } from '@/lib/strict-json'
-import { cx } from '@/utils/cx'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import type { McpServerInfoResponse, McpServerToolInfoResponse, McpTransport } from '@/types'
@@ -130,7 +130,7 @@ function JsonImportDialog({ onImport, onCancel }: { onImport: (data: McpServersJ
       )}
       <div data-slot="mcp-import-actions" className="flex gap-2">
         <Button onPress={handleSubmit}>{t('settings.mcp.importJsonSubmit')}</Button>
-        <Button variant="outline" onPress={onCancel}>
+        <Button variant="secondary" onPress={onCancel}>
           {t('settings.mcp.importJsonCancel')}
         </Button>
       </div>
@@ -288,39 +288,22 @@ function McpServerEditor({
         <p data-slot="mcp-transport-label" className="text-body-medium">
           {t('settings.mcp.transport')}
         </p>
-        <div
+        {/* The registry's segmented control. Two Buttons toggling a fill were a
+            lookalike of it, and on BoardUI's `ghost` the unchosen one was the
+            accent's soft fill — the one that looked selected. */}
+        <SegmentedControl
           data-slot="mcp-transport-options"
-          role="group"
           aria-label={t('settings.mcp.transport')}
-          className="flex gap-2 mt-1"
+          className="mt-1"
+          selectedKeys={[isHttp ? 'streamablehttp' : 'stdio']}
+          onSelectionChange={(keys) => {
+            const next = [...(keys as Set<string>)][0]
+            if (next === 'stdio' || next === 'streamablehttp') setTransportType(next)
+          }}
         >
-          <Button
-            variant="ghost"
-            aria-pressed={!isHttp}
-            onPress={() => setTransportType('stdio')}
-            className={cx(
-              'px-3 py-1.5 rounded-md text-body-regular transition-colors',
-              !isHttp
-                ? 'bg-background-secondary-default text-text-primary hover:bg-background-primary-hover hover:text-text-primary'
-                : 'text-text-secondary hover:text-text-primary hover:bg-background-primary-hover/50',
-            )}
-          >
-            {t('settings.mcp.transportStdio')}
-          </Button>
-          <Button
-            variant="ghost"
-            aria-pressed={isHttp}
-            onPress={() => setTransportType('streamablehttp')}
-            className={cx(
-              'px-3 py-1.5 rounded-md text-body-regular transition-colors',
-              isHttp
-                ? 'bg-background-secondary-default text-text-primary hover:bg-background-primary-hover hover:text-text-primary'
-                : 'text-text-secondary hover:text-text-primary hover:bg-background-primary-hover/50',
-            )}
-          >
-            {t('settings.mcp.transportHttp')}
-          </Button>
-        </div>
+          <SegmentedControlItem id="stdio">{t('settings.mcp.transportStdio')}</SegmentedControlItem>
+          <SegmentedControlItem id="streamablehttp">{t('settings.mcp.transportHttp')}</SegmentedControlItem>
+        </SegmentedControl>
       </div>
 
       {isHttp ? (
@@ -394,19 +377,19 @@ function McpServerEditor({
       <div data-slot="mcp-editor-actions" className="flex flex-wrap items-center gap-2">
         <Button onPress={handleSave}>{saved ? t('common.saved') : t('common.save')}</Button>
         {connected ? (
-          <Button variant="outline" onPress={handleDisconnect}>
-            <PlugConnection className="w-3.5 h-3.5 mr-1.5" />
+          <Button variant="secondary" onPress={handleDisconnect}>
+            <Plug className="w-3.5 h-3.5 mr-1.5" />
             {t('settings.mcp.disconnect')}
           </Button>
         ) : (
           <Button
-            variant="outline"
+            variant="secondary"
             onPress={handleConnect}
             isDisabled={statusLoading}
             isPending={connecting}
             aria-busy={connecting}
           >
-            <PlugWire aria-hidden="true" className="w-3.5 h-3.5 mr-1.5" />
+            <Cable aria-hidden="true" className="w-3.5 h-3.5 mr-1.5" />
             {t('settings.mcp.connect')}
           </Button>
         )}
@@ -449,8 +432,8 @@ function McpServerEditor({
       )}
 
       <div data-slot="mcp-danger-zone" className="pt-4 border-t border-border-button-default">
-        <Button variant="danger-soft" onPress={() => onDelete(server.id)}>
-          <TrashBin className="w-3.5 h-3.5 mr-1.5" />
+        <Button variant="danger" onPress={() => onDelete(server.id)}>
+          <Bin className="w-3.5 h-3.5 mr-1.5" />
           {t('settings.mcp.deleteServer')}
         </Button>
       </div>
@@ -569,7 +552,7 @@ export function McpSettings() {
           className="min-h-11 rounded-lg border-b-0 px-3 py-2 data-[selected=true]:bg-background-tertiary-default data-[selected=true]:text-text-primary"
         >
           <ListView.ItemContent>
-            <LogoMcp className="size-4" />
+            <Plug className="size-4" />
             <ListView.Title className="text-body-regular">{s.name}</ListView.Title>
           </ListView.ItemContent>
           <ListView.ItemAction>
@@ -585,15 +568,25 @@ export function McpSettings() {
   const headerActions = (
     <div data-slot="mcp-header-actions" className="flex items-center gap-1">
       <TooltipTrigger delay={0}>
-        <Button iconOnly aria-label={t('settings.mcp.importJson')} variant="outline" onPress={() => openAux('import')}>
-          <ArrowDownToSquare className="w-4 h-4" />
-        </Button>
+        <Button
+          iconOnly
+          leadingIcon={ArrowInDownDashedPanel}
+          size="small"
+          aria-label={t('settings.mcp.importJson')}
+          variant="secondary"
+          onPress={() => openAux('import')}
+        />
         <Tooltip placement="top">{t('settings.mcp.importJson')}</Tooltip>
       </TooltipTrigger>
       <TooltipTrigger delay={0}>
-        <Button iconOnly aria-label={t('settings.mcp.addServer')} variant="outline" onPress={handleAdd}>
-          <Plus className="w-4 h-4" />
-        </Button>
+        <Button
+          iconOnly
+          leadingIcon={Plus}
+          size="small"
+          aria-label={t('settings.mcp.addServer')}
+          variant="secondary"
+          onPress={handleAdd}
+        />
         <Tooltip placement="top">{t('settings.mcp.addServer')}</Tooltip>
       </TooltipTrigger>
     </div>
@@ -608,7 +601,7 @@ export function McpSettings() {
             <Alert.Description className="break-all">{t('settings.mcp.loadError')}</Alert.Description>
             <Button
               size="small"
-              variant="outline"
+              variant="secondary"
               className="mt-2"
               onPress={() => {
                 setLoading(servers.length === 0)

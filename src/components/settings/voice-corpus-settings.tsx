@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
-import { TrashBin } from '@gravity-ui/icons'
+import { Bin } from '@keyline-icons/react/two-tone'
 import {
   Button,
   Checkbox,
@@ -174,14 +174,13 @@ export function VoiceCorpusSettings() {
                   <TooltipTrigger delay={0}>
                     <Button
                       iconOnly
+                      leadingIcon={Bin}
                       size="small"
-                      variant="ghost"
+                      variant="neutral"
                       isDisabled={busy}
                       onPress={() => deleteSession(session)}
                       aria-label={t('settings.voiceCorpus.deleteSession')}
-                    >
-                      <TrashBin />
-                    </Button>
+                    />
                     <Tooltip>{t('settings.voiceCorpus.deleteSession')}</Tooltip>
                   </TooltipTrigger>
                 </ItemCard.Action>
@@ -195,7 +194,7 @@ export function VoiceCorpusSettings() {
         <Label>{t('settings.voiceCorpus.forgetSender')}</Label>
         <div data-slot="voice-corpus-forget-row" className="flex gap-2">
           <Input value={senderInput} onChange={(e) => setSenderInput(e.target.value)} placeholder="12345" />
-          <Button variant="ghost" isDisabled={busy || !senderInput.trim()} onPress={forgetSender}>
+          <Button variant="secondary" isDisabled={busy || !senderInput.trim()} onPress={forgetSender}>
             {t('settings.voiceCorpus.forget')}
           </Button>
         </div>
@@ -211,7 +210,7 @@ export function VoiceCorpusSettings() {
             {t('settings.voiceCorpus.includeSender')}
           </Checkbox>
           <Description>{t('settings.voiceCorpus.exportHint')}</Description>
-          <Button variant="ghost" isDisabled={busy || sessions.length === 0} onPress={exportBundle}>
+          <Button variant="secondary" isDisabled={busy || sessions.length === 0} onPress={exportBundle}>
             {t('settings.voiceCorpus.export')}
           </Button>
         </div>

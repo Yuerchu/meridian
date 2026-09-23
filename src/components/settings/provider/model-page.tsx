@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Description, Disclosure, Input, Label, Switch, TextField } from '@/components/base'
+import { Button, Description, Disclosure, Input, Label, Switch, TextField, ToggleButton } from '@/components/base'
 import { api } from '@/api'
 import { assertDecimal38_18 } from '@/lib/decimal'
 import { EFFORT_LADDER } from '@/lib/thinking'
@@ -562,20 +562,19 @@ function ModelConfigEditor({
             {caps?.server_tools?.map((name) => {
               const on = serverTools.includes(name)
               return (
-                <Button
+                <ToggleButton
                   key={name}
                   data-slot="server-tool-chip"
-                  variant={on ? 'primary' : 'outline'}
                   size="small"
-                  aria-pressed={on}
+                  isSelected={on}
                   className="h-6 pointer-coarse:h-9 rounded-md px-2 text-caption-1-regular"
-                  onPress={() => {
+                  onChange={() => {
                     setServerTools(on ? serverTools.filter((x) => x !== name) : [...serverTools, name])
                     setDirty(true)
                   }}
                 >
                   {t(`settings.model.serverTool.${name}`, name)}
-                </Button>
+                </ToggleButton>
               )
             })}
           </div>
@@ -653,14 +652,13 @@ function ModelConfigEditor({
                 {EFFORT_LADDER.map((tier) => {
                   const on = efforts.includes(tier)
                   return (
-                    <Button
+                    <ToggleButton
                       key={tier}
                       data-slot="effort-chip"
-                      variant={on ? 'primary' : 'outline'}
                       size="small"
-                      aria-pressed={on}
+                      isSelected={on}
                       className="h-6 pointer-coarse:h-9 px-2 text-caption-1-regular"
-                      onPress={() => {
+                      onChange={() => {
                         // Rebuild from the ladder so the stored array stays in
                         // ascending order -- the median coercion ranks on position.
                         setEfforts(EFFORT_LADDER.filter((x) => (x === tier ? !on : efforts.includes(x))))
@@ -669,7 +667,7 @@ function ModelConfigEditor({
                       }}
                     >
                       {t(`toolbar.thinking.${tier}`)}
-                    </Button>
+                    </ToggleButton>
                   )
                 })}
               </div>
@@ -694,7 +692,7 @@ function ModelConfigEditor({
               {t('settings.model.capabilitiesHint')}
             </p>
             <Button
-              variant="ghost"
+              variant="secondary"
               size="small"
               className="h-6 pointer-coarse:h-9 px-0 text-caption-1-regular text-text-secondary hover:text-text-primary"
               onPress={resetOverrides}
@@ -801,7 +799,7 @@ function ModelConfigEditor({
         <>
           <Button onPress={() => void handleSave()}>{t('common.save')}</Button>
           {onDelete && (
-            <Button variant="danger-soft" onPress={onDelete}>
+            <Button variant="danger" onPress={onDelete}>
               {t('common.delete')}
             </Button>
           )}

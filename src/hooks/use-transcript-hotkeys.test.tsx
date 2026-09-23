@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from '@/api'
 import { buildTurns } from '@/lib/turns'
 import { useConversationStore } from '@/stores/conversation-store'
-import { lastKeyboard, targetApproval, useTranscriptHotkeys } from './use-transcript-hotkeys'
+import { lastKeyboard, targetApproval, targetApprovalTurnId, useTranscriptHotkeys } from './use-transcript-hotkeys'
 import type { ContentBlock, MessageViewModel, ToolCallDisplay } from '@/types'
 
 vi.mock('@/api', () => ({
@@ -116,6 +116,18 @@ describe('targetApproval', () => {
       msg('assistant', { _blocks: [tool('read_file', 'completed')] }),
     ])
     expect(targetApproval(turns)).toBeNull()
+    expect(targetApprovalTurnId(turns)).toBeNull()
+  })
+
+  /** What the inbox's "go to the card" scrolls to: the turn holding the very
+   *  question the chords would answer, not merely the last turn. */
+  it('names the turn that holds the question', () => {
+    const turns = buildTurns([
+      msg('user', { content: 'one' }),
+      msg('assistant', { _blocks: [tool('run_command', 'pending')] }),
+      msg('user', { content: 'queued' }),
+    ])
+    expect(targetApprovalTurnId(turns)).toBe(turns[0].id)
   })
 })
 

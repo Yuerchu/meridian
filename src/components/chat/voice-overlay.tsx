@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Microphone, TrashBin } from '@gravity-ui/icons'
+import { Bin, Mic } from '@keyline-icons/react/two-tone'
 
 import { cx } from '@/utils/cx'
 import type { AndroidVoiceState } from '@/hooks/use-android-voice-recorder'
@@ -82,7 +82,7 @@ export function VoiceOverlay({ state, elapsed, peak }: VoiceOverlayProps) {
         {statusText}
       </span>
       <div data-slot="voice-overlay-state" className="flex flex-col items-center gap-3">
-        {cancelling ? <TrashBin className="size-8" /> : <Microphone className="size-8" />}
+        {cancelling ? <Bin className="size-8" /> : <Mic className="size-8" />}
         <span data-slot="voice-overlay-label" aria-hidden="true" className="text-headline-medium">
           {statusText}
         </span>

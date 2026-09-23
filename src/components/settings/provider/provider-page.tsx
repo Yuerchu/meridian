@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowsRotateRight, Plus, TrashBin, Key } from '@gravity-ui/icons'
+import { Bin, Key, Plus, RefreshCw } from '@keyline-icons/react/two-tone'
 import {
   Alert,
   Button,
@@ -772,7 +772,7 @@ function ProviderEditor({
                 className="flex-1"
               />
               <Button
-                variant="outline"
+                variant="secondary"
                 onPress={handleSaveKey}
                 isDisabled={!apiKey.trim() || keyStatus === 'loading'}
                 isPending={savingKey}
@@ -827,12 +827,12 @@ function ProviderEditor({
               {t('settings.provider.balance')}
             </p>
             <Button
-              variant="outline"
+              variant="secondary"
               onPress={handleFetchBalance}
               isDisabled={keyStatus !== 'set'}
               isPending={fetchingBalance}
             >
-              <ArrowsRotateRight className="w-3.5 h-3.5" />
+              <RefreshCw className="w-3.5 h-3.5" />
               {t('settings.provider.checkBalance')}
             </Button>
           </div>
@@ -897,17 +897,17 @@ function ProviderEditor({
               from needing one for exactly this call — so gating on the key
               here kept the button permanently grey on the rows the exemption
               was written for. */}
-          <Button variant="ghost" onPress={() => setAddingModel(true)}>
+          <Button variant="secondary" onPress={() => setAddingModel(true)}>
             <Plus className="w-3.5 h-3.5" />
             {t('settings.provider.addModel')}
           </Button>
           <Button
-            variant="outline"
+            variant="secondary"
             onPress={handleFetchModels}
             isDisabled={!usesChatGptLogin(provider) && keyStatus !== 'set'}
             isPending={fetchingModels}
           >
-            <ArrowsRotateRight className="w-3.5 h-3.5" />
+            <RefreshCw className="w-3.5 h-3.5" />
             {t('settings.provider.fetchModels')}
           </Button>
         </div>
@@ -961,7 +961,10 @@ function ProviderEditor({
           isDirty={newModelId.trim().length > 0}
         >
           <Sheet.Backdrop>
-            <Sheet.Content className="mx-auto sm:max-w-lg sm:rounded-b-2xl">
+            {/* The modal surface (`MODAL_SURFACE` is `background-full`), not the
+              sheet's default `background-primary`: a field's tertiary well is the same
+              neutral-800 as primary in dark, so on the default the field had no edge. */}
+            <Sheet.Content className="mx-auto bg-background-full sm:max-w-lg sm:rounded-b-2xl">
               <Sheet.Dialog aria-label={t('settings.provider.addModel')} className="pb-[max(1rem,var(--safe-bottom))]">
                 <Sheet.Handle />
                 <Sheet.Header>
@@ -985,7 +988,7 @@ function ProviderEditor({
                   </TextField>
                 </Sheet.Body>
                 <Sheet.Footer>
-                  <Button slot="close" variant="tertiary">
+                  <Button slot="close" variant="secondary">
                     {t('common.cancel')}
                   </Button>
                   <Button isDisabled={!newModelId.trim()} onPress={handleAddModel}>
@@ -1004,8 +1007,8 @@ function ProviderEditor({
       </div>
 
       <div data-slot="provider-danger-zone" className="border-t border-border-button-default pt-4">
-        <Button variant="danger-soft" onPress={handleDelete} isPending={deleting}>
-          <TrashBin className="w-3.5 h-3.5" />
+        <Button variant="danger" onPress={handleDelete} isPending={deleting}>
+          <Bin className="w-3.5 h-3.5" />
           {deleting ? t('settings.provider.deletingProvider') : t('settings.provider.deleteProvider')}
         </Button>
       </div>

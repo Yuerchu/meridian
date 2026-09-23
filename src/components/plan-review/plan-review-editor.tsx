@@ -2,24 +2,29 @@ import { useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
-  ArrowRotateLeft,
-  ArrowRotateRight,
   Bold,
   Code,
-  CommentPlus,
   Heading1,
   Heading2,
   Heading3,
   Italic,
   Link,
-  ListOl,
-  ListUl,
-  QuoteOpen,
+  List,
+  ListOrdered,
+  MessagePlus,
+  Quote,
+  RotateCcw,
+  RotateCw,
   Strikethrough,
-} from '@gravity-ui/icons'
+} from '@keyline-icons/react/two-tone'
 import type { JSONContent } from '@tiptap/core'
 import { Tooltip, TooltipTrigger } from '@/components/base'
-import { RichTextEditor, useRichTextEditor, type RichTextEditorFormatCommand } from '@/components/base'
+import {
+  RichTextEditor,
+  useRichTextEditor,
+  type ButtonProps,
+  type RichTextEditorFormatCommand,
+} from '@/components/base'
 
 import {
   mappedPlanCommentAnchors,
@@ -74,13 +79,9 @@ function FormatButton({
 }: {
   command: RichTextEditorFormatCommand
   label: string
-  icon: React.ReactNode
+  icon: ButtonProps['leadingIcon']
 }) {
-  return (
-    <RichTextEditor.ToggleButton command={command} aria-label={label} tooltip={label}>
-      {icon}
-    </RichTextEditor.ToggleButton>
-  )
+  return <RichTextEditor.ToggleButton command={command} aria-label={label} tooltip={label} leadingIcon={icon} />
 }
 
 export function PlanReviewEditor({
@@ -134,21 +135,19 @@ export function PlanReviewEditor({
         {!isReadOnly && (
           <RichTextEditor.Toolbar aria-label={t('planReview.editor.toolbar')}>
             <RichTextEditor.ToolbarGroup>
-              <FormatButton command="heading-1" label={t('planReview.editor.heading1')} icon={<Heading1 />} />
-              <FormatButton command="heading-2" label={t('planReview.editor.heading2')} icon={<Heading2 />} />
-              <FormatButton command="heading-3" label={t('planReview.editor.heading3')} icon={<Heading3 />} />
+              <FormatButton command="heading-1" label={t('planReview.editor.heading1')} icon={Heading1} />
+              <FormatButton command="heading-2" label={t('planReview.editor.heading2')} icon={Heading2} />
+              <FormatButton command="heading-3" label={t('planReview.editor.heading3')} icon={Heading3} />
             </RichTextEditor.ToolbarGroup>
             <RichTextEditor.ToolbarSeparator />
             <RichTextEditor.ToolbarGroup>
-              <FormatButton command="bold" label={t('planReview.editor.bold')} icon={<Bold />} />
-              <FormatButton command="italic" label={t('planReview.editor.italic')} icon={<Italic />} />
-              <FormatButton command="strike" label={t('planReview.editor.strike')} icon={<Strikethrough />} />
-              <FormatButton command="code" label={t('planReview.editor.code')} icon={<Code />} />
+              <FormatButton command="bold" label={t('planReview.editor.bold')} icon={Bold} />
+              <FormatButton command="italic" label={t('planReview.editor.italic')} icon={Italic} />
+              <FormatButton command="strike" label={t('planReview.editor.strike')} icon={Strikethrough} />
+              <FormatButton command="code" label={t('planReview.editor.code')} icon={Code} />
               <RichTextEditor.LinkPopover>
                 <TooltipTrigger delay={0}>
-                  <RichTextEditor.LinkPopover.Trigger aria-label={t('planReview.editor.link')}>
-                    <Link />
-                  </RichTextEditor.LinkPopover.Trigger>
+                  <RichTextEditor.LinkPopover.Trigger aria-label={t('planReview.editor.link')} leadingIcon={Link} />
                   <Tooltip>{t('planReview.editor.link')}</Tooltip>
                 </TooltipTrigger>
                 <RichTextEditor.LinkPopover.Content>
@@ -164,19 +163,25 @@ export function PlanReviewEditor({
             </RichTextEditor.ToolbarGroup>
             <RichTextEditor.ToolbarSeparator />
             <RichTextEditor.ToolbarGroup>
-              <FormatButton command="bulletList" label={t('planReview.editor.bulletList')} icon={<ListUl />} />
-              <FormatButton command="orderedList" label={t('planReview.editor.orderedList')} icon={<ListOl />} />
-              <FormatButton command="blockquote" label={t('planReview.editor.quote')} icon={<QuoteOpen />} />
-              <FormatButton command="codeBlock" label={t('planReview.editor.codeBlock')} icon={<Code />} />
+              <FormatButton command="bulletList" label={t('planReview.editor.bulletList')} icon={List} />
+              <FormatButton command="orderedList" label={t('planReview.editor.orderedList')} icon={ListOrdered} />
+              <FormatButton command="blockquote" label={t('planReview.editor.quote')} icon={Quote} />
+              <FormatButton command="codeBlock" label={t('planReview.editor.codeBlock')} icon={Code} />
             </RichTextEditor.ToolbarGroup>
             <RichTextEditor.ToolbarSeparator />
             <RichTextEditor.ToolbarGroup>
-              <RichTextEditor.ActionButton action="undo" aria-label={t('common.undo')} tooltip={t('common.undo')}>
-                <ArrowRotateLeft />
-              </RichTextEditor.ActionButton>
-              <RichTextEditor.ActionButton action="redo" aria-label={t('common.redo')} tooltip={t('common.redo')}>
-                <ArrowRotateRight />
-              </RichTextEditor.ActionButton>
+              <RichTextEditor.ActionButton
+                action="undo"
+                aria-label={t('common.undo')}
+                tooltip={t('common.undo')}
+                leadingIcon={RotateCcw}
+              />
+              <RichTextEditor.ActionButton
+                action="redo"
+                aria-label={t('common.redo')}
+                tooltip={t('common.redo')}
+                leadingIcon={RotateCw}
+              />
             </RichTextEditor.ToolbarGroup>
           </RichTextEditor.Toolbar>
         )}
@@ -185,9 +190,9 @@ export function PlanReviewEditor({
 
         {!isReadOnly && (
           <RichTextEditor.BubbleMenu aria-label={t('planReview.editor.selectionToolbar')}>
-            <FormatButton command="bold" label={t('planReview.editor.bold')} icon={<Bold />} />
-            <FormatButton command="italic" label={t('planReview.editor.italic')} icon={<Italic />} />
-            <FormatButton command="strike" label={t('planReview.editor.strike')} icon={<Strikethrough />} />
+            <FormatButton command="bold" label={t('planReview.editor.bold')} icon={Bold} />
+            <FormatButton command="italic" label={t('planReview.editor.italic')} icon={Italic} />
+            <FormatButton command="strike" label={t('planReview.editor.strike')} icon={Strikethrough} />
             <RichTextEditor.CommandButton
               aria-label={t('planReview.comments.add')}
               tooltip={t('planReview.comments.add')}
@@ -196,9 +201,8 @@ export function PlanReviewEditor({
                 const { from, to } = editor.state.selection
                 if (from < to) onAddComment(proseMirrorAnchor(editor.state.doc, from, to))
               }}
-            >
-              <CommentPlus />
-            </RichTextEditor.CommandButton>
+              leadingIcon={MessagePlus}
+            />
           </RichTextEditor.BubbleMenu>
         )}
 

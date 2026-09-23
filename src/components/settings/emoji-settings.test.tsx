@@ -88,8 +88,9 @@ describe('EmojiSettings', () => {
     render(<EmojiSettings />)
     await openPack(user)
 
-    await user.click(screen.getByRole('button', { name: 'Edit meaning: old name' }))
-    const field = await screen.findByRole('textbox', { name: 'Edit meaning' })
+    const field = screen.getByRole('textbox', { name: 'Edit meaning' })
+    expect(field.closest('[role=gridcell], [role=rowheader]')).not.toBeNull()
+    expect(field).toHaveValue('old name')
     await user.clear(field)
     await user.type(field, 'new name{Enter}')
 
@@ -110,8 +111,8 @@ describe('EmojiSettings', () => {
     render(<EmojiSettings />)
     await openPack(user)
 
-    await user.click(screen.getByRole('button', { name: 'Edit tags: cat' }))
-    const field = await screen.findByRole('textbox', { name: 'Edit tags' })
+    const field = screen.getByRole('textbox', { name: 'Edit tags' })
+    expect(field).toHaveValue('cat')
     await user.clear(field)
     await user.type(field, 'cat,angry{Enter}')
 
@@ -143,7 +144,7 @@ describe('EmojiSettings', () => {
     render(<EmojiSettings />)
     await openPack(user)
 
-    expect(screen.getByRole('button', { name: 'Edit meaning: shyly hiding' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Edit meaning' })).toHaveValue('shyly hiding')
     await user.click(screen.getByRole('button', { name: 'Confirm' }))
 
     await waitFor(() =>
@@ -153,6 +154,24 @@ describe('EmojiSettings', () => {
         tags: 'shy,hiding',
       }),
     )
+  })
+
+  it('Escape puts the saved value back and commits nothing', async () => {
+    const user = userEvent.setup()
+    mockApi.listEmojis.mockResolvedValue([
+      makeEmoji({ id: 'e1', name: 'old name', tags: 'cat', semantic_status: 'confirmed' }),
+    ])
+    render(<EmojiSettings />)
+    await openPack(user)
+
+    const field = screen.getByRole('textbox', { name: 'Edit meaning' })
+    await user.click(field)
+    await user.clear(field)
+    await user.type(field, 'discarded{Escape}')
+
+    expect(field).toHaveValue('old name')
+    expect(field).not.toHaveFocus()
+    expect(mockApi.confirmStickerSemantics).not.toHaveBeenCalled()
   })
 
   /** Unreviewed first, whatever the pack's own order says. */
@@ -165,8 +184,8 @@ describe('EmojiSettings', () => {
     render(<EmojiSettings />)
     await openPack(user)
 
-    const rows = screen.getAllByRole('row').slice(1)
-    expect(rows[0]).toHaveTextContent('waiting')
-    expect(rows[1]).toHaveTextContent('confirmed one')
+    const names = screen.getAllByRole('textbox', { name: 'Edit meaning' })
+    expect(names[0]).toHaveValue('waiting')
+    expect(names[1]).toHaveValue('confirmed one')
   })
 })

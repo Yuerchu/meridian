@@ -1,7 +1,8 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Select, SelectItem, Skeleton } from '@/components/base'
-import { Check, ChevronRight } from '@gravity-ui/icons'
+import { Button as AriaButton, type ButtonProps as AriaButtonProps } from 'react-aria-components'
+import { Select, SelectItem, Skeleton } from '@/components/base'
+import { Check, ChevronRight } from '@keyline-icons/react/two-tone'
 
 import { cx } from '@/utils/cx'
 
@@ -226,13 +227,11 @@ export function SettingsValueField({ className, ...props }: React.ComponentProps
 /**
  * One tappable line that goes somewhere: a row with a chevron.
  *
- * A `Button` underneath rather than `ListBox.Item`: the item's click
- * semantics run through a selection collection, while every caller here (and
- * the one test that guards them) drives plain clicks on text.
- *
- * `h-*`/`px-*` are overridden together with `rounded-*` on purpose. Button's
- * default is `rounded-2lg`; changing the height without the radius is how a hover
- * fill ends up clipped at the corners of a rounded container.
+ * boardui's settings-modal nav item (application/settings/settings-modal.tsx):
+ * `rounded-2lg p-2`, a 20px icon, `text-body-medium`, the selected row on
+ * `background-secondary-hover` and the rest washing towards it on hover. A RAC
+ * `Button` rather than the registry's native `<button>`, so `onPress` and the
+ * focus ring come from React Aria like every other control here.
  */
 export function SettingsNavRow({
   icon,
@@ -242,7 +241,8 @@ export function SettingsNavRow({
   isActive,
   className,
   ...props
-}: Omit<React.ComponentProps<typeof Button>, 'value'> & {
+}: Omit<AriaButtonProps, 'value' | 'className' | 'children'> & {
+  className?: string
   icon?: React.ReactNode
   label: React.ReactNode
   /** Current setting, shown at the end of the row. */
@@ -254,7 +254,7 @@ export function SettingsNavRow({
   const labelId = React.useId()
   const valueId = React.useId()
   return (
-    <Button
+    <AriaButton
       data-slot="settings-nav-row"
       data-active={isActive || undefined}
       // The label names the row and the value describes it, rather than both
@@ -267,10 +267,10 @@ export function SettingsNavRow({
       // said it to nobody else. Both places that had built this by hand were
       // missing it.
       aria-current={isActive || undefined}
-      variant="ghost"
       className={cx(
-        'min-h-11 w-full justify-start gap-3 rounded-lg px-3 py-2 text-body-regular',
-        'data-active:bg-background-tertiary-default data-active:text-text-primary',
+        'flex w-full cursor-pointer items-center gap-2 rounded-2lg p-2 text-left',
+        'outline-none transition-colors duration-150 ease data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
+        isActive ? 'bg-background-secondary-hover' : 'data-[hovered]:bg-background-secondary-hover/60',
         className,
       )}
       {...props}
@@ -278,7 +278,7 @@ export function SettingsNavRow({
       {icon && (
         <span
           data-slot="settings-nav-row-icon"
-          className="flex size-4 shrink-0 items-center justify-center text-text-secondary"
+          className="flex size-5 shrink-0 items-center justify-center text-foreground-icon-secondary [&_svg]:size-5"
         >
           {icon}
         </span>
@@ -286,7 +286,10 @@ export function SettingsNavRow({
       <span
         data-slot="settings-nav-row-label"
         id={labelId}
-        className="min-w-0 flex-1 truncate text-start text-body-regular"
+        className={cx(
+          'min-w-0 flex-1 truncate text-body-medium',
+          isActive ? 'text-text-primary' : 'text-text-secondary',
+        )}
       >
         {label}
       </span>
@@ -299,8 +302,8 @@ export function SettingsNavRow({
           {value}
         </span>
       )}
-      {trailing === undefined ? <ChevronRight className="size-4 shrink-0 text-text-secondary" /> : trailing}
-    </Button>
+      {trailing === undefined ? <ChevronRight className="size-4 shrink-0 text-foreground-icon-secondary" /> : trailing}
+    </AriaButton>
   )
 }
 

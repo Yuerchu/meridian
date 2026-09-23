@@ -31,7 +31,7 @@ import { pathExtension } from '@/lib/paths'
 import { PathLabel } from '@/components/ui/path-label'
 import { Hint } from '@/components/ui/hint'
 import {
-  ArrowUturnCcwLeft,
+  ArrowUTurnLeft,
   Ban,
   Check,
   CircleCheck,
@@ -39,15 +39,15 @@ import {
   Clock,
   Compass,
   Folder,
-  ForwardStep,
   Globe,
   Link,
+  List,
   ListCheck,
-  PaperPlane,
-  SquareListUl,
-  TriangleExclamation,
-  Xmark,
-} from '@gravity-ui/icons'
+  Send,
+  SkipForward,
+  TriangleAlert,
+  X,
+} from '@keyline-icons/react/two-tone'
 import { Button, Checkbox, CheckboxGroup, Chip, Input, Kbd, Radio, RadioGroup, Spinner } from '@/components/base'
 import {
   ChatTool,
@@ -81,6 +81,18 @@ import { useConversationStore } from '@/stores/conversation-store'
 import { planReviewStatusOfTool } from '@/lib/plan-review-status'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
 import type { AutoReviewVerdictInfoResponse, ToolCallDisplay } from '@/types'
+
+/**
+ * A field inside a card or a bubble block. A card is `background-primary`,
+ * neutral-800 in dark, and the assistant bubble is neutral-200 in light — each
+ * the exact value of the field's default tertiary well in that theme, so the
+ * field had no edge. The registry's own
+ * answer for a field that is not on a settings card is the secondary fill
+ * (`data-table.tsx` and `settings-storage.tsx` pass
+ * `fieldClassName="… bg-background-secondary-default"`), which stands apart
+ * from white, neutral-200, neutral-700 and neutral-800 alike.
+ */
+const FIELD_ON_CARD = 'bg-background-secondary-default'
 
 interface AskOption {
   label: string
@@ -216,11 +228,11 @@ function QuestionBlock({
           {q.question}
         </span>
         <Button
-          variant="ghost"
+          variant="secondary"
           onPress={() => onUnskip(q.id)}
           className="text-caption-1-regular text-text-secondary shrink-0 ml-2"
         >
-          <ArrowUturnCcwLeft className="w-3.5 h-3.5" />
+          <ArrowUTurnLeft className="w-3.5 h-3.5" />
           {t('chat.tool.undo')}
         </Button>
       </div>
@@ -247,11 +259,11 @@ function QuestionBlock({
         </div>
         {!q.required && (
           <Button
-            variant="ghost"
+            variant="secondary"
             onPress={() => onSkip(q.id)}
             className="text-caption-1-regular text-text-secondary shrink-0 mt-0.5"
           >
-            <ForwardStep className="w-3.5 h-3.5" />
+            <SkipForward className="w-3.5 h-3.5" />
             {t('chat.tool.skipQuestion')}
           </Button>
         )}
@@ -343,6 +355,7 @@ function QuestionBlock({
           onChange={(e) => onChange(q.id, { ...value, notes: e.target.value })}
           placeholder={hasOptions ? t('chat.tool.notesPlaceholder') : t('chat.tool.askUserPlaceholder')}
           className="text-caption-1-regular"
+          fieldClassName={FIELD_ON_CARD}
         />
       )}
       {invalid && (
@@ -458,7 +471,7 @@ export function AskUserBlock({
       api.respondToAsk({ approvalId, response: JSON.stringify(result) }).then(
         // Same reason as `PendingApproval`: the queue is a separate ledger and
         // learns nothing from an answer given here. A question answered on this
-        // form and left in it is offered again as a toast — "go and answer this"
+        // form and left in it is offered again as a notification — "go and answer this"
         // for something already answered — the moment the reader moves on.
         () => {
           retireAnswered(approvalId)
@@ -513,7 +526,7 @@ export function AskUserBlock({
           )}
           <div data-slot="ask-user-actions" className="flex items-center gap-2 pt-1">
             <Button type="submit" isPending={sending}>
-              <PaperPlane className="w-3.5 h-3.5" />
+              <Send className="w-3.5 h-3.5" />
               {t('chat.tool.askUserSubmit')}
             </Button>
             {/* A disabled button with no reason beside it reads as broken. Only
@@ -689,7 +702,7 @@ function ResultToggle({ expanded, onToggle }: { expanded: boolean; onToggle: () 
   const { t } = useTranslation()
   return (
     <div data-slot="result-toggle" className="border-t border-border-button-default/50 px-3 py-1.5">
-      <Button variant="ghost" size="small" className="rounded-lg px-2 text-caption-1-regular" onPress={onToggle}>
+      <Button variant="secondary" size="small" className="rounded-lg px-2 text-caption-1-regular" onPress={onToggle}>
         {t(expanded ? 'chat.tool.showLess' : 'chat.tool.showFullResult')}
       </Button>
     </div>
@@ -972,7 +985,7 @@ function CollapsibleMarkdown({ content, blockId }: { content: string; blockId: s
         // A button for the same reason `ResultToggle` is one: this opens
         // content in place rather than going anywhere.
         <Button
-          variant="ghost"
+          variant="secondary"
           size="small"
           className="mt-1 self-start rounded-lg px-2 text-caption-1-regular"
           onPress={() => setOpen((current) => !current)}
@@ -1200,7 +1213,7 @@ export function PendingApproval({
       () => {
         // The queue is a separate ledger from this card, and it does not learn
         // anything from an answer given here. Left in it, this question is
-        // offered again as a toast the moment the reader moves to another
+        // offered again as a notification the moment the reader moves to another
         // conversation — buttons for a decision that has already been made.
         retireAnswered(approvalId)
         onAnswered?.()
@@ -1231,7 +1244,7 @@ export function PendingApproval({
             data-slot="approval-escalation"
             className="flex items-start gap-1.5 px-0.5 text-caption-1-regular text-text-secondary"
           >
-            <TriangleExclamation className="w-3.5 h-3.5 text-status-warning-soft-foreground shrink-0" />
+            <TriangleAlert className="w-3.5 h-3.5 text-status-warning-soft-foreground shrink-0" />
             <span data-slot="approval-escalation-text">{t('chat.tool.sandboxRetryPrompt')}</span>
           </div>
         )}
@@ -1240,8 +1253,8 @@ export function PendingApproval({
               accessible name leaves out: `aria-keyshortcuts` is what a screen
               reader announces, and `aria-hidden` keeps the hint from being read
               as part of the button's name. */}
-          <Button variant="danger-soft" aria-keyshortcuts={ariaHotkey(DENY_HOTKEY)} onPress={() => setUi('feedback')}>
-            <Xmark className="w-3.5 h-3.5" />
+          <Button variant="danger" aria-keyshortcuts={ariaHotkey(DENY_HOTKEY)} onPress={() => setUi('feedback')}>
+            <X className="w-3.5 h-3.5" />
             <span data-slot="approval-deny-label">{t('chat.tool.deny')}</span>
             <HotkeyHint combo={DENY_HOTKEY} />
           </Button>
@@ -1277,14 +1290,15 @@ export function PendingApproval({
         }}
         placeholder={t('chat.tool.denyReasonPlaceholder')}
         className="text-caption-1-regular"
+        fieldClassName={FIELD_ON_CARD}
         autoFocus
       />
       <ChatToolApproval className="pt-0">
-        <Button variant="ghost" onPress={() => setUi('idle')}>
+        <Button variant="secondary" onPress={() => setUi('idle')}>
           {t('chat.tool.cancel')}
         </Button>
-        <Button variant="danger-soft" onPress={deny}>
-          <Xmark className="w-3.5 h-3.5" />
+        <Button variant="danger" onPress={deny}>
+          <X className="w-3.5 h-3.5" />
           {feedback.trim() ? t('chat.tool.denyWithReason') : t('chat.tool.deny')}
         </Button>
       </ChatToolApproval>
@@ -1496,7 +1510,7 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
         className="my-2 flex items-center gap-2 text-caption-1-regular text-text-secondary"
       >
         <Globe className="w-3.5 h-3.5" />
-        <Xmark className="w-3.5 h-3.5 text-status-danger" />
+        <X className="w-3.5 h-3.5 text-status-danger" />
       </div>
     )
   }
@@ -1611,8 +1625,8 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
       {data.status === 'pending' && approvalId && !sent && (
         <div data-slot="enter-plan-actions" className={cx(divider, section)}>
           <ChatToolApproval>
-            <Button variant="outline" onPress={() => decide(() => api.denyToolCall({ approvalId, reason: null }))}>
-              <Xmark className="w-3.5 h-3.5" />
+            <Button variant="secondary" onPress={() => decide(() => api.denyToolCall({ approvalId, reason: null }))}>
+              <X className="w-3.5 h-3.5" />
               {t('chat.plan.keepBuilding')}
             </Button>
             <Button onPress={() => decide(() => api.approveToolCall(approvalId))}>
@@ -1652,7 +1666,7 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
           {data.status === 'completed' && (
             <Check aria-hidden className="size-3.5 shrink-0 text-status-success-soft-foreground" />
           )}
-          {declined && <Xmark aria-hidden className="size-3.5 shrink-0 text-text-secondary" />}
+          {declined && <X aria-hidden className="size-3.5 shrink-0 text-text-secondary" />}
         </ChatToolTrigger>
         <ChatToolContent>{body}</ChatToolContent>
       </ChatTool>
@@ -1679,7 +1693,7 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
           {t('chat.plan.enterTitle')}
         </span>
         {data.status === 'completed' && <Check className="ml-auto size-3.5 text-status-success-soft-foreground" />}
-        {declined && <Xmark className="ml-auto size-3.5 text-text-secondary" />}
+        {declined && <X className="ml-auto size-3.5 text-text-secondary" />}
       </div>
       {body}
     </div>
@@ -1745,22 +1759,23 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
                 }}
                 placeholder={t('chat.plan.feedbackPlaceholder')}
                 className="text-caption-1-regular"
+                fieldClassName={FIELD_ON_CARD}
                 autoFocus
               />
               <ChatToolApproval className="pt-0">
-                <Button variant="ghost" onPress={() => setUi('idle')}>
+                <Button variant="secondary" onPress={() => setUi('idle')}>
                   {t('chat.tool.cancel')}
                 </Button>
-                <Button variant="outline" onPress={sendBack}>
-                  <ArrowUturnCcwLeft className="w-3.5 h-3.5" />
+                <Button variant="secondary" onPress={sendBack}>
+                  <ArrowUTurnLeft className="w-3.5 h-3.5" />
                   {t('chat.plan.sendBack')}
                 </Button>
               </ChatToolApproval>
             </div>
           ) : (
             <ChatToolApproval>
-              <Button variant="outline" onPress={() => setUi('feedback')}>
-                <ArrowUturnCcwLeft className="w-3.5 h-3.5" />
+              <Button variant="secondary" onPress={() => setUi('feedback')}>
+                <ArrowUTurnLeft className="w-3.5 h-3.5" />
                 {t('chat.plan.revise')}
               </Button>
               <Button onPress={() => decide(() => api.approveToolCall(approvalId))}>
@@ -1794,14 +1809,14 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
     return (
       <ChatTool state={mapChatToolState(data.status)} {...expansion}>
         <ChatToolTrigger>
-          <SquareListUl aria-hidden className="size-3.5 shrink-0 text-text-secondary" />
+          <List aria-hidden className="size-3.5 shrink-0 text-text-secondary" />
           <span data-slot="exit-plan-title" className="text-caption-1-medium text-text-primary shrink-0">
             {t('chat.plan.title')}
           </span>
           {data.status === 'completed' && (
             <Check aria-hidden className="size-3.5 shrink-0 text-status-success-soft-foreground" />
           )}
-          {wasRejected && <Xmark aria-hidden className="size-3.5 shrink-0 text-text-secondary" />}
+          {wasRejected && <X aria-hidden className="size-3.5 shrink-0 text-text-secondary" />}
         </ChatToolTrigger>
         <ChatToolContent>{body}</ChatToolContent>
       </ChatTool>
@@ -1819,12 +1834,12 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
       )}
     >
       <div data-slot="exit-plan-header" className="flex items-center gap-2 bg-background-secondary-default px-4 py-3">
-        <SquareListUl aria-hidden className="size-3.5 shrink-0 text-text-secondary" />
+        <List aria-hidden className="size-3.5 shrink-0 text-text-secondary" />
         <span data-slot="exit-plan-title" className="text-body-medium text-text-primary">
           {t('chat.plan.title')}
         </span>
         {data.status === 'completed' && <Check className="ml-auto size-3.5 text-status-success-soft-foreground" />}
-        {wasRejected && <Xmark className="ml-auto size-3.5 text-text-secondary" />}
+        {wasRejected && <X className="ml-auto size-3.5 text-text-secondary" />}
       </div>
       {body}
     </div>
@@ -1848,7 +1863,7 @@ function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay; revie
         state={status === 'pending' ? 'navigate' : 'output-available'}
         onClick={() => openReview(reviewId)}
       >
-        <SquareListUl aria-hidden className="size-3.5 shrink-0" />
+        <List aria-hidden className="size-3.5 shrink-0" />
         <span data-slot="plan-review-entry-title" className="text-caption-1-medium shrink-0">
           {t('chat.plan.title')}
         </span>
@@ -1871,7 +1886,7 @@ function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay; revie
       )}
     >
       <div data-slot="plan-review-entry-row" className="flex min-w-0 items-center gap-3">
-        <SquareListUl aria-hidden className="size-4 shrink-0 text-text-secondary" />
+        <List aria-hidden className="size-4 shrink-0 text-text-secondary" />
         <div data-slot="plan-review-entry-body" className="min-w-0 flex-1">
           <div data-slot="plan-review-entry-heading" className="flex flex-wrap items-center gap-2">
             <span data-slot="plan-review-entry-title" className="text-body-medium text-text-primary">
@@ -1888,7 +1903,7 @@ function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay; revie
             {status === 'pending' ? t('chat.plan.reviewReady') : t('chat.plan.reviewHistory')}
           </p>
         </div>
-        <Button variant={status === 'pending' ? 'primary' : 'outline'} onPress={() => openReview(reviewId)}>
+        <Button variant={status === 'pending' ? 'primary' : 'secondary'} onPress={() => openReview(reviewId)}>
           {t('chat.plan.review')}
         </Button>
       </div>
@@ -1991,7 +2006,7 @@ export interface IdentifyingArg {
  *
  * `null` for everything else, including anything from MCP or the custom
  * registry — a summary guessed off an unknown schema is worse than none on a
- * key or a toast, where it would stand for the whole call. The panel's title
+ * key or a notification, where it would stand for the whole call. The panel's title
  * line is the one place a guess is cheap, and `panelTitleArg` makes it there.
  */
 export function identifyingArg(toolName: string, args: Record<string, unknown>): IdentifyingArg | null {
@@ -2075,7 +2090,7 @@ function commandHeadline(command: string): { head: string; more: number } {
  * **`compact` is for an ordinary key and nothing else.** A key is half a row
  * and shows one line, so a path keeps its file name and gives up its directory
  * from the end, and a command keeps its first line with a count of the rest.
- * A key waiting on a decision and the approval toast show the whole value:
+ * A key waiting on a decision and the approval notification show the whole value:
  * what is being approved cannot be something the reader did not see. Neither
  * clamps here — how many lines the whole value may take is the container's
  * call, and it says so with a descendant selector on `tool-arg`.
@@ -2174,7 +2189,7 @@ function OrphanedNotice() {
       data-slot="orphaned-notice"
       className="flex items-start gap-1.5 px-0.5 text-caption-1-regular text-text-secondary"
     >
-      <TriangleExclamation className="w-3.5 h-3.5 text-status-warning-soft-foreground shrink-0" />
+      <TriangleAlert className="w-3.5 h-3.5 text-status-warning-soft-foreground shrink-0" />
       <span data-slot="orphaned-notice-text">{t('chat.tool.orphaned')}</span>
     </div>
   )
@@ -2218,7 +2233,7 @@ function AutoReviewNotice({ verdict }: { verdict: AutoReviewVerdictInfoResponse 
         {denied ? (
           <Ban className="w-3.5 h-3.5 shrink-0" />
         ) : unreadable ? (
-          <TriangleExclamation className="w-3.5 h-3.5 shrink-0 text-status-warning-soft-foreground" />
+          <TriangleAlert className="w-3.5 h-3.5 shrink-0 text-status-warning-soft-foreground" />
         ) : (
           <CircleCheck className="w-3.5 h-3.5 shrink-0" />
         )}
@@ -2323,7 +2338,7 @@ function CardOutcome({
       return notice(<Ban className="w-3.5 h-3.5 shrink-0" />, t('chat.tool.wasDenied'), true)
     case 'error':
       return notice(
-        <TriangleExclamation className="w-3.5 h-3.5 text-status-danger shrink-0" />,
+        <TriangleAlert className="w-3.5 h-3.5 text-status-danger shrink-0" />,
         t('chat.tool.wasError'),
         true,
       )

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, TrashBin, Wrench, Terminal } from '@gravity-ui/icons'
+import { Bin, Plus, Terminal, Wrench } from '@keyline-icons/react/two-tone'
 import {
   Alert,
   Button,
@@ -211,13 +211,13 @@ function CustomToolEditor({
             <Button
               type="button"
               iconOnly
-              variant="ghost"
+              leadingIcon={Bin}
+              size="small"
+              variant="neutral"
               aria-label={t('settings.tools.delete')}
-              className="ml-auto text-text-secondary hover:text-status-danger"
+              className="ml-auto hover:text-status-danger"
               onPress={onDelete}
-            >
-              <TrashBin className="w-3.5 h-3.5" />
-            </Button>
+            />
             <Tooltip>{t('settings.tools.delete')}</Tooltip>
           </TooltipTrigger>
         )}
@@ -272,7 +272,7 @@ export function ToolMarketplace() {
           <Alert.Indicator />
           <Alert.Content>
             <Alert.Description>{t('settings.tools.loadError')}</Alert.Description>
-            <Button size="small" variant="outline" onPress={() => void refresh()}>
+            <Button size="small" variant="secondary" onPress={() => void refresh()}>
               {t('settings.tools.retry')}
             </Button>
           </Alert.Content>
@@ -351,14 +351,14 @@ export function ToolMarketplace() {
           <h3 data-slot="custom-tools-title" className="text-body-medium">
             {t('settings.tools.customSection')}
           </h3>
-          <Button variant="outline" onPress={() => setShowCreate(!showCreate)}>
+          <Button variant="secondary" onPress={() => setShowCreate(!showCreate)}>
             <Plus className="w-3.5 h-3.5" />
             {t('settings.tools.new')}
           </Button>
         </div>
 
         {showCreate && (
-          <Card className="mb-3">
+          <Card variant="secondary" className="mb-3">
             <CustomToolEditor
               onSave={() => {
                 setShowCreate(false)

@@ -44,11 +44,6 @@ const ALLOWED_WITHOUT_CALLER = new Map<string, string>([
   ['TurnResult', 'Turn slot: the answer area, for when turn-item renders results separately from steps'],
   ['TurnFooter', 'Turn slot: per-turn footer, staged for token counts and the branch pager'],
   ['TurnActions', 'Turn slot: copy/regenerate row, not yet moved off message-item'],
-  ['ChainOfThought', 'ChainOfThought root: the compound component, playground assembles a full preview'],
-  ['ChainOfThoughtTrigger', 'ChainOfThought slot: the disclosure trigger'],
-  ['ChainOfThoughtContent', 'ChainOfThought slot: the collapsible body'],
-  ['ChainOfThoughtSteps', 'ChainOfThought slot: the step list, pending reasoning-stream rendering'],
-  ['ChainOfThoughtStep', 'ChainOfThought slot: a single step, same'],
 ])
 
 /** `import { A, B as C }` / `import type { … }` / multi-line forms. */

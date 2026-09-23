@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { TrashBin, ArrowUturnCcwLeft } from '@gravity-ui/icons'
+import { ArrowUTurnLeft, Bin } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
 import { Alert, Button, Card, Chip, Sheet, Spinner, Tooltip, TooltipTrigger } from '@/components/base'
 import { EmptyState } from '@/components/base'
@@ -92,7 +92,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                     <Alert.Indicator />
                     <Alert.Content>
                       <Alert.Description>{t('settings.memory.trash.loadError')}</Alert.Description>
-                      <Button size="small" variant="outline" className="mt-2" onPress={() => void load()}>
+                      <Button size="small" variant="secondary" className="mt-2" onPress={() => void load()}>
                         {t('settings.memory.retry')}
                       </Button>
                     </Alert.Content>
@@ -120,8 +120,10 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                       <div data-slot="memory-trash-row-actions" className="ms-auto flex shrink-0 items-center gap-1">
                         <TooltipTrigger delay={0}>
                           <Button
-                            variant="ghost"
+                            variant="neutral"
                             iconOnly
+                            leadingIcon={ArrowUTurnLeft}
+                            size="small"
                             aria-label={t('settings.memory.trash.restore')}
                             onPress={async () => {
                               await api.restoreMemories([m.id])
@@ -129,15 +131,16 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                               onChanged()
                             }}
                             data-slot="memory-trash-restore"
-                          >
-                            <ArrowUturnCcwLeft />
-                          </Button>
+                          />
                           <Tooltip>{t('settings.memory.trash.restore')}</Tooltip>
                         </TooltipTrigger>
                         <TooltipTrigger delay={0}>
                           <Button
-                            variant="ghost"
+                            variant="neutral"
                             iconOnly
+                            leadingIcon={Bin}
+                            size="small"
+                            className="hover:text-status-danger"
                             aria-label={t('settings.memory.trash.purge')}
                             onPress={async () => {
                               const accepted = await confirm({
@@ -149,9 +152,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                               onChanged()
                             }}
                             data-slot="memory-trash-purge"
-                          >
-                            <TrashBin className="text-status-danger" />
-                          </Button>
+                          />
                           <Tooltip>{t('settings.memory.trash.purge')}</Tooltip>
                         </TooltipTrigger>
                       </div>

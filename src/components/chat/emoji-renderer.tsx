@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowsRotateRight, Picture } from '@gravity-ui/icons'
+import { Image, RefreshCw } from '@keyline-icons/react/two-tone'
 import { Button, Skeleton } from '@/components/base'
 import { api } from '@/api'
 import { cx } from '@/utils/cx'
@@ -101,14 +101,14 @@ export function StickerImage({
         role="group"
         aria-label={t('chat.emoji.loadFailed', { name: name ?? t('chat.emoji.sticker') })}
       >
-        <Picture aria-hidden className="size-6" />
+        <Image aria-hidden className="size-6" />
         <Button
-          variant="ghost"
+          variant="secondary"
           size="small"
           className="touch-hitbox px-1 text-caption-1-regular"
           onPress={() => setAttempt((current) => current + 1)}
         >
-          <ArrowsRotateRight aria-hidden className="size-3.5" />
+          <RefreshCw aria-hidden className="size-3.5" />
           {t('chat.emoji.retry')}
         </Button>
       </div>

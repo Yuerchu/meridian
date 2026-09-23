@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { DropZone } from 'react-aria-components'
 import type { DropItem } from 'react-aria-components'
 import { Button, Chip, Tooltip, TooltipTrigger } from '@/components/base'
-import { Comments, Xmark } from '@gravity-ui/icons'
+import { Messages, X } from '@keyline-icons/react/two-tone'
 import { acceptsConversationDrop, CONVERSATION_DRAG_TYPE } from '@/components/layout/sidebar-dnd'
 import { EmptyState as ProEmptyState } from '@/components/base'
 import { api } from '@/api'
@@ -951,21 +951,20 @@ function ChatViewInner({
           >
             {conversationRefs.map((ref) => (
               <Chip key={ref.id} size="sm" variant="soft" className="pr-0.5">
-                <Comments className="size-3.5" aria-hidden />
+                <Messages className="size-3.5" aria-hidden />
                 <span data-slot="conversation-ref-title" className="max-w-48 truncate">
                   {ref.title}
                 </span>
                 <TooltipTrigger delay={0}>
                   <Button
                     iconOnly
-                    size="small"
-                    variant="ghost"
+                    leadingIcon={X}
+                    size="xs"
+                    variant="neutral"
                     aria-label={t('chat.convRef.remove', { name: ref.title })}
                     onPress={() => setConversationRefs((prev) => prev.filter((r) => r.id !== ref.id))}
                     className="touch-hitbox size-5 min-w-0 rounded-full"
-                  >
-                    <Xmark className="size-3" />
-                  </Button>
+                  />
                   <Tooltip>{t('chat.convRef.remove', { name: ref.title })}</Tooltip>
                 </TooltipTrigger>
               </Chip>
@@ -982,7 +981,7 @@ function ChatViewInner({
               {reviewBlockedMessage}
             </p>
             {pendingPlanReview && (
-              <Button size="small" variant="ghost" onPress={() => openPlanReview(pendingPlanReview.review_id)}>
+              <Button size="small" variant="secondary" onPress={() => openPlanReview(pendingPlanReview.review_id)}>
                 {reviewBlockedAction}
               </Button>
             )}

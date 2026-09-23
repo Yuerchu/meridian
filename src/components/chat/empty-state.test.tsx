@@ -138,14 +138,15 @@ describe('EmptyState welcome composer', () => {
     ).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Options and attachments' }))
-    expect(await screen.findByRole('dialog', { name: 'Options and attachments' })).toBeVisible()
-    expect(await screen.findByRole('button', { name: 'Attach File' })).toBeInTheDocument()
+    expect(await screen.findByRole('menu', { name: 'Options and attachments' })).toBeVisible()
+    expect(await screen.findByRole('menuitem', { name: 'Attach File' })).toBeInTheDocument()
 
-    const mode = screen.getByRole('button', { name: /Mode.*Plan/i })
+    const mode = screen.getByRole('menuitem', { name: /Mode.*Plan/i })
+    expect(mode).toHaveAttribute('aria-haspopup', 'menu')
     expect(mode).toHaveAttribute('aria-expanded', 'false')
     await user.click(mode)
     expect(mode).toHaveAttribute('aria-expanded', 'true')
-    expect(screen.getByRole('button', { name: 'Plan' })).toHaveAttribute('aria-pressed', 'true')
+    expect(await screen.findByRole('menuitemradio', { name: /^Plan/ })).toHaveAttribute('aria-checked', 'true')
   })
 
   it('fills the real composer from a suggestion without creating a conversation', async () => {
@@ -236,7 +237,7 @@ describe('EmptyState welcome composer', () => {
     await user.click(screen.getByRole('button', { name: 'Emoji' }))
     // The picker's items are buttons named by their `textValue` (emoji name,
     // tags, pack) since it stopped being a Select with a hidden native one.
-    await user.click(await screen.findByRole('button', { name: /^Wave\b/ }))
+    await user.click(await screen.findByRole('option', { name: /^Wave\b/ }))
 
     expect(await screen.findByRole('img', { name: 'Wave' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Send' }))
@@ -265,7 +266,7 @@ describe('EmptyState welcome composer', () => {
     await user.click(screen.getByRole('button', { name: 'Emoji' }))
     // The picker's items are buttons named by their `textValue` (emoji name,
     // tags, pack) since it stopped being a Select with a hidden native one.
-    await user.click(await screen.findByRole('button', { name: /^Wave\b/ }))
+    await user.click(await screen.findByRole('option', { name: /^Wave\b/ }))
     expect(await screen.findByRole('img', { name: 'Wave' })).toBeInTheDocument()
 
     act(() => mocks.voiceOnSend?.('  Dictated opening  '))

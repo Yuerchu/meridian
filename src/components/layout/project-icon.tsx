@@ -1,13 +1,13 @@
-import { FolderOpen, Person, Persons } from '@gravity-ui/icons'
+import { FolderOpen, User, Users } from '@keyline-icons/react/two-tone'
 
 /** A project is either a directory on disk or a QQ conversation it mirrors. */
 export function ProjectIcon({ sourceType }: { sourceType: string }) {
   switch (sourceType) {
     case 'onebot_private':
-      return <Person />
+      return <User className="size-4" />
     case 'onebot_group':
-      return <Persons />
+      return <Users className="size-4" />
     default:
-      return <FolderOpen />
+      return <FolderOpen className="size-4" />
   }
 }

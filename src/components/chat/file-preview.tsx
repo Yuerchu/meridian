@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { ArrowRightFromSquare, Check, Copy, FileText } from '@gravity-ui/icons'
+import { Check, Copy, FileText, SquareArrowUpRight } from '@keyline-icons/react/two-tone'
 import { Button, Spinner } from '@/components/base'
 import { Hint } from '@/components/ui/hint'
 import { Segment } from '@/components/base'
@@ -201,7 +201,7 @@ function PreviewSheet({
 
   return (
     <Sheet isOpen placement="right" onOpenChange={onOpenChange} isDismissable>
-      <Sheet.Backdrop variant="blur">
+      <Sheet.Backdrop>
         <Sheet.Content className="w-full sm:max-w-2xl">
           <Sheet.Dialog className="flex h-full min-h-0 flex-col">
             <Sheet.Header className="pe-14">
@@ -307,12 +307,12 @@ function PreviewSheet({
               </div>
               <div data-slot="file-preview-actions" className="flex shrink-0 justify-end gap-2">
                 <Button variant="secondary" onPress={copyPath}>
-                  {copied ? <Check /> : <Copy />}
+                  {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
                   {t(copied ? 'chat.filePreview.pathCopied' : 'chat.filePreview.copyPath')}
                 </Button>
                 {canOpenEditor && state.status === 'loaded' && state.kind === 'project_file' && (
-                  <Button variant="outline" onPress={openInEditor}>
-                    <ArrowRightFromSquare />
+                  <Button variant="secondary" onPress={openInEditor}>
+                    <SquareArrowUpRight className="size-4" />
                     {t('chat.filePreview.openInEditor')}
                   </Button>
                 )}

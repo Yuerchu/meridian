@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, Comment } from '@gravity-ui/icons'
-import { TextShimmer } from '@/components/base'
+import { ChevronDown, Message } from '@keyline-icons/react/two-tone'
+import { ShimmerText } from '@/components/application/agent-log/agent-log'
 import { BubbleFoldBadge } from '@/components/ui/bubble-block'
 import { usePanelExpansion } from '@/hooks/use-panel-expansion'
 import { cx } from '@/utils/cx'
@@ -93,12 +93,14 @@ function ThinkingTitles({ titles, isStreaming }: { titles: string[]; isStreaming
         return (
           <div key={`${i}:${title}`} data-slot="bubble-thinking-title" className="flex min-w-0 items-center gap-1">
             {i === 0 ? (
-              <Comment aria-hidden className="size-3 shrink-0" />
+              <Message aria-hidden className="size-3 shrink-0" />
             ) : (
               <span data-slot="bubble-thinking-title-indent" aria-hidden className="size-3 shrink-0" />
             )}
             {live ? (
-              <TextShimmer className="min-w-0 truncate">{title}</TextShimmer>
+              <span data-slot="bubble-thinking-title-text" className="min-w-0 truncate">
+                <ShimmerText>{title}</ShimmerText>
+              </span>
             ) : (
               <span data-slot="bubble-thinking-title-text" className="min-w-0 truncate">
                 {title}
@@ -123,10 +125,14 @@ function ThinkingFold({ text, panelKey, isStreaming }: { text: string; panelKey:
           aria-controls={isExpanded ? panelId : undefined}
           onClick={() => onExpandedChange(!isExpanded)}
         >
-          <Comment aria-hidden className="size-3" />
-          <span data-slot="thinking-label" className={cx(isStreaming && 'shimmer')}>
-            {t('chat.thinking')}
-          </span>
+          <Message aria-hidden className="size-3" />
+          {isStreaming ? (
+            <span data-slot="thinking-label">
+              <ShimmerText>{t('chat.thinking')}</ShimmerText>
+            </span>
+          ) : (
+            <span data-slot="thinking-label">{t('chat.thinking')}</span>
+          )}
           <ChevronDown aria-hidden className={cx('size-3 transition-transform', isExpanded && 'rotate-180')} />
         </BubbleFoldBadge>
       </div>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { CircleCheck, CircleXmark, Play } from '@gravity-ui/icons'
+import { CircleCheck, CircleX, Play } from '@keyline-icons/react/two-tone'
 import { Button, Card, Meter } from '@/components/base'
 
 import { api } from '@/api'
@@ -56,31 +56,6 @@ class ProbeProcessor extends AudioWorkletProcessor {
 }
 registerProcessor('probe', ProbeProcessor)
 `
-
-/**
- * The two CSS features `TextShimmer` needs, asked on the device itself.
- *
- * `#playground/webview` asks the same question, but only a dev server can reach
- * that — and the answer that matters is Android's, where the WebView ships with
- * the system and an old phone can be years behind. This is why the probe lives
- * in Settings: a plain release APK can open it.
- *
- * What rides on it: if `tan()` is missing, the shimmer's `background` shorthand
- * fails to parse while `-webkit-text-fill-color: transparent` beside it applies
- * regardless. The text does not fall back to plain — it goes invisible.
- */
-const CSS_PROBES: Array<{ name: string; note: string; test: () => boolean }> = [
-  {
-    name: 'oklch(from …)',
-    note: 'relative color',
-    test: () => CSS.supports('color', 'oklch(from red l c h)'),
-  },
-  {
-    name: 'tan()',
-    note: 'trig in calc',
-    test: () => CSS.supports('width', 'calc(1px * tan(15deg))'),
-  },
-]
 
 type Verdict = 'pass' | 'fail' | 'pending'
 
@@ -300,38 +275,6 @@ export function DeveloperSettings() {
     <SettingsPane>
       <SettingsHeader title={t('settings.developer.title')} subtitle={t('settings.developer.intro')} />
 
-      <div data-slot="developer-css-probe" className="space-y-1.5">
-        <p data-slot="developer-section-label" className="text-caption-1-medium text-text-secondary">
-          {t('settings.developer.cssProbe')}
-        </p>
-        <Card>
-          <Card.Header>
-            <Card.Title>{t('settings.developer.cssProbeTitle')}</Card.Title>
-            <Card.Description>{t('settings.developer.cssProbeHint')}</Card.Description>
-          </Card.Header>
-          <Card.Content className="gap-1">
-            {CSS_PROBES.map((probe) => {
-              const ok = probe.test()
-              return (
-                <div key={probe.name} data-slot="css-probe-line" className="flex items-center gap-2 text-body-regular">
-                  {ok ? (
-                    <CircleCheck className="size-4 shrink-0 text-status-success" />
-                  ) : (
-                    <CircleXmark className="size-4 shrink-0 text-status-danger" />
-                  )}
-                  <span data-slot="css-probe-name" className="font-mono text-caption-1-regular">
-                    {probe.name}
-                  </span>
-                  <span data-slot="css-probe-note" className="text-caption-1-regular text-text-secondary">
-                    {probe.note}
-                  </span>
-                </div>
-              )
-            })}
-          </Card.Content>
-        </Card>
-      </div>
-
       <div data-slot="developer-mic-probe" className="space-y-1.5">
         {/* Names the section, not a control — there is no field under it, only a
             card that titles itself. It was a `<label>` pointing at nothing. */}
@@ -347,17 +290,17 @@ export function DeveloperSettings() {
               button here is the Android-only one — so the case with the most
               buttons is also the narrowest screen they ever appear on. */}
           <Card.Footer className="flex-wrap gap-2">
-            <Button size="small" onPress={() => record(true)} isDisabled={busy}>
+            <Button variant="secondary" size="small" onPress={() => record(true)} isDisabled={busy}>
               <Play className="w-4 h-4" />
               {t('settings.developer.probe.runWorklet')}
             </Button>
-            <Button variant="outline" size="small" onPress={() => record(false)} isDisabled={busy}>
+            <Button variant="secondary" size="small" onPress={() => record(false)} isDisabled={busy}>
               {t('settings.developer.probe.runScriptProcessor')}
             </Button>
             {/* Android only: the desktop transcribes from a Rust-side recording
                 session, and reaches it through the composer's own button. */}
             {isAndroid && (
-              <Button variant="outline" size="small" onPress={transcribe} isDisabled={busy}>
+              <Button variant="secondary" size="small" onPress={transcribe} isDisabled={busy}>
                 {t('settings.developer.probe.runTranscribe')}
               </Button>
             )}
@@ -390,7 +333,7 @@ export function DeveloperSettings() {
                   {l.verdict === 'pass' ? (
                     <CircleCheck className="mt-0.5 w-3.5 h-3.5 shrink-0 text-status-success" />
                   ) : l.verdict === 'fail' ? (
-                    <CircleXmark className="mt-0.5 w-3.5 h-3.5 shrink-0 text-status-danger" />
+                    <CircleX className="mt-0.5 w-3.5 h-3.5 shrink-0 text-status-danger" />
                   ) : (
                     <span
                       data-slot="mic-probe-pending-mark"

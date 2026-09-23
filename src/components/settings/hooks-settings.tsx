@@ -353,7 +353,7 @@ export function HooksSettings() {
             {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
             <Button
               size="small"
-              variant="outline"
+              variant="secondary"
               onPress={() => {
                 setLoading(true)
                 void loadData()
@@ -498,10 +498,10 @@ export function HooksSettings() {
             value={config.token ?? ''}
             placeholder={t('settings.hooks.tokenPending')}
           />
-          <Button variant="outline" onPress={() => setRevealToken(!revealToken)}>
+          <Button variant="secondary" onPress={() => setRevealToken(!revealToken)}>
             {revealToken ? t('settings.hooks.hide') : t('settings.hooks.reveal')}
           </Button>
-          <Button variant="outline" onPress={handleRegenerate}>
+          <Button variant="secondary" onPress={handleRegenerate}>
             {t('settings.hooks.regenerate')}
           </Button>
         </div>
@@ -517,7 +517,7 @@ export function HooksSettings() {
       )}
 
       <div data-slot="hooks-actions" className="flex items-center gap-3 pt-2">
-        <Button variant="outline" onPress={handleSave} isDisabled={saving}>
+        <Button variant="secondary" onPress={handleSave} isDisabled={saving}>
           {saved ? t('common.saved') : t('common.save')}
         </Button>
         {saved && (
@@ -526,7 +526,7 @@ export function HooksSettings() {
           </span>
         )}
         {running ? (
-          <Button variant="danger-soft" onPress={handleStop}>
+          <Button variant="danger" onPress={handleStop}>
             {t('settings.hooks.stop')}
           </Button>
         ) : (

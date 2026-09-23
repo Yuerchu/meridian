@@ -570,7 +570,7 @@ it('narrows the window without reloading the whole page', async () => {
     (mockApi.usageReport.mock.calls.at(-1)?.[0] as UsageReportRequest | undefined) ?? null
   const thirtyDays = sent()?.sinceMs ?? 0
 
-  await userEvent.click(screen.getByRole('button', { name: 'Last 7 days' }))
+  await userEvent.click(screen.getByRole('radio', { name: 'Last 7 days' }))
 
   await waitFor(() => expect(sent()?.sinceMs ?? 0).toBeGreaterThan(thirtyDays))
 })
@@ -580,7 +580,7 @@ it('asks for the whole log when the range is cleared', async () => {
   render(<UsageSettings onOpenConversation={onOpenConversation} />)
   await screen.findByText('Cost', { selector: '[data-slot="kpi-title"]' })
 
-  await userEvent.click(screen.getByRole('button', { name: 'All time' }))
+  await userEvent.click(screen.getByRole('radio', { name: 'All time' }))
 
   await waitFor(() => {
     const request = mockApi.usageReport.mock.calls.at(-1)?.[0] as UsageReportRequest

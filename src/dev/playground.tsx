@@ -1,16 +1,9 @@
 // Dev-only component playground. Reachable at #playground from a plain browser
 // (vite dev without the Tauri backend); never included in production builds.
 import { useState } from 'react'
-import { Moon, Sun } from '@gravity-ui/icons'
+import { Moon, Sun } from '@keyline-icons/react/two-tone'
 
 import { Button, Input, Tooltip, TooltipTrigger } from '@/components/base'
-import {
-  ChainOfThought,
-  ChainOfThoughtContent,
-  ChainOfThoughtStep,
-  ChainOfThoughtSteps,
-  ChainOfThoughtTrigger,
-} from '@/components/base'
 import {
   ChatTool,
   ChatToolApproval,
@@ -39,7 +32,10 @@ import { CommandPalette } from '@/components/layout/command-palette'
 import type { TouchedFile } from '@/lib/touched-files'
 import { useHotkey } from '@/hooks/use-hotkey'
 import { buildTurns } from '@/lib/turns'
+import { decimal } from '@/lib/decimal'
+import { StickerGrid, type StickerGridItem } from '@/components/chat/sticker-grid'
 import { useAppTheme } from '@/lib/theme'
+import { cx } from '@/utils/cx'
 import type {
   ChatMode,
   ContentBlock,
@@ -50,6 +46,7 @@ import type {
   ThinkingLevel,
   QueuedPromptInfoResponse,
   ToolCallDisplay,
+  TurnUsageInfoResponse,
 } from '@/types'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -159,8 +156,11 @@ function TurnItemCase({
   hosted = false,
   question = '把审批矩阵那一节补完，然后我们定稿。',
   previousTurnEndedAt = PG_NOW - 60_000,
+  usage,
 }: {
   label: string
+  /** The persisted, backend-priced usage the turn-details popover shows. */
+  usage?: TurnUsageInfoResponse
   /** One assistant row. */
   blocks?: ContentBlock[]
   /** Several assistant rows, each a round of the loop; overrides `blocks`. */
@@ -194,7 +194,11 @@ function TurnItemCase({
         }),
       ),
     ],
-    { streaming, crashedTurnIds: crashed ? new Set(['t']) : undefined },
+    {
+      streaming,
+      crashedTurnIds: crashed ? new Set(['t']) : undefined,
+      usageByTurnId: usage ? new Map([['t', usage]]) : undefined,
+    },
   )
   return (
     <div
@@ -222,6 +226,56 @@ function TurnItemCase({
     </div>
   )
 }
+
+function pgUsage(over: Partial<TurnUsageInfoResponse> = {}): TurnUsageInfoResponse {
+  return {
+    messages: 3,
+    missing_token_usage_messages: 0,
+    incomplete_token_usage_messages: 0,
+    input_tokens: 611_603,
+    output_tokens: 6_699,
+    cache_read_tokens: 540_000,
+    cache_write_tokens: 0,
+    server_tool_calls: 0,
+    input_cost: decimal('0.1432'),
+    output_cost: decimal('0.0268'),
+    cache_cost: decimal('0.054'),
+    tool_cost: decimal('0'),
+    total_cost: decimal('0.224'),
+    unpriced_token_messages: 0,
+    unpriced_input_messages: 0,
+    unpriced_output_messages: 0,
+    unpriced_cache_messages: 0,
+    unpriced_tool_messages: 0,
+    estimated_token_messages: 0,
+    estimated_tool_messages: 0,
+    estimated_messages: 0,
+    unpriced_messages: 0,
+    metered_messages: 3,
+    subscription_messages: 0,
+    external_messages: 0,
+    pricing_status: 'exact',
+    ...over,
+  }
+}
+
+/**
+ * An animated sticker without a backend: an SVG whose SMIL animation plays in
+ * an `<img>` and stops at its first frame when drawn into a canvas, which is
+ * the same still/playing split a GIF gets.
+ */
+function pgSticker(i: number): StickerGridItem {
+  const hue = (i * 47) % 360
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><rect width="96" height="96" rx="20" fill="hsl(${hue} 70% 60%)"/><circle cx="48" cy="48" r="18" fill="white"><animate attributeName="r" values="10;30;10" dur="1.2s" repeatCount="indefinite"/></circle><text x="48" y="90" font-size="12" text-anchor="middle" fill="white">${i + 1}</text></svg>`
+  return {
+    id: `pg-sticker-${i}`,
+    name: `贴纸 ${i + 1}`,
+    textValue: `贴纸 ${i + 1}`,
+    url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
+  }
+}
+
+const PG_STICKERS = Array.from({ length: 30 }, (_, i) => pgSticker(i))
 
 function noop() {}
 
@@ -469,41 +523,15 @@ function Gallery() {
           <TooltipTrigger delay={0}>
             <Button
               iconOnly
+              leadingIcon={resolvedTheme === 'dark' ? Sun : Moon}
+              size="small"
               aria-label="切换主题"
-              variant="outline"
+              variant="secondary"
               onPress={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
-            >
-              <Sun className="hidden size-4 dark:block" />
-              <Moon className="size-4 dark:hidden" />
-            </Button>
+            />
             <Tooltip placement="top">切换主题</Tooltip>
           </TooltipTrigger>
         </header>
-
-        <Section title="ChainOfThought / 基础 + Steps">
-          <ChainOfThought defaultExpanded>
-            <ChainOfThoughtTrigger>Thought for 4 seconds</ChainOfThoughtTrigger>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtSteps>
-                <ChainOfThoughtStep label="Search">
-                  Looked up boardui chat template patterns for message layout and composer spacing.
-                </ChainOfThoughtStep>
-                <ChainOfThoughtStep label="Plan">
-                  Mapped the template structure to SDK-agnostic compound components.
-                </ChainOfThoughtStep>
-              </ChainOfThoughtSteps>
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-        </Section>
-
-        <Section title="ChainOfThought / 流式 (shimmer)">
-          <ChainOfThought defaultExpanded isStreaming>
-            <ChainOfThoughtTrigger>思考过程</ChainOfThoughtTrigger>
-            <ChainOfThoughtContent className="text-caption-1-regular text-text-secondary leading-relaxed whitespace-pre-wrap">
-              {'用户想要一个简单的登录页。这是一个直接的 UI 任务——我应该先生成一些设计灵感确保观感，然后再搭页面。'}
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-        </Section>
 
         <Section title="ChatTool / 预设五态">
           <div data-slot="gallery-chat-tools" className="space-y-3">
@@ -567,7 +595,7 @@ function Gallery() {
               <ChatToolContent>
                 <ChatToolArgs value={{ to: 'team@acme.com', subject: 'Launch update' }} />
                 <ChatToolApproval>
-                  <Button variant="outline">Reject</Button>
+                  <Button variant="secondary">Reject</Button>
                   <Button>Approve</Button>
                 </ChatToolApproval>
               </ChatToolContent>
@@ -1302,6 +1330,53 @@ function Gallery() {
               blocks={[{ type: 'text', text: ANSWER }]}
             />
             <TurnItemCase label="托管会话 · 组头不写模型 id" hosted blocks={[{ type: 'text', text: ANSWER }]} />
+            <TurnItemCase
+              label="回合详情 · 已定价（点操作行的 ⓘ）"
+              usage={pgUsage()}
+              blocks={[{ type: 'text', text: ANSWER }]}
+            />
+            <TurnItemCase
+              label="回合详情 · 部分未定价（下界）"
+              usage={pgUsage({
+                pricing_status: 'lower_bound',
+                tool_cost: null,
+                unpriced_tool_messages: 1,
+                unpriced_messages: 1,
+              })}
+              blocks={[{ type: 'text', text: ANSWER }]}
+            />
+            <TurnItemCase
+              label="回合详情 · 托管会话只报告不定价"
+              hosted
+              usage={pgUsage({
+                input_cost: null,
+                output_cost: null,
+                cache_cost: null,
+                tool_cost: null,
+                total_cost: null,
+                metered_messages: 0,
+                external_messages: 3,
+                pricing_status: 'external',
+              })}
+              blocks={[{ type: 'text', text: ANSWER }]}
+            />
+          </div>
+        </Section>
+
+        <Section title="StickerGrid / 贴纸选择器网格">
+          <div data-slot="gallery-sticker-grids" className="flex flex-wrap items-start gap-4">
+            {(['w-[24rem]', 'w-[20rem]'] as const).map((width) => (
+              <div
+                key={width}
+                data-slot="gallery-sticker-grid"
+                className={cx(
+                  '@container/stickers rounded-2xl border border-border-button-default bg-background-primary-default',
+                  width,
+                )}
+              >
+                <StickerGrid items={PG_STICKERS} loading={false} empty={null} onAction={noop} />
+              </div>
+            ))}
           </div>
         </Section>
 
@@ -1438,7 +1513,7 @@ function HotkeyProbe() {
   return (
     <div data-slot="hotkey-probe" className="space-y-3">
       <div data-slot="hotkey-probe-controls" className="flex flex-wrap items-center gap-3">
-        <Button variant="outline" onPress={() => setPaletteOpen(true)}>
+        <Button variant="secondary" onPress={() => setPaletteOpen(true)}>
           打开面板
         </Button>
         <Input

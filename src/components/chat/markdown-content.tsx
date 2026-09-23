@@ -6,7 +6,7 @@ import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
 import { Focusable } from 'react-aria-components'
 import { openExternalUrl } from '@/lib/external-link'
-import { Check, Copy } from '@gravity-ui/icons'
+import { Check, Copy } from '@keyline-icons/react/two-tone'
 import { Link, Skeleton, Tooltip, TooltipTrigger } from '@/components/base'
 import type { Components } from 'react-markdown'
 
@@ -146,15 +146,7 @@ export function CopyButton({ text, className }: { text: string; className?: stri
     markCopied()
   }, [text, markCopied])
 
-  return (
-    <ActionButton
-      label={t('chat.copy')}
-      onClick={handleCopy}
-      className={cx('text-text-secondary hover:text-text-primary', className)}
-    >
-      {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-    </ActionButton>
-  )
+  return <ActionButton label={t('chat.copy')} onClick={handleCopy} className={className} icon={copied ? Check : Copy} />
 }
 
 function fenceLanguage(className: string | undefined): string {
@@ -215,11 +207,11 @@ const CodeBlock: Components['code'] = ({ className, children, node, ...props }) 
           {language}
         </span>
         {/* The only way to copy a single block — the long-press menu copies the
-            whole message. `size-7` rather than the 24px it was: `.code-block` is
-            `overflow: clip` for its corners, which cut the expanded hit area
-            back to 42px, and four more drawn pixels are what close that gap
-            without moving the button off the corner it belongs in. */}
-        <CopyButton text={code} className="touch-hitbox ms-auto size-7 rounded-md" />
+            whole message. The action recipe is already 28px (`size-7`), which
+            matters here: `.code-block` is `overflow: clip` for its corners,
+            which cuts the expanded hit area back, and 28 drawn pixels are what
+            close that gap without moving the button off its corner. */}
+        <CopyButton text={code} className="touch-hitbox ms-auto" />
       </div>
       <ShikiCode code={code} language={language} defer={isStreaming} />
     </div>

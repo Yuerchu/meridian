@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Input } from '@/components/base'
-import { Check } from '@gravity-ui/icons'
+import { Check } from '@keyline-icons/react/two-tone'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { LANGUAGES, setLocale } from '@/i18n'
 import { useAppTheme, type ThemePreference } from '@/lib/theme'
@@ -209,7 +209,7 @@ export function GeneralSettings() {
           />
           <Button
             aria-label={t('settings.general.save')}
-            variant={searchKeySaved ? 'primary' : 'outline'}
+            variant="secondary"
             onPress={handleSaveSearchKey}
             isDisabled={!searchApiKey.trim()}
           >

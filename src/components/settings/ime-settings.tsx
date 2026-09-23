@@ -16,7 +16,7 @@ import {
   Tooltip,
   TooltipTrigger,
 } from '@/components/base'
-import { TrashBin } from '@gravity-ui/icons'
+import { Bin } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
@@ -205,7 +205,7 @@ export function ImeSettings() {
             {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
             <Button
               size="small"
-              variant="outline"
+              variant="secondary"
               className="mt-2"
               onPress={() => {
                 setLoading(true)
@@ -274,7 +274,7 @@ export function ImeSettings() {
 
       <div data-slot="ime-actions" className="flex flex-wrap items-center gap-3">
         <Button
-          variant={registered ? 'outline' : 'primary'}
+          variant={registered ? 'secondary' : 'primary'}
           isDisabled={!status?.installed || busy !== null}
           isPending={busy === 'register'}
           onPress={() => run('register', api.registerIme)}
@@ -283,7 +283,7 @@ export function ImeSettings() {
         </Button>
         {hostRunning ? (
           <Button
-            variant="danger-soft"
+            variant="danger"
             isDisabled={busy !== null}
             isPending={busy === 'stop'}
             onPress={() => run('stop', api.stopImeHost)}
@@ -292,7 +292,7 @@ export function ImeSettings() {
           </Button>
         ) : (
           <Button
-            variant="outline"
+            variant="secondary"
             isDisabled={!status?.installed || busy !== null}
             isPending={busy === 'start'}
             onPress={() => run('start', api.startImeHost)}
@@ -400,7 +400,7 @@ export function ImeSettings() {
       )}
 
       <div data-slot="ime-save" className="flex items-center gap-3 pt-2">
-        <Button variant="outline" onPress={handleSave} isDisabled={saving || !dirty}>
+        <Button variant="secondary" onPress={handleSave} isDisabled={saving || !dirty}>
           {saved ? t('common.saved') : t('common.save')}
         </Button>
         {saved && (
@@ -416,7 +416,13 @@ export function ImeSettings() {
             {t('settings.ime.dictionaries')}
           </p>
           {can.importFromDisk && (
-            <Button size="small" variant="outline" onPress={handleImport} isDisabled={importing} isPending={importing}>
+            <Button
+              size="small"
+              variant="secondary"
+              onPress={handleImport}
+              isDisabled={importing}
+              isPending={importing}
+            >
               {t('settings.ime.importDictionary')}
             </Button>
           )}
@@ -479,13 +485,12 @@ export function ImeSettings() {
                     <TooltipTrigger delay={0}>
                       <Button
                         iconOnly
+                        leadingIcon={Bin}
                         size="small"
-                        variant="ghost"
+                        variant="neutral"
                         aria-label={t('settings.ime.removeDictionary', { name: dict.name })}
                         onPress={() => handleRemoveDictionary(dict)}
-                      >
-                        <TrashBin className="size-3.5" />
-                      </Button>
+                      />
                       <Tooltip>{t('settings.ime.removeDictionary', { name: dict.name })}</Tooltip>
                     </TooltipTrigger>
                   </ItemCard.Action>

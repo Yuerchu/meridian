@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { Plus, TrashBin, Xmark, Check } from '@gravity-ui/icons'
+import { Bin, Check, Plus, X } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
 import type { MemoryType } from '@/types'
 import {
@@ -87,12 +87,12 @@ export function MemorySettings() {
         subtitle={t('settings.memory.subtitle')}
         actions={
           <>
-            <Button variant="ghost" onPress={() => setTrashOpen(true)} data-slot="memory-trash-open">
-              <TrashBin />
+            <Button variant="secondary" onPress={() => setTrashOpen(true)} data-slot="memory-trash-open">
+              <Bin className="size-4" />
               {t('settings.memory.trash.title')}
             </Button>
             <Button variant="secondary" onPress={() => setShowAdd(true)} isDisabled={!canAdd}>
-              <Plus />
+              <Plus className="size-4" />
               {t('settings.memory.new')}
             </Button>
           </>
@@ -145,7 +145,7 @@ export function MemorySettings() {
           )}
 
           {showAdd && (
-            <Card data-slot="memory-add-form">
+            <Card data-slot="memory-add-form" variant="secondary">
               <TextField>
                 <Label>{t('settings.memory.key')}</Label>
                 <Input
@@ -183,21 +183,26 @@ export function MemorySettings() {
                 />
                 <div data-slot="memory-add-spacer" className="flex-1" />
                 <TooltipTrigger delay={0}>
-                  <Button variant="ghost" iconOnly aria-label={t('common.cancel')} onPress={() => setShowAdd(false)}>
-                    <Xmark />
-                  </Button>
+                  <Button
+                    variant="neutral"
+                    iconOnly
+                    leadingIcon={X}
+                    size="small"
+                    aria-label={t('common.cancel')}
+                    onPress={() => setShowAdd(false)}
+                  />
                   <Tooltip>{t('common.cancel')}</Tooltip>
                 </TooltipTrigger>
                 <TooltipTrigger delay={0}>
                   <Button
                     variant="secondary"
                     iconOnly
+                    leadingIcon={Check}
+                    size="small"
                     aria-label={t('settings.memory.add')}
                     onPress={handleAdd}
                     isDisabled={!newKey.trim() || !newContent.trim()}
-                  >
-                    <Check />
-                  </Button>
+                  />
                   <Tooltip>{t('settings.memory.add')}</Tooltip>
                 </TooltipTrigger>
               </div>
@@ -211,7 +216,7 @@ export function MemorySettings() {
               <Alert.Indicator />
               <Alert.Content>
                 <Alert.Description className="break-words">{t('settings.memory.loadError')}</Alert.Description>
-                <Button size="small" variant="outline" className="mt-2" onPress={() => void browser.refresh()}>
+                <Button size="small" variant="secondary" className="mt-2" onPress={() => void browser.refresh()}>
                   {t('settings.memory.retry')}
                 </Button>
               </Alert.Content>
@@ -269,14 +274,14 @@ export function MemorySettings() {
               </ActionBar.Prefix>
               <ActionBar.Content>
                 <Button
-                  variant="ghost"
+                  variant="secondary"
                   onPress={browser.selectAllVisible}
                   isDisabled={browser.selected.size === browser.visible.length}
                 >
                   {t('settings.memory.selectAll')}
                 </Button>
                 <Button
-                  variant="ghost"
+                  variant="secondary"
                   onPress={async () => {
                     const ok = await confirm({
                       title: t('settings.memory.deleteConfirmTitle'),
@@ -294,7 +299,7 @@ export function MemorySettings() {
                     browser.refresh()
                   }}
                 >
-                  <TrashBin className="text-status-danger" />
+                  <Bin className="size-4 text-status-danger" />
                   {t('settings.memory.deleteSelected')}
                 </Button>
               </ActionBar.Content>
@@ -302,12 +307,12 @@ export function MemorySettings() {
                 <TooltipTrigger delay={0}>
                   <Button
                     iconOnly
-                    variant="ghost"
+                    leadingIcon={X}
+                    size="small"
+                    variant="neutral"
                     aria-label={t('settings.memory.clearSelection')}
                     onPress={browser.clearSelection}
-                  >
-                    <Xmark />
-                  </Button>
+                  />
                   <Tooltip>{t('settings.memory.clearSelection')}</Tooltip>
                 </TooltipTrigger>
               </ActionBar.Suffix>

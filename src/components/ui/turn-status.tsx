@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { Spinner } from '@/components/base'
-import { Ban, ChevronLeft, ChevronRight, CircleCheck, CircleExclamation, TriangleExclamation } from '@gravity-ui/icons'
+import { Ban, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, TriangleAlert } from '@keyline-icons/react/two-tone'
 
 import { cx } from '@/utils/cx'
 // Imported rather than restated. This used to be a copy of the union in
@@ -15,12 +15,12 @@ function TurnStatusIcon({ status, className }: { status: TurnStatus; className?:
     case 'streaming':
       return <Spinner size="sm" color="current" aria-hidden className={cx('shrink-0 text-text-secondary', className)} />
     case 'awaiting-input':
-      return <CircleExclamation aria-hidden className={cx(shared, 'text-status-warning-soft-foreground')} />
+      return <CircleAlert aria-hidden className={cx(shared, 'text-status-warning-soft-foreground')} />
     // Warning-coloured, unlike `interrupted`, which is grey. A turn the user
     // stopped needs no attention; one that stopped unexpectedly, part way
     // through whatever it was doing, may have left something half-done.
     case 'crashed':
-      return <TriangleExclamation aria-hidden className={cx(shared, 'text-status-warning-soft-foreground')} />
+      return <TriangleAlert aria-hidden className={cx(shared, 'text-status-warning-soft-foreground')} />
     case 'interrupted':
       return <Ban aria-hidden className={cx(shared, 'text-text-secondary')} />
     case 'empty':

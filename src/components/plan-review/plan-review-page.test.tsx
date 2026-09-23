@@ -42,13 +42,13 @@ vi.mock('./plan-review-editor', () => ({
   },
 }))
 
-vi.mock('@gravity-ui/icons', () => ({
+vi.mock('@keyline-icons/react/two-tone', () => ({
+  Bin: () => null,
   ChevronDown: () => null,
   Clock: () => null,
-  Comment: () => null,
-  TrashBin: () => null,
-  TriangleExclamation: () => null,
-  Xmark: () => null,
+  Message: () => null,
+  TriangleAlert: () => null,
+  X: () => null,
 }))
 
 vi.mock('@/components/base', async () => {

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Modal } from '@/components/base'
-import { ArrowLeft } from '@gravity-ui/icons'
+import { ArrowLeft } from '@keyline-icons/react/two-tone'
 
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useHistoryLevel } from '@/hooks/use-history-level'
@@ -69,7 +69,7 @@ export function SettingsDrilldown({
                 className="flex shrink-0 items-center gap-2 border-b border-border-button-default px-1 pt-[var(--safe-top)]"
               >
                 <Button
-                  variant="ghost"
+                  variant="secondary"
                   onPress={() => setOpen(false)}
                   className="h-10 gap-1 rounded-xl px-2 text-body-regular text-text-secondary hover:text-text-primary"
                 >

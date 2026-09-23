@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FaceSmile, Magnifier } from '@gravity-ui/icons'
-import { Button, ScrollShadow, SearchField, Tooltip, TooltipTrigger } from '@/components/base'
-import { ChatLoader, EmojiPicker as ProEmojiPicker } from '@/components/base'
+import { FaceSmile, Search } from '@keyline-icons/react/two-tone'
+import { PromptInput, ScrollShadow, SearchField, Tooltip, TooltipTrigger } from '@/components/base'
+import { EmojiPicker as ProEmojiPicker } from '@/components/base'
+import { PillTab, PillTabList } from '@/components/base/tabs/pill-tab'
 
 import { api } from '@/api'
 import type { EmojiInfoResponse, EmojiPackInfoResponse } from '@/types'
+import { StickerGrid } from './sticker-grid'
 
 interface PackWithEmojis {
   pack: EmojiPackInfoResponse
@@ -107,9 +109,8 @@ export function EmojiPicker({
   // the previous hand-built picker showed above every row.
   //
   // The match is made here, against the same name, tags and pack name the
-  // item's `textValue` carries: the base grid draws what it is given and
-  // filters nothing (the Pro picker it replaced matched `textValue` itself,
-  // which is how every search came to show every sticker).
+  // item's `textValue` carries: the grid draws what it is given and filters
+  // nothing.
   const visibleItems = useMemo(() => {
     const query = search.trim().toLowerCase()
     if (!query) return allItems.filter((item) => activePackId === null || item.packId === activePackId)
@@ -117,6 +118,17 @@ export function EmojiPicker({
       `${item.emoji.name} ${item.emoji.tags ?? ''} ${item.packName}`.toLowerCase().includes(query),
     )
   }, [activePackId, allItems, search])
+
+  const gridItems = useMemo(
+    () =>
+      visibleItems.map((item) => ({
+        id: item.emoji.id,
+        name: item.emoji.name,
+        textValue: `${item.emoji.name} ${item.emoji.tags ?? ''} ${item.packName}`,
+        url: item.url,
+      })),
+    [visibleItems],
+  )
 
   const handleSelect = useCallback(
     (id: React.Key | null) => {
@@ -147,92 +159,76 @@ export function EmojiPicker({
       onSelectionChange={handleSelect}
     >
       <TooltipTrigger delay={0}>
-        <ProEmojiPicker.Trigger
+        {/* The composer's round control rather than the picker's own neutral
+            trigger: this picker only ever sits in the composer toolbar, beside
+            the `+` and the microphone, and the three are one control family
+            (the registry agent-composer's `ai-chat-composer-add-*` button). */}
+        <PromptInput.Control
+          data-slot="emoji-picker-trigger"
           aria-label={t('chat.emoji')}
-          className="touch-hitbox flex size-8 items-center justify-center rounded-lg text-text-secondary hover:bg-background-primary-hover hover:text-text-primary"
+          className="touch-hitbox"
           onPress={() => {
             // RAC Select normally declines to open an empty collection. This
             // picker still has useful content in that state: the assigned-pack
             // explanation and search shell.
             if (!open) setOpen(true)
           }}
-        >
-          <FaceSmile className="size-4" />
-        </ProEmojiPicker.Trigger>
+          leadingIcon={FaceSmile}
+        />
         <Tooltip>{t('chat.emoji')}</Tooltip>
       </TooltipTrigger>
-      <ProEmojiPicker.Popover placement="top end">
-        <ProEmojiPicker.Content>
+      {/* 24rem holds four ~88px cells; the calc keeps it inside a phone's
+          viewport, where the container query drops the grid to three. */}
+      <ProEmojiPicker.Popover placement="top end" className="w-[24rem] max-w-[calc(100vw-2rem)]">
+        <ProEmojiPicker.Content className="@container/stickers">
           <SearchField aria-label={t('chat.emojiSearch')} value={search} onChange={setSearch}>
-            <SearchField.Group>
+            {/* The popover is `background-primary`, which in dark is the search
+                well's own neutral-800; the registry's search fields off a settings
+                card take the secondary fill instead (`settings-storage.tsx`). */}
+            <SearchField.Group className="bg-background-secondary-default">
               <SearchField.SearchIcon />
               <SearchField.Input autoFocus placeholder={t('chat.emojiSearch')} />
               <SearchField.ClearButton />
             </SearchField.Group>
           </SearchField>
 
-          <ProEmojiPicker.Grid
-            aria-label={t('chat.emoji')}
-            items={visibleItems}
-            renderEmptyState={() =>
-              loading || loadedAssistantId !== assistantId ? (
-                <ChatLoader.Dots label={t('chat.emojiLoading')} />
-              ) : (
-                <span data-slot="emoji-picker-empty" className="flex flex-col items-center gap-2">
-                  <Magnifier className="size-5" />
-                  {search.trim() ? t('chat.emojiNotFound') : t('chat.emojiNoPacks')}
-                </span>
-              )
-            }
-          >
-            {(item) => (
-              <ProEmojiPicker.Item
-                id={item.emoji.id}
-                disabled={!item.url}
-                textValue={`${item.emoji.name} ${item.emoji.tags ?? ''} ${item.packName}`}
+          <StickerGrid
+            items={gridItems}
+            loading={loading || loadedAssistantId !== assistantId}
+            onAction={handleSelect}
+            empty={
+              <span
+                data-slot="emoji-picker-empty"
+                className="flex flex-col items-center gap-2 p-4 text-caption-1-regular text-text-secondary"
               >
-                {item.url ? (
-                  <img
-                    data-slot="emoji-picker-image"
-                    src={item.url}
-                    alt={item.emoji.name}
-                    className="size-7 object-contain"
-                  />
-                ) : (
-                  <span
-                    data-slot="emoji-picker-name"
-                    className="line-clamp-2 text-center text-caption-1-regular leading-tight text-text-secondary"
-                  >
-                    {item.emoji.name}
-                  </span>
-                )}
-              </ProEmojiPicker.Item>
-            )}
-          </ProEmojiPicker.Grid>
+                <Search className="size-5" />
+                {search.trim() ? t('chat.emojiNotFound') : t('chat.emojiNoPacks')}
+              </span>
+            }
+          />
 
           {displayPacks.length > 0 && (
             <ProEmojiPicker.Footer>
               <ScrollShadow hideScrollBar orientation="horizontal" className="min-w-0 flex-1">
-                <div data-slot="emoji-picker-packs" className="flex items-center gap-1 px-1">
+                {/* The registry's pill tab in its quiet `gray` style, which is
+                    what it is for — a filter row that drives local view state.
+                    These were `ghost` Buttons, BoardUI's accent-soft fill,
+                    so every pack but the chosen one read as selected. */}
+                <PillTabList data-slot="emoji-picker-packs" className="px-1">
                   {displayPacks.map(({ pack }) => (
-                    <Button
+                    <PillTab
                       key={pack.id}
-                      size="small"
-                      variant="ghost"
-                      className={
-                        pack.id === activePackId && !search.trim()
-                          ? 'h-7 shrink-0 bg-background-secondary-default px-2 text-caption-1-regular text-text-primary'
-                          : 'h-7 shrink-0 px-2 text-caption-1-regular text-text-secondary'
-                      }
-                      onPress={() => {
+                      variant="gray"
+                      isSelected={pack.id === activePackId && !search.trim()}
+                      onSelect={() => {
                         setActivePackId(pack.id)
                         setSearch('')
                       }}
                     >
                       {pack.name}
-                    </Button>
+                    </PillTab>
                   ))}
-                </div>
+                </PillTabList>
               </ScrollShadow>
             </ProEmojiPicker.Footer>
           )}

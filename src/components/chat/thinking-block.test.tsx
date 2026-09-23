@@ -46,9 +46,10 @@ describe('ThinkingRow', () => {
 
   it('shimmers the latest title while the thought is still arriving', () => {
     const { container } = render(<ThinkingRow text="**One****Two**" panelKey="m1:1:thinking" isStreaming />)
-    const shimmer = container.querySelector('[data-slot="text-shimmer"]')
+    // boardui's `ShimmerText` (agent-log) is the class, not a data-slot.
+    const shimmer = container.querySelector('.agent-progress-loading-text')
     expect(shimmer?.textContent).toBe('Two')
-    expect(screen.getByText('One').closest('[data-slot="text-shimmer"]')).toBeNull()
+    expect(screen.getByText('One').closest('.agent-progress-loading-text')).toBeNull()
   })
 
   it('folds a thought with a body behind a badge and draws it as small Markdown', () => {

@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { ArrowRight, FileText } from '@gravity-ui/icons'
+import { ArrowRight, FileText } from '@keyline-icons/react/two-tone'
 import { Link } from '@/components/base'
 import { useState } from 'react'
 import type { DiffLineKind, FileDiff } from '@/lib/patch-parse'

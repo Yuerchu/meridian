@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FolderOpen, Xmark } from '@gravity-ui/icons'
+import { FolderOpen, X } from '@keyline-icons/react/two-tone'
 import { Button, Tooltip, TooltipTrigger } from '@/components/base'
 import { CellSwitch } from '@/components/base'
 import { EmptyState } from '@/components/base'
@@ -124,21 +124,21 @@ export function AndroidFileAccess() {
                 </div>
                 <TooltipTrigger delay={0}>
                   <Button
-                    variant="ghost"
+                    variant="neutral"
                     iconOnly
+                    leadingIcon={X}
+                    size="small"
                     className="shrink-0"
                     onPress={() => handleRemove(root.uri)}
                     aria-label={t('settings.fileAccess.removeDir')}
-                  >
-                    <Xmark className="h-3.5 w-3.5" />
-                  </Button>
+                  />
                   <Tooltip>{t('settings.fileAccess.removeDir')}</Tooltip>
                 </TooltipTrigger>
               </li>
             ))}
           </ul>
         )}
-        <Button variant="outline" onPress={handleAddDirectory} isDisabled={picking}>
+        <Button variant="secondary" onPress={handleAddDirectory} isDisabled={picking}>
           <FolderOpen className="mr-1.5 h-3.5 w-3.5" />
           {t('settings.fileAccess.addDir')}
         </Button>
