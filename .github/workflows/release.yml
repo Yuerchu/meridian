@@ -93,7 +93,9 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - uses: dtolnay/rust-toolchain@stable
+      # rust-toolchain.toml names the version; see ci.yml.
+      - name: Install Rust toolchain
+        run: rustup toolchain install
 
       - uses: swatinem/rust-cache@v2
         with:
@@ -164,12 +166,15 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          # Windows adds the 32-bit target for the input method's TSF DLL:
-          # 32-bit apps load a 32-bit text service, and Tauri's own build
-          # has one target. See the Packaging section in CLAUDE.md.
-          targets: ${{ matrix.target }}${{ matrix.os == 'windows-latest' && ',i686-pc-windows-msvc' || '' }}
+      # rust-toolchain.toml names the version; see ci.yml. Windows adds the
+      # 32-bit target for the input method's TSF DLL: 32-bit apps load a
+      # 32-bit text service, and Tauri's own build has one target. See the
+      # Packaging section in CLAUDE.md.
+      - name: Install Rust toolchain
+        shell: bash
+        run: |
+          rustup toolchain install
+          rustup target add ${{ matrix.target }} ${{ matrix.os == 'windows-latest' && 'i686-pc-windows-msvc' || '' }}
 
       - uses: swatinem/rust-cache@v2
         with:
@@ -310,9 +315,10 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install
+          rustup target add aarch64-linux-android
 
       - uses: swatinem/rust-cache@v2
         with:

@@ -2070,6 +2070,16 @@ the core (the shared target directory is what keeps the second from
 rebuilding everything). The core repository has its own rustfmt/clippy
 pre-commit hook under `.githooks/`; the hooks here do not reach inside it.
 
+**The Rust version is pinned, in two files kept in step.** `rust-toolchain.toml`
+at the root and in `src-tauri/crates` both name one release; rustup picks it up
+for every `cargo` here, and CI installs it with a bare `rustup toolchain install`
+rather than `stable`. A floating `stable` failed CI twice on code nobody had
+touched, each time a release added a clippy lint that an older local stable
+could not see. Upgrading is its own change: bump both files and fix what the new
+clippy reports, in the same commit. Android and 32-bit input-method builds need
+their target added to that toolchain once (`rustup target add
+aarch64-linux-android i686-pc-windows-msvc`).
+
 **boardui is source in the tree, not a dependency.** `npx boardui add -d src <name>`
 writes a registry item under `src/components/base/<group>/` and installs its npm
 dependencies; no component is fetched at build time and no key is needed for
@@ -2135,14 +2145,9 @@ to move pixels, look at every image it rewrote before committing it, and
 update both platforms in the same change. A failure's expected/actual/diff
 triple is under `test-results/` (CI: the `visual-diffs` artifact).
 
-Two things that setup does which are not wanted. It appends an `allowBuilds`
-block to `pnpm-workspace.yaml` turning those same two build scripts back on —
-**revert that**, the refusal above is the deliberate half of this arrangement.
-And `pnpm add <anything>` can decide to rebuild rather than extend
-`node_modules`, which empties the package again; on Windows it will also fail
-outright with `ERR_PNPM_EPERM` if a `vite`/`tauri dev` is running, because the
-dev server holds `@rolldown/binding-win32-x64-msvc`'s `.node` open. Stop the dev
-servers first, then add, then re-run the setup and check the count.
+`pnpm add` / `pnpm update` on Windows fails outright with `ERR_PNPM_EPERM` if a
+`vite`/`tauri dev` is running, because the dev server holds
+`@rolldown/binding-win32-x64-msvc`'s `.node` open. Stop the dev servers first.
 
 ## Environment Variables
 

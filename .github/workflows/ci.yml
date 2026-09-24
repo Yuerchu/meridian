@@ -54,14 +54,17 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          # The action installs a minimal profile; the style gates below need
-          # both components.
-          components: rustfmt, clippy
-          # The input method's TSF DLL ships as x86 too (32-bit apps load a
-          # 32-bit text service), and nothing else in CI compiles for it.
-          targets: ${{ matrix.os == 'windows-latest' && 'i686-pc-windows-msvc' || '' }}
+      # Installs what rust-toolchain.toml names, clippy and rustfmt included,
+      # so the version lives in one place. A floating `stable` here let a new
+      # release's clippy fail code nobody had touched.
+      - name: Install Rust toolchain
+        run: rustup toolchain install
+
+      # The input method's TSF DLL ships as x86 too (32-bit apps load a
+      # 32-bit text service), and nothing else in CI compiles for it.
+      - name: Add the 32-bit target
+        if: matrix.os == 'windows-latest'
+        run: rustup target add i686-pc-windows-msvc
 
       - uses: swatinem/rust-cache@v2
         with:
@@ -98,12 +101,6 @@ jobs:
 
       - run: pnpm install
 
-      # Before the Pro staging, not after: `hpsetup` appends an `allowBuilds`
-      # block to pnpm-workspace.yaml on every run (the file says so itself), and
-      # Prettier run afterwards was checking that tool-written block instead of
-      # the committed file. It failed on every push, and since the steps below
-      # never ran after it, the Linux leg had not executed a clippy or a test in
-      # months while reporting only "Prettier".
       # Style gates run on the Linux leg only: they are platform-independent,
       # and a Windows minute costs twice a Linux one.
       - name: Prettier check
@@ -181,9 +178,10 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install
+          rustup target add aarch64-linux-android
 
       - uses: swatinem/rust-cache@v2
         with:
