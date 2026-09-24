@@ -96,7 +96,10 @@ tester.run('no-modifier-on-static-utility', plugin.rules['no-modifier-on-static-
   ],
   invalid: [
     // The three shapes that shipped and drew nothing.
-    { code: `<div className="bg-button-primary/10 text-button-ghost-foreground" />`, errors: [{ messageId: 'modifier' }] },
+    {
+      code: `<div className="bg-button-primary/10 text-button-ghost-foreground" />`,
+      errors: [{ messageId: 'modifier' }],
+    },
     { code: `<li className="hover:x data-highlighted:bg-button-primary/10" />`, errors: [{ messageId: 'modifier' }] },
     { code: "const c = highlighted ? 'flex bg-button-primary/10' : 'flex'", errors: [{ messageId: 'modifier' }] },
     { code: `<b className="bg-button-danger/[0.12]" />`, errors: [{ messageId: 'modifier' }] },
