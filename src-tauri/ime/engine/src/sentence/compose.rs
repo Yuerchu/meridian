@@ -246,7 +246,7 @@ fn assemble(keys: &str, lattice: &Lattice, readings: &[Reading], learner: &dyn L
         .into_iter()
         .map(|c| (learner.choice_weight(keys, &c.text), c))
         .collect();
-    ranked.sort_by(|a, b| b.0.cmp(&a.0));
+    ranked.sort_by_key(|a| std::cmp::Reverse(a.0));
     ranked.truncate(MAX_CANDIDATES);
     ranked.into_iter().map(|(_, c)| c).collect()
 }
