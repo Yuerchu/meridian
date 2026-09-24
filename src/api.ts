@@ -156,6 +156,11 @@ import type {
   ProviderBalanceInfoResponse,
   ProviderCapabilitiesInfoResponse,
   ProviderCatalogEntryListResponse,
+  ComposerDraftDeleteRequest,
+  ComposerDraftInfoResponse,
+  ComposerDraftReadRequest,
+  ComposerDraftUpsertRequest,
+  ComposerDraftWriteResponse,
   QueuedPromptCreateRequest,
   QueuedPromptDeliveryUpdateRequest,
   QueuedPromptInfoResponse,
@@ -427,6 +432,16 @@ export const api = {
   /** Let a queue held by a failed turn go again. Pumps, because a person just
    *  said to. */
   queueRelease: (conversationId: string) => invoke<void>('queue_release', { conversationId }),
+
+  // Unsent composer drafts, kept on the host so a crash or a switch of
+  // conversation does not take them. Writes are revision-guarded: see
+  // `useComposerDraft` for how the revision is chosen.
+  getComposerDraft: (request: ComposerDraftReadRequest) =>
+    invoke<ComposerDraftInfoResponse | null>('get_composer_draft', { request }),
+  saveComposerDraft: (request: ComposerDraftUpsertRequest) =>
+    invoke<ComposerDraftWriteResponse>('save_composer_draft', { request }),
+  clearComposerDraft: (request: ComposerDraftDeleteRequest) =>
+    invoke<ComposerDraftWriteResponse>('clear_composer_draft', { request }),
 
   setSecret: (request: SecretUpsertRequest) => invoke<void>('set_secret', { request }),
 

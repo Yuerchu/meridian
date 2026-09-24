@@ -470,6 +470,21 @@ macro_rules! with_all_commands {
             ),
             async commands::queue => queue_release(conversation_id: String),
 
+            // Not `local`, for the reason the queue is not: a draft is text
+            // for a conversation the caller can already read and write, kept
+            // on the host that owns that conversation. A phone is the client
+            // most likely to be killed mid-sentence, and switching device is
+            // meant to find the draft where it was left.
+            async commands::composer_draft => get_composer_draft(
+                request: $crate::commands::composer_draft::ComposerDraftReadRequest,
+            ),
+            async commands::composer_draft => save_composer_draft(
+                request: $crate::commands::composer_draft::ComposerDraftUpsertRequest,
+            ),
+            async commands::composer_draft => clear_composer_draft(
+                request: $crate::commands::composer_draft::ComposerDraftDeleteRequest,
+            ),
+
             #[cfg(not(target_os = "android"))]
             async commands::remote => get_listen_status(),
             #[cfg(not(target_os = "android"))]

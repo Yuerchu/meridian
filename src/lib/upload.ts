@@ -37,6 +37,9 @@ export interface Attachment {
   name: string
   /** The bytes, when the picker was the browser's own. */
   file?: File
+  /** Restored from a saved draft whose file is no longer at `path`. Shown as
+   *  such and removable; sending is refused while one is held. */
+  missing?: boolean
 }
 
 /** A `File`'s bytes as bare base64, via the data-URL reader — the one base64

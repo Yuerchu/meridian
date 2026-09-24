@@ -7,9 +7,16 @@ function validate(command: string, value: unknown, args?: Record<string, unknown
 
 describe('invoke response schema', () => {
   it('covers every invoke declared by api.ts', () => {
-    expect(INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT).toBe(224)
-    expect(Object.keys(invokeResponseSchemaDocument.commands)).toHaveLength(224)
+    expect(INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT).toBe(227)
+    expect(Object.keys(invokeResponseSchemaDocument.commands)).toHaveLength(227)
     expect(() => validate('toString', 'prototype value')).toThrow('No response schema is registered')
+  })
+
+  it('validates composer draft responses exactly', () => {
+    expect(() => validate('get_composer_draft', null)).not.toThrow()
+    expect(() => validate('save_composer_draft', { applied: true, revision: 2 })).not.toThrow()
+    expect(() => validate('clear_composer_draft', { applied: false, revision: 9, extra: 1 })).toThrow()
+    expect(() => validate('get_composer_draft', { body: 'x' })).toThrow()
   })
 
   it('validates void and primitive responses instead of trusting a generic', () => {
