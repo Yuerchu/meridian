@@ -47,6 +47,7 @@ export function useSenderNames(speakers: string | null): SenderNames {
       .catch(() => {
         // A missing name degrades to the raw id, which is still a stable way to
         // tell two people apart — not worth surfacing as an error.
+        // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- a missing name degrades to the raw id; display only
         if (!cancelled) setNames({})
       })
 

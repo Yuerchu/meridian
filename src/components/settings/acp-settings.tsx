@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Description, Input, Label, TextArea, TextField } from '@/components/base'
+import { Alert, Button, Description, Input, Label, TextArea, TextField } from '@/components/base'
 import { api } from '@/api'
 import { cx } from '@/utils/cx'
 import type { AcpCheckResponse, AcpConfigInfoResponse } from '@/types'
@@ -8,9 +8,9 @@ import { SavedHint, SettingsHeader, SettingsPane, SettingsSkeleton } from './pri
 import { useSettingsDirtyRegistration } from './dirty-guard'
 
 /**
- * Mirrors `AcpConfig::default()`. Duplicated rather than fetched because the
- * panel needs something to render on the first frame, and the backend answers
- * with the stored values a moment later anyway.
+ * Mirrors `AcpConfig::default()`. A placeholder only: the form is drawn from
+ * what the backend answers, never from this — a failed read drawn as the
+ * default command is one Save away from replacing the one the user configured.
  */
 const DEFAULTS: AcpConfigInfoResponse = {
   command: 'npx',
@@ -54,21 +54,27 @@ export function AcpSettings() {
    *  is pressable again while a 120-second timeout is still outstanding, and
    *  the slow answer must not land on top of the fast one. */
   const attempt = useRef(0)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [loadAttempt, setLoadAttempt] = useState(0)
 
   useEffect(() => {
+    let cancelled = false
+    setLoadError(null)
     api
       .acpGetConfig()
       .then((loaded) => {
+        if (cancelled) return
         setConfig(loaded)
         setOnDisk(loaded)
         setArgsText(loaded.args.join('\n'))
       })
-      .catch(() => {
-        setConfig(DEFAULTS)
-        setOnDisk(DEFAULTS)
-        setArgsText(DEFAULTS.args.join('\n'))
+      .catch((reason: unknown) => {
+        if (!cancelled) setLoadError(String(reason))
       })
-  }, [])
+    return () => {
+      cancelled = true
+    }
+  }, [loadAttempt])
 
   const save = useCallback(async () => {
     if (!config) return
@@ -122,6 +128,26 @@ export function AcpSettings() {
     onDisk !== null &&
     (config.command.trim() !== onDisk.command || parseArgs(argsText).join('\n') !== onDisk.args.join('\n'))
   useSettingsDirtyRegistration('acp', 'acp-config', dirty)
+
+  // No form without the stored configuration: `acp.command` is a binary this
+  // app executes, and a Save over a form it could not read would replace it.
+  if (!config && loadError !== null) {
+    return (
+      <SettingsPane>
+        <SettingsHeader title={t('settings.acp.title')} subtitle={t('settings.acp.subtitle')} />
+        <Alert data-slot="acp-load-error" status="danger" role="alert">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>{t('settings.acp.loadError')}</Alert.Title>
+            <Alert.Description className="break-all">{loadError}</Alert.Description>
+            <Button size="small" variant="secondary" onPress={() => setLoadAttempt((n) => n + 1)}>
+              {t('common.retry')}
+            </Button>
+          </Alert.Content>
+        </Alert>
+      </SettingsPane>
+    )
+  }
 
   // First load only. A refresh gets the spinner on the button that asked for it.
   if (!config) {

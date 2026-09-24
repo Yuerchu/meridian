@@ -150,7 +150,7 @@ export function PlanReviewEditor({
                   <RichTextEditor.LinkPopover.Trigger aria-label={t('planReview.editor.link')} leadingIcon={Link} />
                   <Tooltip>{t('planReview.editor.link')}</Tooltip>
                 </TooltipTrigger>
-                <RichTextEditor.LinkPopover.Content>
+                <RichTextEditor.LinkPopover.Content aria-label={t('planReview.editor.link')}>
                   <RichTextEditor.LinkPopover.Input aria-label={t('planReview.editor.linkUrl')} />
                   <RichTextEditor.LinkPopover.Actions>
                     <RichTextEditor.LinkPopover.UnsetButton>

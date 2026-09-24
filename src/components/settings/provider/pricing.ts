@@ -1,4 +1,4 @@
-import { assertDecimal38_18, compareDecimals, decimal, decimal38_18 } from '@/lib/decimal'
+import { assertDecimal38_18, decimal, decimal38_18 } from '@/lib/decimal'
 import type { DecimalString, PriceTier } from '@/types'
 
 /**
@@ -125,12 +125,11 @@ export function tiersTo(drafts: TierDraft[]): PriceTier[] {
  *
  * An explicit zero is a price — a free model — and null is nobody having
  * filled it in, which is the distinction the backend keeps and the reason this
- * is not `Boolean(input_price)`. Either rate being above zero is enough: some
- * upstreams charge for output alone.
+ * compares with null rather than with zero. Both base rates have to be present,
+ * because that is what `Prices::known()` asks before it bills anything: half a
+ * rate set prices nothing, and a page saying otherwise would disagree with the
+ * usage report about the same row.
  */
 export function isPriced(prices: { input_price: DecimalString | null; output_price: DecimalString | null }): boolean {
-  return (
-    (prices.input_price != null && compareDecimals(prices.input_price, ZERO_DECIMAL) > 0) ||
-    (prices.output_price != null && compareDecimals(prices.output_price, ZERO_DECIMAL) > 0)
-  )
+  return prices.input_price != null && prices.output_price != null
 }

@@ -76,7 +76,7 @@ interface KanbanCardListProps extends ComponentProps<'ul'> {
 function KanbanCardList({ className, children, renderEmptyState, ...props }: KanbanCardListProps) {
   if (!children && renderEmptyState) {
     return (
-      <div data-slot="kanban-card-list-empty" className="px-2 py-3 text-caption-1-medium text-text-tertiary">
+      <div data-slot="kanban-card-list-empty" className="px-2 py-3 text-caption-1-medium text-text-secondary">
         {renderEmptyState()}
       </div>
     )

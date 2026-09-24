@@ -71,6 +71,7 @@ export function useComposerTypeahead({
         if (alive) setModels(next)
       })
       .catch(() => {
+        // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- typeahead suggestions are display only
         if (alive) setModels([])
       })
     return () => {
@@ -106,6 +107,7 @@ export function useComposerTypeahead({
           setReferenceItems(ranked)
         })
         .catch(() => {
+          // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- typeahead suggestions are display only
           if (alive) setReferenceItems([])
         })
     }, 50)
@@ -201,4 +203,9 @@ export function useComposerTypeahead({
   )
 
   return { token, items, open, activeIndex, setActiveIndex, dismiss, accept }
+}
+
+/** The DOM id of one row, which the textarea names in `aria-activedescendant`. */
+export function suggestionOptionId(listboxId: string, index: number): string {
+  return `${listboxId}-option-${index}`
 }

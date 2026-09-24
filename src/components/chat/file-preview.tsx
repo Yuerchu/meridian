@@ -84,7 +84,7 @@ function FilePreviewLines({
             data-slot="file-preview-line"
             data-preview-line={number}
             data-highlighted={highlighted || undefined}
-            className={highlighted ? 'flex bg-button-primary/10 text-text-primary' : 'flex text-text-primary/80'}
+            className={highlighted ? 'flex bg-date-range-background text-text-primary' : 'flex text-text-primary/80'}
           >
             <span
               data-slot="file-preview-line-number"

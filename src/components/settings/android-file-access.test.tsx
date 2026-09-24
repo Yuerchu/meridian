@@ -51,4 +51,27 @@ describe('AndroidFileAccess', () => {
     expect(toggle).toBeChecked()
     expect(screen.getByText(i18n.t('settings.fileAccess.manageNotGranted'))).toBeInTheDocument()
   })
+
+  it('says so when adding a directory fails, instead of logging it', async () => {
+    const user = userEvent.setup()
+    mockApi.pickSafDirectory.mockRejectedValue('picker unavailable')
+    render(<AndroidFileAccess />)
+
+    await user.click(await screen.findByRole('button', { name: i18n.t('settings.fileAccess.addDir') }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(i18n.t('settings.fileAccess.error'))
+    expect(alert).toHaveTextContent('picker unavailable')
+  })
+
+  it('puts the switch back and says so when the preference is not written', async () => {
+    const user = userEvent.setup()
+    mockApi.setPreference.mockRejectedValue('db locked')
+    render(<AndroidFileAccess />)
+
+    const toggle = await screen.findByRole('switch', { name: i18n.t('settings.fileAccess.manageToggle') })
+    await user.click(toggle)
+    expect(await screen.findByRole('alert')).toHaveTextContent('db locked')
+    expect(toggle).not.toBeChecked()
+    expect(mockApi.requestManageStorage).not.toHaveBeenCalled()
+  })
 })

@@ -5,6 +5,7 @@ export { AreaChart } from './area-chart'
 export { Avatar } from './avatar/avatar'
 export { Button, type ButtonVariant, type ButtonProps, buttonStyles } from './buttons/button'
 export { CloseButton } from './buttons/close-button'
+export { LinkButton, type LinkButtonProps, linkButtonStyles } from './buttons/link-button'
 export { Card } from './card'
 export { CellSwitch } from './cell-switch'
 export { ChatAttachment, ChatAttachmentGroup } from './chat-attachment'
@@ -44,6 +45,7 @@ export { ListView } from './list-view'
 export { Markdown, markdownVariants } from './markdown-variants'
 export { Meter } from './meter'
 export { Modal } from './modal'
+export { Pagination, type PaginationProps } from './pagination/pagination'
 export {
   Notification,
   NotificationViewport,

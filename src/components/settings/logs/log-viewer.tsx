@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
 import { ChevronLeft, Download, RefreshCw, Search } from '@keyline-icons/react/two-tone'
@@ -15,6 +15,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
   const { t } = useTranslation()
   const logs = useAppLogs()
   const [exported, markExported] = useTemporaryFlag(3000)
+  const [exportError, setExportError] = useState<string | null>(null)
 
   // The only two that were written out as literal items rather than a list.
   const levelOptions: SettingsSelectOption<LevelFilter>[] = [
@@ -38,7 +39,14 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
       filters: [{ name: 'JSONL', extensions: ['jsonl'] }],
     }).catch(() => null)
     if (!path) return
-    await api.exportLogs({ outputPath: path })
+    setExportError(null)
+    try {
+      await api.exportLogs({ outputPath: path })
+    } catch (e) {
+      // Unsaid, a refused write looks exactly like a cancelled picker.
+      setExportError(String(e))
+      return
+    }
     markExported()
   }, [markExported])
 
@@ -55,8 +63,14 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
           {t('settings.about.logs.title')}
         </h2>
         <div data-slot="log-viewer-actions" className="ml-auto flex items-center gap-2">
-          <Button variant="secondary" size="small" onPress={logs.refresh} isDisabled={logs.loading}>
-            <RefreshCw className="size-4" />
+          <Button
+            variant="secondary"
+            size="small"
+            onPress={logs.refresh}
+            isDisabled={logs.loading}
+            isPending={logs.refreshing}
+            leadingIcon={RefreshCw}
+          >
             {t('settings.about.logs.refresh')}
           </Button>
           {/* The picker names a path on this device and the file is written by
@@ -72,6 +86,11 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
       <p data-slot="log-viewer-export-hint" className="text-caption-1-regular text-text-secondary">
         {can.exportToDisk ? t('settings.about.logs.exportHint') : t('capability.exportToDisk')}
       </p>
+      {exportError && (
+        <p data-slot="log-viewer-export-error" role="alert" className="text-caption-1-regular text-status-danger">
+          {t('settings.about.logs.exportFailed', { error: exportError })}
+        </p>
+      )}
 
       <div data-slot="log-toolbar" className="flex flex-wrap items-center gap-2">
         <SettingsSelect

@@ -3,8 +3,6 @@ import { createPortal } from 'react-dom'
 import { Disclosure, Spinner, Tooltip, TooltipTrigger, tv, type VariantProps } from '@/components/base'
 import { DisclosureStateContext } from 'react-aria-components'
 import { CircleAlert, CircleCheck, CircleX, Clock } from '@keyline-icons/react/two-tone'
-import { useShikiLanguage } from '@/hooks/use-shiki-language'
-import { highlightInline } from '@/lib/shiki'
 import { cx } from '@/utils/cx'
 import { BUBBLE_BLOCK, BUBBLE_BLOCK_HOVER } from './bubble'
 
@@ -632,71 +630,6 @@ function ChatToolPanelFooter({ className, children, ...props }: React.ComponentP
   )
 }
 
-// Shiki escapes the text it is given, so the markup it returns is safe to
-// inject. `inline` because this sits inside a `<code>` that is already styled —
-// the classic structure would nest a second `<pre><code>` inside it.
-function JsonCode({ code }: { code: string }) {
-  const { language, ready } = useShikiLanguage('json')
-  const html = React.useMemo(() => (ready ? highlightInline(code, language) : null), [code, language, ready])
-  if (html === null) return <code data-slot="chat-tool-json">{code}</code>
-  return <code data-slot="chat-tool-json" dangerouslySetInnerHTML={{ __html: html }} />
-}
-
-interface ChatToolPayloadProps extends React.ComponentProps<'div'> {
-  // Structured value, rendered as JSON.
-  value?: unknown
-  // Preformatted text, useful while streaming partial JSON. Takes precedence.
-  text?: string
-}
-
-function ChatToolArgs({ value, text, className, children, ...props }: ChatToolPayloadProps) {
-  const code = text ?? (value !== undefined ? JSON.stringify(value, null, 2) : undefined)
-  return (
-    <div
-      data-slot="chat-tool-args"
-      className={cx(
-        'scrollbar-gutter-stable max-h-48 overflow-auto rounded-lg bg-background-secondary-default/50 px-3 py-2',
-        className,
-      )}
-      {...props}
-    >
-      {children ??
-        (code !== undefined && (
-          <pre
-            data-slot="chat-tool-args-code"
-            className="font-mono text-caption-1-regular leading-relaxed whitespace-pre-wrap text-text-primary/90 [overflow-wrap:anywhere]"
-          >
-            <JsonCode code={code} />
-          </pre>
-        ))}
-    </div>
-  )
-}
-
-function ChatToolResult({ value, text, className, children, ...props }: ChatToolPayloadProps) {
-  const code = text ?? (value !== undefined ? JSON.stringify(value, null, 2) : undefined)
-  return (
-    <div
-      data-slot="chat-tool-result"
-      className={cx(
-        'scrollbar-gutter-stable max-h-72 overflow-auto rounded-lg bg-background-secondary-default/50 px-3 py-2',
-        className,
-      )}
-      {...props}
-    >
-      {children ??
-        (code !== undefined && (
-          <pre
-            data-slot="chat-tool-result-code"
-            className="font-mono text-caption-1-regular leading-relaxed whitespace-pre-wrap text-text-primary/90 [overflow-wrap:anywhere]"
-          >
-            <JsonCode code={code} />
-          </pre>
-        ))}
-    </div>
-  )
-}
-
 function ChatToolError({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
@@ -751,8 +684,6 @@ export {
   ChatToolPanelHeader,
   ChatToolPanelBody,
   ChatToolPanelFooter,
-  ChatToolArgs,
-  ChatToolResult,
   ChatToolError,
   ChatToolApproval,
   ChatToolPresentationProvider,

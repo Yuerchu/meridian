@@ -45,6 +45,7 @@ import { Composer } from '@/components/chat/composer'
 
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
 import { MarkdownContent } from '@/components/chat/markdown-content'
+import { FilePreviewContext, type FilePreviewContextValue } from '@/components/chat/file-preview-context'
 import { ShikiCode } from '@/components/chat/shiki-code'
 import { languageIconUrl } from '@/lib/file-icon'
 
@@ -126,6 +127,21 @@ plain fence
 ### 三级标题
 
 结尾段落。`
+
+/**
+ * File references inside running prose, the way an assistant writes them: an
+ * inline-code candidate, an explicit link and a bare path, each mid-sentence
+ * so the line box around it can be measured against its neighbours.
+ */
+const FILE_REFERENCE_PROBE = `先读 \`AGENTS.md\` 再改代码，这一行和上下两行的行高应当一样。
+显式链接 [app-shell.tsx](src/components/layout/app-shell.tsx:379) 也在段落中间。
+裸路径 src/components/base/resizable.tsx 同样如此，最后一行没有引用。`
+
+/** Every probe answers "exists" so candidates turn into links; opening does nothing. */
+const PROBE_FILE_PREVIEW: FilePreviewContextValue = {
+  openPreview: () => undefined,
+  probeReference: () => Promise.resolve(true),
+}
 
 /** Tokens whose name exists on both sides, so whoever wins is worth knowing. */
 const CONTESTED_TOKENS = [
@@ -631,6 +647,14 @@ export default function WebViewLab() {
             The base layer's `Markdown` does neither: it is a styled wrapper
             with no parser of its own, so it shows the raw string. Both get the
             same string; read the first three lines of each. */}
+        <Section title="Markdown 文件引用" hint="引用所在行与上下行的高度应一致">
+          <FilePreviewContext value={PROBE_FILE_PREVIEW}>
+            <div data-slot="webview-lab-file-reference" className="rounded-lg border p-3">
+              <MarkdownContent content={FILE_REFERENCE_PROBE} />
+            </div>
+          </FilePreviewContext>
+        </Section>
+
         <Section title="Markdown 两边对照" hint="重点看开头三行：右边会不会断成三行">
           <div data-slot="webview-lab-markdown-compare" className="grid grid-cols-2 gap-4">
             <div data-slot="webview-lab-markdown-ours" className="min-w-0 space-y-2">

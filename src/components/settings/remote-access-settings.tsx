@@ -22,6 +22,9 @@ import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { cx } from '@/utils/cx'
 import type { ListenConfigInfoResponse, ListenStatusResponse } from '@/types'
 import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
+
+/** What `copiedAddress` holds after the token was copied; no address looks like it. */
+const TOKEN_COPY_KEY = '<token>'
 import { useSettingsDirtyRegistration } from './dirty-guard'
 
 /** Mirrors `ListenConfig::default()`; only used until the first load lands. */
@@ -184,9 +187,23 @@ export function RemoteAccessSettings() {
     }
   }
 
-  const copyAddress = (address: string) => {
-    navigator.clipboard.writeText(address)
-    setCopiedAddress(address)
+  /**
+   * Copies, and says so only once the clipboard has actually taken it.
+   *
+   * `writeText` is a promise that rejects — a WebView without clipboard
+   * permission, a page without focus — and the tick used to be drawn before it
+   * had answered, so a failed copy looked exactly like a good one and the next
+   * paste put something else into the other device.
+   */
+  const copyText = async (text: string, key: string) => {
+    setError(null)
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch (reason) {
+      setError(t('settings.remote.copyFailed', { error: String(reason) }))
+      return
+    }
+    setCopiedAddress(key)
     markCopied()
   }
 
@@ -297,6 +314,16 @@ export function RemoteAccessSettings() {
           <Button variant="secondary" onPress={() => setRevealToken(!revealToken)}>
             {revealToken ? t('settings.remote.hide') : t('settings.remote.reveal')}
           </Button>
+          {/* Copied rather than revealed and retyped: the other device needs it
+              character for character, and it is long on purpose. */}
+          <Button
+            variant="secondary"
+            leadingIcon={copied && copiedAddress === TOKEN_COPY_KEY ? Check : Copy}
+            isDisabled={!config.token}
+            onPress={() => config.token && void copyText(config.token, TOKEN_COPY_KEY)}
+          >
+            {t('settings.remote.copyToken')}
+          </Button>
           <Button variant="secondary" onPress={handleRegenerate}>
             {t('settings.remote.regenerate')}
           </Button>
@@ -384,7 +411,7 @@ export function RemoteAccessSettings() {
                           size="small"
                           variant="neutral"
                           aria-label={t('settings.remote.copyAddress')}
-                          onPress={() => copyAddress(dialable)}
+                          onPress={() => void copyText(dialable, dialable)}
                         />
                         <Tooltip>{t('settings.remote.copyAddress')}</Tooltip>
                       </TooltipTrigger>

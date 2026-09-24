@@ -52,14 +52,12 @@ import { Button, Checkbox, CheckboxGroup, Chip, Input, Kbd, Radio, RadioGroup, S
 import {
   ChatTool,
   ChatToolApproval,
-  ChatToolArgs,
   ChatToolContent,
   ChatToolError,
   ChatToolPanelBody,
   ChatToolPanelFooter,
   ChatToolPanelHeader,
   ChatToolPresentationContext,
-  ChatToolResult,
   ChatToolStatusIcon,
   ChatToolTrigger,
   type ChatToolState,
@@ -73,6 +71,10 @@ import { APPROVE_HOTKEY, DENY_HOTKEY } from '@/hooks/use-transcript-hotkeys'
 import { cx } from '@/utils/cx'
 import { api } from '@/api'
 import { parseTodoArgs, todoProgress, TodoItemList, type TodoDraft } from './todo-list'
+import { ToolTextResult, ToolValue } from '@/components/ui/tool-value'
+import { fieldLabel, isInlineValue, parseStructured } from '@/lib/tool-value'
+import { rendererFor } from '@/lib/tool-renderers'
+import { parsePartialObject } from '@/lib/partial-json'
 import { ChatSource, ChatSources } from '@/components/base'
 
 import { openExternally } from '@/lib/external-link'
@@ -142,6 +144,59 @@ function askQuestionsFrom(json: string): AskQuestion[] {
   } catch {
     return []
   }
+}
+
+/**
+ * What the person answered, question by question.
+ *
+ * The result is the JSON object the form sent — `{"<id>": "<answer>"}` — and
+ * drawing it as that object put a line of JSON under every answered question.
+ * Each id is matched back to its question; one that matches nothing keeps its
+ * id rather than disappearing. A result that is not such an object (an older
+ * row, "User did not respond.") is shown as the text it is.
+ */
+function AskAnswers({
+  result,
+  questions,
+  className,
+}: {
+  result: string
+  questions: AskQuestion[]
+  className?: string
+}) {
+  const answers = useMemo(() => {
+    try {
+      const parsed: unknown = JSON.parse(result)
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null
+      return Object.entries(parsed as Record<string, unknown>)
+    } catch {
+      return null
+    }
+  }, [result])
+  if (answers === null) {
+    return (
+      <p
+        data-slot="ask-user-result-text"
+        className={cx('text-caption-1-regular whitespace-pre-wrap text-text-primary', className)}
+      >
+        {result}
+      </p>
+    )
+  }
+  return (
+    <dl data-slot="ask-user-answers" className={cx('flex flex-col gap-2 text-caption-1-regular', className)}>
+      {answers.map(([id, answer]) => (
+        <div key={id} data-slot="ask-user-answer" className="flex min-w-0 flex-col gap-0.5">
+          <dt data-slot="ask-user-answer-question" className="text-text-secondary">
+            {questions.find((q) => q.id === id)?.question ?? id}
+          </dt>
+          <dd data-slot="ask-user-answer-value" className="min-w-0 whitespace-pre-wrap text-text-primary">
+            {typeof answer === 'string' ? answer : <ToolValue value={answer} />}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  )
 }
 
 interface QuestionAnswer {
@@ -468,6 +523,8 @@ export function AskUserBlock({
         result[q.id] = formatAnswer(answers[q.id], skippedSet.has(q.id))
       }
       setSending(true)
+      // The answer sent back to the backend, not anything drawn.
+      // eslint-disable-next-line meridian-ui/no-json-tool-display -- wire payload, not display
       api.respondToAsk({ approvalId, response: JSON.stringify(result) }).then(
         // Same reason as `PendingApproval`: the queue is a separate ledger and
         // learns nothing from an answer given here. A question answered on this
@@ -564,15 +621,7 @@ export function AskUserBlock({
           }
         >
           <div data-slot="ask-user-result-scroll" className="max-h-40 overflow-y-auto ">
-            <pre
-              data-slot="ask-user-result-text"
-              className={cx(
-                'whitespace-pre-wrap text-text-primary text-caption-1-regular',
-                inCard ? 'px-4 py-3' : 'px-3 py-2',
-              )}
-            >
-              {data.result}
-            </pre>
+            <AskAnswers result={data.result} questions={questions} className={inCard ? 'px-4 py-3' : 'px-3 py-2'} />
           </div>
         </div>
       )}
@@ -684,11 +733,30 @@ function toolFileDiffs(toolName: string, args: Record<string, unknown>): FileDif
     case 'edit_file':
     case 'Edit':
       return editFileDiff(args)
+    // `update_plan`'s patch is the same envelope, aimed at the one `plan.md`.
     case 'apply_patch':
+    case 'update_plan':
       return applyPatchDiff(args)
+    case 'MultiEdit':
+      return multiEditDiff(args)
     default:
       return null
   }
+}
+
+/** Claude Code's `MultiEdit`: several `Edit`s to one file, drawn as one file's
+ *  diff with each edit's hunk in order. */
+function multiEditDiff(args: Record<string, unknown>): FileDiff[] | null {
+  const path = typeof args.file_path === 'string' ? args.file_path : null
+  if (path === null || !Array.isArray(args.edits)) return null
+  const lines: DiffLine[] = []
+  for (const edit of args.edits) {
+    if (typeof edit !== 'object' || edit === null) return null
+    const one = editFileDiff({ ...(edit as Record<string, unknown>), file_path: path })
+    if (one === null) return null
+    lines.push(...one[0].lines)
+  }
+  return [{ path, op: 'modify', lines }]
 }
 
 /**
@@ -997,32 +1065,6 @@ function CollapsibleMarkdown({ content, blockId }: { content: string; blockId: s
   )
 }
 
-function GenericResult({ result }: { result: string }) {
-  const [expanded, setExpanded] = useState(false)
-  // JSON results get pretty-printed and syntax-highlighted like a preset theme.
-  const pretty = useMemo(() => {
-    try {
-      return JSON.stringify(JSON.parse(result), null, 2)
-    } catch {
-      return null
-    }
-  }, [result])
-
-  if (pretty !== null && pretty.length <= 2000) {
-    return <ChatToolResult text={pretty} className="max-h-72 rounded-none bg-transparent" />
-  }
-
-  const display = pretty ?? result
-  const truncated = display.length > 1000
-
-  return (
-    <div data-slot="generic-result">
-      <PlainText text={truncated && !expanded ? `${display.slice(0, 1000)}…` : display} className="max-h-48" />
-      {truncated && <ResultToggle expanded={expanded} onToggle={() => setExpanded((current) => !current)} />}
-    </div>
-  )
-}
-
 function ToolErrorResult({ result }: { result: string }) {
   const [expanded, setExpanded] = useState(false)
   const truncated = result.length > 1000
@@ -1049,46 +1091,64 @@ function ToolResult({
   args: Record<string, unknown>
   callId: string
 }) {
-  switch (toolName) {
-    case 'read_file':
-      return <ReadFileResult result={result} path={String(args.path ?? '')} />
-    case 'Read':
-      return <ReadFileResult result={result} path={String(args.file_path ?? '')} />
-    case 'search_files':
+  // Which view is decided per tool in `lib/tool-renderers.ts`, where the gate
+  // holds every tool to having decided.
+  switch (rendererFor(toolName).result) {
+    case 'read-file':
+      return <ReadFileResult result={result} path={String(args.path ?? args.file_path ?? '')} />
+    case 'search':
       return <SearchResult result={result} />
     case 'glob':
       return <GlobResult result={result} />
-    case 'list_directory':
+    case 'directory':
       return <DirectoryResult result={result} />
-    // A skill is Markdown written for the model, and it reads better drawn as
-    // such than as a wall of `#` and `-` in a box.
-    case 'load_skill':
-    case 'Skill':
+    // A skill, a sub-agent's report, a fetched page: Markdown written for a
+    // reader, which reads better drawn as such than as a wall of `#` and `-`.
+    case 'markdown':
       return (
-        <div data-slot="skill-result" className="px-3 py-2">
-          <CollapsibleMarkdown content={result} blockId={`${callId}:skill`} />
+        <div data-slot="markdown-result" className="px-3 py-2">
+          <CollapsibleMarkdown content={result} blockId={`${callId}:result`} />
         </div>
       )
-    default:
-      return <GenericResult result={result} />
+    // `read_plan`: the plan is Markdown inside a JSON envelope.
+    case 'structured':
+      if (toolName === 'read_plan') {
+        const plan = planContentOf(result)
+        if (plan !== null) {
+          return (
+            <div data-slot="plan-result" className="px-3 py-2">
+              <CollapsibleMarkdown content={plan} blockId={`${callId}:plan`} />
+            </div>
+          )
+        }
+      }
+      return <ToolTextResult text={result} />
+    // `command` reaches here only when the output did not parse as one.
+    case 'command':
+    case 'text':
+    case 'own-block':
+      return <ToolTextResult text={result} />
   }
 }
 
-function argText(value: unknown): string {
-  return typeof value === 'string' ? value : JSON.stringify(value, null, 2)
+function planContentOf(result: string): string | null {
+  try {
+    const parsed: unknown = JSON.parse(result)
+    if (typeof parsed === 'object' && parsed !== null && 'content' in parsed) {
+      const content = (parsed as { content: unknown }).content
+      return typeof content === 'string' ? content : null
+    }
+  } catch {
+    /* not the envelope */
+  }
+  return null
 }
 
-/** Too long for the header's meta line: it gets a block in the body. */
+/** Too long for the header's meta line: it gets a block in the body. An
+ *  object or an array always does — it is drawn as fields, not flattened. */
 function isLongArg(value: unknown): boolean {
-  const text = argText(value)
-  return text.includes('\n') || text.length > 80
-}
-
-/** The locale's name for a parameter, or the parameter's own name. */
-function argLabel(t: TFunction, key: string): string {
-  const labelKey = `chat.tool.param.${key}`
-  const label = t(labelKey)
-  return label === labelKey ? key : label
+  if (typeof value === 'string') return value.includes('\n') || value.length > 80
+  return !isInlineValue(value)
 }
 
 /**
@@ -1107,10 +1167,10 @@ function ArgsMeta({ entries }: { entries: [string, unknown][] }) {
           className="inline-flex min-w-0 max-w-full items-baseline gap-1"
         >
           <span data-slot="tool-args-meta-label" className="shrink-0">
-            {argLabel(t, key)}
+            {fieldLabel(t, key)}
           </span>
           <span data-slot="tool-args-meta-value" className="min-w-0 truncate font-mono text-text-primary/80">
-            {argText(value)}
+            {typeof value === 'string' ? value : <ToolValue value={value} />}
           </span>
         </span>
       ))}
@@ -1130,14 +1190,20 @@ function ArgsList({ entries }: { entries: [string, unknown][] }) {
       {entries.map(([key, value]) => (
         <Fragment key={key}>
           <dt data-slot="tool-args-list-label" className="text-text-secondary">
-            {argLabel(t, key)}
+            {fieldLabel(t, key)}
           </dt>
-          <dd
-            data-slot="tool-args-list-value"
-            className="max-h-48 min-w-0 overflow-auto rounded-md bg-background-secondary-default/40 px-2 py-1 font-mono break-words whitespace-pre-wrap text-text-primary/90"
-          >
-            {argText(value)}
-          </dd>
+          {typeof value === 'string' ? (
+            <dd
+              data-slot="tool-args-list-value"
+              className="max-h-48 min-w-0 overflow-auto rounded-md bg-background-secondary-default/40 px-2 py-1 font-mono break-words whitespace-pre-wrap text-text-primary/90"
+            >
+              {value}
+            </dd>
+          ) : (
+            <dd data-slot="tool-args-list-value" className="min-w-0">
+              <ToolValue value={value} />
+            </dd>
+          )}
         </Fragment>
       ))}
     </dl>
@@ -1603,6 +1669,7 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
     (send: () => Promise<void>) => {
       setSent(true)
       send().catch(() => {
+        // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- rolls back an optimistic "sent" flag, not loaded data
         setSent(false)
         if (approvalId) markOrphaned(approvalId)
       })
@@ -1908,6 +1975,15 @@ function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay; revie
         </Button>
       </div>
     </div>
+  )
+}
+
+function hostedTodos(value: unknown): unknown {
+  if (!Array.isArray(value)) return value
+  return value.map((item) =>
+    typeof item === 'object' && item !== null && 'activeForm' in item
+      ? { ...item, active_form: (item as { activeForm: unknown }).activeForm }
+      : item,
   )
 }
 
@@ -2393,6 +2469,8 @@ export function ToolCallBlock({
     data.status === 'orphaned' ||
     data.status === 'queued'
 
+  // Mid-stream the JSON is unfinished; what has arrived so far is read as the
+  // fields it already has (`parsePartialObject`) rather than shown as source.
   const parsedArgs: Record<string, unknown> = useMemo(() => {
     try {
       const parsed = JSON.parse(data.arguments)
@@ -2400,7 +2478,7 @@ export function ToolCallBlock({
         return parsed as Record<string, unknown>
       }
     } catch {
-      /* ignore */
+      return parsePartialObject(data.arguments) ?? {}
     }
     return {}
   }, [data.arguments])
@@ -2499,6 +2577,15 @@ export function ToolCallBlock({
     }
   }
 
+  // Claude Code's checklist: the same list under its own spelling
+  // (`activeForm`) and with no title of its own.
+  if (data.tool_name === 'TodoWrite') {
+    const todoArgs = parseTodoArgs({ title: toolLabel(t, 'TodoWrite'), todos: hostedTodos(parsedArgs.todos) })
+    if (todoArgs) {
+      return <TodoListBlock data={data} title={todoArgs.title} todos={todoArgs.todos} />
+    }
+  }
+
   const label = toolLabel(t, data.tool_name)
   const description = toolDescription(parsedArgs)
   const arg = identifyingArg(data.tool_name, parsedArgs)
@@ -2507,8 +2594,6 @@ export function ToolCallBlock({
   // whole value. See `ToolArgsSummary`.
   const compact = presentation === 'bubble' && state !== 'requires-action'
 
-  const trimmedArgs = data.arguments.trim()
-  const showArgs = trimmedArgs !== '' && trimmedArgs !== '{}'
   const parsedOk = Object.keys(parsedArgs).length > 0
   const isCommand = arg?.kind === 'command'
 
@@ -2522,9 +2607,14 @@ export function ToolCallBlock({
   // A confirmation — "Successfully wrote 312 bytes to …", "Saved memory …" —
   // is one sentence about the outcome and goes in the footer as such. What a
   // reading tool returns is the reading, however short, and stays in the body;
-  // so does a command's one line of output.
+  // so does a command's one line of output. A one-line JSON document is not a
+  // sentence: printed in the footer it was JSON source again.
   const sentence =
-    output !== null && !isCommand && !READING_TOOLS.has(data.tool_name) && isOneLiner(output.body)
+    output !== null &&
+    !isCommand &&
+    !READING_TOOLS.has(data.tool_name) &&
+    isOneLiner(output.body) &&
+    parseStructured(output.body) === null
       ? output.body.trim()
       : null
 
@@ -2627,12 +2717,8 @@ export function ToolCallBlock({
             numberedDiffs.map((d, i) => <FileDiffCard key={i} diff={d} />)
           ) : isCommand ? (
             <CommandCode command={arg.value} />
-          ) : parsedOk ? (
-            longArgs.length > 0 && <ArgsList entries={longArgs} />
           ) : (
-            // Mid-stream the JSON is partial and parses to nothing; it is shown
-            // as it stands rather than as an empty list.
-            showArgs && <ChatToolArgs text={data.arguments} className="rounded-none bg-transparent" />
+            parsedOk && longArgs.length > 0 && <ArgsList entries={longArgs} />
           )}
 
           {data.status === 'error' && data.result !== undefined && (

@@ -186,7 +186,7 @@ describe('TurnItem', () => {
     const { container } = render(<TurnItem turn={turn} conversationId={CONV} questionPosition="last" />)
     const bubble = container.querySelector('[data-slot="bubble"][data-variant="user"]')
     expect(bubble).toHaveAttribute('data-position', 'last')
-    expect(container.querySelector('[data-slot="turn-question"]')?.className).toContain('-mt-5')
+    expect(container.querySelector('[data-slot="turn-question"]')?.className.split(' ')).toContain('-mt-5.5')
   })
 
   it('renders a headless turn without a question bubble', () => {
@@ -1029,5 +1029,61 @@ describe('TurnItem', () => {
       const { container } = render(<TurnItem turn={toolTurn()} conversationId={CONV} />)
       expect(container.querySelector('[data-slot="turn-status"]')).toBeNull()
     })
+  })
+})
+
+/**
+ * Copy is aimed at the bubble, not the turn. A turn that worked through steps
+ * has a bubble per step; copying the last one used to start the clipboard with
+ * the first step's "let me look".
+ */
+describe('TurnItem — what copy copies', () => {
+  beforeAll(async () => {
+    await i18n.changeLanguage('en')
+  })
+
+  function steppedTurn() {
+    const u = msg('user', { content: 'q' })
+    const first = msg('assistant', { _blocks: [text('剪一下。'), toolBlock('write_file')], content: '剪一下。' })
+    const second = msg('assistant', { _blocks: [text('中间一步。'), toolBlock('edit_file')], content: '中间一步。' })
+    const last = msg('assistant', { _blocks: [text('清完了。')], content: '清完了。' })
+    return buildTurns([u, first, second, last])[0]
+  }
+
+  async function copyFromMenuOn(user: ReturnType<typeof userEvent.setup>, bubbleText: string): Promise<string> {
+    await user.pointer({ keys: '[MouseRight]', target: screen.getByText(bubbleText) })
+    await user.click(await screen.findByRole('menuitem', { name: 'Copy' }))
+    return navigator.clipboard.readText()
+  }
+
+  it.each(['剪一下。', '中间一步。', '清完了。'])(
+    'copies exactly the bubble the menu was opened on: %s',
+    async (which) => {
+      const user = userEvent.setup()
+      render(<TurnItem turn={steppedTurn()} conversationId={CONV} onDelete={vi.fn()} />)
+      expect(await copyFromMenuOn(user, which)).toBe(which)
+    },
+  )
+
+  it('offers no copy on a bubble with no prose, and names the turn-wide actions as such', async () => {
+    const user = userEvent.setup()
+    const u = msg('user', { content: 'q' })
+    const a = msg('assistant', { _blocks: [toolBlock('write_file')] })
+    const b = msg('assistant', { _blocks: [text('done')], content: 'done' })
+    render(<TurnItem turn={buildTurns([u, a, b])[0]} conversationId={CONV} onDelete={vi.fn()} onRegenerate={vi.fn()} />)
+    const bare = document.querySelector('[data-variant="tools-only"]')
+    expect(bare).not.toBeNull()
+    await user.pointer({ keys: '[MouseRight]', target: bare as Element })
+    expect(await screen.findByRole('menuitem', { name: 'Regenerate this answer' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Delete this exchange onward' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Copy' })).toBeNull()
+  })
+
+  it('gives the footer’s copy button the conclusion, not the whole run', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<TurnItem turn={steppedTurn()} conversationId={CONV} />)
+    const actions = container.querySelector('[data-slot="assistant-actions"]') as HTMLElement
+    await user.click(within(actions).getByRole('button', { name: 'Copy' }))
+    expect(await navigator.clipboard.readText()).toBe('清完了。')
   })
 })

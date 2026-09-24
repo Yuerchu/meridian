@@ -174,6 +174,7 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
     api
       .getProviderCapabilities({ providerId: selectedProviderId, modelId: selectedModelId })
       .then(setCapabilities)
+      // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- null is "unknown": clamping is skipped, nothing is written
       .catch(() => setCapabilities(null))
   }, [selectedProviderId, selectedModelId])
 

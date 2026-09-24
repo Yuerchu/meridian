@@ -149,7 +149,7 @@ export function About() {
       <div data-slot="about-hero" className="flex items-start gap-4">
         <div
           data-slot="about-mark"
-          className="bg-button-primary/10 text-button-ghost-foreground flex size-14 shrink-0 items-center justify-center rounded-2xl"
+          className="bg-button-ghost-background text-button-ghost-foreground flex size-14 shrink-0 items-center justify-center rounded-2xl"
         >
           <MeridianMark intro className="size-8" />
         </div>

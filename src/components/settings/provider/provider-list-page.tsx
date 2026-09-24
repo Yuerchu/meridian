@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Cloud, Plus } from '@keyline-icons/react/two-tone'
-import { Alert, Button, EmptyState, ListView, Tooltip, TooltipTrigger } from '@/components/base'
+import { Alert, Button } from '@/components/base'
 import { ProviderMark } from '@/components/ui/provider-icon'
 import { api } from '@/api'
 import type { ProviderInfoResponse } from '@/types'
-import { SettingsSkeleton } from '../primitives'
+import { SettingsAddRow, SettingsCard, SettingsLinkRow, SettingsSkeleton } from '../primitives'
 import { SettingsPage } from '../settings-page'
 import { useSettingsResume } from '../settings-stack'
 import { defaultUrlFor, loadProviderCatalog } from './catalog'
@@ -65,7 +64,7 @@ export function ProviderListPage({ onOpen }: { onOpen: (providerId: string) => v
     const auth = entry?.auth[0]
     const format = auth?.api_formats[0] ?? 'chat_completions'
     const created = await api.createProvider({
-      name: entry?.name ?? 'New Provider',
+      name: entry?.name ?? t('settings.provider.newProviderName'),
       providerType: entry?.provider_type ?? 'openai',
       baseUrl: defaultUrlFor(auth, format) ?? '',
       apiFormat: format,
@@ -74,7 +73,7 @@ export function ProviderListPage({ onOpen }: { onOpen: (providerId: string) => v
     })
     await refresh()
     onOpen(created.id)
-  }, [refresh, onOpen])
+  }, [refresh, onOpen, t])
 
   if (loading) return <SettingsSkeleton className="max-w-3xl" />
 
@@ -106,77 +105,46 @@ export function ProviderListPage({ onOpen }: { onOpen: (providerId: string) => v
   }
 
   return (
-    <SettingsPage
-      title={t('settings.provider.title')}
-      width="wide"
-      actions={
-        <TooltipTrigger delay={0}>
-          <Button
-            iconOnly
-            leadingIcon={Plus}
-            size="small"
-            aria-label={t('settings.provider.addProvider')}
-            variant="neutral"
-            onPress={() => void handleCreate()}
+    <SettingsPage title={t('settings.provider.title')} subtitle={t('settings.provider.subtitle')} width="wide">
+      {/* settings-tools.tsx's server list: one card, a row per provider with
+          its mark and name on one line, and the way to add another as the
+          card's last row rather than a lone "+" in the header. The row says
+          where the provider points, which is what tells a relay apart from the
+          vendor it fronts when both draw the same mark. */}
+      <SettingsCard data-slot="provider-list">
+        {providers.map((provider) => (
+          <SettingsLinkRow
+            key={provider.id}
+            // What the stack's focus return looks for when this page comes back.
+            data-key={provider.id}
+            icon={
+              <ProviderMark
+                icon={provider.icon}
+                catalogId={provider.catalog_id}
+                providerType={provider.provider_type}
+                size={20}
+              />
+            }
+            label={provider.name}
+            value={hostOf(provider.base_url)}
+            onPress={() => onOpen(provider.id)}
           />
-          <Tooltip placement="top">{t('settings.provider.addProvider')}</Tooltip>
-        </TooltipTrigger>
-      }
-    >
-      {/* `selectionMode="none"`: a row is a way in rather than a thing to
-          select, and a selected row would keep a highlight on a page nobody is
-          looking at any more. */}
-      <ListView
-        aria-label={t('settings.provider.title')}
-        className="flex flex-col gap-1"
-        selectionMode="none"
-        variant="secondary"
-        onAction={(key) => typeof key === 'string' && onOpen(key)}
-        renderEmptyState={() => (
-          // The text used to point at the "+" in the header, which is what an
-          // empty state has an action slot for.
-          <EmptyState size="sm">
-            <EmptyState.Media variant="icon">
-              <Cloud className="size-4" />
-            </EmptyState.Media>
-            <EmptyState.Header>
-              <EmptyState.Title>{t('settings.provider.noProviders')}</EmptyState.Title>
-            </EmptyState.Header>
-            <EmptyState.Content>
-              <Button variant="secondary" onPress={() => void handleCreate()}>
-                <Plus className="w-4 h-4" />
-                {t('settings.provider.addProvider')}
-              </Button>
-            </EmptyState.Content>
-          </EmptyState>
-        )}
-      >
-        {providers.map((provider) => {
-          return (
-            <ListView.Item
-              key={provider.id}
-              id={provider.id}
-              textValue={provider.name}
-              className="min-h-11 rounded-lg border-b-0 px-3 py-2"
-            >
-              <ListView.ItemContent>
-                <span
-                  data-slot="provider-row-icon"
-                  className="flex size-4 shrink-0 items-center justify-center text-text-secondary"
-                >
-                  <ProviderMark
-                    icon={provider.icon}
-                    catalogId={provider.catalog_id}
-                    providerType={provider.provider_type}
-                    size={16}
-                  />
-                </span>
-                <ListView.Title className="text-body-regular">{provider.name}</ListView.Title>
-              </ListView.ItemContent>
-            </ListView.Item>
-          )
-        })}
-      </ListView>
+        ))}
+        <SettingsAddRow
+          label={t('settings.provider.addProvider')}
+          description={providers.length === 0 ? t('settings.provider.noProviders') : undefined}
+          onPress={() => void handleCreate()}
+        />
+      </SettingsCard>
     </SettingsPage>
   )
+}
+
+/** The host a provider points at, or nothing when its URL does not parse. */
+function hostOf(url: string): string | undefined {
+  try {
+    return new URL(url).host || undefined
+  } catch {
+    return undefined
+  }
 }

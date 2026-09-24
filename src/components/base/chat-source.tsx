@@ -50,7 +50,10 @@ function ChatSourceRoot({ className, href, title, description, faviconUrl, child
                 {description}
               </p>
               {href && (
-                <span data-slot="chat-source-preview-url" className="truncate text-caption-1-medium text-text-tertiary">
+                <span
+                  data-slot="chat-source-preview-url"
+                  className="truncate text-caption-1-medium text-text-secondary"
+                >
                   {href}
                 </span>
               )}

@@ -216,7 +216,9 @@ function ElapsedTimer() {
     return () => window.clearInterval(id)
   }, [])
 
-  return <span className="font-mono text-caption-1-regular text-text-tertiary tabular-nums">{elapsed.toFixed(1)}s</span>
+  return (
+    <span className="font-mono text-caption-1-regular text-text-secondary tabular-nums">{elapsed.toFixed(1)}s</span>
+  )
 }
 
 /* ----------------------------------------------------------------- loader */

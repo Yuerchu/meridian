@@ -123,7 +123,7 @@ export function PromptQueue({
         </div>
       )}
       {current}
-      <PromptInput.Queue.List values={items} onReorder={onReorder}>
+      <PromptInput.Queue.List values={items} onReorder={onReorder} aria-label={t('chat.queue.label')}>
         {items.map((item, index) => {
           const state = queueState(item)
           const doubtful = state === 'in_doubt'

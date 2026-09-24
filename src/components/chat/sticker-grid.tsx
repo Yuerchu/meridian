@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type Key, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type Key, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ListBox, Skeleton } from '@/components/base'
-import { StickerThumb, StickerVisibilityProvider } from './sticker-thumb'
+import { useStickerUrl } from '@/lib/sticker-urls'
+import { useStickerPlayback } from './sticker-playback'
+import { StickerPlaybackProvider, StickerThumb } from './sticker-thumb'
 
 /**
  * Stickers are pictures, not glyphs: three to a row, four once the popover is
@@ -12,19 +14,13 @@ import { StickerThumb, StickerVisibilityProvider } from './sticker-thumb'
  */
 const STICKER_COLUMNS = 'grid grid-cols-3 gap-1 @min-[21rem]/stickers:grid-cols-4'
 
-const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
-
-/** Under reduced motion a sticker in the picker never plays. */
-function useReducedMotion(): boolean {
-  return useSyncExternalStore(
-    (notify) => {
-      const query = window.matchMedia?.(REDUCED_MOTION)
-      query?.addEventListener?.('change', notify)
-      return () => query?.removeEventListener?.('change', notify)
-    },
-    () => window.matchMedia?.(REDUCED_MOTION).matches ?? false,
-  )
-}
+/**
+ * How many cells are drawn before the reader scrolls for more. The grid is a
+ * window onto the list rather than the list: a collected pack runs to hundreds,
+ * and every drawn cell is a collection item, a DOM subtree and — once near — a
+ * URL request.
+ */
+export const STICKER_PAGE = 48
 
 /** How long a finger rests on a sticker before it counts as watching it. */
 const HOLD_MS = 350
@@ -44,24 +40,31 @@ function StickerName({ name }: { name: string }) {
  * One cell's picture. Touch has no hover, so a finger resting on a sticker is
  * what plays it there; the press that ends the hold is then a look rather than
  * a choice, which `onHeld` reports so the grid can decline it.
+ *
+ * The URL is asked for only once the cell is near the grid's viewport, through
+ * the cache every sticker surface shares (`useStickerUrl`). A URL the caller
+ * already has (`src`) is used as is.
  */
 function StickerCell({
   id,
   src,
   name,
-  playing,
-  reducedMotion,
+  pointed,
   onHeld,
 }: {
   id: string
-  src: string
+  src?: string
   name: string
-  playing: boolean
-  reducedMotion: boolean
+  /** Hovered or focused. */
+  pointed: boolean
   onHeld: (id: string) => void
 }) {
+  const box = useRef<HTMLSpanElement>(null)
   const [held, setHeld] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const { near, playing } = useStickerPlayback(box, { autoplay: false, explicit: pointed || held })
+  const fetched = useStickerUrl(src || !near ? null : id)
+  const url = src ?? (fetched.status === 'loaded' ? fetched.url : undefined)
   const release = useCallback(() => {
     if (timer.current) clearTimeout(timer.current)
     timer.current = null
@@ -70,10 +73,12 @@ function StickerCell({
   useEffect(() => release, [release])
   return (
     <span
+      ref={box}
       data-slot="sticker-cell-body"
+      data-url-state={src ? 'loaded' : fetched.status}
       className="flex size-full"
       onPointerDown={(event) => {
-        if (event.pointerType !== 'touch' || reducedMotion) return
+        if (event.pointerType !== 'touch') return
         timer.current = setTimeout(() => {
           setHeld(true)
           onHeld(id)
@@ -83,7 +88,11 @@ function StickerCell({
       onPointerCancel={release}
       onPointerLeave={release}
     >
-      <StickerThumb src={src} playing={playing || held} fallback={<StickerName name={name} />} />
+      {url ? (
+        <StickerThumb src={url} near={near} playing={playing} fallback={<StickerName name={name} />} />
+      ) : fetched.status === 'error' ? (
+        <StickerName name={name} />
+      ) : null}
     </span>
   )
 }
@@ -93,7 +102,10 @@ export interface StickerGridItem {
   name: string
   /** What the grid's typeahead matches: name, tags, pack. */
   textValue: string
-  /** Absent when the file could not be resolved; the cell is then disabled. */
+  /**
+   * Already known — the playground's stickers have no backend. Absent, the
+   * cell asks for it once it is near the viewport.
+   */
   url?: string
 }
 
@@ -102,9 +114,11 @@ export interface StickerGridItem {
  *
  * A RAC `ListBox` in grid layout: the arrow keys move in two dimensions, Enter
  * chooses, and every cell is named by the sticker's name. It scrolls inside
- * its own box, and a cell mounts its picture only near that box's viewport
- * (`StickerVisibilityProvider`) — and shows it still until it is hovered,
- * focused or held (`StickerThumb`).
+ * its own box, draws `STICKER_PAGE` cells at a time and the next page when
+ * its end comes near, and a cell asks for its picture only near that box's
+ * viewport (`StickerPlaybackProvider`) — and shows it still until it is
+ * hovered, focused or held (`StickerThumb`). Nothing in the picker plays by
+ * itself.
  */
 export function StickerGrid({
   items,
@@ -121,7 +135,32 @@ export function StickerGrid({
   const { t } = useTranslation()
   const scroller = useRef<HTMLDivElement>(null)
   const heldPreview = useRef<string | null>(null)
-  const reducedMotion = useReducedMotion()
+  const more = useRef<HTMLDivElement>(null)
+  const [limit, setLimit] = useState(STICKER_PAGE)
+  // A new list — another pack, another search — starts from its first page.
+  const [shownFor, setShownFor] = useState(items)
+  if (shownFor !== items) {
+    setShownFor(items)
+    setLimit(STICKER_PAGE)
+  }
+  const shown = limit >= items.length ? items : items.slice(0, limit)
+  const hasMore = shown.length < items.length
+
+  // Observed afresh after every page: an observer reports only a *change*, so
+  // a sentinel still in view after the page landed (a short page, a tall
+  // popover) would otherwise never ask for the next one.
+  useEffect(() => {
+    const sentinel = more.current
+    if (!hasMore || !sentinel || typeof IntersectionObserver === 'undefined') return
+    const observer = new IntersectionObserver(
+      (records) => {
+        if (records.some((record) => record.isIntersecting)) setLimit((current) => current + STICKER_PAGE)
+      },
+      { root: scroller.current, rootMargin: '0px 0px 160px 0px' },
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [hasMore, limit])
 
   const handleAction = useCallback(
     (key: Key) => {
@@ -138,7 +177,7 @@ export function StickerGrid({
   )
 
   return (
-    <StickerVisibilityProvider rootRef={scroller}>
+    <StickerPlaybackProvider rootRef={scroller}>
       <div
         ref={scroller}
         data-slot="sticker-scroller"
@@ -147,8 +186,7 @@ export function StickerGrid({
         <ListBox
           aria-label={t('chat.emoji')}
           layout="grid"
-          items={items}
-          disabledKeys={items.filter((item) => !item.url).map((item) => item.id)}
+          items={shown}
           onAction={handleAction}
           data-slot="sticker-grid"
           renderEmptyState={() =>
@@ -185,26 +223,22 @@ export function StickerGrid({
               data-slot="sticker-cell"
               className="aspect-square justify-center rounded-xl p-1.5 data-[hovered]:bg-background-secondary-default"
             >
-              {({ isHovered, isFocused }) =>
-                item.url ? (
-                  <StickerCell
-                    id={item.id}
-                    src={item.url}
-                    name={item.name}
-                    playing={!reducedMotion && (isHovered || isFocused)}
-                    reducedMotion={reducedMotion}
-                    onHeld={(id) => {
-                      heldPreview.current = id
-                    }}
-                  />
-                ) : (
-                  <StickerName name={item.name} />
-                )
-              }
+              {({ isHovered, isFocused }) => (
+                <StickerCell
+                  id={item.id}
+                  src={item.url}
+                  name={item.name}
+                  pointed={isHovered || isFocused}
+                  onHeld={(id) => {
+                    heldPreview.current = id
+                  }}
+                />
+              )}
             </ListBox.Item>
           )}
         </ListBox>
+        {hasMore && <div ref={more} data-slot="sticker-grid-more" aria-hidden className="h-px" />}
       </div>
-    </StickerVisibilityProvider>
+    </StickerPlaybackProvider>
   )
 }

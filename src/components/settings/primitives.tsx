@@ -2,7 +2,7 @@ import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button as AriaButton, type ButtonProps as AriaButtonProps } from 'react-aria-components'
 import { Select, SelectItem, Skeleton } from '@/components/base'
-import { Check, ChevronRight } from '@keyline-icons/react/two-tone'
+import { Check, ChevronRight, Plus } from '@keyline-icons/react/two-tone'
 
 import { cx } from '@/utils/cx'
 
@@ -304,6 +304,215 @@ export function SettingsNavRow({
       )}
       {trailing === undefined ? <ChevronRight className="size-4 shrink-0 text-foreground-icon-secondary" /> : trailing}
     </AriaButton>
+  )
+}
+
+/**
+ * A row of a `SettingsCard` that opens something: a provider, a server.
+ *
+ * `SettingsNavRow` is the settings modal's *rail* row — its own rounded wash,
+ * drawn on the page. A list of things inside a card is the other grammar
+ * (settings-tools.tsx, `ServerRow`): the card's `pl-3`, `py-2.5 pr-2.5`, a
+ * 52px floor and a rule under every row but the last. So the row carries no
+ * fill of its own — a wash starting 12px in from the card's edge reads as a
+ * mistake — and says "this goes somewhere" with the chevron, which steps up a
+ * shade on hover.
+ *
+ * Named the way `SettingsNavRow` is: the label is the name, and the badge,
+ * description and value describe it, so "Local tools" beside "stdio" is not
+ * announced as one word.
+ */
+export function SettingsLinkRow({
+  icon,
+  label,
+  badge,
+  description,
+  value,
+  className,
+  ...props
+}: Omit<AriaButtonProps, 'value' | 'className' | 'children'> & {
+  className?: string
+  icon?: React.ReactNode
+  label: React.ReactNode
+  /** A tag beside the label — a transport, a kind. */
+  badge?: React.ReactNode
+  /** A second line under the label. */
+  description?: React.ReactNode
+  /** Shown at the end of the row, before the chevron. */
+  value?: React.ReactNode
+}) {
+  const labelId = React.useId()
+  const badgeId = React.useId()
+  const descriptionId = React.useId()
+  const valueId = React.useId()
+  const describedBy = [badge && badgeId, description && descriptionId, value && valueId].filter(Boolean).join(' ')
+  return (
+    <AriaButton
+      data-slot="settings-link-row"
+      aria-labelledby={labelId}
+      aria-describedby={describedBy || undefined}
+      className={cx(
+        'group/link-row flex min-h-[52px] w-full cursor-pointer items-center gap-2.5 py-2.5 pr-2.5 text-left',
+        'border-b border-separator-border last:border-b-0',
+        'outline-none data-[focus-visible]:rounded-lg data-[focus-visible]:ring-2 data-[focus-visible]:ring-inset data-[focus-visible]:ring-border-focus-ring',
+        className,
+      )}
+      {...props}
+    >
+      {icon && (
+        <span data-slot="settings-link-row-icon" className="flex shrink-0 items-center justify-center">
+          {icon}
+        </span>
+      )}
+      <span data-slot="settings-link-row-text" className="flex min-w-0 flex-1 flex-col">
+        <span data-slot="settings-link-row-title" className="flex min-w-0 items-center gap-2">
+          <span
+            id={labelId}
+            data-slot="settings-link-row-label"
+            className="truncate text-body-medium text-text-primary"
+          >
+            {label}
+          </span>
+          {badge && (
+            <span id={badgeId} data-slot="settings-link-row-badge" className="flex shrink-0 items-center">
+              {badge}
+            </span>
+          )}
+        </span>
+        {description && (
+          <span
+            id={descriptionId}
+            data-slot="settings-link-row-description"
+            className="truncate text-body-2-regular text-text-secondary"
+          >
+            {description}
+          </span>
+        )}
+      </span>
+      {value && (
+        <span
+          id={valueId}
+          data-slot="settings-link-row-value"
+          className="max-w-[40%] shrink-0 truncate text-body-2-regular text-text-secondary"
+        >
+          {value}
+        </span>
+      )}
+      <ChevronRight
+        aria-hidden
+        className="size-4 shrink-0 text-foreground-icon-tertiary transition-colors duration-150 ease group-data-[hovered]/link-row:text-foreground-icon-secondary"
+      />
+    </AriaButton>
+  )
+}
+
+/**
+ * The last row of a list card, which adds one more.
+ *
+ * settings-tools.tsx's `NewServerRow`: a 32px tertiary tile holding a plus,
+ * the action in `body-medium` and what it does underneath. The tile is what
+ * answers the hover, as it is there. Named by its label alone — the
+ * description is a description.
+ */
+export function SettingsAddRow({
+  label,
+  description,
+  icon = <Plus className="size-5 shrink-0 text-foreground-icon-secondary" aria-hidden />,
+  className,
+  ...props
+}: Omit<AriaButtonProps, 'className' | 'children'> & {
+  className?: string
+  label: React.ReactNode
+  description?: React.ReactNode
+  icon?: React.ReactNode
+}) {
+  const labelId = React.useId()
+  const descriptionId = React.useId()
+  return (
+    <AriaButton
+      data-slot="settings-add-row"
+      aria-labelledby={labelId}
+      aria-describedby={description ? descriptionId : undefined}
+      className={cx(
+        'group/add-row flex min-h-[52px] w-full cursor-pointer items-center gap-2.5 py-2.5 pr-2.5 text-left',
+        'border-b border-separator-border last:border-b-0',
+        'outline-none data-[focus-visible]:rounded-lg data-[focus-visible]:ring-2 data-[focus-visible]:ring-inset data-[focus-visible]:ring-border-focus-ring',
+        'data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50',
+        className,
+      )}
+      {...props}
+    >
+      <span
+        data-slot="settings-add-row-tile"
+        className={cx(
+          'flex size-8 shrink-0 items-center justify-center rounded-lg bg-background-tertiary-default',
+          'transition-colors duration-150 ease group-data-[hovered]/add-row:bg-background-tertiary-hover',
+        )}
+      >
+        {icon}
+      </span>
+      <span data-slot="settings-add-row-text" className="flex min-w-0 flex-col">
+        <span id={labelId} data-slot="settings-add-row-label" className="truncate text-body-medium text-text-primary">
+          {label}
+        </span>
+        {description && (
+          <span
+            id={descriptionId}
+            data-slot="settings-add-row-description"
+            className="truncate text-body-2-regular text-text-secondary"
+          >
+            {description}
+          </span>
+        )}
+      </span>
+    </AriaButton>
+  )
+}
+
+/**
+ * A small grey tag on a settings card: a kind, a transport, a category.
+ *
+ * settings-general.tsx's "Current plan" tag. Not `Chip`: every Chip fill is
+ * `background-secondary`, which is exactly the card's own colour, so on a
+ * card a Chip is text with no box. The registry answers that with the
+ * tertiary step, and so does this.
+ */
+export function SettingsTag({ className, ...props }: React.ComponentProps<'span'>) {
+  return (
+    <span
+      data-slot="settings-tag"
+      className={cx(
+        'inline-flex w-fit shrink-0 items-center gap-1 rounded-md bg-background-tertiary-default px-1.5 py-0.5',
+        'text-caption-1-medium whitespace-nowrap text-text-secondary',
+        className,
+      )}
+      {...props}
+    />
+  )
+}
+
+/**
+ * A quiet text action inside a list — "Show all 15", "Show output".
+ *
+ * settings-tools.tsx's `InlineAction`: tertiary ink stepping up to secondary
+ * on hover, no fill, no box. A full-width grey button in that place outweighs
+ * the rows it is only offering more of.
+ */
+export function SettingsInlineAction({
+  className,
+  ...props
+}: Omit<AriaButtonProps, 'className'> & { className?: string }) {
+  return (
+    <AriaButton
+      data-slot="settings-inline-action"
+      className={cx(
+        'w-fit cursor-pointer rounded-sm text-body-2-regular whitespace-nowrap text-text-secondary',
+        'outline-none transition-colors duration-150 ease',
+        'data-[hovered]:text-text-primary data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
+        className,
+      )}
+      {...props}
+    />
   )
 }
 

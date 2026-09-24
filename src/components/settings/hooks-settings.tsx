@@ -82,6 +82,7 @@ function ModelPicker({
     api
       .fetchProviderModels({ providerId, forceRefresh: null })
       .then(setModels)
+      // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- model list feeds the picker only; the saved id is form state
       .catch(() => setModels([]))
   }, [providerId])
 

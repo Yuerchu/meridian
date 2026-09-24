@@ -69,7 +69,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
               className="w-[28rem] max-w-[85vw] pb-[max(1.5rem,var(--safe-bottom))] pr-[max(1.5rem,var(--safe-right))]"
               data-slot="memory-trash"
             >
-              <Sheet.CloseTrigger />
+              <Sheet.CloseTrigger aria-label={t('common.close')} />
               <Sheet.Header className="gap-1">
                 <Sheet.Heading>{t('settings.memory.trash.title')}</Sheet.Heading>
                 <p id={hintId} data-slot="memory-trash-hint" className="text-body-regular text-text-secondary">

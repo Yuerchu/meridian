@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { awaitingModel, buildAssistantGroups, groupsPlainText } from '@/lib/message-groups'
+import { awaitingModel, bubbleCopyText, buildAssistantGroups, turnCopyText } from '@/lib/message-groups'
 import { buildTurns } from '@/lib/turns'
 import type { ContentBlock, MessageViewModel, ToolCallDisplay } from '@/types'
 
@@ -248,13 +248,36 @@ describe('awaitingModel', () => {
   })
 })
 
-describe('groupsPlainText', () => {
-  it('joins every bubble’s prose and nothing else', () => {
+describe('copy scope', () => {
+  it('copies one bubble’s prose, never its neighbours’', () => {
     const { groups } = groupsOf([
       msg('assistant', { _blocks: [thinking('t'), text('one'), tool('x'), text('two')] }),
       msg('assistant', { _blocks: [sticker('s'), text('three')] }),
     ])
-    expect(groupsPlainText(groups)).toBe('one\n\ntwo\n\nthree')
+    const bubbles = groups.flatMap((g) => g.bubbles)
+    const texts = bubbles.map(bubbleCopyText)
+    expect(texts.filter((t) => t !== null)).toEqual(['one', 'two', 'three'])
+    // A sticker has no prose to copy.
+    expect(texts[bubbles.findIndex((b) => b.kind === 'sticker')]).toBeNull()
+  })
+
+  it('gives the turn’s copy button its conclusion, not the whole run', () => {
+    const { turn, groups } = groupsOf([
+      msg('assistant', { _blocks: [text('剪一下。'), tool('x')] }),
+      msg('assistant', { _blocks: [text('清完了。')] }),
+    ])
+    expect(turnCopyText(turn, groups)).toBe('清完了。')
+  })
+
+  it('falls back to the last bubble of prose when there is no conclusion', () => {
+    const { turn, groups } = groupsOf(
+      [msg('assistant', { _blocks: [text('first'), tool('x'), text('second'), tool('y', 'pending')] })],
+      {
+        streaming: true,
+      },
+    )
+    expect(turn.result).toBeNull()
+    expect(turnCopyText(turn, groups)).toBe('second')
   })
 })
 

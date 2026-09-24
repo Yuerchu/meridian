@@ -16,8 +16,10 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { useSidebarResize } from '@/hooks/use-sidebar-resize'
 import { usePlatform } from '@/hooks/use-platform'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
+import { usePlanReviewNavigation } from '@/components/plan-review/navigation'
 import { ApprovalNotifications } from './approval-notifications'
 import { AppSidebar } from './app-sidebar'
+import { CHANGES_PANEL_SIZE, CHAT_PANEL_SIZE } from './changes-split'
 import { CommandPalette } from './command-palette'
 import { NotificationInbox } from './notification-inbox'
 import { RemoteStatus } from './remote-status'
@@ -100,7 +102,9 @@ export function AppShell(props: ShellProps) {
   const pageHeadingRef = useRef<HTMLHeadingElement>(null)
   const previousPageRef = useRef(page)
   const activeReviewId = usePlanReviewStore((state) => state.activeReviewId)
-  const closePlanReview = usePlanReviewStore((state) => state.closeReview)
+  // Every way out of a plan review asks it first: it may hold a draft whose
+  // save failed. Also owns the review's back-gesture level and focus return.
+  const leavePlanReview = usePlanReviewNavigation()
 
   useEffect(() => {
     if (previousPageRef.current === page) return
@@ -148,15 +152,15 @@ export function AppShell(props: ShellProps) {
 
   const selectConversation = useCallback(
     async (id: string) => {
+      if (!(await leavePlanReview())) return false
       if (page === 'settings') {
         if (!(await requestLeaveSettings())) return false
         clearSettingsTabDirty(settingsTab)
       }
-      closePlanReview()
       onSelect(id)
       return true
     },
-    [closePlanReview, onSelect, page, requestLeaveSettings, settingsTab],
+    [leavePlanReview, onSelect, page, requestLeaveSettings, settingsTab],
   )
 
   useBackGesture()
@@ -171,17 +175,16 @@ export function AppShell(props: ShellProps) {
       requestAnimationFrame(() => setSettingsHistoryClaimed(true))
     })
   })
-  useHistoryLevel(activeReviewId !== null, closePlanReview)
 
   const commandShortcut = platform === null ? 'Ctrl/⌘ K' : platform === 'macos' || platform === 'ios' ? '⌘ K' : 'Ctrl K'
   const createConversation = async (projectId?: string | null) => {
+    if (!(await leavePlanReview())) return
     const leavesSettings = page === 'settings'
     if (leavesSettings) {
       if (!(await requestLeaveSettings())) return
     }
     setActionError(null)
     try {
-      closePlanReview()
       await onCreate(projectId)
       if (leavesSettings) clearSettingsTabDirty(settingsTab)
     } catch (error) {
@@ -227,8 +230,9 @@ export function AppShell(props: ShellProps) {
           onDelete={onDelete}
           page={page}
           onOpenSettings={() => {
-            closePlanReview()
-            onOpenSettings()
+            void leavePlanReview().then((left) => {
+              if (left) onOpenSettings()
+            })
           }}
           onCloseSettings={() => void closeSettings()}
           settingsTab={settingsTab}
@@ -328,7 +332,7 @@ export function AppShell(props: ShellProps) {
                 there with the sidebar collapsed. The floating stack shows the
                 front of the same queue; this is all of it. */}
               <NotificationInbox
-                onSelect={(id) => void selectConversation(id)}
+                onSelect={selectConversation}
                 transcriptInert={page === 'settings' || activeReviewId !== null}
               />
             </div>
@@ -383,7 +387,7 @@ export function AppShell(props: ShellProps) {
                 that enclosed both would have the settings page inside a panel
                 it has no business being in. */}
               <Resizable orientation="horizontal" className="h-full min-h-0">
-                <Resizable.Panel id="chat" minSize={35}>
+                <Resizable.Panel id="chat" {...CHAT_PANEL_SIZE}>
                   {/* `min-w-0` or a flex child refuses to shrink, and the
                     transcript's `max-w-4xl mx-auto` overflows instead of
                     narrowing. */}
@@ -431,7 +435,7 @@ export function AppShell(props: ShellProps) {
                       aria-label={t('chat.changes.title')}
                       className="[--resizable-handle-hit-area:16px] pointer-coarse:[--resizable-handle-hit-area:24px]"
                     />
-                    <Resizable.Panel id="changes" defaultSize={30} minSize={18} maxSize={50}>
+                    <Resizable.Panel id="changes" {...CHANGES_PANEL_SIZE}>
                       <ChangesPanel conversationId={activeId} onClose={() => setChangesOpen(false)} />
                     </Resizable.Panel>
                   </>
@@ -463,7 +467,11 @@ export function AppShell(props: ShellProps) {
             {activeReviewId && (
               <div data-slot="plan-review-layer" className="absolute inset-0 z-30 bg-background-full">
                 <Suspense fallback={null}>
-                  <PlanReviewPage key={activeReviewId} reviewId={activeReviewId} onClose={closePlanReview} />
+                  <PlanReviewPage
+                    key={activeReviewId}
+                    reviewId={activeReviewId}
+                    onClose={() => void leavePlanReview()}
+                  />
                 </Suspense>
               </div>
             )}
@@ -475,7 +483,7 @@ export function AppShell(props: ShellProps) {
           layer by z-index, which is right — a conversation stopping on a
           permission prompt is not something being in settings should hide. */}
         <ApprovalNotifications
-          onSelect={(id) => void selectConversation(id)}
+          onSelect={selectConversation}
           transcriptInert={page === 'settings' || activeReviewId !== null}
         />
 
@@ -487,9 +495,11 @@ export function AppShell(props: ShellProps) {
           onSelectConversation={(id) => void selectConversation(id)}
           onSelectProject={onSelectProject}
           onOpenSettingsTab={(tab) => {
-            closePlanReview()
-            void changeSettingsTab(tab).then((changed) => {
-              if (changed) onOpenSettings()
+            void leavePlanReview().then((left) => {
+              if (!left) return
+              void changeSettingsTab(tab).then((changed) => {
+                if (changed) onOpenSettings()
+              })
             })
           }}
           onCreate={createConversation}

@@ -170,7 +170,7 @@ function modelConfig(overrides: {
  * about the editor says which provider it is about.
  */
 async function openFirstProvider(user: ReturnType<typeof userEvent.setup>, name = 'Provider One') {
-  await user.click(await screen.findByRole('option', { name }))
+  await user.click(await screen.findByRole('button', { name }))
 }
 
 /**
@@ -182,6 +182,20 @@ async function openFirstProvider(user: ReturnType<typeof userEvent.setup>, name 
  */
 async function openModel(user: ReturnType<typeof userEvent.setup>, name: string | RegExp) {
   await user.click(await screen.findByRole('row', { name }))
+}
+
+/**
+ * A model nothing describes (capabilities are rejected in these tests) opens
+ * with its window blank and required: the form no longer invents 128000, so
+ * somebody has to type it — and so do these tests.
+ */
+function fillLimits() {
+  fireEvent.change(screen.getByRole('textbox', { name: i18n.t('settings.model.contextWindow') }), {
+    target: { value: '128000' },
+  })
+  fireEvent.change(screen.getByRole('textbox', { name: i18n.t('settings.model.compactThreshold') }), {
+    target: { value: '100000' },
+  })
 }
 
 describe('ProviderSettings list/detail navigation', () => {
@@ -197,6 +211,8 @@ describe('ProviderSettings list/detail navigation', () => {
     mockApi.listModelConfigs.mockResolvedValue([])
     mockApi.getModelConfig.mockResolvedValue(null)
     mockApi.listModelProfiles.mockResolvedValue([])
+    // The page reads the cached list on its own once it has a credential.
+    mockApi.fetchProviderModels.mockResolvedValue([])
     mockApi.getProviderCapabilities.mockRejectedValue(new Error('No capabilities in this test'))
     mockApi.getPreference.mockResolvedValue({ key: 'codex.client_version', value: null })
     mockApi.setPreference.mockResolvedValue(undefined)
@@ -213,7 +229,7 @@ describe('ProviderSettings list/detail navigation', () => {
     const user = userEvent.setup()
     render(<ProviderSettings />)
 
-    await user.click(await screen.findByRole('option', { name: 'Provider Two' }))
+    await user.click(await screen.findByRole('button', { name: 'Provider Two' }))
     expect(await screen.findByRole('heading', { name: 'Provider Two' })).toBeInTheDocument()
   })
 
@@ -229,20 +245,27 @@ describe('ProviderSettings list/detail navigation', () => {
     expect(screen.queryByText(i18n.t('common.back'))).not.toBeInTheDocument()
   })
 
-  it('renders providers as a list of ways in, with provider icons', async () => {
+  it('renders providers as one card of rows, icon and name on one line', async () => {
     mockApi.listProviders.mockResolvedValue([
       makeProvider('p1', 'Provider One'),
       { ...makeProvider('p2', 'Provider Two'), catalog_id: null, provider_type: 'google' },
     ])
-    render(<ProviderSettings />)
+    const { container } = render(<ProviderSettings />)
 
-    const list = await screen.findByRole('listbox', { name: i18n.t('settings.provider.title') })
-    const rows = within(list).getAllByRole('option')
+    await screen.findByRole('button', { name: 'Provider One' })
+    const list = container.querySelector<HTMLElement>('[data-slot="provider-list"]')!
+    const rows = list.querySelectorAll<HTMLElement>('[data-slot="settings-link-row"]')
     expect(rows).toHaveLength(2)
+    // What the stack's focus return finds the row by.
     expect(rows[0]).toHaveAttribute('data-key', 'p1')
+    // Named by the provider alone; where it points is a description.
     expect(rows[1]).toHaveAccessibleName('Provider Two')
-    expect(within(list).queryByRole('checkbox')).not.toBeInTheDocument()
-    expect(rows[0]).not.toHaveAttribute('aria-selected', 'true')
+    // The icon sits beside the name in the row, not stacked above it.
+    const icon = rows[0].querySelector('[data-slot="settings-link-row-icon"]')!
+    expect(icon.nextElementSibling).toHaveAttribute('data-slot', 'settings-link-row-text')
+    // Adding is the card's last row.
+    expect(list.lastElementChild).toHaveAttribute('data-slot', 'settings-add-row')
+    expect(within(list).getByRole('button', { name: i18n.t('settings.provider.addProvider') })).toBeInTheDocument()
 
     await waitFor(() => {
       const icons = list.querySelectorAll('[data-slot="model-icon"]')
@@ -358,8 +381,10 @@ describe('ProviderSettings list/detail navigation', () => {
 
     // Every model this provider answered with, each saying where it stands.
     const priced = await screen.findByRole('row', { name: 'gpt-5.6' })
-    expect(screen.getByText(i18n.t('settings.provider.modelPriced'))).toBeInTheDocument()
-    expect(screen.getByText(i18n.t('settings.provider.modelPriceMissing'))).toBeInTheDocument()
+    // An explicit zero is a free model, which is a price: both configured rows
+    // are priced, and only the unconfigured one says otherwise.
+    expect(screen.getAllByText(i18n.t('settings.provider.modelPriced'))).toHaveLength(2)
+    expect(screen.queryByText(i18n.t('settings.provider.modelPriceMissing'))).not.toBeInTheDocument()
     expect(screen.getByText(i18n.t('settings.provider.modelNotConfigured'))).toBeInTheDocument()
 
     // The window and the two base rates are the reason this is a table rather
@@ -372,8 +397,8 @@ describe('ProviderSettings list/detail navigation', () => {
     expect(priced).toHaveTextContent('10.00')
 
     // An explicit zero is a free model and a null is a price nobody has set;
-    // the chip calls both of them unpriced, and the columns may not. Reading
-    // the first as the second is how a free model looks unconfigured.
+    // neither the chip nor the columns may collapse the two. Reading the first
+    // as the second is how a free model looks unconfigured.
     expect(screen.getByRole('row', { name: 'gpt-5.6-mini' })).toHaveTextContent('0.00')
     expect(screen.getByRole('row', { name: 'gpt-unconfigured' })).toHaveTextContent(
       i18n.t('settings.provider.modelNoValue'),
@@ -446,8 +471,8 @@ describe('ProviderSettings list/detail navigation', () => {
     await user.click(screen.getByRole('button', { name: i18n.t('settings.provider.deleteProvider') }))
     await user.click(await screen.findByRole('button', { name: i18n.t('common.confirm') }))
 
-    await waitFor(() => expect(screen.queryByRole('option', { name: 'Provider One' })).not.toBeInTheDocument())
-    expect(screen.getByRole('option', { name: 'Provider Two' })).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Provider One' })).not.toBeInTheDocument())
+    expect(screen.getByRole('button', { name: 'Provider Two' })).toBeInTheDocument()
   })
 
   /**
@@ -477,6 +502,7 @@ describe('ProviderSettings list/detail navigation', () => {
     mockApi.listModelConfigs.mockResolvedValue([
       modelConfig({ id: 'config-1', model_id: 'gpt-5.6', input_price: decimal('1.25'), output_price: decimal('10') }),
     ])
+    fillLimits()
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
     await waitFor(() => expect(mockApi.saveModelConfig).toHaveBeenCalled())
 
@@ -651,6 +677,7 @@ describe('ProviderSettings list/detail navigation', () => {
     const outputs = screen.getAllByRole('textbox', { name: i18n.t('settings.model.outputPrice') })
     await user.type(outputs[1], '18')
 
+    fillLimits()
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
     await waitFor(() =>
       expect(mockApi.saveModelConfig).toHaveBeenCalledWith(
@@ -699,6 +726,7 @@ describe('ProviderSettings list/detail navigation', () => {
     const tierOutputs = screen.getAllByRole('textbox', { name: i18n.t('settings.model.outputPrice') })
     fireEvent.change(tierOutputs[tierOutputs.length - 1], { target: { value: '36' } })
 
+    fillLimits()
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
     await waitFor(() =>
       expect(mockApi.saveModelConfig).toHaveBeenCalledWith(
@@ -827,6 +855,7 @@ describe('ProviderSettings list/detail navigation', () => {
     fireEvent.change(tierInput, { target: { value: '04.2500' } })
     fireEvent.change(tierOutput, { target: { value: '12.500' } })
 
+    fillLimits()
     await user.click(await screen.findByRole('button', { name: i18n.t('common.save') }))
 
     await waitFor(() =>
@@ -1062,5 +1091,107 @@ describe('ProviderSettings list/detail navigation', () => {
     // Blank means "the version this build shipped with", which is the row
     // being absent rather than a version of `""`.
     expect(mockApi.setPreference).toHaveBeenLastCalledWith({ key: 'codex.client_version', value: null })
+  })
+})
+
+describe('ProviderPage failure paths and cached models', () => {
+  beforeAll(async () => {
+    await i18n.changeLanguage('en')
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockApi.listProviders.mockResolvedValue([makeProvider('p1', 'Provider One')])
+    mockApi.listProviderCatalog.mockResolvedValue(CATALOG)
+    mockApi.getProviderKeyExists.mockResolvedValue(true)
+    mockApi.listModelConfigs.mockResolvedValue([])
+    mockApi.fetchProviderModels.mockResolvedValue([])
+    mockApi.getPreference.mockResolvedValue({ key: 'codex.client_version', value: null })
+    mockApi.setPreference.mockResolvedValue(undefined)
+  })
+
+  it('reads the cached model list on open instead of calling every model unlisted', async () => {
+    const user = userEvent.setup()
+    mockApi.fetchProviderModels.mockResolvedValue([{ id: 'gpt-5.6', name: 'gpt-5.6' }])
+    mockApi.listModelConfigs.mockResolvedValue([
+      modelConfig({ id: 'config-1', model_id: 'gpt-5.6', input_price: decimal('1'), output_price: decimal('2') }),
+    ])
+    render(<ProviderSettings />)
+    await openFirstProvider(user)
+
+    expect(await screen.findByRole('row', { name: 'gpt-5.6' })).toBeInTheDocument()
+    expect(mockApi.fetchProviderModels).toHaveBeenCalledWith({ providerId: 'p1', forceRefresh: false })
+    expect(screen.queryByText(i18n.t('settings.provider.modelNotListed'))).not.toBeInTheDocument()
+  })
+
+  it('keeps the filter box when nothing matches, and says so', async () => {
+    const user = userEvent.setup()
+    mockApi.fetchProviderModels.mockResolvedValue(
+      Array.from({ length: 10 }, (_, i) => ({ id: `model-${i}`, name: `model-${i}` })),
+    )
+    render(<ProviderSettings />)
+    await openFirstProvider(user)
+
+    const filter = await screen.findByRole('textbox', { name: i18n.t('settings.provider.filterModels') })
+    await user.type(filter, 'zzz')
+    expect(screen.getByRole('textbox', { name: i18n.t('settings.provider.filterModels') })).toHaveValue('zzz')
+    expect(screen.getByText(i18n.t('settings.provider.filterNoMatch'))).toBeInTheDocument()
+  })
+
+  it('reports a refused save instead of doing nothing', async () => {
+    const user = userEvent.setup()
+    mockApi.updateProvider.mockRejectedValueOnce('name taken')
+    render(<ProviderSettings />)
+    await openFirstProvider(user)
+
+    await user.click(await screen.findByRole('button', { name: i18n.t('common.save') }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(i18n.t('settings.provider.saveError'))
+    expect(alert).toHaveTextContent('name taken')
+    expect(screen.queryByText(i18n.t('common.saved'))).not.toBeInTheDocument()
+  })
+
+  it('reports a failed delete and stays on the page', async () => {
+    const user = userEvent.setup()
+    mockApi.deleteProvider.mockRejectedValueOnce('in use')
+    render(<ProviderSettings />)
+    await openFirstProvider(user)
+
+    await user.click(await screen.findByRole('button', { name: i18n.t('settings.provider.deleteProvider') }))
+    await user.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', { name: i18n.t('common.confirm') }),
+    )
+    expect(await screen.findByRole('alert')).toHaveTextContent('in use')
+    expect(screen.getByRole('heading', { name: 'Provider One' })).toBeInTheDocument()
+  })
+
+  it('counts an edited Codex client version as unsaved work', async () => {
+    const user = userEvent.setup()
+    mockApi.listProviders.mockResolvedValue([
+      { ...makeProvider('p1', 'Responses Row'), api_format: 'responses', codex_request_shape: true },
+    ])
+    render(<ProviderSettings />)
+    await openFirstProvider(user, 'Responses Row')
+
+    await user.type(await screen.findByLabelText(i18n.t('settings.provider.codexClientVersion')), '0.99.0')
+    await user.click(screen.getByRole('button', { name: i18n.t('common.back') }))
+    expect(await screen.findByRole('alertdialog', { name: i18n.t('confirm.title') })).toBeInTheDocument()
+  })
+
+  it('does not count a typed key as unsaved work on the provider form', async () => {
+    const user = userEvent.setup()
+    mockApi.setProviderKey.mockResolvedValue(undefined)
+    render(<ProviderSettings />)
+    await openFirstProvider(user)
+
+    const key = await screen.findByLabelText(i18n.t('settings.provider.apiKey'))
+    await user.type(key, 'sk-test')
+    // The form's own Save writes the row and never the key: it may not report
+    // the key as saved, and leaving still asks because the key is its own draft.
+    await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
+    await waitFor(() => expect(mockApi.updateProvider).toHaveBeenCalledTimes(1))
+    expect(mockApi.setProviderKey).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: i18n.t('common.back') }))
+    expect(await screen.findByRole('alertdialog', { name: i18n.t('confirm.title') })).toBeInTheDocument()
   })
 })

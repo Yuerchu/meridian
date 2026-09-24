@@ -116,8 +116,8 @@ describe('MarkdownContent file references', () => {
       </FilePreviewProvider>,
     )
 
-    expect(screen.queryByRole('link', { name: 'fastapi/__init__.md' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: '条件1/条件2/条件3' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'fastapi/__init__.md' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '条件1/条件2/条件3' })).not.toBeInTheDocument()
     await waitFor(() =>
       expect(workspaceProbeRef).toHaveBeenCalledWith({
         conversationId: 'conversation-1',
@@ -131,8 +131,8 @@ describe('MarkdownContent file references', () => {
       await existing
     })
 
-    expect(await screen.findAllByRole('link', { name: 'fastapi/__init__.md' })).toHaveLength(2)
-    expect(screen.queryByRole('link', { name: '条件1/条件2/条件3' })).not.toBeInTheDocument()
+    expect(await screen.findAllByRole('button', { name: 'fastapi/__init__.md' })).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: '条件1/条件2/条件3' })).not.toBeInTheDocument()
     expect(workspaceResolveRef).not.toHaveBeenCalled()
     expect(workspaceProbeRef.mock.calls.filter(([request]) => request.path === 'fastapi/__init__.md')).toHaveLength(1)
     expect(workspaceProbeRef.mock.calls.filter(([request]) => request.path === '条件1/条件2/条件3')).toHaveLength(1)
@@ -151,7 +151,7 @@ describe('MarkdownContent file references', () => {
     expect(fallback.tagName).toBe('CODE')
     await waitFor(() => expect(workspaceProbeRef).toHaveBeenCalledTimes(1))
     expect(screen.getByText('条件1/条件2/条件3').tagName).toBe('CODE')
-    expect(screen.queryByRole('link', { name: '条件1/条件2/条件3' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '条件1/条件2/条件3' })).not.toBeInTheDocument()
     expect(workspaceResolveRef).not.toHaveBeenCalled()
   })
 
@@ -174,11 +174,16 @@ describe('MarkdownContent file references', () => {
       </FilePreviewProvider>,
     )
 
-    const source = await screen.findByRole('link', { name: 'src/chat.ts:2-3' })
+    const source = await screen.findByRole('button', { name: 'src/chat.ts:2-3' })
     expect(source).toHaveTextContent('chat.ts')
     expect(source.querySelector('img')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'README.md' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: './config.json:1' })).toBeInTheDocument()
+    // Outside the prose recipe, or `.prose img`'s ~1.7em block margin turns the
+    // glyph into a 59px-tall line; and BoardUI's secondary LinkButton, not the
+    // accent web-link colour.
+    expect(source).toHaveClass('not-prose', 'text-text-secondary')
+    expect(source).not.toHaveClass('text-accent-600')
+    expect(screen.getByRole('button', { name: 'README.md' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: './config.json:1' })).toBeInTheDocument()
 
     fireEvent.click(source)
     await waitFor(() =>
@@ -227,7 +232,7 @@ describe('MarkdownContent file references', () => {
       </FilePreviewProvider>,
     )
 
-    fireEvent.click(await screen.findByRole('link', { name: 'README.md' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'README.md' }))
     await waitFor(() =>
       expect(workspaceResolveRef).toHaveBeenCalledWith({
         conversationId: 'conversation-1',
@@ -250,7 +255,7 @@ describe('MarkdownContent file references', () => {
       </FilePreviewProvider>,
     )
 
-    fireEvent.click(await screen.findByRole('link', { name: 'C:\\outside\\secret.txt' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'C:\\outside\\secret.txt' }))
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /openInEditor|Open in editor/ })).not.toBeInTheDocument()
     expect(openInEditor).not.toHaveBeenCalled()

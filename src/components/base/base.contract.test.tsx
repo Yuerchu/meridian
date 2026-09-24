@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { Plus } from '@keyline-icons/react/two-tone'
-import '@/i18n'
+import i18n from '@/i18n'
 import { expectCollapsed, expectExpanded } from '@/test/disclosure'
 import {
   Avatar,
@@ -17,6 +17,7 @@ import {
   DropdownPopover,
   Input,
   Label,
+  LinkButton,
   Meter,
   Modal,
   Notification,
@@ -27,6 +28,7 @@ import {
   SelectItem,
   Sheet,
   Sidebar,
+  Spinner,
   TextField,
   ToggleButton,
   Tooltip,
@@ -125,6 +127,38 @@ describe('Button is a React Aria pressable', () => {
     expect(button.querySelector('[data-slot="spinner"]')).not.toBeNull()
     await userEvent.click(button)
     expect(onPress).not.toHaveBeenCalled()
+  })
+})
+
+describe('LinkButton is a React Aria pressable', () => {
+  it('opens a tooltip on keyboard focus and fires onPress from the keyboard', async () => {
+    const onPress = vi.fn()
+    render(
+      <TooltipTrigger delay={0} closeDelay={0}>
+        <LinkButton variant="secondary" onPress={onPress}>
+          AGENTS.md
+        </LinkButton>
+        <Tooltip>docs/AGENTS.md</Tooltip>
+      </TooltipTrigger>,
+    )
+    await userEvent.tab()
+    const button = screen.getByRole('button', { name: 'AGENTS.md' })
+    expect(button).toHaveFocus()
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('docs/AGENTS.md')
+    await userEvent.keyboard('{Enter}')
+    expect(onPress).toHaveBeenCalledTimes(1)
+  })
+
+  it('is a React Aria link when given an href', async () => {
+    render(
+      <TooltipTrigger delay={0} closeDelay={0}>
+        <LinkButton href="#here">Here</LinkButton>
+        <Tooltip>tip</Tooltip>
+      </TooltipTrigger>,
+    )
+    await userEvent.tab()
+    expect(screen.getByRole('link', { name: 'Here' })).toHaveFocus()
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('tip')
   })
 })
 
@@ -436,5 +470,28 @@ describe('ToggleButton selection', () => {
     expect(classes.filter((c) => c.startsWith('bg-'))).toEqual([])
     expect(classes).toContain('data-[selected]:bg-pill-tab-blue-selected-background')
     expect(classes).toContain('data-[selected]:text-accent-500')
+  })
+})
+
+describe('Built-in names are in the app’s language', () => {
+  afterEach(async () => {
+    await i18n.changeLanguage('en')
+  })
+
+  it('a pending Button keeps its own name; a lone Spinner names itself in Chinese', async () => {
+    await i18n.changeLanguage('zh-CN')
+    render(
+      <>
+        <Button isPending>保存</Button>
+        <Button isPending iconOnly leadingIcon={Plus} aria-label="添加" />
+        <Spinner />
+      </>,
+    )
+    // Exact names: a spinner inside the button used to make it "Loading 保存".
+    expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '添加' })).toBeInTheDocument()
+    expect(screen.getAllByRole('status')).toHaveLength(1)
+    expect(screen.getByRole('status')).toHaveAccessibleName(i18n.t('common.loading'))
+    expect(screen.getByRole('status')).not.toHaveAccessibleName(/Loading/)
   })
 })

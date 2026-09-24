@@ -9,6 +9,7 @@ import {
   type TreeItemProps,
   type TreeProps,
 } from 'react-aria-components'
+import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cx } from '@/utils/cx'
 import { Button } from './buttons/button'
@@ -146,10 +147,11 @@ function MenuGlyph({
 /** Opens the mobile sheet below 768px; collapses the panel above it. */
 function SidebarTrigger({
   className,
-  'aria-label': ariaLabel = 'Toggle sidebar',
+  'aria-label': ariaLabel,
 }: {
   className?: string
-  'aria-label'?: string
+  /** Required: an icon-only control, and the caller knows the app's language. */
+  'aria-label': string
 }) {
   const { isOpen, setOpen, isMobile, isMobileOpen, setMobileOpen } = useContext(SidebarContext)
   return (
@@ -347,7 +349,7 @@ function SidebarMenuChip({ className, ...props }: ComponentProps<'span'>) {
       data-slot="sidebar-menu-chip"
       {...props}
       className={cx(
-        'ml-auto flex shrink-0 items-center text-caption-1-medium text-text-tertiary group-data-[current]/menu-item:text-text-white/70',
+        'ml-auto flex shrink-0 items-center text-caption-1-medium text-text-secondary group-data-[current]/menu-item:text-text-white/70',
         COLLAPSIBLE,
         className,
       )}
@@ -395,7 +397,17 @@ function SidebarMenuActions({ className, ...props }: ComponentProps<'div'>) {
 
 /* ------------------------------------------------------------------ frame */
 
-function SidebarMobile({ children, className }: { children?: ReactNode; className?: string }) {
+function SidebarMobile({
+  children,
+  className,
+  'aria-label': ariaLabel,
+}: {
+  children?: ReactNode
+  className?: string
+  /** The drawer's name; defaults to the translated "Sidebar". */
+  'aria-label'?: string
+}) {
+  const { t } = useTranslation()
   const { isMobileOpen, setMobileOpen } = useContext(SidebarContext)
   return (
     <div data-slot="sidebar-mobile" className="sidebar__mobile contents md:hidden">
@@ -405,7 +417,7 @@ function SidebarMobile({ children, className }: { children?: ReactNode; classNam
               same in the drawer as beside the chat: on the sheet's default
               primary fill a field's tertiary well vanishes in dark. */}
           <Sheet.Content className={cx('w-[min(100vw-3rem,20rem)] bg-background-secondary-default', className)}>
-            <Sheet.Dialog aria-label="Sidebar" className="p-3">
+            <Sheet.Dialog aria-label={ariaLabel ?? t('sidebar.label')} className="p-3">
               {children}
             </Sheet.Dialog>
           </Sheet.Content>

@@ -10,6 +10,22 @@ function BubbleGroup({ className, ...props }: React.ComponentProps<'div'>) {
 }
 
 /**
+ * The one distance between two adjacent blocks of a run, whichever side of a
+ * bubble boundary they fall on.
+ *
+ * A reader cannot see where one bubble ends and the next begins — every block
+ * has the same fill and the corner rules tighten both boundaries alike — so
+ * two spacings read as noise, not structure. There used to be two: `gap-1`
+ * between blocks of one bubble and `gap-0.5` between bubbles, which put a
+ * prose block 4px from its tool call and that call 2px from the next bubble.
+ * `Bubble`, `MessageGroupBubbles`, `MessageGroupUser` and the bare keyboard
+ * of a `tools-only` bubble all read this, and `bubble-spacing.test.tsx`
+ * fails if any of them stops. Runs (a model change, the question and the
+ * answer) keep their larger gaps; this is the spacing *inside* one.
+ */
+const BUBBLE_RUN_GAP = 'gap-0.5'
+
+/**
  * A bubble, and the blocks it says its part in.
  *
  * **A bubble may have more than one block, and a tool call is one of them.**
@@ -61,7 +77,8 @@ function BubbleGroup({ className, ...props }: React.ComponentProps<'div'>) {
  */
 const bubbleVariants = tv({
   base: [
-    'group/bubble relative flex w-fit max-w-[80%] min-w-0 flex-col gap-1 data-[align=end]:self-end data-[variant=ghost]:max-w-full',
+    'group/bubble relative flex w-fit max-w-[80%] min-w-0 flex-col data-[align=end]:self-end data-[variant=ghost]:max-w-full',
+    BUBBLE_RUN_GAP,
   ],
   variants: {
     // Each of these sets the inherited properties every block reads. Nothing
@@ -233,4 +250,4 @@ function BubbleTime({ className, ...props }: React.ComponentProps<'time'>) {
   )
 }
 
-export { BubbleGroup, Bubble, BubbleContent, BubbleTime, BUBBLE_BLOCK, BUBBLE_BLOCK_HOVER }
+export { BubbleGroup, Bubble, BubbleContent, BubbleTime, BUBBLE_BLOCK, BUBBLE_BLOCK_HOVER, BUBBLE_RUN_GAP }

@@ -92,7 +92,7 @@ function SearchFieldInput({ className, ...props }: Omit<AriaInputProps, 'classNa
       {...props}
       className={cx(
         'min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-body-regular text-text-primary outline-none',
-        'placeholder:text-text-tertiary focus:placeholder:text-text-primary disabled:cursor-not-allowed disabled:text-input-disabled-text',
+        'placeholder:text-text-secondary focus:placeholder:text-text-primary disabled:cursor-not-allowed disabled:text-input-disabled-text',
         '[&::-webkit-search-cancel-button]:hidden',
         className,
       )}
@@ -176,7 +176,7 @@ function InputGroupInput({
       data-slot="input-group-input"
       {...props}
       className={cx(
-        'min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-body-regular text-text-primary outline-none placeholder:text-text-tertiary',
+        'min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-body-regular text-text-primary outline-none placeholder:text-text-secondary',
         className,
       )}
     />
@@ -194,7 +194,7 @@ function InputGroupTextArea({
       data-slot="input-group-textarea"
       {...props}
       className={cx(
-        'min-w-0 flex-1 resize-none border-0 bg-transparent p-0 font-sans text-body-regular text-text-primary outline-none placeholder:text-text-tertiary',
+        'min-w-0 flex-1 resize-none border-0 bg-transparent p-0 font-sans text-body-regular text-text-primary outline-none placeholder:text-text-secondary',
         className,
       )}
     />

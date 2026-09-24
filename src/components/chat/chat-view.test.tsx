@@ -4,6 +4,8 @@ import type { InitialTurnDraft } from './conversation-draft'
 import type { MessageViewModel, UserCommandResultResponse, UserCommandRunRequest } from '@/types'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
 import { ChatView } from './chat-view'
+import { api } from '@/api'
+import { resetComposerDraftSync } from '@/lib/composer-draft-sync'
 
 const mocks = vi.hoisted(() => {
   const sendMessage = vi.fn(() => Promise.resolve())
@@ -98,6 +100,13 @@ vi.mock('@/api', () => ({
     runUserCommand: mocks.runUserCommand,
     stopChat: mocks.stopChat,
     workspaceProbeRef: mocks.workspaceProbeRef,
+    getComposerDraft: vi.fn(() => Promise.resolve(null)),
+    saveComposerDraft: vi.fn((request: { revision: number }) =>
+      Promise.resolve({ applied: true, revision: request.revision }),
+    ),
+    clearComposerDraft: vi.fn((request: { revision: number }) =>
+      Promise.resolve({ applied: true, revision: request.revision }),
+    ),
   },
 }))
 
@@ -613,5 +622,44 @@ describe('ChatView composer dispatch', () => {
     await waitFor(() => expect(mocks.setError).toHaveBeenCalledWith('conversation-1', 'Error: response lost'))
     expect(latestInputBar().value).toBe('')
     expect(mocks.abortShellCommand).not.toHaveBeenCalled()
+  })
+})
+
+describe('ChatView composer draft', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetComposerDraftSync()
+    mocks.loadMessages.mockResolvedValue(true)
+    mocks.sessions['conversation-1'].messages = []
+    mocks.sessions['conversation-1'].streaming = false
+    mocks.sessions['conversation-1'].planReviewBarrier = false
+    mocks.sessions['conversation-1'].activeShellTurnId = null
+    usePlanReviewStore.setState({ activeReviewId: null, summaries: {} })
+  })
+
+  it('restores the stored draft and will not send a file that has gone', async () => {
+    vi.mocked(api.getComposerDraft).mockResolvedValueOnce({
+      conversation_id: 'conversation-1',
+      body: 'where I left off',
+      attachments: [{ path: '/work/gone.txt', name: 'gone.txt', exists: false }],
+      conversation_refs: [],
+      sticker: null,
+      revision: 4,
+      updated_at: 0,
+    })
+
+    render(<ChatView conversationId="conversation-1" />)
+
+    await waitFor(() => expect(latestInputBar().value).toBe('where I left off'))
+    const props = mocks.inputBarProps.mock.calls.at(-1)?.[0] as { attachedFiles: unknown[] }
+    expect(props.attachedFiles).toEqual([{ path: '/work/gone.txt', name: 'gone.txt', missing: true }])
+    expect(api.saveComposerDraft).not.toHaveBeenCalled()
+
+    act(() => latestInputBar().onSubmit())
+    expect(mocks.setError).toHaveBeenCalledWith(
+      'conversation-1',
+      expect.stringMatching(/no longer exist|不存在|chat\.draft\.missingBlocksSend/),
+    )
+    expect(mocks.sendMessage).not.toHaveBeenCalled()
   })
 })

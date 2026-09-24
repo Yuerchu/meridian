@@ -210,16 +210,19 @@ describe('ToolCallBlock file-edit diff rendering', () => {
     expect(screen.getByText('second line', { exact: false })).toBeVisible()
   })
 
-  it('falls back to raw argument text while the JSON is still streaming', () => {
-    // hljs splits the text into token spans, so assert on the args container.
-    const partial = '{"path": "a.txt", "cont'
+  /// Mid-stream the JSON is unfinished. What has arrived is read as the fields
+  /// it already has — never shown as the raw fragment of JSON it is.
+  it('reads the arguments that have arrived while the JSON is still streaming', () => {
+    const partial = '{"path": "a.txt", "content": "line one\\nline tw'
     const { container } = render(<ToolCallBlock data={toolCall('write_file', partial)} />)
 
     expectCardOpen(container)
-    const args = container.querySelector('[data-slot="chat-tool-args"]')
-    expect(args).not.toBeNull()
-    expect(args!).toBeVisible()
-    expect(args!.textContent).toContain(partial)
+    expect(container.textContent).not.toContain('{"path"')
+    expect(screen.getAllByText('a.txt', { exact: false }).length).toBeGreaterThan(0)
+    // Drawn as the diff it already describes; the highlighter splits lines
+    // into token spans, so this reads the text rather than one element.
+    expect(container.querySelector('[data-slot="file-diff"]')).not.toBeNull()
+    expect(container.textContent).toContain('line tw')
   })
 })
 

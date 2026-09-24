@@ -73,7 +73,6 @@ import type { Page } from './shell-props'
 // pull the whole lazily-loaded settings chunk into the main bundle.
 import { visibleSettingsTabGroups, type SettingsTab } from '@/components/settings/tabs'
 import { usePlatform } from '@/hooks/use-platform'
-import { useRelativeTime } from '@/hooks/use-relative-time'
 import { useConfirm } from '@/hooks/use-confirm'
 import { isCoarsePointer } from '@/hooks/use-coarse-pointer'
 import { ConversationIndicator } from './conversation-indicator'
@@ -81,6 +80,7 @@ import { MoveDialog } from './move-dialog'
 import { acceptsConversationDrop, CONVERSATION_DRAG_TYPE, conversationIdOf } from './sidebar-dnd'
 import { RenameDialog } from './rename-dialog'
 import { RowActionDropdownItems, RowActionsMenu } from './row-actions-menu'
+import { ConversationTimeSection, ConversationTimeSlot } from './conversation-time'
 import { useConversationActions, useProjectActions, type RowAction } from './row-actions'
 
 interface AppSidebarProps {
@@ -92,10 +92,12 @@ interface AppSidebarProps {
   onCreate: (projectId?: string | null) => void | Promise<void>
   /** Open the command palette — the sidebar's search row is its second door. */
   onOpenSearch: () => void
-  onDelete: (id: string) => void
-  onRename: (id: string, newTitle: string) => void
-  onTogglePin: (id: string) => void
-  onToggleArchive: (id: string) => void
+  /** These four and the two project ones reject when the backend refuses; the
+   *  sidebar says so in its footer rather than leaving the click unanswered. */
+  onDelete: (id: string) => Promise<void>
+  onRename: (id: string, newTitle: string) => Promise<void>
+  onTogglePin: (id: string) => Promise<void>
+  onToggleArchive: (id: string) => Promise<void>
   /** Refile a conversation under another project, or under none (`null`). */
   onMoveToProject: (id: string, projectId: string | null) => Promise<string | null>
   page: Page
@@ -107,8 +109,8 @@ interface AppSidebarProps {
   activeProjectId: string | null
   onSelectProject: (id: string | null) => void
   onCreateProject: (name: string, path: string) => void | Promise<void>
-  onDeleteProject: (id: string) => void
-  onRenameProject: (id: string, newName: string) => void
+  onDeleteProject: (id: string) => Promise<void>
+  onRenameProject: (id: string, newName: string) => Promise<void>
   /** Start a hosted Claude Code session in `cwd`. Resolves to the reason it
    *  failed, or `null`. Desktop only. */
   onCreateHostedSession: (cwd: string) => Promise<string | null>
@@ -681,7 +683,7 @@ function ConversationGroup({
                 isSelected={isCurrent}
                 // `text-body-2-medium`: the registry's chat history labels its
                 // group ("Recent") in body-2 medium, tertiary ink.
-                className="h-6 min-w-0 flex-1 justify-start rounded-sm px-1 text-body-2-medium text-text-tertiary"
+                className="h-6 min-w-0 flex-1 justify-start rounded-sm px-1 text-body-2-medium text-text-secondary"
               >
                 <span data-slot="sidebar-group-title" className="truncate">
                   {title}
@@ -690,7 +692,7 @@ function ConversationGroup({
             ) : (
               <span
                 data-slot="sidebar-group-title"
-                className="min-w-0 flex-1 truncate px-1 text-body-2-medium text-text-tertiary"
+                className="min-w-0 flex-1 truncate px-1 text-body-2-medium text-text-secondary"
               >
                 {title}
               </span>
@@ -788,7 +790,6 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const { t, i18n } = useTranslation()
   const platform = usePlatform()
-  const relativeTime = useRelativeTime()
   /**
    * Whether the machine that would run the adapter can run one.
    *
@@ -822,6 +823,16 @@ export function AppSidebar({
   const [moveError, setMoveError] = useState<string | null>(null)
   const [movePending, setMovePending] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  // Every row action that writes answers here when it fails. They used to be
+  // fired with nothing listening, so a refused delete or rename was a click
+  // that seemed not to register — and an unhandled rejection in the console.
+  const reportFailure = useCallback(
+    (messageKey: string, task: Promise<void>) => {
+      setActionError(null)
+      task.catch((error: unknown) => setActionError(t(messageKey, { error: String(error) })))
+    },
+    [t],
+  )
   const [archivedConversations, setArchivedConversations] = useState<ConversationInfoResponse[]>([])
   const archivedLoaded = useRef(false)
   const [expandedArchivedGroups, setExpandedArchivedGroups] = useState<Set<string | null>>(new Set())
@@ -1021,8 +1032,8 @@ export function AppSidebar({
   )
 
   const conversationActions = useConversationActions({
-    onTogglePin,
-    onToggleArchive,
+    onTogglePin: (id) => reportFailure('sidebar.pinFailed', onTogglePin(id)),
+    onToggleArchive: (id) => reportFailure('sidebar.archiveFailed', onToggleArchive(id)),
     onRequestRename: (id) => setRenameTarget({ type: 'conversation', id }),
     onRequestMove: (id) => {
       setMoveError(null)
@@ -1030,7 +1041,7 @@ export function AppSidebar({
     },
     onExportError: (error) => setActionError(t('sidebar.exportFailed', { error: String(error) })),
     onRequestDelete: async (id) => {
-      if (await confirm({ body: t('confirm.deleteConversation') })) onDelete(id)
+      if (await confirm({ body: t('confirm.deleteConversation') })) reportFailure('sidebar.deleteFailed', onDelete(id))
     },
     // Only where there is an agent session to point at, and only where a
     // session can exist at all — Android has no child processes, so the
@@ -1047,7 +1058,8 @@ export function AppSidebar({
   const projectActions = useProjectActions({
     onRequestRename: (id) => setRenameTarget({ type: 'project', id }),
     onRequestDelete: async (id) => {
-      if (await confirm({ body: t('confirm.deleteProject') })) onDeleteProject(id)
+      if (await confirm({ body: t('confirm.deleteProject') }))
+        reportFailure('sidebar.deleteProjectFailed', onDeleteProject(id))
     },
   })
 
@@ -1105,12 +1117,18 @@ export function AppSidebar({
         </ContextMenu.Trigger>
         <ContextMenu.Popover>
           <ContextMenu.Menu aria-label={hitLabel}>
-            <RowActionItems actions={actions} />
+            {hitConversation ? (
+              <ConversationTimeSection updatedAt={hitConversation.updated_at}>
+                <RowActionItems actions={actions} />
+              </ConversationTimeSection>
+            ) : (
+              <RowActionItems actions={actions} />
+            )}
           </ContextMenu.Menu>
         </ContextMenu.Popover>
       </ContextMenu>
     ),
-    [menu, recordHit, hitLabel],
+    [menu, recordHit, hitLabel, hitConversation],
   )
 
   const renaming =
@@ -1227,16 +1245,15 @@ export function AppSidebar({
           <Tooltip>{t('sidebar.dragConversation', { name: title })}</Tooltip>
         </TooltipTrigger>
         <Sidebar.MenuChip className="gap-1">
-          {/* Hover swaps this for the action buttons — see `conv-time`. */}
-          <span data-slot="conversation-time" className="conv-time">
-            {relativeTime(conv.updated_at)}
-          </span>
           {/* Pinned rows were sorted to the top and said nothing about why they
               were there. */}
           {conv.is_pinned && <Bookmark aria-label={t('contextMenu.pin')} className="size-3 text-text-secondary" />}
           <ConversationIndicator conversationId={conv.id} activeId={activeId} transcriptInert={page === 'settings'} />
+          {/* The age and the actions button share one slot — see `ConversationTimeSlot`. */}
+          <ConversationTimeSlot updatedAt={conv.updated_at}>
+            <RowActionsMenu label={title} actions={conversationActions(conv)} />
+          </ConversationTimeSlot>
         </Sidebar.MenuChip>
-        <RowActionsMenu label={title} actions={conversationActions(conv)} />
       </Sidebar.MenuItem>
     )
   }
@@ -1509,8 +1526,11 @@ export function AppSidebar({
         heading={t('contextMenu.rename')}
         onSubmit={(value) => {
           if (!renameTarget) return
-          if (renameTarget.type === 'project') onRenameProject(renameTarget.id, value)
-          else onRename(renameTarget.id, value)
+          if (renameTarget.type === 'project') {
+            reportFailure('sidebar.renameProjectFailed', onRenameProject(renameTarget.id, value))
+          } else {
+            reportFailure('sidebar.renameFailed', onRename(renameTarget.id, value))
+          }
         }}
       />
 

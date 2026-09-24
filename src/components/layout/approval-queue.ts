@@ -311,9 +311,10 @@ export const ACTION_VARIANT = { defer: 'secondary', view: 'secondary', deny: 'da
 
 /**
  * What each action does, shared by both surfaces. `onSelect` is the shell's
- * navigation: it opens the conversation (and closes settings).
+ * navigation: it opens the conversation (and closes settings), and resolves
+ * `false` when leaving wherever the reader was got refused.
  */
-export function useAttentionActions(onSelect: (conversationId: string) => void) {
+export function useAttentionActions(onSelect: (conversationId: string) => Promise<boolean>) {
   const defer = useConversationStore((s) => s.deferAttention)
   const retireAnswered = useConversationStore((s) => s.retireAnsweredApproval)
   const markOrphaned = useConversationStore((s) => s.markApprovalOrphaned)
@@ -339,8 +340,13 @@ export function useAttentionActions(onSelect: (conversationId: string) => void) 
         defer(item.approvalId)
         return
       case 'view':
-        onSelect(item.conversationId)
-        if (item.kind === 'plan_review') openPlanReview(item.reviewId)
+        // The review opens only once the navigation has finished. Navigating is
+        // asynchronous — it asks settings about unsaved work, and an open review
+        // about its draft — and its last step closes whatever review was open,
+        // so a review opened alongside it was opened just in time to be closed.
+        void onSelect(item.conversationId).then((navigated) => {
+          if (navigated && item.kind === 'plan_review') openPlanReview(item.reviewId)
+        })
         // Behind the reader, not gone: they are being taken to the card, and if
         // they leave without answering it the question is still owed.
         defer(item.approvalId)

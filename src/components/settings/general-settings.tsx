@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Input } from '@/components/base'
+import { Alert, Button, Input, Skeleton } from '@/components/base'
 import { Check } from '@keyline-icons/react/two-tone'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { LANGUAGES, setLocale } from '@/i18n'
@@ -40,27 +40,51 @@ export function GeneralSettings() {
   const [searchKeyError, setSearchKeyError] = useState<string | null>(null)
   const [prefError, setPrefError] = useState<string | null>(null)
   const searchProviderTouched = useRef(false)
+  // The stored shell, sandbox and search provider. Until they arrive the
+  // controls would show the defaults above as if they were the settings, and
+  // an unreadable preference drawn as its default is a setting nobody chose —
+  // so they wait, and a failure says so instead.
+  const [prefsState, setPrefsState] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [prefsLoadError, setPrefsLoadError] = useState<string | null>(null)
+  const [prefsAttempt, setPrefsAttempt] = useState(0)
   const { confirm, confirmDialog } = useConfirm()
   useSettingsDirtyRegistration('general', 'search-api-key', searchApiKey.trim().length > 0)
 
   useEffect(() => {
-    api.getPreference({ key: 'shell' }).then(({ value }) => {
-      if (value) setShell(value)
-    })
-    // `auto` is the canonical missing-value default: whatever this platform
-    // confines commands with, and nothing where it has none.
-    api.getPreference({ key: 'sandbox.enabled' }).then(({ value }) => {
-      setSandboxMode(value ?? 'auto')
-    })
-    api.getPreference({ key: 'search_provider' }).then(({ value }) => {
-      if (value && !searchProviderTouched.current) setSearchProvider(value)
-    })
-  }, [])
+    let cancelled = false
+    setPrefsState('loading')
+    setPrefsLoadError(null)
+    Promise.all([
+      api.getPreference({ key: 'shell' }),
+      api.getPreference({ key: 'sandbox.enabled' }),
+      api.getPreference({ key: 'search_provider' }),
+    ])
+      .then(([shellPref, sandboxPref, searchPref]) => {
+        if (cancelled) return
+        if (shellPref.value) setShell(shellPref.value)
+        // `auto` is the canonical missing-value default: whatever this platform
+        // confines commands with, and nothing where it has none.
+        setSandboxMode(sandboxPref.value ?? 'auto')
+        if (searchPref.value && !searchProviderTouched.current) setSearchProvider(searchPref.value)
+        setPrefsState('ready')
+      })
+      .catch((reason: unknown) => {
+        if (cancelled) return
+        setPrefsLoadError(String(reason))
+        setPrefsState('error')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [prefsAttempt])
 
   useEffect(() => {
     const provider = SEARCH_PROVIDERS.find((p) => p.value === searchProvider)
     if (provider) {
-      api.getServiceKeyExists(provider.keyService).then(setSearchKeyExists)
+      api
+        .getServiceKeyExists(provider.keyService)
+        .then(setSearchKeyExists)
+        .catch((reason: unknown) => setSearchKeyError(String(reason)))
     }
     setSearchApiKey('')
     clearSearchKeySaved()
@@ -150,7 +174,33 @@ export function GeneralSettings() {
         triggerClassName="max-w-xs"
       />
 
-      {platform !== null && platform !== 'android' && (
+      {prefsState === 'loading' && (
+        <div
+          data-slot="general-prefs-loading"
+          role="status"
+          aria-busy="true"
+          aria-label={t('common.loading')}
+          className="space-y-3"
+        >
+          {Array.from({ length: 3 }, (_, i) => (
+            <Skeleton key={i} className="h-9 w-full max-w-xs" />
+          ))}
+        </div>
+      )}
+      {prefsState === 'error' && (
+        <Alert data-slot="general-prefs-error" status="danger" role="alert">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>{t('settings.general.loadError')}</Alert.Title>
+            {prefsLoadError && <Alert.Description className="break-all">{prefsLoadError}</Alert.Description>}
+            <Button size="small" variant="secondary" onPress={() => setPrefsAttempt((n) => n + 1)}>
+              {t('common.retry')}
+            </Button>
+          </Alert.Content>
+        </Alert>
+      )}
+
+      {prefsState === 'ready' && platform !== null && platform !== 'android' && (
         <SettingsSelect
           label={t('settings.general.shell')}
           value={shell}
@@ -163,7 +213,7 @@ export function GeneralSettings() {
       )}
 
       {/* No longer Windows-only: the restricted token is, a container is not. */}
-      {platform !== null && platform !== 'android' && (
+      {prefsState === 'ready' && platform !== null && platform !== 'android' && (
         <SettingsSelect
           label={t('settings.general.sandbox')}
           value={sandboxMode}
@@ -177,59 +227,61 @@ export function GeneralSettings() {
         />
       )}
 
-      <div data-slot="general-web-search" className="space-y-3">
-        <p data-slot="general-section-label" className="block text-caption-1-medium text-text-secondary">
-          {t('settings.general.webSearch')}
-        </p>
-        {/* The heading above names the whole section, not this control, so both
+      {prefsState === 'ready' && (
+        <div data-slot="general-web-search" className="space-y-3">
+          <p data-slot="general-section-label" className="block text-caption-1-medium text-text-secondary">
+            {t('settings.general.webSearch')}
+          </p>
+          {/* The heading above names the whole section, not this control, so both
             the picker and the key field carry their own name. Without them a
             screen reader announces the trigger by its current value alone. */}
-        <SettingsSelect
-          ariaLabel={t('settings.general.webSearch')}
-          value={searchProvider}
-          options={SEARCH_PROVIDERS}
-          onChange={(value) => void handleSearchProviderChange(value)}
+          <SettingsSelect
+            ariaLabel={t('settings.general.webSearch')}
+            value={searchProvider}
+            options={SEARCH_PROVIDERS}
+            onChange={(value) => void handleSearchProviderChange(value)}
 
-          triggerClassName="max-w-xs"
-        />
-        <div data-slot="general-search-key-row" className="flex items-center gap-2">
-          <Input
-            type="password"
-            aria-label={t('settings.provider.apiKey')}
-            name="searchApiKey"
-            autoComplete="off"
-            value={searchApiKey}
-            onChange={(e) => setSearchApiKey(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.nativeEvent.isComposing) return
-              if (e.key === 'Enter') handleSaveSearchKey()
-            }}
-            placeholder={searchKeyExists ? t('settings.general.searchKeySet') : 'API Key'}
-            className="max-w-xs"
+            triggerClassName="max-w-xs"
           />
-          <Button
-            aria-label={t('settings.general.save')}
-            variant="secondary"
-            onPress={handleSaveSearchKey}
-            isDisabled={!searchApiKey.trim()}
-          >
-            {searchKeySaved && <Check aria-hidden="true" className="w-4 h-4" />}
-            {t('settings.general.save')}
-          </Button>
-        </div>
-        <p data-slot="general-search-hint" className="text-caption-1-regular text-text-secondary">
-          {t('settings.general.searchHint')}
-        </p>
-        {searchKeyError && (
-          <p
-            data-slot="general-search-key-error"
-            role="alert"
-            className="text-caption-1-regular text-status-danger break-all"
-          >
-            {searchKeyError}
+          <div data-slot="general-search-key-row" className="flex items-center gap-2">
+            <Input
+              type="password"
+              aria-label={t('settings.provider.apiKey')}
+              name="searchApiKey"
+              autoComplete="off"
+              value={searchApiKey}
+              onChange={(e) => setSearchApiKey(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.nativeEvent.isComposing) return
+                if (e.key === 'Enter') handleSaveSearchKey()
+              }}
+              placeholder={searchKeyExists ? t('settings.general.searchKeySet') : 'API Key'}
+              className="max-w-xs"
+            />
+            <Button
+              aria-label={t('settings.general.save')}
+              variant="secondary"
+              onPress={handleSaveSearchKey}
+              isDisabled={!searchApiKey.trim()}
+            >
+              {searchKeySaved && <Check aria-hidden="true" className="w-4 h-4" />}
+              {t('settings.general.save')}
+            </Button>
+          </div>
+          <p data-slot="general-search-hint" className="text-caption-1-regular text-text-secondary">
+            {t('settings.general.searchHint')}
           </p>
-        )}
-      </div>
+          {searchKeyError && (
+            <p
+              data-slot="general-search-key-error"
+              role="alert"
+              className="text-caption-1-regular text-status-danger break-all"
+            >
+              {searchKeyError}
+            </p>
+          )}
+        </div>
+      )}
 
       {prefError && (
         <p data-slot="general-pref-error" role="alert" className="text-caption-1-regular text-status-danger break-all">

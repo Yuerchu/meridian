@@ -4,7 +4,8 @@ import type { TFunction } from 'i18next'
 import { Alert, Chip, ListBox, Spinner } from '@/components/base'
 import { ShimmerText } from '@/components/application/agent-log/agent-log'
 import { Ban, CircleCheck, CircleQuestion, Compass, SkipForward, TriangleAlert } from '@keyline-icons/react/two-tone'
-import { ChatToolArgs } from '@/components/ui/chat-tool'
+import { ToolFields } from '@/components/ui/tool-value'
+import { parsePartialObject } from '@/lib/partial-json'
 import { BUBBLE_BLOCK } from '@/components/ui/bubble'
 import { useTranscriptConversationId } from '@/hooks/use-transcript-conversation'
 import { useConversationStore } from '@/stores/conversation-store'
@@ -433,7 +434,6 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
                 {row.delegation.description} · {t('chat.subAgent.asksFor', { tool: nested.tool_name })}
               </span>
             </div>
-            <ChatToolArgs text={nested.arguments} />
             {nested.tool_name === 'ask_user' || nested.tool_name === 'AskUserQuestion' ? (
               <AskUserBlock
                 data={{
@@ -448,12 +448,17 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
                 onAnswered={() => conversationId && resolveNested(conversationId, nested.approval_id)}
               />
             ) : (
-              <PendingApproval
-                key={nested.approval_id}
-                approvalId={nested.approval_id}
-                retryReason={nested.retry_reason}
-                onAnswered={() => conversationId && resolveNested(conversationId, nested.approval_id)}
-              />
+              <>
+                {/* What it wants to run, as fields: this is what is being
+                    approved, and it used to be the raw JSON of the call. */}
+                <ToolFields entries={Object.entries(parsePartialObject(nested.arguments) ?? {})} />
+                <PendingApproval
+                  key={nested.approval_id}
+                  approvalId={nested.approval_id}
+                  retryReason={nested.retry_reason}
+                  onAnswered={() => conversationId && resolveNested(conversationId, nested.approval_id)}
+                />
+              </>
             )}
           </div>
         )

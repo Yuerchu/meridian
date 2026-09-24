@@ -78,7 +78,7 @@ function shouldNotify(convId: string): boolean {
 
 function getConversationTitle(convId: string): string {
   const { conversations } = useConversationStore.getState()
-  return conversations.find((c) => c.id === convId)?.title ?? 'Chat'
+  return conversations.find((c) => c.id === convId)?.title ?? i18n.t('chat.newChat')
 }
 
 async function trySendNotification(title: string, body: string) {

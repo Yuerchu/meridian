@@ -6,7 +6,9 @@ import { Button } from '@/components/base'
 import App from './App'
 import { ErrorBoundary } from './components/error-boundary'
 import { ThemeProvider } from './lib/theme'
+import { isDemo } from './lib/transport'
 import i18n from './i18n'
+import { AriaLocaleProvider } from './i18n/aria-locale'
 import './index.css'
 
 const root = createRoot(document.getElementById('root')!)
@@ -81,11 +83,13 @@ if (isDev && window.location.hash.startsWith('#playground')) {
   import('./dev/playground').then(({ default: Playground }) => {
     root.render(
       <StrictMode>
-        <ThemeProvider>
-          <MotionConfig reducedMotion="user">
-            <Playground />
-          </MotionConfig>
-        </ThemeProvider>
+        <AriaLocaleProvider>
+          <ThemeProvider>
+            <MotionConfig reducedMotion="user">
+              <Playground />
+            </MotionConfig>
+          </ThemeProvider>
+        </AriaLocaleProvider>
       </StrictMode>,
     )
     announceReady()
@@ -93,14 +97,19 @@ if (isDev && window.location.hash.startsWith('#playground')) {
 } else {
   root.render(
     <StrictMode>
-      <ThemeProvider>
-        <MotionConfig reducedMotion="user">
-          <ErrorBoundary fallback={renderAppCrashFallback}>
-            <App />
-          </ErrorBoundary>
-        </MotionConfig>
-      </ThemeProvider>
+      <AriaLocaleProvider>
+        <ThemeProvider>
+          <MotionConfig reducedMotion="user">
+            <ErrorBoundary fallback={renderAppCrashFallback}>
+              <App />
+            </ErrorBoundary>
+          </MotionConfig>
+        </ThemeProvider>
+      </AriaLocaleProvider>
     </StrictMode>,
   )
   announceReady()
+  // Answered by fixtures rather than a backend — say so on screen. `DEV` first
+  // so a release build folds this away with the fixtures themselves.
+  if (isDev && isDemo) void import('./dev/demo/mount-badge').then(({ mountDemoBadge }) => mountDemoBadge())
 }

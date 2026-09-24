@@ -96,6 +96,7 @@ export function VoiceSettings() {
     try {
       await api.voiceDownloadModel({ url: mirrorUrl.trim() || null })
     } catch (e) {
+      // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- clears a download progress bar; the error is shown beside it
       setProgress(null)
       setError(String(e))
     }

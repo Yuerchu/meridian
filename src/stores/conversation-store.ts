@@ -920,6 +920,7 @@ function retireAttention(state: ConversationStore, approvalId: string) {
   if (!state.attention[approvalId]) return
   delete state.attention[approvalId]
   state.attentionOrder = state.attentionOrder.filter((id) => id !== approvalId)
+  delete state.stackIgnored[approvalId]
 }
 
 function planReviewAttentionStage(
@@ -1135,6 +1136,11 @@ export interface ConversationStore {
    *  can be reordered without anything about the questions changing: deferring
    *  one moves it to the end and nothing else. */
   attentionOrder: string[]
+  /** Questions the reader took off the floating notification stack. Only the
+   *  stack reads this: the question is still owed, the inbox still lists it and
+   *  the sidebar dot still lights. Cleared by `retireAttention`, so an answer on
+   *  any path — card, toast, inbox, stop, orphan — takes the entry with it. */
+  stackIgnored: Record<string, true>
   /** An approval the keyboard shortcut asked to refuse. Refusing needs a
    *  reason typed, so the shortcut cannot finish the job itself: it names the
    *  question here, and the panel that owns it switches to its reason field
@@ -1291,6 +1297,9 @@ export interface ConversationStore {
    *  only way past an item is answering it stops being usable at three items,
    *  and one where "later" meant "gone" would make a mis-click cost a turn. */
   deferAttention: (approvalId: string) => void
+  /** Take a question off the floating stack without answering or deferring
+   *  it. It stays in `attention`, so the inbox and the sidebar keep it. */
+  ignoreOnStack: (approvalId: string) => void
   /** Rebuild the queue from the backend's live register.
    *
    *  Every entry in it was announced by an event that is not replayed, so a
@@ -1331,6 +1340,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   subAgentSteps: {},
   attention: {},
   attentionOrder: [],
+  stackIgnored: {},
   denyRequestApprovalId: null,
   navigationStack: [],
   activeProjectId: null,
@@ -2285,6 +2295,17 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       produce((state: ConversationStore) => {
         if (!state.attention[approvalId]) return
         state.attentionOrder = [...state.attentionOrder.filter((id) => id !== approvalId), approvalId]
+      }),
+    )
+  },
+
+  ignoreOnStack: (approvalId) => {
+    set(
+      produce((state: ConversationStore) => {
+        // An id that has already been answered has nothing left to hide, and
+        // recording it would leave an entry no retirement will ever clear.
+        if (!state.attention[approvalId]) return
+        state.stackIgnored[approvalId] = true
       }),
     )
   },

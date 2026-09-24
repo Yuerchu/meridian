@@ -162,7 +162,7 @@ function CommandInputGroupInput({ className, ...props }: Omit<AriaInputProps, 'c
       data-slot="command-input"
       {...props}
       className={cx(
-        'min-w-0 flex-1 border-0 bg-transparent p-0 text-body-regular text-text-primary outline-none placeholder:text-text-tertiary',
+        'min-w-0 flex-1 border-0 bg-transparent p-0 text-body-regular text-text-primary outline-none placeholder:text-text-secondary',
         '[&::-webkit-search-cancel-button]:hidden',
         className,
       )}
@@ -223,7 +223,7 @@ function CommandList({ className, renderEmptyState, children, ...props }: Comman
       {...props}
       className={cx(
         'flex flex-col gap-0.5 overflow-y-auto p-2 outline-none',
-        '[&:empty]:hidden data-[empty]:p-4 data-[empty]:text-center data-[empty]:text-body-regular data-[empty]:text-text-tertiary',
+        '[&:empty]:hidden data-[empty]:p-4 data-[empty]:text-center data-[empty]:text-body-regular data-[empty]:text-text-secondary',
         className,
       )}
     >

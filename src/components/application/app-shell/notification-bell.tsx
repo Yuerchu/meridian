@@ -22,6 +22,7 @@ export function NotificationBell({
   dialogLabel = 'Notifications',
   centerProps,
   before,
+  dialogClassName,
   isOpen: controlledOpen,
   onOpenChange,
 }: {
@@ -34,6 +35,8 @@ export function NotificationBell({
   centerProps?: Omit<NotificationCenterProps, 'notifications'>
   /** Drawn in the popover above the center. */
   before?: ReactNode
+  /** Merged into the popover's dialog, e.g. to bound it to the popover's own max-height. */
+  dialogClassName?: string
   isOpen?: boolean
   onOpenChange?: (isOpen: boolean) => void
 }) {
@@ -82,7 +85,7 @@ export function NotificationBell({
         isNonModal
         className={cx('z-50 w-[440px] max-w-[calc(100vw-24px)] outline-none', OVERLAY_MOTION)}
       >
-        <Dialog aria-label={dialogLabel} className="outline-none">
+        <Dialog aria-label={dialogLabel} className={cx('outline-none', dialogClassName)}>
           {before}
           <NotificationCenter {...centerProps} notifications={notifications} />
         </Dialog>

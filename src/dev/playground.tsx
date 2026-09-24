@@ -7,10 +7,8 @@ import { Button, Input, Tooltip, TooltipTrigger } from '@/components/base'
 import {
   ChatTool,
   ChatToolApproval,
-  ChatToolArgs,
   ChatToolContent,
   ChatToolError,
-  ChatToolResult,
   ChatToolStatusIcon,
   ChatToolTrigger,
 } from '@/components/ui/chat-tool'
@@ -18,7 +16,10 @@ import WebViewLab from './webview-lab'
 import ResponsiveLab, { ResponsiveFrame } from './responsive-lab'
 import SchemaLab from './schema-lab'
 import ScrollLab from './scroll-lab'
+import StickerLab from './sticker-lab'
 import { ToolCallBlock } from '@/components/chat/tool-call-block'
+import { ToolFields } from '@/components/ui/tool-value'
+import { parsePartialObject } from '@/lib/partial-json'
 import { TurnItem } from '@/components/chat/turn-item'
 import { TodoBarView } from '@/components/chat/todo-bar'
 import TodoBoard from '@/components/chat/todo-board'
@@ -497,6 +498,8 @@ export default function Playground() {
   if (window.location.hash === '#playground/scroll') return <ScrollLab />
   if (window.location.hash === '#playground/webview') return <WebViewLab />
   if (window.location.hash === '#playground/schema') return <SchemaLab />
+  if (window.location.hash === '#playground/stickers') return <StickerLab legacy={false} />
+  if (window.location.hash === '#playground/stickers-legacy') return <StickerLab legacy />
   // One route, two sides: the harness and the frame it drives are the same
   // document loaded twice, told apart by a query parameter rather than a second
   // hash — the checks above are `===`, and a frame carrying its own hash suffix
@@ -546,8 +549,8 @@ function Gallery() {
                 </span>
               </ChatToolTrigger>
               <ChatToolContent>
-                <ChatToolArgs value={{ city: 'Paris' }} />
-                <ChatToolResult value={{ summary: '18°C, partly cloudy' }} />
+                <ToolFields entries={[['city', 'Paris']]} className="px-3 py-2" />
+                <ToolFields entries={[['summary', '18°C, partly cloudy']]} className="px-3 py-2" />
               </ChatToolContent>
             </ChatTool>
 
@@ -562,7 +565,10 @@ function Gallery() {
                 </span>
               </ChatToolTrigger>
               <ChatToolContent>
-                <ChatToolArgs text='{"query":"boardui' />
+                <ToolFields
+                  entries={Object.entries(parsePartialObject('{"query":"boardui') ?? {})}
+                  className="px-3 py-2"
+                />
               </ChatToolContent>
             </ChatTool>
 
@@ -577,7 +583,7 @@ function Gallery() {
                 </span>
               </ChatToolTrigger>
               <ChatToolContent>
-                <ChatToolArgs value={{ url: 'https://example.com' }} />
+                <ToolFields entries={[['url', 'https://example.com']]} className="px-3 py-2" />
                 <ChatToolError>Request timed out after 30s</ChatToolError>
               </ChatToolContent>
             </ChatTool>
@@ -593,7 +599,13 @@ function Gallery() {
                 </span>
               </ChatToolTrigger>
               <ChatToolContent>
-                <ChatToolArgs value={{ to: 'team@acme.com', subject: 'Launch update' }} />
+                <ToolFields
+                  entries={[
+                    ['to', 'team@acme.com'],
+                    ['subject', 'Launch update'],
+                  ]}
+                  className="px-3 py-2"
+                />
                 <ChatToolApproval>
                   <Button variant="secondary">Reject</Button>
                   <Button>Approve</Button>

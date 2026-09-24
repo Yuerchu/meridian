@@ -65,6 +65,24 @@ const PromptInputCtx = createContext<PromptInputContextValue>({
 
 const isRunning = (status: PromptInputStatus) => status === 'submitted' || status === 'streaming'
 
+/**
+ * What the send button does right now, and the one place that decides it.
+ *
+ * Idle it sends. While a turn runs it stops the turn — unless submitting while
+ * running is allowed *and* there is text, which is a steer or a queued message,
+ * and then it sends. The button used to read only the status, so a steer typed
+ * mid-run was answered by stopping the run it was meant to steer, while the
+ * composer, reading the full rule, drew a second Stop beside it. `wait` is a
+ * run nobody can stop from here.
+ */
+type SendMode = 'send' | 'stop' | 'wait'
+
+function sendModeOf(ctx: PromptInputContextValue): SendMode {
+  if (!isRunning(ctx.status)) return 'send'
+  if (ctx.allowSubmitWhileRunning && ctx.value.trim() !== '') return 'send'
+  return ctx.onStop ? 'stop' : 'wait'
+}
+
 interface PromptInputProps extends Omit<ComponentProps<'div'>, 'onSubmit'> {
   value?: string
   onValueChange?: (value: string) => void
@@ -190,7 +208,7 @@ function PromptInputTextArea({ className, onKeyDown, ...props }: PromptInputText
       rows={1}
       {...props}
       className={cx(
-        'w-full resize-none bg-transparent px-4 py-3 text-body-regular text-text-primary outline-none placeholder:text-text-tertiary',
+        'w-full resize-none bg-transparent px-4 py-3 text-body-regular text-text-primary outline-none placeholder:text-text-secondary',
         'disabled:cursor-not-allowed disabled:text-text-tertiary',
         className,
       )}
@@ -265,7 +283,7 @@ function PromptInputControl({
       className={cx(CONTROL, tone === 'danger' && CONTROL_DANGER, className)}
     >
       {isPending ? (
-        <Spinner size="sm" color="current" />
+        <Spinner size="sm" color="current" aria-hidden />
       ) : Icon ? (
         <Icon aria-hidden className="size-5 shrink-0" />
       ) : null}
@@ -299,33 +317,67 @@ function PromptInputAction({ className, tooltip, ...props }: PromptInputActionPr
 }
 
 interface PromptInputSendProps {
-  'aria-label'?: string
+  /** The name while it sends. Two labels rather than one, because which one
+   *  applies is decided in here and a caller restating the rule is how the two
+   *  came to disagree. */
+  sendLabel?: string
+  /** The name while it stops the run. */
+  stopLabel?: string
   disabled?: boolean
   className?: string
 }
 
-function PromptInputSend({ className, disabled, ...props }: PromptInputSendProps) {
-  const { onSubmit, onStop, status } = useContext(PromptInputCtx)
+function PromptInputSend({
+  className,
+  disabled,
+  sendLabel = 'Send message',
+  stopLabel = 'Stop',
+}: PromptInputSendProps) {
+  const ctx = useContext(PromptInputCtx)
+  const { onSubmit, onStop, status } = ctx
   const running = isRunning(status)
+  const mode = sendModeOf(ctx)
   // Send is the primary pill; Stop is the registry agent-composer's grey one
   // (`bg-background-secondary-default text-foreground-icon-secondary`, which is
   // the `neutral` variant). Both 36px round, as upstream.
-  const stopping = running && !!onStop
   return (
     <Button
       data-slot="prompt-input-send"
       data-running={running || undefined}
-      variant={stopping ? 'neutral' : 'primary'}
+      variant={mode === 'stop' ? 'neutral' : 'primary'}
       iconOnly
       size="medium"
-      // `submitted` is the wait for the first token: a spinner, no press.
-      // `streaming` is the stop button; without an onStop it is a wait too.
-      isPending={status === 'submitted'}
-      isDisabled={disabled || (running && !onStop)}
-      onPress={running ? onStop : onSubmit}
+      // `submitted` is the wait for the first token: a spinner, no press —
+      // unless there is a steer to send, which does not wait for it.
+      isPending={mode !== 'send' && status === 'submitted'}
+      isDisabled={disabled || mode === 'wait'}
+      onPress={mode === 'send' ? onSubmit : onStop}
       className={cx('rounded-full', className)}
-      aria-label={props['aria-label']}
-      leadingIcon={running ? Stop : ArrowUp}
+      // A wait is still the send button, only not yet pressable.
+      aria-label={mode === 'stop' ? stopLabel : sendLabel}
+      leadingIcon={mode === 'send' ? ArrowUp : Stop}
+    />
+  )
+}
+
+/**
+ * A separate Stop, drawn exactly while Send is sending during a run.
+ *
+ * Then Send is a steer, and without this the run could only be stopped by
+ * emptying the field first. Never beside a Send that is itself a Stop, which is
+ * what drew two of them — the rule is `sendModeOf`'s, not the caller's.
+ */
+function PromptInputStop({ label, className }: { label: string; className?: string }) {
+  const ctx = useContext(PromptInputCtx)
+  if (!isRunning(ctx.status) || !ctx.onStop || sendModeOf(ctx) !== 'send') return null
+  return (
+    <PromptInputAction
+      data-slot="prompt-input-stop"
+      aria-label={label}
+      tooltip={label}
+      onPress={ctx.onStop}
+      leadingIcon={Stop}
+      className={className}
     />
   )
 }
@@ -368,7 +420,8 @@ interface QueueValue {
 interface QueueListProps<T extends QueueValue> {
   values?: T[]
   onReorder?: (values: T[]) => void
-  'aria-label'?: string
+  /** Required: the list has no visible heading to be named by. */
+  'aria-label': string
   className?: string
   children?: ReactNode
 }
@@ -391,7 +444,7 @@ function QueueList<T extends QueueValue>({ values = [], onReorder, className, ch
   return (
     <GridList
       data-slot="prompt-input-queue-list"
-      aria-label={props['aria-label'] ?? 'Queued prompts'}
+      aria-label={props['aria-label']}
       dragAndDropHooks={dragAndDropHooks}
       selectionMode="none"
       className={cx('flex flex-col gap-1 p-2 outline-none', className)}
@@ -588,6 +641,7 @@ export const PromptInput = Object.assign(PromptInputRoot, {
   Action: PromptInputAction,
   Control: PromptInputControl,
   Send: PromptInputSend,
+  Stop: PromptInputStop,
   Footer: PromptInputFooter,
   Queue,
 })

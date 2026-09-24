@@ -76,7 +76,7 @@ beforeEach(async () => {
 describe('the bell', () => {
   it('names the count and draws it on the glyph', () => {
     seed([call('a', 'c1'), call('b', 'c2')])
-    render(<NotificationInbox onSelect={() => {}} transcriptInert={false} />)
+    render(<NotificationInbox onSelect={async () => true} transcriptInert={false} />)
     expect(bell()).toHaveAccessibleName(i18n.t('notifications.inbox.bell', { count: 2 }))
     expect(badge()).toBe('2')
   })
@@ -85,20 +85,20 @@ describe('the bell', () => {
    *  number says nothing the bell's name does not. */
   it('caps the drawn count at 99+ and names the real one', () => {
     seed(Array.from({ length: 120 }, (_, i) => call(`q${i}`, `c${i}`)))
-    render(<NotificationInbox onSelect={() => {}} transcriptInert={false} />)
+    render(<NotificationInbox onSelect={async () => true} transcriptInert={false} />)
     expect(badge()).toBe('99+')
     expect(bell()).toHaveAccessibleName(i18n.t('notifications.inbox.bell', { count: 120 }))
   })
 
   it('draws 99 as it is', () => {
     seed(Array.from({ length: 99 }, (_, i) => call(`q${i}`, `c${i}`)))
-    render(<NotificationInbox onSelect={() => {}} transcriptInert={false} />)
+    render(<NotificationInbox onSelect={async () => true} transcriptInert={false} />)
     expect(badge()).toBe('99')
   })
 
   it('draws no count when nothing is waiting', () => {
     seed([])
-    render(<NotificationInbox onSelect={() => {}} transcriptInert={false} />)
+    render(<NotificationInbox onSelect={async () => true} transcriptInert={false} />)
     expect(bell()).toHaveAccessibleName(i18n.t('notifications.inbox.bell', { count: 0 }))
     expect(badge()).toBe('')
   })
@@ -106,15 +106,34 @@ describe('the bell', () => {
   /** The count is what the list holds, so the conversation being read is not in it. */
   it('does not count the conversation being read', () => {
     seed([call('a', 'being-read'), call('b', 'c2')], 'being-read')
-    render(<NotificationInbox onSelect={() => {}} transcriptInert={false} />)
+    render(<NotificationInbox onSelect={async () => true} transcriptInert={false} />)
     expect(badge()).toBe('1')
   })
 })
 
 describe('the inbox', () => {
+  it('fills the popover and scrolls as one box bounded by the popover’s own max-height', async () => {
+    seed(Array.from({ length: 12 }, (_, i) => call(`q${i}`, `c${i}`)))
+    render(<NotificationInbox onSelect={async () => true} transcriptInert={false} />)
+    const dialog = await open()
+    const center = within(dialog).getByRole('region', { name: i18n.t('notifications.inbox.title') })
+
+    // React Aria writes the room left in the viewport onto the popover inline;
+    // the dialog takes it, and the center scrolls inside that.
+    expect(dialog.parentElement?.style.maxHeight).toMatch(/px$/)
+    expect(dialog).toHaveClass('flex', 'max-h-[inherit]', 'flex-col')
+    expect(center).toHaveClass('max-w-none', 'min-h-0', 'overflow-y-auto')
+    expect(center).not.toHaveClass('max-w-[430px]')
+    // One scroller: the registry's fixed 516px list inside it is lifted, which
+    // is what left the last rows out of reach in a short window.
+    const scrollers = [...center.querySelectorAll('*')].filter((el) => el.classList.contains('overflow-y-auto'))
+    expect(scrollers.every((el) => el.classList.contains('overflow-visible'))).toBe(true)
+    expect([...center.querySelectorAll('*')].some((el) => el.classList.contains('max-h-[516px]'))).toBe(false)
+  })
+
   it('lists the whole queue, past the three the stack shows', async () => {
     seed(['a', 'b', 'c', 'd', 'e'].map((id) => call(id, `c-${id}`)))
-    render(<NotificationInbox onSelect={() => {}} transcriptInert={false} />)
+    render(<NotificationInbox onSelect={async () => true} transcriptInert={false} />)
     const dialog = await open()
     expect(rows(dialog)).toHaveLength(5)
     expect(within(dialog).getByText(i18n.t('notifications.inbox.pendingCount', { count: 5 }))).toBeInTheDocument()
@@ -123,7 +142,7 @@ describe('the inbox', () => {
 
   it('leaves out the conversation being read and says it is waiting instead', async () => {
     seed([call('a', 'being-read'), call('b', 'being-read'), call('c', 'c2')], 'being-read')
-    render(<NotificationInbox onSelect={() => {}} transcriptInert={false} />)
+    render(<NotificationInbox onSelect={async () => true} transcriptInert={false} />)
     const dialog = await open()
     expect(rows(dialog).map((r) => r.querySelector('p')?.textContent)).toEqual(['Title c2'])
     expect(within(dialog).getByText(i18n.t('notifications.inbox.here', { count: 2 }))).toBeInTheDocument()
@@ -131,7 +150,7 @@ describe('the inbox', () => {
 
   it('has no line about the conversation being read when it is not waiting', async () => {
     seed([call('c', 'c2')], 'quiet')
-    render(<NotificationInbox onSelect={() => {}} transcriptInert={false} />)
+    render(<NotificationInbox onSelect={async () => true} transcriptInert={false} />)
     const dialog = await open()
     expect(dialog.querySelector('[data-slot="notification-inbox-here"]')).toBeNull()
   })
@@ -140,7 +159,7 @@ describe('the inbox', () => {
     const reveal = vi.fn()
     const off = onPendingReveal(reveal)
     seed([call('a', 'being-read')], 'being-read')
-    render(<NotificationInbox onSelect={() => {}} transcriptInert={false} />)
+    render(<NotificationInbox onSelect={async () => true} transcriptInert={false} />)
     const dialog = await open()
     await userEvent.click(within(dialog).getByRole('button', { name: i18n.t('notifications.inbox.jumpToCard') }))
     expect(reveal).toHaveBeenCalledWith('being-read')
@@ -152,7 +171,7 @@ describe('the inbox', () => {
    *  queue, and within a group the queue's order. */
   it('groups rows under their conversation, in the order of the queue', async () => {
     seed([call('a', 'c1'), call('b', 'c2'), call('c', 'c1'), call('d', 'c3'), call('e', 'c2')])
-    render(<NotificationInbox onSelect={() => {}} transcriptInert={false} />)
+    render(<NotificationInbox onSelect={async () => true} transcriptInert={false} />)
     const dialog = await open()
     const list = rows(dialog)[0].parentElement!
     const sequence = [...list.children].map((el) =>
@@ -190,7 +209,7 @@ describe('the inbox', () => {
         askedAt: null,
       },
     ])
-    render(<NotificationInbox onSelect={() => {}} transcriptInert={false} />)
+    render(<NotificationInbox onSelect={async () => true} transcriptInert={false} />)
     const dialog = await open()
     const tabs = within(dialog).getAllByRole('radio')
     expect(tabs.map((tab) => tab.textContent)).toEqual([
@@ -204,7 +223,7 @@ describe('the inbox', () => {
 
   it('drops a row once it is answered', async () => {
     seed([call('a', 'c1'), call('b', 'c2')])
-    render(<NotificationInbox onSelect={() => {}} transcriptInert={false} />)
+    render(<NotificationInbox onSelect={async () => true} transcriptInert={false} />)
     const dialog = await open()
     await userEvent.click(within(rows(dialog)[0]).getByRole('button', { name: i18n.t('chat.tool.allow') }))
     expect(mocks.approve).toHaveBeenCalledWith('a')
@@ -212,7 +231,7 @@ describe('the inbox', () => {
   })
 
   it('dispatches deny, defer and view to the same actions the notification uses', async () => {
-    const onSelect = vi.fn()
+    const onSelect = vi.fn().mockResolvedValue(true)
     seed([call('a', 'c1'), call('b', 'c2'), call('c', 'c3')])
     render(<NotificationInbox onSelect={onSelect} transcriptInert={false} />)
     const dialog = await open()
@@ -240,7 +259,7 @@ describe('the inbox', () => {
       call('rc', 'c1', { command: 'ls' }, 'run_command'),
       call('w', 'c2', { path: 'a.ts', content: 'x' }, 'write_file'),
     ])
-    render(<NotificationInbox onSelect={() => {}} transcriptInert={false} />)
+    render(<NotificationInbox onSelect={async () => true} transcriptInert={false} />)
     const dialog = await open()
     for (const row of rows(dialog)) {
       expect(within(row).queryByRole('button', { name: i18n.t('chat.tool.allow') })).toBeNull()
@@ -250,7 +269,7 @@ describe('the inbox', () => {
 
   it('withholds the decision from a read that carries something the row does not draw', async () => {
     seed([call('r', 'c1', { path: 'a.ts', encoding: 'latin1' })])
-    render(<NotificationInbox onSelect={() => {}} transcriptInert={false} />)
+    render(<NotificationInbox onSelect={async () => true} transcriptInert={false} />)
     const dialog = await open()
     expect(within(rows(dialog)[0]).queryByRole('button', { name: i18n.t('chat.tool.allow') })).toBeNull()
     expect(within(rows(dialog)[0]).getByText(i18n.t('chat.approvalNotification.contentHidden'))).toBeInTheDocument()
@@ -258,7 +277,7 @@ describe('the inbox', () => {
 
   it('offers the decision on a search whose directory it draws', async () => {
     seed([call('s', 'c1', { pattern: 'TODO', path: 'C:/work' }, 'search_files')])
-    render(<NotificationInbox onSelect={() => {}} transcriptInert={false} />)
+    render(<NotificationInbox onSelect={async () => true} transcriptInert={false} />)
     const dialog = await open()
     expect(within(rows(dialog)[0]).getByRole('button', { name: i18n.t('chat.tool.allow') })).toBeInTheDocument()
     expect(rows(dialog)[0].querySelector('[data-slot="approval-notification-scope-arg"]')?.textContent).toBe(

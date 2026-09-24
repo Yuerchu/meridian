@@ -53,6 +53,7 @@ export function useAcpConfig(conversationId: string, isHosted: boolean) {
         if (alive) setOptions(next)
       })
       .catch(() => {
+        // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- no adapter, no options; refilled by the announcement, never saved
         if (alive) setOptions([])
       })
     // Not fetched, only listened for: the agent reports it during a turn and

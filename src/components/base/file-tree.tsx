@@ -46,7 +46,7 @@ function FileTreeRoot<T extends object>({
       {...props}
       className={cx(
         'group/file-tree flex flex-col outline-none',
-        'data-[empty]:px-2 data-[empty]:py-3 data-[empty]:text-caption-1-medium data-[empty]:text-text-tertiary',
+        'data-[empty]:px-2 data-[empty]:py-3 data-[empty]:text-caption-1-medium data-[empty]:text-text-secondary',
         className,
       )}
     >

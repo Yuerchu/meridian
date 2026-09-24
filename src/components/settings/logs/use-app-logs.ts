@@ -36,6 +36,10 @@ export function useAppLogs() {
   const [cursor, setCursor] = useState<LogCursorInfoResponse | null>(null)
   const [truncated, setTruncated] = useState(false)
   const [loading, setLoading] = useState(true)
+  // Whether any page has landed. The skeleton is for the first load only: a
+  // refresh that swapped the rows for grey boxes threw away what was being
+  // read to fetch slightly different lines of it.
+  const [loaded, setLoaded] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [settings, setSettings] = useState<LogSettingsResponse | null>(null)
@@ -51,6 +55,7 @@ export function useAppLogs() {
     api
       .getLogSettings()
       .then(setSettings)
+      // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- read-only viewer; null hides the level control
       .catch(() => setSettings(null))
   }, [])
 
@@ -73,11 +78,14 @@ export function useAppLogs() {
         setEntries(page.entries)
         setCursor(page.nextCursor)
         setTruncated(page.scanTruncated)
+        setLoaded(true)
       })
       .catch((e) => {
         if (id !== requestId.current) return
         setError(String(e))
+        // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- read-only log viewer; the error is shown beside the emptied list
         setEntries([])
+        // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- read-only log viewer; the error is shown beside the emptied list
         setCursor(null)
       })
       .finally(() => {
@@ -120,7 +128,10 @@ export function useAppLogs() {
     setSearch,
     entries,
     settings,
-    loading,
+    /** The first page is on its way and there is nothing to show yet. */
+    loading: loading && !loaded,
+    /** A later reload, with the previous rows still on screen. */
+    refreshing: loading && loaded,
     loadingMore,
     error,
     truncated,

@@ -268,8 +268,16 @@ export function ComposerMenu(props: ComposerMenuProps) {
   const [open, setOpen] = useState(false)
   const [wantModels, setWantModels] = useState(false)
   const [groups, setGroups] = useState<GroupedModels[]>([])
-  const [loadingModels, setLoadingModels] = useState(false)
-  const modelsLoaded = groups.length > 0
+  /**
+   * Where the one fetch per opening stands.
+   *
+   * Not derived from `groups.length`: an answer with no models left that at
+   * zero, which read as "not loaded yet" and started the fetch again the moment
+   * it finished — for as long as the row stayed hovered. `idle` is the only
+   * state that fetches; an empty or failed answer is settled until the menu is
+   * opened again, which is what a retry is.
+   */
+  const [modelsState, setModelsState] = useState<'idle' | 'loading' | 'loaded' | 'empty' | 'failed'>('idle')
 
   const currentAssistant = props.assistants.find((a) => a.id === props.currentAssistantId)
   const activeMode = CHAT_MODES.find((m) => m.id === props.mode) ?? CHAT_MODES[0]
@@ -278,8 +286,8 @@ export function ComposerMenu(props: ComposerMenuProps) {
   // Fetched when the model row is first reached rather than when the menu is
   // opened, so opening it to flip a toggle costs nothing.
   useEffect(() => {
-    if (!wantModels || modelsLoaded || loadingModels) return
-    setLoadingModels(true)
+    if (!wantModels || modelsState !== 'idle') return
+    setModelsState('loading')
     Promise.allSettled(
       props.providers
         .filter((p) => p.is_enabled)
@@ -288,15 +296,27 @@ export function ComposerMenu(props: ComposerMenuProps) {
           models: await api.fetchProviderModels({ providerId: p.id, forceRefresh: false }),
         })),
     ).then((results) => {
-      setGroups(
-        results
-          .filter((r): r is PromiseFulfilledResult<GroupedModels> => r.status === 'fulfilled')
-          .map((r) => r.value)
-          .filter((g) => g.models.length > 0),
-      )
-      setLoadingModels(false)
+      const next = results
+        .filter((r): r is PromiseFulfilledResult<GroupedModels> => r.status === 'fulfilled')
+        .map((r) => r.value)
+        .filter((g) => g.models.length > 0)
+      setGroups(next)
+      // Some providers answering is enough to pick from. Nothing answering and
+      // at least one refusing is a failure, which is not the same sentence as
+      // "you have no models".
+      if (next.length > 0) setModelsState('loaded')
+      else setModelsState(results.some((r) => r.status === 'rejected') ? 'failed' : 'empty')
     })
-  }, [wantModels, modelsLoaded, loadingModels, props.providers])
+  }, [wantModels, modelsState, props.providers])
+
+  const handleOpenChange = (next: boolean) => {
+    setOpen(next)
+    // Reopening the menu is the retry for an answer that had nothing in it.
+    if (next && (modelsState === 'empty' || modelsState === 'failed')) {
+      setWantModels(false)
+      setModelsState('idle')
+    }
+  }
 
   // Plan mode removes every editing tool, so the switch would be promising to
   // skip approvals that are never going to be requested.
@@ -328,7 +348,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
   const alert = props.acceptEdits ? 'warning' : props.mode !== 'work' ? 'info' : null
 
   return (
-    <Dropdown isOpen={open} onOpenChange={setOpen}>
+    <Dropdown isOpen={open} onOpenChange={handleOpenChange}>
       <TooltipTrigger delay={0}>
         {/* The alert dot sits beside the button: the control draws its
             `leadingIcon` and nothing else. Both triggers reach the RAC button
@@ -437,8 +457,8 @@ export function ComposerMenu(props: ComposerMenuProps) {
           label={t('toolbar.models')}
           value={props.currentModelId ?? t('toolbar.selectModel')}
           selectedKey={currentModelKey}
-          loading={loadingModels}
-          emptyLabel={t('toolbar.noModels')}
+          loading={modelsState === 'loading'}
+          emptyLabel={modelsState === 'failed' ? t('toolbar.modelsLoadFailed') : t('toolbar.noModels')}
           onOpenIntent={() => setWantModels(true)}
           options={groups.flatMap((g) =>
             g.models.map((m) => ({

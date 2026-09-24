@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import type { SortDescriptor } from 'react-aria-components'
 import { useTranslation } from 'react-i18next'
 import { Bin, Check, Plus, Sparkles, StickyNote, Upload, X } from '@keyline-icons/react/two-tone'
 import { Button, Chip, Disclosure, Input, Tooltip, TooltipTrigger } from '@/components/base'
 import { ActionBar } from '@/components/base'
 import { DataGrid, type DataGridColumn, type DataGridSelection } from '@/components/base'
 import { EmptyState } from '@/components/base'
+import { Pagination } from '@/components/base'
 import { api } from '@/api'
+import { forgetStickerUrl, useStickerUrl } from '@/lib/sticker-urls'
+import { usePointerPlay, useStickerPlayback } from '@/components/chat/sticker-playback'
+import { StickerThumb } from '@/components/chat/sticker-thumb'
 import { can } from '@/lib/capabilities'
 import { useConfirm } from '@/hooks/use-confirm'
 import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
@@ -16,8 +21,15 @@ import type { EmojiInfoResponse, EmojiPackInfoResponse } from '@/types'
 interface PackDetail {
   pack: EmojiPackInfoResponse
   emojis: EmojiInfoResponse[]
-  urls: Record<string, string>
 }
+
+/**
+ * Rows per page of a pack's table. A collected pack grows without anyone
+ * asking, and every row is a React Aria collection item holding two text
+ * fields and a picture — the table used to hold all of them, and the page
+ * asked for every sticker's file up front besides.
+ */
+export const STICKERS_PER_PAGE = 20
 
 /** Stable identity, so a grid whose pack holds no selection never re-renders for it. */
 const NO_SELECTION: DataGridSelection = new Set<string>()
@@ -126,6 +138,30 @@ function EditableCell({
 }
 
 /**
+ * A row's picture: its file is asked for once the row is near the viewport
+ * (so only the page on screen is ever fetched), painted still, and played
+ * while a pointer rests on it — the same still-until-pointed-at sticker the
+ * picker draws.
+ */
+function StickerThumbnail({ id }: { id: string }) {
+  const box = useRef<HTMLSpanElement>(null)
+  const [pointed, pointer] = usePointerPlay()
+  const { near, playing } = useStickerPlayback(box, { autoplay: false, explicit: pointed })
+  const url = useStickerUrl(near ? id : null)
+  return (
+    <span
+      ref={box}
+      data-slot="sticker-thumbnail"
+      data-url-state={url.status}
+      className="flex size-9 shrink-0 overflow-hidden rounded-lg bg-background-secondary-default/40"
+      {...pointer}
+    >
+      {url.status === 'loaded' && <StickerThumb src={url.url} near={near} playing={playing} fallback={null} />}
+    </span>
+  )
+}
+
+/**
  * Per row, so the two long-running actions can say they are running without the
  * grid holding a map of row ids to booleans.
  */
@@ -221,7 +257,11 @@ function StickerGrid({
   const { t } = useTranslation()
   const [error, setError] = useState<string | null>(null)
   const canDelete = !detail.pack.is_builtin
-  const { urls } = detail
+  const [page, setPage] = useState(1)
+  // Sorting is held here rather than left to the grid, because the grid only
+  // ever sees one page: sorting that page alone would put the smallest of
+  // twenty first, not the smallest of the pack.
+  const [sort, setSort] = useState<SortDescriptor | undefined>(undefined)
 
   // A cell has nowhere to put a failure, so both writes report here instead.
   const save = useCallback(
@@ -254,22 +294,7 @@ function StickerGrid({
         sortFn: (a, b) => shownName(a).localeCompare(shownName(b)),
         cell: (emoji) => (
           <div data-slot="sticker-cell" className="flex min-w-0 items-center gap-2">
-            {urls[emoji.id] ? (
-              // Lazy because a pack is unbounded and every frame of every GIF
-              // is decoded the moment its element exists.
-              <img
-                data-slot="sticker-thumbnail"
-                src={urls[emoji.id]}
-                alt=""
-                loading="lazy"
-                className="size-9 shrink-0 rounded-lg object-contain"
-              />
-            ) : (
-              <div
-                data-slot="sticker-thumbnail-placeholder"
-                className="size-9 shrink-0 rounded-lg bg-background-secondary-default/40"
-              />
-            )}
+            <StickerThumbnail id={emoji.id} />
             <EditableCell
               key={shownName(emoji)}
               value={shownName(emoji)}
@@ -337,10 +362,37 @@ function StickerGrid({
         ),
       },
     ],
-    [t, urls, canDelete, save, suggest, onDeleteEmoji],
+    [t, canDelete, save, suggest, onDeleteEmoji],
   )
 
-  const rows = useMemo(() => orderForReview(detail.emojis), [detail.emojis])
+  const sorted = useMemo(() => {
+    const review = orderForReview(detail.emojis)
+    const column = sort && columns.find((c) => c.id === sort.column)
+    if (!column?.sortFn) return review
+    const out = [...review].sort(column.sortFn)
+    return sort?.direction === 'descending' ? out.reverse() : out
+  }, [detail.emojis, sort, columns])
+  const totalPages = Math.max(1, Math.ceil(sorted.length / STICKERS_PER_PAGE))
+  // A delete can leave the page past the end; the last page stands in for it.
+  const current = Math.min(page, totalPages)
+  const rows = useMemo(
+    () => sorted.slice((current - 1) * STICKERS_PER_PAGE, current * STICKERS_PER_PAGE),
+    [sorted, current],
+  )
+
+  // A selection is of rows the reader can see: turning the page or re-sorting
+  // drops it, and "select all" means this page, not the pack.
+  const select = useCallback(
+    (keys: DataGridSelection) => onSelectionChange(keys === 'all' ? new Set(rows.map((emoji) => emoji.id)) : keys),
+    [onSelectionChange, rows],
+  )
+  const turnTo = useCallback(
+    (next: number) => {
+      setPage(next)
+      onSelectionChange(new Set())
+    },
+    [onSelectionChange],
+  )
 
   return (
     <div data-slot="sticker-grid" className="space-y-2">
@@ -355,7 +407,12 @@ function StickerGrid({
         selectionMode={canDelete ? 'multiple' : 'none'}
         showSelectionCheckboxes={canDelete}
         selectedKeys={selectedKeys}
-        onSelectionChange={onSelectionChange}
+        onSelectionChange={select}
+        sortDescriptor={sort}
+        onSortChange={(next) => {
+          setSort(next)
+          turnTo(1)
+        }}
         // The columns' own minimums add up to this; stating it keeps the table
         // from being squeezed below them, and below this width the grid scrolls
         // sideways inside its own container rather than crushing the
@@ -371,6 +428,15 @@ function StickerGrid({
             </EmptyState.Header>
           </EmptyState>
         )}
+      />
+      <Pagination
+        page={current}
+        totalPages={totalPages}
+        onChange={turnTo}
+        aria-label={t('settings.emoji.pagination', { pack: detail.pack.name })}
+        previousLabel={t('settings.emoji.previousPage')}
+        nextLabel={t('settings.emoji.nextPage')}
+        pageLabel={(n) => t('settings.emoji.goToPage', { page: n })}
       />
       {error && (
         <p data-slot="sticker-grid-error" className="text-caption-1-regular text-status-danger">
@@ -503,15 +569,12 @@ export function EmojiSettings() {
     const packs = await api.listEmojiPacks()
     const result = await Promise.all(
       packs.map(async (pack) => {
+        // What the stickers are, not their files: a row asks for its picture
+        // once it is on screen (`StickerThumbnail`). Asking here was one IPC
+        // round trip — and one whole file as base64 — per sticker in every
+        // pack, on every visit and after every edit.
         const emojis = await api.listEmojis(pack.id)
-        // One round trip per sticker, so they go together: awaited in sequence
-        // a collected pack of a few hundred spent whole seconds here.
-        const resolved = await Promise.all(
-          emojis.map(async (emoji) => [emoji.id, await api.getEmojiFileUrl(emoji.id).catch(() => null)] as const),
-        )
-        const urls: Record<string, string> = {}
-        for (const [id, url] of resolved) if (url) urls[id] = url
-        return { pack, emojis, urls }
+        return { pack, emojis }
       }),
     )
     setDetails(result)
@@ -525,9 +588,10 @@ export function EmojiSettings() {
     if (!selection) return []
     const detail = details.find((d) => d.pack.id === selection.packId)
     if (!detail) return []
-    // The select-all checkbox yields the string `"all"` rather than a set, and
-    // it means every row of the array this grid was given.
-    if (selection.keys === 'all') return detail.emojis.map((emoji) => emoji.id)
+    // The grid turns "all" into the ids of the page it shows before it gets
+    // here, so a bare "all" never arrives; were it to, it would mean a whole
+    // pack nobody can see, and deleting that is not what anyone pressed.
+    if (selection.keys === 'all') return []
     return [...selection.keys].map(String)
   }, [selection, details])
 
@@ -568,6 +632,7 @@ export function EmojiSettings() {
     async (id: string) => {
       if (!(await confirm({ body: t('settings.confirmDelete.emoji') }))) return
       await api.deleteEmoji(id)
+      forgetStickerUrl(id)
       await refresh()
     },
     [confirm, t, refresh],
@@ -578,7 +643,10 @@ export function EmojiSettings() {
     if (!(await confirm({ body: t('settings.confirmDelete.emojis', { count: selectedIds.length }) }))) return
     // One at a time: each delete unlinks a file as well as a row, and the
     // backend takes a pooled connection per call.
-    for (const id of selectedIds) await api.deleteEmoji(id)
+    for (const id of selectedIds) {
+      await api.deleteEmoji(id)
+      forgetStickerUrl(id)
+    }
     setSelection(null)
     await refresh()
   }, [selectedIds, confirm, t, refresh])

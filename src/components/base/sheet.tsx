@@ -374,10 +374,12 @@ function SheetFooter({ className, ...props }: ComponentProps<'div'>) {
 
 function SheetCloseTrigger({
   className,
-  'aria-label': ariaLabel = 'Close',
+  'aria-label': ariaLabel,
 }: {
   className?: string
-  'aria-label'?: string
+  /** Required, as on `CloseButton`: the X has no visible text, and an English
+   *  default here is what a Chinese screen reader used to announce. */
+  'aria-label': string
 }) {
   return (
     <CloseButton

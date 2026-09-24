@@ -87,7 +87,7 @@ const styles = sortCx({
   content: 'flex min-w-0 flex-1 flex-col gap-1',
   header: 'flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5',
   title: 'text-body-medium text-text-primary',
-  timestamp: 'text-body-regular text-text-tertiary',
+  timestamp: 'text-body-regular text-text-secondary',
   description: 'text-body-regular text-text-secondary',
   actions: 'mt-1.5 flex flex-wrap items-center gap-2',
   close: 'absolute top-3 right-3',

@@ -51,6 +51,7 @@ export function useEditLocation(data: ToolCallDisplay, path: string | null, oldS
       .catch(() => {
         if (cancelled) return
         cache.set(callId, null)
+        // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- null is "line unknown": the diff is drawn without a gutter
         setLine(null)
       })
     return () => {

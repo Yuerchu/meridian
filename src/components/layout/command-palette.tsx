@@ -81,6 +81,7 @@ export function CommandPalette({
           if (!cancelled) setTranscriptHits(hits)
         })
         .catch(() => {
+          // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- search results are display only; nothing is written back
           if (!cancelled) setTranscriptHits([])
         })
     }, 250)

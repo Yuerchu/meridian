@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Stop } from '@keyline-icons/react/fill'
-
 import { PromptInput } from '@/components/base'
 import { ComposerLoader } from '@/components/application/composer-loader/composer-loader'
+import { LOADER_PAUSED, useLoaderSettledIdle } from './composer-loader-idle'
 
 import { isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { useFileDrop } from '@/hooks/use-file-drop'
 import { cx } from '@/utils/cx'
+
+export type ComposerFieldProps = Pick<
+  React.TextareaHTMLAttributes<HTMLTextAreaElement>,
+  'role' | 'aria-expanded' | 'aria-controls' | 'aria-activedescendant' | 'aria-autocomplete'
+>
 
 interface ComposerProps {
   value: string
@@ -46,6 +50,13 @@ interface ComposerProps {
   notice?: ReactNode
   /** Caret-anchored completion menu. The textarea keeps focus while it is open. */
   suggestions?: ReactNode
+  /**
+   * The textarea's half of the combobox that `suggestions` is the popup of:
+   * `role`, `aria-expanded`, `aria-controls`, `aria-activedescendant`,
+   * `aria-autocomplete`. Passed through untouched — the caller owns the popup,
+   * so it is the one that knows which row is highlighted.
+   */
+  fieldProps?: ComposerFieldProps
   /** Runs before the composer's submit guard; may consume Enter/Tab/Escape. */
   onKeyDownCapture?: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void
   /** Keeps a caret-aware typeahead in sync without replacing PromptInput's textarea ref. */
@@ -101,6 +112,7 @@ export function Composer({
   toolbarEnd,
   notice,
   suggestions,
+  fieldProps,
   onKeyDownCapture,
   onCaretChange,
   inputMode = 'prompt',
@@ -140,12 +152,8 @@ export function Composer({
     [onKeyDownCapture],
   )
 
-  // PromptInput's own rule for what the send button does, restated because only the
-  // label and the extra Stop are ours and both have to agree with it: while a
-  // run is going the button stops it, unless steering is on *and* there is
-  // something to steer with. An empty steerable field gets Stop back — which is
-  // why the label cannot simply follow `steerable`.
-  const sendIsStop = !!streaming && !!onStop && !(steerable && value.trim() !== '')
+  const loaderActive = !!(pending || streaming)
+  const loaderIdle = useLoaderSettledIdle(loaderActive)
 
   return (
     <div ref={shellRef} data-slot="composer" className={cx('relative w-full', className)} data-input-mode={inputMode}>
@@ -172,7 +180,7 @@ export function Composer({
             surface itself — the shell goes transparent while it is lit (see
             `PromptInput.Shell`). `radius` is the shell's `rounded-3xl` in px,
             because the shell is two rows, not the loader's default pill. */}
-        <ComposerLoader active={!!(pending || streaming)} radius={24}>
+        <ComposerLoader active={loaderActive} radius={24} className={cx(loaderIdle && LOADER_PAUSED)}>
           {/* PromptInput styles this state — dotted accent border and a soft fill — but
             sets it for nobody; it is left for whoever owns the drag. */}
           <PromptInput.Shell data-dragging={dropping ? 'true' : undefined}>
@@ -191,6 +199,7 @@ export function Composer({
                 </div>
               )}
               <PromptInput.TextArea
+                {...fieldProps}
                 aria-label={ariaLabel}
                 placeholder={placeholder}
                 autoFocus={autoFocus}
@@ -244,20 +253,15 @@ export function Composer({
               </PromptInput.ToolbarStart>
               <PromptInput.ToolbarEnd className="shrink-0">
                 {toolbarEnd}
-                {/* Exactly when Send is not already a Stop, so the two are never
-                  up at once and the run is never unstoppable. */}
-                {streaming && onStop && !sendIsStop && (
-                  <PromptInput.Action
-                    aria-label={t('chat.stop')}
-                    tooltip={t('chat.stop')}
-                    onPress={onStop}
-                    leadingIcon={Stop}
-                  />
-                )}
-                {/* PromptInput would label it "Send message" / "Stop" in English, and it
-                  decides which one it is from the same three values below. */}
+                {/* Drawn by PromptInput exactly when Send is steering, so the
+                  two are never both a Stop and the run is never unstoppable.
+                  Which of the two Send is, and so which label it wears, is
+                  PromptInput's one rule — restating it here is what once put
+                  a Stop icon under a "Send" name beside a second Stop. */}
+                <PromptInput.Stop label={t('chat.stop')} />
                 <PromptInput.Send
-                  aria-label={sendIsStop ? t('chat.stop') : t('chat.send')}
+                  sendLabel={t('chat.send')}
+                  stopLabel={t('chat.stop')}
                   disabled={hasPayload && !streaming ? false : undefined}
                 />
               </PromptInput.ToolbarEnd>

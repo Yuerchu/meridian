@@ -33,7 +33,7 @@ import {
   MessageGroupHeader,
   MessageGroupUser,
 } from '@/components/ui/message-group'
-import { Bubble, BubbleContent, BubbleTime } from '@/components/ui/bubble'
+import { Bubble, BubbleContent, BubbleTime, BUBBLE_RUN_GAP } from '@/components/ui/bubble'
 import { BubbleFoldBadge } from '@/components/ui/bubble-block'
 import { ChatToolPresentationProvider } from '@/components/ui/chat-tool'
 import { useConversationStore } from '@/stores/conversation-store'
@@ -50,6 +50,7 @@ import { ThinkingRow } from './thinking-block'
 import { SubAgentGroup, delegationOf } from './sub-agent-group'
 import { renderEmojisInText, StickerImage } from './emoji-renderer'
 import type { Turn } from '@/lib/turns'
+import { bubbleCopyText } from '@/lib/message-groups'
 import type { AssistantGroup, BubbleModel, BubblePosition, FoldKind, FoldedCalls } from '@/lib/message-groups'
 import type { MessageRating, MessageViewModel as MessageData } from '@/types'
 import type { SenderNames } from '@/hooks/use-sender-names'
@@ -409,7 +410,7 @@ export const UserMessage = React.memo(function UserMessage({
                         {contentParts!
                           .filter((p) => p.type === 'file')
                           .map((p, i) => (
-                            <ChatAttachment key={`file-${i}`} name={p.file?.name ?? 'file'} />
+                            <ChatAttachment key={`file-${i}`} name={p.file?.name || t('chat.attachedFile')} />
                           ))}
                       </ChatAttachmentGroup>
                     )}
@@ -505,14 +506,17 @@ export const UserMessage = React.memo(function UserMessage({
           {onDelete && (
             <>
               <ContextMenu.Separator />
+              {/* Deleting the question takes its whole subtree — every answer
+                  and every later exchange hangs off it — so the menu says so
+                  beside "copy", which only ever means this bubble. */}
               <ContextMenu.Item
                 id="delete"
-                textValue={t('chat.delete')}
+                textValue={t('chat.turnAction.delete')}
                 variant="danger"
                 onAction={() => void requestDelete()}
               >
                 <Bin className="size-4" />
-                <Label>{t('chat.delete')}</Label>
+                <Label>{t('chat.turnAction.delete')}</Label>
               </ContextMenu.Item>
             </>
           )}
@@ -721,12 +725,13 @@ function AssistantBubble({
   emojiMap?: EmojiMap
   renderError: React.ReactNode
 }) {
+  const { t } = useTranslation()
   const folded = 'folded' in bubble ? bubble.folded : NO_FOLDS
   const { isOpen, toggle } = useFoldExpansion(folded)
 
   if (bubble.kind === 'sticker') {
     return (
-      <div className="my-1 flex justify-start" data-slot="assistant-sticker">
+      <div className="my-1 flex justify-start" data-slot="assistant-sticker" data-bubble-key={bubble.key}>
         <StickerImage stickerId={bubble.stickerId} name={bubble.name ?? undefined} />
       </div>
     )
@@ -738,9 +743,9 @@ function AssistantBubble({
       // `role="status"` (so it is announced once, not twice), and
       // `data-working` is how the tests find the sign of life without
       // knowing its wording.
-      <Bubble variant="assistant" position={bubble.position} data-working="true">
+      <Bubble variant="assistant" position={bubble.position} data-working="true" data-bubble-key={bubble.key}>
         <BubbleContent>
-          <AgentThinking variant="infinity" label={workingLabel ?? undefined} />
+          <AgentThinking variant="infinity" label={workingLabel ?? t('chat.turn.working.thinking')} />
         </BubbleContent>
       </Bubble>
     )
@@ -748,7 +753,7 @@ function AssistantBubble({
   const panels = <FoldPanels folded={folded} isOpen={isOpen} renderError={renderError} />
   if (bubble.kind === 'summary') {
     return (
-      <Bubble variant="assistant" position={bubble.position} className="w-full">
+      <Bubble variant="assistant" position={bubble.position} data-bubble-key={bubble.key} className="w-full">
         <BubbleContent className="w-full">
           <FoldRow folded={folded} isOpen={isOpen} toggle={toggle} at={bubble.createdAt} isStreaming={false} />
         </BubbleContent>
@@ -770,7 +775,7 @@ function AssistantBubble({
       // being written, and the only sign of life until the answer starts.
       const live = bubble.isStreaming && bubble.tools.length === 0 && !hasFolds
       return (
-        <Bubble variant="assistant" position={bubble.position} className="w-full">
+        <Bubble variant="assistant" position={bubble.position} data-bubble-key={bubble.key} className="w-full">
           <BubbleContent className="w-full">
             {hasThinking && (
               <ThinkingRow text={bubble.thinking.join('\n\n')} panelKey={`${bubble.key}:thinking`} isStreaming={live} />
@@ -795,7 +800,8 @@ function AssistantBubble({
         data-slot="bubble"
         data-position={bubble.position}
         data-variant="tools-only"
-        className="flex w-full max-w-[85%] flex-col gap-1"
+        data-bubble-key={bubble.key}
+        className={cx('flex w-full max-w-[85%] flex-col', BUBBLE_RUN_GAP)}
       >
         {panels}
         {keys}
@@ -808,7 +814,12 @@ function AssistantBubble({
     // A bubble with a keyboard takes the column's width, so its keys have
     // room to sit two to a row; one with badges takes it so the time sits at
     // the far edge of the row; one with neither is as wide as what it says.
-    <Bubble variant="assistant" position={bubble.position} className={cx((hasKeys || hasFolds) && 'w-full')}>
+    <Bubble
+      variant="assistant"
+      position={bubble.position}
+      data-bubble-key={bubble.key}
+      className={cx((hasKeys || hasFolds) && 'w-full')}
+    >
       <BubbleContent className={cx((hasKeys || hasFolds) && 'w-full')}>
         {header && <MessageGroupHeader>{header}</MessageGroupHeader>}
         {bubble.thinking.length > 0 && (
@@ -846,8 +857,9 @@ export interface AssistantGroupViewProps {
   turn: Turn
   /** The row the turn's actions act on: rating, regeneration, deletion. */
   owner: MessageData | null
-  /** Everything the run said, for the copy button and the context menu. */
-  copyText: string
+  /** What the turn's footer copies: its conclusion — see `turnCopyText`. The
+   *  right-click menu does not use it; that copies the bubble it was opened on. */
+  turnCopyText: string
   /** The run that carries the turn's footer — the last one. */
   showFooter: boolean
   /** What the `working` bubble says, when the run ends on one. */
@@ -862,15 +874,36 @@ export interface AssistantGroupViewProps {
   assistantAvatar?: string | null
 }
 
+/** The bubble a right-click landed in, read back off the event the way the
+ *  sidebar reads its row: one menu for the whole run, aimed by `data-bubble-key`.
+ *  A key that is not one of this run's bubbles — a transcript inside a sheet
+ *  portalled from here, whose events bubble through React — aims at nothing. */
+function bubbleAt(target: EventTarget | null, bubbles: readonly BubbleModel[]): BubbleModel | null {
+  if (!(target instanceof Element)) return null
+  const key = target.closest('[data-bubble-key]')?.getAttribute('data-bubble-key')
+  if (!key) return null
+  return bubbles.find((b) => b.key === key) ?? null
+}
+
 /**
  * One run of answers from one model: its avatar, its bubbles and, on the
  * last run of a turn, the turn's footer.
+ *
+ * **Every action says what it acts on, and the menu never mixes the two
+ * without saying so.** Copy and "select text" act on the bubble the menu was
+ * opened on. Rating, regeneration and deletion cannot: a rating is stored on
+ * the row carrying the turn's conclusion, regeneration replaces the turn's
+ * first answer, and deletion takes the whole subtree from the question down
+ * (messages are a tree, and a lone row cannot be dropped without stranding its
+ * tool results). So in the menu those three are labelled as the turn's, under
+ * a separator; in the footer, which only appears at the end of a turn, they
+ * keep their short names.
  */
 export const AssistantGroupView = React.memo(function AssistantGroupView({
   group,
   turn,
   owner,
-  copyText,
+  turnCopyText,
   showFooter,
   workingLabel = null,
   onDelete,
@@ -883,6 +916,9 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
 }: AssistantGroupViewProps) {
   const { t } = useTranslation()
   const [selectedText, setSelectedText] = useState('')
+  // What the open menu is aimed at: the prose of the bubble it was opened on,
+  // or null when that bubble has none (a keyboard, a summary, the avatar).
+  const [targetText, setTargetText] = useState<string | null>(null)
   const [showSelectText, setShowSelectText] = useState(false)
   const coarse = isCoarsePointer()
   const renderError = (
@@ -896,14 +932,29 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
     if (await confirm({ body: t('confirm.deleteMessage') })) onDelete?.()
   }, [confirm, t, onDelete])
 
-  const handleContextMenuOpenChange = useCallback((open: boolean) => {
-    if (open) setSelectedText(window.getSelection()?.toString()?.trim() ?? '')
-  }, [])
-
   const isStreaming = turn.status === 'streaming'
   const rating = owner?.rating ?? null
   const rate = (value: MessageRating) => owner && onRate?.(owner.id, rating === value ? null : value)
   const canRate = !!onRate && !!owner && !isStreaming
+  const canRegenerate = !!onRegenerate && !isStreaming
+  const hasTurnActions = canRate || canRegenerate || !!onDelete
+
+  const handleContextMenu = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const selection = window.getSelection()?.toString()?.trim() ?? ''
+      const bubble = bubbleAt(event.target, group.bubbles)
+      const text = bubble ? bubbleCopyText(bubble) : null
+      // Nothing to offer: leave the menu shut rather than open an empty one.
+      if (!selection && text === null && !hasTurnActions) {
+        event.preventDefault()
+        return
+      }
+      setSelectedText(selection)
+      setTargetText(text)
+    },
+    [group.bubbles, hasTurnActions],
+  )
+  const hasBubbleActions = !!selectedText || targetText !== null
   // A hosted session is named by its agent; the model id it reports is not a
   // name anyone would recognise. The name goes in the first bubble that has
   // prose to put it above — a run that opens on a bare keyboard has no line
@@ -917,10 +968,12 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
     // invisible one, which it is until hovered — pushed the avatar down to sit
     // beside the footer rather than beside the last bubble.
     <div data-slot="assistant-group" className="group/message flex min-w-0 flex-col">
-      <ContextMenu onOpenChange={handleContextMenuOpenChange}>
-        {/* Same shape as the user group above: the group is the trigger. */}
+      <ContextMenu>
+        {/* Same shape as the user group above: the group is the trigger, and
+            the bubble under the pointer is what the menu is aimed at. */}
         <ContextMenu.Trigger
           className="pointer-coarse:select-none"
+          onContextMenu={handleContextMenu}
           render={(props) => <MessageGroupAssistant {...props} />}
         >
           <AssistantAvatar src={assistantAvatar} modelId={group.modelId} hosted={isHosted} />
@@ -942,27 +995,26 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
         <ContextMenu.Popover>
           <ContextMenu.Menu aria-label={t('contextMenu.messageActions')}>
             {selectedText && (
-              <>
-                <ContextMenu.Item
-                  id="copy-selection"
-                  textValue={t('contextMenu.copySelection')}
-                  onAction={() => void navigator.clipboard.writeText(selectedText)}
-                >
-                  <Copy className="size-4 text-text-secondary" />
-                  <Label>{t('contextMenu.copySelection')}</Label>
-                </ContextMenu.Item>
-                <ContextMenu.Separator />
-              </>
+              <ContextMenu.Item
+                id="copy-selection"
+                textValue={t('contextMenu.copySelection')}
+                onAction={() => void navigator.clipboard.writeText(selectedText)}
+              >
+                <Copy className="size-4 text-text-secondary" />
+                <Label>{t('contextMenu.copySelection')}</Label>
+              </ContextMenu.Item>
             )}
-            <ContextMenu.Item
-              id="copy"
-              textValue={t('chat.copy')}
-              onAction={() => void navigator.clipboard.writeText(copyText)}
-            >
-              <Copy className="size-4 text-text-secondary" />
-              <Label>{t('chat.copy')}</Label>
-            </ContextMenu.Item>
-            {coarse && (
+            {targetText !== null && (
+              <ContextMenu.Item
+                id="copy"
+                textValue={t('chat.copy')}
+                onAction={() => void navigator.clipboard.writeText(targetText)}
+              >
+                <Copy className="size-4 text-text-secondary" />
+                <Label>{t('chat.copy')}</Label>
+              </ContextMenu.Item>
+            )}
+            {coarse && targetText !== null && (
               <ContextMenu.Item
                 id="select-text"
                 textValue={t('contextMenu.selectText')}
@@ -972,40 +1024,45 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
                 <Label>{t('contextMenu.selectText')}</Label>
               </ContextMenu.Item>
             )}
+            {hasBubbleActions && hasTurnActions && <ContextMenu.Separator />}
             {canRate && (
               <>
-                <ContextMenu.Item id="thumbs-up" textValue={t('chat.thumbsUp')} onAction={() => rate(1)}>
+                <ContextMenu.Item id="thumbs-up" textValue={t('chat.turnAction.thumbsUp')} onAction={() => rate(1)}>
                   <ThumbsUp
                     className={cx(
                       'size-4',
                       rating === 1 ? 'text-status-success-soft-foreground' : 'text-text-secondary',
                     )}
                   />
-                  <Label>{t('chat.thumbsUp')}</Label>
+                  <Label>{t('chat.turnAction.thumbsUp')}</Label>
                 </ContextMenu.Item>
-                <ContextMenu.Item id="thumbs-down" textValue={t('chat.thumbsDown')} onAction={() => rate(-1)}>
+                <ContextMenu.Item
+                  id="thumbs-down"
+                  textValue={t('chat.turnAction.thumbsDown')}
+                  onAction={() => rate(-1)}
+                >
                   <ThumbsDown className={cx('size-4', rating === -1 ? 'text-status-danger' : 'text-text-secondary')} />
-                  <Label>{t('chat.thumbsDown')}</Label>
+                  <Label>{t('chat.turnAction.thumbsDown')}</Label>
                 </ContextMenu.Item>
               </>
             )}
-            {onRegenerate && !isStreaming && (
-              <ContextMenu.Item id="regenerate" textValue={t('chat.regenerate')} onAction={onRegenerate}>
+            {canRegenerate && (
+              <ContextMenu.Item id="regenerate" textValue={t('chat.turnAction.regenerate')} onAction={onRegenerate}>
                 <RefreshCw className="size-4 text-text-secondary" />
-                <Label>{t('chat.regenerate')}</Label>
+                <Label>{t('chat.turnAction.regenerate')}</Label>
               </ContextMenu.Item>
             )}
             {onDelete && (
               <>
-                <ContextMenu.Separator />
+                {(canRate || canRegenerate) && <ContextMenu.Separator />}
                 <ContextMenu.Item
                   id="delete"
-                  textValue={t('chat.delete')}
+                  textValue={t('chat.turnAction.delete')}
                   variant="danger"
                   onAction={() => void requestDelete()}
                 >
                   <Bin className="size-4" />
-                  <Label>{t('chat.delete')}</Label>
+                  <Label>{t('chat.turnAction.delete')}</Label>
                 </ContextMenu.Item>
               </>
             )}
@@ -1018,7 +1075,7 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
         // action, which is where a new metric goes too.
         <MessageGroupFooter className="pl-10 has-[[aria-expanded=true]]:opacity-100">
           <div data-slot="assistant-actions" className="flex gap-1">
-            <CopyButton text={copyText} />
+            <CopyButton text={turnCopyText} />
             {canRate && (
               <>
                 <ActionButton
@@ -1037,9 +1094,7 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
                 />
               </>
             )}
-            {onRegenerate && !isStreaming && (
-              <ActionButton label={t('chat.regenerate')} onClick={onRegenerate} icon={RefreshCw} />
-            )}
+            {canRegenerate && <ActionButton label={t('chat.regenerate')} onClick={onRegenerate} icon={RefreshCw} />}
             <TurnInfo tokens={turn.tokens} usage={turn.usage} durationMs={turn.durationMs} isStreaming={isStreaming} />
             {onDelete && (
               <ActionButton
@@ -1052,7 +1107,9 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
           </div>
         </MessageGroupFooter>
       )}
-      {coarse && <SelectTextModal text={copyText} isOpen={showSelectText} onOpenChange={setShowSelectText} />}
+      {coarse && targetText !== null && (
+        <SelectTextModal text={targetText} isOpen={showSelectText} onOpenChange={setShowSelectText} />
+      )}
       {confirmDialog}
     </div>
   )

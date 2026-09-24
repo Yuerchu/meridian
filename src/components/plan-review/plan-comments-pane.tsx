@@ -78,14 +78,26 @@ export function PlanCommentsPane({
             data-comment-id={comment.id}
           >
             <div data-slot="plan-comment-header" className="mb-2 flex items-start gap-2">
-              <Link
-                className="min-w-0 flex-1 text-start text-caption-1-regular text-text-secondary"
-                onPress={() => onSelectComment(comment)}
-              >
-                <q data-slot="plan-comment-quote" className="line-clamp-3 break-words">
+              {/* An orphaned comment's quote is what the words *were*; there is
+                  nothing left in the plan to take the reader to, and its stored
+                  range now covers other text. So it is not offered as a link. */}
+              {comment.state === 'orphaned' ? (
+                <q
+                  data-slot="plan-comment-quote"
+                  className="line-clamp-3 min-w-0 flex-1 break-words text-caption-1-regular text-text-secondary"
+                >
                   {comment.anchor.quote || t('planReview.comments.emptyQuote')}
                 </q>
-              </Link>
+              ) : (
+                <Link
+                  className="min-w-0 flex-1 text-start text-caption-1-regular text-text-secondary"
+                  onPress={() => onSelectComment(comment)}
+                >
+                  <q data-slot="plan-comment-quote" className="line-clamp-3 break-words">
+                    {comment.anchor.quote || t('planReview.comments.emptyQuote')}
+                  </q>
+                </Link>
+              )}
               {!isReadOnly && (
                 <TooltipTrigger>
                   <Button

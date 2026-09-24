@@ -22,7 +22,9 @@
       "upstream": {
         "src/styles/globals.css": "f3c44bfce35316ce4c6d74f9f1706e127ad16aa1db079013b5002ec6cfec773e"
       },
-      "patches": []
+      "patches": [
+        "Readable text: .bui-table th (table header labels) text-tertiary → text-secondary (dark text-tertiary is neutral-600, ~1.9–2.3:1 on the primary/secondary surfaces; owner decision 2026-09-24, CLAUDE.md UI Conventions). Disabled states keep tertiary."
+      ]
     },
     "cx": {
       "files": ["src/utils/cx.ts"],
@@ -52,7 +54,7 @@
       },
       "patches": [
         "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): renders react-aria-components Button instead of a native <button>; props are AriaButtonProps (onPress/isDisabled/isPending/slot) plus className/style; hover:/active:/focus-visible: become data-[hovered]/data-[pressed]/data-[focus-visible].",
-        "isPending (RAC): sets aria-disabled and swaps the leading icon for <Spinner> (Meridian spinner) so the label does not move.",
+        "isPending (RAC): sets aria-disabled and swaps the leading icon for <Spinner aria-hidden> (Meridian spinner) so the label does not move; hidden because a named spinner inside the button becomes part of its accessible name (\"Loading 保存\").",
         "Extra variant neutral: the grey round icon control, copied from the Dropdown usage example in references/components.md (DropdownTrigger `flex size-9 items-center justify-center rounded-full bg-background-secondary-default p-2 hover:bg-background-secondary-hover`, icon `size-5 text-foreground-icon-secondary`). hover/pressed ride RAC data-[hovered]/data-[pressed]; pressed is the next ladder step bg-background-tertiary-hover; disabled text-text-disabled. Size and padding stay the Button size tier. The former tertiary/danger-soft variants are removed (callers use the registry secondary/danger).",
         "ButtonVariant/ButtonSize are exported (toggle-button.tsx composes buttonStyles).",
         "ButtonLink is kept as the registry's native <a> (no callers)."
@@ -65,6 +67,16 @@
       },
       "patches": [
         "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): react-aria-components Button (Dialog slot=\"close\", TooltipTrigger child); hover:/focus-visible: → data-[hovered]/data-[focus-visible]; props are AriaButtonProps."
+      ]
+    },
+    "link-button": {
+      "files": ["src/components/base/buttons/link-button.tsx"],
+      "upstream": {
+        "src/components/base/buttons/link-button.tsx": "f56415d9b83cfb4af68d9f359ccb8925f885bce60e6d29d38d73b14966499aaf"
+      },
+      "patches": [
+        "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): the href case renders react-aria-components Link and the handler case RAC Button instead of native <a>/<button>, so TooltipTrigger reaches it through context; props are AriaLinkProps/AriaButtonProps (onPress/isDisabled) plus className/style, and the registry's own disabled prop is dropped for isDisabled. hover:/active:/focus-visible: become data-[hovered]/data-[pressed]/data-[focus-visible].",
+        "Doc comment gains a Meridian paragraph explaining the RAC swap."
       ]
     },
     "input": {
@@ -80,7 +92,8 @@
       },
       "patches": [
         "input/label.tsx: the registry drops isInvalid (`isInvalid: _isInvalid`); an eslint-disable for meridian-ui/no-silent-prop-drop documents that, code unchanged.",
-        "Icons: keyline two-tone replaces @remixicon/react (project icon decision 2026-09-23)"
+        "Icons: keyline two-tone replaces @remixicon/react (project icon decision 2026-09-23)",
+        "Readable text: input.tsx placeholder text-tertiary → text-secondary (dark text-tertiary is neutral-600, ~1.9–2.3:1 on the primary/secondary surfaces; owner decision 2026-09-24, CLAUDE.md UI Conventions). Disabled states keep tertiary."
       ]
     },
     "textarea": {
@@ -88,7 +101,9 @@
       "upstream": {
         "src/components/base/textarea/textarea.tsx": "a4896f7460fbb0b6d5b65299ad9ace8d664c2771cc44cb77b0bd96c8ab871c33"
       },
-      "patches": []
+      "patches": [
+        "Readable text: placeholder and the character count text-tertiary → text-secondary (dark text-tertiary is neutral-600, ~1.9–2.3:1 on the primary/secondary surfaces; owner decision 2026-09-24, CLAUDE.md UI Conventions). Disabled states keep tertiary."
+      ]
     },
     "checkbox": {
       "files": ["src/components/base/checkbox/checkbox-glyph.tsx", "src/components/base/checkbox/checkbox.tsx"],
@@ -158,6 +173,18 @@
         "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): SegmentedControlItem (RAC ToggleButton) hover:/focus-visible: → data-[hovered]/data-[focus-visible]."
       ]
     },
+    "pagination": {
+      "files": ["src/components/base/pagination/pagination.tsx"],
+      "upstream": {
+        "src/components/base/pagination/pagination.tsx": "8ba2526b2a308dcc36446e27434bcd5b8f4df46a56ebf61c8ff08ec98809ed56"
+      },
+      "patches": [
+        "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): the page cells are react-aria-components Button instead of native <button onClick>; hover:/focus-visible: → data-[hovered]/data-[focus-visible]; Previous/Next are wired with onPress/isDisabled (the base Button is RAC here).",
+        "Icons: keyline two-tone ArrowLeft/ArrowRight replace @remixicon/react RiArrowLeftLine/RiArrowRightLine (project icon decision 2026-09-23).",
+        "API addition: aria-label / previousLabel / nextLabel / pageLabel props (defaults are the registry's English strings) so callers can translate them — settings/emoji-settings.tsx.",
+        "useIsCompact takes a callback ref: the registry's mount-once effect never observed the nav when the first render had one page (returned null) and a second page appeared later."
+      ]
+    },
     "tabs": {
       "files": ["src/components/base/tabs/pill-tab.tsx", "src/components/base/tabs/tabs.tsx"],
       "upstream": {
@@ -199,7 +226,8 @@
       },
       "patches": [
         "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): Button and CloseButton are RAC here, so the action buttons and the close button are wired with onPress instead of onClick, and NotificationAction.onClick is renamed onPress to match.",
-        "Icons: keyline /fill replaces @remixicon/react (project icon decision 2026-09-23): neutral Bell, information Info, success CircleCheck, error CircleAlert."
+        "Icons: keyline /fill replaces @remixicon/react (project icon decision 2026-09-23): neutral Bell, information Info, success CircleCheck, error CircleAlert.",
+        "Readable text: the timestamp slot text-tertiary → text-secondary (dark text-tertiary is neutral-600, ~1.9–2.3:1 on the primary/secondary surfaces; owner decision 2026-09-24, CLAUDE.md UI Conventions). Disabled states keep tertiary."
       ]
     },
     "notification-center": {
@@ -214,7 +242,9 @@
         "Tabs (user ruling 2026-09-23): an optional `tabs` prop replaces the fixed TABS constant (default: the registry's All/Mentions/System). `all` lists everything and any other id filters on `category`, which is how the three registry tabs already behaved; tab counts are computed from the same list. To let a caller name its own categories, `category`, `tab`, `defaultTab` and `onTabChange` widen to `NotificationCenterTabId` (the registry union | string).",
         "Read state (user ruling 2026-09-23): an optional `readable` prop, default true. `readable={false}` removes the internal readIds bookkeeping and the \"Mark all read\" button, so the dot means exactly what `item.unread` says. Meridian's inbox lists questions waiting on a person: they are never \"read\", only answered, and an answered one leaves the list.",
         "description widens from string to ReactNode (Meridian need): the inbox draws the same call summary as the approval notification (ToolArgsSummary with its whitespace-pre-wrap command). As a plain string a multi-line command would render with its newlines collapsed, and the decision rules require that what is approved is shown as it will run.",
-        "Groups (user ruling 2026-09-23): an optional `showGroups` prop, default false (the registry's flat list). When true the visible list is stably reordered so each `group` sits where its first item stood, items keep their order within it, and a label is drawn before each group's first item — `<p className=\"px-2 pb-1 text-body-2-medium text-text-tertiary\">`, the registry's own group label from agent-chat-history (\"Recent\"). The rows are wrapped in a keyed Fragment for that label; the article itself is unchanged. Meridian's inbox turns it on to list questions under their conversation."
+        "Groups (user ruling 2026-09-23): an optional `showGroups` prop, default false (the registry's flat list). When true the visible list is stably reordered so each `group` sits where its first item stood, items keep their order within it, and a label is drawn before each group's first item — `<p className=\"px-2 pb-1 text-body-2-medium text-text-tertiary\">`, the registry's own group label from agent-chat-history (\"Recent\"). The rows are wrapped in a keyed Fragment for that label; the article itself is unchanged. Meridian's inbox turns it on to list questions under their conversation.",
+        "Readable text: the row timestamp and Meridian's group label text-tertiary → text-secondary (dark text-tertiary is neutral-600, ~1.9–2.3:1 on the primary/secondary surfaces; owner decision 2026-09-24, CLAUDE.md UI Conventions). Disabled states keep tertiary.",
+        "Viewport-bounded list (Meridian need, 2026-09-24): an optional `listClassName` is merged (cx) into the list's scroll box, default unchanged (`max-h-[516px] overflow-y-auto`). The inbox passes `max-h-[none] overflow-visible` and makes the whole center the one scroller inside the popover's React Aria max-height, because a fixed 516px list in a popover that does not follow the viewport left the last rows unreachable in a short window or under the soft keyboard."
       ]
     },
     "app-shell": {
@@ -229,7 +259,8 @@
         "Data (Meridian need): `notifications` is required and STARTER_NOTIFICATIONS (demo data) is not installed; `centerProps` passes the center everything besides its items (tabs, labels, readable, title, emptyMessage, onAction); `before` renders a node inside the dialog above the center (the \"this conversation has N pending\" line); `isOpen`/`onOpenChange` make the open state optionally controlled so an action that navigates away can close it. Uncontrolled it behaves as the registry's.",
         "i18n (user ruling 2026-09-23): `triggerLabel` and `dialogLabel` replace the two hard-coded \"Notifications\" aria-labels; both default to the registry's string.",
         "Motion: OVERLAY_MOTION (components/base/overlay-motion.ts) is added to the Popover className through cx. motion.md: popovers fade + scale-95 + 2px blur over 150ms; the registry bell's popover ships no transition, and where BoardUI's documents and its code disagree the documents win (CLAUDE.md, UI Conventions).",
-        "Badge (user ruling 2026-09-23): a count over 99 is drawn as `99+`; the badge is `h-4 min-w-4 px-0.5` instead of `size-4` (inner span loses `w-4`) so it widens with its content, colours, border and type unchanged. It is positioned from the button's centre — `top-1/2 right-1/2 -mt-3.5 -mr-4.5` — instead of `top-0.5 left-[18px]`: identical to the registry at the 32px size (top 2px, right edge 34px) and at the glyph's top-right corner at 44px too, where the fixed left offset put it over the glyph's middle. Wider content grows leftward over the glyph rather than out of the button."
+        "Badge (user ruling 2026-09-23): a count over 99 is drawn as `99+`; the badge is `h-4 min-w-4 px-0.5` instead of `size-4` (inner span loses `w-4`) so it widens with its content, colours, border and type unchanged. It is positioned from the button's centre — `top-1/2 right-1/2 -mt-3.5 -mr-4.5` — instead of `top-0.5 left-[18px]`: identical to the registry at the 32px size (top 2px, right edge 34px) and at the glyph's top-right corner at 44px too, where the fixed left offset put it over the glyph's middle. Wider content grows leftward over the glyph rather than out of the button.",
+        "Dialog className (Meridian need, 2026-09-24): an optional `dialogClassName` is merged (cx) into the popover Dialog's `outline-none`, default unchanged. The inbox uses it to make the dialog a flex column bounded by `max-h-[inherit]` — the max-height React Aria's Popover writes inline from the space left in the visual viewport — so the center can scroll inside it."
       ]
     },
     "agent-thinking": {
@@ -237,7 +268,9 @@
       "upstream": {
         "src/components/application/agent-thinking/agent-thinking.tsx": "95cfe65a888ba5d42690496ce522fd0f6a58dcf6b4a8f19e9460a12668a4f62e"
       },
-      "patches": []
+      "patches": [
+        "Readable text: the elapsed-seconds timer text-tertiary → text-secondary (dark text-tertiary is neutral-600, ~1.9–2.3:1 on the primary/secondary surfaces; owner decision 2026-09-24, CLAUDE.md UI Conventions). Disabled states keep tertiary. The `subtle` tone (var(--color-text-tertiary), used by the stars variant) is unchanged pending an owner ruling."
+      ]
     },
     "composer-loader": {
       "files": ["src/components/application/composer-loader/composer-loader.tsx"],

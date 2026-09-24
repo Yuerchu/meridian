@@ -1,6 +1,7 @@
 import * as React from 'react'
 
 import { cx } from '@/utils/cx'
+import { BUBBLE_RUN_GAP } from './bubble'
 
 /**
  * A run of messages from one speaker, drawn the way a messenger draws one:
@@ -29,7 +30,7 @@ function MessageGroupUser({ className, ...props }: React.ComponentProps<'div'>) 
     <div
       data-slot="message-group"
       data-align="end"
-      className={cx(base, 'flex-col items-end gap-0.5', className)}
+      className={cx(base, 'flex-col items-end', BUBBLE_RUN_GAP, className)}
       {...props}
     />
   )
@@ -80,7 +81,7 @@ function MessageGroupBubbles({ className, ...props }: React.ComponentProps<'div'
   return (
     <div
       data-slot="message-group-bubbles"
-      className={cx('flex w-full min-w-0 flex-col gap-0.5 wrap-break-word', className)}
+      className={cx('flex w-full min-w-0 flex-col wrap-break-word', BUBBLE_RUN_GAP, className)}
       {...props}
     />
   )

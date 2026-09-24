@@ -1,7 +1,12 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 import {
+  detectHitTargets,
   effectiveHitArea,
   expandToTouchTarget,
   gradeHitTarget,
+  hitboxLiftsOwnClip,
   hitTargetSize,
   intersect,
   outermostOnly,
@@ -120,5 +125,60 @@ describe('outermostOnly', () => {
     const a = document.createElement('div')
     const b = document.createElement('div')
     expect(outermostOnly([{ el: a }, { el: b }])).toHaveLength(2)
+  })
+})
+
+/**
+ * The registry `Button` is `overflow-hidden`, and `touch-hitbox`'s expansion is
+ * that button's own `::after` — so the button clipped its own hit area back to
+ * the drawn size, and the detector, which only walked ancestors, called it fine.
+ */
+describe('a touch-hitbox control that clips itself', () => {
+  function mountButton(css: string | null): HTMLButtonElement {
+    document.body.innerHTML = ''
+    document.head.querySelectorAll('style[data-test-hitbox]').forEach((s) => s.remove())
+    if (css !== null) {
+      const style = document.createElement('style')
+      style.setAttribute('data-test-hitbox', '')
+      style.textContent = css
+      document.head.appendChild(style)
+    }
+    const button = document.createElement('button')
+    button.className = 'touch-hitbox overflow-hidden'
+    // jsdom does not expand the shorthand into the longhands it computes.
+    button.style.overflowX = 'hidden'
+    button.style.overflowY = 'hidden'
+    button.style.borderWidth = '0px'
+    button.getBoundingClientRect = () =>
+      ({ left: 100, top: 100, right: 124, bottom: 124, width: 24, height: 24 }) as DOMRect
+    document.body.appendChild(button)
+    return button
+  }
+
+  it('is reported as clipped when the utility leaves its own overflow alone', () => {
+    const button = mountButton(null)
+    const found = detectHitTargets(document, window)
+    expect(found.map((f) => f.el)).toEqual([button])
+    expect(found[0].detail).toMatch(/^24px once expanded/)
+  })
+
+  it('reaches the full target once the utility lifts the clip', () => {
+    mountButton('@media (any-pointer: coarse) { .touch-hitbox { position: relative; overflow: visible !important; } }')
+    expect(hitboxLiftsOwnClip(document)).toBe(true)
+    expect(detectHitTargets(document, window)).toEqual([])
+  })
+
+  it('does not count a lift that an equally specific overflow-hidden can override', () => {
+    mountButton('@media (any-pointer: coarse) { .touch-hitbox { overflow: visible; } }')
+    expect(hitboxLiftsOwnClip(document)).toBe(false)
+  })
+
+  /** The half jsdom cannot compile: the rule in the stylesheet itself. */
+  it('is what the touch-hitbox utility in index.css declares', () => {
+    const css = readFileSync(resolve(__dirname, '../index.css'), 'utf8')
+    const start = css.indexOf('@utility touch-hitbox {')
+    expect(start).toBeGreaterThan(-1)
+    const block = css.slice(start, css.indexOf('\n}\n', start))
+    expect(block).toMatch(/@media \(any-pointer: coarse\) \{[^}]*overflow: visible !important;/)
   })
 })

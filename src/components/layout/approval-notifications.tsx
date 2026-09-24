@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Notification, NotificationViewport, type NotificationAction } from '@/components/base'
@@ -6,13 +6,15 @@ import { ArrowRight, Check, Clock, X } from '@keyline-icons/react/two-tone'
 
 import { ToolArgsSummary, toolLabel } from '@/components/chat/tool-call-block'
 import { useConversationStore, type AttentionItem } from '@/stores/conversation-store'
+import { cx } from '@/utils/cx'
 import {
   ACTION_VARIANT,
+  MAX_VISIBLE,
   attentionActionIds,
   attentionActionLabel,
   attentionShape,
   useAttentionActions,
-  useVisibleApprovals,
+  usePendingAttention,
   type AttentionShape,
 } from './approval-queue'
 
@@ -47,30 +49,75 @@ import {
  * top of what is being typed. The official viewport does not know about
  * safe-area insets, so the top offset is widened to clear the status bar here
  * rather than in the vendored file. Its `z-100` is the registry's own.
+ *
+ * **Under a modal it is not drawn at all.** That `z-100` puts the stack over
+ * every overlay, but a modal `Modal`/`Sheet`/`Popover` runs React Aria's
+ * `ariaHideOutside`, which makes every other child of `body` `inert` — and the
+ * viewport is one. So the rows stayed on top of the dialog, looked pressable,
+ * and neither a pointer nor a screen reader could reach them. What is watched is
+ * that consequence itself (`useMadeInertByModal`), not a guess at which
+ * overlays are open: a non-modal popover calls `keepVisible` instead and never
+ * sets it, and the attribute is removed by the same ref count that set it when
+ * the last modal closes. The inbox is unaffected; it is a way in, not a layer.
+ *
+ * **Ignoring takes a row off this stack and nowhere else.** The question is
+ * still owed: it stays in `attention`, the inbox lists it and the sidebar dot
+ * stays lit. `stackIgnored` is cleared with the question by `retireAttention`.
  */
 export function ApprovalNotifications({
   onSelect,
   transcriptInert = false,
 }: {
-  onSelect: (conversationId: string) => void
+  onSelect: (conversationId: string) => Promise<boolean>
   transcriptInert?: boolean
 }) {
   const { t } = useTranslation()
-  const approvals = useVisibleApprovals(transcriptInert)
+  const { listed } = usePendingAttention(transcriptInert)
+  const ignored = useConversationStore((s) => s.stackIgnored)
+  const approvals = useMemo(
+    () => listed.filter((item) => !ignored[item.approvalId]).slice(0, MAX_VISIBLE),
+    [listed, ignored],
+  )
+  const underModal = useMadeInertByModal(VIEWPORT_SLOT)
 
   return (
     <NotificationViewport
-      data-slot="approval-notifications"
+      data-slot={VIEWPORT_SLOT}
+      data-under-modal={underModal || undefined}
       role="region"
       aria-label={t('notifications.region')}
       position="top-center"
-      className="top-[max(0.75rem,var(--safe-top,0px))] sm:top-[max(1.5rem,var(--safe-top,0px))]"
+      className={cx(
+        'top-[max(0.75rem,var(--safe-top,0px))] sm:top-[max(1.5rem,var(--safe-top,0px))]',
+        underModal && 'hidden',
+      )}
     >
       {approvals.map((item) => (
         <ApprovalNotification key={item.approvalId} item={item} onSelect={onSelect} />
       ))}
     </NotificationViewport>
   )
+}
+
+const VIEWPORT_SLOT = 'approval-notifications'
+
+/**
+ * Whether a modal overlay has shut this portal out. React Aria marks every
+ * sibling of the modal `inert` (or `aria-hidden` where `inert` is not
+ * supported, as in jsdom) and removes it again when the last modal closes.
+ */
+function useMadeInertByModal(slot: string): boolean {
+  const [inert, setInert] = useState(false)
+  useEffect(() => {
+    const el = document.querySelector<HTMLElement>(`[data-slot="${slot}"]`)
+    if (!el) return
+    const read = () => setInert(el.hasAttribute('inert') || el.getAttribute('aria-hidden') === 'true')
+    read()
+    const observer = new MutationObserver(read)
+    observer.observe(el, { attributes: true, attributeFilter: ['inert', 'aria-hidden'] })
+    return () => observer.disconnect()
+  }, [slot])
+  return inert
 }
 
 const ACTION_ICON = { defer: Clock, view: ArrowRight, deny: X, allow: Check } as const
@@ -80,16 +127,17 @@ export function ApprovalNotification({
   onSelect,
 }: {
   item: AttentionItem
-  onSelect: (conversationId: string) => void
+  onSelect: (conversationId: string) => Promise<boolean>
 }) {
   const { t } = useTranslation()
   const act = useAttentionActions(onSelect)
   const title = useConversationStore((s) => s.conversations.find((c) => c.id === item.conversationId)?.title ?? null)
   const shape = useMemo(() => attentionShape(item), [item])
+  const ignoreOnStack = useConversationStore((s) => s.ignoreOnStack)
 
-  // Deferring is the only way past a row without making a decision, which is
-  // why the notification is not dismissible: two ways to say "not now" where
-  // one of them is irreversible is how a question gets lost.
+  // Two ways past a row without deciding: "later" sends it to the back of this
+  // stack, the close button ("ignore") takes it off this stack. Neither loses
+  // the question — it is still in the inbox and on the sidebar until answered.
   const actions: NotificationAction[] = attentionActionIds(shape).map((id) => {
     const Icon = ACTION_ICON[id]
     return {
@@ -112,7 +160,9 @@ export function ApprovalNotification({
       title={title ?? t('chat.newChat')}
       description={<AttentionSummary item={item} shape={shape} />}
       actions={actions}
-      dismissible={false}
+      dismissible
+      closeLabel={t('chat.approvalNotification.ignore')}
+      onDismiss={() => ignoreOnStack(item.approvalId)}
       introDelay={0}
     />
   )
@@ -195,7 +245,7 @@ export function AttentionSummary({ item, shape }: { item: AttentionItem; shape: 
               data-slot="approval-notification-scope-arg"
               className="block whitespace-pre-wrap [overflow-wrap:anywhere]"
             >
-              <span data-slot="approval-notification-scope-key" className="text-text-tertiary">
+              <span data-slot="approval-notification-scope-key" className="text-text-secondary">
                 {arg.key}
               </span>{' '}
               {arg.value}

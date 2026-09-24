@@ -1,4 +1,5 @@
 import { useId, type ComponentProps } from 'react'
+import { useTranslation } from 'react-i18next'
 import { cx } from '@/utils/cx'
 
 type SpinnerSize = 'sm' | 'md' | 'lg' | 'xl'
@@ -55,12 +56,21 @@ function SpinnerIcon(props: ComponentProps<'svg'>) {
   )
 }
 
+/**
+ * On its own a spinner is a status and names itself, in the app's language.
+ * Inside something that already says it is busy — a `Button` with `isPending`
+ * (React Aria sets `aria-disabled` and announces it), a composer control — pass
+ * `aria-hidden`: a named status there becomes part of the button's name, and a
+ * screen reader read the save button as "Loading 保存".
+ */
 export function Spinner({ className, size = 'md', color = 'current', ...props }: SpinnerProps) {
+  const { t } = useTranslation()
+  const hidden = props['aria-hidden'] === true || props['aria-hidden'] === 'true'
   return (
     <span
-      aria-label="Loading"
+      aria-label={hidden ? undefined : t('common.loading')}
       data-slot="spinner"
-      role="status"
+      role={hidden ? undefined : 'status'}
       {...props}
       className={cx(
         'pointer-events-none inline-flex shrink-0 animate-spin-fast motion-reduce:animate-none',

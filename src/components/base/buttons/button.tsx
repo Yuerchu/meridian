@@ -180,7 +180,7 @@ export function Button({
       {...props}
     >
       {isPending ? (
-        <Spinner size="sm" color="current" className={styles.icon[size]} />
+        <Spinner size="sm" color="current" className={styles.icon[size]} aria-hidden />
       ) : Leading ? (
         <Leading className={styles.icon[size]} aria-hidden />
       ) : null}

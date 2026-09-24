@@ -112,4 +112,33 @@ describe('ComposerMenu', () => {
     await openMenu(user)
     expect(screen.queryByRole('menuitemcheckbox', { name: /Accept edits/ })).not.toBeInTheDocument()
   })
+
+  describe('the model submenu', () => {
+    const provider = { id: 'p1', name: 'One', is_enabled: true } as never
+
+    it('fetches once when the answer is empty, instead of fetching for ever', async () => {
+      const user = userEvent.setup()
+      render(<ComposerMenu {...props({ providers: [provider] })} />)
+      const menu = await openMenu(user)
+      await user.click(within(menu).getByRole('menuitem', { name: /Model/ }))
+
+      const submenu = await findSubmenu()
+      expect(await within(submenu).findByText(i18n.t('toolbar.noModels'))).toBeInTheDocument()
+      // Give a re-running effect every chance to fire again.
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(mockApi.fetchProviderModels).toHaveBeenCalledTimes(1)
+    })
+
+    it('says the list failed to load rather than that there are no models', async () => {
+      const user = userEvent.setup()
+      mockApi.fetchProviderModels.mockRejectedValue(new Error('offline'))
+      render(<ComposerMenu {...props({ providers: [provider] })} />)
+      const menu = await openMenu(user)
+      await user.click(within(menu).getByRole('menuitem', { name: /Model/ }))
+
+      const submenu = await findSubmenu()
+      expect(await within(submenu).findByText(i18n.t('toolbar.modelsLoadFailed'))).toBeInTheDocument()
+      expect(mockApi.fetchProviderModels).toHaveBeenCalledTimes(1)
+    })
+  })
 })

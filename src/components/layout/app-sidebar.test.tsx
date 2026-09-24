@@ -71,9 +71,10 @@ function renderSidebar(over: Partial<React.ComponentProps<typeof AppSidebar>> = 
     onSelect: vi.fn(),
     onCreate: vi.fn(),
     onOpenSearch: vi.fn(),
-    onDelete: vi.fn(),
-    onRename: vi.fn(),
-    onTogglePin: vi.fn(),
+    onDelete: vi.fn().mockResolvedValue(undefined),
+    onRename: vi.fn().mockResolvedValue(undefined),
+    onTogglePin: vi.fn().mockResolvedValue(undefined),
+    onToggleArchive: vi.fn().mockResolvedValue(undefined),
     onMoveToProject: vi.fn().mockResolvedValue(null),
     page: 'chat',
     onOpenSettings: vi.fn(),
@@ -84,8 +85,8 @@ function renderSidebar(over: Partial<React.ComponentProps<typeof AppSidebar>> = 
     activeProjectId: null,
     onSelectProject: vi.fn(),
     onCreateProject: vi.fn(),
-    onDeleteProject: vi.fn(),
-    onRenameProject: vi.fn(),
+    onDeleteProject: vi.fn().mockResolvedValue(undefined),
+    onRenameProject: vi.fn().mockResolvedValue(undefined),
     onCreateHostedSession: vi.fn().mockResolvedValue(null),
     ...over,
   }
@@ -309,6 +310,52 @@ describe('AppSidebar project groups', () => {
       expect(within(menu).getByText('置顶')).toBeInTheDocument()
     })
 
+    async function openRowMenu(user: ReturnType<typeof userEvent.setup>) {
+      await user.pointer({
+        keys: '[MouseRight]',
+        target: within(group('Meridian')).getByRole('row', { name: /侧边栏重构/ }),
+      })
+      return screen.findByRole('menu')
+    }
+
+    it('surfaces a failed pin', async () => {
+      const user = userEvent.setup()
+      renderSidebar({ onTogglePin: vi.fn().mockRejectedValue(new Error('db locked')) })
+      await user.click(within(await openRowMenu(user)).getByText('置顶'))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        i18n.t('sidebar.pinFailed', { error: 'Error: db locked' }),
+      )
+    })
+
+    it('surfaces a failed delete', async () => {
+      const user = userEvent.setup()
+      const onDelete = vi.fn().mockRejectedValue(new Error('still running'))
+      renderSidebar({ onDelete })
+      await user.click(within(await openRowMenu(user)).getByText(i18n.t('chat.delete')))
+      await user.click(
+        within(await screen.findByRole('alertdialog')).getByRole('button', { name: i18n.t('common.confirm') }),
+      )
+
+      expect(onDelete).toHaveBeenCalledWith('c-1')
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        i18n.t('sidebar.deleteFailed', { error: 'Error: still running' }),
+      )
+    })
+
+    it('surfaces a failed rename', async () => {
+      const user = userEvent.setup()
+      renderSidebar({ onRename: vi.fn().mockRejectedValue(new Error('too long')) })
+      await user.click(within(await openRowMenu(user)).getByText('重命名'))
+      const field = await screen.findByRole('textbox')
+      await user.clear(field)
+      await user.type(field, '新标题{Enter}')
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        i18n.t('sidebar.renameFailed', { error: 'Error: too long' }),
+      )
+    })
+
     it('surfaces an export failure', async () => {
       const user = userEvent.setup()
       dialogMocks.save.mockResolvedValue('C:\\exports\\conversation.jsonl')
@@ -393,5 +440,72 @@ describe('AppSidebar project groups', () => {
       expect(await within(dialog).findByRole('alert')).toHaveTextContent('conversation is busy')
       expect(dialog).toBeInTheDocument()
     })
+  })
+})
+
+/**
+ * The age and the actions button share one slot. The swap used to be a native
+ * `:hover` rule, which a WebView leaves on whatever was last tapped — on
+ * Android, choosing a conversation hid its time. It is keyed on React Aria's
+ * `data-hovered` now, which touch never sets, and the long-press menu carries
+ * the full time a finger otherwise has no way to reach.
+ */
+describe('AppSidebar conversation time', () => {
+  beforeAll(async () => {
+    await i18n.changeLanguage('zh-CN')
+  })
+
+  function timeOf(title: RegExp): HTMLElement {
+    const row = within(group('Meridian')).getByRole('row', { name: title })
+    const el = row.querySelector<HTMLElement>('[data-slot="conversation-time"]')
+    if (!el) throw new Error('no time')
+    return el
+  }
+
+  it('keeps the time after a tap, because only a real pointer hover swaps it', async () => {
+    const user = userEvent.setup()
+    renderSidebar({
+      conversations: [{ ...conversation('c-old', '旧对话', 'p-code'), updated_at: Date.now() - 7_200_000 }],
+    })
+    const row = within(group('Meridian')).getByRole('row', { name: /旧对话/ })
+    await user.pointer([{ keys: '[TouchA]', target: row }])
+    expect(row).not.toHaveAttribute('data-hovered')
+    const time = timeOf(/旧对话/)
+    expect(time).toHaveTextContent('2小时前')
+    // Hidden only by the row's React Aria hover, a keyboard focus in the slot,
+    // or the open menu — never by a `:hover` a tap leaves behind.
+    expect(time.className).toContain('group-data-[hovered]/tree-item:opacity-0')
+    expect(time.className).not.toMatch(/(^|\s|:)hover:/)
+    expect(time.className).not.toMatch(/group-hover/)
+  })
+
+  it('puts the actions button in the same slot as the time', () => {
+    renderSidebar()
+    const slot = timeOf(/侧边栏重构/).closest('[data-slot="conversation-time-slot"]')
+    expect(slot).not.toBeNull()
+    expect(within(slot as HTMLElement).getByRole('button', { name: /侧边栏重构/ })).toBeInTheDocument()
+  })
+
+  it('heads the right-click / long-press menu with the full time, as text rather than an item', async () => {
+    const user = userEvent.setup()
+    const at = new Date(2026, 8, 20, 14, 5).getTime()
+    renderSidebar({ conversations: [{ ...conversation('c-t', '有时间的', 'p-code'), updated_at: at }] })
+    await user.pointer({
+      keys: '[MouseRight]',
+      target: within(group('Meridian')).getByRole('row', { name: /有时间的/ }),
+    })
+    const menu = await screen.findByRole('menu')
+    const exact = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(at)
+    const heading = within(menu).getByText((text) => text.startsWith('更新于') && text.includes(exact))
+    expect(heading.closest('[role="menuitem"]')).toBeNull()
+    expect(within(menu).getByText('置顶')).toBeInTheDocument()
+  })
+
+  it('does not head a project menu with a time', async () => {
+    const user = userEvent.setup()
+    renderSidebar()
+    await user.pointer({ keys: '[MouseRight]', target: screen.getByRole('button', { name: 'Meridian' }) })
+    const menu = await screen.findByRole('menu')
+    expect(within(menu).queryByText(/^更新于/)).toBeNull()
   })
 })

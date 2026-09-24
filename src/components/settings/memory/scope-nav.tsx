@@ -1,10 +1,12 @@
+import type * as React from 'react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bookmark, UserX } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
 import { Button, Card } from '@/components/base'
 import { useConfirm } from '@/hooks/use-confirm'
-import { SettingsNavRow } from '../primitives'
+import { SettingsInlineAction, SettingsNavRow } from '../primitives'
+import { subjectLabel } from './labels'
 import { useRelativeTime } from '@/hooks/use-relative-time'
 import { cx } from '@/utils/cx'
 import type { MemorySubjectInfoResponse, ProjectInfoResponse } from '@/types'
@@ -60,7 +62,7 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
   }: {
     id: string
     active: boolean
-    label: string
+    label: React.ReactNode
     count?: number | null
     onPress: () => void
     indent?: boolean
@@ -80,17 +82,15 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
   /**
    * The branches used to stop at eight with nothing after them — a ninth
    * project's memories were in the database and unreachable from here.
+   *
+   * A quiet text action lined up with the indented rows (settings-tools.tsx's
+   * `InlineAction`), not a full-width grey button: it offers more of the list
+   * and should not outweigh the rows it is offering.
    */
   const moreRow = (slot: string, expanded: boolean, total: number, onToggle: () => void) => (
-    <Button
-      key={`${slot}-more`}
-      variant="secondary"
-      className="w-full justify-start pl-6 text-caption-1-regular text-text-secondary"
-      onPress={onToggle}
-      data-slot={slot}
-    >
+    <SettingsInlineAction key={`${slot}-more`} className="my-1 ml-6" onPress={onToggle} data-slot={slot}>
       {expanded ? t('settings.memory.nav.showLess') : t('settings.memory.nav.showAll', { count: total })}
-    </Button>
+    </SettingsInlineAction>
   )
 
   return (
@@ -156,7 +156,7 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
         row({
           id: `person:${s.scope_id}`,
           active: filter.kind === 'person' && filter.scopeId === s.scope_id,
-          label: s.display_name ?? s.scope_id,
+          label: <SubjectName subject={s} />,
           onPress: () => onFilterChange({ kind: 'person', scopeId: s.scope_id }),
           indent: true,
         }),
@@ -167,7 +167,9 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
       {selectedPerson && (
         <Card data-slot="memory-person-card" className="mt-3">
           <Card.Header>
-            <Card.Title>{selectedPerson.display_name ?? selectedPerson.scope_id}</Card.Title>
+            <Card.Title>
+              <SubjectName subject={selectedPerson} />
+            </Card.Title>
             <Card.Description>
               {t('settings.memory.person.lastSeen', {
                 when: relativeTime(selectedPerson.last_seen_at),
@@ -222,5 +224,23 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
       )}
       {confirmDialog}
     </div>
+  )
+}
+
+/**
+ * A person's display name, or — with none recorded — what kind of id they are
+ * with the number itself set as a quieter identifier.
+ */
+function SubjectName({ subject }: { subject: MemorySubjectInfoResponse }) {
+  const { t } = useTranslation()
+  const label = subjectLabel(t, subject)
+  if (!label.id) return <>{label.name}</>
+  return (
+    <>
+      {label.name}{' '}
+      <span data-slot="memory-subject-id" className="font-mono text-caption-1-regular text-text-secondary">
+        {label.id}
+      </span>
+    </>
   )
 }

@@ -46,7 +46,7 @@ export function NotificationInbox({
   onSelect,
   transcriptInert,
 }: {
-  onSelect: (conversationId: string) => void
+  onSelect: (conversationId: string) => Promise<boolean>
   transcriptInert: boolean
 }) {
   const { t } = useTranslation()
@@ -100,6 +100,15 @@ export function NotificationInbox({
       notifications={notifications}
       triggerLabel={t('notifications.inbox.bell', { count: listed.length })}
       dialogLabel={t('notifications.inbox.title')}
+      // The popover does not follow the viewport by itself: React Aria writes
+      // the height left below the bell as an inline max-height on it, and
+      // nothing inside read it. So the dialog takes that bound (`inherit`) and
+      // the center is the one scroller inside it — with the registry's 516px
+      // list cap lifted, since a second, nested scroller is what left the last
+      // rows below the fold of a short window. The soft keyboard does not
+      // shrink the visual viewport here (`adjustNothing`), so its height is
+      // added as bottom padding for the last row to scroll clear of it.
+      dialogClassName="flex max-h-[inherit] flex-col"
       before={
         here.length > 0 && activeId !== null ? (
           <div
@@ -123,6 +132,13 @@ export function NotificationInbox({
         ) : null
       }
       centerProps={{
+        // Fill the 440px popover instead of the registry's 430px card.
+        className:
+          'max-w-none min-h-0 max-h-[41rem] overflow-x-hidden overflow-y-auto overscroll-contain pb-[var(--ime-bottom,0px)]',
+        // `max-h-[none]`, not `max-h-none`: tailwind-merge does not put the
+        // keyword in the max-height group, so `max-h-none` would sit beside the
+        // registry's `max-h-[516px]` and lose or win on stylesheet order.
+        listClassName: 'max-h-[none] overflow-visible',
         tabs,
         readable: false,
         // Several questions from one conversation read as one block under its

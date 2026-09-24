@@ -1,5 +1,7 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useRef, useState } from 'react'
+import { Dialog, Modal, ModalOverlay, Popover } from 'react-aria-components'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import i18n from '@/i18n'
@@ -8,6 +10,7 @@ import { usePlanReviewStore } from '@/stores/plan-review-store'
 import type { ConversationInfoResponse } from '@/types'
 import { ApprovalNotifications } from './approval-notifications'
 import { INLINE_DECISION_LIMIT } from './approval-queue'
+import { NotificationInbox } from './notification-inbox'
 
 const mocks = vi.hoisted(() => ({
   approve: vi.fn<(id: string) => Promise<void>>(),
@@ -64,6 +67,7 @@ function seed(items: AttentionItem[], activeId: string | null = null) {
     activeId,
     attention: Object.fromEntries(items.map((i) => [i.approvalId, i])),
     attentionOrder: items.map((i) => i.approvalId),
+    stackIgnored: {},
   })
 }
 
@@ -89,20 +93,20 @@ beforeEach(() => {
 describe('approval notifications', () => {
   it('draws the front of the queue in its order, inside a labelled region', () => {
     seed([approval('a', 'c1'), approval('b', 'c2'), approval('c', 'c3'), approval('d', 'c4')])
-    render(<ApprovalNotifications onSelect={() => {}} />)
+    render(<ApprovalNotifications onSelect={async () => true} />)
     expect(screen.getByRole('region', { name: i18n.t('notifications.region') })).toBeInTheDocument()
     expect(shownIds()).toEqual(['a', 'b', 'c'])
   })
 
   it('leaves out the conversation being read', () => {
     seed([approval('a', 'being-read'), approval('b', 'elsewhere')], 'being-read')
-    render(<ApprovalNotifications onSelect={() => {}} />)
+    render(<ApprovalNotifications onSelect={async () => true} />)
     expect(shownIds()).toEqual(['b'])
   })
 
   it('offers the conversation being read when its transcript is inert', () => {
     seed([approval('a', 'being-read'), approval('b', 'elsewhere')], 'being-read')
-    render(<ApprovalNotifications onSelect={() => {}} transcriptInert />)
+    render(<ApprovalNotifications onSelect={async () => true} transcriptInert />)
     expect(shownIds()).toEqual(['a', 'b'])
   })
 
@@ -110,28 +114,63 @@ describe('approval notifications', () => {
    *  order — the case a membership diff could not see. */
   it('moves a deferred question to the back and brings the next one forward', async () => {
     seed([approval('a', 'c1'), approval('b', 'c2'), approval('c', 'c3'), approval('d', 'c4')])
-    render(<ApprovalNotifications onSelect={() => {}} />)
+    render(<ApprovalNotifications onSelect={async () => true} />)
     await userEvent.click(within(card('a')).getByRole('button', { name: i18n.t('chat.approvalNotification.defer') }))
     expect(useConversationStore.getState().attentionOrder).toEqual(['b', 'c', 'd', 'a'])
     await waitFor(() => expect(shownIds()).toEqual(['b', 'c', 'd']))
   })
 
-  it('has no close button, only named actions', () => {
+  it('offers the named actions and an "ignore" close button, never the registry default label', () => {
     seed([approval('a', 'c1')])
-    render(<ApprovalNotifications onSelect={() => {}} />)
+    render(<ApprovalNotifications onSelect={async () => true} />)
     const buttons = within(card('a')).getAllByRole('button')
     expect(buttons.map((b) => b.textContent)).toEqual([
       i18n.t('chat.approvalNotification.defer'),
       i18n.t('chat.approvalNotification.view'),
       i18n.t('chat.tool.deny'),
       i18n.t('chat.tool.allow'),
+      '',
     ])
+    expect(within(card('a')).getByRole('button', { name: i18n.t('chat.approvalNotification.ignore') })).toBeTruthy()
     expect(within(card('a')).queryByRole('button', { name: 'Dismiss notification' })).toBeNull()
+  })
+
+  /** Ignoring is not answering and not deferring: the question stays owed,
+   *  so it stays in the inbox, and it leaves the stack for good. */
+  it('takes an ignored question off the stack only, and keeps it in the inbox', async () => {
+    seed([approval('a', 'c1'), approval('b', 'c2'), approval('c', 'c3'), approval('d', 'c4')])
+    render(
+      <>
+        <NotificationInbox onSelect={async () => true} transcriptInert={false} />
+        <ApprovalNotifications onSelect={async () => true} />
+      </>,
+    )
+    await userEvent.click(within(card('a')).getByRole('button', { name: i18n.t('chat.approvalNotification.ignore') }))
+    await waitFor(() => expect(shownIds()).toEqual(['b', 'c', 'd']))
+    const state = useConversationStore.getState()
+    expect(state.attentionOrder).toEqual(['a', 'b', 'c', 'd'])
+    expect(state.attention.a).toBeDefined()
+    expect(mocks.approve).not.toHaveBeenCalled()
+    expect(mocks.deny).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: /^Waiting on you/ }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getAllByText('Title c1').length).toBeGreaterThan(0)
+  })
+
+  it('forgets the ignore once the question is answered', async () => {
+    seed([approval('a', 'c1'), approval('b', 'c2')])
+    render(<ApprovalNotifications onSelect={async () => true} />)
+    await userEvent.click(within(card('a')).getByRole('button', { name: i18n.t('chat.approvalNotification.ignore') }))
+    await waitFor(() => expect(useConversationStore.getState().stackIgnored).toEqual({ a: true }))
+    act(() => useConversationStore.getState().retireAnsweredApproval('a'))
+    expect(useConversationStore.getState().stackIgnored).toEqual({})
+    expect(shownIds()).toEqual(['b'])
   })
 
   it('retires an answered question from the queue', async () => {
     seed([approval('a', 'c1'), approval('b', 'c2')])
-    render(<ApprovalNotifications onSelect={() => {}} />)
+    render(<ApprovalNotifications onSelect={async () => true} />)
     await userEvent.click(within(card('a')).getByRole('button', { name: i18n.t('chat.tool.allow') }))
     expect(mocks.approve).toHaveBeenCalledWith('a')
     expect(useConversationStore.getState().attentionOrder).toEqual(['b'])
@@ -143,14 +182,14 @@ describe('approval notifications', () => {
     seed([approval('a', 'c1')])
     useConversationStore.setState({ markApprovalOrphaned })
     mocks.deny.mockRejectedValue(new Error('turn gone'))
-    render(<ApprovalNotifications onSelect={() => {}} />)
+    render(<ApprovalNotifications onSelect={async () => true} />)
     await userEvent.click(within(card('a')).getByRole('button', { name: i18n.t('chat.tool.deny') }))
     expect(mocks.deny).toHaveBeenCalledWith({ approvalId: 'a', reason: null })
     await waitFor(() => expect(markApprovalOrphaned).toHaveBeenCalledWith('a'))
   })
 
   it('opens the conversation and defers the question when viewed', async () => {
-    const onSelect = vi.fn()
+    const onSelect = vi.fn().mockResolvedValue(true)
     seed([approval('a', 'c1'), approval('b', 'c2')])
     render(<ApprovalNotifications onSelect={onSelect} />)
     await userEvent.click(within(card('a')).getByRole('button', { name: i18n.t('chat.approvalNotification.view') }))
@@ -162,7 +201,7 @@ describe('approval notifications', () => {
   it('shows a path in full and lets the read be decided here', () => {
     const path = 'C:/work/repo/src/components/layout/approval-queue.ts'
     seed([approval('a', 'c1', path)])
-    render(<ApprovalNotifications onSelect={() => {}} />)
+    render(<ApprovalNotifications onSelect={async () => true} />)
     const arg = card('a').querySelector('[data-slot="tool-arg"]')
     expect(arg?.textContent).toContain('approval-queue.ts')
     expect(arg?.className).not.toMatch(/line-clamp/)
@@ -172,7 +211,7 @@ describe('approval notifications', () => {
   it('withholds the decision on a path too long to show in full', () => {
     const path = `src/${'x'.repeat(INLINE_DECISION_LIMIT.chars)}.ts`
     seed([approval('a', 'c1', path)])
-    render(<ApprovalNotifications onSelect={() => {}} />)
+    render(<ApprovalNotifications onSelect={async () => true} />)
     expect(within(card('a')).queryByRole('button', { name: i18n.t('chat.tool.allow') })).toBeNull()
     expect(within(card('a')).queryByRole('button', { name: i18n.t('chat.tool.deny') })).toBeNull()
     expect(within(card('a')).getByText(i18n.t('chat.approvalNotification.argumentsTooLong'))).toBeInTheDocument()
@@ -184,7 +223,7 @@ describe('approval notifications', () => {
   it('withholds the decision on a description with too many lines', () => {
     const description = Array.from({ length: INLINE_DECISION_LIMIT.lines + 1 }, (_, i) => `line ${i}`).join('\n')
     seed([call('a', 'c1', 'read_file', { path: 'src/a.ts', description })])
-    render(<ApprovalNotifications onSelect={() => {}} />)
+    render(<ApprovalNotifications onSelect={async () => true} />)
     expect(within(card('a')).queryByRole('button', { name: i18n.t('chat.tool.allow') })).toBeNull()
     expect(within(card('a')).getByText(i18n.t('chat.approvalNotification.argumentsTooLong'))).toBeInTheDocument()
   })
@@ -194,7 +233,7 @@ describe('approval notifications', () => {
     useConversationStore.setState({
       conversations: [{ id: 'conversation-1', title: 'Plan conversation' } as ConversationInfoResponse],
     })
-    render(<ApprovalNotifications onSelect={() => {}} />)
+    render(<ApprovalNotifications onSelect={async () => true} />)
     expect(await screen.findByText(i18n.t('planReview.deliveryQueued'))).toBeInTheDocument()
 
     act(() => {
@@ -212,6 +251,67 @@ describe('approval notifications', () => {
  * side effect is a way into its card however little it carries; a read that
  * carries something the row does not draw is too. One case per category.
  */
+describe('under a modal overlay', () => {
+  function WithModal() {
+    const [open, setOpen] = useState(true)
+    return (
+      <>
+        <ApprovalNotifications onSelect={async () => true} />
+        <ModalOverlay isOpen={open} onOpenChange={setOpen}>
+          <Modal>
+            <Dialog aria-label="modal">
+              <button type="button" onClick={() => setOpen(false)}>
+                close modal
+              </button>
+            </Dialog>
+          </Modal>
+        </ModalOverlay>
+      </>
+    )
+  }
+
+  function region(): HTMLElement {
+    const el = document.querySelector<HTMLElement>('[data-slot="approval-notifications"]')
+    if (!el) throw new Error('no notification region')
+    return el
+  }
+
+  /** React Aria shuts every sibling of a modal out; a stack drawn above the
+   *  dialog would look pressable and be unreachable. */
+  it('is not drawn while a modal has shut it out, and comes back when it closes', async () => {
+    seed([approval('a', 'c1')])
+    render(<WithModal />)
+    await waitFor(() => expect(region()).toHaveAttribute('data-under-modal'))
+    expect(region()).toHaveClass('hidden')
+    await userEvent.click(screen.getByRole('button', { name: 'close modal' }))
+    await waitFor(() => expect(region()).not.toHaveAttribute('data-under-modal'))
+    expect(region()).not.toHaveClass('hidden')
+    expect(shownIds()).toEqual(['a'])
+  })
+
+  it('stays drawn beside a non-modal popover', async () => {
+    function WithPopover() {
+      const trigger = useRef<HTMLButtonElement>(null)
+      return (
+        <>
+          <button type="button" ref={trigger}>
+            anchor
+          </button>
+          <ApprovalNotifications onSelect={async () => true} />
+          <Popover isNonModal isOpen triggerRef={trigger}>
+            <div>floating</div>
+          </Popover>
+        </>
+      )
+    }
+    seed([approval('a', 'c1')])
+    render(<WithPopover />)
+    await screen.findByText('floating')
+    expect(region()).not.toHaveAttribute('data-under-modal')
+    expect(region()).not.toHaveClass('hidden')
+  })
+})
+
 describe('which calls may be decided from a row', () => {
   const allow = () => i18n.t('chat.tool.allow')
   const deny = () => i18n.t('chat.tool.deny')
@@ -222,13 +322,14 @@ describe('which calls may be decided from a row', () => {
 
   function expectViewOnly(item: AttentionItem, why: keyof typeof note) {
     seed([item])
-    render(<ApprovalNotifications onSelect={() => {}} />)
+    render(<ApprovalNotifications onSelect={async () => true} />)
     const el = card(item.approvalId)
     expect(within(el).queryByRole('button', { name: allow() })).toBeNull()
     expect(within(el).queryByRole('button', { name: deny() })).toBeNull()
     expect(
       within(el)
         .getAllByRole('button')
+        .filter((b) => b.getAttribute('aria-label') !== i18n.t('chat.approvalNotification.ignore'))
         .map((b) => b.textContent),
     ).toEqual([i18n.t('chat.approvalNotification.defer'), i18n.t('chat.approvalNotification.view')])
     expect(within(el).getByText(i18n.t(note[why]))).toBeInTheDocument()
@@ -236,7 +337,7 @@ describe('which calls may be decided from a row', () => {
 
   function expectDecidable(item: AttentionItem) {
     seed([item])
-    render(<ApprovalNotifications onSelect={() => {}} />)
+    render(<ApprovalNotifications onSelect={async () => true} />)
     const el = card(item.approvalId)
     expect(within(el).getByRole('button', { name: allow() })).toBeInTheDocument()
     expect(within(el).getByRole('button', { name: deny() })).toBeInTheDocument()
@@ -368,13 +469,47 @@ describe('which calls may be decided from a row', () => {
 
   it('a question is offered as a way in, with no withheld-content note', () => {
     seed([call('q', 'c1', 'ask_user', { questions: [] }, 'ask')])
-    render(<ApprovalNotifications onSelect={() => {}} />)
+    render(<ApprovalNotifications onSelect={async () => true} />)
     expect(
       within(card('q'))
         .getAllByRole('button')
+        .filter((b) => b.getAttribute('aria-label') !== i18n.t('chat.approvalNotification.ignore'))
         .map((b) => b.textContent),
     ).toEqual([i18n.t('chat.approvalNotification.defer'), i18n.t('chat.approvalNotification.answer')])
     expect(within(card('q')).queryByText(i18n.t('chat.approvalNotification.contentHidden'))).toBeNull()
     expect(within(card('q')).queryByText(i18n.t('chat.approvalNotification.reviewRequired'))).toBeNull()
+  })
+})
+
+describe('viewing a plan review', () => {
+  it('opens the review only after the navigation that would close it has finished', async () => {
+    seed([reviewAttention('review')])
+    let finish: (navigated: boolean) => void = () => {}
+    // What the shell's navigation does: asynchronously (settings asks about
+    // unsaved work), and ending by closing whatever review was open.
+    const onSelect = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          finish = (navigated) => {
+            if (navigated) usePlanReviewStore.getState().closeReview()
+            resolve(navigated)
+          }
+        }),
+    )
+    render(<ApprovalNotifications onSelect={onSelect} transcriptInert />)
+
+    await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.plan.review') }))
+    expect(onSelect).toHaveBeenCalledWith('conversation-1')
+    await act(async () => finish(true))
+    expect(usePlanReviewStore.getState().activeReviewId).toBe('review-1')
+  })
+
+  it('does not open the review when leaving was refused', async () => {
+    seed([reviewAttention('review')])
+    render(<ApprovalNotifications onSelect={async () => false} transcriptInert />)
+
+    await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.plan.review') }))
+    await act(async () => {})
+    expect(usePlanReviewStore.getState().activeReviewId).toBeNull()
   })
 })

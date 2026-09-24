@@ -1,17 +1,20 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { cx } from '@/utils/cx'
+import { StickerPlayback, StickerPlaybackContext } from './sticker-playback'
 
 /**
- * A sticker in the picker, drawn still until somebody is looking at it.
+ * A sticker drawn still until it is allowed to move — in the picker, in the
+ * transcript and in the settings table alike.
  *
- * A pack is mostly GIFs and animated WebP, and a grid of forty of them all
- * decoding at once is what made the picker stutter. So each cell mounts only
- * once its row is near the grid's viewport, and what it mounts is the first
- * frame painted into a `<canvas>` — `drawImage` of an animated image paints
- * whichever frame is current, and right after `decode()` that is the first.
- * That works for GIF, APNG and animated WebP alike without parsing any of
- * them. The live `<img>` is laid over it only while the cell is hovered,
- * focused or held.
+ * A pack is mostly GIFs and animated WebP, and a screen of them all decoding
+ * at once is what made both the picker and a long conversation stutter. So a
+ * sticker mounts only once it is `near` (see `sticker-playback.tsx`, which
+ * decides that and `playing`), and what it mounts is the first frame painted
+ * into a `<canvas>` — `drawImage` of an animated image paints whichever frame
+ * is current, and right after `decode()` that is the first. That works for
+ * GIF, APNG and animated WebP alike without parsing any of them. The live
+ * `<img>` is laid over it only while `playing`, and removed again the moment
+ * playback stops — which is what actually stops the decoding.
  *
  * The canvas is only ever *displayed*, never read back, so a cross-origin
  * source (a QQ face on `qzonestyle.gtimg.cn`) taints it harmlessly: tainting
@@ -19,84 +22,22 @@ import { cx } from '@/utils/cx'
  * `data:` URLs and do not taint at all.
  */
 
-type Visibility = (el: Element, onChange: (near: boolean) => void) => () => void
-
-const StickerVisibilityContext = createContext<Visibility | null>(null)
-
-/**
- * One `IntersectionObserver` for a whole grid, rooted at its scroller so the
- * margin means "a row or two past the edge you can see". Without a provider,
- * or without the API, every cell counts as near — the degraded case is the
- * old behaviour, not a blank grid.
- */
-class StickerVisibility {
-  #listeners = new Map<Element, (near: boolean) => void>()
-  #observer: IntersectionObserver | null = null
-  #root: RefObject<Element | null>
-
-  constructor(root: RefObject<Element | null>) {
-    this.#root = root
-  }
-
-  observe: Visibility = (el, onChange) => {
-    if (typeof IntersectionObserver === 'undefined') {
-      onChange(true)
-      return () => {}
-    }
-    this.#observer ??= new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) this.#listeners.get(entry.target)?.(entry.isIntersecting)
-      },
-      { root: this.#root.current, rootMargin: '160px 0px' },
-    )
-    const io = this.#observer
-    this.#listeners.set(el, onChange)
-    io.observe(el)
-    return () => {
-      this.#listeners.delete(el)
-      io.unobserve(el)
-      if (this.#listeners.size === 0) {
-        io.disconnect()
-        this.#observer = null
-      }
-    }
-  }
-}
-
-export function StickerVisibilityProvider({
-  rootRef,
-  children,
-}: {
-  rootRef: RefObject<Element | null>
-  children: ReactNode
-}) {
-  const [visibility] = useState(() => new StickerVisibility(rootRef))
-  return <StickerVisibilityContext.Provider value={visibility.observe}>{children}</StickerVisibilityContext.Provider>
-}
-
-function useNear(ref: RefObject<Element | null>): boolean {
-  const observe = useContext(StickerVisibilityContext)
-  const [near, setNear] = useState(observe === null)
-  useEffect(() => {
-    if (!observe || !ref.current) return
-    return observe(ref.current, setNear)
-  }, [observe, ref])
-  return near
-}
-
-/** The largest side a still frame is painted at, in CSS pixels. */
-const STILL_EDGE = 112
+/** The largest side a still frame is painted at when the box has no size yet, in CSS pixels. */
+const STILL_EDGE = 128
 
 type Still = 'pending' | 'drawn' | 'failed'
 
 export function StickerThumb({
   src,
+  near,
   playing,
   fallback,
   className,
 }: {
   src: string
-  /** Hovered, focused or held — and not under `prefers-reduced-motion`. */
+  /** Close enough to the viewport to hold a still frame at all. */
+  near: boolean
+  /** Allowed to animate right now (`useStickerPlayback`). */
   playing: boolean
   /** Drawn if the image cannot be decoded at all. */
   fallback: ReactNode
@@ -104,7 +45,6 @@ export function StickerThumb({
 }) {
   const box = useRef<HTMLSpanElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
-  const near = useNear(box)
   const [still, setStill] = useState<Still>('pending')
   // The live image is laid over the still, and the still is hidden only once
   // the live one has painted — otherwise a transparent GIF shows its first
@@ -126,7 +66,10 @@ export function StickerThumb({
         if (cancelled || !target) return
         const ratio = window.devicePixelRatio || 1
         const edge = Math.max(image.naturalWidth, image.naturalHeight) || 1
-        const scale = Math.min(1, (STILL_EDGE * ratio) / edge)
+        // Painted at the size the box is drawn at: a 128px transcript
+        // sticker and an 88px picker cell both get a sharp still.
+        const drawn = Math.max(box.current?.clientWidth ?? 0, box.current?.clientHeight ?? 0) || STILL_EDGE
+        const scale = Math.min(1, (drawn * ratio) / edge)
         target.width = Math.max(1, Math.round(image.naturalWidth * scale))
         target.height = Math.max(1, Math.round(image.naturalHeight * scale))
         const context = target.getContext('2d')
@@ -140,7 +83,7 @@ export function StickerThumb({
     return () => {
       cancelled = true
       // Let go of the decoded frames and the backing store as soon as the
-      // cell leaves the neighbourhood or the picker closes.
+      // sticker leaves the neighbourhood or the picker closes.
       image.src = ''
       if (target) {
         target.width = 0
@@ -181,4 +124,21 @@ export function StickerThumb({
       ) : null}
     </span>
   )
+}
+
+/**
+ * A playback scope measured against one scroller — the picker's grid, the
+ * settings table. Outside any provider a sticker answers to the viewport.
+ */
+export function StickerPlaybackProvider({
+  rootRef,
+  maxPlaying,
+  children,
+}: {
+  rootRef: RefObject<Element | null>
+  maxPlaying?: number
+  children: ReactNode
+}) {
+  const [playback] = useState(() => new StickerPlayback({ root: () => rootRef.current, maxPlaying }))
+  return <StickerPlaybackContext.Provider value={playback}>{children}</StickerPlaybackContext.Provider>
 }

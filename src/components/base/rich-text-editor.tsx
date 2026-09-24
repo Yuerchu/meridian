@@ -341,7 +341,16 @@ function RteLinkPopoverTrigger({ className, ...props }: RteLinkPopoverTriggerPro
   )
 }
 
-function RteLinkPopoverContent({ children, className }: { children?: ReactNode; className?: string }) {
+function RteLinkPopoverContent({
+  children,
+  className,
+  'aria-label': ariaLabel,
+}: {
+  children?: ReactNode
+  className?: string
+  /** Required: the popover has no visible heading to be named by. */
+  'aria-label': string
+}) {
   return (
     <AriaPopover
       data-slot="rich-text-editor-link-popover"
@@ -351,7 +360,7 @@ function RteLinkPopoverContent({ children, className }: { children?: ReactNode; 
     >
       <Dialog
         data-slot="rich-text-editor-link-content"
-        aria-label="Link"
+        aria-label={ariaLabel}
         className="flex items-center gap-2 outline-none"
       >
         {children}
@@ -376,7 +385,7 @@ function RteLinkPopoverInput({
       {...props}
       className={cx(
         'min-w-0 flex-1 rounded-lg bg-background-tertiary-default px-2 py-1.5 text-body-regular text-text-primary outline-none',
-        'placeholder:text-text-tertiary focus:ring-2 focus:ring-inset focus:ring-border-button-active',
+        'placeholder:text-text-secondary focus:ring-2 focus:ring-inset focus:ring-border-button-active',
         className,
       )}
     />

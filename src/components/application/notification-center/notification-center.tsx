@@ -70,6 +70,8 @@ export interface NotificationCenterProps extends Omit<HTMLAttributes<HTMLDivElem
   /** `true` gathers the list under a label per `group`, in the order each
    *  group first appears; items keep their order within a group. */
   showGroups?: boolean
+  /** Merged into the list's scroll box (registry: `max-h-[516px] overflow-y-auto`). */
+  listClassName?: string
   ref?: Ref<HTMLDivElement>
 }
 
@@ -142,6 +144,7 @@ export function NotificationCenter({
   labels: labelOverrides,
   readable = true,
   showGroups = false,
+  listClassName,
   className,
   ref,
   ...props
@@ -226,7 +229,12 @@ export function NotificationCenter({
 
       <div className="bg-notification-center-background p-1.5">
         <div className="overflow-hidden rounded-2xl bg-background-secondary-default">
-          <div className="max-h-[516px] overflow-y-auto overscroll-contain bg-background-secondary-default p-2">
+          <div
+            className={cx(
+              'max-h-[516px] overflow-y-auto overscroll-contain bg-background-secondary-default p-2',
+              listClassName,
+            )}
+          >
             {visibleNotifications.length === 0 ? (
               <div className="flex min-h-64 flex-col items-center justify-center gap-2 rounded-2xl bg-background-primary-default px-6 text-center">
                 <span className="flex size-11 items-center justify-center rounded-full bg-background-secondary-default text-foreground-icon-secondary">
@@ -242,7 +250,7 @@ export function NotificationCenter({
                   return (
                     <Fragment key={item.id}>
                       {showGroups && item.group !== visibleNotifications[index - 1]?.group ? (
-                        <p className="px-2 pb-1 text-body-2-medium text-text-tertiary">{item.group}</p>
+                        <p className="px-2 pb-1 text-body-2-medium text-text-secondary">{item.group}</p>
                       ) : null}
                       <article className="group/item relative flex gap-3 rounded-notification-card bg-background-primary-default px-3 py-3">
                         <NotificationVisual item={item} />
@@ -250,7 +258,7 @@ export function NotificationCenter({
                           <div className="flex min-w-0 items-start justify-between gap-3">
                             <p className="min-w-0 text-body-medium text-text-primary">{item.title}</p>
                             <div className="flex shrink-0 items-center gap-2">
-                              <span className="text-caption-1-medium whitespace-nowrap text-text-tertiary">
+                              <span className="text-caption-1-medium whitespace-nowrap text-text-secondary">
                                 {item.timestamp}
                               </span>
                               {unread ? (
