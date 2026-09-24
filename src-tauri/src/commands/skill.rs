@@ -121,7 +121,10 @@ pub fn update_skill(app: tauri::AppHandle, request: SkillUpdateRequest) -> Resul
             .unwrap_or_else(|| current.llm_description.clone());
         let body = match request.body.clone() {
             Some(b) => b,
-            None => skills::read_skill_body(&root, &dir_name).unwrap_or_default(),
+            // An unreadable body is an error, not an empty one: defaulting here
+            // would rewrite SKILL.md with the description and nothing else.
+            None => skills::read_skill_body(&root, &dir_name)
+                .ok_or_else(|| format!("skill '{dir_name}' has no readable SKILL.md"))?,
         };
         skills::write_skill_file(&root, &dir_name, &current.llm_name, &description, &body)?;
         skills::sync_index(&mut conn, &root)?;

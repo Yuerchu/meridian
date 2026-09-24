@@ -36,53 +36,29 @@ import { TextareaBase, type TextareaBaseProps } from './textarea/textarea'
 
 export { TextField, type TextFieldProps }
 
-/**
- * Which surface the field sits on, which decides its fill. boardui's field is
- * the tertiary well, and in the dark theme that is the same neutral as the
- * primary surface — a field on a card, a modal or this app's main panel is
- * invisible until hovered. boardui's own settings page answers that by giving a
- * field on the lighter surface the secondary fill (`settings-storage`), and
- * that is the rule here: the well is always one step darker than what it is on.
- *
- * `primary` is the default because that is where almost every field in this
- * app lives; the sidebar's forms say `secondary`.
- */
-export type FieldSurface = 'primary' | 'secondary'
+export type InputProps = InputBaseProps
 
-const WELL: Record<FieldSurface, string> = {
-  primary: 'bg-background-secondary-default',
-  secondary: 'bg-background-tertiary-default',
+export function Input(props: InputProps) {
+  return <InputBase data-slot="input" {...props} />
 }
 
-export interface InputProps extends InputBaseProps {
-  surface?: FieldSurface
-}
+export type TextAreaProps = TextareaBaseProps
 
-export function Input({ surface = 'primary', fieldClassName, ...props }: InputProps) {
-  return <InputBase data-slot="input" fieldClassName={cx(WELL[surface], fieldClassName)} {...props} />
-}
-
-export interface TextAreaProps extends TextareaBaseProps {
-  surface?: FieldSurface
-}
-
-export function TextArea({ surface = 'primary', fieldClassName, ...props }: TextAreaProps) {
-  return <TextareaBase data-slot="textarea" fieldClassName={cx(WELL[surface], fieldClassName)} {...props} />
+export function TextArea(props: TextAreaProps) {
+  return <TextareaBase data-slot="textarea" {...props} />
 }
 
 /* ------------------------------------------------------------ SearchField */
 
 interface SearchFieldRootProps extends Omit<AriaSearchFieldProps, 'className'> {
   className?: string
-  surface?: FieldSurface
   children?: ReactNode
 }
 
-function SearchFieldRoot({ className, surface = 'primary', children, ...props }: SearchFieldRootProps) {
+function SearchFieldRoot({ className, children, ...props }: SearchFieldRootProps) {
   return (
     <AriaSearchField
       data-slot="search-field"
-      data-surface={surface}
       {...props}
       className={cx('group/search flex w-full flex-col gap-1', className)}
     >
@@ -91,7 +67,7 @@ function SearchFieldRoot({ className, surface = 'primary', children, ...props }:
   )
 }
 
-/** The field shell; the same ring and fill rules as `InputBase`. */
+/** The field shell; the registry field's fill and ring (`input/input.tsx`). */
 function SearchFieldGroup({ className, ...props }: ComponentProps<typeof AriaGroup>) {
   return (
     <AriaGroup
@@ -99,7 +75,7 @@ function SearchFieldGroup({ className, ...props }: ComponentProps<typeof AriaGro
       {...props}
       className={cx(
         'flex w-full items-center gap-2 rounded-2lg p-2 text-foreground-icon-tertiary',
-        'bg-background-secondary-default group-data-[surface=secondary]/search:bg-background-tertiary-default',
+        'bg-background-tertiary-default',
         'ring-2 ring-transparent ring-inset transition-[background-color,box-shadow,color] duration-[var(--input-transition-ms)] ease',
         'data-[hovered]:ring-border-button-hover data-[focus-within]:ring-border-button-active',
         'group-data-[disabled]/search:bg-input-disabled-background',
@@ -116,7 +92,7 @@ function SearchFieldInput({ className, ...props }: Omit<AriaInputProps, 'classNa
       {...props}
       className={cx(
         'min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-body-regular text-text-primary outline-none',
-        'placeholder:text-text-tertiary focus:placeholder:text-text-primary disabled:cursor-not-allowed disabled:text-input-disabled-text',
+        'placeholder:text-text-secondary focus:placeholder:text-text-primary disabled:cursor-not-allowed disabled:text-input-disabled-text',
         '[&::-webkit-search-cancel-button]:hidden',
         className,
       )}
@@ -147,7 +123,7 @@ function SearchFieldClearButton({ className, ...props }: SearchFieldClearButtonP
       data-slot="search-field-clear"
       {...props}
       className={cx(
-        'flex shrink-0 cursor-[var(--cursor-interactive)] items-center rounded-full text-text-secondary outline-none',
+        'flex shrink-0 cursor-pointer items-center rounded-full text-text-secondary outline-none',
         'data-[hovered]:text-text-primary data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
         'group-data-[empty]/search:hidden [&_svg]:size-4',
         className,
@@ -167,21 +143,20 @@ export const SearchField = Object.assign(SearchFieldRoot, {
 
 interface InputGroupRootProps extends Omit<ComponentProps<typeof AriaGroup>, 'className'> {
   className?: string
-  surface?: FieldSurface
 }
 
 /**
  * One field shell around a bare control and its adornments, for a control that
  * is not a form field — a log filter with an icon in front of it.
  */
-function InputGroupRoot({ className, surface = 'primary', ...props }: InputGroupRootProps) {
+function InputGroupRoot({ className, ...props }: InputGroupRootProps) {
   return (
     <AriaGroup
       data-slot="input-group"
       {...props}
       className={cx(
         'flex w-full items-center gap-2 rounded-2lg p-2 text-foreground-icon-tertiary',
-        WELL[surface],
+        'bg-background-tertiary-default',
         'ring-2 ring-transparent ring-inset transition-[background-color,box-shadow,color] duration-[var(--input-transition-ms)] ease',
         'data-[hovered]:ring-border-button-hover data-[focus-within]:ring-border-button-active',
         className,
@@ -201,7 +176,7 @@ function InputGroupInput({
       data-slot="input-group-input"
       {...props}
       className={cx(
-        'min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-body-regular text-text-primary outline-none placeholder:text-text-tertiary',
+        'min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-body-regular text-text-primary outline-none placeholder:text-text-secondary',
         className,
       )}
     />
@@ -219,7 +194,7 @@ function InputGroupTextArea({
       data-slot="input-group-textarea"
       {...props}
       className={cx(
-        'min-w-0 flex-1 resize-none border-0 bg-transparent p-0 font-sans text-body-regular text-text-primary outline-none placeholder:text-text-tertiary',
+        'min-w-0 flex-1 resize-none border-0 bg-transparent p-0 font-sans text-body-regular text-text-primary outline-none placeholder:text-text-secondary',
         className,
       )}
     />

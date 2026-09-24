@@ -8,15 +8,15 @@
 // back yes, and the migration went on to build on it.
 //
 // What it still earns its keep for is the next WebView2 update: the base
-// layer leans on `oklch`, `color-mix()`, `:has()`, `@property`, view
-// transitions and `tan()`, and this is where a regression in any of them shows
+// layer leans on `oklch`, `color-mix()`, `:has()`, `@property` and view
+// transitions, and this is where a regression in any of them shows
 // up as something other than a puzzling screenshot.
 //
 // Read it under `pnpm tauri dev`. A browser only reports on Chromium, which was
 // never the doubtful side.
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { ArrowDownToSquare, ArrowUp, Copy, Scissors, SquareDashedText } from '@gravity-ui/icons'
+import { ArrowInDownDashedPanel, ArrowUp, Copy, CursorText, Plus, Scissors } from '@keyline-icons/react/two-tone'
 
 import {
   Button,
@@ -45,6 +45,7 @@ import { Composer } from '@/components/chat/composer'
 
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
 import { MarkdownContent } from '@/components/chat/markdown-content'
+import { FilePreviewContext, type FilePreviewContextValue } from '@/components/chat/file-preview-context'
 import { ShikiCode } from '@/components/chat/shiki-code'
 import { languageIconUrl } from '@/lib/file-icon'
 
@@ -70,27 +71,13 @@ const PROBES: Array<{ name: string; note?: string; test: () => boolean }> = [
     test: () => CSS.supports('content-visibility', 'auto'),
   },
   { name: 'contain', note: '⚠️ 本项目曾在此错位', test: () => CSS.supports('contain', 'content') },
-  // 下面几个决定 TextShimmer 能不能上：它的渐变宽度是 `calc(… *
-  // tan(角度))`，颜色是 `oklch(from currentColor …)`。任一不支持，
-  // 整条 background 简写就解析失败，而 `-webkit-text-fill-color: transparent`
-  // 是独立声明照样生效 —— 结果不是降级，是那段文字直接看不见。
-  {
-    name: 'oklch(from …) 相对颜色',
-    note: 'TextShimmer 用；不支持则文字消失',
-    test: () => CSS.supports('color', 'oklch(from red l c h)'),
-  },
-  {
-    name: 'tan() 三角函数',
-    note: 'TextShimmer 用；不支持则文字消失',
-    test: () => CSS.supports('width', 'calc(1px * tan(15deg))'),
-  },
   {
     name: 'display: contents',
     note: 'Sidebar.Mobile / HoverCard 用',
     test: () => CSS.supports('display', 'contents'),
   },
   { name: 'overflow: clip', test: () => CSS.supports('overflow', 'clip') },
-  { name: 'svh 单位', note: 'Sidebar 的 min-height:100svh', test: () => CSS.supports('height', '100svh') },
+  { name: 'svh 单位', note: 'app-shell 外框的 h-svh', test: () => CSS.supports('height', '100svh') },
   { name: 'inert 属性', note: 'App Shell 用（chat 常驻但 inert）', test: () => 'inert' in HTMLElement.prototype },
 ]
 
@@ -140,6 +127,21 @@ plain fence
 ### 三级标题
 
 结尾段落。`
+
+/**
+ * File references inside running prose, the way an assistant writes them: an
+ * inline-code candidate, an explicit link and a bare path, each mid-sentence
+ * so the line box around it can be measured against its neighbours.
+ */
+const FILE_REFERENCE_PROBE = `先读 \`AGENTS.md\` 再改代码，这一行和上下两行的行高应当一样。
+显式链接 [app-shell.tsx](src/components/layout/app-shell.tsx:379) 也在段落中间。
+裸路径 src/components/base/resizable.tsx 同样如此，最后一行没有引用。`
+
+/** Every probe answers "exists" so candidates turn into links; opening does nothing. */
+const PROBE_FILE_PREVIEW: FilePreviewContextValue = {
+  openPreview: () => undefined,
+  probeReference: () => Promise.resolve(true),
+}
 
 /** Tokens whose name exists on both sides, so whoever wins is worth knowing. */
 const CONTESTED_TOKENS = [
@@ -536,9 +538,7 @@ export default function WebViewLab() {
               {/* eslint-disable-next-line no-restricted-syntax -- probe: measures whether utilities beat .button */}
               <Button className="h-auto p-1">h-auto p-1</Button>
               {}
-              <Button iconOnly className="size-8">
-                size-8
-              </Button>
+              <Button iconOnly leadingIcon={Plus} aria-label="size-8" className="size-8" />
             </div>
 
             <Slider defaultValue={40} className="max-w-xs" aria-label="滑块" />
@@ -647,6 +647,14 @@ export default function WebViewLab() {
             The base layer's `Markdown` does neither: it is a styled wrapper
             with no parser of its own, so it shows the raw string. Both get the
             same string; read the first three lines of each. */}
+        <Section title="Markdown 文件引用" hint="引用所在行与上下行的高度应一致">
+          <FilePreviewContext value={PROBE_FILE_PREVIEW}>
+            <div data-slot="webview-lab-file-reference" className="rounded-lg border p-3">
+              <MarkdownContent content={FILE_REFERENCE_PROBE} />
+            </div>
+          </FilePreviewContext>
+        </Section>
+
         <Section title="Markdown 两边对照" hint="重点看开头三行：右边会不会断成三行">
           <div data-slot="webview-lab-markdown-compare" className="grid grid-cols-2 gap-4">
             <div data-slot="webview-lab-markdown-ours" className="min-w-0 space-y-2">
@@ -722,16 +730,18 @@ export default function WebViewLab() {
                         </div>
                         <InputGroup.Suffix className="w-full items-center gap-1 border-0 px-3 py-0">
                           <TooltipTrigger delay={0}>
-                            <Button iconOnly size="small" variant="ghost" aria-label="加号" className="rounded-lg">
-                              +
-                            </Button>
+                            <Button iconOnly leadingIcon={Plus} size="small" variant="neutral" aria-label="加号" />
                             <Tooltip>加号</Tooltip>
                           </TooltipTrigger>
                           <span data-slot="webview-lab-composer-spacer" className="flex-1" />
                           <TooltipTrigger delay={0}>
-                            <Button iconOnly size="small" aria-label="发送" className="rounded-full">
-                              <ArrowUp />
-                            </Button>
+                            <Button
+                              iconOnly
+                              leadingIcon={ArrowUp}
+                              size="small"
+                              aria-label="发送"
+                              className="rounded-full"
+                            />
                             <Tooltip>发送</Tooltip>
                           </TooltipTrigger>
                         </InputGroup.Suffix>
@@ -751,13 +761,13 @@ export default function WebViewLab() {
                         <Kbd className="ms-auto">Ctrl+C</Kbd>
                       </ContextMenu.Item>
                       <ContextMenu.Item id="paste" textValue="粘贴">
-                        <ArrowDownToSquare className="size-4 text-text-secondary" />
+                        <ArrowInDownDashedPanel className="size-4 text-text-secondary" />
                         <Label>粘贴</Label>
                         <Kbd className="ms-auto">Ctrl+V</Kbd>
                       </ContextMenu.Item>
                       <ContextMenu.Separator />
                       <ContextMenu.Item id="select-all" textValue="全选">
-                        <SquareDashedText className="size-4 text-text-secondary" />
+                        <CursorText className="size-4 text-text-secondary" />
                         <Label>全选</Label>
                         <Kbd className="ms-auto">Ctrl+A</Kbd>
                       </ContextMenu.Item>

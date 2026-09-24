@@ -277,7 +277,7 @@ export default function ResponsiveLab() {
             <Button size="small" onPress={measure}>
               Measure
             </Button>
-            <Button size="small" variant="outline" onPress={sweep}>
+            <Button size="small" variant="secondary" onPress={sweep}>
               Sweep widths
             </Button>
           </div>

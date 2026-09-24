@@ -5,6 +5,7 @@ minimumReleaseAgeExclude:
   - react-doctor
   - deslop-js
   - oxlint-plugin-react-doctor
+  - '@keyline-icons/react'
 
 blockExoticSubdeps: true
 strictDepBuilds: true

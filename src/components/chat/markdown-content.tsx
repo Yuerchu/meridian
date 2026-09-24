@@ -6,8 +6,8 @@ import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
 import { Focusable } from 'react-aria-components'
 import { openExternalUrl } from '@/lib/external-link'
-import { Check, Copy } from '@gravity-ui/icons'
-import { Link, Skeleton, Tooltip, TooltipTrigger } from '@/components/base'
+import { Check, Copy } from '@keyline-icons/react/two-tone'
+import { LinkButton, Skeleton, Tooltip, TooltipTrigger } from '@/components/base'
 import type { Components } from 'react-markdown'
 
 import { markdownVariants } from '@/components/base'
@@ -28,7 +28,7 @@ import {
 import { cx } from '@/utils/cx'
 import { useFilePreview, type FilePreviewContextValue } from './file-preview-context'
 import { ShikiCode } from './shiki-code'
-import type { EmojiMap } from './emoji-renderer'
+import { InlineSticker, type EmojiMap } from './emoji-renderer'
 
 const MarkdownStreamingContext = React.createContext(false)
 
@@ -77,6 +77,41 @@ function referenceLabel(reference: MarkdownFileReference): string {
   return `${reference.path}${line}`
 }
 
+type FileGlyph = React.ComponentType<{ className?: string; 'aria-hidden'?: boolean | 'true' | 'false' }>
+
+/**
+ * `LinkButton` takes an icon *component* and sizes it itself, while a file's
+ * icon is a URL out of the Material Icon Theme pack. One component per URL,
+ * cached, so the identity is stable across renders and React never remounts
+ * the `<img>`.
+ */
+const fileGlyphs = new Map<string, FileGlyph>()
+
+function fileGlyph(url: string): FileGlyph {
+  let glyph = fileGlyphs.get(url)
+  if (!glyph) {
+    glyph = ({ className }) => (
+      <img data-slot="markdown-file-reference-icon" src={url} alt="" aria-hidden className={className} />
+    )
+    fileGlyphs.set(url, glyph)
+  }
+  return glyph
+}
+
+/**
+ * A file named in an answer, drawn as BoardUI's secondary `LinkButton` so it
+ * reads as part of the sentence rather than a blue web link.
+ *
+ * `not-prose` is load-bearing: Tailwind Typography gives every `img` under
+ * `.prose` a block margin of ~1.7em, and the file glyph is an `img`. Inside an
+ * inline-flex that margin became the box's height — 20px above and below a
+ * 14px icon, a 59px line in a 22.75px paragraph. The alignment pair after it
+ * puts the label on the sentence's baseline: an inline flex box takes its
+ * baseline from the first item that *participates* in baseline alignment, and
+ * with `items-center` that was the glyph, whose baseline is the image's bottom
+ * edge — the label sat 1.4px low. Taking the glyph out (`self-center`) leaves
+ * the label's text as the one the box aligns by.
+ */
 function FileReferenceButton({ reference }: { reference: MarkdownFileReference }) {
   const preview = useFilePreview()
   const icon = fileIconUrl(reference.path)
@@ -84,20 +119,18 @@ function FileReferenceButton({ reference }: { reference: MarkdownFileReference }
 
   return (
     <TooltipTrigger delay={0}>
-      <Link
+      <LinkButton
         data-slot="markdown-file-reference"
+        variant="secondary"
+        size="small"
+        leadingIcon={icon ? fileGlyph(icon) : undefined}
         aria-label={label}
         isDisabled={!preview}
         onPress={() => preview?.openPreview(reference)}
-        className="mx-0.5 inline-flex min-w-0 max-w-full gap-1 rounded-md px-1.5 py-0.5 align-baseline font-mono text-caption-1-regular"
+        className="not-prose max-w-full min-w-0 items-baseline [&>img]:self-center [&>span]:truncate"
       >
-        {icon && (
-          <img data-slot="markdown-file-reference-icon" src={icon} alt="" aria-hidden className="size-3.5 shrink-0" />
-        )}
-        <span data-slot="markdown-file-reference-name" className="truncate">
-          {markdownFileName(reference.path)}
-        </span>
-      </Link>
+        {markdownFileName(reference.path)}
+      </LinkButton>
       <Tooltip>{label}</Tooltip>
     </TooltipTrigger>
   )
@@ -124,6 +157,7 @@ function CandidateFileReference({
         if (live) setVerified(exists ? { owner: preview, path: reference.path } : null)
       },
       () => {
+        // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- an unverified path stays plain text; nothing is written
         if (live) setVerified(null)
       },
     )
@@ -146,15 +180,7 @@ export function CopyButton({ text, className }: { text: string; className?: stri
     markCopied()
   }, [text, markCopied])
 
-  return (
-    <ActionButton
-      label={t('chat.copy')}
-      onClick={handleCopy}
-      className={cx('text-text-secondary hover:text-text-primary', className)}
-    >
-      {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-    </ActionButton>
-  )
+  return <ActionButton label={t('chat.copy')} onClick={handleCopy} className={className} icon={copied ? Check : Copy} />
 }
 
 function fenceLanguage(className: string | undefined): string {
@@ -215,11 +241,11 @@ const CodeBlock: Components['code'] = ({ className, children, node, ...props }) 
           {language}
         </span>
         {/* The only way to copy a single block — the long-press menu copies the
-            whole message. `size-7` rather than the 24px it was: `.code-block` is
-            `overflow: clip` for its corners, which cut the expanded hit area
-            back to 42px, and four more drawn pixels are what close that gap
-            without moving the button off the corner it belongs in. */}
-        <CopyButton text={code} className="touch-hitbox ms-auto size-7 rounded-md" />
+            whole message. The action recipe is already 28px (`size-7`), which
+            matters here: `.code-block` is `overflow: clip` for its corners,
+            which cuts the expanded hit area back, and 28 drawn pixels are what
+            close that gap without moving the button off its corner. */}
+        <CopyButton text={code} className="touch-hitbox ms-auto" />
       </div>
       <ShikiCode code={code} language={language} defer={isStreaming} />
     </div>
@@ -261,13 +287,32 @@ const markdownClasses = cx(
   '[&_h3]:text-headline-regular',
 )
 
+/**
+ * An `[emoji:name]` the assistant may send becomes an image whose source names
+ * the sticker by id, not by URL: the URL is asked for by the sticker itself
+ * once it comes near the viewport (`InlineSticker`). The source is a fragment
+ * so `defaultUrlTransform` keeps it, and only the pair of this alt prefix and
+ * this source is drawn as a sticker — anything else is an ordinary image.
+ */
+const STICKER_ALT = 'sticker:'
+const STICKER_SRC = '#meridian-sticker/'
+
 function preprocessEmojis(content: string, emojiMap?: EmojiMap): string {
   if (!emojiMap || Object.keys(emojiMap).length === 0) return content
-  return content.replace(/\[emoji:([^\]]+)\]/g, (full, name) => {
+  return content.replace(/\[emoji:([^\]]+)\]/g, (full, name: string) => {
     const entry = emojiMap[name]
-    if (entry) return `![sticker:${name}](${entry.url})`
+    if (entry) return `![${STICKER_ALT}${name}](${STICKER_SRC}${encodeURIComponent(entry.id)})`
     return full
   })
+}
+
+function stickerIdOf(alt: string | undefined, src: string | undefined): string | null {
+  if (!alt?.startsWith(STICKER_ALT) || !src?.startsWith(STICKER_SRC)) return null
+  try {
+    return decodeURIComponent(src.slice(STICKER_SRC.length)) || null
+  } catch {
+    return null
+  }
 }
 
 function preprocessMentions(content: string): string {
@@ -359,54 +404,67 @@ const MarkdownAnchor: Components['a'] = ({ href, children, node: _node, ...props
   )
 }
 
-function blockHash(value: string): string {
-  let hash = 0
-  for (let index = 0; index < value.length; index++) hash = Math.imul(31, hash) + value.charCodeAt(index)
-  return (hash >>> 0).toString(36)
-}
+/** The trailer the paragraph of this block should carry, if any; see `MarkdownParagraph`. */
+const ParagraphTrailerContext = React.createContext<React.ReactNode>(null)
 
 const MemoizedMarkdownBlock = React.memo(function MemoizedMarkdownBlock({
   content,
   components,
   autoFileReferences,
+  trailer,
 }: {
   content: string
   components: Partial<Components>
   autoFileReferences: boolean
+  trailer: React.ReactNode
 }) {
   const slots = useMemo(() => markdownVariants(), [])
   return (
     <div data-slot="markdown-block" className={slots.block()}>
-      <ReactMarkdown
-        components={components}
-        remarkPlugins={autoFileReferences ? FILE_REMARK_PLUGINS : BASE_REMARK_PLUGINS}
-        urlTransform={markdownUrlTransform}
-      >
-        {content}
-      </ReactMarkdown>
+      <ParagraphTrailerContext value={trailer}>
+        <ReactMarkdown
+          components={components}
+          remarkPlugins={autoFileReferences ? FILE_REMARK_PLUGINS : BASE_REMARK_PLUGINS}
+          urlTransform={markdownUrlTransform}
+        >
+          {content}
+        </ReactMarkdown>
+      </ParagraphTrailerContext>
     </div>
   )
 })
 
 /**
- * The paragraph a trailer is floated into.
+ * Every paragraph, and the one a trailer is floated into.
  *
  * `flow-root` so the paragraph contains its own float: without it the float
  * hangs below the paragraph's box, and since the bubble around it clips
  * overflow, the time would be cut off at the bubble's bottom padding.
  */
-function TrailedParagraph({
-  trailer,
+function MarkdownParagraph({
   children,
   node: _node,
   ...props
-}: React.HTMLAttributes<HTMLParagraphElement> & { trailer: React.ReactNode; node?: unknown }) {
+}: React.HTMLAttributes<HTMLParagraphElement> & { node?: unknown }) {
+  // One element whether or not it carries the trailer, and the trailer comes
+  // through context rather than by swapping `components.p` for the last
+  // block: either kind of swap remounts the paragraph the moment the stream
+  // ends — and with it every sticker in it, which then decodes its still
+  // frame again.
+  const trailer = React.useContext(ParagraphTrailerContext)
+  const trailed = trailer != null
   return (
-    <p data-slot="markdown-trailed-paragraph" {...props} className={cx('flow-root', props.className)}>
+    <p
+      data-slot={trailed ? 'markdown-trailed-paragraph' : 'markdown-paragraph'}
+      {...props}
+      className={cx(trailed && 'flow-root', props.className)}
+    >
       {children}
-      <span data-slot="markdown-trailer" className="float-right ml-2 mt-1.5">
-        {trailer}
-      </span>
+      {trailed && (
+        <span data-slot="markdown-trailer" className="float-right ml-2 mt-1.5">
+          {trailer}
+        </span>
+      )}
     </p>
   )
 }
@@ -432,15 +490,22 @@ function LocalMarkdown({
     () => marked.lexer(children).map((token) => ({ raw: token.raw, type: token.type })),
     [children],
   )
-  const blocks = useMemo(() => {
-    const occurrences = new Map<string, number>()
-    return tokens.map((token) => {
-      const hash = blockHash(token.raw)
-      const occurrence = occurrences.get(hash) ?? 0
-      occurrences.set(hash, occurrence + 1)
-      return { content: token.raw, type: token.type, key: `${rendererId}-${hash}-${occurrence}` }
-    })
-  }, [tokens, rendererId])
+  // Keyed by position and kind, not by content. A streamed answer only ever
+  // grows at its end, so the block being written keeps its key from chunk to
+  // chunk and is *updated* rather than remounted — keyed by a hash of its text
+  // it was a new block on every chunk, which re-ran everything inside it: a
+  // sticker in it asked for its playback slot again and decoded its still
+  // frame again each time. Finished blocks are unaffected either way: their
+  // content does not change, so the memo skips them.
+  const blocks = useMemo(
+    () =>
+      tokens.map((token, index) => ({
+        content: token.raw,
+        type: token.type,
+        key: `${rendererId}-${index}-${token.type}`,
+      })),
+    [tokens, rendererId],
+  )
 
   // Where the trailer goes is decided by the *last* block, and only a
   // paragraph can take it inline: a float placed after a whole block can only
@@ -456,16 +521,7 @@ function LocalMarkdown({
     }
   }
   const inline = trailer != null && lastIndex >= 0 && blocks[lastIndex].type === 'paragraph'
-  const trailedComponents = useMemo<Partial<Components>>(
-    () =>
-      inline
-        ? {
-            ...components,
-            p: (props) => <TrailedParagraph {...props} trailer={trailer} />,
-          }
-        : components,
-    [components, inline, trailer],
-  )
+  const withParagraph = useMemo<Partial<Components>>(() => ({ ...components, p: MarkdownParagraph }), [components])
 
   return (
     <>
@@ -474,8 +530,9 @@ function LocalMarkdown({
           <MemoizedMarkdownBlock
             key={block.key}
             content={block.content}
-            components={inline && i === lastIndex ? trailedComponents : components}
+            components={withParagraph}
             autoFileReferences={autoFileReferences}
+            trailer={inline && i === lastIndex ? trailer : null}
           />
         ))}
       </div>
@@ -594,17 +651,14 @@ export const MarkdownContent = React.memo(function MarkdownContent({
             </Hint>
           )
         }
-        if (alt?.startsWith('sticker:')) {
+        const stickerId = stickerIdOf(alt, src)
+        if (stickerId !== null) {
           return (
-            <img
-              data-slot="markdown-sticker"
-              {...props}
-              src={src}
-              alt={alt.slice(8)}
-              loading="lazy"
-              width={48}
-              height={48}
-              className="emoji-sticker rounded-md"
+            <InlineSticker
+              stickerId={stickerId}
+              name={alt!.slice(STICKER_ALT.length)}
+              slot="markdown-sticker"
+              className="size-30"
             />
           )
         }

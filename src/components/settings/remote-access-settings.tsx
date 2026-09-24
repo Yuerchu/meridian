@@ -14,7 +14,7 @@ import {
 import { CellSwitch } from '@/components/base'
 import { ItemCard } from '@/components/base'
 import { ItemCardGroup } from '@/components/base'
-import { Check, Copy, TriangleExclamation } from '@gravity-ui/icons'
+import { Check, Copy, TriangleAlert } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
@@ -22,6 +22,9 @@ import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { cx } from '@/utils/cx'
 import type { ListenConfigInfoResponse, ListenStatusResponse } from '@/types'
 import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
+
+/** What `copiedAddress` holds after the token was copied; no address looks like it. */
+const TOKEN_COPY_KEY = '<token>'
 import { useSettingsDirtyRegistration } from './dirty-guard'
 
 /** Mirrors `ListenConfig::default()`; only used until the first load lands. */
@@ -184,9 +187,23 @@ export function RemoteAccessSettings() {
     }
   }
 
-  const copyAddress = (address: string) => {
-    navigator.clipboard.writeText(address)
-    setCopiedAddress(address)
+  /**
+   * Copies, and says so only once the clipboard has actually taken it.
+   *
+   * `writeText` is a promise that rejects — a WebView without clipboard
+   * permission, a page without focus — and the tick used to be drawn before it
+   * had answered, so a failed copy looked exactly like a good one and the next
+   * paste put something else into the other device.
+   */
+  const copyText = async (text: string, key: string) => {
+    setError(null)
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch (reason) {
+      setError(t('settings.remote.copyFailed', { error: String(reason) }))
+      return
+    }
+    setCopiedAddress(key)
     markCopied()
   }
 
@@ -208,7 +225,7 @@ export function RemoteAccessSettings() {
             {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
             <Button
               size="small"
-              variant="outline"
+              variant="secondary"
               className="mt-2"
               onPress={() => {
                 setLoading(true)
@@ -249,7 +266,7 @@ export function RemoteAccessSettings() {
       </div>
 
       <div data-slot="remote-trust-warning" className="flex items-start gap-2 rounded-lg border p-3">
-        <TriangleExclamation className="mt-0.5 size-4 shrink-0 text-status-warning-soft-foreground" aria-hidden />
+        <TriangleAlert className="mt-0.5 size-4 shrink-0 text-status-warning-soft-foreground" aria-hidden />
         <p data-slot="remote-trust-warning-text" className="text-caption-1-regular text-status-warning-soft-foreground">
           {t('settings.remote.trustWarning')}
         </p>
@@ -294,10 +311,20 @@ export function RemoteAccessSettings() {
             value={config.token ?? ''}
             placeholder={t('settings.remote.tokenPending')}
           />
-          <Button variant="outline" onPress={() => setRevealToken(!revealToken)}>
+          <Button variant="secondary" onPress={() => setRevealToken(!revealToken)}>
             {revealToken ? t('settings.remote.hide') : t('settings.remote.reveal')}
           </Button>
-          <Button variant="outline" onPress={handleRegenerate}>
+          {/* Copied rather than revealed and retyped: the other device needs it
+              character for character, and it is long on purpose. */}
+          <Button
+            variant="secondary"
+            leadingIcon={copied && copiedAddress === TOKEN_COPY_KEY ? Check : Copy}
+            isDisabled={!config.token}
+            onPress={() => config.token && void copyText(config.token, TOKEN_COPY_KEY)}
+          >
+            {t('settings.remote.copyToken')}
+          </Button>
+          <Button variant="secondary" onPress={handleRegenerate}>
             {t('settings.remote.regenerate')}
           </Button>
         </div>
@@ -313,7 +340,7 @@ export function RemoteAccessSettings() {
       )}
 
       <div data-slot="remote-actions" className="flex items-center gap-3 pt-2">
-        <Button variant="outline" onPress={handleSave} isDisabled={saving}>
+        <Button variant="secondary" onPress={handleSave} isDisabled={saving}>
           {saved ? t('common.saved') : t('common.save')}
         </Button>
         {saved && (
@@ -322,7 +349,7 @@ export function RemoteAccessSettings() {
           </span>
         )}
         {running ? (
-          <Button variant="danger-soft" onPress={handleStop}>
+          <Button variant="danger" onPress={handleStop}>
             {t('settings.remote.stop')}
           </Button>
         ) : (
@@ -380,17 +407,12 @@ export function RemoteAccessSettings() {
                       <TooltipTrigger delay={0}>
                         <Button
                           iconOnly
+                          leadingIcon={copied && copiedAddress === dialable ? Check : Copy}
                           size="small"
-                          variant="ghost"
+                          variant="neutral"
                           aria-label={t('settings.remote.copyAddress')}
-                          onPress={() => copyAddress(dialable)}
-                        >
-                          {copied && copiedAddress === dialable ? (
-                            <Check className="size-3.5" />
-                          ) : (
-                            <Copy className="size-3.5" />
-                          )}
-                        </Button>
+                          onPress={() => void copyText(dialable, dialable)}
+                        />
                         <Tooltip>{t('settings.remote.copyAddress')}</Tooltip>
                       </TooltipTrigger>
                     </ItemCard.Action>

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { useTranslation } from 'react-i18next'
-import { Check, ChevronRight, Copy, FileText } from '@gravity-ui/icons'
-import { Button, Chip, Separator, Skeleton, Tooltip, TooltipTrigger } from '@/components/base'
+import { Trans, useTranslation } from 'react-i18next'
+import { Check, ChevronRight, Copy, FileText } from '@keyline-icons/react/two-tone'
+import { Button, Chip, Link, Separator, Skeleton, Tooltip, TooltipTrigger } from '@/components/base'
 import { Hint } from '@/components/ui/hint'
 import { ItemCard } from '@/components/base'
 import { ItemCardGroup } from '@/components/base'
 import { api } from '@/api'
+import { openExternalUrl } from '@/lib/external-link'
 import { MeridianMark } from '@/components/ui/meridian-mark'
 import { useHistoryLevel } from '@/hooks/use-history-level'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
@@ -83,6 +84,21 @@ function InfoRow({ label, value, action }: { label: string; value?: string; acti
   )
 }
 
+const FONT_PAGES = {
+  inter: 'https://rsms.me/inter/',
+  misans: 'https://hyperos.mi.com/font/',
+  maple: 'https://github.com/subframe7536/maple-font',
+} as const
+
+/** A font's name, opening its home page in the browser — never in this WebView. */
+function FontLink({ url, children }: { url: string; children?: React.ReactNode }) {
+  return (
+    <Link className="text-caption-1-regular" onPress={() => void openExternalUrl(url)}>
+      {children}
+    </Link>
+  )
+}
+
 export function About() {
   const { t } = useTranslation()
   const [info, setInfo] = useState<AppInfoResponse | null>(null)
@@ -92,7 +108,7 @@ export function About() {
 
   useEffect(() => {
     // Silent on failure: this panel is where someone lands *because* something
-    // is wrong, and an error toast over the version number helps nobody.
+    // is wrong, and an error notification over the version number helps nobody.
     api.getAppInfo().then(setInfo, () => {})
   }, [])
 
@@ -133,13 +149,14 @@ export function About() {
       <div data-slot="about-hero" className="flex items-start gap-4">
         <div
           data-slot="about-mark"
-          className="bg-button-primary/10 text-button-ghost-foreground flex size-14 shrink-0 items-center justify-center rounded-2xl"
+          className="bg-button-ghost-background text-button-ghost-foreground flex size-14 shrink-0 items-center justify-center rounded-2xl"
         >
           <MeridianMark intro className="size-8" />
         </div>
         <div data-slot="about-identity" className="min-w-0 space-y-1.5">
           <div data-slot="about-name-row" className="flex flex-wrap items-center gap-2">
-            <span data-slot="about-name" className="shimmer shimmer-duration-3000 text-title-2-semibold">
+            {/* Plain text: a shimmer means "working", and the app's name is not. */}
+            <span data-slot="about-name" className="text-text-primary text-title-2-semibold">
               {t('app.name')}
             </span>
             {info && (
@@ -167,7 +184,7 @@ export function About() {
               still works when a row grows a second one. */}
           <ItemCard>
             <ItemCard.Icon>
-              <FileText />
+              <FileText className="size-4" />
             </ItemCard.Icon>
             <ItemCard.Content className="min-w-0">
               <ItemCard.Title className={ROW_TITLE}>{t('settings.about.logs.title')}</ItemCard.Title>
@@ -176,7 +193,7 @@ export function About() {
               </ItemCard.Description>
             </ItemCard.Content>
             <ItemCard.Action>
-              <Button size="small" variant="outline" onPress={() => setShowLogs(true)}>
+              <Button size="small" variant="secondary" onPress={() => setShowLogs(true)}>
                 {t('settings.about.logs.open')}
                 <ChevronRight className="size-3 rtl:-scale-x-100" />
               </Button>
@@ -187,7 +204,7 @@ export function About() {
 
           <ItemCard>
             <ItemCard.Icon>
-              <Copy />
+              <Copy className="size-4" />
             </ItemCard.Icon>
             <ItemCard.Content className="min-w-0">
               <ItemCard.Title className={ROW_TITLE}>{t('settings.about.copyInfo.title')}</ItemCard.Title>
@@ -198,7 +215,7 @@ export function About() {
             <ItemCard.Action>
               <Button
                 size="small"
-                variant="outline"
+                variant="secondary"
                 aria-label={t('settings.about.copyInfo.action')}
                 isDisabled={!info}
                 onPress={() => {
@@ -237,16 +254,15 @@ export function About() {
                 <TooltipTrigger delay={0}>
                   <Button
                     iconOnly
+                    leadingIcon={pathCopied ? Check : Copy}
                     size="small"
-                    variant="ghost"
+                    variant="neutral"
                     aria-label={t('settings.about.system.copyDataDir')}
                     onPress={() => {
                       navigator.clipboard.writeText(info.dataDir)
                       markPathCopied()
                     }}
-                  >
-                    {pathCopied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-                  </Button>
+                  />
                   <Tooltip>{t('settings.about.system.copyDataDir')}</Tooltip>
                 </TooltipTrigger>
               )
@@ -262,6 +278,19 @@ export function About() {
         <p data-slot="about-footer-line">{t('settings.about.copyright')}</p>
         <p data-slot="about-footer-line">{t('settings.about.notice')}</p>
         <p data-slot="about-footer-line">{t('settings.about.grokBuildNotice')}</p>
+        {/* MiSans's licence requires the software to say it uses MiSans. The
+            licence texts ship beside the fonts, under fonts/licenses/. */}
+        <p data-slot="about-footer-line">
+          <Trans
+            i18nKey="settings.about.fonts"
+            components={{
+              inter: <FontLink url={FONT_PAGES.inter} />,
+              misans: <FontLink url={FONT_PAGES.misans} />,
+              maple: <FontLink url={FONT_PAGES.maple} />,
+            }}
+          />
+        </p>
+        <p data-slot="about-footer-line">{t('settings.about.fontsMiSansNotice')}</p>
       </div>
     </SettingsPane>
   )

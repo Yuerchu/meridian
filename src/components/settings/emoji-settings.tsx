@@ -1,12 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import type { SortDescriptor } from 'react-aria-components'
 import { useTranslation } from 'react-i18next'
-import { ArrowUpFromLine, Check, Plus, Sparkles, Sticker, TrashBin, Xmark } from '@gravity-ui/icons'
+import { Bin, Check, Plus, Sparkles, StickyNote, Upload, X } from '@keyline-icons/react/two-tone'
 import { Button, Chip, Disclosure, Input, Tooltip, TooltipTrigger } from '@/components/base'
 import { ActionBar } from '@/components/base'
 import { DataGrid, type DataGridColumn, type DataGridSelection } from '@/components/base'
 import { EmptyState } from '@/components/base'
+import { Pagination } from '@/components/base'
 import { api } from '@/api'
+import { forgetStickerUrl, useStickerUrl } from '@/lib/sticker-urls'
+import { usePointerPlay, useStickerPlayback } from '@/components/chat/sticker-playback'
+import { StickerThumb } from '@/components/chat/sticker-thumb'
 import { can } from '@/lib/capabilities'
 import { useConfirm } from '@/hooks/use-confirm'
 import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
@@ -16,8 +21,15 @@ import type { EmojiInfoResponse, EmojiPackInfoResponse } from '@/types'
 interface PackDetail {
   pack: EmojiPackInfoResponse
   emojis: EmojiInfoResponse[]
-  urls: Record<string, string>
 }
+
+/**
+ * Rows per page of a pack's table. A collected pack grows without anyone
+ * asking, and every row is a React Aria collection item holding two text
+ * fields and a picture — the table used to hold all of them, and the page
+ * asked for every sticker's file up front besides.
+ */
+export const STICKERS_PER_PAGE = 20
 
 /** Stable identity, so a grid whose pack holds no selection never re-renders for it. */
 const NO_SELECTION: DataGridSelection = new Set<string>()
@@ -62,8 +74,12 @@ function shownTags(emoji: EmojiInfoResponse): string {
  * and with it the whole RAC collection — on every keystroke. Here a keystroke
  * touches one cell.
  *
- * Escape restores by unmounting the input, which is also why it needs no guard
- * against the blur handler: React fires no blur for an element it removes.
+ * The cell *is* the base `Input` — the registry field, in its own tertiary
+ * well on the grid's secondary surface — rather than text that swaps itself
+ * for a field when pressed. Pressing it is editing it; Enter commits by
+ * blurring, Escape puts the saved value back and blurs without committing.
+ * The caller keys it by `value`, so a save that comes back from the backend
+ * remounts it with the new text instead of leaving a stale draft behind.
  */
 function EditableCell({
   value,
@@ -76,53 +92,72 @@ function EditableCell({
   ariaLabel: string
   onSave: (next: string) => void
 }) {
-  const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
-
-  if (editing) {
-    return (
-      <Input
-        autoFocus
-        aria-label={ariaLabel}
-        value={draft}
-        placeholder={placeholder}
-        className="h-8 text-body-regular"
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={() => {
-          setEditing(false)
-          const next = draft.trim()
-          if (next !== value.trim()) onSave(next)
-        }}
-        // The grid is a React Aria table and reads keys off the row: Space
-        // toggles its selection, Enter actions it, the arrows walk between
-        // cells. Inside a text field all four are text, so none of them may
-        // reach the row — a name with a space in it came out without one, and
-        // selected the row on the way.
-        onKeyUp={(event) => event.stopPropagation()}
-        onKeyDown={(event) => {
-          event.stopPropagation()
-          if (event.nativeEvent.isComposing) return
-          if (event.key === 'Enter') (event.target as HTMLInputElement).blur()
-          if (event.key === 'Escape') setEditing(false)
-        }}
-      />
-    )
-  }
+  // Escape reverts the draft and blurs in the same tick, before the reset
+  // state has landed — the blur handler reads this instead of the draft.
+  const cancelled = useRef(false)
 
   return (
-    <Button
-      variant="ghost"
-      className="h-8 w-full min-w-0 justify-start rounded-md px-1.5 text-body-regular"
-      aria-label={`${ariaLabel}: ${value || placeholder}`}
-      onPress={() => {
-        setDraft(value)
-        setEditing(true)
+    <Input
+      aria-label={ariaLabel}
+      value={draft}
+      placeholder={placeholder}
+      size="small"
+      fieldClassName="min-w-0 flex-1"
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => {
+        if (cancelled.current) {
+          cancelled.current = false
+          return
+        }
+        const next = draft.trim()
+        if (next !== value.trim()) onSave(next)
       }}
+      // The grid is a React Aria table and reads keys off the row: Space
+      // toggles its selection, Enter actions it, Left/Right walk between
+      // cells. Inside a text field all of those are text, so none of them may
+      // reach the row — a name with a space in it came out without one, and
+      // selected the row on the way. Up and Down mean nothing to a one-line
+      // field and are how the keyboard leaves it for the next row.
+      onKeyUp={(event) => {
+        if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') event.stopPropagation()
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') return
+        event.stopPropagation()
+        if (event.nativeEvent.isComposing) return
+        if (event.key === 'Enter') (event.target as HTMLInputElement).blur()
+        if (event.key === 'Escape') {
+          cancelled.current = true
+          setDraft(value)
+          ;(event.target as HTMLInputElement).blur()
+        }
+      }}
+    />
+  )
+}
+
+/**
+ * A row's picture: its file is asked for once the row is near the viewport
+ * (so only the page on screen is ever fetched), painted still, and played
+ * while a pointer rests on it — the same still-until-pointed-at sticker the
+ * picker draws.
+ */
+function StickerThumbnail({ id }: { id: string }) {
+  const box = useRef<HTMLSpanElement>(null)
+  const [pointed, pointer] = usePointerPlay()
+  const { near, playing } = useStickerPlayback(box, { autoplay: false, explicit: pointed })
+  const url = useStickerUrl(near ? id : null)
+  return (
+    <span
+      ref={box}
+      data-slot="sticker-thumbnail"
+      data-url-state={url.status}
+      className="flex size-9 shrink-0 overflow-hidden rounded-lg bg-background-secondary-default/40"
+      {...pointer}
     >
-      <span data-slot="editable-cell-value" className={value ? 'truncate' : 'truncate text-text-secondary'}>
-        {value || placeholder}
-      </span>
-    </Button>
+      {url.status === 'loaded' && <StickerThumb src={url.url} near={near} playing={playing} fallback={null} />}
+    </span>
   )
 }
 
@@ -153,7 +188,7 @@ function RowActions({
         <>
           <Button
             size="small"
-            variant="ghost"
+            variant="secondary"
             isDisabled={busy !== null || !emoji.file_name}
             onPress={() => {
               setBusy('suggest')
@@ -165,7 +200,7 @@ function RowActions({
           </Button>
           <Button
             size="small"
-            variant="outline"
+            variant="secondary"
             isDisabled={busy !== null || !shownName(emoji).trim()}
             onPress={() => {
               setBusy('confirm')
@@ -181,14 +216,13 @@ function RowActions({
         <TooltipTrigger delay={0}>
           <Button
             iconOnly
+            leadingIcon={Bin}
             size="small"
-            variant="ghost"
-            className="text-text-secondary hover:text-status-danger"
+            variant="neutral"
+            className="hover:text-status-danger"
             aria-label={t('settings.emoji.deleteEmoji')}
             onPress={() => onDelete(emoji.id)}
-          >
-            <TrashBin className="size-3.5" />
-          </Button>
+          />
           <Tooltip>{t('settings.emoji.deleteEmoji')}</Tooltip>
         </TooltipTrigger>
       )}
@@ -223,7 +257,11 @@ function StickerGrid({
   const { t } = useTranslation()
   const [error, setError] = useState<string | null>(null)
   const canDelete = !detail.pack.is_builtin
-  const { urls } = detail
+  const [page, setPage] = useState(1)
+  // Sorting is held here rather than left to the grid, because the grid only
+  // ever sees one page: sorting that page alone would put the smallest of
+  // twenty first, not the smallest of the pack.
+  const [sort, setSort] = useState<SortDescriptor | undefined>(undefined)
 
   // A cell has nowhere to put a failure, so both writes report here instead.
   const save = useCallback(
@@ -256,23 +294,9 @@ function StickerGrid({
         sortFn: (a, b) => shownName(a).localeCompare(shownName(b)),
         cell: (emoji) => (
           <div data-slot="sticker-cell" className="flex min-w-0 items-center gap-2">
-            {urls[emoji.id] ? (
-              // Lazy because a pack is unbounded and every frame of every GIF
-              // is decoded the moment its element exists.
-              <img
-                data-slot="sticker-thumbnail"
-                src={urls[emoji.id]}
-                alt=""
-                loading="lazy"
-                className="size-9 shrink-0 rounded-lg object-contain"
-              />
-            ) : (
-              <div
-                data-slot="sticker-thumbnail-placeholder"
-                className="size-9 shrink-0 rounded-lg bg-background-secondary-default/40"
-              />
-            )}
+            <StickerThumbnail id={emoji.id} />
             <EditableCell
+              key={shownName(emoji)}
               value={shownName(emoji)}
               placeholder={t('settings.emoji.semanticName')}
               ariaLabel={t('settings.emoji.editName')}
@@ -292,6 +316,7 @@ function StickerGrid({
         minWidth: 180,
         cell: (emoji) => (
           <EditableCell
+            key={shownTags(emoji)}
             value={shownTags(emoji)}
             placeholder={t('settings.emoji.noTags')}
             ariaLabel={t('settings.emoji.editTags')}
@@ -337,10 +362,37 @@ function StickerGrid({
         ),
       },
     ],
-    [t, urls, canDelete, save, suggest, onDeleteEmoji],
+    [t, canDelete, save, suggest, onDeleteEmoji],
   )
 
-  const rows = useMemo(() => orderForReview(detail.emojis), [detail.emojis])
+  const sorted = useMemo(() => {
+    const review = orderForReview(detail.emojis)
+    const column = sort && columns.find((c) => c.id === sort.column)
+    if (!column?.sortFn) return review
+    const out = [...review].sort(column.sortFn)
+    return sort?.direction === 'descending' ? out.reverse() : out
+  }, [detail.emojis, sort, columns])
+  const totalPages = Math.max(1, Math.ceil(sorted.length / STICKERS_PER_PAGE))
+  // A delete can leave the page past the end; the last page stands in for it.
+  const current = Math.min(page, totalPages)
+  const rows = useMemo(
+    () => sorted.slice((current - 1) * STICKERS_PER_PAGE, current * STICKERS_PER_PAGE),
+    [sorted, current],
+  )
+
+  // A selection is of rows the reader can see: turning the page or re-sorting
+  // drops it, and "select all" means this page, not the pack.
+  const select = useCallback(
+    (keys: DataGridSelection) => onSelectionChange(keys === 'all' ? new Set(rows.map((emoji) => emoji.id)) : keys),
+    [onSelectionChange, rows],
+  )
+  const turnTo = useCallback(
+    (next: number) => {
+      setPage(next)
+      onSelectionChange(new Set())
+    },
+    [onSelectionChange],
+  )
 
   return (
     <div data-slot="sticker-grid" className="space-y-2">
@@ -355,7 +407,12 @@ function StickerGrid({
         selectionMode={canDelete ? 'multiple' : 'none'}
         showSelectionCheckboxes={canDelete}
         selectedKeys={selectedKeys}
-        onSelectionChange={onSelectionChange}
+        onSelectionChange={select}
+        sortDescriptor={sort}
+        onSortChange={(next) => {
+          setSort(next)
+          turnTo(1)
+        }}
         // The columns' own minimums add up to this; stating it keeps the table
         // from being squeezed below them, and below this width the grid scrolls
         // sideways inside its own container rather than crushing the
@@ -371,6 +428,15 @@ function StickerGrid({
             </EmptyState.Header>
           </EmptyState>
         )}
+      />
+      <Pagination
+        page={current}
+        totalPages={totalPages}
+        onChange={turnTo}
+        aria-label={t('settings.emoji.pagination', { pack: detail.pack.name })}
+        previousLabel={t('settings.emoji.previousPage')}
+        nextLabel={t('settings.emoji.nextPage')}
+        pageLabel={(n) => t('settings.emoji.goToPage', { page: n })}
       />
       {error && (
         <p data-slot="sticker-grid-error" className="text-caption-1-regular text-status-danger">
@@ -415,7 +481,7 @@ function PackCard({
                 which only means something inside a flex container.
                 `text-start` undoes the button element's centred UA default. */}
             <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-body-regular transition-colors outline-none hover:bg-background-primary-hover/30 focus-visible:bg-background-secondary-default/30">
-              <Sticker className="w-3.5 h-3.5 shrink-0 text-text-secondary" />
+              <StickyNote className="w-3.5 h-3.5 shrink-0 text-text-secondary" />
               <span data-slot="pack-name" className="flex-1 truncate">
                 {detail.pack.name}
               </span>
@@ -462,14 +528,14 @@ function PackCard({
                     {onImport && (
                       // The picker returns paths on this device and the import
                       // is read by whichever machine the backend is on.
-                      <Button variant="outline" onPress={onImport} isDisabled={!can.importFromDisk}>
-                        <ArrowUpFromLine className="w-3.5 h-3.5" />
+                      <Button variant="secondary" onPress={onImport} isDisabled={!can.importFromDisk}>
+                        <Upload className="w-3.5 h-3.5" />
                         {t('settings.emoji.import')}
                       </Button>
                     )}
                     {onDelete && !detail.pack.is_builtin && (
-                      <Button variant="danger-soft" className="ml-auto" onPress={onDelete}>
-                        <TrashBin className="w-3.5 h-3.5" />
+                      <Button variant="danger" className="ml-auto" onPress={onDelete}>
+                        <Bin className="w-3.5 h-3.5" />
                         {t('common.delete')}
                       </Button>
                     )}
@@ -503,15 +569,12 @@ export function EmojiSettings() {
     const packs = await api.listEmojiPacks()
     const result = await Promise.all(
       packs.map(async (pack) => {
+        // What the stickers are, not their files: a row asks for its picture
+        // once it is on screen (`StickerThumbnail`). Asking here was one IPC
+        // round trip — and one whole file as base64 — per sticker in every
+        // pack, on every visit and after every edit.
         const emojis = await api.listEmojis(pack.id)
-        // One round trip per sticker, so they go together: awaited in sequence
-        // a collected pack of a few hundred spent whole seconds here.
-        const resolved = await Promise.all(
-          emojis.map(async (emoji) => [emoji.id, await api.getEmojiFileUrl(emoji.id).catch(() => null)] as const),
-        )
-        const urls: Record<string, string> = {}
-        for (const [id, url] of resolved) if (url) urls[id] = url
-        return { pack, emojis, urls }
+        return { pack, emojis }
       }),
     )
     setDetails(result)
@@ -525,9 +588,10 @@ export function EmojiSettings() {
     if (!selection) return []
     const detail = details.find((d) => d.pack.id === selection.packId)
     if (!detail) return []
-    // The select-all checkbox yields the string `"all"` rather than a set, and
-    // it means every row of the array this grid was given.
-    if (selection.keys === 'all') return detail.emojis.map((emoji) => emoji.id)
+    // The grid turns "all" into the ids of the page it shows before it gets
+    // here, so a bare "all" never arrives; were it to, it would mean a whole
+    // pack nobody can see, and deleting that is not what anyone pressed.
+    if (selection.keys === 'all') return []
     return [...selection.keys].map(String)
   }, [selection, details])
 
@@ -568,6 +632,7 @@ export function EmojiSettings() {
     async (id: string) => {
       if (!(await confirm({ body: t('settings.confirmDelete.emoji') }))) return
       await api.deleteEmoji(id)
+      forgetStickerUrl(id)
       await refresh()
     },
     [confirm, t, refresh],
@@ -578,7 +643,10 @@ export function EmojiSettings() {
     if (!(await confirm({ body: t('settings.confirmDelete.emojis', { count: selectedIds.length }) }))) return
     // One at a time: each delete unlinks a file as well as a row, and the
     // backend takes a pooled connection per call.
-    for (const id of selectedIds) await api.deleteEmoji(id)
+    for (const id of selectedIds) {
+      await api.deleteEmoji(id)
+      forgetStickerUrl(id)
+    }
     setSelection(null)
     await refresh()
   }, [selectedIds, confirm, t, refresh])
@@ -635,7 +703,7 @@ export function EmojiSettings() {
             if (e.key === 'Enter') handleCreate()
           }}
         />
-        <Button variant="outline" onPress={handleCreate} isDisabled={!newPackName.trim()}>
+        <Button variant="secondary" onPress={handleCreate} isDisabled={!newPackName.trim()}>
           <Plus className="w-3.5 h-3.5" />
           {t('settings.emoji.newPack')}
         </Button>
@@ -682,8 +750,8 @@ export function EmojiSettings() {
             </span>
           </ActionBar.Prefix>
           <ActionBar.Content>
-            <Button variant="ghost" onPress={handleDeleteSelected}>
-              <TrashBin className="text-status-danger" />
+            <Button variant="secondary" onPress={handleDeleteSelected}>
+              <Bin className="size-4 text-status-danger" />
               {t('settings.emoji.deleteSelected')}
             </Button>
           </ActionBar.Content>
@@ -691,12 +759,12 @@ export function EmojiSettings() {
             <TooltipTrigger delay={0}>
               <Button
                 iconOnly
-                variant="ghost"
+                leadingIcon={X}
+                size="small"
+                variant="neutral"
                 aria-label={t('settings.emoji.clearSelection')}
                 onPress={() => setSelection(null)}
-              >
-                <Xmark />
-              </Button>
+              />
               <Tooltip>{t('settings.emoji.clearSelection')}</Tooltip>
             </TooltipTrigger>
           </ActionBar.Suffix>

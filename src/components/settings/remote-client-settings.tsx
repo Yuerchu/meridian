@@ -110,7 +110,7 @@ export function RemoteClientSettings() {
             </ItemCard.Description>
           </ItemCard.Content>
         </ItemCard>
-        <Button variant="outline" onPress={handleDisconnect}>
+        <Button variant="secondary" onPress={handleDisconnect}>
           {t('settings.client.disconnect')}
         </Button>
         <p data-slot="remote-client-disconnect-hint" className="text-caption-1-regular text-text-secondary">
@@ -166,7 +166,7 @@ export function RemoteClientSettings() {
       </TextField>
 
       <div data-slot="remote-client-actions" className="flex items-center gap-2">
-        <Button variant="outline" onPress={handleTest} isDisabled={!host.trim() || probing} aria-busy={probing}>
+        <Button variant="secondary" onPress={handleTest} isDisabled={!host.trim() || probing} aria-busy={probing}>
           {probing ? t('settings.client.testing') : t('settings.client.test')}
         </Button>
         <Button onPress={handleConnect} isDisabled={!host.trim() || !token.trim()}>
@@ -187,8 +187,10 @@ export function RemoteClientSettings() {
 /**
  * What the probe found, said in the terms of what to do about it.
  *
- * `role="status"` because pressing a button and getting a line of text that is
- * only a colour is no answer at all to anyone not looking at it.
+ * Announced either way, because pressing a button and getting a line of text
+ * that is only a colour is no answer at all to anyone not looking at it — a
+ * success politely (`status`), a failure at once (`alert`), which is how every
+ * other failure on these pages is announced.
  */
 function ProbeMessage({ probe }: { probe: ProbeResult }) {
   const { t } = useTranslation()
@@ -216,7 +218,7 @@ function ProbeMessage({ probe }: { probe: ProbeResult }) {
       : t(probe.reason === 'malformed' ? 'settings.client.testMalformed' : 'settings.client.testUnreachable')
 
   return (
-    <p data-slot="remote-client-probe-failed" role="status" className="text-caption-1-regular text-status-danger">
+    <p data-slot="remote-client-probe-failed" role="alert" className="text-caption-1-regular text-status-danger">
       {message}
     </p>
   )

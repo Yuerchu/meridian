@@ -71,7 +71,7 @@ function SubAgentSheet({ request, onClose }: { request: SubAgentSheetRequest; on
 
   return (
     <Sheet isOpen placement="right" onOpenChange={(open) => !open && onClose()} isDismissable>
-      <Sheet.Backdrop variant="blur">
+      <Sheet.Backdrop>
         <Sheet.Content className="w-full sm:max-w-2xl">
           <Sheet.Dialog className="flex h-full min-h-0 flex-col">
             <Sheet.Header className="pe-14">
@@ -88,7 +88,7 @@ function SubAgentSheet({ request, onClose }: { request: SubAgentSheetRequest; on
                   <Alert.Content>
                     <Alert.Description>{session?.error ?? t('chat.subAgent.loadFailed')}</Alert.Description>
                   </Alert.Content>
-                  <Button size="small" variant="outline" onPress={() => setAttempt((n) => n + 1)}>
+                  <Button size="small" variant="secondary" onPress={() => setAttempt((n) => n + 1)}>
                     {t('common.retry')}
                   </Button>
                 </Alert>

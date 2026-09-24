@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { DropZone } from 'react-aria-components'
 import type { DropItem } from 'react-aria-components'
 import { Button, Chip, Tooltip, TooltipTrigger } from '@/components/base'
-import { Comments, Xmark } from '@gravity-ui/icons'
+import { Messages, X } from '@keyline-icons/react/two-tone'
 import { acceptsConversationDrop, CONVERSATION_DRAG_TYPE } from '@/components/layout/sidebar-dnd'
 import { EmptyState as ProEmptyState } from '@/components/base'
 import { api } from '@/api'
@@ -27,6 +27,7 @@ import { useContextInfo } from '@/hooks/use-context-info'
 import { useConfirm } from '@/hooks/use-confirm'
 import { usePlatform } from '@/hooks/use-platform'
 import { useReferenceProbe } from '@/hooks/use-reference-probe'
+import { useComposerDraft, type ComposerConversationRef, type ComposerDraftState } from '@/hooks/use-composer-draft'
 import { useConversationStore } from '@/stores/conversation-store'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
 import { parseComposerIntent, selectExistingReferences } from '@/lib/composer-intent'
@@ -129,7 +130,21 @@ function ChatViewInner({
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [pendingSticker, setPendingSticker] = useState<PendingSticker | null>(null)
   /** Conversations dragged in from the sidebar, pending on the next message. */
-  const [conversationRefs, setConversationRefs] = useState<{ id: string; title: string }[]>([])
+  const [conversationRefs, setConversationRefs] = useState<ComposerConversationRef[]>([])
+  // The four above are the draft, kept in the database so a switch of
+  // conversation or a crash does not take it. Every send path empties the
+  // text, which is what writes the cleared draft at once.
+  const restoreDraft = useCallback((restored: ComposerDraftState) => {
+    setInput(restored.text)
+    setAttachedFiles(restored.attachedFiles)
+    setPendingSticker(restored.pendingSticker)
+    setConversationRefs(restored.conversationRefs)
+  }, [])
+  const composerDraft = useComposerDraft(
+    conversationId,
+    { text: input, attachedFiles, pendingSticker, conversationRefs },
+    restoreDraft,
+  )
   // What the *next* queued message will be, not a property of any row. Defaults
   // to the mode that waits: an interjection cuts into work that is already
   // going, which is not a thing to do by accident.
@@ -802,6 +817,12 @@ function ChatViewInner({
     const text = intent.kind === 'prompt' ? intent.text.trim() : input.trim()
     const refIds = conversationRefs.map((ref) => ref.id)
     if (!text && !pendingSticker) return
+    // A restored draft can point at a file or a conversation that has since
+    // gone. They are shown as such; sending them would fail halfway.
+    if (attachedFiles.some((file) => file.missing) || conversationRefs.some((ref) => ref.missing)) {
+      storeSetError(conversationId, t('chat.draft.missingBlocksSend'))
+      return
+    }
 
     // Commands are local control input. Resolve them before queue/steer so a
     // typo cannot become a delayed model prompt and an idle-only command never
@@ -949,27 +970,34 @@ function ChatViewInner({
             aria-label={t('chat.convRef.pending')}
             className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-border-button-default px-4 py-2"
           >
-            {conversationRefs.map((ref) => (
-              <Chip key={ref.id} size="sm" variant="soft" className="pr-0.5">
-                <Comments className="size-3.5" aria-hidden />
-                <span data-slot="conversation-ref-title" className="max-w-48 truncate">
-                  {ref.title}
-                </span>
-                <TooltipTrigger delay={0}>
-                  <Button
-                    iconOnly
-                    size="small"
-                    variant="ghost"
-                    aria-label={t('chat.convRef.remove', { name: ref.title })}
-                    onPress={() => setConversationRefs((prev) => prev.filter((r) => r.id !== ref.id))}
-                    className="touch-hitbox size-5 min-w-0 rounded-full"
+            {conversationRefs.map((ref) => {
+              // A restored draft can cite a conversation deleted since.
+              const name = ref.missing ? t('chat.draft.deletedConversation') : ref.title
+              return (
+                <Chip key={ref.id} size="sm" variant="soft" className="pr-0.5">
+                  <Messages className="size-3.5" aria-hidden />
+                  <span
+                    data-slot="conversation-ref-title"
+                    data-missing={ref.missing ? '' : undefined}
+                    className="max-w-48 truncate data-[missing]:text-status-danger"
                   >
-                    <Xmark className="size-3" />
-                  </Button>
-                  <Tooltip>{t('chat.convRef.remove', { name: ref.title })}</Tooltip>
-                </TooltipTrigger>
-              </Chip>
-            ))}
+                    {name}
+                  </span>
+                  <TooltipTrigger delay={0}>
+                    <Button
+                      iconOnly
+                      leadingIcon={X}
+                      size="xs"
+                      variant="neutral"
+                      aria-label={t('chat.convRef.remove', { name })}
+                      onPress={() => setConversationRefs((prev) => prev.filter((r) => r.id !== ref.id))}
+                      className="touch-hitbox size-5 min-w-0 rounded-full"
+                    />
+                    <Tooltip>{t('chat.convRef.remove', { name })}</Tooltip>
+                  </TooltipTrigger>
+                </Chip>
+              )
+            })}
           </div>
         )}
 
@@ -982,11 +1010,21 @@ function ChatViewInner({
               {reviewBlockedMessage}
             </p>
             {pendingPlanReview && (
-              <Button size="small" variant="ghost" onPress={() => openPlanReview(pendingPlanReview.review_id)}>
+              <Button size="small" variant="secondary" onPress={() => openPlanReview(pendingPlanReview.review_id)}>
                 {reviewBlockedAction}
               </Button>
             )}
           </div>
+        )}
+
+        {composerDraft.saveError && (
+          <p
+            data-slot="composer-draft-error"
+            role="status"
+            className="shrink-0 px-4 pt-1 text-caption-1-regular text-text-secondary"
+          >
+            {t('chat.draft.saveFailed', { error: composerDraft.saveError })}
+          </p>
         )}
 
         <InputBar

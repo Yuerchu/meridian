@@ -22,6 +22,8 @@ import type { EmojiMap } from './emoji-renderer'
 import type { SenderNames } from '@/hooks/use-sender-names'
 import { answerAnchorId, questionPositionOf, turnEndedAt, type Turn } from '@/lib/turns'
 import type { AcpSessionNoticeInfoResponse, MessageRating } from '@/types'
+import { targetApprovalTurnId } from '@/hooks/use-transcript-hotkeys'
+import { onPendingReveal } from '@/lib/pending-reveal'
 
 const TRANSCRIPT_WINDOW_TURNS = 40
 
@@ -39,6 +41,32 @@ function ImeScrollSync() {
     // permission to discard the reader's position.
     if (ime > 0 && isFollowing()) scrollToEnd()
   }, [ime, isFollowing, scrollToEnd])
+  return null
+}
+
+/**
+ * Answers the header inbox's "go to the card" for this conversation.
+ *
+ * The turn holding the question the approve/deny chords would answer is
+ * scrolled to its end, which is where a turn stopped on a question has its
+ * card. With no such turn — a plan review, whose card is not a tool call —
+ * the live edge is where the waiting is, so that is where it goes.
+ */
+function PendingReveal({ conversationId, turns }: { conversationId: string; turns: Turn[] }) {
+  const { scrollToEnd, scrollToMessage } = useMessageScroller()
+  const turnsRef = useRef(turns)
+  useLayoutEffect(() => {
+    turnsRef.current = turns
+  }, [turns])
+  useEffect(
+    () =>
+      onPendingReveal((id) => {
+        if (id !== conversationId) return
+        const turnId = targetApprovalTurnId(turnsRef.current)
+        if (turnId === null || !scrollToMessage(turnId, { align: 'end' })) scrollToEnd()
+      }),
+    [conversationId, scrollToEnd, scrollToMessage],
+  )
   return null
 }
 
@@ -375,6 +403,7 @@ export function ChatTranscript({
           >
             <ImeScrollSync />
             <AnswerSettle streaming={streaming} anchorId={lastTurn ? answerAnchorId(lastTurn.id) : null} />
+            <PendingReveal conversationId={conversationId} turns={turns} />
             <MessageScroller className="flex-1 min-h-0">
               <MessageScrollerViewport>
                 <MessageScrollerContent className="max-w-4xl mx-auto px-4 py-6 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]">

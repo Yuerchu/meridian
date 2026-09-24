@@ -83,8 +83,8 @@ function ComposerCase() {
         }
       />
       <p data-slot="responsive-case-note" className="mt-2 text-caption-1-regular text-text-secondary">
-        Open the <code data-slot="responsive-case-note-code">+</code> menu before sweeping: it is portalled, and 464px
-        of it is what the escape detector is here to catch.
+        Open the <code data-slot="responsive-case-note-code">+</code> menu (and a submenu) before sweeping: both are
+        portalled, and a submenu opening past the edge is what the escape detector is here to catch.
       </p>
     </div>
   )

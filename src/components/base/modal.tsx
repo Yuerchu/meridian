@@ -8,13 +8,7 @@ import {
 } from 'react-aria-components'
 import { cx } from '@/utils/cx'
 import { CloseButton } from './buttons/close-button'
-import {
-  BACKDROP_MOTION,
-  BACKDROP_VARIANT,
-  OVERLAY_MOTION,
-  OVERLAY_SURFACE,
-  type BackdropVariant,
-} from './overlay-motion'
+import { MODAL_BACKDROP, MODAL_BACKDROP_MOTION, MODAL_MOTION, MODAL_SURFACE } from './overlay-motion'
 
 /**
  * A centred dialog on React Aria's `ModalOverlay` / `Modal` / `Dialog`.
@@ -43,7 +37,6 @@ interface ModalBackdropProps {
   onOpenChange?: (open: boolean) => void
   isDismissable?: boolean
   isKeyboardDismissDisabled?: boolean
-  variant?: BackdropVariant
   className?: string
   children?: ReactNode
 }
@@ -53,7 +46,6 @@ function ModalBackdrop({
   onOpenChange,
   isDismissable = true,
   isKeyboardDismissDisabled,
-  variant = 'opaque',
   className,
   children,
 }: ModalBackdropProps) {
@@ -66,8 +58,8 @@ function ModalBackdrop({
       isKeyboardDismissDisabled={isKeyboardDismissDisabled}
       className={cx(
         'fixed inset-0 z-50 flex items-center justify-center p-4',
-        BACKDROP_VARIANT[variant],
-        BACKDROP_MOTION,
+        MODAL_BACKDROP,
+        MODAL_BACKDROP_MOTION,
         className,
       )}
     >
@@ -100,8 +92,8 @@ function ModalContainer({ size = 'md', placement = 'center', className, children
       data-size={size}
       className={cx(
         'flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden',
-        OVERLAY_SURFACE,
-        OVERLAY_MOTION,
+        MODAL_SURFACE,
+        MODAL_MOTION,
         containerSize[size],
         placement === 'top' && 'mt-12 self-start',
         className,
@@ -162,13 +154,14 @@ function ModalFooter({ className, ...props }: ComponentProps<'div'>) {
 
 function ModalCloseTrigger({
   className,
-  'aria-label': ariaLabel = 'Close',
+  'aria-label': ariaLabel,
 }: {
   className?: string
-  'aria-label'?: string
+  /** Required, as on `CloseButton`: the X has no visible text, and an English
+   *  default here is what a Chinese screen reader used to announce. */
+  'aria-label': string
 }) {
   return (
-    // eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- the X of a dialog is named by aria-label; a tooltip repeating it is noise
     <CloseButton
       slot="close"
       size="sm"

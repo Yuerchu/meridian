@@ -4,13 +4,11 @@ import { createContext, useContext, useRef, useState } from 'react'
 import type { ReactNode, Ref } from 'react'
 import {
   Button as AriaButton,
-  Label as AriaLabel,
   ListBox as AriaListBox,
   ListBoxItem as AriaListBoxItem,
   Popover as AriaPopover,
   Select as AriaSelect,
   SelectValue as AriaSelectValue,
-  Text as AriaText,
 } from 'react-aria-components'
 import type {
   ListBoxItemProps as AriaListBoxItemProps,
@@ -24,6 +22,8 @@ import {
   MENU_POPOVER_SURFACE,
   MENU_POPOVER_WIDTH,
 } from '@/components/base/dropdown/menu-styles'
+import { HintText } from '@/components/base/input/hint-text'
+import { Label } from '@/components/base/input/label'
 import { ChevronDownSmall } from '@/components/foundations/icons/chevrons'
 import { cx } from '@/utils/cx'
 import { useDismissOnOutsidePress, useTriggerToggle } from '@/utils/use-dismiss-on-outside-press'
@@ -43,6 +43,11 @@ import { useDismissOnOutsidePress, useTriggerToggle } from '@/utils/use-dismiss-
  * and radius/2lg rows with the same hover/selected surface.
  *
  * Item content is free-form: pass a `StatusDot` + text for status selects.
+ *
+ * Meridian (boardui.json patches): `label` / `description` render the
+ * registry's own field `Label` and `HintText` inside the RAC Select, so the
+ * trigger is named and described the way a TextField's input is; the trigger's
+ * hover / focus-visible are RAC `data-*` attributes.
  */
 
 export type SelectSize = 'sm' | 'md'
@@ -105,22 +110,22 @@ export function Select<T extends object>({
       onOpenChange={(o) => allowOpenChange(o) && setIsOpen(o)}
       className={cx('group flex flex-col gap-1', className)}
     >
-      {({ isOpen }) => (
+      {({ isOpen, isRequired, isInvalid }) => (
         <>
           {label && (
-            <AriaLabel className="flex cursor-default items-center gap-0.5 text-body-medium text-text-primary">
+            <Label isRequired={isRequired} isInvalid={isInvalid}>
               {label}
-            </AriaLabel>
+            </Label>
           )}
           <AriaButton
             ref={triggerRef}
             className={cx(
-              'flex w-full cursor-[var(--cursor-interactive)] items-center justify-between rounded-2lg',
+              'flex w-full cursor-pointer items-center justify-between rounded-2lg',
               'border border-border-button-default bg-background-primary-default shadow-xs',
               'text-text-primary',
               'transition-[background-color,border-color,box-shadow,padding,font-size] duration-200 ease',
-              'hover:bg-background-primary-hover hover:border-border-button-hover',
-              'outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-border-focus-ring',
+              'data-[hovered]:bg-background-primary-hover data-[hovered]:border-border-button-hover',
+              'outline-none data-[focus-visible]:ring-2 data-[focus-visible]:ring-offset-2 data-[focus-visible]:ring-border-focus-ring',
               'disabled:cursor-not-allowed disabled:bg-background-primary-disabled disabled:text-text-tertiary disabled:shadow-none',
               size === 'sm' ? 'gap-1 px-[7px] py-1 text-body-2-medium' : 'gap-1.5 px-2.5 py-2 text-body-medium',
               triggerClassName,
@@ -156,11 +161,7 @@ export function Select<T extends object>({
               <SelectSizeContext.Provider value={size}>{children}</SelectSizeContext.Provider>
             </AriaListBox>
           </AriaPopover>
-          {description && (
-            <AriaText slot="description" className="pt-px text-caption-1-medium text-text-secondary">
-              {description}
-            </AriaText>
-          )}
+          {description && <HintText isInvalid={isInvalid}>{description}</HintText>}
         </>
       )}
     </AriaSelect>

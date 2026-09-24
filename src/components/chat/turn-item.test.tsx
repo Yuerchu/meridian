@@ -56,6 +56,35 @@ function msg(role: MessageViewModel['role'], over: Partial<MessageViewModel> = {
   }
 }
 
+/** Presses the turn's details action and returns the popover it opens. */
+async function openTurnInfo(trigger?: HTMLElement): Promise<HTMLElement> {
+  await userEvent.click(trigger ?? screen.getByRole('button', { name: 'Turn details' }))
+  return screen.findByRole('dialog', { name: 'Turn details' })
+}
+
+function infoRow(details: HTMLElement, section: string, row: string): HTMLElement {
+  const found = details.querySelector(`[data-section="${section}"] [data-row="${row}"]`)
+  if (!found) throw new Error(`no ${section}/${row} row`)
+  return found as HTMLElement
+}
+
+/**
+ * The summary the footer pill used to be named by, `tokens · cost`, is now
+ * the two totals of the details popover: the token total row and the cost
+ * total (or, for a turn billed elsewhere, the billing row).
+ */
+function expectSummary(details: HTMLElement, summary: string) {
+  const [tokens, cost] = summary.replace(/^Turn usage: /, '').split(' · ')
+  if (tokens === 'Token usage unavailable') {
+    expect(details.querySelector('[data-section="tokens"] [data-row="input"]')).toBeNull()
+  }
+  expect(infoRow(details, 'tokens', 'total').querySelector('dd')?.textContent).toBe(tokens)
+  const costRow =
+    details.querySelector('[data-section="cost"] [data-row="total"]') ??
+    details.querySelector('[data-section="cost"] [data-row="status"]')
+  expect(costRow?.querySelector('dd')?.textContent).toBe(cost)
+}
+
 const text = (t: string): ContentBlock => ({ type: 'text', text: t })
 const toolBlock = (name: string, status: ToolCallDisplay['status'] = 'completed'): ContentBlock => ({
   type: 'tool_call',
@@ -157,7 +186,7 @@ describe('TurnItem', () => {
     const { container } = render(<TurnItem turn={turn} conversationId={CONV} questionPosition="last" />)
     const bubble = container.querySelector('[data-slot="bubble"][data-variant="user"]')
     expect(bubble).toHaveAttribute('data-position', 'last')
-    expect(container.querySelector('[data-slot="turn-question"]')?.className).toContain('-mt-5')
+    expect(container.querySelector('[data-slot="turn-question"]')?.className.split(' ')).toContain('-mt-5.5')
   })
 
   it('renders a headless turn without a question bubble', () => {
@@ -212,7 +241,7 @@ describe('TurnItem', () => {
     expect(onDelete).toHaveBeenCalledWith(u.id)
   })
 
-  it('reports usage summed over the whole turn', () => {
+  it('reports usage summed over the whole turn', async () => {
     const u = msg('user', { content: 'q' })
     const a1 = msg('assistant', { _blocks: [text('step')], content: 'step', input_tokens: 100, output_tokens: 20 })
     const a2 = msg('assistant', { _blocks: [text('done')], content: 'done', input_tokens: 300, output_tokens: 50 })
@@ -220,10 +249,13 @@ describe('TurnItem', () => {
 
     expect(turn.tokens).toEqual({ input: 400, output: 70 })
     render(<TurnItem turn={turn} conversationId={CONV} />)
-    expect(screen.getByText(/tokens/)).toBeInTheDocument()
+    // Nothing about usage is drawn beside the answer any more.
+    expect(screen.queryByText(/tokens/)).toBeNull()
+    const details = await openTurnInfo()
+    expect(within(details).getByText('400 + 70 tokens')).toBeInTheDocument()
   })
 
-  it('shows the backend-priced turn total and reveals its components by press as well as hover', async () => {
+  it('keeps the backend-priced turn total and its components behind the turn details action', async () => {
     const u = msg('user', { content: 'q' })
     const a = msg('assistant', {
       turn_id: 'turn-priced',
@@ -238,15 +270,18 @@ describe('TurnItem', () => {
       usageByTurnId: new Map([['turn-priced', usage({ input_tokens: 130, output_tokens: 30 })]]),
     })[0]
 
-    render(<TurnItem turn={turn} conversationId={CONV} />)
-    const trigger = screen.getByRole('button', { name: 'Turn usage: 130 + 30 tokens · 0.545' })
+    const { container } = render(<TurnItem turn={turn} conversationId={CONV} />)
+    // The footer is the actions alone: no cost pill, no duration beside them.
+    const footer = container.querySelector('[data-slot="message-group-footer"]') as HTMLElement
+    expect(within(footer).queryByText('0.545')).toBeNull()
+    const trigger = screen.getByRole('button', { name: 'Turn details' })
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
-    await userEvent.click(trigger)
 
-    const details = await screen.findByRole('dialog', { name: 'Turn usage' })
+    const details = await openTurnInfo()
     expect(trigger).toHaveAttribute('aria-expanded', 'true')
-    const controlled = document.getElementById(trigger.getAttribute('aria-controls') ?? '')
-    expect(controlled).toContainElement(details)
+    expect(infoRow(details, 'tokens', 'total')).toHaveTextContent('130 + 30 tokens')
+    expect(infoRow(details, 'tokens', 'input')).toHaveTextContent('130')
+    expect(infoRow(details, 'tokens', 'output')).toHaveTextContent('30')
     expect(within(details).getByText('0.20')).toBeInTheDocument()
     expect(within(details).getByText('0.04')).toBeInTheDocument()
     expect(within(details).getByText('0.30')).toBeInTheDocument()
@@ -279,10 +314,8 @@ describe('TurnItem', () => {
     })[0]
 
     render(<TurnItem turn={turn} conversationId={CONV} />)
-    const trigger = screen.getByRole('button', { name: 'Turn usage: 100 + 20 tokens · ≥ 0.54' })
-    await userEvent.hover(trigger)
-
-    const details = await screen.findByRole('dialog', { name: 'Turn usage' })
+    const details = await openTurnInfo()
+    expectSummary(details, 'Turn usage: 100 + 20 tokens · ≥ 0.54')
     expect(within(details).getByText('0.20')).toBeInTheDocument()
     expect(within(details).queryByText('≥ 0.20')).not.toBeInTheDocument()
     expect(within(details).getByText('Unknown')).toBeInTheDocument()
@@ -317,13 +350,8 @@ describe('TurnItem', () => {
     })[0]
 
     render(<TurnItem turn={turn} conversationId={CONV} />)
-    const trigger = screen.getByRole('button', {
-      name: 'Turn usage: 100 + 20 tokens · ≈ 0.54 (incomplete)',
-    })
-    expect(trigger).not.toHaveAccessibleName(/\u2265/)
-    await userEvent.hover(trigger)
-
-    const details = await screen.findByRole('dialog', { name: 'Turn usage' })
+    const details = await openTurnInfo()
+    expectSummary(details, 'Turn usage: 100 + 20 tokens · ≈ 0.54 (incomplete)')
     expect(within(details).getByText('≈ 0.20')).toBeInTheDocument()
     expect(within(details).getByText('Unknown')).toBeInTheDocument()
     expect(within(details).getByText('≈ 0.54 (incomplete)')).toBeInTheDocument()
@@ -351,10 +379,8 @@ describe('TurnItem', () => {
     })[0]
 
     render(<TurnItem turn={turn} conversationId={CONV} />)
-    const trigger = screen.getByRole('button', { name: 'Turn usage: 100 + 20 tokens · ≈ 0.545' })
-    await userEvent.hover(trigger)
-
-    const details = await screen.findByRole('dialog', { name: 'Turn usage' })
+    const details = await openTurnInfo()
+    expectSummary(details, 'Turn usage: 100 + 20 tokens · ≈ 0.545')
     expect(
       within(details).getByText(
         'Historical price snapshots were missing; this turn is estimated from current prices for the same provider and model.',
@@ -362,7 +388,7 @@ describe('TurnItem', () => {
     ).toBeVisible()
   })
 
-  it('distinguishes explicit zero usage from missing usage and external billing', () => {
+  it('distinguishes explicit zero usage from missing usage and external billing', async () => {
     const u1 = msg('user', { content: 'first' })
     const a1 = msg('assistant', {
       turn_id: 'turn-free',
@@ -445,13 +471,18 @@ describe('TurnItem', () => {
         <TurnItem turn={turns[2]} conversationId={CONV} />
       </>,
     )
-    expect(screen.getByRole('button', { name: 'Turn usage: 0 + 0 tokens · 0.00' })).toBeInTheDocument()
+    const [free, external, missing] = screen.getAllByRole('button', { name: 'Turn details' })
+    expectSummary(await openTurnInfo(free), 'Turn usage: 0 + 0 tokens · 0.00')
+    await userEvent.keyboard('{Escape}')
+    const externalDetails = await openTurnInfo(external)
+    expectSummary(externalDetails, 'Turn usage: Token usage unavailable · External billing')
+    // Reported, never priced: an externally billed turn carries no amount at all.
+    expect(within(externalDetails).queryByText(/\d\.\d/)).toBeNull()
     expect(
-      screen.getByRole('button', { name: 'Turn usage: Token usage unavailable · External billing' }),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: 'Turn usage: Token usage unavailable · Cost unavailable' }),
-    ).toBeInTheDocument()
+      within(externalDetails).getByText('Billed outside Meridian; a per-turn amount is not available.'),
+    ).toBeVisible()
+    await userEvent.keyboard('{Escape}')
+    expectSummary(await openTurnInfo(missing), 'Turn usage: Token usage unavailable · Cost unavailable')
   })
 
   it('marks a partially reported token total as a lower bound', async () => {
@@ -480,13 +511,10 @@ describe('TurnItem', () => {
     })[0]
 
     render(<TurnItem turn={turn} conversationId={CONV} />)
-    const trigger = screen.getByRole('button', {
-      name: 'Turn usage: ≥ 100 + 20 tokens · ≥ 0.545',
-    })
-    await userEvent.hover(trigger)
-
+    const details = await openTurnInfo()
+    expectSummary(details, 'Turn usage: ≥ 100 + 20 tokens · ≥ 0.545')
     expect(
-      await screen.findByText(
+      within(details).getByText(
         'Some requests did not report complete input/output usage; the displayed token total is a lower bound.',
       ),
     ).toBeVisible()
@@ -528,14 +556,10 @@ describe('TurnItem', () => {
     })[0]
 
     render(<TurnItem turn={turn} conversationId={CONV} />)
-    const trigger = screen.getByRole('button', {
-      name: 'Turn usage: ≥ 900 + 20 tokens · ≥ 11.00',
-    })
-    await userEvent.hover(trigger)
-
-    const details = await screen.findByRole('dialog', { name: 'Turn usage' })
-    const inputRow = within(details).getByText('Input').closest('div') as HTMLElement
-    const outputRow = within(details).getByText('Output').closest('div') as HTMLElement
+    const details = await openTurnInfo()
+    expectSummary(details, 'Turn usage: ≥ 900 + 20 tokens · ≥ 11.00')
+    const inputRow = infoRow(details, 'cost', 'input_cost')
+    const outputRow = infoRow(details, 'cost', 'output_cost')
     expect(within(inputRow).getByText('Unknown')).toBeInTheDocument()
     expect(within(outputRow).getByText('2.00')).toBeInTheDocument()
     expect(within(outputRow).queryByText('≥ 2.00')).not.toBeInTheDocument()
@@ -548,7 +572,7 @@ describe('TurnItem', () => {
       const a = msg('assistant', { _blocks: blocks, created_at: 10_000 })
       return buildTurns([u, a], { streaming: true })[0]
     }
-    const marker = (root: HTMLElement) => root.querySelector('[data-slot="bubble"][role="status"]')
+    const marker = (root: HTMLElement) => root.querySelector('[data-slot="bubble"][data-working="true"]')
 
     it('draws the wait between a tool returning and the model speaking as the next bubble', () => {
       const turn = streamingTurn([text('let me check'), toolBlock('read_file')])
@@ -559,6 +583,10 @@ describe('TurnItem', () => {
       expect(working).toBeInTheDocument()
       expect(container.querySelector('[data-slot="message-group-bubbles"]')).toContainElement(working)
       expect(working).toHaveAttribute('data-position', 'last')
+      // Announced once: boardui's AgentThinking is the status, so the bubble
+      // around it must not be a second one.
+      expect(working).not.toHaveAttribute('role')
+      expect(working.querySelectorAll('[role="status"]')).toHaveLength(1)
       // A dotted key that resolves to nothing renders as itself, which would
       // put "chat.turn.working.thinking" on screen and still pass the check above.
       expect(working.textContent).not.toContain('chat.turn')
@@ -798,10 +826,13 @@ describe('TurnItem', () => {
       expect(block.parentElement).toHaveAttribute('data-slot', 'bubble')
     })
 
-    it('shows the duration in the footer rather than as a headline', () => {
+    it('keeps the duration in the turn details rather than as a headline or in the footer', async () => {
       const { container } = render(<TurnItem turn={toolTurn()} conversationId={CONV} />)
-      expect(container.querySelector('[data-slot="turn-duration"]')).toHaveTextContent('9s')
       expect(screen.queryByRole('button', { name: /Worked for/ })).toBeNull()
+      const footer = container.querySelector('[data-slot="message-group-footer"]') as HTMLElement
+      expect(within(footer).queryByText('9s')).toBeNull()
+      const details = await openTurnInfo()
+      expect(infoRow(details, 'time', 'duration')).toHaveTextContent('9s')
     })
 
     it('says nothing about duration when the clock reads nothing', () => {
@@ -809,9 +840,10 @@ describe('TurnItem', () => {
       const a = msg('assistant', { _blocks: [toolBlock('read_file'), text('done')], content: 'done', created_at: 1000 })
       const turn = buildTurns([u, a])[0]
 
-      const { container } = render(<TurnItem turn={turn} conversationId={CONV} />)
-      // Never "0s" — equal timestamps mean unknown, not instant.
-      expect(container.querySelector('[data-slot="turn-duration"]')).toBeNull()
+      render(<TurnItem turn={turn} conversationId={CONV} />)
+      // Never "0s" — equal timestamps mean unknown, not instant. With no
+      // duration, tokens or cost there is nothing to show, so no action either.
+      expect(screen.queryByRole('button', { name: 'Turn details' })).toBeNull()
     })
 
     it('opens the panel while the tool runs', () => {
@@ -997,5 +1029,61 @@ describe('TurnItem', () => {
       const { container } = render(<TurnItem turn={toolTurn()} conversationId={CONV} />)
       expect(container.querySelector('[data-slot="turn-status"]')).toBeNull()
     })
+  })
+})
+
+/**
+ * Copy is aimed at the bubble, not the turn. A turn that worked through steps
+ * has a bubble per step; copying the last one used to start the clipboard with
+ * the first step's "let me look".
+ */
+describe('TurnItem — what copy copies', () => {
+  beforeAll(async () => {
+    await i18n.changeLanguage('en')
+  })
+
+  function steppedTurn() {
+    const u = msg('user', { content: 'q' })
+    const first = msg('assistant', { _blocks: [text('剪一下。'), toolBlock('write_file')], content: '剪一下。' })
+    const second = msg('assistant', { _blocks: [text('中间一步。'), toolBlock('edit_file')], content: '中间一步。' })
+    const last = msg('assistant', { _blocks: [text('清完了。')], content: '清完了。' })
+    return buildTurns([u, first, second, last])[0]
+  }
+
+  async function copyFromMenuOn(user: ReturnType<typeof userEvent.setup>, bubbleText: string): Promise<string> {
+    await user.pointer({ keys: '[MouseRight]', target: screen.getByText(bubbleText) })
+    await user.click(await screen.findByRole('menuitem', { name: 'Copy' }))
+    return navigator.clipboard.readText()
+  }
+
+  it.each(['剪一下。', '中间一步。', '清完了。'])(
+    'copies exactly the bubble the menu was opened on: %s',
+    async (which) => {
+      const user = userEvent.setup()
+      render(<TurnItem turn={steppedTurn()} conversationId={CONV} onDelete={vi.fn()} />)
+      expect(await copyFromMenuOn(user, which)).toBe(which)
+    },
+  )
+
+  it('offers no copy on a bubble with no prose, and names the turn-wide actions as such', async () => {
+    const user = userEvent.setup()
+    const u = msg('user', { content: 'q' })
+    const a = msg('assistant', { _blocks: [toolBlock('write_file')] })
+    const b = msg('assistant', { _blocks: [text('done')], content: 'done' })
+    render(<TurnItem turn={buildTurns([u, a, b])[0]} conversationId={CONV} onDelete={vi.fn()} onRegenerate={vi.fn()} />)
+    const bare = document.querySelector('[data-variant="tools-only"]')
+    expect(bare).not.toBeNull()
+    await user.pointer({ keys: '[MouseRight]', target: bare as Element })
+    expect(await screen.findByRole('menuitem', { name: 'Regenerate this answer' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Delete this exchange onward' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Copy' })).toBeNull()
+  })
+
+  it('gives the footer’s copy button the conclusion, not the whole run', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<TurnItem turn={steppedTurn()} conversationId={CONV} />)
+    const actions = container.querySelector('[data-slot="assistant-actions"]') as HTMLElement
+    await user.click(within(actions).getByRole('button', { name: 'Copy' }))
+    expect(await navigator.clipboard.readText()).toBe('清完了。')
   })
 })

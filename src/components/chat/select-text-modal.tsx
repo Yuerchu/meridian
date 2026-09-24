@@ -36,7 +36,7 @@ export function SelectTextModal({
           data-slot="select-text-dialog"
           className="pb-[max(1.5rem,var(--safe-bottom))] pl-[max(1.5rem,var(--safe-left))] pr-[max(1.5rem,var(--safe-right))]"
         >
-          <Modal.CloseTrigger />
+          <Modal.CloseTrigger aria-label={t('common.close')} />
           <Modal.Header>
             <Modal.Heading>{t('contextMenu.selectText')}</Modal.Heading>
             <p data-slot="select-text-hint" className="mt-1.5 text-body-regular text-text-secondary">

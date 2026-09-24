@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
-import { Archive, ArrowDownToLine, FolderArrowRight, Link, Pencil, Pin, PinSlash, TrashBin } from '@gravity-ui/icons'
+import { Archive, Bin, Bookmark, Download, FolderArrowRight, Link, Pen } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
@@ -104,7 +104,7 @@ export function useConversationActions(args: {
     (conversation: ConversationInfoResponse) => [
       {
         key: 'pin',
-        icon: conversation.is_pinned ? PinSlash : Pin,
+        icon: Bookmark,
         label: conversation.is_pinned ? t('contextMenu.unpin') : t('contextMenu.pin'),
         run: () => onTogglePin(conversation.id),
       },
@@ -116,7 +116,7 @@ export function useConversationActions(args: {
       },
       {
         key: 'rename',
-        icon: Pencil,
+        icon: Pen,
         label: t('contextMenu.rename'),
         run: () => onRequestRename(conversation.id),
       },
@@ -138,21 +138,21 @@ export function useConversationActions(args: {
         : []),
       {
         key: 'export-sft',
-        icon: ArrowDownToLine,
+        icon: Download,
         label: t('sidebar.exportSft'),
         disabledReason: exportBlocked,
         run: () => exportConversation(conversation, 'sft', onExportError),
       },
       {
         key: 'export-dpo',
-        icon: ArrowDownToLine,
+        icon: Download,
         label: t('sidebar.exportDpo'),
         disabledReason: exportBlocked,
         run: () => exportConversation(conversation, 'dpo', onExportError),
       },
       {
         key: 'delete',
-        icon: TrashBin,
+        icon: Bin,
         label: t('chat.delete'),
         variant: 'destructive',
         run: () => onRequestDelete(conversation.id),
@@ -184,13 +184,13 @@ export function useProjectActions(args: {
     (project: ProjectInfoResponse) => [
       {
         key: 'rename',
-        icon: Pencil,
+        icon: Pen,
         label: t('contextMenu.rename'),
         run: () => onRequestRename(project.id),
       },
       {
         key: 'delete',
-        icon: TrashBin,
+        icon: Bin,
         label: t('chat.delete'),
         variant: 'destructive',
         run: () => onRequestDelete(project.id),

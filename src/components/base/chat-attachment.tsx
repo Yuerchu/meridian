@@ -1,5 +1,5 @@
 import { createContext, useContext, type ComponentProps, type ReactNode } from 'react'
-import { RiFileLine } from '@remixicon/react'
+import { File } from '@keyline-icons/react/two-tone'
 import { cx } from '@/utils/cx'
 import { CloseButton } from './buttons/close-button'
 
@@ -62,7 +62,7 @@ function ChatAttachmentPreview({ className, ...props }: ComponentProps<'div'>) {
       {isImage && src ? (
         <img src={src} alt={name ?? ''} className="size-full object-cover" />
       ) : (
-        <RiFileLine className="size-5" aria-hidden />
+        <File className="size-5" aria-hidden />
       )}
     </div>
   )

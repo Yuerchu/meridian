@@ -2,8 +2,10 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { Alert, Chip, ListBox, Spinner } from '@/components/base'
-import { Ban, CircleCheck, CircleQuestion, Compass, ForwardStep, TriangleExclamation } from '@gravity-ui/icons'
-import { ChatToolArgs } from '@/components/ui/chat-tool'
+import { ShimmerText } from '@/components/application/agent-log/agent-log'
+import { Ban, CircleCheck, CircleQuestion, Compass, SkipForward, TriangleAlert } from '@keyline-icons/react/two-tone'
+import { ToolFields } from '@/components/ui/tool-value'
+import { parsePartialObject } from '@/lib/partial-json'
 import { BUBBLE_BLOCK } from '@/components/ui/bubble'
 import { useTranscriptConversationId } from '@/hooks/use-transcript-conversation'
 import { useConversationStore } from '@/stores/conversation-store'
@@ -123,7 +125,7 @@ export function SubAgentStatusChip({ outcome }: { outcome: SubAgentVerdict }) {
     ) : outcome === 'done' ? (
       <CircleCheck className="size-3" />
     ) : outcome === 'failed' ? (
-      <TriangleExclamation className="size-3" />
+      <TriangleAlert className="size-3" />
     ) : (
       <Ban className="size-3" />
     )
@@ -283,11 +285,10 @@ function SubAgentRowLine({ row, state }: { row: Row; state: RowState }) {
       data-tone={tone}
       className={cx(
         'truncate text-caption-1-regular',
-        tone === 'live' && 'shimmer',
         tone === 'warn' ? 'text-status-warning-soft-foreground' : 'text-text-secondary',
       )}
     >
-      {text}
+      {tone === 'live' ? <ShimmerText>{text}</ShimmerText> : text}
     </div>
   )
 }
@@ -396,7 +397,7 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
                   {readOnly ? (
                     <Compass aria-hidden className="size-3.5 text-text-secondary" />
                   ) : (
-                    <ForwardStep aria-hidden className="size-3.5 text-text-secondary" />
+                    <SkipForward aria-hidden className="size-3.5 text-text-secondary" />
                   )}
                   {t(`chat.subAgent.${row.delegation.kind}`)}
                 </span>
@@ -433,7 +434,6 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
                 {row.delegation.description} · {t('chat.subAgent.asksFor', { tool: nested.tool_name })}
               </span>
             </div>
-            <ChatToolArgs text={nested.arguments} />
             {nested.tool_name === 'ask_user' || nested.tool_name === 'AskUserQuestion' ? (
               <AskUserBlock
                 data={{
@@ -448,12 +448,17 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
                 onAnswered={() => conversationId && resolveNested(conversationId, nested.approval_id)}
               />
             ) : (
-              <PendingApproval
-                key={nested.approval_id}
-                approvalId={nested.approval_id}
-                retryReason={nested.retry_reason}
-                onAnswered={() => conversationId && resolveNested(conversationId, nested.approval_id)}
-              />
+              <>
+                {/* What it wants to run, as fields: this is what is being
+                    approved, and it used to be the raw JSON of the call. */}
+                <ToolFields entries={Object.entries(parsePartialObject(nested.arguments) ?? {})} />
+                <PendingApproval
+                  key={nested.approval_id}
+                  approvalId={nested.approval_id}
+                  retryReason={nested.retry_reason}
+                  onAnswered={() => conversationId && resolveNested(conversationId, nested.approval_id)}
+                />
+              </>
             )}
           </div>
         )

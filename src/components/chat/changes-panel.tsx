@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { Button, Tooltip, TooltipTrigger } from '@/components/base'
 import { FileTree } from '@/components/base'
-import { File, Folder, FolderOpen, Xmark } from '@gravity-ui/icons'
+import { File, Folder, FolderOpen, X } from '@keyline-icons/react/two-tone'
 
 import { useConversationStore } from '@/stores/conversation-store'
 import { fileIconUrl } from '@/lib/file-icon'
@@ -83,14 +83,13 @@ export function ChangesPanelView({ files, onClose }: { files: TouchedFile[]; onC
         <TooltipTrigger delay={0}>
           <Button
             iconOnly
-            variant="ghost"
+            leadingIcon={X}
+            variant="neutral"
             size="small"
             aria-label={t('common.close')}
             onPress={onClose}
             className="shrink-0"
-          >
-            <Xmark />
-          </Button>
+          />
           <Tooltip>{t('common.close')}</Tooltip>
         </TooltipTrigger>
       </header>
@@ -127,7 +126,7 @@ export function ChangesPanelView({ files, onClose }: { files: TouchedFile[]; onC
  *  `fileIconUrl` returns nothing for an extension it does not know. */
 function FileGlyph({ name }: { name: string }) {
   const url = fileIconUrl(name)
-  if (!url) return <File />
+  if (!url) return <File className="size-4" />
   return <img data-slot="changes-file-glyph" src={url} alt="" className="size-4 shrink-0" />
 }
 
@@ -141,7 +140,11 @@ function renderNode(node: FileNode, t: TFunction) {
       aria-label={accessibleName}
       textValue={accessibleName}
       icon={
-        node.children ? ({ isExpanded }) => (isExpanded ? <FolderOpen /> : <Folder />) : <FileGlyph name={node.name} />
+        node.children ? (
+          ({ isExpanded }) => (isExpanded ? <FolderOpen className="size-4" /> : <Folder className="size-4" />)
+        ) : (
+          <FileGlyph name={node.name} />
+        )
       }
       title={
         <span data-slot="changes-node-title" className="flex min-w-0 flex-1 items-center gap-2">

@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FaceSmile, Magnifier } from '@gravity-ui/icons'
-import { Button, ScrollShadow, SearchField, Tooltip, TooltipTrigger } from '@/components/base'
-import { ChatLoader, EmojiPicker as ProEmojiPicker } from '@/components/base'
+import { FaceSmile, Search } from '@keyline-icons/react/two-tone'
+import { PromptInput, ScrollShadow, SearchField, Tooltip, TooltipTrigger } from '@/components/base'
+import { EmojiPicker as ProEmojiPicker } from '@/components/base'
+import { PillTab, PillTabList } from '@/components/base/tabs/pill-tab'
 
 import { api } from '@/api'
+import { loadStickerUrl, peekStickerUrl } from '@/lib/sticker-urls'
 import type { EmojiInfoResponse, EmojiPackInfoResponse } from '@/types'
+import { StickerGrid } from './sticker-grid'
 
 interface PackWithEmojis {
   pack: EmojiPackInfoResponse
@@ -16,7 +19,6 @@ interface StickerItem {
   emoji: EmojiInfoResponse
   packId: string
   packName: string
-  url?: string
 }
 
 export function EmojiPicker({
@@ -32,7 +34,6 @@ export function EmojiPicker({
   const [packs, setPacks] = useState<PackWithEmojis[]>([])
   const [activePackId, setActivePackId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [urls, setUrls] = useState<Record<string, string>>({})
   const [loadedAssistantId, setLoadedAssistantId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -51,29 +52,22 @@ export function EmojiPicker({
             ),
           })),
         )
-        const resolvedUrls = await Promise.all(
-          result.flatMap(({ emojis }) =>
-            emojis.map(async (emoji) => [emoji.id, await api.getEmojiFileUrl(emoji.id).catch(() => null)] as const),
-          ),
-        )
-
+        // Only what the stickers are, not where their pictures are: a URL is
+        // asked for by the cell that draws it, once it is near the viewport
+        // (`useStickerUrl`). Asking for all of them here was one IPC round
+        // trip — and one whole file as base64 — per sticker in every assigned
+        // pack, every time the composer mounted.
         if (!cancelled) {
-          const urlMap = Object.fromEntries(
-            resolvedUrls.filter((entry): entry is readonly [string, string] => !!entry[1]),
-          )
-          const initialPack =
-            result.find(({ emojis }) => emojis.some((emoji) => urlMap[emoji.id])) ??
-            result.find(({ emojis }) => emojis.length > 0) ??
-            result[0]
+          const initialPack = result.find(({ emojis }) => emojis.length > 0) ?? result[0]
           setPacks(result)
-          setUrls(urlMap)
           setActivePackId(initialPack?.pack.id ?? null)
           setLoadedAssistantId(assistantId)
         }
       } catch {
         if (!cancelled) {
+          // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- a read-only sticker picker; nothing here is saved
           setPacks([])
-          setUrls({})
+          // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- a read-only sticker picker; nothing here is saved
           setActivePackId(null)
           setLoadedAssistantId(assistantId)
         }
@@ -94,11 +88,9 @@ export function EmojiPicker({
   const allItems = useMemo<StickerItem[]>(
     () =>
       loadedAssistantId === assistantId
-        ? packs.flatMap(({ pack, emojis }) =>
-            emojis.map((emoji) => ({ emoji, packId: pack.id, packName: pack.name, url: urls[emoji.id] })),
-          )
+        ? packs.flatMap(({ pack, emojis }) => emojis.map((emoji) => ({ emoji, packId: pack.id, packName: pack.name })))
         : [],
-    [assistantId, loadedAssistantId, packs, urls],
+    [assistantId, loadedAssistantId, packs],
   )
   const displayPacks = loadedAssistantId === assistantId ? packs : []
 
@@ -107,9 +99,8 @@ export function EmojiPicker({
   // the previous hand-built picker showed above every row.
   //
   // The match is made here, against the same name, tags and pack name the
-  // item's `textValue` carries: the base grid draws what it is given and
-  // filters nothing (the Pro picker it replaced matched `textValue` itself,
-  // which is how every search came to show every sticker).
+  // item's `textValue` carries: the grid draws what it is given and filters
+  // nothing.
   const visibleItems = useMemo(() => {
     const query = search.trim().toLowerCase()
     if (!query) return allItems.filter((item) => activePackId === null || item.packId === activePackId)
@@ -118,16 +109,46 @@ export function EmojiPicker({
     )
   }, [activePackId, allItems, search])
 
+  const gridItems = useMemo(
+    () =>
+      visibleItems.map((item) => ({
+        id: item.emoji.id,
+        name: item.emoji.name,
+        textValue: `${item.emoji.name} ${item.emoji.tags ?? ''} ${item.packName}`,
+      })),
+    [visibleItems],
+  )
+
+  // The assistant a pending URL lookup was started for, so a lookup that lands
+  // after the assistant changed sends nothing.
+  const currentAssistant = useRef(assistantId)
+  useEffect(() => {
+    currentAssistant.current = assistantId
+  }, [assistantId])
+
   const handleSelect = useCallback(
     (id: React.Key | null) => {
       if (id === null) return
       const item = allItems.find(({ emoji }) => emoji.id === String(id))
-      if (!item?.url) return
-      onSelect({ emoji: item.emoji, url: item.url })
-      setOpen(false)
-      setSearch('')
+      if (!item) return
+      const send = (url: string) => {
+        onSelect({ emoji: item.emoji, url })
+        setOpen(false)
+        setSearch('')
+      }
+      // A cell that was drawn has its URL cached already; one chosen from the
+      // keyboard before it was drawn asks now.
+      const cached = peekStickerUrl(item.emoji.id)
+      if (cached !== undefined) return send(cached)
+      const askedFor = assistantId
+      loadStickerUrl(item.emoji.id).then(
+        (url) => {
+          if (currentAssistant.current === askedFor) send(url)
+        },
+        () => {},
+      )
     },
-    [allItems, onSelect],
+    [allItems, assistantId, onSelect],
   )
 
   const handleOpenChange = useCallback((next: boolean) => {
@@ -147,92 +168,76 @@ export function EmojiPicker({
       onSelectionChange={handleSelect}
     >
       <TooltipTrigger delay={0}>
-        <ProEmojiPicker.Trigger
+        {/* The composer's round control rather than the picker's own neutral
+            trigger: this picker only ever sits in the composer toolbar, beside
+            the `+` and the microphone, and the three are one control family
+            (the registry agent-composer's `ai-chat-composer-add-*` button). */}
+        <PromptInput.Control
+          data-slot="emoji-picker-trigger"
           aria-label={t('chat.emoji')}
-          className="touch-hitbox flex size-8 items-center justify-center rounded-lg text-text-secondary hover:bg-background-primary-hover hover:text-text-primary"
+          className="touch-hitbox"
           onPress={() => {
             // RAC Select normally declines to open an empty collection. This
             // picker still has useful content in that state: the assigned-pack
             // explanation and search shell.
             if (!open) setOpen(true)
           }}
-        >
-          <FaceSmile className="size-4" />
-        </ProEmojiPicker.Trigger>
+          leadingIcon={FaceSmile}
+        />
         <Tooltip>{t('chat.emoji')}</Tooltip>
       </TooltipTrigger>
-      <ProEmojiPicker.Popover placement="top end">
-        <ProEmojiPicker.Content>
+      {/* 24rem holds four ~88px cells; the calc keeps it inside a phone's
+          viewport, where the container query drops the grid to three. */}
+      <ProEmojiPicker.Popover placement="top end" className="w-[24rem] max-w-[calc(100vw-2rem)]">
+        <ProEmojiPicker.Content className="@container/stickers">
           <SearchField aria-label={t('chat.emojiSearch')} value={search} onChange={setSearch}>
-            <SearchField.Group>
+            {/* The popover is `background-primary`, which in dark is the search
+                well's own neutral-800; the registry's search fields off a settings
+                card take the secondary fill instead (`settings-storage.tsx`). */}
+            <SearchField.Group className="bg-background-secondary-default">
               <SearchField.SearchIcon />
               <SearchField.Input autoFocus placeholder={t('chat.emojiSearch')} />
               <SearchField.ClearButton />
             </SearchField.Group>
           </SearchField>
 
-          <ProEmojiPicker.Grid
-            aria-label={t('chat.emoji')}
-            items={visibleItems}
-            renderEmptyState={() =>
-              loading || loadedAssistantId !== assistantId ? (
-                <ChatLoader.Dots label={t('chat.emojiLoading')} />
-              ) : (
-                <span data-slot="emoji-picker-empty" className="flex flex-col items-center gap-2">
-                  <Magnifier className="size-5" />
-                  {search.trim() ? t('chat.emojiNotFound') : t('chat.emojiNoPacks')}
-                </span>
-              )
-            }
-          >
-            {(item) => (
-              <ProEmojiPicker.Item
-                id={item.emoji.id}
-                disabled={!item.url}
-                textValue={`${item.emoji.name} ${item.emoji.tags ?? ''} ${item.packName}`}
+          <StickerGrid
+            items={gridItems}
+            loading={loading || loadedAssistantId !== assistantId}
+            onAction={handleSelect}
+            empty={
+              <span
+                data-slot="emoji-picker-empty"
+                className="flex flex-col items-center gap-2 p-4 text-caption-1-regular text-text-secondary"
               >
-                {item.url ? (
-                  <img
-                    data-slot="emoji-picker-image"
-                    src={item.url}
-                    alt={item.emoji.name}
-                    className="size-7 object-contain"
-                  />
-                ) : (
-                  <span
-                    data-slot="emoji-picker-name"
-                    className="line-clamp-2 text-center text-caption-1-regular leading-tight text-text-secondary"
-                  >
-                    {item.emoji.name}
-                  </span>
-                )}
-              </ProEmojiPicker.Item>
-            )}
-          </ProEmojiPicker.Grid>
+                <Search className="size-5" />
+                {search.trim() ? t('chat.emojiNotFound') : t('chat.emojiNoPacks')}
+              </span>
+            }
+          />
 
           {displayPacks.length > 0 && (
             <ProEmojiPicker.Footer>
               <ScrollShadow hideScrollBar orientation="horizontal" className="min-w-0 flex-1">
-                <div data-slot="emoji-picker-packs" className="flex items-center gap-1 px-1">
+                {/* The registry's pill tab in its quiet `gray` style, which is
+                    what it is for — a filter row that drives local view state.
+                    These were `ghost` Buttons, BoardUI's accent-soft fill,
+                    so every pack but the chosen one read as selected. */}
+                <PillTabList data-slot="emoji-picker-packs" className="px-1">
                   {displayPacks.map(({ pack }) => (
-                    <Button
+                    <PillTab
                       key={pack.id}
-                      size="small"
-                      variant="ghost"
-                      className={
-                        pack.id === activePackId && !search.trim()
-                          ? 'h-7 shrink-0 bg-background-secondary-default px-2 text-caption-1-regular text-text-primary'
-                          : 'h-7 shrink-0 px-2 text-caption-1-regular text-text-secondary'
-                      }
-                      onPress={() => {
+                      variant="gray"
+                      isSelected={pack.id === activePackId && !search.trim()}
+                      onSelect={() => {
                         setActivePackId(pack.id)
                         setSearch('')
                       }}
                     >
                       {pack.name}
-                    </Button>
+                    </PillTab>
                   ))}
-                </div>
+                </PillTabList>
               </ScrollShadow>
             </ProEmojiPicker.Footer>
           )}

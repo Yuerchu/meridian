@@ -12,7 +12,7 @@ import { useHeightCompensation } from '@/hooks/use-height-compensation'
 import { isDifferentDay, useDateLabel } from '@/hooks/use-clock-time'
 import { useConversationStore } from '@/stores/conversation-store'
 import { answerAnchorId, turnStartedAt, type Turn } from '@/lib/turns'
-import { awaitingModel, buildAssistantGroups, groupsPlainText, type BubblePosition } from '@/lib/message-groups'
+import { awaitingModel, buildAssistantGroups, turnCopyText, type BubblePosition } from '@/lib/message-groups'
 import type { EmojiMap } from './emoji-renderer'
 import type { SenderNames } from '@/hooks/use-sender-names'
 import type { MessageRating } from '@/types'
@@ -174,7 +174,7 @@ export const TurnItem = React.memo(function TurnItem({
   const retry = useConversationStore((s) => s.sessions[conversationId]?.retry ?? null)
 
   const groups = useMemo(() => buildAssistantGroups(turn, { oneBot: isOneBot }), [turn, isOneBot])
-  const copyText = useMemo(() => groupsPlainText(groups), [groups])
+  const footerCopyText = useMemo(() => turnCopyText(turn, groups), [turn, groups])
 
   // Panels close on their own as their tools finish. In a turn the reader has
   // scrolled past, that would pull the transcript up under them.
@@ -186,10 +186,14 @@ export const TurnItem = React.memo(function TurnItem({
   // A question continuing a run of questions closes up to the one before it:
   // the tight corner only reads as "the same speaker, continued" when the two
   // nearly touch, and the six-unit rhythm between turns is a paragraph break.
-  // Not past a date separator, which is a break of its own.
+  // Not past a date separator, which is a break of its own. It closes up to
+  // exactly `BUBBLE_RUN_GAP` (2px): the turn's `space-y-6` is 24px, and 22px
+  // taken back leaves the same distance two bubbles of one turn keep.
+  // `-mt-5` left 4px, so a run of questions sat twice as far apart as a run
+  // of answers.
   const continuesRun = (questionPosition === 'middle' || questionPosition === 'last') && !showDate
   const question = turn.userMessage && (
-    <div data-slot="turn-question" className={cx(continuesRun && '-mt-5')}>
+    <div data-slot="turn-question" className={cx(continuesRun && '-mt-5.5')}>
       <ErrorBoundary fallback={renderError}>
         <UserMessage
           message={turn.userMessage}
@@ -272,7 +276,7 @@ export const TurnItem = React.memo(function TurnItem({
               group={group}
               turn={turn}
               owner={owner}
-              copyText={copyText}
+              turnCopyText={footerCopyText}
               showFooter={i === groups.length - 1 && !awaiting}
               workingLabel={i === groups.length - 1 ? workingLabel : null}
               onDelete={onDeleteTurn}

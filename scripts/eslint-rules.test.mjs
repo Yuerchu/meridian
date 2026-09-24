@@ -24,82 +24,83 @@ const languageOptions = {
 
 const tester = new RuleTester({ languageOptions })
 
-tester.run('icon-only-needs-tooltip', plugin.rules['icon-only-needs-tooltip'], {
+tester.run('icon-only-needs-name', plugin.rules['icon-only-needs-name'], {
   valid: [
-    // The pattern the project already uses.
-    `<Tooltip delay={0}><Button isIconOnly aria-label="Close"><Xmark /></Button><Tooltip.Content>Close</Tooltip.Content></Tooltip>`,
-    // Through a render prop.
-    `<Tooltip><Tooltip.Trigger render={<Button isIconOnly aria-label="x"><Icon /></Button>} /><Tooltip.Content>x</Tooltip.Content></Tooltip>`,
-    // Aliased in the dev lab.
-    `<HTooltip><HButton isIconOnly aria-label="x"><Icon /></HButton></HTooltip>`,
-    // Text beside the icon is a labelled button, not an icon-only one.
-    `<Button aria-label="Save"><Check />Save</Button>`,
-    `<Dropdown.Trigger aria-label="More">{label}</Dropdown.Trigger>`,
-    // An intrinsic child carries text; only a component child is read as an icon.
-    `<Button aria-label="Edit name: x"><span data-slot="cell-value">{name}</span></Button>`,
-    // Not a pressable: a menu with an aria-label and element children.
-    `<Sidebar.Menu aria-label="Conversations"><Sidebar.MenuItem /></Sidebar.Menu>`,
-    // A pressable with no aria-label is somebody else's problem (a11y lint).
-    `<Button isDisabled><Icon /></Button>`,
-    // `aria-labelledby` names it just as well as `aria-label`.
-    `<Tooltip><Button isIconOnly aria-labelledby="h"><Icon /></Button><Tooltip.Content>x</Tooltip.Content></Tooltip>`,
+    `<Button iconOnly aria-label="Close"><X /></Button>`,
+    `<Button isIconOnly aria-labelledby="h"><Icon /></Button>`,
+    // BoardUI names an icon button with aria-label alone; no tooltip is required.
+    `<div><Button iconOnly aria-label="More"><MoreVertical /></Button></div>`,
+    // A labelled button is not icon-only.
+    `<Button><Check />Save</Button>`,
   ],
   invalid: [
-    { code: `<Button isIconOnly aria-label="Close"><Xmark /></Button>`, errors: [{ messageId: 'needsTooltip' }] },
+    // A tooltip describes, it does not name: still anonymous.
     {
-      code: `<Dropdown><Dropdown.Trigger aria-label="More"><EllipsisVertical /></Dropdown.Trigger></Dropdown>`,
-      errors: [{ messageId: 'needsTooltip' }],
-    },
-    {
-      code: `<Sidebar.MenuAction aria-label="More"><Ellipsis /></Sidebar.MenuAction>`,
-      errors: [{ messageId: 'needsTooltip' }],
-    },
-    {
-      code: `<Segment.Item id="list" aria-label="List"><LayoutList /></Segment.Item>`,
-      errors: [{ messageId: 'needsTooltip' }],
-    },
-    // A wrapper that draws its own icon, at the call site.
-    { code: `<MessageScrollerButton aria-label="Scroll to bottom" />`, errors: [{ messageId: 'needsTooltip' }] },
-    // A sibling tooltip is not a wrapping one.
-    {
-      code: `<div><Tooltip><span>hint</span></Tooltip><Button isIconOnly aria-label="x"><Icon /></Button></div>`,
-      errors: [{ messageId: 'needsTooltip' }],
-    },
-    // The two obligations are independent, and a tooltip settles only one of
-    // them. This is what the rule used to let through: wrapped, and anonymous
-    // to a screen reader, because it returned on the tooltip before it ever
-    // looked for a name.
-    {
-      code: `<Tooltip><Button isIconOnly><Icon /></Button><Tooltip.Content>Close</Tooltip.Content></Tooltip>`,
+      code: `<Tooltip><Button iconOnly><Icon /></Button><Tooltip.Content>Close</Tooltip.Content></Tooltip>`,
       errors: [{ messageId: 'needsLabel' }],
     },
-    // Neither obligation met: both are reported, so fixing one still leaves
-    // the other on screen.
+    { code: `<Button isIconOnly><Icon /></Button>`, errors: [{ messageId: 'needsLabel' }] },
+  ],
+})
+
+tester.run('no-json-tool-display', plugin.rules['no-json-tool-display'], {
+  valid: [
+    // The replacement: a value drawn as fields.
+    `<ToolValue value={args} />`,
+    `<ToolTextResult text={data.result} />`,
+    // Parsing is reading, not display.
+    `const args = JSON.parse(data.arguments)`,
+  ],
+  invalid: [
+    // The shape that shipped: an unknown result pretty-printed into a code box.
     {
-      code: `<Button isIconOnly><Icon /></Button>`,
-      errors: [{ messageId: 'needsTooltip' }, { messageId: 'needsLabel' }],
+      code: `const pretty = JSON.stringify(JSON.parse(result), null, 2)`,
+      errors: [{ messageId: 'noJson' }],
+    },
+    // An object argument flattened to its source text.
+    {
+      code: `<dd>{typeof value === 'string' ? value : JSON.stringify(value, null, 2)}</dd>`,
+      errors: [{ messageId: 'noJson' }],
     },
   ],
 })
 
-tester.run('intrinsic-needs-data-slot', plugin.rules['intrinsic-needs-data-slot'], {
+tester.run('animation-needs-keyframes', plugin.rules['animation-needs-keyframes'], {
   valid: [
-    `<div data-slot="composer-footer" />`,
-    `<dom.span data-slot="hint" {...props} />`,
-    // Components are not intrinsic.
-    `<Button><Icon /></Button>`,
-    `<Card.Header>x</Card.Header>`,
-    // SVG innards and void inline elements.
-    `<svg data-slot="logo"><path d="M0 0" /><circle r="1" /></svg>`,
-    `<p data-slot="note">a<br />b</p>`,
+    `<span className="animate-spin" />`,
+    `<span className="motion-safe:animate-skeleton" />`,
+    `<span className="animate-[ai-chat-text-shimmer_2s_linear_infinite]" />`,
+    `<span className="data-animate-x" />`,
+    // Defined as a plain class in the registry globals.css.
+    `<path className="animate-check-draw" />`,
   ],
   invalid: [
-    { code: `<div className="flex" />`, errors: [{ messageId: 'needsSlot', data: { name: 'div' } }] },
-    { code: `<span>{x}</span>`, errors: [{ messageId: 'needsSlot', data: { name: 'span' } }] },
-    { code: `<dom.button {...props} />`, errors: [{ messageId: 'needsSlot', data: { name: 'button' } }] },
-    // The spread might carry one; the rule cannot see it and does not guess.
-    { code: `<div {...props} />`, errors: [{ messageId: 'needsSlot', data: { name: 'div' } }] },
-    { code: `<svg><path d="" /></svg>`, errors: [{ messageId: 'needsSlot', data: { name: 'svg' } }] },
+    // The shape that shipped: HeroUI's shimmer, whose keyframes left with HeroUI.
+    {
+      code: `<span className="bg-clip-text animate-[shimmer_2s_linear_infinite]" />`,
+      errors: [{ messageId: 'noKeyframes' }],
+    },
+    { code: `<span className="animate-shimmer" />`, errors: [{ messageId: 'noUtility' }] },
+    { code: 'const c = `x ${y} animate-[nope_1s]`', errors: [{ messageId: 'noKeyframes' }] },
+  ],
+})
+
+tester.run('no-modifier-on-static-utility', plugin.rules['no-modifier-on-static-utility'], {
+  valid: [
+    `<span className="bg-button-primary text-text-white" />`,
+    // The registry's light fills are tokens, which do take a modifier.
+    `<span className="bg-button-ghost-background data-highlighted:bg-dropdown-item-hover-background" />`,
+    `<span className="text-text-primary/80 bg-accent-500/20" />`,
+    // A longer token that merely starts with a utility's name.
+    `<span className="bg-button-primary-disabled/50" />`,
+  ],
+  invalid: [
+    // The three shapes that shipped and drew nothing.
+    { code: `<div className="bg-button-primary/10 text-button-ghost-foreground" />`, errors: [{ messageId: 'modifier' }] },
+    { code: `<li className="hover:x data-highlighted:bg-button-primary/10" />`, errors: [{ messageId: 'modifier' }] },
+    { code: "const c = highlighted ? 'flex bg-button-primary/10' : 'flex'", errors: [{ messageId: 'modifier' }] },
+    { code: `<b className="bg-button-danger/[0.12]" />`, errors: [{ messageId: 'modifier' }] },
+    { code: 'const c = `x ${y} bg-button-danger/5`', errors: [{ messageId: 'modifier' }] },
   ],
 })
 
@@ -119,6 +120,73 @@ function lint(code) {
   ]
   return linter.verify(code, config, { filename: 'case.js' }).map((m) => m.message)
 }
+
+tester.run('no-variant-as-state', plugin.rules['no-variant-as-state'], {
+  valid: [
+    // A different action, not a state: Send vs Stop, Register vs Re-register.
+    `<Button variant={stopping ? 'neutral' : 'primary'} />`,
+    `<Button variant={registered ? 'secondary' : 'primary'} />`,
+    // A destructive kind of the same dialog.
+    `<Button variant={status === 'danger' ? 'danger' : 'primary'} />`,
+    `<Button variant={action.variant === 'destructive' ? 'danger' : undefined} />`,
+    // Not a literal pair: nothing to judge.
+    `<Button variant={action.variant ?? 'secondary'} />`,
+    // Not a Button.
+    `<Bubble variant={isError ? 'destructive' : 'muted'} />`,
+  ],
+  invalid: [
+    // The shape the audit kept finding.
+    { code: `<Button variant={selected ? 'secondary' : 'ghost'} />`, errors: [{ messageId: 'variantAsState' }] },
+    {
+      code: `<Button variant={changesOpen ? 'ghost' : 'neutral'} aria-pressed={changesOpen} />`,
+      errors: [{ messageId: 'variantAsState' }],
+    },
+    // Emphasis used as "selected", betrayed by the state it announces.
+    {
+      code: `<Button variant={m.id === mode ? 'primary' : 'secondary'} aria-pressed={m.id === mode} />`,
+      errors: [{ messageId: 'variantAsState' }],
+    },
+    { code: `<Foo.Button variant={on ? 'neutral' : undefined} />`, errors: [{ messageId: 'variantAsState' }] },
+  ],
+})
+
+tester.run('field-fill-follows-surface', plugin.rules['field-fill-follows-surface'], {
+  valid: [
+    // The registry field as it is.
+    `<Input value={v} />`,
+    // BoardUI's one field fill (data-table.tsx / settings-storage.tsx).
+    `<Input fieldClassName="w-[153px] rounded-full bg-background-secondary-default" />`,
+    `<SearchField.Group className="bg-background-secondary-default" />`,
+    `const FIELD_ON_CARD = 'bg-background-secondary-default'; <TextArea fieldClassName={FIELD_ON_CARD} />`,
+    // Layout on a field is not a fill.
+    `<Input fieldClassName="min-w-0 flex-1" />`,
+    // Not a field.
+    `<div className="bg-background-primary-default" />`,
+  ],
+  invalid: [
+    // Painting the field to fight the surface: the shape both recurrences took.
+    {
+      code: `<Input fieldClassName="bg-background-primary-default" />`,
+      errors: [{ messageId: 'fieldFill' }],
+    },
+    {
+      code: `<TextArea fieldClassName={cx('min-h-0', dark && 'bg-background-tertiary-hover')} />`,
+      errors: [{ messageId: 'fieldFill' }],
+    },
+    {
+      code: `<SearchField.Group className="data-[hovered]:bg-background-secondary-default" />`,
+      errors: [{ messageId: 'fieldFill' }],
+    },
+    {
+      code: `const WELL = 'rounded-none bg-background-secondary-default/40'; <InputGroup className={WELL} />`,
+      errors: [{ messageId: 'fieldFill' }],
+    },
+    {
+      code: 'const x = 1; <Input className={`h-8 bg-background-quaternary-default`} />',
+      errors: [{ messageId: 'fieldFill' }],
+    },
+  ],
+})
 
 tester.run('no-silent-prop-drop', plugin.rules['no-silent-prop-drop'], {
   valid: [
@@ -147,10 +215,13 @@ describe('ui selector restrictions', () => {
   const flagged = [
     ['text-white', `<p className="text-white" />`, /palette/],
     ['bg-black/50', `<p className="bg-black/50" />`, /palette/],
-    ['cursor-pointer', `<label className="text-sm cursor-pointer" />`, /cursor-pointer/],
     ['bg-muted', `<i className="size-2 rounded-full bg-muted" />`, /no muted fill/],
-    ['uppercase', `<h3 className="text-xs uppercase" />`, /ALL CAPS/],
-    ['bare rounded', `<span className="px-1 rounded shrink-0" />`, /Bare `rounded`/],
+    [
+      'tertiary placeholder',
+      `<input className={cx('outline-none placeholder:text-text-tertiary', x)} />`,
+      /placeholder/,
+    ],
+    ['placeholder token placeholder', `<p className="focus:placeholder:text-text-placeholder" />`, /placeholder/],
     ['shadow-md', `<div className="focus:shadow-md" />`, /shadow-/],
     ['animate-pulse', `<div className="h-16 animate-pulse bg-background-secondary-default/30" />`, /animate-pulse/],
     ['animate-spin', `<Icon className="w-3.5 h-3.5 animate-spin" />`, /animate-spin/],
@@ -168,9 +239,9 @@ describe('ui selector restrictions', () => {
     [
       'Button text-danger',
       `<Button variant="ghost" className="ml-auto text-status-danger hover:text-status-danger" />`,
-      /danger-soft/,
+      /variant="danger"/,
     ],
-    ['Button text-danger in cx()', `<Button className={cx('text-status-danger', x)} />`, /danger-soft/],
+    ['Button text-danger in cx()', `<Button className={cx('text-status-danger', x)} />`, /variant="danger"/],
     ['Button h-auto', `<Button variant="ghost" className="h-auto w-full justify-start" />`, /h-auto/],
     [
       'state attr on Content',
@@ -180,10 +251,9 @@ describe('ui selector restrictions', () => {
     ['Button onClick', `<Button onClick={go} />`, /onPress/],
     ['Button disabled', `<Button disabled={busy} />`, /isDisabled/],
     ['Spinner className size', `<Spinner className="w-3.5 h-3.5" />`, /size prop/],
-    ['template className', '<div className={`${base} rounded-xl`} />', /cn\(/],
+    ['template className', '<div className={`${base} rounded-xl`} />', /cx\(/],
     ['t().replace', `const s = t('toolbar.noAssistant').replace(/^No /, 'Select ')`, /translation/],
     ['glyph icon', `<Button aria-label="Cancel">✕</Button>`, /icon/],
-    ['max-w px', `<Modal.Dialog className="sm:max-w-[360px]" />`, /size/],
     ['native label', `<label htmlFor="a">A</label>`, /<Label>/],
     ['native kbd', `<kbd>Ctrl</kbd>`, /<Kbd>/],
   ]
@@ -203,16 +273,19 @@ describe('ui selector restrictions', () => {
       `<p className="text-status-danger-foreground bg-status-danger-soft text-text-secondary bg-background-primary-default border-border-button-default" />`,
     ],
     ['gradient over a fill', `<div className="from-status-danger via-status-danger/80 to-transparent" />`],
-    ['interactive cursor', `<span className="cursor-[var(--cursor-interactive)]" />`],
+    // BoardUI's own spellings, which the HeroUI-era gates used to refuse.
+    ['cursor-pointer', `<span className="cursor-pointer" />`],
+    ['secondary placeholder', `<p className="placeholder:text-text-secondary disabled:text-text-tertiary" />`],
+    ['uppercase', `<span className="uppercase" />`],
+    ['bare rounded', `<span className="rounded px-1" />`],
+    ['px max-width', `<div className="max-w-[360px]" />`],
+    ['native title', `<span title="hint" />`],
     ['rounded-lg', `<span className="rounded-lg rounded-t-none" />`],
     ['shadow tokens', `<div className="shadow-xs shadow-card shadow-dropdown shadow-none" />`],
-    ['danger-soft variant', `<Button variant="danger-soft" />`],
-    // Danger on hover only, for an icon in a row of ghost icons; and the soft
-    // foreground, which is a different class.
-    [
-      'hover danger on a ghost icon',
-      `<Button isIconOnly variant="ghost" className="text-text-secondary hover:text-status-danger" />`,
-    ],
+    ['danger variant', `<Button variant="danger" />`],
+    // Danger on hover only, for an inline icon-only delete among neutral
+    // icons; and the soft foreground, which is a different class.
+    ['hover danger on a neutral icon', `<Button iconOnly variant="neutral" className="hover:text-status-danger" />`],
     [
       'soft foreground',
       `<Button className={cx(selected ? 'text-status-danger-soft-foreground' : 'text-text-secondary')} />`,
@@ -234,4 +307,65 @@ describe('ui selector restrictions', () => {
       assert.deepEqual(lint(code), [])
     })
   }
+})
+
+// Recurrence gate: a failed read turned into a value the save path writes
+// back. Every invalid case is a shape that shipped.
+tester.run('no-default-on-load-failure', plugin.rules['no-default-on-load-failure'], {
+  valid: [
+    // The replacement: an error state, and the form withheld until it loads.
+    `api.getSkillBody(dir).then(setBody).catch((e) => { setBodyError(String(e)); setBodyState('error') })`,
+    `try { setConfig(await api.acpGetConfig()) } catch (reason) { setLoadError(String(reason)) }`,
+    // A busy flag put back is not loaded data.
+    `save().catch(() => setSaving(false))`,
+    `try { await remove(id) } catch (e) { setError(String(e)); setDeletingId(null) }`,
+    // Defaults on the *success* path are the loader's business.
+    `api.getPreference(k).then(({ value }) => setMode(value ?? 'auto'))`,
+    // A callback scheduled from the handler is not the handler's answer.
+    `load().catch(() => { setTimeout(() => setHint(''), 2000) })`,
+  ],
+  invalid: [
+    // skill-settings: the empty body was saved over SKILL.md.
+    {
+      code: `api.getSkillBody(dir).then(setBody).catch(() => setBody(''))`,
+      errors: [{ messageId: 'defaultOnFailure' }],
+    },
+    // acp-settings: the default command drawn as the stored one.
+    {
+      code: `api.acpGetConfig().then(setConfig).catch(() => { setConfig(DEFAULTS); setOnDisk(DEFAULTS); setArgsText(DEFAULTS.args.join(SEP)) })`,
+      errors: [{ messageId: 'defaultOnFailure' }, { messageId: 'defaultOnFailure' }, { messageId: 'defaultOnFailure' }],
+    },
+    // auto-review: the defaults form after a failed Promise.all, try/catch spelling.
+    {
+      code: `async function load() { try { setSettings(await read()) } catch { setSettings({ ...DEFAULTS }) } }`,
+      errors: [{ messageId: 'defaultOnFailure' }],
+    },
+    // The .then(ok, fail) spelling, guarded by a cancellation check.
+    {
+      code: `read().then(setItems, () => { if (!cancelled) setItems([]) })`,
+      errors: [{ messageId: 'defaultOnFailure' }],
+    },
+    { code: `read().catch(() => setBound(new Set()))`, errors: [{ messageId: 'defaultOnFailure' }] },
+    { code: `read().catch(() => setLimit(0))`, errors: [{ messageId: 'defaultOnFailure' }] },
+    { code: `read().catch(() => setEnabled(false))`, errors: [{ messageId: 'defaultOnFailure' }] },
+    { code: `read().catch(() => setModel(null))`, errors: [{ messageId: 'defaultOnFailure' }] },
+    { code: `read().catch(() => setConfig(defaultConfig))`, errors: [{ messageId: 'defaultOnFailure' }] },
+  ],
+})
+
+tester.run('no-parse-or-default', plugin.rules['no-parse-or-default'], {
+  valid: [
+    `function read(text) { const n = Number.parseInt(text, 10); if (!Number.isFinite(n)) return setFieldError('w'); return n }`,
+    // `??` is not refused: it does not eat 0 or NaN (see the rule's header).
+    `const window = info.context_window ?? 128000`,
+    // `||` with a non-number fallback is some other question.
+    `const label = Number(x) || fallbackLabel`,
+  ],
+  invalid: [
+    // model-page: a cleared or garbled field saved as a context window nobody chose.
+    { code: `const contextWindow = parseInt(form.contextWindow) || 128000`, errors: [{ messageId: 'parseOrDefault' }] },
+    { code: `save({ maxTokens: Number(maxTokens) || 4096 })`, errors: [{ messageId: 'parseOrDefault' }] },
+    { code: `const ttl = Number.parseInt(text, 10) || 60`, errors: [{ messageId: 'parseOrDefault' }] },
+    { code: `const t = parseFloat(v) || -1`, errors: [{ messageId: 'parseOrDefault' }] },
+  ],
 })

@@ -30,7 +30,7 @@ import { useSheetDrag, type SheetDragApi } from './use-sheet-drag'
  * component for a bottom sheet.
  *
  *   <Sheet isOpen={open} onOpenChange={setOpen} placement="right">
- *     <Sheet.Backdrop variant="blur">
+ *     <Sheet.Backdrop>
  *       <Sheet.Content className="sm:max-w-2xl">
  *         <Sheet.Dialog aria-label="…">…</Sheet.Dialog>
  *       </Sheet.Content>
@@ -184,7 +184,7 @@ function SheetDiscardDialog({
           </AlertDialog.Header>
           <AlertDialog.Body id={descId}>{t('sheet.discard.body')}</AlertDialog.Body>
           <AlertDialog.Footer>
-            <Button slot="close" variant="tertiary">
+            <Button slot="close" variant="secondary">
               {t('common.cancel')}
             </Button>
             <Button variant="danger" onPress={onDiscard}>
@@ -374,13 +374,14 @@ function SheetFooter({ className, ...props }: ComponentProps<'div'>) {
 
 function SheetCloseTrigger({
   className,
-  'aria-label': ariaLabel = 'Close',
+  'aria-label': ariaLabel,
 }: {
   className?: string
-  'aria-label'?: string
+  /** Required, as on `CloseButton`: the X has no visible text, and an English
+   *  default here is what a Chinese screen reader used to announce. */
+  'aria-label': string
 }) {
   return (
-    // eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- the X of a dialog is named by aria-label; a tooltip repeating it is noise
     <CloseButton
       slot="close"
       size="sm"

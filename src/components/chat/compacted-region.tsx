@@ -54,7 +54,7 @@ export function CompactedRegion({
       {showCompactedMessages ? (
         <>
           <Button
-            variant="ghost"
+            variant="secondary"
             onPress={() => setShowCompactedMessages(false)}
             className="w-full rounded-lg text-center text-caption-1-regular text-text-secondary hover:text-text-secondary py-2"
           >
@@ -77,7 +77,7 @@ export function CompactedRegion({
         </>
       ) : (
         <Button
-          variant="ghost"
+          variant="secondary"
           onPress={() => setShowCompactedMessages(true)}
           className="w-full rounded-lg text-center text-caption-1-regular text-text-secondary hover:text-text-secondary py-2"
         >

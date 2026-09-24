@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ComponentType, HTMLAttributes, ReactNode, Ref } from 'react'
+import { Button as AriaButton } from 'react-aria-components'
 import { cx, sortCx } from '@/utils/cx'
 
 const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect
@@ -24,6 +25,9 @@ const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffec
  * between pills with a subtle spring-like settle. `PillTab` remains a plain
  * button (not a React Aria Tabs collection): these switchers drive local view
  * state, not routed tab panels.
+ *
+ * Meridian (boardui.json patches): the pill is a React Aria `Button`
+ * (`onPress`, `data-focus-visible`, `data-hovered`) rather than a native one.
  */
 
 type IconComponent = ComponentType<{
@@ -147,17 +151,16 @@ export function PillTab({
   className?: string
 }) {
   return (
-    <button
-      type="button"
+    <AriaButton
       aria-pressed={isSelected}
       data-pill-selected={isSelected ? '' : undefined}
       data-pill-variant={variant}
-      onClick={onSelect}
+      onPress={onSelect}
       className={cx(
-        'group relative z-10 flex shrink-0 cursor-[var(--cursor-interactive)] items-center gap-1 px-2 py-[5px]',
+        'group relative z-10 flex shrink-0 cursor-pointer items-center gap-1 px-2 py-[5px]',
         styles.radius[variant],
         'outline-none transition-colors duration-150 ease',
-        'focus-visible:ring-2 focus-visible:ring-border-focus-ring',
+        'data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
         className,
       )}
     >
@@ -168,7 +171,7 @@ export function PillTab({
           'transition-opacity duration-200 ease-out',
           styles.radius[variant],
           styles.hover[variant],
-          !isSelected && 'group-hover:opacity-100',
+          !isSelected && 'group-data-[hovered]:opacity-100',
         )}
       />
       {Icon && (
@@ -188,6 +191,6 @@ export function PillTab({
       >
         {children}
       </span>
-    </button>
+    </AriaButton>
   )
 }

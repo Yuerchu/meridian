@@ -34,18 +34,19 @@ export interface ShellProps {
   /** Start a conversation — under `projectId` when given, under the active
    *  project when the argument is omitted, loose when it is `null`. */
   onCreate: (projectId?: string | null) => void | Promise<void>
-  onDelete: (id: string) => void
-  onRename: (id: string, newTitle: string) => void
-  onTogglePin: (id: string) => void
-  onToggleArchive: (id: string) => void
+  /** These and the two project handlers reject on failure; the sidebar reports it. */
+  onDelete: (id: string) => Promise<void>
+  onRename: (id: string, newTitle: string) => Promise<void>
+  onTogglePin: (id: string) => Promise<void>
+  onToggleArchive: (id: string) => Promise<void>
   /** Refile a conversation under another project, or under none (`null`). */
   onMoveToProject: (id: string, projectId: string | null) => Promise<string | null>
   onSelectProject: (id: string | null) => void
   onCreateProject: (name: string, path: string) => void | Promise<void>
   /** Start a hosted Claude Code session. Resolves to why it failed, or `null`. */
   onCreateHostedSession: (cwd: string) => Promise<string | null>
-  onDeleteProject: (id: string) => void
-  onRenameProject: (id: string, newName: string) => void
+  onDeleteProject: (id: string) => Promise<void>
+  onRenameProject: (id: string, newName: string) => Promise<void>
   onOpenSettings: () => void
   onCloseSettings: () => void
   onSettingsTabChange: (tab: SettingsTab) => void

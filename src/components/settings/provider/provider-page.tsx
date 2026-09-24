@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowsRotateRight, Plus, TrashBin, Key } from '@gravity-ui/icons'
+import { Bin, Key, Plus, RefreshCw } from '@keyline-icons/react/two-tone'
 import {
   Alert,
   Button,
@@ -45,6 +45,11 @@ import type {
   ProviderBalanceInfoResponse,
   ProviderApiFormat,
 } from '@/types'
+
+/** Only the Responses adapter reads the column; a ChatGPT login is that shape already. */
+function offersCodexRequestShapeFor(apiFormat: ProviderApiFormat, provider: ProviderInfoResponse): boolean {
+  return apiFormat === 'responses' && !usesChatGptLogin(provider)
+}
 
 /** One line of the model table: what the provider announced, joined to what we configured. */
 interface ModelRow {
@@ -154,6 +159,9 @@ function ProviderEditor({
    * ordinary state and takes whatever version this build shipped with.
    */
   const [codexClientVersion, setCodexClientVersion] = useState('')
+  /** What the preference held when it was read or last written, so the field
+   *  counts toward unsaved work like every other box on this form. */
+  const [savedCodexClientVersion, setSavedCodexClientVersion] = useState('')
   const iconLabelId = useId()
   const codexShapeHintId = useId()
   const [savedDraft, setSavedDraft] = useState(() => ({
@@ -190,6 +198,9 @@ function ProviderEditor({
   /** Above this many, a filter box appears. */
   const FILTER_THRESHOLD = 8
   const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const dirty =
     name !== savedDraft.name ||
     providerType !== savedDraft.providerType ||
@@ -197,13 +208,19 @@ function ProviderEditor({
     apiFormat !== savedDraft.apiFormat ||
     icon !== savedDraft.icon ||
     codexRequestShape !== savedDraft.codexRequestShape ||
-    apiKey.trim().length > 0
+    (offersCodexRequestShapeFor(apiFormat, provider) &&
+      codexRequestShape &&
+      codexClientVersion.trim() !== savedCodexClientVersion.trim())
 
   // Registered with the tab *and* with the page this is on: the shell refuses
   // to leave settings while it is dirty, and the stack refuses to pop this
   // page. One source id per provider, so two pages on the stack cannot answer
   // for each other.
   useSettingsDraft('provider', `provider:${provider.id}`, dirty)
+  // The key is its own draft with its own button: Save above never writes it,
+  // so counting it there made that button look like it had failed to save
+  // something it was never going to. Leaving with a typed key still asks.
+  useSettingsDraft('provider', `provider-key:${provider.id}`, apiKey.trim().length > 0)
 
   // Deletion clears secrets and cached models before the list reloads, so the
   // button has to stay disabled and say what it is doing — otherwise a slow
@@ -212,12 +229,16 @@ function ProviderEditor({
   const handleDelete = useCallback(async () => {
     if (!(await confirm({ body: t('settings.confirmDelete.provider') }))) return
     setDeleting(true)
+    setDeleteError(null)
     try {
       await api.deleteProvider(provider.id)
-      onDeleted()
-    } finally {
+    } catch (err) {
+      setDeleteError(String(err))
       setDeleting(false)
+      return
     }
+    setDeleting(false)
+    onDeleted()
   }, [confirm, t, onDeleted, provider.id])
 
   // Loaded once per page, not per keystroke: the field is a preference and the
@@ -227,7 +248,9 @@ function ProviderEditor({
     api
       .getPreference({ key: 'codex.client_version' })
       .then((preference) => {
-        if (!cancelled) setCodexClientVersion(preference.value ?? '')
+        if (cancelled) return
+        setCodexClientVersion(preference.value ?? '')
+        setSavedCodexClientVersion(preference.value ?? '')
       })
       .catch((err) => {
         // Decorative: the default is a working version, so an unreadable
@@ -270,50 +293,66 @@ function ProviderEditor({
   // offered the switch. A `chatgpt_codex` row is the shape already — it goes to
   // `CodexProvider`, which does not consult the setting — and showing a
   // control there that changes nothing is worse than not showing one.
-  const offersCodexRequestShape = apiFormat === 'responses' && !usesChatGptLogin(provider)
+  const offersCodexRequestShape = offersCodexRequestShapeFor(apiFormat, provider)
 
   const handleSave = useCallback(async () => {
-    // A changed type can leave the row under a sign-in its new vendor does not
-    // offer — a Codex login on an Anthropic row answers to no adapter. The
-    // save restates the resolved option's credentials so the row cannot hold
-    // that combination; when nothing changed this writes back what is there.
-    await api.updateProvider({
-      id: provider.id,
-      name,
-      providerType,
-      baseUrl,
-      apiFormat,
-      credentialKind: activeAuth?.credential_kind,
-      transportProfile: activeAuth?.transport_profile,
-      // Sent on every save, `null` included: null is the picker's own default
-      // entry — "derive the mark from the vendor" — and omitting it would mean
-      // "leave the logo alone", so choosing that entry would do nothing.
-      icon,
-      // Restated even when the switch is not on screen. A row moved off
-      // `responses` hides the control, and leaving the column as it was would
-      // keep a setting the user can no longer see or turn off.
-      codexRequestShape: offersCodexRequestShape ? codexRequestShape : false,
-    })
-    // After the row, and only where the field was on screen: a save from a page
-    // that never showed it must not clear somebody else's override. `null` is
-    // the blank field, which means "back to the shipped default".
-    if (offersCodexRequestShape && codexRequestShape) {
-      await api.setPreference({
-        key: 'codex.client_version',
-        value: codexClientVersion.trim() || null,
+    if (saving) return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      // A changed type can leave the row under a sign-in its new vendor does not
+      // offer — a Codex login on an Anthropic row answers to no adapter. The
+      // save restates the resolved option's credentials so the row cannot hold
+      // that combination; when nothing changed this writes back what is there.
+      await api.updateProvider({
+        id: provider.id,
+        name,
+        providerType,
+        baseUrl,
+        apiFormat,
+        credentialKind: activeAuth?.credential_kind,
+        transportProfile: activeAuth?.transport_profile,
+        // Sent on every save, `null` included: null is the picker's own default
+        // entry — "derive the mark from the vendor" — and omitting it would mean
+        // "leave the logo alone", so choosing that entry would do nothing.
+        icon,
+        // Restated even when the switch is not on screen. A row moved off
+        // `responses` hides the control, and leaving the column as it was would
+        // keep a setting the user can no longer see or turn off.
+        codexRequestShape: offersCodexRequestShape ? codexRequestShape : false,
       })
+      // The row is written, so it is no longer unsaved even if the preference
+      // below fails — that failure is reported, and only that field stays dirty.
+      setSavedDraft({
+        name,
+        providerType,
+        baseUrl,
+        apiFormat,
+        icon,
+        codexRequestShape: offersCodexRequestShape ? codexRequestShape : false,
+      })
+      // After the row, and only where the field was on screen: a save from a page
+      // that never showed it must not clear somebody else's override. `null` is
+      // the blank field, which means "back to the shipped default".
+      if (offersCodexRequestShape && codexRequestShape) {
+        await api.setPreference({
+          key: 'codex.client_version',
+          value: codexClientVersion.trim() || null,
+        })
+        setSavedCodexClientVersion(codexClientVersion.trim())
+      }
+    } catch (err) {
+      // Unsaid, a refused save leaves the form exactly as it was and reads as a
+      // button that did nothing.
+      setSaveError(String(err))
+      return
+    } finally {
+      setSaving(false)
     }
-    setSavedDraft({
-      name,
-      providerType,
-      baseUrl,
-      apiFormat,
-      icon,
-      codexRequestShape: offersCodexRequestShape ? codexRequestShape : false,
-    })
     markSaved()
     onUpdate()
   }, [
+    saving,
     provider.id,
     name,
     providerType,
@@ -439,6 +478,7 @@ function ProviderEditor({
       if (!result) setBalanceError(t('settings.provider.balanceUnsupported'))
     } catch (err) {
       console.error('Failed to read the balance:', err)
+      // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- a read-only balance; the error is shown in its place
       setBalance(null)
       setBalanceError(String(err))
     } finally {
@@ -476,6 +516,29 @@ function ProviderEditor({
   useEffect(() => {
     loadModelConfigs()
   }, [loadModelConfigs])
+
+  // What the provider announced last time, read from the cache once there is a
+  // credential to have fetched it with. Without it every configured model read
+  // "not in list" until somebody pressed Fetch — a claim about the upstream
+  // this page had simply not asked about. `forceRefresh: false` answers from
+  // the cache; with an empty cache it asks upstream, which is why it waits for
+  // a key rather than failing on a row that has none.
+  const canListModels = usesChatGptLogin(provider) || keyStatus === 'set'
+  useEffect(() => {
+    if (!canListModels) return
+    let cancelled = false
+    api
+      .fetchProviderModels({ providerId: provider.id, forceRefresh: false })
+      .then((list) => {
+        if (!cancelled) setModels(list)
+      })
+      .catch((err) => {
+        if (!cancelled) setModelsError(String(err))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [provider.id, canListModels])
 
   // Coming back from a model page: it may have been given a price, pointed at
   // another description or deleted, and every one of those changes a chip in
@@ -742,9 +805,20 @@ function ProviderEditor({
       )}
 
       <div data-slot="provider-editor-actions" className="flex items-center gap-2">
-        <Button onPress={handleSave}>{t('common.save')}</Button>
+        <Button onPress={handleSave} isPending={saving}>
+          {t('common.save')}
+        </Button>
         {saved && <SavedHint />}
       </div>
+      {saveError && (
+        <Alert data-slot="provider-save-error" status="danger" role="alert">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>{t('settings.provider.saveError')}</Alert.Title>
+            <Alert.Description className="break-all">{saveError}</Alert.Description>
+          </Alert.Content>
+        </Alert>
+      )}
 
       {/* A sign-in that has no key must not be shown a key field: there is
           nothing to type, and an empty one reads as a step left undone. What
@@ -772,7 +846,7 @@ function ProviderEditor({
                 className="flex-1"
               />
               <Button
-                variant="outline"
+                variant="secondary"
                 onPress={handleSaveKey}
                 isDisabled={!apiKey.trim() || keyStatus === 'loading'}
                 isPending={savingKey}
@@ -827,12 +901,12 @@ function ProviderEditor({
               {t('settings.provider.balance')}
             </p>
             <Button
-              variant="outline"
+              variant="secondary"
               onPress={handleFetchBalance}
               isDisabled={keyStatus !== 'set'}
               isPending={fetchingBalance}
             >
-              <ArrowsRotateRight className="w-3.5 h-3.5" />
+              <RefreshCw className="w-3.5 h-3.5" />
               {t('settings.provider.checkBalance')}
             </Button>
           </div>
@@ -897,17 +971,17 @@ function ProviderEditor({
               from needing one for exactly this call — so gating on the key
               here kept the button permanently grey on the rows the exemption
               was written for. */}
-          <Button variant="ghost" onPress={() => setAddingModel(true)}>
+          <Button variant="secondary" onPress={() => setAddingModel(true)}>
             <Plus className="w-3.5 h-3.5" />
             {t('settings.provider.addModel')}
           </Button>
           <Button
-            variant="outline"
+            variant="secondary"
             onPress={handleFetchModels}
             isDisabled={!usesChatGptLogin(provider) && keyStatus !== 'set'}
             isPending={fetchingModels}
           >
-            <ArrowsRotateRight className="w-3.5 h-3.5" />
+            <RefreshCw className="w-3.5 h-3.5" />
             {t('settings.provider.fetchModels')}
           </Button>
         </div>
@@ -920,20 +994,27 @@ function ProviderEditor({
             {modelsError}
           </p>
         )}
+        {/* A filter rather than a scroller: a provider that answers with two
+            hundred models is common, and a box inside a box is what the page
+            grammar exists to stop. It is keyed to what there is to filter, not
+            to what matched — gated on the matches, a query with none took the
+            box away along with the text that could be corrected. */}
+        {allModels.length > FILTER_THRESHOLD && (
+          <Input
+            aria-label={t('settings.provider.filterModels')}
+            name={`modelFilter-${provider.id}`}
+            value={modelFilter}
+            onChange={(event) => setModelFilter(event.target.value)}
+            placeholder={t('settings.provider.filterModels')}
+          />
+        )}
+        {allModels.length > 0 && visibleModels.length === 0 && (
+          <p data-slot="provider-models-no-match" role="status" className="text-caption-1-regular text-text-secondary">
+            {t('settings.provider.filterNoMatch')}
+          </p>
+        )}
         {visibleModels.length > 0 && (
           <div data-slot="provider-model-list" className="space-y-2">
-            {/* A filter rather than a scroller: a provider that answers with
-                two hundred models is common, and a box inside a box is what
-                the page grammar exists to stop. */}
-            {models.length > FILTER_THRESHOLD && (
-              <Input
-                aria-label={t('settings.provider.filterModels')}
-                name={`modelFilter-${provider.id}`}
-                value={modelFilter}
-                onChange={(event) => setModelFilter(event.target.value)}
-                placeholder={t('settings.provider.filterModels')}
-              />
-            )}
             {/* A row is still a way into the model's page — `onRowAction`
                 rather than selection, for the reason the provider list gives:
                 a selected row would keep a highlight on a page nobody is
@@ -961,7 +1042,10 @@ function ProviderEditor({
           isDirty={newModelId.trim().length > 0}
         >
           <Sheet.Backdrop>
-            <Sheet.Content className="mx-auto sm:max-w-lg sm:rounded-b-2xl">
+            {/* The modal surface (`MODAL_SURFACE` is `background-full`), not the
+              sheet's default `background-primary`: a field's tertiary well is the same
+              neutral-800 as primary in dark, so on the default the field had no edge. */}
+            <Sheet.Content className="mx-auto bg-background-full sm:max-w-lg sm:rounded-b-2xl">
               <Sheet.Dialog aria-label={t('settings.provider.addModel')} className="pb-[max(1rem,var(--safe-bottom))]">
                 <Sheet.Handle />
                 <Sheet.Header>
@@ -985,7 +1069,7 @@ function ProviderEditor({
                   </TextField>
                 </Sheet.Body>
                 <Sheet.Footer>
-                  <Button slot="close" variant="tertiary">
+                  <Button slot="close" variant="secondary">
                     {t('common.cancel')}
                   </Button>
                   <Button isDisabled={!newModelId.trim()} onPress={handleAddModel}>
@@ -1004,10 +1088,19 @@ function ProviderEditor({
       </div>
 
       <div data-slot="provider-danger-zone" className="border-t border-border-button-default pt-4">
-        <Button variant="danger-soft" onPress={handleDelete} isPending={deleting}>
-          <TrashBin className="w-3.5 h-3.5" />
+        <Button variant="danger" onPress={handleDelete} isPending={deleting}>
+          <Bin className="w-3.5 h-3.5" />
           {deleting ? t('settings.provider.deletingProvider') : t('settings.provider.deleteProvider')}
         </Button>
+        {deleteError && (
+          <p
+            data-slot="provider-delete-error"
+            role="alert"
+            className="pt-2 text-caption-1-regular text-status-danger break-all"
+          >
+            {deleteError}
+          </p>
+        )}
       </div>
       {confirmDialog}
     </div>

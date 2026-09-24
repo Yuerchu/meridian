@@ -2,9 +2,7 @@ import * as React from 'react'
 import { createPortal } from 'react-dom'
 import { Disclosure, Spinner, Tooltip, TooltipTrigger, tv, type VariantProps } from '@/components/base'
 import { DisclosureStateContext } from 'react-aria-components'
-import { CircleCheck, CircleExclamation, CircleXmark, Clock } from '@gravity-ui/icons'
-import { useShikiLanguage } from '@/hooks/use-shiki-language'
-import { highlightInline } from '@/lib/shiki'
+import { CircleAlert, CircleCheck, CircleX, Clock } from '@keyline-icons/react/two-tone'
 import { cx } from '@/utils/cx'
 import { BUBBLE_BLOCK, BUBBLE_BLOCK_HOVER } from './bubble'
 
@@ -61,9 +59,9 @@ function ChatToolPresentationProvider({ value, children }: { value: ChatToolPres
  * **The edge is not decoration here, and dropping it made these cards vanish.**
  * A plain surface card is told apart from the page by being lighter than it —
  * and that fails in the one place these are drawn. The transcript sits inside
- * `Sidebar.Main`, which paints `background-color: var(--color-background-primary-default)` —
- * the same colour a `bg-background-primary-default` card would use, so the
- * card is exactly its parent's colour, not one step above the page.
+ * `Sidebar.Main` (`background-secondary-default`, the registry's chat surface),
+ * and in the dark theme a primary card is only one step above it, which a
+ * `shadow-card` alone does not separate.
  *
  * A ring rather than a border, for the reason the status variants below give —
  * it takes no space, so recolouring it for `output-error` costs no reflow and
@@ -80,7 +78,7 @@ const chatToolVariants = tv({
     trigger: [
       'flex min-h-11 w-full items-center gap-2 px-3 py-2.5 text-left transition-colors outline-none',
       'hover:bg-background-primary-hover data-[pressed]:bg-background-tertiary-default focus-visible:bg-background-secondary-default',
-      'focus-visible:ring-2 focus-visible:ring-border-focus-ring/50 focus-visible:ring-inset',
+      'focus-visible:ring-2 focus-visible:ring-border-focus-ring focus-visible:ring-inset',
     ],
   },
   variants: {
@@ -157,7 +155,7 @@ const toolHeadVariants = tv({
     'flex min-h-9 w-full items-center gap-2 px-3 py-2 text-left outline-none transition-colors',
     BUBBLE_BLOCK_HOVER,
     'data-[pressed]:bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--color-text-primary)_8%)]',
-    'focus-visible:ring-2 focus-visible:ring-border-focus-ring/50 focus-visible:ring-inset',
+    'focus-visible:ring-2 focus-visible:ring-border-focus-ring focus-visible:ring-inset',
     'disabled:opacity-60',
   ],
   variants: {
@@ -377,7 +375,7 @@ function ChatToolStatusIcon({ className }: { className?: string }) {
       )
     case 'output-error':
       return (
-        <CircleXmark
+        <CircleX
           aria-hidden
           data-slot="chat-tool-status-icon"
           className={cx('size-3.5 shrink-0 text-status-danger', className)}
@@ -385,7 +383,7 @@ function ChatToolStatusIcon({ className }: { className?: string }) {
       )
     case 'requires-action':
       return (
-        <CircleExclamation
+        <CircleAlert
           aria-hidden
           data-slot="chat-tool-status-icon"
           className={cx('size-3.5 shrink-0 text-status-warning-soft-foreground', className)}
@@ -632,71 +630,6 @@ function ChatToolPanelFooter({ className, children, ...props }: React.ComponentP
   )
 }
 
-// Shiki escapes the text it is given, so the markup it returns is safe to
-// inject. `inline` because this sits inside a `<code>` that is already styled —
-// the classic structure would nest a second `<pre><code>` inside it.
-function JsonCode({ code }: { code: string }) {
-  const { language, ready } = useShikiLanguage('json')
-  const html = React.useMemo(() => (ready ? highlightInline(code, language) : null), [code, language, ready])
-  if (html === null) return <code data-slot="chat-tool-json">{code}</code>
-  return <code data-slot="chat-tool-json" dangerouslySetInnerHTML={{ __html: html }} />
-}
-
-interface ChatToolPayloadProps extends React.ComponentProps<'div'> {
-  // Structured value, rendered as JSON.
-  value?: unknown
-  // Preformatted text, useful while streaming partial JSON. Takes precedence.
-  text?: string
-}
-
-function ChatToolArgs({ value, text, className, children, ...props }: ChatToolPayloadProps) {
-  const code = text ?? (value !== undefined ? JSON.stringify(value, null, 2) : undefined)
-  return (
-    <div
-      data-slot="chat-tool-args"
-      className={cx(
-        'scrollbar-gutter-stable max-h-48 overflow-auto rounded-lg bg-background-secondary-default/50 px-3 py-2',
-        className,
-      )}
-      {...props}
-    >
-      {children ??
-        (code !== undefined && (
-          <pre
-            data-slot="chat-tool-args-code"
-            className="font-mono text-caption-1-regular leading-relaxed whitespace-pre-wrap text-text-primary/90 [overflow-wrap:anywhere]"
-          >
-            <JsonCode code={code} />
-          </pre>
-        ))}
-    </div>
-  )
-}
-
-function ChatToolResult({ value, text, className, children, ...props }: ChatToolPayloadProps) {
-  const code = text ?? (value !== undefined ? JSON.stringify(value, null, 2) : undefined)
-  return (
-    <div
-      data-slot="chat-tool-result"
-      className={cx(
-        'scrollbar-gutter-stable max-h-72 overflow-auto rounded-lg bg-background-secondary-default/50 px-3 py-2',
-        className,
-      )}
-      {...props}
-    >
-      {children ??
-        (code !== undefined && (
-          <pre
-            data-slot="chat-tool-result-code"
-            className="font-mono text-caption-1-regular leading-relaxed whitespace-pre-wrap text-text-primary/90 [overflow-wrap:anywhere]"
-          >
-            <JsonCode code={code} />
-          </pre>
-        ))}
-    </div>
-  )
-}
-
 function ChatToolError({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
@@ -751,8 +684,6 @@ export {
   ChatToolPanelHeader,
   ChatToolPanelBody,
   ChatToolPanelFooter,
-  ChatToolArgs,
-  ChatToolResult,
   ChatToolError,
   ChatToolApproval,
   ChatToolPresentationProvider,

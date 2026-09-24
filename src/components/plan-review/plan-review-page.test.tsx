@@ -6,6 +6,7 @@ import type { JSONContent } from '@tiptap/core'
 
 import { usePlanReviewStore } from '@/stores/plan-review-store'
 import type { PlanProseMirrorRange, PlanReviewInfoResponse, PlanRevisionInfoResponse } from '@/types'
+import { requestLeavePlanReview } from './navigation'
 import { PlanReviewPage } from './plan-review-page'
 
 const mocks = vi.hoisted(() => ({
@@ -14,13 +15,20 @@ const mocks = vi.hoisted(() => ({
   savePlanReviewDraft: vi.fn(),
   continuePlanReviewDelivery: vi.fn(),
   decidePlanReview: vi.fn(),
+  discardPlanReviewDraft: vi.fn(),
   editorOnChange: null as null | ((document: JSONContent, anchors: Map<string, PlanProseMirrorRange | null>) => void),
 }))
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, values?: { number?: number; error?: string }) =>
-      values?.number !== undefined ? `${key}:${values.number}` : values?.error ? `${key}:${values.error}` : key,
+    t: (key: string, values?: { number?: number; error?: string; parts?: string }) =>
+      values?.number !== undefined
+        ? `${key}:${values.number}`
+        : values?.error
+          ? `${key}:${values.error}`
+          : values?.parts
+            ? `${key}:${values.parts}`
+            : key,
   }),
 }))
 
@@ -31,6 +39,7 @@ vi.mock('@/api', () => ({
     savePlanReviewDraft: mocks.savePlanReviewDraft,
     continuePlanReviewDelivery: mocks.continuePlanReviewDelivery,
     decidePlanReview: mocks.decidePlanReview,
+    discardPlanReviewDraft: mocks.discardPlanReviewDraft,
   },
 }))
 
@@ -42,13 +51,13 @@ vi.mock('./plan-review-editor', () => ({
   },
 }))
 
-vi.mock('@gravity-ui/icons', () => ({
+vi.mock('@keyline-icons/react/two-tone', () => ({
+  Bin: () => null,
   ChevronDown: () => null,
   Clock: () => null,
-  Comment: () => null,
-  TrashBin: () => null,
-  TriangleExclamation: () => null,
-  Xmark: () => null,
+  Message: () => null,
+  TriangleAlert: () => null,
+  X: () => null,
 }))
 
 vi.mock('@/components/base', async () => {
@@ -125,10 +134,52 @@ vi.mock('@/components/base', async () => {
       Header: pass,
       Heading: pass,
       CloseTrigger: () => null,
-      Body: pass,
+      Body: ({ children, className }: { children?: React.ReactNode; className?: string }) => (
+        <div data-testid="sheet-body" className={className}>
+          {children}
+        </div>
+      ),
     },
   )
+  const Alert = ({
+    children,
+    status,
+    icon: _icon,
+    ...props
+  }: React.HTMLAttributes<HTMLDivElement> & { status?: string; icon?: React.ReactNode }) => (
+    <div role="alert" data-status={status} {...props}>
+      {children}
+    </div>
+  )
+  // What `ConfirmDialog` draws, reduced to the two answers. The real Cancel is
+  // a `slot="close"` button that only a React Aria dialog can wire up.
+  const AlertDialog = {
+    Backdrop: ({
+      children,
+      isOpen,
+      onOpenChange,
+    }: {
+      children?: React.ReactNode
+      isOpen?: boolean
+      onOpenChange?: (open: boolean) => void
+    }) =>
+      isOpen ? (
+        <div role="alertdialog">
+          {children}
+          <button onClick={() => onOpenChange?.(false)}>dismiss</button>
+        </div>
+      ) : null,
+    Container: pass,
+    Dialog: pass,
+    Header: pass,
+    Icon: () => null,
+    Heading: pass,
+    Body: pass,
+    Footer: pass,
+  }
   return {
+    Alert,
+    AlertDialog,
     Button,
     Chip: pass,
     Description: pass,
@@ -146,6 +197,10 @@ vi.mock('@/components/base', async () => {
     TooltipTrigger,
   }
 })
+
+function saveState() {
+  return document.querySelector('[data-slot="plan-review-save-state"]')
+}
 
 function revision(id: string, revisionNo: number, markdown: string): PlanRevisionInfoResponse {
   return {
@@ -427,7 +482,7 @@ describe('PlanReviewPage rich editor values', () => {
         new Map(),
       )
     })
-    expect(screen.getByRole('status')).toHaveTextContent('planReview.save.saved')
+    expect(saveState()).toHaveTextContent('planReview.save.saved')
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(mocks.savePlanReviewDraft).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'planReview.approve' })).toBeEnabled()
@@ -443,7 +498,7 @@ describe('PlanReviewPage rich editor values', () => {
         new Map(),
       )
     })
-    expect(screen.getByRole('status')).toHaveTextContent('planReview.save.failed')
+    expect(saveState()).toHaveTextContent('planReview.save.failed')
     expect(screen.getByRole('alert')).toHaveTextContent(
       'planReview.save.error:Error: serialized plan Markdown changes the editor document semantics',
     )
@@ -454,7 +509,7 @@ describe('PlanReviewPage rich editor values', () => {
       onChange!({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Line' }] }] }, new Map())
     })
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent('planReview.save.dirty')
+    expect(saveState()).toHaveTextContent('planReview.save.dirty')
   })
 })
 
@@ -523,7 +578,7 @@ describe('PlanReviewPage save lifecycle', () => {
     fireEvent.select(source)
     await new Promise((resolve) => setTimeout(resolve, 600))
     expect(mocks.savePlanReviewDraft).not.toHaveBeenCalled()
-    expect(screen.getByRole('status', { name: '' })).toHaveTextContent('planReview.save.saved')
+    expect(saveState()).toHaveTextContent('planReview.save.saved')
   })
 
   it('lists the submitted revision once, as the current review', async () => {
@@ -560,5 +615,138 @@ describe('PlanReviewPage save lifecycle', () => {
     await userEvent.click(approve)
     expect(await screen.findByText('planReview.decision.inDoubt')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'planReview.reload' }).length).toBeGreaterThan(0)
+  })
+})
+
+describe('PlanReviewPage unsaved work', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    usePlanReviewStore.setState({ activeReviewId: null, summaries: {} })
+  })
+
+  async function openWithFailedSave() {
+    const currentRevision = revision('revision-1', 1, '# Plan\n')
+    mocks.getPlanReview.mockResolvedValue(review('review-1', currentRevision, 'pending'))
+    mocks.listPlanRevisions.mockResolvedValue([currentRevision])
+    mocks.savePlanReviewDraft.mockRejectedValueOnce(new Error('disk full'))
+    mocks.savePlanReviewDraft.mockResolvedValue({ generation: 2, draft_sha256: 'next' })
+    render(<PlanReviewPage reviewId="review-1" onClose={vi.fn()} />)
+    const note = await screen.findByLabelText('planReview.comments.globalNote')
+    fireEvent.change(note, { target: { value: 'Ship it' } })
+    await waitFor(() => expect(saveState()).toHaveTextContent('planReview.save.failed'))
+  }
+
+  it('announces a failed save as a danger alert and retries the same draft', async () => {
+    await openWithFailedSave()
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveAttribute('data-status', 'danger')
+    expect(alert).toHaveTextContent('planReview.save.error:Error: disk full')
+
+    await userEvent.click(screen.getByRole('button', { name: 'planReview.save.retry' }))
+    await waitFor(() => expect(mocks.savePlanReviewDraft).toHaveBeenCalledTimes(2))
+    expect(mocks.savePlanReviewDraft.mock.calls[1][0].globalNote).toBe('Ship it')
+    await waitFor(() => expect(saveState()).toHaveTextContent('planReview.save.saved'))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('asks before reloading over local changes, and says what would go', async () => {
+    await openWithFailedSave()
+    await userEvent.click(screen.getByRole('button', { name: 'planReview.reload' }))
+    const dialog = await screen.findByRole('alertdialog')
+    expect(dialog).toHaveTextContent('planReview.unsaved.parts:planReview.unsaved.part.note')
+
+    await userEvent.click(screen.getByRole('button', { name: 'dismiss' }))
+    expect(mocks.getPlanReview).toHaveBeenCalledTimes(1)
+    expect(screen.getByLabelText('planReview.comments.globalNote')).toHaveValue('Ship it')
+
+    await userEvent.click(screen.getByRole('button', { name: 'planReview.reload' }))
+    await screen.findByRole('alertdialog')
+    // The dialog's confirming button carries the same label as the banner's.
+    const [, confirmReload] = screen.getAllByRole('button', { name: 'planReview.reload' })
+    await userEvent.click(confirmReload)
+    await waitFor(() => expect(mocks.getPlanReview).toHaveBeenCalledTimes(2))
+  })
+
+  it('asks before leaving with a failed save, and lets a clean one go', async () => {
+    await openWithFailedSave()
+    let answer: boolean | undefined
+    void requestLeavePlanReview().then((value) => {
+      answer = value
+    })
+    const dialog = await screen.findByRole('alertdialog')
+    expect(dialog).toHaveTextContent('planReview.leave.title')
+    await userEvent.click(screen.getByRole('button', { name: 'dismiss' }))
+    await waitFor(() => expect(answer).toBe(false))
+
+    await userEvent.click(screen.getByRole('button', { name: 'planReview.save.retry' }))
+    await waitFor(() => expect(saveState()).toHaveTextContent('planReview.save.saved'))
+    await expect(requestLeavePlanReview()).resolves.toBe(true)
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
+
+  it('finishes a pending save instead of asking when leaving right after an edit', async () => {
+    const currentRevision = revision('revision-1', 1, '# Plan\n')
+    mocks.getPlanReview.mockResolvedValue(review('review-1', currentRevision, 'pending'))
+    mocks.listPlanRevisions.mockResolvedValue([currentRevision])
+    mocks.savePlanReviewDraft.mockResolvedValue({ generation: 2, draft_sha256: 'next' })
+    render(<PlanReviewPage reviewId="review-1" onClose={vi.fn()} />)
+    fireEvent.change(await screen.findByLabelText('planReview.comments.globalNote'), { target: { value: 'Now' } })
+
+    await expect(requestLeavePlanReview()).resolves.toBe(true)
+    expect(mocks.savePlanReviewDraft).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
+
+  it('confirms before discarding the draft', async () => {
+    const currentRevision = revision('revision-1', 1, '# Plan\n')
+    const current = review('review-1', currentRevision, 'pending')
+    mocks.getPlanReview.mockResolvedValue({ ...current, draft: { ...current.draft, global_note: 'Overall' } })
+    mocks.listPlanRevisions.mockResolvedValue([currentRevision])
+    mocks.discardPlanReviewDraft.mockResolvedValue(current)
+    render(<PlanReviewPage reviewId="review-1" onClose={vi.fn()} />)
+    const discard = await screen.findByRole('button', { name: 'planReview.discard' })
+    await waitFor(() => expect(discard).toBeEnabled())
+
+    await userEvent.click(discard)
+    expect(await screen.findByRole('alertdialog')).toHaveTextContent('planReview.discardConfirm.body')
+    await userEvent.click(screen.getByRole('button', { name: 'dismiss' }))
+    expect(mocks.discardPlanReviewDraft).not.toHaveBeenCalled()
+
+    await userEvent.click(discard)
+    await screen.findByRole('alertdialog')
+    const [, confirmDiscard] = screen.getAllByRole('button', { name: 'planReview.discard' })
+    await userEvent.click(confirmDiscard)
+    await waitFor(() => expect(mocks.discardPlanReviewDraft).toHaveBeenCalledTimes(1))
+  })
+})
+
+describe('PlanReviewPage focus and announcements', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    usePlanReviewStore.setState({ activeReviewId: null, summaries: {} })
+  })
+
+  it('moves focus to its own heading, one level under the shell, and keeps the save status quiet', async () => {
+    const currentRevision = revision('revision-1', 1, '# Plan\n')
+    mocks.getPlanReview.mockResolvedValue(review('review-1', currentRevision, 'pending'))
+    mocks.listPlanRevisions.mockResolvedValue([currentRevision])
+    render(<PlanReviewPage reviewId="review-1" onClose={vi.fn()} />)
+
+    const heading = await screen.findByRole('heading', { level: 2, name: 'planReview.title' })
+    await waitFor(() => expect(heading).toHaveFocus())
+    expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument()
+    expect(screen.queryAllByRole('status')).toHaveLength(0)
+  })
+
+  it('pads the comment sheet by the keyboard and safe-area insets', async () => {
+    const currentRevision = revision('revision-1', 1, '# Plan\n')
+    mocks.getPlanReview.mockResolvedValue(review('review-1', currentRevision, 'pending'))
+    mocks.listPlanRevisions.mockResolvedValue([currentRevision])
+    render(<PlanReviewPage reviewId="review-1" onClose={vi.fn()} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'planReview.comments.title' }))
+
+    expect(screen.getByTestId('sheet-body').className).toContain(
+      'pb-[calc(0px+var(--ime-bottom,0px)+var(--safe-bottom,0px))]',
+    )
   })
 })

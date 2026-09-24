@@ -148,7 +148,7 @@ export function Radio({ className, children, size = 'md', ref, ...props }: Radio
         cx(
           'group inline-flex items-center select-none',
           s.gap,
-          state.isDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-[var(--cursor-interactive)]',
+          state.isDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
           typeof className === 'function' ? className(state) : className,
         )
       }

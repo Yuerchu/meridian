@@ -192,12 +192,12 @@ function WithTooltip({ tooltip, children }: { tooltip?: ReactNode; children: Rea
   )
 }
 
-interface RteToggleButtonProps extends Omit<ButtonProps, 'variant' | 'size' | 'onPress'> {
+interface RteToggleButtonProps extends Omit<ButtonProps, 'variant' | 'size' | 'onPress' | 'children'> {
   command: RichTextEditorFormatCommand
   tooltip?: ReactNode
 }
 
-function RteToggleButton({ command, tooltip, children, className, ...props }: RteToggleButtonProps) {
+function RteToggleButton({ command, tooltip, className, ...props }: RteToggleButtonProps) {
   const { editor } = useContext(RteContext)
   const isActive =
     useEditorState({
@@ -206,9 +206,11 @@ function RteToggleButton({ command, tooltip, children, className, ...props }: Rt
     }) ?? false
   return (
     <WithTooltip tooltip={tooltip}>
+      {/* eslint-disable-next-line meridian-ui/icon-only-needs-name -- wrapper: the caller's aria-label arrives through {...props} */}
       <Button
         data-slot="rich-text-editor-toggle-button"
-        variant={isActive ? 'tertiary' : 'ghost'}
+        // eslint-disable-next-line meridian-ui/no-variant-as-state -- on-state of an icon toolbar toggle: ghost is the active mark, aria-pressed carries the state
+        variant={isActive ? 'ghost' : 'neutral'}
         size="small"
         iconOnly
         aria-pressed={isActive}
@@ -216,19 +218,17 @@ function RteToggleButton({ command, tooltip, children, className, ...props }: Rt
         onPress={() => editor && commandMap[command](editor)}
         {...props}
         className={cx('size-7', className)}
-      >
-        {children}
-      </Button>
+      />
     </WithTooltip>
   )
 }
 
-interface RteActionButtonProps extends Omit<ButtonProps, 'variant' | 'size' | 'onPress'> {
+interface RteActionButtonProps extends Omit<ButtonProps, 'variant' | 'size' | 'onPress' | 'children'> {
   action: 'undo' | 'redo'
   tooltip?: ReactNode
 }
 
-function RteActionButton({ action, tooltip, children, className, ...props }: RteActionButtonProps) {
+function RteActionButton({ action, tooltip, className, ...props }: RteActionButtonProps) {
   const { editor } = useContext(RteContext)
   const canDo =
     useEditorState({
@@ -237,9 +237,10 @@ function RteActionButton({ action, tooltip, children, className, ...props }: Rte
     }) ?? false
   return (
     <WithTooltip tooltip={tooltip}>
+      {/* eslint-disable-next-line meridian-ui/icon-only-needs-name -- wrapper: the caller's aria-label arrives through {...props} */}
       <Button
         data-slot="rich-text-editor-action-button"
-        variant="ghost"
+        variant="neutral"
         size="small"
         iconOnly
         isDisabled={!canDo}
@@ -248,21 +249,19 @@ function RteActionButton({ action, tooltip, children, className, ...props }: Rte
         }
         {...props}
         className={cx('size-7', className)}
-      >
-        {children}
-      </Button>
+      />
     </WithTooltip>
   )
 }
 
-interface RteCommandButtonProps extends Omit<ButtonProps, 'variant' | 'size' | 'onPress' | 'isDisabled'> {
+interface RteCommandButtonProps extends Omit<ButtonProps, 'variant' | 'size' | 'onPress' | 'isDisabled' | 'children'> {
   tooltip?: ReactNode
   /** A boolean, or a predicate on the editor re-evaluated per transaction. */
   disabled?: boolean | ((editor: Editor) => boolean)
   onCommand?: (editor: Editor) => void
 }
 
-function RteCommandButton({ tooltip, disabled, onCommand, children, className, ...props }: RteCommandButtonProps) {
+function RteCommandButton({ tooltip, disabled, onCommand, className, ...props }: RteCommandButtonProps) {
   const { editor } = useContext(RteContext)
   const isOff =
     useEditorState({
@@ -274,18 +273,17 @@ function RteCommandButton({ tooltip, disabled, onCommand, children, className, .
     }) ?? true
   return (
     <WithTooltip tooltip={tooltip}>
+      {/* eslint-disable-next-line meridian-ui/icon-only-needs-name -- wrapper: the caller's aria-label arrives through {...props} */}
       <Button
         data-slot="rich-text-editor-command-button"
-        variant="ghost"
+        variant="neutral"
         size="small"
         iconOnly
         isDisabled={isOff}
         onPress={() => editor && onCommand?.(editor)}
         {...props}
         className={cx('size-7', className)}
-      >
-        {children}
-      </Button>
+      />
     </WithTooltip>
   )
 }
@@ -321,29 +319,38 @@ function RteLinkPopoverRoot({ children }: { children?: ReactNode }) {
 
 interface RteLinkPopoverTriggerProps extends Omit<AriaButtonProps, 'className' | 'children' | 'style'> {
   className?: string
-  children?: ReactNode
+  leadingIcon: ButtonProps['leadingIcon']
 }
 
-function RteLinkPopoverTrigger({ children, className, ...props }: RteLinkPopoverTriggerProps) {
+function RteLinkPopoverTrigger({ className, ...props }: RteLinkPopoverTriggerProps) {
   const { editor } = useContext(RteContext)
   const isActive = useEditorState({ editor, selector: ({ editor: e }) => (e ? e.isActive('link') : false) }) ?? false
   return (
+    // eslint-disable-next-line meridian-ui/icon-only-needs-name -- wrapper: the caller's aria-label arrives through {...props}
     <Button
       data-slot="rich-text-editor-link-trigger"
-      variant={isActive ? 'tertiary' : 'ghost'}
+      // eslint-disable-next-line meridian-ui/no-variant-as-state -- on-state of an icon toolbar toggle: ghost is the active mark, aria-pressed carries the state
+      variant={isActive ? 'ghost' : 'neutral'}
       size="small"
       iconOnly
       aria-pressed={isActive}
       isDisabled={!editor}
       {...props}
       className={cx('size-7', className)}
-    >
-      {children}
-    </Button>
+    />
   )
 }
 
-function RteLinkPopoverContent({ children, className }: { children?: ReactNode; className?: string }) {
+function RteLinkPopoverContent({
+  children,
+  className,
+  'aria-label': ariaLabel,
+}: {
+  children?: ReactNode
+  className?: string
+  /** Required: the popover has no visible heading to be named by. */
+  'aria-label': string
+}) {
   return (
     <AriaPopover
       data-slot="rich-text-editor-link-popover"
@@ -353,7 +360,7 @@ function RteLinkPopoverContent({ children, className }: { children?: ReactNode; 
     >
       <Dialog
         data-slot="rich-text-editor-link-content"
-        aria-label="Link"
+        aria-label={ariaLabel}
         className="flex items-center gap-2 outline-none"
       >
         {children}
@@ -378,7 +385,7 @@ function RteLinkPopoverInput({
       {...props}
       className={cx(
         'min-w-0 flex-1 rounded-lg bg-background-tertiary-default px-2 py-1.5 text-body-regular text-text-primary outline-none',
-        'placeholder:text-text-tertiary focus:ring-2 focus:ring-inset focus:ring-border-button-active',
+        'placeholder:text-text-secondary focus:ring-2 focus:ring-inset focus:ring-border-button-active',
         className,
       )}
     />
@@ -407,7 +414,7 @@ function RteLinkPopoverUnsetButton({
   return (
     <Button
       data-slot="rich-text-editor-link-unset"
-      variant="ghost"
+      variant="secondary"
       size="small"
       onPress={() => {
         editor?.chain().focus().extendMarkRange('link').unsetLink().run()

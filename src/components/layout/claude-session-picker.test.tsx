@@ -306,7 +306,7 @@ test('while one row is importing the others cannot be pressed', async () => {
  * Above 5 MiB the SDK replays only what follows the last compaction, with no
  * flag and no marker — so a six-day session comes back looking complete and
  * containing the last day. Said on the row, and left there: importing five in a
- * row would scroll a toast away.
+ * row would scroll a notification away.
  */
 test('a session that came back as a tail says so on its row', async () => {
   acpImportSession.mockResolvedValue({ conversationId: 'conv-99', truncated: true, messages: 34 })

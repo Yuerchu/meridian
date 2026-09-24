@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Comment, TrashBin } from '@gravity-ui/icons'
+import { Bin, Message } from '@keyline-icons/react/two-tone'
 import { Button, Chip, Label, Link, TextArea, TextField, Tooltip, TooltipTrigger } from '@/components/base'
 
 import type { PlanCommentInfoResponse } from '@/types'
@@ -53,7 +53,7 @@ export function PlanCommentsPane({
         data-slot="plan-comments-header"
         className="flex min-h-12 shrink-0 items-center gap-2 border-b border-border-button-default px-4"
       >
-        <Comment className="size-4 text-text-secondary" />
+        <Message className="size-4 text-text-secondary" />
         <h2 data-slot="plan-comments-title" id={headingId} className="text-body-medium">
           {t('planReview.comments.title')}
         </h2>
@@ -78,26 +78,37 @@ export function PlanCommentsPane({
             data-comment-id={comment.id}
           >
             <div data-slot="plan-comment-header" className="mb-2 flex items-start gap-2">
-              <Link
-                className="min-w-0 flex-1 text-start text-caption-1-regular text-text-secondary"
-                onPress={() => onSelectComment(comment)}
-              >
-                <q data-slot="plan-comment-quote" className="line-clamp-3 break-words">
+              {/* An orphaned comment's quote is what the words *were*; there is
+                  nothing left in the plan to take the reader to, and its stored
+                  range now covers other text. So it is not offered as a link. */}
+              {comment.state === 'orphaned' ? (
+                <q
+                  data-slot="plan-comment-quote"
+                  className="line-clamp-3 min-w-0 flex-1 break-words text-caption-1-regular text-text-secondary"
+                >
                   {comment.anchor.quote || t('planReview.comments.emptyQuote')}
                 </q>
-              </Link>
+              ) : (
+                <Link
+                  className="min-w-0 flex-1 text-start text-caption-1-regular text-text-secondary"
+                  onPress={() => onSelectComment(comment)}
+                >
+                  <q data-slot="plan-comment-quote" className="line-clamp-3 break-words">
+                    {comment.anchor.quote || t('planReview.comments.emptyQuote')}
+                  </q>
+                </Link>
+              )}
               {!isReadOnly && (
                 <TooltipTrigger>
                   <Button
                     iconOnly
+                    leadingIcon={Bin}
                     size="small"
-                    variant="ghost"
+                    variant="neutral"
                     aria-label={t('planReview.comments.delete')}
                     className="-me-1 -mt-1 shrink-0"
                     onPress={() => onDeleteComment(comment.id)}
-                  >
-                    <TrashBin />
-                  </Button>
+                  />
                   <Tooltip>{t('planReview.comments.delete')}</Tooltip>
                 </TooltipTrigger>
               )}

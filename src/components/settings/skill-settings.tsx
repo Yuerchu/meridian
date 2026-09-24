@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, TrashBin, BookOpen, ArrowsRotateRight } from '@gravity-ui/icons'
+import { Bin, BookOpen, Plus, RefreshCw } from '@keyline-icons/react/two-tone'
 import {
+  Alert,
   Button,
   Card,
   Checkbox,
@@ -42,7 +43,13 @@ function SkillEditor({
   const [displayName, setDisplayName] = useState(skill?.display_name ?? '')
   const [description, setDescription] = useState(skill?.llm_description ?? '')
   const [body, setBody] = useState('')
-  const [bodyLoading, setBodyLoading] = useState(skill != null)
+  // `ready` is the only state in which `body` is the file's contents. While
+  // loading it is still '' and after a failed read it is '' too, so saving it
+  // then would write an empty SKILL.md over the real one.
+  const [bodyState, setBodyState] = useState<'loading' | 'ready' | 'error'>(skill != null ? 'loading' : 'ready')
+  const [bodyError, setBodyError] = useState<string | null>(null)
+  const [bodyAttempt, setBodyAttempt] = useState(0)
+  const [saving, setSaving] = useState(false)
   const [saved, markSaved] = useTemporaryFlag()
   const [error, setError] = useState<string | null>(null)
 
@@ -52,39 +59,47 @@ function SkillEditor({
   useEffect(() => {
     if (!editingDir) return
     let cancelled = false
-    setBodyLoading(true)
+    setBodyState('loading')
+    setBodyError(null)
     api
       .getSkillBody(editingDir)
       .then((text) => {
-        if (!cancelled) setBody(text)
+        if (cancelled) return
+        setBody(text)
+        setBodyState('ready')
       })
-      .catch(() => {
-        if (!cancelled) setBody('')
-      })
-      .finally(() => {
-        if (!cancelled) setBodyLoading(false)
+      .catch((e: unknown) => {
+        if (cancelled) return
+        setBodyError(String(e))
+        setBodyState('error')
       })
     return () => {
       cancelled = true
     }
-  }, [editingDir])
+  }, [editingDir, bodyAttempt])
 
+  // Description and body are written to SKILL.md together, and the backend
+  // fills a missing half by reading the file — so neither may be sent until
+  // the body we hold is the one on disk.
+  const contentsEditable = !isBuiltin && bodyState === 'ready'
   const dirNameValid = DIR_NAME_RE.test(dirName.trim())
   const canSave = skill
     ? displayName.trim().length > 0
     : dirNameValid && description.trim().length > 0 && body.trim().length > 0
 
   async function handleSave() {
-    if (!canSave) return
+    if (!canSave || saving) return
     setError(null)
+    setSaving(true)
     try {
       if (skill) {
         await api.updateSkill({
           dirName: skill.dir_name,
           displayName: displayName.trim(),
           // A built-in skill is regenerated on every launch, so writing its
-          // SKILL.md back would be pointless (and the backend rejects it).
-          ...(isBuiltin ? {} : { llmDescription: description.trim(), body }),
+          // SKILL.md back would be pointless (and the backend rejects it). A
+          // body that is not loaded is not sent at all: '' would replace it.
+          ...(contentsEditable ? { llmDescription: description.trim(), body } : {}),
         })
       } else {
         await api.createSkill({
@@ -98,6 +113,8 @@ function SkillEditor({
       await onSave()
     } catch (e) {
       setError(String(e))
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -137,7 +154,7 @@ function SkillEditor({
         <TextArea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          disabled={isBuiltin}
+          disabled={skill != null && !contentsEditable}
           rows={2}
           className="resize-none text-caption-1-regular"
         />
@@ -146,10 +163,21 @@ function SkillEditor({
 
       <TextField>
         <Label>{t('settings.skills.body')}</Label>
-        {bodyLoading ? (
+        {bodyState === 'loading' ? (
           <p data-slot="skill-editor-hint" className="text-caption-1-regular text-text-secondary">
             {t('common.loading')}
           </p>
+        ) : bodyState === 'error' ? (
+          <Alert data-slot="skill-editor-body-error" status="danger" role="alert">
+            <Alert.Indicator />
+            <Alert.Content>
+              <Alert.Title>{t('settings.skills.bodyLoadError')}</Alert.Title>
+              {bodyError && <Alert.Description className="break-all">{bodyError}</Alert.Description>}
+              <Button size="small" variant="secondary" onPress={() => setBodyAttempt((n) => n + 1)}>
+                {t('common.retry')}
+              </Button>
+            </Alert.Content>
+          </Alert>
         ) : (
           <TextArea
             value={body}
@@ -175,7 +203,7 @@ function SkillEditor({
       )}
 
       <div data-slot="skill-editor-actions" className="flex items-center gap-2">
-        <Button onPress={handleSave} isDisabled={!canSave}>
+        <Button onPress={handleSave} isDisabled={!canSave} isPending={saving}>
           {t('common.save')}
         </Button>
         {saved && <SavedHint data-slot="skill-editor-saved" />}
@@ -183,13 +211,13 @@ function SkillEditor({
           <TooltipTrigger delay={0}>
             <Button
               iconOnly
-              variant="ghost"
+              leadingIcon={Bin}
+              size="small"
+              variant="neutral"
               aria-label={t('settings.skills.delete')}
-              className="ml-auto text-text-secondary hover:text-status-danger"
+              className="ml-auto hover:text-status-danger"
               onPress={onDelete}
-            >
-              <TrashBin className="w-3.5 h-3.5" />
-            </Button>
+            />
             <Tooltip>{t('settings.skills.delete')}</Tooltip>
           </TooltipTrigger>
         )}
@@ -273,11 +301,11 @@ export function SkillSettings() {
         subtitle={t('settings.skills.subtitle')}
         actions={
           <>
-            <Button variant="outline" onPress={handleRescan} isPending={rescanning}>
-              <ArrowsRotateRight className="w-3.5 h-3.5" />
+            <Button variant="secondary" onPress={handleRescan} isPending={rescanning}>
+              <RefreshCw className="w-3.5 h-3.5" />
               {t('settings.skills.rescan')}
             </Button>
-            <Button variant="outline" onPress={() => setShowCreate(!showCreate)}>
+            <Button variant="secondary" onPress={() => setShowCreate(!showCreate)}>
               <Plus className="w-3.5 h-3.5" />
               {t('settings.skills.new')}
             </Button>
@@ -292,7 +320,7 @@ export function SkillSettings() {
       )}
 
       {showCreate && (
-        <Card>
+        <Card variant="secondary">
           <SkillEditor
             onSave={async () => {
               setShowCreate(false)

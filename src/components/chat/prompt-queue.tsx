@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 
-import { Check, CircleQuestion, Clock, TriangleExclamation } from '@gravity-ui/icons'
+import { Check, CircleQuestion, Clock, TriangleAlert } from '@keyline-icons/react/two-tone'
 import { Button, Spinner } from '@/components/base'
 import { PromptInput } from '@/components/base'
 
@@ -106,19 +106,24 @@ export function PromptQueue({
           className="flex items-center gap-2 px-3 py-2 text-caption-1-regular text-status-warning"
           role="status"
         >
-          <TriangleExclamation className="size-4 shrink-0" />
+          <TriangleAlert className="size-4 shrink-0" />
           <span data-slot="queue-held-label" className="min-w-0 flex-1">
             {t('chat.queue.held')}
           </span>
           {/* The only way to restart a held queue; the expanded hit area is
               what makes it reachable with a finger. */}
-          <Button size="small" variant="ghost" className="touch-hitbox px-2 text-caption-1-regular" onPress={onRelease}>
+          <Button
+            size="small"
+            variant="secondary"
+            className="touch-hitbox px-2 text-caption-1-regular"
+            onPress={onRelease}
+          >
             {t('chat.queue.release')}
           </Button>
         </div>
       )}
       {current}
-      <PromptInput.Queue.List values={items} onReorder={onReorder}>
+      <PromptInput.Queue.List values={items} onReorder={onReorder} aria-label={t('chat.queue.label')}>
         {items.map((item, index) => {
           const state = queueState(item)
           const doubtful = state === 'in_doubt'

@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Cloud } from '@gravity-ui/icons'
+import { Cloud } from '@keyline-icons/react/two-tone'
 import { ModelIcon } from './model-icon'
 
 /**

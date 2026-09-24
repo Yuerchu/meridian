@@ -36,6 +36,20 @@ export const TOGGLE_THINKING_HOTKEY = 'mod+shift+t'
  * question asked in another.
  */
 export function targetApproval(turns: Turn[]): { approvalId: string } | null {
+  const found = locateTargetApproval(turns)
+  return found && { approvalId: found.approvalId }
+}
+
+/**
+ * The turn holding `targetApproval`'s question — what "go to the card" in the
+ * header's inbox scrolls to. The same scan, so the card the reader is taken to
+ * is the one the keyboard would answer.
+ */
+export function targetApprovalTurnId(turns: Turn[]): string | null {
+  return locateTargetApproval(turns)?.turnId ?? null
+}
+
+function locateTargetApproval(turns: Turn[]): { approvalId: string; turnId: string } | null {
   for (let i = turns.length - 1; i >= 0; i--) {
     const turn = turns[i]
     if (turn.assistantMessages.length === 0) continue
@@ -45,8 +59,8 @@ export function targetApproval(turns: Turn[]): { approvalId: string } | null {
         const block = blocks[b]
         if (block.type !== 'tool_call') continue
         const call = block.data
-        if (call.nested_approval) return { approvalId: call.nested_approval.approval_id }
-        if (call.status === 'pending' && call.approval_id) return { approvalId: call.approval_id }
+        if (call.nested_approval) return { approvalId: call.nested_approval.approval_id, turnId: turn.id }
+        if (call.status === 'pending' && call.approval_id) return { approvalId: call.approval_id, turnId: turn.id }
       }
     }
     return null

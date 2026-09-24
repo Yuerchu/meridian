@@ -68,7 +68,7 @@ function DisclosureTrigger({ className, render, children, ...props }: Disclosure
       data-slot="disclosure-trigger"
       {...props}
       className={cx(
-        'flex w-full cursor-[var(--cursor-interactive)] items-center gap-2 text-left outline-none',
+        'flex w-full cursor-pointer items-center gap-2 text-left outline-none',
         'data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
         className,
       )}

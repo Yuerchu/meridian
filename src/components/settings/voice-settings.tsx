@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { listen } from '@/lib/transport'
 import { open } from '@tauri-apps/plugin-dialog'
-import { TrashBin } from '@gravity-ui/icons'
+import { Bin } from '@keyline-icons/react/two-tone'
 import {
   Button,
   Card,
@@ -96,6 +96,7 @@ export function VoiceSettings() {
     try {
       await api.voiceDownloadModel({ url: mirrorUrl.trim() || null })
     } catch (e) {
+      // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- clears a download progress bar; the error is shown beside it
       setProgress(null)
       setError(String(e))
     }
@@ -186,13 +187,13 @@ export function VoiceSettings() {
               <TooltipTrigger delay={0}>
                 <Button
                   iconOnly
-                  variant="ghost"
+                  leadingIcon={Bin}
+                  size="small"
+                  variant="neutral"
                   aria-label={t('settings.voice.deleteModel')}
                   onPress={handleDelete}
                   isDisabled={downloading}
-                >
-                  <TrashBin className="w-4 h-4" />
-                </Button>
+                />
                 <Tooltip>{t('settings.voice.deleteModel')}</Tooltip>
               </TooltipTrigger>
             </div>
@@ -214,7 +215,7 @@ export function VoiceSettings() {
                 {formatSize(progress.downloaded, sizeNumber)}
                 {progress.total ? ` / ${formatSize(progress.total, sizeNumber)}` : ''}
               </span>
-              <Button variant="outline" size="small" onPress={handleCancelDownload}>
+              <Button variant="secondary" size="small" onPress={handleCancelDownload}>
                 {t('settings.voice.cancelDownload')}
               </Button>
             </div>
@@ -233,7 +234,7 @@ export function VoiceSettings() {
                       its own disk, which is where it has to be. Importing does
                       not: the archive is on the device the picker runs on. */}
                   <Button
-                    variant="outline"
+                    variant="secondary"
                     size="small"
                     onPress={handleImport}
                     isDisabled={!can.importFromDisk}

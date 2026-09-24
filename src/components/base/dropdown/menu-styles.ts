@@ -20,11 +20,11 @@ export const MENU_POPOVER_WIDTH = 'w-[266px]'
 export const MENU_ITEMS_CONTAINER = 'flex w-full flex-col gap-1 outline-none'
 
 export const MENU_ITEM = [
-  'flex w-full cursor-[var(--cursor-interactive)] items-center gap-2 rounded-2lg p-2 text-left',
+  'flex w-full cursor-pointer items-center gap-2 rounded-2lg p-2 text-left',
   'text-text-primary outline-none transition-colors',
 ].join(' ')
 
 export const MENU_ITEM_ACTIVE = 'bg-dropdown-item-hover-background'
 
 export const MENU_ITEM_INTERACTIVE =
-  'hover:bg-dropdown-item-hover-background focus-visible:bg-dropdown-item-hover-background'
+  'data-[hovered]:bg-dropdown-item-hover-background data-[focus-visible]:bg-dropdown-item-hover-background'

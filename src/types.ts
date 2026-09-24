@@ -1041,6 +1041,62 @@ export interface QueuedPromptInfoResponse {
   reported_at: number | null
 }
 
+/** `conversationId: null` is the welcome composer, before a conversation exists. */
+export interface ComposerDraftReadRequest {
+  conversationId: string | null
+}
+
+export interface ComposerDraftAttachmentRequest {
+  /** Absolute, on the host. Browser `File`s and `content://` grants are never sent. */
+  path: string
+  name: string
+}
+
+export interface ComposerDraftUpsertRequest {
+  conversationId: string | null
+  body: string
+  attachments: ComposerDraftAttachmentRequest[]
+  conversationRefs: string[]
+  stickerId: string | null
+  /** Strictly increasing per composer; a lower or equal one changes nothing. */
+  revision: number
+}
+
+export interface ComposerDraftDeleteRequest {
+  conversationId: string | null
+  revision: number
+}
+
+export interface ComposerDraftAttachmentInfoResponse {
+  path: string
+  name: string
+  /** Whether the file is still there when the draft is read. */
+  exists: boolean
+}
+
+export interface ComposerDraftConversationRefInfoResponse {
+  id: string
+  title: string | null
+  /** `false` once the referenced conversation has been deleted. */
+  exists: boolean
+}
+
+export interface ComposerDraftInfoResponse {
+  conversation_id: string | null
+  body: string
+  attachments: ComposerDraftAttachmentInfoResponse[]
+  conversation_refs: ComposerDraftConversationRefInfoResponse[]
+  sticker: EmojiInfoResponse | null
+  revision: number
+  updated_at: number
+}
+
+/** `revision` is what is stored now: the requested one when `applied`, the newer winner otherwise. */
+export interface ComposerDraftWriteResponse {
+  applied: boolean
+  revision: number
+}
+
 /** What the settings page learned by starting the adapter and greeting it. */
 export interface AcpCheckResponse {
   ok: boolean

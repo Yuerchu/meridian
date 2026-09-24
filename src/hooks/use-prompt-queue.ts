@@ -55,6 +55,7 @@ export function usePromptQueue(conversationId: string, enabled: boolean) {
         if (alive) setItems(next)
       })
       .catch(() => {
+        // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- read-only mirror; queue-updated refills it
         if (alive) setItems([])
       })
     const unlisten = listen('queue-updated', (event) => {

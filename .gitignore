@@ -28,3 +28,15 @@ temp/
 
 # Remote agent attachment cache
 .codex-remote-attachments/
+
+# Bundled fonts: fetched and hash-checked by scripts/fetch-fonts.mjs. MiSans may
+# not be redistributed on its own, so neither the archives nor the extracted
+# files (or the licence copies beside them) are committed.
+.cache/fonts/
+public/fonts/
+
+# Playwright visual regression: run output and the HTML report. The baselines
+# under e2e/__screenshots__/ are committed.
+/test-results/
+/playwright-report/
+/blob-report/

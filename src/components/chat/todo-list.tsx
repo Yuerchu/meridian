@@ -1,4 +1,4 @@
-import { Square, SquareCheck, SquareMinus } from '@gravity-ui/icons'
+import { Square, SquareCheck, SquareMinus } from '@keyline-icons/react/two-tone'
 import { useTranslation } from 'react-i18next'
 
 import { cx } from '@/utils/cx'

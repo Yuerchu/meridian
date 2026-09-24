@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Command } from '@/components/base'
-import { Archive, Comment, FolderOpen, Magnifier, Plus, TextAlignLeft } from '@gravity-ui/icons'
+import { AlignLeft, Archive, FolderOpen, Message, Plus, Search } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
 import type { ConversationInfoResponse, ConversationSearchHitInfoResponse, ProjectInfoResponse } from '@/types'
@@ -81,6 +81,7 @@ export function CommandPalette({
           if (!cancelled) setTranscriptHits(hits)
         })
         .catch(() => {
+          // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- search results are display only; nothing is written back
           if (!cancelled) setTranscriptHits([])
         })
     }, 250)
@@ -120,7 +121,7 @@ export function CommandPalette({
             <Command.Header>
               <Command.InputGroup aria-label={t('palette.title')}>
                 <Command.InputGroup.Prefix>
-                  <Magnifier />
+                  <Search className="size-4" />
                 </Command.InputGroup.Prefix>
                 <Command.InputGroup.Input placeholder={t('palette.placeholder')} />
                 <Command.InputGroup.ClearButton aria-label={t('palette.clearSearch')} />
@@ -130,7 +131,7 @@ export function CommandPalette({
             <Command.List aria-label={t('palette.title')} renderEmptyState={() => t('palette.empty')}>
               <Command.Group heading={t('palette.actions')}>
                 <Command.Item id="new-conversation" textValue={t('sidebar.newChat')} onAction={act(onCreate)}>
-                  <Plus />
+                  <Plus className="size-4" />
                   {t('sidebar.newChat')}
                 </Command.Item>
               </Command.Group>
@@ -143,7 +144,7 @@ export function CommandPalette({
                     textValue={conv.title ?? t('sidebar.newChat')}
                     onAction={act(() => onSelectConversation(conv.id))}
                   >
-                    {conv.is_archived ? <Archive /> : <Comment />}
+                    {conv.is_archived ? <Archive className="size-4" /> : <Message className="size-4" />}
                     {conv.title ?? t('sidebar.newChat')}
                   </Command.Item>
                 ))}
@@ -163,7 +164,7 @@ export function CommandPalette({
                       textValue={`${hit.title ?? t('sidebar.newChat')} ${hit.snippet}`}
                       onAction={act(() => onSelectConversation(hit.conversation_id))}
                     >
-                      <TextAlignLeft />
+                      <AlignLeft className="size-4" />
                       <div data-slot="palette-hit" className="flex min-w-0 flex-col">
                         <span data-slot="palette-hit-title" className="truncate">
                           {hit.title ?? t('sidebar.newChat')}
@@ -186,7 +187,7 @@ export function CommandPalette({
                   textValue={t('sidebar.allProjects')}
                   onAction={act(() => onSelectProject(null))}
                 >
-                  <FolderOpen />
+                  <FolderOpen className="size-4" />
                   {t('sidebar.allProjects')}
                 </Command.Item>
                 {projects.map((project) => (

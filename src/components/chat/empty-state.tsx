@@ -11,6 +11,10 @@ import { findComposerCommand } from '@/lib/composer-commands'
 import { parseComposerIntent } from '@/lib/composer-intent'
 import type { InitialTurnDraft } from './conversation-draft'
 import { InputBar, type AttachedFile, type PendingSticker } from './input-bar'
+import { useComposerDraft, type ComposerConversationRef, type ComposerDraftState } from '@/hooks/use-composer-draft'
+
+/** The welcome composer takes no conversation references; stable so it never reads as a change. */
+const NO_CONVERSATION_REFS: ComposerConversationRef[] = []
 
 const STARTER_PROMPT_KEYS = [
   'chat.empty.suggestions.review',
@@ -26,7 +30,7 @@ export function StarterPrompts({ disabled, onSelect }: { disabled?: boolean; onS
     <PromptSuggestion>
       <PromptSuggestion.Items>
         {STARTER_PROMPT_KEYS.map((key) => (
-          <PromptSuggestion.Item key={key} disabled={disabled} onClick={() => onSelect(t(key))}>
+          <PromptSuggestion.Item key={key} isDisabled={disabled} onPress={() => onSelect(t(key))}>
             {t(key)}
           </PromptSuggestion.Item>
         ))}
@@ -56,12 +60,31 @@ export function EmptyState({ onSubmit, onCreate, onOpenSettingsTab, disabled, ac
   // that is not answering fails, so the field does not pretend otherwise.
   const offline = useIsOffline()
   const locked = disabled || offline || submitting
+  // The welcome composer has one draft slot of its own. Once its first press
+  // has become a conversation, the slot is cleared; whatever was not sent
+  // (the typed composer beside a voice turn) travels as `remainingComposer`
+  // and is saved under the new conversation by its own composer.
+  const restoreDraft = useCallback((restored: ComposerDraftState) => {
+    setValue(restored.text)
+    setAttachedFiles(restored.attachedFiles)
+    setPendingSticker(restored.pendingSticker)
+  }, [])
+  const composerDraft = useComposerDraft(
+    null,
+    { text: value, attachedFiles, pendingSticker, conversationRefs: NO_CONVERSATION_REFS },
+    restoreDraft,
+  )
+  const clearDraft = composerDraft.clear
 
   const submitDraft = useCallback(
     (text: string, voice = false) => {
       const trimmed = text.trim()
       const sticker = voice ? null : pendingSticker
       if ((!trimmed && !sticker) || locked) return
+      if (!voice && attachedFiles.some((file) => file.missing)) {
+        setSubmitError(t('chat.draft.missingBlocksSend'))
+        return
+      }
 
       // Commands that do not need a conversation are resolved while the
       // welcome composer still owns the draft. Sending them through
@@ -108,6 +131,7 @@ export function EmptyState({ onSubmit, onCreate, onOpenSettingsTab, disabled, ac
             setSubmitError(null)
             void Promise.resolve()
               .then(onCreate)
+              .then(clearDraft)
               .catch((err) => {
                 console.error('Failed to create conversation', err)
                 setSubmitError(String(err))
@@ -148,6 +172,9 @@ export function EmptyState({ onSubmit, onCreate, onOpenSettingsTab, disabled, ac
             },
           }),
         )
+        // Only once the conversation exists: a failed creation keeps both the
+        // composer and its stored draft.
+        .then(clearDraft)
         // Creation errors leave the welcome composer and all of its draft
         // state in place. Show the failure here because there is no transcript
         // yet to own the normal conversation error row.
@@ -159,6 +186,7 @@ export function EmptyState({ onSubmit, onCreate, onOpenSettingsTab, disabled, ac
     },
     [
       attachedFiles,
+      clearDraft,
       locked,
       onCreate,
       onOpenSettingsTab,
@@ -232,6 +260,15 @@ export function EmptyState({ onSubmit, onCreate, onOpenSettingsTab, disabled, ac
               className="break-words px-2 text-caption-1-regular text-status-danger"
             >
               {submitError}
+            </p>
+          )}
+          {composerDraft.saveError && (
+            <p
+              data-slot="empty-state-draft-error"
+              role="status"
+              className="break-words px-2 text-caption-1-regular text-text-secondary"
+            >
+              {t('chat.draft.saveFailed', { error: composerDraft.saveError })}
             </p>
           )}
           <StarterPrompts disabled={locked} onSelect={handleValueChange} />

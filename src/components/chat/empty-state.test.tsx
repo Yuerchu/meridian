@@ -64,6 +64,13 @@ vi.mock('@/api', () => ({
     listEmojis: mocks.listEmojis,
     getEmojiFileUrl: mocks.fileUrl,
     workspaceSuggestRefs: mocks.workspaceSuggestRefs,
+    getComposerDraft: vi.fn(() => Promise.resolve(null)),
+    saveComposerDraft: vi.fn((request: { revision: number }) =>
+      Promise.resolve({ applied: true, revision: request.revision }),
+    ),
+    clearComposerDraft: vi.fn((request: { revision: number }) =>
+      Promise.resolve({ applied: true, revision: request.revision }),
+    ),
   },
 }))
 
@@ -130,7 +137,7 @@ describe('EmptyState welcome composer', () => {
     const user = userEvent.setup()
     renderWelcome()
 
-    expect(screen.getByRole('textbox', { name: 'Send a message...' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Send a message...' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Options and attachments' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Emoji' })).toBeInTheDocument()
     expect(
@@ -138,14 +145,15 @@ describe('EmptyState welcome composer', () => {
     ).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Options and attachments' }))
-    expect(await screen.findByRole('dialog', { name: 'Options and attachments' })).toBeVisible()
-    expect(await screen.findByRole('button', { name: 'Attach File' })).toBeInTheDocument()
+    expect(await screen.findByRole('menu', { name: 'Options and attachments' })).toBeVisible()
+    expect(await screen.findByRole('menuitem', { name: 'Attach File' })).toBeInTheDocument()
 
-    const mode = screen.getByRole('button', { name: /Mode.*Plan/i })
+    const mode = screen.getByRole('menuitem', { name: /Mode.*Plan/i })
+    expect(mode).toHaveAttribute('aria-haspopup', 'menu')
     expect(mode).toHaveAttribute('aria-expanded', 'false')
     await user.click(mode)
     expect(mode).toHaveAttribute('aria-expanded', 'true')
-    expect(screen.getByRole('button', { name: 'Plan' })).toHaveAttribute('aria-pressed', 'true')
+    expect(await screen.findByRole('menuitemradio', { name: /^Plan/ })).toHaveAttribute('aria-checked', 'true')
   })
 
   it('fills the real composer from a suggestion without creating a conversation', async () => {
@@ -155,7 +163,9 @@ describe('EmptyState welcome composer', () => {
 
     await user.click(screen.getByRole('button', { name: 'Review some code and find problems' }))
 
-    expect(screen.getByRole('textbox', { name: 'Send a message...' })).toHaveValue('Review some code and find problems')
+    expect(screen.getByRole('combobox', { name: 'Send a message...' })).toHaveValue(
+      'Review some code and find problems',
+    )
     expect(onSubmit).not.toHaveBeenCalled()
   })
 
@@ -164,7 +174,7 @@ describe('EmptyState welcome composer', () => {
     const user = userEvent.setup()
     renderWelcome({ onSubmit })
 
-    await user.type(screen.getByRole('textbox', { name: 'Send a message...' }), '  First question  ')
+    await user.type(screen.getByRole('combobox', { name: 'Send a message...' }), '  First question  ')
     await user.click(screen.getByRole('button', { name: 'Send' }))
 
     await waitFor(() =>
@@ -198,7 +208,7 @@ describe('EmptyState welcome composer', () => {
     const user = userEvent.setup()
     const { container } = renderWelcome({ onSubmit })
 
-    await user.type(screen.getByRole('textbox', { name: 'Send a message...' }), 'First question')
+    await user.type(screen.getByRole('combobox', { name: 'Send a message...' }), 'First question')
     await user.click(screen.getByRole('button', { name: 'Send' }))
 
     await waitFor(() =>
@@ -218,7 +228,7 @@ describe('EmptyState welcome composer', () => {
     const user = userEvent.setup()
     renderWelcome({ onSubmit })
 
-    const textbox = screen.getByRole('textbox', { name: 'Send a message...' })
+    const textbox = screen.getByRole('combobox', { name: 'Send a message...' })
     await user.type(textbox, 'Keep this draft')
     await user.click(screen.getByRole('button', { name: 'Send' }))
 
@@ -232,11 +242,11 @@ describe('EmptyState welcome composer', () => {
     const user = userEvent.setup()
     renderWelcome({ onSubmit })
 
-    await waitFor(() => expect(mocks.fileUrl).toHaveBeenCalledWith('emoji-1'))
+    await waitFor(() => expect(mocks.listEmojis).toHaveBeenCalled())
     await user.click(screen.getByRole('button', { name: 'Emoji' }))
     // The picker's items are buttons named by their `textValue` (emoji name,
     // tags, pack) since it stopped being a Select with a hidden native one.
-    await user.click(await screen.findByRole('button', { name: /^Wave\b/ }))
+    await user.click(await screen.findByRole('option', { name: /^Wave\b/ }))
 
     expect(await screen.findByRole('img', { name: 'Wave' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Send' }))
@@ -260,12 +270,12 @@ describe('EmptyState welcome composer', () => {
     const user = userEvent.setup()
     renderWelcome({ onSubmit })
 
-    await waitFor(() => expect(mocks.fileUrl).toHaveBeenCalledWith('emoji-1'))
-    await user.type(screen.getByRole('textbox', { name: 'Send a message...' }), 'Typed remainder')
+    await waitFor(() => expect(mocks.listEmojis).toHaveBeenCalled())
+    await user.type(screen.getByRole('combobox', { name: 'Send a message...' }), 'Typed remainder')
     await user.click(screen.getByRole('button', { name: 'Emoji' }))
     // The picker's items are buttons named by their `textValue` (emoji name,
     // tags, pack) since it stopped being a Select with a hidden native one.
-    await user.click(await screen.findByRole('button', { name: /^Wave\b/ }))
+    await user.click(await screen.findByRole('option', { name: /^Wave\b/ }))
     expect(await screen.findByRole('img', { name: 'Wave' })).toBeInTheDocument()
 
     act(() => mocks.voiceOnSend?.('  Dictated opening  '))
@@ -293,7 +303,7 @@ describe('EmptyState welcome composer', () => {
   it('handles help and settings before creating a conversation', async () => {
     const user = userEvent.setup()
     const help = renderWelcome()
-    const textbox = screen.getByRole('textbox', { name: 'Send a message...' })
+    const textbox = screen.getByRole('combobox', { name: 'Send a message...' })
 
     await user.type(textbox, '/help')
     await user.click(screen.getByRole('button', { name: 'Send' }))
@@ -305,7 +315,7 @@ describe('EmptyState welcome composer', () => {
 
     help.unmount()
     const settings = renderWelcome()
-    await user.type(screen.getByRole('textbox', { name: 'Send a message...' }), '/settings general')
+    await user.type(screen.getByRole('combobox', { name: 'Send a message...' }), '/settings general')
     await user.click(screen.getByRole('button', { name: 'Send' }))
 
     expect(settings.onOpenSettingsTab).toHaveBeenCalledWith('general')
@@ -313,11 +323,54 @@ describe('EmptyState welcome composer', () => {
     expect(settings.onCreate).not.toHaveBeenCalled()
   })
 
+  it('is a combobox whose popup and highlighted row the textarea names', async () => {
+    const user = userEvent.setup()
+    renderWelcome()
+    const field = screen.getByRole('combobox', { name: 'Send a message...' })
+    expect(field).toHaveAttribute('aria-expanded', 'false')
+    expect(field).toHaveAttribute('aria-autocomplete', 'list')
+
+    await user.type(field, '/')
+    const listbox = await screen.findByRole('listbox')
+    expect(field).toHaveAttribute('aria-expanded', 'true')
+    expect(field).toHaveAttribute('aria-controls', listbox.id)
+    const active = document.getElementById(field.getAttribute('aria-activedescendant') ?? '')
+    expect(active).toHaveAttribute('role', 'option')
+    expect(active).toHaveAttribute('aria-selected', 'true')
+
+    await user.keyboard('{ArrowDown}')
+    const next = document.getElementById(field.getAttribute('aria-activedescendant') ?? '')
+    expect(next).not.toBe(active)
+    expect(next).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('does not put the caret back behind a key typed in the frame after a command', async () => {
+    // Frames run only when this test says so, which is the window the bug
+    // lived in: a key landing between the caret move being scheduled and run.
+    const frames: FrameRequestCallback[] = []
+    const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+      frames.push(cb)
+      return frames.length
+    })
+    try {
+      const user = userEvent.setup()
+      renderWelcome()
+      const field = screen.getByRole('combobox', { name: 'Send a message...' })
+      await user.type(field, '/settings ')
+      await user.type(field, 'g')
+      act(() => frames.splice(0).forEach((cb) => cb(0)))
+      await user.keyboard('e')
+      expect(field).toHaveValue('/settings ge')
+    } finally {
+      raf.mockRestore()
+    }
+  })
+
   it('turns /new into exactly one ordinary creation', async () => {
     const user = userEvent.setup()
     const callbacks = renderWelcome()
 
-    await user.type(screen.getByRole('textbox', { name: 'Send a message...' }), '/new')
+    await user.type(screen.getByRole('combobox', { name: 'Send a message...' }), '/new')
     await user.click(screen.getByRole('button', { name: 'Send' }))
 
     await waitFor(() => expect(callbacks.onCreate).toHaveBeenCalledTimes(1))
@@ -329,7 +382,7 @@ describe('EmptyState welcome composer', () => {
     const user = userEvent.setup()
     const callbacks = renderWelcome()
 
-    await user.type(screen.getByRole('textbox', { name: 'Send a message...' }), '/settings acp')
+    await user.type(screen.getByRole('combobox', { name: 'Send a message...' }), '/settings acp')
     await user.click(screen.getByRole('button', { name: 'Send' }))
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
@@ -344,7 +397,7 @@ describe('EmptyState welcome composer', () => {
       const user = userEvent.setup()
       const callbacks = renderWelcome()
 
-      await user.type(screen.getByRole('textbox', { name: 'Send a message...' }), text)
+      await user.type(screen.getByRole('combobox', { name: 'Send a message...' }), text)
       await user.click(screen.getByRole('button', { name: 'Send' }))
 
       await waitFor(() => expect(callbacks.onSubmit).toHaveBeenCalledWith(expect.objectContaining({ text })))

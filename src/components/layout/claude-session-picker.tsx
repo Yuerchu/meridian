@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Button, Modal, SearchField, Spinner, Tooltip, TooltipTrigger } from '@/components/base'
-import { FolderOpen, Xmark } from '@gravity-ui/icons'
+import { FolderOpen, X } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
@@ -252,8 +252,8 @@ export function ClaudeSessionPicker({
                   showing this device's folders points at the wrong filesystem —
                   the same split a project's path has. */}
               {can.browseForDirectory && (
-                <Button variant="outline" onPress={() => void browse()} className="shrink-0">
-                  <FolderOpen />
+                <Button variant="secondary" onPress={() => void browse()} className="shrink-0">
+                  <FolderOpen className="size-4" />
                   {t('sessionPicker.folder')}
                 </Button>
               )}
@@ -261,13 +261,13 @@ export function ClaudeSessionPicker({
                 <TooltipTrigger delay={0}>
                   <Button
                     iconOnly
-                    variant="ghost"
+                    leadingIcon={X}
+                    size="small"
+                    variant="neutral"
                     aria-label={t('sessionPicker.allProjects')}
                     onPress={() => scopeTo('')}
                     className="shrink-0"
-                  >
-                    <Xmark />
-                  </Button>
+                  />
                   <Tooltip>{t('sessionPicker.allProjects')}</Tooltip>
                 </TooltipTrigger>
               )}
@@ -309,7 +309,7 @@ export function ClaudeSessionPicker({
                   >
                     {error}
                   </p>
-                  <Button size="small" variant="outline" onPress={() => void load(folder)}>
+                  <Button size="small" variant="secondary" onPress={() => void load(folder)}>
                     {t('sessionPicker.retry')}
                   </Button>
                 </div>
@@ -395,7 +395,7 @@ function SessionRow({
   busy: boolean
   disabled: boolean
   error: string | null
-  /** This one came back as a tail. Said on the row, not in a toast. */
+  /** This one came back as a tail. Said on the row, not in a notification. */
   truncated: boolean
   when: string | null
   onAct: () => void
@@ -448,7 +448,7 @@ function SessionRow({
           {t('sessionPicker.taken')}
         </span>
       ) : taken ? (
-        <Button size="small" variant="ghost" onPress={onOpen} className="shrink-0">
+        <Button size="small" variant="secondary" onPress={onOpen} className="shrink-0">
           {t('sessionPicker.alreadyImported')}
         </Button>
       ) : (

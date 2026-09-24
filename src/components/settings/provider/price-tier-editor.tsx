@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { Button, Input, Label, TextField, Tooltip, TooltipTrigger } from '@/components/base'
-import { Plus, TrashBin } from '@gravity-ui/icons'
+import { Bin, Plus } from '@keyline-icons/react/two-tone'
 import { BLANK_TIER, type TierDraft } from './pricing'
 
 /**
@@ -49,14 +49,14 @@ export function PriceTierEditor({
             </TextField>
             <TooltipTrigger>
               <Button
+                iconOnly
+                leadingIcon={Bin}
                 size="small"
-                variant="ghost"
+                variant="neutral"
                 aria-label={t('settings.model.removeTier')}
-                className="h-7 pointer-coarse:h-10 rounded-md px-2 text-text-secondary hover:text-status-danger"
+                className="touch-hitbox hover:text-status-danger"
                 onPress={() => onChange(tiers.filter((_, i) => i !== index))}
-              >
-                <TrashBin className="size-3.5" />
-              </Button>
+              />
               <Tooltip>{t('settings.model.removeTier')}</Tooltip>
             </TooltipTrigger>
           </div>
@@ -108,7 +108,7 @@ export function PriceTierEditor({
       ))}
       <Button
         size="small"
-        variant="outline"
+        variant="secondary"
         className="h-7 pointer-coarse:h-10 rounded-md text-caption-1-regular"
         onPress={() => onChange([...tiers, { ...BLANK_TIER }])}
       >

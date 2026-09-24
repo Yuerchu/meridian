@@ -6,6 +6,7 @@ import {
   PlanDecisionAttempt,
   PlanDecisionInDoubtError,
   PlanDraftSaveQueue,
+  planDraftUnsavedParts,
   planReviewActionRules,
   type PlanDraftPayload,
 } from './plan-review-draft'
@@ -83,6 +84,93 @@ describe('plan draft CAS writer', () => {
 
     expect(requests.map((request) => request.normalizedMarkdown)).toEqual(['first', 'latest'])
     expect(requests.map((request) => request.expectedGeneration)).toEqual([3, 4])
+  })
+})
+
+describe('plan draft save failures', () => {
+  function answer(request: PlanReviewDraftSaveRequest) {
+    return {
+      review_id: request.reviewId,
+      generation: request.expectedGeneration + 1,
+      draft_sha256: `hash-${request.expectedGeneration + 1}`,
+      updated_at: 1,
+    }
+  }
+
+  it('keeps the draft a failed save could not write, and sends it again on retry', async () => {
+    const requests: PlanReviewDraftSaveRequest[] = []
+    const save = vi.fn(async (request: PlanReviewDraftSaveRequest) => {
+      requests.push(request)
+      if (requests.length === 1) throw new Error('disk full')
+      return answer(request)
+    })
+    const states: string[] = []
+    const queue = new PlanDraftSaveQueue('review-1', save, 0, 'hash-0', (state) => states.push(state))
+
+    queue.enqueue(payload('typed before the failure'))
+    await expect(queue.flush()).rejects.toThrow('disk full')
+    expect(queue.hasUnsaved()).toBe(true)
+    // Still sticky: nothing goes out again until somebody asks.
+    await expect(queue.flush()).rejects.toThrow('disk full')
+    expect(requests).toHaveLength(1)
+
+    await queue.retry()
+    expect(requests.map((request) => request.normalizedMarkdown)).toEqual([
+      'typed before the failure',
+      'typed before the failure',
+    ])
+    expect(queue.hasUnsaved()).toBe(false)
+    expect(queue.lastSaved()?.normalizedMarkdown).toBe('typed before the failure')
+    expect(states.at(-1)).toBe('saved')
+  })
+
+  it('accepts edits after a failure without throwing and retries the newest one', async () => {
+    const requests: PlanReviewDraftSaveRequest[] = []
+    const save = vi.fn(async (request: PlanReviewDraftSaveRequest) => {
+      requests.push(request)
+      if (requests.length === 1) throw new Error('offline')
+      return answer(request)
+    })
+    const states: string[] = []
+    const queue = new PlanDraftSaveQueue('review-1', save, 0, 'hash-0', (state) => states.push(state))
+    queue.enqueue(payload('first'))
+    await expect(queue.flush()).rejects.toThrow('offline')
+
+    expect(() => queue.enqueue(payload('second'))).not.toThrow()
+    expect(states.at(-1)).toBe('error')
+    await queue.retry()
+    expect(requests.at(-1)?.normalizedMarkdown).toBe('second')
+  })
+
+  it('refuses to retry a conflict, whose generation only a reload can replace', async () => {
+    const save = vi.fn(async () => {
+      throw new Error('plan state conflict: expected draft generation 0, found 1')
+    })
+    const queue = new PlanDraftSaveQueue('review-1', save, 0, 'hash-0', vi.fn())
+    queue.enqueue(payload('mine'))
+    await expect(queue.flush()).rejects.toThrow('plan state conflict')
+    await expect(queue.retry()).rejects.toThrow('plan state conflict')
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(queue.hasUnsaved()).toBe(true)
+  })
+
+  it('names the parts of the draft the server does not hold', () => {
+    const saved = payload('# Plan\n')
+    expect(planDraftUnsavedParts(saved, saved)).toEqual([])
+    expect(planDraftUnsavedParts(saved, { ...saved, globalNote: 'Ship it' })).toEqual(['note'])
+    expect(
+      planDraftUnsavedParts(saved, {
+        ...payload('# Edited\n'),
+        comments: [
+          {
+            id: 'c',
+            state: 'active',
+            body: 'why',
+            anchor: { kind: 'source_range', from: 0, to: 1, quote: '#', prefix: '', suffix: ' ' },
+          },
+        ],
+      }),
+    ).toEqual(['body', 'comments'])
   })
 })
 

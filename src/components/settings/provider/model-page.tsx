@@ -1,14 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Description, Disclosure, Input, Label, Switch, TextField } from '@/components/base'
+import {
+  Alert,
+  Button,
+  Description,
+  Disclosure,
+  Input,
+  Label,
+  Switch,
+  TextField,
+  ToggleButton,
+} from '@/components/base'
 import { api } from '@/api'
 import { assertDecimal38_18 } from '@/lib/decimal'
 import { EFFORT_LADDER } from '@/lib/thinking'
-import { SettingsRow, SettingsSection, SettingsSelect, SettingsSkeleton } from '../primitives'
+import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
+import { SavedHint, SettingsRow, SettingsSection, SettingsSelect, SettingsSkeleton } from '../primitives'
 import { SettingsPage } from '../settings-page'
-import { useSettingsDraft } from '../settings-stack'
+import { useSettingsDraft, type SettingsStack } from '../settings-stack'
 import { PriceTierEditor } from './price-tier-editor'
-import { safeThreshold, triFrom, triTo, type Tri } from './capabilities'
+import { parseTokenCount, safeThreshold, triFrom, triTo, type Tri } from './capabilities'
 import { optionalPrice, tiersFrom, tiersTo, type PriceField, type TierDraft } from './pricing'
 import type {
   DecimalString,
@@ -24,6 +35,9 @@ import type {
 
 /** The option that creates a description rather than pointing at one. */
 const NEW_PROFILE = '__new__'
+
+type ConfirmFn = SettingsStack<unknown>['confirm']
+type LimitField = 'contextWindow' | 'compactThreshold' | 'maxOutput'
 
 function CapabilityTriRow({ label, value, onChange }: { label: string; value: Tri; onChange: (next: Tri) => void }) {
   const { t } = useTranslation()
@@ -57,6 +71,7 @@ function ModelConfigEditor({
   profiles,
   onSave,
   onDelete,
+  confirm,
 }: {
   providerId: string
   modelId: string
@@ -68,9 +83,19 @@ function ModelConfigEditor({
   /** Every model description on this machine, for pointing at one. */
   profiles: ModelProfileInfoResponse[]
   onSave: (input: ModelConfigUpsertRequest) => Promise<void>
-  onDelete?: () => void
+  onDelete?: () => Promise<void>
+  confirm: ConfirmFn
 }) {
   const { t } = useTranslation()
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [saved, markSaved] = useTemporaryFlag()
+  const [invalidLimits, setInvalidLimits] = useState<ReadonlySet<LimitField>>(() => new Set())
+  const limitRefs = {
+    contextWindow: useRef<HTMLInputElement>(null),
+    compactThreshold: useRef<HTMLInputElement>(null),
+    maxOutput: useRef<HTMLInputElement>(null),
+  } satisfies Record<LimitField, React.RefObject<HTMLInputElement | null>>
   const [caps, setCaps] = useState<ProviderCapabilitiesInfoResponse | null>(null)
 
   useEffect(() => {
@@ -83,12 +108,16 @@ function ModelConfigEditor({
   // The window, the prices and the capability patch describe the *model*, so
   // they live on its profile and are shared by every provider reaching it.
   const profile = existing?.profile ?? null
-  const defaultCtx = profile?.context_window ?? caps?.max_context_tokens ?? 128000
+  // No window is invented when nothing knows it: a blank, required field is
+  // asked for at save, where a prefilled 128000 used to be saved as though
+  // somebody had chosen it (see `no-hardcoded-model-params`).
+  const defaultCtx = profile?.context_window ?? caps?.max_context_tokens ?? null
   const defaultMaxOut = profile?.max_output_tokens ?? caps?.max_output_tokens ?? null
-  const defaultThreshold = profile?.compact_threshold ?? safeThreshold(defaultCtx, defaultMaxOut)
+  const defaultThreshold =
+    profile?.compact_threshold ?? (defaultCtx === null ? null : safeThreshold(defaultCtx, defaultMaxOut))
 
-  const [contextWindow, setContextWindow] = useState(defaultCtx.toString())
-  const [compactThreshold, setCompactThreshold] = useState(defaultThreshold.toString())
+  const [contextWindow, setContextWindow] = useState(defaultCtx?.toString() ?? '')
+  const [compactThreshold, setCompactThreshold] = useState(defaultThreshold?.toString() ?? '')
   const [maxOutput, setMaxOutput] = useState(defaultMaxOut?.toString() ?? '')
   const [inputPrice, setInputPrice] = useState(
     profile?.input_price == null ? '' : assertDecimal38_18(profile.input_price),
@@ -185,8 +214,10 @@ function ModelConfigEditor({
 
   useEffect(() => {
     if (!existing && caps) {
-      setContextWindow((caps.max_context_tokens ?? 128000).toString())
-      setCompactThreshold(safeThreshold(caps.max_context_tokens ?? 128000, caps.max_output_tokens ?? null).toString())
+      if (caps.max_context_tokens) {
+        setContextWindow(caps.max_context_tokens.toString())
+        setCompactThreshold(safeThreshold(caps.max_context_tokens, caps.max_output_tokens ?? null).toString())
+      }
       if (caps.max_output_tokens) setMaxOutput(caps.max_output_tokens.toString())
     }
   }, [caps, existing])
@@ -301,8 +332,10 @@ function ModelConfigEditor({
   }
 
   const handleSave = async () => {
+    if (saving) return
     const refuse = (message: string, fields: PriceField[]) => {
       setPriceError(message)
+      setInvalidLimits(new Set())
       setInvalidPrices(new Set(fields))
       const first = fields.map((field) => priceRefs[field].current).find((el) => el !== null)
       first?.scrollIntoView({ block: 'center' })
@@ -318,6 +351,33 @@ function ModelConfigEditor({
       overrideOutput: t('settings.model.outputPrice'),
       overrideCache: t('settings.model.cachePrice'),
       overrideCacheWrite: t('settings.model.cacheWritePrice'),
+    }
+    const limitLabels: Record<LimitField, string> = {
+      contextWindow: t('settings.model.contextWindow'),
+      compactThreshold: t('settings.model.compactThreshold'),
+      maxOutput: t('settings.model.maxOutput'),
+    }
+    const limits: Partial<Record<LimitField, number | null>> = {}
+    for (const [field, raw, optional] of [
+      ['contextWindow', contextWindow, false],
+      ['compactThreshold', compactThreshold, false],
+      ['maxOutput', maxOutput, true],
+    ] as const) {
+      const blank = raw.trim() === ''
+      const value = optional && blank ? null : parseTokenCount(raw)
+      if (value === undefined) {
+        setPriceError(
+          t(blank ? 'settings.model.limitRequiredError' : 'settings.model.limitInvalidError', {
+            field: limitLabels[field],
+          }),
+        )
+        setInvalidPrices(new Set())
+        setInvalidLimits(new Set([field]))
+        limitRefs[field].current?.scrollIntoView({ block: 'center' })
+        limitRefs[field].current?.focus()
+        return
+      }
+      limits[field] = value
     }
     const parsed: Partial<Record<PriceField, DecimalString | null>> = {}
     for (const [field, raw] of [
@@ -388,6 +448,8 @@ function ModelConfigEditor({
     }
     setPriceError(null)
     setInvalidPrices(new Set())
+    setInvalidLimits(new Set())
+    setSaving(true)
     try {
       await onSave({
         provider_id: providerId,
@@ -398,9 +460,9 @@ function ModelConfigEditor({
           // a second provider stops repeating the first.
           id: profileId,
           name: profileName.trim() || modelId,
-          context_window: parseInt(contextWindow) || 128000,
-          compact_threshold: parseInt(compactThreshold) || 100000,
-          max_output_tokens: maxOutput ? parseInt(maxOutput) : null,
+          context_window: limits.contextWindow!,
+          compact_threshold: limits.compactThreshold!,
+          max_output_tokens: limits.maxOutput ?? null,
           ...prices,
           capability_overrides: buildOverrides(),
         },
@@ -433,8 +495,24 @@ function ModelConfigEditor({
       // editor stays open with nothing changed and reads as a dead button.
       setPriceError(error instanceof Error ? error.message : String(error))
       return
+    } finally {
+      setSaving(false)
     }
     setDirty(false)
+    markSaved()
+  }
+
+  const handleDelete = async () => {
+    if (!onDelete || deleting) return
+    if (!(await confirm({ body: t('settings.confirmDelete.modelConfig') }))) return
+    setDeleting(true)
+    setPriceError(null)
+    try {
+      await onDelete()
+    } catch (error) {
+      setPriceError(error instanceof Error ? error.message : String(error))
+      setDeleting(false)
+    }
   }
 
   // Every control in here overrides the default height down to 28px, which is
@@ -444,9 +522,10 @@ function ModelConfigEditor({
   const form = (
     <div data-slot="model-config-editor" className="space-y-2">
       <div data-slot="model-config-limits" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
-        <TextField>
-          <Label>{t('settings.model.contextWindow')}</Label>
+        <TextField isRequired isInvalid={invalidLimits.has('contextWindow')}>
+          <Label isRequired>{t('settings.model.contextWindow')}</Label>
           <Input
+            ref={limitRefs.contextWindow}
             name={`modelContextWindow-${modelId}`}
             inputMode="numeric"
             value={contextWindow}
@@ -457,9 +536,10 @@ function ModelConfigEditor({
             className="h-7 pointer-coarse:h-10 text-caption-1-regular"
           />
         </TextField>
-        <TextField>
-          <Label>{t('settings.model.compactThreshold')}</Label>
+        <TextField isRequired isInvalid={invalidLimits.has('compactThreshold')}>
+          <Label isRequired>{t('settings.model.compactThreshold')}</Label>
           <Input
+            ref={limitRefs.compactThreshold}
             name={`modelCompactThreshold-${modelId}`}
             inputMode="numeric"
             value={compactThreshold}
@@ -471,9 +551,10 @@ function ModelConfigEditor({
           />
         </TextField>
       </div>
-      <TextField>
+      <TextField isInvalid={invalidLimits.has('maxOutput')}>
         <Label>{t('settings.model.maxOutput')}</Label>
         <Input
+          ref={limitRefs.maxOutput}
           name={`modelMaxOutput-${modelId}`}
           inputMode="numeric"
           value={maxOutput}
@@ -562,20 +643,19 @@ function ModelConfigEditor({
             {caps?.server_tools?.map((name) => {
               const on = serverTools.includes(name)
               return (
-                <Button
+                <ToggleButton
                   key={name}
                   data-slot="server-tool-chip"
-                  variant={on ? 'primary' : 'outline'}
                   size="small"
-                  aria-pressed={on}
+                  isSelected={on}
                   className="h-6 pointer-coarse:h-9 rounded-md px-2 text-caption-1-regular"
-                  onPress={() => {
+                  onChange={() => {
                     setServerTools(on ? serverTools.filter((x) => x !== name) : [...serverTools, name])
                     setDirty(true)
                   }}
                 >
                   {t(`settings.model.serverTool.${name}`, name)}
-                </Button>
+                </ToggleButton>
               )
             })}
           </div>
@@ -653,14 +733,13 @@ function ModelConfigEditor({
                 {EFFORT_LADDER.map((tier) => {
                   const on = efforts.includes(tier)
                   return (
-                    <Button
+                    <ToggleButton
                       key={tier}
                       data-slot="effort-chip"
-                      variant={on ? 'primary' : 'outline'}
                       size="small"
-                      aria-pressed={on}
+                      isSelected={on}
                       className="h-6 pointer-coarse:h-9 px-2 text-caption-1-regular"
-                      onPress={() => {
+                      onChange={() => {
                         // Rebuild from the ladder so the stored array stays in
                         // ascending order -- the median coercion ranks on position.
                         setEfforts(EFFORT_LADDER.filter((x) => (x === tier ? !on : efforts.includes(x))))
@@ -669,7 +748,7 @@ function ModelConfigEditor({
                       }}
                     >
                       {t(`toolbar.thinking.${tier}`)}
-                    </Button>
+                    </ToggleButton>
                   )
                 })}
               </div>
@@ -694,7 +773,7 @@ function ModelConfigEditor({
               {t('settings.model.capabilitiesHint')}
             </p>
             <Button
-              variant="ghost"
+              variant="secondary"
               size="small"
               className="h-6 pointer-coarse:h-9 px-0 text-caption-1-regular text-text-secondary hover:text-text-primary"
               onPress={resetOverrides}
@@ -799,12 +878,15 @@ function ModelConfigEditor({
       width="wide"
       footer={
         <>
-          <Button onPress={() => void handleSave()}>{t('common.save')}</Button>
+          <Button onPress={() => void handleSave()} isPending={saving}>
+            {t('common.save')}
+          </Button>
           {onDelete && (
-            <Button variant="danger-soft" onPress={onDelete}>
+            <Button variant="danger" onPress={() => void handleDelete()} isPending={deleting}>
               {t('common.delete')}
             </Button>
           )}
+          {saved && <SavedHint data-slot="model-config-saved" />}
           <div data-slot="model-config-footer-spacer" className="flex-1" />
           {priceError && (
             <p data-slot="model-config-error" role="alert" className="text-caption-1-regular text-status-danger">
@@ -861,24 +943,36 @@ export function ModelPage({
   apiFormat,
   onSaved,
   onDeleted,
+  confirm,
 }: {
   providerId: string
   modelId: string
   apiFormat: string
   onSaved: () => void
   onDeleted: () => void
+  confirm: ConfirmFn
 }) {
+  const { t } = useTranslation()
   const [existing, setExisting] = useState<ModelConfigInfoResponse | null>(null)
   const [profiles, setProfiles] = useState<ModelProfileInfoResponse[]>([])
   const [loading, setLoading] = useState(true)
+  // A failed read is not "this model has no settings yet": drawn as the empty
+  // editor, saving it would replace the real row with defaults.
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     let cancelled = false
+    setLoading(true)
+    setLoadError(null)
     void Promise.all([api.getModelConfig({ providerId, modelId }), api.listModelProfiles()])
       .then(([config, list]) => {
         if (cancelled) return
         setExisting(config)
         setProfiles(list)
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setLoadError(String(error))
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -886,9 +980,25 @@ export function ModelPage({
     return () => {
       cancelled = true
     }
-  }, [providerId, modelId])
+  }, [providerId, modelId, attempt])
 
   if (loading) return <SettingsSkeleton className="max-w-3xl" />
+  if (loadError !== null) {
+    return (
+      <SettingsPage title={modelId} width="wide">
+        <Alert status="danger" role="alert">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>{t('settings.model.loadError')}</Alert.Title>
+            <Alert.Description className="break-all">{loadError}</Alert.Description>
+            <Button size="small" variant="secondary" onPress={() => setAttempt((n) => n + 1)}>
+              {t('common.retry')}
+            </Button>
+          </Alert.Content>
+        </Alert>
+      </SettingsPage>
+    )
+  }
 
   return (
     <ModelConfigEditor
@@ -898,6 +1008,7 @@ export function ModelPage({
       apiFormat={apiFormat}
       existing={existing ?? undefined}
       profiles={profiles}
+      confirm={confirm}
       onSave={async (input) => {
         const saved = await api.saveModelConfig(input)
         setExisting(saved)

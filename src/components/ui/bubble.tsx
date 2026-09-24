@@ -10,6 +10,22 @@ function BubbleGroup({ className, ...props }: React.ComponentProps<'div'>) {
 }
 
 /**
+ * The one distance between two adjacent blocks of a run, whichever side of a
+ * bubble boundary they fall on.
+ *
+ * A reader cannot see where one bubble ends and the next begins — every block
+ * has the same fill and the corner rules tighten both boundaries alike — so
+ * two spacings read as noise, not structure. There used to be two: `gap-1`
+ * between blocks of one bubble and `gap-0.5` between bubbles, which put a
+ * prose block 4px from its tool call and that call 2px from the next bubble.
+ * `Bubble`, `MessageGroupBubbles`, `MessageGroupUser` and the bare keyboard
+ * of a `tools-only` bubble all read this, and `bubble-spacing.test.tsx`
+ * fails if any of them stops. Runs (a model change, the question and the
+ * answer) keep their larger gaps; this is the spacing *inside* one.
+ */
+const BUBBLE_RUN_GAP = 'gap-0.5'
+
+/**
  * A bubble, and the blocks it says its part in.
  *
  * **A bubble may have more than one block, and a tool call is one of them.**
@@ -23,8 +39,10 @@ function BubbleGroup({ className, ...props }: React.ComponentProps<'div'>) {
  * Two mechanisms, and which one a property uses is decided by one question:
  * **does it depend on the block's neighbours?**
  *
- * *No* — the fill, the text colour, the edge and the hover lift depend only on
- * whose bubble this is. They travel as the four custom properties below, which
+ * *No* — the fill, the text colour, the edge, the hover lift and the shadow
+ * depend only on whose bubble this is. They travel as the custom properties
+ * below (`--bubble-fill`, `--bubble-ink`, `--bubble-edge`, `--bubble-lift`,
+ * `--bubble-shadow`), which
  * **inherit**, so they reach a block however deeply it is wrapped and a block
  * outside any bubble falls back to the assistant's. This is deliberate: these
  * were `[&>[data-bubble-block]]:` rules once, and a block that picked up a
@@ -59,7 +77,8 @@ function BubbleGroup({ className, ...props }: React.ComponentProps<'div'>) {
  */
 const bubbleVariants = tv({
   base: [
-    'group/bubble relative flex w-fit max-w-[80%] min-w-0 flex-col gap-1 data-[align=end]:self-end data-[variant=ghost]:max-w-full',
+    'group/bubble relative flex w-fit max-w-[80%] min-w-0 flex-col data-[align=end]:self-end data-[variant=ghost]:max-w-full',
+    BUBBLE_RUN_GAP,
   ],
   variants: {
     // Each of these sets the inherited properties every block reads. Nothing
@@ -67,7 +86,7 @@ const bubbleVariants = tv({
     // the same answer for every block in it and at every depth.
     variant: {
       /** What the person said. */
-      user: '[--bubble-fill:var(--bubble-user)] [--bubble-ink:var(--bubble-user-foreground)] [--bubble-lift:8%]',
+      user: '[--bubble-fill:var(--bubble-user)] [--bubble-ink:var(--bubble-user-foreground)] [--bubble-lift:8%] [--bubble-shadow:var(--bubble-user-shadow)]',
       /** What the model said, and what it did. A touch wider than the user's:
        *  an answer is usually the longer of the two, and a code block needs
        *  the room. */
@@ -132,6 +151,9 @@ const bubbleVariants = tv({
 const BUBBLE_BLOCK = [
   'max-w-full min-w-0 overflow-hidden rounded-2xl',
   'bg-[var(--bubble-fill,var(--bubble-assistant))] text-[var(--bubble-ink,var(--bubble-assistant-foreground))]',
+  // The person's bubble is the registry's white card (`agent-chat-message.tsx`,
+  // `shadow-card`); the model's carries none.
+  '[box-shadow:var(--bubble-shadow,none)]',
   '[&:is(button,a):hover]:bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--color-text-primary)_var(--bubble-lift,5%))]',
 ]
 
@@ -196,7 +218,10 @@ function BubbleContent({ className, render, ...props }: React.ComponentProps<typ
       data-bubble-block=""
       className={cx(
         BUBBLE_BLOCK,
-        'w-fit border border-[var(--bubble-edge,transparent)] px-3 py-2 text-body-regular leading-relaxed wrap-break-word group-data-[align=end]/bubble:self-end [button]:text-left [button,a]:transition-colors [button,a]:outline-none [button,a]:focus-visible:border-border-focus-ring [button,a]:focus-visible:ring-3 [button,a]:focus-visible:ring-border-focus-ring/50',
+        // `px-3 py-[11px] text-body-regular` is the registry's user message
+        // (`agent-chat-message.tsx`); the composite type utility carries its own
+        // line height, so no `leading-*` is stacked on it (boardui AGENTS.md).
+        'w-fit border border-[var(--bubble-edge,transparent)] px-3 py-[11px] text-body-regular wrap-break-word group-data-[align=end]/bubble:self-end [button]:text-left [button,a]:transition-colors [button,a]:outline-none [button,a]:focus-visible:ring-2 [button,a]:focus-visible:ring-border-focus-ring',
         className,
       )}
       render={render}
@@ -225,4 +250,4 @@ function BubbleTime({ className, ...props }: React.ComponentProps<'time'>) {
   )
 }
 
-export { BubbleGroup, Bubble, BubbleContent, BubbleTime, BUBBLE_BLOCK, BUBBLE_BLOCK_HOVER }
+export { BubbleGroup, Bubble, BubbleContent, BubbleTime, BUBBLE_BLOCK, BUBBLE_BLOCK_HOVER, BUBBLE_RUN_GAP }

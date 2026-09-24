@@ -14,10 +14,11 @@ import {
   TooltipTrigger,
 } from '@/components/base'
 import { EmptyState } from '@/components/base'
+import { SegmentedControl, SegmentedControlItem } from '@/components/base/segmented-control/segmented-control'
 import { KPI } from '@/components/base'
 import { AreaChart } from '@/components/base'
 import { DataGrid, type DataGridColumn } from '@/components/base'
-import { ArrowRightFromSquare } from '@gravity-ui/icons'
+import { SquareArrowUpRight } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
 import { costQualifier, formatCostAmount, type CostQualifier } from '@/lib/cost-format'
@@ -359,7 +360,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
                 {t('settings.usage.loadError')}
               </Hint>
             </Alert.Description>
-            <Button size="small" variant="outline" onPress={() => setReload((value) => value + 1)}>
+            <Button size="small" variant="secondary" onPress={() => setReload((value) => value + 1)}>
               {t('settings.usage.retry')}
             </Button>
           </Alert.Content>
@@ -379,30 +380,30 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
         <>
           <div data-slot="usage-kpis" className="grid grid-cols-1 @sm/pane:grid-cols-2 @2xl/pane:grid-cols-4 gap-3">
             <Kpi title={t('settings.usage.kpi.cost')}>
-              <span data-slot="cost-total" className="block truncate text-title-1-semibold tracking-tight tabular-nums">
+              <KPI.Value data-slot="cost-total" className="block truncate">
                 {displayedCost(total, t, locale)}
-              </span>
+              </KPI.Value>
             </Kpi>
             {/* The count is formatted before it goes in, not by i18next: passing
                 the raw number leaves it ungrouped, and "13830144" sitting under
                 "1514.9万" reads as two different quantities. */}
             <Kpi title={t('settings.usage.kpi.input')} note={tokenNote}>
-              <span data-slot="input-total" className="block truncate text-title-1-semibold tracking-tight">
+              <KPI.Value data-slot="input-total" className="block truncate">
                 {tokenTotal(total.input_tokens, total, t, compact)}
-              </span>
+              </KPI.Value>
             </Kpi>
             <Kpi title={t('settings.usage.kpi.output')}>
-              <span data-slot="output-total" className="block truncate text-title-1-semibold tracking-tight">
+              <KPI.Value data-slot="output-total" className="block truncate">
                 {tokenTotal(total.output_tokens, total, t, compact)}
-              </span>
+              </KPI.Value>
             </Kpi>
             <Kpi
               title={t('settings.usage.kpi.cacheRate')}
               note={t('settings.usage.kpi.replies', { count: total.messages })}
             >
-              <span data-slot="cache-rate" className="block truncate text-title-1-semibold tracking-tight">
+              <KPI.Value data-slot="cache-rate" className="block truncate">
                 {hitRate === null ? '—' : percent.format(hitRate)}
-              </span>
+              </KPI.Value>
             </Kpi>
           </div>
 
@@ -497,9 +498,6 @@ const TAB = 'whitespace-nowrap'
 /**
  * One filter, as a labelled segmented control. These choices narrow the page;
  * they do not switch a tab panel, so they should not expose tab semantics.
- *
- * `w-fit` on the container because the pill is `bg-background-secondary-default` and stretches to
- * whatever it is given; in a flex row that is the whole remaining width.
  */
 function Filter({
   label,
@@ -515,25 +513,24 @@ function Filter({
   return (
     <div data-slot="usage-filter" className="space-y-1.5">
       <Label className="text-caption-1-regular text-text-secondary">{label}</Label>
-      <div
+      {/* The registry's segmented control (the notification centre's category
+          switch): a row of buttons that toggled `variant` to show which was
+          chosen painted every unchosen one in the accent's soft fill. */}
+      <SegmentedControl
         data-slot="usage-filter-group"
-        role="group"
         aria-label={label}
-        className="flex w-fit rounded-xl bg-background-secondary-default p-1"
+        selectedKeys={[selectedKey]}
+        onSelectionChange={(keys) => {
+          const next = [...(keys as Set<string>)][0]
+          if (next !== undefined) onChange(next)
+        }}
       >
         {items.map(([id, text]) => (
-          <Button
-            key={id}
-            size="small"
-            variant={selectedKey === id ? 'secondary' : 'ghost'}
-            aria-pressed={selectedKey === id}
-            className={TAB}
-            onPress={() => onChange(id)}
-          >
+          <SegmentedControlItem key={id} id={id} className={TAB}>
             {text}
-          </Button>
+          </SegmentedControlItem>
         ))}
-      </div>
+      </SegmentedControl>
     </div>
   )
 }
@@ -564,7 +561,7 @@ function UsageSkeleton() {
         className="grid grid-cols-1 @sm/pane:grid-cols-2 @2xl/pane:grid-cols-4 gap-3"
       >
         {Array.from({ length: 4 }, (_, i) => (
-          <Skeleton key={i} className="h-24 w-full rounded-lg" />
+          <Skeleton key={i} className="h-26 w-full rounded-2xl" />
         ))}
       </div>
       <Skeleton className="h-[200px] w-full rounded-lg" />
@@ -586,7 +583,7 @@ function UsageSkeleton() {
  */
 function Kpi({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
   return (
-    <KPI className="rounded-lg border border-border-button-default">
+    <KPI>
       <KPI.Header>
         <KPI.Title>{title}</KPI.Title>
       </KPI.Header>
@@ -1141,9 +1138,14 @@ function BucketTable({
           })
           return (
             <TooltipTrigger>
-              <Button iconOnly variant="ghost" aria-label={label} onPress={() => onOpenConversation(conversationId)}>
-                <ArrowRightFromSquare className="size-4" />
-              </Button>
+              <Button
+                iconOnly
+                leadingIcon={SquareArrowUpRight}
+                size="small"
+                variant="neutral"
+                aria-label={label}
+                onPress={() => onOpenConversation(conversationId)}
+              />
               <Tooltip placement="left">{label}</Tooltip>
             </TooltipTrigger>
           )

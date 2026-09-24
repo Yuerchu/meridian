@@ -53,6 +53,7 @@ export function ProviderSettings() {
             // the form disappear reads as a crash rather than as a success.
             onSaved={() => {}}
             onDeleted={() => stack.reset(1)}
+            confirm={stack.confirm}
           />
         )
       }}

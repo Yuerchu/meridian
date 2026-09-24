@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { visible } from './approval-queue'
+import { pending, visible } from './approval-queue'
 import type { AttentionItem } from '@/stores/conversation-store'
 
 function item(approvalId: string, conversationId: string): AttentionItem {
@@ -11,6 +11,7 @@ function item(approvalId: string, conversationId: string): AttentionItem {
     toolName: 'run_command',
     arguments: '{}',
     kind: 'approval',
+    askedAt: null,
   }
 }
 
@@ -35,9 +36,8 @@ describe('which questions the queue offers', () => {
     expect(visible(attention, order, 'being-read').map((i) => i.approvalId)).toEqual(['b'])
   })
 
-  /** Three is what `ToastQueue` stacks, and everything but the frontmost is
-   *  `pointer-events-none` — so this is a depth cue, not three things to
-   *  answer. The rest wait their turn rather than becoming live toasts. */
+  /** Three cards is what the stack draws. The rest wait their turn rather
+   *  than covering the window with thirty copies of the same request. */
   it('offers no more than the stack can show', () => {
     const { attention, order } = queue(...['a', 'b', 'c', 'd', 'e'].map((id) => item(id, `conv-${id}`)))
     expect(visible(attention, order, null).map((i) => i.approvalId)).toEqual(['a', 'b', 'c'])
@@ -67,7 +67,7 @@ describe('which questions the queue offers', () => {
   })
 
   /** Settings covers the transcript with `inert`, so the card on the active
-   *  conversation cannot be clicked. The toast is then the only way in. */
+   *  conversation cannot be clicked. The notification is then the only way in. */
   it('still offers the conversation being read when its transcript is inert', () => {
     const { attention, order } = queue(item('a', 'being-read'), item('b', 'elsewhere'))
     expect(visible(attention, order, 'being-read', true).map((i) => i.approvalId)).toEqual(['a', 'b'])
@@ -85,14 +85,39 @@ describe('the plan review being read', () => {
       turnId: 't1',
       stage: 'review',
       kind: 'plan_review',
+      askedAt: null,
     }
   }
 
   /** The review page covers the transcript, so the inert rule alone would offer
-   *  the very review the page is showing — a toast saying "review the plan" on
+   *  the very review the page is showing — a notification saying "review the plan" on
    *  top of the plan. */
   it('is left out even while the transcript under it is inert', () => {
     const { attention, order } = queue(reviewItem('review-1', 'c1'), reviewItem('review-2', 'c2'), item('a', 'c1'))
     expect(visible(attention, order, 'c1', true, 'review-1').map((i) => i.approvalId)).toEqual(['review-2', 'a'])
+  })
+})
+
+/** The inbox lists everything the stack would, past its first three, and says
+ *  of the conversation being read only that it is waiting. */
+describe('the whole queue', () => {
+  it('lists past the stack and keeps the conversation being read apart', () => {
+    const { attention, order } = queue(
+      item('a', 'c1'),
+      item('b', 'being-read'),
+      item('c', 'c3'),
+      item('d', 'c4'),
+      item('e', 'c5'),
+    )
+    const { listed, here } = pending(attention, order, 'being-read')
+    expect(listed.map((i) => i.approvalId)).toEqual(['a', 'c', 'd', 'e'])
+    expect(here.map((i) => i.approvalId)).toEqual(['b'])
+  })
+
+  it('lists the conversation being read while its transcript is inert', () => {
+    const { attention, order } = queue(item('a', 'being-read'))
+    const { listed, here } = pending(attention, order, 'being-read', true)
+    expect(listed.map((i) => i.approvalId)).toEqual(['a'])
+    expect(here).toEqual([])
   })
 })

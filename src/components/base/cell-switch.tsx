@@ -61,9 +61,14 @@ function CellSwitchTrigger({ className, ...props }: ComponentProps<'div'>) {
       data-slot="cell-switch-trigger"
       {...props}
       className={cx(
-        'flex w-full cursor-[var(--cursor-interactive)] items-center gap-3 rounded-xl border border-border-button-default bg-background-primary-default shadow-xs transition-colors',
+        // The official settings card's surface (settings-rows.tsx, SettingsCard),
+        // not the primary card: in the dark theme primary is the switch's own
+        // off-track colour, and the track vanished (surface-contrast.test.ts).
+        'flex w-full cursor-pointer items-center gap-3 rounded-xl border border-border-button-default bg-background-secondary-default transition-colors',
         size === 'sm' ? 'min-h-9 px-3 py-1.5' : 'min-h-11 px-3 py-2',
-        'group-data-[hovered]/cell-switch:bg-background-primary-hover',
+        // Hover moves the edge, not the fill: the next fill step up is the
+        // track's colour again in the dark theme.
+        'group-data-[hovered]/cell-switch:border-border-button-hover',
         'group-data-[disabled]/cell-switch:cursor-not-allowed group-data-[disabled]/cell-switch:opacity-60',
         className,
       )}

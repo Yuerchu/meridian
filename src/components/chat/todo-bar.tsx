@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Disclosure, ProgressCircle, Tooltip, TooltipTrigger } from '@/components/base'
 import { Segment } from '@/components/base'
-import { LayoutColumns3, LayoutList } from '@gravity-ui/icons'
+import { LayoutDashboard, List } from '@keyline-icons/react/two-tone'
 import { useTranslation } from 'react-i18next'
 
 import { useConversationStore } from '@/stores/conversation-store'
@@ -119,13 +119,13 @@ export function TodoBarView({
             >
               <TooltipTrigger delay={0}>
                 <Segment.Item id="list" aria-label={t('chat.todo.viewList')} className="w-7 px-0">
-                  <LayoutList />
+                  <List className="size-4" />
                 </Segment.Item>
                 <Tooltip>{t('chat.todo.viewList')}</Tooltip>
               </TooltipTrigger>
               <TooltipTrigger delay={0}>
                 <Segment.Item id="board" aria-label={t('chat.todo.viewBoard')} className="w-7 px-0">
-                  <LayoutColumns3 />
+                  <LayoutDashboard className="size-4" />
                 </Segment.Item>
                 <Tooltip>{t('chat.todo.viewBoard')}</Tooltip>
               </TooltipTrigger>

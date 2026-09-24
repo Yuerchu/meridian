@@ -1,7 +1,7 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
-import { ChevronLeft, ArrowDownToLine, ArrowsRotateRight, Magnifier } from '@gravity-ui/icons'
+import { ChevronLeft, Download, RefreshCw, Search } from '@keyline-icons/react/two-tone'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
@@ -15,6 +15,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
   const { t } = useTranslation()
   const logs = useAppLogs()
   const [exported, markExported] = useTemporaryFlag(3000)
+  const [exportError, setExportError] = useState<string | null>(null)
 
   // The only two that were written out as literal items rather than a list.
   const levelOptions: SettingsSelectOption<LevelFilter>[] = [
@@ -38,7 +39,14 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
       filters: [{ name: 'JSONL', extensions: ['jsonl'] }],
     }).catch(() => null)
     if (!path) return
-    await api.exportLogs({ outputPath: path })
+    setExportError(null)
+    try {
+      await api.exportLogs({ outputPath: path })
+    } catch (e) {
+      // Unsaid, a refused write looks exactly like a cancelled picker.
+      setExportError(String(e))
+      return
+    }
     markExported()
   }, [markExported])
 
@@ -47,7 +55,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
   return (
     <div data-slot="log-viewer" className="flex h-full flex-col gap-4">
       <div data-slot="log-viewer-header" className="flex flex-wrap items-center gap-2">
-        <Button variant="ghost" size="small" onPress={onBack}>
+        <Button variant="secondary" size="small" onPress={onBack}>
           <ChevronLeft className="size-4" />
           {t('settings.about.logs.back')}
         </Button>
@@ -55,15 +63,21 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
           {t('settings.about.logs.title')}
         </h2>
         <div data-slot="log-viewer-actions" className="ml-auto flex items-center gap-2">
-          <Button variant="ghost" size="small" onPress={logs.refresh} isDisabled={logs.loading}>
-            <ArrowsRotateRight className="size-4" />
+          <Button
+            variant="secondary"
+            size="small"
+            onPress={logs.refresh}
+            isDisabled={logs.loading}
+            isPending={logs.refreshing}
+            leadingIcon={RefreshCw}
+          >
             {t('settings.about.logs.refresh')}
           </Button>
           {/* The picker names a path on this device and the file is written by
               whichever machine the logs belong to. Reading them here still
               works — that is what the rows below are. */}
           <Button variant="secondary" size="small" onPress={onExport} isDisabled={!can.exportToDisk}>
-            <ArrowDownToLine className="size-4" />
+            <Download className="size-4" />
             {exported ? t('settings.about.logs.exported') : t('settings.about.logs.export')}
           </Button>
         </div>
@@ -72,6 +86,11 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
       <p data-slot="log-viewer-export-hint" className="text-caption-1-regular text-text-secondary">
         {can.exportToDisk ? t('settings.about.logs.exportHint') : t('capability.exportToDisk')}
       </p>
+      {exportError && (
+        <p data-slot="log-viewer-export-error" role="alert" className="text-caption-1-regular text-status-danger">
+          {t('settings.about.logs.exportFailed', { error: exportError })}
+        </p>
+      )}
 
       <div data-slot="log-toolbar" className="flex flex-wrap items-center gap-2">
         <SettingsSelect
@@ -84,7 +103,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
 
         <InputGroup className="max-w-xs flex-1">
           <InputGroup.Prefix>
-            <Magnifier className="size-4" />
+            <Search className="size-4" />
           </InputGroup.Prefix>
           <InputGroup.Input
             aria-label={t('settings.about.logs.searchPlaceholder')}
@@ -167,7 +186,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
                   {t('settings.about.logs.capped', { max: MAX_RENDERED })}
                 </p>
               ) : logs.canLoadOlder ? (
-                <Button variant="ghost" size="small" onPress={logs.loadOlder} isPending={logs.loadingMore}>
+                <Button variant="secondary" size="small" onPress={logs.loadOlder} isPending={logs.loadingMore}>
                   {t('settings.about.logs.loadOlder')}
                 </Button>
               ) : null}

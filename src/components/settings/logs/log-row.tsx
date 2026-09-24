@@ -1,6 +1,6 @@
 import { memo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, Copy } from '@gravity-ui/icons'
+import { Check, Copy } from '@keyline-icons/react/two-tone'
 import { Button, Tooltip, TooltipTrigger } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { cx } from '@/utils/cx'
@@ -101,8 +101,9 @@ function LogRowImpl({ entry }: { entry: LogEntryInfoResponse }) {
       <TooltipTrigger delay={0}>
         <Button
           iconOnly
+          leadingIcon={copied ? Check : Copy}
           data-slot="log-row-copy"
-          variant="ghost"
+          variant="neutral"
           size="small"
           aria-label={t('settings.about.logs.copyRecord')}
           onPress={onCopy}
@@ -110,9 +111,7 @@ function LogRowImpl({ entry }: { entry: LogEntryInfoResponse }) {
           // tap grants no focus ring — the only action on the row would be
           // permanently invisible.
           className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
-        >
-          {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-        </Button>
+        />
         <Tooltip>{t('settings.about.logs.copyRecord')}</Tooltip>
       </TooltipTrigger>
     </div>

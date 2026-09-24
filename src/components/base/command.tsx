@@ -18,7 +18,7 @@ import {
   type ListBoxItemProps,
 } from 'react-aria-components'
 import { cx } from '@/utils/cx'
-import { BACKDROP_MOTION, BACKDROP_VARIANT, OVERLAY_MOTION, OVERLAY_SURFACE } from './overlay-motion'
+import { MODAL_BACKDROP, MODAL_BACKDROP_MOTION, MODAL_MOTION, OVERLAY_SURFACE } from './overlay-motion'
 
 /**
  * A command palette: a search box over a list, in a modal.
@@ -63,11 +63,11 @@ function CommandBackdrop({ isOpen, onOpenChange, children }: CommandBackdropProp
       isDismissable
       className={cx(
         'fixed inset-0 z-50 flex items-start justify-center p-4 pt-[15vh]',
-        BACKDROP_VARIANT.blur,
-        BACKDROP_MOTION,
+        MODAL_BACKDROP,
+        MODAL_BACKDROP_MOTION,
       )}
     >
-      <AriaModal data-slot="command-modal" className={cx('w-full', OVERLAY_MOTION)}>
+      <AriaModal data-slot="command-modal" className={cx('w-full', MODAL_MOTION)}>
         {children}
       </AriaModal>
     </ModalOverlay>
@@ -162,7 +162,7 @@ function CommandInputGroupInput({ className, ...props }: Omit<AriaInputProps, 'c
       data-slot="command-input"
       {...props}
       className={cx(
-        'min-w-0 flex-1 border-0 bg-transparent p-0 text-body-regular text-text-primary outline-none placeholder:text-text-tertiary',
+        'min-w-0 flex-1 border-0 bg-transparent p-0 text-body-regular text-text-primary outline-none placeholder:text-text-secondary',
         '[&::-webkit-search-cancel-button]:hidden',
         className,
       )}
@@ -181,7 +181,7 @@ function CommandInputGroupClearButton({
       aria-label={ariaLabel}
       {...props}
       className={cx(
-        'flex size-6 shrink-0 cursor-[var(--cursor-interactive)] items-center justify-center rounded-md text-text-secondary outline-none',
+        'flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-text-secondary outline-none',
         'data-[hovered]:bg-background-secondary-hover data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
         'group-data-[empty]/command-search:hidden',
         className,
@@ -223,7 +223,7 @@ function CommandList({ className, renderEmptyState, children, ...props }: Comman
       {...props}
       className={cx(
         'flex flex-col gap-0.5 overflow-y-auto p-2 outline-none',
-        '[&:empty]:hidden data-[empty]:p-4 data-[empty]:text-center data-[empty]:text-body-regular data-[empty]:text-text-tertiary',
+        '[&:empty]:hidden data-[empty]:p-4 data-[empty]:text-center data-[empty]:text-body-regular data-[empty]:text-text-secondary',
         className,
       )}
     >
@@ -261,7 +261,7 @@ function CommandItem({ className, ...props }: CommandItemProps) {
       data-slot="command-item"
       {...props}
       className={cx(
-        'flex cursor-[var(--cursor-interactive)] items-center gap-2 rounded-2lg px-2 py-1.5 text-body-medium text-text-primary outline-none select-none',
+        'flex cursor-pointer items-center gap-2 rounded-2lg px-2 py-1.5 text-body-medium text-text-primary outline-none select-none',
         'data-[focused]:bg-dropdown-item-hover-background data-[disabled]:cursor-not-allowed data-[disabled]:text-text-disabled',
         className,
       )}

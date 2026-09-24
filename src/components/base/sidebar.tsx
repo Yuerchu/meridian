@@ -9,6 +9,7 @@ import {
   type TreeItemProps,
   type TreeProps,
 } from 'react-aria-components'
+import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cx } from '@/utils/cx'
 import { Button } from './buttons/button'
@@ -96,7 +97,9 @@ function SidebarProvider({
         data-slot="sidebar-provider"
         data-sidebar-open={isOpen || undefined}
         {...props}
-        className={cx('sidebar__provider flex h-full w-full gap-3 bg-background-full p-3', className)}
+        // `gap-4` between the panel and the page, as the registry's AI Chat
+        // frame spaces its sidebar from the chat (`agent-chat.tsx`).
+        className={cx('sidebar__provider flex h-full w-full gap-4 bg-background-full p-3', className)}
       >
         {children}
       </div>
@@ -110,7 +113,10 @@ function SidebarMain({ className, ...props }: ComponentProps<'main'>) {
       data-slot="sidebar-main"
       {...props}
       className={cx(
-        'sidebar__main flex min-w-0 flex-1 flex-col overflow-hidden rounded-3xl border border-border-button-white bg-background-primary-default shadow-sidebar',
+        // The registry's AI Chat surface (`agent-chat.tsx`): a `rounded-3xl`
+        // card on `background-secondary`, no hairline and no shadow — the
+        // frame's `bg-background-full` is what sets it off.
+        'sidebar__main flex min-w-0 flex-1 flex-col overflow-hidden rounded-3xl bg-background-secondary-default',
         className,
       )}
     />
@@ -141,17 +147,17 @@ function MenuGlyph({
 /** Opens the mobile sheet below 768px; collapses the panel above it. */
 function SidebarTrigger({
   className,
-  'aria-label': ariaLabel = 'Toggle sidebar',
+  'aria-label': ariaLabel,
 }: {
   className?: string
-  'aria-label'?: string
+  /** Required: an icon-only control, and the caller knows the app's language. */
+  'aria-label': string
 }) {
   const { isOpen, setOpen, isMobile, isMobileOpen, setMobileOpen } = useContext(SidebarContext)
   return (
-    // eslint-disable-next-line meridian-ui/icon-only-needs-tooltip -- the shell wraps this in its own Tooltip
     <Button
       data-slot="sidebar-trigger"
-      variant="ghost"
+      variant="neutral"
       iconOnly
       size="small"
       leadingIcon={MenuGlyph}
@@ -234,8 +240,16 @@ interface SidebarMenuItemProps extends Omit<TreeItemProps, 'className' | 'style'
   /**
    * `pill` is boardui's quick-search affordance: fully rounded on the tertiary
    * fill, for the one row that opens something rather than going somewhere.
+   *
+   * `thread` is a conversation, drawn as the registry's AI Chat history draws
+   * one (`agent-chat-history.tsx`, `ThreadRow`): `text-body-2-regular` in
+   * secondary ink, and the current row is the neutral hover fill
+   * (`bg-background-secondary-hover`) rather than the accent gradient — which
+   * boardui keeps for navigation. Selection and hover share the fill, "so
+   * hovering previews selecting". The row carries `data-active` instead of
+   * `data-current`, so none of the white-on-accent ink below applies to it.
    */
-  appearance?: 'row' | 'pill'
+  appearance?: 'row' | 'pill' | 'thread'
   /** A tooltip on the row — for a title the row had to truncate. */
   tooltipProps?: Pick<TooltipProps, 'placement' | 'className'> & { content: ReactNode; delay?: number }
   className?: string
@@ -250,21 +264,25 @@ function SidebarMenuItem({
   children,
   ...props
 }: SidebarMenuItemProps) {
+  const thread = appearance === 'thread'
   const row = (
     <div
       data-slot="sidebar-menu-item-content"
-      data-current={isCurrent || undefined}
+      data-current={(isCurrent && !thread) || undefined}
+      data-active={(isCurrent && thread) || undefined}
       data-appearance={appearance}
       aria-current={isCurrent ? 'page' : undefined}
       className={cx(
         // boardui's NavItem: `p-2` around a 20px icon is the 36px row, and the
         // rail's row is the same element at `w-9` with its label collapsed.
         'sidebar__menu-item-content group/menu-item flex min-h-9 w-full items-center gap-2 overflow-hidden p-2',
-        'text-body-medium text-text-secondary transition-[width,background-color] duration-300 ease-in-out',
+        'text-text-secondary transition-[width,background-color] duration-300 ease-in-out',
+        thread ? 'text-body-2-regular' : 'text-body-medium',
         'group-data-[state=collapsed]/sidebar:w-9',
         appearance === 'pill'
           ? 'rounded-full bg-background-tertiary-default group-data-[hovered]/tree-item:bg-background-tertiary-hover/55'
           : 'rounded-2lg group-data-[hovered]/tree-item:bg-background-secondary-hover',
+        'data-[active]:bg-background-secondary-hover',
         'data-[current]:bg-linear-to-b data-[current]:from-accent-500 data-[current]:to-accent-600 data-[current]:text-text-white data-[current]:shadow-nav-selected',
       )}
     >
@@ -276,7 +294,7 @@ function SidebarMenuItem({
       data-slot="sidebar-menu-item"
       {...props}
       className={cx(
-        'sidebar__menu-item group/tree-item cursor-[var(--cursor-interactive)] rounded-2lg outline-none',
+        'sidebar__menu-item group/tree-item cursor-pointer rounded-2lg outline-none',
         'data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
         'data-[drop-target]:ring-2 data-[drop-target]:ring-accent-500',
         className,
@@ -331,7 +349,7 @@ function SidebarMenuChip({ className, ...props }: ComponentProps<'span'>) {
       data-slot="sidebar-menu-chip"
       {...props}
       className={cx(
-        'ml-auto flex shrink-0 items-center text-caption-1-medium text-text-tertiary group-data-[current]/menu-item:text-text-white/70',
+        'ml-auto flex shrink-0 items-center text-caption-1-medium text-text-secondary group-data-[current]/menu-item:text-text-white/70',
         COLLAPSIBLE,
         className,
       )}
@@ -354,8 +372,9 @@ function SidebarMenuAction({ className, children, ...props }: SidebarMenuActionP
         // `-my-0.5`: a 24px button in a row whose padding is sized for a 20px
         // icon would make every row carrying one 40px tall, and the rows
         // without one 36px.
-        'sidebar__menu-action -my-0.5 inline-flex size-6 shrink-0 cursor-[var(--cursor-interactive)] items-center justify-center rounded-lg text-text-secondary outline-none',
-        'data-[hovered]:bg-background-secondary-hover data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
+        'sidebar__menu-action -my-0.5 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-lg text-text-secondary outline-none',
+        'transition-colors duration-150 ease data-[hovered]:bg-background-secondary-hover',
+        'data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
         'group-data-[current]/menu-item:text-text-white/70 group-data-[current]/menu-item:data-[hovered]:bg-foreground-full/10',
         '[&_svg]:size-4 [&_svg]:shrink-0',
         className,
@@ -378,14 +397,27 @@ function SidebarMenuActions({ className, ...props }: ComponentProps<'div'>) {
 
 /* ------------------------------------------------------------------ frame */
 
-function SidebarMobile({ children, className }: { children?: ReactNode; className?: string }) {
+function SidebarMobile({
+  children,
+  className,
+  'aria-label': ariaLabel,
+}: {
+  children?: ReactNode
+  className?: string
+  /** The drawer's name; defaults to the translated "Sidebar". */
+  'aria-label'?: string
+}) {
+  const { t } = useTranslation()
   const { isMobileOpen, setMobileOpen } = useContext(SidebarContext)
   return (
     <div data-slot="sidebar-mobile" className="sidebar__mobile contents md:hidden">
       <Sheet isOpen={isMobileOpen} placement="left" onOpenChange={setMobileOpen}>
-        <Sheet.Backdrop variant="blur">
-          <Sheet.Content className={cx('w-[min(100vw-3rem,20rem)]', className)}>
-            <Sheet.Dialog aria-label="Sidebar" className="p-3">
+        <Sheet.Backdrop>
+          {/* The panel's own surface, so the tree and its inline forms read the
+              same in the drawer as beside the chat: on the sheet's default
+              primary fill a field's tertiary well vanishes in dark. */}
+          <Sheet.Content className={cx('w-[min(100vw-3rem,20rem)] bg-background-secondary-default', className)}>
+            <Sheet.Dialog aria-label={ariaLabel ?? t('sidebar.label')} className="p-3">
               {children}
             </Sheet.Dialog>
           </Sheet.Content>

@@ -76,7 +76,7 @@ const textareaStyles = sortCx({
   textarea: [
     'block w-full min-w-0 bg-transparent border-0 outline-none m-0 p-0 px-1',
     'font-sans text-body-regular text-text-primary',
-    'placeholder:text-text-tertiary',
+    'placeholder:text-text-secondary',
     'focus:placeholder:text-text-primary',
     'disabled:text-input-disabled-text disabled:placeholder:text-input-disabled-text',
     'disabled:cursor-not-allowed',
@@ -89,7 +89,7 @@ const textareaStyles = sortCx({
   },
 
   footer: 'flex w-full items-start justify-between gap-3',
-  count: 'ml-auto shrink-0 pt-px text-caption-1-medium text-text-tertiary tabular-nums',
+  count: 'ml-auto shrink-0 pt-px text-caption-1-medium text-text-secondary tabular-nums',
 })
 
 /** Fallback line box for `text-body-regular` (14/20) before styles resolve. */

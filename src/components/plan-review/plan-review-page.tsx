@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type Key, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Key, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { ChevronDown, Clock, Comment, TriangleExclamation, Xmark } from '@gravity-ui/icons'
+import { ChevronDown, Clock, Message, TriangleAlert, X } from '@keyline-icons/react/two-tone'
 import {
+  Alert,
   Button,
   Chip,
   Dropdown,
@@ -19,6 +20,7 @@ import { Sheet } from '@/components/base'
 import { api } from '@/api'
 import { FileDiffCard } from '@/components/chat/file-diff-card'
 import { Hint } from '@/components/ui/hint'
+import { useConfirm } from '@/hooks/use-confirm'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useIsNarrow } from '@/hooks/use-narrow'
 import { remapSourceRange, sourceRangeAnchor } from '@/lib/plan-comment-decorations'
@@ -40,6 +42,7 @@ import {
   PlanDraftSaveQueue,
   PlanDecisionAttempt,
   PlanDecisionInDoubtError,
+  planDraftUnsavedParts,
   planReviewActionRules,
   type PlanDraftSaveState,
 } from '@/lib/plan-review-draft'
@@ -53,6 +56,7 @@ import type {
   PlanSourceRange,
 } from '@/types'
 
+import { registerPlanReviewLeaveGuard } from './navigation'
 import { PlanCommentsPane, type PlanCommentFocusRequest } from './plan-comments-pane'
 import { PlanReviewEditor } from './plan-review-editor'
 
@@ -98,7 +102,7 @@ function PlanReviewSkeleton() {
       role="status"
       aria-busy="true"
       aria-label={t('common.loading')}
-      className="flex h-full min-h-0 flex-col bg-background-primary-default"
+      className="flex h-full min-h-0 flex-col bg-background-full"
     >
       <div
         data-slot="plan-review-skeleton-header"
@@ -187,11 +191,11 @@ function SourceEditor({
           </p>
           <Button
             size="small"
-            variant="ghost"
+            variant="secondary"
             isDisabled={!selection}
             onPress={() => selection && onAddComment(selection)}
           >
-            <Comment />
+            <Message className="size-4" />
             {t('planReview.comments.add')}
           </Button>
         </div>
@@ -206,8 +210,10 @@ function SourceEditor({
  *  not explain it. */
 interface Problem {
   key: string
+  /** `danger` for something that failed, `warning` for something to resolve. */
+  status: 'danger' | 'warning'
   message: string
-  action?: { label: string; run: () => void; pending?: boolean }
+  actions?: { label: string; run: () => void; pending?: boolean }[]
 }
 
 export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClose: () => void }) {
@@ -272,6 +278,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           setSaveState(state)
           setSaveError(error ? String(error) : null)
         },
+        payload,
       )
       saveQueueRef.current = queue
       setInfo(next)
@@ -313,7 +320,9 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
       // Leaving is not discarding. Whatever the debounce was still holding is
       // the last thing typed, and the queue outlives this component, so it can
-      // finish the save with nobody watching.
+      // finish the save with nobody watching. Every door the shell has asks
+      // the leave guard first, which saves or is told to discard before this
+      // runs; the catch is only reached once somebody has said to let it go.
       void saveQueueRef.current?.flush().catch(() => undefined)
     }
   }, [loadReview])
@@ -399,6 +408,85 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
     await saveQueueRef.current?.flush()
   }, [])
 
+  const { confirm, confirmDialog } = useConfirm()
+
+  // The page's own heading, so opening it lands a screen reader here rather
+  // than on whatever was focused under the layer. Once per page: a reload
+  // after a conflict must not pull focus away from the banner being read.
+  const titleRef = useRef<HTMLHeadingElement>(null)
+  const titleFocusedRef = useRef(false)
+  useEffect(() => {
+    if (!info || titleFocusedRef.current) return
+    titleFocusedRef.current = true
+    titleRef.current?.focus({ preventScroll: true })
+  }, [info])
+
+  /** Anything here the server does not have: a refused editor value, or a
+   *  queued, in-flight or failed save. */
+  const hasLocalChanges = () => codecError !== null || (saveQueueRef.current?.hasUnsaved() ?? false)
+
+  /** What discarding would lose, named in the reviewer's terms. */
+  const describeUnsaved = (): string => {
+    const saved = saveQueueRef.current?.lastSaved() ?? null
+    const parts = saved && payload ? planDraftUnsavedParts(saved, payload) : []
+    // A refused value never reached the draft, so only the error knows it.
+    if (codecError && !parts.includes('body')) parts.unshift('body')
+    if (parts.length === 0) return t('planReview.unsaved.generic')
+    return t('planReview.unsaved.parts', {
+      parts: parts.map((part) => t(`planReview.unsaved.part.${part}`)).join(t('planReview.unsaved.separator')),
+    })
+  }
+
+  const requestLeave = async (): Promise<boolean> => {
+    const queue = saveQueueRef.current
+    // Merely unsaved is finished rather than asked about: the save is what
+    // the reviewer expected to happen anyway. Only a save that fails, or had
+    // already failed, becomes a question.
+    if (!codecError && queue && !queue.failed() && queue.hasUnsaved()) {
+      try {
+        await flush()
+      } catch {
+        // The failure is on the banner now; the question below says what goes.
+      }
+    }
+    if (!hasLocalChanges()) return true
+    return confirm({
+      title: t('planReview.leave.title'),
+      body: describeUnsaved(),
+      confirmLabel: t('planReview.leave.confirm'),
+      status: 'danger',
+    })
+  }
+  const requestLeaveRef = useRef(requestLeave)
+  useLayoutEffect(() => {
+    requestLeaveRef.current = requestLeave
+  })
+  useEffect(() => registerPlanReviewLeaveGuard(() => requestLeaveRef.current()), [])
+
+  const reloadServerCopy = async () => {
+    if (
+      hasLocalChanges() &&
+      !(await confirm({
+        title: t('planReview.reloadConfirm.title'),
+        body: describeUnsaved(),
+        confirmLabel: t('planReview.reload'),
+        status: 'danger',
+      }))
+    ) {
+      return
+    }
+    void loadReview()
+  }
+
+  const retrySave = () => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
+    // The queue reports the outcome through its state callback.
+    void saveQueueRef.current?.retry().catch(() => undefined)
+  }
+
   const addComment = useCallback(
     (anchor: PlanCommentAnchor) => {
       const id = crypto.randomUUID()
@@ -433,6 +521,10 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
 
   const selectComment = useCallback(
     (comment: PlanCommentInfoResponse) => {
+      // An orphaned comment's anchor is where its words *used to be*. Those
+      // coordinates now cover other text, and selecting them would put the
+      // comment on words it was never about.
+      if (comment.state === 'orphaned') return
       // From inside the sheet the text is behind a backdrop, so the jump would
       // be invisible; close first and let the sheet leave before taking focus.
       const wasOpen = commentsOpen
@@ -510,7 +602,10 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
     try {
       await flush()
       const committed = saveQueueRef.current?.committed()
-      if (!committed) throw new Error('plan draft save queue is unavailable')
+      if (!committed) {
+        setPageError(t('planReview.saveQueueUnavailable'))
+        return
+      }
       const attempt = decisionAttemptRef.current.forAction(action)
       const result = await api.decidePlanReview({
         reviewId,
@@ -537,6 +632,16 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
   }
 
   const discard = async () => {
+    if (
+      !(await confirm({
+        title: t('planReview.discardConfirm.title'),
+        body: t('planReview.discardConfirm.body'),
+        confirmLabel: t('planReview.discard'),
+        status: 'danger',
+      }))
+    ) {
+      return
+    }
     const committed = saveQueueRef.current?.committed()
     if (!committed) return
     setDeciding(true)
@@ -600,7 +705,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           <Button variant="secondary" onPress={() => void loadReview()}>
             {t('planReview.reload')}
           </Button>
-          <Button variant="ghost" onPress={onClose}>
+          <Button variant="secondary" onPress={onClose}>
             {t('common.close')}
           </Button>
         </div>
@@ -616,23 +721,27 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
   const visibleMode = historicalContent?.mode ?? draft.mode
   const visibleFallback = historicalContent?.mode === 'source' ? historicalContent.reason : draft.fallbackReason
 
-  const reload = { label: t('planReview.reload'), run: () => void loadReview() }
+  const reload = { label: t('planReview.reload'), run: () => void reloadServerCopy() }
+  const retry = { label: t('planReview.save.retry'), run: retrySave }
   const problems: Problem[] = []
   if (effectiveSaveState === 'conflict') {
-    problems.push({ key: 'save-conflict', message: t('planReview.save.conflict'), action: reload })
+    problems.push({ key: 'save-conflict', status: 'danger', message: t('planReview.save.conflict'), actions: [reload] })
   } else if (effectiveSaveState === 'error') {
     problems.push({
       key: 'save-error',
+      status: 'danger',
       message: t('planReview.save.error', { error: saveError ?? codecError ?? t('planReview.unknownError') }),
-      action: reload,
+      // A refused editor value fails the same way however often it is sent.
+      actions: codecError ? [reload] : [retry, reload],
     })
   }
-  if (pageError) problems.push({ key: 'page', message: pageError, action: reload })
+  if (pageError) problems.push({ key: 'page', status: 'danger', message: pageError, actions: [reload] })
   if (info.document.file_sync_state === 'conflict') {
     problems.push({
       key: 'file',
+      status: 'warning',
       message: t('planReview.fileConflict'),
-      action: { label: t('planReview.restoreFile'), run: () => void restorePlanFile(), pending: restoring },
+      actions: [{ label: t('planReview.restoreFile'), run: () => void restorePlanFile(), pending: restoring }],
     })
   }
   if (info.delivery?.state === 'held' || info.delivery?.state === 'in_doubt') {
@@ -640,10 +749,11 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
     // retry that fails the same way lands back here with the same message.
     problems.push({
       key: 'delivery',
+      status: 'warning',
       message: info.delivery.error
         ? t('planReview.deliveryHeldError', { error: info.delivery.error })
         : t('planReview.deliveryHeld'),
-      action: { label: t('planReview.continueDelivery'), run: () => void continueDelivery(), pending: continuing },
+      actions: [{ label: t('planReview.continueDelivery'), run: () => void continueDelivery(), pending: continuing }],
     })
   }
   // Progress, not a problem: the decision is made and on its way. Announced as
@@ -665,7 +775,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
     <div
       ref={pageRef}
       data-slot="plan-review-page"
-      className="@container flex h-full min-h-0 flex-col bg-background-primary-default"
+      className="@container flex h-full min-h-0 flex-col bg-background-full"
     >
       <header data-slot="plan-review-header" className="shrink-0 border-b border-border-button-default">
         <div
@@ -674,9 +784,15 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
         >
           <div data-slot="plan-review-heading" className="min-w-0 flex-1">
             <div data-slot="plan-review-title-row" className="flex items-center gap-2">
-              <h1 data-slot="plan-review-title" className="truncate text-body-semibold">
+              {/* `h2`: the shell's header already holds the page's `h1`. */}
+              <h2
+                data-slot="plan-review-title"
+                ref={titleRef}
+                tabIndex={-1}
+                className="truncate rounded-sm text-body-semibold outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring/50"
+              >
                 {t('planReview.title')}
-              </h1>
+              </h2>
               <Chip size="sm" variant="secondary">
                 {t(`planReview.status.${info.review.state}`)}
               </Chip>
@@ -695,12 +811,12 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           </div>
 
           <Dropdown>
-            <Button variant="ghost" size="small">
-              <Clock />
+            <Button variant="secondary" size="small">
+              <Clock className="size-4" />
               {historicalRevision
                 ? t('planReview.revision', { number: historicalRevision.revision_no })
                 : t('planReview.history.current')}
-              <ChevronDown />
+              <ChevronDown className="size-4" />
             </Button>
             <DropdownPopover
               placement="bottom end"
@@ -732,9 +848,14 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           </Dropdown>
 
           <TooltipTrigger>
-            <Button iconOnly variant="ghost" size="small" aria-label={t('common.close')} onPress={onClose}>
-              <Xmark />
-            </Button>
+            <Button
+              iconOnly
+              leadingIcon={X}
+              variant="neutral"
+              size="small"
+              aria-label={t('common.close')}
+              onPress={onClose}
+            />
             <Tooltip>{t('common.close')}</Tooltip>
           </TooltipTrigger>
         </div>
@@ -743,32 +864,42 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
       {problems.length > 0 && (
         <div
           data-slot="plan-review-problems"
-          className="shrink-0 divide-y divide-status-warning/20 border-b border-border-button-default bg-status-warning-soft text-body-regular text-status-warning-soft-foreground"
+          className="shrink-0 border-b border-border-button-default px-3 py-2 @sm:px-5"
         >
-          {problems.map((problem) => (
-            <div
-              data-slot="plan-review-problem"
-              key={problem.key}
-              className="mx-auto flex max-w-[96rem] items-center gap-3 px-4 py-2"
-            >
-              <TriangleExclamation className="shrink-0" />
-              <p data-slot="plan-review-problem-message" role="alert" className="min-w-0 flex-1 break-words">
-                {problem.message}
-              </p>
-              {problem.action && (
-                <Button size="small" isDisabled={problem.action.pending} onPress={problem.action.run}>
-                  {problem.action.label}
-                </Button>
-              )}
-            </div>
-          ))}
+          <div data-slot="plan-review-problem-list" className="mx-auto max-w-[96rem] space-y-2">
+            {problems.map((problem) => (
+              <Alert
+                key={problem.key}
+                status={problem.status}
+                data-problem={problem.key}
+                icon={<TriangleAlert className="size-4" />}
+              >
+                <div data-slot="plan-review-problem-row" className="flex flex-wrap items-center gap-2">
+                  <p data-slot="plan-review-problem-message" className="min-w-0 flex-1 break-words text-body-regular">
+                    {problem.message}
+                  </p>
+                  {problem.actions?.map((action) => (
+                    <Button
+                      key={action.label}
+                      variant="secondary"
+                      size="small"
+                      isDisabled={action.pending}
+                      onPress={action.run}
+                    >
+                      {action.label}
+                    </Button>
+                  ))}
+                </div>
+              </Alert>
+            ))}
+          </div>
         </div>
       )}
 
       {progress && (
         <div
           data-slot="plan-review-progress"
-          className="shrink-0 border-b border-border-button-default bg-button-ghost-background px-4 py-2 text-body-regular text-button-ghost-foreground"
+          className="shrink-0 border-b border-border-button-default bg-status-info-soft px-4 py-2 text-body-regular text-status-info-soft-foreground"
         >
           <div data-slot="plan-review-progress-row" className="mx-auto flex max-w-[96rem] items-center gap-3">
             <p data-slot="plan-review-progress-message" role="status" className="min-w-0 flex-1 break-words">
@@ -805,11 +936,9 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
               {t('planReview.tabs.suggestions')}
             </Segment.Item>
           </Segment>
-          <span
-            data-slot="plan-review-save-state"
-            className="ms-auto text-caption-1-regular text-text-secondary"
-            role="status"
-          >
+          {/* Not a live region: it changes with every debounced save. A failure
+              or a conflict is announced once, by its alert in the banner. */}
+          <span data-slot="plan-review-save-state" className="ms-auto text-caption-1-regular text-text-secondary">
             {effectiveSaveState === 'error'
               ? t('planReview.save.failed')
               : effectiveSaveState === 'conflict'
@@ -818,11 +947,11 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           </span>
           <Button
             size="small"
-            variant="ghost"
+            variant="secondary"
             className="plan-review-comments-trigger"
             onPress={() => setCommentsOpen(true)}
           >
-            <Comment />
+            <Message className="size-4" />
             {t('planReview.comments.title')}
           </Button>
         </div>
@@ -936,7 +1065,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
 
       <footer
         data-slot="plan-review-footer"
-        className="shrink-0 border-t border-border-button-default bg-background-primary-default px-3 py-3 @sm:px-5"
+        className="shrink-0 border-t border-border-button-default bg-background-full px-3 py-3 @sm:px-5"
       >
         <div
           data-slot="plan-review-footer-row"
@@ -959,13 +1088,17 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           </div>
           <div data-slot="plan-review-decision-actions" className="flex shrink-0 items-center justify-end gap-2">
             <Button
-              variant="ghost"
+              variant="secondary"
               isDisabled={deciding || effectiveSaveState !== 'saved' || rules.isPristine || isReadOnly}
               onPress={() => void discard()}
             >
               {t('planReview.discard')}
             </Button>
-            <Button isDisabled={deciding || !rules.canRequestChanges} onPress={() => void decide('request_changes')}>
+            <Button
+              variant="secondary"
+              isDisabled={deciding || !rules.canRequestChanges}
+              onPress={() => void decide('request_changes')}
+            >
               {t('planReview.requestChanges')}
             </Button>
             <Button
@@ -983,20 +1116,31 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
       {/* Portalled to `body`, so this is the one width here that really is
           about the viewport rather than the page. */}
       <Sheet isOpen={commentsOpen} placement="right" onOpenChange={setCommentsOpen} isDismissable>
-        <Sheet.Backdrop variant="blur">
-          <Sheet.Content className="w-full sm:max-w-md">
+        <Sheet.Backdrop>
+          {/* The modal surface (`MODAL_SURFACE` is `background-full`), not the
+            sheet's default `background-primary`: a field's tertiary well is the same
+            neutral-800 as primary in dark, so on the default the field had no edge. */}
+          <Sheet.Content className="w-full bg-background-full sm:max-w-md">
             <Sheet.Dialog className="flex h-full min-h-0 flex-col">
               <Sheet.Header>
                 <Sheet.Heading>{t('planReview.comments.title')}</Sheet.Heading>
                 <Sheet.CloseTrigger aria-label={t('common.close')} />
               </Sheet.Header>
-              <Sheet.Body data-sheet-no-drag className="min-h-0 flex-1 p-0">
+              {/* The keyboard inset is added to this body's own (zero) bottom
+                  padding: the overall note sits at the bottom of the pane, and
+                  a soft keyboard would otherwise cover the field being typed
+                  into. The two insets are exclusive, so the sum is one of them. */}
+              <Sheet.Body
+                data-sheet-no-drag
+                className="min-h-0 flex-1 p-0 pb-[calc(0px+var(--ime-bottom,0px)+var(--safe-bottom,0px))]"
+              >
                 {commentsPane('plan-comments-sheet-heading')}
               </Sheet.Body>
             </Sheet.Dialog>
           </Sheet.Content>
         </Sheet.Backdrop>
       </Sheet>
+      {confirmDialog}
     </div>
   )
 }

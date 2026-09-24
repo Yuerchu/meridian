@@ -64,7 +64,7 @@ export function ConfirmDialog({
   const heading = title ?? t('confirm.title')
   const buttons = (
     <>
-      <Button slot="close" variant="tertiary">
+      <Button slot="close" variant="secondary">
         {t('common.cancel')}
       </Button>
       {/* Closed here rather than with `slot="close"`, so that the answer

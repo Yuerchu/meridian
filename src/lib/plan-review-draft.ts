@@ -103,10 +103,34 @@ export function isPlanStateConflict(error: unknown): boolean {
   return /(^|\W)plan state conflict:/.test(String(error))
 }
 
+/** The parts of a draft a reviewer would recognise as their own work. */
+export type PlanDraftPart = 'body' | 'comments' | 'note'
+
+/**
+ * What the local draft holds that the server's copy does not, in the reviewer's
+ * terms. Asked before anything replaces the local draft, so the question can say
+ * *what* it is about to throw away rather than only that something will go.
+ */
+export function planDraftUnsavedParts(saved: PlanDraftPayload, local: PlanDraftPayload): PlanDraftPart[] {
+  const parts: PlanDraftPart[] = []
+  if (saved.normalizedMarkdown !== local.normalizedMarkdown || saved.sourceText !== local.sourceText) {
+    parts.push('body')
+  }
+  if (JSON.stringify(saved.comments) !== JSON.stringify(local.comments)) parts.push('comments')
+  if ((saved.globalNote ?? '') !== (local.globalNote ?? '')) parts.push('note')
+  return parts
+}
+
 /**
  * One CAS writer for one open review. Calls are strictly ordered; edits made
  * while a save is in flight replace the pending snapshot, never the request
  * whose generation has already been claimed.
+ *
+ * A failed save keeps what it failed to write. The failure is sticky — nothing
+ * is sent again until someone asks with {@link retry} — but the payload stays
+ * pending, and later edits replace it, so a failure is never the moment an edit
+ * quietly stops existing. A conflict cannot be retried: its generation is stale
+ * and only reloading the server copy resolves it.
  */
 export class PlanDraftSaveQueue {
   private pending: PlanDraftPayload | null = null
@@ -119,11 +143,15 @@ export class PlanDraftSaveQueue {
     private generation: number,
     private draftHash: string,
     private readonly onStateChange: (state: PlanDraftSaveState, error?: unknown) => void,
+    private saved: PlanDraftPayload | null = null,
   ) {}
 
   enqueue(payload: PlanDraftPayload): void {
-    if (this.failure) throw this.failure
     this.pending = payload
+    if (this.failure) {
+      this.onStateChange(this.failureState(), this.failure)
+      return
+    }
     this.onStateChange('dirty')
   }
 
@@ -141,6 +169,31 @@ export class PlanDraftSaveQueue {
 
   committed(): { generation: number; draftHash: string } {
     return { generation: this.generation, draftHash: this.draftHash }
+  }
+
+  /** The last payload the server confirmed, or the one this queue was opened on. */
+  lastSaved(): PlanDraftPayload | null {
+    return this.saved
+  }
+
+  /** Whether anything local has not reached the server: queued, in flight, or failed. */
+  hasUnsaved(): boolean {
+    return this.pending !== null || this.running !== null || this.failure !== null
+  }
+
+  failed(): boolean {
+    return this.failure !== null
+  }
+
+  /** Clears an ordinary failure and sends the retained draft again. */
+  async retry(): Promise<void> {
+    if (this.failure && isPlanStateConflict(this.failure)) throw this.failure
+    this.failure = null
+    if (!this.pending && !this.running) {
+      this.onStateChange('saved')
+      return
+    }
+    await this.flush()
   }
 
   async flush(): Promise<void> {
@@ -162,6 +215,10 @@ export class PlanDraftSaveQueue {
     if (this.pending) await this.flush()
   }
 
+  private failureState(): PlanDraftSaveState {
+    return isPlanStateConflict(this.failure) ? 'conflict' : 'error'
+  }
+
   private async drain(): Promise<void> {
     while (this.pending) {
       const payload = this.pending
@@ -175,10 +232,13 @@ export class PlanDraftSaveQueue {
         })
         this.generation = result.generation
         this.draftHash = result.draft_sha256
+        this.saved = payload
       } catch (error) {
         this.failure = error
-        this.pending = null
-        this.onStateChange(isPlanStateConflict(error) ? 'conflict' : 'error', error)
+        // An edit made while this request was in flight is newer than the one
+        // that failed; either way the newest unsaved snapshot is what stays.
+        this.pending ??= payload
+        this.onStateChange(this.failureState(), error)
         throw error
       }
     }

@@ -1,7 +1,7 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { ArrowDownToSquare, ChevronDown, Copy, Scissors, SquareDashedText, Xmark } from '@gravity-ui/icons'
+import { ArrowInDownDashedPanel, ChevronDown, Copy, CursorText, Scissors, X } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
 import { Button, Kbd, Label, ListBox, Popover, Tooltip, TooltipTrigger } from '@/components/base'
@@ -17,7 +17,7 @@ import { useIsOffline } from '@/hooks/use-connection-state'
 import { useVoiceRecorder, type VoiceNotice } from '@/hooks/use-voice-recorder'
 import { useAndroidVoiceRecorder } from '@/hooks/use-android-voice-recorder'
 import { useHistoryLevel } from '@/hooks/use-history-level'
-import { useComposerTypeahead } from '@/hooks/use-composer-typeahead'
+import { suggestionOptionId, useComposerTypeahead } from '@/hooks/use-composer-typeahead'
 import { FileInput, type FileInputHandle } from '@/components/ui/file-input'
 import { VoiceButton } from '@/components/ui/voice-button'
 import { Composer } from './composer'
@@ -223,7 +223,7 @@ function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAc
     <Popover>
       <TooltipTrigger delay={0}>
         <Button
-          variant="ghost"
+          variant="secondary"
           aria-label={t('chat.agentOptions')}
           data-slot="agent-options-trigger"
           isDisabled={busy}
@@ -407,6 +407,7 @@ export function InputBar({
   // Filled by Composer once the field exists: PromptInput.TextArea spreads
   // incoming props after its own ref, so one passed down would displace theirs.
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const suggestionsId = useId()
   const [selectedText, setSelectedText] = useState('')
 
   // Transient one-line notice above the composer ("too short", model missing…)
@@ -471,10 +472,15 @@ export function InputBar({
     onSubmit()
   }, [disabled, streaming, value, pendingSticker, onSubmit])
 
-  const moveCaret = useCallback((next: number) => {
+  // `expected` is the value the caret position was computed against. The move
+  // lands a frame later, and a key typed in that frame — a fast typist, key
+  // repeat — has already moved on: putting the caret back at the old length
+  // then inserts the next character in the middle of the word.
+  const moveCaret = useCallback((next: number, expected?: string) => {
     requestAnimationFrame(() => {
       const el = textareaRef.current
       if (!el) return
+      if (expected !== undefined && el.value !== expected) return
       el.selectionStart = next
       el.selectionEnd = next
       setCaret(next)
@@ -488,7 +494,7 @@ export function InputBar({
   // than the value token. Only this exact picker transition is repositioned;
   // later clicks within the unchanged value remain untouched.
   useEffect(() => {
-    if (/^\/\S+ $/.test(value)) moveCaret(value.length)
+    if (/^\/\S+ $/.test(value)) moveCaret(value.length, value)
   }, [moveCaret, value])
 
   const acceptSuggestion = useCallback(
@@ -496,7 +502,7 @@ export function InputBar({
       const next = typeahead.accept(item)
       if (!next) return
       onChange(next.value)
-      moveCaret(next.caret)
+      moveCaret(next.caret, next.value)
       if (!next.keepOpen) typeahead.dismiss()
     },
     [moveCaret, onChange, typeahead],
@@ -639,12 +645,14 @@ export function InputBar({
       const files = await Promise.all(
         paths.map(async (p) => ({
           path: p,
-          name: await api.resolveFileName(p).catch(() => p.replace(/\\/g, '/').split('/').pop() ?? 'file'),
+          name: await api
+            .resolveFileName(p)
+            .catch(() => p.replace(/\\/g, '/').split('/').pop() || t('chat.attachedFile')),
         })),
       )
       onAttachFiles(files)
     },
-    [onAttachFiles],
+    [onAttachFiles, t],
   )
 
   const handlePickFile = useCallback(async () => {
@@ -683,13 +691,13 @@ export function InputBar({
         </>
       )}
       <ContextMenu.Item id="paste" textValue={t('contextMenu.paste')} onAction={() => void handlePaste()}>
-        <ArrowDownToSquare className="size-4 text-text-secondary" />
+        <ArrowInDownDashedPanel className="size-4 text-text-secondary" />
         <Label>{t('contextMenu.paste')}</Label>
         <Shortcut keys="Ctrl+V" />
       </ContextMenu.Item>
       <ContextMenu.Separator />
       <ContextMenu.Item id="select-all" textValue={t('contextMenu.selectAll')} onAction={handleSelectAll}>
-        <SquareDashedText className="size-4 text-text-secondary" />
+        <CursorText className="size-4 text-text-secondary" />
         <Label>{t('contextMenu.selectAll')}</Label>
         <Shortcut keys="Ctrl+A" />
       </ContextMenu.Item>
@@ -752,9 +760,20 @@ export function InputBar({
             inputMode={value.startsWith('!') ? 'shell' : 'prompt'}
             onCaretChange={setCaret}
             onKeyDownCapture={handleComposerKeyDown}
+            fieldProps={{
+              role: 'combobox',
+              'aria-autocomplete': 'list',
+              'aria-expanded': typeahead.open,
+              'aria-controls': typeahead.open ? suggestionsId : undefined,
+              'aria-activedescendant':
+                typeahead.open && typeahead.items[typeahead.activeIndex]
+                  ? suggestionOptionId(suggestionsId, typeahead.activeIndex)
+                  : undefined,
+            }}
             suggestions={
               typeahead.open ? (
                 <ComposerSuggestions
+                  id={suggestionsId}
                   items={typeahead.items}
                   activeIndex={typeahead.activeIndex}
                   onAction={acceptSuggestion}
@@ -803,10 +822,29 @@ export function InputBar({
                         <ChatAttachment
                           key={i}
                           name={f.name}
-                          src={f.path ? localPreviewSrc(f.path, f.name) : undefined}
+                          src={f.path && !f.missing ? localPreviewSrc(f.path, f.name) : undefined}
                         >
                           <ChatAttachment.Preview />
-                          <ChatAttachment.Info />
+                          {f.missing ? (
+                            // Restored from a saved draft; the file has gone
+                            // since. Kept visible so it can be removed.
+                            <ChatAttachment.Info>
+                              <span
+                                data-slot="chat-attachment-name"
+                                className="block truncate text-body-2-medium text-text-primary"
+                              >
+                                {f.name}
+                              </span>
+                              <span
+                                data-slot="chat-attachment-missing"
+                                className="block truncate text-caption-1-regular text-status-danger"
+                              >
+                                {t('chat.draft.fileMissing')}
+                              </span>
+                            </ChatAttachment.Info>
+                          ) : (
+                            <ChatAttachment.Info />
+                          )}
                           {onRemoveFile && (
                             <ChatAttachment.Remove
                               aria-label={t('chat.removeAttachment', { name: f.name })}
@@ -832,14 +870,13 @@ export function InputBar({
                         <TooltipTrigger delay={0}>
                           <Button
                             iconOnly
-                            size="small"
-                            variant="primary"
+                            leadingIcon={X}
+                            size="xs"
+                            variant="neutral"
                             aria-label={t('chat.removeSticker')}
                             className="touch-hitbox absolute -right-2 -top-2 min-w-0 size-6 rounded-full shadow-card"
                             onPress={onRemoveSticker}
-                          >
-                            <Xmark className="size-3.5" />
-                          </Button>
+                          />
                           <Tooltip>{t('chat.removeSticker')}</Tooltip>
                         </TooltipTrigger>
                       )}

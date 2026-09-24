@@ -525,14 +525,35 @@ export function awaitingModel(turn: Turn): boolean {
   return !tail || tail.type === 'tool_call'
 }
 
-/** The text a copy of the whole answer should carry: every bubble's prose, in
- *  order, and nothing else. Keyboards, reasoning and stickers are not prose. */
-export function groupsPlainText(groups: AssistantGroup[]): string {
-  const parts: string[] = []
-  for (const g of groups) {
-    for (const b of g.bubbles) {
-      if (b.kind === 'text') parts.push(b.text)
+/**
+ * What "copy" copies when it is aimed at one bubble: that bubble's prose, as
+ * the Markdown the model wrote, and nothing else. `null` for a bubble with no
+ * prose — a bare keyboard, a summary, a sticker, the typing indicator — which
+ * therefore offers no copy at all.
+ *
+ * The scope is the bubble, never the turn. Copy used to join every bubble's
+ * prose, so right-clicking the last bubble of a turn that had worked through
+ * several steps put the first step's "let me look" at the top of the clipboard.
+ */
+export function bubbleCopyText(bubble: BubbleModel): string | null {
+  return bubble.kind === 'text' && bubble.text.trim() ? bubble.text : null
+}
+
+/**
+ * What the turn's own copy button copies: its conclusion — the prose after the
+ * last tool call (`TurnResult.text`), which is what sits directly above the
+ * footer that button lives in. A turn with no conclusion (stopped, or blocked
+ * on the user) falls back to its last bubble of prose, still one bubble and
+ * never the whole run.
+ */
+export function turnCopyText(turn: Turn, groups: AssistantGroup[]): string {
+  if (turn.result?.text) return turn.result.text
+  for (let g = groups.length - 1; g >= 0; g--) {
+    const bubbles = groups[g].bubbles
+    for (let b = bubbles.length - 1; b >= 0; b--) {
+      const text = bubbleCopyText(bubbles[b])
+      if (text !== null) return text
     }
   }
-  return parts.join('\n\n')
+  return ''
 }

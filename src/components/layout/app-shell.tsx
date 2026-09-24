@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Alert, Button, Kbd, Tooltip, TooltipTrigger } from '@/components/base'
 import { Sidebar } from '@/components/base'
 import { Resizable } from '@/components/base'
-import { FolderTree, Magnifier, Xmark } from '@gravity-ui/icons'
+import { FolderTree, Search, X } from '@keyline-icons/react/two-tone'
 import { ChangesPanel } from '@/components/chat/changes-panel'
 import { ChatView } from '@/components/chat/chat-view'
 import { EmptyState } from '@/components/chat/empty-state'
@@ -16,9 +16,12 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { useSidebarResize } from '@/hooks/use-sidebar-resize'
 import { usePlatform } from '@/hooks/use-platform'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
-import { ApprovalToastRegion } from './approval-toasts'
+import { usePlanReviewNavigation } from '@/components/plan-review/navigation'
+import { ApprovalNotifications } from './approval-notifications'
 import { AppSidebar } from './app-sidebar'
+import { CHANGES_PANEL_SIZE, CHAT_PANEL_SIZE } from './changes-split'
 import { CommandPalette } from './command-palette'
+import { NotificationInbox } from './notification-inbox'
 import { RemoteStatus } from './remote-status'
 import type { ShellProps } from './shell-props'
 
@@ -99,7 +102,9 @@ export function AppShell(props: ShellProps) {
   const pageHeadingRef = useRef<HTMLHeadingElement>(null)
   const previousPageRef = useRef(page)
   const activeReviewId = usePlanReviewStore((state) => state.activeReviewId)
-  const closePlanReview = usePlanReviewStore((state) => state.closeReview)
+  // Every way out of a plan review asks it first: it may hold a draft whose
+  // save failed. Also owns the review's back-gesture level and focus return.
+  const leavePlanReview = usePlanReviewNavigation()
 
   useEffect(() => {
     if (previousPageRef.current === page) return
@@ -147,15 +152,15 @@ export function AppShell(props: ShellProps) {
 
   const selectConversation = useCallback(
     async (id: string) => {
+      if (!(await leavePlanReview())) return false
       if (page === 'settings') {
         if (!(await requestLeaveSettings())) return false
         clearSettingsTabDirty(settingsTab)
       }
-      closePlanReview()
       onSelect(id)
       return true
     },
-    [closePlanReview, onSelect, page, requestLeaveSettings, settingsTab],
+    [leavePlanReview, onSelect, page, requestLeaveSettings, settingsTab],
   )
 
   useBackGesture()
@@ -170,17 +175,16 @@ export function AppShell(props: ShellProps) {
       requestAnimationFrame(() => setSettingsHistoryClaimed(true))
     })
   })
-  useHistoryLevel(activeReviewId !== null, closePlanReview)
 
   const commandShortcut = platform === null ? 'Ctrl/⌘ K' : platform === 'macos' || platform === 'ios' ? '⌘ K' : 'Ctrl K'
   const createConversation = async (projectId?: string | null) => {
+    if (!(await leavePlanReview())) return
     const leavesSettings = page === 'settings'
     if (leavesSettings) {
       if (!(await requestLeaveSettings())) return
     }
     setActionError(null)
     try {
-      closePlanReview()
       await onCreate(projectId)
       if (leavesSettings) clearSettingsTabDirty(settingsTab)
     } catch (error) {
@@ -226,8 +230,9 @@ export function AppShell(props: ShellProps) {
           onDelete={onDelete}
           page={page}
           onOpenSettings={() => {
-            closePlanReview()
-            onOpenSettings()
+            void leavePlanReview().then((left) => {
+              if (left) onOpenSettings()
+            })
           }}
           onCloseSettings={() => void closeSettings()}
           settingsTab={settingsTab}
@@ -251,18 +256,15 @@ export function AppShell(props: ShellProps) {
             aria-orientation="vertical"
             tabIndex={-1}
             onDoubleClick={resetWidth}
-            className="relative hidden md:block w-0.5 shrink-0 cursor-col-resize bg-transparent hover:bg-border-focus-ring/30 active:bg-border-focus-ring/50 transition-colors before:absolute before:inset-y-0 before:-left-1 before:w-3 before:content-['']"
+            className="relative hidden md:block w-0.5 shrink-0 cursor-col-resize bg-transparent hover:bg-border-button-hover active:bg-border-button-active transition-colors before:absolute before:inset-y-0 before:-left-1 before:w-3 before:content-['']"
             {...resizeHandleProps}
           />
         )}
-        {/* `min-h-0` is what makes the keyboard inset above actually do
-          something. `.sidebar__main` is `min-height: 100svh` (`calc(100svh -
-          1rem)` under `variant="inset"`), so shrinking the provider's content
-          box leaves this pane insisting on a full viewport regardless — the
-          composer stays under the keyboard and nothing moves. It stretches to
-          the provider either way, so removing the floor costs nothing on a
-          desktop and is the whole fix on a phone. The shell that used to serve
-          phones owned a plain `div` here, which is why this never came up. */}
+        {/* `min-h-0` keeps this pane from insisting on its content's height,
+          which is what lets the keyboard inset above shrink it. Nothing in the
+          base sidebar sets a viewport height today (HeroUI Pro's did, with
+          `min-height: 100svh`); the floor stays so that one never comes back
+          unnoticed — on a desktop it costs nothing. */}
         <Sidebar.Main className="min-h-0 overflow-hidden">
           <header
             data-slot="app-header"
@@ -298,33 +300,41 @@ export function AppShell(props: ShellProps) {
                 <TooltipTrigger>
                   <Button
                     iconOnly
-                    variant={changesOpen ? 'secondary' : 'ghost'}
+                    leadingIcon={FolderTree}
+                    size="small"
+                    // eslint-disable-next-line meridian-ui/no-variant-as-state -- on-state of the changes-panel icon toggle: ghost marks it open, aria-pressed carries the state
+                    variant={changesOpen ? 'ghost' : 'neutral'}
                     aria-label={t('chat.changes.toggle')}
                     aria-pressed={changesOpen}
                     onPress={() => setChangesOpen((open) => !open)}
                     className="size-11 md:size-8"
-                  >
-                    <FolderTree />
-                  </Button>
+                  />
                   <Tooltip placement="bottom">{t('chat.changes.toggle')}</Tooltip>
                 </TooltipTrigger>
               )}
               <TooltipTrigger>
                 <Button
                   iconOnly
-                  variant="ghost"
+                  leadingIcon={Search}
+                  size="small"
+                  variant="neutral"
                   aria-label={t('palette.title')}
                   aria-keyshortcuts="Meta+K Control+K"
                   onPress={() => setPaletteOpen(true)}
                   className="size-11 md:size-8"
-                >
-                  <Magnifier />
-                </Button>
+                />
                 <Tooltip placement="bottom">
                   {t('palette.title')}
                   <Kbd className="ml-2">{commandShortcut}</Kbd>
                 </Tooltip>
               </TooltipTrigger>
+              {/* Rightmost, and in the header rather than the sidebar so it is
+                there with the sidebar collapsed. The floating stack shows the
+                front of the same queue; this is all of it. */}
+              <NotificationInbox
+                onSelect={selectConversation}
+                transcriptInert={page === 'settings' || activeReviewId !== null}
+              />
             </div>
           </header>
 
@@ -338,14 +348,13 @@ export function AppShell(props: ShellProps) {
                 <TooltipTrigger>
                   <Button
                     iconOnly
+                    leadingIcon={X}
                     size="small"
-                    variant="ghost"
+                    variant="neutral"
                     aria-label={t('common.close')}
                     onPress={() => setActionError(null)}
                     className="touch-hitbox shrink-0"
-                  >
-                    <Xmark />
-                  </Button>
+                  />
                   <Tooltip placement="bottom">{t('common.close')}</Tooltip>
                 </TooltipTrigger>
               </Alert>
@@ -378,7 +387,7 @@ export function AppShell(props: ShellProps) {
                 that enclosed both would have the settings page inside a panel
                 it has no business being in. */}
               <Resizable orientation="horizontal" className="h-full min-h-0">
-                <Resizable.Panel id="chat" minSize={35}>
+                <Resizable.Panel id="chat" {...CHAT_PANEL_SIZE}>
                   {/* `min-w-0` or a flex child refuses to shrink, and the
                     transcript's `max-w-4xl mx-auto` overflows instead of
                     narrowing. */}
@@ -426,7 +435,7 @@ export function AppShell(props: ShellProps) {
                       aria-label={t('chat.changes.title')}
                       className="[--resizable-handle-hit-area:16px] pointer-coarse:[--resizable-handle-hit-area:24px]"
                     />
-                    <Resizable.Panel id="changes" defaultSize={30} minSize={18} maxSize={50}>
+                    <Resizable.Panel id="changes" {...CHANGES_PANEL_SIZE}>
                       <ChangesPanel conversationId={activeId} onClose={() => setChangesOpen(false)} />
                     </Resizable.Panel>
                   </>
@@ -434,11 +443,18 @@ export function AppShell(props: ShellProps) {
               </Resizable>
             </div>
 
-            {/* `bg-background-primary-default`, not `bg-background-full`: this covers `Sidebar.Main`,
-              which paints `bg-background-primary-default` itself, and the two
-              are different colours in both themes. */}
+            {/* `bg-background-full` over `Sidebar.Main`'s secondary chat surface:
+              settings is boardui's settings grammar, and the registry's settings
+              modal lays it out as three steps — the page on `background-full`,
+              `SettingsCard`s on `background-secondary`, fields on
+              `background-tertiary` — which stay apart in both themes. On
+              `background-primary` the dark theme loses a step: primary and
+              tertiary are both neutral-800 there, so a field placed on the page
+              had no edge at all. The header's `border-b` is where the two
+              surfaces meet, the way the registry modal's rail meets its page at
+              a `border-r`. */}
             {page === 'settings' && (
-              <div data-slot="settings-layer" className="absolute inset-0 z-20 bg-background-primary-default">
+              <div data-slot="settings-layer" className="absolute inset-0 z-20 bg-background-full">
                 {/* No spinner: the chunk is on local disk and resolves within a
                   frame or two, where a flash of "loading" would read as jank. */}
                 <Suspense fallback={null}>
@@ -449,21 +465,25 @@ export function AppShell(props: ShellProps) {
               </div>
             )}
             {activeReviewId && (
-              <div data-slot="plan-review-layer" className="absolute inset-0 z-30 bg-background-primary-default">
+              <div data-slot="plan-review-layer" className="absolute inset-0 z-30 bg-background-full">
                 <Suspense fallback={null}>
-                  <PlanReviewPage key={activeReviewId} reviewId={activeReviewId} onClose={closePlanReview} />
+                  <PlanReviewPage
+                    key={activeReviewId}
+                    reviewId={activeReviewId}
+                    onClose={() => void leavePlanReview()}
+                  />
                 </Suspense>
               </div>
             )}
           </main>
         </Sidebar.Main>
 
-        {/* Outside `Sidebar.Main`, beside the palette: its region is `fixed`, and
+        {/* Outside `Sidebar.Main`, beside the palette: its viewport is portalled and `fixed`, and
           what it draws is about no particular pane. It sits above the settings
           layer by z-index, which is right — a conversation stopping on a
           permission prompt is not something being in settings should hide. */}
-        <ApprovalToastRegion
-          onSelect={(id) => void selectConversation(id)}
+        <ApprovalNotifications
+          onSelect={selectConversation}
           transcriptInert={page === 'settings' || activeReviewId !== null}
         />
 
@@ -475,9 +495,11 @@ export function AppShell(props: ShellProps) {
           onSelectConversation={(id) => void selectConversation(id)}
           onSelectProject={onSelectProject}
           onOpenSettingsTab={(tab) => {
-            closePlanReview()
-            void changeSettingsTab(tab).then((changed) => {
-              if (changed) onOpenSettings()
+            void leavePlanReview().then((left) => {
+              if (!left) return
+              void changeSettingsTab(tab).then((changed) => {
+                if (changed) onOpenSettings()
+              })
             })
           }}
           onCreate={createConversation}

@@ -1,5 +1,8 @@
 /* boardui foundation: tailwindcss, theme tokens, typography, animations. */
 @import './styles/globals.css';
+/* The typefaces, and the `--font-inter` / `--font-mono-source` that theme.css
+   reads them through. */
+@import './styles/fonts.css';
 /* Meridian's own semantics on boardui primitives: fonts, status, bubbles,
    scrollbars, safe-area insets, the motion boardui does not ship. */
 @import './styles/meridian.css';
@@ -63,7 +66,7 @@
 .plan-comment-highlight:hover {
   outline: 1px solid var(--color-accent-500);
   outline-offset: 1px;
-  cursor: var(--cursor-interactive);
+  cursor: pointer;
 }
 
 [data-slot='plan-review-page'] article[data-state='orphaned'] {
@@ -80,25 +83,6 @@
   border-radius: 0;
   padding: 1.5rem clamp(1rem, 4cqi, 3rem) 6rem;
   line-height: 1.6;
-}
-
-/* TextShimmer paints its text with a moving gradient and sets
-   `-webkit-text-fill-color: transparent` so the gradient shows through. Those
-   are independent declarations: where `tan()` is unsupported the gradient's
-   width cannot be resolved and the whole `background` shorthand is dropped —
-   but the transparent fill still applies, and the text disappears rather than
-   degrading. Keyed on the feature rather than on reduced motion.
-
-   Android WebView tracks the system, so a device old enough to lack `tan()` is
-   a device this would otherwise show blank labels on. Settings → Developer
-   probes for both this and `oklch(from …)`. */
-@supports not (width: calc(1px * tan(45deg))) {
-  [data-slot='text-shimmer'] {
-    -webkit-text-fill-color: unset;
-    color: currentColor;
-    background: none;
-    animation: none;
-  }
 }
 
 /* A group header's own buttons — new-conversation and the "…" menu — appear on
@@ -127,15 +111,6 @@
 .sidebar__menu-item:is(:hover, [data-hovered='true']) .conv-grip,
 .conv-grip:focus-visible {
   opacity: 1;
-}
-
-/* Hovering a row swaps the time-ago chip for the action buttons. At the
-   panel's density a 260px row cannot hold the title, the chip *and* the
-   hover-revealed grip and menu button; the time is the one of those a pointer
-   resting on the row has the least need of, and the tooltip repeats it in
-   full. */
-.sidebar__menu-item:is(:hover, [data-hovered='true']) .conv-time {
-  display: none;
 }
 
 /* Where a dragged conversation would land. React Aria marks the row under the
@@ -210,15 +185,6 @@
   }
 }
 
-img.emoji-sticker {
-  display: block !important;
-  margin: 0.5rem 0 !important;
-  max-width: 120px;
-  max-height: 120px;
-  width: auto;
-  height: auto;
-}
-
 /* `any-pointer`, not `pointer`. `pointer` describes the *primary* pointer only,
    and on the machines this most needs to work — a Windows touchscreen laptop, a
    tablet in a keyboard case — the primary pointer is the trackpad, so it reports
@@ -229,10 +195,23 @@ img.emoji-sticker {
    The cost is that a hybrid device expands them while the mouse is in use. That
    is the right direction to be wrong in: the expansion is an invisible
    `::after`, so a mouse user loses nothing but a little precision between
-   neighbours, and a touch user without it loses the control. */
+   neighbours, and a touch user without it loses the control.
+
+   `overflow: visible !important` because the expansion is the element's own
+   child as far as `overflow` goes, and the registry's `Button` is
+   `overflow-hidden`: every expanded button was clipped straight back to its
+   drawn size. `.overflow-hidden` and `.touch-hitbox` are both one class in the
+   same layer, so which wins is emission order — `!important` makes it this one
+   whatever the order (a doubled `&.touch-hitbox` would lose to any variant-
+   qualified `overflow-*` of equal weight). The cost is that a caller cannot
+   clip a hitbox control on a touch screen; none should — nothing a finger has
+   to reach may depend on clipping, and the primary/danger gradient's `::before`
+   rounds itself (`border-radius: inherit`) rather than relying on it.
+   `src/dev/responsive-detectors.ts` reads this rule back (`hitboxLiftsOwnClip`). */
 @utility touch-hitbox {
   @media (any-pointer: coarse) {
     position: relative;
+    overflow: visible !important;
     &::after {
       content: '';
       position: absolute;

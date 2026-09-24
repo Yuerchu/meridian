@@ -6,6 +6,7 @@ pub mod approval;
 pub mod approval_adapter;
 pub mod assistant;
 pub mod chat;
+pub mod composer_draft;
 pub mod conversation;
 pub mod dev;
 pub mod emoji;

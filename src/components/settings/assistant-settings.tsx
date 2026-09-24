@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, StarFill } from '@gravity-ui/icons'
+import { Plus } from '@keyline-icons/react/two-tone'
+import { Star } from '@keyline-icons/react/fill'
 import {
   Alert,
   Button,
@@ -117,6 +118,7 @@ function AssistantEditor({
       api
         .fetchProviderModels({ providerId, forceRefresh: null })
         .then(setModels)
+        // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- model list feeds the picker only; the saved id is form state
         .catch(() => setModels([]))
     } else {
       setModels([])
@@ -196,7 +198,7 @@ function AssistantEditor({
             {templateVars.map((v) => (
               <TooltipTrigger key={v.name} delay={0}>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   className="text-caption-1-regular px-1.5 py-0.5 bg-background-secondary-default/50 text-text-secondary hover:bg-background-primary-hover font-mono"
                   onPress={() => setSystemPrompt((prev) => prev + `{{${v.name}}}`)}
                 >
@@ -466,7 +468,7 @@ function AssistantEditor({
         {saved && <SavedHint />}
         {onDelete && (
           <Button
-            variant="danger-soft"
+            variant="danger"
             className="ml-auto"
             onPress={() => {
               setSaveError(null)
@@ -569,7 +571,7 @@ export function AssistantSettings() {
             <Alert.Description className="break-all">{loadError}</Alert.Description>
             <Button
               size="small"
-              variant="outline"
+              variant="secondary"
               onPress={() => {
                 setLoadError(null)
                 setLoading(true)
@@ -592,7 +594,7 @@ export function AssistantSettings() {
         title={t('settings.assistant.title')}
         subtitle={t('settings.assistant.subtitle')}
         actions={
-          <Button variant="outline" onPress={handleCreate}>
+          <Button variant="secondary" onPress={handleCreate}>
             <Plus className="w-3.5 h-3.5" />
             {t('settings.assistant.new')}
           </Button>
@@ -628,7 +630,7 @@ export function AssistantSettings() {
                   </span>
                   {isDefault && (
                     <span data-slot="assistant-row-default" className="shrink-0 text-status-warning">
-                      <StarFill aria-hidden="true" className="w-3.5 h-3.5" />
+                      <Star aria-hidden="true" className="w-3.5 h-3.5" />
                       <span data-slot="assistant-row-default-label" className="sr-only">
                         {t('settings.assistant.defaultBadge')}
                       </span>

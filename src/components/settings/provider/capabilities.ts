@@ -36,3 +36,18 @@ export function safeThreshold(contextWindow: number, maxOutput: number | null): 
   const headroom = Math.min(Math.floor(contextWindow / 20), 8000)
   return Math.max(contextWindow - reserve - headroom, Math.floor(contextWindow / 2))
 }
+
+/**
+ * A token count as typed, or `undefined` when it is not one.
+ *
+ * Strict on purpose. `parseInt` reads `12k` as 12 and `abc` as NaN, and the old
+ * `|| 128000` turned the second into a window nobody chose — a model parameter
+ * with a default hardcoded in the form, which the backend refuses to do too.
+ * Unreadable input is refused at save instead.
+ */
+export function parseTokenCount(raw: string): number | undefined {
+  const text = raw.trim()
+  if (!/^\d+$/.test(text)) return undefined
+  const n = Number(text)
+  return Number.isSafeInteger(n) && n > 0 ? n : undefined
+}

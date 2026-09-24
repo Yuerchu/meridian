@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Description, Input, Label, Select, SelectItem, TextArea, TextField } from '@/components/base'
+import { Alert, Button, Description, Input, Label, Select, SelectItem, TextArea, TextField } from '@/components/base'
 import { CellSwitch } from '@/components/base'
 import { api } from '@/api'
 import type { PreferenceModelSelectionRequest, ProviderInfoResponse, ProviderModelInfoResponse } from '@/types'
@@ -123,6 +123,7 @@ function ModelPicker({
     api
       .fetchProviderModels({ providerId, forceRefresh: null })
       .then(setModels)
+      // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- model list feeds the picker only; the saved id is form state
       .catch(() => setModels([]))
   }, [providerId])
 
@@ -210,6 +211,11 @@ export function AutoReviewSettings() {
   const [settings, setSettings] = useState<Settings>(DEFAULTS)
   const [providers, setProviders] = useState<ProviderInfoResponse[]>([])
   const [loading, setLoading] = useState(true)
+  // Only a load that succeeded may put a form on screen: after a failed one
+  // `settings` is DEFAULTS, and saving that would clear the allow/deny rules
+  // and switch the reviewer off.
+  const [loaded, setLoaded] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -223,6 +229,7 @@ export function AutoReviewSettings() {
   )
 
   const load = useCallback(async () => {
+    setLoadError(null)
     try {
       const [enabled, model, escalate, allow, deny, environment, ttl, provs] = await Promise.all([
         api.getPreference({ key: KEYS.enabled }),
@@ -248,8 +255,9 @@ export function AutoReviewSettings() {
         ttl: String(ttl.value ?? DEFAULTS.ttl),
       })
       setProviders(provs)
+      setLoaded(true)
     } catch (err) {
-      setError(String(err))
+      setLoadError(String(err))
     } finally {
       setLoading(false)
     }
@@ -287,6 +295,30 @@ export function AutoReviewSettings() {
   }
 
   if (loading) return <SettingsSkeleton />
+  if (!loaded) {
+    return (
+      <SettingsPane>
+        <SettingsHeader title={t('settings.autoReview.title')} />
+        <Alert status="danger" role="alert">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>{t('settings.autoReview.loadError')}</Alert.Title>
+            {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
+            <Button
+              size="small"
+              variant="secondary"
+              onPress={() => {
+                setLoading(true)
+                void load()
+              }}
+            >
+              {t('common.retry')}
+            </Button>
+          </Alert.Content>
+        </Alert>
+      </SettingsPane>
+    )
+  }
 
   // Turned on without a model is off, and saying so beats a switch that reads
   // as enabled while nothing happens.

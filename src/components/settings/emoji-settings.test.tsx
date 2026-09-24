@@ -1,6 +1,8 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { EmojiSettings } from './emoji-settings'
+import { EmojiSettings, STICKERS_PER_PAGE } from './emoji-settings'
+import { resetStickerUrls } from '@/lib/sticker-urls'
+import { installIntersectionObserver, type IntersectionControl } from '@/test/intersection'
 import i18n from '@/i18n'
 import { api } from '@/api'
 import type { EmojiInfoResponse, EmojiPackInfoResponse } from '@/types'
@@ -68,6 +70,7 @@ describe('EmojiSettings', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    resetStickerUrls()
     mockApi.listEmojiPacks.mockResolvedValue([PACK])
     mockApi.getEmojiFileUrl.mockResolvedValue('blob:sticker')
     mockApi.confirmStickerSemantics.mockImplementation(({ id, name, tags }) =>
@@ -88,8 +91,9 @@ describe('EmojiSettings', () => {
     render(<EmojiSettings />)
     await openPack(user)
 
-    await user.click(screen.getByRole('button', { name: 'Edit meaning: old name' }))
-    const field = await screen.findByRole('textbox', { name: 'Edit meaning' })
+    const field = screen.getByRole('textbox', { name: 'Edit meaning' })
+    expect(field.closest('[role=gridcell], [role=rowheader]')).not.toBeNull()
+    expect(field).toHaveValue('old name')
     await user.clear(field)
     await user.type(field, 'new name{Enter}')
 
@@ -110,8 +114,8 @@ describe('EmojiSettings', () => {
     render(<EmojiSettings />)
     await openPack(user)
 
-    await user.click(screen.getByRole('button', { name: 'Edit tags: cat' }))
-    const field = await screen.findByRole('textbox', { name: 'Edit tags' })
+    const field = screen.getByRole('textbox', { name: 'Edit tags' })
+    expect(field).toHaveValue('cat')
     await user.clear(field)
     await user.type(field, 'cat,angry{Enter}')
 
@@ -143,7 +147,7 @@ describe('EmojiSettings', () => {
     render(<EmojiSettings />)
     await openPack(user)
 
-    expect(screen.getByRole('button', { name: 'Edit meaning: shyly hiding' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Edit meaning' })).toHaveValue('shyly hiding')
     await user.click(screen.getByRole('button', { name: 'Confirm' }))
 
     await waitFor(() =>
@@ -153,6 +157,24 @@ describe('EmojiSettings', () => {
         tags: 'shy,hiding',
       }),
     )
+  })
+
+  it('Escape puts the saved value back and commits nothing', async () => {
+    const user = userEvent.setup()
+    mockApi.listEmojis.mockResolvedValue([
+      makeEmoji({ id: 'e1', name: 'old name', tags: 'cat', semantic_status: 'confirmed' }),
+    ])
+    render(<EmojiSettings />)
+    await openPack(user)
+
+    const field = screen.getByRole('textbox', { name: 'Edit meaning' })
+    await user.click(field)
+    await user.clear(field)
+    await user.type(field, 'discarded{Escape}')
+
+    expect(field).toHaveValue('old name')
+    expect(field).not.toHaveFocus()
+    expect(mockApi.confirmStickerSemantics).not.toHaveBeenCalled()
   })
 
   /** Unreviewed first, whatever the pack's own order says. */
@@ -165,8 +187,80 @@ describe('EmojiSettings', () => {
     render(<EmojiSettings />)
     await openPack(user)
 
-    const rows = screen.getAllByRole('row').slice(1)
-    expect(rows[0]).toHaveTextContent('waiting')
-    expect(rows[1]).toHaveTextContent('confirmed one')
+    const names = screen.getAllByRole('textbox', { name: 'Edit meaning' })
+    expect(names[0]).toHaveValue('waiting')
+    expect(names[1]).toHaveValue('confirmed one')
+  })
+
+  describe('pages', () => {
+    const COUNT = STICKERS_PER_PAGE * 2 + 5
+    // Confirmed, in pack order, seen least by the first: sorting by "Seen"
+    // reverses the pack.
+    const MANY = Array.from({ length: COUNT }, (_, i) =>
+      makeEmoji({
+        id: `e${i}`,
+        name: `sticker ${i}`,
+        semantic_status: 'confirmed',
+        sort_order: i,
+        seen_count: COUNT - i,
+      }),
+    )
+    let io: IntersectionControl
+
+    beforeEach(() => {
+      // Every row is on screen as soon as it is drawn: what is fetched is
+      // then decided by what is drawn, which is the page.
+      io = installIntersectionObserver(() => true)
+      mockApi.listEmojis.mockResolvedValue(MANY)
+      Object.defineProperty(HTMLImageElement.prototype, 'decode', {
+        configurable: true,
+        value: () => new Promise(() => {}),
+      })
+    })
+
+    afterEach(() => io.restore())
+
+    const shownNames = () =>
+      screen.getAllByRole('textbox', { name: 'Edit meaning' }).map((field) => (field as HTMLInputElement).value)
+    const requested = () => new Set(mockApi.getEmojiFileUrl.mock.calls.map(([id]) => id))
+
+    it('draws one page and asks only for the files on it', async () => {
+      const user = userEvent.setup()
+      render(<EmojiSettings />)
+      await openPack(user)
+
+      expect(shownNames()).toEqual(Array.from({ length: STICKERS_PER_PAGE }, (_, i) => `sticker ${i}`))
+      const firstPage = new Set(Array.from({ length: STICKERS_PER_PAGE }, (_, i) => `e${i}`))
+      await waitFor(() => expect(requested()).toEqual(firstPage))
+      // Nothing about the settings page asks for every file up front any more.
+      expect(mockApi.getEmojiFileUrl).toHaveBeenCalledTimes(STICKERS_PER_PAGE)
+
+      await user.click(screen.getByRole('button', { name: 'Go to page 2' }))
+      expect(shownNames()[0]).toBe(`sticker ${STICKERS_PER_PAGE}`)
+      const secondPage = Array.from({ length: STICKERS_PER_PAGE }, (_, i) => `e${STICKERS_PER_PAGE + i}`)
+      await waitFor(() => expect(requested()).toEqual(new Set([...firstPage, ...secondPage])))
+      expect(mockApi.getEmojiFileUrl).toHaveBeenCalledTimes(STICKERS_PER_PAGE * 2)
+      expect(requested().has(`e${COUNT - 1}`)).toBe(false)
+    })
+
+    it('sorts the whole pack, not the page on screen', async () => {
+      const user = userEvent.setup()
+      render(<EmojiSettings />)
+      await openPack(user)
+
+      await user.click(screen.getByRole('columnheader', { name: /Seen/ }))
+      // Least seen first: that is the last sticker of the pack, which was on
+      // the last page — not the least seen of the twenty that were showing.
+      expect(shownNames()[0]).toBe(`sticker ${COUNT - 1}`)
+    })
+
+    it('selects all of the page, not all of the pack', async () => {
+      const user = userEvent.setup()
+      render(<EmojiSettings />)
+      await openPack(user)
+
+      await user.click(screen.getByRole('checkbox', { name: /select all/i }))
+      expect(await screen.findByText(`${STICKERS_PER_PAGE} selected`)).toBeInTheDocument()
+    })
   })
 })

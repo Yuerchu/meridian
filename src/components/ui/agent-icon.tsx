@@ -1,4 +1,4 @@
-import { Comment } from '@gravity-ui/icons'
+import { Message } from '@keyline-icons/react/two-tone'
 // The leaves, not the icon. `es/ClaudeCode` is a compound that imports all five
 // of its variants eagerly, and two of them — `Avatar` and `Combine` — reach
 // `../../features/`, which imports `@lobehub/ui`, which is most of the megabyte
@@ -24,7 +24,7 @@ export function ConversationIcon({ agentKind }: { agentKind?: string | null }) {
   // Everything else, including the hook gates' review transcripts and a
   // delegated run: those appear where what they are is already said, so a
   // second mark would be decoration.
-  return <Comment />
+  return <Message className="size-4" />
 }
 
 /**

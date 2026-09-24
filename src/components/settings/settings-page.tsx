@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/base'
-import { ArrowLeft } from '@gravity-ui/icons'
+import { ArrowLeft } from '@keyline-icons/react/two-tone'
 import { cx } from '@/utils/cx'
 import { SettingsHeader } from './primitives'
 import { useSettingsLevel } from './settings-stack'
@@ -71,7 +71,7 @@ export function SettingsPage({
         <div data-slot="settings-page-bar" className="flex items-center gap-2">
           <Button
             data-slot="settings-page-back"
-            variant="ghost"
+            variant="secondary"
             onPress={() => void pop()}
             // `-ms-2` pulls the ghost button's own padding back to the content
             // edge, so the label lines up with the form below it.

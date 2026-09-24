@@ -1,15 +1,20 @@
+import { existsSync, readFileSync } from 'node:fs'
 import js from '@eslint/js'
 import tseslint from 'typescript-eslint'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import meridianUi from './scripts/eslint-rules/index.mjs'
 
-// UI conventions from CLAUDE.md ("UI Conventions" section), machine-checkable
-// subset. The one whitelisted exception (gold-star text-amber-500) uses an
+// The machine-checkable half of BoardUI's design rules (docs/agent-rules.md in
+// the registry), which are this project's constitution. A gate that fires on
+// the registry's own source is a gate from somewhere else and does not belong
+// here. The one whitelisted exception (gold-star text-amber-500) uses an
 // eslint-disable comment at the call site so it stays visible.
 //
-// `white` and `black` are palette colours too — `text-white` on a danger fill
-// is `text-danger-foreground` spelt wrong, and the 2026-09 audit found two.
+// These rules govern code written here. Files installed from the registry are
+// kept as the registry wrote them (see VENDORED below) and are not rewritten
+// into "equivalent" spellings: two spellings of one colour is two sources of
+// truth.
 const PALETTE_PREFIX = '(?:text|bg|border|ring|fill|stroke|from|via|to|divide|outline|decoration|accent|caret)'
 const PALETTE_RE = `(?<![\\w-])${PALETTE_PREFIX}-(?:(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-[0-9]{2,3}|(?:white|black)\\b)`
 
@@ -58,17 +63,14 @@ const styleRestrictions = [
     'Bare font weight. The weight is the suffix of the composite text utility (text-body-medium, text-caption-1-semibold); pick the family the text belongs to.',
   ),
   ...forbiddenClass(
-    '\\bcursor-pointer\\b',
-    "cursor-pointer ignores the user's cursor preference. Use cursor-[var(--cursor-interactive)] on custom interactive elements; base components set it themselves.",
-  ),
-  ...forbiddenClass(
     '\\bbg-muted\\b',
     'There is no muted fill. A dot or a caret takes bg-background-tertiary-default, bg-border-button-default or bg-current.',
   ),
-  ...forbiddenClass('\\buppercase\\b', 'No ALL CAPS headings or labels; write the label in Title Case instead.'),
+  // Owner decision 2026-09-24: dark text-tertiary (neutral-600) is ~1.9:1 on a
+  // card, and a placeholder is text somebody has to read.
   ...forbiddenClass(
-    '(?:^|\\s)rounded(?:\\s|$)',
-    'Bare `rounded` (4px) is off the radius ladder (composer 2xl → chat/tool card xl → settings lg). Use <Chip> or the ladder step of the container.',
+    '(?<![\\w-])placeholder:text-text-(?:tertiary|placeholder)(?![\\w-])',
+    'A placeholder is read, and text-tertiary is ~1.9:1 on a dark card. Use placeholder:text-text-secondary (CLAUDE.md UI Conventions, readable text).',
   ),
   ...forbiddenClass(
     '\\bshadow-(?:sm|md|lg|xl|2xl)\\b',
@@ -90,7 +92,7 @@ const styleRestrictions = [
     selector:
       "JSXOpeningElement[name.name=/Button$/] > JSXAttribute[name.name='className'] Literal[value=/(?:^|\\s)text-status-danger(?:\\s|$)/]",
     message:
-      'A labelled destructive Button is variant="danger-soft", not ghost/outline painted text-status-danger by hand. An icon-only one in a row of ghost icons stays ghost and turns danger on hover (hover:text-status-danger) — a red pill among grey icons is louder than the action.',
+      'A labelled destructive Button is variant="danger" (the registry red gradient fill), not a neutral Button painted text-status-danger by hand. An inline icon-only delete stays neutral (variant="neutral") and turns red on hover only (hover:text-status-danger) — a red pill among grey icons is louder than the action.',
   },
   {
     selector:
@@ -100,24 +102,13 @@ const styleRestrictions = [
   },
   {
     selector:
-      "JSXOpeningElement[name.property.name=/^(?:Content|Control|Indicator)$/] > JSXAttribute[name.name='className'] Literal[value=/data-\\u005B?(?:selected|hovered|pressed|focus-visible|expanded)/]",
-    message:
-      'React Aria puts data-selected / data-hovered / data-pressed on the component root, not on its *.Content or *.Control slot — this selector never matches. Style from the root with a descendant selector.',
-  },
-  {
-    selector: 'JSXOpeningElement[name.name=/^(?:Close)?Button$/] > JSXAttribute[name.name=/^(?:onClick|disabled)$/]',
-    message:
-      'Button is a React Aria button: onPress / isDisabled / isPending, not onClick / disabled. A native onClick on it bypasses press semantics (keyboard, touch, ghost clicks) and the trigger contexts (Tooltip, Menu, Dialog close) that reach it through usePress.',
-  },
-  {
-    selector:
       "JSXOpeningElement[name.name='Spinner'] > JSXAttribute[name.name='className'] Literal[value=/\\b(?:size|w|h)-[0-9]/]",
     message: 'Spinner is sized through its size prop (sm/md/lg), not className.',
   },
   {
     selector: "JSXAttribute[name.name='className'] > JSXExpressionContainer > TemplateLiteral",
     message:
-      'Compose className with cn(...) rather than a template string, so undefined/false parts drop out and Prettier can sort it.',
+      'Compose className with cx(...) from @/utils/cx rather than a template string, so undefined/false parts drop out and tailwind-merge resolves conflicts.',
   },
   {
     selector: "CallExpression[callee.property.name='replace'][callee.object.callee.name='t']",
@@ -128,12 +119,8 @@ const styleRestrictions = [
     // an icon.
     selector: 'JSXText[value=/[✕✓✗←→↑↓]/]',
     message:
-      'A glyph is not an icon: screen readers read it as nothing or as "multiplication x", and it does not match the icon set. Use the icon library (Xmark, Check, ArrowUp…).',
+      'A glyph is not an icon: screen readers read it as nothing or as "multiplication x", and it does not match the icon set. Use the icon library (X, Check, ArrowUp…).',
   },
-  ...forbiddenClass(
-    'max-w-\\u005B[0-9]+px\\u005D',
-    'Arbitrary px max-width. Modals take size="sm|md|lg"; everything else uses the Tailwind scale (max-w-xs … max-w-3xl).',
-  ),
 ]
 
 // Enforced outside src/components/ui/, which is where the domain-specific
@@ -172,27 +159,11 @@ const nativeElementRestrictions = [
     selector: "JSXOpeningElement[name.name='kbd']",
     message: 'Use <Kbd> from @/components/base instead of the native <kbd>.',
   },
-  {
-    selector: "JSXOpeningElement[name.name=/^(?:button|Button)$/] > JSXAttribute[name.name='title']",
-    message:
-      'Native title attribute on a button. Put the text in a <Tooltip> from @/components/base — and give the button an aria-label, since a tooltip describes rather than names it.',
-  },
 ]
 
-// Enforced everywhere, src/components/ui/ included: a native hover tooltip is
-// never the point of a component, it is the browser drawing its own UI over
-// ours. `iframe` keeps `title` because there it is the frame's accessible name
-// and draws nothing.
+// Enforced everywhere, src/components/ui/ included: "components first" — the
+// browser's own widgets and dialogs are UI the design system did not draw.
 const nativeChromeRestrictions = [
-  {
-    selector: "JSXOpeningElement[name.name=/^[a-z]/][name.name!='iframe'] > JSXAttribute[name.name='title']",
-    message:
-      "Native `title` draws the browser's own tooltip. Wrap the element in <Tooltip> from @/components/base (Tooltip.Trigger with `render` for a focusable element, plain Tooltip.Trigger around a span), or drop the hint.",
-  },
-  {
-    selector: "JSXOpeningElement[name.object.name='dom'] > JSXAttribute[name.name='title']",
-    message: "Native `title` on a dom.* element draws the browser's own tooltip. Use <Tooltip> from @/components/base.",
-  },
   {
     selector: 'JSXOpeningElement[name.name=/^(?:details|summary|progress|meter|datalist|marquee)$/]',
     message: 'Native browser widget. Use the base component equivalent (Disclosure, ProgressCircle, ListBox…).',
@@ -201,19 +172,47 @@ const nativeChromeRestrictions = [
   // is the replacement, so only `alert` and `prompt` are matched by bare name.
   {
     selector: 'CallExpression[callee.name=/^(?:alert|prompt)$/]',
-    message: "The browser's own dialog. Use useConfirm / AlertDialog / Modal / a toast from the app instead.",
+    message: "The browser's own dialog. Use useConfirm / AlertDialog / Modal / a Notification instead.",
   },
   {
     selector:
       'CallExpression[callee.object.name=/^(?:window|globalThis)$/][callee.property.name=/^(?:alert|confirm|prompt)$/]',
-    message: "The browser's own dialog. Use useConfirm / AlertDialog / Modal / a toast from the app instead.",
+    message: "The browser's own dialog. Use useConfirm / AlertDialog / Modal / a Notification instead.",
   },
 ]
+
+// The one change this project makes to registry source: the React Aria
+// interaction contract (CLAUDE.md, "The base layer's interaction contract").
+// It applies to vendored files as well, because it is the reason they differ
+// from the registry at all.
+const racRestrictions = [
+  {
+    selector:
+      "JSXOpeningElement[name.property.name=/^(?:Content|Control|Indicator)$/] > JSXAttribute[name.name='className'] Literal[value=/data-\\u005B?(?:selected|hovered|pressed|focus-visible|expanded)/]",
+    message:
+      'React Aria puts data-selected / data-hovered / data-pressed on the component root, not on its *.Content or *.Control slot — this selector never matches. Style from the root with a descendant selector.',
+  },
+  {
+    selector: 'JSXOpeningElement[name.name=/^(?:Close)?Button$/] > JSXAttribute[name.name=/^(?:onClick|disabled)$/]',
+    message:
+      'Button is a React Aria button: onPress / isDisabled / isPending, not onClick / disabled. A native onClick on it bypasses press semantics (keyboard, touch, ghost clicks) and the trigger contexts (Tooltip, Menu, Dialog close) that reach it through usePress.',
+  },
+]
+
+// Files installed from the registry, as `boardui.json` records them. They keep
+// the registry's spelling; only the React Aria contract is enforced on them.
+const VENDORED = existsSync(new URL('./boardui.json', import.meta.url))
+  ? Object.values(JSON.parse(readFileSync(new URL('./boardui.json', import.meta.url), 'utf8')).items)
+      .flatMap((item) => item.files)
+      // The manifest lists the registry's stylesheets too; a `files` glob that
+      // matches a .css file makes ESLint try to parse it as JavaScript.
+      .filter((file) => /\.[cm]?[jt]sx?$/.test(file))
+  : []
 
 // For scripts/eslint-rules.test.mjs, which pins every selector to the shape it
 // was written for.
 export const uiRestrictions = {
-  style: [...styleRestrictions, ...nativeChromeRestrictions],
+  style: [...styleRestrictions, ...racRestrictions, ...nativeChromeRestrictions],
   nativeElements: nativeElementRestrictions,
 }
 
@@ -242,35 +241,65 @@ export default tseslint.config(
       'react-refresh/only-export-components': 'off',
     },
   },
-  // The two UI conventions that need to see more than one node: an icon-only
-  // control needs a <Tooltip> ancestor, and every intrinsic element carries
-  // data-slot. Both are the local plugin under scripts/eslint-rules/.
+  // The UI conventions that need to see more than one node, or a stylesheet:
+  // the local plugin under scripts/eslint-rules/.
   {
     files: ['src/**/*.tsx'],
-    ignores: ['src/components/base/**', 'src/components/foundations/**'],
+    ignores: ['src/components/foundations/**', ...VENDORED],
     rules: {
-      'meridian-ui/icon-only-needs-tooltip': 'error',
-      'meridian-ui/intrinsic-needs-data-slot': 'error',
+      'meridian-ui/icon-only-needs-name': 'error',
+      // Recurrence gates (surface-contrast.test.ts is the other half): a field
+      // keeps the registry fill, and a Button variant is not a selected state.
+      'meridian-ui/field-fill-follows-surface': 'error',
+      'meridian-ui/no-variant-as-state': 'error',
     },
   },
-  // The base layer is a vendored boardui snapshot on React Aria: its files do
-  // not carry data-slot on every node (the registry does not), but every other
-  // convention applies, and one more — a prop it accepts, it honours.
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    rules: {
+      'meridian-ui/animation-needs-keyframes': 'error',
+      'meridian-ui/no-modifier-on-static-utility': 'error',
+    },
+  },
+  // The tool-call rendering path: a value is drawn with `ToolValue`, never
+  // pasted as JSON. `tool-value.tsx` is the generic renderer and is exempt.
+  {
+    files: [
+      'src/components/chat/tool-call-block.tsx',
+      'src/components/chat/sub-agent-group.tsx',
+      'src/components/chat/file-diff-card.tsx',
+      'src/components/ui/chat-tool.tsx',
+    ],
+    rules: {
+      'meridian-ui/no-json-tool-display': 'error',
+    },
+  },
+  // Recurrence gate: a failed read, or an unparseable input, must not become
+  // a default the save path writes back (four settings pages, 2026-09).
+  // App code only: the registry's files are not where settings are loaded.
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: VENDORED,
+    rules: {
+      'meridian-ui/no-default-on-load-failure': 'error',
+      'meridian-ui/no-parse-or-default': 'error',
+    },
+  },
+  // The base layer: a prop it accepts, it honours.
   {
     files: ['src/components/base/**/*.tsx'],
     rules: {
-      'meridian-ui/icon-only-needs-tooltip': 'error',
       'meridian-ui/no-silent-prop-drop': 'error',
     },
   },
-  // UI conventions from CLAUDE.md, machine-checkable subset. Two config blocks
-  // because flat config REPLACES a rule wholesale when a later block redefines
-  // it: the non-ui block must carry the full superset of restrictions.
+  // BoardUI's rules. Three config blocks because flat config REPLACES a rule
+  // wholesale when a later block redefines it: each block carries the full set
+  // it means.
   {
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['src/components/foundations/**'],
     rules: {
-      'no-restricted-syntax': ['error', ...styleRestrictions, ...nativeChromeRestrictions],
+      'no-restricted-syntax': ['error', ...styleRestrictions, ...racRestrictions, ...nativeChromeRestrictions],
     },
   },
   {
@@ -280,11 +309,24 @@ export default tseslint.config(
       'no-restricted-syntax': [
         'error',
         ...styleRestrictions,
+        ...racRestrictions,
         ...nativeChromeRestrictions,
         ...nativeElementRestrictions,
       ],
     },
   },
+  ...(VENDORED.length > 0
+    ? [
+        {
+          files: VENDORED,
+          rules: {
+            'no-restricted-syntax': ['error', ...racRestrictions],
+            // Registry files export their helpers beside their components.
+            'react-refresh/only-export-components': 'off',
+          },
+        },
+      ]
+    : []),
   // The settings barrel imports all eleven panels, and App.tsx loads it lazily
   // so none of that reaches the main bundle. A *value* import from the barrel
   // anywhere eagerly-loaded undoes that silently — nothing breaks, the bundle

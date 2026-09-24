@@ -1,5 +1,7 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
+import { suggestionOptionId } from '@/hooks/use-composer-typeahead'
 import { ComposerSuggestions, type ComposerSuggestion } from './composer-suggestions'
 
 const commands: ComposerSuggestion[] = [
@@ -18,7 +20,7 @@ const commands: ComposerSuggestion[] = [
 ]
 
 function renderSuggestions(items: ComposerSuggestion[]) {
-  return render(<ComposerSuggestions items={items} activeIndex={0} onAction={vi.fn()} ariaLabel="Commands" />)
+  return render(<ComposerSuggestions id="s" items={items} activeIndex={0} onAction={vi.fn()} ariaLabel="Commands" />)
 }
 
 describe('ComposerSuggestions layout', () => {
@@ -32,7 +34,9 @@ describe('ComposerSuggestions layout', () => {
     expect(modelRow.style.gridTemplateColumns).toBe('1rem 9ch minmax(0, 1fr)')
     expect(thinkingRow.style.gridTemplateColumns).toBe(modelRow.style.gridTemplateColumns)
 
-    rerender(<ComposerSuggestions items={[commands[0]]} activeIndex={0} onAction={vi.fn()} ariaLabel="Commands" />)
+    rerender(
+      <ComposerSuggestions id="s" items={[commands[0]]} activeIndex={0} onAction={vi.fn()} ariaLabel="Commands" />,
+    )
 
     const filteredRow = screen.getByText('/model').closest('[data-slot="composer-suggestion-row"]') as HTMLElement
     expect(filteredRow.style.gridTemplateColumns).toBe(modelRow.style.gridTemplateColumns)
@@ -53,5 +57,36 @@ describe('ComposerSuggestions layout', () => {
     expect(row).toHaveClass('flex', 'w-full', 'text-left')
     expect(row).not.toHaveClass('grid')
     expect(row.style.gridTemplateColumns).toBe('')
+  })
+})
+
+describe('ComposerSuggestions as the popup of a combobox', () => {
+  it('runs the action when a row is pressed', async () => {
+    const user = userEvent.setup()
+    const onAction = vi.fn()
+    render(<ComposerSuggestions id="s" items={commands} activeIndex={0} onAction={onAction} ariaLabel="Commands" />)
+
+    await user.click(screen.getByRole('option', { name: /\/thinking/ }))
+    expect(onAction).toHaveBeenCalledWith(commands[1])
+  })
+
+  it('marks the highlighted row for aria-activedescendant, and scrolls it into view', () => {
+    const scroll = vi.fn()
+    Element.prototype.scrollIntoView = scroll
+    const { rerender } = render(
+      <ComposerSuggestions id="s" items={commands} activeIndex={0} onAction={vi.fn()} ariaLabel="Commands" />,
+    )
+    const listbox = screen.getByRole('listbox', { name: 'Commands' })
+    expect(listbox).toHaveAttribute('id', 's')
+    const [first, second] = screen.getAllByRole('option')
+    expect(first).toHaveAttribute('id', suggestionOptionId('s', 0))
+    expect(first).toHaveAttribute('aria-selected', 'true')
+    expect(second).toHaveAttribute('aria-selected', 'false')
+
+    scroll.mockClear()
+    rerender(<ComposerSuggestions id="s" items={commands} activeIndex={1} onAction={vi.fn()} ariaLabel="Commands" />)
+    expect(second).toHaveAttribute('aria-selected', 'true')
+    expect(scroll).toHaveBeenCalledWith({ block: 'nearest' })
+    expect(scroll.mock.contexts[0]).toBe(second)
   })
 })

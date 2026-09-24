@@ -1,21 +1,10 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { Plus, TrashBin, Xmark, Check } from '@gravity-ui/icons'
+import { Bin, Plus, X } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
 import type { MemoryType } from '@/types'
-import {
-  Alert,
-  Button,
-  Card,
-  DisclosureGroup,
-  Input,
-  Label,
-  TextArea,
-  TextField,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
+import { Alert, Button, DisclosureGroup, Input, TextArea, Tooltip, TooltipTrigger } from '@/components/base'
 import { EmptyState } from '@/components/base'
 import { ActionBar } from '@/components/base'
 import { useConfirm } from '@/hooks/use-confirm'
@@ -23,7 +12,9 @@ import { MemoryRow } from './memory/memory-row'
 import { MemoryTrash } from './memory/memory-trash'
 import { ScopeNav } from './memory/scope-nav'
 import { useMemoryBrowser } from './memory/use-memory-browser'
-import { SettingsHeader, SettingsSelect, SettingsSkeleton } from './primitives'
+import { memoryOriginLabel, memoryTypeLabel } from './memory/labels'
+import { SettingsCard, SettingsHeader, SettingsRow, SettingsSelect, SettingsSkeleton } from './primitives'
+import { cx } from '@/utils/cx'
 
 export function MemorySettings() {
   const { t } = useTranslation()
@@ -38,11 +29,11 @@ export function MemorySettings() {
 
   const typeOptions = (browser.enums?.memory_types ?? ['general']).map((v) => ({
     value: v,
-    label: v,
+    label: memoryTypeLabel(t, v),
   }))
   const originOptions = [
     { value: 'all', label: t('settings.memory.learnedIn.all') },
-    ...(browser.enums?.origins ?? []).map((v) => ({ value: v, label: v })),
+    ...(browser.enums?.origins ?? []).map((v) => ({ value: v, label: memoryOriginLabel(t, v) })),
   ]
 
   // Writable from here: a project, or the client-wide layer when that branch is
@@ -86,13 +77,26 @@ export function MemorySettings() {
         title={t('settings.memory.title')}
         subtitle={t('settings.memory.subtitle')}
         actions={
+          // The page's own actions, small, the creating one primary
+          // (settings-general.tsx / settings-tools.tsx header buttons): the
+          // trash is somewhere to look, a new memory is the thing to do.
           <>
-            <Button variant="ghost" onPress={() => setTrashOpen(true)} data-slot="memory-trash-open">
-              <TrashBin />
+            <Button
+              size="small"
+              variant="secondary"
+              leadingIcon={Bin}
+              onPress={() => setTrashOpen(true)}
+              data-slot="memory-trash-open"
+            >
               {t('settings.memory.trash.title')}
             </Button>
-            <Button variant="secondary" onPress={() => setShowAdd(true)} isDisabled={!canAdd}>
-              <Plus />
+            <Button
+              size="small"
+              leadingIcon={Plus}
+              onPress={() => setShowAdd(true)}
+              isDisabled={!canAdd}
+              data-slot="memory-new"
+            >
               {t('settings.memory.new')}
             </Button>
           </>
@@ -123,7 +127,7 @@ export function MemorySettings() {
               value={browser.search}
               onChange={(e) => browser.setSearch(e.target.value)}
               placeholder={t('settings.memory.search')}
-              className="flex-1"
+              fieldClassName="flex-1"
             />
             <SettingsSelect
               ariaLabel={t('settings.memory.originFilter')}
@@ -144,64 +148,69 @@ export function MemorySettings() {
             </p>
           )}
 
+          {/* A draft memory is a card of rows like any other settings form
+              (settings-profile.tsx): each field named on its own row, and the
+              two ways out as words rather than a pair of unlabelled glyphs. */}
           {showAdd && (
-            <Card data-slot="memory-add-form">
-              <TextField>
-                <Label>{t('settings.memory.key')}</Label>
-                <Input
-                  type="text"
-                  name="memoryKey"
-                  value={newKey}
-                  onChange={(e) => setNewKey(e.target.value)}
-                  autoFocus
-                />
-              </TextField>
-              <TextField>
-                <Label>{t('settings.memory.content')}</Label>
-                <TextArea
-                  name="memoryContent"
-                  value={newContent}
-                  onChange={(e) => setNewContent(e.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.nativeEvent.isComposing) return
-                    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-                      event.preventDefault()
-                      void handleAdd()
-                    }
-                  }}
-                  rows={3}
-                  className="resize-y"
-                />
-              </TextField>
-              <div data-slot="memory-add-actions" className="flex items-center gap-2">
-                <SettingsSelect
-                  ariaLabel={t('settings.memory.type')}
-                  value={newType}
-                  options={typeOptions}
-                  onChange={setNewType}
-                  triggerClassName="w-auto"
-                />
-                <div data-slot="memory-add-spacer" className="flex-1" />
-                <TooltipTrigger delay={0}>
-                  <Button variant="ghost" iconOnly aria-label={t('common.cancel')} onPress={() => setShowAdd(false)}>
-                    <Xmark />
-                  </Button>
-                  <Tooltip>{t('common.cancel')}</Tooltip>
-                </TooltipTrigger>
-                <TooltipTrigger delay={0}>
-                  <Button
-                    variant="secondary"
-                    iconOnly
-                    aria-label={t('settings.memory.add')}
-                    onPress={handleAdd}
-                    isDisabled={!newKey.trim() || !newContent.trim()}
-                  >
-                    <Check />
-                  </Button>
-                  <Tooltip>{t('settings.memory.add')}</Tooltip>
-                </TooltipTrigger>
+            <SettingsCard data-slot="memory-add-form">
+              <SettingsRow label={t('settings.memory.key')} stacked>
+                {({ labelId }) => (
+                  <Input
+                    type="text"
+                    aria-labelledby={labelId}
+                    name="memoryKey"
+                    value={newKey}
+                    onChange={(e) => setNewKey(e.target.value)}
+                    spellCheck={false}
+                    fieldClassName="w-full @sm/pane:w-64"
+                    className="font-mono"
+                    autoFocus
+                  />
+                )}
+              </SettingsRow>
+              <SettingsRow label={t('settings.memory.type')}>
+                {({ labelId }) => (
+                  <SettingsSelect
+                    ariaLabelledBy={labelId}
+                    value={newType}
+                    options={typeOptions}
+                    onChange={setNewType}
+                    triggerClassName="w-auto"
+                  />
+                )}
+              </SettingsRow>
+              <SettingsRow
+                label={t('settings.memory.content')}
+                stacked
+                className="@sm/pane:flex-col @sm/pane:items-stretch"
+              >
+                {({ labelId }) => (
+                  <TextArea
+                    aria-labelledby={labelId}
+                    name="memoryContent"
+                    value={newContent}
+                    onChange={(e) => setNewContent(e.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.nativeEvent.isComposing) return
+                      if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                        event.preventDefault()
+                        void handleAdd()
+                      }
+                    }}
+                    rows={3}
+                    fieldClassName="w-full"
+                  />
+                )}
+              </SettingsRow>
+              <div data-slot="memory-add-actions" className="flex items-center justify-end gap-2 py-2.5 pr-2.5">
+                <Button size="small" variant="secondary" onPress={() => setShowAdd(false)}>
+                  {t('common.cancel')}
+                </Button>
+                <Button size="small" onPress={() => void handleAdd()} isDisabled={!newKey.trim() || !newContent.trim()}>
+                  {t('settings.memory.add')}
+                </Button>
               </div>
-            </Card>
+            </SettingsCard>
           )}
 
           {browser.loading ? (
@@ -211,7 +220,7 @@ export function MemorySettings() {
               <Alert.Indicator />
               <Alert.Content>
                 <Alert.Description className="break-words">{t('settings.memory.loadError')}</Alert.Description>
-                <Button size="small" variant="outline" className="mt-2" onPress={() => void browser.refresh()}>
+                <Button size="small" variant="secondary" className="mt-2" onPress={() => void browser.refresh()}>
                   {t('settings.memory.retry')}
                 </Button>
               </Alert.Content>
@@ -230,9 +239,18 @@ export function MemorySettings() {
               also why the group is mounted unconditionally: its expanded key is
               uncontrolled state, so gating it on a non-empty list would forget
               which row was open every time a search matched nothing. Empty, it
-              renders a bare `w-full` div with no children for `gap-2` to space —
-              nothing shows. */}
-          <DisclosureGroup data-slot="memory-rows" className="flex flex-col gap-2" aria-busy={browser.loading}>
+              is hidden rather than unmounted, for the same reason. */}
+          <DisclosureGroup
+            data-slot="memory-rows"
+            // The card itself (settings-rows.tsx `SettingsCard`): one surface,
+            // rows dividing themselves. Empty, an unhidden card would be a grey
+            // stripe with nothing in it.
+            className={cx(
+              'flex flex-col rounded-2xl bg-background-secondary-default pl-3',
+              browser.visible.length === 0 && 'hidden',
+            )}
+            aria-busy={browser.loading}
+          >
             {browser.visible.map((m) => (
               <MemoryRow
                 key={m.id}
@@ -269,14 +287,14 @@ export function MemorySettings() {
               </ActionBar.Prefix>
               <ActionBar.Content>
                 <Button
-                  variant="ghost"
+                  variant="secondary"
                   onPress={browser.selectAllVisible}
                   isDisabled={browser.selected.size === browser.visible.length}
                 >
                   {t('settings.memory.selectAll')}
                 </Button>
                 <Button
-                  variant="ghost"
+                  variant="secondary"
                   onPress={async () => {
                     const ok = await confirm({
                       title: t('settings.memory.deleteConfirmTitle'),
@@ -294,7 +312,7 @@ export function MemorySettings() {
                     browser.refresh()
                   }}
                 >
-                  <TrashBin className="text-status-danger" />
+                  <Bin className="size-4 text-status-danger" />
                   {t('settings.memory.deleteSelected')}
                 </Button>
               </ActionBar.Content>
@@ -302,12 +320,12 @@ export function MemorySettings() {
                 <TooltipTrigger delay={0}>
                   <Button
                     iconOnly
-                    variant="ghost"
+                    leadingIcon={X}
+                    size="small"
+                    variant="neutral"
                     aria-label={t('settings.memory.clearSelection')}
                     onPress={browser.clearSelection}
-                  >
-                    <Xmark />
-                  </Button>
+                  />
                   <Tooltip>{t('settings.memory.clearSelection')}</Tooltip>
                 </TooltipTrigger>
               </ActionBar.Suffix>

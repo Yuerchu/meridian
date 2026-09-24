@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FolderOpen, Xmark } from '@gravity-ui/icons'
-import { Button, Tooltip, TooltipTrigger } from '@/components/base'
+import { FolderOpen, X } from '@keyline-icons/react/two-tone'
+import { Alert, Button, Tooltip, TooltipTrigger } from '@/components/base'
 import { CellSwitch } from '@/components/base'
 import { EmptyState } from '@/components/base'
 import { api } from '@/api'
@@ -17,24 +17,21 @@ export function AndroidFileAccess() {
   const [manageGranted, setManageGranted] = useState(false)
   const [safRoots, setSafRoots] = useState<SafRootListResponse>([])
   const [picking, setPicking] = useState(false)
+  // Every failure here used to go to the console, which on a phone is nowhere:
+  // a directory that did not get added looked like a picker that did nothing.
+  const [error, setError] = useState<string | null>(null)
+  const report = useCallback((e: unknown) => setError(String(e)), [])
 
   const refreshGranted = useCallback(() => {
-    api
-      .getManageStorageStatus()
-      .then(setManageGranted)
-      .catch((e) => {
-        console.error('getManageStorageStatus failed:', e)
-      })
-  }, [])
+    api.getManageStorageStatus().then(setManageGranted).catch(report)
+  }, [report])
 
   useEffect(() => {
-    api.getPreference({ key: 'android.manage_storage_enabled' }).then(({ value }) => {
-      setManageEnabled(value ?? false)
-    })
     api
-      .listSafRoots()
-      .then(setSafRoots)
-      .catch(() => {})
+      .getPreference({ key: 'android.manage_storage_enabled' })
+      .then(({ value }) => setManageEnabled(value ?? false))
+      .catch(report)
+    api.listSafRoots().then(setSafRoots).catch(report)
     refreshGranted()
     // Re-check the system grant when returning from the system settings page.
     // On Android WebView, window 'focus' may not fire reliably on Activity
@@ -49,36 +46,46 @@ export function AndroidFileAccess() {
       document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener('focus', onFocus)
     }
-  }, [refreshGranted])
+  }, [refreshGranted, report])
 
   const handleManageToggle = async (checked: boolean) => {
+    setError(null)
     setManageEnabled(checked)
-    await api.setPreference({ key: 'android.manage_storage_enabled', value: checked })
+    try {
+      await api.setPreference({ key: 'android.manage_storage_enabled', value: checked })
+    } catch (e) {
+      // Not written, so the switch goes back to what is actually stored.
+      setManageEnabled(!checked)
+      report(e)
+      return
+    }
     if (checked && !manageGranted) {
       try {
         await api.requestManageStorage()
       } catch (e) {
-        console.error('requestManageStorage failed:', e)
+        report(e)
       }
     }
   }
 
   const handleAddDirectory = async () => {
+    setError(null)
     setPicking(true)
     try {
       setSafRoots(await api.pickSafDirectory())
     } catch (e) {
-      console.error('pickSafDirectory failed:', e)
+      report(e)
     } finally {
       setPicking(false)
     }
   }
 
   const handleRemove = async (uri: string) => {
+    setError(null)
     try {
       setSafRoots(await api.removeSafRoot(uri))
-    } catch {
-      // ignore
+    } catch (e) {
+      report(e)
     }
   }
 
@@ -92,6 +99,16 @@ export function AndroidFileAccess() {
           {t('settings.fileAccess.description')}
         </p>
       </div>
+
+      {error && (
+        <Alert data-slot="file-access-error" status="danger" role="alert">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>{t('settings.fileAccess.error')}</Alert.Title>
+            <Alert.Description className="break-all">{error}</Alert.Description>
+          </Alert.Content>
+        </Alert>
+      )}
 
       <div data-slot="file-access-saf" className="space-y-1.5">
         <p data-slot="file-access-saf-label" className="block text-caption-1-medium text-text-secondary">
@@ -124,21 +141,21 @@ export function AndroidFileAccess() {
                 </div>
                 <TooltipTrigger delay={0}>
                   <Button
-                    variant="ghost"
+                    variant="neutral"
                     iconOnly
+                    leadingIcon={X}
+                    size="small"
                     className="shrink-0"
                     onPress={() => handleRemove(root.uri)}
                     aria-label={t('settings.fileAccess.removeDir')}
-                  >
-                    <Xmark className="h-3.5 w-3.5" />
-                  </Button>
+                  />
                   <Tooltip>{t('settings.fileAccess.removeDir')}</Tooltip>
                 </TooltipTrigger>
               </li>
             ))}
           </ul>
         )}
-        <Button variant="outline" onPress={handleAddDirectory} isDisabled={picking}>
+        <Button variant="secondary" onPress={handleAddDirectory} isDisabled={picking}>
           <FolderOpen className="mr-1.5 h-3.5 w-3.5" />
           {t('settings.fileAccess.addDir')}
         </Button>

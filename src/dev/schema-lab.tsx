@@ -7,7 +7,7 @@
 // 节点全字段展开,不折叠:一张表要么值得画出来,要么不该在图上。折叠起来的字段
 // 等于让人在图和文档之间来回跳,而这张图存在的理由就是不用跳。
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Moon, Sun, Xmark } from '@gravity-ui/icons'
+import { Moon, Sun, X } from '@keyline-icons/react/two-tone'
 import {
   Background,
   Controls,
@@ -25,7 +25,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
-import { Button, Chip, Input, ListBox, Tooltip, TooltipTrigger } from '@/components/base'
+import { Button, Chip, Input, ListBox, ToggleButton, Tooltip, TooltipTrigger } from '@/components/base'
 import { cx } from '@/utils/cx'
 import { useAppTheme } from '@/lib/theme'
 import {
@@ -464,9 +464,15 @@ function DetailPanel({
             </p>
           </div>
           <TooltipTrigger delay={0}>
-            <Button iconOnly aria-label="关闭详情" variant="ghost" size="small" className="ml-auto" onPress={onClose}>
-              <Xmark className="size-4" />
-            </Button>
+            <Button
+              iconOnly
+              leadingIcon={X}
+              aria-label="关闭详情"
+              variant="neutral"
+              size="small"
+              className="ml-auto"
+              onPress={onClose}
+            />
             <Tooltip placement="left">关闭</Tooltip>
           </TooltipTrigger>
         </div>
@@ -637,10 +643,10 @@ function Lab() {
           }}
           className="w-56"
         />
-        <Button variant={showSoft ? 'primary' : 'outline'} size="small" onPress={() => setShowSoft((v) => !v)}>
+        <ToggleButton size="small" isSelected={showSoft} onChange={setShowSoft}>
           逻辑引用
-        </Button>
-        <Button variant="outline" size="small" onPress={() => void rf.fitView({ padding: 0.06, duration: 400 })}>
+        </ToggleButton>
+        <Button variant="secondary" size="small" onPress={() => void rf.fitView({ padding: 0.06, duration: 400 })}>
           适应画布
         </Button>
 
@@ -650,7 +656,7 @@ function Lab() {
             return (
               <TooltipTrigger key={g.id} delay={300}>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="small"
                   onPress={() => toggleGroup(g.id)}
                   aria-pressed={!off}
@@ -671,14 +677,12 @@ function Lab() {
           <TooltipTrigger delay={0}>
             <Button
               iconOnly
+              leadingIcon={resolvedTheme === 'dark' ? Sun : Moon}
               aria-label="切换主题"
-              variant="outline"
+              variant="secondary"
               size="small"
               onPress={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
-            >
-              <Sun className="hidden size-4 dark:block" />
-              <Moon className="size-4 dark:hidden" />
-            </Button>
+            />
             <Tooltip placement="bottom">切换主题</Tooltip>
           </TooltipTrigger>
         </div>

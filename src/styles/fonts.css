@@ -1,0 +1,67 @@
+/* The bundled typefaces, and the two variables boardui's theme reads them from.
+ *
+ * `theme.css` is the registry's file and is not edited: its `--font-sans` is
+ * `var(--font-inter), …` and its `--font-mono` is `var(--font-mono-source), …`,
+ * written for a next/font setup that defines those two variables on the
+ * document. This file is that setup. Both are read at computed-value time —
+ * `@theme` (not `inline`) emits `--font-sans: var(--font-inter), …` onto
+ * `:root` and the utilities say `var(--font-sans)` — so defining them on
+ * `:root` here is enough, and anything that redefines `--font-sans` itself
+ * afterwards cuts this file out of the chain. `fonts.test.ts` checks both.
+ *
+ * The files are not in git: `scripts/fetch-fonts.mjs` puts them in
+ * `public/fonts/` before `dev` and `build`. MiSans may be embedded but not
+ * redistributed alone or modified, so they are the publishers' own files,
+ * unsubset and unconverted — which is also why they are TTF.
+ */
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/InterVariable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* The variable face's own axis runs 150–700, and a range wider than the axis
+   would claim weights it clamps rather than has. */
+@font-face {
+  font-family: 'MiSans';
+  src: url('/fonts/MiSansVF.ttf') format('truetype');
+  font-weight: 150 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* GB 18030-2022 level 3: the CJK extension blocks MiSans does not cover.
+   Only Regular exists. The range is exactly what the file maps (measured with
+   fontTools), block by block; it also carries ~200 BMP punctuation and Latin
+   glyphs that must never be picked over MiSans's own, which the range is what
+   prevents. */
+@font-face {
+  font-family: 'MiSans L3';
+  src: url('/fonts/MiSansL3.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  /* Extensions B, C, D, E, F, and the two Extension G code points it has (biáng). */
+  unicode-range: U+20000-2A6DF, U+2A700-2B73F, U+2B740-2B81F, U+2B820-2CEAF, U+2CEB0-2EBEF, U+30EDD-30EDE;
+}
+
+/* Regular only: code is the one place it appears, and bold/italic there are
+   left to the browser to synthesise rather than shipping 60 MB more. */
+@font-face {
+  font-family: 'Maple Mono NF CN';
+  src: url('/fonts/MapleMono-NF-CN-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* Inter for Latin, MiSans for the CJK Inter lacks, L3 for what MiSans lacks. */
+  --font-inter: 'Inter', 'MiSans', 'MiSans L3';
+  /* Maple's CN build already carries CJK at a monospace width; MiSans and L3
+     only catch what it lacks, so a rare character in a comment still renders. */
+  --font-mono-source: 'Maple Mono NF CN', 'MiSans', 'MiSans L3';
+}

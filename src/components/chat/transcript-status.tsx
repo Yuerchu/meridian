@@ -1,8 +1,7 @@
 import { useTranslation } from 'react-i18next'
-import { Spinner } from '@/components/base'
+import { AgentThinking } from '@/components/application/agent-thinking/agent-thinking'
 import { MessageScrollerItem } from '@/components/ui/message-scroller'
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
-import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker'
 import { AcpNoticeBubble } from './acp-notice-bubble'
 import type { AcpSessionNoticeInfoResponse } from '@/types'
 
@@ -48,14 +47,11 @@ export function TranscriptStatus({
       )}
       {compacting && (
         <MessageScrollerItem messageId="__compacting">
-          <Marker role="status" className="justify-center py-3">
-            <MarkerIcon>
-              {/* `sm` is 16px, the size of the icon slot. Left at its default
-                  the spinner is 24px and overflows the row. */}
-              <Spinner size="sm" />
-            </MarkerIcon>
-            <MarkerContent className="shimmer text-caption-1-regular">{t('chat.compact.inProgress')}</MarkerContent>
-          </Marker>
+          {/* boardui's agent-thinking is the whole row, and the status: its
+              own `role="status"` announces it, so nothing around it is one. */}
+          <div data-slot="compacting-status" className="flex justify-center py-3">
+            <AgentThinking variant="spin" label={t('chat.compact.inProgress')} />
+          </div>
         </MessageScrollerItem>
       )}
       {/* After the turns, not before them: the error belongs to the turn that

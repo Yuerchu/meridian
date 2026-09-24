@@ -55,7 +55,7 @@ export function AcpNoticeBubble({
             {canRetry && (
               <Button
                 size="small"
-                variant="outline"
+                variant="secondary"
                 className="rounded-lg"
                 onPress={() => {
                   if (retryText !== null) actions?.retry(retryText)
@@ -65,7 +65,7 @@ export function AcpNoticeBubble({
               </Button>
             )}
             {canRestart && (
-              <Button size="small" variant="outline" className="rounded-lg" onPress={() => actions?.restartAgent()}>
+              <Button size="small" variant="secondary" className="rounded-lg" onPress={() => actions?.restartAgent()}>
                 {t('chat.acpNotice.action.newSession')}
               </Button>
             )}

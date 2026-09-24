@@ -26,10 +26,10 @@ vi.mock('@/hooks/use-hotkey', () => ({ useHotkey: vi.fn() }))
 vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }))
 vi.mock('@/hooks/use-platform', () => ({ usePlatform: () => 'windows' }))
 
-vi.mock('@gravity-ui/icons', () => ({
+vi.mock('@keyline-icons/react/two-tone', () => ({
   FolderTree: () => null,
-  Magnifier: () => null,
-  Xmark: () => null,
+  Search: () => null,
+  X: () => null,
 }))
 vi.mock('@/components/base', () => {
   const Tooltip = Object.assign(({ children }: { children: React.ReactNode }) => <>{children}</>, {
@@ -98,7 +98,8 @@ vi.mock('./app-sidebar', () => ({
     return null
   },
 }))
-vi.mock('./approval-toasts', () => ({ ApprovalToastRegion: () => null }))
+vi.mock('./approval-notifications', () => ({ ApprovalNotifications: () => null }))
+vi.mock('./notification-inbox', () => ({ NotificationInbox: () => null }))
 vi.mock('./command-palette', () => ({ CommandPalette: () => null }))
 vi.mock('./remote-status', () => ({ RemoteStatus: () => null }))
 vi.mock('@/components/chat/changes-panel', () => ({ ChangesPanel: () => null }))
@@ -119,14 +120,14 @@ function renderShell(overrides: Partial<ShellProps> = {}) {
     canDragWindow: true,
     onSelect: vi.fn(),
     onCreate: vi.fn().mockResolvedValue(undefined),
-    onDelete: vi.fn(),
-    onRename: vi.fn(),
-    onTogglePin: vi.fn(),
+    onDelete: vi.fn().mockResolvedValue(undefined),
+    onRename: vi.fn().mockResolvedValue(undefined),
+    onTogglePin: vi.fn().mockResolvedValue(undefined),
     onSelectProject: vi.fn(),
     onCreateProject: vi.fn(),
     onCreateHostedSession: vi.fn().mockResolvedValue(null),
-    onDeleteProject: vi.fn(),
-    onRenameProject: vi.fn(),
+    onDeleteProject: vi.fn().mockResolvedValue(undefined),
+    onRenameProject: vi.fn().mockResolvedValue(undefined),
     onOpenSettings: vi.fn(),
     onCloseSettings: vi.fn(),
     onSettingsTabChange: vi.fn(),

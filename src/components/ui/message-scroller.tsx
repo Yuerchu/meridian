@@ -10,7 +10,7 @@ import {
 import { cx } from '@/utils/cx'
 import { usePlatform } from '@/hooks/use-platform'
 import { Button } from '@/components/base'
-import { ArrowDown } from '@gravity-ui/icons'
+import { ArrowDown } from '@keyline-icons/react/two-tone'
 
 function MessageScrollerProvider(props: React.ComponentProps<typeof MessageScrollerPrimitive.Provider>) {
   return <MessageScrollerPrimitive.Provider {...props} />
@@ -130,19 +130,20 @@ function MessageScrollerButton({
         // handlers against React Aria's synthetic events, which are the same
         // objects with a wider element type.
         ((buttonProps) => (
-          <Button iconOnly variant={variant} size={size} {...(buttonProps as React.ComponentProps<typeof Button>)} />
+          // eslint-disable-next-line meridian-ui/icon-only-needs-name -- wrapper: the caller's aria-label arrives through {...props}
+          <Button
+            iconOnly
+            leadingIcon={ArrowDown}
+            variant={variant}
+            size={size}
+            {...(buttonProps as React.ComponentProps<typeof Button>)}
+          />
         ))
       }
+      aria-label={t(direction === 'end' ? 'chat.scrollToBottom' : 'chat.scrollToTop')}
       {...props}
     >
-      {children ?? (
-        <>
-          <ArrowDown />
-          <span data-slot="message-scroller-button-label" className="sr-only">
-            {t(direction === 'end' ? 'chat.scrollToBottom' : 'chat.scrollToTop')}
-          </span>
-        </>
-      )}
+      {children}
     </MessageScrollerPrimitive.Button>
   )
 }

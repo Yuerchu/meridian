@@ -1,24 +1,22 @@
-import { Label as AriaLabel, type LabelProps as AriaLabelProps } from 'react-aria-components'
-import { cx } from '@/utils/cx'
+import { Label as BoardLabel, type LabelProps as BoardLabelProps } from './input/label'
 
 /**
- * A field's visible name. Inside a `TextField`, `Select`, `CheckboxGroup` or
- * `RadioGroup` React Aria wires it to the control (`htmlFor` /
- * `aria-labelledby`) through context; outside one it is a caption in the same
- * style. The registry's `input/label.tsx` adds the required asterisk and info
- * glyph for its composed `Input`; this is the bare form the rest of the app
- * places beside its own controls.
+ * A field's visible name: the registry's `input/label.tsx`, so a field the app
+ * composes itself gets the same type, the required asterisk (`isRequired`) and
+ * the info glyph (`tooltip`) as the registry's own `Input`. Inside a
+ * `TextField`, `Select`, `CheckboxGroup` or `RadioGroup` React Aria wires it to
+ * the control (`htmlFor` / `aria-labelledby`) through context; outside one it
+ * is a caption in the same style.
  */
-export interface LabelProps extends Omit<AriaLabelProps, 'className'> {
+export interface LabelProps extends Omit<BoardLabelProps, 'className' | 'children'> {
   className?: string
+  children?: BoardLabelProps['children']
 }
 
-export function Label({ className, ...props }: LabelProps) {
+export function Label({ children, ...props }: LabelProps) {
   return (
-    <AriaLabel
-      data-slot="label"
-      {...props}
-      className={cx('flex cursor-default items-center gap-0.5 text-body-medium text-text-primary', className)}
-    />
+    <BoardLabel data-slot="label" {...props}>
+      {children}
+    </BoardLabel>
   )
 }

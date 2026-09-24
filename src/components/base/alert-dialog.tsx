@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from 'react'
-import { RiAlertFill, RiErrorWarningFill, RiInformationFill } from '@remixicon/react'
+import { CircleAlert, Info, TriangleAlert } from '@keyline-icons/react/two-tone'
 import {
   Dialog,
   Heading as AriaHeading,
@@ -8,7 +8,7 @@ import {
   type DialogProps,
 } from 'react-aria-components'
 import { cx } from '@/utils/cx'
-import { BACKDROP_MOTION, BACKDROP_VARIANT, OVERLAY_MOTION, OVERLAY_SURFACE } from './overlay-motion'
+import { MODAL_BACKDROP, MODAL_BACKDROP_MOTION, MODAL_MOTION, MODAL_SURFACE } from './overlay-motion'
 
 /**
  * A `Modal` that asks one question: `role="alertdialog"`, one size, a status
@@ -41,8 +41,8 @@ function AlertDialogBackdrop({
       isDismissable={isDismissable}
       className={cx(
         'fixed inset-0 z-50 flex items-center justify-center p-4',
-        BACKDROP_VARIANT.opaque,
-        BACKDROP_MOTION,
+        MODAL_BACKDROP,
+        MODAL_BACKDROP_MOTION,
         className,
       )}
     >
@@ -55,7 +55,7 @@ function AlertDialogContainer({ className, children }: { className?: string; chi
   return (
     <AriaModal
       data-slot="alert-dialog"
-      className={cx('flex w-full max-w-md flex-col overflow-hidden', OVERLAY_SURFACE, OVERLAY_MOTION, className)}
+      className={cx('flex w-full max-w-md flex-col overflow-hidden', MODAL_SURFACE, MODAL_MOTION, className)}
     >
       {children}
     </AriaModal>
@@ -91,9 +91,9 @@ function AlertDialogHeader({ className, ...props }: ComponentProps<'div'>) {
 }
 
 const statusIcon = {
-  danger: { Icon: RiErrorWarningFill, className: 'bg-status-danger-soft text-status-danger-soft-foreground' },
-  warning: { Icon: RiAlertFill, className: 'bg-status-warning-soft text-status-warning-soft-foreground' },
-  accent: { Icon: RiInformationFill, className: 'bg-button-ghost-background text-button-ghost-foreground' },
+  danger: { Icon: CircleAlert, className: 'bg-status-danger-soft text-status-danger-soft-foreground' },
+  warning: { Icon: TriangleAlert, className: 'bg-status-warning-soft text-status-warning-soft-foreground' },
+  accent: { Icon: Info, className: 'bg-button-ghost-background text-button-ghost-foreground' },
 } as const
 
 function AlertDialogIcon({ status = 'danger', className }: { status?: AlertDialogStatus; className?: string }) {

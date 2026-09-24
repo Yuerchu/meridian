@@ -102,8 +102,13 @@ describe('isPriced', () => {
    */
   it('tells a free model from an unconfigured one', () => {
     expect(isPriced({ input_price: null, output_price: null })).toBe(false)
-    expect(isPriced({ input_price: decimal('0'), output_price: decimal('0') })).toBe(false)
-    expect(isPriced({ input_price: decimal('1.25'), output_price: null })).toBe(true)
-    expect(isPriced({ input_price: null, output_price: decimal('10') })).toBe(true)
+    expect(isPriced({ input_price: decimal('0'), output_price: decimal('0') })).toBe(true)
+    expect(isPriced({ input_price: decimal('1.25'), output_price: decimal('10') })).toBe(true)
+  })
+
+  /** The backend's `Prices::known()`: half a rate set bills nothing. */
+  it('needs both base rates', () => {
+    expect(isPriced({ input_price: decimal('1.25'), output_price: null })).toBe(false)
+    expect(isPriced({ input_price: null, output_price: decimal('0') })).toBe(false)
   })
 })

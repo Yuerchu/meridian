@@ -754,6 +754,7 @@ interface ToolAttentionItem {
   /** Set when a delegated run is asking. The question is filed under the
    *  parent, but the call's result and stop land on this conversation. */
   subConversationId?: string
+  askedAt: AttentionAskedAt
 }
 
 export type PlanReviewAttentionStage = 'review' | 'delivery_queued' | 'delivery_attention'
@@ -773,7 +774,17 @@ interface PlanReviewAttentionItem {
    *  dispatched delivery blocks new work without asking the user to act. */
   stage: PlanReviewAttentionStage
   kind: 'plan_review'
+  askedAt: AttentionAskedAt
 }
+
+/**
+ * When this client heard the question asked, in epoch milliseconds — which is
+ * when it was asked, because the announcing event is sent at that moment.
+ * `null` when the entry was rebuilt from a register (`allPendingApprovals`, a
+ * snapshot's plan reviews) that does not say: those carry no time, and stamping
+ * the moment of the reload would call an hour-old question "just now".
+ */
+export type AttentionAskedAt = number | null
 
 export type AttentionItem = ToolAttentionItem | PlanReviewAttentionItem
 
@@ -909,6 +920,7 @@ function retireAttention(state: ConversationStore, approvalId: string) {
   if (!state.attention[approvalId]) return
   delete state.attention[approvalId]
   state.attentionOrder = state.attentionOrder.filter((id) => id !== approvalId)
+  delete state.stackIgnored[approvalId]
 }
 
 function planReviewAttentionStage(
@@ -937,6 +949,7 @@ function applyPlanReviewAttention(
   for (const review of reviews) {
     const stage = planReviewAttentionStage(review)
     if (stage === null) continue
+    const askedAt = state.attention[review.review_id]?.askedAt ?? null
     state.attention[review.review_id] = {
       approvalId: review.review_id,
       reviewId: review.review_id,
@@ -946,6 +959,7 @@ function applyPlanReviewAttention(
       turnId: review.turn_id,
       stage,
       kind: 'plan_review',
+      askedAt,
     }
     if (!state.attentionOrder.includes(review.review_id)) state.attentionOrder.push(review.review_id)
   }
@@ -1122,6 +1136,11 @@ export interface ConversationStore {
    *  can be reordered without anything about the questions changing: deferring
    *  one moves it to the end and nothing else. */
   attentionOrder: string[]
+  /** Questions the reader took off the floating notification stack. Only the
+   *  stack reads this: the question is still owed, the inbox still lists it and
+   *  the sidebar dot still lights. Cleared by `retireAttention`, so an answer on
+   *  any path — card, toast, inbox, stop, orphan — takes the entry with it. */
+  stackIgnored: Record<string, true>
   /** An approval the keyboard shortcut asked to refuse. Refusing needs a
    *  reason typed, so the shortcut cannot finish the job itself: it names the
    *  question here, and the panel that owns it switches to its reason field
@@ -1278,6 +1297,9 @@ export interface ConversationStore {
    *  only way past an item is answering it stops being usable at three items,
    *  and one where "later" meant "gone" would make a mis-click cost a turn. */
   deferAttention: (approvalId: string) => void
+  /** Take a question off the floating stack without answering or deferring
+   *  it. It stays in `attention`, so the inbox and the sidebar keep it. */
+  ignoreOnStack: (approvalId: string) => void
   /** Rebuild the queue from the backend's live register.
    *
    *  Every entry in it was announced by an event that is not replayed, so a
@@ -1318,6 +1340,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   subAgentSteps: {},
   attention: {},
   attentionOrder: [],
+  stackIgnored: {},
   denyRequestApprovalId: null,
   navigationStack: [],
   activeProjectId: null,
@@ -1891,6 +1914,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             retryReason,
             kind: isAskTool(toolName) ? 'ask' : 'approval',
             subConversationId: bubble?.subConversationId,
+            askedAt: Date.now(),
           }
           state.attentionOrder.push(approvalId)
         }
@@ -1989,6 +2013,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           retireAttention(state, event.review_id)
           return
         }
+        const askedAt = state.attention[event.review_id]?.askedAt ?? Date.now()
         state.attention[event.review_id] = {
           approvalId: event.review_id,
           reviewId: event.review_id,
@@ -1998,6 +2023,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           turnId: event.turn_id,
           stage,
           kind: 'plan_review',
+          askedAt,
         }
         if (!state.attentionOrder.includes(event.review_id)) state.attentionOrder.push(event.review_id)
       }),
@@ -2224,7 +2250,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         if (!session) return
         // Unlike `retireAnsweredApproval`, this *does* settle the card. That
         // one deliberately leaves an ordinary card holding its `approval_id`,
-        // because the question is still owed and only the toast is going away.
+        // because the question is still owed and only the notification is going away.
         // Here the question is over: leaving the id behind would keep the card
         // at `pending`, which draws as `requires-action` — a demand for an
         // answer with no way left to give one.
@@ -2273,6 +2299,17 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     )
   },
 
+  ignoreOnStack: (approvalId) => {
+    set(
+      produce((state: ConversationStore) => {
+        // An id that has already been answered has nothing left to hide, and
+        // recording it would leave an entry no retirement will ever clear.
+        if (!state.attention[approvalId]) return
+        state.stackIgnored[approvalId] = true
+      }),
+    )
+  },
+
   loadAllPending: async () => {
     // What the answer is allowed to have an opinion about. Anything queued after
     // this line is newer than the register that is about to be read, and being
@@ -2298,6 +2335,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             retryReason: row.retry_reason ?? undefined,
             kind: isAskTool(row.tool_name) ? 'ask' : 'approval',
             subConversationId: row.sub_conversation_id ?? undefined,
+            askedAt: null,
           }
           state.attentionOrder.push(row.approval_id)
         }

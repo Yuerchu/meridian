@@ -1,8 +1,15 @@
 import { createContext, useContext, type ComponentProps, type Key, type ReactNode } from 'react'
-import { Popover as AriaPopover, DialogTrigger, Dialog, type PopoverProps } from 'react-aria-components'
+import {
+  Button as AriaButton,
+  Popover as AriaPopover,
+  DialogTrigger,
+  Dialog,
+  type ButtonProps as AriaButtonProps,
+  type PopoverProps,
+} from 'react-aria-components'
 import { cx } from '@/utils/cx'
 import { OVERLAY_MOTION } from './overlay-motion'
-import { Button } from './buttons/button'
+import { Button, type ButtonProps } from './buttons/button'
 
 interface EmojiPickerCtx {
   selectedKey: Key | null
@@ -44,22 +51,21 @@ interface EmojiPickerTriggerProps {
   'aria-label'?: string
   className?: string
   onPress?: () => void
-  children?: ReactNode
+  leadingIcon: ButtonProps['leadingIcon']
 }
 
-function EmojiPickerTrigger({ className, onPress, children, ...props }: EmojiPickerTriggerProps) {
+function EmojiPickerTrigger({ className, onPress, leadingIcon, ...props }: EmojiPickerTriggerProps) {
   return (
     <Button
       data-slot="emoji-picker-trigger"
-      variant="ghost"
+      variant="neutral"
       iconOnly
       size="small"
       onPress={onPress}
-      className={cx('text-text-secondary', className)}
+      leadingIcon={leadingIcon}
+      className={className}
       aria-label={props['aria-label']}
-    >
-      {children}
-    </Button>
+    />
   )
 }
 
@@ -116,24 +122,26 @@ function EmojiPickerGrid<T>({ className, items, children, renderEmptyState, ...p
   )
 }
 
-interface EmojiPickerItemProps extends Omit<ComponentProps<'button'>, 'id'> {
+interface EmojiPickerItemProps extends Omit<AriaButtonProps, 'id' | 'className' | 'isDisabled' | 'onPress'> {
   id?: string | number
   disabled?: boolean
   textValue?: string
+  className?: string
 }
 
 function EmojiPickerItem({ className, id, disabled, textValue, ...props }: EmojiPickerItemProps) {
   const { onSelectionChange } = useContext(EmojiPickerContext)
   return (
-    <button
+    <AriaButton
       data-slot="emoji-picker-item"
-      type="button"
-      disabled={disabled}
+      isDisabled={disabled}
       aria-label={textValue}
-      onClick={() => id != null && onSelectionChange?.(id)}
+      onPress={() => id != null && onSelectionChange?.(id)}
       {...props}
       className={cx(
-        'flex size-8 items-center justify-center rounded-md text-title-3-regular hover:bg-background-secondary-default disabled:opacity-50',
+        'flex size-8 cursor-pointer items-center justify-center rounded-md text-title-3-regular',
+        'outline-none transition-colors duration-150 ease data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
+        'data-[hovered]:bg-background-secondary-default data-[pressed]:bg-background-secondary-hover data-[disabled]:cursor-default data-[disabled]:opacity-50',
         className,
       )}
     />

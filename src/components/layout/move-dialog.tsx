@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
-import { Button, Modal } from '@/components/base'
-import { Comment } from '@gravity-ui/icons'
+import { Button, ListBox, Modal } from '@/components/base'
+import { Message } from '@keyline-icons/react/two-tone'
 
 import type { ProjectInfoResponse } from '@/types'
 import { useHistoryLevel } from '@/hooks/use-history-level'
@@ -44,14 +44,12 @@ export function MoveDialog({
     if (await onMove(projectId)) onOpenChange(false)
   }
 
+  // A list of places, so a list: the registry's menu row (`ListBox.Item`)
+  // rather than a column of `w-full justify-start` Buttons, which on BoardUI's
+  // accent-soft `ghost` drew every destination as a selected blue pill.
+  const NONE = '__none__'
   const destination = (id: string | null, icon: React.ReactNode, label: string) => (
-    <Button
-      key={id ?? 'none'}
-      variant="ghost"
-      onPress={() => void choose(id)}
-      isDisabled={isPending || id === currentProjectId}
-      className="w-full justify-start"
-    >
+    <ListBox.Item key={id ?? NONE} id={id ?? NONE} textValue={label} className="gap-2 rounded-2lg p-2">
       {icon}
       <span data-slot="move-dialog-destination-label" className="truncate">
         {label}
@@ -64,8 +62,9 @@ export function MoveDialog({
           {t('moveDialog.currentLocation')}
         </span>
       )}
-    </Button>
+    </ListBox.Item>
   )
+  const allKeys = [NONE, ...projects.map((project) => project.id)]
 
   return (
     <Modal.Backdrop isOpen={isOpen} onOpenChange={onOpenChange}>
@@ -80,10 +79,18 @@ export function MoveDialog({
                 {error}
               </p>
             )}
-            {destination(null, <Comment className="text-text-secondary" />, t('moveDialog.noProject'))}
-            {projects.map((project) =>
-              destination(project.id, <ProjectIcon sourceType={project.source_type} />, project.name),
-            )}
+            <ListBox
+              data-slot="move-dialog-destinations"
+              aria-label={t('moveDialog.title')}
+              className="gap-1"
+              disabledKeys={isPending ? allKeys : [currentProjectId ?? NONE]}
+              onAction={(key) => void choose(key === NONE ? null : String(key))}
+            >
+              {destination(null, <Message className="size-4 text-text-secondary" />, t('moveDialog.noProject'))}
+              {projects.map((project) =>
+                destination(project.id, <ProjectIcon sourceType={project.source_type} />, project.name),
+              )}
+            </ListBox>
           </Modal.Body>
           <Modal.Footer>
             <Button slot="close" variant="secondary" isDisabled={isPending}>

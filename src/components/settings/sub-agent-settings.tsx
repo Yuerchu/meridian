@@ -43,6 +43,7 @@ function KindRow({ kind, providers }: { kind: Kind; providers: ProviderInfoRespo
       api
         .fetchProviderModels({ providerId, forceRefresh: null })
         .then(setModels)
+        // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- model list feeds the picker only; the saved pair is form state
         .catch(() => setModels([]))
     } else {
       setModels([])

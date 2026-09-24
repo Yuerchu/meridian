@@ -1,5 +1,6 @@
-import { Microphone, StopFill } from '@gravity-ui/icons'
-import { Button, Tooltip, TooltipTrigger } from '@/components/base'
+import { Mic } from '@keyline-icons/react/two-tone'
+import { Stop } from '@keyline-icons/react/fill'
+import { PromptInput, Tooltip, TooltipTrigger } from '@/components/base'
 import { cx } from '@/utils/cx'
 
 export type VoiceButtonState =
@@ -55,17 +56,19 @@ export function VoiceButton({
         </span>
       )}
       <TooltipTrigger delay={0}>
-        <Button
-          iconOnly
+        {/* The composer's round control (the registry agent-composer's
+            `ai-chat-composer-add-*` button), red while it is listening. */}
+        <PromptInput.Control
+          leadingIcon={state === 'recording-toggle' ? Stop : Mic}
           aria-label={ariaLabel}
           aria-pressed={recording}
-          variant={recording ? 'danger-soft' : 'ghost'}
+          tone={recording ? 'danger' : 'default'}
           isDisabled={disabled}
           isPending={state === 'transcribing'}
           className={cx(
             'touch-hitbox touch-none select-none',
-            state === 'starting' && 'text-text-secondary',
-            state !== 'starting' && !recording && 'text-text-secondary hover:text-text-primary',
+            // Opening the device: dimmer, so nobody starts talking yet.
+            state === 'starting' && 'text-foreground-icon-secondary',
           )}
           onPointerDown={onPointerDown}
           onPointerUp={onPointerUp}
@@ -80,9 +83,7 @@ export function VoiceButton({
           }}
           // Keep focus in the textarea; the browser default would steal it.
           onMouseDown={(e) => e.preventDefault()}
-        >
-          {state === 'recording-toggle' ? <StopFill className="w-4 h-4" /> : <Microphone className="w-4 h-4" />}
-        </Button>
+        />
         <Tooltip>{ariaLabel}</Tooltip>
       </TooltipTrigger>
     </div>

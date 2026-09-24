@@ -1,0 +1,14 @@
+/* Injected by toHaveScreenshot (playwright.config.ts `stylePath`) while the
+   screenshot is taken. Motion is already `reduce` and finite animations are
+   fast-forwarded; this removes what is left — a transition caught mid-way, a
+   blinking caret, the streaming cursor. */
+*,
+*::before,
+*::after {
+  animation-duration: 0s !important;
+  animation-delay: 0s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+  caret-color: transparent !important;
+}

@@ -8,7 +8,7 @@ import {
   type TreeItemProps,
   type TreeProps,
 } from 'react-aria-components'
-import { RiArrowRightSLine } from '@remixicon/react'
+import { ChevronRight } from '@keyline-icons/react/two-tone'
 import { cx } from '@/utils/cx'
 
 /**
@@ -46,7 +46,7 @@ function FileTreeRoot<T extends object>({
       {...props}
       className={cx(
         'group/file-tree flex flex-col outline-none',
-        'data-[empty]:px-2 data-[empty]:py-3 data-[empty]:text-caption-1-medium data-[empty]:text-text-tertiary',
+        'data-[empty]:px-2 data-[empty]:py-3 data-[empty]:text-caption-1-medium data-[empty]:text-text-secondary',
         className,
       )}
     >
@@ -70,7 +70,7 @@ function FileTreeItem({ id, className, icon, title, children, ...props }: FileTr
       data-slot="file-tree-item"
       {...props}
       className={cx(
-        'group/item cursor-[var(--cursor-interactive)] outline-none',
+        'group/item cursor-pointer outline-none',
         'data-[focus-visible]:ring-2 data-[focus-visible]:ring-inset data-[focus-visible]:ring-border-focus-ring',
         className,
       )}
@@ -86,9 +86,9 @@ function FileTreeItem({ id, className, icon, title, children, ...props }: FileTr
               <AriaButton
                 slot="chevron"
                 data-slot="file-tree-chevron"
-                className="flex size-4 shrink-0 cursor-[var(--cursor-interactive)] items-center justify-center rounded-sm text-foreground-icon-secondary outline-none data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring"
+                className="flex size-4 shrink-0 cursor-pointer items-center justify-center rounded-sm text-foreground-icon-secondary outline-none data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring"
               >
-                <RiArrowRightSLine
+                <ChevronRight
                   aria-hidden
                   className={cx('size-4 transition-transform duration-150', isExpanded && 'rotate-90')}
                 />

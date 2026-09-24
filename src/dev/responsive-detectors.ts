@@ -155,20 +155,31 @@ function isRendered(el: Element, win: Window): boolean {
   return !el.closest('[hidden],[inert],[data-state="closed"]')
 }
 
-/** Ancestors that clip, as the padding boxes they clip to. */
-function clippersOf(el: Element, win: Window): Rect[] {
+/**
+ * What clips `el`'s descendants, as the padding boxes they clip to.
+ *
+ * `self` adds the element's own box when it clips. That matters for the hit
+ * target and nothing else: `touch-hitbox` expands an `::after`, which is the
+ * element's own child as far as `overflow` is concerned — and the registry's
+ * `Button` is `overflow-hidden`, so walking from the parent missed the one
+ * clipper that cut every expanded button back to its drawn size.
+ */
+export function clippersOf(el: Element, win: Window, self = false): Rect[] {
   const out: Rect[] = []
-  let node = el.parentElement
+  let node = self ? el : el.parentElement
   while (node) {
     const style = win.getComputedStyle(node)
     const clips = [style.overflowX, style.overflowY].some((v) => v !== 'visible')
     if (clips) {
       const r = rectOf(node)
       // The scrollport is the padding box, so the borders come off.
+      // A computed border width is always a px length; `|| 0` only guards a detached node, and nothing here is saved.
+      /* eslint-disable meridian-ui/no-parse-or-default */
       const bl = parseFloat(style.borderLeftWidth) || 0
       const br = parseFloat(style.borderRightWidth) || 0
       const bt = parseFloat(style.borderTopWidth) || 0
       const bb = parseFloat(style.borderBottomWidth) || 0
+      /* eslint-enable meridian-ui/no-parse-or-default */
       out.push({ left: r.left + bl, top: r.top + bt, right: r.right - br, bottom: r.bottom - bb })
     }
     node = node.parentElement
@@ -263,6 +274,51 @@ export function detectEscape(doc: Document, win: Window): Finding[] {
 }
 
 /**
+ * Whether the loaded `touch-hitbox` rule makes its element `overflow: visible`
+ * under a coarse pointer.
+ *
+ * Read off the stylesheets because the computed style cannot say: the rule sits
+ * in `@media (any-pointer: coarse)`, which does not match on the desktop this
+ * harness runs on. Walks nested rules too — Tailwind may emit the media query
+ * inside the class rule rather than around it. Must be `!important`: without it
+ * a component's own `overflow-hidden` can land later in the utilities layer and
+ * win, which is the defect this exists to notice.
+ */
+export function hitboxLiftsOwnClip(doc: Document): boolean {
+  const walk = (rules: CSSRuleList, coarse: boolean, hitbox: boolean): boolean => {
+    for (const rule of Array.from(rules)) {
+      let c = coarse
+      let h = hitbox
+      if ('media' in rule && (rule as CSSMediaRule).media) {
+        c = c || /any-pointer:\s*coarse/.test((rule as CSSMediaRule).media.mediaText)
+      }
+      if ('selectorText' in rule) h = h || /(^|[^\w-])\.touch-hitbox(?![\w-])/.test((rule as CSSStyleRule).selectorText)
+      const style = (rule as CSSStyleRule).style as CSSStyleDeclaration | undefined
+      if (c && h && style) {
+        const x = style.getPropertyValue('overflow-x') || style.getPropertyValue('overflow')
+        const important =
+          style.getPropertyPriority('overflow-x') === 'important' ||
+          style.getPropertyPriority('overflow') === 'important'
+        if (x.trim().startsWith('visible') && important) return true
+      }
+      const nested = (rule as CSSGroupingRule).cssRules
+      if (nested && walk(nested, c, h)) return true
+    }
+    return false
+  }
+  for (const sheet of Array.from(doc.styleSheets)) {
+    let rules: CSSRuleList
+    try {
+      rules = sheet.cssRules
+    } catch {
+      continue // cross-origin
+    }
+    if (walk(rules, false, false)) return true
+  }
+  return false
+}
+
+/**
  * Things meant to be pressed.
  *
  * Deliberately without a bare `[tabindex]`: being focusable is not the same as
@@ -289,6 +345,7 @@ const INTERACTIVE =
  */
 export function detectHitTargets(doc: Document, win: Window): Finding[] {
   const found: Finding[] = []
+  const liftsOwnClip = hitboxLiftsOwnClip(doc)
   for (const el of doc.body.querySelectorAll<HTMLElement>(INTERACTIVE)) {
     if (!isRendered(el, win)) continue
     if (el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true') continue
@@ -309,7 +366,10 @@ export function detectHitTargets(doc: Document, win: Window): Finding[] {
     // wrong thing. What is computed here is what the rule *would* produce.
     const declared = el.classList.contains('touch-hitbox')
     const raw = rectOf(el)
-    const area = effectiveHitArea(raw, declared, clippersOf(el, win))
+    // The element's own overflow counts only when the utility does not lift
+    // it — which, like the expansion, has to be read off the rule rather than
+    // off the computed style, since the rule is behind a coarse-pointer query.
+    const area = effectiveHitArea(raw, declared, clippersOf(el, win, declared && !liftsOwnClip))
     const size = hitTargetSize(area)
     const grade = gradeHitTarget(size)
     if (!grade) continue

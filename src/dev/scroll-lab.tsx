@@ -785,42 +785,42 @@ export default function ScrollLab() {
         <span data-slot="scroll-lab-title" className="text-body-semibold">
           滚动行为实验场
         </span>
-        <Button size="small" variant="outline" onPress={() => seedHistory()}>
+        <Button size="small" variant="secondary" onPress={() => seedHistory()}>
           铺历史
         </Button>
         {/* Well past the transcript's window, so what this measures is the
             cost of a long conversation as the product actually renders one. */}
-        <Button size="small" variant="outline" onPress={() => seedHistory(200)}>
+        <Button size="small" variant="secondary" onPress={() => seedHistory(200)}>
           铺 200 轮
         </Button>
-        <Button size="small" variant="outline" onPress={() => setHasTrailingRow((v) => !v)}>
+        <Button size="small" variant="secondary" onPress={() => setHasTrailingRow((v) => !v)}>
           尾部状态行
         </Button>
-        <Button size="small" variant="outline" onPress={() => sendUser(false)}>
+        <Button size="small" variant="secondary" onPress={() => sendUser(false)}>
           发短消息
         </Button>
-        <Button size="small" variant="outline" onPress={() => sendUser(true)}>
+        <Button size="small" variant="secondary" onPress={() => sendUser(true)}>
           发长消息
         </Button>
-        <Button size="small" variant="outline" onPress={() => sendUser(3)}>
+        <Button size="small" variant="secondary" onPress={() => sendUser(3)}>
           发超长消息
         </Button>
-        <Button size="small" variant="outline" onPress={startAssistant}>
+        <Button size="small" variant="secondary" onPress={startAssistant}>
           助手开始
         </Button>
-        <Button size="small" variant="outline" onPress={() => streamChunk()}>
+        <Button size="small" variant="secondary" onPress={() => streamChunk()}>
           流式一块
         </Button>
-        <Button size="small" variant="outline" onPress={streamAll}>
+        <Button size="small" variant="secondary" onPress={streamAll}>
           流式到底
         </Button>
-        <Button size="small" variant="outline" onPress={() => callTool()}>
+        <Button size="small" variant="secondary" onPress={() => callTool()}>
           工具调用
         </Button>
-        <Button size="small" variant="outline" onPress={finishTool}>
+        <Button size="small" variant="secondary" onPress={finishTool}>
           工具返回
         </Button>
-        <Button size="small" variant="outline" onPress={finishTurn}>
+        <Button size="small" variant="secondary" onPress={finishTurn}>
           结束本轮
         </Button>
         <Button size="small" variant="ghost" onPress={reset}>

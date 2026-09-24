@@ -1,21 +1,38 @@
-import { useCallback, useEffect, useId, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  Bulb,
+  Menu as AriaMenu,
+  MenuSection as AriaMenuSection,
+  Popover as AriaPopover,
+  SubmenuTrigger as AriaSubmenuTrigger,
+  type Key,
+} from 'react-aria-components'
+import {
+  Bot,
+  Check,
   ChevronRight,
   ChevronsRight,
   Compass,
   Cpu,
-  FaceRobot,
   Hammer,
+  Lightbulb,
   Paperclip,
   Plus,
-  Thunderbolt,
-} from '@gravity-ui/icons'
+  Zap,
+} from '@keyline-icons/react/two-tone'
 import { ModelIcon } from '@/components/ui/model-icon'
 
-import { Button, Popover, Spinner, Tooltip, TooltipTrigger } from '@/components/base'
-import { CellSwitch } from '@/components/base'
+import {
+  Dropdown,
+  DropdownGroup,
+  DropdownItem,
+  DropdownPopover,
+  PromptInput,
+  Spinner,
+  Tooltip,
+  TooltipTrigger,
+} from '@/components/base'
+import { MENU_ITEMS_CONTAINER, MENU_POPOVER_SURFACE, MENU_POPOVER_WIDTH } from '@/components/base/dropdown/menu-styles'
 
 import { cx } from '@/utils/cx'
 import { api } from '@/api'
@@ -39,52 +56,25 @@ import type {
  * until three of them are labelled at once, at which point the row is doing the
  * job of a menu without being one.
  *
- * The shape is borrowed from an earlier project's model picker: a
- * single popover split into a list on the left and a detail column on the right
- * that is driven by whichever row is hovered. Notably *not* nested submenus —
- * one popover means one thing to dismiss, one place to look, and no stack of
- * layers drifting across the screen. That project has kept this interaction
- * since its first version and through a whole component-library migration,
- * which is a reasonable argument that it holds up.
+ * So it is one: the base `Dropdown` (React Aria's `Menu`) whose value rows open
+ * a submenu (`SubmenuTrigger`) of the choices, `selectionMode="single"`, so the
+ * current value is a `menuitemradio` with `aria-checked`. The two booleans are a
+ * `selectionMode="multiple"` section — `menuitemcheckbox` rows that stay open
+ * when toggled by pointer or Space. It used to be a hand-built two-column
+ * popover of bare buttons, whose "selected" was a background colour and whose
+ * keyboard reach from one column to the other was Tab; a submenu is ArrowRight
+ * in and ArrowLeft back out, and the rows are the registry's menu rows.
  */
 
-/** A row in the right-hand column. */
+/** A choice inside a value row's submenu. */
 interface SubOption {
   value: string
   label: string
   description?: string
-  /** Rendered as a heading above the first row carrying it. */
+  /** Rendered as a section heading above the rows carrying it. */
   group?: string
-  icon?: React.ReactNode
-  selected?: boolean
+  icon?: ReactNode
   onSelect: () => void
-}
-
-/** A row in the left-hand list. */
-interface Entry {
-  key: string
-  icon: typeof Hammer
-  label: string
-  /** Shown right-aligned: the current value, the way the mobile sheet does it. */
-  value?: string
-  /** Colours the value when it is not the default, so a glance is enough. */
-  tone?: 'muted' | 'info' | 'warning'
-  /**
-   * Present makes this row a switch, and its value is the switch's state.
-   * Carried on the entry rather than looked up by key at render time, so a
-   * third toggle is one more `entries.push` and nothing else.
-   *
-   * A row that opens a column and a row that flips a boolean are two different
-   * gestures; spelling both as right-aligned text gave no way to tell them
-   * apart until you had already clicked.
-   */
-  checked?: boolean
-  /** A leaf row: runs and closes. Mutually exclusive with `options`. */
-  onSelect?: () => void
-  /** Opens the right-hand column. */
-  options?: SubOption[]
-  /** Right column shows a spinner instead of `options` while true. */
-  loading?: boolean
 }
 
 export interface ComposerMenuProps {
@@ -119,26 +109,185 @@ interface GroupedModels {
   models: ProviderModelInfoResponse[]
 }
 
+type Tone = 'muted' | 'info' | 'warning'
+
+function toneText(tone: Tone | undefined) {
+  if (tone === 'warning') return 'text-status-warning-soft-foreground'
+  if (tone === 'info') return 'text-status-info-soft-foreground'
+  return 'text-text-secondary'
+}
+
+/** Icon, label and — for a value row — its current value at the end. */
+function RowContent({
+  icon: Icon,
+  label,
+  value,
+  tone,
+  trailing,
+}: {
+  icon: typeof Hammer
+  label: string
+  value?: string
+  tone?: Tone
+  trailing?: ReactNode
+}) {
+  return (
+    <>
+      <Icon aria-hidden className={cx('size-4 shrink-0', tone && tone !== 'muted' ? toneText(tone) : undefined)} />
+      <span data-slot="composer-menu-item-label" className="min-w-0 flex-1 truncate text-body-medium">
+        {label}
+      </span>
+      {value && (
+        <span
+          data-slot="composer-menu-item-value"
+          className={cx('max-w-24 truncate text-caption-1-regular', toneText(tone))}
+        >
+          {value}
+        </span>
+      )}
+      {trailing}
+    </>
+  )
+}
+
+/**
+ * A value row and the submenu of its choices. The submenu is its own `Menu`
+ * with `selectionMode="single"`, so the chosen row is announced as checked.
+ */
+function ValueSubmenu({
+  id,
+  icon,
+  label,
+  value,
+  tone,
+  selectedKey,
+  options,
+  loading,
+  emptyLabel,
+  onOpenIntent,
+}: {
+  id: string
+  icon: typeof Hammer
+  label: string
+  value: string
+  tone?: Tone
+  selectedKey: Key | null
+  options: SubOption[]
+  loading?: boolean
+  emptyLabel?: string
+  /** First sign the submenu is wanted — hovered, focused or pressed. */
+  onOpenIntent?: () => void
+}) {
+  const groups = useMemo(() => {
+    const out: Array<{ name: string | undefined; options: SubOption[] }> = []
+    for (const option of options) {
+      const last = out[out.length - 1]
+      if (last && last.name === option.group) last.options.push(option)
+      else out.push({ name: option.group, options: [option] })
+    }
+    return out
+  }, [options])
+
+  const rows = (list: SubOption[]) =>
+    list.map((option) => (
+      <DropdownItem key={option.value} id={option.value} textValue={option.label} onAction={option.onSelect}>
+        {option.icon && (
+          <span data-slot="composer-menu-detail-icon" className="shrink-0">
+            {option.icon}
+          </span>
+        )}
+        <span data-slot="composer-menu-detail-text" className="min-w-0 flex-1">
+          <span data-slot="composer-menu-detail-label" className="block truncate text-body-medium">
+            {option.label}
+          </span>
+          {option.description && (
+            <span
+              data-slot="composer-menu-detail-description"
+              className="block truncate text-caption-1-regular text-text-secondary"
+            >
+              {option.description}
+            </span>
+          )}
+        </span>
+        {option.value === selectedKey && <Check aria-hidden className="size-4 shrink-0 text-text-secondary" />}
+      </DropdownItem>
+    ))
+
+  return (
+    <AriaSubmenuTrigger>
+      <DropdownItem
+        id={id}
+        textValue={`${label}: ${value}`}
+        onHoverStart={onOpenIntent}
+        onFocus={onOpenIntent}
+        onPressStart={onOpenIntent}
+      >
+        <RowContent
+          icon={icon}
+          label={label}
+          value={value}
+          tone={tone}
+          trailing={<ChevronRight aria-hidden className="size-4 shrink-0 text-text-secondary" />}
+        />
+      </DropdownItem>
+      <AriaPopover offset={-4} className={cx(MENU_POPOVER_WIDTH, MENU_POPOVER_SURFACE, 'max-h-[min(20rem,60svh)]')}>
+        <AriaMenu
+          aria-label={label}
+          selectionMode="single"
+          disallowEmptySelection
+          selectedKeys={selectedKey == null ? [] : [selectedKey]}
+          renderEmptyState={() => (
+            <div
+              data-slot="composer-menu-detail-empty"
+              className="flex items-center justify-center py-6 text-caption-1-regular text-text-secondary"
+            >
+              {loading ? <Spinner size="sm" /> : emptyLabel}
+            </div>
+          )}
+          className={MENU_ITEMS_CONTAINER}
+        >
+          {loading
+            ? []
+            : groups.map((group, i) =>
+                group.name ? (
+                  <DropdownGroup key={`${group.name}-${i}`} label={group.name}>
+                    {rows(group.options)}
+                  </DropdownGroup>
+                ) : (
+                  rows(group.options)
+                ),
+              )}
+        </AriaMenu>
+      </AriaPopover>
+    </AriaSubmenuTrigger>
+  )
+}
+
 export function ComposerMenu(props: ComposerMenuProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
-  // One piece of state drives both the highlight and the right column, which is
-  // what keeps the two sides from ever disagreeing about what is being shown.
-  const [hovered, setHovered] = useState<string | null>(null)
+  const [wantModels, setWantModels] = useState(false)
   const [groups, setGroups] = useState<GroupedModels[]>([])
-  const [loadingModels, setLoadingModels] = useState(false)
-  const detailPanelId = useId()
-  const modelsLoaded = groups.length > 0
+  /**
+   * Where the one fetch per opening stands.
+   *
+   * Not derived from `groups.length`: an answer with no models left that at
+   * zero, which read as "not loaded yet" and started the fetch again the moment
+   * it finished — for as long as the row stayed hovered. `idle` is the only
+   * state that fetches; an empty or failed answer is settled until the menu is
+   * opened again, which is what a retry is.
+   */
+  const [modelsState, setModelsState] = useState<'idle' | 'loading' | 'loaded' | 'empty' | 'failed'>('idle')
 
   const currentAssistant = props.assistants.find((a) => a.id === props.currentAssistantId)
   const activeMode = CHAT_MODES.find((m) => m.id === props.mode) ?? CHAT_MODES[0]
   const efforts = useMemo(() => allowedEfforts(props.capabilities ?? null), [props.capabilities])
 
-  // Fetched when the model row is first opened rather than when the menu is,
-  // so opening it to flip a toggle costs nothing.
+  // Fetched when the model row is first reached rather than when the menu is
+  // opened, so opening it to flip a toggle costs nothing.
   useEffect(() => {
-    if (hovered !== 'model' || modelsLoaded || loadingModels) return
-    setLoadingModels(true)
+    if (!wantModels || modelsState !== 'idle') return
+    setModelsState('loading')
     Promise.allSettled(
       props.providers
         .filter((p) => p.is_enabled)
@@ -147,127 +296,51 @@ export function ComposerMenu(props: ComposerMenuProps) {
           models: await api.fetchProviderModels({ providerId: p.id, forceRefresh: false }),
         })),
     ).then((results) => {
-      setGroups(
-        results
-          .filter((r): r is PromiseFulfilledResult<GroupedModels> => r.status === 'fulfilled')
-          .map((r) => r.value)
-          .filter((g) => g.models.length > 0),
-      )
-      setLoadingModels(false)
+      const next = results
+        .filter((r): r is PromiseFulfilledResult<GroupedModels> => r.status === 'fulfilled')
+        .map((r) => r.value)
+        .filter((g) => g.models.length > 0)
+      setGroups(next)
+      // Some providers answering is enough to pick from. Nothing answering and
+      // at least one refusing is a failure, which is not the same sentence as
+      // "you have no models".
+      if (next.length > 0) setModelsState('loaded')
+      else setModelsState(results.some((r) => r.status === 'rejected') ? 'failed' : 'empty')
     })
-  }, [hovered, modelsLoaded, loadingModels, props.providers])
+  }, [wantModels, modelsState, props.providers])
 
-  const close = useCallback(() => {
-    setOpen(false)
-    setHovered(null)
-  }, [])
-
-  const entries: Entry[] = []
-
-  if (props.onPickFile) {
-    entries.push({
-      key: 'attach',
-      icon: Paperclip,
-      label: t('chat.attachFile'),
-      onSelect: props.onPickFile,
-    })
+  const handleOpenChange = (next: boolean) => {
+    setOpen(next)
+    // Reopening the menu is the retry for an answer that had nothing in it.
+    if (next && (modelsState === 'empty' || modelsState === 'failed')) {
+      setWantModels(false)
+      setModelsState('idle')
+    }
   }
-
-  entries.push({
-    key: 'mode',
-    icon: activeMode.icon,
-    label: t('toolbar.mode'),
-    value: t(activeMode.labelKey),
-    tone: props.mode === 'work' ? 'muted' : 'info',
-    options: CHAT_MODES.map((m) => ({
-      value: m.id,
-      label: t(m.labelKey),
-      description: t(m.descKey),
-      icon: <m.icon className="size-4" />,
-      selected: m.id === props.mode,
-      onSelect: () => props.onSelectMode(m.id),
-    })),
-  })
 
   // Plan mode removes every editing tool, so the switch would be promising to
   // skip approvals that are never going to be requested.
-  if (props.mode !== 'plan') {
-    entries.push({
-      key: 'accept-edits',
-      icon: ChevronsRight,
-      label: t('toolbar.acceptEdits'),
-      checked: props.acceptEdits,
-      tone: props.acceptEdits ? 'warning' : 'muted',
-      onSelect: () => props.onToggleAcceptEdits(!props.acceptEdits),
-    })
-  }
+  const offersAcceptEdits = props.mode !== 'plan'
+  const offersFast = props.capabilities?.supports_fast === true
+  const toggledKeys = [
+    ...(offersAcceptEdits && props.acceptEdits ? ['accept-edits'] : []),
+    ...(offersFast && props.fastMode ? ['fast'] : []),
+  ]
 
-  entries.push({
-    key: 'assistant',
-    icon: FaceRobot,
-    label: t('toolbar.assistant'),
-    value: currentAssistant?.name ?? t('toolbar.noAssistant'),
-    options: props.assistants.map((a) => ({
-      value: a.id,
-      label: a.name,
-      selected: a.id === props.currentAssistantId,
-      onSelect: () => props.onSelectAssistant(a.id),
-    })),
-  })
+  const thinkingOptions: SubOption[] = THINKING_LEVELS.filter(
+    (l) =>
+      l === 'default' ||
+      (l === 'off' && props.capabilities?.supports_thinking_off !== false) ||
+      efforts.includes(l as ThinkingEffort),
+  ).map((l) => ({
+    value: l,
+    label: t(`toolbar.thinking.${l}`),
+    description: t(`toolbar.thinking.${l}Desc`),
+    onSelect: () => props.onSelectThinkingLevel(l),
+  }))
 
-  entries.push({
-    key: 'model',
-    icon: Cpu,
-    label: t('toolbar.models'),
-    value: props.currentModelId ?? t('toolbar.selectModel'),
-    loading: loadingModels,
-    options: groups.flatMap((g) =>
-      g.models.map((m) => ({
-        value: `${g.provider.id}:${m.id}`,
-        label: m.name || m.id,
-        group: g.provider.name,
-        icon: <ModelIcon model={m.id} size={16} />,
-        selected: m.id === props.currentModelId && g.provider.id === props.currentProviderId,
-        onSelect: () => props.onSelectModel(m.id, g.provider.id),
-      })),
-    ),
-  })
-
-  if (props.capabilities?.supports_thinking !== false) {
-    entries.push({
-      key: 'thinking',
-      icon: Bulb,
-      label: t('toolbar.thinking'),
-      value: t(`toolbar.thinking.${props.thinkingLevel}`),
-      tone: props.thinkingLevel === 'default' ? 'muted' : 'info',
-      options: THINKING_LEVELS.filter(
-        (l) =>
-          l === 'default' ||
-          (l === 'off' && props.capabilities?.supports_thinking_off !== false) ||
-          efforts.includes(l as ThinkingEffort),
-      ).map((l) => ({
-        value: l,
-        label: t(`toolbar.thinking.${l}`),
-        description: t(`toolbar.thinking.${l}Desc`),
-        selected: l === props.thinkingLevel,
-        onSelect: () => props.onSelectThinkingLevel(l),
-      })),
-    })
-  }
-
-  if (props.capabilities?.supports_fast === true) {
-    entries.push({
-      key: 'fast',
-      icon: Thunderbolt,
-      label: t('toolbar.fast'),
-      checked: props.fastMode,
-      tone: props.fastMode ? 'warning' : 'muted',
-      onSelect: () => props.onToggleFast(!props.fastMode),
-    })
-  }
-
-  const hoveredEntry = entries.find((e) => e.key === hovered && (e.options || e.loading))
-  const showSubPanel = Boolean(hoveredEntry)
+  const currentModelKey =
+    props.currentModelId && props.currentProviderId ? `${props.currentProviderId}:${props.currentModelId}` : null
 
   // Anything not at its default is worth seeing before the menu is opened —
   // otherwise folding the toolbar away would also fold away the fact that
@@ -275,250 +348,141 @@ export function ComposerMenu(props: ComposerMenuProps) {
   const alert = props.acceptEdits ? 'warning' : props.mode !== 'work' ? 'info' : null
 
   return (
-    <Popover
-      isOpen={open}
-      onOpenChange={(o) => {
-        setOpen(o)
-        if (!o) setHovered(null)
-      }}
-    >
+    <Dropdown isOpen={open} onOpenChange={handleOpenChange}>
       <TooltipTrigger delay={0}>
-        <Button
-          iconOnly
-          aria-label={t('composer.menu')}
-          data-slot="composer-menu-trigger"
-          variant="ghost"
-          className={cx(
-            'touch-hitbox relative text-text-secondary hover:text-text-primary',
-            open && 'bg-background-secondary-default text-text-primary',
-          )}
-        >
-          <Plus className="size-4" />
+        {/* The alert dot sits beside the button: the control draws its
+            `leadingIcon` and nothing else. Both triggers reach the RAC button
+            through context, so the wrapper is inert to them. */}
+        <span data-slot="composer-menu-trigger-wrap" className="relative inline-flex">
+          {/* The composer's round control (the registry agent-composer's
+              add button, `ai-chat-composer-add-*`). */}
+          <PromptInput.Control
+            leadingIcon={Plus}
+            aria-label={t('composer.menu')}
+            data-slot="composer-menu-trigger"
+            // The registry's "Add to chat" trigger (components.md, Dropdown
+            // example) turns its plus into an × while the menu is open.
+            className={cx(
+              'touch-hitbox [&_svg]:transition-transform [&_svg]:duration-200',
+              open && '[&_svg]:rotate-45',
+            )}
+          />
           {alert && (
             <span
               data-slot="composer-menu-alert"
               className={cx(
-                'absolute right-1 top-1 size-1.5 rounded-full',
+                'pointer-events-none absolute right-1 top-1 size-1.5 rounded-full',
                 alert === 'warning' ? 'bg-status-warning' : 'bg-status-info',
               )}
             />
           )}
-        </Button>
+        </span>
         <Tooltip placement="top">{t('composer.menu')}</Tooltip>
       </TooltipTrigger>
 
-      {/* `max-w` against the viewport, matching `ToolbarSelect`. The two columns
-          come to 464px, and React Aria only ever *moves* a popover that will not
-          fit — on a 360px phone the model list was shifted clean off the screen
-          edge rather than narrowed. */}
-      <Popover.Content placement="top start" className="w-auto max-w-[calc(100vw-2rem)] overflow-hidden p-0">
-        <Popover.Dialog aria-label={t('composer.menu')} className="p-0">
-          {/* Fixed height, each column scrolling on its own.
-            The popup opens upwards, so its bottom edge is pinned to the trigger
-            and any growth pushes the top up — a right column taller than the
-            left would slide the row out from under the cursor, and the menu
-            would then show whatever the pointer had landed on instead. Sizing
-            the panel to its content is what caused that, and matching the right
-            column to the left one only moves the problem: both columns grow as
-            features are added. A constant is the one thing neither side can
-            push around. */}
-          {/* `max-h` rather than `h`: on a phone turned sideways the viewport is
-            around 360px tall and a fixed 288px panel left nothing above it, so
-            the popover's own limit clipped the bottom rows off a column that
-            could not shrink to meet it. */}
-          <div data-slot="composer-menu-panels" className="flex h-72 max-h-[min(18rem,60svh)]">
-            <div data-slot="composer-menu-list" className="w-56 shrink-0 overflow-y-auto p-1">
-              {entries.map((entry) => {
-                const Icon = entry.icon
-                const isHovered = hovered === entry.key
-                const expandable = Boolean(entry.options || entry.loading)
-                const isToggle = entry.checked !== undefined
+      <DropdownPopover aria-label={t('composer.menu')} placement="top start">
+        {props.onPickFile ? (
+          <DropdownItem id="attach" textValue={t('chat.attachFile')} onAction={props.onPickFile}>
+            <RowContent icon={Paperclip} label={t('chat.attachFile')} />
+          </DropdownItem>
+        ) : null}
 
-                if (isToggle) {
-                  return (
-                    <CellSwitch
-                      key={entry.key}
-                      data-slot="composer-menu-item"
-                      aria-label={entry.label}
-                      size="sm"
-                      isSelected={entry.checked}
-                      onChange={() => entry.onSelect?.()}
-                      onMouseEnter={() => setHovered(entry.key)}
-                      onFocus={() => setHovered(entry.key)}
-                      className="w-full [--switch-control-bg-checked:var(--color-status-warning)]"
-                    >
-                      <CellSwitch.Trigger
-                        className={cx(
-                          'h-auto min-h-8 gap-2 rounded-2xl border-0 bg-transparent px-1.5 py-1 shadow-none',
-                          isHovered
-                            ? 'bg-background-secondary-default text-text-primary'
-                            : 'text-text-secondary hover:bg-background-primary-hover/50 hover:text-text-primary',
-                        )}
-                      >
-                        <Icon
-                          className={cx(
-                            'size-4 shrink-0',
-                            entry.tone === 'warning' && 'text-status-warning-soft-foreground',
-                            entry.tone === 'info' && 'text-status-info-soft-foreground',
-                          )}
-                        />
-                        <CellSwitch.Label
-                          data-slot="composer-menu-item-label"
-                          className="text-left text-body-regular text-inherit"
-                        >
-                          {entry.label}
-                        </CellSwitch.Label>
-                        <CellSwitch.Control />
-                      </CellSwitch.Trigger>
-                    </CellSwitch>
-                  )
-                }
+        <ValueSubmenu
+          id="mode"
+          icon={activeMode.icon}
+          label={t('toolbar.mode')}
+          value={t(activeMode.labelKey)}
+          tone={props.mode === 'work' ? 'muted' : 'info'}
+          selectedKey={props.mode}
+          options={CHAT_MODES.map((m) => ({
+            value: m.id,
+            label: t(m.labelKey),
+            description: t(m.descKey),
+            icon: <m.icon aria-hidden className="size-4" />,
+            onSelect: () => props.onSelectMode(m.id),
+          }))}
+        />
 
-                return (
-                  // This is a plain button because these compact rows sit inside
-                  // a two-column picker. Boolean rows above use CellSwitch so
-                  // the entire row has native switch semantics.
-                  // eslint-disable-next-line no-restricted-syntax -- the compact picker row owns this deliberately flattened layout
-                  <button
-                    key={entry.key}
-                    type="button"
-                    data-slot="composer-menu-item"
-                    aria-label={entry.value ? `${entry.label}: ${entry.value}` : entry.label}
-                    aria-expanded={expandable ? isHovered : undefined}
-                    aria-controls={expandable ? detailPanelId : undefined}
-                    onMouseEnter={() => setHovered(entry.key)}
-                    onFocus={() => setHovered(entry.key)}
-                    onClick={() => {
-                      if (entry.onSelect) {
-                        entry.onSelect()
-                        close()
-                        return
-                      }
-                      // A row with children toggles the column rather than
-                      // choosing anything — there is nothing here to choose yet.
-                      // Focus and pointer entry already select this row before
-                      // click. Toggling here would immediately close the panel
-                      // a keyboard or click just opened.
-                      setHovered(entry.key)
-                    }}
-                    className={cx(
-                      // `rounded-2xl` is what `.menu-item` uses for a row sitting
-                      // in a `p-1` list inside the 24px popover: at `rounded-md`
-                      // the popover's own curve cuts into the first and last row's
-                      // hover fill.
-                      'flex w-full items-center justify-start gap-2 rounded-2xl px-1.5 py-1 text-left text-body-regular outline-none',
-                      'focus-visible:ring-3 focus-visible:ring-border-focus-ring/50',
-                      isHovered
-                        ? 'bg-background-secondary-default text-text-primary'
-                        : 'text-text-secondary hover:bg-background-primary-hover/50 hover:text-text-primary',
-                    )}
-                  >
-                    <Icon
-                      className={cx(
-                        'size-4 shrink-0',
-                        entry.tone === 'warning' && 'text-status-warning-soft-foreground',
-                        entry.tone === 'info' && 'text-status-info-soft-foreground',
-                      )}
-                    />
-                    <span data-slot="composer-menu-item-label" className="flex-1 text-left truncate">
-                      {entry.label}
-                    </span>
-                    {entry.value && (
-                      <span
-                        data-slot="composer-menu-item-value"
-                        className={cx(
-                          'text-caption-1-regular truncate max-w-24',
-                          entry.tone === 'warning'
-                            ? 'text-status-warning-soft-foreground'
-                            : entry.tone === 'info'
-                              ? 'text-status-info-soft-foreground'
-                              : 'text-text-secondary',
-                        )}
-                      >
-                        {entry.value}
-                      </span>
-                    )}
-                    {expandable && <ChevronRight className="size-4 shrink-0 text-text-secondary" />}
-                  </button>
-                )
-              })}
-            </div>
-
-            {showSubPanel && (
-              // `min-w-0` and a basis rather than a hard `w-60`: with the panel
-              // capped to the viewport above, a fixed second column simply pushed
-              // itself past the clipped edge. It keeps its 240px wherever there is
-              // room, and gives ground first when there is not — the list on the
-              // left is the part you navigate by.
-              <div
-                id={detailPanelId}
-                data-slot="composer-menu-detail"
-                className="min-w-0 flex-1 basis-60 overflow-hidden border-l border-border-button-default"
+        {offersAcceptEdits || offersFast ? (
+          // Booleans: `menuitemcheckbox` rows, which a pointer or Space
+          // toggles without closing the menu.
+          <AriaMenuSection selectionMode="multiple" selectedKeys={toggledKeys} className="flex w-full flex-col gap-1">
+            {offersAcceptEdits ? (
+              <DropdownItem
+                id="accept-edits"
+                textValue={t('toolbar.acceptEdits')}
+                onAction={() => props.onToggleAcceptEdits(!props.acceptEdits)}
               >
-                <div data-slot="composer-menu-detail-scroll" className="h-full overflow-y-auto p-1">
-                  {hoveredEntry?.loading ? (
-                    <div data-slot="composer-menu-detail-loading" className="flex items-center justify-center py-6">
-                      <Spinner size="sm" />
-                    </div>
-                  ) : (
-                    hoveredEntry?.options?.map((opt, i) => {
-                      const heading = opt.group && opt.group !== hoveredEntry.options?.[i - 1]?.group ? opt.group : null
-                      return (
-                        <div key={opt.value} data-slot="composer-menu-detail-row">
-                          {heading && (
-                            <div
-                              data-slot="composer-menu-detail-heading"
-                              className="px-1.5 pt-2 pb-1 text-caption-1-regular text-text-secondary"
-                            >
-                              {heading}
-                            </div>
-                          )}
-                          <Button
-                            data-slot="composer-menu-detail-item"
-                            aria-label={opt.label}
-                            aria-pressed={opt.selected}
-                            variant="ghost"
-                            onPress={() => {
-                              opt.onSelect()
-                              close()
-                            }}
-                            className={cx(
-                              // eslint-disable-next-line no-restricted-syntax -- a two-line option row: the label with its description underneath
-                              'w-full h-auto justify-start gap-2 rounded-2xl px-1.5 py-1 text-body-regular',
-                              opt.selected
-                                ? 'bg-background-secondary-default text-text-primary'
-                                : 'text-text-secondary hover:bg-background-primary-hover/50 hover:text-text-primary',
-                            )}
-                          >
-                            {opt.icon && (
-                              <span data-slot="composer-menu-detail-icon" className="shrink-0">
-                                {opt.icon}
-                              </span>
-                            )}
-                            <span data-slot="composer-menu-detail-text" className="flex-1 min-w-0 text-left">
-                              <span data-slot="composer-menu-detail-label" className="block truncate">
-                                {opt.label}
-                              </span>
-                              {opt.description && (
-                                <span
-                                  data-slot="composer-menu-detail-description"
-                                  className="block truncate text-caption-1-regular text-text-secondary"
-                                >
-                                  {opt.description}
-                                </span>
-                              )}
-                            </span>
-                          </Button>
-                        </div>
-                      )
-                    })
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </Popover.Dialog>
-      </Popover.Content>
-    </Popover>
+                <RowContent
+                  icon={ChevronsRight}
+                  label={t('toolbar.acceptEdits')}
+                  value={props.acceptEdits ? t('toolbar.acceptEdits.on') : t('toolbar.acceptEdits.off')}
+                  tone={props.acceptEdits ? 'warning' : 'muted'}
+                />
+              </DropdownItem>
+            ) : null}
+            {offersFast ? (
+              <DropdownItem
+                id="fast"
+                textValue={t('toolbar.fast')}
+                onAction={() => props.onToggleFast(!props.fastMode)}
+              >
+                <RowContent
+                  icon={Zap}
+                  label={t('toolbar.fast')}
+                  value={props.fastMode ? t('toolbar.fast.on') : t('toolbar.fast.off')}
+                  tone={props.fastMode ? 'warning' : 'muted'}
+                />
+              </DropdownItem>
+            ) : null}
+          </AriaMenuSection>
+        ) : null}
+
+        <ValueSubmenu
+          id="assistant"
+          icon={Bot}
+          label={t('toolbar.assistant')}
+          value={currentAssistant?.name ?? t('toolbar.noAssistant')}
+          selectedKey={props.currentAssistantId}
+          options={props.assistants.map((a) => ({
+            value: a.id,
+            label: a.name,
+            onSelect: () => props.onSelectAssistant(a.id),
+          }))}
+        />
+
+        <ValueSubmenu
+          id="model"
+          icon={Cpu}
+          label={t('toolbar.models')}
+          value={props.currentModelId ?? t('toolbar.selectModel')}
+          selectedKey={currentModelKey}
+          loading={modelsState === 'loading'}
+          emptyLabel={modelsState === 'failed' ? t('toolbar.modelsLoadFailed') : t('toolbar.noModels')}
+          onOpenIntent={() => setWantModels(true)}
+          options={groups.flatMap((g) =>
+            g.models.map((m) => ({
+              value: `${g.provider.id}:${m.id}`,
+              label: m.name || m.id,
+              group: g.provider.name,
+              icon: <ModelIcon model={m.id} size={16} />,
+              onSelect: () => props.onSelectModel(m.id, g.provider.id),
+            })),
+          )}
+        />
+
+        {props.capabilities?.supports_thinking !== false ? (
+          <ValueSubmenu
+            id="thinking"
+            icon={Lightbulb}
+            label={t('toolbar.thinking')}
+            value={t(`toolbar.thinking.${props.thinkingLevel}`)}
+            tone={props.thinkingLevel === 'default' ? 'muted' : 'info'}
+            selectedKey={props.thinkingLevel}
+            options={thinkingOptions}
+          />
+        ) : null}
+      </DropdownPopover>
+    </Dropdown>
   )
 }

@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import '@/i18n'
+import { Plus } from '@keyline-icons/react/two-tone'
+import i18n from '@/i18n'
 import { expectCollapsed, expectExpanded } from '@/test/disclosure'
 import {
   Avatar,
@@ -16,20 +17,24 @@ import {
   DropdownPopover,
   Input,
   Label,
+  LinkButton,
   Meter,
   Modal,
+  Notification,
+  NotificationViewport,
   Popover,
   SearchField,
   Select,
   SelectItem,
   Sheet,
   Sidebar,
+  Spinner,
   TextField,
-  Toast,
-  ToastQueue,
+  ToggleButton,
   Tooltip,
   TooltipTrigger,
 } from '@/components/base'
+import { buttonStyles } from './buttons/button'
 
 /**
  * What every primitive under `components/base` promises the app, asserted
@@ -125,6 +130,38 @@ describe('Button is a React Aria pressable', () => {
   })
 })
 
+describe('LinkButton is a React Aria pressable', () => {
+  it('opens a tooltip on keyboard focus and fires onPress from the keyboard', async () => {
+    const onPress = vi.fn()
+    render(
+      <TooltipTrigger delay={0} closeDelay={0}>
+        <LinkButton variant="secondary" onPress={onPress}>
+          AGENTS.md
+        </LinkButton>
+        <Tooltip>docs/AGENTS.md</Tooltip>
+      </TooltipTrigger>,
+    )
+    await userEvent.tab()
+    const button = screen.getByRole('button', { name: 'AGENTS.md' })
+    expect(button).toHaveFocus()
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('docs/AGENTS.md')
+    await userEvent.keyboard('{Enter}')
+    expect(onPress).toHaveBeenCalledTimes(1)
+  })
+
+  it('is a React Aria link when given an href', async () => {
+    render(
+      <TooltipTrigger delay={0} closeDelay={0}>
+        <LinkButton href="#here">Here</LinkButton>
+        <Tooltip>tip</Tooltip>
+      </TooltipTrigger>,
+    )
+    await userEvent.tab()
+    expect(screen.getByRole('link', { name: 'Here' })).toHaveFocus()
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('tip')
+  })
+})
+
 describe('Disclosure', () => {
   it('toggles, names its panel, and hides it when shut', async () => {
     const onExpandedChange = vi.fn()
@@ -155,6 +192,28 @@ describe('Text controls are React Aria inputs', () => {
     )
     const input = screen.getByRole('textbox', { name: 'Name' })
     expect(input).toHaveAccessibleDescription('Your display name')
+  })
+
+  /**
+   * The field shell draws its own invalid and disabled fills. A wrapper that
+   * appended a fill of its own after them (the old `surface` well) painted over
+   * both, so an invalid field looked exactly like a valid one.
+   */
+  it('Input shows the invalid and disabled fills of its field shell', () => {
+    render(
+      <>
+        <TextField isInvalid aria-label="Bad">
+          <Input />
+        </TextField>
+        <TextField isDisabled aria-label="Off">
+          <Input />
+        </TextField>
+      </>,
+    )
+    // The shell is the RAC Group around the input (role=presentation inside a TextField).
+    const shellOf = (name: string) => screen.getByRole('textbox', { name }).closest('div[data-rac]')
+    expect(shellOf('Bad')?.className).toMatch(/\bbg-background-tertiary-error\b/)
+    expect(shellOf('Off')?.className).toMatch(/\bbg-input-disabled-background\b/)
   })
 
   it('SearchField is controlled through its root', async () => {
@@ -267,25 +326,26 @@ describe('Sidebar.Menu is a tree', () => {
   })
 })
 
-describe('Toast region', () => {
-  it('is fixed, placed, and shows what the queue holds', () => {
-    const queue = new ToastQueue<{ title: string }>()
-    queue.add({ title: 'Approve?' })
+describe('Notification wires React Aria presses', () => {
+  it('fires an action and the close button on press, keyboard included', async () => {
+    const onAction = vi.fn()
     render(
-      <Toast.Provider queue={queue} placement="top">
-        {({ toast }) => (
-          <Toast toast={toast}>
-            <Toast.Content>
-              <Toast.Title>{toast.content.title}</Toast.Title>
-            </Toast.Content>
-          </Toast>
-        )}
-      </Toast.Provider>,
+      <NotificationViewport aria-label="Notices" role="region">
+        <Notification key="n" title="Approve?" closeLabel="Dismiss" actions={[{ label: 'Go', onPress: onAction }]} />
+      </NotificationViewport>,
     )
-    const region = screen.getByRole('region')
-    expect(region).toHaveAttribute('data-placement', 'top')
+    const region = screen.getByRole('region', { name: 'Notices' })
     expect(region.className).toMatch(/\bfixed\b/)
-    expect(within(region).getByText('Approve?')).toBeInTheDocument()
+    expect(within(region).getByRole('status')).toHaveTextContent('Approve?')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Go' }))
+    expect(onAction).toHaveBeenCalledTimes(1)
+    screen.getByRole('button', { name: 'Go' }).focus()
+    await userEvent.keyboard('{Enter}')
+    expect(onAction).toHaveBeenCalledTimes(2)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
+    await waitFor(() => expect(screen.queryByText('Approve?')).toBeNull())
   })
 })
 
@@ -331,7 +391,7 @@ describe('Presentation parts honour their props', () => {
   it('EmojiPicker names its dialog from the root label', async () => {
     render(
       <EmojiPicker aria-label="Stickers" isOpen>
-        <EmojiPicker.Trigger aria-label="Open">+</EmojiPicker.Trigger>
+        <EmojiPicker.Trigger aria-label="Open" leadingIcon={Plus} />
         <EmojiPicker.Popover>
           <EmojiPicker.Content>body</EmojiPicker.Content>
         </EmojiPicker.Popover>
@@ -368,5 +428,70 @@ describe('Presentation parts honour their props', () => {
     expect(within(grid).queryByRole('rowheader', { name: 'Child' })).toBeNull()
     await userEvent.click(within(grid).getByRole('button', { name: /Expand row/ }))
     expect(within(grid).getByRole('rowheader', { name: 'Child' })).toBeInTheDocument()
+  })
+})
+
+describe('Button variants are the registry’s', () => {
+  it('has exactly the registry variants plus the neutral icon control', () => {
+    expect(Object.keys(buttonStyles.variant).sort()).toEqual(['danger', 'ghost', 'neutral', 'primary', 'secondary'])
+  })
+
+  it('draws neutral as the grey round control from the Dropdown example', () => {
+    render(<Button variant="neutral" iconOnly size="small" leadingIcon={Plus} aria-label="Add" />)
+    const classes = screen.getByRole('button', { name: 'Add' }).className.split(/\s+/)
+    expect(classes).toEqual(
+      expect.arrayContaining([
+        'rounded-full',
+        'bg-background-secondary-default',
+        'text-foreground-icon-secondary',
+        'data-[hovered]:bg-background-secondary-hover',
+      ]),
+    )
+    expect(classes).not.toContain('rounded-lg')
+  })
+})
+
+describe('ToggleButton selection', () => {
+  it('is neutral when off and the blue pill when on', () => {
+    render(
+      <>
+        <ToggleButton aria-label="Off">Off</ToggleButton>
+        <ToggleButton aria-label="On" isSelected>
+          On
+        </ToggleButton>
+      </>,
+    )
+    const off = screen.getByRole('button', { name: 'Off' })
+    const on = screen.getByRole('button', { name: 'On' })
+    expect(off).not.toHaveAttribute('data-selected')
+    expect(on).toHaveAttribute('data-selected')
+    const classes = off.className.split(/\s+/)
+    // Unselected carries no fill of its own.
+    expect(classes.filter((c) => c.startsWith('bg-'))).toEqual([])
+    expect(classes).toContain('data-[selected]:bg-pill-tab-blue-selected-background')
+    expect(classes).toContain('data-[selected]:text-accent-500')
+  })
+})
+
+describe('Built-in names are in the app’s language', () => {
+  afterEach(async () => {
+    await i18n.changeLanguage('en')
+  })
+
+  it('a pending Button keeps its own name; a lone Spinner names itself in Chinese', async () => {
+    await i18n.changeLanguage('zh-CN')
+    render(
+      <>
+        <Button isPending>保存</Button>
+        <Button isPending iconOnly leadingIcon={Plus} aria-label="添加" />
+        <Spinner />
+      </>,
+    )
+    // Exact names: a spinner inside the button used to make it "Loading 保存".
+    expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '添加' })).toBeInTheDocument()
+    expect(screen.getAllByRole('status')).toHaveLength(1)
+    expect(screen.getByRole('status')).toHaveAccessibleName(i18n.t('common.loading'))
+    expect(screen.getByRole('status')).not.toHaveAccessibleName(/Loading/)
   })
 })
