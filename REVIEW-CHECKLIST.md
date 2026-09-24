@@ -37,6 +37,14 @@ those rules no selector can see, plus this app's own architecture.
   tokens and `CellSwitch`, so placement is judged here. The fix is the
   official surface (`SettingsCard`'s secondary) — or, for a field, BoardUI's
   one field fill `bg-background-secondary-default` — never another repaint.
+- **major** Text somebody has to read in `text-text-tertiary`: a timestamp or
+  relative time, a hint or description, an empty-state line, a count or
+  amount, a group heading, a meta line ("connected · 8 tools"), a secondary
+  table column, a badge label. In the dark theme tertiary is neutral-600 at
+  ~1.9–2.3:1; these take `text-text-secondary` (owner decision 2026-09-24).
+  Tertiary stays for disabled states and marks that carry no information. The
+  lint catches `placeholder:text-text-tertiary`; it cannot tell a timestamp
+  from a decoration.
 - **major** A vendored registry file (listed in `boardui.json`) changed for
   anything but the React Aria interaction contract, without a line in that
   item's `patches`. An "equivalent" respelling of registry code
@@ -73,6 +81,21 @@ those rules no selector can see, plus this app's own architecture.
 - **major** An icon from anywhere but `@keyline-icons/react/two-tone` (or
   `/fill` for a solid glyph by meaning, like stop or a starred item). Brand
   marks and file-type icons are content, not icons, and are exempt.
+- **major** A new tool (Rust `Tool`, QQ tool, or a Claude Code tool a hosted
+  session can call) without an entry in `src/lib/tool-renderers.ts` choosing
+  how its arguments and result are drawn, or an entry that is `structured` /
+  `text` where a dedicated view exists (a diff, a file, a command, a list).
+  `tool-renderers.test.ts` catches the missing name; whether the choice is the
+  intuitive one is judged here. JSON source on screen is never the answer.
+- **major** A savable form rendered before its load succeeded. It may render
+  only from what the backend answered; a failed load shows an error state
+  (Alert + retry) and no Save, and every load — a single call or a
+  `Promise.all` — has a `catch`. The lint (`no-default-on-load-failure`,
+  `no-parse-or-default`) sees a default *written* on failure; judged here is
+  the shape it cannot see: a `useState(DEFAULTS)` initial value drawn as the
+  stored settings because nothing set a loaded/error flag (auto-review and
+  general settings, 2026-09), or an uncaught `Promise.all` that leaves the
+  page looking like a new, empty form (model page).
 - A first-load placeholder narrower or shorter than what replaces it, or a
   skeleton drawn on refresh rather than first load.
 

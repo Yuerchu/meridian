@@ -5,6 +5,14 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Manual runs exist for the visual job: `update_visual_baselines` regenerates
+  # the Linux screenshots and uploads them as an artifact to be committed.
+  workflow_dispatch:
+    inputs:
+      update_visual_baselines:
+        description: Regenerate the Linux visual baselines and upload them
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -203,3 +211,144 @@ jobs:
           export AR_aarch64_linux_android=$TOOLCHAIN/llvm-ar
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/aarch64-linux-android34-clang
           cargo check --target aarch64-linux-android
+
+  # The web bundle a release ships, built and inspected on its own: nothing in
+  # `test` runs `vite build`, and the one guard keeping the dev fixture backend
+  # (`src/dev/demo/`) out of it is an `import.meta.env.DEV` condition in
+  # `src/lib/transport.ts` that no test can see fold away.
+  frontend-build:
+    runs-on: ubuntu-latest
+    name: Build (web bundle)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install
+
+      # Same cache as release.yml: the fonts are not in git and the bundle
+      # imports them.
+      - name: Cache bundled font archives
+        uses: actions/cache@v4
+        with:
+          path: .cache/fonts
+          key: fonts-${{ hashFiles('scripts/fetch-fonts.mjs') }}
+
+      - name: Fetch bundled fonts
+        run: pnpm fonts
+
+      - name: Vite build
+        run: pnpm exec vite build --configLoader native
+
+      - name: No demo fixtures in the bundle
+        run: pnpm check:dist-no-demo
+
+      # The Rust half of the lint gate `no-default-on-load-failure`: a command
+      # that reads and defaults on failure, then writes back. Needs no toolchain.
+      - name: No read-then-default in commands
+        run: node scripts/check-rust-read-default.mjs
+
+  # Screenshot regression over the dev demo backend (see "Development" in
+  # CLAUDE.md). Linux compares only against Linux baselines: font
+  # rasterisation differs between platforms, so e2e/__screenshots__/ keeps one
+  # directory per platform and this job owns `linux/`.
+  #
+  # With no `linux/` directory yet, or when dispatched with
+  # `update_visual_baselines`, the job writes the baselines instead of
+  # comparing and uploads them as the `visual-baselines-linux` artifact —
+  # unzip it into e2e/__screenshots__/linux/ and commit.
+  visual:
+    runs-on: ubuntu-latest
+    name: Visual (linux-x64)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install
+
+      - name: Cache bundled font archives
+        uses: actions/cache@v4
+        with:
+          path: .cache/fonts
+          key: fonts-${{ hashFiles('scripts/fetch-fonts.mjs') }}
+
+      # Without them the page falls back to system fonts and every screenshot
+      # is wrong, which is why the script fails rather than degrading.
+      - name: Fetch bundled fonts
+        run: pnpm fonts
+
+      - name: Resolve the Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      # The browser is cached by version; the system libraries it needs are
+      # not (they live in apt), so those are installed on every run.
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-chromium
+
+      - name: Install Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Install Chromium system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
+
+      # Stickers and some fixtures draw emoji; the runner image has no colour
+      # emoji font and would render them as boxes.
+      - name: Install colour emoji font
+        run: sudo apt-get install -y fonts-noto-color-emoji
+
+      - name: Decide compare or update
+        id: mode
+        run: |
+          if [ "${{ inputs.update_visual_baselines }}" = "true" ] || [ ! -d e2e/__screenshots__/linux ]; then
+            echo "update=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Writing Linux visual baselines instead of comparing; commit the visual-baselines-linux artifact."
+          else
+            echo "update=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Visual regression
+        if: steps.mode.outputs.update != 'true'
+        run: pnpm test:visual
+
+      - name: Write visual baselines
+        if: steps.mode.outputs.update == 'true'
+        run: pnpm exec playwright test --update-snapshots=all
+
+      - name: Upload Linux baselines
+        if: steps.mode.outputs.update == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-baselines-linux
+          path: e2e/__screenshots__/linux/
+          if-no-files-found: error
+
+      # Expected, actual and diff images for every failing scene, plus traces.
+      - name: Upload visual diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-diffs
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore

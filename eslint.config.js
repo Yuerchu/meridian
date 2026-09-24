@@ -66,6 +66,12 @@ const styleRestrictions = [
     '\\bbg-muted\\b',
     'There is no muted fill. A dot or a caret takes bg-background-tertiary-default, bg-border-button-default or bg-current.',
   ),
+  // Owner decision 2026-09-24: dark text-tertiary (neutral-600) is ~1.9:1 on a
+  // card, and a placeholder is text somebody has to read.
+  ...forbiddenClass(
+    '(?<![\\w-])placeholder:text-text-(?:tertiary|placeholder)(?![\\w-])',
+    'A placeholder is read, and text-tertiary is ~1.9:1 on a dark card. Use placeholder:text-text-secondary (CLAUDE.md UI Conventions, readable text).',
+  ),
   ...forbiddenClass(
     '\\bshadow-(?:sm|md|lg|xl|2xl)\\b',
     'Raw Tailwind shadow-* stacks on the theme. Use shadow-xs (a resting control), shadow-card (a card) or shadow-dropdown (a popover/menu), which the theme sizes per mode.',
@@ -252,6 +258,31 @@ export default tseslint.config(
     files: ['src/**/*.{ts,tsx}'],
     rules: {
       'meridian-ui/animation-needs-keyframes': 'error',
+      'meridian-ui/no-modifier-on-static-utility': 'error',
+    },
+  },
+  // The tool-call rendering path: a value is drawn with `ToolValue`, never
+  // pasted as JSON. `tool-value.tsx` is the generic renderer and is exempt.
+  {
+    files: [
+      'src/components/chat/tool-call-block.tsx',
+      'src/components/chat/sub-agent-group.tsx',
+      'src/components/chat/file-diff-card.tsx',
+      'src/components/ui/chat-tool.tsx',
+    ],
+    rules: {
+      'meridian-ui/no-json-tool-display': 'error',
+    },
+  },
+  // Recurrence gate: a failed read, or an unparseable input, must not become
+  // a default the save path writes back (four settings pages, 2026-09).
+  // App code only: the registry's files are not where settings are loaded.
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: VENDORED,
+    rules: {
+      'meridian-ui/no-default-on-load-failure': 'error',
+      'meridian-ui/no-parse-or-default': 'error',
     },
   },
   // The base layer: a prop it accepts, it honours.

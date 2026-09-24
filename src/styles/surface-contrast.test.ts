@@ -132,3 +132,74 @@ describe('surface contrast', () => {
     )
   })
 })
+
+/*
+ * Readable text is `text-secondary`, not `text-tertiary` (owner decision
+ * 2026-09-24, CLAUDE.md UI Conventions). The ratio is WCAG 2.x contrast from
+ * relative luminance: palette values are `oklch(L% C H)` (Tailwind) or hex
+ * (theme.css), converted OKLab → linear sRGB (Björn Ottosson's matrices),
+ * clamped to gamut, then 0.2126 R + 0.7152 G + 0.0722 B. The neutrals have no
+ * chroma, so gamut clamping never decides an answer here.
+ */
+function linearRgb(value: string): [number, number, number] {
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/.exec(value)
+  if (hex) {
+    const h = hex[1].length === 3 ? [...hex[1]].map((c) => c + c).join('') : hex[1]
+    return [0, 2, 4].map((i) => {
+      const c = parseInt(h.slice(i, i + 2), 16) / 255
+      return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+    }) as [number, number, number]
+  }
+  const ok = /^oklch\(\s*([\d.]+)(%?)\s+([\d.]+|none)\s+([\d.]+|none)\s*\)$/.exec(value)
+  if (!ok) throw new Error(`cannot measure ${value}`)
+  const L = Number(ok[1]) / (ok[2] ? 100 : 1)
+  const C = ok[3] === 'none' ? 0 : Number(ok[3])
+  const H = ok[4] === 'none' ? 0 : (Number(ok[4]) * Math.PI) / 180
+  const a = C * Math.cos(H)
+  const b = C * Math.sin(H)
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3
+  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3
+  const clamp = (x: number) => Math.min(1, Math.max(0, x))
+  return [
+    clamp(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
+    clamp(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
+    clamp(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s),
+  ]
+}
+
+function contrast(vars: Map<string, string>, fg: string, bg: string): number {
+  const lum = (token: string) => {
+    const [r, g, b] = linearRgb(resolveToken(vars, token))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+  }
+  const [hi, lo] = [lum(fg), lum(bg)].sort((x, y) => y - x)
+  return (hi + 0.05) / (lo + 0.05)
+}
+
+const READING_SURFACES = [
+  '--color-background-primary-default',
+  '--color-background-secondary-default',
+  '--color-background-full',
+]
+
+describe('readable text contrast', () => {
+  it('measures a known pair correctly', () => {
+    // neutral-500 (#737373) on white is 4.74:1 by any WCAG calculator.
+    expect(contrast(light, '--color-text-secondary', '--color-background-primary-default')).toBeCloseTo(4.74, 1)
+  })
+
+  it.each(THEMES.flatMap(([name, vars]) => READING_SURFACES.map((bg) => [name, bg, vars] as const)))(
+    'text-secondary reads at >= 3:1 (%s, %s)',
+    (_, bg, vars) => {
+      expect(contrast(vars, '--color-text-secondary', bg)).toBeGreaterThanOrEqual(3)
+    },
+  )
+
+  // Why readable text left tertiary, pinned: if BoardUI ever lifts the dark
+  // tertiary above 3:1 this goes red, and the deviation can be retired.
+  it('records the dark tertiary shortfall the rule is for', () => {
+    expect(contrast(dark, '--color-text-tertiary', '--color-background-primary-default')).toBeLessThan(3)
+    expect(contrast(dark, '--color-text-tertiary', '--color-background-secondary-default')).toBeLessThan(3)
+  })
+})

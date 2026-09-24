@@ -34,3 +34,9 @@ temp/
 # files (or the licence copies beside them) are committed.
 .cache/fonts/
 public/fonts/
+
+# Playwright visual regression: run output and the HTML report. The baselines
+# under e2e/__screenshots__/ are committed.
+/test-results/
+/playwright-report/
+/blob-report/

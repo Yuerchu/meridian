@@ -269,6 +269,12 @@ jobs:
           args: --target ${{ matrix.target }}${{ matrix.os == 'ubuntu-latest' && ' --verbose' || '' }}${{ matrix.os == 'windows-latest' && ' --config src-tauri/tauri.ime.conf.json' || '' }}
           tauriScript: pnpm tauri
 
+      # The `dist/` the bundler just packaged (`beforeBuildCommand` is
+      # `pnpm build`). After the upload, so it cannot stop assets reaching the
+      # draft; a red job is what keeps the draft from being published.
+      - name: No demo fixtures in the bundle
+        run: pnpm check:dist-no-demo
+
   build-android:
     # needs `build` too: the desktop job creates the GitHub release this job
     # uploads into; running in parallel raced against its creation. `always()`
@@ -358,6 +364,10 @@ jobs:
           export AR_aarch64_linux_android=$TOOLCHAIN/llvm-ar
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/aarch64-linux-android34-clang
           pnpm tauri android build --target aarch64 --apk
+
+      # Before the upload: the APK embeds this `dist/`.
+      - name: No demo fixtures in the bundle
+        run: pnpm check:dist-no-demo
 
       - name: Upload APK to release
         env:
