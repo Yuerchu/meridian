@@ -445,10 +445,44 @@ class RemoteTransport implements Transport {
 const remoteConfig = typeof localStorage === 'undefined' ? null : readRemoteConfig()
 const remote = remoteConfig ? new RemoteTransport(remoteConfig) : null
 
-export const transport: Transport = remote ?? tauriTransport
+/**
+ * A backend made of fixtures, for `pnpm dev` in a plain browser.
+ *
+ * Three conditions and each is load-bearing. `DEV` is a literal `false` in a
+ * release build, so this whole expression folds away and the dynamic import
+ * below is never emitted — the fixtures cannot ship. No `__TAURI_INTERNALS__`
+ * means there is no shell to answer; under `pnpm tauri dev` the real backend
+ * is always the one asked. And `test` mode is excluded because every suite
+ * mocks Tauri's `invoke` and would otherwise be answered by fixtures instead.
+ * A remote configuration and the playground (whose frames want `invoke` to
+ * fail loudly) are left exactly as they were.
+ */
+const demo =
+  import.meta.env.DEV &&
+  import.meta.env.MODE !== 'test' &&
+  typeof window !== 'undefined' &&
+  !('__TAURI_INTERNALS__' in window) &&
+  !window.location.hash.startsWith('#playground') &&
+  remote === null
+    ? lazyDemoTransport()
+    : null
+
+function lazyDemoTransport(): Transport {
+  const loaded = import('@/dev/demo').then(({ createDemoTransport }) => createDemoTransport())
+  return {
+    invoke: <T>(cmd: string, args?: Record<string, unknown>) => loaded.then((t) => t.invoke<T>(cmd, args)),
+    listen: (channel, handler) => loaded.then((t) => t.listen(channel, handler)),
+  }
+}
+
+export const transport: Transport = remote ?? demo ?? tauriTransport
 
 /** Whether this session is talking to another machine. */
 export const isRemote = remote !== null
+
+/** Whether this session is answered by the dev-only fixture backend. Always
+ *  `false` in a release build and under Tauri. */
+export const isDemo = demo !== null
 
 /** `null` on the desktop, where there is no connection to have a state. */
 export const remoteConnection = remote
