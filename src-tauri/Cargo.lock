@@ -3358,6 +3358,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "meridian-ime-android"
+version = "0.1.0"
+dependencies = [
+ "jni",
+ "meridian-ime-config",
+ "meridian-ime-dict",
+ "meridian-ime-engine",
+ "meridian-ime-host",
+ "meridian-ime-lm",
+ "meridian-ime-proto",
+ "meridian-ime-session",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+]
+
+[[package]]
 name = "meridian-ime-cli"
 version = "0.1.0"
 dependencies = [

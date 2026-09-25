@@ -41,9 +41,10 @@ src-tauri/
     dict/ engine/ session/  # platform-free: .mdict format + Rime import, keys→candidates, the key state machine
     proto/ config/          # the pipe protocol; host.json and the data directory
     tsf/                    # meridian_ime_tsf.dll: the TSF text service (no engine inside)
-    host/                   # meridian-ime-host.exe: engine, pipe server, candidate window
+    host/                   # data dir → engine (lib, both hosts); meridian-ime-host.exe: pipe server, candidate window
     lm/                     # the language model scorer: bundles, ONNX Runtime loaded at run time
     cli/                    # meridian-ime: import / lookup / type / keys / bench, with no OS in the loop
+    android/                # libmeridian_ime.so: the Android keyboard's engine and its JNI surface
 ```
 
 **`src-tauri/crates` is another repository.** Everything below the Tauri line is
@@ -1321,7 +1322,7 @@ work they did.
 `src-tauri/ime/` is a Windows input method — pinyin and zhuyin, plus the grid
 layout the phone keyboard types — that installs with Meridian and does not
 need it running. It is in the shell workspace and not in core because a
-headless server and `meridiand` must not carry one, and it is nine crates
+headless server and `meridiand` must not carry one, and it is ten crates
 rather than one because the boundaries are the design.
 
 - **The DLL holds no engine, reads no file and computes no path.** A text
@@ -1479,6 +1480,23 @@ rather than one because the boundaries are the design.
   settings page writes it, the host reloads it within a second, and nothing is
   mirrored into the preferences table where it could disagree. Dictionaries
   live in `catalog.toml` beside the files for the same reason.
+- **On Android the engine is in the keyboard's own process, so there is no
+  host to talk to.** `meridian-ime-android` is `ImeHost`: one `Session`,
+  called directly over JNI from the keyboard service in `:ime`. One keyboard
+  types into one field at a time, so there is no `Router` either. What it
+  reads from disk it reads through `meridian_ime_host::data` — the same
+  loaders, the same watch, the same fail-soft rules as the Windows host — so
+  the two cannot disagree about what a file means; that module is why
+  `meridian-ime-host` is a library as well as the Windows binary. The field
+  decides privacy (`start_input(package, private)`: a password field, or
+  `IME_FLAG_NO_PERSONALIZED_LEARNING`) together with `private_apps` keyed on
+  the package; memory hints go to Meridian's own package and to
+  `context_apps` only, and a private session withholds them itself. The
+  layer on screen picks the scheme (`set_scheme`), not `host.json`. A key
+  crosses JNI as four integers (`bridge.rs`, tested on the desktop); what
+  comes back is the session's own JSON. Every `Java_*` function is under
+  `catch_unwind`: a panic is an `IllegalStateException`, not a dead
+  keyboard in somebody's chat.
 - **`meridian-ime` is the harness.** `type "nihao<space>"` replays a key
   script through the same `Session` the host runs, `lookup` ranks candidates
   against the imported dictionaries and says how long it took, `bench` scores
@@ -2155,11 +2173,41 @@ not exist on the previous build — cargo treats a missing
 `rerun-if-changed` path as always changed, so the artifacts themselves are
 only watched once they exist.
 
+### The Android keyboard
+
+**`libmeridian_ime.so` is a third cargo invocation, and Gradle makes it.**
+`scripts/build-ime-android.mjs` builds `meridian-ime-android` for
+`aarch64-linux-android` and copies the library into
+`src/main/jniLibs/arm64-v8a/`, beside what Tauri and sherpa-onnx put
+there; `buildImeRust{Debug,Release}` in `app/build.gradle.kts` runs it
+before every JNI merge, so `pnpm tauri android build` cannot produce an APK
+without the keyboard. It takes the NDK from the environment the release
+workflow already exports, and otherwise finds the newest one. It is Node,
+not bash, because Gradle on Windows can resolve `bash` to WSL's. arm64 only.
+
+**The library must be 16 KB aligned, and the script refuses it otherwise.**
+A 16 KB-page device will not load anything less, and the symptom is a
+keyboard that never appears. NDK r28 aligns to 16 KB by default; the check
+(`llvm-readelf -lW`, every LOAD segment) is what keeps that true, and
+linking with `max-page-size=4096` was used to see it fail. It links no ONNX
+Runtime: the scorer opens sherpa-onnx's `libonnxruntime.so` by name at run
+time.
+
+**Three version ceilings, all measured on 2026-09-25.** Kotlin is 2.2.21
+because Tauri's own Android projects (built from the cargo registry, so not
+ours to edit) still write `kotlinOptions { jvmTarget }`, which 2.3 made an
+error — Tauri's dev branch has moved to `compilerOptions`, so this lifts
+with the next release. Compose stays on 1.11 (BOM 2026.06.01) because 1.12
+needs compileSdk 37 and AGP 9.1, and AGP 9's built-in Kotlin conflicts with
+those same projects applying `kotlin-android`. And material3 is
+1.5.0-alpha18, because 1.4.0 keeps the Expressive API internal and alpha18 is
+the last 1.5 built on Compose 1.11. The comments beside each pin say the same.
+
 ## Android
 
 - **File access model**: tools resolve paths through `ToolContext::resolve_and_validate` (`src-tauri/src/tools/mod.rs`). Desktop = `FileAccess::Unrestricted` (legacy working_directory check). Android = `FileAccess::Roots` whitelist built in `build_file_access` (lib.rs) from preferences `android.manage_storage_enabled` / `android.saf_roots` + the system grant. SAF I/O goes through `src/android_bridge.rs` (JNI) → `FileBridge.kt`.
 - **run_command is compiled out on Android** (`#[cfg(not(target_os = "android"))]` in tools/mod.rs).
-- **Hand-maintained files inside `src-tauri/gen/android/`** (tracked in git; if `tauri android init` is ever re-run, merge these back manually): `app/src/main/AndroidManifest.xml` (storage permissions), `app/src/main/java/cn/yuxiaoqiu/meridian/MainActivity.kt` (SAF picker + `nativeOnSafResult`, window insets, and `handleBackNavigation`), `FileBridge.kt` (ContentResolver ops), `app/build.gradle.kts` (androidx.documentfile dependency).
+- **Hand-maintained files inside `src-tauri/gen/android/`** (tracked in git; if `tauri android init` is ever re-run, merge these back manually): `app/src/main/AndroidManifest.xml` (storage permissions), `app/src/main/java/cn/yuxiaoqiu/meridian/MainActivity.kt` (SAF picker + `nativeOnSafResult`, window insets, and `handleBackNavigation`), `FileBridge.kt` (ContentResolver ops), `app/build.gradle.kts` (androidx.documentfile dependency, Compose, `compilerOptions`, `buildImeRust*`), `build.gradle.kts` (the Kotlin and Compose compiler plugin versions; see "The Android keyboard" under Packaging).
 - **The keyboard is a padding, and every `svh` between it and the composer defeats it.** The WebView is not resized when the soft keyboard opens — `MainActivity` measures it and reports `imeBottom`, and `app-shell.tsx` shrinks the frame with `pb-[var(--ime-bottom)]`. That only reaches the composer if nothing in between insists on a viewport height. HeroUI Pro's sidebar did (`.sidebar__main` was `min-height: 100svh`); the base sidebar that replaced it sets none, and `Sidebar.Main` keeps `min-h-0` so that a height floor reintroduced there cannot quietly leave the pane a full screen tall while the frame around it shrinks. Nothing catches this: it is correct on every desktop, and `tsc`/`eslint`/`vitest` have no layout between them. The bottom insets are also exclusive, never summed — while the keyboard is up it covers the navigation bar, so `MainActivity` reports `bottom: 0` and the whole gap as `imeBottom`.
 - **The back key is the web history.** `WryActivity` routes it through `WebView.canGoBack()`, the generated `TauriActivity` disables that, and `MainActivity` turns it back on. So something is undone by the back gesture exactly when it pushed a `history` entry for itself — `useHistoryLevel` is the only way to do that, and `lib/history-bridge.ts` the only writer of history. Never call `history.back()` anywhere else: the store is updated from `popstate` alone, which is what keeps it from drifting. There are no screens to go back to any more, only levels inside one — a drawer, a detail pane, a non-empty selection. `useBackGesture`, called once by the shell, decides whether the gesture is ours at all; everything below it is inert on a desktop.
 - **History is reconciled, not commanded.** A level changes the store and calls `syncHistory`, which brings `window.history` to `levels.length` on the next microtask. It is deferred because a hand-over — the drawer closing as a page opens, which is every row in the mobile sheet — changes the store twice in one commit, and the two eager operations that used to produce do not commute: `history.go(-n)` resolves its target against the entry current when it is *called*, so a `pushState` landing in between is skipped and the traversal overshoots. Settings opened and was closed again by the popstate its own drawer had queued, which read as the page flashing and bouncing back. Coalesced, a hand-over costs no history operation at all. Nothing else may call `pushState` or `go`, and a level's effect must not assume its entry exists yet — it does not until the microtask runs, which is why the tests need an awaited `act` around anything that opens a level.

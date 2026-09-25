@@ -16,6 +16,7 @@ members = [
     "ime/tsf",
     "ime/host",
     "ime/lm",
+    "ime/android",
 ]
 # `crates/` is the meridian-core submodule (github.com/Yuerchu/meridian-core)
 # and a workspace of its own. A package may belong to one workspace only, so

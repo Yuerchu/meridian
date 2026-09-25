@@ -3,6 +3,7 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
     id("rust")
 }
 
@@ -87,16 +88,40 @@ android {
             )
         }
     }
-    kotlinOptions {
-        jvmTarget = "1.8"
-    }
     buildFeatures {
         buildConfig = true
+        compose = true
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
     }
 }
 
 rust {
     rootDirRel = "../../../"
+}
+
+// The keyboard's engine, libmeridian_ime.so, loaded by the input method
+// service in the `:ime` process. Built by its own cargo invocation rather than
+// Tauri's (the app's library carries no input method, the keyboard's process
+// does not load the app) and copied into src/main/jniLibs/arm64-v8a beside the
+// app's libraries. The script also refuses a library that is not 16 KB
+// aligned. It runs before every JNI merge, so an APK cannot be built without it.
+for (profile in listOf("Debug", "Release")) {
+    val buildIme = tasks.register<Exec>("buildImeRust$profile") {
+        group = "rust"
+        description = "Build libmeridian_ime.so ($profile) for arm64-v8a"
+        workingDir = rootProject.projectDir.resolve("../../..")
+        commandLine(
+            listOf("node", "scripts/build-ime-android.mjs") +
+                if (profile == "Release") listOf("--release") else emptyList()
+        )
+    }
+    tasks.matching { it.name.startsWith("merge") && it.name.endsWith("${profile}JniLibFolders") }
+        .configureEach { dependsOn(buildIme) }
 }
 
 dependencies {
@@ -106,6 +131,14 @@ dependencies {
     implementation("androidx.documentfile:documentfile:1.1.0")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
+    // The input method's keyboard (Compose, Material 3 Expressive). Two pins, both
+    // measured: Compose 1.12 (BOM 2026.08+) needs compileSdk 37 and AGP 9.1, so the
+    // BOM stays on 1.11; and material3 1.4.0 keeps the Expressive API internal, so
+    // it is the last 1.5 alpha still built on Compose 1.11.
+    implementation(platform("androidx.compose:compose-bom:2026.06.01"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.material3:material3:1.5.0-alpha18")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.4")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.0")

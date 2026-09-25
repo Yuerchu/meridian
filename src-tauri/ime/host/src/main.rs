@@ -18,8 +18,6 @@ mod app;
 #[cfg(windows)]
 mod ipc;
 #[cfg(windows)]
-mod logging;
-#[cfg(windows)]
 mod ui;
 
 fn main() {
