@@ -13,8 +13,9 @@ pub mod emoji;
 pub mod entity_response;
 #[cfg(not(target_os = "android"))]
 pub mod hooks;
-/// The input method: a Windows text service and its host, configured from here.
-#[cfg(windows)]
+/// The input method: the Windows text service and its host, and the Android
+/// keyboard, configured from here.
+#[cfg(any(windows, target_os = "android"))]
 pub mod ime;
 pub mod journal;
 pub mod logs;

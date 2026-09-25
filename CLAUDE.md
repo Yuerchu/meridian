@@ -1497,6 +1497,23 @@ rather than one because the boundaries are the design.
   comes back is the session's own JSON. Every `Java_*` function is under
   `catch_unwind`: a panic is an `IllegalStateException`, not a dead
   keyboard in somebody's chat.
+- **The settings page is one page on both platforms, and importing is two steps.**
+  `src-tauri/src/ime` compiles on Windows and Android: `host.json`, the
+  dictionaries, the model bundles and the memory hints are the same files on
+  both; the status block is each platform's own (TSF registration and the host
+  on Windows; on Android whether the keyboard is enabled and selected, asked of
+  `ImeBridge.kt` over JNI, with the two system screens as the only actions,
+  since Android lets no app enable or select a keyboard itself). A Rime
+  dictionary is several files resolved relative to its root, and Android's
+  picker hands over one `content://` document and nothing beside it, so a
+  dictionary arrives there as a zip. `stage_ime_dictionary` copies a
+  `content://` pick in, unpacks a zip (only `.dict.yaml` entries, contained
+  paths, a size cap) and lists its *root* dictionaries — the ones nothing else
+  imports — and `import_staged_ime_dictionaries` imports the ones the person
+  chose, refusing any path that was not listed. Choosing matters: rime-ice's
+  archive holds an English and a radical table beside the Chinese root.
+  `download_ime_rime_ice` fetches the rime-ice repository archive on request
+  and imports its Chinese root; dictionaries are still imported, never shipped.
 - **`meridian-ime` is the harness.** `type "nihao<space>"` replays a key
   script through the same `Session` the host runs, `lookup` ranks candidates
   against the imported dictionaries and says how long it took, `bench` scores

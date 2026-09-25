@@ -42,6 +42,14 @@ describe('settings tab groups', () => {
     expect(groups.every(({ tabs }) => tabs.length > 0)).toBe(true)
   })
 
+  it('shows the input method where there is one: Windows and Android', () => {
+    const ids = (platform: string) => visibleSettingsTabGroups(platform).flatMap(({ tabs }) => tabs.map((t) => t.id))
+    expect(ids('windows')).toContain('ime')
+    expect(ids('android')).toContain('ime')
+    expect(ids('linux')).not.toContain('ime')
+    expect(ids('macos')).not.toContain('ime')
+  })
+
   it('shows every group on a desktop', () => {
     const groups = visibleSettingsTabGroups('windows')
     expect(groups.map(({ group }) => group.id)).toEqual(['models', 'agent', 'integrations', 'app'])

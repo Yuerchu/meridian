@@ -75,6 +75,7 @@ pub fn status(dirs: &ImeDirs) -> ModelsStatus {
 /// Whether the host will find ONNX Runtime: `$MERIDIAN_ORT_LIB`, or the copy
 /// beside the host or one directory up — where the installer puts
 /// sherpa-onnx's. The same order the host looks in.
+#[cfg(windows)]
 pub fn runtime_found(host_exe: Option<&Path>) -> bool {
     if let Some(p) = std::env::var_os(meridian_ime_lm::RUNTIME_ENV).filter(|p| !p.is_empty()) {
         return Path::new(&p).exists();

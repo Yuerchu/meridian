@@ -75,10 +75,13 @@ import type {
   JournalVersionContentResponse,
   JournalVersionListResponse,
   ListenStatusResponse,
+  AndroidImeStatusInfoResponse,
   ImeConfigInfoResponse,
   ImeConfigUpdateRequest,
   ImeDictionaryImportReportResponse,
-  ImeDictionaryImportRequest,
+  ImeDictionaryStageRequest,
+  ImeDictionaryStagedImportRequest,
+  ImeDictionaryStagedInfoResponse,
   ImeDictionaryListResponse,
   ImeDictionaryRemoveRequest,
   ImeDictionaryToggleRequest,
@@ -816,8 +819,24 @@ export const api = {
 
   listImeDictionaries: () => invoke<ImeDictionaryListResponse>('list_ime_dictionaries'),
 
-  importImeDictionary: (request: ImeDictionaryImportRequest) =>
-    invoke<ImeDictionaryImportReportResponse>('import_ime_dictionary', { request }),
+  // Importing is two steps: look at what was picked (a file, or a zip whose
+  // root dictionaries the person chooses among), then import the chosen roots.
+  stageImeDictionary: (request: ImeDictionaryStageRequest) =>
+    invoke<ImeDictionaryStagedInfoResponse>('stage_ime_dictionary', { request }),
+
+  importStagedImeDictionaries: (request: ImeDictionaryStagedImportRequest) =>
+    invoke<ImeDictionaryImportReportResponse[]>('import_staged_ime_dictionaries', { request }),
+
+  // Fetches rime-ice from GitHub and imports its Chinese root.
+  downloadImeRimeIce: () => invoke<ImeDictionaryImportReportResponse>('download_ime_rime_ice'),
+
+  // The Android keyboard's standing with the system, and the two system
+  // screens that change it.
+  getAndroidImeStatus: () => invoke<AndroidImeStatusInfoResponse>('get_android_ime_status'),
+
+  openAndroidImeSettings: () => invoke<void>('open_android_ime_settings'),
+
+  showAndroidImePicker: () => invoke<void>('show_android_ime_picker'),
 
   setImeDictionaryEnabled: (request: ImeDictionaryToggleRequest) =>
     invoke<ImeDictionaryListResponse>('set_ime_dictionary_enabled', { request }),

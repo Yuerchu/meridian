@@ -1,10 +1,11 @@
 [workspace]
 # `ime/*` is the input method: the engine, the wire protocol, the TSF text
-# service and its host process. They live in the shell workspace rather than
-# in the core submodule because a headless server or `meridiand` must not
-# carry an input method, and they are listed one by one because the root
-# package deliberately depends on none of them — the Android check never
-# compiles them, and the desktop build only stages the artifacts they produce.
+# service, its host process and the Android keyboard's library. They live in
+# the shell workspace rather than in the core submodule because a headless
+# server or `meridiand` must not carry an input method. The root package
+# depends only on the contract crates (config, dict, lm, and proto on Windows)
+# for its settings page; the engine, DLL, host and keyboard library are built
+# by their own cargo invocations and only their artifacts are shipped.
 members = [
     ".",
     "ime/dict",
@@ -108,15 +109,23 @@ tempfile = "3"
 meridian-ime-engine = { path = "ime/engine" }
 sha2 = "0.10"
 
-# The input method: Meridian's side of it is a settings page, an importer and
-# a control client for the host process. The engine, the DLL and the host are
-# workspace members of their own (`ime/`), built and shipped separately; the
-# shell only depends on the contract crates.
-[target.'cfg(windows)'.dependencies]
+# The input method: Meridian's side of it is a settings page, an importer and,
+# on Windows, a control client for the host process. The engine, the DLL, the
+# host and the Android keyboard's library are workspace members of their own
+# (`ime/`), built and shipped separately; the shell only depends on the
+# contract crates, on the two platforms that have an input method.
+[target.'cfg(any(windows, target_os = "android"))'.dependencies]
 meridian-ime-config = { path = "ime/config" }
 meridian-ime-dict = { path = "ime/dict" }
 # Bundle checking only: `runtime` (ONNX Runtime) belongs to the host.
 meridian-ime-lm = { path = "ime/lm", default-features = false }
+# Dictionary archives (a Rime dictionary is several files) and downloading
+# one. Same versions and features the tree already has.
+zip = { version = "2", default-features = false, features = ["deflate"] }
+reqwest = { version = "0.12", features = ["stream", "rustls-tls-webpki-roots"], default-features = false }
+futures-util = { version = "0.3", default-features = false }
+
+[target.'cfg(windows)'.dependencies]
 meridian-ime-proto = { path = "ime/proto" }
 windows-registry = "0.6"
 windows-core = "0.62"

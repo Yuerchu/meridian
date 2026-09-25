@@ -80,7 +80,7 @@ pub fn import(
     }
     catalog.upsert(entry);
     catalog.save(&dicts).map_err(|e| e.to_string())?;
-    super::probe::reload_dictionaries();
+    super::nudge_host();
     Ok(report)
 }
 
@@ -91,7 +91,7 @@ pub fn set_enabled(dirs: &ImeDirs, file: &str, enabled: bool) -> Result<(), Stri
         return Err(format!("no dictionary named {file}"));
     }
     catalog.save(&dicts).map_err(|e| e.to_string())?;
-    super::probe::reload_dictionaries();
+    super::nudge_host();
     Ok(())
 }
 
@@ -105,7 +105,7 @@ pub fn remove(dirs: &ImeDirs, file: &str) -> Result<(), String> {
     catalog.save(&dicts).map_err(|e| e.to_string())?;
     // The host may still have it mapped; a delete of a mapped file fails on
     // Windows, so tell the host first and retry briefly.
-    super::probe::reload_dictionaries();
+    super::nudge_host();
     let path = dicts.join(file);
     let mut last = Ok(());
     for _ in 0..10 {

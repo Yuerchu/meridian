@@ -505,27 +505,36 @@ macro_rules! with_all_commands {
             #[cfg(not(target_os = "android"))]
             sync commands::remote => get_listen_addresses(),
 
-            // The input method. All `local`: what they configure is this machine's
-            // keyboard, and several run a process or ask for elevation on it.
+            // The input method. All `local` but the reads: what they configure is
+            // this machine's keyboard, and on Windows several run a process or ask
+            // for elevation on it. Configuration, dictionaries, models and hints
+            // are the same on Windows and Android; the TSF registration and host
+            // are Windows', the keyboard's system state Android's.
             #[cfg(windows)]
             async commands::ime => get_ime_status(),
-            #[cfg(windows)]
+            #[cfg(any(windows, target_os = "android"))]
             async commands::ime => get_ime_config(),
-            #[cfg(windows)]
+            #[cfg(any(windows, target_os = "android"))]
             local commands::ime => save_ime_config(
                 request: $crate::commands::ime::ImeConfigUpdateRequest,
             ),
-            #[cfg(windows)]
+            #[cfg(any(windows, target_os = "android"))]
             async commands::ime => list_ime_dictionaries(),
-            #[cfg(windows)]
-            local commands::ime => import_ime_dictionary(
-                request: $crate::commands::ime::ImeDictionaryImportRequest,
+            #[cfg(any(windows, target_os = "android"))]
+            local commands::ime => stage_ime_dictionary(
+                request: $crate::commands::ime::ImeDictionaryStageRequest,
             ),
-            #[cfg(windows)]
+            #[cfg(any(windows, target_os = "android"))]
+            local commands::ime => import_staged_ime_dictionaries(
+                request: $crate::commands::ime::ImeDictionaryStagedImportRequest,
+            ),
+            #[cfg(any(windows, target_os = "android"))]
+            local commands::ime => download_ime_rime_ice(),
+            #[cfg(any(windows, target_os = "android"))]
             local commands::ime => set_ime_dictionary_enabled(
                 request: $crate::commands::ime::ImeDictionaryToggleRequest,
             ),
-            #[cfg(windows)]
+            #[cfg(any(windows, target_os = "android"))]
             local commands::ime => remove_ime_dictionary(
                 request: $crate::commands::ime::ImeDictionaryRemoveRequest,
             ),
@@ -539,18 +548,24 @@ macro_rules! with_all_commands {
             ),
             #[cfg(windows)]
             local commands::ime => register_ime(),
-            #[cfg(windows)]
+            #[cfg(any(windows, target_os = "android"))]
             async commands::ime => get_ime_lm_status(),
-            #[cfg(windows)]
+            #[cfg(any(windows, target_os = "android"))]
             local commands::ime => import_ime_lm(
                 request: $crate::commands::ime::ImeLmImportRequest,
             ),
-            #[cfg(windows)]
+            #[cfg(any(windows, target_os = "android"))]
             local commands::ime => remove_ime_lm(
                 request: $crate::commands::ime::ImeLmRemoveRequest,
             ),
-            #[cfg(windows)]
+            #[cfg(any(windows, target_os = "android"))]
             local commands::ime => refresh_ime_memory_hints(),
+            #[cfg(target_os = "android")]
+            local commands::ime => get_android_ime_status(),
+            #[cfg(target_os = "android")]
+            local commands::ime => open_android_ime_settings(),
+            #[cfg(target_os = "android")]
+            local commands::ime => show_android_ime_picker(),
 
             local commands::dev => voice_probe_echo(
                 request: $crate::commands::dev::VoiceProbeEchoRequest,

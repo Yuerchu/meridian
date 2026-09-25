@@ -27,7 +27,7 @@ mod tests;
 
 use std::path::PathBuf;
 
-pub use header::{DEFAULT_COLUMNS, Header};
+pub use header::{DEFAULT_COLUMNS, Header, split as split_header};
 pub use import::{cache_key, import};
 
 use crate::format::DictError;

@@ -2982,10 +2982,34 @@ export interface ImeDictionaryInfoResponse {
 
 export type ImeDictionaryListResponse = ImeDictionaryInfoResponse[]
 
-export interface ImeDictionaryImportRequest {
+/** A `.dict.yaml` or a zip of them; on Android a `content://` URI. */
+export interface ImeDictionaryStageRequest {
   path: string
-  license: string | null
+}
+
+/** A dictionary in what was picked that nothing else there imports. */
+export interface ImeDictionaryRootInfoResponse {
+  path: string
   name: string | null
+  imports: number
+}
+
+export interface ImeDictionaryStagedInfoResponse {
+  staging_id: string
+  roots: ImeDictionaryRootInfoResponse[]
+}
+
+export interface ImeDictionaryStagedImportRequest {
+  staging_id: string
+  roots: string[]
+  license: string | null
+}
+
+/** The Android keyboard as the system sees it. */
+export interface AndroidImeStatusInfoResponse {
+  enabled: boolean
+  current: boolean
+  data_dir: string
 }
 
 export interface ImeDictionaryImportReportResponse {

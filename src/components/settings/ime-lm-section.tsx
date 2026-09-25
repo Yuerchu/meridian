@@ -26,7 +26,7 @@ import type { ImeLmBundleInfoResponse, ImeLmStatusInfoResponse } from '@/types'
  * bundle installed or removed is picked up within a second, and the hints
  * file is rewritten every minute anyway — the button only saves the wait.
  */
-export function ImeLmSection() {
+export function ImeLmSection({ canImport }: { canImport: boolean }) {
   const { t } = useTranslation()
   const { confirm, confirmDialog } = useConfirm()
   const [status, setStatus] = useState<ImeLmStatusInfoResponse | null>(null)
@@ -86,7 +86,7 @@ export function ImeLmSection() {
         <p data-slot="ime-lm-label" className="text-caption-1-medium text-text-secondary">
           {t('settings.ime.lm.title')}
         </p>
-        {can.importFromDisk && (
+        {can.importFromDisk && canImport && (
           <Button size="small" variant="secondary" onPress={handleImport} isDisabled={busy} isPending={busy}>
             {t('settings.ime.lm.import')}
           </Button>

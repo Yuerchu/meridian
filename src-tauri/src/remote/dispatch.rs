@@ -568,10 +568,13 @@ mod tests {
             // for.
             "open_in_editor",
             // The input method: this machine's keyboard. Importing reads a path
-            // here, registering asks for elevation here, and the host is a
-            // process here. Filtered out by `COMMAND_NAMES` off Windows.
+            // here, downloading writes here, registering asks for elevation
+            // here, and the host is a process here. Filtered out by
+            // `COMMAND_NAMES` where a platform has no such command.
             "save_ime_config",
-            "import_ime_dictionary",
+            "stage_ime_dictionary",
+            "import_staged_ime_dictionaries",
+            "download_ime_rime_ice",
             "set_ime_dictionary_enabled",
             "remove_ime_dictionary",
             "start_ime_host",
@@ -581,6 +584,9 @@ mod tests {
             "import_ime_lm",
             "remove_ime_lm",
             "refresh_ime_memory_hints",
+            "get_android_ime_status",
+            "open_android_ime_settings",
+            "show_android_ime_picker",
         ];
         expected.sort_unstable();
         expected.retain(|name| COMMAND_NAMES.contains(name));

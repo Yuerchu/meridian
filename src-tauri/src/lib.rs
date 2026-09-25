@@ -4,8 +4,9 @@ mod command_table;
 #[cfg(target_os = "android")]
 mod android_bridge;
 mod commands;
-/// Meridian's side of the input method (the DLL and host are separate binaries).
-#[cfg(windows)]
+/// Meridian's side of the input method: the settings for the Windows text
+/// service and host, and for the Android keyboard (all separate binaries).
+#[cfg(any(windows, target_os = "android"))]
 mod ime;
 /// The keyboard's font, written out for the input method's process.
 #[cfg(any(test, target_os = "android"))]
@@ -195,10 +196,11 @@ pub fn run() {
                 });
             }
 
-            // The input method's host belongs to the login session, not to this
-            // window: it is started here if the DLL is registered and nothing is
+            // The input method's data directory, its memory hints and, on
+            // Windows, its host — which belongs to the login session, not to
+            // this window: started here if the DLL is registered and nothing is
             // serving the pipe yet, and never stopped on exit.
-            #[cfg(windows)]
+            #[cfg(any(windows, target_os = "android"))]
             {
                 let services = services.clone();
                 let handle = app.handle().clone();
