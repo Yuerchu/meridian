@@ -51,6 +51,24 @@ describe('font chain', () => {
     for (const face of declaredFaces()) expect(written).toContain(face.url)
   })
 
+  // A synthesised bold smears Maple's ligatures and a synthesised italic is a
+  // slanted upright, so code asks the browser to fake neither: every weight
+  // and style a code block uses has a face of its own.
+  it('the code face ships regular, bold and both italics, and Inter its italic', () => {
+    const faces = [...fonts.matchAll(/@font-face\s*\{([^}]*)\}/g)].map(([, body]) => ({
+      family: unquote(/font-family:\s*([^;]+);/.exec(body)?.[1] ?? ''),
+      weight: /font-weight:\s*([^;]+);/.exec(body)?.[1]?.trim(),
+      style: /font-style:\s*([^;]+);/.exec(body)?.[1]?.trim(),
+    }))
+    const of = (family: string) =>
+      faces
+        .filter((face) => face.family === family)
+        .map((face) => `${face.weight}/${face.style}`)
+        .sort()
+    expect(of('Maple Mono NF CN')).toEqual(['400/italic', '400/normal', '700/italic', '700/normal'])
+    expect(of('Inter')).toEqual(['100 900/italic', '100 900/normal'])
+  })
+
   it('nothing after theme.css replaces --font-sans or --font-mono outright', () => {
     // A later `@theme` that sets either one wins, and the variables above stop
     // being read at all — which is exactly what meridian.css did before this file.

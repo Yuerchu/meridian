@@ -52,6 +52,11 @@ export const SOURCES = [
         sha256: '693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3',
       },
       {
+        entry: 'web/InterVariable-Italic.woff2',
+        to: 'InterVariable-Italic.woff2',
+        sha256: 'e564f652916db6c139570fefb9524a77c4d48f30c92928de9db19b6b5c7a262a',
+      },
+      {
         entry: 'LICENSE.txt',
         to: 'licenses/Inter-OFL.txt',
         sha256: '262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a',
@@ -102,6 +107,21 @@ export const SOURCES = [
         entry: 'MapleMono-NF-CN-Regular.ttf',
         to: 'MapleMono-NF-CN-Regular.ttf',
         sha256: 'bb8e8e8c263896f42555107202f1847f7a42c340a3e532df9c4d585c9794411c',
+      },
+      {
+        entry: 'MapleMono-NF-CN-Bold.ttf',
+        to: 'MapleMono-NF-CN-Bold.ttf',
+        sha256: '9e0c22a032c255b2da2c073d6cca6f8cf6fd6f214ae5407eb9f1aa523713729b',
+      },
+      {
+        entry: 'MapleMono-NF-CN-Italic.ttf',
+        to: 'MapleMono-NF-CN-Italic.ttf',
+        sha256: '39e6c6e611e65e6d0780f6279561f954f9db51221987d0924c45f6121eaf9054',
+      },
+      {
+        entry: 'MapleMono-NF-CN-BoldItalic.ttf',
+        to: 'MapleMono-NF-CN-BoldItalic.ttf',
+        sha256: '9d6e76fbb5767406efd1f5ae2d32f5439de3b4d4063b128e4186ad5619267120',
       },
       {
         entry: 'LICENSE.txt',
