@@ -19,6 +19,18 @@ pub const IME_DIR_NAME: &str = "ime";
 pub const CONFIG_FILE_NAME: &str = "host.json";
 pub const DICTS_DIR_NAME: &str = "dicts";
 pub const LEARN_DIR_NAME: &str = "learn";
+/// Language model bundles, one directory each (see `meridian-ime-lm`).
+pub const MODELS_DIR_NAME: &str = "models";
+/// What Meridian tells the input method about the person (see [`Hints`]).
+pub const CONTEXT_DIR_NAME: &str = "context";
+pub const HINTS_FILE_NAME: &str = "memory-hints.json";
+pub const HINTS_VERSION: u32 = 1;
+/// Hints in the file, at most.
+pub const MAX_HINTS: usize = 64;
+/// Characters in one hint, at most.
+pub const MAX_HINT_CHARS: usize = 32;
+/// Bytes in the file, at most.
+pub const MAX_HINTS_BYTES: u64 = 8 * 1024;
 pub const LOG_FILE_NAME: &str = "host.log";
 /// Environment variable that overrides the data directory, for the CLI and tests.
 pub const DATA_DIR_ENV: &str = "MERIDIAN_IME_DATA_DIR";
@@ -34,6 +46,7 @@ pub enum Scheme {
     #[default]
     Pinyin,
     Zhuyin,
+    Grid,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -58,6 +71,11 @@ pub struct HostConfig {
     pub private_apps: Vec<String>,
     /// Log every key to the host log. Off unless somebody is debugging.
     pub debug_log: bool,
+    /// Executable names, besides Meridian itself, whose sessions may be given
+    /// the person's memory hints. Empty unless they opted an app in; absent
+    /// in a file written before the field existed.
+    #[serde(default)]
+    pub context_apps: Vec<String>,
 }
 
 impl Default for HostConfig {
@@ -70,6 +88,7 @@ impl Default for HostConfig {
             learning: true,
             private_apps: Vec::new(),
             debug_log: false,
+            context_apps: Vec::new(),
         }
     }
 }
@@ -84,6 +103,11 @@ impl HostConfig {
         }
         self.private_apps.retain(|a| !a.is_empty());
         self.private_apps.dedup();
+        for app in &mut self.context_apps {
+            *app = app.trim().to_ascii_lowercase();
+        }
+        self.context_apps.retain(|a| !a.is_empty());
+        self.context_apps.dedup();
         self
     }
 
@@ -137,6 +161,18 @@ impl ImeDirs {
 
     pub fn learn(&self) -> PathBuf {
         self.root.join(LEARN_DIR_NAME)
+    }
+
+    pub fn models(&self) -> PathBuf {
+        self.root.join(MODELS_DIR_NAME)
+    }
+
+    pub fn context(&self) -> PathBuf {
+        self.root.join(CONTEXT_DIR_NAME)
+    }
+
+    pub fn hints_file(&self) -> PathBuf {
+        self.context().join(HINTS_FILE_NAME)
     }
 
     pub fn log_file(&self) -> PathBuf {
@@ -194,9 +230,174 @@ pub fn save(dir: &Path, cfg: &HostConfig) -> std::io::Result<()> {
     result
 }
 
+/// Short phrases from the person's memory in Meridian, written by Meridian
+/// for the input method to prefer. Only what survived redaction ever lands
+/// here, and only the phrase: no id, scope, person or source goes with it.
+/// Which applications may be shown them is the host's decision, not this
+/// file's.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Hints {
+    pub version: u32,
+    /// Unix seconds.
+    pub written_at: u64,
+    pub hints: Vec<String>,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum HintsError {
+    #[error("io: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("{path}: {source}")]
+    Parse { path: PathBuf, source: serde_json::Error },
+    #[error("{0}")]
+    Invalid(String),
+}
+
+impl Hints {
+    /// Refuses what the writer must never produce: an unknown version, too
+    /// many hints, an empty or overlong one.
+    pub fn check(&self) -> Result<(), HintsError> {
+        if self.version != HINTS_VERSION {
+            return Err(HintsError::Invalid(format!("hints version {}", self.version)));
+        }
+        if self.hints.len() > MAX_HINTS {
+            return Err(HintsError::Invalid(format!(
+                "{} hints, at most {MAX_HINTS}",
+                self.hints.len()
+            )));
+        }
+        if let Some(h) = self
+            .hints
+            .iter()
+            .find(|h| h.trim().is_empty() || h.chars().count() > MAX_HINT_CHARS)
+        {
+            return Err(HintsError::Invalid(format!(
+                "hint {h:?} is empty or longer than {MAX_HINT_CHARS}"
+            )));
+        }
+        Ok(())
+    }
+}
+
+/// Reads the hints. A missing file is none; a file over the size limit or
+/// breaking the rules in [`Hints::check`] is an error, and the caller uses
+/// none.
+pub fn load_hints(dirs: &ImeDirs) -> Result<Vec<String>, HintsError> {
+    let path = dirs.hints_file();
+    let meta = match std::fs::metadata(&path) {
+        Ok(m) => m,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(e.into()),
+    };
+    if meta.len() > MAX_HINTS_BYTES {
+        return Err(HintsError::Invalid(format!(
+            "{} is {} bytes, at most {MAX_HINTS_BYTES}",
+            path.display(),
+            meta.len()
+        )));
+    }
+    let text = std::fs::read_to_string(&path)?;
+    let hints: Hints = serde_json::from_str(&text).map_err(|source| HintsError::Parse { path, source })?;
+    hints.check()?;
+    Ok(hints.hints)
+}
+
+/// Writes the hints atomically, after checking them.
+pub fn save_hints(dirs: &ImeDirs, hints: &Hints) -> Result<(), HintsError> {
+    hints.check()?;
+    let text = serde_json::to_string(hints).expect("Hints serialises");
+    if text.len() as u64 > MAX_HINTS_BYTES {
+        return Err(HintsError::Invalid(format!(
+            "{} bytes, at most {MAX_HINTS_BYTES}",
+            text.len()
+        )));
+    }
+    let dir = dirs.context();
+    std::fs::create_dir_all(&dir)?;
+    let tmp = dir.join(format!(".{HINTS_FILE_NAME}.tmp-{}", std::process::id()));
+    let result = (|| {
+        let mut f = std::fs::File::create(&tmp)?;
+        use std::io::Write;
+        f.write_all(text.as_bytes())?;
+        f.sync_all()?;
+        std::fs::rename(&tmp, dirs.hints_file())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    Ok(result?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn hints(list: &[&str]) -> Hints {
+        Hints {
+            version: HINTS_VERSION,
+            written_at: 1,
+            hints: list.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn hints_round_trip_and_a_missing_file_is_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let dirs = ImeDirs::new(dir.path());
+        assert!(load_hints(&dirs).unwrap().is_empty());
+        save_hints(&dirs, &hints(&["香菜", "子午线"])).unwrap();
+        assert_eq!(load_hints(&dirs).unwrap(), vec!["香菜", "子午线"]);
+    }
+
+    #[test]
+    fn hints_over_the_limits_are_refused_both_ways() {
+        let dir = tempfile::tempdir().unwrap();
+        let dirs = ImeDirs::new(dir.path());
+        let long = "字".repeat(MAX_HINT_CHARS + 1);
+        assert!(save_hints(&dirs, &hints(&[&long])).is_err());
+        assert!(save_hints(&dirs, &hints(&[" "])).is_err());
+        let many: Vec<String> = (0..=MAX_HINTS).map(|i| format!("词{i}")).collect();
+        let refs: Vec<&str> = many.iter().map(String::as_str).collect();
+        assert!(save_hints(&dirs, &hints(&refs)).is_err());
+        // A file written by something else is held to the same rules.
+        std::fs::create_dir_all(dirs.context()).unwrap();
+        std::fs::write(
+            dirs.hints_file(),
+            format!(r#"{{"version":1,"written_at":1,"hints":["{long}"]}}"#),
+        )
+        .unwrap();
+        assert!(load_hints(&dirs).is_err());
+        std::fs::write(
+            dirs.hints_file(),
+            r#"{"version":1,"written_at":1,"hints":[],"person":"x"}"#,
+        )
+        .unwrap();
+        assert!(
+            matches!(load_hints(&dirs), Err(HintsError::Parse { .. })),
+            "no extra fields"
+        );
+        std::fs::write(dirs.hints_file(), vec![b' '; MAX_HINTS_BYTES as usize + 1]).unwrap();
+        assert!(
+            matches!(load_hints(&dirs), Err(HintsError::Invalid(_))),
+            "size is checked before parsing"
+        );
+    }
+
+    #[test]
+    fn context_apps_default_to_none_and_normalise() {
+        let cfg: HostConfig = serde_json::from_str(
+            r#"{"version":1,"scheme":"pinyin","page_size":5,"punctuation":"full_width","learning":true,"private_apps":[],"debug_log":false}"#,
+        )
+        .unwrap();
+        assert!(cfg.context_apps.is_empty(), "a file from before the field");
+        let cfg = HostConfig {
+            context_apps: vec![" Notepad.EXE ".into(), "".into()],
+            ..Default::default()
+        }
+        .normalized();
+        assert_eq!(cfg.context_apps, vec!["notepad.exe"]);
+    }
 
     #[test]
     fn missing_file_is_default_and_round_trips() {

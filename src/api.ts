@@ -82,6 +82,10 @@ import type {
   ImeDictionaryListResponse,
   ImeDictionaryRemoveRequest,
   ImeDictionaryToggleRequest,
+  ImeLmImportRequest,
+  ImeLmRemoveRequest,
+  ImeLmStatusInfoResponse,
+  ImeMemoryHintsInfoResponse,
   ImeProfileUpdateRequest,
   ImeStatusInfoResponse,
   LogFileListResponse,
@@ -830,6 +834,15 @@ export const api = {
 
   // One UAC prompt: `regsvr32` on the DLL.
   registerIme: () => invoke<ImeStatusInfoResponse>('register_ime'),
+
+  getImeLmStatus: () => invoke<ImeLmStatusInfoResponse>('get_ime_lm_status'),
+
+  importImeLm: (request: ImeLmImportRequest) => invoke<ImeLmStatusInfoResponse>('import_ime_lm', { request }),
+
+  removeImeLm: (request: ImeLmRemoveRequest) => invoke<ImeLmStatusInfoResponse>('remove_ime_lm', { request }),
+
+  // Writes the memory hints now rather than at the next minute.
+  refreshImeMemoryHints: () => invoke<ImeMemoryHintsInfoResponse>('refresh_ime_memory_hints'),
 
   // Prompt Templates
   listTemplateVariables: () => invoke<TemplateVariableListResponse>('list_template_variables'),

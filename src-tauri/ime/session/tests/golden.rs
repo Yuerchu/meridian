@@ -49,6 +49,12 @@ fn dictionary(dir: &std::path::Path) -> DictSet {
         ("guo", "国", 5000),
         ("shi", "是", 9000),
         ("shi", "式", 400),
+        // For the grid's fuzzy keys: z w ng reads both, r e ng reads both.
+        ("zhong", "中", 8000),
+        ("zong", "总", 900),
+        ("zhong guo", "中国", 8000),
+        ("ren", "人", 9000),
+        ("reng", "扔", 100),
     ];
     let mut w = DictWriter::new();
     for (c, t, f) in rows {
@@ -398,4 +404,288 @@ fn zhuyin_keys_compose_and_enter_commits() {
     assert!(r.session.is_composing());
     assert_eq!(out.frame.preedit_text(), "ㄅ");
     r.run("<esc>");
+}
+
+// ── grid ────────────────────────────────────────────────────────────────
+
+fn has_private_use(s: &str) -> bool {
+    s.chars().any(|c| ('\u{E000}'..='\u{F8FF}').contains(&c))
+}
+
+#[test]
+fn grid_tokens_compose_and_space_commits() {
+    let mut r = Rig::new(InputScheme::Grid);
+    let (_, out) = r.run("ny<t3>h<ao><t3>");
+    assert_eq!(out.frame.preedit_text(), "nyˇ haoˇ");
+    assert_eq!(r.candidates(&out)[0], "你好");
+    let (committed, out) = r.run("<space>");
+    assert_eq!(committed, "你好");
+    assert!(out.frame.is_empty());
+    assert_eq!(r.learner.weight("你好"), 1);
+}
+
+#[test]
+fn grid_tones_are_optional() {
+    let mut r = Rig::new(InputScheme::Grid);
+    let (_, out) = r.run("nyh<ao>");
+    assert_eq!(out.frame.preedit_text(), "ny hao");
+    assert_eq!(r.candidates(&out)[0], "你好");
+}
+
+#[test]
+fn grid_fuzzy_initial_and_nasal_tail() {
+    let mut r = Rig::new(InputScheme::Grid);
+    let (_, out) = r.run("zw<ng>");
+    let cands = r.candidates(&out);
+    assert!(
+        cands.contains(&"中".to_string()) && cands.contains(&"总".to_string()),
+        "{cands:?}"
+    );
+    r.run("<esc>");
+    let (_, out) = r.run("re<ng>");
+    let cands = r.candidates(&out);
+    assert!(
+        cands.contains(&"人".to_string()) && cands.contains(&"扔".to_string()),
+        "{cands:?}"
+    );
+    r.run("<esc>");
+    let (_, out) = r.run("zw<ng>gwo");
+    assert_eq!(r.candidates(&out)[0], "中国");
+}
+
+#[test]
+fn grid_tone_key_never_commits() {
+    let mut r = Rig::new(InputScheme::Grid);
+    let (committed, out) = r.run("ny<t3><t3>");
+    assert_eq!(committed, "");
+    assert!(out.consumed);
+    assert!(r.session.is_composing());
+    // A tone with nothing composing starts nothing.
+    r.run("<esc>");
+    let (committed, out) = r.run("<t3>");
+    assert_eq!(committed, "");
+    assert!(!r.session.is_composing());
+    assert!(!has_private_use(&out.frame.preedit_text()));
+}
+
+#[test]
+fn grid_space_is_not_a_tone() {
+    let mut r = Rig::new(InputScheme::Grid);
+    let (committed, out) = r.run("ny<space>");
+    assert_eq!(committed, "你", "space commits at once, unlike zhuyin");
+    assert!(out.frame.is_empty());
+}
+
+#[test]
+fn grid_digit_selects() {
+    let mut r = Rig::new(InputScheme::Grid);
+    let (_, out) = r.run("nyh<ao>");
+    let second = r.candidates(&out)[1].clone();
+    let (committed, _) = r.run("2");
+    assert_eq!(committed, second);
+}
+
+#[test]
+fn grid_enter_commits_highlighted() {
+    let mut r = Rig::new(InputScheme::Grid);
+    let (committed, _) = r.run("nyh<ao><enter>");
+    assert_eq!(committed, "你好");
+}
+
+#[test]
+fn grid_backspace_removes_one_key() {
+    let mut r = Rig::new(InputScheme::Grid);
+    let (_, out) = r.run("nyh<ao><bs>");
+    assert_eq!(out.frame.preedit_text(), "ny h", "one private-use key, one backspace");
+}
+
+#[test]
+fn grid_abbreviation_by_initials() {
+    let mut r = Rig::new(InputScheme::Grid);
+    let (_, out) = r.run("nh");
+    assert!(r.candidates(&out).contains(&"你好".to_string()));
+    r.run("<esc>");
+    // `z` must be read as zh as well as z, or 中国 is unreachable.
+    let (_, out) = r.run("zg");
+    assert!(
+        r.candidates(&out).contains(&"中国".to_string()),
+        "{:?}",
+        r.candidates(&out)
+    );
+}
+
+#[test]
+fn grid_raw_commit_shows_labels() {
+    let mut r = Rig::new(InputScheme::Grid);
+    // Shift toggles English and sends what was composing as it stands.
+    let (committed, _) = r.run("ny<ng><shift>");
+    assert!(!has_private_use(&committed), "{committed:?}");
+    assert!(committed.contains("ng"));
+}
+
+#[test]
+fn choosing_a_candidate_by_tap() {
+    let mut r = Rig::new(InputScheme::Grid);
+    let (_, out) = r.run("nyh<ao>");
+    let second = r.candidates(&out)[1].clone();
+    let out = r.session.choose(&r.engine, &mut r.learner, 1);
+    assert_eq!(out.commit.as_deref(), Some(second.as_str()));
+    assert_eq!(r.learner.weight(&second), 1);
+    // Nothing composing: the tap is not ours.
+    let out = r.session.choose(&r.engine, &mut r.learner, 0);
+    assert!(!out.consumed && out.commit.is_none());
+}
+
+#[test]
+fn choosing_in_a_private_session_does_not_learn() {
+    let mut r = Rig::new(InputScheme::Grid);
+    r.session.set_private(true);
+    r.run("nyh<ao>");
+    let out = r.session.choose(&r.engine, &mut r.learner, 0);
+    assert_eq!(out.commit.as_deref(), Some("你好"));
+    assert_eq!(r.learner.weight("你好"), 0);
+}
+
+#[test]
+fn key_outcome_serialises_for_the_android_bridge() {
+    let mut r = Rig::new(InputScheme::Grid);
+    let (_, out) = r.run("ny");
+    let json = serde_json::to_value(&out).unwrap();
+    assert_eq!(json["consumed"], true);
+    assert!(json["frame"]["candidates"].is_array());
+}
+
+// ── context for the scorer ──────────────────────────────────────────────
+
+/// Never changes the ranking; remembers the left and right context it was
+/// last asked with.
+#[derive(Default)]
+struct Listener {
+    last: std::sync::Mutex<Option<(String, String)>>,
+    hints: std::sync::Mutex<Vec<String>>,
+}
+
+impl meridian_ime_engine::SentenceScorer for Listener {
+    fn score(&self, req: &meridian_ime_engine::ScoreRequest<'_>) -> Vec<f64> {
+        *self.last.lock().unwrap() = Some((req.left.to_string(), req.right.to_string()));
+        *self.hints.lock().unwrap() = req.hints.to_vec();
+        Vec::new()
+    }
+}
+
+struct Shared(Arc<Listener>);
+
+impl meridian_ime_engine::SentenceScorer for Shared {
+    fn score(&self, req: &meridian_ime_engine::ScoreRequest<'_>) -> Vec<f64> {
+        self.0.score(req)
+    }
+}
+
+fn listening_rig() -> (Rig, Arc<Listener>) {
+    let mut r = Rig::new(InputScheme::Pinyin);
+    let listener = Arc::new(Listener::default());
+    let set = dictionary(r._dir.path());
+    r.engine = Arc::new(Engine::new(Arc::new(set)).with_scorer(Box::new(Shared(listener.clone()))));
+    (r, listener)
+}
+
+fn last_context(l: &Listener) -> (String, String) {
+    l.last.lock().unwrap().clone().expect("the scorer was asked")
+}
+
+#[test]
+fn commits_become_left_context() {
+    let (mut r, l) = listening_rig();
+    r.run("nihao<space>");
+    r.run("ma");
+    assert_eq!(last_context(&l).0, "你好");
+    r.run("<space>");
+    r.run("wo");
+    assert_eq!(last_context(&l).0, "你好吗");
+}
+
+#[test]
+fn reported_surroundings_replace_and_reset_clears() {
+    let (mut r, l) = listening_rig();
+    r.run("nihao<space>");
+    r.session.set_surrounding("前文", "后文");
+    r.run("wo");
+    assert_eq!(last_context(&l), ("前文".to_string(), "后文".to_string()));
+    r.run("<esc>");
+    r.session.reset();
+    r.run("wo");
+    assert_eq!(last_context(&l), (String::new(), String::new()), "focus moved on");
+}
+
+#[test]
+fn a_private_session_tells_the_scorer_nothing() {
+    let (mut r, l) = listening_rig();
+    r.session.set_private(true);
+    r.session.set_surrounding("密码是", "");
+    r.session.set_hints(Arc::from(vec!["不该出现".to_string()]));
+    r.run("nihao<space>");
+    r.run("wo");
+    assert_eq!(last_context(&l), (String::new(), String::new()));
+    assert!(l.hints.lock().unwrap().is_empty(), "no memory hints in a private field");
+    // Leaving private mode does not bring back what was typed inside it.
+    r.session.set_private(false);
+    r.run("<esc>wo");
+    assert_eq!(last_context(&l).0, "");
+}
+
+#[test]
+fn left_context_is_bounded() {
+    let (mut r, l) = listening_rig();
+    let long: String = std::iter::repeat_n('字', 200).collect();
+    r.session.set_surrounding(&long, "");
+    r.run("wo");
+    assert_eq!(
+        last_context(&l).0.chars().count(),
+        meridian_ime_session::LEFT_CONTEXT_CHARS
+    );
+}
+
+/// A long press sends a precise key: it reads one of what the shared key
+/// covers, so the other drops out of the candidates.
+#[test]
+fn grid_precise_keys_from_a_long_press() {
+    let mut r = Rig::new(InputScheme::Grid);
+    let (_, out) = r.run("<zh>w<-ng>");
+    let cands = r.candidates(&out);
+    assert!(
+        cands.contains(&"中".to_string()) && !cands.contains(&"总".to_string()),
+        "{cands:?}"
+    );
+    assert_eq!(out.frame.preedit_text(), "zhwng");
+    r.run("<esc>");
+    // 扔 may still appear as a word for the prefix `r` alone (the 简拼 edge);
+    // what covers all three keys is 人 only.
+    let whole = |names: &str| -> Vec<String> {
+        let keys = meridian_ime_engine::grid_keys(names);
+        let n = keys.chars().count();
+        r.engine
+            .query(
+                &keys,
+                InputScheme::Grid,
+                &r.learner,
+                &mut meridian_ime_engine::SpanCache::new(),
+            )
+            .candidates
+            .into_iter()
+            .filter(|c| c.consumed == n)
+            .map(|c| c.text)
+            .collect()
+    };
+    assert_eq!(whole("r e -n"), vec!["人"]);
+    let fuzzy = whole("r e ng");
+    assert!(
+        fuzzy.contains(&"人".to_string()) && fuzzy.contains(&"扔".to_string()),
+        "{fuzzy:?}"
+    );
+    let (_, out) = r.run("<z_>w<ng>");
+    let cands = r.candidates(&out);
+    assert!(
+        cands.contains(&"总".to_string()) && !cands.contains(&"中".to_string()),
+        "{cands:?}"
+    );
 }

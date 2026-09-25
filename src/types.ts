@@ -2946,7 +2946,7 @@ export interface ImeStatusInfoResponse {
   registered_dll_path: string | null
 }
 
-export type ImeScheme = 'pinyin' | 'zhuyin'
+export type ImeScheme = 'pinyin' | 'zhuyin' | 'grid'
 export type ImePunctuation = 'full_width' | 'half_width'
 
 export interface ImeConfigInfoResponse {
@@ -2956,6 +2956,7 @@ export interface ImeConfigInfoResponse {
   learning: boolean
   private_apps: string[]
   debug_log: boolean
+  context_apps: string[]
 }
 
 export interface ImeConfigUpdateRequest {
@@ -2965,6 +2966,7 @@ export interface ImeConfigUpdateRequest {
   learning: boolean
   private_apps: string[]
   debug_log: boolean
+  context_apps: string[]
 }
 
 export interface ImeDictionaryInfoResponse {
@@ -2995,6 +2997,38 @@ export interface ImeDictionaryImportReportResponse {
   cache_hit: boolean
   /** One line per file with something to say. */
   notes: string[]
+}
+
+export interface ImeLmBundleInfoResponse {
+  /** The directory under `models`, which is what removing names. */
+  dir_name: string
+  id: string | null
+  version: string | null
+  personal: boolean
+  license: string | null
+  /** Why the host would refuse it; null when it checks out. */
+  error: string | null
+}
+
+export interface ImeLmStatusInfoResponse {
+  dir: string
+  /** The bundle the host uses, by directory name. */
+  active: string | null
+  runtime_found: boolean
+  bundles: ImeLmBundleInfoResponse[]
+}
+
+export interface ImeLmImportRequest {
+  path: string
+}
+
+export interface ImeLmRemoveRequest {
+  dir_name: string
+}
+
+export interface ImeMemoryHintsInfoResponse {
+  count: number
+  path: string
 }
 
 export interface ImeDictionaryToggleRequest {

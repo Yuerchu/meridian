@@ -42,7 +42,8 @@ src-tauri/
     proto/ config/          # the pipe protocol; host.json and the data directory
     tsf/                    # meridian_ime_tsf.dll: the TSF text service (no engine inside)
     host/                   # meridian-ime-host.exe: engine, pipe server, candidate window
-    cli/                    # meridian-ime: import / lookup / type, with no OS in the loop
+    lm/                     # the language model scorer: bundles, ONNX Runtime loaded at run time
+    cli/                    # meridian-ime: import / lookup / type / keys / bench, with no OS in the loop
 ```
 
 **`src-tauri/crates` is another repository.** Everything below the Tauri line is
@@ -1317,10 +1318,11 @@ work they did.
 
 ## The input method
 
-`src-tauri/ime/` is a Windows input method — pinyin and zhuyin — that installs
-with Meridian and does not need it running. It is in the shell workspace and
-not in core because a headless server and `meridiand` must not carry one, and
-it is eight crates rather than one because the boundaries are the design.
+`src-tauri/ime/` is a Windows input method — pinyin and zhuyin, plus the grid
+layout the phone keyboard types — that installs with Meridian and does not
+need it running. It is in the shell workspace and not in core because a
+headless server and `meridiand` must not carry one, and it is nine crates
+rather than one because the boundaries are the design.
 
 - **The DLL holds no engine, reads no file and computes no path.** A text
   service is loaded into every process with a text field, including store
@@ -1372,7 +1374,7 @@ it is eight crates rather than one because the boundaries are the design.
   `POST.entry_count` is 32 bits because the prototype packed 16 into the FST
   value and overflowed it, and the test that writes seventy thousand entries
   under one code is what keeps it that way.
-- **Two schemes, one lattice.** Pinyin and zhuyin are two `SchemeParser`s that
+- **Three schemes, one lattice.** Pinyin, zhuyin and grid are `SchemeParser`s that
   turn keys into the same syllable DAG — an edge is a canonical pinyin
   syllable, `complete` or the start of one — so the dictionary, the lattice,
   the beam search and the learner never know which keyboard was used. A bare
@@ -1381,6 +1383,83 @@ it is eight crates rather than one because the boundaries are the design.
   keys are boundaries and the tone value is ignored, since the dictionaries are
   toneless; digits are bopomofo keys there, so candidates are chosen with
   Up/Down and Enter, and Space after a toneless syllable is the first tone.
+- **The grid is fuzzy by design, and its fuzziness is data.** Nine columns of
+  pinyin-lettered keys with zhuyin's structure: `z` `c` `s` each stand for
+  both the dental and the retroflex initial, `ng` is the only nasal key, and
+  tones are optional keys (ˉ ˊ ˇ ˋ ˙) that close a syllable when typed. A
+  syllable's keys come from its bopomofo spelling through two tables,
+  `grid_initials.txt` and `grid_rimes.txt`, and every syllable a key sequence
+  can mean is its own edge from the same start to the same end — so `z w ng`
+  is zhong, zong, zhun and zun at once, with no change to the dictionary.
+  `shared_spellings_are_only_the_designed_merges` is the gate on those tables:
+  syllables may share a spelling only if they are equal once retroflex folds
+  to dental, ㄤ to ㄢ and ㄥ to ㄣ, so an edit that merges more fails. One key
+  is one `char` — the multi-letter keys are private-use code points, the tone
+  keys are the tone marks — so the key string, `Candidate::consumed` and
+  Backspace keep counting characters, and the preedit shows labels, never a
+  private-use character. Space only commits (the first tone has its own key)
+  and digits select. **A long press is the precise key**: `z` offers `z_`/`zh`,
+  `c` and `s` likewise, `ng` offers `er`/`-n`/`-ng`, each spelling exactly one
+  of what the tap covers (which also separates dun/dong and jun/jiong, merged
+  as a side effect of the single nasal key). `GridToken::variants` is the
+  menu, so the keyboard reads it rather than keeping its own list. A precise
+  key is only precise if its *unfinished* edges are too: they are looked up
+  by prefix, and `z` as a prefix is also every `zh…`, so `cover` splits a
+  prefix by its next letter until it reaches nothing the keys exclude.
+  **Both spelling habits are accepted at once.** A pinyin typist drops the
+  `e` of ㄣ/ㄥ after a medial (dun `d w ng`), a zhuyin typist keeps it
+  (ㄉㄨㄣ `d w e ng`); the zhuyin spelling is an alternative marked
+  `zhuyin:` in `grid_rimes.txt`, so there is no setting, and `SpellingHabit`
+  only picks which one `keys_for_habit` / `bench --habit` types. In the
+  zhuyin habit jun and jiong share `j v e ng` on a tap, accepted because
+  jiong's characters are rare; a long press on the nasal separates them. `Scheme::Grid` on the wire is why `PROTOCOL_VERSION` is
+  2: the wire enum has no catch-all, so an older DLL fails the `Welcome`
+  rather than silently typing pinyin. `grid_table_sha256()` is what a model
+  trained on the layout is checked against.
+- **`keys_for` turns toned pinyin into any scheme's keys.** The evaluation set
+  stores what a sentence says (`ni3 hao3`), not what was typed, so one set
+  scores every scheme and every tone habit (`TonePolicy`). `meridian-ime keys`
+  prints the same strings for the training repository to compare byte for
+  byte; `bench --eval` reports top-1, keystrokes per character and cache
+  misses per keystroke. Measured on rime-ice, 2026-09, toneless: pinyin 3.27
+  KPC, zhuyin 2.48, grid 2.74 (2.87 in the zhuyin habit); grid's worst
+  keystroke 6–8 ms against a 30 ms budget, which is why pruning dead lattice
+  paths is not built.
+- **The language model scores candidates; it never chooses them.**
+  `meridian-ime-lm` implements `SentenceScorer` over ONNX Runtime opened at
+  run time (`load-dynamic`, API 17): the host finds the copy sherpa-onnx
+  already installs in `$INSTDIR`, `MERIDIAN_ORT_LIB` overrides. It is asked
+  once per query about the beam's readings *and* the best whole-input words
+  — without the second, 你/尼/泥 for one syllable could never be reordered —
+  with the text around the cursor (`ScoreRequest.left/right`, from the app or
+  from what the session committed) and, where allowed, memory hints. Three
+  things keep it from costing a keystroke: a budget from the manifest after
+  which the run is terminated and the answer is "no opinion", a breaker that
+  stops asking for two seconds after five misses, and a cache per context.
+  The score is mixed in as `RERANK_MIX · (lm − static)` after the manifest's
+  `scale` puts it on the dictionary's footing. A private session tells it
+  nothing — no left, no right, no hints — and keeps no context to tell later.
+- **A model bundle is refused, not tolerated.** `<ime>/models/<id>/` holds
+  `score.onnx`, `vocab.json` and a `manifest.json` with `deny_unknown_fields`
+  whose file hashes, grid table hash and syllable table hash must all match
+  this build; the graph's contract is in `lm/src/backend.rs`. A personal
+  bundle (`personal: true`, trained on the person's own exported typing) is
+  preferred and never published; the public one is static. The host reloads
+  when a manifest appears or changes; the settings page installs from a
+  directory and removes manifest-first so the host lets go before the files
+  go. The tests generate a contract graph as protobuf by hand, so they need
+  neither a checked-in binary nor Python, and run against the real runtime
+  when `resources/onnxruntime.dll` or `MERIDIAN_ORT_LIB` is there.
+- **Memory hints flow from Meridian to the input method, never back.**
+  `src/ime/hints.rs` writes `<ime>/context/memory-hints.json` every minute
+  when it would change: client-global memories only, cut into 2–32 character
+  mostly-Chinese phrases, a memory any redaction rule touches dropped whole,
+  no id, scope, person or time. It is recomputed rather than hooked because
+  the agent saves memories inside core where the shell never sees it. The
+  host hands them only to sessions in `meridian.exe` or an app listed in
+  `context_apps`, never to a private one; without a model they still lift a
+  whole-input word of two or more characters that a hint contains
+  (`CONTEXT_BONUS`).
 - **Frequencies are normalised against the total of every file together.**
   Against its own total, a two-hundred-word domain table makes each of its
   words commoner than 你好 and the composer prefers them everywhere. A user's
@@ -1406,11 +1485,13 @@ it is eight crates rather than one because the boundaries are the design.
   the composer against expected sentences (28/30 top-1 on rime-ice at ~2 ms a
   query). The golden tests in `session/tests/golden.rs` are the same scripts.
 
-Measured but not built: a language-model reranker (the `SentenceScorer` hook
-is where it plugs in; LiteRT-LM exposes no logprobs, so it would be generative),
-a language-bar button, traditional output, `ITfTextLayoutSink` for the cases
-where `GetTextExt` answers `TF_E_NOLAYOUT`, and `uiAccess` so the candidate
-window can sit over the Start menu's search box.
+Measured but not built: downloading a model bundle (nothing is published
+yet), the tone filter the bundle's `readings.tsv` is for, the TSF DLL
+reporting the text around the cursor (`surrounding` exists on the wire; the
+DLL sends `None`), a language-bar button, traditional output,
+`ITfTextLayoutSink` for the cases where `GetTextExt` answers
+`TF_E_NOLAYOUT`, and `uiAccess` so the candidate window can sit over the
+Start menu's search box.
 
 ## Remote access
 

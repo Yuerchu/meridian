@@ -16,14 +16,15 @@
 //! knows simply has no span, so an input can have no full-coverage candidate
 //! at all; there is no placeholder for it in the MVP.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use meridian_ime_dict::Hit;
 
 use crate::lattice::{Lattice, MAX_HITS_PER_INCOMPLETE_SPAN, MAX_HITS_PER_SPAN, SpanCache, build_lattice};
 use crate::learn::{Context, Learner, SENTENCE_START};
-use crate::query::{Candidate, CandidateSource, Engine, Query};
+use crate::query::{Candidate, CandidateSource, Engine, Query, QueryContext};
 use crate::scheme::InputScheme;
+use crate::sentence::ScoreRequest;
 
 /// Subtracted from a reading's score for every word in it.
 pub const WORD_COUNT_PENALTY: f64 = 2.0;
@@ -37,8 +38,26 @@ pub const MAX_COUNTED_WEIGHT: u32 = 50;
 pub const SENTENCE_READINGS: usize = 3;
 /// How much of a reranker's opinion is mixed in.
 pub const RERANK_MIX: f64 = 0.5;
+/// Whole-input words the reranker is shown, best first: enough to reorder the
+/// first page, few enough to stay one small batch.
+pub const RERANK_WORDS: usize = 8;
 /// Cap on the candidate list.
 pub const MAX_CANDIDATES: usize = 200;
+/// Added to a word of two or more characters that one of the person's memory
+/// hints contains. Roughly what a word earns from being committed a dozen
+/// times: enough to lift it over a near neighbour, not over a clearly more
+/// likely one.
+pub const CONTEXT_BONUS: f64 = 1.0;
+
+/// Single characters are not boosted: nearly every hint contains some
+/// character, so a single-character match says nothing.
+fn context_bonus(text: &str, hints: &[String]) -> f64 {
+    if text.chars().nth(1).is_some() && hints.iter().any(|h| h.contains(text)) {
+        CONTEXT_BONUS
+    } else {
+        0.0
+    }
+}
 
 /// One whole reading of the input.
 #[derive(Debug, Clone, PartialEq)]
@@ -56,7 +75,14 @@ impl Reading {
     }
 }
 
-pub fn query(engine: &Engine, keys: &str, scheme: InputScheme, learner: &dyn Learner, cache: &mut SpanCache) -> Query {
+pub fn query(
+    engine: &Engine,
+    keys: &str,
+    scheme: InputScheme,
+    learner: &dyn Learner,
+    cache: &mut SpanCache,
+    context: &QueryContext<'_>,
+) -> Query {
     if keys.is_empty() {
         return Query::default();
     }
@@ -65,8 +91,10 @@ pub fn query(engine: &Engine, keys: &str, scheme: InputScheme, learner: &dyn Lea
     let segmentation = parser.segment(keys);
     let preedit = parser.preedit(keys, &segmentation);
     let lattice = build_lattice(&dag, engine.dicts(), engine.limits(), cache);
-    let readings = rerank(engine, search(&lattice, learner, WORD_COUNT_PENALTY));
-    let candidates = assemble(keys, &lattice, &readings, learner);
+    let mut readings = search(&lattice, learner, WORD_COUNT_PENALTY);
+    let mut full = full_words(&lattice, learner, context.hints);
+    rerank(engine, scheme, keys, context, &mut readings, &mut full);
+    let candidates = assemble(keys, &lattice, &readings, &full, learner, context.hints);
     Query {
         keys: keys.to_string(),
         segmentation,
@@ -154,22 +182,80 @@ fn prune(states: &mut Vec<Reading>) {
     });
 }
 
-/// Mixes the engine's scorer into the readings, when it answers.
-fn rerank(engine: &Engine, mut readings: Vec<Reading>) -> Vec<Reading> {
-    if readings.is_empty() {
-        return readings;
+/// A word covering the whole input, with the score the list ranks it by and
+/// the static part of it a reranker replaces.
+#[derive(Debug, Clone)]
+pub(crate) struct FullWord<'l> {
+    pub score: f64,
+    pub static_score: f64,
+    pub hit: &'l Hit,
+}
+
+/// Words covering the whole input, best first.
+fn full_words<'l>(lattice: &'l Lattice, learner: &dyn Learner, hints: &[String]) -> Vec<FullWord<'l>> {
+    let mut full: Vec<FullWord<'l>> = lattice
+        .full_spans()
+        .flat_map(|span| {
+            span.hits.iter().map(|h| FullWord {
+                score: h.log_prob + weight_bonus(learner, &h.text) + context_bonus(&h.text, hints),
+                static_score: h.log_prob,
+                hit: h,
+            })
+        })
+        .collect();
+    full.sort_by(|a, b| by_score_desc(a.score, b.score));
+    full
+}
+
+/// Mixes the engine's scorer into the readings and into the best
+/// whole-input words, in one call, when it answers. The words matter as much
+/// as the sentences: for a single syllable they are the whole first page
+/// (你 尼 泥), and the beam never produces a reading to reorder them by.
+fn rerank(
+    engine: &Engine,
+    scheme: InputScheme,
+    keys: &str,
+    context: &QueryContext<'_>,
+    readings: &mut [Reading],
+    full: &mut [FullWord<'_>],
+) {
+    let mut texts: Vec<String> = Vec::new();
+    let mut index: HashMap<String, usize> = HashMap::new();
+    let mut add = |text: String| {
+        if !index.contains_key(&text) {
+            index.insert(text.clone(), texts.len());
+            texts.push(text);
+        }
+    };
+    for r in readings.iter() {
+        add(r.text());
     }
-    let texts: Vec<String> = readings.iter().map(Reading::text).collect();
+    for w in full.iter().take(RERANK_WORDS) {
+        add(w.hit.text.clone());
+    }
+    if texts.is_empty() {
+        return;
+    }
     let borrowed: Vec<&str> = texts.iter().map(String::as_str).collect();
-    let scores = engine.scorer().score("", &borrowed);
-    if scores.len() != readings.len() {
-        return readings;
+    let scores = engine.scorer().score(&ScoreRequest {
+        scheme,
+        keys,
+        left: context.left,
+        right: context.right,
+        hints: context.hints,
+        texts: &borrowed,
+    });
+    if scores.len() != texts.len() {
+        return;
     }
-    for (r, s) in readings.iter_mut().zip(scores) {
-        r.score += RERANK_MIX * (s - r.static_sum);
+    for r in readings.iter_mut() {
+        r.score += RERANK_MIX * (scores[index[&r.text()]] - r.static_sum);
     }
-    readings.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-    readings
+    for w in full.iter_mut().take(RERANK_WORDS) {
+        w.score += RERANK_MIX * (scores[index[&w.hit.text]] - w.static_score);
+    }
+    readings.sort_by(|a, b| by_score_desc(a.score, b.score));
+    full.sort_by(|a, b| by_score_desc(a.score, b.score));
 }
 
 fn word_candidate(hit: &Hit, score: f64, consumed: usize) -> Candidate {
@@ -196,23 +282,22 @@ fn by_score_desc(a: f64, b: f64) -> std::cmp::Ordering {
     b.partial_cmp(&a).unwrap_or(std::cmp::Ordering::Equal)
 }
 
-fn assemble(keys: &str, lattice: &Lattice, readings: &[Reading], learner: &dyn Learner) -> Vec<Candidate> {
+fn assemble(
+    keys: &str,
+    lattice: &Lattice,
+    readings: &[Reading],
+    full: &[FullWord<'_>],
+    learner: &dyn Learner,
+    hints: &[String],
+) -> Vec<Candidate> {
     let len = lattice.len;
     let mut out = Vec::new();
     let mut seen = HashSet::new();
 
-    // a. Words covering the whole input.
-    let mut full: Vec<(f64, &Hit)> = lattice
-        .full_spans()
-        .flat_map(|span| {
-            span.hits
-                .iter()
-                .map(|h| (h.log_prob + weight_bonus(learner, &h.text), h))
-        })
-        .collect();
-    full.sort_by(|a, b| by_score_desc(a.0, b.0));
-    for (score, hit) in full {
-        push_unique(&mut out, &mut seen, word_candidate(hit, score, len));
+    // a. Words covering the whole input, as `full_words` and the reranker
+    //    left them.
+    for w in full {
+        push_unique(&mut out, &mut seen, word_candidate(w.hit, w.score, len));
     }
 
     // b. Sentence readings; a one-word reading is that word, already above.
@@ -231,9 +316,13 @@ fn assemble(keys: &str, lattice: &Lattice, readings: &[Reading], learner: &dyn L
     let mut prefix: Vec<(usize, f64, &Hit)> = lattice
         .prefix_spans()
         .flat_map(|span| {
-            span.hits
-                .iter()
-                .map(move |h| (span.end, h.log_prob + weight_bonus(learner, &h.text), h))
+            span.hits.iter().map(move |h| {
+                (
+                    span.end,
+                    h.log_prob + weight_bonus(learner, &h.text) + context_bonus(&h.text, hints),
+                    h,
+                )
+            })
         })
         .collect();
     prefix.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| by_score_desc(a.1, b.1)));
@@ -433,6 +522,123 @@ mod tests {
             ]
         );
         assert_eq!(sentence.code(), "ni hao zhong guo");
+    }
+
+    /// Answers with the dictionary's own number except for one text, which it
+    /// prefers by `boost`; records what it was asked.
+    struct Prefer {
+        text: &'static str,
+        boost: f64,
+        asked: std::sync::Mutex<Vec<(String, String, Vec<String>)>>,
+    }
+
+    impl Prefer {
+        fn new(text: &'static str, boost: f64) -> Self {
+            Self {
+                text,
+                boost,
+                asked: Default::default(),
+            }
+        }
+    }
+
+    impl crate::sentence::SentenceScorer for Prefer {
+        fn score(&self, req: &ScoreRequest<'_>) -> Vec<f64> {
+            self.asked.lock().unwrap().push((
+                req.left.to_string(),
+                req.keys.to_string(),
+                req.texts.iter().map(|t| t.to_string()).collect(),
+            ));
+            req.texts
+                .iter()
+                .map(|t| if *t == self.text { self.boost } else { -self.boost })
+                .collect()
+        }
+    }
+
+    #[test]
+    fn a_scorer_reorders_single_words() {
+        let rows = &[("ni", "你", 9000), ("ni", "泥", 400), ("ni", "尼", 500)];
+        let (_dir, engine) = engine(rows);
+        assert_eq!(texts(&ask(&engine, "ni", &MemoryLearner::new()))[0], "你");
+        let engine = engine.with_scorer(Box::new(Prefer::new("泥", 20.0)));
+        let q = ask(&engine, "ni", &MemoryLearner::new());
+        assert_eq!(texts(&q)[0], "泥", "{:?}", texts(&q));
+    }
+
+    #[test]
+    fn the_scorer_is_told_the_context_and_the_keys() {
+        let (_dir, engine) = engine(NIHAO_ROWS);
+        let scorer = std::sync::Arc::new(Prefer::new("你好", 1.0));
+        struct Shared(std::sync::Arc<Prefer>);
+        impl crate::sentence::SentenceScorer for Shared {
+            fn score(&self, req: &ScoreRequest<'_>) -> Vec<f64> {
+                self.0.score(req)
+            }
+        }
+        let engine = engine.with_scorer(Box::new(Shared(scorer.clone())));
+        let context = QueryContext {
+            left: "我说",
+            right: "。",
+            hints: &[],
+        };
+        engine.query_with(
+            "nihao",
+            InputScheme::Pinyin,
+            &MemoryLearner::new(),
+            &mut SpanCache::new(),
+            &context,
+        );
+        let asked = scorer.asked.lock().unwrap();
+        assert_eq!(asked.len(), 1, "one call per query");
+        let (left, keys, texts) = &asked[0];
+        assert_eq!((left.as_str(), keys.as_str()), ("我说", "nihao"));
+        assert!(texts.contains(&"你好".to_string()));
+        let unique: HashSet<&String> = texts.iter().collect();
+        assert_eq!(unique.len(), texts.len(), "each text is asked about once");
+    }
+
+    #[test]
+    fn a_scorer_that_does_not_answer_changes_nothing() {
+        struct Wrong;
+        impl crate::sentence::SentenceScorer for Wrong {
+            fn score(&self, _req: &ScoreRequest<'_>) -> Vec<f64> {
+                vec![100.0]
+            }
+        }
+        let (_dir, plain) = engine(NIHAO_ROWS);
+        let (_dir2, wrong) = engine(NIHAO_ROWS);
+        let wrong = wrong.with_scorer(Box::new(Wrong));
+        let learner = MemoryLearner::new();
+        assert_eq!(
+            texts(&ask(&plain, "nihao", &learner)),
+            texts(&ask(&wrong, "nihao", &learner))
+        );
+    }
+
+    #[test]
+    fn a_memory_hint_lifts_a_word_it_contains() {
+        let rows = &[
+            ("xiang cai", "想猜", 200),
+            ("xiang cai", "香菜", 100),
+            ("xiang", "想", 200),
+            ("xiang", "香", 100),
+        ];
+        let (_dir, engine) = engine(rows);
+        let learner = MemoryLearner::new();
+        let hints = vec!["我不吃香菜".to_string()];
+        let with = |keys: &str| {
+            let ctx = QueryContext {
+                left: "",
+                right: "",
+                hints: &hints,
+            };
+            engine.query_with(keys, InputScheme::Pinyin, &learner, &mut SpanCache::new(), &ctx)
+        };
+        assert_eq!(texts(&ask(&engine, "xiangcai", &learner))[0], "想猜");
+        assert_eq!(texts(&with("xiangcai"))[0], "香菜");
+        // One character is in nearly every hint; it earns nothing.
+        assert_eq!(texts(&with("xiang"))[0], "想");
     }
 
     #[test]

@@ -5,7 +5,8 @@
 
 use tauri::Manager;
 
-use crate::ime::{AppIme, dictionary, host_process, probe, registry};
+use crate::ServicesExt;
+use crate::ime::{AppIme, dictionary, hints, host_process, models, probe, registry};
 
 #[derive(Debug, serde::Serialize)]
 pub struct ImeStatusInfoResponse {
@@ -35,6 +36,8 @@ pub struct ImeConfigInfoResponse {
     pub learning: bool,
     pub private_apps: Vec<String>,
     pub debug_log: bool,
+    /// Apps besides Meridian that may be shown memory hints.
+    pub context_apps: Vec<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -46,6 +49,8 @@ pub struct ImeConfigUpdateRequest {
     pub learning: bool,
     pub private_apps: Vec<String>,
     pub debug_log: bool,
+    /// Apps besides Meridian that may be shown memory hints.
+    pub context_apps: Vec<String>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -100,10 +105,53 @@ pub struct ImeProfileUpdateRequest {
     pub enabled: bool,
 }
 
+#[derive(Debug, serde::Serialize)]
+pub struct ImeLmBundleInfoResponse {
+    /// The directory under `models`, which is what removing names.
+    pub dir_name: String,
+    pub id: Option<String>,
+    pub version: Option<String>,
+    pub personal: bool,
+    pub license: Option<String>,
+    /// Why the host would refuse it; `None` when it checks out.
+    pub error: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct ImeLmStatusInfoResponse {
+    pub dir: String,
+    /// The bundle the host uses, by directory name.
+    pub active: Option<String>,
+    /// ONNX Runtime is where the host looks for it.
+    pub runtime_found: bool,
+    pub bundles: Vec<ImeLmBundleInfoResponse>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImeLmImportRequest {
+    /// A directory holding a bundle.
+    pub path: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImeLmRemoveRequest {
+    pub dir_name: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct ImeMemoryHintsInfoResponse {
+    /// Phrases written.
+    pub count: u32,
+    pub path: String,
+}
+
 fn scheme_str(s: meridian_ime_config::Scheme) -> &'static str {
     match s {
         meridian_ime_config::Scheme::Pinyin => "pinyin",
         meridian_ime_config::Scheme::Zhuyin => "zhuyin",
+        meridian_ime_config::Scheme::Grid => "grid",
     }
 }
 
@@ -123,6 +171,7 @@ impl From<meridian_ime_config::HostConfig> for ImeConfigInfoResponse {
             learning: c.learning,
             private_apps: c.private_apps,
             debug_log: c.debug_log,
+            context_apps: c.context_apps,
         }
     }
 }
@@ -134,6 +183,7 @@ impl TryFrom<ImeConfigUpdateRequest> for meridian_ime_config::HostConfig {
         let scheme = match r.scheme.as_str() {
             "pinyin" => meridian_ime_config::Scheme::Pinyin,
             "zhuyin" => meridian_ime_config::Scheme::Zhuyin,
+            "grid" => meridian_ime_config::Scheme::Grid,
             other => return Err(format!("unknown scheme {other:?}")),
         };
         let punctuation = match r.punctuation.as_str() {
@@ -156,6 +206,7 @@ impl TryFrom<ImeConfigUpdateRequest> for meridian_ime_config::HostConfig {
             learning: r.learning,
             private_apps: r.private_apps,
             debug_log: r.debug_log,
+            context_apps: r.context_apps,
         }
         .normalized())
     }
@@ -365,6 +416,84 @@ pub async fn register_ime(app: tauri::AppHandle) -> Result<ImeStatusInfoResponse
     Ok(status_of(bridge).await)
 }
 
+fn lm_status_of(bridge: &crate::ime::ImeBridge) -> ImeLmStatusInfoResponse {
+    let s = models::status(&bridge.dirs);
+    ImeLmStatusInfoResponse {
+        dir: s.dir.to_string_lossy().into_owned(),
+        active: s.active,
+        runtime_found: models::runtime_found(bridge.host_exe.as_deref()),
+        bundles: s
+            .bundles
+            .into_iter()
+            .map(|b| ImeLmBundleInfoResponse {
+                dir_name: b.dir_name,
+                id: b.id,
+                version: b.version,
+                personal: b.personal,
+                license: b.license,
+                error: b.error,
+            })
+            .collect(),
+    }
+}
+
+/// Installed language model bundles and which one the host uses.
+#[tauri::command]
+pub async fn get_ime_lm_status(app: tauri::AppHandle) -> Result<ImeLmStatusInfoResponse, String> {
+    let bridge = bridge(&app).await;
+    tokio::task::spawn_blocking(move || Ok(lm_status_of(&bridge)))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Installs the bundle in a directory; the host picks it up by itself.
+#[tauri::command]
+pub async fn import_ime_lm(
+    app: tauri::AppHandle,
+    request: ImeLmImportRequest,
+) -> Result<ImeLmStatusInfoResponse, String> {
+    let bridge = bridge(&app).await;
+    tokio::task::spawn_blocking(move || {
+        models::import(&bridge.dirs, std::path::Path::new(&request.path))?;
+        Ok(lm_status_of(&bridge))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn remove_ime_lm(
+    app: tauri::AppHandle,
+    request: ImeLmRemoveRequest,
+) -> Result<ImeLmStatusInfoResponse, String> {
+    let bridge = bridge(&app).await;
+    tokio::task::spawn_blocking(move || {
+        models::remove(&bridge.dirs, &request.dir_name)?;
+        Ok(lm_status_of(&bridge))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Recomputes and writes the memory hints now, rather than at the next
+/// minute. The file is written even when nothing changed.
+#[tauri::command]
+pub async fn refresh_ime_memory_hints(app: tauri::AppHandle) -> Result<ImeMemoryHintsInfoResponse, String> {
+    let bridge = bridge(&app).await;
+    let services = app.services();
+    tokio::task::spawn_blocking(move || {
+        let found = hints::compute(&services)?;
+        let count = found.len() as u32;
+        hints::write_if_changed(&bridge.dirs, found, &mut None)?;
+        Ok(ImeMemoryHintsInfoResponse {
+            count,
+            path: bridge.dirs.hints_file().to_string_lossy().into_owned(),
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -374,11 +503,20 @@ mod tests {
     fn config_request_is_a_closed_object_with_checked_values() {
         let good = json!({
             "scheme": "pinyin", "page_size": 5, "punctuation": "full_width",
-            "learning": true, "private_apps": ["KeePass.exe"], "debug_log": false
+            "learning": true, "private_apps": ["KeePass.exe"], "debug_log": false,
+            "context_apps": [" Notepad.exe "]
         });
         let r: ImeConfigUpdateRequest = serde_json::from_value(good.clone()).unwrap();
         let cfg = meridian_ime_config::HostConfig::try_from(r).unwrap();
         assert_eq!(cfg.private_apps, vec!["keepass.exe"]);
+        assert_eq!(cfg.context_apps, vec!["notepad.exe"]);
+
+        let mut missing = good.clone();
+        missing.as_object_mut().unwrap().remove("context_apps");
+        assert!(
+            serde_json::from_value::<ImeConfigUpdateRequest>(missing).is_err(),
+            "omitting a field is not a way to say empty"
+        );
 
         let mut unknown = good.clone();
         unknown["extra"] = json!(1);

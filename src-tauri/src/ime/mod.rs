@@ -13,7 +13,9 @@
 //! the CLI runs. Windows only, like everything under `ime/`.
 
 pub(crate) mod dictionary;
+pub(crate) mod hints;
 pub(crate) mod host_process;
+pub(crate) mod models;
 pub(crate) mod probe;
 pub(crate) mod registry;
 
@@ -103,6 +105,7 @@ pub struct AppIme(pub Arc<Mutex<ImeBridge>>);
 /// to the login session, not to this window.
 pub(crate) async fn maybe_start(services: Services, app: tauri::AppHandle) -> AppIme {
     let bridge = ImeBridge::locate(&services, &app);
+    hints::spawn_refresh(services.clone(), bridge.dirs.clone());
     if let Err(e) = bridge.dirs.ensure() {
         tracing::warn!(error = %e, dir = %bridge.dirs.root.display(), "cannot create the input method's data directory");
     } else if !bridge.dirs.config_file().exists()

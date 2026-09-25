@@ -24,6 +24,7 @@ import type { DemoArgs, DemoBackend, DemoHandler } from './index'
 import {
   APP_INFO,
   CAPABILITIES,
+  IME_LM_STATUS,
   IME_STATUS,
   STICKER_IMAGES,
   SKILL_BODY,
@@ -1180,6 +1181,8 @@ const integrations: Record<string, DemoHandler> = {
     if (row) row.enabled = req.enabled
     return state.imeDictionaries
   },
+  get_ime_lm_status: () => IME_LM_STATUS,
+  refresh_ime_memory_hints: () => ({ count: 12, path: `${IME_STATUS.data_dir}\\context\\memory-hints.json` }),
   acp_get_config: () => ({ command: 'npx', args: ['-y', '@agentclientprotocol/claude-agent-acp'] }),
 }
 

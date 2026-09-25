@@ -52,6 +52,15 @@ pub struct Rect {
     pub bottom: i32,
 }
 
+/// Text on either side of the cursor, as the application holds it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct Surrounding {
+    /// Before the cursor, nearest last.
+    pub left: String,
+    /// After the cursor, nearest first.
+    pub right: String,
+}
+
 /// Which input scheme a session is in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -59,6 +68,9 @@ pub enum Scheme {
     #[default]
     Pinyin,
     Zhuyin,
+    /// The phone keyboard's nine-column layout. Typed by the Android keyboard;
+    /// a physical keyboard cannot produce its private-use keys.
+    Grid,
 }
 
 /// Chinese or English (pass-through) mode.
@@ -95,30 +107,24 @@ pub enum ClientMessage {
     Key {
         session_id: u64,
         event: KeyEvent,
+        /// Text around the cursor, when the client can read it. Absent means
+        /// "not known", not "empty": the session keeps what it had.
+        #[serde(default)]
+        surrounding: Option<Surrounding>,
     },
     /// The document changed or its sensitivity was learned: `private` means
     /// reads carry on and learning is switched off for this session.
-    Focus {
-        session_id: u64,
-        private: bool,
-    },
+    Focus { session_id: u64, private: bool },
     /// Where the composition sits on screen, measured after an edit session.
-    Layout {
-        session_id: u64,
-        rect: Rect,
-    },
+    Layout { session_id: u64, rect: Rect },
     /// Drop any composition in progress (focus lost, composition terminated).
-    Reset {
-        session_id: u64,
-    },
+    Reset { session_id: u64 },
     /// A dictionary was imported or removed; reload the set.
     ReloadDictionaries,
     /// Control clients only: exit cleanly after flushing.
     Shutdown,
     /// The session is going away.
-    Bye {
-        session_id: u64,
-    },
+    Bye { session_id: u64 },
 }
 
 /// What a preedit segment is, so the candidate window can draw the syllable

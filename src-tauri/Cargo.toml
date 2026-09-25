@@ -15,6 +15,7 @@ members = [
     "ime/cli",
     "ime/tsf",
     "ime/host",
+    "ime/lm",
 ]
 # `crates/` is the meridian-core submodule (github.com/Yuerchu/meridian-core)
 # and a workspace of its own. A package may belong to one workspace only, so
@@ -99,6 +100,12 @@ futures = { version = "0.3", default-features = false, features = ["std"] }
 # different crate, so the core's own test configuration is invisible to them.
 meridian-core = { path = "crates/core", features = ["test-support"] }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "test-util"] }
+tempfile = "3"
+
+[target.'cfg(windows)'.dev-dependencies]
+# Building a model bundle in the settings-side tests.
+meridian-ime-engine = { path = "ime/engine" }
+sha2 = "0.10"
 
 # The input method: Meridian's side of it is a settings page, an importer and
 # a control client for the host process. The engine, the DLL and the host are
@@ -107,6 +114,8 @@ tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "test-ut
 [target.'cfg(windows)'.dependencies]
 meridian-ime-config = { path = "ime/config" }
 meridian-ime-dict = { path = "ime/dict" }
+# Bundle checking only: `runtime` (ONNX Runtime) belongs to the host.
+meridian-ime-lm = { path = "ime/lm", default-features = false }
 meridian-ime-proto = { path = "ime/proto" }
 windows-registry = "0.6"
 windows-core = "0.62"

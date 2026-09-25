@@ -19,7 +19,11 @@ pub use messages::*;
 
 /// Bumped when a message changes meaning. A mismatch ends the conversation at
 /// `Hello`.
-pub const PROTOCOL_VERSION: u32 = 1;
+///
+/// 2: `Scheme::Grid`. Adding an enum value is not a compatible change here —
+/// `Scheme` has no catch-all variant, so an older DLL fails to parse the
+/// `Welcome` that names it rather than quietly typing pinyin.
+pub const PROTOCOL_VERSION: u32 = 2;
 
 /// The named pipe the host listens on, per Windows login session so a remote
 /// desktop session and a fast-switched second user each get their own host.

@@ -3075,6 +3075,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "libloading"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "754ca22de805bb5744484a5b151a9e1a8e837d5dc232c2d7d8c2e3492edc8b60"
+dependencies = [
+ "cfg-if",
+ "windows-link 0.2.1",
+]
+
+[[package]]
 name = "libm"
 version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3214,6 +3224,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
+name = "matrixmultiply"
+version = "0.3.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f607c237553f086e7043417a51df26b2eb899d3caff94e6a67592ff992fedc7"
+dependencies = [
+ "autocfg",
+ "rawpointer",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3251,17 +3271,21 @@ dependencies = [
  "meridian-core",
  "meridian-ime-config",
  "meridian-ime-dict",
+ "meridian-ime-engine",
+ "meridian-ime-lm",
  "meridian-ime-proto",
  "mime_guess",
  "ndk-context",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "sherpa-onnx-sys",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-notification",
  "tauri-plugin-shell",
+ "tempfile",
  "tokio",
  "tokio-util",
  "tower-http",
@@ -3340,6 +3364,7 @@ dependencies = [
  "meridian-ime-config",
  "meridian-ime-dict",
  "meridian-ime-engine",
+ "meridian-ime-lm",
  "meridian-ime-proto",
  "meridian-ime-session",
  "serde_json",
@@ -3376,6 +3401,7 @@ version = "0.1.0"
 dependencies = [
  "meridian-ime-dict",
  "meridian-ime-proto",
+ "sha2 0.10.9",
  "tempfile",
  "thiserror 2.0.21",
  "tracing",
@@ -3388,6 +3414,7 @@ dependencies = [
  "meridian-ime-config",
  "meridian-ime-dict",
  "meridian-ime-engine",
+ "meridian-ime-lm",
  "meridian-ime-proto",
  "meridian-ime-session",
  "serde_json",
@@ -3396,6 +3423,21 @@ dependencies = [
  "tracing-subscriber",
  "windows 0.62.2",
  "windows-core 0.62.2",
+]
+
+[[package]]
+name = "meridian-ime-lm"
+version = "0.1.0"
+dependencies = [
+ "meridian-ime-dict",
+ "meridian-ime-engine",
+ "ort",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]
@@ -3415,6 +3457,8 @@ dependencies = [
  "meridian-ime-dict",
  "meridian-ime-engine",
  "meridian-ime-proto",
+ "serde",
+ "serde_json",
  "tempfile",
  "tracing",
 ]
@@ -3556,6 +3600,21 @@ name = "multiversion_no_op"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
+
+[[package]]
+name = "ndarray"
+version = "0.17.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "520080814a7a6b4a6e9070823bb24b4531daac8c4627e08ba5de8c5ef2f2752d"
+dependencies = [
+ "matrixmultiply",
+ "num-complex",
+ "num-integer",
+ "num-traits",
+ "portable-atomic",
+ "portable-atomic-util",
+ "rawpointer",
+]
 
 [[package]]
 name = "ndk"
@@ -4042,6 +4101,25 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
 ]
+
+[[package]]
+name = "ort"
+version = "2.0.0-rc.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4336a1e2b38848325241c72889086886004e589b7c74f335e60a8e8db5138a0b"
+dependencies = [
+ "libloading 0.9.0",
+ "ndarray",
+ "ort-sys",
+ "smallvec",
+ "tracing",
+]
+
+[[package]]
+name = "ort-sys"
+version = "2.0.0-rc.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf211e3776eea6aec988552fa118dd746d70e1b1e5e244058d1c98015f3e5872"
 
 [[package]]
 name = "os_info"
@@ -4630,6 +4708,12 @@ name = "raw-window-handle"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
+
+[[package]]
+name = "rawpointer"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60a357793950651c4ed0f3f52338f53b2f809f32d83a07f72909fa13e4c6c1e3"
 
 [[package]]
 name = "redox_syscall"

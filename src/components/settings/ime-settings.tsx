@@ -21,6 +21,7 @@ import { Bin } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
 import { useConfirm } from '@/hooks/use-confirm'
+import { usePlatform } from '@/hooks/use-platform'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { cx } from '@/utils/cx'
 import type {
@@ -33,6 +34,7 @@ import type {
 } from '@/types'
 import { SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
 import { useSettingsDirtyRegistration } from './dirty-guard'
+import { ImeLmSection } from './ime-lm-section'
 
 /** Mirrors `HostConfig::default()`; only used until the first load lands. */
 const DEFAULTS: ImeConfigInfoResponse = {
@@ -42,6 +44,15 @@ const DEFAULTS: ImeConfigInfoResponse = {
   learning: true,
   private_apps: [],
   debug_log: false,
+  context_apps: [],
+}
+
+/** One executable name per line, blanks dropped. */
+function splitLines(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean)
 }
 
 const PAGE_SIZES = ['3', '4', '5', '6', '7', '8', '9'] as const
@@ -65,11 +76,13 @@ function formatBytes(n: number): string {
  */
 export function ImeSettings() {
   const { t } = useTranslation()
+  const platform = usePlatform()
   const { confirm, confirmDialog } = useConfirm()
   const [status, setStatus] = useState<ImeStatusInfoResponse | null>(null)
   const [config, setConfig] = useState<ImeConfigInfoResponse>(DEFAULTS)
   const [dictionaries, setDictionaries] = useState<ImeDictionaryInfoResponse[]>([])
   const [privateAppsInput, setPrivateAppsInput] = useState('')
+  const [contextAppsInput, setContextAppsInput] = useState('')
   const [loading, setLoading] = useState(true)
   const [loaded, setLoaded] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -80,15 +93,17 @@ export function ImeSettings() {
   const [importing, setImporting] = useState(false)
   const [report, setReport] = useState<ImeDictionaryImportReportResponse | null>(null)
   const [savedDraft, setSavedDraft] = useState<string | null>(null)
-  const draft = JSON.stringify({ ...config, private_apps: privateAppsInput })
+  const draft = JSON.stringify({ ...config, private_apps: privateAppsInput, context_apps: contextAppsInput })
   const dirty = loaded && draft !== savedDraft
   useSettingsDirtyRegistration('ime', 'ime-config', dirty)
 
   const adoptConfig = (cfg: ImeConfigInfoResponse) => {
     const apps = cfg.private_apps.join('\n')
+    const contextApps = cfg.context_apps.join('\n')
     setConfig(cfg)
     setPrivateAppsInput(apps)
-    setSavedDraft(JSON.stringify({ ...cfg, private_apps: apps }))
+    setContextAppsInput(contextApps)
+    setSavedDraft(JSON.stringify({ ...cfg, private_apps: apps, context_apps: contextApps }))
   }
 
   const loadData = useCallback(async () => {
@@ -127,10 +142,8 @@ export function ImeSettings() {
     try {
       const next = await api.saveImeConfig({
         ...config,
-        private_apps: privateAppsInput
-          .split(/\r?\n/)
-          .map((s) => s.trim())
-          .filter(Boolean),
+        private_apps: splitLines(privateAppsInput),
+        context_apps: splitLines(contextAppsInput),
       })
       adoptConfig(next)
       markSaved()
@@ -331,6 +344,12 @@ export function ImeSettings() {
           options={[
             { value: 'pinyin', label: t('settings.ime.scheme.pinyin') },
             { value: 'zhuyin', label: t('settings.ime.scheme.zhuyin') },
+            // The grid is a touch layout: a physical keyboard cannot type its
+            // multi-letter keys. Listed on a phone, or when a config already
+            // names it so the select has something to show.
+            ...(platform === 'android' || config.scheme === 'grid'
+              ? [{ value: 'grid' as const, label: t('settings.ime.scheme.grid') }]
+              : []),
           ]}
         />
         <SettingsSelect<(typeof PAGE_SIZES)[number]>
@@ -380,6 +399,18 @@ export function ImeSettings() {
           placeholder={'KeePass.exe\n1Password.exe'}
         />
         <Description>{t('settings.ime.privateAppsHint')}</Description>
+      </TextField>
+
+      <TextField>
+        <Label>{t('settings.ime.contextApps')}</Label>
+        <TextArea
+          name="imeContextApps"
+          rows={2}
+          value={contextAppsInput}
+          onChange={(e) => setContextAppsInput(e.target.value)}
+          placeholder="Notepad.exe"
+        />
+        <Description>{t('settings.ime.contextAppsHint')}</Description>
       </TextField>
 
       <CellSwitch
@@ -506,6 +537,8 @@ export function ImeSettings() {
           {t('settings.ime.dictionariesHint')}
         </p>
       </div>
+
+      <ImeLmSection />
 
       <p data-slot="ime-limitations" className="text-caption-1-regular text-text-secondary">
         {t('settings.ime.limitations')}

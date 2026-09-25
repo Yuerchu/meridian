@@ -7,6 +7,7 @@
 mod bench;
 mod dicts;
 mod import;
+mod keys;
 mod lookup;
 mod replay;
 
@@ -18,13 +19,17 @@ meridian-ime <command> [args]
   import <file.dict.yaml> [--data-dir <dir>] [--license <SPDX>] [--name <name>]
                               import a Rime dictionary into <data-dir>/dicts
   dicts  [--data-dir <dir>]   list imported dictionaries
-  lookup <keys> [--data-dir <dir>] [--scheme pinyin|zhuyin] [--limit N]
+  lookup <keys> [--data-dir <dir>] [--scheme pinyin|zhuyin|grid] [--limit N]
                               rank candidates for a key string
-  bench  [--data-dir <dir>] [--cases <file.tsv>]
-                              score the sentence composer against expected sentences
-  type   <script> [--data-dir <dir>] [--scheme pinyin|zhuyin]
+  bench  [--data-dir <dir>] [--scheme S] [--cases <file.tsv> | --eval <eval.tsv>]
+         [--tones all|none|random[:seed]] [--habit pinyin|zhuyin] [--page-size N]
+         [--lm <bundle dir> [--ort <onnxruntime lib>] [--budget-ms N]]
+                              top-1/top-3, keystrokes per character and cache misses per key
+  keys   \"ni3 hao3\" [--scheme S] [--tones ...] [--labels true]
+                              the keys a scheme types for toned pinyin
+  type   <script> [--data-dir <dir>] [--scheme pinyin|zhuyin|grid]
                               replay a key script through the session state machine
-  repl   [--data-dir <dir>] [--scheme pinyin|zhuyin]
+  repl   [--data-dir <dir>] [--scheme pinyin|zhuyin|grid]
                               read key scripts from stdin, one per line
 
 <data-dir> defaults to $MERIDIAN_IME_DATA_DIR, then the app data directory.
@@ -42,6 +47,7 @@ fn main() -> ExitCode {
         "dicts" => dicts::run(rest),
         "lookup" => lookup::run(rest),
         "bench" => bench::run(rest),
+        "keys" => keys::run(rest),
         "type" => replay::run_script(rest),
         "repl" => replay::run_repl(rest),
         "-h" | "--help" | "help" => {
@@ -105,6 +111,7 @@ impl Args {
         match self.flag("scheme").unwrap_or("pinyin") {
             "pinyin" => Ok(meridian_ime_engine::InputScheme::Pinyin),
             "zhuyin" => Ok(meridian_ime_engine::InputScheme::Zhuyin),
+            "grid" => Ok(meridian_ime_engine::InputScheme::Grid),
             other => Err(format!("unknown scheme {other:?}")),
         }
     }

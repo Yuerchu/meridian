@@ -7,7 +7,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use meridian_ime_config::{HostConfig, ImeDirs, Scheme};
 use meridian_ime_dict::{Catalog, DictSet};
-use meridian_ime_engine::{Engine, FileLearner, InputScheme, Learner, MemoryLearner};
+use meridian_ime_engine::{Engine, FileLearner, InputScheme, Learner, MemoryLearner, SentenceScorer};
 use meridian_ime_proto::{ClientKind, ClientMessage, ServerMessage, pipe_name};
 use meridian_ime_session::{Router, RouterConfig};
 
@@ -81,15 +81,17 @@ pub fn run(args: Vec<String>) -> i32 {
     tracing::info!(pipe = %pipe, "listening");
 
     let learner = open_learner(&dirs);
-    let (engine, names) = build_engine(&dirs, learner.as_ref());
+    let mut scorer = load_scorer(&dirs);
+    let (engine, names) = build_engine(&dirs, learner.as_ref(), scorer.as_ref());
     let mut router = Router::new(engine, learner, router_config(&config));
+    router.set_hints(load_hints(&dirs));
     router.set_status_info(dirs.root.to_string_lossy().into_owned(), names);
 
     let (work_tx, work_rx) = mpsc::channel::<Work>();
     let ui = UiHandle::start();
     spawn_acceptor(listener, work_tx.clone());
 
-    let code = serve(&dirs, &mut router, work_rx, &ui);
+    let code = serve(&dirs, &mut router, &mut scorer, work_rx, &ui);
     router.flush();
     ui.quit();
     tracing::info!("stopped");
@@ -158,7 +160,13 @@ fn connection_loop(conn: u64, mut file: std::fs::File, tx: Sender<Work>) {
 }
 
 /// The main loop: answer work, and between messages watch the data directory.
-fn serve(dirs: &ImeDirs, router: &mut Router, work_rx: Receiver<Work>, ui: &UiHandle) -> i32 {
+fn serve(
+    dirs: &ImeDirs,
+    router: &mut Router,
+    scorer: &mut Option<SharedScorer>,
+    work_rx: Receiver<Work>,
+    ui: &UiHandle,
+) -> i32 {
     let mut watch = Watch::new(dirs);
     let mut last_tick = Instant::now();
     loop {
@@ -180,10 +188,10 @@ fn serve(dirs: &ImeDirs, router: &mut Router, work_rx: Receiver<Work>, ui: &UiHa
                 let permitted_shutdown = shutdown && matches!(answer, ServerMessage::Ack);
                 let _ = reply.send(answer);
                 if reload {
-                    reload_dictionaries(dirs, router);
+                    reload_dictionaries(dirs, router, scorer.as_ref());
                 }
                 if router.take_user_words_dirty() {
-                    reload_dictionaries(dirs, router);
+                    reload_dictionaries(dirs, router, scorer.as_ref());
                 }
                 show(router, ui);
                 if permitted_shutdown {
@@ -209,7 +217,15 @@ fn serve(dirs: &ImeDirs, router: &mut Router, work_rx: Receiver<Work>, ui: &UiHa
                     router.set_config(router_config(&config));
                     tracing::info!("configuration reloaded");
                 }
-                Change::Dictionaries => reload_dictionaries(dirs, router),
+                Change::Dictionaries => reload_dictionaries(dirs, router, scorer.as_ref()),
+                Change::Context => {
+                    router.set_hints(load_hints(dirs));
+                    tracing::info!("memory hints reloaded");
+                }
+                Change::Models => {
+                    *scorer = load_scorer(dirs);
+                    reload_dictionaries(dirs, router, scorer.as_ref());
+                }
             }
         }
         if ui.wants_quit() {
@@ -240,11 +256,13 @@ fn router_config(c: &HostConfig) -> RouterConfig {
         scheme: match c.scheme {
             Scheme::Pinyin => InputScheme::Pinyin,
             Scheme::Zhuyin => InputScheme::Zhuyin,
+            Scheme::Grid => InputScheme::Grid,
         },
         page_size: c.page_size as usize,
         full_width_punctuation: matches!(c.punctuation, meridian_ime_config::Punctuation::FullWidth),
         learning: c.learning,
         private_apps: c.private_apps.clone(),
+        context_apps: c.context_apps.clone(),
     }
 }
 
@@ -258,7 +276,7 @@ fn open_learner(dirs: &ImeDirs) -> Box<dyn Learner> {
     }
 }
 
-fn build_engine(dirs: &ImeDirs, learner: &dyn Learner) -> (Arc<Engine>, Vec<String>) {
+fn build_engine(dirs: &ImeDirs, learner: &dyn Learner, scorer: Option<&SharedScorer>) -> (Arc<Engine>, Vec<String>) {
     let dicts_dir = dirs.dicts();
     let (mut set, names) = match Catalog::load(&dicts_dir) {
         Ok(catalog) => {
@@ -283,12 +301,21 @@ fn build_engine(dirs: &ImeDirs, learner: &dyn Learner) -> (Arc<Engine>, Vec<Stri
     if !words.is_empty() {
         set.set_user_words(&words);
     }
-    tracing::info!(dictionaries = names.len(), user_words = words.len(), "engine ready");
-    (Arc::new(Engine::new(Arc::new(set))), names)
+    tracing::info!(
+        dictionaries = names.len(),
+        user_words = words.len(),
+        language_model = scorer.is_some(),
+        "engine ready"
+    );
+    let mut engine = Engine::new(Arc::new(set));
+    if let Some(s) = scorer {
+        engine = engine.with_scorer(Box::new(Arc::clone(s)));
+    }
+    (Arc::new(engine), names)
 }
 
-fn reload_dictionaries(dirs: &ImeDirs, router: &mut Router) {
-    let (engine, names) = build_engine(dirs, router.learner());
+fn reload_dictionaries(dirs: &ImeDirs, router: &mut Router, scorer: Option<&SharedScorer>) {
+    let (engine, names) = build_engine(dirs, router.learner(), scorer);
     router.replace_engine(engine);
     router.set_status_info(dirs.root.to_string_lossy().into_owned(), names);
     tracing::info!("dictionaries reloaded");
@@ -298,12 +325,16 @@ enum Change {
     None,
     Config,
     Dictionaries,
+    Models,
+    Context,
 }
 
 /// Modification times of what the host reads, polled once a second.
 struct Watch {
     config_mtime: Option<SystemTime>,
     dicts_snapshot: Vec<(String, Option<SystemTime>, u64)>,
+    models_snapshot: Vec<(String, Option<SystemTime>, u64)>,
+    hints_mtime: Option<SystemTime>,
 }
 
 impl Watch {
@@ -311,6 +342,8 @@ impl Watch {
         Self {
             config_mtime: mtime(&dirs.config_file()),
             dicts_snapshot: snapshot(dirs),
+            models_snapshot: models_snapshot(dirs),
+            hints_mtime: mtime(&dirs.hints_file()),
         }
     }
 
@@ -324,6 +357,16 @@ impl Watch {
         if s != self.dicts_snapshot {
             self.dicts_snapshot = s;
             return Change::Dictionaries;
+        }
+        let m = models_snapshot(dirs);
+        if m != self.models_snapshot {
+            self.models_snapshot = m;
+            return Change::Models;
+        }
+        let h = mtime(&dirs.hints_file());
+        if h != self.hints_mtime {
+            self.hints_mtime = h;
+            return Change::Context;
         }
         Change::None
     }
@@ -350,4 +393,62 @@ fn snapshot(dirs: &ImeDirs) -> Vec<(String, Option<SystemTime>, u64)> {
     }
     out.sort();
     out
+}
+
+/// The loaded language model, shared by every engine the host builds.
+type SharedScorer = Arc<dyn SentenceScorer>;
+
+/// The preferred model bundle under `<ime>/models`, or none. Every failure is
+/// logged and leaves the host typing with its dictionaries: a missing
+/// runtime, a bundle that does not check out, a model that will not load.
+fn load_scorer(dirs: &ImeDirs) -> Option<SharedScorer> {
+    let options = meridian_ime_lm::LmOptions {
+        runtime: meridian_ime_lm::find_onnxruntime(),
+        platform: meridian_ime_lm::Platform::Desktop,
+        threads: 2,
+        budget: None,
+    };
+    match meridian_ime_lm::open(&dirs.models(), &options, &meridian_ime_dict::SyllableTable::new()) {
+        Ok(Some(scorer)) => Some(Arc::new(scorer)),
+        Ok(None) => {
+            tracing::info!(dir = %dirs.models().display(), "no language model; dictionaries only");
+            None
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "language model not loaded; dictionaries only");
+            None
+        }
+    }
+}
+
+/// Each bundle's manifest, by directory: a bundle is replaced by writing its
+/// files and then its manifest, so the manifest changing is the signal.
+fn models_snapshot(dirs: &ImeDirs) -> Vec<(String, Option<SystemTime>, u64)> {
+    let mut out = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(dirs.models()) {
+        for entry in rd.flatten() {
+            let manifest = entry.path().join(meridian_ime_lm::bundle::MANIFEST_FILE);
+            if let Ok(meta) = std::fs::metadata(&manifest) {
+                out.push((
+                    entry.file_name().to_string_lossy().into_owned(),
+                    meta.modified().ok(),
+                    meta.len(),
+                ));
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// Meridian's memory hints, or none when the file is absent or breaks the
+/// rules `meridian_ime_config::Hints::check` enforces.
+fn load_hints(dirs: &ImeDirs) -> Vec<String> {
+    match meridian_ime_config::load_hints(dirs) {
+        Ok(h) => h,
+        Err(e) => {
+            tracing::warn!(error = %e, "memory hints unreadable; using none");
+            Vec::new()
+        }
+    }
 }

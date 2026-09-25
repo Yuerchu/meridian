@@ -8,6 +8,7 @@ import type {
   HookConfigInfoResponse,
   ImeConfigInfoResponse,
   ImeDictionaryInfoResponse,
+  ImeLmStatusInfoResponse,
   ImeStatusInfoResponse,
   ListenConfigInfoResponse,
   LogEntryInfoResponse,
@@ -787,6 +788,14 @@ export const IME_CONFIG: ImeConfigInfoResponse = {
   learning: true,
   private_apps: ['KeePassXC.exe'],
   debug_log: false,
+  context_apps: [],
+}
+
+export const IME_LM_STATUS: ImeLmStatusInfoResponse = {
+  dir: 'C:\\Users\\demo\\AppData\\Roaming\\Meridian\\ime\\models',
+  active: null,
+  runtime_found: true,
+  bundles: [],
 }
 
 export const IME_DICTIONARIES: ImeDictionaryInfoResponse[] = [

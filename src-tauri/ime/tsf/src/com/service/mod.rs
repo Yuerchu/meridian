@@ -248,10 +248,11 @@ impl TextService_Impl {
         if self.shared.take_server_stale() {
             let _ = self.client.borrow_mut().request(&ClientMessage::Reset { session_id });
         }
-        let reply = self
-            .client
-            .borrow_mut()
-            .request(&ClientMessage::Key { session_id, event: ev });
+        let reply = self.client.borrow_mut().request(&ClientMessage::Key {
+            session_id,
+            event: ev,
+            surrounding: None,
+        });
         match reply {
             Some(ServerMessage::KeyResult {
                 consumed,
@@ -335,11 +336,11 @@ impl TextService_Impl {
             mods: Default::default(),
             caps_lock: false,
         };
-        match self
-            .client
-            .borrow_mut()
-            .request(&ClientMessage::Key { session_id, event: ev })
-        {
+        match self.client.borrow_mut().request(&ClientMessage::Key {
+            session_id,
+            event: ev,
+            surrounding: None,
+        }) {
             Some(ServerMessage::KeyResult {
                 consumed,
                 commit,
@@ -374,11 +375,11 @@ impl TextService_Impl {
             mods: Default::default(),
             caps_lock: false,
         };
-        match self
-            .client
-            .borrow_mut()
-            .request(&ClientMessage::Key { session_id, event: ev })
-        {
+        match self.client.borrow_mut().request(&ClientMessage::Key {
+            session_id,
+            event: ev,
+            surrounding: None,
+        }) {
             Some(ServerMessage::KeyResult { frame, .. }) => {
                 self.chinese_mode.set(frame.mode == Mode::Chinese);
                 self.shared.set_composing(false);

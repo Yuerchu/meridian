@@ -27,6 +27,11 @@ pub mod storage;
 
 pub use lattice::SpanCache;
 pub use learn::{Context, FileLearner, Learner, MemoryLearner, Muted};
-pub use query::{Candidate, CandidateSource, Engine, Query};
+pub use query::{Candidate, CandidateSource, Engine, Query, QueryContext};
+pub use scheme::grid::SpellingHabit;
+pub use scheme::grid::{
+    GRID_TOKENS, GridRole, GridToken, grid_keys, grid_label, grid_table_sha256, grid_token, grid_token_by_name,
+};
+pub use scheme::keys::{TonePolicy, keys_for, keys_for_habit};
 pub use scheme::{InputScheme, Segmentation, SyllableDag, SyllableEdge};
-pub use sentence::{NoScorer, SentenceScorer};
+pub use sentence::{NoScorer, ScoreRequest, SentenceScorer};

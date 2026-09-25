@@ -60,6 +60,7 @@ fn key(session_id: u64, ch: char) -> ClientMessage {
             mods: Modifiers::default(),
             caps_lock: false,
         },
+        surrounding: None,
     }
 }
 
@@ -210,6 +211,7 @@ fn private_apps_from_the_config_mute_learning() {
             mods: Modifiers::default(),
             caps_lock: false,
         },
+        surrounding: None,
     };
     match r.handle(1, space) {
         ServerMessage::KeyResult { commit, .. } => assert_eq!(commit.as_deref(), Some("你")),
@@ -234,4 +236,77 @@ fn only_a_control_client_may_shut_down() {
     assert_eq!(r.session_count(), 1, "a control client opens no session");
     assert!(matches!(r.handle(2, ClientMessage::Shutdown), ServerMessage::Ack));
     assert!(matches!(r.status(), ServerMessage::Status { sessions: 1, .. }));
+}
+
+/// Remembers the hints of the last query.
+#[derive(Default)]
+struct HintListener(std::sync::Mutex<Vec<String>>);
+
+impl meridian_ime_engine::SentenceScorer for HintListener {
+    fn score(&self, req: &meridian_ime_engine::ScoreRequest<'_>) -> Vec<f64> {
+        *self.0.lock().unwrap() = req.hints.to_vec();
+        Vec::new()
+    }
+}
+
+fn listening_router() -> (tempfile::TempDir, Router, Arc<HintListener>) {
+    let (dir, r) = router();
+    let listener = Arc::new(HintListener::default());
+    let set = DictSet::new();
+    let mut set = set;
+    set.add_file(DictFile::open(&dir.path().join("t.mdict")).unwrap());
+    let engine = Arc::new(Engine::new(Arc::new(set)).with_scorer(Box::new(listener.clone())));
+    let mut r = r;
+    r.replace_engine(engine);
+    (dir, r, listener)
+}
+
+fn heard(l: &HintListener) -> Vec<String> {
+    l.0.lock().unwrap().clone()
+}
+
+#[test]
+fn memory_hints_reach_meridian_and_opted_in_apps_only() {
+    let (_d, mut r, l) = listening_router();
+    r.set_hints(vec!["子午线".into()]);
+    r.handle(1, hello(1, ClientKind::Ime, Some("Meridian.exe")));
+    r.handle(1, key(1, 'n'));
+    assert_eq!(heard(&l), vec!["子午线"], "Meridian's own window");
+
+    r.handle(2, hello(1, ClientKind::Ime, Some("notepad.exe")));
+    r.handle(2, key(1, 'n'));
+    assert!(heard(&l).is_empty(), "another application gets none");
+
+    r.handle(3, hello(1, ClientKind::Ime, None));
+    r.handle(3, key(1, 'n'));
+    assert!(
+        heard(&l).is_empty(),
+        "an application that does not say which it is gets none"
+    );
+
+    // Opting notepad in reaches the session already open there…
+    r.set_config(RouterConfig {
+        context_apps: vec!["notepad.exe".into()],
+        ..Default::default()
+    });
+    r.handle(2, key(1, 'n'));
+    assert_eq!(heard(&l), vec!["子午线"]);
+    // …and opting it out takes them away again.
+    r.set_config(RouterConfig::default());
+    r.handle(2, key(1, 'n'));
+    assert!(heard(&l).is_empty());
+}
+
+#[test]
+fn a_private_app_gets_no_hints_even_when_opted_in() {
+    let (_d, mut r, l) = listening_router();
+    r.set_config(RouterConfig {
+        private_apps: vec!["keepass.exe".into()],
+        context_apps: vec!["keepass.exe".into()],
+        ..Default::default()
+    });
+    r.set_hints(vec!["子午线".into()]);
+    r.handle(1, hello(1, ClientKind::Ime, Some("KeePass.exe")));
+    r.handle(1, key(1, 'n'));
+    assert!(heard(&l).is_empty());
 }

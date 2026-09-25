@@ -1,0 +1,30 @@
+# The grid layout's initial keys, one line per bopomofo initial.
+#
+#   <bopomofo>  <key>  [<precise key>]
+#
+# Retroflex and dental share a key (ㄓ/ㄗ → z, ㄔ/ㄘ → c, ㄕ/ㄙ → s): that
+# merge is the layout's design, and the dictionary or the language model
+# tells the two apart. The third column is the key a long press on the
+# shared one offers for this initial alone. Every other initial has a key of
+# its own and needs none.
+ㄅ	b
+ㄆ	p
+ㄇ	m
+ㄈ	f
+ㄉ	d
+ㄊ	t
+ㄋ	n
+ㄌ	l
+ㄍ	g
+ㄎ	k
+ㄏ	h
+ㄐ	j
+ㄑ	q
+ㄒ	x
+ㄓ	z	zh
+ㄔ	c	ch
+ㄕ	s	sh
+ㄖ	r
+ㄗ	z	z_
+ㄘ	c	c_
+ㄙ	s	s_

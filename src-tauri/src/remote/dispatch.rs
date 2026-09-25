@@ -578,6 +578,9 @@ mod tests {
             "stop_ime_host",
             "set_ime_profile_enabled",
             "register_ime",
+            "import_ime_lm",
+            "remove_ime_lm",
+            "refresh_ime_memory_hints",
         ];
         expected.sort_unstable();
         expected.retain(|name| COMMAND_NAMES.contains(name));

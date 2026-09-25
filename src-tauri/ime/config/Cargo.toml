@@ -2,7 +2,7 @@
 name = "meridian-ime-config"
 version = "0.1.0"
 edition = "2024"
-license = "LicenseRef-Proprietary-Yuerchu"
+license = "AGPL-3.0-or-later"
 authors = ["于小丘 Yuerchu <admin@yuxiaoqiu.cn>"]
 description = "Meridian 输入法宿主配置（host.json）与数据目录"
 

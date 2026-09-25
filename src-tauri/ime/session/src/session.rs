@@ -3,7 +3,7 @@
 //! Every key comes through [`Session::handle_key`], which decides three
 //! things — whether the key is eaten, what text if any reaches the document,
 //! and what the candidate window shows next — and records what the person
-//! chose. The scheme (pinyin or zhuyin) changes which printable keys spell
+//! chose. The scheme (pinyin, zhuyin or grid) changes which printable keys spell
 //! syllables and what Space and Enter mean while composing; everything else
 //! is shared.
 //!
@@ -14,8 +14,12 @@
 //! commits when the last keys are chosen, and the buffer as a whole is what
 //! the learner is told about.
 
+use std::sync::Arc;
+
 use meridian_ime_engine::learn::Muted;
-use meridian_ime_engine::{Candidate, CandidateSource, Engine, InputScheme, Learner, Query, SpanCache};
+use meridian_ime_engine::{
+    Candidate, CandidateSource, Engine, GridRole, InputScheme, Learner, Query, QueryContext, SpanCache, grid_token,
+};
 use meridian_ime_proto::{CandidateItem, Frame, KeyEvent, Mode, PreeditKind, PreeditSegment};
 
 use crate::chain::{
@@ -27,6 +31,17 @@ use crate::punct::PunctState;
 
 /// Shown in the frame while the person types with nothing to look things up in.
 pub const NO_DICTIONARY_NOTICE: &str = "尚未导入词库：在 Meridian 设置里导入一本 Rime 词库后即可打字";
+
+/// Characters of text before the cursor kept for the scorer.
+pub const LEFT_CONTEXT_CHARS: usize = 64;
+/// Characters of text after the cursor kept for the scorer.
+pub const RIGHT_CONTEXT_CHARS: usize = 32;
+
+/// The last `n` characters of `s`.
+fn tail_chars(s: &str, n: usize) -> String {
+    let count = s.chars().count();
+    s.chars().skip(count.saturating_sub(n)).collect()
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionConfig {
@@ -48,8 +63,9 @@ impl Default for SessionConfig {
     }
 }
 
-/// What one key did.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// What one key did. Serialisable because the Android keyboard receives it
+/// across JNI as JSON.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct KeyOutcome {
     /// `true`: the key is eaten. `false`: the application gets it.
     pub consumed: bool,
@@ -83,6 +99,13 @@ pub struct Session {
     chain: CommitChain,
     recent: Recent,
     cache: SpanCache,
+    /// Text before the cursor, nearest last: what the application reported,
+    /// with every commit since appended. At most [`LEFT_CONTEXT_CHARS`].
+    left: String,
+    /// Text after the cursor, as the application reported it.
+    right: String,
+    /// Memory hints, where the host decided they are allowed.
+    hints: Arc<[String]>,
 }
 
 impl Session {
@@ -100,6 +123,9 @@ impl Session {
             chain: CommitChain::default(),
             recent: Recent::default(),
             cache: SpanCache::new(),
+            left: String::new(),
+            right: String::new(),
+            hints: Arc::from(Vec::new()),
         }
     }
 
@@ -128,6 +154,10 @@ impl Session {
 
     pub fn set_private(&mut self, private: bool) {
         self.private = private;
+        if private {
+            self.left.clear();
+            self.right.clear();
+        }
     }
 
     pub fn is_composing(&self) -> bool {
@@ -148,11 +178,61 @@ impl Session {
 
     /// Focus lost or the composition was terminated by the application: the
     /// buffer is dropped without learning. Mode, privacy and recent commits
-    /// stay.
+    /// stay; what surrounded the cursor goes, since it belonged to that field.
     pub fn reset(&mut self) -> Frame {
         self.clear_composition();
+        self.left.clear();
+        self.right.clear();
         self.chain.r#break();
         self.frame(false)
+    }
+
+    /// A candidate on the current page was tapped. On a touch keyboard this is
+    /// the only way to pick one: under zhuyin and grid the digits are not
+    /// selection keys, so a tap cannot be sent as a digit. Learning is muted
+    /// exactly as it is for a key, since a tap in a password field is still a
+    /// choice made in a password field.
+    pub fn choose(&mut self, engine: &Engine, learner: &mut dyn Learner, index_on_page: usize) -> KeyOutcome {
+        let muted = self.private || !self.config.learning;
+        let mut learner = Muted::new(learner, muted);
+        if !self.is_composing() {
+            return KeyOutcome {
+                consumed: false,
+                commit: None,
+                frame: self.frame(false),
+            };
+        }
+        let idx = self.page * self.config.page_size.max(1) + index_on_page;
+        let out = self.select(engine, &mut learner, idx);
+        self.note_commit(&out);
+        out
+    }
+
+    /// What surrounds the cursor, from the application: replaces what the
+    /// session had inferred. Called on a cursor move or before a key.
+    pub fn set_surrounding(&mut self, left: &str, right: &str) {
+        if self.private {
+            return;
+        }
+        self.left = tail_chars(left, LEFT_CONTEXT_CHARS);
+        self.right = right.chars().take(RIGHT_CONTEXT_CHARS).collect();
+    }
+
+    /// Memory hints for this session, or none. The caller decides whether the
+    /// application is one they may be used in.
+    pub fn set_hints(&mut self, hints: Arc<[String]>) {
+        self.hints = hints;
+    }
+
+    /// A private document's text is not kept at all, not merely withheld.
+    fn note_commit(&mut self, out: &KeyOutcome) {
+        if self.private {
+            return;
+        }
+        if let Some(text) = &out.commit {
+            self.left.push_str(text);
+            self.left = tail_chars(&self.left, LEFT_CONTEXT_CHARS);
+        }
     }
 
     /// The current frame.
@@ -192,8 +272,15 @@ impl Session {
         frame
     }
 
-    /// The whole state machine.
+    /// One key. Whatever it commits becomes left context for the next query.
     pub fn handle_key(&mut self, engine: &Engine, learner: &mut dyn Learner, ev: KeyEvent) -> KeyOutcome {
+        let out = self.handle_key_inner(engine, learner, ev);
+        self.note_commit(&out);
+        out
+    }
+
+    /// The whole state machine.
+    fn handle_key_inner(&mut self, engine: &Engine, learner: &mut dyn Learner, ev: KeyEvent) -> KeyOutcome {
         let muted = self.private || !self.config.learning;
         let mut learner = Muted::new(learner, muted);
         let learner: &mut dyn Learner = &mut learner;
@@ -236,6 +323,9 @@ impl Session {
             let starts = match self.config.scheme {
                 InputScheme::Pinyin => ch.is_ascii_lowercase(),
                 InputScheme::Zhuyin => ch != ' ' && is_scheme_key(ch),
+                // A tone key closes a syllable; with nothing composing there is
+                // no syllable for it to close.
+                InputScheme::Grid => grid_token(ch).is_some_and(|t| t.role != GridRole::Tone),
             };
             let extends = composing && ch != ' ' && is_scheme_key(ch);
             if (starts || extends) && !ev.mods.shift {
@@ -323,10 +413,11 @@ impl Session {
                         frame: self.frame(false),
                     }
                 }
-                InputScheme::Zhuyin => self.commit_highlighted_or_raw(engine, learner),
+                InputScheme::Zhuyin | InputScheme::Grid => self.commit_highlighted_or_raw(engine, learner),
             },
             VK_SPACE => match self.config.scheme {
-                InputScheme::Pinyin => self.commit_highlighted_or_raw(engine, learner),
+                // Grid has a first-tone key of its own, so Space only commits.
+                InputScheme::Pinyin | InputScheme::Grid => self.commit_highlighted_or_raw(engine, learner),
                 InputScheme::Zhuyin => {
                     if self.space_is_tone() {
                         self.push_key(engine, learner, ' ')
@@ -345,7 +436,7 @@ impl Session {
                 frame: self.frame(engine.is_empty()),
             },
             _ => match ev.ch {
-                Some(d @ '1'..='9') if self.config.scheme == InputScheme::Pinyin => {
+                Some(d @ '1'..='9') if matches!(self.config.scheme, InputScheme::Pinyin | InputScheme::Grid) => {
                     let idx = self.page * self.config.page_size.max(1) + (d as usize - '1' as usize);
                     self.select(engine, learner, idx)
                 }
@@ -402,7 +493,17 @@ impl Session {
     }
 
     fn requery(&mut self, engine: &Engine, learner: &mut dyn Learner) {
-        self.query = Some(engine.query(&self.keys, self.config.scheme, learner, &mut self.cache));
+        // A private document tells the scorer nothing about itself.
+        let context = if self.private {
+            QueryContext::EMPTY
+        } else {
+            QueryContext {
+                left: &self.left,
+                right: &self.right,
+                hints: &self.hints,
+            }
+        };
+        self.query = Some(engine.query_with(&self.keys, self.config.scheme, learner, &mut self.cache, &context));
         self.page = 0;
         self.highlight = 0;
     }
@@ -435,7 +536,9 @@ impl Session {
         let mut text: String = self.fixed.iter().map(|p| p.text.as_str()).collect();
         match self.config.scheme {
             InputScheme::Pinyin => text.push_str(&self.keys),
-            InputScheme::Zhuyin => {
+            // Both show the person something other than the key string: the
+            // symbols, or the grid's labels in place of private-use keys.
+            InputScheme::Zhuyin | InputScheme::Grid => {
                 if let Some(q) = &self.query {
                     text.push_str(&q.preedit.iter().map(|s| s.text.as_str()).collect::<String>());
                 } else {

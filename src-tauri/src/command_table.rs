@@ -539,6 +539,18 @@ macro_rules! with_all_commands {
             ),
             #[cfg(windows)]
             local commands::ime => register_ime(),
+            #[cfg(windows)]
+            async commands::ime => get_ime_lm_status(),
+            #[cfg(windows)]
+            local commands::ime => import_ime_lm(
+                request: $crate::commands::ime::ImeLmImportRequest,
+            ),
+            #[cfg(windows)]
+            local commands::ime => remove_ime_lm(
+                request: $crate::commands::ime::ImeLmRemoveRequest,
+            ),
+            #[cfg(windows)]
+            local commands::ime => refresh_ime_memory_hints(),
 
             local commands::dev => voice_probe_echo(
                 request: $crate::commands::dev::VoiceProbeEchoRequest,

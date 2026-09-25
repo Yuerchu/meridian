@@ -64,6 +64,26 @@ pub struct Query {
     pub candidates: Vec<Candidate>,
 }
 
+/// What surrounds the cursor. Only the scorer reads it; without one it changes
+/// nothing.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct QueryContext<'a> {
+    /// Text before the cursor, nearest last.
+    pub left: &'a str,
+    /// Text after the cursor, nearest first.
+    pub right: &'a str,
+    /// Memory hints, where they are allowed.
+    pub hints: &'a [String],
+}
+
+impl QueryContext<'_> {
+    pub const EMPTY: QueryContext<'static> = QueryContext {
+        left: "",
+        right: "",
+        hints: &[],
+    };
+}
+
 /// The engine: dictionaries plus the scorer. Shared by every session; the
 /// per-session state (cache, keys) is passed in.
 pub struct Engine {
@@ -115,6 +135,18 @@ impl Engine {
     /// Ranks candidates for `keys` under `scheme`. `learner` is read for
     /// personal weights and transitions; `cache` is the session's span cache.
     pub fn query(&self, keys: &str, scheme: InputScheme, learner: &dyn Learner, cache: &mut SpanCache) -> Query {
-        crate::sentence::compose::query(self, keys, scheme, learner, cache)
+        self.query_with(keys, scheme, learner, cache, &QueryContext::EMPTY)
+    }
+
+    /// [`Engine::query`] with what surrounds the cursor, for the scorer.
+    pub fn query_with(
+        &self,
+        keys: &str,
+        scheme: InputScheme,
+        learner: &dyn Learner,
+        cache: &mut SpanCache,
+        context: &QueryContext<'_>,
+    ) -> Query {
+        crate::sentence::compose::query(self, keys, scheme, learner, cache, context)
     }
 }

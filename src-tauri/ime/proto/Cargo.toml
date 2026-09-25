@@ -2,7 +2,7 @@
 name = "meridian-ime-proto"
 version = "0.1.0"
 edition = "2024"
-license = "LicenseRef-Proprietary-Yuerchu"
+license = "AGPL-3.0-or-later"
 authors = ["于小丘 Yuerchu <admin@yuxiaoqiu.cn>"]
 description = "Meridian 输入法 TSF 文本服务与宿主进程之间的线协议"
 

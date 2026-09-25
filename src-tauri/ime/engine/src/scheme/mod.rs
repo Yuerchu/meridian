@@ -11,9 +11,12 @@
 //! 简拼 case) or an unfinished syllable at the end (`zho`). Incomplete edges
 //! are what put candidates on screen from the first keystroke.
 
+pub mod grid;
+pub mod keys;
 pub mod pinyin;
 pub mod zhuyin;
 
+pub use grid::GridScheme;
 pub use pinyin::PinyinScheme;
 pub use zhuyin::ZhuyinScheme;
 
@@ -55,12 +58,14 @@ impl Segmentation {
     }
 }
 
-/// The two schemes, chosen per session from the TSF profile.
+/// The schemes, chosen per session: pinyin and zhuyin from the desktop
+/// profile, grid from the phone keyboard.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum InputScheme {
     #[default]
     Pinyin,
     Zhuyin,
+    Grid,
 }
 
 impl InputScheme {
@@ -68,6 +73,7 @@ impl InputScheme {
         match self {
             InputScheme::Pinyin => Box::new(PinyinScheme::new(table)),
             InputScheme::Zhuyin => Box::new(ZhuyinScheme::new(table)),
+            InputScheme::Grid => Box::new(GridScheme::new(table)),
         }
     }
 }

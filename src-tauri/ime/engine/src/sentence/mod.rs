@@ -4,4 +4,4 @@
 pub mod compose;
 mod scorer;
 
-pub use scorer::{NoScorer, SentenceScorer};
+pub use scorer::{NoScorer, ScoreRequest, SentenceScorer};
