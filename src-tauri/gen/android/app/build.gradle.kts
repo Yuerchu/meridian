@@ -17,15 +17,12 @@ android {
     compileSdk = 36
     namespace = "cn.yuxiaoqiu.meridian"
 
-    // Prebuilt sherpa-onnx libraries for offline voice input, fetched by
-    // scripts/fetch-sherpa-android.sh. A second source directory rather than
-    // src/main/jniLibs, which Tauri writes libmeridian_lib.so into — mixing
-    // downloaded artefacts with build output there leaves stale .so files
-    // nobody can attribute. AGP merges the directories and skips this one when
-    // it is absent, so a build without the fetch still succeeds; it just has no
-    // speech recognition. Only arm64-v8a is populated: SHERPA_ONNX_LIB_DIR is a
-    // single path, so a multi-ABI build would link the others wrongly.
-    sourceSets["main"].jniLibs.srcDir("../../../target/sherpa-onnx-android/jniLibs")
+    // The sherpa-onnx libraries for offline voice input are copied into
+    // src/main/jniLibs/<abi>/ by sherpa-onnx-sys's build script (from 1.13.8),
+    // beside Tauri's libmeridian_lib.so, with a .sherpa-onnx-version stamp so a
+    // version change re-copies them. There is no second jniLibs source
+    // directory any more: with one, the same library could arrive twice and
+    // AGP refuses to merge duplicates.
     defaultConfig {
         // Remote access dials a desktop on the LAN -- `http://192.168.1.5:8787`
         // -- and Android blocks cleartext by default, which would make the

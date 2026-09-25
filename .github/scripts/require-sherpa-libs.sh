@@ -22,12 +22,14 @@ set -euo pipefail
 target="src-tauri/target"
 [ -d "$target" ] || { echo "no target directory yet"; exit 0; }
 
-# Two possible homes for the unpack, and which one is used depends on how the
-# job invokes cargo: plain `cargo test` puts it at target/sherpa-onnx-prebuilt,
-# while `--target <triple>` moves it under target/<triple>/. Match both rather
-# than assuming, which is the mistake this script previously made.
+# The crate caches under the nearest ancestor of OUT_DIR named `target`, so the
+# unpack is at target/sherpa-onnx-prebuilt whatever `--target` says; matched at
+# any depth anyway rather than assumed. Desktop archives unpack to
+# <stem>/lib/, the Android one (no top-level directory) to jniLibs/<abi>/.
 libs() {
-  find "$target" -maxdepth 5 -type f -path '*/sherpa-onnx-prebuilt/*/lib/*' -print -quit 2>/dev/null
+  find "$target" -maxdepth 5 -type f \
+    \( -path '*/sherpa-onnx-prebuilt/*/lib/*' -o -path '*/sherpa-onnx-prebuilt/jniLibs/*' \) \
+    -print -quit 2>/dev/null
 }
 
 # Cargo splits its record in two — the fingerprint that decides whether to

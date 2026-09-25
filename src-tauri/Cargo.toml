@@ -72,7 +72,7 @@ url = "2"
 # seconds from existing. Measured with a three-crate probe: transitive, the
 # marker was never seen; direct, it always was. Same version and features as
 # `meridian-core` declares, so this adds no second copy.
-sherpa-onnx-sys = { version = "1.13.5", default-features = false, features = ["shared"] }
+sherpa-onnx-sys = { version = "1.13.8", default-features = false, features = ["shared"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 android-keyring = { version = "0.2", features = ["ndk-context"] }

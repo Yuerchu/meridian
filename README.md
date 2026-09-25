@@ -101,8 +101,8 @@ pnpm tauri dev
 ### Android
 
 ```bash
-# Fetch sherpa-onnx libraries and build
-export SHERPA_ONNX_LIB_DIR=$(bash scripts/fetch-sherpa-android.sh arm64-v8a)
+# sherpa-onnx-sys downloads the Android libraries on its own
+rustup target add aarch64-linux-android   # once, for the pinned toolchain
 pnpm tauri android build --target aarch64 --apk
 ```
 
