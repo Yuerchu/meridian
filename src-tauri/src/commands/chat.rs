@@ -126,7 +126,7 @@ fn reference_tool_context(
         assistant_id: None,
         db_pool: None,
         #[cfg(not(target_os = "android"))]
-        sandbox_policy: None,
+        sandbox_policy: meridian_core::sandbox::CommandSandbox::UNCONFINED,
         tool_secrets: Default::default(),
         cancel,
         journal: None,
@@ -1104,11 +1104,6 @@ async fn chat_inner(
         }
     }
     let system_prompt_resolved = template::resolve(raw_prompt, &tmpl_ctx);
-    let context_limit = assistant.as_ref().map(|a| a.context_limit as usize).unwrap_or(128000);
-    let memory_request = meridian_core::agent::MemoryRequest::desktop(
-        project_id.clone(),
-        meridian_core::agent::memory_budget(context_limit),
-    );
     // How the previous turns stopped, for any that did not stop cleanly. Read
     // here rather than at the top because it is background about the
     // conversation, like the memory block, and travels the same way.
@@ -1119,14 +1114,6 @@ async fn chat_inner(
     // by a provider that already answered 200.
     let interrupted =
         meridian_core::agent::interrupted::load_block(&pool, &services.turns, &conversation_id, &turn_id).await?;
-    let instruction_block = {
-        let budget = instruction_budget(context_limit);
-        if budget > 0 {
-            load_project_instructions(project_path.as_deref(), budget).await
-        } else {
-            None
-        }
-    };
     // Everything the assistant may do this turn, and everything it is told.
     // Shared with the OneBot loop and the token estimator so the three cannot
     // drift apart again. The memory block is deliberately not part of it: that
@@ -1141,13 +1128,6 @@ async fn chat_inner(
     // Kept so the turn can be re-resolved in place if the user approves a plan
     // mid-flight; everything else the resolver needs is still in scope.
     let persona = system_prompt_resolved;
-    let context_blocks = vec![
-        instruction_block.unwrap_or_default(),
-        file_access_prompt(&file_access),
-        // Mirrored in conversation.rs's estimator via the same function; the
-        // OR with this turn's flag only matters before the message lands.
-        meridian_core::voice::prompt::voice_context_block(&ctx.path, voice == Some(true)).unwrap_or_default(),
-    ];
     // Taken from the resolution rather than recomputed from the override and the
     // assistant. Those two miss the third case: with neither set, the resolver
     // falls back to the first enabled provider and really does send the request
@@ -1171,11 +1151,6 @@ async fn chat_inner(
     // and the turn it summarises have to send parameters filtered against the
     // same model, and what the model can be sent at all — whether it takes a
     // tools field — decides the tool set below.
-    //
-    // `context_limit` stays where it was, deliberately. The one bound above is
-    // the assistant's and it sizes the memory block and the project
-    // instructions; this one is the model's and shadows it for the loop. Moving
-    // the shadow up with the resolution would silently resize both.
     let mut turn_params = {
         let pool2 = pool.clone();
         let assistant2 = assistant.clone();
@@ -1237,6 +1212,33 @@ async fn chat_inner(
     if !supports_tools {
         tracing::info!(model = %model, "the model cannot take tools; none are offered this turn");
     }
+
+    // Sized against the window this turn actually goes into, as resolved just
+    // above: the assistant's override when it has one, the model's otherwise.
+    // These used to read the assistant's field directly with
+    // `unwrap_or(128000)`, which sized a turn with no assistant for a window
+    // nobody configured, and a turn whose assistant leaves the override at 0
+    // (meaning "the model's") for a window of nothing — no project
+    // instructions and the smallest memory slice. The estimator in
+    // conversation.rs sizes the instructions from the same resolution.
+    let window = turn_params.context_limit;
+    let memory_request =
+        meridian_core::agent::MemoryRequest::desktop(project_id.clone(), meridian_core::agent::memory_budget(window));
+    let instruction_block = {
+        let budget = instruction_budget(window);
+        if budget > 0 {
+            load_project_instructions(project_path.as_deref(), budget).await
+        } else {
+            None
+        }
+    };
+    let context_blocks = vec![
+        instruction_block.unwrap_or_default(),
+        file_access_prompt(&file_access),
+        // Mirrored in conversation.rs's estimator via the same function; the
+        // OR with this turn's flag only matters before the message lands.
+        meridian_core::voice::prompt::voice_context_block(&ctx.path, voice == Some(true)).unwrap_or_default(),
+    ];
 
     // Read once and carried, not re-read per use. It goes into the tool
     // description as a roster of models, and a mid-turn mode switch that
@@ -1314,7 +1316,7 @@ async fn chat_inner(
                     &reference_context,
                     &effective_refs,
                     &budget.counter,
-                    context_limit,
+                    Some(context_limit),
                 )
                 .await?
             };
@@ -1328,8 +1330,8 @@ async fn chat_inner(
                     return Err("regeneration cannot introduce new conversation references".into());
                 }
                 let spent: usize = items.iter().map(|item| item.token_count.max(0) as usize).sum();
-                let budget_left =
-                    meridian_core::workspace::reference::turn_context_token_limit(context_limit).saturating_sub(spent);
+                let budget_left = meridian_core::workspace::reference::turn_context_token_limit(Some(context_limit))
+                    .saturating_sub(spent);
                 let pool2 = pool.clone();
                 let current = conversation_id.clone();
                 let frozen = tokio::task::spawn_blocking(move || {
@@ -1696,35 +1698,17 @@ async fn chat_inner(
         parent_cursor = Some(user_msg_id.clone());
     }
 
-    // Shell preference
-    let (shell_type, sandbox_pref) =
-        {
-            let pool2 = pool.clone();
-            tokio::task::spawn_blocking(move || {
-            let mut conn = match pool2.get() {
-                Ok(c) => c,
-                Err(e) => {
-                    // The sandbox fallback is fail-safe — absent means enabled.
-                    // The shell is not: the turn would run commands through the
-                    // platform default instead of the one the user picked, with
-                    // nothing on screen to say so.
-                    tracing::warn!(
-                        error = %e,
-                        shell = ?tools::ShellType::default_for_platform(),
-                        "could not read shell/sandbox preferences; using the platform default shell with the sandbox on"
-                    );
-                    return None;
-                }
-            };
-            let shell = db::ops::preference::get_preference(&mut conn, "shell").ok().flatten();
-            let sandbox = db::ops::preference::get_preference(&mut conn, "sandbox.enabled").ok().flatten();
-            Some((shell, sandbox))
-        })
-        .await
-        .ok()
-        .flatten()
-        .unwrap_or((None, None))
-        };
+    // Where this turn's commands run. A read that fails is its own answer and
+    // never "unset": unset is `auto`, and guessing `auto` for somebody who
+    // chose a container runs their commands on the host. With the settings
+    // unread no command runs until the user says, on a card, that it may run
+    // outside the sandbox — see `meridian_core::sandbox::CommandSettings`.
+    let command_settings = {
+        let pool2 = pool.clone();
+        tokio::task::spawn_blocking(move || meridian_core::sandbox::CommandSettings::read(&pool2))
+            .await
+            .map_err(|e| e.to_string())??
+    };
     let sleep_enabled = {
         let pool2 = pool.clone();
         tokio::task::spawn_blocking(move || {
@@ -1755,15 +1739,13 @@ async fn chat_inner(
     // exists to prevent, and the user would never learn of it. Failing the turn
     // costs them a message and tells them what is wrong.
     #[cfg(not(target_os = "android"))]
-    let sandbox_policy = meridian_core::sandbox::resolve_sandbox_policy(
-        meridian_core::sandbox::ExecutionMode::parse(sandbox_pref.as_deref())?,
+    let sandbox_policy = meridian_core::sandbox::resolve_command_sandbox(
+        &command_settings,
         project_path.as_deref(),
         &conversation_id,
         Some(services.containers.clone()),
     )
     .map_err(|e| e.to_string())?;
-    #[cfg(target_os = "android")]
-    let _ = sandbox_pref;
     // The shadow file journal for this turn: what the file primitives append
     // their observed transitions to. Desktop-only wiring for now — SAF paths
     // have no canonical key, so Android runs without one and its writes
@@ -1784,10 +1766,7 @@ async fn chat_inner(
     let journal = None;
     let tool_context = tools::ToolContext {
         working_directory: project_path.clone(),
-        shell: shell_type
-            .map(|value| tools::ShellType::parse(&value))
-            .transpose()?
-            .unwrap_or_else(tools::ShellType::default_for_platform),
+        shell: command_settings.shell(),
         file_access,
         // Cloned rather than moved: approving a plan mid-turn re-resolves the
         // turn config, which needs the project again.
@@ -2004,8 +1983,9 @@ async fn chat_inner(
         message_id: Some(assistant_msg_id.clone()),
         turn_id: turn_id.clone(),
         conversation_id: conversation_id.clone(),
-        input_tokens: Some(total_input_tokens),
-        output_tokens: Some(total_output_tokens),
+        // `None` when a round did not report it: a partial sum is not the total.
+        input_tokens: total_input_tokens.value(),
+        output_tokens: total_output_tokens.value(),
     })?;
     stop_guard.disarm();
 
@@ -2029,6 +2009,9 @@ async fn chat_inner(
             take_bytes_at_char_boundary(&last_assistant_text, 300)
         ))];
         let title_params = ChatParams {
+            // Resolved with the turn (`agent::resolve_max_tokens`): an adapter that
+            // requires an output ceiling is not handed a request without one.
+            max_tokens: params.max_tokens,
             model: params.model,
             temperature: Some(0.3),
             ..Default::default()

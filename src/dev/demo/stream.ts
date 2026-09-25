@@ -180,15 +180,17 @@ export function startReplay(
     const t = record()
     t.phase = 'awaiting_approval'
     t.phase_tool = 'run_command'
+    // Stamped once, as the backend does: the event and the register agree.
+    const askedAt = Date.now()
     thread.pending.push({
       approval_id: approvalId,
       conversation_id: conversationId,
       assistant_message_id: second.id,
       provider_call_id: cmdId,
-      origin_call_id: null,
       tool_name: 'run_command',
       arguments: cmd.function.arguments,
-      retry_reason: null,
+      retry: null,
+      asked_at: askedAt,
       bubbled: false,
       parent_call_id: null,
       sub_conversation_id: null,
@@ -203,6 +205,7 @@ export function startReplay(
       conversation_id: conversationId,
       delegation: null,
       retry: null,
+      asked_at: askedAt,
     })
 
     const approved = await new Promise<boolean>((resolve) => {

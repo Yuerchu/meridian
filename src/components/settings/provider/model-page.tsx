@@ -114,7 +114,8 @@ function ModelConfigEditor({
   const defaultCtx = profile?.context_window ?? caps?.max_context_tokens ?? null
   const defaultMaxOut = profile?.max_output_tokens ?? caps?.max_output_tokens ?? null
   const defaultThreshold =
-    profile?.compact_threshold ?? (defaultCtx === null ? null : safeThreshold(defaultCtx, defaultMaxOut))
+    profile?.compact_threshold ??
+    (defaultCtx === null || defaultMaxOut === null ? null : safeThreshold(defaultCtx, defaultMaxOut))
 
   const [contextWindow, setContextWindow] = useState(defaultCtx?.toString() ?? '')
   const [compactThreshold, setCompactThreshold] = useState(defaultThreshold?.toString() ?? '')
@@ -216,7 +217,9 @@ function ModelConfigEditor({
     if (!existing && caps) {
       if (caps.max_context_tokens) {
         setContextWindow(caps.max_context_tokens.toString())
-        setCompactThreshold(safeThreshold(caps.max_context_tokens, caps.max_output_tokens ?? null).toString())
+        if (caps.max_output_tokens) {
+          setCompactThreshold(safeThreshold(caps.max_context_tokens, caps.max_output_tokens).toString())
+        }
       }
       if (caps.max_output_tokens) setMaxOutput(caps.max_output_tokens.toString())
     }
@@ -565,6 +568,7 @@ function ModelConfigEditor({
           placeholder={t('settings.model.optional')}
           className="h-7 pointer-coarse:h-10 text-caption-1-regular"
         />
+        <Description className="text-caption-1-regular">{t('settings.model.maxOutputHint')}</Description>
       </TextField>
       {/* Four rates, all per million tokens. The two cache boxes are blank by
           default and blank means "priced like input" — which is what every
@@ -875,7 +879,7 @@ function ModelConfigEditor({
     <SettingsPage
       title={profileName || modelId}
       subtitle={profileName && profileName !== modelId ? modelId : undefined}
-      width="wide"
+
       footer={
         <>
           <Button onPress={() => void handleSave()} isPending={saving}>
@@ -982,10 +986,10 @@ export function ModelPage({
     }
   }, [providerId, modelId, attempt])
 
-  if (loading) return <SettingsSkeleton className="max-w-3xl" />
+  if (loading) return <SettingsSkeleton />
   if (loadError !== null) {
     return (
-      <SettingsPage title={modelId} width="wide">
+      <SettingsPage title={modelId}>
         <Alert status="danger" role="alert">
           <Alert.Indicator />
           <Alert.Content>

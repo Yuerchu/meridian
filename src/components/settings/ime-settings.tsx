@@ -467,7 +467,10 @@ export function ImeSettings() {
                     <ItemCard.Description className="w-full whitespace-normal">
                       {t('settings.ime.dictionaryDetail', {
                         count: dict.entries,
-                        size: formatBytes(dict.size_bytes),
+                        size:
+                          dict.size_bytes === null
+                            ? t('settings.ime.dictionarySizeUnknown')
+                            : formatBytes(dict.size_bytes),
                         license: dict.license,
                       })}
                     </ItemCard.Description>

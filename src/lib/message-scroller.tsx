@@ -279,6 +279,7 @@ function useScrollerState({
   autoScroll = false,
   defaultScrollPosition = 'end',
   followKey,
+  // eslint-disable-next-line meridian-ui/no-invented-domain-default -- a scroll distance in pixels, not a fact about a model
   scrollEdgeThreshold = DEFAULT_EDGE_THRESHOLD,
   scrollMargin = DEFAULT_SCROLL_MARGIN,
   scrollPreviousItemPeek = DEFAULT_PREVIOUS_ITEM_PEEK,

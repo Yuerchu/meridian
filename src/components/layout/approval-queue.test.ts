@@ -11,7 +11,7 @@ function item(approvalId: string, conversationId: string): AttentionItem {
     toolName: 'run_command',
     arguments: '{}',
     kind: 'approval',
-    askedAt: null,
+    askedAt: 1_700_000_000_000,
   }
 }
 

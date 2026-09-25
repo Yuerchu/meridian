@@ -168,6 +168,23 @@ describe('ModelPage', () => {
     expect(screen.getByLabelText(i18n.t('settings.model.maxOutput'))).toHaveValue('8000')
   })
 
+  it('suggests no threshold when the output ceiling is unknown', async () => {
+    mockApi.getModelConfig.mockResolvedValue(null as never)
+    mockApi.getProviderCapabilities.mockResolvedValue({
+      max_context_tokens: 64000,
+      max_output_tokens: null,
+      supported_efforts: [],
+      server_tools: [],
+    } as never)
+    renderPage()
+
+    const ctx = await screen.findByRole('textbox', { name: i18n.t('settings.model.contextWindow') })
+    await waitFor(() => expect(ctx).toHaveValue('64000'))
+    // A reserve of nothing would be a threshold for a zero-token reply.
+    expect(screen.getByRole('textbox', { name: i18n.t('settings.model.compactThreshold') })).toHaveValue('')
+    expect(screen.getByLabelText(i18n.t('settings.model.maxOutput'))).toHaveValue('')
+  })
+
   it('says it saved', async () => {
     const user = userEvent.setup()
     renderPage()

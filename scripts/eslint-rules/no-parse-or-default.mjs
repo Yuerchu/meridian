@@ -13,11 +13,11 @@
 // either refuse to save with a field error or send `null` where the contract
 // has an "unset" state.
 //
-// Not covered: `x ?? <number>`. `??` only fires on null/undefined, so it does
-// not eat a `0` or a `NaN`, and "an absent optional field means N" is an
-// ordinary, correct reading of a response — the shape is far too common to
-// refuse wholesale, and nothing about its syntax says whether it is on a save
-// path.
+// Not covered here: `x ?? <number>`. `??` only fires on null/undefined, so it
+// does not eat a `0` or a `NaN`, and nothing about its syntax says whether it
+// is on a save path. Where the name says the value is a fact about a model or
+// a limit, `no-invented-domain-default` refuses it on any path: an absent
+// window is unknown, not 128000.
 
 const PARSERS = new Set(['parseInt', 'parseFloat', 'Number'])
 

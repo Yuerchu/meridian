@@ -12,8 +12,8 @@ import { safeThreshold, triFrom, triTo } from './capabilities'
  */
 describe('safeThreshold', () => {
   it('reserves room for the reply and a little headroom', () => {
-    // 128000 - 0 - 6400
-    expect(safeThreshold(128_000, null)).toBe(121_600)
+    // 128000 - 4096 - 6400
+    expect(safeThreshold(128_000, 4_096)).toBe(117_504)
     // 200000 - 16000 - 8000
     expect(safeThreshold(200_000, 16_000)).toBe(176_000)
   })

@@ -161,13 +161,13 @@ pub async fn queue_enqueue(
             assistant_id: None,
             db_pool: Some(services.db.clone()),
             #[cfg(not(target_os = "android"))]
-            sandbox_policy: None,
+            sandbox_policy: meridian_core::sandbox::CommandSandbox::UNCONFINED,
             tool_secrets: Default::default(),
             cancel: tokio_util::sync::CancellationToken::new(),
             journal: None,
         };
         let counter = meridian_core::agent::TokenCounter::new(meridian_core::agent::TokenizerKind::Cl100kBase);
-        meridian_core::workspace::reference::prepare_references(&context, &references, &counter, 128_000).await?
+        meridian_core::workspace::reference::prepare_references(&context, &references, &counter, None).await?
     };
     // Frozen at enqueue time beside the workspace snapshots — the thread may
     // move on before this message runs, and what the user saw when they
@@ -177,7 +177,7 @@ pub async fn queue_enqueue(
     } else {
         let mut prepared = prepared;
         let spent: usize = prepared.iter().map(|item| item.token_count.max(0) as usize).sum();
-        let budget_left = meridian_core::workspace::reference::turn_context_token_limit(128_000).saturating_sub(spent);
+        let budget_left = meridian_core::workspace::reference::turn_context_token_limit(None).saturating_sub(spent);
         let pool_for_refs = services.db.clone();
         let current = conversation_id.clone();
         let frozen = blocking(move || {

@@ -17,7 +17,10 @@ pub struct DictionarySummary {
     pub file: String,
     pub name: String,
     pub entries: u64,
-    pub size_bytes: u64,
+    /// `None` when the file cannot be read: a catalog row whose file went
+    /// missing is still listed (so it can be removed), and 0 bytes would be a
+    /// size nobody measured.
+    pub size_bytes: Option<u64>,
     pub enabled: bool,
     pub license: String,
     pub source: String,
@@ -31,7 +34,7 @@ pub fn list(dirs: &ImeDirs) -> Result<Vec<DictionarySummary>, String> {
         .iter()
         .map(|e| {
             let path = dicts.join(&e.file);
-            let size_bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            let size_bytes = std::fs::metadata(&path).map(|m| m.len()).ok();
             let source = DictFile::open(&path)
                 .map(|d| d.meta().source.clone())
                 .unwrap_or_default();

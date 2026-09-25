@@ -442,7 +442,7 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
                   arguments: nested.arguments,
                   status: 'pending',
                   approval_id: nested.approval_id,
-                  retry_reason: nested.retry_reason,
+                  retry: nested.retry,
                 }}
                 chromeless
                 onAnswered={() => conversationId && resolveNested(conversationId, nested.approval_id)}
@@ -455,7 +455,7 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
                 <PendingApproval
                   key={nested.approval_id}
                   approvalId={nested.approval_id}
-                  retryReason={nested.retry_reason}
+                  retry={nested.retry}
                   onAnswered={() => conversationId && resolveNested(conversationId, nested.approval_id)}
                 />
               </>

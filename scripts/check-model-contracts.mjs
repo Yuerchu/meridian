@@ -2047,8 +2047,8 @@ requireRustFields('src-tauri/src/commands/approval.rs', 'AskResponseRequest', {
   response: /^String$/,
 })
 requireRustFields('src-tauri/src/commands/approval.rs', 'PendingApprovalInfoResponse', {
-  origin_call_id: /^Option<String>$/,
-  retry_reason: /^Option<String>$/,
+  retry: /^Option<meridian_core::events::ApprovalRetry>$/,
+  asked_at: /^i64$/,
   parent_call_id: /^Option<String>$/,
   sub_conversation_id: /^Option<String>$/,
 })
@@ -2152,14 +2152,14 @@ requireTypescriptRequiredFields(typesFile, 'AutoReviewVerdictInfoResponse', [
   'evidence',
 ])
 requireTypescriptFields(typesFile, 'PendingApprovalInfoResponse', {
-  origin_call_id: /^string \| null$/,
-  retry_reason: /^string \| null$/,
+  retry: /^ApprovalRetry \| null$/,
+  asked_at: /^number$/,
   parent_call_id: /^string \| null$/,
   sub_conversation_id: /^string \| null$/,
 })
 requireTypescriptRequiredFields(typesFile, 'PendingApprovalInfoResponse', [
-  'origin_call_id',
-  'retry_reason',
+  'retry',
+  'asked_at',
   'parent_call_id',
   'sub_conversation_id',
 ])
@@ -2168,7 +2168,7 @@ if (/^\s*\w+\?\s*:/m.test(chatStreamTypes ?? '')) {
   add(typesFile, 'ChatStreamEvent 禁止 optional key；可空字段必须 required-null')
 }
 if (
-  !/type:\s*'tool_approval_req'[\s\S]{0,700}?delegation:\s*\{[^}]+\}\s*\|\s*null[\s\S]{0,120}?retry:\s*\{[^}]+\}\s*\|\s*null/.test(
+  !/type:\s*'tool_approval_req'[\s\S]{0,700}?delegation:\s*\{[^}]+\}\s*\|\s*null[\s\S]{0,120}?retry:\s*ApprovalRetry\s*\|\s*null[\s\S]{0,200}?asked_at:\s*number\n/.test(
     chatStreamTypes ?? '',
   ) ||
   !/type:\s*'stop'[\s\S]{0,350}?message_id:\s*string\s*\|\s*null[\s\S]{0,250}?input_tokens:\s*number\s*\|\s*null[\s\S]{0,120}?output_tokens:\s*number\s*\|\s*null/.test(

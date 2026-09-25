@@ -81,13 +81,18 @@ pub struct PendingApprovalInfoResponse {
     /// the sub-agent sees the row the call is actually on.
     pub assistant_message_id: String,
     pub provider_call_id: String,
-    pub origin_call_id: Option<String>,
     pub tool_name: String,
     /// What the call was made with. Sent even though an ordinary card could
     /// read it off the transcript, because a bubbled one cannot: that row is in
     /// another conversation.
     pub arguments: String,
-    pub retry_reason: Option<String>,
+    /// Set when this asks to run an already-asked call outside the sandbox:
+    /// the same value the announcing event carried.
+    pub retry: Option<meridian_core::events::ApprovalRetry>,
+    /// When the question was registered, in Unix milliseconds — the same
+    /// value its announcing event carried, so a queue rebuilt from this list
+    /// says when each question was asked instead of saying nothing.
+    pub asked_at: i64,
     /// This approval belongs to a delegated run and is being shown where it is
     /// *happening*, not where it can be answered. The card draws itself without
     /// buttons.
@@ -152,10 +157,10 @@ fn views_for(
                 conversation_id: p.conversation_id.clone(),
                 assistant_message_id: p.assistant_message_id.clone(),
                 provider_call_id: p.provider_call_id.clone(),
-                origin_call_id: p.origin_call_id.clone(),
                 tool_name: p.tool_name.clone(),
                 arguments: p.arguments.clone(),
-                retry_reason: p.retry_reason.clone(),
+                retry: p.retry.clone(),
+                asked_at: p.asked_at,
                 bubbled: p.bubble.is_some(),
                 parent_call_id: None,
                 sub_conversation_id: None,
@@ -196,10 +201,10 @@ fn answerable_view(id: &str, p: &meridian_core::state::PendingApproval) -> Pendi
         conversation_id,
         assistant_message_id,
         provider_call_id: p.provider_call_id.clone(),
-        origin_call_id: p.origin_call_id.clone(),
         tool_name: p.tool_name.clone(),
         arguments: p.arguments.clone(),
-        retry_reason: p.retry_reason.clone(),
+        retry: p.retry.clone(),
+        asked_at: p.asked_at,
         // Answerable is exactly what `bubbled` denies, so this view never is.
         bubbled: false,
         parent_call_id,
@@ -257,10 +262,10 @@ mod tests {
                 turn_id: "child-turn".into(),
                 assistant_message_id: "child-row".into(),
                 provider_call_id: call_id.into(),
-                origin_call_id: None,
                 tool_name: "run_command".into(),
                 arguments: r#"{"command":"cargo test --all"}"#.into(),
-                retry_reason: None,
+                retry: None,
+                asked_at: ASKED_AT,
                 bubble,
                 // These views are about what a card says, not about when it
                 // stops standing; the expiry filter has its own tests.
@@ -269,6 +274,8 @@ mod tests {
             },
         );
     }
+
+    const ASKED_AT: i64 = 1_700_000_000_123;
 
     fn bubble(parent_call_id: &str) -> Bubble {
         Bubble {
@@ -327,12 +334,7 @@ mod tests {
         registered(&mut map, "appr-1", "call-1", None);
 
         let payload = serde_json::to_value(answerable_view("appr-1", &map["appr-1"])).unwrap();
-        for key in [
-            "origin_call_id",
-            "retry_reason",
-            "parent_call_id",
-            "sub_conversation_id",
-        ] {
+        for key in ["retry", "parent_call_id", "sub_conversation_id"] {
             assert_eq!(payload[key], serde_json::Value::Null, "missing required-null key {key}");
         }
     }
@@ -431,6 +433,26 @@ mod tests {
         let delegated = answerable_view("appr-1", &map["appr-1"]);
         assert_eq!(delegated.assistant_message_id, "parent-row");
         assert!(!delegated.bubbled);
+    }
+
+    /// A question rebuilt from the register keeps the time it was asked. Both
+    /// views carry it — the transcript's and the queue's — and it is the
+    /// registered value, not the moment of the listing.
+    #[test]
+    fn a_listed_question_says_when_it_was_asked() {
+        let mut map = HashMap::new();
+        registered(&mut map, "appr-1", "0", Some(bubble("call-run-agent")));
+        registered(&mut map, "appr-2", "c1", None);
+
+        let queued = answerable_view("appr-1", &map["appr-1"]);
+        assert_eq!(queued.asked_at, ASKED_AT);
+        assert_eq!(
+            serde_json::to_value(&queued).unwrap()["asked_at"],
+            serde_json::json!(ASKED_AT)
+        );
+        for view in views_for(&map, "sub-1") {
+            assert_eq!(view.asked_at, ASKED_AT, "{}", view.approval_id);
+        }
     }
 
     /// The ordinary case is untouched: one view, in its own conversation, with

@@ -128,7 +128,10 @@ pub async fn create_assistant(
             sort_order: 0,
             created_at: now,
             updated_at: now,
-            context_limit: 128000,
+            // No override: `resolve_turn_params` reads 0 as "the model's own
+            // window". A number here would outrank the window the model is
+            // configured with, and nobody chose it.
+            context_limit: 0,
             compact_keep_recent: 10,
             enabled_tools: None,
             thinking_enabled: 0,

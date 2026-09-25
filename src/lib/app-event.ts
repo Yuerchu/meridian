@@ -212,7 +212,7 @@ function parseUserCommandResult(value: unknown): UserCommandResultResponse {
     message_id: stringValue(result.message_id, 'user-command finish result.message_id'),
     status: enumValue(
       result.status,
-      ['completed', 'sandbox_denied', 'timed_out', 'cancelled', 'failed', 'in_doubt'] as const,
+      ['completed', 'sandbox_denied', 'settings_unreadable', 'timed_out', 'cancelled', 'failed', 'in_doubt'] as const,
       'user-command finish result.status',
     ),
     stdout: stringValue(result.stdout, 'user-command finish result.stdout'),

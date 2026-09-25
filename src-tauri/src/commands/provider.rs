@@ -827,6 +827,49 @@ pub struct ProviderModelListRequest {
     pub force_refresh: RequiredNullable<bool>,
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderCachedModelListRequest {
+    pub provider_id: String,
+}
+
+/// What the last fetch of this provider's model list left in the cache, and
+/// never anything more.
+///
+/// **Read-only by construction**, which `fetch_provider_models` with
+/// `forceRefresh: false` is not: that one falls through to the provider's API
+/// whenever the cache is empty, so merely opening the provider page made a
+/// network request — and, offline, showed a model-list error nobody asked
+/// for. An empty cache is an empty list here; the fetch happens only when
+/// somebody presses the button that says so.
+#[tauri::command]
+pub async fn list_cached_provider_models(
+    app: tauri::AppHandle,
+    request: ProviderCachedModelListRequest,
+) -> Result<ProviderModelListResponse, String> {
+    let pool = app.services().db.clone();
+    tokio::task::spawn_blocking(move || cached_models_for(&pool, &request.provider_id))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn cached_models_for(pool: &db::DbPool, provider_id: &str) -> Result<ProviderModelListResponse, String> {
+    let mut conn = pool.get().map_err(|e| e.to_string())?;
+    db::ops::cached_model::list_cached_for_provider(&mut conn, provider_id)
+        .map_err(|e| match e {
+            diesel::result::Error::NotFound => format!("provider `{provider_id}` does not exist"),
+            other => other.to_string(),
+        })
+        .map(|rows| {
+            rows.into_iter()
+                .map(|row| ProviderModelInfoResponse {
+                    id: row.model_id,
+                    name: row.model_name,
+                })
+                .collect()
+        })
+}
+
 #[tauri::command]
 pub async fn fetch_provider_models(
     app: tauri::AppHandle,
@@ -1234,5 +1277,85 @@ mod response_contract_tests {
         let named: ProviderUpdateRequest =
             serde_json::from_value(serde_json::json!({ "id": "p1", "icon": "vertexai" })).unwrap();
         assert!(matches!(named.icon, Some(RequiredNullable(Some(ref name))) if name == "vertexai"));
+    }
+}
+
+#[cfg(test)]
+mod cached_model_tests {
+    use super::*;
+
+    fn provider(pool: &db::DbPool, id: &str) {
+        let mut conn = pool.get().unwrap();
+        db::ops::provider::create_provider(
+            &mut conn,
+            &ProviderInsert {
+                id,
+                name: "P",
+                provider_type: "openai",
+                base_url: "https://example.invalid",
+                is_enabled: 1,
+                sort_order: 0,
+                created_at: 0,
+                updated_at: 0,
+                api_format: "chat_completions",
+                catalog_id: None,
+                credential_kind: "api_key",
+                transport_profile: "standard",
+                icon: None,
+                codex_request_shape: 0,
+            },
+        )
+        .unwrap();
+    }
+
+    /// Opening the provider page must not be a fetch. With nothing cached the
+    /// answer is an empty list — not an error, and not a request to the
+    /// provider (this path has no key, no URL and no client to make one with).
+    #[test]
+    fn an_empty_cache_is_an_empty_list() {
+        let pool = db::test_db();
+        provider(&pool, "p1");
+        assert!(cached_models_for(&pool, "p1").unwrap().is_empty());
+    }
+
+    #[test]
+    fn what_was_cached_comes_back_as_the_public_shape() {
+        let pool = db::test_db();
+        provider(&pool, "p1");
+        {
+            let mut conn = pool.get().unwrap();
+            db::ops::cached_model::replace_models(
+                &mut conn,
+                "p1",
+                &[db::models::cached_model::CachedModelInsert {
+                    provider_id: "p1",
+                    model_id: "gpt-5.6",
+                    model_name: "GPT 5.6",
+                    fetched_at: 1,
+                }],
+            )
+            .unwrap();
+        }
+        let got = serde_json::to_value(cached_models_for(&pool, "p1").unwrap()).unwrap();
+        assert_eq!(got, serde_json::json!([{ "id": "gpt-5.6", "name": "GPT 5.6" }]));
+    }
+
+    #[test]
+    fn an_unknown_provider_is_named_in_the_error() {
+        let pool = db::test_db();
+        let error = cached_models_for(&pool, "missing").unwrap_err();
+        assert!(error.contains("missing"), "{error}");
+    }
+
+    #[test]
+    fn the_request_is_exact() {
+        serde_json::from_value::<ProviderCachedModelListRequest>(serde_json::json!({ "providerId": "p1" })).unwrap();
+        assert!(
+            serde_json::from_value::<ProviderCachedModelListRequest>(serde_json::json!({
+                "providerId": "p1",
+                "forceRefresh": false,
+            }))
+            .is_err()
+        );
     }
 }

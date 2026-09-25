@@ -523,6 +523,13 @@ describe('api', () => {
       expect(mockInvoke).toHaveBeenCalledWith('fetch_provider_models', { request })
     })
 
+    it('listCachedProviderModels reads the cache command, never the fetch', async () => {
+      mockInvoke.mockResolvedValueOnce([])
+      const request = { providerId: 'p1' }
+      await api.listCachedProviderModels(request)
+      expect(mockInvoke).toHaveBeenCalledWith('list_cached_provider_models', { request })
+    })
+
     it('uses named requests for provider capabilities and model config reads', async () => {
       mockInvoke.mockResolvedValue(undefined)
       const capabilities = { providerId: 'p1', modelId: 'm1' }

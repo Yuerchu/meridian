@@ -142,6 +142,7 @@ pub async fn read_logs(_app: tauri::AppHandle, request: LogQueryRequest) -> Resu
     };
     let q = reader::LogQuery {
         min_level: request.min_level,
+        // domain-default: how many log lines to page back, this command's own choice
         limit: request.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT),
         contains: request.contains.filter(|s| !s.trim().is_empty()),
         target_prefix: request.target_prefix.filter(|s| !s.trim().is_empty()),

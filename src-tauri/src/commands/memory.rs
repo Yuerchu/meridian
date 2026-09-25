@@ -286,6 +286,7 @@ pub async fn list_memory_trash(app: tauri::AppHandle, limit: Option<i64>) -> Res
     let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
+        // domain-default: a page size the caller did not ask about, not a fact about a model
         let rows = db::ops::memory::list_trash(&mut conn, limit.unwrap_or(200)).map_err(|e| e.to_string())?;
         rows.into_iter().map(TryInto::try_into).collect()
     })

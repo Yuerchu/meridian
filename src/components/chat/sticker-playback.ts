@@ -80,6 +80,7 @@ export class StickerPlayback {
 
   constructor({
     root = () => null,
+    // eslint-disable-next-line meridian-ui/no-invented-domain-default -- this app's own playback cap, not a fact about a model
     maxPlaying = MAX_PLAYING,
     settleMs = SCROLL_SETTLE_MS,
     nearMargin = NEAR_MARGIN,
