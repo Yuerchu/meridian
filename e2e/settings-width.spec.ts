@@ -31,7 +31,9 @@ test('every settings page is at the settings width', async ({ page }) => {
     const heading = page.getByRole('heading', { level: 2 }).first()
     const before = (await heading.count()) ? await heading.textContent() : null
     await row.click()
-    await expect.poll(async () => ((await heading.count()) ? await heading.textContent() : null)).not.toBe(before)
+    await expect
+      .poll(async () => ((await heading.count()) ? await heading.textContent() : null), { timeout: 30_000 })
+      .not.toBe(before)
     await settle(page)
     widths[label] = await page.evaluate(() => {
       const scroller = document.querySelector('[data-slot="settings-scroller"]')

@@ -52,9 +52,12 @@ export async function settle(page: Page): Promise<void> {
   // empty placeholder until the chunk arrives. Photographed before it did,
   // the same scene came out with logos on one run and blanks on the next —
   // Windows and Linux disagreed on settings-providers for exactly that.
+  // A cold dev server compiles that chunk on first request, which in CI took
+  // longer than the default 5s — so a generous ceiling; it returns as soon as
+  // the logos are there.
   await expect(
     page.locator('[data-slot="provider-icon-placeholder"], [data-slot="model-icon-placeholder"]'),
-  ).toHaveCount(0)
+  ).toHaveCount(0, { timeout: 30_000 })
   await page.evaluate(async () => {
     await document.fonts.ready
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
