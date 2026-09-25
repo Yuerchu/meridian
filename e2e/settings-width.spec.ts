@@ -20,15 +20,25 @@ test('every settings page is at the settings width', async ({ page }) => {
     .filter((label) => label && label !== '返回应用')
   expect(labels.length).toBeGreaterThan(10)
 
+  // Settings opens on the first section. Clicking the page already shown changes
+  // nothing, so the wait below — for the heading to change — would never end;
+  // start from the last section so every click in the walk is a real move.
+  const unique = [...new Set(labels)]
+  const heading = page.getByRole('heading', { level: 2 }).first()
+  const start = (await heading.count()) ? await heading.textContent() : null
+  await page.getByRole('row', { name: unique[unique.length - 1], exact: true }).click()
+  await expect
+    .poll(async () => ((await heading.count()) ? await heading.textContent() : null), { timeout: 30_000 })
+    .not.toBe(start)
+
   const widths: Record<string, string> = {}
-  for (const label of new Set(labels)) {
+  for (const label of unique) {
     const row = page.getByRole('row', { name: label, exact: true })
     if ((await row.count()) !== 1) continue
     // Every section swaps the one scroller's contents, so measure only once the
     // page's own heading has replaced the previous one — otherwise the first
     // (lazily loaded) page reads as no scroller, and any page could be measured
     // as the one before it.
-    const heading = page.getByRole('heading', { level: 2 }).first()
     const before = (await heading.count()) ? await heading.textContent() : null
     await row.click()
     await expect
