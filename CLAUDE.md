@@ -2185,7 +2185,7 @@ with `update_visual_baselines` — or automatically when the directory does not
 exist — and committing the `visual-baselines-linux` artifact it uploads.
 Update baselines with `pnpm test:visual:update` only when a change is *meant*
 to move pixels, look at every image it rewrote before committing it, and
-update both platforms in the same change. A failure's expected/actual/diff
+update both platforms in the same change. It rewrites *every* image (`--update-snapshots=all`, as CI does), not only those past the 0.2% tolerance: the default mode left scenes that had moved by less than that on images of the old UI — the narrow provider list kept blank logo slots that way. A failure's expected/actual/diff
 triple is under `test-results/` (CI: the `visual-diffs` artifact).
 
 `pnpm add` / `pnpm update` on Windows fails outright with `ERR_PNPM_EPERM` if a
