@@ -1,0 +1,42 @@
+[
+  {
+    "consumed": true,
+    "commit": null,
+    "frame": {
+      "preedit": [
+        {
+          "text": "ni",
+          "kind": "syllable"
+        }
+      ],
+      "candidates": [
+        {
+          "text": "你",
+          "source": "dict"
+        },
+        {
+          "text": "泥",
+          "source": "dict"
+        }
+      ],
+      "page": 0,
+      "page_count": 1,
+      "highlight": 0,
+      "mode": "chinese",
+      "notice": null
+    }
+  },
+  {
+    "consumed": true,
+    "commit": "你",
+    "frame": {
+      "preedit": [],
+      "candidates": [],
+      "page": 0,
+      "page_count": 0,
+      "highlight": 0,
+      "mode": "chinese",
+      "notice": null
+    }
+  }
+]

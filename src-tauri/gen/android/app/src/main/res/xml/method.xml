@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What the system lists for the keyboard. One subtype for now; the grid,
+     zhuyin and English layers become subtypes when the touch keyboard lands.
+     The settings entry opens Meridian itself, where the input method's
+     settings live. -->
+<input-method xmlns:android="http://schemas.android.com/apk/res/android"
+    android:settingsActivity="cn.yuxiaoqiu.meridian.MainActivity"
+    android:supportsSwitchingToNextInputMethod="true">
+    <subtype
+        android:label="@string/ime_subtype_pinyin"
+        android:imeSubtypeLocale="zh_CN"
+        android:languageTag="zh-CN"
+        android:imeSubtypeMode="keyboard"
+        android:imeSubtypeExtraValue="scheme=pinyin" />
+</input-method>

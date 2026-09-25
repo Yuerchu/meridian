@@ -53,6 +53,25 @@
             </intent-filter>
         </activity>
 
+        <!-- The keyboard. Its own process: a keyboard is bound by whichever app
+             has focus and must not carry the WebView, and the app must not
+             carry the engine. directBootAware is false because the engine
+             reads credential-encrypted storage (dataDir/ime). -->
+        <service
+            android:name=".ime.MeridianInputMethodService"
+            android:label="@string/ime_name"
+            android:permission="android.permission.BIND_INPUT_METHOD"
+            android:process=":ime"
+            android:directBootAware="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.view.InputMethod" />
+            </intent-filter>
+            <meta-data
+                android:name="android.view.im"
+                android:resource="@xml/method" />
+        </service>
+
         <provider
           android:name="androidx.core.content.FileProvider"
           android:authorities="${applicationId}.fileprovider"

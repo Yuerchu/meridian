@@ -57,4 +57,10 @@ mod tests {
         assert_eq!(ng["role"], "nasal");
         assert_eq!(ng["variants"], serde_json::json!(["er", "-n", "-ng"]));
     }
+
+    #[test]
+    fn the_token_json_is_the_fixture_the_keyboard_is_tested_against() {
+        let v: serde_json::Value = serde_json::from_str(&grid_tokens_json()).unwrap();
+        crate::fixtures::check("grid-tokens.json", &(serde_json::to_string_pretty(&v).unwrap() + "\n"));
+    }
 }

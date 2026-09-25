@@ -1,4 +1,6 @@
 <resources>
     <string name="app_name">Meridian</string>
     <string name="main_activity_title">Meridian</string>
+    <string name="ime_name">Meridian 输入法</string>
+    <string name="ime_subtype_pinyin">拼音</string>
 </resources>

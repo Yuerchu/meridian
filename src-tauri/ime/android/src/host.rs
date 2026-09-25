@@ -449,18 +449,18 @@ mod tests {
         assert_eq!(host.learner.weight("你好"), 1);
     }
 
+    /// The JSON the keyboard decodes, pinned in a file the Kotlin tests
+    /// decode too (`EngineBridgeContractTest`): a field renamed on either side
+    /// turns one of the two red. `MERIDIAN_UPDATE_FIXTURES=1` rewrites it.
     #[test]
-    fn the_outcome_serialises_the_way_the_keyboard_reads_it() {
+    fn the_outcome_json_is_the_fixture_the_keyboard_is_tested_against() {
         let tmp = tempfile::tempdir().unwrap();
         let mut host = open(tmp.path());
         host.start_input(None, false);
-        let v = serde_json::to_value(typed(&mut host, "ni")).unwrap();
-        assert_eq!(v["consumed"], true);
-        assert!(v["commit"].is_null());
-        assert_eq!(v["frame"]["candidates"][0]["text"], "你");
-        assert_eq!(v["frame"]["candidates"][0]["source"], "dict");
-        assert_eq!(v["frame"]["mode"], "chinese");
-        assert!(v["frame"]["preedit"][0]["kind"].is_string());
+        let composing = typed(&mut host, "ni");
+        let committed = host.handle_key(printable(' '));
+        let json = serde_json::to_string_pretty(&(composing, committed)).unwrap() + "\n";
+        crate::fixtures::check("outcomes.json", &json);
     }
 
     /// mtime has a coarse resolution on some filesystems; move it forward

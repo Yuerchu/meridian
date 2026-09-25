@@ -13,6 +13,8 @@
 //! JNI surface the Kotlin keyboard calls is `jni`, compiled for Android only.
 
 pub mod bridge;
+#[cfg(test)]
+mod fixtures;
 mod host;
 #[cfg(target_os = "android")]
 mod jni;

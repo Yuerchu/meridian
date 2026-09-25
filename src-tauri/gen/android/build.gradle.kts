@@ -12,6 +12,7 @@ buildscript {
         // Tauri's dev branch has moved to compilerOptions; lift this with it.
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.21")
         classpath("org.jetbrains.kotlin:compose-compiler-gradle-plugin:2.2.21")
+        classpath("org.jetbrains.kotlin:kotlin-serialization:2.2.21")
     }
 }
 
