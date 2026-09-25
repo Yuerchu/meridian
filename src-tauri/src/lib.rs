@@ -86,6 +86,26 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let _ = APP_HANDLE.set(app.handle().clone());
+            #[cfg(target_os = "android")]
+            if let Some(error) = KEYSTORE_INIT_ERROR.get() {
+                use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+                tracing::error!(%error, "the Android keystore could not be set up; API keys can be neither saved nor read");
+                // A native dialog rather than the web UI's: this is decided before
+                // the front end exists, and it must reach the user even if the
+                // front end is what fails next. Both languages, since the app's
+                // language setting is not readable from here.
+                app.dialog()
+                    .message(format!(
+                        "无法初始化系统密钥库：API 密钥既不能保存，也读不到已保存的密钥。
+
+                         The Android keystore could not be set up, so API keys can be neither saved nor read.
+
+{error}"
+                    ))
+                    .title("密钥库不可用 / Keystore unavailable")
+                    .kind(MessageDialogKind::Error)
+                    .show(|_| {});
+            }
             let data_dir = app.path().app_data_dir().expect("failed to resolve app data dir");
 
             // Registered before anything can emit, and critical: the desktop's
@@ -407,6 +427,13 @@ const RESTART_GRACE: std::time::Duration = std::time::Duration::from_millis(500)
 /// again, and without this the second pass would prevent its own exit.
 static SHUTTING_DOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// Why the Android keystore could not be set up. `initNdkContext` runs before
+/// `super.onCreate`, so before Tauri exists and with no window to tell; it
+/// records the reason here and `setup` shows it. Without the keystore no API key
+/// can be saved or read, and the only sign used to be that nothing worked.
+#[cfg(target_os = "android")]
+static KEYSTORE_INIT_ERROR: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
 /// Called from MainActivity.onCreate to initialize ndk-context and
 /// android-keyring before any Rust code touches the Android keystore.
 /// Tauri itself does NOT initialize ndk-context; this JNI entry is required.
@@ -430,9 +457,15 @@ pub extern "system" fn Java_cn_yuxiaoqiu_meridian_MainActivity_initNdkContext(
             unsafe {
                 ndk_context::initialize_android_context(vm, ref_.as_obj().as_raw() as _);
             }
-            android_keyring::set_android_keyring_credential_builder();
+            if let Err(error) = android_keyring::set_android_keyring_credential_builder() {
+                // Only ever set once: this whole block runs inside `get_or_init`.
+                let _ = KEYSTORE_INIT_ERROR.set(error.to_string());
+            }
             Some(ref_)
         }
-        Err(_) => None,
+        Err(error) => {
+            let _ = KEYSTORE_INIT_ERROR.set(format!("could not hold the Android context: {error}"));
+            None
+        }
     });
 }
