@@ -71,8 +71,10 @@ export function MemorySettings() {
   return (
     // Its own `pane` container: this panel does not go through `SettingsPane`,
     // so without one the two-column rule below would find no container at all
-    // and silently never match.
-    <div data-slot="memory-settings" className="@container/pane space-y-4">
+    // and silently never match. For the same reason it carries the settings
+    // width itself — it was the one page left full-width when every page
+    // moved to one; e2e/settings-width.spec.ts is what now notices.
+    <div data-slot="memory-settings" className="@container/pane mx-auto w-full max-w-settings space-y-4">
       <SettingsHeader
         title={t('settings.memory.title')}
         subtitle={t('settings.memory.subtitle')}
