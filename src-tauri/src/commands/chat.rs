@@ -1703,6 +1703,10 @@ async fn chat_inner(
     // chose a container runs their commands on the host. With the settings
     // unread no command runs until the user says, on a card, that it may run
     // outside the sandbox — see `meridian_core::sandbox::CommandSettings`.
+    //
+    // Not on Android, where `run_command` and the sandbox module are compiled
+    // out: there is no command for either setting to govern, so nothing is read.
+    #[cfg(not(target_os = "android"))]
     let command_settings = {
         let pool2 = pool.clone();
         tokio::task::spawn_blocking(move || meridian_core::sandbox::CommandSettings::read(&pool2))
@@ -1766,7 +1770,10 @@ async fn chat_inner(
     let journal = None;
     let tool_context = tools::ToolContext {
         working_directory: project_path.clone(),
+        #[cfg(not(target_os = "android"))]
         shell: command_settings.shell(),
+        #[cfg(target_os = "android")]
+        shell: tools::ShellType::default_for_platform(),
         file_access,
         // Cloned rather than moved: approving a plan mid-turn re-resolves the
         // turn config, which needs the project again.

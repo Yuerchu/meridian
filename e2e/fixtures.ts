@@ -48,6 +48,13 @@ export async function openApp(page: Page, { theme, quiet = true }: OpenOptions):
 export async function settle(page: Page): Promise<void> {
   // A skeleton is `aria-busy` until its data lands (UI Conventions).
   await expect(page.locator('[aria-busy="true"]')).toHaveCount(0)
+  // Vendor and model logos are `React.lazy` over @lobehub/icons and draw an
+  // empty placeholder until the chunk arrives. Photographed before it did,
+  // the same scene came out with logos on one run and blanks on the next —
+  // Windows and Linux disagreed on settings-providers for exactly that.
+  await expect(
+    page.locator('[data-slot="provider-icon-placeholder"], [data-slot="model-icon-placeholder"]'),
+  ).toHaveCount(0)
   await page.evaluate(async () => {
     await document.fonts.ready
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
