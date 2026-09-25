@@ -25,6 +25,7 @@ internal object EngineBridge {
   @JvmStatic external fun nativeSetSurrounding(handle: Long, left: String, right: String)
   @JvmStatic external fun nativeHandleKey(handle: Long, vk: Int, ch: Int, mods: Int, capsLock: Boolean): String
   @JvmStatic external fun nativeChoose(handle: Long, index: Int): String
+  @JvmStatic external fun nativeInsert(handle: Long, text: String): String
   @JvmStatic external fun nativeReset(handle: Long): String
   @JvmStatic external fun nativeRefresh(handle: Long): Boolean
   @JvmStatic external fun nativeFlush(handle: Long)
@@ -90,6 +91,10 @@ class Engine(dataDir: File) {
 
   fun choose(index: Int, done: (KeyOutcome?) -> Unit) =
     ask<String>("choose", { done(outcome(it)) }) { EngineBridge.nativeChoose(it, index) }
+
+  /** Text from a menu or the number layer, inserted as given after the highlighted candidate. */
+  fun insert(text: String, done: (KeyOutcome?) -> Unit) =
+    ask<String>("insert", { done(outcome(it)) }) { EngineBridge.nativeInsert(it, text) }
 
   fun reset(done: ((Frame?) -> Unit)? = null) =
     ask<String>("reset", done?.let { d -> { json: String? -> d(frame(json)) } }) { EngineBridge.nativeReset(it) }

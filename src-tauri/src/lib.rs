@@ -7,6 +7,9 @@ mod commands;
 /// Meridian's side of the input method (the DLL and host are separate binaries).
 #[cfg(windows)]
 mod ime;
+/// The keyboard's font, written out for the input method's process.
+#[cfg(any(test, target_os = "android"))]
+mod keyboard_font;
 mod platform;
 /// Serving another device. Desktop only: Android is the client here, never the
 /// host.
@@ -107,6 +110,23 @@ pub fn run() {
                     .show(|_| {});
             }
             let data_dir = app.path().app_data_dir().expect("failed to resolve app data dir");
+
+            // The keyboard (process `:ime`) draws with the app's font, which only
+            // this process can read; see keyboard_font. `ime` is the input
+            // method's data directory, as meridian-ime-config names it.
+            #[cfg(target_os = "android")]
+            {
+                let resolver = app.asset_resolver();
+                let ime_dir = data_dir.join("ime");
+                std::thread::spawn(move || {
+                    let asset = |path: &str| resolver.get(path.to_string()).map(|a| a.bytes);
+                    match keyboard_font::install(asset, &ime_dir, env!("CARGO_PKG_VERSION")) {
+                        Ok(true) => tracing::info!("keyboard font written"),
+                        Ok(false) => {}
+                        Err(error) => tracing::warn!(%error, "keyboard font not written; the keyboard keeps the system font"),
+                    }
+                });
+            }
 
             // Registered before anything can emit, and critical: the desktop's
             // events are its answer, so a turn whose progress never reached the

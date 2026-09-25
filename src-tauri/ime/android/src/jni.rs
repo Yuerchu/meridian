@@ -215,6 +215,22 @@ pub extern "system" fn Java_cn_yuxiaoqiu_meridian_ime_EngineBridge_nativeChoose(
     })
 }
 
+/// Text inserted as given after the highlighted candidate (a long-press
+/// menu item, a number-layer key). Returns the `KeyOutcome` as JSON.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_cn_yuxiaoqiu_meridian_ime_EngineBridge_nativeInsert(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    text: JString,
+) -> jstring {
+    guard(&mut env, null_mut(), |env| {
+        let text = string(env, &text)?;
+        let out = host(handle)?.insert(&text);
+        json_out(env, &out)
+    })
+}
+
 /// Drops the composition. Returns the (empty) frame.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_cn_yuxiaoqiu_meridian_ime_EngineBridge_nativeReset(

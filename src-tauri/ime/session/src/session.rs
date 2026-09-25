@@ -208,6 +208,35 @@ impl Session {
         out
     }
 
+    /// Text chosen from a long-press menu or typed on the number layer, to go
+    /// into the document exactly as given: the highlighted candidate is
+    /// committed first, as any punctuation would, and then `text` with no
+    /// width mapping. Sent as a key instead, the half-width `,` a person
+    /// picked from the menu would come out as `，` in Chinese mode, and a digit
+    /// would select a candidate.
+    pub fn insert(&mut self, engine: &Engine, learner: &mut dyn Learner, text: &str) -> KeyOutcome {
+        let muted = self.private || !self.config.learning;
+        let mut learner = Muted::new(learner, muted);
+        let mut out = if self.is_composing() {
+            self.commit_highlighted_or_raw(engine, &mut learner)
+        } else {
+            KeyOutcome {
+                consumed: true,
+                commit: None,
+                frame: self.frame(false),
+            }
+        };
+        out.commit = Some(out.commit.unwrap_or_default() + text);
+        out.consumed = true;
+        self.chain.r#break();
+        self.punct.note_commit();
+        if let Some(last) = text.chars().last() {
+            self.punct.note_passthrough(last);
+        }
+        self.note_commit(&out);
+        out
+    }
+
     /// What surrounds the cursor, from the application: replaces what the
     /// session had inferred. Called on a cursor move or before a key.
     pub fn set_surrounding(&mut self, left: &str, right: &str) {

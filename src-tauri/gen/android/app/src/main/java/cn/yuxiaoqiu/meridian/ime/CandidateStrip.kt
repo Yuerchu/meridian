@@ -21,6 +21,10 @@ class CandidateStrip(context: Context, private val onChoose: (Int) -> Unit) : Ho
 
   init {
     isHorizontalScrollBarEnabled = false
+    // Opaque: the candidates area sits over the application's own bottom bar.
+    val attrs = context.obtainStyledAttributes(intArrayOf(android.R.attr.colorBackground))
+    setBackgroundColor(attrs.getColor(0, android.graphics.Color.WHITE))
+    attrs.recycle()
     addView(row)
     minimumHeight = dp(44)
   }

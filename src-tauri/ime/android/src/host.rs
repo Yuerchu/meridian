@@ -150,6 +150,14 @@ impl ImeHost {
         out
     }
 
+    /// Text from a long-press menu or the number layer, inserted as given
+    /// after the highlighted candidate; see `Session::insert`.
+    pub fn insert(&mut self, text: &str) -> KeyOutcome {
+        let out = self.session.insert(&self.engine, self.learner.as_mut(), text);
+        self.refresh_user_words();
+        out
+    }
+
     /// Drops the composition (the field lost focus, the cursor moved away).
     pub fn reset(&mut self) -> Frame {
         self.session.reset()
@@ -407,6 +415,16 @@ mod tests {
         typed(&mut host, "ni");
         let out = host.choose(1);
         assert_eq!(out.commit.as_deref(), Some("泥"));
+        assert!(!host.is_composing());
+    }
+
+    #[test]
+    fn inserted_text_goes_in_as_given() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut host = open(tmp.path());
+        host.start_input(None, false);
+        typed(&mut host, "nihao");
+        assert_eq!(host.insert(",").commit.as_deref(), Some("你好,"));
         assert!(!host.is_composing());
     }
 

@@ -689,3 +689,47 @@ fn grid_precise_keys_from_a_long_press() {
         "{cands:?}"
     );
 }
+
+impl Rig {
+    fn insert(&mut self, text: &str) -> KeyOutcome {
+        self.session.insert(&self.engine, &mut self.learner, text)
+    }
+}
+
+#[test]
+fn inserted_text_commits_the_candidate_and_is_not_mapped() {
+    let mut r = Rig::new(InputScheme::Pinyin);
+    r.run("nihao");
+    let out = r.insert(",");
+    assert_eq!(
+        out.commit.as_deref(),
+        Some("你好,"),
+        "a half-width comma stays half-width"
+    );
+    assert!(out.consumed && out.frame.is_empty());
+    assert_eq!(r.learner.weight("你好"), 1, "the candidate is learned like any commit");
+
+    let out = r.insert("……");
+    assert_eq!(out.commit.as_deref(), Some("……"), "nothing composing: the text alone");
+    assert!(out.consumed);
+}
+
+#[test]
+fn an_inserted_digit_does_not_select_a_candidate() {
+    let mut r = Rig::new(InputScheme::Pinyin);
+    r.run("ni");
+    let out = r.insert("3");
+    assert_eq!(out.commit.as_deref(), Some("你3"));
+    // And the next `.` is a decimal point, as after a typed digit.
+    let (committed, _) = r.run(".");
+    assert_eq!(committed, "");
+}
+
+#[test]
+fn an_insert_in_a_private_field_does_not_learn() {
+    let mut r = Rig::new(InputScheme::Pinyin);
+    r.session.set_private(true);
+    r.run("nihao");
+    assert_eq!(r.insert("。").commit.as_deref(), Some("你好。"));
+    assert_eq!(r.learner.weight("你好"), 0);
+}
