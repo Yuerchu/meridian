@@ -8,7 +8,7 @@
 // invalid cases is pasted back in is not a gate.
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { Linter, RuleTester } from 'eslint'
+import { ESLint, Linter, RuleTester } from 'eslint'
 import plugin from './eslint-rules/index.mjs'
 import { uiRestrictions } from '../eslint.config.js'
 
@@ -40,6 +40,30 @@ tester.run('icon-only-needs-name', plugin.rules['icon-only-needs-name'], {
       errors: [{ messageId: 'needsLabel' }],
     },
     { code: `<Button isIconOnly><Icon /></Button>`, errors: [{ messageId: 'needsLabel' }] },
+  ],
+})
+
+tester.run('button-icon-through-prop', plugin.rules['button-icon-through-prop'], {
+  valid: [
+    // The fix: the icon through the prop, beside the label span.
+    `import { Plus } from '@keyline-icons/react/two-tone'; <Button leadingIcon={Plus}>Add</Button>`,
+    `import { ChevronDown } from '@keyline-icons/react/two-tone'; <Button trailingIcon={ChevronDown}>More</Button>`,
+    // Content that is not an icon is left alone.
+    `import { X } from '@keyline-icons/react/two-tone'; <Button><Spinner />Saving</Button>`,
+    // An icon inside something that is not a Button.
+    `import { X } from '@keyline-icons/react/two-tone'; <Chip><X />tag</Chip>`,
+  ],
+  invalid: [
+    // The shape that shipped on the provider page: "保存密钥" flush against its key.
+    {
+      code: `import { Key } from '@keyline-icons/react/two-tone'; <Button variant="secondary"><Key className="w-3.5 h-3.5" />Save key</Button>`,
+      errors: [{ messageId: 'iconChild' }],
+    },
+    // A renamed import and a trailing chevron are the same mistake.
+    {
+      code: `import { ChevronDown as Caret } from '@keyline-icons/react/fill'; <Button>Current<Caret /></Button>`,
+      errors: [{ messageId: 'iconChild' }],
+    },
   ],
 })
 
@@ -214,6 +238,74 @@ tester.run('no-silent-prop-drop', plugin.rules['no-silent-prop-drop'], {
   ],
 })
 
+// The three shapes src/i18n/hardcoded-labels.test.ts refused, now a rule. The
+// file scope it had (no tests, no src/dev, no test/ directories) is the
+// `files`/`ignores` of its block in eslint.config.js.
+tester.run('translated-aria-label', plugin.rules['translated-aria-label'], {
+  valid: [
+    `<X aria-label={t('common.close')} />`,
+    `<X aria-label={label ?? t('common.close')} />`,
+    `<X aria-label={label || t('common.close')} />`,
+    `<X aria-label="关闭" />`,
+    `<X aria-label={'关闭'} />`,
+    // Template holes are code, not text.
+    '<X aria-label={`${row.name}: ${cost}`} />',
+    `<X aria-label={props['aria-label']} />`,
+    // A comment showing usage is not a label.
+    `/** <X aria-label="Close" /> */ const a = 1`,
+    `// <X aria-label="Close" />\nconst a = 1`,
+    `function A({ 'aria-label': a = t('common.close') }) {}`,
+    `function A({ 'aria-label': a }) {}`,
+    // A vendored registry default is the registry's string; its callers are
+    // what has to pass the prop.
+    {
+      code: `function A({ 'aria-label': a = 'Pagination' }) {}`,
+      options: [{ allowPropDefaults: true }],
+    },
+  ],
+  invalid: [
+    { code: `<X aria-label="Close" />`, errors: [{ messageId: 'literal' }] },
+    { code: `<X aria-label={'Close'} />`, errors: [{ messageId: 'literal' }] },
+    { code: '<X aria-label={`Close ${name}`} />', errors: [{ messageId: 'literal' }] },
+    {
+      code: `<X aria-label={props['aria-label'] ?? 'Queued prompts'} />`,
+      errors: [{ messageId: 'fallback' }],
+    },
+    { code: `<X aria-label={label || 'Queued'} />`, errors: [{ messageId: 'fallback' }] },
+    { code: `function A({ 'aria-label': a = 'Close' }) {}`, errors: [{ messageId: 'propDefault' }] },
+    // The exemption covers defaults only: a vendored file's literal is still one.
+    {
+      code: `function A() { return <X aria-label="Close" /> }`,
+      options: [{ allowPropDefaults: true }],
+      errors: [{ messageId: 'literal' }],
+    },
+  ],
+})
+
+// Where it runs is half of the rule: the old test scanned app .tsx only, and
+// let vendored registry files keep their English prop defaults.
+describe('translated-aria-label scope', () => {
+  const eslint = new ESLint()
+  const setting = async (file) =>
+    (await eslint.calculateConfigForFile(file))?.rules?.['meridian-ui/translated-aria-label']
+
+  it('runs on app code with defaults refused', async () => {
+    const rule = await setting('src/components/chat/x.tsx')
+    assert.equal(rule?.[0], 2)
+    assert.notEqual(rule?.[1]?.allowPropDefaults, true)
+  })
+  it('lets vendored registry files keep their prop defaults', async () => {
+    const rule = await setting('src/components/base/pagination/pagination.tsx')
+    assert.equal(rule?.[0], 2)
+    assert.equal(rule?.[1]?.allowPropDefaults, true)
+  })
+  it('skips the dev playground, test directories and test files', async () => {
+    assert.equal(await setting('src/dev/responsive-lab.tsx'), undefined)
+    assert.equal(await setting('src/test/x.tsx'), undefined)
+    assert.equal(await setting('src/components/chat/x.test.tsx'), undefined)
+  })
+})
+
 describe('ui selector restrictions', () => {
   const flagged = [
     ['text-white', `<p className="text-white" />`, /palette/],
@@ -254,6 +346,14 @@ describe('ui selector restrictions', () => {
     ['Button onClick', `<Button onClick={go} />`, /onPress/],
     ['Button disabled', `<Button disabled={busy} />`, /isDisabled/],
     ['Spinner className size', `<Spinner className="w-3.5 h-3.5" />`, /size prop/],
+    // The pending sticker's remove button, as it shipped.
+    [
+      'touch-hitbox beside absolute',
+      `<Button className="touch-hitbox absolute -right-2 -top-2 size-6" />`,
+      /touch-hitbox/,
+    ],
+    ['position before touch-hitbox', `<Button className={cx('fixed touch-hitbox', x)} />`, /touch-hitbox/],
+    ['variant position beside touch-hitbox', `<Button className="sm:sticky touch-hitbox" />`, /touch-hitbox/],
     ['template className', '<div className={`${base} rounded-xl`} />', /cx\(/],
     ['t().replace', `const s = t('toolbar.noAssistant').replace(/^No /, 'Select ')`, /translation/],
     ['glyph icon', `<Button aria-label="Cancel">✕</Button>`, /icon/],
@@ -297,6 +397,12 @@ describe('ui selector restrictions', () => {
     ['onPress', `<Button onPress={go} isDisabled={busy} />`],
     ['boardui text-white token', `<span className="bg-button-primary text-text-white" />`],
     ['Spinner size prop', `<Spinner size="sm" className="shrink-0" />`],
+    [
+      'touch-hitbox with its placement on a wrapper',
+      `<span className="absolute -right-2 -top-2 flex"><Button className="touch-hitbox size-6" /></span>`,
+    ],
+    ['touch-hitbox beside relative', `<Button className="touch-hitbox relative" />`],
+    ['absolute-looking token', `<i className="touch-hitbox inset-x-absolute-ish" />`],
     ['cx()', `<div className={cx('a', b)} />`],
     ['plain replace', `const s = value.replace(/a/, 'b')`],
     ['ellipsis in text', `<p>Loading…</p>`],
@@ -359,7 +465,8 @@ tester.run('no-default-on-load-failure', plugin.rules['no-default-on-load-failur
 tester.run('no-parse-or-default', plugin.rules['no-parse-or-default'], {
   valid: [
     `function read(text) { const n = Number.parseInt(text, 10); if (!Number.isFinite(n)) return setFieldError('w'); return n }`,
-    // `??` is not refused: it does not eat 0 or NaN (see the rule's header).
+    // `??` is not this rule's: it does not eat 0 or NaN (see the rule's header).
+    // `no-invented-domain-default` refuses this one for its name.
     `const window = info.context_window ?? 128000`,
     // `||` with a non-number fallback is some other question.
     `const label = Number(x) || fallbackLabel`,
@@ -370,5 +477,48 @@ tester.run('no-parse-or-default', plugin.rules['no-parse-or-default'], {
     { code: `save({ maxTokens: Number(maxTokens) || 4096 })`, errors: [{ messageId: 'parseOrDefault' }] },
     { code: `const ttl = Number.parseInt(text, 10) || 60`, errors: [{ messageId: 'parseOrDefault' }] },
     { code: `const t = parseFloat(v) || -1`, errors: [{ messageId: 'parseOrDefault' }] },
+  ],
+})
+
+// Recurrence gate: an absent fact about a model (its window, a price, a limit)
+// replaced with a number nobody configured. Invalid cases are the shapes that
+// shipped or that the vocabulary exists for; valid ones are the fixes and the
+// neutral identities the rule must leave alone.
+tester.run('no-invented-domain-default', plugin.rules['no-invented-domain-default'], {
+  valid: [
+    // The fix: unknown stays null and is drawn as unknown.
+    `const limit = info.context_limit ?? null`,
+    `const reading = state.status === 'ready' ? state.reading : undefined`,
+    // A sum over zero rows and a collection's cardinality are honest zeros.
+    `input = (input ?? 0) + m.input_tokens`,
+    `const n = caps?.server_tools?.length ?? 0`,
+    `const dirty = (sources.get(tab)?.size ?? 0) > 0`,
+    // Not domain vocabulary: counts, layout, labels.
+    `const count = profile?.model_count ?? 0`,
+    `function Icon({ size = 16 }) { return size }`,
+    `const label = item.label ?? 'Untitled'`,
+    `const caret = CARETS[placement] ?? CARETS.top`,
+    // A call is not an asserted value.
+    `const max = maxOutput ?? computeReserve()`,
+  ],
+  invalid: [
+    // use-context-info.ts: the context ring drawn against 128k nobody chose.
+    {
+      code: `const limit = assistant?.context_limit ?? 128000`,
+      errors: [{ messageId: 'invented' }],
+    },
+    // capabilities.ts: an unknown output ceiling reserved as zero.
+    { code: `const reserve = Math.min(maxOutput ?? 0, 32000)`, errors: [{ messageId: 'invented' }] },
+    { code: `send({ max_tokens: params.max_tokens || 4096 })`, errors: [{ messageId: 'invented' }] },
+    { code: `const ms = config.timeoutMs ?? DEFAULT_TIMEOUT`, errors: [{ messageId: 'invented' }] },
+    { code: `const w = profile.contextWindow ?? LIMITS.window`, errors: [{ messageId: 'invented' }] },
+    { code: `const p = row['input_price'] ?? 0`, errors: [{ messageId: 'invented' }] },
+    { code: `const size = file.sizeBytes ?? 0`, errors: [{ messageId: 'invented' }] },
+    // A chain still names what it defaults.
+    { code: `const w = a.context_window ?? b.window ?? 200_000`, errors: [{ messageId: 'invented' }] },
+    { code: `settings.thresholdTokens ??= 150000`, errors: [{ messageId: 'invented' }] },
+    // Parameter and destructuring defaults.
+    { code: `function budgetFor(budget = 8000) { return budget }`, errors: [{ messageId: 'invented' }] },
+    { code: `const { maxTokens = 4096 } = params`, errors: [{ messageId: 'invented' }] },
   ],
 })

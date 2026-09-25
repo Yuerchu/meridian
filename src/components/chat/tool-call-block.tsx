@@ -63,6 +63,8 @@ import {
   type ChatToolState,
 } from '@/components/ui/chat-tool'
 import { BubbleBlockButton } from '@/components/ui/bubble-block'
+import { ErrorAlert } from '@/components/ui/error-alert'
+import { errorMessage } from '@/lib/error-message'
 import { usePanelExpansion } from '@/hooks/use-panel-expansion'
 import { useEditLocation } from '@/hooks/use-edit-location'
 import { agentFileDiffs } from '@/lib/tool-diffs'
@@ -82,7 +84,7 @@ import { CopyButton, MarkdownContent } from './markdown-content'
 import { useConversationStore } from '@/stores/conversation-store'
 import { planReviewStatusOfTool } from '@/lib/plan-review-status'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
-import type { AutoReviewVerdictInfoResponse, ToolCallDisplay } from '@/types'
+import type { ApprovalEscalation, ApprovalRetryKind, AutoReviewVerdictInfoResponse, ToolCallDisplay } from '@/types'
 
 /**
  * A field inside a card or a bubble block. A card is `background-primary`,
@@ -283,11 +285,11 @@ function QuestionBlock({
           {q.question}
         </span>
         <Button
+          leadingIcon={ArrowUTurnLeft}
           variant="secondary"
           onPress={() => onUnskip(q.id)}
           className="text-caption-1-regular text-text-secondary shrink-0 ml-2"
         >
-          <ArrowUTurnLeft className="w-3.5 h-3.5" />
           {t('chat.tool.undo')}
         </Button>
       </div>
@@ -314,11 +316,11 @@ function QuestionBlock({
         </div>
         {!q.required && (
           <Button
+            leadingIcon={SkipForward}
             variant="secondary"
             onPress={() => onSkip(q.id)}
             className="text-caption-1-regular text-text-secondary shrink-0 mt-0.5"
           >
-            <SkipForward className="w-3.5 h-3.5" />
             {t('chat.tool.skipQuestion')}
           </Button>
         )}
@@ -422,6 +424,9 @@ function QuestionBlock({
   )
 }
 
+/** The inset of a section inside a bubble's panel: ChatToolPanelHeader's and ChatToolPanelFooter's px-3. */
+const BUBBLE_PANEL_SECTION = 'px-3 py-2.5'
+
 export function AskUserBlock({
   data,
   onAnswered,
@@ -436,7 +441,11 @@ export function AskUserBlock({
 }) {
   const { t } = useTranslation()
   const presentation = useContext(ChatToolPresentationContext)
-  const expansion = usePanelExpansion(`${data.call_id}:ask`, false, data.status === 'pending')
+  const expansion = usePanelExpansion(
+    `${data.call_id}:ask`,
+    data.answer_error !== undefined,
+    data.status === 'pending' || data.answer_error !== undefined,
+  )
   const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>({})
   const [skippedSet, setSkippedSet] = useState<Set<string>>(new Set())
   const [sending, setSending] = useState(false)
@@ -535,10 +544,11 @@ export function AskUserBlock({
           onAnswered?.()
         },
         // Nobody is listening any more: say so instead of leaving a form that
-        // silently discards what the user typed.
-        () => {
+        // silently discards what the user typed — and say what the backend
+        // said, which is the only account of why.
+        (err: unknown) => {
           setSending(false)
-          markOrphaned(approvalId)
+          markOrphaned(approvalId, errorMessage(err))
         },
       )
     },
@@ -552,7 +562,11 @@ export function AskUserBlock({
   // entry, so every other answer is lost without a word.
   const unanswered = questions.filter((q) => q.required && !hasRequiredAnswer(q, answers[q.id]))
   const inCard = !chromeless && presentation === 'card'
-  const section = inCard ? 'px-4 py-3' : ''
+  // In a bubble the panel is the lower half of the block and carries no
+  // padding of its own — each section brings its inset, as ChatToolPanelHeader
+  // and ChatToolPanelFooter do. Left empty, the form sat flush against the
+  // block's edge. Chromeless is inside somebody else's padding already.
+  const section = chromeless ? '' : inCard ? 'px-4 py-3' : BUBBLE_PANEL_SECTION
   const body = (
     <>
       {data.status === 'pending' && (
@@ -582,8 +596,7 @@ export function AskUserBlock({
             </p>
           )}
           <div data-slot="ask-user-actions" className="flex items-center gap-2 pt-1">
-            <Button type="submit" isPending={sending}>
-              <Send className="w-3.5 h-3.5" />
+            <Button leadingIcon={Send} type="submit" isPending={sending}>
               {t('chat.tool.askUserSubmit')}
             </Button>
             {/* A disabled button with no reason beside it reads as broken. Only
@@ -607,7 +620,7 @@ export function AskUserBlock({
           whatever did become of it is said here instead. */}
       {data.status !== 'pending' && data.status !== 'completed' && (
         <div data-slot="ask-user-outcome" className={section}>
-          <CardOutcome status={data.status} />
+          <CardOutcome status={data.status} reason={data.answer_error} />
         </div>
       )}
 
@@ -1237,13 +1250,25 @@ function commandChips(t: TFunction, output: CommandOutput): React.ReactNode[] {
   return chips
 }
 
+/** What a card says when it asks to run a call outside the sandbox. The two
+ *  kinds are different situations and must not share words: a denial ran the
+ *  command inside the sandbox, an unreadable setting ran nothing anywhere. */
+export function escalationPromptKey(kind: ApprovalRetryKind) {
+  return kind === 'settings_unreadable' ? 'chat.tool.settingsUnreadablePrompt' : 'chat.tool.sandboxRetryPrompt'
+}
+
+export function escalationAllowKey(kind: ApprovalRetryKind) {
+  return kind === 'settings_unreadable' ? 'chat.tool.runOutsideSandbox' : 'chat.tool.retryWithoutSandbox'
+}
+
 export function PendingApproval({
   approvalId,
-  retryReason,
+  retry,
   onAnswered,
 }: {
   approvalId: string
-  retryReason?: string
+  /** Set when this asks to run an already-asked call outside the sandbox. */
+  retry?: ApprovalEscalation
   /** Called once an answer is accepted. Ordinary approvals need nothing here —
    *  the tool result that follows retires the card — but a delegated run's
    *  result is emitted on its own conversation, which the card's session
@@ -1258,7 +1283,7 @@ export function PendingApproval({
   const [feedback, setFeedback] = useState('')
   const markOrphaned = useConversationStore((s) => s.markApprovalOrphaned)
   const retireAnswered = useConversationStore((s) => s.retireAnsweredApproval)
-  const isEscalation = retryReason !== undefined
+  const isEscalation = retry !== undefined
 
   // The refuse shortcut cannot refuse on its own — a reason may be typed — so
   // it asks; this is the answer, and taking it up clears the ask.
@@ -1284,9 +1309,9 @@ export function PendingApproval({
         retireAnswered(approvalId)
         onAnswered?.()
       },
-      () => {
+      (err: unknown) => {
         setUi(previous)
-        markOrphaned(approvalId)
+        markOrphaned(approvalId, errorMessage(err))
       },
     )
   }
@@ -1311,7 +1336,16 @@ export function PendingApproval({
             className="flex items-start gap-1.5 px-0.5 text-caption-1-regular text-text-secondary"
           >
             <TriangleAlert className="w-3.5 h-3.5 text-status-warning-soft-foreground shrink-0" />
-            <span data-slot="approval-escalation-text">{t('chat.tool.sandboxRetryPrompt')}</span>
+            <span data-slot="approval-escalation-text">
+              {t(escalationPromptKey(retry.kind))}
+              {/* What went wrong, verbatim: the card is asking the user to
+                  decide without the setting, and this is why it has to. */}
+              {retry.kind === 'settings_unreadable' && (
+                <span data-slot="approval-escalation-error" className="mt-0.5 block break-all font-mono">
+                  {retry.reason}
+                </span>
+              )}
+            </span>
           </div>
         )}
         <ChatToolApproval>
@@ -1319,18 +1353,22 @@ export function PendingApproval({
               accessible name leaves out: `aria-keyshortcuts` is what a screen
               reader announces, and `aria-hidden` keeps the hint from being read
               as part of the button's name. */}
-          <Button variant="danger" aria-keyshortcuts={ariaHotkey(DENY_HOTKEY)} onPress={() => setUi('feedback')}>
-            <X className="w-3.5 h-3.5" />
+          <Button
+            leadingIcon={X}
+            variant="danger"
+            aria-keyshortcuts={ariaHotkey(DENY_HOTKEY)}
+            onPress={() => setUi('feedback')}
+          >
             <span data-slot="approval-deny-label">{t('chat.tool.deny')}</span>
             <HotkeyHint combo={DENY_HOTKEY} />
           </Button>
           <Button
+            leadingIcon={Check}
             aria-keyshortcuts={ariaHotkey(APPROVE_HOTKEY)}
             onPress={() => decide(() => api.approveToolCall(approvalId))}
           >
-            <Check className="w-3.5 h-3.5" />
             <span data-slot="approval-allow-label">
-              {isEscalation ? t('chat.tool.retryWithoutSandbox') : t('chat.tool.allow')}
+              {retry ? t(escalationAllowKey(retry.kind)) : t('chat.tool.allow')}
             </span>
             <HotkeyHint combo={APPROVE_HOTKEY} />
           </Button>
@@ -1363,8 +1401,7 @@ export function PendingApproval({
         <Button variant="secondary" onPress={() => setUi('idle')}>
           {t('chat.tool.cancel')}
         </Button>
-        <Button variant="danger" onPress={deny}>
-          <X className="w-3.5 h-3.5" />
+        <Button leadingIcon={X} variant="danger" onPress={deny}>
           {feedback.trim() ? t('chat.tool.denyWithReason') : t('chat.tool.deny')}
         </Button>
       </ChatToolApproval>
@@ -1406,7 +1443,11 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
   const presentation = useContext(ChatToolPresentationContext)
   const settled =
     data.status === 'completed' || data.status === 'denied' || data.status === 'error' || data.status === 'orphaned'
-  const expansion = usePanelExpansion(data.call_id, !settled, data.status === 'pending')
+  const expansion = usePanelExpansion(
+    data.call_id,
+    !settled || data.answer_error !== undefined,
+    data.status === 'pending' || data.answer_error !== undefined,
+  )
 
   // One key whatever the state, so the row of keys under a bubble does not
   // change shape as a search goes from asked to running to answered. The card
@@ -1438,9 +1479,9 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
         </ChatToolTrigger>
         <ChatToolContent>
           {data.status === 'pending' && data.approval_id && (
-            <PendingApproval key={data.approval_id} approvalId={data.approval_id} retryReason={data.retry_reason} />
+            <PendingApproval key={data.approval_id} approvalId={data.approval_id} retry={data.retry} />
           )}
-          {data.status === 'orphaned' && <OrphanedNotice />}
+          {data.status === 'orphaned' && <OrphanedNotice reason={data.answer_error} />}
           {!settled && data.status !== 'pending' && (
             <div data-slot="web-search-searching" className="flex items-center gap-2 text-text-secondary">
               <Spinner size="sm" color="current" />
@@ -1521,7 +1562,7 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
               // reopened and the component is rebuilt from scratch.
               key={data.approval_id}
               approvalId={data.approval_id}
-              retryReason={data.retry_reason}
+              retry={data.retry}
             />
           )}
         </ChatToolContent>
@@ -1546,7 +1587,7 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
           )}
         </ChatToolTrigger>
         <ChatToolContent>
-          <OrphanedNotice />
+          <OrphanedNotice reason={data.answer_error} />
         </ChatToolContent>
       </ChatTool>
     )
@@ -1668,19 +1709,23 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
   const decide = useCallback(
     (send: () => Promise<void>) => {
       setSent(true)
-      send().catch(() => {
+      send().catch((err: unknown) => {
         // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- rolls back an optimistic "sent" flag, not loaded data
         setSent(false)
-        if (approvalId) markOrphaned(approvalId)
+        if (approvalId) markOrphaned(approvalId, errorMessage(err))
       })
     },
     [approvalId, markOrphaned],
   )
 
   const presentation = useContext(ChatToolPresentationContext)
-  const expansion = usePanelExpansion(data.call_id, false, data.status === 'pending')
+  const expansion = usePanelExpansion(
+    data.call_id,
+    data.answer_error !== undefined,
+    data.status === 'pending' || data.answer_error !== undefined,
+  )
   const inCard = presentation === 'card'
-  const section = inCard ? 'px-4 py-3' : ''
+  const section = inCard ? 'px-4 py-3' : BUBBLE_PANEL_SECTION
   const divider = inCard ? 'border-t border-separator-border' : ''
 
   const body = (
@@ -1692,12 +1737,14 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
       {data.status === 'pending' && approvalId && !sent && (
         <div data-slot="enter-plan-actions" className={cx(divider, section)}>
           <ChatToolApproval>
-            <Button variant="secondary" onPress={() => decide(() => api.denyToolCall({ approvalId, reason: null }))}>
-              <X className="w-3.5 h-3.5" />
+            <Button
+              leadingIcon={X}
+              variant="secondary"
+              onPress={() => decide(() => api.denyToolCall({ approvalId, reason: null }))}
+            >
               {t('chat.plan.keepBuilding')}
             </Button>
-            <Button onPress={() => decide(() => api.approveToolCall(approvalId))}>
-              <Compass className="w-3.5 h-3.5" />
+            <Button leadingIcon={Compass} onPress={() => decide(() => api.approveToolCall(approvalId))}>
               {t('chat.plan.startPlanning')}
             </Button>
           </ChatToolApproval>
@@ -1716,7 +1763,7 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
 
       {data.status !== 'pending' && data.status !== 'completed' && (
         <div data-slot="enter-plan-outcome" className={cx(divider, section)}>
-          <CardOutcome status={data.status} detail={data.result} />
+          <CardOutcome status={data.status} detail={data.result} reason={data.answer_error} />
         </div>
       )}
     </>
@@ -1785,9 +1832,9 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
   const decide = useCallback(
     (send: () => Promise<void>) => {
       setUi('sent')
-      send().catch(() => {
+      send().catch((err: unknown) => {
         setUi('idle')
-        if (approvalId) markOrphaned(approvalId)
+        if (approvalId) markOrphaned(approvalId, errorMessage(err))
       })
     },
     [approvalId, markOrphaned],
@@ -1798,7 +1845,11 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
   }, [decide, approvalId, feedback])
 
   const presentation = useContext(ChatToolPresentationContext)
-  const expansion = usePanelExpansion(data.call_id, false, data.status === 'pending')
+  const expansion = usePanelExpansion(
+    data.call_id,
+    data.answer_error !== undefined,
+    data.status === 'pending' || data.answer_error !== undefined,
+  )
   const inCard = presentation === 'card'
   const section = inCard ? 'px-4 py-3' : ''
   const divider = inCard ? 'border-t border-separator-border' : ''
@@ -1833,20 +1884,17 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
                 <Button variant="secondary" onPress={() => setUi('idle')}>
                   {t('chat.tool.cancel')}
                 </Button>
-                <Button variant="secondary" onPress={sendBack}>
-                  <ArrowUTurnLeft className="w-3.5 h-3.5" />
+                <Button leadingIcon={ArrowUTurnLeft} variant="secondary" onPress={sendBack}>
                   {t('chat.plan.sendBack')}
                 </Button>
               </ChatToolApproval>
             </div>
           ) : (
             <ChatToolApproval>
-              <Button variant="secondary" onPress={() => setUi('feedback')}>
-                <ArrowUTurnLeft className="w-3.5 h-3.5" />
+              <Button leadingIcon={ArrowUTurnLeft} variant="secondary" onPress={() => setUi('feedback')}>
                 {t('chat.plan.revise')}
               </Button>
-              <Button onPress={() => decide(() => api.approveToolCall(approvalId))}>
-                <Check className="w-3.5 h-3.5" />
+              <Button leadingIcon={Check} onPress={() => decide(() => api.approveToolCall(approvalId))}>
                 {t('chat.plan.approve')}
               </Button>
             </ChatToolApproval>
@@ -1866,7 +1914,7 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
 
       {data.status !== 'pending' && data.status !== 'completed' && (
         <div data-slot="exit-plan-outcome" className={cx(divider, section)}>
-          <CardOutcome status={data.status} detail={data.result} />
+          <CardOutcome status={data.status} detail={data.result} reason={data.answer_error} />
         </div>
       )}
     </>
@@ -2257,9 +2305,16 @@ function HotkeyHint({ combo }: { combo: string }) {
 }
 
 /** The turn that asked this is gone, so there is no longer anything to answer.
- *  Shown in place of the buttons, which would have nothing to address. */
-function OrphanedNotice() {
+ *  Shown in place of the buttons, which would have nothing to address.
+ *
+ *  With a `reason` it was the answer that failed, and the backend's words for
+ *  why are the whole point — the line alone said "nothing is waiting" about a
+ *  refusal that may have been anything. */
+function OrphanedNotice({ reason }: { reason?: string }) {
   const { t } = useTranslation()
+  if (reason) {
+    return <ErrorAlert data-slot="orphaned-notice" title={t('chat.tool.answerFailed')} message={reason} />
+  }
   return (
     <div
       data-slot="orphaned-notice"
@@ -2374,9 +2429,12 @@ function CardOutcome({
   status,
   detail,
   sentence,
+  reason,
 }: {
   status: ToolCallDisplay['status']
   detail?: string
+  /** Why sending the answer failed, when it did. */
+  reason?: string
   /** A finished call's one-line confirmation, in the tool's own words. */
   sentence?: string
 }) {
@@ -2409,7 +2467,7 @@ function CardOutcome({
         ? notice(<CircleCheck className="w-3.5 h-3.5 shrink-0 text-status-success-soft-foreground" />, sentence)
         : null
     case 'orphaned':
-      return <OrphanedNotice />
+      return <OrphanedNotice reason={reason} />
     case 'denied':
       return notice(<Ban className="w-3.5 h-3.5 shrink-0" />, t('chat.tool.wasDenied'), true)
     case 'error':
@@ -2496,8 +2554,14 @@ export function ToolCallBlock({
   // Open while it works or waits, shut once it has an outcome — unless the
   // reader said otherwise. Called before the specialised cards return, because
   // hooks are; the ones that draw their own chrome keep an expansion of their
-  // own and ignore this one.
-  const expansion = usePanelExpansion(data.call_id, !isCompleted, data.status === 'pending')
+  // own and ignore this one. An answer that was refused opens it too: the
+  // reason is in the footer, and a shut panel is a reason nobody reads.
+  const answerFailed = data.answer_error !== undefined
+  const expansion = usePanelExpansion(
+    data.call_id,
+    !isCompleted || answerFailed,
+    data.status === 'pending' || answerFailed,
+  )
   const presentation = useContext(ChatToolPresentationContext)
 
   // Where an edit lands. Asked here, ahead of the early returns, because it is
@@ -2742,11 +2806,10 @@ export function ToolCallBlock({
                 unreadable there *are* buttons under this, and what it says is
                 why the user is being asked at all. */}
             {data.auto_review && <AutoReviewNotice verdict={data.auto_review} />}
-            {pendingRow && (
-              <PendingApproval key={data.approval_id} approvalId={data.approval_id!} retryReason={data.retry_reason} />
-            )}
+            {pendingRow && <PendingApproval key={data.approval_id} approvalId={data.approval_id!} retry={data.retry} />}
             <CardOutcome
               status={data.status}
+              reason={data.answer_error}
               detail={data.status === 'denied' ? data.result : undefined}
               sentence={sentence ?? undefined}
             />

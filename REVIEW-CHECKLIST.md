@@ -11,7 +11,9 @@ enforces (palette colours, HeroUI token names, Tailwind type sizes and bare
 weights, icon-only controls without a name, native `label`/`kbd`/`input`,
 `onClick`/`disabled` on Button, a base prop dropped as `_x`, an `animate-*`
 with no keyframes, alpha status fills, a Button `variant` switched by a
-condition to show selection, a `bg-background-*` fill on a text field).
+condition to show selection, a `bg-background-*` fill on a text field, an
+English `aria-label` literal, fallback or prop default, `touch-hitbox` on an
+element that also carries a position utility).
 
 ## Frontend (`src/**/*.tsx`)
 
@@ -96,6 +98,14 @@ those rules no selector can see, plus this app's own architecture.
   stored settings because nothing set a loaded/error flag (auto-review and
   general settings, 2026-09), or an uncaught `Promise.all` that leaves the
   page looking like a new, empty form (model page).
+- **major** An unknown fact about a model, provider or limit (a window, an
+  output ceiling, a price, a timeout, a size) given a value in a shape the
+  lint cannot see. `no-invented-domain-default` sees `??` / `||` / default
+  parameters on names in its vocabulary; judged here: a literal in initial
+  state or an object (`useState(128000)`, `{ contextLimit: 128000 }`), a
+  ternary (`x == null ? 4096 : x`), a value derived from an unknown input
+  (a threshold computed with the output ceiling read as 0), and an unknown
+  drawn as `0` or as nothing rather than as unknown with its own i18n text.
 - A first-load placeholder narrower or shorter than what replaces it, or a
   skeleton drawn on refresh rather than first load.
 
@@ -108,6 +118,13 @@ those rules no selector can see, plus this app's own architecture.
   covers the naming but not a new command that skips the DTO).
 - **major** `f64` / `f32` / `REAL` / `parseFloat` near money.
 - **major** A cost computed anywhere but `agent::pricing`.
+- **major** A number standing in for an unknown fact where
+  `check-rust-invented-default` cannot see it: a field literal on an insert or
+  a seed (`context_limit: 128000` outranks every model's own window), a
+  migration `DEFAULT`, a `match … { None => 4096 }`, or an `unwrap_or` on a name
+  outside its vocabulary. Unknown is `None`, refused with `ok_or_else(…)?` or
+  carried to where it is shown as unknown; a `// domain-default:` annotation
+  needs a reason that is about this app's own policy, not about a model.
 - **major** A log line carrying a message body, prompt or tool output.
 - `debug!` where `info!` was used for something that is not a user-visible
   state change or a failure.

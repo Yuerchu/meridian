@@ -41,7 +41,7 @@ function call(
     toolName,
     arguments: typeof args === 'string' ? args : JSON.stringify(args),
     kind,
-    askedAt: null,
+    askedAt: 1_700_000_000_000,
   }
 }
 
@@ -185,7 +185,9 @@ describe('approval notifications', () => {
     render(<ApprovalNotifications onSelect={async () => true} />)
     await userEvent.click(within(card('a')).getByRole('button', { name: i18n.t('chat.tool.deny') }))
     expect(mocks.deny).toHaveBeenCalledWith({ approvalId: 'a', reason: null })
-    await waitFor(() => expect(markApprovalOrphaned).toHaveBeenCalledWith('a'))
+    // With the backend's reason, which the card then shows: the notification
+    // that was pressed is already gone, so the card is the only place left.
+    await waitFor(() => expect(markApprovalOrphaned).toHaveBeenCalledWith('a', 'turn gone'))
   })
 
   it('opens the conversation and defers the question when viewed', async () => {
@@ -312,6 +314,31 @@ describe('under a modal overlay', () => {
   })
 })
 
+describe('beside the inbox', () => {
+  /** The inbox lists every row the stack draws, so while it is open the stack
+   *  is the same questions a second time beside it. */
+  it('is not drawn while the inbox is open, and comes back when it closes', async () => {
+    function Shell() {
+      const [open, setOpen] = useState(false)
+      return (
+        <>
+          <NotificationInbox onSelect={async () => true} transcriptInert={false} isOpen={open} onOpenChange={setOpen} />
+          <ApprovalNotifications onSelect={async () => true} inboxOpen={open} />
+        </>
+      )
+    }
+    seed([approval('a', 'c1')])
+    render(<Shell />)
+    const region = () => document.querySelector<HTMLElement>('[data-slot="approval-notifications"]')!
+    expect(region()).not.toHaveClass('hidden')
+    const bell = screen.getAllByRole('button').find((b) => b.getAttribute('aria-haspopup') === 'dialog')!
+    await userEvent.click(bell)
+    await waitFor(() => expect(region()).toHaveClass('hidden'))
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => expect(region()).not.toHaveClass('hidden'))
+  })
+})
+
 describe('which calls may be decided from a row', () => {
   const allow = () => i18n.t('chat.tool.allow')
   const deny = () => i18n.t('chat.tool.deny')
@@ -413,7 +440,10 @@ describe('which calls may be decided from a row', () => {
     /** A read that already ran into the sandbox and is asking to run outside it. */
     it('a read-only tool retried outside the sandbox', () => {
       expectViewOnly(
-        { ...call('re', 'c1', 'read_file', { path: 'src/a.ts' }), retryReason: 'Access is denied.' },
+        {
+          ...call('re', 'c1', 'read_file', { path: 'src/a.ts' }),
+          retry: { kind: 'sandbox_denied', reason: 'Access is denied.' },
+        },
         'risky',
       )
     })

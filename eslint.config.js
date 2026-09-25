@@ -100,6 +100,15 @@ const styleRestrictions = [
     message:
       'h-auto on a Button is the signature of a Button standing in for something else — a list row (ListBox / Menu / SettingsRow), a chip (Chip / ToggleButtonGroup) or plain text (Link). Use that component; a genuinely multi-line button disables this line with a reason.',
   },
+  // `touch-hitbox` makes its element `position: relative` on a coarse pointer
+  // (the box its `::after` expands from). A position utility on the same
+  // element is one class against one class in one layer, so emission order
+  // alone decides which wins — and if `relative` does, an absolutely placed
+  // control drops into flow on exactly the devices the hitbox is for.
+  ...forbiddenClass(
+    '(?=.*(?<![\\w-])touch-hitbox(?![\\w-]))(?=.*(?<![\\w-])(?:absolute|fixed|sticky|static)(?![\\w-]))',
+    'touch-hitbox sets position: relative on a coarse pointer, so a position utility on the same element fights it by emission order. Put absolute/fixed/sticky on a wrapper and keep touch-hitbox on the control.',
+  ),
   {
     selector:
       "JSXOpeningElement[name.name='Spinner'] > JSXAttribute[name.name='className'] Literal[value=/\\b(?:size|w|h)-[0-9]/]",
@@ -248,6 +257,7 @@ export default tseslint.config(
     ignores: ['src/components/foundations/**', ...VENDORED],
     rules: {
       'meridian-ui/icon-only-needs-name': 'error',
+      'meridian-ui/button-icon-through-prop': 'error',
       // Recurrence gates (surface-contrast.test.ts is the other half): a field
       // keeps the registry fill, and a Button variant is not a selected state.
       'meridian-ui/field-fill-follows-surface': 'error',
@@ -275,7 +285,9 @@ export default tseslint.config(
     },
   },
   // Recurrence gate: a failed read, or an unparseable input, must not become
-  // a default the save path writes back (four settings pages, 2026-09).
+  // a default the save path writes back (four settings pages, 2026-09); and an
+  // absent fact about a model (its window, a price, a limit) is not replaced by
+  // a constant (the context ring's `?? 128000`, 2026-09).
   // App code only: the registry's files are not where settings are loaded.
   {
     files: ['src/**/*.{ts,tsx}'],
@@ -283,8 +295,29 @@ export default tseslint.config(
     rules: {
       'meridian-ui/no-default-on-load-failure': 'error',
       'meridian-ui/no-parse-or-default': 'error',
+      'meridian-ui/no-invented-domain-default': 'error',
     },
   },
+  // Accessible names are in the app's language. App code outside the dev
+  // playground; vendored registry files keep their English prop defaults (the
+  // block after this one), and their callers are what has to pass the prop.
+  {
+    files: ['src/**/*.tsx'],
+    ignores: ['src/dev/**', '**/test/**'],
+    rules: {
+      'meridian-ui/translated-aria-label': 'error',
+    },
+  },
+  ...(VENDORED.length > 0
+    ? [
+        {
+          files: VENDORED.filter((file) => file.endsWith('.tsx')),
+          rules: {
+            'meridian-ui/translated-aria-label': ['error', { allowPropDefaults: true }],
+          },
+        },
+      ]
+    : []),
   // The base layer: a prop it accepts, it honours.
   {
     files: ['src/components/base/**/*.tsx'],

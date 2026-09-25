@@ -2090,7 +2090,7 @@ const RAW_TABLES: RawTable[] = [
     ],
     rules: [
       '存四个 token 价格列和一个服务商工具价格列，而不是一个 <code>cost</code>：单一总额<b>拆不回去</b>，而界面上的 input/output/cache/tool 分解必须可重建，公式变了还要能对历史重跑。',
-      '计价只有一处实现：<code>agent::pricing::compute_cost</code>。<code>db::ops::usage</code> 把几百万行归约成几十组再交给 <code>cost_of</code>，与停止事件里的 <code>cost_breakdown</code> 同一个函数。两套实现一定会在测试存在的那个 case 上打架。',
+      '计价只有一处实现：<code>agent::pricing::compute_cost</code>。<code>db::ops::usage</code> 把几百万行归约成几十组再交给 <code>cost_of</code>，它和实时计价的 <code>compute_cost</code> 共用同一套公式。两套实现一定会在测试存在的那个 case 上打架。',
       '总数请用 <code>UsageDimension::Total</code>，<b>不要把分解加起来</b>。',
       '<code>NULL</code> 才表示未配置；Decimal 字符串 <code>0</code> 表示明确免费。input / output 任一为 NULL 都是部分用量，进入 <code>unpriced_messages</code>；四个字段全 NULL 另记为完全不可用。已知的另一侧与 cache/tool 仍进入成本分解：仅有缺失部分时是下界；SQL 先按每条回复算 uncached input 再求和，不能让一条缺 input 但有 cache 的记录抵掉同组另一条的 input。若旧行借用了今天的同 provider/model 价格，则另记 <code>estimated_messages</code>，因为历史价格可能更高也可能更低，不能冒充下界。',
       '<code>idx_audit_conversation_turn(conversation_id, turn_id)</code>（迁移 44）让 conversation snapshot 的逐 turn 成本批量查询按会话 seek；查询必须保留直接的 <code>conversation_id = ?</code>，把它藏进可空筛选的 OR 会退化成全账本扫描。',
