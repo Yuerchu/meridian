@@ -14,7 +14,7 @@
     "typecheck": "tsc -b",
     "lint": "eslint src",
     "boardui:drift": "node scripts/boardui-drift.mjs",
-    "lint:rules": "node --test scripts/eslint-rules.test.mjs scripts/model-contract-rules.test.mjs scripts/check-rust-invented-default.test.mjs",
+    "lint:rules": "node --test scripts/eslint-rules.test.mjs scripts/model-contract-rules.test.mjs scripts/check-rust-invented-default.test.mjs scripts/fetch-fonts.test.mjs",
     "test": "vitest run --configLoader native --pool threads",
     "test:watch": "vitest --configLoader native --pool threads",
     "test:coverage": "vitest run --configLoader native --pool threads --coverage",

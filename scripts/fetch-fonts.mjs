@@ -174,25 +174,50 @@ function mismatch(what, expected, actual) {
   return new FontFetchError(`${what}: SHA-256 mismatch\n  expected ${expected}\n  actual   ${actual}`)
 }
 
-async function download(source, dest) {
+/** A failure that says nothing about the file: the connection or the server. */
+class TransientFetchError extends FontFetchError {}
+
+/**
+ * Downloads with up to two more attempts, a few seconds apart, when the failure
+ * is transient: a refused or dropped connection, a 5xx or a 429. MiSans comes
+ * from hyperos.mi.com, and a CI run whose font cache had just been invalidated
+ * lost its download there mid-stream once — a failed job about nothing in the
+ * change. A 404 or a hash mismatch is not retried: it is the file that is
+ * wrong, and asking again only delays saying so. After the last attempt the
+ * error stands, as before; nothing falls back to system fonts.
+ */
+export async function download(source, dest, { delays = [3000, 10000] } = {}) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await downloadOnce(source, dest)
+    } catch (err) {
+      if (!(err instanceof TransientFetchError) || attempt >= delays.length) throw err
+      console.warn(`fonts: ${err.message}; trying again in ${delays[attempt] / 1000}s`)
+      await new Promise((resolve) => setTimeout(resolve, delays[attempt]))
+    }
+  }
+}
+
+async function downloadOnce(source, dest) {
   const part = `${dest}.part`
   console.log(`fonts: downloading ${source.name} from ${source.url}`)
   let response
   try {
     response = await fetch(source.url)
   } catch (err) {
-    throw new FontFetchError(`${source.name}: download failed: ${err.cause?.message ?? err.message}`)
+    throw new TransientFetchError(`${source.name}: download failed: ${err.cause?.message ?? err.message}`)
   }
   if (!response.ok || !response.body) {
     await response.body?.cancel()
-    throw new FontFetchError(`${source.name}: download failed: HTTP ${response.status} ${response.statusText}`)
+    const Failure = response.status >= 500 || response.status === 429 ? TransientFetchError : FontFetchError
+    throw new Failure(`${source.name}: download failed: HTTP ${response.status} ${response.statusText}`)
   }
   const hash = createHash('sha256')
   try {
     await pipeline(Readable.fromWeb(response.body), hashing(hash), createWriteStream(part))
   } catch (err) {
     await rm(part, { force: true })
-    throw new FontFetchError(`${source.name}: download interrupted: ${err.message}`)
+    throw new TransientFetchError(`${source.name}: download interrupted: ${err.message}`)
   }
   const actual = hash.digest('hex')
   if (actual !== source.sha256) {
