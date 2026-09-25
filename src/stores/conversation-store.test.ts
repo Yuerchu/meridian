@@ -15,6 +15,10 @@ import type {
   TurnStatus,
 } from '@/types'
 
+/** When the backend registered a question. Fixed and far from `Date.now()`, so a
+ *  test can tell the backend's stamp from this client's clock. */
+const ASKED_AT = 1_700_000_000_000
+
 vi.mock('@tauri-apps/api/core')
 vi.mock('@/api', () => ({
   api: {
@@ -448,10 +452,10 @@ describe('hydrateBlocks', () => {
           conversation_id: 'c',
           assistant_message_id: 'a',
           provider_call_id: 'c1',
-          origin_call_id: null,
           tool_name: 'read_file',
           arguments: '{}',
-          retry_reason: null,
+          retry: null,
+          asked_at: ASKED_AT,
           bubbled: false,
           parent_call_id: null,
           sub_conversation_id: null,
@@ -549,10 +553,10 @@ describe('hydrateBlocks', () => {
           conversation_id: 'c',
           assistant_message_id: 'a',
           provider_call_id: 'c1',
-          origin_call_id: 'c1',
           tool_name: 'run_command',
           arguments: '{}',
-          retry_reason: 'sandbox denied',
+          retry: { kind: 'sandbox_denied', reason: 'sandbox denied', origin_call_id: 'c1' },
+          asked_at: ASKED_AT,
           bubbled: false,
           parent_call_id: null,
           sub_conversation_id: null,
@@ -561,7 +565,7 @@ describe('hydrateBlocks', () => {
     )
     expect(callBlocks(out, 'a')[0]).toMatchObject({
       status: 'pending',
-      retry_reason: 'sandbox denied',
+      retry: { kind: 'sandbox_denied', reason: 'sandbox denied' },
     })
   })
 
@@ -590,10 +594,10 @@ describe('hydrateBlocks', () => {
           conversation_id: 'c',
           assistant_message_id: 'a',
           provider_call_id: '0',
-          origin_call_id: null,
           tool_name: 'read_file',
           arguments: '{}',
-          retry_reason: null,
+          retry: null,
+          asked_at: ASKED_AT,
           bubbled: false,
           parent_call_id: null,
           sub_conversation_id: null,
@@ -603,10 +607,10 @@ describe('hydrateBlocks', () => {
           conversation_id: 'c',
           assistant_message_id: 'a',
           provider_call_id: '0',
-          origin_call_id: null,
           tool_name: 'read_file',
           arguments: '{}',
-          retry_reason: null,
+          retry: null,
+          asked_at: ASKED_AT,
           bubbled: false,
           parent_call_id: null,
           sub_conversation_id: null,
@@ -625,10 +629,10 @@ describe('hydrateBlocks', () => {
           conversation_id: 'c',
           assistant_message_id: 'a2',
           provider_call_id: 'c1',
-          origin_call_id: null,
           tool_name: 'read_file',
           arguments: '{}',
-          retry_reason: null,
+          retry: null,
+          asked_at: ASKED_AT,
           bubbled: false,
           parent_call_id: null,
           sub_conversation_id: null,
@@ -735,11 +739,11 @@ describe('live approval events', () => {
     store().handleToolCall(CONV, 'a1', '0', 'read_file', '{}')
     store().handleToolCall(CONV, 'a1', '0', 'read_file', '{}')
 
-    store().handleToolApproval(CONV, 'a1', 'appr-1', '0', 'read_file', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', '0', 'read_file', '{}', ASKED_AT)
     expect(cards().map((c) => c.status)).toEqual(['pending', 'running'])
     expect(cards().map((c) => c.approval_id)).toEqual(['appr-1', undefined])
 
-    store().handleToolApproval(CONV, 'a1', 'appr-2', '0', 'read_file', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-2', '0', 'read_file', '{}', ASKED_AT)
     expect(cards().map((c) => c.approval_id)).toEqual(['appr-1', 'appr-2'])
   })
 
@@ -758,8 +762,8 @@ describe('live approval events', () => {
   it('retires only the approval the answered card was holding', () => {
     store().handleToolCall(CONV, 'a1', '0', 'read_file', '{}')
     store().handleToolCall(CONV, 'a1', '0', 'read_file', '{}')
-    store().handleToolApproval(CONV, 'a1', 'appr-1', '0', 'read_file', '{}')
-    store().handleToolApproval(CONV, 'a1', 'appr-2', '0', 'read_file', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', '0', 'read_file', '{}', ASKED_AT)
+    store().handleToolApproval(CONV, 'a1', 'appr-2', '0', 'read_file', '{}', ASKED_AT)
 
     store().handleToolResult(CONV, 'a1', '0', 'done')
 
@@ -771,7 +775,7 @@ describe('live approval events', () => {
   // reach a receiver that has gone.
   it('settles the card when a question expires, rather than only the queue', () => {
     store().handleToolCall(CONV, 'a1', 'c1', 'run_command', '{}')
-    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}', ASKED_AT)
     expect(cards()[0]).toMatchObject({ status: 'pending', approval_id: 'appr-1' })
 
     store().handleApprovalExpired(CONV, 'appr-1')
@@ -790,8 +794,8 @@ describe('live approval events', () => {
   it('leaves the other outstanding questions alone', () => {
     store().handleToolCall(CONV, 'a1', 'c1', 'run_command', '{}')
     store().handleToolCall(CONV, 'a1', 'c2', 'read_file', '{}')
-    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}')
-    store().handleToolApproval(CONV, 'a1', 'appr-2', 'c2', 'read_file', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}', ASKED_AT)
+    store().handleToolApproval(CONV, 'a1', 'appr-2', 'c2', 'read_file', '{}', ASKED_AT)
 
     store().handleApprovalExpired(CONV, 'appr-1')
 
@@ -804,7 +808,7 @@ describe('live approval events', () => {
   // the ones that reach a deadline — so the retirement cannot sit behind a
   // session lookup.
   it('clears the queue for a conversation with no session', () => {
-    store().handleToolApproval('never-opened', 'x1', 'appr-9', 'c1', 'run_command', '{}')
+    store().handleToolApproval('never-opened', 'x1', 'appr-9', 'c1', 'run_command', '{}', ASKED_AT)
     expect(store().attention['appr-9']).toBeDefined()
 
     store().handleApprovalExpired('never-opened', 'appr-9')
@@ -814,12 +818,16 @@ describe('live approval events', () => {
 
   it('carries the escalation details onto the card', () => {
     store().handleToolCall(CONV, 'a1', 'c1', 'run_command', '{}')
-    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}', 'sandbox denied', 'c1')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}', ASKED_AT, {
+      kind: 'sandbox_denied',
+      reason: 'sandbox denied',
+      origin_call_id: 'c1',
+    })
 
-    expect(cards()[0]).toMatchObject({ status: 'pending', retry_reason: 'sandbox denied' })
+    expect(cards()[0]).toMatchObject({ status: 'pending', retry: { kind: 'sandbox_denied', reason: 'sandbox denied' } })
     expect(store().sessions[CONV]!.pendingApprovals['appr-1']).toMatchObject({
       originCallId: 'c1',
-      retryReason: 'sandbox denied',
+      retry: { kind: 'sandbox_denied', reason: 'sandbox denied' },
     })
   })
 
@@ -832,16 +840,20 @@ describe('live approval events', () => {
   /// hydration matches on the call id and does not care who claimed it.
   it('offers the retry on a card that was already approved once', () => {
     store().handleToolCall(CONV, 'a1', 'c1', 'run_command', '{}')
-    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}', ASKED_AT)
     expect(cards()[0]).toMatchObject({ status: 'pending', approval_id: 'appr-1' })
 
     // The user says yes, the command runs, the sandbox blocks it.
-    store().handleToolApproval(CONV, 'a1', 'appr-2', 'c1', 'run_command', '{}', 'sandbox denied', 'c1')
+    store().handleToolApproval(CONV, 'a1', 'appr-2', 'c1', 'run_command', '{}', ASKED_AT, {
+      kind: 'sandbox_denied',
+      reason: 'sandbox denied',
+      origin_call_id: 'c1',
+    })
 
     expect(cards()[0]).toMatchObject({
       status: 'pending',
       approval_id: 'appr-2',
-      retry_reason: 'sandbox denied',
+      retry: { kind: 'sandbox_denied', reason: 'sandbox denied' },
     })
     // And the answer the user already gave is not still on the books.
     expect(Object.keys(store().sessions[CONV]!.pendingApprovals)).toEqual(['appr-2'])
@@ -854,11 +866,15 @@ describe('live approval events', () => {
     store().handleToolCall(CONV, 'a1', '0', 'run_command', '{}')
     store().handleToolResult(CONV, 'a1', '0', 'the first one is done')
 
-    store().handleToolApproval(CONV, 'a1', 'appr-2', '0', 'run_command', '{}', 'sandbox denied', '0')
+    store().handleToolApproval(CONV, 'a1', 'appr-2', '0', 'run_command', '{}', ASKED_AT, {
+      kind: 'sandbox_denied',
+      reason: 'sandbox denied',
+      origin_call_id: '0',
+    })
 
     expect(cards().map((c) => c.status)).toEqual(['completed', 'pending'])
     expect(cards()[0].result).toBe('the first one is done')
-    expect(cards()[1].retry_reason).toBe('sandbox denied')
+    expect(cards()[1].retry?.reason).toBe('sandbox denied')
   })
 })
 
@@ -1481,10 +1497,10 @@ describe('stops are scoped to a turn', () => {
               conversation_id: CONV,
               assistant_message_id: 'a1',
               provider_call_id: 'c1',
-              origin_call_id: null,
               tool_name: 'run_command',
               arguments: '{}',
-              retry_reason: null,
+              retry: null,
+              asked_at: ASKED_AT,
               bubbled: false,
               parent_call_id: null,
               sub_conversation_id: null,
@@ -1506,7 +1522,7 @@ describe('stops are scoped to a turn', () => {
   it("leaves another run's approvals alone", () => {
     store().handleMessageStart(CONV, 'a1', 'turn-2')
     store().handleToolCall(CONV, 'a1', 'c1', 'read_file', '{}')
-    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'read_file', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'read_file', '{}', ASKED_AT)
 
     store().handleStop(CONV, 'turn-1')
     expect(Object.keys(session().pendingApprovals)).toEqual(['appr-1'])
@@ -1770,10 +1786,10 @@ describe('delegated runs', () => {
           conversation_id: 'c',
           assistant_message_id: 'a1',
           provider_call_id: 'child-call',
-          origin_call_id: null,
           tool_name: 'run_command',
           arguments: '{"command":"cargo test --all"}',
-          retry_reason: null,
+          retry: null,
+          asked_at: ASKED_AT,
           bubbled: false,
           parent_call_id: '0',
           sub_conversation_id: 'sub-1',
@@ -1808,10 +1824,10 @@ describe('delegated runs', () => {
           conversation_id: 'c',
           assistant_message_id: 'a1',
           provider_call_id: 'child-call',
-          origin_call_id: null,
           tool_name: 'run_command',
           arguments: '{}',
-          retry_reason: null,
+          retry: null,
+          asked_at: ASKED_AT,
           bubbled: true,
           parent_call_id: null,
           sub_conversation_id: null,
@@ -1868,7 +1884,7 @@ describe('delegated runs', () => {
         'child-call',
         'run_command',
         '{"command":"ls"}',
-        undefined,
+        ASKED_AT,
         undefined,
         {
           parentCallId: '0',
@@ -1891,7 +1907,7 @@ describe('delegated runs', () => {
 
     // The run is not what failed — only its question was lost.
     it('clears a nested question when the sub-agent stops', () => {
-      store().handleToolApproval(CONV, 'a1', 'appr-1', 'child-call', 'run_command', '{}', undefined, undefined, {
+      store().handleToolApproval(CONV, 'a1', 'appr-1', 'child-call', 'run_command', '{}', ASKED_AT, undefined, {
         parentCallId: '0',
         subConversationId: 'sub-1',
       })
@@ -1902,7 +1918,7 @@ describe('delegated runs', () => {
     })
 
     it('drops a lost question without writing off the run', () => {
-      store().handleToolApproval(CONV, 'a1', 'appr-1', 'child-call', 'run_command', '{}', undefined, undefined, {
+      store().handleToolApproval(CONV, 'a1', 'appr-1', 'child-call', 'run_command', '{}', ASKED_AT, undefined, {
         parentCallId: '0',
       })
       store().markApprovalOrphaned('appr-1')
@@ -1957,7 +1973,7 @@ describe('the waiting-on-you queue', () => {
   })
 
   it('records a question from a conversation that was never opened', () => {
-    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{"command":"ls"}')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{"command":"ls"}', ASKED_AT)
 
     expect(store().sessions[CONV]).toBeUndefined()
     expect(store().attention['appr-1']).toMatchObject({
@@ -1968,6 +1984,8 @@ describe('the waiting-on-you queue', () => {
       // Carried rather than read off the transcript: there is no transcript.
       arguments: '{"command":"ls"}',
       kind: 'approval',
+      // The backend's stamp, never this client's clock.
+      askedAt: ASKED_AT,
     })
     expect(store().attentionOrder).toEqual(['appr-1'])
   })
@@ -1976,20 +1994,20 @@ describe('the waiting-on-you queue', () => {
    *  but it stops a turn exactly as an approval does, so it is queued and
    *  marked rather than dropped. */
   it('tells a question apart from a permission', () => {
-    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'ask_user', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'ask_user', '{}', ASKED_AT)
     expect(store().attention['appr-1']!.kind).toBe('ask')
-    store().handleToolApproval(CONV, 'a1', 'appr-2', 'c2', 'AskUserQuestion', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-2', 'c2', 'AskUserQuestion', '{}', ASKED_AT)
     expect(store().attention['appr-2']!.kind).toBe('ask')
   })
 
   it('does not queue the same approval twice', () => {
-    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}')
-    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}', ASKED_AT)
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}', ASKED_AT)
     expect(store().attentionOrder).toEqual(['appr-1'])
   })
 
   it('retires a question when its result arrives', () => {
-    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}', ASKED_AT)
     store().handleToolResult(CONV, 'a1', 'c1', 'ok')
 
     expect(store().attention).toEqual({})
@@ -1999,8 +2017,8 @@ describe('the waiting-on-you queue', () => {
   /** Results are matched on the row *and* the call, because provider call ids
    *  repeat across the rows of one conversation. */
   it('leaves a sibling call alone when one of them finishes', () => {
-    store().handleToolApproval(CONV, 'a1', 'appr-1', '0', 'run_command', '{}')
-    store().handleToolApproval(CONV, 'a2', 'appr-2', '0', 'run_command', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', '0', 'run_command', '{}', ASKED_AT)
+    store().handleToolApproval(CONV, 'a2', 'appr-2', '0', 'run_command', '{}', ASKED_AT)
     store().handleToolResult(CONV, 'a1', '0', 'ok')
 
     expect(store().attentionOrder).toEqual(['appr-2'])
@@ -2010,9 +2028,9 @@ describe('the waiting-on-you queue', () => {
    *  will arrive to say so. Without this the queue keeps offering buttons that
    *  the backend has already stopped waiting on. */
   it('retires everything a stopped turn was holding', () => {
-    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}')
-    store().handleToolApproval(CONV, 'a1', 'appr-2', 'c2', 'read_file', '{}')
-    store().handleToolApproval('other-conv', 'b1', 'appr-3', 'c3', 'read_file', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}', ASKED_AT)
+    store().handleToolApproval(CONV, 'a1', 'appr-2', 'c2', 'read_file', '{}', ASKED_AT)
+    store().handleToolApproval('other-conv', 'b1', 'appr-3', 'c3', 'read_file', '{}', ASKED_AT)
 
     store().handleStop(CONV)
 
@@ -2020,13 +2038,13 @@ describe('the waiting-on-you queue', () => {
   })
 
   it('retires a question the backend has forgotten', () => {
-    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}', ASKED_AT)
     store().markApprovalOrphaned('appr-1')
     expect(store().attentionOrder).toEqual([])
   })
 
   it('retires a question the moment an answer is sent', () => {
-    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}', ASKED_AT)
     store().retireAnsweredApproval('appr-1')
     expect(store().attentionOrder).toEqual([])
   })
@@ -2047,7 +2065,7 @@ describe('the waiting-on-you queue', () => {
     store().ensureSession(OPEN)
     store().handleMessageStart(OPEN, 'a1')
     store().handleToolCall(OPEN, 'a1', 'c1', 'run_command', '{}')
-    store().handleToolApproval(OPEN, 'a1', 'appr-1', 'c1', 'run_command', '{}')
+    store().handleToolApproval(OPEN, 'a1', 'appr-1', 'c1', 'run_command', '{}', ASKED_AT)
 
     store().retireAnsweredApproval('appr-1')
 
@@ -2068,7 +2086,7 @@ describe('the waiting-on-you queue', () => {
    * kind does not enter into it.
    */
   it('retires an answered question, delegated or not', () => {
-    store().handleToolApproval(CONV, 'a1', 'ask-1', 'c1', 'ask_user', '{"questions":[]}')
+    store().handleToolApproval(CONV, 'a1', 'ask-1', 'c1', 'ask_user', '{"questions":[]}', ASKED_AT)
     store().handleToolApproval(
       'parent-conv',
       'parent-row',
@@ -2076,7 +2094,7 @@ describe('the waiting-on-you queue', () => {
       'child-call',
       'ask_user',
       '{}',
-      undefined,
+      ASKED_AT,
       undefined,
       {
         parentCallId: 'run-agent-call',
@@ -2105,20 +2123,10 @@ describe('the waiting-on-you queue', () => {
   it("retires a delegated question when the sub-agent's turn ends", () => {
     const PARENT = 'parent-conv'
     const SUB = 'sub-conv'
-    store().handleToolApproval(
-      PARENT,
-      'parent-row',
-      'appr-1',
-      'child-call',
-      'run_command',
-      '{}',
-      undefined,
-      undefined,
-      {
-        parentCallId: 'run-agent-call',
-        subConversationId: SUB,
-      },
-    )
+    store().handleToolApproval(PARENT, 'parent-row', 'appr-1', 'child-call', 'run_command', '{}', ASKED_AT, undefined, {
+      parentCallId: 'run-agent-call',
+      subConversationId: SUB,
+    })
     expect(store().attentionOrder).toEqual(['appr-1'])
 
     store().handleToolResult(SUB, 'child-row', 'child-call', 'ok')
@@ -2128,20 +2136,10 @@ describe('the waiting-on-you queue', () => {
   it('retires a delegated question when the sub-agent is stopped', () => {
     const PARENT = 'parent-conv'
     const SUB = 'sub-conv'
-    store().handleToolApproval(
-      PARENT,
-      'parent-row',
-      'appr-1',
-      'child-call',
-      'run_command',
-      '{}',
-      undefined,
-      undefined,
-      {
-        parentCallId: 'run-agent-call',
-        subConversationId: SUB,
-      },
-    )
+    store().handleToolApproval(PARENT, 'parent-row', 'appr-1', 'child-call', 'run_command', '{}', ASKED_AT, undefined, {
+      parentCallId: 'run-agent-call',
+      subConversationId: SUB,
+    })
     store().handleStop(SUB)
     expect(store().attentionOrder).toEqual([])
   })
@@ -2150,7 +2148,7 @@ describe('the waiting-on-you queue', () => {
    *  and going round the queue brings it back. */
   it('moves a deferred question to the end without dropping it', () => {
     for (const id of ['appr-1', 'appr-2', 'appr-3']) {
-      store().handleToolApproval(CONV, 'a1', id, `c-${id}`, 'read_file', '{}')
+      store().handleToolApproval(CONV, 'a1', id, `c-${id}`, 'read_file', '{}', ASKED_AT)
     }
 
     store().deferAttention('appr-1')
@@ -2160,7 +2158,7 @@ describe('the waiting-on-you queue', () => {
   })
 
   it('ignores a defer for something that is no longer queued', () => {
-    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'read_file', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'read_file', '{}', ASKED_AT)
     store().deferAttention('gone')
     expect(store().attentionOrder).toEqual(['appr-1'])
   })
@@ -2175,10 +2173,10 @@ describe('the waiting-on-you queue', () => {
           conversation_id: CONV,
           assistant_message_id: 'a1',
           provider_call_id: 'c1',
-          origin_call_id: null,
           tool_name: 'run_command',
           arguments: '{"command":"ls"}',
-          retry_reason: null,
+          retry: null,
+          asked_at: ASKED_AT,
           bubbled: false,
           parent_call_id: null,
           sub_conversation_id: null,
@@ -2188,13 +2186,16 @@ describe('the waiting-on-you queue', () => {
       await store().loadAllPending()
 
       expect(store().attention['appr-1']).toMatchObject({ conversationId: CONV, toolName: 'run_command' })
+      // Rebuilt, and still saying when it was asked — the same value the event
+      // would have carried, not null and not the moment of the reload.
+      expect(store().attention['appr-1']!.askedAt).toBe(ASKED_AT)
       expect(store().attentionOrder).toEqual(['appr-1'])
     })
 
     /** The answer is the register itself, so an entry it does not mention has
      *  no turn behind it — its turn ended while nothing was listening. */
     it('drops what the register no longer holds', async () => {
-      store().handleToolApproval(CONV, 'a1', 'appr-dead', 'c1', 'run_command', '{}')
+      store().handleToolApproval(CONV, 'a1', 'appr-dead', 'c1', 'run_command', '{}', ASKED_AT)
       vi.mocked(api.allPendingApprovals).mockResolvedValue([])
 
       await store().loadAllPending()
@@ -2214,7 +2215,7 @@ describe('the waiting-on-you queue', () => {
       )
 
       const inFlight = store().loadAllPending()
-      store().handleToolApproval(CONV, 'a1', 'appr-new', 'c1', 'run_command', '{}')
+      store().handleToolApproval(CONV, 'a1', 'appr-new', 'c1', 'run_command', '{}', ASKED_AT)
       release([])
       await inFlight
 
@@ -2225,7 +2226,7 @@ describe('the waiting-on-you queue', () => {
      *  would turn one dropped request into a set of questions nobody is told
      *  about. */
     it('leaves the queue alone when the call fails', async () => {
-      store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}')
+      store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}', ASKED_AT)
       vi.mocked(api.allPendingApprovals).mockRejectedValue(new Error('no'))
 
       await store().loadAllPending()

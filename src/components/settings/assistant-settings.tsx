@@ -36,6 +36,12 @@ import type {
 import { SettingsDrilldown } from './settings-drilldown'
 import { useSettingsDirtyRegistration } from './dirty-guard'
 
+/** An assistant's window override as the field shows it: `0` is "none", so the
+ *  field is blank and the model's own window applies — not the digit zero. */
+function overrideText(limit: number): string {
+  return limit > 0 ? limit.toString() : ''
+}
+
 function AssistantEditor({
   assistant,
   providers,
@@ -55,7 +61,7 @@ function AssistantEditor({
   const [providerId, setProviderId] = useState(assistant.provider_id ?? '')
   const [modelId, setModelId] = useState(assistant.model_id ?? '')
   const [temperature, setTemperature] = useState(assistant.temperature?.toString() ?? '')
-  const [contextLimit, setContextLimit] = useState(assistant.context_limit.toString())
+  const [contextLimit, setContextLimit] = useState(overrideText(assistant.context_limit))
   const [autoCompactEnabled, setAutoCompactEnabled] = useState(assistant.auto_compact_enabled)
   const [thinkingEnabled, setThinkingEnabled] = useState(assistant.thinking_enabled)
   const [thinkingBudget, setThinkingBudget] = useState(assistant.thinking_budget?.toString() ?? '')
@@ -85,7 +91,7 @@ function AssistantEditor({
       providerId: assistant.provider_id ?? '',
       modelId: assistant.model_id ?? '',
       temperature: assistant.temperature?.toString() ?? '',
-      contextLimit: assistant.context_limit.toString(),
+      contextLimit: overrideText(assistant.context_limit),
       autoCompactEnabled: assistant.auto_compact_enabled,
       thinkingEnabled: assistant.thinking_enabled,
       thinkingBudget: assistant.thinking_budget?.toString() ?? '',
@@ -148,7 +154,9 @@ function AssistantEditor({
         providerId: providerId.trim() || null,
         modelId: modelId.trim() || null,
         temperature: temperature ? parseFloat(temperature) : null,
-        contextLimit: contextLimit ? parseInt(contextLimit) : undefined,
+        // Blank is "no override", which the backend stores as 0 and resolves
+        // to the model's own window.
+        contextLimit: contextLimit ? parseInt(contextLimit) : 0,
         enabledTools,
         thinkingEnabled,
         thinkingBudget: thinkingBudget ? parseInt(thinkingBudget) : null,
@@ -244,6 +252,7 @@ function AssistantEditor({
             inputMode="numeric"
             value={contextLimit}
             onChange={(e) => setContextLimit(e.target.value)}
+            placeholder={t('settings.assistant.contextLimitFromModel')}
           />
         </TextField>
       </div>
@@ -594,8 +603,7 @@ export function AssistantSettings() {
         title={t('settings.assistant.title')}
         subtitle={t('settings.assistant.subtitle')}
         actions={
-          <Button variant="secondary" onPress={handleCreate}>
-            <Plus className="w-3.5 h-3.5" />
+          <Button leadingIcon={Plus} variant="secondary" onPress={handleCreate}>
             {t('settings.assistant.new')}
           </Button>
         }

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { api } from '@/api'
 import { resetComposerDraftSync } from '@/lib/composer-draft-sync'
+import i18n from '@/i18n'
 import type { ComposerDraftInfoResponse, ComposerDraftWriteResponse } from '@/types'
 import { COMPOSER_DRAFT_DEBOUNCE_MS, useComposerDraft, type ComposerDraftState } from './use-composer-draft'
 
@@ -228,7 +229,7 @@ test('a failed write is reported and retried by the next change', async () => {
     vi.advanceTimersByTime(COMPOSER_DRAFT_DEBOUNCE_MS)
   })
   await settle()
-  expect(result.current.saveError).toBe('database is locked')
+  expect(result.current.error).toEqual({ kind: 'save', message: 'database is locked' })
 
   rerender({ s: state('first!') })
   await act(async () => {
@@ -237,7 +238,7 @@ test('a failed write is reported and retried by the next change', async () => {
   await settle()
   expect(api.saveComposerDraft).toHaveBeenCalledTimes(2)
   expect(vi.mocked(api.saveComposerDraft).mock.calls[1][0]).toMatchObject({ body: 'first!' })
-  expect(result.current.saveError).toBeNull()
+  expect(result.current.error).toBeNull()
 })
 
 /**
@@ -311,4 +312,41 @@ test('the welcome slot is cleared without its state changing', async () => {
   await settle()
   expect(api.saveComposerDraft).not.toHaveBeenCalled()
   expect(api.clearComposerDraft).toHaveBeenCalledWith({ conversationId: null, revision: 1 })
+})
+
+/**
+ * A draft that could not be *read* was reported as one that could not be
+ * saved. The read failure is its own kind; the composer's text is left alone.
+ */
+test('a failed read is reported as a failed read', async () => {
+  vi.mocked(api.getComposerDraft).mockRejectedValueOnce('database is locked')
+  const { result } = mount(EMPTY)
+  await settle()
+  expect(result.current.error).toEqual({ kind: 'load', message: 'database is locked' })
+  act(() => result.current.dismissError())
+  expect(result.current.error).toBeNull()
+})
+
+/**
+ * Losing the race twice is thrown from the write's success handler. As the
+ * second argument to the same `.then` the rejection handler never saw that
+ * throw, so the conflict became an unhandled rejection and was said nowhere.
+ */
+test('a write that loses the race twice is reported, not dropped', async () => {
+  vi.mocked(api.getComposerDraft).mockResolvedValue(null)
+  vi.mocked(api.saveComposerDraft)
+    .mockResolvedValueOnce({ applied: false, revision: 9 })
+    .mockResolvedValueOnce({ applied: false, revision: 11 })
+  const { rerender, result } = mount(EMPTY)
+  await settle()
+  rerender({ s: state('mine') })
+  await act(async () => {
+    vi.advanceTimersByTime(COMPOSER_DRAFT_DEBOUNCE_MS)
+  })
+  await settle()
+  expect(result.current.error).toEqual({ kind: 'save', message: i18n.t('chat.draft.conflict') })
+
+  act(() => result.current.retry())
+  await settle()
+  expect(result.current.error).toBeNull()
 })

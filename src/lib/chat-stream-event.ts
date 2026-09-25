@@ -175,8 +175,9 @@ function requireApprovalDelegation(value: unknown, label: string): void {
 }
 
 function requireApprovalRetry(value: unknown, label: string): void {
-  const retry = requireShape(value, ['reason', 'origin_call_id'], [], label)
+  const retry = requireShape(value, ['kind', 'reason', 'origin_call_id'], [], label)
   requireStringFields(retry, ['reason', 'origin_call_id'], label)
+  requireClosedString(retry.kind, ['sandbox_denied', 'settings_unreadable'], `${label}.kind`)
 }
 
 function requireAutoReviewVerdict(value: unknown, label: string): void {
@@ -318,10 +319,12 @@ export function parseChatStreamEvent(value: unknown): ChatStreamEvent {
           'conversation_id',
           'delegation',
           'retry',
+          'asked_at',
         ],
         [],
         'tool_approval_req event',
       )
+      requireInteger(event.asked_at, 0, Number.MAX_SAFE_INTEGER, 'tool_approval_req event.asked_at')
       requireStringFields(
         event,
         ['type', 'approval_id', 'call_id', 'tool_name', 'arguments', 'message_id', 'conversation_id'],

@@ -290,8 +290,7 @@ export function DeveloperSettings() {
               button here is the Android-only one — so the case with the most
               buttons is also the narrowest screen they ever appear on. */}
           <Card.Footer className="flex-wrap gap-2">
-            <Button variant="secondary" size="small" onPress={() => record(true)} isDisabled={busy}>
-              <Play className="w-4 h-4" />
+            <Button leadingIcon={Play} variant="secondary" size="small" onPress={() => record(true)} isDisabled={busy}>
               {t('settings.developer.probe.runWorklet')}
             </Button>
             <Button variant="secondary" size="small" onPress={() => record(false)} isDisabled={busy}>

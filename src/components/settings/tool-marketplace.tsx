@@ -351,8 +351,7 @@ export function ToolMarketplace() {
           <h3 data-slot="custom-tools-title" className="text-body-medium">
             {t('settings.tools.customSection')}
           </h3>
-          <Button variant="secondary" onPress={() => setShowCreate(!showCreate)}>
-            <Plus className="w-3.5 h-3.5" />
+          <Button leadingIcon={Plus} variant="secondary" onPress={() => setShowCreate(!showCreate)}>
             {t('settings.tools.new')}
           </Button>
         </div>

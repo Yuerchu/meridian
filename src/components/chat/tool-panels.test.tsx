@@ -313,4 +313,17 @@ describe('every panel opens the same way', () => {
     expect(p.querySelector('[data-slot="tool-args-list"]')).toHaveTextContent(prompt)
     expect(p.querySelector('[data-slot="tool-args-meta"]')).toBeNull()
   })
+
+  /// In a bubble the panel carries no padding of its own; a block that draws
+  /// its sections by hand has to inset each one, or the form sits flush
+  /// against the block's edge (ask_user, 2026-09).
+  it.each([
+    ['ask_user', { questions: [{ id: 'q', question: 'Which one?' }] }],
+    ['enter_plan', { reason: 'a big change' }],
+  ])('insets every section %s draws inside a bubble', (name, args) => {
+    const { container } = inBubble(<ToolCallBlock data={call(name, args, 'pending')} />)
+    const sections = [...panel(container).children] as HTMLElement[]
+    expect(sections.length).toBeGreaterThan(0)
+    for (const section of sections) expect(section.className).toMatch(/(^|\s)px-\d/)
+  })
 })

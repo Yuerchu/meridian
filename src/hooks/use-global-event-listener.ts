@@ -202,8 +202,10 @@ export function useGlobalEventListener() {
           // queue needs it for all of them, and for the same reason: it draws
           // outside any transcript.
           p.arguments,
-          p.retry?.reason,
-          p.retry?.origin_call_id,
+          // The backend's stamp, the same one `allPendingApprovals` reports
+          // after a reload. Never this client's clock.
+          p.asked_at,
+          p.retry ?? undefined,
           // Routed here rather than to the sub-agent's own conversation, which
           // is where the call is: nobody is necessarily looking at that one.
           p.delegation

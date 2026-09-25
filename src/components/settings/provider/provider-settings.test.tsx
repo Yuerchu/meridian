@@ -16,6 +16,7 @@ vi.mock('@/api', () => ({
     deleteProvider: vi.fn(),
     updateProvider: vi.fn(),
     fetchProviderModels: vi.fn(),
+    listCachedProviderModels: vi.fn(),
     listModelConfigs: vi.fn(),
     getModelConfig: vi.fn(),
     listModelProfiles: vi.fn(),
@@ -211,7 +212,8 @@ describe('ProviderSettings list/detail navigation', () => {
     mockApi.listModelConfigs.mockResolvedValue([])
     mockApi.getModelConfig.mockResolvedValue(null)
     mockApi.listModelProfiles.mockResolvedValue([])
-    // The page reads the cached list on its own once it has a credential.
+    // The page reads the cached list on its own; only the button fetches.
+    mockApi.listCachedProviderModels.mockResolvedValue([])
     mockApi.fetchProviderModels.mockResolvedValue([])
     mockApi.getProviderCapabilities.mockRejectedValue(new Error('No capabilities in this test'))
     mockApi.getPreference.mockResolvedValue({ key: 'codex.client_version', value: null })
@@ -468,7 +470,7 @@ describe('ProviderSettings list/detail navigation', () => {
 
     // What the list will answer with once the delete has happened.
     mockApi.listProviders.mockResolvedValue([makeProvider('p2', 'Provider Two')])
-    await user.click(screen.getByRole('button', { name: i18n.t('settings.provider.deleteProvider') }))
+    await user.click(screen.getByRole('button', { name: i18n.t('common.delete') }))
     await user.click(await screen.findByRole('button', { name: i18n.t('common.confirm') }))
 
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Provider One' })).not.toBeInTheDocument())
@@ -1104,6 +1106,7 @@ describe('ProviderPage failure paths and cached models', () => {
     mockApi.listProviders.mockResolvedValue([makeProvider('p1', 'Provider One')])
     mockApi.listProviderCatalog.mockResolvedValue(CATALOG)
     mockApi.getProviderKeyExists.mockResolvedValue(true)
+    mockApi.listCachedProviderModels.mockResolvedValue([])
     mockApi.listModelConfigs.mockResolvedValue([])
     mockApi.fetchProviderModels.mockResolvedValue([])
     mockApi.getPreference.mockResolvedValue({ key: 'codex.client_version', value: null })
@@ -1112,7 +1115,7 @@ describe('ProviderPage failure paths and cached models', () => {
 
   it('reads the cached model list on open instead of calling every model unlisted', async () => {
     const user = userEvent.setup()
-    mockApi.fetchProviderModels.mockResolvedValue([{ id: 'gpt-5.6', name: 'gpt-5.6' }])
+    mockApi.listCachedProviderModels.mockResolvedValue([{ id: 'gpt-5.6', name: 'gpt-5.6' }])
     mockApi.listModelConfigs.mockResolvedValue([
       modelConfig({ id: 'config-1', model_id: 'gpt-5.6', input_price: decimal('1'), output_price: decimal('2') }),
     ])
@@ -1120,13 +1123,34 @@ describe('ProviderPage failure paths and cached models', () => {
     await openFirstProvider(user)
 
     expect(await screen.findByRole('row', { name: 'gpt-5.6' })).toBeInTheDocument()
-    expect(mockApi.fetchProviderModels).toHaveBeenCalledWith({ providerId: 'p1', forceRefresh: false })
+    expect(mockApi.listCachedProviderModels).toHaveBeenCalledWith({ providerId: 'p1' })
+    expect(mockApi.fetchProviderModels).not.toHaveBeenCalled()
+    expect(screen.queryByText(i18n.t('settings.provider.modelNotListed'))).not.toBeInTheDocument()
+  })
+
+  // Opening the page is not a request to the provider. With nothing cached it
+  // used to fall through to one, so offline the page opened on a model-list
+  // error nobody asked for — and an empty cache is not the provider saying it
+  // lists none of the configured models.
+  it('opens on an empty cache without asking the provider or calling models unlisted', async () => {
+    const user = userEvent.setup()
+    mockApi.fetchProviderModels.mockRejectedValue('offline')
+    mockApi.listModelConfigs.mockResolvedValue([
+      modelConfig({ id: 'config-1', model_id: 'gpt-5.6', input_price: decimal('1'), output_price: decimal('2') }),
+    ])
+    render(<ProviderSettings />)
+    await openFirstProvider(user)
+
+    expect(await screen.findByRole('row', { name: 'gpt-5.6' })).toBeInTheDocument()
+    expect(mockApi.listCachedProviderModels).toHaveBeenCalledWith({ providerId: 'p1' })
+    expect(mockApi.fetchProviderModels).not.toHaveBeenCalled()
+    expect(screen.queryByText('offline')).not.toBeInTheDocument()
     expect(screen.queryByText(i18n.t('settings.provider.modelNotListed'))).not.toBeInTheDocument()
   })
 
   it('keeps the filter box when nothing matches, and says so', async () => {
     const user = userEvent.setup()
-    mockApi.fetchProviderModels.mockResolvedValue(
+    mockApi.listCachedProviderModels.mockResolvedValue(
       Array.from({ length: 10 }, (_, i) => ({ id: `model-${i}`, name: `model-${i}` })),
     )
     render(<ProviderSettings />)
@@ -1157,7 +1181,7 @@ describe('ProviderPage failure paths and cached models', () => {
     render(<ProviderSettings />)
     await openFirstProvider(user)
 
-    await user.click(await screen.findByRole('button', { name: i18n.t('settings.provider.deleteProvider') }))
+    await user.click(await screen.findByRole('button', { name: i18n.t('common.delete') }))
     await user.click(
       within(await screen.findByRole('alertdialog')).getByRole('button', { name: i18n.t('common.confirm') }),
     )
@@ -1193,5 +1217,52 @@ describe('ProviderPage failure paths and cached models', () => {
     expect(mockApi.setProviderKey).not.toHaveBeenCalled()
     await user.click(screen.getByRole('button', { name: i18n.t('common.back') }))
     expect(await screen.findByRole('alertdialog', { name: i18n.t('confirm.title') })).toBeInTheDocument()
+  })
+
+  // The page is rows in cards now (the MCP server page's grammar), where a
+  // row's label is a <p> and cannot name anything: each control has to be
+  // named through the row's ids, or it is a field a screen reader calls
+  // "edit text" and nothing else.
+  it('draws the editor as rows whose controls are named by their labels', async () => {
+    const user = userEvent.setup()
+    render(<ProviderSettings />)
+    await openFirstProvider(user)
+
+    const identity = await waitFor(() => {
+      const card = document.querySelector<HTMLElement>('[data-slot="provider-identity"]')
+      if (!card) throw new Error('no identity card')
+      return card
+    })
+    expect(identity.querySelectorAll('[data-slot="settings-row"]').length).toBeGreaterThanOrEqual(4)
+    expect(within(identity).getByRole('textbox', { name: i18n.t('settings.provider.name') })).toHaveValue(
+      'Provider One',
+    )
+    expect(within(identity).getByRole('textbox', { name: i18n.t('settings.provider.baseUrl') })).toHaveValue(
+      'https://api.openai.com/v1',
+    )
+    expect(
+      within(identity).getByRole('button', { name: new RegExp(i18n.t('settings.provider.type')) }),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText(i18n.t('settings.provider.apiKey'))).toHaveAttribute('type', 'password')
+  })
+
+  it('saves a key with its own button and then says one is stored', async () => {
+    const user = userEvent.setup()
+    mockApi.setProviderKey.mockResolvedValue(undefined)
+    mockApi.getProviderKeyExists.mockResolvedValue(false)
+    render(<ProviderSettings />)
+    await openFirstProvider(user)
+
+    const key = await screen.findByLabelText(i18n.t('settings.provider.apiKey'))
+    await waitFor(() => expect(key).toHaveAttribute('placeholder', i18n.t('settings.provider.apiKeyPlaceholder')))
+    expect(screen.queryByText(i18n.t('settings.provider.keySaved'))).not.toBeInTheDocument()
+    await user.type(key, 'sk-test')
+    await user.click(screen.getByRole('button', { name: i18n.t('settings.provider.saveKey') }))
+
+    await waitFor(() => expect(mockApi.setProviderKey).toHaveBeenCalledWith({ providerId: 'p1', apiKey: 'sk-test' }))
+    expect(await screen.findByText(i18n.t('settings.provider.keySaved'))).toBeInTheDocument()
+    expect(key).toHaveValue('')
+    expect(key).toHaveAttribute('placeholder', i18n.t('settings.provider.apiKeyPlaceholderSet'))
+    expect(mockApi.updateProvider).not.toHaveBeenCalled()
   })
 })

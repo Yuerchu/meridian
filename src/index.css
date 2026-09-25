@@ -104,13 +104,22 @@
 /* The drag handle appears on hover, the way a file tree's does. Same opacity
    reasoning as above: the grip is the keyboard's entry point into a drag, so
    it may not leave the tab order. The coarse-pointer case is handled by the
-   `hidden pointer-fine:flex` utilities on the element itself. */
+   `hidden pointer-fine:flex` utilities on the element itself.
+   Hidden, it also gives its width back — collapsed to nothing, with the row's
+   8px gap taken back by the margin — because an invisible 24px box plus its gap
+   was what cut every title off a third of the way short of its timestamp.
+   Collapsed rather than `display: none` for the tab order, as above. */
 .sidebar__menu-item .conv-grip {
   opacity: 0;
+  width: 0;
+  margin-inline-start: -0.5rem;
+  overflow: hidden;
 }
 .sidebar__menu-item:is(:hover, [data-hovered='true']) .conv-grip,
 .conv-grip:focus-visible {
   opacity: 1;
+  width: 1.5rem;
+  margin-inline-start: 0;
 }
 
 /* Where a dragged conversation would land. React Aria marks the row under the

@@ -55,8 +55,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
   return (
     <div data-slot="log-viewer" className="flex h-full flex-col gap-4">
       <div data-slot="log-viewer-header" className="flex flex-wrap items-center gap-2">
-        <Button variant="secondary" size="small" onPress={onBack}>
-          <ChevronLeft className="size-4" />
+        <Button leadingIcon={ChevronLeft} variant="secondary" size="small" onPress={onBack}>
           {t('settings.about.logs.back')}
         </Button>
         <h2 data-slot="log-viewer-title" className="text-title-3-medium">
@@ -76,8 +75,13 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
           {/* The picker names a path on this device and the file is written by
               whichever machine the logs belong to. Reading them here still
               works — that is what the rows below are. */}
-          <Button variant="secondary" size="small" onPress={onExport} isDisabled={!can.exportToDisk}>
-            <Download className="size-4" />
+          <Button
+            leadingIcon={Download}
+            variant="secondary"
+            size="small"
+            onPress={onExport}
+            isDisabled={!can.exportToDisk}
+          >
             {exported ? t('settings.about.logs.exported') : t('settings.about.logs.export')}
           </Button>
         </div>

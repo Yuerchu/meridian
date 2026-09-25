@@ -58,13 +58,13 @@ export function McpServerListPage({
 
   useSettingsResume(() => void refresh())
 
-  if (loading && servers.length === 0) return <SettingsSkeleton className="max-w-3xl" />
+  if (loading && servers.length === 0) return <SettingsSkeleton />
 
   return (
     <SettingsPage
       title={t('settings.mcp.title')}
       subtitle={t('settings.mcp.subtitle')}
-      width="wide"
+
       actions={
         <Button
           data-slot="mcp-import-open"

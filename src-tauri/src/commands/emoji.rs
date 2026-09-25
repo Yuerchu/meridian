@@ -124,6 +124,12 @@ pub fn import_emojis(app: tauri::AppHandle, request: EmojiImportRequest) -> Resu
     let mut imported = Vec::new();
     for (i, path_str) in file_paths.iter().enumerate() {
         let source = std::path::Path::new(path_str);
+        // Read before the copy, so a failure leaves nothing behind. A size that
+        // could not be read is an error, not a 0-byte file: the column is
+        // NOT NULL and the row would say 0 for ever.
+        let file_size = std::fs::metadata(source)
+            .map(|m| m.len() as i64)
+            .map_err(|error| format!("could not read the size of {path_str}: {error}"))?;
         let (file_name, format) = emoji::import_file(&data_dir, &pack_id, source)?;
         let emoji_name = source
             .file_stem()
@@ -148,7 +154,7 @@ pub fn import_emojis(app: tauri::AppHandle, request: EmojiImportRequest) -> Resu
                 semantic_status: "confirmed",
                 suggested_name: None,
                 suggested_tags: None,
-                file_size: std::fs::metadata(source).map(|m| m.len() as i64).unwrap_or(0),
+                file_size,
                 seen_count: 1,
                 last_seen_at: Some(now),
             },

@@ -107,12 +107,12 @@ export function PriceTierEditor({
         </div>
       ))}
       <Button
+        leadingIcon={Plus}
         size="small"
         variant="secondary"
         className="h-7 pointer-coarse:h-10 rounded-md text-caption-1-regular"
         onPress={() => onChange([...tiers, { ...BLANK_TIER }])}
       >
-        <Plus className="size-3.5" />
         {t('settings.model.addTier')}
       </Button>
     </div>

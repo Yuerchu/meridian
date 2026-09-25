@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { api } from '@/api'
+import { errorMessage } from '@/lib/error-message'
 import { listen } from '@/lib/transport'
 import type { AcpConfigOptionInfoResponse } from '@/types'
 
@@ -36,8 +37,16 @@ export function useAcpConfig(conversationId: string, isHosted: boolean) {
   const [options, setOptions] = useState<AcpConfigOptionInfoResponse[]>([])
   const [usage, setUsage] = useState<AcpUsage | null>(null)
   const [busy, setBusy] = useState(false)
+  // Reading the knobs never fails for a reason about the session — an adapter
+  // that is not running answers an empty list — so a rejection here is the
+  // transport or the contract, and worth saying. Changing one can be refused
+  // by the agent, and that refusal is the only explanation for a picker that
+  // did not move.
+  const [error, setError] = useState<string | null>(null)
+  const dismissError = useCallback(() => setError(null), [])
 
   useEffect(() => {
+    setError(null)
     if (!isHosted) {
       setOptions([])
       setUsage(null)
@@ -52,9 +61,11 @@ export function useAcpConfig(conversationId: string, isHosted: boolean) {
       .then((next) => {
         if (alive) setOptions(next)
       })
-      .catch(() => {
+      .catch((err: unknown) => {
+        if (!alive) return
         // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- no adapter, no options; refilled by the announcement, never saved
-        if (alive) setOptions([])
+        setOptions([])
+        setError(errorMessage(err))
       })
     // Not fetched, only listened for: the agent reports it during a turn and
     // there is nowhere it is kept, so before the first report of this session
@@ -98,6 +109,13 @@ export function useAcpConfig(conversationId: string, isHosted: boolean) {
       try {
         // The whole set comes back, because changing one reshapes others.
         setOptions(await api.acpSetSessionConfig({ conversationId, configId, value }))
+        setError(null)
+      } catch (err) {
+        // A refusal leaves the set as it was, which is already what is on
+        // screen; what it must not do is leave the reader guessing why the
+        // picker did not move.
+        setError(errorMessage(err))
+        throw err
       } finally {
         setBusy(false)
       }
@@ -105,7 +123,7 @@ export function useAcpConfig(conversationId: string, isHosted: boolean) {
     [conversationId],
   )
 
-  return { options, usage, set, busy }
+  return { options, usage, set, busy, error, dismissError }
 }
 
 /** The option the agent calls `what`, by category or — when it omits one — by id. */

@@ -23,6 +23,17 @@
   font-display: swap;
 }
 
+/* Inter's own italic, so Latin emphasis in Markdown is drawn rather than
+   slanted by the browser. CJK has no italic in any MiSans build and is still
+   slanted — which is the usual rendering of CJK emphasis anyway. */
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/InterVariable-Italic.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
 /* The variable face's own axis runs 150–700, and a range wider than the axis
    would claim weights it clamps rather than has. */
 @font-face {
@@ -48,13 +59,40 @@
   unicode-range: U+20000-2A6DF, U+2A700-2B73F, U+2B740-2B81F, U+2B820-2CEAF, U+2CEB0-2EBEF, U+30EDD-30EDE;
 }
 
-/* Regular only: code is the one place it appears, and bold/italic there are
-   left to the browser to synthesise rather than shipping 60 MB more. */
+/* Regular, Bold and their italics: the four a code block and Markdown's
+   inline code actually ask for. A synthesised bold smears the ligatures that
+   are the reason for choosing Maple, and a synthesised italic is a slanted
+   upright rather than Maple's cursive italic. Medium and SemiBold are not
+   shipped; a 500 falls to Regular and a 600 to Bold, both real faces. */
 @font-face {
   font-family: 'Maple Mono NF CN';
   src: url('/fonts/MapleMono-NF-CN-Regular.ttf') format('truetype');
   font-weight: 400;
   font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Maple Mono NF CN';
+  src: url('/fonts/MapleMono-NF-CN-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Maple Mono NF CN';
+  src: url('/fonts/MapleMono-NF-CN-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Maple Mono NF CN';
+  src: url('/fonts/MapleMono-NF-CN-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
   font-display: swap;
 }
 

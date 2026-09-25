@@ -6,7 +6,9 @@ on:
   pull_request:
     branches: [main]
   # Manual runs exist for the visual job: `update_visual_baselines` regenerates
-  # the Linux screenshots and uploads them as an artifact to be committed.
+  # the Linux screenshots and uploads them as an artifact to be committed. A
+  # dispatch with it set runs the visual job alone — every other job carries an
+  # `if:` that skips it, since none of them bears on the pixels.
   workflow_dispatch:
     inputs:
       update_visual_baselines:
@@ -20,6 +22,8 @@ concurrency:
 
 jobs:
   test:
+    # Skipped when dispatched only to regenerate the visual baselines; see `visual`.
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.update_visual_baselines) }}
     strategy:
       fail-fast: false
       # No macOS. A macOS minute bills at ten, and it was buying coverage of a
@@ -121,6 +125,10 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: pnpm lint:rules
 
+      - name: No invented domain defaults (core)
+        if: matrix.os == 'ubuntu-latest'
+        run: node scripts/check-rust-invented-default.mjs src-tauri/crates/core/src
+
       # The shell and the core are two workspaces — `src-tauri/crates` is the
       # meridian-core submodule, excluded from the shell's workspace — so every
       # cargo gate runs twice. The core's runs share `src-tauri/target` through
@@ -170,6 +178,8 @@ jobs:
         run: cargo test --workspace --target-dir ../target
 
   android-check:
+    # Skipped when dispatched only to regenerate the visual baselines; see `visual`.
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.update_visual_baselines) }}
     runs-on: ubuntu-latest
     name: Check (android-aarch64)
 
@@ -187,23 +197,18 @@ jobs:
         with:
           workspaces: src-tauri -> target
           key: check-android-aarch64
+          # sherpa-onnx-sys downloads the Android libraries itself (from
+          # 1.13.8) and unpacks them here, whatever the --target.
+          cache-directories: src-tauri/target/sherpa-onnx-prebuilt
 
-      - name: Cache the sherpa-onnx Android libraries
-        uses: actions/cache@v4
-        with:
-          path: src-tauri/target/sherpa-onnx-android
-          key: sherpa-android-${{ hashFiles('src-tauri/crates/core/Cargo.toml') }}
-
-      - name: Fetch the sherpa-onnx Android libraries
-        run: bash scripts/fetch-sherpa-android.sh arm64-v8a
+      - name: Drop a half-restored sherpa-onnx unpack
+        run: bash .github/scripts/require-sherpa-libs.sh
 
       - name: Cargo check for Android
         working-directory: src-tauri
         run: |
           NDK=$ANDROID_NDK_LATEST_HOME
           TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin
-          # Required on Android, where sherpa-onnx-sys cannot download its own.
-          export SHERPA_ONNX_LIB_DIR=$GITHUB_WORKSPACE/src-tauri/target/sherpa-onnx-android/jniLibs/arm64-v8a
           export CC_aarch64_linux_android=$TOOLCHAIN/aarch64-linux-android34-clang
           export CXX_aarch64_linux_android=$TOOLCHAIN/aarch64-linux-android34-clang++
           export AR_aarch64_linux_android=$TOOLCHAIN/llvm-ar
@@ -215,6 +220,8 @@ jobs:
   # (`src/dev/demo/`) out of it is an `import.meta.env.DEV` condition in
   # `src/lib/transport.ts` that no test can see fold away.
   frontend-build:
+    # Skipped when dispatched only to regenerate the visual baselines; see `visual`.
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.update_visual_baselines) }}
     runs-on: ubuntu-latest
     name: Build (web bundle)
 
@@ -241,11 +248,11 @@ jobs:
       - name: Fetch bundled fonts
         run: pnpm fonts
 
-      - name: Vite build
-        run: pnpm exec vite build --configLoader native
-
-      - name: No demo fixtures in the bundle
-        run: pnpm check:dist-no-demo
+      # The same command Tauri's `beforeBuildCommand` runs, so this builds the
+      # exact bundle a release packages — and ends, as that one does, with
+      # `check-dist-no-demo`, which fails the build if fixture strings leaked.
+      - name: Build (tsc, vite, no demo fixtures)
+        run: pnpm build
 
       # Nothing else in CI runs the Tauri CLI, which refuses to build when an
       # npm package and its Rust crate differ in major.minor. Reads both lock
@@ -257,6 +264,13 @@ jobs:
       # that reads and defaults on failure, then writes back. Needs no toolchain.
       - name: No read-then-default in commands
         run: node scripts/check-rust-read-default.mjs
+
+      # The Rust half of `no-invented-domain-default`: a window, a price, a
+      # limit or a size that is unknown stays `None` rather than becoming a
+      # number nobody configured. The core's half runs in `test`, which is
+      # the job that checks the submodule out.
+      - name: No invented domain defaults (shell)
+        run: node scripts/check-rust-invented-default.mjs
 
   # Screenshot regression over the dev demo backend (see "Development" in
   # CLAUDE.md). Linux compares only against Linux baselines: font

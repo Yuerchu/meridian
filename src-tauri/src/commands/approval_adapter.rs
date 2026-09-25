@@ -42,9 +42,9 @@ impl engine::Approvals for DesktopApprovals {
         &self,
         assistant_message_id: &str,
         call: &provider::ToolCall,
-        retry_reason: Option<&str>,
+        retry: Option<engine::Escalation<'_>>,
     ) -> Result<Option<ApprovalDecision>, String> {
-        self.wait_for_approval(call, assistant_message_id, retry_reason).await
+        self.wait_for_approval(call, assistant_message_id, retry).await
     }
 }
 
@@ -57,14 +57,16 @@ impl DesktopApprovals {
     /// card is on screen is diagnosed as "stopped waiting for you" rather than
     /// as something that might have run.
     ///
-    /// `retry_reason` is set when a sandbox-blocked command is asking to be run
-    /// again without the sandbox. It retries the same call under the same id —
-    /// the approval is what is new, and that gets its own `approval_id`.
+    /// `retry` is set when an already-approved call is asking to be run outside
+    /// the sandbox — because the sandbox refused it, or because the settings
+    /// that say where it should run could not be read. It retries the same call
+    /// under the same id — the approval is what is new, and that gets its own
+    /// `approval_id`.
     async fn wait_for_approval(
         &self,
         tc: &provider::ToolCall,
         message_id: &str,
-        retry_reason: Option<&str>,
+        retry: Option<engine::Escalation<'_>>,
     ) -> Result<Option<ApprovalDecision>, String> {
         let services = &self.services;
         // Ours, not the provider's. See `PendingApproval` for what reusing the
@@ -75,6 +77,15 @@ impl DesktopApprovals {
         // the same number, but only one of them can be *the* answer to "when
         // does this stop standing" — and the listing paths read the stored one.
         let ttl = meridian_core::approval::ttl(services)?;
+        // Stamped once and sent both ways: on the event, and in the register
+        // every listing reads, so a card rebuilt after a reload keeps its time.
+        let asked_at = meridian_core::util::now_ms();
+        // A retry is an attempt at the same call, under the same id.
+        let retry = retry.map(|escalation| ApprovalRetry {
+            kind: escalation.kind,
+            reason: escalation.reason.to_string(),
+            origin_call_id: tc.id.clone(),
+        });
         // Registered before the event goes out, so a decision can never arrive
         // before there is somewhere to put it.
         {
@@ -85,11 +96,10 @@ impl DesktopApprovals {
                     turn_id: self.turn_id.clone(),
                     assistant_message_id: message_id.to_string(),
                     provider_call_id: tc.id.clone(),
-                    // A retry is an attempt at the same call, under the same id.
-                    origin_call_id: retry_reason.map(|_| tc.id.clone()),
                     tool_name: tc.name.clone(),
                     arguments: tc.arguments.clone(),
-                    retry_reason: retry_reason.map(str::to_string),
+                    retry: retry.clone(),
+                    asked_at,
                     bubble: self.bubble.clone(),
                     expires_at: ttl.map(|ttl| std::time::Instant::now() + ttl),
                     sender: tx,
@@ -118,10 +128,8 @@ impl DesktopApprovals {
                 parent_call_id: b.parent_call_id.clone(),
                 sub_conversation_id: b.sub_conversation_id.clone(),
             }),
-            retry: retry_reason.map(|reason| ApprovalRetry {
-                reason: reason.to_string(),
-                origin_call_id: tc.id.clone(),
-            }),
+            retry,
+            asked_at,
         };
         if let Err(e) = services.events.emit_chat(event) {
             // Nobody will ever answer a card that was never drawn; don't leave

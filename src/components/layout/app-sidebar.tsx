@@ -250,13 +250,13 @@ function NewProjectForm({
           picker at all. */}
       {can.browseForDirectory ? (
         <Button
+          leadingIcon={FolderOpen}
           type="button"
           variant="secondary"
           onPress={() => void handleBrowse()}
           isDisabled={saving}
           className="w-full justify-start text-caption-1-regular"
         >
-          <FolderOpen className="size-4 text-text-secondary" />
           <span data-slot="project-form-path" className={path ? 'text-text-primary truncate' : 'text-text-secondary'}>
             {path || t('sidebar.browsePath')}
           </span>
@@ -363,12 +363,12 @@ function NewHostedSessionForm({
           folders would be pointing at the wrong filesystem. */}
       {can.browseForDirectory ? (
         <Button
+          leadingIcon={FolderOpen}
           type="button"
           variant="secondary"
           onPress={() => void handleBrowse()}
           className="w-full justify-start text-caption-1-regular"
         >
-          <FolderOpen className="size-4 text-text-secondary" />
           <span
             data-slot="hosted-session-form-path"
             className={path ? 'text-text-primary truncate' : 'text-text-secondary'}
@@ -1513,7 +1513,10 @@ export function AppSidebar({
           The sheet covers the full height including the cutout and the
           navigation bar, and it is a separate element from the panel above, so
           it needs its own copy of the insets rather than inheriting them. */}
-      <Sidebar.Mobile className="pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)]">
+      <Sidebar.Mobile
+        aria-label={t('sidebar.label')}
+        className="pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)]"
+      >
         {side('m-', false)}
       </Sidebar.Mobile>
 

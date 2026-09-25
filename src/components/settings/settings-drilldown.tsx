@@ -33,7 +33,7 @@ export function SettingsDrilldown({
   // The viewport, deliberately, and not the measured container `MasterDetail`
   // moved to: the two branches below share no box to measure — the narrow one
   // is a row plus a portal — so there is nothing to hang a probe on. And the
-  // pane this sits in is capped at `max-w-lg`, so the two rulers only disagree
+  // pane this sits in is capped at `max-w-settings`, so the two rulers only disagree
   // in a range where either answer reads fine. Not an oversight.
   const isMobile = useIsMobile()
   const [open, setOpen] = useState(false)
@@ -69,11 +69,11 @@ export function SettingsDrilldown({
                 className="flex shrink-0 items-center gap-2 border-b border-border-button-default px-1 pt-[var(--safe-top)]"
               >
                 <Button
+                  leadingIcon={ArrowLeft}
                   variant="secondary"
                   onPress={() => setOpen(false)}
                   className="h-10 gap-1 rounded-xl px-2 text-body-regular text-text-secondary hover:text-text-primary"
                 >
-                  <ArrowLeft className="size-4" />
                   {t('common.back')}
                 </Button>
                 <Modal.Heading className="min-w-0 flex-1 truncate text-body-medium">{title}</Modal.Heading>

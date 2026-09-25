@@ -131,6 +131,7 @@ function profile(
   name: string,
   now: number,
   prices: [string, string, string | null, string | null] | null,
+  // eslint-disable-next-line meridian-ui/no-invented-domain-default -- fixture data: every demo model is invented, and says so on the page
   window = 200_000,
 ): ModelProfileInfoResponse {
   return {

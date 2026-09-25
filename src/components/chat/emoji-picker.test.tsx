@@ -69,6 +69,24 @@ describe('EmojiPicker', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
+  // A failed read used to land on "no packs assigned", which is a statement
+  // about the assistant's settings and was false.
+  it('says the packs could not be loaded, and why, rather than that there are none', async () => {
+    mocks.listPacks.mockRejectedValueOnce('database is locked')
+    const user = userEvent.setup()
+    render(<EmojiPicker assistantId="assistant-broken" onSelect={vi.fn()} />)
+
+    await waitFor(() => expect(mocks.listPacks).toHaveBeenCalledWith('assistant-broken'))
+    await user.click(screen.getByRole('button', { name: 'Emoji' }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('database is locked')
+    expect(screen.queryByText('No emoji packs assigned to this assistant')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: i18n.t('common.retry') }))
+    expect(await screen.findByRole('button', { name: 'Pack One' })).toBeInTheDocument()
+  })
+
   it('can explain an assistant with no assigned packs', async () => {
     mocks.listPacks.mockResolvedValueOnce([])
     const user = userEvent.setup()

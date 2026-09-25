@@ -252,8 +252,7 @@ export function ClaudeSessionPicker({
                   showing this device's folders points at the wrong filesystem —
                   the same split a project's path has. */}
               {can.browseForDirectory && (
-                <Button variant="secondary" onPress={() => void browse()} className="shrink-0">
-                  <FolderOpen className="size-4" />
+                <Button leadingIcon={FolderOpen} variant="secondary" onPress={() => void browse()} className="shrink-0">
                   {t('sessionPicker.folder')}
                 </Button>
               )}

@@ -53,7 +53,7 @@ pub struct ImeDictionaryInfoResponse {
     pub file: String,
     pub name: String,
     pub entries: u64,
-    pub size_bytes: u64,
+    pub size_bytes: Option<u64>,
     pub enabled: bool,
     pub license: String,
     pub source: String,

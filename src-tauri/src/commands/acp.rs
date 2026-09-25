@@ -289,13 +289,13 @@ pub async fn acp_send(app: tauri::AppHandle, request: AcpPromptSendRequest) -> R
             turn_id: turn_id.clone(),
             assistant_id: None,
             db_pool: Some(services.db.clone()),
-            sandbox_policy: None,
+            sandbox_policy: meridian_core::sandbox::CommandSandbox::UNCONFINED,
             tool_secrets: Default::default(),
             cancel: tokio_util::sync::CancellationToken::new(),
             journal: None,
         };
         let counter = meridian_core::agent::TokenCounter::new(meridian_core::agent::TokenizerKind::Cl100kBase);
-        meridian_core::workspace::reference::prepare_references(&tool_context, &references, &counter, 128_000).await?
+        meridian_core::workspace::reference::prepare_references(&tool_context, &references, &counter, None).await?
     };
     // Dragged-in conversations, through the same freeze the native turn uses,
     // against what the workspace references left of the same budget.
@@ -305,7 +305,7 @@ pub async fn acp_send(app: tauri::AppHandle, request: AcpPromptSendRequest) -> R
     } else {
         let mut context = context;
         let spent: usize = context.iter().map(|item| item.token_count.max(0) as usize).sum();
-        let budget_left = meridian_core::workspace::reference::turn_context_token_limit(128_000).saturating_sub(spent);
+        let budget_left = meridian_core::workspace::reference::turn_context_token_limit(None).saturating_sub(spent);
         let pool = services.db.clone();
         let current = conversation_id.clone();
         let frozen = tokio::task::spawn_blocking(move || {

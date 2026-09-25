@@ -54,7 +54,8 @@ const validEvents: ChatStreamEvent[] = [
     message_id: 'm1',
     conversation_id: 'c1',
     delegation: { parent_call_id: 'parent-1', sub_conversation_id: 'sub-1' },
-    retry: { reason: 'sandbox denied', origin_call_id: 'origin-1' },
+    retry: { kind: 'sandbox_denied', reason: 'sandbox denied', origin_call_id: 'origin-1' },
+    asked_at: 1_700_000_000_000,
   },
   {
     type: 'tool_approval_expired',
@@ -232,6 +233,33 @@ describe('parseChatStreamEvent', () => {
         retry: null,
       }),
     ).toThrow('tool_approval_req event is missing required field: delegation')
+
+    const approval = {
+      type: 'tool_approval_req',
+      approval_id: 'approval-1',
+      call_id: 'call-1',
+      tool_name: 'run_command',
+      arguments: '{}',
+      message_id: 'm1',
+      conversation_id: 'c1',
+      delegation: null,
+      retry: null,
+      asked_at: 1_700_000_000_000,
+    }
+    expect(() => parseChatStreamEvent({ ...approval, asked_at: undefined })).toThrow('asked_at')
+    expect(() => parseChatStreamEvent({ ...approval, asked_at: '1700000000000' })).toThrow('asked_at')
+    expect(() => parseChatStreamEvent({ ...approval, retry: { reason: 'x', origin_call_id: 'call-1' } })).toThrow(
+      'kind',
+    )
+    expect(() =>
+      parseChatStreamEvent({ ...approval, retry: { kind: 'guessed', reason: 'x', origin_call_id: 'call-1' } }),
+    ).toThrow('kind')
+    expect(
+      parseChatStreamEvent({
+        ...approval,
+        retry: { kind: 'settings_unreadable', reason: 'database is locked', origin_call_id: 'call-1' },
+      }),
+    ).toMatchObject({ retry: { kind: 'settings_unreadable' } })
 
     expect(() =>
       parseChatStreamEvent({

@@ -30,9 +30,15 @@ export function triTo(tri: Tri): boolean | undefined {
  * a flat 90% of the window, which ignored output entirely: on a model that
  * advertises 128k of output against a 256k window it reserved nothing, and the
  * request the threshold permitted was one the provider had to refuse.
+ *
+ * Both limits are required. An unknown output ceiling used to reserve nothing
+ * (`maxOutput ?? 0`), which suggested a threshold for a reply of zero tokens —
+ * a number the backend never computes, since it refuses a turn whose ceiling
+ * nobody knows. With either unknown there is no suggestion: the field stays
+ * blank and is asked for at save.
  */
-export function safeThreshold(contextWindow: number, maxOutput: number | null): number {
-  const reserve = Math.min(maxOutput ?? 0, 32000)
+export function safeThreshold(contextWindow: number, maxOutput: number): number {
+  const reserve = Math.min(maxOutput, 32000)
   const headroom = Math.min(Math.floor(contextWindow / 20), 8000)
   return Math.max(contextWindow - reserve - headroom, Math.floor(contextWindow / 2))
 }

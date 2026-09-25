@@ -422,12 +422,65 @@ describe('the interactive cards say what became of them', () => {
     expect(screen.queryByRole('button', { name: i18n.t('chat.tool.allow') })).toBeNull()
     expect(screen.getByText(i18n.t('chat.tool.running'))).toBeVisible()
 
-    rerender(<ToolCallBlock data={{ ...first, approval_id: 'appr-2', retry_reason: 'sandbox denied' }} />)
+    rerender(
+      <ToolCallBlock
+        data={{ ...first, approval_id: 'appr-2', retry: { kind: 'sandbox_denied', reason: 'sandbox denied' } }}
+      />,
+    )
 
     expect(screen.getByText(i18n.t('chat.tool.sandboxRetryPrompt'))).toBeVisible()
     // Its own label, not "Allow": what is being agreed to is not the call the
     // user already agreed to.
     expect(screen.getByRole('button', { name: i18n.t('chat.tool.retryWithoutSandbox') })).toBeVisible()
+  })
+
+  /// Settings that could not be read are a different question from a denial,
+  /// and the card must not borrow its words: nothing ran, the error is shown,
+  /// and what is on offer is running outside the sandbox — not a "retry".
+  it('says the settings could not be read, with the error, when that is why it asks', () => {
+    render(
+      <ToolCallBlock
+        data={{
+          ...toolCall('run_command', { command: 'cargo test' }),
+          approval_id: 'appr-2',
+          retry: { kind: 'settings_unreadable', reason: 'database is locked' },
+        }}
+      />,
+    )
+
+    expect(screen.getByText(i18n.t('chat.tool.settingsUnreadablePrompt'))).toBeVisible()
+    expect(screen.getByText('database is locked')).toBeVisible()
+    expect(screen.queryByText(i18n.t('chat.tool.sandboxRetryPrompt'))).toBeNull()
+    expect(screen.getByRole('button', { name: i18n.t('chat.tool.runOutsideSandbox') })).toBeVisible()
+    expect(screen.queryByRole('button', { name: i18n.t('chat.tool.retryWithoutSandbox') })).toBeNull()
+  })
+
+  /// A refused answer used to retire the card with "nothing is waiting any
+  /// more" and throw away what the backend said. The reason travels to the
+  /// store with the orphaning, and the card draws it.
+  it('hands the backend’s reason for refusing an answer to the orphaning', async () => {
+    const markApprovalOrphaned = vi.fn()
+    const original = useConversationStore.getState().markApprovalOrphaned
+    useConversationStore.setState({ markApprovalOrphaned })
+    vi.mocked(api.approveToolCall).mockRejectedValueOnce('the turn has already ended')
+    try {
+      render(<ToolCallBlock data={toolCall('run_command', { command: 'ls' })} />)
+      await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.tool.allow') }))
+      await vi.waitFor(() => expect(markApprovalOrphaned).toHaveBeenCalledWith('appr-1', 'the turn has already ended'))
+    } finally {
+      useConversationStore.setState({ markApprovalOrphaned: original })
+    }
+  })
+
+  it('draws an orphaned card’s answer failure as an alert with the reason', () => {
+    render(
+      <ToolCallBlock
+        data={{ ...toolCall('run_command', { command: 'ls' }, 'orphaned'), answer_error: 'the turn has already ended' }}
+      />,
+    )
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent(i18n.t('chat.tool.answerFailed'))
+    expect(alert).toHaveTextContent('the turn has already ended')
   })
 
   /// Two spinners side by side read as two things happening at once.

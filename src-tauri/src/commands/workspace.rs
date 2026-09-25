@@ -296,7 +296,7 @@ fn reference_context(
         assistant_id: None,
         db_pool: None,
         #[cfg(not(target_os = "android"))]
-        sandbox_policy: None,
+        sandbox_policy: meridian_core::sandbox::CommandSandbox::UNCONFINED,
         tool_secrets: Default::default(),
         cancel: tokio_util::sync::CancellationToken::new(),
         journal: None,
@@ -364,6 +364,7 @@ pub async fn workspace_suggest_refs(
     let root = require_reference_directory(&app, request.conversation_id, request.project_id).await?;
     let file_access = meridian_core::agent::build_file_access(&app.services().db).await?;
     let context = reference_context(&root, file_access);
+    // domain-default: how many completions to offer, the picker's own choice
     let suggestions =
         workspace::reference::suggest_references_from_context(&context, &request.query, request.limit.unwrap_or(15))
             .await?;
@@ -394,7 +395,7 @@ pub async fn workspace_resolve_ref(
         line_start,
         line_end,
     };
-    let mut prepared = workspace::reference::prepare_references(&context, &[reference], &counter, 100_000).await?;
+    let mut prepared = workspace::reference::prepare_references(&context, &[reference], &counter, None).await?;
     prepared
         .pop()
         .and_then(|item| item.preview())

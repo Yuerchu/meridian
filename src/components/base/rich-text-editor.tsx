@@ -15,6 +15,7 @@ import {
   type ButtonProps as AriaButtonProps,
 } from 'react-aria-components'
 import { cx } from '@/utils/cx'
+import { markdownVariants } from './markdown-variants'
 import { Button, type ButtonProps } from './buttons/button'
 import { OVERLAY_MOTION, OVERLAY_SURFACE } from './overlay-motion'
 import { Tooltip, TooltipTrigger } from './tooltip/tooltip'
@@ -469,7 +470,10 @@ function RteContent({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="rich-text-editor-content"
       {...props}
-      className={cx('rich-text-editor__prosemirror prose prose-sm max-w-none dark:prose-invert', className)}
+      // The transcript's prose recipe, not bare `prose`: typography's default
+      // wraps inline code in literal backticks (`::before`/`::after`), which the
+      // recipe turns off, so a plan read here looks like the same plan rendered.
+      className={markdownVariants().base({ className: cx('rich-text-editor__prosemirror', className) })}
     >
       <EditorContent editor={editor} />
     </div>

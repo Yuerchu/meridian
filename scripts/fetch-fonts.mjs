@@ -52,6 +52,11 @@ export const SOURCES = [
         sha256: '693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3',
       },
       {
+        entry: 'web/InterVariable-Italic.woff2',
+        to: 'InterVariable-Italic.woff2',
+        sha256: 'e564f652916db6c139570fefb9524a77c4d48f30c92928de9db19b6b5c7a262a',
+      },
+      {
         entry: 'LICENSE.txt',
         to: 'licenses/Inter-OFL.txt',
         sha256: '262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a',
@@ -104,6 +109,21 @@ export const SOURCES = [
         sha256: 'bb8e8e8c263896f42555107202f1847f7a42c340a3e532df9c4d585c9794411c',
       },
       {
+        entry: 'MapleMono-NF-CN-Bold.ttf',
+        to: 'MapleMono-NF-CN-Bold.ttf',
+        sha256: '9e0c22a032c255b2da2c073d6cca6f8cf6fd6f214ae5407eb9f1aa523713729b',
+      },
+      {
+        entry: 'MapleMono-NF-CN-Italic.ttf',
+        to: 'MapleMono-NF-CN-Italic.ttf',
+        sha256: '39e6c6e611e65e6d0780f6279561f954f9db51221987d0924c45f6121eaf9054',
+      },
+      {
+        entry: 'MapleMono-NF-CN-BoldItalic.ttf',
+        to: 'MapleMono-NF-CN-BoldItalic.ttf',
+        sha256: '9d6e76fbb5767406efd1f5ae2d32f5439de3b4d4063b128e4186ad5619267120',
+      },
+      {
         entry: 'LICENSE.txt',
         to: 'licenses/MapleMono-OFL.txt',
         sha256: 'eb2d28d2e565a0757e3d64e34ebb452e75a0cad87c0ab3faf4e08ba7596de902',
@@ -154,25 +174,50 @@ function mismatch(what, expected, actual) {
   return new FontFetchError(`${what}: SHA-256 mismatch\n  expected ${expected}\n  actual   ${actual}`)
 }
 
-async function download(source, dest) {
+/** A failure that says nothing about the file: the connection or the server. */
+class TransientFetchError extends FontFetchError {}
+
+/**
+ * Downloads with up to two more attempts, a few seconds apart, when the failure
+ * is transient: a refused or dropped connection, a 5xx or a 429. MiSans comes
+ * from hyperos.mi.com, and a CI run whose font cache had just been invalidated
+ * lost its download there mid-stream once — a failed job about nothing in the
+ * change. A 404 or a hash mismatch is not retried: it is the file that is
+ * wrong, and asking again only delays saying so. After the last attempt the
+ * error stands, as before; nothing falls back to system fonts.
+ */
+export async function download(source, dest, { delays = [3000, 10000] } = {}) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await downloadOnce(source, dest)
+    } catch (err) {
+      if (!(err instanceof TransientFetchError) || attempt >= delays.length) throw err
+      console.warn(`fonts: ${err.message}; trying again in ${delays[attempt] / 1000}s`)
+      await new Promise((resolve) => setTimeout(resolve, delays[attempt]))
+    }
+  }
+}
+
+async function downloadOnce(source, dest) {
   const part = `${dest}.part`
   console.log(`fonts: downloading ${source.name} from ${source.url}`)
   let response
   try {
     response = await fetch(source.url)
   } catch (err) {
-    throw new FontFetchError(`${source.name}: download failed: ${err.cause?.message ?? err.message}`)
+    throw new TransientFetchError(`${source.name}: download failed: ${err.cause?.message ?? err.message}`)
   }
   if (!response.ok || !response.body) {
     await response.body?.cancel()
-    throw new FontFetchError(`${source.name}: download failed: HTTP ${response.status} ${response.statusText}`)
+    const Failure = response.status >= 500 || response.status === 429 ? TransientFetchError : FontFetchError
+    throw new Failure(`${source.name}: download failed: HTTP ${response.status} ${response.statusText}`)
   }
   const hash = createHash('sha256')
   try {
     await pipeline(Readable.fromWeb(response.body), hashing(hash), createWriteStream(part))
   } catch (err) {
     await rm(part, { force: true })
-    throw new FontFetchError(`${source.name}: download interrupted: ${err.message}`)
+    throw new TransientFetchError(`${source.name}: download interrupted: ${err.message}`)
   }
   const actual = hash.digest('hex')
   if (actual !== source.sha256) {

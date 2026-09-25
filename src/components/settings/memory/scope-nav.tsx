@@ -186,6 +186,7 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
           )}
 
           <Button
+            leadingIcon={Bookmark}
             variant="secondary"
             className="w-full justify-start text-body-regular"
             onPress={async () => {
@@ -198,14 +199,12 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
             }}
             data-slot="memory-pin-toggle"
           >
-            <Bookmark
-              className={cx('size-4', selectedPerson.is_pinned ? 'text-text-primary' : 'text-text-secondary')}
-            />
             {selectedPerson.is_pinned ? t('settings.memory.unpin') : t('settings.memory.pin')}
           </Button>
 
           <Button
-            variant="secondary"
+            leadingIcon={UserX}
+            variant="danger"
             className="w-full justify-start text-body-regular"
             onPress={async () => {
               const ok = await confirm({
@@ -217,7 +216,6 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
               onChanged()
             }}
           >
-            <UserX className="size-4 text-status-danger" />
             {t('settings.memory.person.forget')}
           </Button>
         </Card>

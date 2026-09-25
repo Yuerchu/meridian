@@ -1,30 +1,15 @@
 import { useTranslation } from 'react-i18next'
+import { TriangleAlert } from '@keyline-icons/react/two-tone'
 
 import { Link, Popover, ProgressCircle, Tooltip, TooltipTrigger } from '@/components/base'
+import { ErrorAlert } from '@/components/ui/error-alert'
 
 import type { AcpUsage } from '@/hooks/use-acp-config'
-import type { CompactCircuitBreakerState, ConversationAgentKind } from '@/types'
-
-/** What the composer knows about this conversation's window. */
-export interface ContextReading {
-  messageCount: number
-  estimatedTokens: number
-  contextLimit: number
-  autoCompactEnabled: boolean
-  autoCompactThreshold: number
-  /** `closed` while compaction is being attempted. Anything else means enough
-   *  summarisations failed in a row that it has stopped trying — the setting is
-   *  still on, and the count will only keep climbing, so it has to be said. */
-  compactBreaker: CompactCircuitBreakerState
-  /** Whose window the numbers above describe. */
-  model: string
-  /** `agent` / `explore` for a delegated run, `claude_code` for a hosted
-   *  session, null for an ordinary conversation. */
-  agentKind: ConversationAgentKind | null
-}
+import type { ContextInfo } from '@/hooks/use-context-info'
 
 interface ContextGaugeProps {
-  context?: ContextReading
+  /** What this app knows about the window; nothing is drawn while loading. */
+  context?: ContextInfo
   /** A hosted session: the numbers above are not about it. */
   hosted?: boolean
   /** What the *agent* last said about its own window. Only for a hosted
@@ -63,10 +48,41 @@ export function ContextGauge({
 }: ContextGaugeProps) {
   const { t } = useTranslation()
 
-  const used = hosted ? agentUsage?.used : context?.estimatedTokens
-  const limit = hosted ? agentUsage?.size : context?.contextLimit
+  // The reading failed. Drawn in the dial's place rather than leaving the last
+  // numbers up — after a model switch those describe a window this
+  // conversation no longer goes into — or, before the first reading, nothing at
+  // all, which is what a conversation with nothing in it looks like. There is
+  // no "unknown window" reading to draw instead: the backend refuses to size a
+  // turn without one, so a failed read is the only way the window goes
+  // unknown. The reason is one press away, with the retry beside it.
+  if (!hosted && context?.status === 'unavailable') {
+    const label = t('chat.context.unavailable')
+    return (
+      <Popover>
+        <TooltipTrigger delay={0}>
+          <Popover.Trigger
+            aria-label={label}
+            data-slot="context-gauge-error"
+            className="touch-hitbox inline-flex items-center rounded-full text-status-danger outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
+          >
+            <TriangleAlert aria-hidden className="size-4.5" />
+          </Popover.Trigger>
+          <Tooltip>{label}</Tooltip>
+        </TooltipTrigger>
+        <Popover.Content placement="top" className="max-w-72">
+          <Popover.Dialog aria-label={t('chat.context.title')}>
+            <ErrorAlert title={label} message={context.reason} onRetry={context.retry} />
+          </Popover.Dialog>
+        </Popover.Content>
+      </Popover>
+    )
+  }
+
+  const reading = context?.status === 'ready' ? context.reading : undefined
+  const used = hosted ? agentUsage?.used : reading?.estimatedTokens
+  const limit = hosted ? agentUsage?.size : reading?.contextLimit
   if (used === undefined || !limit) return null
-  if (!hosted && (!context || context.messageCount === 0)) return null
+  if (!hosted && (!reading || reading.messageCount === 0)) return null
 
   const ratio = used / limit
   // Below the warning threshold the ring is ambient, not a reading — quieter
@@ -82,15 +98,15 @@ export function ContextGauge({
   // from is one tap away, which is exactly when that gets confusing. Only those
   // two kinds are sub-agents; a hosted session is a peer, and reading any
   // non-empty `agentKind` as "sub-agent" labelled it `子 Agent（Agent）`.
-  const subAgent = context?.agentKind === 'agent' || context?.agentKind === 'explore'
+  const subAgent = reading?.agentKind === 'agent' || reading?.agentKind === 'explore'
   const whose = hosted
     ? (agentModel ?? t('chat.context.hostedAgent'))
     : subAgent
       ? t('chat.context.forSubAgent', {
-          kind: t(`chat.subAgent.${context?.agentKind === 'explore' ? 'explore' : 'agent'}`),
-          model: context?.model,
+          kind: t(`chat.subAgent.${reading?.agentKind === 'explore' ? 'explore' : 'agent'}`),
+          model: reading?.model,
         })
-      : context?.model
+      : reading?.model
 
   return (
     // A popover rather than a tooltip. This panel has a button in it, and a
@@ -138,7 +154,7 @@ export function ContextGauge({
                   not what it is carrying. */}
               {!hosted && (
                 <span data-slot="context-gauge-messages">
-                  {t('chat.context.messages', { count: context?.messageCount ?? 0 })}
+                  {t('chat.context.messages', { count: reading?.messageCount ?? 0 })}
                 </span>
               )}
               <span data-slot="context-gauge-figures">{figures}</span>
@@ -152,7 +168,7 @@ export function ContextGauge({
                 </span>
               ) : (
                 <>
-                  {context?.autoCompactEnabled && context.compactBreaker !== 'closed' ? (
+                  {reading?.autoCompactEnabled && reading.compactBreaker !== 'closed' ? (
                     // Before the countdown, and instead of it: "0% until
                     // auto-compact" next to a number that never moves reads as
                     // a bug in the indicator rather than as compaction having
@@ -161,10 +177,10 @@ export function ContextGauge({
                       {t('chat.compact.circuitBreakerOpen')}
                     </span>
                   ) : (
-                    context?.autoCompactEnabled &&
-                    context.autoCompactThreshold > 0 && (
+                    reading?.autoCompactEnabled &&
+                    reading.autoCompactThreshold > 0 && (
                       <span data-slot="context-gauge-countdown">
-                        {Math.max(0, Math.round((1 - context.estimatedTokens / context.autoCompactThreshold) * 100))}%{' '}
+                        {Math.max(0, Math.round((1 - reading.estimatedTokens / reading.autoCompactThreshold) * 100))}%{' '}
                         {t('chat.compact.untilAutoCompact')}
                       </span>
                     )

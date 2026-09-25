@@ -750,7 +750,7 @@ function Gallery() {
                 tool_name: 'run_command',
                 status: 'pending',
                 call_id: 'pg-escalation',
-                retry_reason: 'sandbox denied',
+                retry: { kind: 'sandbox_denied', reason: 'sandbox denied' },
                 arguments: JSON.stringify({ command: 'netsh advfirewall show allprofiles' }),
               })}
             />

@@ -173,6 +173,9 @@ macro_rules! with_all_commands {
                 request: $crate::commands::provider::ProviderKeyUpdateRequest,
             ),
             async commands::provider => get_provider_key_exists(provider_id: String),
+            async commands::provider => list_cached_provider_models(
+                request: $crate::commands::provider::ProviderCachedModelListRequest,
+            ),
             async commands::provider => fetch_provider_models(
                 request: $crate::commands::provider::ProviderModelListRequest,
             ),

@@ -260,6 +260,10 @@ export interface ProviderModelListRequest {
   forceRefresh: boolean | null
 }
 
+export interface ProviderCachedModelListRequest {
+  providerId: string
+}
+
 export interface ProviderCapabilitiesReadRequest {
   providerId: string
   modelId: string
@@ -578,7 +582,8 @@ export interface ChatStopRequest {
   turnId: string | null
 }
 
-export type UserCommandStatus = 'completed' | 'sandbox_denied' | 'timed_out' | 'cancelled' | 'failed' | 'in_doubt'
+export type UserCommandStatus =
+  'completed' | 'sandbox_denied' | 'settings_unreadable' | 'timed_out' | 'cancelled' | 'failed' | 'in_doubt'
 export type SandboxBackend = 'host' | 'windows_restricted_token' | 'container'
 
 export interface UserCommandRunRequest {
@@ -1170,6 +1175,11 @@ export interface ToolCallDisplay {
   status:
     'pending' | 'approved' | 'denied' | 'running' | 'queued' | 'completed' | 'error' | 'orphaned' | 'awaiting_parent'
   result?: string
+  /** Why sending an answer to this call's question failed, as the backend
+   *  said it. Frontend-only and never stored: set beside `orphaned` when the
+   *  approve/deny/answer request was refused, so the card says what went wrong
+   *  rather than only that nothing is listening. */
+  answer_error?: string
   /** What the buttons answer with while this call is `pending`. Minted by the
    *  backend per approval rather than taken from the provider's call id, which
    *  some OpenAI-compatible gateways reuse. A pending call without one cannot
@@ -1179,9 +1189,10 @@ export interface ToolCallDisplay {
   /** A durable plan review associated with this call. Unlike `approval_id`,
    *  this survives process restarts and never addresses an in-memory waiter. */
   plan_review_id?: string
-  /** Present exactly when this is a sandbox-blocked call asking to be retried
-   *  without the sandbox. The retry reuses the original call id. */
-  retry_reason?: string
+  /** Present exactly when this call is asking to run outside the sandbox:
+   *  because the sandbox refused it, or because the settings that say where it
+   *  runs could not be read. The retry reuses the original call id. */
+  retry?: ApprovalEscalation
   /** Set on a `run_agent` call once its run exists. */
   sub_agent?: SubAgentRunDisplay
   /** A question the delegated run is asking. It belongs to a tool call in
@@ -1240,7 +1251,7 @@ export interface NestedApproval {
   call_id: string
   tool_name: string
   arguments: string
-  retry_reason?: string
+  retry?: ApprovalEscalation
   /** Where to go to watch what led to the question. */
   sub_conversation_id?: string
 }
@@ -1617,14 +1628,16 @@ export interface PendingApprovalInfoResponse {
    *  call is on. */
   assistant_message_id: string
   provider_call_id: string
-  /** The call this one retries. Non-null only for sandbox escalations, where it
-   *  currently equals `provider_call_id` — a retry reuses the id. */
-  origin_call_id: string | null
   tool_name: string
   /** What the tool was called with. Sent rather than read off the transcript,
    *  because a delegated call's row is in another conversation. */
   arguments: string
-  retry_reason: string | null
+  /** Non-null only when this asks to run an already-asked call outside the
+   *  sandbox — the same value the announcing event carried. */
+  retry: ApprovalRetry | null
+  /** When the backend registered the question, in epoch milliseconds — the
+   *  same value its announcing event carried. */
+  asked_at: number
   /** Shown here, answered elsewhere: this belongs to a delegated run and the
    *  card draws without buttons. */
   bubbled: boolean
@@ -1632,6 +1645,23 @@ export interface PendingApprovalInfoResponse {
   parent_call_id: string | null
   /** Where the delegated run can be watched. Non-null only in the parent's view. */
   sub_conversation_id: string | null
+}
+
+/** Why a call already put to the user is being put to them again, as a
+ *  request to run it outside the sandbox. */
+export type ApprovalRetryKind = 'sandbox_denied' | 'settings_unreadable'
+
+/** The escalation as a card needs it: which kind, and the sandbox's output (a
+ *  denial) or the read error (unreadable settings). */
+export interface ApprovalEscalation {
+  kind: ApprovalRetryKind
+  reason: string
+}
+
+export interface ApprovalRetry extends ApprovalEscalation {
+  /** The call this retries. Currently equals the provider call id — a retry
+   *  reuses it. */
+  origin_call_id: string
 }
 
 export interface ToolCallDenyRequest {
@@ -2837,7 +2867,9 @@ export type ChatStreamEvent =
       message_id: string
       conversation_id: string
       delegation: { parent_call_id: string; sub_conversation_id: string } | null
-      retry: { reason: string; origin_call_id: string } | null
+      retry: ApprovalRetry | null
+      /** When the backend registered the question, in epoch milliseconds. */
+      asked_at: number
     }
   | {
       type: 'tool_approval_expired'
@@ -2939,7 +2971,8 @@ export interface ImeDictionaryInfoResponse {
   file: string
   name: string
   entries: number
-  size_bytes: number
+  /** Null when the dictionary file could not be read. */
+  size_bytes: number | null
   enabled: boolean
   license: string
   source: string

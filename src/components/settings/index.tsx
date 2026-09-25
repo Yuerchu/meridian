@@ -108,13 +108,11 @@ export default function SettingsPage({
           rather than here — a query resolves against an ancestor container, so
           an element carrying both would look past its own.
 
-          Centred, and capped once here rather than per panel. Left-aligned, a
-          narrow editor on a wide window is a strip against one edge with the
-          whole page empty beside it, and a table is a line of cells running
-          off towards the far side; `max-w-settings` is where a row stops
-          reading as a pair and starts reading as two things. Panels keep
-          their own narrower caps and centre inside this one. */}
-      <div data-slot="settings-panel" className="mx-auto w-full max-w-settings p-4 @2xl/settings:p-6">
+          Every page is centred at the one settings width (`max-w-settings`,
+          the registry settings-modal's content pane) and carries that cap
+          itself — `SettingsPane`, `SettingsPage`, `MasterDetail` and the
+          skeleton — so moving between sections never moves the column. */}
+      <div data-slot="settings-panel" className="mx-auto w-full p-4 @2xl/settings:p-6">
         {panel}
       </div>
     </div>

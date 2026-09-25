@@ -1087,3 +1087,31 @@ describe('TurnItem — what copy copies', () => {
     expect(await navigator.clipboard.readText()).toBe('清完了。')
   })
 })
+
+describe('a failed turn says why, under itself', () => {
+  const failedTurn = () => {
+    const u = msg('user', { content: 'q', turn_id: 'run-1' })
+    const a = msg('assistant', { _blocks: [text('partial')], content: 'partial', turn_id: 'run-1' })
+    return buildTurns([u, a], { failureByTurnId: new Map([['run-1', '401 Unauthorized: invalid API key']]) })[0]
+  }
+
+  it('shows the recorded reason, announced, and offers regeneration as the retry', async () => {
+    const onRegenerate = vi.fn()
+    const turn = failedTurn()
+    const { container } = render(<TurnItem turn={turn} conversationId={CONV} onRegenerate={onRegenerate} />)
+
+    const notice = container.querySelector<HTMLElement>('[data-slot="turn-failure"]')
+    expect(notice).not.toBeNull()
+    const region = within(notice!).getByRole('status')
+    expect(region).toHaveTextContent(i18n.t('chat.turn.failed'))
+    expect(region).toHaveTextContent('401 Unauthorized: invalid API key')
+
+    await userEvent.click(within(region).getByRole('button', { name: i18n.t('common.retry') }))
+    expect(onRegenerate).toHaveBeenCalledWith(turn.assistantMessages[0].id)
+  })
+
+  it('draws nothing for a turn that did not fail', () => {
+    const { container } = render(<TurnItem turn={toolTurn()} conversationId={CONV} />)
+    expect(container.querySelector('[data-slot="turn-failure"]')).toBeNull()
+  })
+})

@@ -161,6 +161,7 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
   set_provider_key: { args: { request: { providerId: PROVIDER.relay, apiKey: 'k' } } },
   get_provider_key_exists: { args: { providerId: PROVIDER.anthropic } },
   fetch_provider_models: { args: { request: { providerId: PROVIDER.anthropic, forceRefresh: null } } },
+  list_cached_provider_models: { args: { request: { providerId: PROVIDER.anthropic } } },
   get_provider_capabilities: { args: { request: { providerId: PROVIDER.anthropic, modelId: 'claude-sonnet-5' } } },
   get_provider_balance: { args: { providerId: PROVIDER.deepseek } },
   list_model_configs: { args: { providerId: PROVIDER.anthropic } },

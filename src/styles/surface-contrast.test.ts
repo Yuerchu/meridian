@@ -92,6 +92,8 @@ const THEMES = [
 const FIELD_WELL = fillIn('src/components/base/input/input.tsx', /const inputStyles/)
 const SWITCH_OFF_TRACK = fillIn('src/components/base/switch/switch.tsx', /export function SwitchTrack/)
 const CELL_SWITCH_SURFACE = fillIn('src/components/base/cell-switch.tsx', /function CellSwitchTrigger/)
+// The ring's track: the first `stroke="var(--color-…)"` in the component.
+const RING_TRACK = /stroke="var\((--color-[\w-]+)\)"/.exec(read('src/components/base/progress-circle.tsx'))?.[1] ?? ''
 
 describe('surface contrast', () => {
   it('resolves the tokens it compares to palette values', () => {
@@ -122,6 +124,16 @@ describe('surface contrast', () => {
     expect(resolveToken(vars, utilityToken(CELL_SWITCH_SURFACE))).not.toBe(
       resolveToken(vars, utilityToken(SWITCH_OFF_TRACK)),
     )
+  })
+
+  // A part-filled ring with no visible track is an arc alone, which is what
+  // a spinner looks like (the composer's context gauge, 2026-09). The ring
+  // sits on the composer and on cards (primary) and on panels (secondary).
+  it.each(THEMES)('a progress ring shows its track on the surfaces it sits on (%s)', (_, vars) => {
+    expect(RING_TRACK).toMatch(/^--color-/)
+    const track = resolveToken(vars, RING_TRACK)
+    expect(track).not.toBe(resolveToken(vars, '--color-background-primary-default'))
+    expect(track).not.toBe(resolveToken(vars, '--color-background-secondary-default'))
   })
 
   // Why the rules above exist, pinned: if the palette ever stops colliding,

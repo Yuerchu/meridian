@@ -55,7 +55,10 @@ function ProgressCircleRoot({ size = 'md', color = 'accent', className, children
               cy={12}
               r={R}
               fill="none"
-              stroke="var(--color-background-tertiary-default)"
+              // The track has to show on the surface the ring sits on, or a
+              // part-filled ring is an arc alone — a spinner. The tertiary fill
+              // it used is the primary surface itself in the dark theme.
+              stroke="var(--color-border-button-default)"
               strokeWidth={3}
             />
             <circle

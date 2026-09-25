@@ -220,8 +220,8 @@ impl DesktopSubAgents {
             message_id: outcome.progress.message_id.clone(),
             turn_id: turn_id.clone(),
             conversation_id: sub_conversation_id.clone(),
-            input_tokens: Some(outcome.progress.input_tokens),
-            output_tokens: Some(outcome.progress.output_tokens),
+            input_tokens: outcome.progress.input_tokens.value(),
+            output_tokens: outcome.progress.output_tokens.value(),
         });
         guard.disarm();
         guard.release();
@@ -352,10 +352,9 @@ impl DesktopSubAgents {
         .await
         .map_err(|e| e.to_string())??;
 
-        // The smaller of what the user asked for and what this model can write.
-        // Absent stays absent: leaving the field off is what lets a provider fit
-        // the answer to the room it has.
-        params.params.max_tokens = clamp_max_tokens(configured_max, params.max_output);
+        // The smaller of what the user asked for and what this model can write,
+        // or the model's own maximum when nobody asked for anything.
+        params.params.max_tokens = Some(clamp_max_tokens(configured_max, params.max_output));
         Ok(params)
     }
 
@@ -717,11 +716,14 @@ fn effective_assistant(
 
 /// The smaller of what the user asked for and what this model can write.
 ///
-/// Absent stays absent: leaving the field off is what lets a provider fit the
-/// answer to the room it has, and a number invented here would be a ceiling
-/// nobody asked for.
-fn clamp_max_tokens(configured: Option<i32>, model_ceiling: usize) -> Option<i32> {
-    configured.map(|m| m.min(model_ceiling as i32))
+/// The override belongs to the parent's model, so it is clamped to the child's
+/// ceiling first; with none, the child's own maximum — the same rule every
+/// request follows (`agent::resolve_max_tokens`), never a number invented here.
+fn clamp_max_tokens(configured: Option<i32>, model_ceiling: usize) -> i32 {
+    meridian_core::agent::resolve_max_tokens(
+        configured.map(|m| m.min(model_ceiling.min(i32::MAX as usize) as i32)),
+        model_ceiling,
+    )
 }
 
 /// How a delegated run ended, decided once.
@@ -931,10 +933,14 @@ mod tests {
     }
 
     #[test]
-    fn an_output_allowance_is_the_smaller_of_the_two_and_absence_stays_absent() {
-        assert_eq!(clamp_max_tokens(Some(64_000), 8_192), Some(8_192));
-        assert_eq!(clamp_max_tokens(Some(4_096), 8_192), Some(4_096));
-        assert_eq!(clamp_max_tokens(None, 8_192), None, "nothing is invented here");
+    fn an_output_allowance_is_the_smaller_of_the_two_or_the_models_own() {
+        assert_eq!(clamp_max_tokens(Some(64_000), 8_192), 8_192);
+        assert_eq!(clamp_max_tokens(Some(4_096), 8_192), 4_096);
+        assert_eq!(
+            clamp_max_tokens(None, 8_192),
+            8_192,
+            "the model's own maximum, not nothing and not a guess"
+        );
     }
 
     /// Why `tool_preset_id` is cleared rather than `enabled_tools` merely being

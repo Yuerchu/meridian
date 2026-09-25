@@ -72,7 +72,7 @@ url = "2"
 # seconds from existing. Measured with a three-crate probe: transitive, the
 # marker was never seen; direct, it always was. Same version and features as
 # `meridian-core` declares, so this adds no second copy.
-sherpa-onnx-sys = { version = "1.13.5", default-features = false, features = ["shared"] }
+sherpa-onnx-sys = { version = "1.13.8", default-features = false, features = ["shared"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 android-keyring = { version = "0.2", features = ["ndk-context"] }
@@ -120,3 +120,12 @@ windows = { version = "0.62", features = [
     "Win32_UI_TextServices",
     "Win32_UI_WindowsAndMessaging",
 ] }
+
+# Dependencies are built without debug info in the dev profile. They are most of
+# what `cargo test` / `tauri dev` write to target/debug, which had grown to
+# ~100 GB on a machine short of disk; a backtrace through a dependency loses its
+# line numbers, ours keep theirs. The shell and core share one target directory
+# (`--target-dir ../target`), so both workspaces must say the same thing or every
+# dependency is built and stored twice.
+[profile.dev.package."*"]
+debug = false

@@ -36,6 +36,7 @@ import { MENU_ITEMS_CONTAINER, MENU_POPOVER_SURFACE, MENU_POPOVER_WIDTH } from '
 
 import { cx } from '@/utils/cx'
 import { api } from '@/api'
+import { describeRejections } from '@/lib/error-message'
 import { allowedEfforts } from '@/lib/thinking'
 import type {
   AssistantInfoResponse,
@@ -278,6 +279,9 @@ export function ComposerMenu(props: ComposerMenuProps) {
    * opened again, which is what a retry is.
    */
   const [modelsState, setModelsState] = useState<'idle' | 'loading' | 'loaded' | 'empty' | 'failed'>('idle')
+  /** Which providers refused, and what they said — shown in place of a
+   *  generic "could not load", which sent the reader to the log for the rest. */
+  const [modelsFailure, setModelsFailure] = useState<string | null>(null)
 
   const currentAssistant = props.assistants.find((a) => a.id === props.currentAssistantId)
   const activeMode = CHAT_MODES.find((m) => m.id === props.mode) ?? CHAT_MODES[0]
@@ -288,19 +292,24 @@ export function ComposerMenu(props: ComposerMenuProps) {
   useEffect(() => {
     if (!wantModels || modelsState !== 'idle') return
     setModelsState('loading')
+    const enabled = props.providers.filter((p) => p.is_enabled)
     Promise.allSettled(
-      props.providers
-        .filter((p) => p.is_enabled)
-        .map(async (p) => ({
-          provider: p,
-          models: await api.fetchProviderModels({ providerId: p.id, forceRefresh: false }),
-        })),
+      enabled.map(async (p) => ({
+        provider: p,
+        models: await api.fetchProviderModels({ providerId: p.id, forceRefresh: false }),
+      })),
     ).then((results) => {
       const next = results
         .filter((r): r is PromiseFulfilledResult<GroupedModels> => r.status === 'fulfilled')
         .map((r) => r.value)
         .filter((g) => g.models.length > 0)
       setGroups(next)
+      setModelsFailure(
+        describeRejections(
+          enabled.map((p) => p.name),
+          results,
+        ),
+      )
       // Some providers answering is enough to pick from. Nothing answering and
       // at least one refusing is a failure, which is not the same sentence as
       // "you have no models".
@@ -458,7 +467,13 @@ export function ComposerMenu(props: ComposerMenuProps) {
           value={props.currentModelId ?? t('toolbar.selectModel')}
           selectedKey={currentModelKey}
           loading={modelsState === 'loading'}
-          emptyLabel={modelsState === 'failed' ? t('toolbar.modelsLoadFailed') : t('toolbar.noModels')}
+          emptyLabel={
+            modelsState === 'failed' && modelsFailure
+              ? t('toolbar.modelsLoadFailedReason', { error: modelsFailure })
+              : modelsState === 'failed'
+                ? t('toolbar.modelsLoadFailed')
+                : t('toolbar.noModels')
+          }
           onOpenIntent={() => setWantModels(true)}
           options={groups.flatMap((g) =>
             g.models.map((m) => ({

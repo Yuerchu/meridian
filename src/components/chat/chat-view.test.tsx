@@ -28,7 +28,8 @@ const mocks = vi.hoisted(() => {
       activeShellTurnId: null as string | null,
       shellResultKeys: {},
       compacting: false,
-      error: null,
+      error: null as string | null,
+      loadError: null as string | null,
     },
   }
   const beginShellCommand = vi.fn((conversationId: 'conversation-1', turnId: string) => {
@@ -91,6 +92,8 @@ const mocks = vi.hoisted(() => {
     setCompacting: vi.fn(),
     inputBarProps: vi.fn(),
     starterProps: vi.fn(),
+    transcriptStatusProps: vi.fn(),
+    turns: [] as { failure: string | null }[],
   }
 })
 
@@ -135,17 +138,9 @@ vi.mock('@/hooks/use-turn-settings', () => ({ useTurnSettings: mocks.useTurnSett
 vi.mock('@/hooks/use-send-message', () => ({ useSendMessage: mocks.useSendMessage }))
 vi.mock('@/hooks/use-platform', () => ({ usePlatform: () => 'windows' }))
 vi.mock('@/hooks/use-confirm', () => ({ useConfirm: () => ({ confirm: mocks.confirm, confirmDialog: null }) }))
-vi.mock('@/hooks/use-turns', () => ({ useTurns: () => [] }))
+vi.mock('@/hooks/use-turns', () => ({ useTurns: () => mocks.turns }))
 vi.mock('@/hooks/use-context-info', () => ({
-  useContextInfo: () => ({
-    messageCount: 0,
-    estimatedTokens: 0,
-    contextLimit: 128_000,
-    autoCompactEnabled: false,
-    autoCompactThreshold: 0,
-    compactBreaker: 'closed',
-    model: '',
-  }),
+  useContextInfo: () => ({ status: 'loading' }),
 }))
 vi.mock('@/hooks/use-prompt-queue', () => ({
   usePromptQueue: () => ({
@@ -162,10 +157,20 @@ vi.mock('@/hooks/use-sender-names', () => ({ useSenderNames: () => ({}) }))
 vi.mock('./emoji-renderer', () => ({ useEmojiMap: () => ({}) }))
 
 vi.mock('./chat-transcript', () => ({
-  ChatTranscript: ({ emptyState }: { emptyState?: React.ReactNode }) => <div>{emptyState}</div>,
+  ChatTranscript: ({ emptyState, trailing }: { emptyState?: React.ReactNode; trailing?: React.ReactNode }) => (
+    <div>
+      {emptyState}
+      {trailing}
+    </div>
+  ),
 }))
 vi.mock('./compacted-region', () => ({ CompactedRegion: () => <div /> }))
-vi.mock('./transcript-status', () => ({ TranscriptStatus: () => <div /> }))
+vi.mock('./transcript-status', () => ({
+  TranscriptStatus: (props: unknown) => {
+    mocks.transcriptStatusProps(props)
+    return <div />
+  },
+}))
 vi.mock('./input-bar', () => ({
   InputBar: (props: unknown) => {
     mocks.inputBarProps(props)
@@ -661,5 +666,56 @@ describe('ChatView composer draft', () => {
       expect.stringMatching(/no longer exist|不存在|chat\.draft\.missingBlocksSend/),
     )
     expect(mocks.sendMessage).not.toHaveBeenCalled()
+  })
+})
+
+describe('ChatView failures', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetComposerDraftSync()
+    mocks.turns = []
+    mocks.sessions['conversation-1'].messages = []
+    mocks.sessions['conversation-1'].streaming = false
+    mocks.sessions['conversation-1'].error = null
+    mocks.sessions['conversation-1'].loadError = null
+    usePlanReviewStore.setState({ activeReviewId: null, summaries: {} })
+  })
+
+  function latestStatus() {
+    const call = mocks.transcriptStatusProps.mock.calls.at(-1)
+    if (!call) throw new Error('TranscriptStatus has not rendered')
+    return call[0] as { error: string | null; loadError: string | null }
+  }
+
+  it('reports a refused stop with the backend’s reason instead of dropping it', async () => {
+    mocks.stopChat.mockRejectedValueOnce('no turn is running')
+    render(<ChatView conversationId="conversation-1" />)
+
+    act(() => (mocks.inputBarProps.mock.calls.at(-1)?.[0] as { onStop: () => void }).onStop())
+
+    await waitFor(() =>
+      expect(mocks.setError).toHaveBeenCalledWith('conversation-1', expect.stringContaining('no turn is running')),
+    )
+  })
+
+  it('says a failure once: under the failed turn, not again at the foot of the transcript', () => {
+    mocks.sessions['conversation-1'].error = '401 Unauthorized'
+    mocks.turns = [{ failure: '401 Unauthorized' }]
+    render(<ChatView conversationId="conversation-1" />)
+    expect(latestStatus().error).toBeNull()
+  })
+
+  it('keeps an error no turn accounts for at the foot of the transcript', () => {
+    mocks.sessions['conversation-1'].error = 'upload failed'
+    mocks.turns = [{ failure: '401 Unauthorized' }]
+    render(<ChatView conversationId="conversation-1" />)
+    expect(latestStatus().error).toBe('upload failed')
+  })
+
+  it('shows a failed read rather than the empty-conversation welcome', () => {
+    mocks.sessions['conversation-1'].loadError = 'database is locked'
+    render(<ChatView conversationId="conversation-1" />)
+    expect(latestStatus().loadError).toBe('database is locked')
+    expect(mocks.starterProps).not.toHaveBeenCalled()
   })
 })

@@ -5,6 +5,7 @@ import { api } from '@/api'
 import { identifyingArg, toolDescription, type IdentifyingArg } from '@/components/chat/tool-call-block'
 import { useConversationStore, type AttentionItem } from '@/stores/conversation-store'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
+import { errorMessage } from '@/lib/error-message'
 
 /**
  * How many questions are on screen at once.
@@ -221,7 +222,7 @@ export function attentionShape(item: AttentionItem): AttentionShape {
   const scopeKeys = Object.prototype.hasOwnProperty.call(READ_ONLY_TOOLS, item.toolName)
     ? READ_ONLY_TOOLS[item.toolName]
     : null
-  const risky = scopeKeys === null || item.retryReason !== undefined
+  const risky = scopeKeys === null || item.retry !== undefined
   const scope: AttentionScopeArg[] = []
   for (const key of scopeKeys ?? []) {
     const value = args[key]
@@ -300,7 +301,7 @@ export function attentionActionLabel(t: TFunction, item: AttentionItem, action: 
     case 'deny':
       return t('chat.tool.deny')
     case 'allow':
-      return item.kind !== 'plan_review' && item.retryReason !== undefined
+      return item.kind !== 'plan_review' && item.retry !== undefined
         ? t('chat.tool.retryWithoutSandbox')
         : t('chat.tool.allow')
   }
@@ -331,7 +332,9 @@ export function useAttentionActions(onSelect: (conversationId: string) => Promis
   // say so.
   const decide = (item: AttentionItem, send: () => Promise<void>) => {
     retireAnswered(item.approvalId)
-    send().catch(() => markOrphaned(item.approvalId))
+    // The reason lands on the card, which is where the reader goes next: the
+    // notification that was pressed has already left the stack.
+    send().catch((err: unknown) => markOrphaned(item.approvalId, errorMessage(err)))
   }
 
   return (item: AttentionItem, action: AttentionActionId) => {

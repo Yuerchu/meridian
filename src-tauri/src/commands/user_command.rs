@@ -10,7 +10,7 @@
 use diesel::prelude::*;
 use meridian_core::db::models::message::MessageInsert;
 use meridian_core::db::models::message_context_item::{MessageContextItemInsert, MessageContextItemRow};
-use meridian_core::sandbox::{ExecutionMode, SandboxBackend};
+use meridian_core::sandbox::{CommandSettings, ExecutionMode, SandboxBackend};
 use meridian_core::tools::run_command::{CommandExecution, CommandExecutionError};
 use meridian_core::tools::{FileAccess, ShellType, ToolContext};
 use meridian_core::turn::TurnOrigin;
@@ -34,6 +34,10 @@ const CONTEXT_KIND: &str = "shell_output";
 pub enum UserCommandStatus {
     Completed,
     SandboxDenied,
+    /// Nothing ran: the shell and sandbox settings could not be read, so there
+    /// was no answer to where the command should run. Offered the same
+    /// confirmed retry outside the sandbox a restricted-token denial is.
+    SettingsUnreadable,
     TimedOut,
     Cancelled,
     Failed,
@@ -45,6 +49,7 @@ impl UserCommandStatus {
         match self {
             Self::Completed => "completed",
             Self::SandboxDenied => "sandbox_denied",
+            Self::SettingsUnreadable => "settings_unreadable",
             Self::TimedOut => "timed_out",
             Self::Cancelled => "cancelled",
             Self::Failed => "failed",
@@ -130,13 +135,33 @@ struct StoredResult {
     /// Exact interpreter selected for this attempt.
     shell: ShellType,
     /// Requested confinement environment (`off`, `auto`, or `container`).
-    /// The actual backend remains recorded on `execution.sandbox`.
-    execution_environment: ExecutionMode,
+    /// The actual backend remains recorded on `execution.sandbox`. `None` is
+    /// not "unset" — that reads as `auto` — but "the setting could not be
+    /// read", which is what a `settings_unreadable` result and the confirmed
+    /// host retry after it record.
+    execution_environment: Option<ExecutionMode>,
     error: Option<String>,
     retry_without_sandbox: bool,
 }
 
 impl StoredResult {
+    /// Whether this result may be answered with an explicit, confirmed run on
+    /// the host. Two states and no others: a restricted-token denial (the one
+    /// backend whose refusal `SandboxBackend::may_retry_on_host` says may be
+    /// escalated), and settings that could not be read, where nothing ran and
+    /// only the user can say where it should. One definition, read by both the
+    /// card (`can_retry_without_sandbox`) and the gate in `run_user_command`.
+    fn may_retry_on_host(&self) -> bool {
+        match self.status {
+            UserCommandStatus::SandboxDenied => self
+                .execution
+                .as_ref()
+                .is_some_and(|result| result.sandbox.may_retry_on_host()),
+            UserCommandStatus::SettingsUnreadable => self.execution.is_none(),
+            _ => false,
+        }
+    }
+
     fn public(&self, conversation_id: &str, turn_id: &str, message_id: &str) -> UserCommandResultResponse {
         let execution = self.execution.as_ref();
         UserCommandResultResponse {
@@ -154,8 +179,7 @@ impl StoredResult {
             cwd: self.cwd.clone(),
             host: self.host.clone(),
             error: self.error.clone(),
-            can_retry_without_sandbox: self.status == UserCommandStatus::SandboxDenied
-                && execution.is_some_and(|result| result.sandbox == SandboxBackend::WindowsRestrictedToken),
+            can_retry_without_sandbox: self.may_retry_on_host(),
             retry_without_sandbox: self.retry_without_sandbox,
         }
     }
@@ -198,8 +222,21 @@ struct Prepared {
     prior: Vec<MessageContextItemRow>,
     cwd: String,
     project_id: Option<String>,
-    shell: ShellType,
-    sandbox_mode: ExecutionMode,
+    settings: CommandSettings,
+}
+
+impl Prepared {
+    fn shell(&self) -> ShellType {
+        self.settings.shell()
+    }
+
+    /// `None` when the setting could not be read — see `StoredResult`.
+    fn sandbox_mode(&self) -> Option<ExecutionMode> {
+        match &self.settings {
+            CommandSettings::Read { mode, .. } => Some(*mode),
+            CommandSettings::Unreadable(_) => None,
+        }
+    }
 }
 
 /// A sandbox denial approves a retry of one execution in one environment, not
@@ -211,7 +248,7 @@ fn validate_retry_environment(
     cwd: &str,
     shell: ShellType,
     host: &str,
-    mode: ExecutionMode,
+    mode: Option<ExecutionMode>,
 ) -> Result<(), String> {
     if !message_is_active_head {
         return Err("the shell command is no longer the active branch tip; run it again on the current branch".into());
@@ -282,21 +319,16 @@ pub async fn run_user_command(
             // idempotent replay, not permission to run the side effect twice.
             return Ok(previous.public(&conversation_id, &turn_id, &prepared.message_id));
         }
-        let may_retry = previous.status == UserCommandStatus::SandboxDenied
-            && previous
-                .execution
-                .as_ref()
-                .is_some_and(|result| result.sandbox == SandboxBackend::WindowsRestrictedToken);
-        if !may_retry {
+        if !previous.may_retry_on_host() {
             return Err("this command was not refused by the host sandbox".into());
         }
         validate_retry_environment(
             previous,
             prepared.message_is_active_head,
             &prepared.cwd,
-            prepared.shell,
+            prepared.shell(),
             &host,
-            prepared.sandbox_mode,
+            prepared.sandbox_mode(),
         )?;
     } else if let Some(previous) = prior.as_ref() {
         // Same UUID + same command means "give me the answer again". This is
@@ -327,8 +359,8 @@ pub async fn run_user_command(
         .emit_typed(meridian_core::events::USER_COMMAND_CHANNEL, &started);
     let _ = services.events.emit_conversation_updated(&conversation_id);
 
-    let policy = match meridian_core::sandbox::resolve_sandbox_policy(
-        prepared.sandbox_mode,
+    let policy = match meridian_core::sandbox::resolve_command_sandbox(
+        &prepared.settings,
         Some(&prepared.cwd),
         &conversation_id,
         Some(services.containers.clone()),
@@ -346,8 +378,8 @@ pub async fn run_user_command(
                 execution: None,
                 cwd: prepared.cwd.clone(),
                 host,
-                shell: prepared.shell,
-                execution_environment: prepared.sandbox_mode,
+                shell: prepared.shell(),
+                execution_environment: prepared.sandbox_mode(),
                 error: Some(error.to_string()),
                 retry_without_sandbox,
             };
@@ -357,6 +389,28 @@ pub async fn run_user_command(
             return Ok(result);
         }
     };
+    // With the settings unread there is no answer to where this should run, and
+    // nothing is guessed: the card says so and offers the host only as the
+    // explicit, confirmed retry a restricted-token denial gets. Landed without an
+    // in-doubt marker, because nothing is about to start.
+    if let (meridian_core::sandbox::CommandSandbox::Unreadable(error), false) = (&policy, retry_without_sandbox) {
+        let stored = StoredResult {
+            schema_version: 2,
+            status: UserCommandStatus::SettingsUnreadable,
+            command: command.clone(),
+            execution: None,
+            cwd: prepared.cwd.clone(),
+            host,
+            shell: prepared.shell(),
+            execution_environment: prepared.sandbox_mode(),
+            error: Some(error.clone()),
+            retry_without_sandbox,
+        };
+        persist_result(&services, &prepared.message_id, next_position(&prepared.prior), &stored).await?;
+        let result = stored.public(&conversation_id, &turn_id, &prepared.message_id);
+        emit_finished_user_command(&services.events, lease, &conversation_id, &result);
+        return Ok(result);
+    }
     let attempt_position = next_position(&prepared.prior);
     // The row itself is the initial attempt's durable "may have started"
     // marker. A retry needs one of its own: otherwise a crash after an
@@ -371,8 +425,8 @@ pub async fn run_user_command(
         execution: None,
         cwd: prepared.cwd.clone(),
         host: host.clone(),
-        shell: prepared.shell,
-        execution_environment: prepared.sandbox_mode,
+        shell: prepared.shell(),
+        execution_environment: prepared.sandbox_mode(),
         error: Some("the command started, but its final result has not been recorded yet".into()),
         retry_without_sandbox,
     };
@@ -380,7 +434,7 @@ pub async fn run_user_command(
 
     let context = ToolContext {
         working_directory: Some(prepared.cwd.clone()),
-        shell: prepared.shell,
+        shell: prepared.shell(),
         file_access: FileAccess::Unrestricted,
         project_id: prepared.project_id.clone(),
         conversation_id: Some(conversation_id.clone()),
@@ -413,8 +467,8 @@ pub async fn run_user_command(
             execution: Some(execution),
             cwd: prepared.cwd.clone(),
             host,
-            shell: prepared.shell,
-            execution_environment: prepared.sandbox_mode,
+            shell: prepared.shell(),
+            execution_environment: prepared.sandbox_mode(),
             error: None,
             retry_without_sandbox,
         },
@@ -425,9 +479,24 @@ pub async fn run_user_command(
             execution: Some(execution),
             cwd: prepared.cwd.clone(),
             host,
-            shell: prepared.shell,
-            execution_environment: prepared.sandbox_mode,
+            shell: prepared.shell(),
+            execution_environment: prepared.sandbox_mode(),
             error: Some("command blocked by the sandbox".into()),
+            retry_without_sandbox,
+        },
+        // Not reached: an unreadable setting returned above, and a retry runs
+        // without the sandbox. Recorded truthfully rather than as a failure if
+        // that ever stops being so.
+        Err(CommandExecutionError::SettingsUnreadable(error)) => StoredResult {
+            schema_version: 2,
+            status: UserCommandStatus::SettingsUnreadable,
+            command: command.clone(),
+            execution: None,
+            cwd: prepared.cwd.clone(),
+            host,
+            shell: prepared.shell(),
+            execution_environment: prepared.sandbox_mode(),
+            error: Some(error),
             retry_without_sandbox,
         },
         Err(CommandExecutionError::Cancelled) => StoredResult {
@@ -437,8 +506,8 @@ pub async fn run_user_command(
             execution: None,
             cwd: prepared.cwd.clone(),
             host,
-            shell: prepared.shell,
-            execution_environment: prepared.sandbox_mode,
+            shell: prepared.shell(),
+            execution_environment: prepared.sandbox_mode(),
             error: Some("command cancelled".into()),
             retry_without_sandbox,
         },
@@ -449,8 +518,8 @@ pub async fn run_user_command(
             execution: None,
             cwd: prepared.cwd.clone(),
             host,
-            shell: prepared.shell,
-            execution_environment: prepared.sandbox_mode,
+            shell: prepared.shell(),
+            execution_environment: prepared.sandbox_mode(),
             error: Some(error),
             retry_without_sandbox,
         },
@@ -618,13 +687,10 @@ async fn prepare(
 
         let prior = meridian_core::db::ops::message_context_item::list_for_message(&mut conn, &message_id)
             .map_err(|e| e.to_string())?;
-        let shell = meridian_core::db::ops::preference::get_preference(&mut conn, "shell")
-            .map_err(|e| e.to_string())?
-            .map(|value| ShellType::parse(&value))
-            .transpose()?
-            .unwrap_or_else(ShellType::default_for_platform);
-        let sandbox = meridian_core::db::ops::preference::get_preference(&mut conn, "sandbox.enabled")
-            .map_err(|e| e.to_string())?;
+        // A failed read is `Unreadable`, not an error and not "unset": the row
+        // above already exists, and the result that lands beside it says why
+        // nothing ran instead of a guess about where it should have.
+        let settings = CommandSettings::read_on(&mut conn)?;
 
         Ok(Prepared {
             message_id,
@@ -633,8 +699,7 @@ async fn prepare(
             prior,
             cwd,
             project_id: conversation.project_id,
-            shell,
-            sandbox_mode: ExecutionMode::parse(sandbox.as_deref())?,
+            settings,
         })
     })
     .await
@@ -784,7 +849,7 @@ mod tests {
             cwd: "C:/project".into(),
             host: "desk".into(),
             shell: ShellType::Bash,
-            execution_environment: ExecutionMode::Auto,
+            execution_environment: Some(ExecutionMode::Auto),
             error: None,
             retry_without_sandbox: retry,
         }
@@ -924,13 +989,20 @@ mod tests {
                 "C:/project",
                 ShellType::Bash,
                 "desk",
-                ExecutionMode::Auto,
+                Some(ExecutionMode::Auto),
             )
             .is_ok()
         );
         assert!(
-            validate_retry_environment(&denial, true, "C:/other", ShellType::Bash, "desk", ExecutionMode::Auto,)
-                .is_err()
+            validate_retry_environment(
+                &denial,
+                true,
+                "C:/other",
+                ShellType::Bash,
+                "desk",
+                Some(ExecutionMode::Auto),
+            )
+            .is_err()
         );
         assert!(
             validate_retry_environment(
@@ -939,7 +1011,7 @@ mod tests {
                 "C:/project",
                 ShellType::PowerShell,
                 "desk",
-                ExecutionMode::Auto,
+                Some(ExecutionMode::Auto),
             )
             .is_err()
         );
@@ -950,13 +1022,20 @@ mod tests {
                 "C:/project",
                 ShellType::Bash,
                 "other-host",
-                ExecutionMode::Auto,
+                Some(ExecutionMode::Auto),
             )
             .is_err()
         );
         assert!(
-            validate_retry_environment(&denial, true, "C:/project", ShellType::Bash, "desk", ExecutionMode::Off,)
-                .is_err()
+            validate_retry_environment(
+                &denial,
+                true,
+                "C:/project",
+                ShellType::Bash,
+                "desk",
+                Some(ExecutionMode::Off),
+            )
+            .is_err()
         );
         assert!(
             validate_retry_environment(
@@ -965,7 +1044,64 @@ mod tests {
                 "C:/project",
                 ShellType::Bash,
                 "desk",
-                ExecutionMode::Auto,
+                Some(ExecutionMode::Auto),
+            )
+            .is_err()
+        );
+    }
+
+    /// Settings that could not be read ran nothing and are answered the way a
+    /// restricted-token denial is: by the explicit, confirmed host retry — and
+    /// by nothing else. The retry's own record says the setting was unread.
+    #[test]
+    fn unreadable_settings_offer_the_confirmed_host_retry_and_nothing_else() {
+        let mut unread = stored(UserCommandStatus::SettingsUnreadable, false);
+        unread.execution = None;
+        unread.execution_environment = None;
+        unread.error = Some("database is locked".into());
+        let got = unread.public("c", "t", "m");
+        assert!(got.can_retry_without_sandbox);
+        assert_eq!(got.error.as_deref(), Some("database is locked"));
+        assert_eq!(
+            serde_json::to_value(&got).unwrap()["status"],
+            serde_json::json!("settings_unreadable")
+        );
+
+        // The record survives a restart with its unread environment intact.
+        let raw = serde_json::to_string(&unread).unwrap();
+        let back: StoredResult = serde_json::from_str(&raw).unwrap();
+        assert_eq!(back.execution_environment, None);
+        assert_eq!(back.status, UserCommandStatus::SettingsUnreadable);
+
+        // A container refusal is not escalatable, and a finished command has
+        // nothing to retry.
+        let mut container = stored(UserCommandStatus::SandboxDenied, false);
+        container.execution.as_mut().unwrap().sandbox = SandboxBackend::Container;
+        assert!(!container.public("c", "t", "m").can_retry_without_sandbox);
+        assert!(
+            !stored(UserCommandStatus::Completed, false)
+                .public("c", "t", "m")
+                .can_retry_without_sandbox
+        );
+    }
+
+    /// The confirmation was for "run it with the settings unread". If they can
+    /// be read by the time it is pressed, that is a different environment and
+    /// the command is run again under what they say, not on the host.
+    #[test]
+    fn an_unread_retry_is_bound_to_the_settings_still_being_unread() {
+        let mut unread = stored(UserCommandStatus::SettingsUnreadable, false);
+        unread.execution = None;
+        unread.execution_environment = None;
+        assert!(validate_retry_environment(&unread, true, "C:/project", ShellType::Bash, "desk", None).is_ok());
+        assert!(
+            validate_retry_environment(
+                &unread,
+                true,
+                "C:/project",
+                ShellType::Bash,
+                "desk",
+                Some(ExecutionMode::Container),
             )
             .is_err()
         );

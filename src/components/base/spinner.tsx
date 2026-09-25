@@ -62,13 +62,17 @@ function SpinnerIcon(props: ComponentProps<'svg'>) {
  * (React Aria sets `aria-disabled` and announces it), a composer control — pass
  * `aria-hidden`: a named status there becomes part of the button's name, and a
  * screen reader read the save button as "Loading 保存".
+ *
+ * The default name is `common.loadingLabel`, not `common.loading`: the latter
+ * is visible text and ends in an ellipsis, which a screen reader reads out
+ * ("加载中 省略号") or pauses on.
  */
 export function Spinner({ className, size = 'md', color = 'current', ...props }: SpinnerProps) {
   const { t } = useTranslation()
   const hidden = props['aria-hidden'] === true || props['aria-hidden'] === 'true'
   return (
     <span
-      aria-label={hidden ? undefined : t('common.loading')}
+      aria-label={hidden ? undefined : t('common.loadingLabel')}
       data-slot="spinner"
       role={hidden ? undefined : 'status'}
       {...props}

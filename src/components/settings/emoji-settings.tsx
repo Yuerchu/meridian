@@ -184,32 +184,44 @@ function RowActions({
 
   return (
     <div data-slot="sticker-row-actions" className="flex items-center justify-end gap-1">
+      {/* Icon actions, as the registry's file table has them (settings-storage
+          `RowActionButton`): two labelled buttons beside a delete needed a
+          column wider than the whole settings width can spare. The label is the
+          accessible name and the tooltip. */}
       {unconfirmed && (
         <>
-          <Button
-            size="small"
-            variant="secondary"
-            isDisabled={busy !== null || !emoji.file_name}
-            onPress={() => {
-              setBusy('suggest')
-              void onSuggest(emoji.id).finally(() => setBusy(null))
-            }}
-          >
-            <Sparkles className="size-3.5" />
-            {busy === 'suggest' ? t('settings.emoji.suggesting') : t('settings.emoji.suggest')}
-          </Button>
-          <Button
-            size="small"
-            variant="secondary"
-            isDisabled={busy !== null || !shownName(emoji).trim()}
-            onPress={() => {
-              setBusy('confirm')
-              void onConfirm(emoji).finally(() => setBusy(null))
-            }}
-          >
-            <Check className="size-3.5" />
-            {t('settings.emoji.confirmSemantic')}
-          </Button>
+          <TooltipTrigger delay={0}>
+            <Button
+              iconOnly
+              leadingIcon={Sparkles}
+              size="small"
+              variant="neutral"
+              aria-label={busy === 'suggest' ? t('settings.emoji.suggesting') : t('settings.emoji.suggest')}
+              isPending={busy === 'suggest'}
+              isDisabled={busy !== null || !emoji.file_name}
+              onPress={() => {
+                setBusy('suggest')
+                void onSuggest(emoji.id).finally(() => setBusy(null))
+              }}
+            />
+            <Tooltip>{t('settings.emoji.suggest')}</Tooltip>
+          </TooltipTrigger>
+          <TooltipTrigger delay={0}>
+            <Button
+              iconOnly
+              leadingIcon={Check}
+              size="small"
+              variant="neutral"
+              aria-label={t('settings.emoji.confirmSemantic')}
+              isPending={busy === 'confirm'}
+              isDisabled={busy !== null || !shownName(emoji).trim()}
+              onPress={() => {
+                setBusy('confirm')
+                void onConfirm(emoji).finally(() => setBusy(null))
+              }}
+            />
+            <Tooltip>{t('settings.emoji.confirmSemantic')}</Tooltip>
+          </TooltipTrigger>
         </>
       )}
       {canDelete && (
@@ -290,38 +302,38 @@ function StickerGrid({
         header: t('settings.emoji.stickerColumn'),
         isRowHeader: true,
         allowsSorting: true,
-        minWidth: 240,
         sortFn: (a, b) => shownName(a).localeCompare(shownName(b)),
+        // The tags are the name's second line rather than a column of their
+        // own: at the settings width (532px) a fourth column left the name two
+        // words wide, and the two are read together anyway — what the sticker
+        // is called, and what else it answers to.
         cell: (emoji) => (
           <div data-slot="sticker-cell" className="flex min-w-0 items-center gap-2">
             <StickerThumbnail id={emoji.id} />
-            <EditableCell
-              key={shownName(emoji)}
-              value={shownName(emoji)}
-              placeholder={t('settings.emoji.semanticName')}
-              ariaLabel={t('settings.emoji.editName')}
-              onSave={(name) => void save(emoji, { name })}
-            />
-            {emoji.semantic_status !== 'confirmed' && (
-              <Chip color="warning" className="shrink-0">
-                {t('settings.emoji.pending')}
-              </Chip>
-            )}
+            <div data-slot="sticker-cell-fields" className="flex min-w-0 flex-1 flex-col gap-1">
+              <div data-slot="sticker-cell-name" className="flex min-w-0 items-center gap-2">
+                <EditableCell
+                  key={shownName(emoji)}
+                  value={shownName(emoji)}
+                  placeholder={t('settings.emoji.semanticName')}
+                  ariaLabel={t('settings.emoji.editName')}
+                  onSave={(name) => void save(emoji, { name })}
+                />
+                {emoji.semantic_status !== 'confirmed' && (
+                  <Chip color="warning" className="shrink-0">
+                    {t('settings.emoji.pending')}
+                  </Chip>
+                )}
+              </div>
+              <EditableCell
+                key={shownTags(emoji)}
+                value={shownTags(emoji)}
+                placeholder={t('settings.emoji.noTags')}
+                ariaLabel={t('settings.emoji.editTags')}
+                onSave={(tags) => void save(emoji, { tags })}
+              />
+            </div>
           </div>
-        ),
-      },
-      {
-        id: 'tags',
-        header: t('settings.emoji.tagsColumn'),
-        minWidth: 180,
-        cell: (emoji) => (
-          <EditableCell
-            key={shownTags(emoji)}
-            value={shownTags(emoji)}
-            placeholder={t('settings.emoji.noTags')}
-            ariaLabel={t('settings.emoji.editTags')}
-            onSave={(tags) => void save(emoji, { tags })}
-          />
         ),
       },
       {
@@ -333,8 +345,7 @@ function StickerGrid({
         // Wide enough for the header plus its sort caret: a narrower column
         // wraps the label one character per line and drags the whole header
         // row down with it.
-        width: 104,
-        headerClassName: 'whitespace-nowrap',
+        headerClassName: 'w-24 whitespace-nowrap',
         // Without this the column sorts as text, and 9 comes after 10.
         sortFn: (a, b) => a.seen_count - b.seen_count,
       },
@@ -342,14 +353,13 @@ function StickerGrid({
         id: 'actions',
         header: t('settings.emoji.actionsColumn'),
         align: 'end',
-        minWidth: 172,
-        // Pinned, because the table is 736px at its narrowest and a phone is
-        // not: these buttons sat at the far right of a sideways scroll about
-        // 340px long, so reviewing a sticker meant scrolling out to press
-        // Confirm and back again to read the next name. Editing a cell and
-        // scrolling the row are also the same gesture under a finger. `end`
-        // is logical, so it follows the writing direction, and the numeric
-        // `minWidth` above is what pinning requires.
+        // Three 32px icon actions (suggest, confirm, delete) and the padding.
+        headerClassName: 'w-32',
+        // Pinned, because below the settings width — a phone — the table
+        // scrolls sideways, and reviewing a sticker would otherwise mean
+        // scrolling out to press Confirm and back again to read the next name.
+        // Editing a cell and scrolling the row are also the same gesture under
+        // a finger. `end` is logical, so it follows the writing direction.
         pinned: 'end',
         cell: (emoji) => (
           <RowActions
@@ -413,11 +423,11 @@ function StickerGrid({
           setSort(next)
           turnTo(1)
         }}
-        // The columns' own minimums add up to this; stating it keeps the table
-        // from being squeezed below them, and below this width the grid scrolls
-        // sideways inside its own container rather than crushing the
-        // thumbnails or pushing the page out.
-        contentClassName="min-w-[46rem]"
+        // Fixed layout: the header widths are the widths and the sticker column
+        // takes the rest, about 220px at the settings width (532px). Below
+        // 32rem the grid scrolls sideways inside its own container rather than
+        // crushing the thumbnails or pushing the page out.
+        contentClassName="min-w-lg table-fixed"
         // A collected pack has no ceiling, so the grid keeps its own scroller
         // instead of making the settings page arbitrarily long.
         scrollContainerClassName="max-h-96 overflow-y-auto overscroll-contain"
@@ -528,14 +538,17 @@ function PackCard({
                     {onImport && (
                       // The picker returns paths on this device and the import
                       // is read by whichever machine the backend is on.
-                      <Button variant="secondary" onPress={onImport} isDisabled={!can.importFromDisk}>
-                        <Upload className="w-3.5 h-3.5" />
+                      <Button
+                        leadingIcon={Upload}
+                        variant="secondary"
+                        onPress={onImport}
+                        isDisabled={!can.importFromDisk}
+                      >
                         {t('settings.emoji.import')}
                       </Button>
                     )}
                     {onDelete && !detail.pack.is_builtin && (
-                      <Button variant="danger" className="ml-auto" onPress={onDelete}>
-                        <Bin className="w-3.5 h-3.5" />
+                      <Button leadingIcon={Bin} variant="danger" className="ml-auto" onPress={onDelete}>
                         {t('common.delete')}
                       </Button>
                     )}
@@ -685,11 +698,7 @@ export function EmojiSettings() {
   }
 
   return (
-    // Wider than the settings default, and wider than `MasterDetail` too: the
-    // panel stopped being a column of fields the moment the stickers became a
-    // table, and at `max-w-3xl` that table met its own minimum width and drew a
-    // horizontal scrollbar on a desktop with room to spare.
-    <SettingsPane className="max-w-4xl">
+    <SettingsPane>
       <SettingsHeader title={t('settings.emoji.title')} subtitle={t('settings.emoji.subtitle')} />
 
       <div data-slot="pack-create" className="flex gap-2">
@@ -697,14 +706,13 @@ export function EmojiSettings() {
           value={newPackName}
           onChange={(e) => setNewPackName(e.target.value)}
           placeholder={t('settings.emoji.packName')}
-          className="flex-1"
+          fieldClassName="min-w-0 flex-1"
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return
             if (e.key === 'Enter') handleCreate()
           }}
         />
-        <Button variant="secondary" onPress={handleCreate} isDisabled={!newPackName.trim()}>
-          <Plus className="w-3.5 h-3.5" />
+        <Button leadingIcon={Plus} variant="secondary" onPress={handleCreate} isDisabled={!newPackName.trim()}>
           {t('settings.emoji.newPack')}
         </Button>
       </div>
@@ -750,8 +758,7 @@ export function EmojiSettings() {
             </span>
           </ActionBar.Prefix>
           <ActionBar.Content>
-            <Button variant="secondary" onPress={handleDeleteSelected}>
-              <Bin className="size-4 text-status-danger" />
+            <Button leadingIcon={Bin} variant="danger" onPress={handleDeleteSelected}>
               {t('settings.emoji.deleteSelected')}
             </Button>
           </ActionBar.Content>

@@ -7,9 +7,33 @@ function validate(command: string, value: unknown, args?: Record<string, unknown
 
 describe('invoke response schema', () => {
   it('covers every invoke declared by api.ts', () => {
-    expect(INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT).toBe(227)
-    expect(Object.keys(invokeResponseSchemaDocument.commands)).toHaveLength(227)
+    expect(INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT).toBe(228)
+    expect(Object.keys(invokeResponseSchemaDocument.commands)).toHaveLength(228)
     expect(() => validate('toString', 'prototype value')).toThrow('No response schema is registered')
+  })
+
+  // A rebuilt queue takes its times and escalation kinds from this answer, so
+  // both are part of the exact shape rather than something to default.
+  it('requires the asked time and a known escalation kind on pending approvals', () => {
+    const row = {
+      approval_id: 'a',
+      conversation_id: 'c',
+      assistant_message_id: 'm',
+      provider_call_id: 'p',
+      tool_name: 'run_command',
+      arguments: '{}',
+      retry: { kind: 'settings_unreadable', reason: 'database is locked', origin_call_id: 'p' },
+      asked_at: 1_700_000_000_000,
+      bubbled: false,
+      parent_call_id: null,
+      sub_conversation_id: null,
+    }
+    expect(() => validate('all_pending_approvals', [row])).not.toThrow()
+    const { asked_at: _omitted, ...withoutTime } = row
+    expect(() => validate('all_pending_approvals', [withoutTime])).toThrow()
+    expect(() => validate('all_pending_approvals', [{ ...row, retry: { ...row.retry, kind: 'guessed' } }])).toThrow()
+    expect(() => validate('list_cached_provider_models', [])).not.toThrow()
+    expect(() => validate('list_cached_provider_models', [{ id: 'm', name: 'm', extra: 1 }])).toThrow()
   })
 
   it('validates composer draft responses exactly', () => {

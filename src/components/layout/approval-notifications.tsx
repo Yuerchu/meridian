@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Notification, NotificationViewport, type NotificationAction } from '@/components/base'
 import { ArrowRight, Check, Clock, X } from '@keyline-icons/react/two-tone'
 
-import { ToolArgsSummary, toolLabel } from '@/components/chat/tool-call-block'
+import { ToolArgsSummary, escalationPromptKey, toolLabel } from '@/components/chat/tool-call-block'
 import { useConversationStore, type AttentionItem } from '@/stores/conversation-store'
 import { cx } from '@/utils/cx'
 import {
@@ -67,9 +67,12 @@ import {
 export function ApprovalNotifications({
   onSelect,
   transcriptInert = false,
+  inboxOpen = false,
 }: {
   onSelect: (conversationId: string) => Promise<boolean>
   transcriptInert?: boolean
+  /** The inbox lists every row this stack would draw; while it is open the stack is a duplicate beside it. */
+  inboxOpen?: boolean
 }) {
   const { t } = useTranslation()
   const { listed } = usePendingAttention(transcriptInert)
@@ -88,8 +91,11 @@ export function ApprovalNotifications({
       aria-label={t('notifications.region')}
       position="top-center"
       className={cx(
-        'top-[max(0.75rem,var(--safe-top,0px))] sm:top-[max(1.5rem,var(--safe-top,0px))]',
-        underModal && 'hidden',
+        // Below the frame's header (12px frame inset + 48px header + a 12px
+        // gap), not over it: at the registry's own 12/24px the stack covered
+        // the conversation title and the header's controls.
+        'top-[calc(var(--safe-top,0px)+4.5rem)] sm:top-[calc(var(--safe-top,0px)+4.5rem)]',
+        (underModal || inboxOpen) && 'hidden',
       )}
     >
       {approvals.map((item) => (
@@ -260,12 +266,12 @@ export function AttentionSummary({ item, shape }: { item: AttentionItem; shape: 
           {t(WITHHELD_MESSAGE[shape.withheld])}
         </span>
       )}
-      {/* The sandbox asked once already and was refused by the sandbox, not
-          by a person. Without this the second question looks identical to
-          the first. */}
-      {item.retryReason !== undefined && (
+      {/* A second question about a call already approved: the sandbox refused
+          it, or the settings that say where it runs could not be read. Without
+          this the second question looks identical to the first. */}
+      {item.retry !== undefined && (
         <span data-slot="approval-notification-retry-prompt" className="mt-1 block text-caption-1-regular">
-          {t('chat.tool.sandboxRetryPrompt')}
+          {t(escalationPromptKey(item.retry.kind))}
         </span>
       )}
     </>

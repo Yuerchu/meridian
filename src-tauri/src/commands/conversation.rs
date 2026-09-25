@@ -451,6 +451,7 @@ pub async fn search_conversations(
     request: ConversationSearchRequest,
 ) -> Result<ConversationSearchHitListResponse, String> {
     let pool = app.services().db.clone();
+    // domain-default: a page size the caller did not ask about, not a fact about a model
     let limit = request.limit.0.unwrap_or(20).min(100) as usize;
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;

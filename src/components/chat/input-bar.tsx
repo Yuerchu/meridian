@@ -20,6 +20,8 @@ import { useHistoryLevel } from '@/hooks/use-history-level'
 import { suggestionOptionId, useComposerTypeahead } from '@/hooks/use-composer-typeahead'
 import { FileInput, type FileInputHandle } from '@/components/ui/file-input'
 import { VoiceButton } from '@/components/ui/voice-button'
+import { ErrorAlert } from '@/components/ui/error-alert'
+import { errorMessage } from '@/lib/error-message'
 import { Composer } from './composer'
 import { ComposerSuggestions, type ComposerSuggestion } from './composer-suggestions'
 import { VoiceOverlay } from './voice-overlay'
@@ -27,7 +29,8 @@ import { MobileOptionsMenu } from './toolbar'
 import { ComposerMenu } from './composer-menu'
 import { EmojiPicker } from './emoji-picker'
 import { ToolbarSelect } from './toolbar-select'
-import { ContextGauge, type ContextReading } from './context-gauge'
+import { ContextGauge } from './context-gauge'
+import type { ContextInfo } from '@/hooks/use-context-info'
 import { isSelect, useAcpConfig } from '@/hooks/use-acp-config'
 import type { TFunction } from 'i18next'
 import type {
@@ -122,7 +125,7 @@ interface InputBarProps {
   acceptEdits: boolean
   onToggleAcceptEdits: (next: boolean) => void
   capabilities?: ProviderCapabilitiesInfoResponse | null
-  contextInfo?: ContextReading
+  contextInfo?: ContextInfo
   compacting?: boolean
   onCompact?: () => void
 }
@@ -216,13 +219,16 @@ function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAc
   ].filter(Boolean)
 
   // A refusal leaves the set as it was, which is already what is on screen —
-  // the agent did not change, so neither should the picker.
-  const choose = (id: string, value: string) => void set(id, value).catch(() => {})
+  // the agent did not change, so neither should the picker. The reason is kept
+  // by `useAcpConfig` and drawn above the composer; this only stops the
+  // rejection from going unhandled.
+  const choose = (id: string, value: string) => void set(id, value).catch(() => undefined)
 
   return (
     <Popover>
       <TooltipTrigger delay={0}>
         <Button
+          trailingIcon={ChevronDown}
           variant="secondary"
           aria-label={t('chat.agentOptions')}
           data-slot="agent-options-trigger"
@@ -232,7 +238,6 @@ function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAc
           <span data-slot="agent-options-summary" className="truncate">
             {summary.length > 0 ? summary.join(' · ') : t('chat.agentOptions')}
           </span>
-          <ChevronDown className="size-4 shrink-0 text-text-secondary" />
         </Button>
         <Tooltip placement="top">{t('chat.agentOptions')}</Tooltip>
       </TooltipTrigger>
@@ -410,8 +415,13 @@ export function InputBar({
   const suggestionsId = useId()
   const [selectedText, setSelectedText] = useState('')
 
-  // Transient one-line notice above the composer ("too short", model missing…)
+  // Transient one-line hint above the composer ("too short", "nothing heard").
+  // Only hints: a hint that clears itself after three seconds is fine, a
+  // failure that does is the "flash" — gone before anybody could read it.
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null)
+  // What went wrong in the composer itself — recording, a picker, the hosted
+  // agent's knobs — kept until the reader dismisses it.
+  const [composerError, setComposerError] = useState<string | null>(null)
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const showHint = useCallback((text: string) => {
     setVoiceNotice(text)
@@ -420,7 +430,11 @@ export function InputBar({
   }, [])
   const showVoiceNotice = useCallback(
     (notice: VoiceNotice, detail?: string) => {
-      showHint(notice === 'error' && detail ? detail : t(`chat.voice.${notice}`))
+      if (notice === 'error' || notice === 'model_missing') {
+        setComposerError(notice === 'error' && detail ? detail : t(`chat.voice.${notice}`))
+        return
+      }
+      showHint(t(`chat.voice.${notice}`))
     },
     [showHint, t],
   )
@@ -618,23 +632,38 @@ export function InputBar({
     [onAttachFiles],
   )
 
+  // A camera or gallery that fails answers with a rejection, not with null —
+  // null is "nothing chosen" — and nothing caught it: the button did nothing
+  // and the reason went to the console.
   const handleTakePhoto = useCallback(async () => {
     if (isRemote) return fileInputRef.current?.open({ accept: 'image/*', capture: true })
-    const uri = await api.takePhoto()
+    let uri: string | null
+    try {
+      uri = await api.takePhoto()
+    } catch (err) {
+      setComposerError(t('chat.attachFailed', { error: errorMessage(err) }))
+      return
+    }
     if (uri && onAttachFiles) {
       const name = await api.resolveFileName(uri).catch(() => 'photo.jpg')
       onAttachFiles([{ path: uri, name }])
     }
-  }, [onAttachFiles])
+  }, [onAttachFiles, t])
 
   const handlePickGallery = useCallback(async () => {
     if (isRemote) return fileInputRef.current?.open({ accept: 'image/*' })
-    const uri = await api.pickGalleryImage()
+    let uri: string | null
+    try {
+      uri = await api.pickGalleryImage()
+    } catch (err) {
+      setComposerError(t('chat.attachFailed', { error: errorMessage(err) }))
+      return
+    }
     if (uri && onAttachFiles) {
       const name = await api.resolveFileName(uri).catch(() => 'image.jpg')
       onAttachFiles([{ path: uri, name }])
     }
-  }, [onAttachFiles])
+  }, [onAttachFiles, t])
 
   // A path is all either the picker or a drop hands over; the name is asked for
   // separately because on Android a `content://` URI has no readable last
@@ -794,17 +823,45 @@ export function InputBar({
             // Offline takes the line over: a disabled field with nothing to
             // say about why reads as the app having broken.
             notice={
-              offline ? (
-                <p data-slot="composer-notice" className="px-2 pb-1.5 text-caption-1-regular text-status-danger">
-                  {t('settings.client.composerOffline')}
-                </p>
-              ) : (
-                voiceNotice && (
-                  <p data-slot="composer-notice" className="px-2 pb-1.5 text-caption-1-regular text-text-secondary">
-                    {voiceNotice}
-                  </p>
-                )
-              )
+              offline || composerError || acp.error || voiceNotice ? (
+                <>
+                  {offline && (
+                    <p
+                      data-slot="composer-notice"
+                      role="status"
+                      className="px-2 pb-1.5 text-caption-1-regular text-status-danger"
+                    >
+                      {t('settings.client.composerOffline')}
+                    </p>
+                  )}
+                  {composerError && (
+                    <ErrorAlert
+                      data-slot="composer-error"
+                      className="mx-1 mb-1.5"
+                      message={composerError}
+                      onDismiss={() => setComposerError(null)}
+                    />
+                  )}
+                  {acp.error && (
+                    <ErrorAlert
+                      data-slot="composer-agent-error"
+                      className="mx-1 mb-1.5"
+                      title={t('chat.agentOptionsFailed')}
+                      message={acp.error}
+                      onDismiss={acp.dismissError}
+                    />
+                  )}
+                  {!offline && voiceNotice && (
+                    <p
+                      data-slot="composer-notice"
+                      role="status"
+                      className="px-2 pb-1.5 text-caption-1-regular text-text-secondary"
+                    >
+                      {voiceNotice}
+                    </p>
+                  )}
+                </>
+              ) : null
             }
             attachments={
               (attachedFiles.length > 0 || pendingSticker) && (
@@ -867,18 +924,30 @@ export function InputBar({
                         className="size-20 object-contain"
                       />
                       {onRemoveSticker && (
-                        <TooltipTrigger delay={0}>
-                          <Button
-                            iconOnly
-                            leadingIcon={X}
-                            size="xs"
-                            variant="neutral"
-                            aria-label={t('chat.removeSticker')}
-                            className="touch-hitbox absolute -right-2 -top-2 min-w-0 size-6 rounded-full shadow-card"
-                            onPress={onRemoveSticker}
-                          />
-                          <Tooltip>{t('chat.removeSticker')}</Tooltip>
-                        </TooltipTrigger>
+                        // The corner placement is on a wrapper, not the button.
+                        // On a coarse pointer `touch-hitbox` sets the button's
+                        // own `position: relative` (the box its `::after`
+                        // expands from); beside `absolute` on the same element
+                        // those are one class each in one layer, so emission
+                        // order alone decided whether the button stayed in the
+                        // corner or fell into flow under the sticker. Split, the
+                        // wrapper is positioned — and, later in the DOM than the
+                        // image, painted over it — and the button is the hitbox's
+                        // containing block with nothing to contest it.
+                        <span data-slot="pending-sticker-remove" className="absolute -right-2 -top-2 flex">
+                          <TooltipTrigger delay={0}>
+                            <Button
+                              iconOnly
+                              leadingIcon={X}
+                              size="xs"
+                              variant="neutral"
+                              aria-label={t('chat.removeSticker')}
+                              className="touch-hitbox min-w-0 size-6 rounded-full shadow-card"
+                              onPress={onRemoveSticker}
+                            />
+                            <Tooltip>{t('chat.removeSticker')}</Tooltip>
+                          </TooltipTrigger>
+                        </span>
                       )}
                     </div>
                   )}

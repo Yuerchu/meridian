@@ -11,6 +11,7 @@ import { ChatTranscript } from './chat-transcript'
 import { CompactedRegion } from './compacted-region'
 import { SubAgentSheetProvider } from './sub-agent-sheet'
 import { TranscriptStatus } from './transcript-status'
+import { ErrorAlert } from '@/components/ui/error-alert'
 import { AcpNoticeActionsContext, type AcpNoticeActions } from './acp-notice-actions'
 import { placeNotices } from '@/lib/acp-notices'
 import { useTurns } from '@/hooks/use-turns'
@@ -96,6 +97,8 @@ function ChatViewInner({
   const shellTurnId = session?.activeShellTurnId ?? null
   const compacting = session?.compacting ?? false
   const error = session?.error ?? null
+  const loadError = session?.loadError ?? null
+  const todosError = session?.todosError ?? null
   const redactionNotice = session?.redactionNotice ?? null
   const acpNotices = session?.acpNotices ?? NO_NOTICES
   const activeTodos = session?.activeTodos ?? null
@@ -230,35 +233,45 @@ function ChatViewInner({
   // its cancellation token and `prompt_with` sends `session/cancel` off the
   // back of it. `acp_cancel` is the same act named for what it is, and it does
   // not need the turn id a reloaded window may not have.
+  // Each of these used to be fire-and-forget: a refused stop left the turn
+  // running with nothing said, and a refused delete or rating was an unhandled
+  // rejection the reader never saw. The reason goes where the transcript's
+  // other failures go.
+  const reportFailure = useCallback(
+    (key: string) => (err: unknown) => storeSetError(conversationId, t(key, { error: String(err) })),
+    [conversationId, storeSetError, t],
+  )
+
   const handleStop = useCallback(() => {
+    const failed = reportFailure('chat.error.stopFailed')
     if (shellTurnId) {
-      api.stopChat({ conversationId, turnId: shellTurnId })
+      api.stopChat({ conversationId, turnId: shellTurnId }).catch(failed)
       return
     }
     if (isHostedAgent) {
-      api.acpCancel(conversationId)
+      api.acpCancel(conversationId).catch(failed)
       return
     }
     const turnId = useConversationStore.getState().sessions[conversationId]?.activeTurnId
-    api.stopChat({ conversationId, turnId })
-  }, [conversationId, isHostedAgent, shellTurnId])
+    api.stopChat({ conversationId, turnId }).catch(failed)
+  }, [conversationId, isHostedAgent, reportFailure, shellTurnId])
 
   const handleDelete = useCallback(
     (id: string) => {
       api.deleteMessage({ conversationId, id }).then(() => {
         storeLoadMessages(conversationId)
-      })
+      }, reportFailure('chat.error.deleteFailed'))
     },
-    [conversationId, storeLoadMessages],
+    [conversationId, reportFailure, storeLoadMessages],
   )
 
   const handleRate = useCallback(
     (id: string, rating: MessageRating | null) => {
       api.rateMessage({ id, rating }).then(() => {
         storeLoadMessages(conversationId)
-      })
+      }, reportFailure('chat.error.rateFailed'))
     },
-    [conversationId, storeLoadMessages],
+    [conversationId, reportFailure, storeLoadMessages],
   )
 
   const handleCompact = useCallback(
@@ -284,6 +297,11 @@ function ChatViewInner({
   )
   const allTurns = useTurns(visibleMessages, streaming, session?.turns)
   useTranscriptHotkeys(conversationId, allTurns)
+  // A run that failed says so under itself, from its record, once the reload
+  // after it lands. The request that started it was rejected with the same
+  // words, and saying them twice — once under the turn, once at the foot of the
+  // transcript — reads as two failures.
+  const transcriptError = error !== null && allTurns.some((turn) => turn.failure === error) ? null : error
   const compactSummary = messages.find((m) => m.is_compact_summary)
   // The boundary comes from the summary's anchor rather than a stored cursor:
   // once a conversation can branch, one sort_order threshold cannot describe
@@ -325,7 +343,6 @@ function ChatViewInner({
     compactBoundary != null ? visibleMessages.filter((m) => m.sort_order < compactBoundary).length : 0
 
   const contextInfo = useContextInfo(conversationId, {
-    assistant: settings.selectedAssistant,
     messageCount: messages.length,
     compactBoundary,
     compacting,
@@ -343,7 +360,8 @@ function ChatViewInner({
   // it lets the composer stay live during those and submit into an inbox that
   // does not exist, which comes back as "this run has already finished" on a
   // run that plainly has not.
-  const steerable = contextInfo.agentKind === 'agent' || contextInfo.agentKind === 'explore'
+  const agentKind = contextInfo.status === 'ready' ? contextInfo.reading.agentKind : null
+  const steerable = agentKind === 'agent' || agentKind === 'explore'
   const steering = steerable && streaming
 
   // Everything with a runner behind it, which is a hosted session and an
@@ -543,12 +561,16 @@ function ChatViewInner({
         clearShellRetry(turnId)
         storeFinishShellCommand(result)
         if (result.can_retry_without_sandbox) {
+          // Two reasons to offer the host, and they must not read alike: the
+          // sandbox refused a command that ran, or the settings that say where
+          // it runs could not be read and nothing ran at all.
+          const unread = result.status === 'settings_unreadable'
           const approved = await confirm({
             status: 'warning',
-            title: t('chat.shell.retryTitle'),
+            title: t(unread ? 'chat.shell.unreadableTitle' : 'chat.shell.retryTitle'),
             body: (
               <div data-slot="shell-retry-body" className="space-y-3">
-                <p data-slot="shell-retry-text">{t('chat.shell.retryBody')}</p>
+                <p data-slot="shell-retry-text">{t(unread ? 'chat.shell.unreadableBody' : 'chat.shell.retryBody')}</p>
                 <dl
                   data-slot="shell-retry-details"
                   className="space-y-2 rounded-xl bg-background-secondary-default p-3 text-caption-1-regular"
@@ -569,10 +591,20 @@ function ChatViewInner({
                       {result.cwd}
                     </dd>
                   </div>
+                  {unread && result.error && (
+                    <div data-slot="shell-retry-detail">
+                      <dt data-slot="shell-retry-detail-label" className="text-caption-1-medium text-text-secondary">
+                        {t('chat.shell.errorLabel')}
+                      </dt>
+                      <dd data-slot="shell-retry-detail-value" className="mt-0.5 break-all font-mono text-text-primary">
+                        {result.error}
+                      </dd>
+                    </div>
+                  )}
                 </dl>
               </div>
             ),
-            confirmLabel: t('chat.shell.retryConfirm'),
+            confirmLabel: t(unread ? 'chat.shell.unreadableConfirm' : 'chat.shell.retryConfirm'),
           })
           if (approved) {
             storeBeginShellCommand(conversationId, turnId)
@@ -928,14 +960,22 @@ function ChatViewInner({
             trailing={
               <TranscriptStatus
                 compacting={compacting}
-                error={error}
+                error={transcriptError}
+                onDismissError={() => storeSetError(conversationId, null)}
+                loadError={loadError}
+                onRetryLoad={() => void storeLoadMessages(conversationId)}
+                todosError={todosError}
+                onRetryTodos={() => void storeLoadActiveTodos(conversationId)}
                 redactionNotice={redactionNotice}
                 notices={placedNotices.unplaced}
                 retryText={lastQuestion}
               />
             }
             emptyState={
-              messages.length === 0 && !error ? (
+              // Not over a failed read: "What can I help you with?" above a
+              // conversation that could not be loaded tells the reader it is
+              // empty, which is the one thing nobody knows.
+              messages.length === 0 && !error && !loadError ? (
                 <ProEmptyState size="md" className="flex-1 justify-center px-4 py-10">
                   <ProEmptyState.Header>
                     <ProEmptyState.Title>{t('chat.empty.subtitle')}</ProEmptyState.Title>
@@ -1017,14 +1057,29 @@ function ChatViewInner({
           </div>
         )}
 
-        {composerDraft.saveError && (
-          <p
-            data-slot="composer-draft-error"
-            role="status"
-            className="shrink-0 px-4 pt-1 text-caption-1-regular text-text-secondary"
-          >
-            {t('chat.draft.saveFailed', { error: composerDraft.saveError })}
-          </p>
+        {/* Above the composer, where the queue it describes is drawn. Not
+            inside `PromptQueue`, which draws nothing when the list is empty —
+            and an empty list is exactly what a failed first read looks like. */}
+        {queue.error && (
+          <div data-slot="prompt-queue-error" className="shrink-0 px-4 pt-2">
+            <ErrorAlert
+              title={t(queue.error.kind === 'load' ? 'chat.queue.loadFailed' : 'chat.queue.actionFailed')}
+              message={queue.error.message}
+              onRetry={queue.error.kind === 'load' ? queue.retry : undefined}
+              onDismiss={queue.dismissError}
+            />
+          </div>
+        )}
+
+        {composerDraft.error && (
+          <div data-slot="composer-draft-error" className="shrink-0 px-4 pt-2">
+            <ErrorAlert
+              title={t(composerDraft.error.kind === 'load' ? 'chat.draft.loadFailed' : 'chat.draft.saveFailedTitle')}
+              message={composerDraft.error.message}
+              onRetry={composerDraft.error.kind === 'save' ? composerDraft.retry : undefined}
+              onDismiss={composerDraft.dismissError}
+            />
+          </div>
         )}
 
         <InputBar
@@ -1047,7 +1102,7 @@ function ChatViewInner({
               currentTodos={queue.items.length > 0 ? activeTodos : null}
               streaming={streaming}
               held={queue.held}
-              onRemove={(id) => void queue.remove(id).catch((e) => storeSetError(conversationId, String(e)))}
+              onRemove={(id) => void queue.remove(id)}
               onReorder={(next) => void queue.reorder(next)}
               onSetDelivery={(id, delivery) => void queue.setDelivery(id, delivery)}
               onRelease={() => void queue.release()}

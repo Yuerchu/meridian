@@ -151,6 +151,7 @@ import type {
   ProviderCapabilitiesReadRequest,
   ProviderCreateRequest,
   ProviderKeyUpdateRequest,
+  ProviderCachedModelListRequest,
   ProviderModelListRequest,
   ProviderUpdateRequest,
   ProviderBalanceInfoResponse,
@@ -477,6 +478,13 @@ export const api = {
   setProviderKey: (request: ProviderKeyUpdateRequest) => invoke<void>('set_provider_key', { request }),
 
   getProviderKeyExists: (providerId: string) => invoke<boolean>('get_provider_key_exists', { providerId }),
+
+  /**
+   * What the last model-list fetch cached for this provider, read without any
+   * network request. An empty list means nothing has been fetched yet.
+   */
+  listCachedProviderModels: (request: ProviderCachedModelListRequest) =>
+    invoke<ProviderModelListResponse>('list_cached_provider_models', { request }),
 
   fetchProviderModels: (request: ProviderModelListRequest) =>
     invoke<ProviderModelListResponse>('fetch_provider_models', { request }),

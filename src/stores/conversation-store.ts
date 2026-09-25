@@ -5,6 +5,8 @@ import { parseTodoArgs, toDrafts, type TodoArgs } from '@/components/chat/todo-l
 import { planReviewToolStatus } from '@/lib/plan-review-status'
 import { parseJsonText, requireExactKeys, requireKnownKeys, requireRecord } from '@/lib/strict-json'
 import type {
+  ApprovalEscalation,
+  ApprovalRetry,
   AutoReviewVerdictInfoResponse,
   BranchPointInfoResponse,
   UserCommandResultResponse,
@@ -561,7 +563,7 @@ export function hydrateBlocks(
             // "has an id" and "can be answered here" stay the same thing.
             approval_id: stillWaiting?.bubbled ? undefined : stillWaiting?.approval_id,
             plan_review_id: planReview?.review_id,
-            retry_reason: stillWaiting?.retry_reason ?? undefined,
+            retry: escalationOf(stillWaiting?.retry),
             sub_agent: run?.spawned_turn_id
               ? {
                   conversation_id: run.conversation_id,
@@ -577,7 +579,7 @@ export function hydrateBlocks(
                   call_id: nested.provider_call_id,
                   tool_name: nested.tool_name,
                   arguments: nested.arguments,
-                  retry_reason: nested.retry_reason ?? undefined,
+                  retry: escalationOf(nested.retry),
                   sub_conversation_id: nested.sub_conversation_id ?? undefined,
                 }
               : undefined,
@@ -746,7 +748,7 @@ interface ToolAttentionItem {
    *  transcript for the same reason the backend sends it: the row may be in a
    *  conversation this client has never loaded. */
   arguments: string
-  retryReason?: string
+  retry?: ApprovalEscalation
   /** `ask` is a question with a form behind it, which no queue row can answer —
    *  it offers a way in instead. Split here rather than by comparing the tool
    *  name at each call site. */
@@ -754,7 +756,10 @@ interface ToolAttentionItem {
   /** Set when a delegated run is asking. The question is filed under the
    *  parent, but the call's result and stop land on this conversation. */
   subConversationId?: string
-  askedAt: AttentionAskedAt
+  /** When the backend registered the question — the value on its announcing
+   *  event and on `allPendingApprovals` alike, so a question rebuilt after a
+   *  reload keeps its time. */
+  askedAt: number
 }
 
 export type PlanReviewAttentionStage = 'review' | 'delivery_queued' | 'delivery_attention'
@@ -778,11 +783,10 @@ interface PlanReviewAttentionItem {
 }
 
 /**
- * When this client heard the question asked, in epoch milliseconds — which is
- * when it was asked, because the announcing event is sent at that moment.
- * `null` when the entry was rebuilt from a register (`allPendingApprovals`, a
- * snapshot's plan reviews) that does not say: those carry no time, and stamping
- * the moment of the reload would call an hour-old question "just now".
+ * When a question was asked, in epoch milliseconds. A tool approval always has
+ * one: the backend stamps it when the question is registered. `null` only for a
+ * plan review rebuilt from a snapshot, which does not say — and stamping the
+ * moment of the reload would call an hour-old question "just now".
  */
 export type AttentionAskedAt = number | null
 
@@ -800,7 +804,7 @@ export interface PendingApprovalEntry {
   /** The call this one retries, for sandbox escalations. */
   originCallId?: string
   toolName: string
-  retryReason?: string
+  retry?: ApprovalEscalation
 }
 
 export interface ConversationSession {
@@ -845,7 +849,19 @@ export interface ConversationSession {
    *  itself take a while. */
   retry: { attempt: number; max: number; delayMs: number } | null
   compacting: boolean
+  /** Something the reader did, or a turn they started, failed — and this is
+   *  the backend's reason. Stays until the next turn starts, the reader
+   *  dismisses it, or the action is retried; a reload of the transcript does
+   *  not clear it, because a reload is exactly what follows a failure, and
+   *  clearing it there is how an error was shown for one frame and lost. */
   error: string | null
+  /** The transcript could not be read. Separate from `error` because it has
+   *  the opposite lifetime: the next successful read is the state genuinely
+   *  changing, so that — and only that — clears it. */
+  loadError: string | null
+  /** The checklist could not be read. Its own slot so that a messages read
+   *  succeeding cannot clear it, nor it a messages failure. */
+  todosError: string | null
   fulfilledUnseen: boolean
   /** Keyed by `approval_id`. A record rather than the single slot this used to
    *  be: nothing stops a turn from having two questions outstanding, and the
@@ -893,6 +909,8 @@ function defaultSession(): ConversationSession {
     retry: null,
     compacting: false,
     error: null,
+    loadError: null,
+    todosError: null,
     fulfilledUnseen: false,
     pendingApprovals: {},
     pendingAsks: {},
@@ -965,6 +983,12 @@ function applyPlanReviewAttention(
   }
 }
 
+/** What a card needs of an escalation: the kind and the reason. The origin
+ *  call id travels separately, on the pending entry. */
+function escalationOf(retry: ApprovalRetry | null | undefined): ApprovalEscalation | undefined {
+  return retry ? { kind: retry.kind, reason: retry.reason } : undefined
+}
+
 function applyPendingApprovals(session: ConversationSession, pending: PendingApprovalInfoResponse[]) {
   session.pendingApprovals = {}
   session.pendingAsks = {}
@@ -973,9 +997,9 @@ function applyPendingApprovals(session: ConversationSession, pending: PendingApp
     const entry: PendingApprovalEntry = {
       providerCallId: row.provider_call_id,
       messageId: row.assistant_message_id,
-      originCallId: row.origin_call_id ?? undefined,
+      originCallId: row.retry?.origin_call_id,
       toolName: row.tool_name,
-      retryReason: row.retry_reason ?? undefined,
+      retry: escalationOf(row.retry),
     }
     if (isAskTool(row.tool_name)) session.pendingAsks[row.approval_id] = entry
     else session.pendingApprovals[row.approval_id] = entry
@@ -1221,8 +1245,10 @@ export interface ConversationStore {
      *  session, which is why it is not optional: the queue draws from it, and a
      *  row that can only say "run_command" is a yes/no about nothing. */
     args: string,
-    retryReason?: string,
-    originCallId?: string,
+    /** When the backend registered the question. The event always says; this
+     *  client never stamps a time of its own. */
+    askedAt: number,
+    retry?: ApprovalRetry,
     /** Set when a delegated run is asking. The card is the `run_agent` block
      *  named by this, and the question goes inside it — `callId` names a tool
      *  in the sub-agent's conversation, which this row never called. */
@@ -1260,7 +1286,9 @@ export interface ConversationStore {
    *  the buttons rather than leaving one that cannot work. Takes no
    *  conversation id: the approval id is a UUID, and a tool card does not know
    *  which conversation it is being rendered in. */
-  markApprovalOrphaned: (approvalId: string) => void
+  /** `reason` is the backend's answer to the refused request, kept on the card
+   *  so it says why rather than only that the question is over. */
+  markApprovalOrphaned: (approvalId: string, reason?: string) => void
   /** An answer has been sent. Takes the question out of the queue and off
    *  whichever card was offering it, without touching the call's status — the
    *  tool is about to run, and its result is what says how it went.
@@ -1326,6 +1354,8 @@ export interface ConversationStore {
   setStreaming: (convId: string, value: boolean) => void
   setCompacting: (convId: string, value: boolean) => void
   setError: (convId: string, error: string | null) => void
+  /** The transcript read failed (a string) or succeeded (null). */
+  setLoadError: (convId: string, error: string | null) => void
   setActiveTodos: (convId: string, todos: TodoArgs | null) => void
   loadActiveTodos: (convId: string) => Promise<void>
   markSeen: (convId: string) => void
@@ -1456,7 +1486,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       ])
     } catch (err) {
       console.error(`[loadMessages] failed to fetch snapshot for ${convId}:`, err)
-      get().setError(convId, String(err))
+      get().setLoadError(convId, String(err))
       return false
     }
     // Reconciled outside produce: comparing against immer drafts would pit proxy
@@ -1469,7 +1499,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       )
     } catch (err) {
       console.error(`[loadMessages] snapshot validation failed for ${convId}:`, err)
-      get().setError(convId, String(err))
+      get().setLoadError(convId, String(err))
       return false
     }
     let applied = false
@@ -1489,7 +1519,9 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         session.turns = snap.turns
         session.acpNotices = checkedAcpNotices(snap.acp_notices)
         session.activeShellTurnId = activeShellTurnId
-        session.error = null
+        // Only the read's own failure. `error` is somebody's action failing,
+        // and a reload is what follows one — see its declaration.
+        session.loadError = null
         adoptLiveTurn(session, snap.turns)
         applyPendingApprovals(session, snap.pending_approvals)
         applyPlanReviewAttention(state, convId, snap.plan_reviews)
@@ -1896,7 +1928,8 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     )
   },
 
-  handleToolApproval: (convId, messageId, approvalId, callId, toolName, args, retryReason, originCallId, bubble) => {
+  handleToolApproval: (convId, messageId, approvalId, callId, toolName, args, askedAt, retry, bubble) => {
+    const escalation = escalationOf(retry)
     set(
       produce((state: ConversationStore) => {
         // Before the session check below, and that ordering is the point: a
@@ -1911,10 +1944,10 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             messageId,
             toolName,
             arguments: args,
-            retryReason,
+            retry: escalation,
             kind: isAskTool(toolName) ? 'ask' : 'approval',
             subConversationId: bubble?.subConversationId,
-            askedAt: Date.now(),
+            askedAt,
           }
           state.attentionOrder.push(approvalId)
         }
@@ -1924,9 +1957,9 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         const entry: PendingApprovalEntry = {
           providerCallId: callId,
           messageId,
-          originCallId,
+          originCallId: retry?.origin_call_id,
           toolName,
-          retryReason,
+          retry: escalation,
         }
         if (isAskTool(toolName)) {
           session.pendingAsks[approvalId] = entry
@@ -1947,7 +1980,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
               call_id: callId,
               tool_name: toolName,
               arguments: args,
-              retry_reason: retryReason,
+              retry: escalation,
               sub_conversation_id: bubble.subConversationId,
             }
           }
@@ -1973,7 +2006,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             b.type === 'tool_call' &&
             b.data.call_id === callId &&
             !ANSWERED.has(b.data.status) &&
-            (retryReason !== undefined || (!b.data.approval_id && b.data.status !== 'pending')),
+            (escalation !== undefined || (!b.data.approval_id && b.data.status !== 'pending')),
         )
         if (card?.type === 'tool_call') {
           // Whatever it was holding has been answered and acted on already — that
@@ -1985,7 +2018,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           }
           card.data.status = 'pending'
           card.data.approval_id = approvalId
-          card.data.retry_reason = retryReason
+          card.data.retry = escalation
         }
       }),
     )
@@ -2203,7 +2236,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     )
   },
 
-  markApprovalOrphaned: (approvalId) => {
+  markApprovalOrphaned: (approvalId, reason) => {
     set(
       produce((state: ConversationStore) => {
         // Unconditional, and before the loop: the loop can only reach sessions,
@@ -2223,6 +2256,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             if (block.data.approval_id === approvalId) {
               block.data.status = 'orphaned'
               block.data.approval_id = undefined
+              if (reason !== undefined) block.data.answer_error = reason
             }
             // A delegated run's question. The card it sits in is the `run_agent`
             // call, which is not itself orphaned — only the question is, so it
@@ -2332,10 +2366,10 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             messageId: row.assistant_message_id,
             toolName: row.tool_name,
             arguments: row.arguments,
-            retryReason: row.retry_reason ?? undefined,
+            retry: escalationOf(row.retry),
             kind: isAskTool(row.tool_name) ? 'ask' : 'approval',
             subConversationId: row.sub_conversation_id ?? undefined,
-            askedAt: null,
+            askedAt: row.asked_at,
           }
           state.attentionOrder.push(row.approval_id)
         }
@@ -2368,11 +2402,25 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     // Declared without an initialiser: the catch returns, so the only way to
     // reach the use below is through the successful assignment.
     let view: TodoInfoResponse | null
+    const setTodosError = (todosError: string | null) =>
+      set(
+        produce((state: ConversationStore) => {
+          if (!state.sessions[convId]) {
+            if (todosError === null) return
+            state.sessions[convId] = defaultSession()
+          }
+          state.sessions[convId].todosError = todosError
+        }),
+      )
     try {
       view = await api.getActiveTodoList(convId)
-    } catch {
+    } catch (err) {
+      // The bar keeps whatever it was showing — a checklist that vanished on a
+      // failed read would look finished — and the reason is put beside it.
+      setTodosError(String(err))
       return
     }
+    setTodosError(null)
     get().setActiveTodos(convId, view ? { title: view.list.title, todos: toDrafts(view.items) } : null)
   },
 
@@ -2523,7 +2571,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       })
       .catch((err) => {
         console.error(`[handleStop] snapshot reload failed for ${convId}:`, err)
-        get().setError(convId, String(err))
+        get().setLoadError(convId, String(err))
       })
   },
 
@@ -2581,7 +2629,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             const session = state.sessions[convId]
             if (!session) return
             session.compacting = false
-            session.error = String(err)
+            session.loadError = String(err)
           }),
         )
       })
@@ -2615,12 +2663,29 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     )
   },
 
+  // Both create the session rather than dropping the message when there is
+  // none: a failure reported before `ensureSession` ran would otherwise be lost
+  // without a trace, which is the whole thing these exist to prevent.
   setError: (convId, error) => {
     set(
       produce((state: ConversationStore) => {
-        if (state.sessions[convId]) {
-          state.sessions[convId].error = error
+        if (!state.sessions[convId]) {
+          if (error === null) return
+          state.sessions[convId] = defaultSession()
         }
+        state.sessions[convId].error = error
+      }),
+    )
+  },
+
+  setLoadError: (convId, error) => {
+    set(
+      produce((state: ConversationStore) => {
+        if (!state.sessions[convId]) {
+          if (error === null) return
+          state.sessions[convId] = defaultSession()
+        }
+        state.sessions[convId].loadError = error
       }),
     )
   },

@@ -60,6 +60,14 @@ function field<T>(args: DemoArgs, key: string): T {
   return args?.[key] as T
 }
 
+/** What the demo provider's model list names: every configured model, plus two
+ *  more for Anthropic so the picker has something to add. */
+function demoProviderModels(state: DemoBackend['state'], id: string): { id: string; name: string }[] {
+  const configured = state.modelConfigs.filter((m) => m.provider_id === id).map((m) => m.model_id)
+  const extra = id === 'demo-provider-anthropic' ? ['claude-opus-5', 'claude-sonnet-5-preview'] : []
+  return [...configured, ...extra].map((model) => ({ id: model, name: model }))
+}
+
 function conversationOf(backend: DemoBackend, id: string): ConversationInfoResponse {
   const row = backend.state.conversations.find((c) => c.id === id)
   if (!row) throw `conversation not found: ${id}`
@@ -299,6 +307,8 @@ const conversations: Record<string, DemoHandler> = {
   search_conversations: (args, { state }) => {
     const req = request<{ query: string; limit: number | null }>(args)
     const query = req.query.toLowerCase()
+    // eslint-disable-next-line meridian-ui/no-invented-domain-default -- a page size, the one `search_conversations` applies when none is asked for
+    const pageSize = req.limit ?? 20
     return state.conversations
       .flatMap((c) => {
         const thread = state.threads[c.id]
@@ -317,7 +327,7 @@ const conversations: Record<string, DemoHandler> = {
           },
         ]
       })
-      .slice(0, req.limit ?? 20)
+      .slice(0, pageSize)
   },
   conversation_snapshot: (args, { state }) => snapshot(state, request<{ conversationId: string }>(args).conversationId),
   switch_branch: (args, { state }) => {
@@ -775,12 +785,11 @@ const providers: Record<string, DemoHandler> = {
     return null
   },
   get_provider_key_exists: (args, { state }) => state.providerKeys.has(field(args, 'providerId')),
-  fetch_provider_models: (args, { state }) => {
-    const id = request<{ providerId: string }>(args).providerId
-    const configured = state.modelConfigs.filter((m) => m.provider_id === id).map((m) => m.model_id)
-    const extra = id === 'demo-provider-anthropic' ? ['claude-opus-5', 'claude-sonnet-5-preview'] : []
-    return [...configured, ...extra].map((model) => ({ id: model, name: model }))
-  },
+  fetch_provider_models: (args, { state }) =>
+    demoProviderModels(state, request<{ providerId: string }>(args).providerId),
+  // As if a fetch had already been made: the cache holds what it would return.
+  list_cached_provider_models: (args, { state }) =>
+    demoProviderModels(state, request<{ providerId: string }>(args).providerId),
   get_provider_capabilities: () => CAPABILITIES,
   get_provider_balance: (args) =>
     field(args, 'providerId') === 'demo-provider-deepseek'
