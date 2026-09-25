@@ -247,6 +247,12 @@ jobs:
       - name: No demo fixtures in the bundle
         run: pnpm check:dist-no-demo
 
+      # Nothing else in CI runs the Tauri CLI, which refuses to build when an
+      # npm package and its Rust crate differ in major.minor. Reads both lock
+      # files; no install or build needed.
+      - name: Tauri npm packages match their crates
+        run: pnpm tauri:versions
+
       # The Rust half of the lint gate `no-default-on-load-failure`: a command
       # that reads and defaults on failure, then writes back. Needs no toolchain.
       - name: No read-then-default in commands
