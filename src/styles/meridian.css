@@ -19,12 +19,12 @@
      panel returning to rest reads as the same object that slid in. */
   --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
 
-  /* How wide settings is allowed to get. Past this a row's label and its
-     control end up at opposite ends of the screen with nothing between them,
-     which is a worse read than the whitespace on either side. Tailwind's own
-     ladder stops at 4xl; this is the one number above it, named rather than
-     arbitrary so the lint's ban on px max-widths still means something. */
-  --container-settings: 75rem;
+  /* The one width every settings page has. The registry's settings-modal
+     content pane: an 871px panel less its 274px nav rail, the rail's 1px rule
+     and the pane's 32px padding each side — 532px. Every section of that modal
+     shares it, tables included (settings-storage's file list), so a page that
+     changes width as you move between sections is a layout nobody drew. */
+  --container-settings: 33.25rem;
 }
 
 :root {

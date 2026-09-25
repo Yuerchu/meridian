@@ -193,9 +193,8 @@ export function About() {
               </ItemCard.Description>
             </ItemCard.Content>
             <ItemCard.Action>
-              <Button size="small" variant="secondary" onPress={() => setShowLogs(true)}>
+              <Button trailingIcon={ChevronRight} size="small" variant="secondary" onPress={() => setShowLogs(true)}>
                 {t('settings.about.logs.open')}
-                <ChevronRight className="size-3 rtl:-scale-x-100" />
               </Button>
             </ItemCard.Action>
           </ItemCard>

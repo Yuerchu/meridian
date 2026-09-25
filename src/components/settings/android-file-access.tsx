@@ -155,8 +155,7 @@ export function AndroidFileAccess() {
             ))}
           </ul>
         )}
-        <Button variant="secondary" onPress={handleAddDirectory} isDisabled={picking}>
-          <FolderOpen className="mr-1.5 h-3.5 w-3.5" />
+        <Button leadingIcon={FolderOpen} variant="secondary" onPress={handleAddDirectory} isDisabled={picking}>
           {t('settings.fileAccess.addDir')}
         </Button>
       </div>

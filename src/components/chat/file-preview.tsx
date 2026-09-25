@@ -311,8 +311,7 @@ function PreviewSheet({
                   {t(copied ? 'chat.filePreview.pathCopied' : 'chat.filePreview.copyPath')}
                 </Button>
                 {canOpenEditor && state.status === 'loaded' && state.kind === 'project_file' && (
-                  <Button variant="secondary" onPress={openInEditor}>
-                    <SquareArrowUpRight className="size-4" />
+                  <Button leadingIcon={SquareArrowUpRight} variant="secondary" onPress={openInEditor}>
                     {t('chat.filePreview.openInEditor')}
                   </Button>
                 )}

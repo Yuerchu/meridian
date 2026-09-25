@@ -97,12 +97,12 @@ export function StickerImage({
         >
           <Image aria-hidden className="size-6" />
           <Button
+            leadingIcon={RefreshCw}
             variant="secondary"
             size="small"
             className="touch-hitbox px-1 text-caption-1-regular"
             onPress={() => setAttempt((current) => current + 1)}
           >
-            <RefreshCw aria-hidden className="size-3.5" />
             {t('chat.emoji.retry')}
           </Button>
         </div>

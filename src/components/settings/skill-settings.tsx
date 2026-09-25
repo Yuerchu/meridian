@@ -301,12 +301,10 @@ export function SkillSettings() {
         subtitle={t('settings.skills.subtitle')}
         actions={
           <>
-            <Button variant="secondary" onPress={handleRescan} isPending={rescanning}>
-              <RefreshCw className="w-3.5 h-3.5" />
+            <Button leadingIcon={RefreshCw} variant="secondary" onPress={handleRescan} isPending={rescanning}>
               {t('settings.skills.rescan')}
             </Button>
-            <Button variant="secondary" onPress={() => setShowCreate(!showCreate)}>
-              <Plus className="w-3.5 h-3.5" />
+            <Button leadingIcon={Plus} variant="secondary" onPress={() => setShowCreate(!showCreate)}>
               {t('settings.skills.new')}
             </Button>
           </>

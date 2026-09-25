@@ -47,8 +47,7 @@ export function CodexAccount() {
         <p data-slot="codex-account-label" className="text-caption-1-regular text-text-secondary">
           {t('settings.provider.codexAccount')}
         </p>
-        <Button variant="secondary" onPress={() => void check()} isPending={checking}>
-          <RefreshCw className="w-3.5 h-3.5" />
+        <Button leadingIcon={RefreshCw} variant="secondary" onPress={() => void check()} isPending={checking}>
           {t('settings.provider.codexRecheck')}
         </Button>
       </div>

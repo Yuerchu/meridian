@@ -87,6 +87,7 @@ export function AppShell(props: ShellProps) {
   // want it.
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [inboxOpen, setInboxOpen] = useState(false)
   const [settingsHistoryClaimed, setSettingsHistoryClaimed] = useState(true)
   // Local state, not a store field. Its lifetime would be identical either way
   // — neither survives a reload — and a width in the store would be written on
@@ -334,6 +335,8 @@ export function AppShell(props: ShellProps) {
               <NotificationInbox
                 onSelect={selectConversation}
                 transcriptInert={page === 'settings' || activeReviewId !== null}
+                isOpen={inboxOpen}
+                onOpenChange={setInboxOpen}
               />
             </div>
           </header>
@@ -485,6 +488,7 @@ export function AppShell(props: ShellProps) {
         <ApprovalNotifications
           onSelect={selectConversation}
           transcriptInert={page === 'settings' || activeReviewId !== null}
+          inboxOpen={inboxOpen}
         />
 
         <CommandPalette

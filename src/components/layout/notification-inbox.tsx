@@ -45,12 +45,22 @@ import {
 export function NotificationInbox({
   onSelect,
   transcriptInert,
+  isOpen: openProp,
+  onOpenChange,
 }: {
   onSelect: (conversationId: string) => Promise<boolean>
   transcriptInert: boolean
+  /** Controlled by the shell, which hides the floating stack while this is open. */
+  isOpen?: boolean
+  onOpenChange?: (open: boolean) => void
 }) {
   const { t } = useTranslation()
-  const [isOpen, setIsOpen] = useState(false)
+  const [ownOpen, setOwnOpen] = useState(false)
+  const isOpen = openProp ?? ownOpen
+  const setIsOpen = (open: boolean) => {
+    setOwnOpen(open)
+    onOpenChange?.(open)
+  }
   const { listed, here } = usePendingAttention(transcriptInert)
   const activeId = useConversationStore((s) => s.activeId)
   const conversations = useConversationStore((s) => s.conversations)

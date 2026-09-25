@@ -190,12 +190,12 @@ function SourceEditor({
             {t('planReview.source.hint')}
           </p>
           <Button
+            leadingIcon={Message}
             size="small"
             variant="secondary"
             isDisabled={!selection}
             onPress={() => selection && onAddComment(selection)}
           >
-            <Message className="size-4" />
             {t('planReview.comments.add')}
           </Button>
         </div>
@@ -811,12 +811,10 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           </div>
 
           <Dropdown>
-            <Button variant="secondary" size="small">
-              <Clock className="size-4" />
+            <Button trailingIcon={ChevronDown} leadingIcon={Clock} variant="secondary" size="small">
               {historicalRevision
                 ? t('planReview.revision', { number: historicalRevision.revision_no })
                 : t('planReview.history.current')}
-              <ChevronDown className="size-4" />
             </Button>
             <DropdownPopover
               placement="bottom end"
@@ -946,12 +944,12 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
                 : t(`planReview.save.${saveState}`)}
           </span>
           <Button
+            leadingIcon={Message}
             size="small"
             variant="secondary"
             className="plan-review-comments-trigger"
             onPress={() => setCommentsOpen(true)}
           >
-            <Message className="size-4" />
             {t('planReview.comments.title')}
           </Button>
         </div>

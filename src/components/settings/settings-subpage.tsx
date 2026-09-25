@@ -38,6 +38,7 @@ export function SettingsSubPage({
     <div data-slot="settings-subpage" className={cx('@container/pane mx-auto w-full space-y-4', className)} {...props}>
       <div data-slot="settings-subpage-bar" className="flex items-center gap-2">
         <Button
+          leadingIcon={ArrowLeft}
           data-slot="settings-subpage-back"
           variant="secondary"
           onPress={onBack}
@@ -45,7 +46,6 @@ export function SettingsSubPage({
           // edge, so the label lines up with the form below it.
           className="-ms-2 h-9 gap-1 rounded-lg px-2 text-body-regular text-text-secondary hover:text-text-primary"
         >
-          <ArrowLeft className="size-4" />
           {t('common.back')}
         </Button>
       </div>

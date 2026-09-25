@@ -329,7 +329,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
       : null
 
   return (
-    <SettingsPane className="max-w-4xl">
+    <SettingsPane>
       <SettingsHeader title={t('settings.usage.title')} subtitle={t('settings.usage.subtitle')} />
 
       <div data-slot="usage-filters" className="flex flex-wrap items-center gap-x-6 gap-y-3">
@@ -1039,7 +1039,6 @@ function BucketTable({
         id: 'label',
         header: dimensionLabel,
         isRowHeader: true,
-        minWidth: 240,
         cell: (row) =>
           row.conversationCount > 1 ? (
             <span data-slot="usage-row-label-group" className="block min-w-0">
@@ -1074,9 +1073,7 @@ function BucketTable({
         id: 'tokens',
         header: t('settings.usage.tokenColumn'),
         align: 'end',
-        width: 136,
-        minWidth: 120,
-        headerClassName: 'whitespace-nowrap',
+        headerClassName: 'w-30 whitespace-nowrap',
         cellClassName: 'whitespace-nowrap text-caption-1-regular text-text-secondary tabular-nums',
         cell: (row) => tokenTotal(row.input_tokens + row.output_tokens, row, t, compact),
       },
@@ -1084,10 +1081,8 @@ function BucketTable({
         id: 'cost',
         header: t('settings.usage.kpi.cost'),
         align: 'end',
-        width: 144,
-        minWidth: 112,
         pinned: dimension === 'conversation' ? undefined : 'end',
-        headerClassName: 'whitespace-nowrap',
+        headerClassName: 'w-32 whitespace-nowrap',
         cellClassName: 'whitespace-nowrap text-body-regular tabular-nums',
         cell: (row) => {
           const qualifier = bucketCostQualifier(row)
@@ -1123,10 +1118,9 @@ function BucketTable({
         id: 'actions',
         header: t('settings.usage.actionColumn'),
         align: 'end',
-        width: 88,
-        minWidth: 80,
         pinned: 'end',
-        headerClassName: 'whitespace-nowrap',
+        // A small icon button and the cell's padding: 32 + 2 × 12.
+        headerClassName: 'w-14 whitespace-nowrap',
         cell: (row) => {
           if (!row.conversationId) return null
           const conversationId = row.conversationId
@@ -1171,10 +1165,13 @@ function BucketTable({
           <span data-slot="usage-grid-empty">{t('settings.usage.empty')}</span>
         )
       }
-      // The named column must keep room for long conversation and model ids.
-      // A conversation also has an action column; on a narrow pane the grid
-      // scrolls instead of crushing them or widening the settings page itself.
-      contentClassName={dimension === 'conversation' ? 'min-w-[38rem]' : 'min-w-[32rem]'}
+      // Fixed layout, so the widths on the headers are the widths and the named
+      // column takes the rest — about 220px at the settings width (532px),
+      // where long conversation and model ids truncate with the full one on
+      // hover. `width` on a column does nothing outside a resizable container.
+      // Below 32rem (a phone) the grid scrolls inside its own card instead of
+      // crushing the ids or widening the page.
+      contentClassName="min-w-lg table-fixed"
       scrollContainerClassName="overflow-x-auto overscroll-contain"
     />
   )

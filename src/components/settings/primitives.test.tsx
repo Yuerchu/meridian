@@ -2,7 +2,10 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { Switch } from '@/components/base'
-import { SettingsNavRow, SettingsRow, SettingsSelect } from './primitives'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { SettingsNavRow, SettingsPane, SettingsRow, SettingsSelect, SettingsSkeleton } from './primitives'
+import { SettingsPage } from './settings-page'
 
 type Level = 'all' | 'warn' | 'error'
 
@@ -109,5 +112,31 @@ describe('SettingsSelect', () => {
   it('shows the option matching the current value', () => {
     render(<SettingsSelect ariaLabel="Level" value="error" options={OPTIONS} onChange={vi.fn()} />)
     expect(screen.getByRole('button', { name: /Level/ })).toHaveTextContent('Errors')
+  })
+})
+
+// One width for every page, the registry settings-modal's content pane. The
+// pages used to pick from three (lg, 3xl, 4xl), so moving between sections
+// moved the column under the reader.
+describe('the settings width', () => {
+  it('is the registry settings-modal content pane, 532px', () => {
+    const css = readFileSync(resolve(__dirname, '../../styles/meridian.css'), 'utf8')
+    expect(css).toMatch(/--container-settings:\s*33\.25rem;/)
+  })
+
+  it('is the width of every page shell, and of the skeleton that stands in for one', () => {
+    const { container } = render(
+      <>
+        <SettingsPane />
+        <SettingsSkeleton />
+        <SettingsPage title="Page" />
+      </>,
+    )
+    for (const slot of ['settings-pane', 'settings-skeleton', 'settings-page']) {
+      const el = container.querySelector(`[data-slot="${slot}"]`)
+      expect(el, slot).not.toBeNull()
+      expect(el?.className, slot).toMatch(/(^|\s)max-w-settings(\s|$)/)
+      expect(el?.className, slot).not.toMatch(/(^|\s)max-w-(?!settings)/)
+    }
   })
 })

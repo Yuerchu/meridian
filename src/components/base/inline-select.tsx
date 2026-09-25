@@ -6,6 +6,7 @@ import {
   type PopoverProps as AriaPopoverProps,
 } from 'react-aria-components'
 import type { ComponentProps } from 'react'
+import { ChevronDownSmall } from '@/components/foundations/icons/chevrons'
 import { cx } from '@/utils/cx'
 import { OVERLAY_MOTION } from './overlay-motion'
 
@@ -45,7 +46,10 @@ function InlineSelectTrigger({ className, ...props }: ComponentProps<'div'>) {
         className,
       )}
     >
-      <span data-slot="inline-select-trigger-content" {...props} />
+      {/* The trigger's flex row has to reach the value and the chevron: a plain
+          inline span between them made the chevron's block-level svg wrap onto
+          its own line under the label. */}
+      <span data-slot="inline-select-trigger-content" {...props} className="flex min-w-0 items-center gap-1" />
     </AriaButton>
   )
 }
@@ -56,10 +60,13 @@ function InlineSelectValue({ className, ...props }: ComponentProps<'span'>) {
 
 function InlineSelectIndicator({ className, ...props }: ComponentProps<'span'>) {
   return (
-    <span data-slot="inline-select-indicator" {...props} className={cx('text-text-secondary', className)}>
-      <svg data-slot="inline-select-chevron" className="size-3" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M4.427 6.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 6H4.604a.25.25 0 00-.177.427z" />
-      </svg>
+    <span
+      data-slot="inline-select-indicator"
+      {...props}
+      className={cx('inline-flex size-4 shrink-0 items-center justify-center text-text-secondary', className)}
+    >
+      {/* The registry Select's chevron (select.tsx: ChevronDownSmall, text-secondary). */}
+      <ChevronDownSmall data-slot="inline-select-chevron" className="size-full" />
     </span>
   )
 }

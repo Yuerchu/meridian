@@ -216,7 +216,7 @@ export function DataGrid<T extends object>({
       >
         <TableHeader>
           {showSelectionCheckboxes && selectable && (
-            <Column id="__selection" width={40} className="border-b border-border-button-default px-3 py-2">
+            <Column id="__selection" width={40} className="w-10 border-b border-border-button-default px-3 py-2">
               {selectionMode === 'multiple' && <Checkbox slot="selection" size="sm" />}
             </Column>
           )}

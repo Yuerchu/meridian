@@ -294,7 +294,8 @@ export function MemorySettings() {
                   {t('settings.memory.selectAll')}
                 </Button>
                 <Button
-                  variant="secondary"
+                  leadingIcon={Bin}
+                  variant="danger"
                   onPress={async () => {
                     const ok = await confirm({
                       title: t('settings.memory.deleteConfirmTitle'),
@@ -312,7 +313,6 @@ export function MemorySettings() {
                     browser.refresh()
                   }}
                 >
-                  <Bin className="size-4 text-status-danger" />
                   {t('settings.memory.deleteSelected')}
                 </Button>
               </ActionBar.Content>

@@ -39,7 +39,7 @@ export function SettingsPane({ className, ...props }: React.ComponentProps<'div'
   return (
     <div
       data-slot="settings-pane"
-      className={cx('@container/pane mx-auto w-full space-y-6 max-w-lg', className)}
+      className={cx('@container/pane mx-auto w-full max-w-settings space-y-6', className)}
       {...props}
     />
   )
@@ -134,6 +134,13 @@ export function SettingsSection({
     </div>
   )
 }
+
+/**
+ * A select sitting on a `SettingsRow`'s right: the registry's settings-general
+ * `SELECT_TRIGGER`, the 32px compact trigger that hugs its value, rather than
+ * the full-width form trigger a stacked field uses.
+ */
+export const SETTINGS_ROW_SELECT_TRIGGER = 'h-8 w-auto gap-1 rounded-lg px-2 py-1.5'
 
 export interface SettingsRowIds {
   labelId: string
@@ -562,7 +569,7 @@ export function SettingsSkeleton({ rows = 4, className, ...props }: React.Compon
       role="status"
       aria-busy="true"
       aria-label={t('common.loading')}
-      className={cx('mx-auto w-full space-y-6 max-w-lg', className)}
+      className={cx('mx-auto w-full max-w-settings space-y-6', className)}
       {...props}
     >
       <div data-slot="settings-skeleton-header" className="space-y-2">
