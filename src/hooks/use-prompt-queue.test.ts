@@ -7,7 +7,7 @@ import type { QueuedPromptInfoResponse } from '@/types'
 import { usePromptQueue } from './use-prompt-queue'
 
 vi.mock('@/api', () => ({
-  api: { queueList: vi.fn() },
+  api: { queueList: vi.fn(), queueRelease: vi.fn() },
 }))
 
 /** Captured so a `queue-updated` can be delivered by hand. */
@@ -102,4 +102,45 @@ test('still filters after the backend announces a change', async () => {
   })
 
   await waitFor(() => expect(result.current.items).toHaveLength(0))
+})
+
+/**
+ * A failed read used to be swallowed — and the first one replaced the list
+ * with an empty one, which on screen is the queue having been delivered or
+ * lost. The rows stay; the reason is kept until a read succeeds.
+ */
+test('a failed read keeps the rows on screen and says why until a read succeeds', async () => {
+  vi.mocked(api.queueList).mockResolvedValueOnce([row('a')])
+  const { result } = renderHook(() => usePromptQueue(CONV, true))
+  await waitFor(() => expect(result.current.items).toHaveLength(1))
+
+  vi.mocked(api.queueList).mockRejectedValueOnce('database is locked')
+  act(() => notify?.({ conversation_id: CONV, delivered: false }))
+  await waitFor(() => expect(result.current.error).toEqual({ kind: 'load', message: 'database is locked' }))
+  expect(result.current.items).toHaveLength(1)
+
+  vi.mocked(api.queueList).mockResolvedValueOnce([row('a')])
+  act(() => result.current.retry())
+  await waitFor(() => expect(result.current.error).toBeNull())
+})
+
+test('the first read failing is an error, not an empty queue', async () => {
+  vi.mocked(api.queueList).mockRejectedValueOnce('no such conversation')
+  const { result } = renderHook(() => usePromptQueue(CONV, true))
+  await waitFor(() => expect(result.current.error).toEqual({ kind: 'load', message: 'no such conversation' }))
+})
+
+test('a refused change is reported rather than escaping as an unhandled rejection', async () => {
+  vi.mocked(api.queueList).mockResolvedValue([row('a', { held_at: 1 })])
+  vi.mocked(api.queueRelease).mockRejectedValueOnce('a delivery is still in doubt')
+  const { result } = renderHook(() => usePromptQueue(CONV, true))
+  await waitFor(() => expect(result.current.items).toHaveLength(1))
+
+  await act(async () => {
+    await result.current.release()
+  })
+
+  expect(result.current.error).toEqual({ kind: 'action', message: 'a delivery is still in doubt' })
+  act(() => result.current.dismissError())
+  expect(result.current.error).toBeNull()
 })

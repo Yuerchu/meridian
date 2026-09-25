@@ -7,6 +7,8 @@ import { PillTab, PillTabList } from '@/components/base/tabs/pill-tab'
 
 import { api } from '@/api'
 import { loadStickerUrl, peekStickerUrl } from '@/lib/sticker-urls'
+import { errorMessage } from '@/lib/error-message'
+import { ErrorAlert } from '@/components/ui/error-alert'
 import type { EmojiInfoResponse, EmojiPackInfoResponse } from '@/types'
 import { StickerGrid } from './sticker-grid'
 
@@ -35,6 +37,12 @@ export function EmojiPicker({
   const [activePackId, setActivePackId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [loadedAssistantId, setLoadedAssistantId] = useState<string | null>(null)
+  // A failed read used to land on "no sticker packs assigned", which is a
+  // statement about the assistant's settings and was false. And a sticker whose
+  // picture could not be fetched did nothing when chosen.
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [selectError, setSelectError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     if (!assistantId) return
@@ -42,6 +50,7 @@ export function EmojiPicker({
 
     async function load() {
       setLoading(true)
+      setLoadError(null)
       try {
         const assignedPacks = await api.listAssistantEmojiPacks(assistantId!)
         const result = await Promise.all(
@@ -63,8 +72,9 @@ export function EmojiPicker({
           setActivePackId(initialPack?.pack.id ?? null)
           setLoadedAssistantId(assistantId)
         }
-      } catch {
+      } catch (err) {
         if (!cancelled) {
+          setLoadError(errorMessage(err))
           // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- a read-only sticker picker; nothing here is saved
           setPacks([])
           // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- a read-only sticker picker; nothing here is saved
@@ -80,7 +90,7 @@ export function EmojiPicker({
     return () => {
       cancelled = true
     }
-  }, [assistantId])
+  }, [assistantId, attempt])
 
   // InputBar stays mounted while its assistant changes. Gate the old payload
   // during the new request so a still-open picker can never send a sticker
@@ -132,6 +142,7 @@ export function EmojiPicker({
       const item = allItems.find(({ emoji }) => emoji.id === String(id))
       if (!item) return
       const send = (url: string) => {
+        setSelectError(null)
         onSelect({ emoji: item.emoji, url })
         setOpen(false)
         setSearch('')
@@ -145,7 +156,9 @@ export function EmojiPicker({
         (url) => {
           if (currentAssistant.current === askedFor) send(url)
         },
-        () => {},
+        (err: unknown) => {
+          if (currentAssistant.current === askedFor) setSelectError(errorMessage(err))
+        },
       )
     },
     [allItems, assistantId, onSelect],
@@ -201,18 +214,34 @@ export function EmojiPicker({
             </SearchField.Group>
           </SearchField>
 
+          {selectError && (
+            <ErrorAlert
+              data-slot="emoji-picker-select-error"
+              message={selectError}
+              onDismiss={() => setSelectError(null)}
+            />
+          )}
           <StickerGrid
             items={gridItems}
             loading={loading || loadedAssistantId !== assistantId}
             onAction={handleSelect}
             empty={
-              <span
-                data-slot="emoji-picker-empty"
-                className="flex flex-col items-center gap-2 p-4 text-caption-1-regular text-text-secondary"
-              >
-                <Search className="size-5" />
-                {search.trim() ? t('chat.emojiNotFound') : t('chat.emojiNoPacks')}
-              </span>
+              loadError ? (
+                <ErrorAlert
+                  data-slot="emoji-picker-load-error"
+                  title={t('chat.emojiLoadFailed')}
+                  message={loadError}
+                  onRetry={() => setAttempt((n) => n + 1)}
+                />
+              ) : (
+                <span
+                  data-slot="emoji-picker-empty"
+                  className="flex flex-col items-center gap-2 p-4 text-caption-1-regular text-text-secondary"
+                >
+                  <Search className="size-5" />
+                  {search.trim() ? t('chat.emojiNotFound') : t('chat.emojiNoPacks')}
+                </span>
+              )
             }
           />
 

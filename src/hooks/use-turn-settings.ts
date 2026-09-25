@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '@/api'
+import i18n from '@/i18n'
+import { errorMessage } from '@/lib/error-message'
 import type { DraftTurnSettings } from '@/components/chat/conversation-draft'
 import { useConversationStore } from '@/stores/conversation-store'
 import type {
@@ -151,11 +153,14 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
       api
         .setConversationAssistant({ id: conversationId, assistantId: id })
         .then(() => refreshConversations())
-        .catch(() => {
-          /* selection still applies locally for this session */
+        .catch((err: unknown) => {
+          // The selection still applies to this session, but it was not
+          // written down, so the next visit comes back to the old one — which
+          // is worth being told now rather than discovered then.
+          storeSetError(conversationId, i18n.t('chat.error.settingNotSaved', { error: errorMessage(err) }))
         })
     },
-    [assistants, conversationId, refreshConversations],
+    [assistants, conversationId, refreshConversations, storeSetError],
   )
 
   const onSelectModel = useCallback((modelId: string, providerId: string) => {
@@ -211,11 +216,11 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
           fastMode,
         })
         .then(() => refreshConversations())
-        .catch(() => {
-          /* selection still applies locally for this session */
+        .catch((err: unknown) => {
+          storeSetError(conversationId, i18n.t('chat.error.settingNotSaved', { error: errorMessage(err) }))
         })
     },
-    [conversationId, fastMode, refreshConversations],
+    [conversationId, fastMode, refreshConversations, storeSetError],
   )
 
   const onToggleFast = useCallback(
@@ -229,11 +234,11 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
           fastMode: next,
         })
         .then(() => refreshConversations())
-        .catch(() => {
-          /* toggle still applies locally for this session */
+        .catch((err: unknown) => {
+          storeSetError(conversationId, i18n.t('chat.error.settingNotSaved', { error: errorMessage(err) }))
         })
     },
-    [conversationId, thinkingLevel, refreshConversations],
+    [conversationId, thinkingLevel, refreshConversations, storeSetError],
   )
 
   const onSelectMode = useCallback(

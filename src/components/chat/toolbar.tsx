@@ -24,6 +24,8 @@ import { Button, DropdownDivider, DropdownGroup, DropdownItem, Sheet, Tooltip, T
 import { MENU_ITEMS_CONTAINER } from '@/components/base/dropdown/menu-styles'
 import { cx } from '@/utils/cx'
 import { api } from '@/api'
+import { describeRejections } from '@/lib/error-message'
+import { ErrorAlert } from '@/components/ui/error-alert'
 import { allowedEfforts } from '@/lib/thinking'
 import type {
   AssistantInfoResponse,
@@ -135,6 +137,9 @@ export function MobileOptionsMenu({
   const [panel, setPanel] = useState<MobilePanel>('main')
   const [groups, setGroups] = useState<GroupedModels[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
+  // The providers that refused, with their reasons. Every rejection used to be
+  // filtered out and the list, empty, said "no models".
+  const [modelsFailure, setModelsFailure] = useState<string | null>(null)
   const modelsLoaded = groups.length > 0
 
   const currentAssistant = assistants.find((a) => a.id === currentAssistantId)
@@ -162,19 +167,24 @@ export function MobileOptionsMenu({
   useEffect(() => {
     if (panel !== 'model' || modelsLoaded) return
     setLoadingModels(true)
+    const enabled = providers.filter((p) => p.is_enabled)
     Promise.allSettled(
-      providers
-        .filter((p) => p.is_enabled)
-        .map(async (p) => ({
-          provider: p,
-          models: await api.fetchProviderModels({ providerId: p.id, forceRefresh: false }),
-        })),
+      enabled.map(async (p) => ({
+        provider: p,
+        models: await api.fetchProviderModels({ providerId: p.id, forceRefresh: false }),
+      })),
     ).then((results) => {
       setGroups(
         results
           .filter((r): r is PromiseFulfilledResult<GroupedModels> => r.status === 'fulfilled')
           .map((r) => r.value)
           .filter((g) => g.models.length > 0),
+      )
+      setModelsFailure(
+        describeRejections(
+          enabled.map((p) => p.name),
+          results,
+        ),
       )
       setLoadingModels(false)
     })
@@ -457,19 +467,24 @@ export function MobileOptionsMenu({
                         onPress={() => {
                           setLoadingModels(true)
                           setGroups([])
+                          const enabled = providers.filter((p) => p.is_enabled)
                           Promise.allSettled(
-                            providers
-                              .filter((p) => p.is_enabled)
-                              .map(async (p) => ({
-                                provider: p,
-                                models: await api.fetchProviderModels({ providerId: p.id, forceRefresh: true }),
-                              })),
+                            enabled.map(async (p) => ({
+                              provider: p,
+                              models: await api.fetchProviderModels({ providerId: p.id, forceRefresh: true }),
+                            })),
                           ).then((results) => {
                             setGroups(
                               results
                                 .filter((r): r is PromiseFulfilledResult<GroupedModels> => r.status === 'fulfilled')
                                 .map((r) => r.value)
                                 .filter((g) => g.models.length > 0),
+                            )
+                            setModelsFailure(
+                              describeRejections(
+                                enabled.map((p) => p.name),
+                                results,
+                              ),
                             )
                             setLoadingModels(false)
                           })
@@ -485,14 +500,23 @@ export function MobileOptionsMenu({
                     selectionMode="single"
                     disallowEmptySelection
                     selectedKeys={currentModelId && currentProviderId ? [`${currentProviderId}:${currentModelId}`] : []}
-                    renderEmptyState={() => (
-                      <div
-                        data-slot={loadingModels ? 'toolbar-model-loading' : 'toolbar-model-empty'}
-                        className="px-2 py-3 text-caption-1-regular text-text-secondary"
-                      >
-                        {loadingModels ? t('toolbar.loadingModels') : t('toolbar.noModels')}
-                      </div>
-                    )}
+                    renderEmptyState={() =>
+                      !loadingModels && modelsFailure ? (
+                        <ErrorAlert
+                          data-slot="toolbar-model-error"
+                          className="mx-2 my-2"
+                          title={t('toolbar.modelsLoadFailed')}
+                          message={modelsFailure}
+                        />
+                      ) : (
+                        <div
+                          data-slot={loadingModels ? 'toolbar-model-loading' : 'toolbar-model-empty'}
+                          className="px-2 py-3 text-caption-1-regular text-text-secondary"
+                        >
+                          {loadingModels ? t('toolbar.loadingModels') : t('toolbar.noModels')}
+                        </div>
+                      )
+                    }
                     className={panelListCls}
                   >
                     {groups.map((g) => (

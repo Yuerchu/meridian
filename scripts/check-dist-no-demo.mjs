@@ -8,7 +8,9 @@
 // guard keeps a few hundred KB of fake conversations out of the installer, and
 // until this script it was confirmed by grepping `dist/` by hand.
 //
-// Run after `vite build`: it scans `dist/**/*.{js,css,html}` for strings that
+// The last command of `pnpm build`, which is Tauri's `beforeBuildCommand` on
+// every platform (desktop and Android alike), so a contaminated bundle fails
+// the build before anything is packaged or uploaded. It scans `dist/**/*.{js,css,html}` for strings that
 // exist only in the fixtures. They are string literals rather than identifiers
 // because a minifier renames identifiers (`createDemoTransport` would not
 // survive) but keeps literals. None of them is UI text: the demo badge's copy

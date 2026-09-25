@@ -489,3 +489,36 @@ describe('questionPositionOf', () => {
     expect(questionPositionOf(turns, 0)).toBe('single')
   })
 })
+
+describe('a failed run carries its recorded reason', () => {
+  const failures = (entries: [string, string][]) => ({ failureByTurnId: new Map(entries) })
+
+  it('puts the record’s error on the turn whose answer that run wrote', () => {
+    const turns = buildTurns(
+      [msg('user', { content: 'hi', turn_id: 't1' }), msg('assistant', { content: 'partial', turn_id: 't1' })],
+      failures([['t1', '401 Unauthorized: invalid API key']]),
+    )
+    expect(turns[0].failure).toBe('401 Unauthorized: invalid API key')
+  })
+
+  it('reads the question’s run when the failure left no answer at all', () => {
+    const turns = buildTurns([msg('user', { content: 'hi', turn_id: 't1' })], failures([['t1', 'no model configured']]))
+    expect(turns[0].failure).toBe('no model configured')
+  })
+
+  it('does not hang an old reason on a run that is streaming now', () => {
+    const turns = buildTurns([msg('user', { content: 'hi', turn_id: 't1' })], {
+      streaming: true,
+      ...failures([['t1', 'stale']]),
+    })
+    expect(turns[0].failure).toBeNull()
+  })
+
+  it('is null for a run that did not fail, and a reason arriving later is a changed turn', () => {
+    const rows = [msg('user', { content: 'hi', turn_id: 't1' }), msg('assistant', { content: 'ok', turn_id: 't1' })]
+    const before = buildTurns(rows)
+    expect(before[0].failure).toBeNull()
+    const after = buildTurns(rows, failures([['t1', 'late failure']]))
+    expect(reconcileTurns(before, after)[0]).not.toBe(before[0])
+  })
+})

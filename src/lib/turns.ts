@@ -79,6 +79,11 @@ export interface Turn {
    *  rows written before turns were recorded, and while a live turn has not
    *  reached its post-stop snapshot yet. */
   usage: TurnUsageInfoResponse | null
+  /** Why the run on this path failed, as the backend recorded it; null for
+   *  every run that did not fail. Read off the turn record rather than kept
+   *  from the moment it happened, so it is still there after a reload, for a
+   *  turn another device or the queue started, and on every later visit. */
+  failure: string | null
   /** The backend's run id for the answer on this path — see `pathTurnId`.
    *  Null for rows written before turns were recorded. What a notice filed
    *  against a turn is matched on. */
@@ -149,6 +154,8 @@ export interface BuildTurnsContext {
   /** Cost summaries keyed by the backend's run id. Kept as a map so this pure
    *  transcript builder does not need to understand `TurnInfoResponse` statuses. */
   usageByTurnId?: ReadonlyMap<string, TurnUsageInfoResponse>
+  /** The recorded error of every run that failed, keyed by run id. */
+  failureByTurnId?: ReadonlyMap<string, string>
 }
 
 /** Tools that block the turn while they wait for a response. `update_todos` is
@@ -281,6 +288,7 @@ export function buildTurns(messages: MessageViewModel[], ctx: BuildTurnsContext 
 
   const crashed = ctx.crashedTurnIds
   const usage = ctx.usageByTurnId
+  const failures = ctx.failureByTurnId
   return groups.map((g, i) => {
     const turnId = pathTurnId(g)
     return finalize(
@@ -289,6 +297,7 @@ export function buildTurns(messages: MessageViewModel[], ctx: BuildTurnsContext 
       turnId !== null && crashed?.has(turnId) === true,
       turnId === null ? null : (usage?.get(turnId) ?? null),
       turnId,
+      turnId === null ? null : (failures?.get(turnId) ?? null),
     )
   })
 }
@@ -319,6 +328,7 @@ function finalize(
   didCrash: boolean,
   usage: TurnUsageInfoResponse | null,
   turnId: string | null,
+  failure: string | null,
 ): Turn {
   const { userMessage, assistantMessages } = group
 
@@ -368,6 +378,9 @@ function finalize(
     summary,
     tokens: sumTokens(assistantMessages),
     usage,
+    // Not while this path is streaming: that is a new run, and the old one's
+    // error would be describing something already superseded.
+    failure: isStreaming ? null : failure,
     turnId,
     lastMessageId: last?.id ?? '',
     firstSortOrder: userMessage?.sort_order ?? assistantMessages[0]?.sort_order ?? 0,

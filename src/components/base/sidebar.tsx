@@ -9,7 +9,6 @@ import {
   type TreeItemProps,
   type TreeProps,
 } from 'react-aria-components'
-import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cx } from '@/utils/cx'
 import { Button } from './buttons/button'
@@ -173,12 +172,16 @@ function SidebarHeader({ className, ...props }: ComponentProps<'div'>) {
   return <div data-slot="sidebar-header" {...props} className={cx('flex shrink-0 flex-col gap-3', className)} />
 }
 
+// The registry's scroller (dashboard-sidebar.tsx): `overflow-y: auto` clips on
+// every side, so the clip edge is padded out on all four and the negative margin
+// borrows the room back. Padded on the sides only, the current row's pill and
+// focus ring were cut flat wherever the list met the panel's top or bottom.
 function SidebarContent({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div
       data-slot="sidebar-content"
       {...props}
-      className={cx('-mx-2 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-2 [scrollbar-width:none]', className)}
+      className={cx('-m-2 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-2 [scrollbar-width:none]', className)}
     />
   )
 }
@@ -404,10 +407,11 @@ function SidebarMobile({
 }: {
   children?: ReactNode
   className?: string
-  /** The drawer's name; defaults to the translated "Sidebar". */
-  'aria-label'?: string
+  /** The drawer's name. Required rather than defaulted: the drawer is the
+   *  navigation's only container below 768px, and what it is called is the
+   *  caller's to say. */
+  'aria-label': string
 }) {
-  const { t } = useTranslation()
   const { isMobileOpen, setMobileOpen } = useContext(SidebarContext)
   return (
     <div data-slot="sidebar-mobile" className="sidebar__mobile contents md:hidden">
@@ -417,7 +421,7 @@ function SidebarMobile({
               same in the drawer as beside the chat: on the sheet's default
               primary fill a field's tertiary well vanishes in dark. */}
           <Sheet.Content className={cx('w-[min(100vw-3rem,20rem)] bg-background-secondary-default', className)}>
-            <Sheet.Dialog aria-label={ariaLabel ?? t('sidebar.label')} className="p-3">
+            <Sheet.Dialog aria-label={ariaLabel} className="p-3">
               {children}
             </Sheet.Dialog>
           </Sheet.Content>

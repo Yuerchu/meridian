@@ -3,6 +3,7 @@ import { buildAssistantGroups } from '@/lib/message-groups'
 import { blocksOf, type Turn } from '@/lib/turns'
 import { useConversationStore } from '@/stores/conversation-store'
 import { useHotkey } from './use-hotkey'
+import { errorMessage } from '@/lib/error-message'
 
 /**
  * The transcript's keyboard shortcuts, for the conversation being read.
@@ -110,7 +111,7 @@ export function useTranscriptHotkeys(conversationId: string, turns: Turn[]): voi
       const { retireAnsweredApproval, markApprovalOrphaned } = useConversationStore.getState()
       api.approveToolCall(target.approvalId).then(
         () => retireAnsweredApproval(target.approvalId),
-        () => markApprovalOrphaned(target.approvalId),
+        (err: unknown) => markApprovalOrphaned(target.approvalId, errorMessage(err)),
       )
     },
     { ignoreInInput: false },

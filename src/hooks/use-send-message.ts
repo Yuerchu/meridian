@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { api } from '@/api'
+import i18n from '@/i18n'
 import { useConversationStore } from '@/stores/conversation-store'
 import { uploadAttachment } from '@/lib/upload'
 import type { AttachedFile } from '@/components/chat/input-bar'
@@ -138,7 +139,7 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
       // here, so re-asking would send the question to an agent that still
       // remembers having answered it. Refused rather than half-done.
       if (isHosted && (text === null || replaces)) {
-        storeSetError(conversationId, 'A Claude Code session cannot regenerate or edit an earlier message.')
+        storeSetError(conversationId, i18n.t('chat.error.hostedCannotRewrite'))
         return
       }
       submittingRef.current = true

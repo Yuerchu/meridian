@@ -13,6 +13,16 @@ function crashedIds(turns: TurnInfoResponse[]): ReadonlySet<string> {
   return new Set(turns.filter((t) => t.status === 'interrupted').map((t) => t.id))
 }
 
+/** What each failed run recorded as its reason. A failed run with no recorded
+ *  message still fails; it is left out rather than given a generic sentence,
+ *  because the transcript-level notice already carries whatever the request
+ *  answered with. */
+function failureByTurnId(turns: TurnInfoResponse[]): ReadonlyMap<string, string> {
+  return new Map(
+    turns.flatMap((turn) => (turn.status === 'failed' && turn.error ? [[turn.id, turn.error] as const] : [])),
+  )
+}
+
 function usageByTurnId(turns: TurnInfoResponse[]) {
   return new Map(turns.flatMap((turn) => (turn.usage ? [[turn.id, turn.usage] as const] : [])))
 }
@@ -37,9 +47,10 @@ export function useTurns(
 ): Turn[] {
   const crashed = useMemo(() => crashedIds(turns), [turns])
   const usage = useMemo(() => usageByTurnId(turns), [turns])
+  const failures = useMemo(() => failureByTurnId(turns), [turns])
   const built = useMemo(
-    () => buildTurns(messages, { streaming, crashedTurnIds: crashed, usageByTurnId: usage }),
-    [messages, streaming, crashed, usage],
+    () => buildTurns(messages, { streaming, crashedTurnIds: crashed, usageByTurnId: usage, failureByTurnId: failures }),
+    [messages, streaming, crashed, usage, failures],
   )
   const prevRef = useRef<Turn[]>(built)
   const stable = reconcileTurns(prevRef.current, built)
@@ -55,6 +66,7 @@ function sameInputs(a: Turn, b: Turn): boolean {
   if (a.userMessage !== b.userMessage) return false
   if (a.status !== b.status) return false
   if (a.usage !== b.usage) return false
+  if (a.failure !== b.failure) return false
   if (a.assistantMessages.length !== b.assistantMessages.length) return false
   for (let i = 0; i < a.assistantMessages.length; i++) {
     if (a.assistantMessages[i] !== b.assistantMessages[i]) return false

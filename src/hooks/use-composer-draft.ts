@@ -12,6 +12,8 @@ import {
   type PersistedComposerDraft,
 } from '@/lib/composer-draft-sync'
 import { loadStickerUrl } from '@/lib/sticker-urls'
+import i18n from '@/i18n'
+import { errorMessage } from '@/lib/error-message'
 import type { ComposerDraftInfoResponse } from '@/types'
 
 /**
@@ -72,9 +74,23 @@ async function stateFromResponse(row: ComposerDraftInfoResponse): Promise<Compos
   }
 }
 
+/** Which half failed, because they call for different things: a failed read
+ *  means the stored draft was not restored (and is not overwritten), a failed
+ *  write means what is on screen is not on disk yet. */
+export interface ComposerDraftError {
+  kind: 'load' | 'save'
+  message: string
+}
+
 export interface ComposerDraftControls {
-  /** The last write failed. Cleared by the next write that succeeds. */
-  saveError: string | null
+  /** The read or the last write failed. A write failure is cleared by the next
+   *  write that succeeds; either is cleared by dismissing it. It used to be one
+   *  `saveError` for both, so a draft that could not be *read* was reported as
+   *  one that could not be saved. */
+  error: ComposerDraftError | null
+  /** Write what the composer holds now, whether or not anything changed. */
+  retry: () => void
+  dismissError: () => void
   /** Write a pending change now instead of when the debounce fires. */
   flush: () => void
   /**
@@ -99,14 +115,14 @@ export interface ComposerDraftControls {
  * after sending cannot bring the sent text back as a draft. A pending write is
  * flushed when the page is hidden or unloaded and when the composer unmounts
  * (switching conversation remounts it). A failed write is reported through
- * `saveError` and retried by the next change.
+ * `error` and retried by the next change or by `retry`.
  */
 export function useComposerDraft(
   conversationId: string | null,
   state: ComposerDraftState,
   onRestore: (restored: ComposerDraftState) => void,
 ): ComposerDraftControls {
-  const [saveError, setSaveError] = useState<string | null>(null)
+  const [error, setError] = useState<ComposerDraftError | null>(null)
 
   const { text, attachedFiles, pendingSticker, conversationRefs } = state
   const persisted = useMemo(
@@ -134,18 +150,21 @@ export function useComposerDraft(
   const write = useCallback(
     (draft: PersistedComposerDraft) => {
       const written = draftKey(draft)
-      writeComposerDraft(conversationId, draft).then(
-        (response) => {
-          if (!response.applied) throw new Error('the draft was changed elsewhere at the same time')
+      // `.catch` after the `.then`, not a second argument to it: the refusal
+      // below is thrown from the success handler, and a rejection handler
+      // beside it never sees that — it became an unhandled rejection and the
+      // conflict was reported nowhere.
+      writeComposerDraft(conversationId, draft)
+        .then((response) => {
+          if (!response.applied) throw new Error(i18n.t('chat.draft.conflict'))
           storedKey.current = written
-          if (mounted.current) setSaveError(null)
-        },
-        (error: unknown) => {
+          if (mounted.current) setError((current) => (current?.kind === 'save' ? null : current))
+        })
+        .catch((failure: unknown) => {
           // Left unrecorded as stored, so the next change writes it again.
-          if (mounted.current) setSaveError(String(error))
-          else console.error('Failed to save composer draft', error)
-        },
-      )
+          if (mounted.current) setError({ kind: 'save', message: errorMessage(failure) })
+          else console.error('Failed to save composer draft', failure)
+        })
     },
     [conversationId],
   )
@@ -189,14 +208,14 @@ export function useComposerDraft(
         loaded.current = true
         if (latest.current.key !== storedKey.current) write(latest.current.persisted)
       })
-      .catch((error: unknown) => {
+      .catch((failure: unknown) => {
         if (cancelled) return
         // What is stored is unknown. Treat the composer as it stands as stored,
         // so an untouched composer writes nothing over a draft it could not
         // see; typing afterwards is newer and is written.
         storedKey.current = latest.current.key
         loaded.current = true
-        setSaveError(String(error))
+        setError({ kind: 'load', message: errorMessage(failure) })
       })
     return () => {
       cancelled = true
@@ -246,5 +265,13 @@ export function useComposerDraft(
     }
   }, [flush])
 
-  return { saveError, flush, clear }
+  const retry = useCallback(() => {
+    if (!loaded.current) return
+    cancelTimer()
+    write(latest.current.persisted)
+  }, [cancelTimer, write])
+
+  const dismissError = useCallback(() => setError(null), [])
+
+  return { error, retry, dismissError, flush, clear }
 }

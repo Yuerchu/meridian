@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { api } from '@/api'
+import { errorMessage } from '@/lib/error-message'
 import { listen } from '@/lib/transport'
 import type { QueueDelivery, QueueState, QueuedPromptInfoResponse, WorkspaceReferenceRequest } from '@/types'
 
@@ -22,6 +23,18 @@ export function queueState(item: QueuedPromptInfoResponse): QueueState {
 }
 
 /**
+ * What went wrong with the queue, and whether reading it again is the answer.
+ *
+ * A read that failed keeps the rows already on screen: they are messages
+ * somebody typed. A refused change is reported and the list re-read, since
+ * the backend's answer is what the rows are anyway.
+ */
+export interface PromptQueueError {
+  kind: 'load' | 'action'
+  message: string
+}
+
+/**
  * The messages stacked up for a conversation, and how to change them.
  *
  * Read back from the backend on every change rather than kept in step here.
@@ -31,42 +44,58 @@ export function queueState(item: QueuedPromptInfoResponse): QueueState {
  *
  * `queue-updated` carries the conversation id and a required delivery flag;
  * the rows remain the source of truth for everything else.
+ *
+ * Every failure lands in `error` and stays there until a read succeeds (for a
+ * failed read), the reader dismisses it, or the conversation changes. The
+ * reads used to swallow theirs — and the first one replaced the list with an
+ * empty one, which on screen was the queue having been delivered or lost.
  */
 export function usePromptQueue(conversationId: string, enabled: boolean) {
   const [items, setItems] = useState<QueuedPromptInfoResponse[]>([])
+  const [error, setError] = useState<PromptQueueError | null>(null)
 
   const reload = useCallback(() => {
     if (!enabled) return
-    api
-      .queueList(conversationId)
-      .then(setItems)
-      .catch(() => {})
+    api.queueList(conversationId).then(
+      (next) => {
+        setItems(next)
+        // A successful read settles a failed one; it says nothing about a
+        // refused change, which the reader has not seen yet.
+        setError((current) => (current?.kind === 'load' ? null : current))
+      },
+      (err: unknown) => setError({ kind: 'load', message: errorMessage(err) }),
+    )
   }, [conversationId, enabled])
 
+  const failed = useCallback((err: unknown) => {
+    setError({ kind: 'action', message: errorMessage(err) })
+  }, [])
+
+  const dismissError = useCallback(() => setError(null), [])
+
   useEffect(() => {
+    setError(null)
     if (!enabled) {
       setItems([])
       return
     }
     let alive = true
-    api
-      .queueList(conversationId)
-      .then((next) => {
-        if (alive) setItems(next)
-      })
-      .catch(() => {
-        // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- read-only mirror; queue-updated refills it
-        if (alive) setItems([])
-      })
+    const read = () =>
+      api.queueList(conversationId).then(
+        (next) => {
+          if (!alive) return
+          setItems(next)
+          setError((current) => (current?.kind === 'load' ? null : current))
+        },
+        (err: unknown) => {
+          if (alive) setError({ kind: 'load', message: errorMessage(err) })
+        },
+      )
+    void read()
     const unlisten = listen('queue-updated', (event) => {
       if (event.payload.conversation_id !== conversationId) return
       if (!alive) return
-      api
-        .queueList(conversationId)
-        .then((next) => {
-          if (alive) setItems(next)
-        })
-        .catch(() => {})
+      void read()
     })
     return () => {
       alive = false
@@ -101,9 +130,9 @@ export function usePromptQueue(conversationId: string, enabled: boolean) {
       // Refused for anything already sent, and the refusal is the point: the
       // list is redrawn from what the backend actually has rather than from
       // what was asked for.
-      await api.queueRemove({ conversationId, id }).finally(reload)
+      await api.queueRemove({ conversationId, id }).catch(failed).finally(reload)
     },
-    [conversationId, reload],
+    [conversationId, failed, reload],
   )
 
   const reorder = useCallback(
@@ -111,21 +140,24 @@ export function usePromptQueue(conversationId: string, enabled: boolean) {
       // Drawn immediately, because a row that snaps back while a request is in
       // flight reads as the drag having failed.
       setItems(next)
-      await api.queueReorder({ conversationId, ids: next.map((i) => i.id) }).catch(reload)
+      await api.queueReorder({ conversationId, ids: next.map((i) => i.id) }).catch((err: unknown) => {
+        failed(err)
+        reload()
+      })
     },
-    [conversationId, reload],
+    [conversationId, failed, reload],
   )
 
   const setDelivery = useCallback(
     async (id: string, delivery: QueueDelivery) => {
-      await api.queueSetDelivery({ conversationId, id, delivery }).finally(reload)
+      await api.queueSetDelivery({ conversationId, id, delivery }).catch(failed).finally(reload)
     },
-    [conversationId, reload],
+    [conversationId, failed, reload],
   )
 
   const release = useCallback(async () => {
-    await api.queueRelease(conversationId).finally(reload)
-  }, [conversationId, reload])
+    await api.queueRelease(conversationId).catch(failed).finally(reload)
+  }, [conversationId, failed, reload])
 
   // A settled row leaves the list once the message it became exists, and not
   // before. The two are the same instant for a follow-up — one transaction
@@ -138,6 +170,9 @@ export function usePromptQueue(conversationId: string, enabled: boolean) {
   return {
     items: pending,
     held: pending.some((i) => queueState(i) === 'held'),
+    error,
+    dismissError,
+    retry: reload,
     enqueue,
     remove,
     reorder,

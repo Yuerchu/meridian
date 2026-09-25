@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { EmptyState as ProEmptyState } from '@/components/base'
 import { PromptSuggestion } from '@/components/base'
+import { ErrorAlert } from '@/components/ui/error-alert'
 
 import { useIsOffline } from '@/hooks/use-connection-state'
 import { usePlatform } from '@/hooks/use-platform'
@@ -254,22 +255,16 @@ export function EmptyState({ onSubmit, onCreate, onOpenSettingsTab, disabled, ac
             onRemoveSticker={() => setPendingSticker(null)}
           />
           {submitError && (
-            <p
-              data-slot="empty-state-error"
-              role="alert"
-              className="break-words px-2 text-caption-1-regular text-status-danger"
-            >
-              {submitError}
-            </p>
+            <ErrorAlert data-slot="empty-state-error" message={submitError} onDismiss={() => setSubmitError(null)} />
           )}
-          {composerDraft.saveError && (
-            <p
+          {composerDraft.error && (
+            <ErrorAlert
               data-slot="empty-state-draft-error"
-              role="status"
-              className="break-words px-2 text-caption-1-regular text-text-secondary"
-            >
-              {t('chat.draft.saveFailed', { error: composerDraft.saveError })}
-            </p>
+              title={t(composerDraft.error.kind === 'load' ? 'chat.draft.loadFailed' : 'chat.draft.saveFailedTitle')}
+              message={composerDraft.error.message}
+              onRetry={composerDraft.error.kind === 'save' ? composerDraft.retry : undefined}
+              onDismiss={composerDraft.dismissError}
+            />
           )}
           <StarterPrompts disabled={locked} onSelect={handleValueChange} />
         </ProEmptyState.Content>

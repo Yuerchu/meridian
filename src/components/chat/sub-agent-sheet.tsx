@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button, Skeleton } from '@/components/base'
+import { Skeleton } from '@/components/base'
+import { ErrorAlert } from '@/components/ui/error-alert'
 import { Sheet } from '@/components/base'
 import { useConversationStore } from '@/stores/conversation-store'
 import { useTurns } from '@/hooks/use-turns'
@@ -83,15 +84,17 @@ function SubAgentSheet({ request, onClose }: { request: SubAgentSheetRequest; on
             </Sheet.Header>
             <Sheet.Body data-sheet-no-drag className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
               {failed && (
-                <Alert status="danger" data-slot="sub-agent-sheet-error" className="m-4 mb-0">
-                  <Alert.Indicator />
-                  <Alert.Content>
-                    <Alert.Description>{session?.error ?? t('chat.subAgent.loadFailed')}</Alert.Description>
-                  </Alert.Content>
-                  <Button size="small" variant="secondary" onPress={() => setAttempt((n) => n + 1)}>
-                    {t('common.retry')}
-                  </Button>
-                </Alert>
+                // The read's own failure, not the session's last action error:
+                // that one belongs to whatever the run was doing, and a stale
+                // one standing in for "why could this not be loaded" is the
+                // wrong reason given confidently.
+                <ErrorAlert
+                  data-slot="sub-agent-sheet-error"
+                  className="m-4 mb-0"
+                  title={t('chat.subAgent.loadFailed')}
+                  message={session?.loadError ?? t('chat.subAgent.loadFailed')}
+                  onRetry={() => setAttempt((n) => n + 1)}
+                />
               )}
               {ready ? (
                 <ChatTranscript

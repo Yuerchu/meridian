@@ -129,7 +129,7 @@ describe('ComposerMenu', () => {
       expect(mockApi.fetchProviderModels).toHaveBeenCalledTimes(1)
     })
 
-    it('says the list failed to load rather than that there are no models', async () => {
+    it('says the list failed to load, and why, rather than that there are no models', async () => {
       const user = userEvent.setup()
       mockApi.fetchProviderModels.mockRejectedValue(new Error('offline'))
       render(<ComposerMenu {...props({ providers: [provider] })} />)
@@ -137,7 +137,11 @@ describe('ComposerMenu', () => {
       await user.click(within(menu).getByRole('menuitem', { name: /Model/ }))
 
       const submenu = await findSubmenu()
-      expect(await within(submenu).findByText(i18n.t('toolbar.modelsLoadFailed'))).toBeInTheDocument()
+      // The provider that refused and its own words, not a generic sentence
+      // that leaves the reason in the log.
+      expect(
+        await within(submenu).findByText(i18n.t('toolbar.modelsLoadFailedReason', { error: 'One: offline' })),
+      ).toBeInTheDocument()
       expect(mockApi.fetchProviderModels).toHaveBeenCalledTimes(1)
     })
   })

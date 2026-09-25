@@ -491,7 +491,9 @@ describe('Built-in names are in the app’s language', () => {
     expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '添加' })).toBeInTheDocument()
     expect(screen.getAllByRole('status')).toHaveLength(1)
-    expect(screen.getByRole('status')).toHaveAccessibleName(i18n.t('common.loading'))
-    expect(screen.getByRole('status')).not.toHaveAccessibleName(/Loading/)
+    // Exact, and with no ellipsis: `common.loading` is visible text ending in
+    // "…", which a screen reader reads out as punctuation.
+    expect(screen.getByRole('status')).toHaveAccessibleName('加载中')
+    expect(screen.getByRole('status')).not.toHaveAccessibleName(/Loading|…|\.\.\./)
   })
 })

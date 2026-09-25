@@ -7,6 +7,7 @@ import { AcpNoticeList } from './acp-notice-bubble'
 import type { AcpSessionNoticeInfoResponse } from '@/types'
 import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker'
 import { MessageScrollerAnchor } from '@/components/ui/message-scroller'
+import { ErrorAlert } from '@/components/ui/error-alert'
 import { TurnBranchPager, TurnStatusIcon } from '@/components/ui/turn-status'
 import { useHeightCompensation } from '@/hooks/use-height-compensation'
 import { isDifferentDay, useDateLabel } from '@/hooks/use-clock-time'
@@ -99,7 +100,7 @@ export const TurnItem = React.memo(function TurnItem({
   const dateLabel = useDateLabel()
   const assistants = turn.assistantMessages
   const renderError = (
-    <div data-slot="turn-render-error" className="text-caption-1-regular text-status-danger py-2">
+    <div data-slot="turn-render-error" role="alert" className="text-caption-1-regular text-status-danger py-2">
       {t('chat.renderError')}
     </div>
   )
@@ -290,6 +291,23 @@ export const TurnItem = React.memo(function TurnItem({
           </ErrorBoundary>
         ))}
         {statusLine}
+        {/* Why the run failed, in the backend's own words, where it failed.
+            Read off the turn record, so it is here after a reload and for a
+            run nobody in this window started. `status` rather than `alert`:
+            this is part of the record and is drawn on every visit, and a
+            screen reader should not be interrupted by history. The retry is
+            regeneration, which needs an answer to replace — a run that died
+            before writing one has the reason and nothing to press. */}
+        {turn.failure !== null && (
+          <div data-slot="turn-failure" className="pl-10">
+            <ErrorAlert
+              role="status"
+              title={t('chat.turn.failed')}
+              message={turn.failure}
+              onRetry={!streaming ? onRegenerateTurn : undefined}
+            />
+          </div>
+        )}
         {/* After the status line: the adapter's own account of how the turn
             went belongs under this app's one-word verdict on it. */}
         {notices !== undefined && notices.length > 0 && (
