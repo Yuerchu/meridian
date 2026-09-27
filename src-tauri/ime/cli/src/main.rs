@@ -10,6 +10,7 @@ mod import;
 mod keys;
 mod lookup;
 mod replay;
+mod upgrade;
 
 use std::process::ExitCode;
 
@@ -19,6 +20,7 @@ meridian-ime <command> [args]
   import <file.dict.yaml> [--data-dir <dir>] [--license <SPDX>] [--name <name>]
                               import a Rime dictionary into <data-dir>/dicts
   dicts  [--data-dir <dir>]   list imported dictionaries
+  upgrade [--data-dir <dir>]  rebuild dictionaries written by an older build in this one's format
   lookup <keys> [--data-dir <dir>] [--scheme pinyin|zhuyin|grid] [--limit N]
                               rank candidates for a key string
   bench  [--data-dir <dir>] [--scheme S] [--cases <file.tsv> | --eval <eval.tsv>]
@@ -45,6 +47,7 @@ fn main() -> ExitCode {
     let result = match cmd.as_str() {
         "import" => import::run(rest),
         "dicts" => dicts::run(rest),
+        "upgrade" => upgrade::run(rest),
         "lookup" => lookup::run(rest),
         "bench" => bench::run(rest),
         "keys" => keys::run(rest),

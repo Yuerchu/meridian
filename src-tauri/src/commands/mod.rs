@@ -36,6 +36,7 @@ pub mod remote;
 pub mod secret;
 pub mod skill;
 pub mod sub_agent;
+pub mod system_notice;
 pub mod todo;
 pub mod tool_system;
 pub mod usage;

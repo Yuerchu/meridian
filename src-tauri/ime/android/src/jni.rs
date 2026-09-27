@@ -244,6 +244,19 @@ pub extern "system" fn Java_cn_yuxiaoqiu_meridian_ime_EngineBridge_nativeReset(
     })
 }
 
+/// Closes the prediction list. Returns the frame left.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_cn_yuxiaoqiu_meridian_ime_EngineBridge_nativeDismiss(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) -> jstring {
+    guard(&mut env, null_mut(), |env| {
+        let frame = host(handle)?.dismiss();
+        json_out(env, &frame)
+    })
+}
+
 /// Picks up changes Meridian made on disk; true when something was reloaded.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_cn_yuxiaoqiu_meridian_ime_EngineBridge_nativeRefresh(

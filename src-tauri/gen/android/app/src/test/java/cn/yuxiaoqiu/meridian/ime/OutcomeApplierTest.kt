@@ -52,6 +52,7 @@ class OutcomeApplierTest {
     highlight = 0,
     mode = InputMode.CHINESE,
     notice = null,
+    predicting = false,
   )
 
   private fun eaten(preedit: String, commit: String? = null) = KeyOutcome(true, commit, frame(preedit))

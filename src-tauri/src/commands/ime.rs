@@ -46,6 +46,8 @@ pub struct ImeConfigInfoResponse {
     pub debug_log: bool,
     /// Apps besides Meridian that may be shown memory hints.
     pub context_apps: Vec<String>,
+    /// Offer what may follow a commit.
+    pub prediction: bool,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -59,6 +61,8 @@ pub struct ImeConfigUpdateRequest {
     pub debug_log: bool,
     /// Apps besides Meridian that may be shown memory hints.
     pub context_apps: Vec<String>,
+    /// Offer what may follow a commit.
+    pub prediction: bool,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -70,6 +74,28 @@ pub struct ImeDictionaryInfoResponse {
     pub enabled: bool,
     pub license: String,
     pub source: String,
+    pub state: ImeDictionaryState,
+}
+
+/// Whether the keyboard can use a dictionary, and if not, why.
+#[derive(Debug, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ImeDictionaryState {
+    Ready,
+    /// Being rebuilt in this build's format right now.
+    Upgrading,
+    /// Written by an older build; the next start upgrades it again.
+    NeedsUpgrade {
+        version: u16,
+    },
+    /// Written by a newer build that said this one cannot read it.
+    TooNew {
+        version: u16,
+    },
+    /// Damaged or not a dictionary; the error says what the reader found.
+    Unreadable {
+        error: String,
+    },
 }
 
 pub type ImeDictionaryListResponse = Vec<ImeDictionaryInfoResponse>;
@@ -218,6 +244,7 @@ impl From<meridian_ime_config::HostConfig> for ImeConfigInfoResponse {
             private_apps: c.private_apps,
             debug_log: c.debug_log,
             context_apps: c.context_apps,
+            prediction: c.prediction,
         }
     }
 }
@@ -253,6 +280,7 @@ impl TryFrom<ImeConfigUpdateRequest> for meridian_ime_config::HostConfig {
             private_apps: r.private_apps,
             debug_log: r.debug_log,
             context_apps: r.context_apps,
+            prediction: r.prediction,
         }
         .normalized())
     }
@@ -316,7 +344,8 @@ pub async fn save_ime_config(
 #[tauri::command]
 pub async fn list_ime_dictionaries(app: tauri::AppHandle) -> Result<ImeDictionaryListResponse, String> {
     let bridge = bridge(&app).await;
-    let list = tokio::task::spawn_blocking(move || dictionary::list(&bridge.dirs))
+    let progress = app.state::<AppIme>().upgrade.clone();
+    let list = tokio::task::spawn_blocking(move || dictionary::list(&bridge.dirs, &progress))
         .await
         .expect("list task")?;
     Ok(list.into_iter().map(summary_into).collect())
@@ -331,6 +360,13 @@ fn summary_into(s: dictionary::DictionarySummary) -> ImeDictionaryInfoResponse {
         enabled: s.enabled,
         license: s.license,
         source: s.source,
+        state: match s.state {
+            dictionary::DictionaryState::Ready => ImeDictionaryState::Ready,
+            dictionary::DictionaryState::Upgrading => ImeDictionaryState::Upgrading,
+            dictionary::DictionaryState::NeedsUpgrade { version } => ImeDictionaryState::NeedsUpgrade { version },
+            dictionary::DictionaryState::TooNew { version } => ImeDictionaryState::TooNew { version },
+            dictionary::DictionaryState::Unreadable(error) => ImeDictionaryState::Unreadable { error },
+        },
     }
 }
 
@@ -461,6 +497,7 @@ pub async fn import_staged_ime_dictionaries(
     }
     let dirs = bridge(&app).await.dirs;
     let ime = app.state::<AppIme>();
+    let writes = ime.dict_writes.clone();
     let staged = {
         let mut slot = ime.staged.lock().await;
         match slot.as_ref() {
@@ -469,6 +506,7 @@ pub async fn import_staged_ime_dictionaries(
         }
     };
     tokio::task::spawn_blocking(move || {
+        let _guard = writes.lock().unwrap_or_else(|p| p.into_inner());
         let result = request
             .roots
             .iter()
@@ -489,6 +527,7 @@ pub async fn import_staged_ime_dictionaries(
 #[tauri::command]
 pub async fn download_ime_rime_ice(app: tauri::AppHandle) -> Result<ImeDictionaryImportReportResponse, String> {
     let dirs = bridge(&app).await.dirs;
+    let writes = app.state::<AppIme>().dict_writes.clone();
     let scratch = scratch_root(&dirs);
     std::fs::create_dir_all(&scratch).map_err(|e| e.to_string())?;
     let id = uuid::Uuid::new_v4().to_string();
@@ -501,6 +540,7 @@ pub async fn download_ime_rime_ice(app: tauri::AppHandle) -> Result<ImeDictionar
         let staged = archive::stage(&zip, &scratch, id);
         let _ = std::fs::remove_file(&zip);
         let staged = staged?;
+        let _guard = writes.lock().unwrap_or_else(|p| p.into_inner());
         let result = archive::root_path(&staged, archive::RIME_ICE_ROOT).and_then(|path| {
             dictionary::import(&dirs, &path, Some(archive::RIME_ICE_LICENSE.into()), None).map(report_into)
         });
@@ -517,9 +557,12 @@ pub async fn set_ime_dictionary_enabled(
     request: ImeDictionaryToggleRequest,
 ) -> Result<ImeDictionaryListResponse, String> {
     let bridge = bridge(&app).await;
+    let ime = app.state::<AppIme>();
+    let (writes, progress) = (ime.dict_writes.clone(), ime.upgrade.clone());
     let list = tokio::task::spawn_blocking(move || {
+        let _guard = writes.lock().unwrap_or_else(|p| p.into_inner());
         dictionary::set_enabled(&bridge.dirs, &request.file, request.enabled)?;
-        dictionary::list(&bridge.dirs)
+        dictionary::list(&bridge.dirs, &progress)
     })
     .await
     .expect("toggle task")?;
@@ -532,9 +575,12 @@ pub async fn remove_ime_dictionary(
     request: ImeDictionaryRemoveRequest,
 ) -> Result<ImeDictionaryListResponse, String> {
     let bridge = bridge(&app).await;
+    let ime = app.state::<AppIme>();
+    let (writes, progress) = (ime.dict_writes.clone(), ime.upgrade.clone());
     let list = tokio::task::spawn_blocking(move || {
+        let _guard = writes.lock().unwrap_or_else(|p| p.into_inner());
         dictionary::remove(&bridge.dirs, &request.file)?;
-        dictionary::list(&bridge.dirs)
+        dictionary::list(&bridge.dirs, &progress)
     })
     .await
     .expect("remove task")?;
@@ -735,12 +781,13 @@ mod tests {
         let good = json!({
             "scheme": "pinyin", "page_size": 5, "punctuation": "full_width",
             "learning": true, "private_apps": ["KeePass.exe"], "debug_log": false,
-            "context_apps": [" Notepad.exe "]
+            "context_apps": [" Notepad.exe "], "prediction": false
         });
         let r: ImeConfigUpdateRequest = serde_json::from_value(good.clone()).unwrap();
         let cfg = meridian_ime_config::HostConfig::try_from(r).unwrap();
         assert_eq!(cfg.private_apps, vec!["keepass.exe"]);
         assert_eq!(cfg.context_apps, vec!["notepad.exe"]);
+        assert!(!cfg.prediction);
 
         let mut missing = good.clone();
         missing.as_object_mut().unwrap().remove("context_apps");

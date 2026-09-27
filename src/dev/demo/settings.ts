@@ -789,6 +789,7 @@ export const IME_CONFIG: ImeConfigInfoResponse = {
   private_apps: ['KeePassXC.exe'],
   debug_log: false,
   context_apps: [],
+  prediction: true,
 }
 
 export const IME_LM_STATUS: ImeLmStatusInfoResponse = {
@@ -807,6 +808,7 @@ export const IME_DICTIONARIES: ImeDictionaryInfoResponse[] = [
     enabled: true,
     license: 'GPL-3.0',
     source: 'bundle',
+    state: { kind: 'ready' },
   },
   {
     file: 'tech.dict',
@@ -816,6 +818,7 @@ export const IME_DICTIONARIES: ImeDictionaryInfoResponse[] = [
     enabled: false,
     license: 'CC-BY-4.0',
     source: 'import',
+    state: { kind: 'ready' },
   },
 ]
 

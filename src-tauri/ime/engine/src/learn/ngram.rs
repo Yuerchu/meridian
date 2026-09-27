@@ -10,7 +10,7 @@
 //! bigram cannot: after 我 the bigram sees 想 and 相 as the same, after 我 也
 //! they are not.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::Context;
 
@@ -32,6 +32,11 @@ pub struct UserNgram {
     trigram_ctx: HashMap<(String, String), (u32, u32)>,
     /// word → Σ counts as a continuation
     word_total: HashMap<String, u32>,
+    /// prev → every word with a bigram row after it: what prediction lists.
+    /// Kept beside `bigram` rather than found by scanning it, since it is
+    /// read after every commit and the table holds up to
+    /// [`MAX_TRANSITIONS`] rows.
+    followers: HashMap<String, HashSet<String>>,
     total: u64,
 }
 
@@ -54,6 +59,10 @@ impl UserNgram {
             return;
         }
         *self.bigram.entry((ctx.prev.to_string(), word.to_string())).or_default() += times;
+        self.followers
+            .entry(ctx.prev.to_string())
+            .or_default()
+            .insert(word.to_string());
         *self.prev_total.entry(ctx.prev.to_string()).or_default() += times;
         *self.word_total.entry(word.to_string()).or_default() += times;
         self.total += times as u64;
@@ -85,6 +94,7 @@ impl UserNgram {
         *c -= taken;
         if *c == 0 {
             self.bigram.remove(&bk);
+            self.unfollow(ctx.prev, word);
         }
         dec(&mut self.prev_total, ctx.prev, taken);
         dec(&mut self.word_total, word, taken);
@@ -165,6 +175,27 @@ impl UserNgram {
         if mixed > 0.0 { mixed.ln() } else { static_log_prob }
     }
 
+    /// Every word seen after `prev`, with its bigram count, in no order.
+    pub fn followers(&self, prev: &str) -> Vec<(&str, u32)> {
+        let Some(words) = self.followers.get(prev) else {
+            return Vec::new();
+        };
+        words
+            .iter()
+            .map(|w| (w.as_str(), self.bigram_count(prev, w)))
+            .filter(|(_, c)| *c > 0)
+            .collect()
+    }
+
+    fn unfollow(&mut self, prev: &str, word: &str) {
+        if let Some(words) = self.followers.get_mut(prev) {
+            words.remove(word);
+            if words.is_empty() {
+                self.followers.remove(prev);
+            }
+        }
+    }
+
     /// Every bigram row as `(prev, word, count)`, for the file store.
     pub fn bigrams(&self) -> impl Iterator<Item = (&str, &str, u32)> + '_ {
         self.bigram.iter().map(|((p, w), c)| (p.as_str(), w.as_str(), *c))
@@ -204,6 +235,7 @@ impl UserNgram {
             *c -= taken;
             if *c == 0 {
                 self.bigram.remove(&bk);
+                self.unfollow(prev, word);
             }
             dec(&mut self.prev_total, prev, taken);
             dec(&mut self.word_total, word, taken);
@@ -237,8 +269,27 @@ mod tests {
         n.unrecord(Context::after("我"), "想", 2);
         n.unrecord(Context::of(Some("我"), "也"), "想", 1);
         assert!(n.is_empty());
+        assert!(n.followers("我").is_empty(), "the index forgets with the row");
+        assert!(n.followers.is_empty());
         assert_eq!(n.context_count("我"), 0);
         assert_eq!(n.len(), 0);
+    }
+
+    #[test]
+    fn followers_list_what_came_after() {
+        let mut n = UserNgram::new();
+        n.record(Context::after("我"), "想", 2);
+        n.record(Context::after("我"), "是", 1);
+        n.record(Context::after("你"), "好", 1);
+        let mut f = n.followers("我");
+        f.sort();
+        assert_eq!(f, vec![("想", 2), ("是", 1)]);
+        n.unrecord(Context::after("我"), "是", 1);
+        assert_eq!(n.followers("我"), vec![("想", 2)]);
+        assert!(n.followers("他").is_empty());
+        n.halve();
+        assert_eq!(n.followers("我"), vec![("想", 1)], "halving rebuilds the index");
+        assert!(n.followers("你").is_empty(), "a row halved to nothing leaves it");
     }
 
     #[test]

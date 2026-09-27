@@ -58,6 +58,7 @@ pub fn build_engine(
     scorer: Option<&SharedScorer>,
 ) -> (Arc<Engine>, Vec<String>) {
     let dicts_dir = dirs.dicts();
+    let mut outdated = 0;
     let (mut set, names) = match Catalog::load(&dicts_dir) {
         Ok(catalog) => {
             let names: Vec<String> = catalog
@@ -67,9 +68,13 @@ pub fn build_engine(
                 .map(|e| e.name.clone())
                 .collect();
             let (set, failures) = catalog.open_all_report(&dicts_dir);
-            for (file, err) in failures {
+            for (file, err) in &failures {
                 tracing::warn!(file, error = %err, "dictionary skipped");
             }
+            outdated = failures
+                .iter()
+                .filter(|(_, e)| matches!(e, meridian_ime_dict::DictError::NeedsUpgrade(_)))
+                .count();
             (set, names)
         }
         Err(e) => {
@@ -85,9 +90,10 @@ pub fn build_engine(
         dictionaries = names.len(),
         user_words = words.len(),
         language_model = scorer.is_some(),
+        outdated,
         "engine ready"
     );
-    let mut engine = Engine::new(Arc::new(set));
+    let mut engine = Engine::new(Arc::new(set)).with_outdated(outdated);
     if let Some(s) = scorer {
         engine = engine.with_scorer(Box::new(Arc::clone(s)));
     }
@@ -226,4 +232,47 @@ fn models_snapshot(dirs: &ImeDirs) -> Vec<(String, Option<SystemTime>, u64)> {
     }
     out.sort();
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use meridian_ime_dict::CatalogEntry;
+
+    use super::*;
+
+    /// Written by the version 1 writer; see `meridian-ime-dict`'s upgrade tests.
+    const V1: &[u8] = include_bytes!("../../dict/tests/fixtures/v1.mdict");
+
+    #[test]
+    fn a_dictionary_in_an_older_format_is_counted_not_just_skipped() {
+        let root = tempfile::tempdir().unwrap();
+        let dirs = ImeDirs::new(root.path());
+        dirs.ensure().unwrap();
+        std::fs::write(dirs.dicts().join("old.mdict"), V1).unwrap();
+        Catalog {
+            entries: vec![CatalogEntry {
+                file: "old.mdict".into(),
+                name: "old".into(),
+                enabled: true,
+                priority: 0,
+                entries: 18,
+                license: "CC0-1.0".into(),
+                imported_unix: 0,
+            }],
+        }
+        .save(&dirs.dicts())
+        .unwrap();
+        let (engine, _) = build_engine(&dirs, &MemoryLearner::new(), None);
+        assert!(engine.is_empty());
+        assert_eq!(engine.outdated_dictionaries(), 1);
+
+        meridian_ime_dict::upgrade_in_place(
+            &dirs.dicts().join("old.mdict"),
+            &meridian_ime_dict::SyllableTable::new(),
+        )
+        .unwrap();
+        let (engine, _) = build_engine(&dirs, &MemoryLearner::new(), None);
+        assert!(!engine.is_empty());
+        assert_eq!(engine.outdated_dictionaries(), 0);
+    }
 }

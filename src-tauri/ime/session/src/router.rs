@@ -15,7 +15,7 @@ use meridian_ime_proto::{
     ClientKind, ClientMessage, ErrorCode, Frame, InputSettings, PROTOCOL_VERSION, Profile, Rect, Scheme, ServerMessage,
 };
 
-use crate::session::{Session, SessionConfig};
+use crate::session::{DictionaryNotice, Session, SessionConfig};
 
 /// Learning is flushed this often while the host is idle.
 pub const FLUSH_INTERVAL: Duration = Duration::from_secs(60);
@@ -37,6 +37,7 @@ pub struct RouterConfig {
     pub page_size: usize,
     pub full_width_punctuation: bool,
     pub learning: bool,
+    pub prediction: bool,
     /// Lower-cased executable names whose sessions are always private.
     pub private_apps: Vec<String>,
     /// Lower-cased executable names, besides Meridian's own, that may be
@@ -51,6 +52,7 @@ impl Default for RouterConfig {
             page_size: 5,
             full_width_punctuation: true,
             learning: true,
+            prediction: true,
             private_apps: Vec::new(),
             context_apps: Vec::new(),
         }
@@ -70,6 +72,7 @@ impl RouterConfig {
             page_size: self.page_size,
             full_width_punctuation: self.full_width_punctuation,
             learning: self.learning,
+            prediction: self.prediction,
         }
     }
 
@@ -197,7 +200,7 @@ impl Router {
     pub fn focused_frame(&self) -> Option<(Frame, Option<Rect>)> {
         let key = self.focused?;
         let e = self.sessions.get(&key)?;
-        Some((e.session.frame(self.engine.is_empty()), e.last_rect))
+        Some((e.session.frame(DictionaryNotice::of(&self.engine)), e.last_rect))
     }
 
     /// One message in, one reply out.
@@ -271,7 +274,7 @@ impl Router {
                     return self.unknown_session(session_id);
                 };
                 e.session.set_private(private || e.private_by_app);
-                if e.session.is_composing() {
+                if e.session.is_composing() || e.session.is_predicting() {
                     e.session.reset();
                 }
                 self.focus(key);
@@ -292,6 +295,19 @@ impl Router {
                 };
                 e.session.reset();
                 ServerMessage::Ack
+            }
+            ClientMessage::Dismiss { session_id } => {
+                let key = SessionKey { conn, session_id };
+                let Some(e) = self.sessions.get_mut(&key) else {
+                    return self.unknown_session(session_id);
+                };
+                let frame = e.session.dismiss();
+                ServerMessage::KeyResult {
+                    session_id,
+                    consumed: false,
+                    commit: None,
+                    frame,
+                }
             }
             ClientMessage::ReloadDictionaries => ServerMessage::Ack,
             ClientMessage::Shutdown => {

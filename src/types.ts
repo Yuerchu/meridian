@@ -2957,6 +2957,8 @@ export interface ImeConfigInfoResponse {
   private_apps: string[]
   debug_log: boolean
   context_apps: string[]
+  /** Offer what may follow a commit. */
+  prediction: boolean
 }
 
 export interface ImeConfigUpdateRequest {
@@ -2967,6 +2969,8 @@ export interface ImeConfigUpdateRequest {
   private_apps: string[]
   debug_log: boolean
   context_apps: string[]
+  /** Offer what may follow a commit. */
+  prediction: boolean
 }
 
 export interface ImeDictionaryInfoResponse {
@@ -2978,9 +2982,57 @@ export interface ImeDictionaryInfoResponse {
   enabled: boolean
   license: string
   source: string
+  state: ImeDictionaryState
 }
 
+/** Whether the keyboard can use a dictionary, and if not, why. */
+export type ImeDictionaryState =
+  | { kind: 'ready' }
+  /** Being rebuilt in this build's format right now. */
+  | { kind: 'upgrading' }
+  /** Written by an older build; the next start upgrades it again. */
+  | { kind: 'needs_upgrade'; version: number }
+  /** Written by a newer build that said this one cannot read it. */
+  | { kind: 'too_new'; version: number }
+  /** Damaged or not a dictionary. */
+  | { kind: 'unreadable'; error: string }
+
 export type ImeDictionaryListResponse = ImeDictionaryInfoResponse[]
+
+/**
+ * Something this machine did on its own, for the inbox's system tab. Never a
+ * question: nothing waits on it.
+ */
+export interface SystemNoticeInfoResponse {
+  id: string
+  /** Milliseconds since the epoch. */
+  started_at: number
+  /** Null while it is still going. */
+  finished_at: number | null
+  detail: SystemNoticeDetail
+}
+
+export type SystemNoticeListResponse = SystemNoticeInfoResponse[]
+
+export type SystemNoticeDetail = {
+  kind: 'ime_dictionary_upgrade'
+  state: ImeDictionaryUpgradeState
+  /** The dictionaries being upgraded, in catalog order. */
+  dictionaries: string[]
+  upgraded: number
+  failures: ImeDictionaryUpgradeFailureInfoResponse[]
+}
+
+export type ImeDictionaryUpgradeState = 'running' | 'succeeded' | 'failed'
+
+export interface ImeDictionaryUpgradeFailureInfoResponse {
+  name: string
+  error: string
+}
+
+export interface SystemNoticeDismissRequest {
+  id: string
+}
 
 /** A `.dict.yaml` or a zip of them; on Android a `content://` URI. */
 export interface ImeDictionaryStageRequest {

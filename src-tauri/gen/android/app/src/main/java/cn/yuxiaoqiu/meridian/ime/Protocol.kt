@@ -51,6 +51,11 @@ data class Frame(
   val highlight: Int,
   val mode: InputMode,
   val notice: String?,
+  /**
+   * The candidates are what may follow the last commit, not readings of
+   * keys: no preedit, and only a tap, Up, Down, Tab and Esc act on them.
+   */
+  val predicting: Boolean,
 ) {
   val isEmpty: Boolean get() = preedit.isEmpty() && candidates.isEmpty() && notice == null
   val preeditText: String get() = preedit.joinToString("") { it.text }

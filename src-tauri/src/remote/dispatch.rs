@@ -575,6 +575,10 @@ mod tests {
             "stage_ime_dictionary",
             "import_staged_ime_dictionaries",
             "download_ime_rime_ice",
+            // What this machine did on its own (a dictionary upgrade): shown
+            // in this window's inbox, and not a remote client's business.
+            "list_system_notices",
+            "dismiss_system_notice",
             "set_ime_dictionary_enabled",
             "remove_ime_dictionary",
             "start_ime_host",

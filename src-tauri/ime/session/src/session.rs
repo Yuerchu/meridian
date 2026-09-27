@@ -13,12 +13,21 @@
 //! 吗 without anything reaching the document in between. The whole thing
 //! commits when the last keys are chosen, and the buffer as a whole is what
 //! the learner is told about.
+//!
+//! After a word is committed the session offers what may follow it — the
+//! prediction list, [`Engine::predict`] plus ，and 。. It is a list on
+//! the side, not a mode: Up and Down move through it, Tab (or a tap) takes
+//! the highlighted one, Esc closes it, and every other key closes it and
+//! then does exactly what it would have done with no list there. That is
+//! what keeps letters and digits untouched, so nobody typing on is ever
+//! caught by it.
 
 use std::sync::Arc;
 
 use meridian_ime_engine::learn::Muted;
 use meridian_ime_engine::{
-    Candidate, CandidateSource, Engine, GridRole, InputScheme, Learner, Query, QueryContext, SpanCache, grid_token,
+    Candidate, CandidateSource, Engine, GridRole, InputScheme, Learner, Prediction, PredictionSource, Query,
+    QueryContext, SpanCache, grid_token,
 };
 use meridian_ime_proto::{CandidateItem, Frame, KeyEvent, Mode, PreeditKind, PreeditSegment};
 
@@ -31,6 +40,30 @@ use crate::punct::PunctState;
 
 /// Shown in the frame while the person types with nothing to look things up in.
 pub const NO_DICTIONARY_NOTICE: &str = "尚未导入词库：在 Meridian 设置里导入一本 Rime 词库后即可打字";
+/// Shown instead when there are dictionaries, all in an older format.
+pub const DICTIONARY_UPGRADE_NOTICE: &str = "词库需要升级：打开一次 Meridian 即可自动完成";
+
+/// What a frame says about the dictionaries, if anything.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DictionaryNotice {
+    None,
+    /// Nothing to look anything up in.
+    Missing,
+    /// Nothing usable, because what is listed waits for Meridian to upgrade it.
+    NeedsUpgrade,
+}
+
+impl DictionaryNotice {
+    pub fn of(engine: &Engine) -> Self {
+        if !engine.is_empty() {
+            Self::None
+        } else if engine.outdated_dictionaries() > 0 {
+            Self::NeedsUpgrade
+        } else {
+            Self::Missing
+        }
+    }
+}
 
 /// Characters of text before the cursor kept for the scorer.
 pub const LEFT_CONTEXT_CHARS: usize = 64;
@@ -50,6 +83,8 @@ pub struct SessionConfig {
     pub full_width_punctuation: bool,
     /// Master switch; a private document mutes learning regardless.
     pub learning: bool,
+    /// Offer what may follow a commit.
+    pub prediction: bool,
 }
 
 impl Default for SessionConfig {
@@ -59,6 +94,7 @@ impl Default for SessionConfig {
             page_size: 5,
             full_width_punctuation: true,
             learning: true,
+            prediction: true,
         }
     }
 }
@@ -106,7 +142,16 @@ pub struct Session {
     right: String,
     /// Memory hints, where the host decided they are allowed.
     hints: Arc<[String]>,
+    /// What may follow the last commit, while the list is on screen. Empty
+    /// is "no list": the marks are shown only beside at least one word.
+    predictions: Vec<Prediction>,
+    /// Index into the list as drawn: the predictions, then the marks.
+    prediction_highlight: usize,
 }
+
+/// Offered after the words of a prediction list, in Chinese punctuation
+/// only: a half-width comma after Chinese text is not something to suggest.
+const PREDICTION_MARKS: [&str; 2] = ["，", "。"];
 
 impl Session {
     pub fn new(config: SessionConfig) -> Self {
@@ -126,6 +171,8 @@ impl Session {
             left: String::new(),
             right: String::new(),
             hints: Arc::from(Vec::new()),
+            predictions: Vec::new(),
+            prediction_highlight: 0,
         }
     }
 
@@ -135,6 +182,7 @@ impl Session {
 
     /// Applies new settings. The scheme changing drops the composition.
     pub fn set_config(&mut self, config: SessionConfig) {
+        self.dismiss_predictions();
         if config.scheme != self.config.scheme {
             self.clear_composition();
             self.cache.clear();
@@ -155,6 +203,7 @@ impl Session {
     pub fn set_private(&mut self, private: bool) {
         self.private = private;
         if private {
+            self.dismiss_predictions();
             self.left.clear();
             self.right.clear();
         }
@@ -162,6 +211,22 @@ impl Session {
 
     pub fn is_composing(&self) -> bool {
         !self.keys.is_empty() || !self.fixed.is_empty()
+    }
+
+    /// A prediction list is on screen.
+    pub fn is_predicting(&self) -> bool {
+        !self.predictions.is_empty()
+    }
+
+    /// The list was passed over — a key went to the application without
+    /// reaching the session, or the caret moved. Either way what comes next
+    /// is not written straight after the last word, so the chain ends too:
+    /// kept, the next commit would be learned as following a word it may be
+    /// nowhere near. Returns the frame left.
+    pub fn dismiss(&mut self) -> Frame {
+        self.dismiss_predictions();
+        self.chain.r#break();
+        self.frame(DictionaryNotice::None)
     }
 
     /// The raw keys of the current buffer (fixed pieces first).
@@ -181,10 +246,11 @@ impl Session {
     /// stay; what surrounded the cursor goes, since it belonged to that field.
     pub fn reset(&mut self) -> Frame {
         self.clear_composition();
+        self.dismiss_predictions();
         self.left.clear();
         self.right.clear();
         self.chain.r#break();
-        self.frame(false)
+        self.frame(DictionaryNotice::None)
     }
 
     /// A candidate on the current page was tapped. On a touch keyboard this is
@@ -195,15 +261,21 @@ impl Session {
     pub fn choose(&mut self, engine: &Engine, learner: &mut dyn Learner, index_on_page: usize) -> KeyOutcome {
         let muted = self.private || !self.config.learning;
         let mut learner = Muted::new(learner, muted);
+        if self.is_predicting() && !self.is_composing() {
+            let out = self.accept_prediction(engine, &mut learner, index_on_page);
+            self.note_commit(&out);
+            return out;
+        }
         if !self.is_composing() {
             return KeyOutcome {
                 consumed: false,
                 commit: None,
-                frame: self.frame(false),
+                frame: self.frame(DictionaryNotice::None),
             };
         }
         let idx = self.page * self.config.page_size.max(1) + index_on_page;
-        let out = self.select(engine, &mut learner, idx);
+        let mut out = self.select(engine, &mut learner, idx);
+        self.after_commit(engine, &learner, &mut out);
         self.note_commit(&out);
         out
     }
@@ -217,13 +289,14 @@ impl Session {
     pub fn insert(&mut self, engine: &Engine, learner: &mut dyn Learner, text: &str) -> KeyOutcome {
         let muted = self.private || !self.config.learning;
         let mut learner = Muted::new(learner, muted);
+        self.dismiss_predictions();
         let mut out = if self.is_composing() {
             self.commit_highlighted_or_raw(engine, &mut learner)
         } else {
             KeyOutcome {
                 consumed: true,
                 commit: None,
-                frame: self.frame(false),
+                frame: self.frame(DictionaryNotice::None),
             }
         };
         out.commit = Some(out.commit.unwrap_or_default() + text);
@@ -265,12 +338,18 @@ impl Session {
     }
 
     /// The current frame.
-    pub fn frame(&self, no_dictionary: bool) -> Frame {
+    pub fn frame(&self, notice: DictionaryNotice) -> Frame {
         let mut frame = Frame {
             mode: self.mode,
             ..Default::default()
         };
         if !self.is_composing() {
+            if self.is_predicting() {
+                frame.candidates = self.offers();
+                frame.page_count = 1;
+                frame.highlight = self.prediction_highlight.min(frame.candidates.len() - 1);
+                frame.predicting = true;
+            }
             return frame;
         }
         for p in &self.fixed {
@@ -295,15 +374,22 @@ impl Session {
                 .collect();
             frame.highlight = self.highlight.min(frame.candidates.len().saturating_sub(1));
         }
-        if no_dictionary {
-            frame.notice = Some(NO_DICTIONARY_NOTICE.to_string());
-        }
+        frame.notice = match notice {
+            DictionaryNotice::None => None,
+            DictionaryNotice::Missing => Some(NO_DICTIONARY_NOTICE.to_string()),
+            DictionaryNotice::NeedsUpgrade => Some(DICTIONARY_UPGRADE_NOTICE.to_string()),
+        };
         frame
     }
 
     /// One key. Whatever it commits becomes left context for the next query.
     pub fn handle_key(&mut self, engine: &Engine, learner: &mut dyn Learner, ev: KeyEvent) -> KeyOutcome {
-        let out = self.handle_key_inner(engine, learner, ev);
+        let mut out = self.handle_key_inner(engine, learner, ev);
+        {
+            let muted = self.private || !self.config.learning;
+            let learner = Muted::new(learner, muted);
+            self.after_commit(engine, &learner, &mut out);
+        }
         self.note_commit(&out);
         out
     }
@@ -313,6 +399,26 @@ impl Session {
         let muted = self.private || !self.config.learning;
         let mut learner = Muted::new(learner, muted);
         let learner: &mut dyn Learner = &mut learner;
+
+        // A list on screen answers four bare keys; anything else closes it
+        // and carries on as if it had never been there.
+        if self.is_predicting() {
+            let bare = !(ev.mods.ctrl || ev.mods.alt || ev.mods.win || ev.mods.shift);
+            match ev.vk {
+                VK_UP if bare => return self.move_prediction(-1),
+                VK_DOWN if bare => return self.move_prediction(1),
+                VK_TAB if bare => return self.accept_prediction(engine, learner, self.prediction_highlight),
+                VK_ESCAPE if bare => {
+                    self.dismiss_predictions();
+                    return KeyOutcome {
+                        consumed: true,
+                        commit: None,
+                        frame: self.frame(DictionaryNotice::None),
+                    };
+                }
+                _ => self.dismiss_predictions(),
+            }
+        }
 
         if ev.mods.ctrl || ev.mods.alt || ev.mods.win {
             return self.passthrough(engine, None);
@@ -334,7 +440,7 @@ impl Session {
             return KeyOutcome {
                 consumed: true,
                 commit,
-                frame: self.frame(false),
+                frame: self.frame(DictionaryNotice::None),
             };
         }
 
@@ -369,7 +475,7 @@ impl Session {
                 return KeyOutcome {
                     consumed: true,
                     commit: Some(text),
-                    frame: self.frame(false),
+                    frame: self.frame(DictionaryNotice::None),
                 };
             }
         }
@@ -382,7 +488,7 @@ impl Session {
                     KeyOutcome {
                         consumed: false,
                         commit: None,
-                        frame: self.frame(false),
+                        frame: self.frame(DictionaryNotice::None),
                     }
                 }
                 _ => match ev.ch {
@@ -393,7 +499,7 @@ impl Session {
                             KeyOutcome {
                                 consumed: true,
                                 commit: Some(full.to_string()),
-                                frame: self.frame(false),
+                                frame: self.frame(DictionaryNotice::None),
                             }
                         }
                         None => self.passthrough(engine, Some(ch)),
@@ -420,7 +526,7 @@ impl Session {
                 KeyOutcome {
                     consumed: true,
                     commit: None,
-                    frame: self.frame(engine.is_empty()),
+                    frame: self.frame(DictionaryNotice::of(engine)),
                 }
             }
             VK_ESCAPE => {
@@ -428,7 +534,7 @@ impl Session {
                 KeyOutcome {
                     consumed: true,
                     commit: None,
-                    frame: self.frame(false),
+                    frame: self.frame(DictionaryNotice::None),
                 }
             }
             VK_RETURN => match self.config.scheme {
@@ -439,7 +545,7 @@ impl Session {
                     KeyOutcome {
                         consumed: true,
                         commit: Some(text),
-                        frame: self.frame(false),
+                        frame: self.frame(DictionaryNotice::None),
                     }
                 }
                 InputScheme::Zhuyin | InputScheme::Grid => self.commit_highlighted_or_raw(engine, learner),
@@ -462,7 +568,7 @@ impl Session {
             VK_LEFT | VK_RIGHT | VK_HOME | VK_END | VK_DELETE | VK_TAB => KeyOutcome {
                 consumed: true,
                 commit: None,
-                frame: self.frame(engine.is_empty()),
+                frame: self.frame(DictionaryNotice::of(engine)),
             },
             _ => match ev.ch {
                 Some(d @ '1'..='9') if matches!(self.config.scheme, InputScheme::Pinyin | InputScheme::Grid) => {
@@ -490,10 +596,126 @@ impl Session {
                 None => KeyOutcome {
                     consumed: true,
                     commit: None,
-                    frame: self.frame(engine.is_empty()),
+                    frame: self.frame(DictionaryNotice::of(engine)),
                 },
             },
         }
+    }
+
+    // ── prediction ─────────────────────────────────────────────────────
+
+    /// A commit of Chinese words just happened: offer what may follow. The
+    /// chain says whether it was one — punctuation, raw keys, English and
+    /// menu text all break it, and a broken chain predicts nothing — so this
+    /// runs after every key rather than being threaded through each path
+    /// that commits.
+    fn after_commit(&mut self, engine: &Engine, learner: &dyn Learner, out: &mut KeyOutcome) {
+        if out.commit.is_none() || self.is_composing() || self.is_predicting() {
+            return;
+        }
+        if !self.config.prediction || self.mode != Mode::Chinese {
+            return;
+        }
+        let max = self.config.page_size.max(1);
+        self.predictions = engine.predict(self.chain.context(), learner, !self.private, max);
+        self.prediction_highlight = 0;
+        out.frame = self.frame(DictionaryNotice::None);
+    }
+
+    fn dismiss_predictions(&mut self) {
+        self.predictions.clear();
+        self.prediction_highlight = 0;
+    }
+
+    fn marks(&self) -> &'static [&'static str] {
+        if self.config.full_width_punctuation {
+            &PREDICTION_MARKS
+        } else {
+            &[]
+        }
+    }
+
+    /// The list as drawn: the predictions, then the marks.
+    fn offers(&self) -> Vec<CandidateItem> {
+        let words = self.predictions.iter().map(|p| CandidateItem {
+            text: p.text.clone(),
+            source: match p.source {
+                PredictionSource::Personal => meridian_ime_proto::CandidateSource::User,
+                PredictionSource::Dict => meridian_ime_proto::CandidateSource::Dict,
+            },
+        });
+        let marks = self.marks().iter().map(|m| CandidateItem {
+            text: (*m).to_string(),
+            source: meridian_ime_proto::CandidateSource::Dict,
+        });
+        words.chain(marks).collect()
+    }
+
+    fn move_prediction(&mut self, delta: isize) -> KeyOutcome {
+        let len = (self.predictions.len() + self.marks().len()) as isize;
+        self.prediction_highlight = (self.prediction_highlight as isize + delta).clamp(0, len - 1) as usize;
+        KeyOutcome {
+            consumed: true,
+            commit: None,
+            frame: self.frame(DictionaryNotice::None),
+        }
+    }
+
+    /// Takes item `idx` of the list. A word is learned as having followed the
+    /// last one — which is also what puts it at the top of the list next
+    /// time — and the list is offered again from it; a mark ends the chain
+    /// the way typing it would.
+    fn accept_prediction(&mut self, engine: &Engine, learner: &mut dyn Learner, idx: usize) -> KeyOutcome {
+        let marks = self.marks();
+        let Some(p) = self.predictions.get(idx).cloned() else {
+            let mark = idx
+                .checked_sub(self.predictions.len())
+                .and_then(|i| marks.get(i).copied());
+            self.dismiss_predictions();
+            let Some(mark) = mark else {
+                return KeyOutcome {
+                    consumed: true,
+                    commit: None,
+                    frame: self.frame(DictionaryNotice::None),
+                };
+            };
+            self.chain.r#break();
+            self.recent.note_other();
+            self.punct.note_commit();
+            return KeyOutcome {
+                consumed: true,
+                commit: Some(mark.to_string()),
+                frame: self.frame(DictionaryNotice::None),
+            };
+        };
+        self.dismiss_predictions();
+        self.recent.resolve_retype("", &p.text, learner);
+        let ctx = self.chain.context();
+        learner.record_transition(ctx, &p.text, EXPLICIT_TRANSITION_WEIGHT);
+        self.recent.push(CommitRecord {
+            text: p.text.clone(),
+            chars: p.text.chars().count(),
+            keys: String::new(),
+            chosen: Some(p.text.clone()),
+            recorded: Vec::new(),
+            choices: Vec::new(),
+            transitions: vec![(ctx.into(), p.text.clone(), EXPLICIT_TRANSITION_WEIGHT)],
+            learned_word: None,
+            erased: 0,
+        });
+        if p.word == p.text {
+            self.chain.advance(&[(p.word, String::new())]);
+        } else {
+            self.chain.replace_last(&p.word);
+        }
+        self.punct.note_commit();
+        let mut out = KeyOutcome {
+            consumed: true,
+            commit: Some(p.text),
+            frame: self.frame(DictionaryNotice::None),
+        };
+        self.after_commit(engine, learner, &mut out);
+        out
     }
 
     // ── helpers ────────────────────────────────────────────────────────
@@ -507,7 +729,7 @@ impl Session {
         KeyOutcome {
             consumed: false,
             commit: None,
-            frame: self.frame(false),
+            frame: self.frame(DictionaryNotice::None),
         }
     }
 
@@ -517,7 +739,7 @@ impl Session {
         KeyOutcome {
             consumed: true,
             commit: None,
-            frame: self.frame(engine.is_empty()),
+            frame: self.frame(DictionaryNotice::of(engine)),
         }
     }
 
@@ -595,7 +817,7 @@ impl Session {
                 KeyOutcome {
                     consumed: true,
                     commit: Some(text),
-                    frame: self.frame(false),
+                    frame: self.frame(DictionaryNotice::None),
                 }
             }
         }
@@ -614,7 +836,7 @@ impl Session {
         KeyOutcome {
             consumed: true,
             commit: None,
-            frame: self.frame(engine.is_empty()),
+            frame: self.frame(DictionaryNotice::of(engine)),
         }
     }
 
@@ -632,7 +854,7 @@ impl Session {
         KeyOutcome {
             consumed: true,
             commit: None,
-            frame: self.frame(engine.is_empty()),
+            frame: self.frame(DictionaryNotice::of(engine)),
         }
     }
 
@@ -643,7 +865,7 @@ impl Session {
             return KeyOutcome {
                 consumed: true,
                 commit: None,
-                frame: self.frame(engine.is_empty()),
+                frame: self.frame(DictionaryNotice::of(engine)),
             };
         };
         let key_count = self.keys.chars().count();
@@ -666,7 +888,7 @@ impl Session {
             return KeyOutcome {
                 consumed: true,
                 commit: None,
-                frame: self.frame(engine.is_empty()),
+                frame: self.frame(DictionaryNotice::of(engine)),
             };
         }
         self.chain.piece_selected(&piece.keys, &piece.text, &piece.code);
@@ -681,7 +903,7 @@ impl Session {
         KeyOutcome {
             consumed: true,
             commit: Some(text),
-            frame: self.frame(false),
+            frame: self.frame(DictionaryNotice::None),
         }
     }
 

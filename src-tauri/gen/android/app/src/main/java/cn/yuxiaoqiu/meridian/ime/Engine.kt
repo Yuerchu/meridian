@@ -27,6 +27,7 @@ internal object EngineBridge {
   @JvmStatic external fun nativeChoose(handle: Long, index: Int): String
   @JvmStatic external fun nativeInsert(handle: Long, text: String): String
   @JvmStatic external fun nativeReset(handle: Long): String
+  @JvmStatic external fun nativeDismiss(handle: Long): String
   @JvmStatic external fun nativeRefresh(handle: Long): Boolean
   @JvmStatic external fun nativeFlush(handle: Long)
   @JvmStatic external fun nativeGridTokens(): String
@@ -98,6 +99,10 @@ class Engine(dataDir: File) {
 
   fun reset(done: ((Frame?) -> Unit)? = null) =
     ask<String>("reset", done?.let { d -> { json: String? -> d(frame(json)) } }) { EngineBridge.nativeReset(it) }
+
+  /** Closes the prediction list; `done` gets the frame left. */
+  fun dismiss(done: (Frame?) -> Unit) =
+    ask<String>("dismiss", { done(frame(it)) }) { EngineBridge.nativeDismiss(it) }
 
   fun refresh() = ask<Boolean>("refresh", null) { EngineBridge.nativeRefresh(it) }
 

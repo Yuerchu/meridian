@@ -85,6 +85,8 @@ import type {
   ImeDictionaryListResponse,
   ImeDictionaryRemoveRequest,
   ImeDictionaryToggleRequest,
+  SystemNoticeDismissRequest,
+  SystemNoticeListResponse,
   ImeLmImportRequest,
   ImeLmRemoveRequest,
   ImeLmStatusInfoResponse,
@@ -843,6 +845,11 @@ export const api = {
 
   removeImeDictionary: (request: ImeDictionaryRemoveRequest) =>
     invoke<ImeDictionaryListResponse>('remove_ime_dictionary', { request }),
+
+  // What this machine did on its own; the inbox's system tab. Local only.
+  listSystemNotices: () => invoke<SystemNoticeListResponse>('list_system_notices'),
+
+  dismissSystemNotice: (request: SystemNoticeDismissRequest) => invoke<void>('dismiss_system_notice', { request }),
 
   startImeHost: () => invoke<ImeStatusInfoResponse>('start_ime_host'),
 

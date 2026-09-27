@@ -5,6 +5,7 @@ import i18n from '@/i18n'
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
 import { useConversationStore } from '@/stores/conversation-store'
 import { usePlanReviewStore, type PlanReviewEventInfo } from '@/stores/plan-review-store'
+import { useSystemNoticeStore } from '@/stores/system-notice-store'
 import type { ChatStreamEvent } from '@/types'
 
 // Keyed by turn, not by conversation. Keyed by conversation, a second turn's
@@ -333,6 +334,14 @@ export function useGlobalEventListener() {
     // nobody.
     useConversationStore.getState().loadAllPending()
 
+    // This machine's own notices (a dictionary upgrade started at launch may
+    // already be done by the time the window listens). Device-local: the
+    // channel never reaches a remote client and the store does not ask.
+    void useSystemNoticeStore.getState().load()
+    const systemNoticeUnlisten = listen('system-notice', (event) => {
+      useSystemNoticeStore.getState().receive(event.payload)
+    })
+
     const compactStartUnlisten = listen('compact-start', (event) => {
       useConversationStore.getState().handleCompactStart(event.payload.conversation_id)
     })
@@ -385,6 +394,7 @@ export function useGlobalEventListener() {
       queueDeliveredUnlisten.then((fn) => fn())
       userCommandUnlisten.then((fn) => fn())
       resyncUnlisten.then((fn) => fn())
+      systemNoticeUnlisten.then((fn) => fn())
       compactStartUnlisten.then((fn) => fn())
       compactDoneUnlisten.then((fn) => fn())
       planReviewRequestedUnlisten.then((fn) => fn())

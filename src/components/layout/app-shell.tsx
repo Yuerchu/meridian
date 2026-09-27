@@ -334,6 +334,11 @@ export function AppShell(props: ShellProps) {
                 front of the same queue; this is all of it. */}
               <NotificationInbox
                 onSelect={selectConversation}
+                onOpenSettingsTab={(tab) => {
+                  void changeSettingsTab(tab).then((changed) => {
+                    if (changed) onOpenSettings()
+                  })
+                }}
                 transcriptInert={page === 'settings' || activeReviewId !== null}
                 isOpen={inboxOpen}
                 onOpenChange={setInboxOpen}

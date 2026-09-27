@@ -97,16 +97,21 @@ fun hardwareKey(keyCode: Int, unicodeChar: Int, metaState: Int): EngineKey? {
   return EngineKey.char(unicodeChar, mods)
 }
 
+/** The keys a prediction list answers, as the session's `handle_key`. */
+private val PREDICTION_KEYS = setOf(Vk.UP, Vk.DOWN, Vk.TAB, Vk.ESCAPE)
+
 /**
  * Whether a hardware key goes to the engine, decided now because `onKeyDown`
  * has to answer before the engine has. A shortcut never does. While composing
  * everything else does (the composition owns Backspace, Enter, the arrows);
  * otherwise printable keys do, and a key the engine then declines is inserted
  * by the keyboard itself. Function keys outside a composition go straight to
- * the application, so its own repeat and navigation are untouched.
+ * the application, so its own repeat and navigation are untouched — except
+ * the four a prediction list answers, while one is on screen, and only bare.
  */
-fun shouldEat(key: EngineKey, composing: Boolean): Boolean = when {
+fun shouldEat(key: EngineKey, composing: Boolean, predicting: Boolean): Boolean = when {
   key.isShortcut -> false
   composing -> true
+  predicting && key.mods and Vk.MOD_SHIFT == 0 && key.vk in PREDICTION_KEYS && !key.isPrintable -> true
   else -> key.isPrintable
 }

@@ -32,6 +32,7 @@ import type {
   ImeDictionaryImportReportResponse,
   ImeDictionaryStagedInfoResponse,
   ImeDictionaryInfoResponse,
+  ImeDictionaryState,
   ImePunctuation,
   ImeScheme,
   ImeStatusInfoResponse,
@@ -39,6 +40,7 @@ import type {
 import { SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
 import { useSettingsDirtyRegistration } from './dirty-guard'
 import { ImeLmSection } from './ime-lm-section'
+import { useSystemNoticeStore } from '@/stores/system-notice-store'
 
 /** Mirrors `HostConfig::default()`; only used until the first load lands. */
 const DEFAULTS: ImeConfigInfoResponse = {
@@ -49,6 +51,7 @@ const DEFAULTS: ImeConfigInfoResponse = {
   private_apps: [],
   debug_log: false,
   context_apps: [],
+  prediction: true,
 }
 
 /** One executable name per line, blanks dropped. */
@@ -150,6 +153,21 @@ export function ImeSettings() {
   useEffect(() => {
     if (platform !== null) void loadData(android)
   }, [platform, android, loadData])
+
+  // A dictionary upgrade running in the background reports through the
+  // inbox; each change it reports may be a row here moving from "upgrading"
+  // to ready (or failed), so the list is read again. Only the list: the
+  // config form may be holding an unsaved draft.
+  const notices = useSystemNoticeStore((st) => st.notices)
+  useEffect(() => {
+    if (notices.length === 0) return
+    api
+      .listImeDictionaries()
+      .then(setDictionaries)
+      .catch(() => {
+        // The next change, or the next visit, reads it again.
+      })
+  }, [notices])
 
   // Polled: on Android the person leaves for the system's keyboard settings
   // and comes back, and the page should say what changed without a reload.
@@ -518,6 +536,27 @@ export function ImeSettings() {
         </p>
       </div>
 
+      <div data-slot="ime-prediction" className="space-y-1.5">
+        <CellSwitch
+          aria-label={t('settings.ime.prediction')}
+          aria-describedby="ime-prediction-hint"
+          isSelected={config.prediction}
+          onChange={(selected) => setConfig({ ...config, prediction: selected })}
+        >
+          <CellSwitch.Trigger className="pointer-coarse:h-11">
+            <CellSwitch.Label>{t('settings.ime.prediction')}</CellSwitch.Label>
+            <CellSwitch.Control />
+          </CellSwitch.Trigger>
+        </CellSwitch>
+        <p
+          id="ime-prediction-hint"
+          data-slot="ime-prediction-hint"
+          className="text-caption-1-regular text-text-secondary"
+        >
+          {t(android ? 'settings.ime.predictionHintAndroid' : 'settings.ime.predictionHint')}
+        </p>
+      </div>
+
       <TextField>
         <Label>{t(android ? 'settings.ime.privateAppsAndroid' : 'settings.ime.privateApps')}</Label>
         <TextArea
@@ -696,6 +735,7 @@ export function ImeSettings() {
                         license: dict.license,
                       })}
                     </ItemCard.Description>
+                    <DictionaryStateLine state={dict.state} />
                   </ItemCard.Content>
                   <ItemCard.Action className="flex items-center gap-2">
                     <CellSwitch
@@ -737,5 +777,38 @@ export function ImeSettings() {
 
       {confirmDialog}
     </SettingsPane>
+  )
+}
+
+/**
+ * Why the keyboard cannot use a dictionary, when it cannot. Nothing for one it
+ * can. The reader's own error text appears only for a damaged file — for the
+ * others the reason is the state itself, said in words.
+ */
+function DictionaryStateLine({ state }: { state: ImeDictionaryState }) {
+  const { t } = useTranslation()
+  if (state.kind === 'ready') return null
+  if (state.kind === 'upgrading') {
+    return (
+      <p
+        data-slot="ime-dictionary-state"
+        role="status"
+        className="flex items-center gap-2 text-caption-1-regular text-text-secondary"
+      >
+        <Spinner size="sm" />
+        {t('settings.ime.dictionaryUpgrading')}
+      </p>
+    )
+  }
+  const message =
+    state.kind === 'needs_upgrade'
+      ? t('settings.ime.dictionaryNeedsUpgrade')
+      : state.kind === 'too_new'
+        ? t('settings.ime.dictionaryTooNew')
+        : t('settings.ime.dictionaryUnreadable', { error: state.error })
+  return (
+    <p data-slot="ime-dictionary-state" role="alert" className="text-caption-1-regular text-status-danger break-all">
+      {message}
+    </p>
   )
 }

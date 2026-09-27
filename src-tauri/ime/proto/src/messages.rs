@@ -119,6 +119,11 @@ pub enum ClientMessage {
     Layout { session_id: u64, rect: Rect },
     /// Drop any composition in progress (focus lost, composition terminated).
     Reset { session_id: u64 },
+    /// The predictions on screen were passed over: a key the text service did
+    /// not eat went to the application, or the caret moved. The host hides
+    /// them and forgets them, and answers `KeyResult` with the frame that is
+    /// left, so the window follows.
+    Dismiss { session_id: u64 },
     /// A dictionary was imported or removed; reload the set.
     ReloadDictionaries,
     /// Control clients only: exit cleanly after flushing.
@@ -176,6 +181,11 @@ pub struct Frame {
     /// A line for the window to show instead of candidates, e.g. that no
     /// dictionary has been imported yet.
     pub notice: Option<String>,
+    /// The candidates are predictions of what may follow the last commit,
+    /// not readings of keys: there is no preedit, and only Up, Down, Tab, Esc
+    /// and a tap act on them. Any other key dismisses them first and then
+    /// means what it always means, so typing on is never interrupted.
+    pub predicting: bool,
 }
 
 impl Frame {

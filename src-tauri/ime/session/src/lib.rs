@@ -23,7 +23,10 @@ pub use chain::{CommitRecord, RECENT_COMMITS};
 pub use punct::{PunctState, full_width_of};
 pub use router::{FLUSH_INTERVAL, Router, RouterConfig, SessionKey};
 pub use script::parse_script;
-pub use session::{KeyOutcome, LEFT_CONTEXT_CHARS, RIGHT_CONTEXT_CHARS, Session, SessionConfig};
+pub use session::{
+    DICTIONARY_UPGRADE_NOTICE, DictionaryNotice, KeyOutcome, LEFT_CONTEXT_CHARS, NO_DICTIONARY_NOTICE,
+    RIGHT_CONTEXT_CHARS, Session, SessionConfig,
+};
 
 pub use meridian_ime_engine::{Engine, InputScheme, Learner};
 pub use meridian_ime_proto::{Frame, KeyEvent, Mode, Modifiers};

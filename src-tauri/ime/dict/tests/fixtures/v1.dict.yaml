@@ -1,0 +1,25 @@
+# A small dictionary for the v1 fixture: polyphones, a code with several
+# words, and words that begin longer ones.
+---
+name: fixture
+version: "1"
+sort: by_weight
+...
+你	ni	9000
+尼	ni	500
+泥	ni	400
+好	hao	8000
+号	hao	900
+你好	ni hao	9500
+你好吗	ni hao ma	800
+中	zhong	8000
+中国	zhong guo	9000
+中国人	zhong guo ren	3000
+中国队	zhong guo dui	1000
+中国行	zhong guo xing	20
+中国行	zhong guo hang	40
+行	xing	7000
+行	hang	3000
+我	wo	9800
+我们	wo men	8000
+我的	wo de	6000

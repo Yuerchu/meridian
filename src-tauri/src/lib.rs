@@ -18,6 +18,7 @@ mod platform;
 mod remote;
 /// When the launch screen goes away, and why it always does.
 mod splash;
+mod system_notice;
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -156,6 +157,9 @@ pub fn run() {
                 .turn_starter
                 .set(Arc::new(commands::chat::DesktopTurns(services.clone())));
             app.manage(services.clone());
+            // Before anything that may have something to say, which is the
+            // input method's start below.
+            app.manage(system_notice::SystemNotices::to_window(app.handle().clone()));
 
             {
                 let services = services.clone();

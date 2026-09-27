@@ -41,6 +41,14 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
   private var composingPredicted = false
   private val eaten = mutableSetOf<Int>()
   private var shiftAlone = false
+  /** A prediction list is on screen, per the last frame drawn. */
+  private var predicting = false
+  /**
+   * Where the caret was when the list was offered. [PENDING] until the
+   * field reports the caret after the commit that brought the list up —
+   * that report is the commit's own echo, not somebody moving the caret.
+   */
+  private var predictionAt = NOWHERE
 
   private val readSurrounding = Runnable { reportSurrounding() }
 
@@ -172,6 +180,14 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
       }
       return
     }
+    if (predicting) {
+      // A list offered here means nothing anywhere else: 人 after 中国 is
+      // not something to insert where the person has just tapped.
+      when {
+        predictionAt == PENDING && newSelStart == newSelEnd -> predictionAt = newSelStart
+        newSelStart != predictionAt || newSelEnd != predictionAt -> dismissPrediction()
+      }
+    }
     if (!privateField) {
       main.removeCallbacks(readSurrounding)
       main.postDelayed(readSurrounding, SURROUNDING_DELAY_MS)
@@ -197,7 +213,9 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
     shiftAlone = false
     val key = hardwareKey(keyCode, event.getUnicodeChar(event.metaState), event.metaState)
       ?: return super.onKeyDown(keyCode, event)
-    if (currentInputConnection == null || !shouldEat(key, applier.composing || composingPredicted)) {
+    if (currentInputConnection == null || !shouldEat(key, applier.composing || composingPredicted, predicting)) {
+      // Going to the application past a list the engine drew: close it.
+      if (predicting) dismissPrediction()
       return super.onKeyDown(keyCode, event)
     }
     eaten.add(keyCode)
@@ -269,6 +287,7 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
    */
   private fun switchLetters(layer: Layer) {
     if (applier.composing) applier.apply(EMPTY_FRAME)
+    if (predicting) dismissPrediction()
     keyboard.lettersLayer = layer
     keyboard.layer = layer
     keyboard.shifted = false
@@ -291,10 +310,19 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
     composingPredicted = false
     applier.apply(key, outcome ?: KeyOutcome(consumed = false, commit = null, frame = EMPTY_FRAME), enterAction)
     render(outcome?.frame)
+    if (outcome?.commit != null && outcome.frame.predicting) predictionAt = PENDING
+  }
+
+  private fun dismissPrediction() {
+    predicting = false
+    predictionAt = NOWHERE
+    engine.dismiss { frame -> frame?.let(::render) }
   }
 
   private fun render(frame: Frame?) {
     frame?.let { keyboard.mode = it.mode }
+    predicting = frame?.predicting == true
+    if (!predicting) predictionAt = NOWHERE
     val visible = frame != null && !frame.isEmpty
     keyboard.frame = if (visible) frame else null
     // The touch keyboard has its own candidate bar; the system's candidates
@@ -310,6 +338,9 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
     const val SURROUNDING_DELAY_MS = 150L
     const val LEFT_CHARS = 64
     const val RIGHT_CHARS = 32
-    val EMPTY_FRAME = Frame(emptyList(), emptyList(), 0, 0, 0, InputMode.CHINESE, null)
+    /** [predictionAt] with no list on screen, and before its commit's echo. */
+    const val NOWHERE = -1
+    const val PENDING = -2
+    val EMPTY_FRAME = Frame(emptyList(), emptyList(), 0, 0, 0, InputMode.CHINESE, null, predicting = false)
   }
 }

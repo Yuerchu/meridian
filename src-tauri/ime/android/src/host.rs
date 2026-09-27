@@ -10,7 +10,7 @@ use meridian_ime_host::data::{
     Change, SharedScorer, Watch, build_engine, input_scheme, load_config, load_hints, load_scorer, open_learner,
 };
 use meridian_ime_proto::{Frame, KeyEvent};
-use meridian_ime_session::{FLUSH_INTERVAL, KeyOutcome, Session, SessionConfig};
+use meridian_ime_session::{DictionaryNotice, FLUSH_INTERVAL, KeyOutcome, Session, SessionConfig};
 
 /// Whether a field in `package` may be shown the person's memory hints:
 /// Meridian's own (the package is the app identifier), or one they opted in
@@ -90,6 +90,7 @@ impl ImeHost {
             page_size: self.config.page_size as usize,
             full_width_punctuation: matches!(self.config.punctuation, Punctuation::FullWidth),
             learning: self.config.learning,
+            prediction: self.config.prediction,
         }
     }
 
@@ -163,8 +164,14 @@ impl ImeHost {
         self.session.reset()
     }
 
+    /// Closes the prediction list: the cursor moved, or a key went to the
+    /// application without reaching the engine. Returns the frame left.
+    pub fn dismiss(&mut self) -> Frame {
+        self.session.dismiss()
+    }
+
     pub fn frame(&self) -> Frame {
-        self.session.frame(self.engine.is_empty())
+        self.session.frame(DictionaryNotice::of(&self.engine))
     }
 
     pub fn is_composing(&self) -> bool {
@@ -479,6 +486,21 @@ mod tests {
         let committed = host.handle_key(printable(' '));
         let json = serde_json::to_string_pretty(&(composing, committed)).unwrap() + "\n";
         crate::fixtures::check("outcomes.json", &json);
+    }
+
+    #[test]
+    fn a_commit_offers_predictions_and_dismiss_closes_them() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut host = open(tmp.path());
+        host.start_input(None, false);
+        typed(&mut host, "ni");
+        let out = host.handle_key(printable(' '));
+        assert!(out.frame.predicting);
+        assert_eq!(out.frame.candidates[0].text, "好");
+        assert!(host.dismiss().is_empty());
+        typed(&mut host, "ni");
+        host.handle_key(printable(' '));
+        assert_eq!(host.choose(0).commit.as_deref(), Some("好"), "a tap takes one");
     }
 
     /// mtime has a coarse resolution on some filesystems; move it forward

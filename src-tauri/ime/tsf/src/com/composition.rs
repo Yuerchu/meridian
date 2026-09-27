@@ -24,7 +24,7 @@ use windows::Win32::System::Variant::VARIANT;
 use windows::Win32::UI::TextServices::{
     GUID_PROP_ATTRIBUTE, INSERT_TEXT_AT_SELECTION_FLAGS, ITfComposition, ITfCompositionSink, ITfCompositionSink_Impl,
     ITfContext, ITfContextComposition, ITfEditSession, ITfEditSession_Impl, ITfInsertAtSelection, ITfRange, TF_AE_NONE,
-    TF_ANCHOR_END, TF_ES_READWRITE, TF_IAS_QUERYONLY, TF_SELECTION, TF_SELECTIONSTYLE,
+    TF_ANCHOR_END, TF_DEFAULT_SELECTION, TF_ES_READWRITE, TF_IAS_QUERYONLY, TF_SELECTION, TF_SELECTIONSTYLE,
 };
 use windows_core::{BOOL, Interface, Ref, Result, implement};
 
@@ -48,6 +48,12 @@ pub struct Shared {
     /// to drop its buffer before the next key.
     server_stale: Cell<bool>,
     client_id: Cell<u32>,
+    /// A prediction list is on screen, per the host's last frame. Decides
+    /// which keys are ours, like `composing`.
+    predicting: Cell<bool>,
+    /// One of our own edit sessions just ran; the text edit sink's next
+    /// `OnEndEdit` is its echo, not the caret being moved by somebody.
+    own_edit: Cell<bool>,
 }
 
 impl Shared {
@@ -69,6 +75,19 @@ impl Shared {
 
     pub fn take_server_stale(&self) -> bool {
         self.server_stale.take()
+    }
+
+    pub fn is_predicting(&self) -> bool {
+        self.predicting.get()
+    }
+
+    pub fn set_predicting(&self, on: bool) {
+        self.predicting.set(on);
+    }
+
+    /// Whether the edit that just ended was ours, clearing the mark.
+    pub fn take_own_edit(&self) -> bool {
+        self.own_edit.take()
     }
 
     pub fn has_composition(&self) -> bool {
@@ -154,24 +173,33 @@ impl ITfEditSession_Impl for ApplySession_Impl {
 impl ApplySession_Impl {
     fn run(&self, ec: u32) -> Result<()> {
         let shared = &self.shared;
+        shared.own_edit.set(true);
         if let Some(text) = &self.commit {
             commit_text(shared, &self.ctx, ec, text)?;
         }
-        if self.preedit.is_empty() {
+        let rect = if self.preedit.is_empty() {
             // No commit and nothing left to show: the buffer was backspaced
             // away or cancelled. The range still holds the last preedit the
             // document was shown, and `EndComposition` alone would leave it
             // there as ordinary text. After a commit the composition is
             // already gone and this is a no-op.
             cancel_composition(shared, ec)?;
+            // A prediction list has no composition to sit under, so it goes
+            // where the caret is: after what was just committed.
+            if shared.is_predicting() {
+                measure_caret(&self.ctx, ec)
+            } else {
+                None
+            }
         } else {
             update_preedit(shared, &self.ctx, ec, &self.preedit)?;
-            if let Some(rect) = measure(shared, &self.ctx, ec) {
-                let session_id = self.client.borrow().session_id();
-                let mut client = self.client.borrow_mut();
-                if client.is_connected() {
-                    let _ = client.request(&ClientMessage::Layout { session_id, rect });
-                }
+            measure(shared, &self.ctx, ec)
+        };
+        if let Some(rect) = rect {
+            let session_id = self.client.borrow().session_id();
+            let mut client = self.client.borrow_mut();
+            if client.is_connected() {
+                let _ = client.request(&ClientMessage::Layout { session_id, rect });
             }
         }
         Ok(())
@@ -328,13 +356,35 @@ unsafe fn move_caret_to_end(ctx: &ITfContext, ec: u32, range: &ITfRange) -> Resu
 /// last position or falls back to the caret it can see.
 fn measure(shared: &Shared, ctx: &ITfContext, ec: u32) -> Option<Rect> {
     let composition = shared.composition.borrow().clone()?;
+    // SAFETY: COM call under the edit cookie.
+    let range = unsafe { composition.GetRange() }.ok()?;
+    measure_range(ctx, ec, &range)
+}
+
+/// The caret's rectangle: the default selection, collapsed after a commit.
+fn measure_caret(ctx: &ITfContext, ec: u32) -> Option<Rect> {
+    let mut selection = [TF_SELECTION::default()];
+    let mut fetched = 0u32;
+    // SAFETY: COM call under the edit cookie; the range it hands back is
+    // owned by the array and released when taken out of the ManuallyDrop.
+    unsafe {
+        ctx.GetSelection(ec, TF_DEFAULT_SELECTION, &mut selection, &mut fetched)
+            .ok()?;
+        let range = ManuallyDrop::take(&mut selection[0].range);
+        if fetched == 0 {
+            return None;
+        }
+        measure_range(ctx, ec, range.as_ref()?)
+    }
+}
+
+fn measure_range(ctx: &ITfContext, ec: u32, range: &ITfRange) -> Option<Rect> {
     // SAFETY: COM calls under the edit cookie.
     unsafe {
-        let range = composition.GetRange().ok()?;
         let view = ctx.GetActiveView().ok()?;
         let mut rc = RECT::default();
         let mut clipped = BOOL(0);
-        view.GetTextExt(ec, &range, &mut rc, &mut clipped).ok()?;
+        view.GetTextExt(ec, range, &mut rc, &mut clipped).ok()?;
         if rc.right <= rc.left && rc.bottom <= rc.top {
             return None;
         }

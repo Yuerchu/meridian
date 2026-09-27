@@ -90,6 +90,10 @@ pub struct Engine {
     dicts: Arc<DictSet>,
     scorer: Box<dyn SentenceScorer>,
     limits: LookupLimits,
+    /// Dictionaries listed but written in an older format, so not in
+    /// `dicts`: what an empty engine is waiting for, when it is not simply
+    /// that nothing was imported.
+    outdated: usize,
 }
 
 impl Engine {
@@ -98,7 +102,19 @@ impl Engine {
             dicts,
             scorer: Box::new(NoScorer),
             limits: LookupLimits::default(),
+            outdated: 0,
         }
+    }
+
+    /// Records how many listed dictionaries were skipped for being in an
+    /// older format; Meridian upgrades them when it next starts.
+    pub fn with_outdated(mut self, outdated: usize) -> Self {
+        self.outdated = outdated;
+        self
+    }
+
+    pub fn outdated_dictionaries(&self) -> usize {
+        self.outdated
     }
 
     pub fn with_scorer(mut self, scorer: Box<dyn SentenceScorer>) -> Self {

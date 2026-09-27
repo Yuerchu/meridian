@@ -25,8 +25,12 @@ class EngineBridgeContractTest {
     assertEquals(CandidateSource.DICT, composing.frame.candidates[0].source)
     assertEquals(1, composing.frame.pageCount)
     assertEquals(InputMode.CHINESE, composing.frame.mode)
+    assertEquals(false, composing.frame.predicting)
     assertEquals("你", committed.commit)
-    assertTrue(committed.frame.isEmpty)
+    // What may follow 你, then the two marks; no preedit, since nothing is typed.
+    assertTrue(committed.frame.predicting)
+    assertTrue(committed.frame.preedit.isEmpty())
+    assertEquals(listOf("好", "，", "。"), committed.frame.candidates.map { it.text })
   }
 
   @Test

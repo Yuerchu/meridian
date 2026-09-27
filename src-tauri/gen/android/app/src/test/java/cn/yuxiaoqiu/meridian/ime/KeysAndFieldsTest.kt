@@ -42,10 +42,21 @@ class KeysAndFieldsTest {
     val a = EngineKey.char('a'.code)
     val back = EngineKey.function(Vk.BACK)
     val copy = EngineKey.char('c'.code, Vk.MOD_CTRL)
-    assertTrue(shouldEat(a, composing = false))
-    assertFalse("Backspace outside a composition is the app's", shouldEat(back, composing = false))
-    assertTrue("inside one it is the composition's", shouldEat(back, composing = true))
-    assertFalse("a shortcut never", shouldEat(copy, composing = true))
+    assertTrue(shouldEat(a, composing = false, predicting = false))
+    assertFalse("Backspace outside a composition is the app's", shouldEat(back, composing = false, predicting = false))
+    assertTrue("inside one it is the composition's", shouldEat(back, composing = true, predicting = false))
+    assertFalse("a shortcut never", shouldEat(copy, composing = true, predicting = false))
+    assertFalse("nor past a prediction list", shouldEat(copy, composing = false, predicting = true))
+    for (vk in listOf(Vk.UP, Vk.DOWN, Vk.TAB, Vk.ESCAPE)) {
+      val k = EngineKey.function(vk)
+      assertTrue("$vk while a list is up", shouldEat(k, composing = false, predicting = true))
+      assertFalse("$vk with no list", shouldEat(k, composing = false, predicting = false))
+    }
+    assertFalse("Backspace passes a list", shouldEat(back, composing = false, predicting = true))
+    assertFalse(
+      "Shift+Tab is the application's",
+      shouldEat(EngineKey.function(Vk.TAB, Vk.MOD_SHIFT), composing = false, predicting = true),
+    )
   }
 
   @Test

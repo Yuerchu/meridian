@@ -310,3 +310,49 @@ fn a_private_app_gets_no_hints_even_when_opted_in() {
     r.handle(1, key(1, 'n'));
     assert!(heard(&l).is_empty());
 }
+
+#[test]
+fn dismiss_closes_the_prediction_list_and_answers_with_the_frame_left() {
+    let (_d, mut r) = router();
+    r.handle(1, hello(1, ClientKind::Ime, None));
+    r.handle(1, key(1, 'n'));
+    r.handle(1, key(1, 'i'));
+    let space = ClientMessage::Key {
+        session_id: 1,
+        event: KeyEvent {
+            vk: 0x20,
+            ch: Some(' '),
+            mods: Modifiers::default(),
+            caps_lock: false,
+        },
+        surrounding: None,
+    };
+    match r.handle(1, space) {
+        ServerMessage::KeyResult { commit, frame, .. } => {
+            assert_eq!(commit.as_deref(), Some("你"));
+            assert!(frame.predicting);
+            assert_eq!(frame.candidates[0].text, "好");
+        }
+        other => panic!("{other:?}"),
+    }
+    match r.handle(1, ClientMessage::Dismiss { session_id: 1 }) {
+        ServerMessage::KeyResult {
+            consumed,
+            commit,
+            frame,
+            ..
+        } => {
+            assert!(!consumed);
+            assert!(commit.is_none());
+            assert!(frame.is_empty(), "the window hides");
+        }
+        other => panic!("{other:?}"),
+    }
+    assert!(matches!(
+        r.handle(1, ClientMessage::Dismiss { session_id: 9 }),
+        ServerMessage::Error {
+            code: ErrorCode::UnknownSession,
+            ..
+        }
+    ));
+}

@@ -13,6 +13,7 @@
 //!   the [`sentence::SentenceScorer`] hook a future model reranker plugs into.
 //! - [`learn`]: the [`learn::Learner`] the scorer reads and the session writes.
 //! - [`Engine::query`] ties them together and returns a [`Query`].
+//! - [`Engine::predict`]: what may follow a commit, with no keys at all.
 //!
 //! Nothing here knows about keys as *events* (paging, selection, punctuation):
 //! that is `meridian-ime-session`. Nothing here touches a file except the
@@ -20,6 +21,7 @@
 
 pub mod lattice;
 pub mod learn;
+pub mod predict;
 pub mod query;
 pub mod scheme;
 pub mod sentence;
@@ -27,6 +29,7 @@ pub mod storage;
 
 pub use lattice::SpanCache;
 pub use learn::{Context, FileLearner, Learner, MemoryLearner, Muted};
+pub use predict::{Prediction, PredictionSource};
 pub use query::{Candidate, CandidateSource, Engine, Query, QueryContext};
 pub use scheme::grid::SpellingHabit;
 pub use scheme::grid::{

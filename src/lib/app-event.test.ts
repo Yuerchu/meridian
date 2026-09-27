@@ -8,6 +8,7 @@ import {
   parseQueueUpdatedEvent,
   parsePlanReviewEvent,
   parseRemoteResyncEvent,
+  parseSystemNoticeEvent,
   parseUserCommandEvent,
   parseVoiceModelDownloadDoneEvent,
   parseVoiceModelDownloadEvent,
@@ -167,6 +168,45 @@ describe('closed first-party event contracts', () => {
     expect(() => parseWindowInsetsEvent({ ...insets, imeBottom: -1 })).toThrow('finite number')
     expect(parseRemoteResyncEvent({})).toEqual({})
     expect(() => parseRemoteResyncEvent({ replayed: false })).toThrow('must contain exactly')
+  })
+
+  it('reads a system notice exactly, and only on its own channel', () => {
+    const notice = {
+      id: 'n-1',
+      started_at: 1_700_000_000_000,
+      finished_at: null,
+      detail: {
+        kind: 'ime_dictionary_upgrade',
+        state: 'running',
+        dictionaries: ['雾凇拼音'],
+        upgraded: 0,
+        failures: [],
+      },
+    }
+    expect(parseSystemNoticeEvent({ type: 'upsert', notice })).toEqual({ type: 'upsert', notice })
+    const failed = {
+      ...notice,
+      finished_at: 1_700_000_005_000,
+      detail: { ...notice.detail, state: 'failed', failures: [{ name: '雾凇拼音', error: 'damaged' }] },
+    }
+    expect(parseAppEventPayload('system-notice', { type: 'upsert', notice: failed })).toEqual({
+      type: 'upsert',
+      notice: failed,
+    })
+    expect(parseSystemNoticeEvent({ type: 'dismiss', id: 'n-1' })).toEqual({ type: 'dismiss', id: 'n-1' })
+    expect(() => parseSystemNoticeEvent({ type: 'dismiss', id: 'n-1', notice })).toThrow('must contain exactly')
+    expect(() =>
+      parseSystemNoticeEvent({ type: 'upsert', notice: { ...notice, detail: { ...notice.detail, state: 'paused' } } }),
+    ).toThrow('state must be one of')
+    expect(() =>
+      parseSystemNoticeEvent({ type: 'upsert', notice: { ...notice, detail: { ...notice.detail, kind: 'other' } } }),
+    ).toThrow('kind must be one of')
+    expect(() =>
+      parseSystemNoticeEvent({
+        type: 'upsert',
+        notice: { ...failed, detail: { ...failed.detail, failures: [{ name: 'x' }] } },
+      }),
+    ).toThrow('must contain exactly')
   })
 
   it('keeps plan-review events as exact invalidations', () => {

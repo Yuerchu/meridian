@@ -27,7 +27,7 @@ use windows::Win32::UI::TextServices::{
     GUID_COMPARTMENT_KEYBOARD_DISABLED, GUID_COMPARTMENT_KEYBOARD_INPUTMODE_CONVERSION,
     GUID_COMPARTMENT_KEYBOARD_OPENCLOSE, GUID_TFCAT_TIP_KEYBOARD, ITfActiveLanguageProfileNotifySink, ITfCategoryMgr,
     ITfCompartment, ITfCompartmentEventSink, ITfCompartmentMgr, ITfContext, ITfDisplayAttributeProvider,
-    ITfInputProcessorProfileMgr, ITfKeyEventSink, ITfKeyEventSink_Impl, ITfKeystrokeMgr, ITfSource,
+    ITfInputProcessorProfileMgr, ITfKeyEventSink, ITfKeyEventSink_Impl, ITfKeystrokeMgr, ITfSource, ITfTextEditSink,
     ITfTextInputProcessor_Impl, ITfTextInputProcessorEx, ITfTextInputProcessorEx_Impl, ITfThreadMgr,
     ITfThreadMgrEventSink, TF_CONVERSIONMODE_NATIVE, TF_INVALID_COOKIE, TF_TMAE_SECUREMODE,
 };
@@ -44,7 +44,8 @@ use crate::client::Client;
     ITfThreadMgrEventSink,
     ITfCompartmentEventSink,
     ITfActiveLanguageProfileNotifySink,
-    ITfDisplayAttributeProvider
+    ITfDisplayAttributeProvider,
+    ITfTextEditSink
 )]
 pub struct TextService {
     client_id: Cell<u32>,
@@ -60,6 +61,9 @@ pub struct TextService {
     openclose_cookie: Cell<u32>,
     profile_cookie: Cell<u32>,
     openclose: RefCell<Option<ITfCompartment>>,
+    /// The focused context's text edit sink, advised so a caret moved by
+    /// the mouse can close a prediction list; unadvised on the next focus.
+    edit_sink: RefCell<Option<(ITfSource, u32)>>,
 }
 
 impl TextService {
@@ -77,6 +81,7 @@ impl TextService {
             openclose_cookie: Cell::new(TF_INVALID_COOKIE),
             profile_cookie: Cell::new(TF_INVALID_COOKIE),
             openclose: RefCell::new(None),
+            edit_sink: RefCell::new(None),
         }
     }
 }
@@ -155,6 +160,9 @@ impl TextService_Impl {
             }
         }
         self.chinese_mode.set(true);
+        // SAFETY: COM calls on the STA thread.
+        let focused = unsafe { tm.GetFocus().and_then(|dim| dim.GetTop()) }.ok();
+        self.watch_edits(focused.as_ref());
         if !self.secure.get() {
             let _ = self.client.borrow_mut().connection();
         }
@@ -169,6 +177,8 @@ impl TextService_Impl {
         if self.shared.is_composing() || self.shared.has_composition() {
             self.shared.finish_as_is();
         }
+        self.watch_edits(None);
+        self.shared.set_predicting(false);
         let tm = self.thread_mgr.borrow_mut().take();
         if let Some(tm) = tm {
             // SAFETY: undoing the advises made in `activate`.
@@ -234,6 +244,7 @@ impl TextService_Impl {
         eats_key(
             ev,
             self.shared.is_composing(),
+            self.shared.is_predicting(),
             self.chinese_mode.get(),
             self.full_width_punctuation(),
         )
@@ -242,6 +253,11 @@ impl TextService_Impl {
     /// Sends one key and applies the answer. Returns whether the key was eaten.
     fn handle_key(&self, ctx: &ITfContext, ev: KeyEvent) -> bool {
         if !self.would_eat(ctx, &ev) {
+            // The key goes to the application without the host seeing it,
+            // so the host is told the list it drew was passed over.
+            if self.shared.is_predicting() {
+                self.dismiss();
+            }
             return false;
         }
         let session_id = self.client.borrow().session_id();
@@ -278,6 +294,7 @@ impl TextService_Impl {
         ch: Option<char>,
     ) -> bool {
         self.sync_mode(frame.mode);
+        self.shared.set_predicting(frame.predicting);
         let preedit = frame.preedit_text();
         let composing = !preedit.is_empty();
         if !consumed && commit.is_none() && !composing {
@@ -297,6 +314,7 @@ impl TextService_Impl {
     /// it has none. Used when the host is unreachable and when it declines a
     /// key we had promised to eat.
     fn self_insert(&self, ctx: &ITfContext, ch: Option<char>) -> bool {
+        self.shared.set_predicting(false);
         match ch {
             Some(c) if !c.is_control() => {
                 self.shared.set_composing(false);
@@ -305,6 +323,37 @@ impl TextService_Impl {
                 true
             }
             _ => false,
+        }
+    }
+
+    /// Closes a prediction list: here at once, so the next key is judged
+    /// without it, and at the host, which hides the window.
+    pub(super) fn dismiss(&self) {
+        self.shared.set_predicting(false);
+        let session_id = self.client.borrow().session_id();
+        let mut client = self.client.borrow_mut();
+        if client.is_connected() {
+            let _ = client.request(&ClientMessage::Dismiss { session_id });
+        }
+    }
+
+    /// Advises the text edit sink on `ctx`, after taking it off the context
+    /// it was on. `None` only takes it off.
+    pub(super) fn watch_edits(&self, ctx: Option<&ITfContext>) {
+        if let Some((source, cookie)) = self.edit_sink.borrow_mut().take() {
+            // SAFETY: undoing an advise made below.
+            unsafe {
+                let _ = source.UnadviseSink(cookie);
+            }
+        }
+        let Some(ctx) = ctx else { return };
+        let this: IUnknown = self.to_interface();
+        let (Ok(source), Ok(sink)) = (ctx.cast::<ITfSource>(), this.cast::<ITfTextEditSink>()) else {
+            return;
+        };
+        // SAFETY: COM call on the STA thread with a live context.
+        if let Ok(cookie) = unsafe { source.AdviseSink(&ITfTextEditSink::IID, &sink) } {
+            *self.edit_sink.borrow_mut() = Some((source, cookie));
         }
     }
 
@@ -427,8 +476,11 @@ impl ITfKeyEventSink_Impl for TextService_Impl {
                 }
             } else if self.shared.is_composing() || self.shared.has_composition() {
                 self.shared.finish_as_is();
+                self.shared.set_predicting(false);
                 let session_id = self.client.borrow().session_id();
                 let _ = self.client.borrow_mut().request(&ClientMessage::Reset { session_id });
+            } else if self.shared.is_predicting() {
+                self.dismiss();
             }
         });
         Ok(())

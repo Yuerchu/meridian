@@ -1175,6 +1175,9 @@ const integrations: Record<string, DemoHandler> = {
     return state.ime
   },
   list_ime_dictionaries: (_args, { state }) => state.imeDictionaries,
+  // The demo machine did nothing on its own, so the inbox has no system tab.
+  list_system_notices: () => [],
+  dismiss_system_notice: () => null,
   set_ime_dictionary_enabled: (args, { state }) => {
     const req = request<{ file: string; enabled: boolean }>(args)
     const row = state.imeDictionaries.find((d) => d.file === req.file)

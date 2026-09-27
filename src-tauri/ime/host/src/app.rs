@@ -247,6 +247,7 @@ fn router_config(c: &HostConfig) -> RouterConfig {
         page_size: c.page_size as usize,
         full_width_punctuation: matches!(c.punctuation, meridian_ime_config::Punctuation::FullWidth),
         learning: c.learning,
+        prediction: c.prediction,
         private_apps: c.private_apps.clone(),
         context_apps: c.context_apps.clone(),
     }

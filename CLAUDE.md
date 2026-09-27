@@ -154,7 +154,7 @@ the core on its own, kept in step by hand.
 
   So `attention` / `attentionOrder` sit beside `sessions` rather than inside one, and every path that retires an approval — result, stop, orphan, nested resolve — clears the queue *before* its `if (!session) return`. `ConversationIndicator` reads the queue, not the session. It has two exits: `approval-notifications.tsx` draws the front of it as a stack of BoardUI notifications, and the header's bell (`notification-inbox.tsx`, the registry's `NotificationBell` over its `NotificationCenter`) lists all of it. `commands::approval::all_pending_approvals` rebuilds it after a reload or a remote connect, since the announcing event is never replayed.
 
-  **Order is ours, and both exits are derived from it rather than synchronised to it.** `pending()` in `layout/approval-queue.ts` is the one derivation: `attentionOrder` minus the review page being read, split into `listed` and `here` — `here` being what the conversation being read is waiting on (unless settings or a review has made its transcript inert). `ApprovalNotifications` renders the front `MAX_VISIBLE` of `listed` straight into the one `NotificationViewport` as children keyed by `approvalId`; the inbox renders all of `listed`, grouped into approvals (tool calls) and questions (`ask_user`, ACP elicitation, plan review), and says of `here` only how many there are, with a button that asks the transcript (`lib/pending-reveal.ts`) to scroll to the turn holding `targetApproval`'s question. Rows for `here` would be a second place to answer a card already in front of the reader. There is no second queue: the React Aria `ToastQueue` this replaced only offered `add` (which unshifts) and `close`, so it had to be cleared and rebuilt back-to-front on every change of the *sequence*, and a set diff there made "defer" silently do nothing. Now deferring is one store write and the same render reorders the stack, with the viewport's layout spring moving the rows that stayed. Every visible row is a full card with its own buttons; the rest of the queue is not drawn there but is in the inbox. The inbox has no read state (`readable={false}`): a question is never "read", only answered, and an answered one leaves both lists by the same store write. A question's time is `askedAt`, stamped once by the backend when the question is registered (`PendingApproval::asked_at`) and carried on both the announcing event and `all_pending_approvals`, so one rebuilt after a reload or a remote connect keeps the time it was asked; the client never stamps its own, which would call an hour-old question "just now". A plan review rebuilt from a snapshot still has `null`, because its register does not say. There is no general-purpose notice store — the viewport carries questions and nothing else.
+  **Order is ours, and both exits are derived from it rather than synchronised to it.** `pending()` in `layout/approval-queue.ts` is the one derivation: `attentionOrder` minus the review page being read, split into `listed` and `here` — `here` being what the conversation being read is waiting on (unless settings or a review has made its transcript inert). `ApprovalNotifications` renders the front `MAX_VISIBLE` of `listed` straight into the one `NotificationViewport` as children keyed by `approvalId`; the inbox renders all of `listed`, grouped into approvals (tool calls) and questions (`ask_user`, ACP elicitation, plan review), and says of `here` only how many there are, with a button that asks the transcript (`lib/pending-reveal.ts`) to scroll to the turn holding `targetApproval`'s question. Rows for `here` would be a second place to answer a card already in front of the reader. There is no second queue: the React Aria `ToastQueue` this replaced only offered `add` (which unshifts) and `close`, so it had to be cleared and rebuilt back-to-front on every change of the *sequence*, and a set diff there made "defer" silently do nothing. Now deferring is one store write and the same render reorders the stack, with the viewport's layout spring moving the rows that stayed. Every visible row is a full card with its own buttons; the rest of the queue is not drawn there but is in the inbox. The inbox has no read state (`readable={false}`): a question is never "read", only answered, and an answered one leaves both lists by the same store write. A question's time is `askedAt`, stamped once by the backend when the question is registered (`PendingApproval::asked_at`) and carried on both the announcing event and `all_pending_approvals`, so one rebuilt after a reload or a remote connect keeps the time it was asked; the client never stamps its own, which would call an hour-old question "just now". A plan review rebuilt from a snapshot still has `null`, because its register does not say. There is no general-purpose notice store — the viewport carries questions and nothing else. What this machine did on its own (a dictionary upgrade) goes to the inbox alone, under a "system" tab that appears only while there is something in it (`stores/system-notice-store.ts`, `src-tauri/src/system_notice.rs`); it is never a row in the floating stack. Its channel is device-local and its commands `local`: a remote client has no business with this machine's keyboard.
 
   **A row may offer Allow/Deny only for a call that only reads, and only if it shows everything that call will do** (`attentionShape`, shared by both exits through `attentionActionIds`). Risk decides, not how many arguments there are: a short `run_command` fits a row and is still the call most worth reading in context. So the decision is offered only for a tool on `READ_ONLY_TOOLS` — `read_file`, `list_directory`, `search_files`, `glob`, and Claude Code's `Read`, `Glob`, `Grep` — and everything else offers only Later and View with a line saying why: running a command (`run_command`, `Bash`, `SlashCommand`), writing, editing, moving or deleting a file, `apply_patch`, network requests, MCP and custom tools, QQ writes, anything unrecognised, and any call asking to leave the sandbox (an escalation retry, or `dangerouslyDisableSandbox`). A read is decidable when the row draws all of it: the identifying argument, the description, and the arguments its `READ_ONLY_TOOLS` entry names — the ones that only narrow what is read, such as `search_files`'s required `path`, `Read`'s `offset`/`limit` and `Grep`'s filters, drawn under the call. Any other argument, a non-scalar under one of those names, arguments that do not parse, or a summary past `INLINE_DECISION_LIMIT` withholds the decision too. The inbox groups its rows under their conversation (`showGroups`), each group where its first question stands in `attentionOrder` and its rows in that order.
 
@@ -1461,6 +1461,47 @@ rather than one because the boundaries are the design.
   `context_apps`, never to a private one; without a model they still lift a
   whole-input word of two or more characters that a hint contains
   (`CONTEXT_BONUS`).
+- **Prediction is a list on the side, not a mode.** After a commit of
+  Chinese words the session offers what may follow (`Engine::predict`, then
+  ，and 。): first what the personal n-gram has seen after the last word
+  (`UserNgram::followers`, at least `MIN_PERSONAL_COUNT`), then the rest of
+  the dictionary words it begins — after 中国, 人 and 队 from 中国人 and 中国队 —
+  which `.mdict` format 2 indexes for this (`PRFX`/`PRPO`/`PRID`, keyed by a
+  text that is itself a word, capped at `CONTINUATION_CAP`). The list answers
+  four bare keys and nothing else: Up and Down move, Tab takes, Esc closes;
+  every other key closes it and then means what it always means, which is
+  what leaves letters and digits alone. On Windows a key the DLL does not eat
+  never reaches the host, so the DLL sends `Dismiss` for it, and for a caret
+  moved by the mouse (`ITfTextEditSink`, skipping the echo of its own edit
+  sessions) — `PROTOCOL_VERSION` 3, since an older DLL would neither eat the
+  four keys nor ever close the list. Android sends `nativeDismiss` from
+  `onUpdateSelection` once the commit's own echo has been seen. A dismissal
+  from outside also ends the commit chain (the next word is not written
+  after the last one); Esc and typing on do not. A private session is offered
+  the dictionary alone, without the person's n-gram or user words, because
+  the list is drawn on screen.
+- **A dictionary from an older build is upgraded in place, not imported
+  again.** A `.mdict` holds every (code, text, frequency) it was built from
+  and everything else in it is derived, so `upgrade_in_place` is the old
+  format's reader (`format/legacy.rs`, one module per version, carrying its
+  own copy of that version's record layout rather than borrowing `layout`'s)
+  handing its rows to the current writer — written beside the file, read
+  back and counted, then renamed over it, same name and metadata. There is
+  no source to import from on Android anyway: downloads and archives are
+  unpacked into scratch space. Meridian runs it at start
+  (`src/ime/upgrade.rs`), under the dictionary write lock every import and
+  removal also takes, and reports it in the inbox's system tab; the
+  keyboard, until then, says the dictionaries need upgrading rather than
+  that none were imported (`DictionaryNotice`). Not in the keyboard's
+  process: rebuilding rime-ice takes a few hundred megabytes for a few
+  seconds (891k entries in 5.4 s, measured). **The header carries two
+  versions**: `version` wrote it, `min_reader` is the oldest reader that can
+  read it (0 means "same as version"), so a change that only adds sections
+  leaves a newer file readable by an older build. Adding a `META` field or
+  changing a section raises both. Builds that shipped checking `version == 1`
+  cannot benefit — the guarantee starts with the ones that read the field.
+  The fixture `ime/dict/tests/fixtures/v1.mdict` is real version 1 bytes,
+  written by that writer from the `.dict.yaml` beside it.
 - **Frequencies are normalised against the total of every file together.**
   Against its own total, a two-hundred-word domain table makes each of its
   words commoner than 你好 and the composer prefers them everywhere. A user's

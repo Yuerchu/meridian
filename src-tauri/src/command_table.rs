@@ -538,6 +538,10 @@ macro_rules! with_all_commands {
             local commands::ime => remove_ime_dictionary(
                 request: $crate::commands::ime::ImeDictionaryRemoveRequest,
             ),
+            local commands::system_notice => list_system_notices(),
+            local commands::system_notice => dismiss_system_notice(
+                request: $crate::commands::system_notice::SystemNoticeDismissRequest,
+            ),
             #[cfg(windows)]
             local commands::ime => start_ime_host(),
             #[cfg(windows)]

@@ -91,6 +91,9 @@ impl DictWriter {
         let mut fst_builder = fst::MapBuilder::memory();
         // abbreviation key → (freq, entry id), gathered then capped.
         let mut abbr: BTreeMap<String, Vec<(u32, u32)>> = BTreeMap::new();
+        // text → (freq, entry id) of its commonest entry: a text filed under
+        // several codes (a polyphone) is one word to predict, not several.
+        let mut by_text: HashMap<&str, (u32, u32)> = HashMap::new();
 
         let mut entry_id: u32 = 0;
         for (code_id, (code, texts)) in self.codes.iter().enumerate() {
@@ -140,6 +143,10 @@ impl DictWriter {
                 if let Some(key) = &abbr_key {
                     abbr.entry(key.clone()).or_default().push((freq, entry_id));
                 }
+                let best = by_text.entry(text.as_str()).or_insert((freq, entry_id));
+                if freq > best.0 {
+                    *best = (freq, entry_id);
+                }
                 entry_id += 1;
             }
         }
@@ -164,6 +171,7 @@ impl DictWriter {
             abbr_builder.insert(key.as_bytes(), abbr_id as u64)?;
         }
         let abbr_bytes = abbr_builder.into_inner()?;
+        let conts = continuations(&by_text)?;
 
         let meta = Metadata {
             entries: self.entries,
@@ -177,7 +185,7 @@ impl DictWriter {
             .map_err(|e| DictError::Metadata(e.to_string()))?
             .into_bytes();
 
-        let sections: [(&[u8; 4], &[u8]); 8] = [
+        let sections: [(&[u8; 4], &[u8]); 11] = [
             (TAG_META, &meta_bytes),
             (TAG_FST, &fst_bytes),
             (TAG_POST, &post),
@@ -186,6 +194,9 @@ impl DictWriter {
             (TAG_ABBR, &abbr_bytes),
             (TAG_ABPO, &abpo),
             (TAG_ABID, &abid),
+            (TAG_PRFX, &conts.keys),
+            (TAG_PRPO, &conts.slices),
+            (TAG_PRID, &conts.ids),
         ];
 
         let tmp = temp_path(path);
@@ -209,6 +220,52 @@ impl DictWriter {
     }
 }
 
+/// The `PRFX` / `PRPO` / `PRID` sections: for every word that begins a longer
+/// word, those longer words, commonest first and capped at
+/// [`CONTINUATION_CAP`].
+fn continuations(by_text: &HashMap<&str, (u32, u32)>) -> Result<Continuations, DictError> {
+    let mut map: BTreeMap<&str, Vec<(u32, u32)>> = BTreeMap::new();
+    for (&text, &(freq, id)) in by_text {
+        // Every char boundary strictly inside the text, up to the cap.
+        for (end, _) in text.char_indices().skip(1).take(CONTINUATION_MAX_PREFIX_CHARS) {
+            let prefix = &text[..end];
+            if by_text.contains_key(prefix) {
+                map.entry(prefix).or_default().push((freq, id));
+            }
+        }
+    }
+    let mut po = Vec::with_capacity(map.len() * AbbrRec::SIZE);
+    let mut ids = Vec::new();
+    let mut builder = fst::MapBuilder::memory();
+    for (cont_id, (prefix, mut words)) in map.into_iter().enumerate() {
+        words.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+        words.truncate(CONTINUATION_CAP);
+        po.extend_from_slice(
+            &AbbrRec {
+                start: (ids.len() / 4) as u32,
+                count: words.len() as u32,
+            }
+            .to_bytes(),
+        );
+        for (_, id) in words {
+            ids.extend_from_slice(&id.to_le_bytes());
+        }
+        builder.insert(prefix.as_bytes(), cont_id as u64)?;
+    }
+    Ok(Continuations {
+        keys: builder.into_inner()?,
+        slices: po,
+        ids,
+    })
+}
+
+/// The three prediction sections, as written.
+struct Continuations {
+    keys: Vec<u8>,
+    slices: Vec<u8>,
+    ids: Vec<u8>,
+}
+
 fn temp_path(path: &Path) -> std::path::PathBuf {
     let name = path
         .file_name()
@@ -217,7 +274,7 @@ fn temp_path(path: &Path) -> std::path::PathBuf {
     path.with_file_name(format!(".{name}.tmp-{}", std::process::id()))
 }
 
-fn write_sections(path: &Path, sections: &[(&[u8; 4], &[u8])]) -> Result<u64, DictError> {
+pub(crate) fn write_sections(path: &Path, sections: &[(&[u8; 4], &[u8])]) -> Result<u64, DictError> {
     let mut file = BufWriter::new(File::create(path)?);
     let table_end = HEADER_SIZE + sections.len() * SECTION_ENTRY_SIZE;
     let mut offset = align_up(table_end);
@@ -236,6 +293,7 @@ fn write_sections(path: &Path, sections: &[(&[u8; 4], &[u8])]) -> Result<u64, Di
     header[8..10].copy_from_slice(&FORMAT_VERSION.to_le_bytes());
     header[10..12].copy_from_slice(&KIND_DICTIONARY.to_le_bytes());
     header[12..16].copy_from_slice(&(sections.len() as u32).to_le_bytes());
+    header[16..18].copy_from_slice(&MIN_READER_VERSION.to_le_bytes());
     file.write_all(&header)?;
     for entry in &entries {
         file.write_all(&entry.to_bytes())?;

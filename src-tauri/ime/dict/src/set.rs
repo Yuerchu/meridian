@@ -277,6 +277,40 @@ impl DictSet {
         }
         acc.finish(limits.max_hits)
     }
+
+    /// The longer words that start with the word `text`, best first, each
+    /// scored like any other hit. A file answers only for a `text` that is a
+    /// word of that file; the user's own words are searched by prefix, since
+    /// there are few of them and the person may have taught 中国队 without
+    /// 中国 ever being theirs. `with_user: false` leaves the user's words out,
+    /// for a document where what the person taught must not show.
+    pub fn continuations(&self, text: &str, max: usize, with_user: bool) -> Vec<Hit> {
+        if text.is_empty() {
+            return Vec::new();
+        }
+        let mut acc = Merger::default();
+        let norm = self.denominator;
+        for (i, s) in self.sources.iter().enumerate() {
+            match s {
+                Source::File(f) => {
+                    for e in f.lookup_continuations(text) {
+                        acc.push(hit_of(&e, i as SourceId, norm));
+                    }
+                }
+                Source::User(_) if !with_user => {}
+                Source::User(u) => {
+                    for (code, words) in &u.by_code {
+                        for (t, w) in words {
+                            if t.len() > text.len() && t.starts_with(text) {
+                                acc.push(user_hit(code, t, *w, norm, i as SourceId));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        acc.finish(max)
+    }
 }
 
 fn join(pattern: &[SyllablePattern<'_>]) -> String {
@@ -525,6 +559,57 @@ mod tests {
         );
         set.set_user_words(&[]);
         assert_eq!(set.lookup("ni hao").len(), 1, "replacing user words drops the old ones");
+        let empty = DictSet::new();
+        assert!(empty.is_empty());
+        assert!(empty.lookup("ni").is_empty());
+    }
+
+    #[test]
+    fn continuations_merge_files_and_user_words() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = file(
+            dir.path(),
+            "base",
+            &[
+                ("zhong guo", "中国", 800),
+                ("zhong guo ren", "中国人", 300),
+                ("zhong guo dui", "中国队", 100),
+            ],
+        );
+        let domain = file(
+            dir.path(),
+            "domain",
+            &[("zhong guo", "中国", 1), ("zhong guo dui", "中国队", 900)],
+        );
+        let mut set = DictSet::new();
+        set.add_file(base);
+        set.add_file(domain);
+        set.set_user_words(&[UserWord {
+            code: "zhong guo feng".into(),
+            text: "中国风".into(),
+            weight: 1,
+        }]);
+        let hits = set.continuations("中国", 8, true);
+        // One lesson is USER_WEIGHT_SCALE of frequency, so the user's word leads.
+        assert_eq!(
+            texts(&hits),
+            vec!["中国风", "中国队", "中国人"],
+            "merged by text, best score kept"
+        );
+        assert!(hits[0].user);
+        assert_eq!(hits[1].source, 1, "中国队 at the domain file's 900, not the base's 100");
+        assert_eq!(set.continuations("中国", 1, true).len(), 1);
+        assert_eq!(
+            texts(&set.continuations("中国", 8, false)),
+            vec!["中国队", "中国人"],
+            "without the user's words"
+        );
+        assert!(set.continuations("", 8, true).is_empty());
+        assert!(set.continuations("中国队", 8, true).is_empty());
+    }
+
+    #[test]
+    fn an_empty_set_answers_nothing() {
         let empty = DictSet::new();
         assert!(empty.is_empty());
         assert!(empty.lookup("ni").is_empty());

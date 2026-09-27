@@ -29,6 +29,7 @@ pub(crate) mod models;
 pub(crate) mod probe;
 #[cfg(windows)]
 pub(crate) mod registry;
+pub(crate) mod upgrade;
 
 #[cfg(windows)]
 use std::path::PathBuf;
@@ -36,6 +37,7 @@ use std::sync::Arc;
 
 use meridian_core::services::Services;
 use meridian_ime_config::ImeDirs;
+use tauri::Manager;
 use tokio::sync::Mutex;
 
 /// What the shell knows about where the input method's pieces are.
@@ -131,10 +133,18 @@ pub struct AppIme {
     /// What the last pick staged, until it is imported or replaced. One slot:
     /// there is one settings page, and a second pick supersedes the first.
     pub staged: Arc<Mutex<Option<archive::Staged>>>,
+    /// Held by anything that writes a dictionary file or the catalog —
+    /// importing, removing, toggling, and the startup upgrade — so none of
+    /// them lands in the middle of another. A `std` mutex: every holder is
+    /// already on a blocking thread.
+    pub dict_writes: Arc<std::sync::Mutex<()>>,
+    /// Which dictionaries the startup upgrade is rebuilding right now.
+    pub upgrade: Arc<upgrade::UpgradeProgress>,
 }
 
 /// Locates everything, makes sure the data directory exists with a default
-/// `host.json`, keeps the memory hints current, and on Windows starts the
+/// `host.json`, keeps the memory hints current, rebuilds dictionaries an
+/// older build wrote (`upgrade`), and on Windows starts the
 /// host if the DLL is registered and nothing is serving the pipe yet.
 /// Meridian closing does not stop it: the host belongs to the login session,
 /// not to this window.
@@ -148,11 +158,22 @@ pub(crate) async fn maybe_start(services: Services, app: tauri::AppHandle) -> Ap
     {
         tracing::warn!(error = %e, "cannot write the default host.json");
     }
+    let dict_writes = Arc::new(std::sync::Mutex::new(()));
+    let progress = Arc::new(upgrade::UpgradeProgress::default());
+    {
+        let (dirs, writes, progress, app) = (bridge.dirs.clone(), dict_writes.clone(), progress.clone(), app.clone());
+        tokio::task::spawn_blocking(move || {
+            let notices = app.state::<crate::system_notice::SystemNotices>();
+            upgrade::run(&dirs, &writes, &progress, &notices, nudge_host);
+        });
+    }
     #[cfg(windows)]
     start_host_if_registered(&bridge);
     AppIme {
         bridge: Arc::new(Mutex::new(bridge)),
         staged: Arc::new(Mutex::new(None)),
+        dict_writes,
+        upgrade: progress,
     }
 }
 

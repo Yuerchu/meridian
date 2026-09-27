@@ -76,6 +76,14 @@ pub struct HostConfig {
     /// in a file written before the field existed.
     #[serde(default)]
     pub context_apps: Vec<String>,
+    /// Offer what may follow a commit. On unless switched off; absent in a
+    /// file written before the field existed, which means on.
+    #[serde(default = "on")]
+    pub prediction: bool,
+}
+
+fn on() -> bool {
+    true
 }
 
 impl Default for HostConfig {
@@ -89,6 +97,7 @@ impl Default for HostConfig {
             private_apps: Vec::new(),
             debug_log: false,
             context_apps: Vec::new(),
+            prediction: true,
         }
     }
 }
@@ -391,6 +400,7 @@ mod tests {
         )
         .unwrap();
         assert!(cfg.context_apps.is_empty(), "a file from before the field");
+        assert!(cfg.prediction, "prediction is on in a file from before it existed");
         let cfg = HostConfig {
             context_apps: vec![" Notepad.EXE ".into(), "".into()],
             ..Default::default()

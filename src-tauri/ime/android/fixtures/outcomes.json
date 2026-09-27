@@ -23,7 +23,8 @@
       "page_count": 1,
       "highlight": 0,
       "mode": "chinese",
-      "notice": null
+      "notice": null,
+      "predicting": false
     }
   },
   {
@@ -31,12 +32,26 @@
     "commit": "你",
     "frame": {
       "preedit": [],
-      "candidates": [],
+      "candidates": [
+        {
+          "text": "好",
+          "source": "dict"
+        },
+        {
+          "text": "，",
+          "source": "dict"
+        },
+        {
+          "text": "。",
+          "source": "dict"
+        }
+      ],
       "page": 0,
-      "page_count": 0,
+      "page_count": 1,
       "highlight": 0,
       "mode": "chinese",
-      "notice": null
+      "notice": null,
+      "predicting": true
     }
   }
 ]

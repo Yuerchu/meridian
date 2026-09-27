@@ -133,7 +133,7 @@ fn space_commits_the_highlighted_candidate() {
     let (committed, out) = r.run("nihao<space>");
     assert_eq!(committed, "你好");
     assert!(out.consumed);
-    assert!(out.frame.is_empty());
+    assert!(out.frame.preedit.is_empty());
     assert_eq!(r.learner.weight("你好"), 1);
     assert_eq!(r.learner.choice_weight("nihao", "你好"), 1);
 }
@@ -367,6 +367,22 @@ fn auto_word_after_two_same_buffer_selections() {
 }
 
 #[test]
+fn dictionaries_waiting_for_an_upgrade_say_so_instead() {
+    let engine = Engine::new(Arc::new(DictSet::new())).with_outdated(1);
+    let mut session = Session::new(SessionConfig::default());
+    let out = session.handle_key(
+        &engine,
+        &mut MemoryLearner::new(),
+        meridian_ime_session::keys::printable('n'),
+    );
+    assert_eq!(
+        out.frame.notice.as_deref(),
+        Some(meridian_ime_session::DICTIONARY_UPGRADE_NOTICE),
+        "not \"import a dictionary\": there is one, in an older format"
+    );
+}
+
+#[test]
 fn no_dictionary_shows_a_notice() {
     let dir = tempfile::tempdir().unwrap();
     let _ = dir;
@@ -376,7 +392,10 @@ fn no_dictionary_shows_a_notice() {
     let ev = meridian_ime_session::keys::printable('n');
     let out = session.handle_key(&engine, &mut learner, ev);
     assert!(out.consumed);
-    assert!(out.frame.notice.is_some());
+    assert_eq!(
+        out.frame.notice.as_deref(),
+        Some(meridian_ime_session::NO_DICTIONARY_NOTICE)
+    );
     let ev = meridian_ime_session::keys::function(meridian_ime_session::keys::VK_RETURN);
     let out = session.handle_key(&engine, &mut learner, ev);
     assert_eq!(out.commit.as_deref(), Some("n"));
@@ -391,7 +410,7 @@ fn zhuyin_keys_compose_and_enter_commits() {
     assert_eq!(r.candidates(&out)[0], "你好");
     let (committed, out) = r.run("<enter>");
     assert_eq!(committed, "你好");
-    assert!(out.frame.is_empty());
+    assert!(out.frame.preedit.is_empty());
     // Space after a syllable without a tone is the first tone, not a commit.
     let (committed, out) = r.run("su<space>");
     assert_eq!(committed, "");
@@ -420,7 +439,7 @@ fn grid_tokens_compose_and_space_commits() {
     assert_eq!(r.candidates(&out)[0], "你好");
     let (committed, out) = r.run("<space>");
     assert_eq!(committed, "你好");
-    assert!(out.frame.is_empty());
+    assert!(out.frame.preedit.is_empty());
     assert_eq!(r.learner.weight("你好"), 1);
 }
 
@@ -473,7 +492,7 @@ fn grid_space_is_not_a_tone() {
     let mut r = Rig::new(InputScheme::Grid);
     let (committed, out) = r.run("ny<space>");
     assert_eq!(committed, "你", "space commits at once, unlike zhuyin");
-    assert!(out.frame.is_empty());
+    assert!(out.frame.preedit.is_empty());
 }
 
 #[test]
@@ -531,7 +550,8 @@ fn choosing_a_candidate_by_tap() {
     let out = r.session.choose(&r.engine, &mut r.learner, 1);
     assert_eq!(out.commit.as_deref(), Some(second.as_str()));
     assert_eq!(r.learner.weight(&second), 1);
-    // Nothing composing: the tap is not ours.
+    // Nothing composing and no list: the tap is not ours.
+    r.session.dismiss();
     let out = r.session.choose(&r.engine, &mut r.learner, 0);
     assert!(!out.consumed && out.commit.is_none());
 }
@@ -732,4 +752,193 @@ fn an_insert_in_a_private_field_does_not_learn() {
     r.run("nihao");
     assert_eq!(r.insert("。").commit.as_deref(), Some("你好。"));
     assert_eq!(r.learner.weight("你好"), 0);
+}
+
+// ── prediction ──────────────────────────────────────────────────────────
+
+fn predicting(r: &Rig, out: &KeyOutcome) -> Vec<String> {
+    assert!(out.frame.predicting, "no list: {:?}", out.frame);
+    assert!(out.frame.preedit.is_empty());
+    r.candidates(out)
+}
+
+#[test]
+fn a_commit_offers_what_may_follow() {
+    let mut r = Rig::new(InputScheme::Pinyin);
+    let (_, out) = r.run("nihao<space>");
+    assert_eq!(predicting(&r, &out), vec!["吗", "，", "。"]);
+    assert_eq!(out.frame.highlight, 0);
+    assert!(r.session.is_predicting());
+    assert!(!r.session.is_composing());
+}
+
+#[test]
+fn tab_takes_the_highlighted_prediction_and_learns_it() {
+    let mut r = Rig::new(InputScheme::Pinyin);
+    let (committed, out) = r.run("nihao<space><tab>");
+    assert_eq!(committed, "你好吗");
+    assert!(out.consumed);
+    assert_eq!(
+        r.learner.ngram().bigram_count("你好", "吗"),
+        2,
+        "taken like a chosen word, twice the weight of a composed one"
+    );
+    // The chain now ends in the whole word 你好吗, which begins nothing.
+    assert!(!out.frame.predicting);
+}
+
+#[test]
+fn up_down_move_and_a_mark_ends_the_chain() {
+    let mut r = Rig::new(InputScheme::Pinyin);
+    let (_, out) = r.run("wo<space>");
+    assert_eq!(predicting(&r, &out), vec!["想", "，", "。"]);
+    let (_, out) = r.run("<down><down><down>");
+    assert_eq!(out.frame.highlight, 2, "clamped at the last item");
+    let (_, out) = r.run("<up>");
+    assert_eq!(out.frame.highlight, 1);
+    let (committed, out) = r.run("<tab>");
+    assert_eq!(committed, "，");
+    assert!(!out.frame.predicting, "a mark predicts nothing after it");
+    assert!(out.frame.is_empty());
+}
+
+#[test]
+fn esc_closes_the_list_and_is_eaten() {
+    let mut r = Rig::new(InputScheme::Pinyin);
+    r.run("nihao<space>");
+    let (committed, out) = r.run("<esc>");
+    assert_eq!(committed, "");
+    assert!(out.consumed);
+    assert!(out.frame.is_empty());
+    assert!(!r.session.is_predicting());
+}
+
+/// The promise that makes the list harmless: with it on screen, every key
+/// but the four does exactly what it does without it.
+#[test]
+fn any_other_key_closes_the_list_and_means_what_it_means() {
+    let cases: &[(&str, bool, &str, &str)] = &[
+        // key, consumed, committed, preedit
+        ("3", false, "", ""),
+        ("w", true, "", "w"),
+        (",", true, "，", ""),
+        ("<bs>", false, "", ""),
+        ("<enter>", false, "", ""),
+        ("<left>", false, "", ""),
+        ("<space>", false, "", ""),
+    ];
+    for &(key, consumed, committed_want, preedit) in cases {
+        let mut r = Rig::new(InputScheme::Pinyin);
+        r.run("nihao<space>");
+        let (committed, out) = r.run(key);
+        assert_eq!(out.consumed, consumed, "{key}");
+        assert_eq!(committed, committed_want, "{key}");
+        assert_eq!(out.frame.preedit_text(), preedit, "{key}");
+        assert!(!out.frame.predicting, "{key} closed the list");
+    }
+    // Shift+Tab is not Tab.
+    let mut r = Rig::new(InputScheme::Pinyin);
+    r.run("nihao<space>");
+    let mut ev = meridian_ime_session::keys::function(meridian_ime_session::keys::VK_TAB);
+    ev.mods.shift = true;
+    let out = r.session.handle_key(&r.engine, &mut r.learner, ev);
+    assert!(!out.consumed && out.commit.is_none());
+    assert!(!r.session.is_predicting());
+}
+
+#[test]
+fn what_the_person_writes_next_comes_first() {
+    let mut r = Rig::new(InputScheme::Pinyin);
+    r.run("wo<space>qu<space>");
+    let (_, out) = r.run("wo<space>");
+    assert_eq!(predicting(&r, &out), vec!["去", "想", "，", "。"]);
+    assert_eq!(
+        out.frame.candidates[0].source,
+        meridian_ime_proto::CandidateSource::User,
+        "marked as the person's own"
+    );
+}
+
+#[test]
+fn a_private_session_predicts_from_the_dictionary_only() {
+    let mut r = Rig::new(InputScheme::Pinyin);
+    r.run("wo<space>qu<space>");
+    r.session.reset();
+    r.session.set_private(true);
+    let (_, out) = r.run("wo<space>");
+    assert_eq!(predicting(&r, &out), vec!["想", "，", "。"]);
+    r.run("<tab>");
+    assert_eq!(
+        r.learner.ngram().bigram_count("我", "想"),
+        0,
+        "and learns nothing from it"
+    );
+}
+
+#[test]
+fn a_tap_takes_a_prediction() {
+    let mut r = Rig::new(InputScheme::Grid);
+    r.run("nyh<ao><space>");
+    let out = r.session.choose(&r.engine, &mut r.learner, 0);
+    assert_eq!(out.commit.as_deref(), Some("吗"));
+    let mut r = Rig::new(InputScheme::Grid);
+    r.run("nyh<ao><space>");
+    let out = r.session.choose(&r.engine, &mut r.learner, 2);
+    assert_eq!(out.commit.as_deref(), Some("。"), "the marks are taps too");
+}
+
+#[test]
+fn nothing_is_offered_after_raw_keys_punctuation_or_with_prediction_off() {
+    let mut r = Rig::new(InputScheme::Pinyin);
+    let (committed, out) = r.run("nihao<enter>");
+    assert_eq!(committed, "nihao");
+    assert!(!out.frame.predicting, "raw keys are not a word");
+    let (_, out) = r.run("nihao,");
+    assert!(!out.frame.predicting, "punctuation ends the chain");
+    let mut r = Rig::new(InputScheme::Pinyin);
+    r.session.set_config(SessionConfig {
+        prediction: false,
+        ..r.session.config().clone()
+    });
+    let (_, out) = r.run("nihao<space>");
+    assert!(out.frame.is_empty());
+}
+
+#[test]
+fn a_word_nothing_follows_offers_no_list_of_marks_alone() {
+    let mut r = Rig::new(InputScheme::Pinyin);
+    let (committed, out) = r.run("fan<space>");
+    assert_eq!(committed, "饭");
+    assert!(out.frame.is_empty(), "{:?}", out.frame);
+}
+
+#[test]
+fn a_dismissed_list_ends_the_chain() {
+    let mut r = Rig::new(InputScheme::Pinyin);
+    r.run("wo<space>");
+    r.session.dismiss();
+    r.run("qu<space>");
+    assert_eq!(
+        r.learner.ngram().bigram_count("我", "去"),
+        0,
+        "the caret moved in between: 去 did not follow 我"
+    );
+    // Esc, or typing on past the list, is the person still writing at the
+    // same place: the list goes and the chain holds.
+    let mut r = Rig::new(InputScheme::Pinyin);
+    r.run("wo<space><esc>qu<space>");
+    assert_eq!(r.learner.ngram().bigram_count("我", "去"), 2);
+    let mut r = Rig::new(InputScheme::Pinyin);
+    r.run("wo<space>qu<space>");
+    assert_eq!(r.learner.ngram().bigram_count("我", "去"), 2);
+}
+
+#[test]
+fn dismiss_and_reset_close_the_list() {
+    let mut r = Rig::new(InputScheme::Pinyin);
+    r.run("nihao<space>");
+    assert!(r.session.dismiss().is_empty());
+    r.run("nihao<space>");
+    assert!(r.session.reset().is_empty());
+    assert!(!r.session.is_predicting());
 }
