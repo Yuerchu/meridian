@@ -26,7 +26,13 @@ fn decide(app: &tauri::AppHandle, approval_id: &str, decision: ApprovalDecision)
                 .send(decision)
                 .map_err(|_| "that turn is no longer waiting for an answer".to_string())
         }
-        None => Err("that request is no longer waiting for an answer".to_string()),
+        // Logged because it is the one trace a dead button leaves: the card was
+        // holding an id nothing is waiting on, while whatever *is* waiting was
+        // never drawn. The `asked` line for the live id is what to compare.
+        None => {
+            tracing::warn!(approval_id, "an answer named an approval nothing is waiting on");
+            Err("that request is no longer waiting for an answer".to_string())
+        }
     }
 }
 

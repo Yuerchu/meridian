@@ -256,6 +256,8 @@ pub async fn acp_send(app: tauri::AppHandle, request: AcpPromptSendRequest) -> R
     } = request;
     let turn_id = turn_id.0;
     let services = app.services();
+    // First, before anything slow: from here on a stop has somewhere to land.
+    let pending = services.acp.begin_send(&conversation_id);
     if meridian_core::agent::queue::has_plan_review_barrier(&services, &conversation_id).await? {
         return Err(
             "This conversation is waiting for plan review or its continuation. Finish it before sending another ACP prompt."
@@ -325,7 +327,9 @@ pub async fn acp_send(app: tauri::AppHandle, request: AcpPromptSendRequest) -> R
     // Reopens a conversation whose adapter died with the last run of the app.
     // The transcript is still here; the agent's memory of it is not.
     let session = acp::reopen_session(&services, &conversation_id).await?;
-    session.prompt_with_context(&services, &message, turn_id, context).await
+    session
+        .prompt_with_context(&services, &message, turn_id, context, pending.token())
+        .await
 }
 
 /// Every Claude Code session on this machine, with the ones a conversation here
@@ -428,10 +432,10 @@ pub struct AcpConversationSessionInfoResponse {
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub async fn acp_cancel(app: tauri::AppHandle, conversation_id: String) -> Result<(), String> {
-    if let Some(session) = app.services().acp.get(&conversation_id) {
-        session.cancel().await;
-    }
-    // Absent is success: the turn this was meant to stop has already ended.
+    // Reaches a send that has no turn yet as well as the turn itself: the
+    // reopen and the reference preparation before it are long enough to press
+    // stop in, and a stop that found nothing there used to be ignored.
+    app.services().acp.stop(&conversation_id).await;
     Ok(())
 }
 
