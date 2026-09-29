@@ -21,9 +21,15 @@ sealed interface KeyAction {
   data object Space : KeyAction
   data object Enter : KeyAction
   data object Shift : KeyAction
-  /** 中/英 on the QWERTY layer: the engine's mode switch. */
+  /**
+   * 中/英, on both letter layers: Chinese on the chosen Chinese layout, or
+   * English, which is always QWERTY. One tap either way, whichever layout
+   * Chinese is typed on; its long press chooses that layout.
+   */
   data object ToggleMode : KeyAction
-  /** Tap: grid ↔ QWERTY. Long press: the system's keyboard picker. */
+  /** Chinese is typed on this layer from now on (GRID or QWERTY). */
+  data class ChineseLayout(val layer: Layer) : KeyAction
+  /** The system's keyboard picker. */
   data object Globe : KeyAction
   data class ToLayer(val layer: Layer) : KeyAction
   /** Back to whichever letter layer the number layer was opened from. */
@@ -118,6 +124,11 @@ internal val STOP_REST = listOf("？", "！", "……", "”", "’", "》", "�
 /** Where the opening marks start in both menus (after the width item and three others). */
 internal const val BRACKETS_FROM = 4
 
+/** What 中/英's long press offers: the two layouts Chinese can be typed on. */
+val CHINESE_LAYOUTS: List<KeyAction> = listOf(KeyAction.ChineseLayout(Layer.GRID), KeyAction.ChineseLayout(Layer.QWERTY))
+
+private val toggleMode = KeySpec(KeyAction.ToggleMode, menu = CHINESE_LAYOUTS)
+
 /** The bottom row, which every layer shares apart from its layer key and the letters' 中/英. */
 fun bottomRow(layer: Layer): Row {
   val layerKey = when (layer) {
@@ -126,18 +137,26 @@ fun bottomRow(layer: Layer): Row {
   }
   val comma = KeySpec(KeyAction.Punct(','))
   val stop = KeySpec(KeyAction.Punct('.'))
-  return if (layer == Layer.QWERTY) {
-    listOf(
+  return when (layer) {
+    Layer.QWERTY -> listOf(
       layerKey.copy(width = 1.5f),
       KeySpec(KeyAction.Globe),
-      KeySpec(KeyAction.ToggleMode, width = 1f),
+      toggleMode,
       comma,
       KeySpec(KeyAction.Space, width = 3f),
       stop,
       KeySpec(KeyAction.Enter, width = 1.5f),
     )
-  } else {
-    listOf(
+    Layer.GRID -> listOf(
+      layerKey,
+      KeySpec(KeyAction.Globe),
+      toggleMode,
+      comma,
+      KeySpec(KeyAction.Space, width = 2f),
+      stop,
+      KeySpec(KeyAction.Enter, width = 2f),
+    )
+    Layer.NUMBER -> listOf(
       layerKey,
       KeySpec(KeyAction.Globe),
       comma,

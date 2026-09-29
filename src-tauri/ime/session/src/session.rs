@@ -359,12 +359,19 @@ impl Session {
             });
         }
         if let Some(q) = &self.query {
-            frame.preedit.extend(q.preedit.iter().cloned());
             let page_size = self.config.page_size.max(1);
             let total = q.candidates.len();
             frame.page_count = total.div_ceil(page_size);
             frame.page = self.page.min(frame.page_count.saturating_sub(1));
             let start = frame.page * page_size;
+            let highlighted = q.candidates.get(start + self.highlight.min(page_size - 1));
+            match highlighted
+                .filter(|_| self.config.scheme == InputScheme::Grid)
+                .and_then(|c| reading(q, c))
+            {
+                Some(reading) => frame.preedit.extend(reading),
+                None => frame.preedit.extend(q.preedit.iter().cloned()),
+            }
             frame.candidates = q.candidates[start.min(total)..(start + page_size).min(total)]
                 .iter()
                 .map(|c| CandidateItem {
@@ -994,6 +1001,32 @@ fn in_dictionary(engine: &Engine, code: &str, text: &str) -> bool {
     engine.dicts().lookup(code).iter().any(|h| h.text == text)
 }
 
+/// What the grid shows as it is typed: the highlighted candidate's reading,
+/// when that candidate covers every key. A grid key stands for several
+/// letters (`z` is z or zh, `ng` is n or ng), so the keys' own labels spell
+/// nothing anybody reads — `xyang´` — while the candidate's code says what
+/// they were taken to mean. None when it covers only a prefix; the labels
+/// are all there is then.
+fn reading(q: &Query, candidate: &Candidate) -> Option<Vec<PreeditSegment>> {
+    if candidate.consumed < q.keys.chars().count() || candidate.words.is_empty() {
+        return None;
+    }
+    let mut out = Vec::new();
+    for syllable in candidate.words.iter().flat_map(|(_, code)| code.split(' ')) {
+        if !out.is_empty() {
+            out.push(PreeditSegment {
+                text: " ".into(),
+                kind: PreeditKind::Separator,
+            });
+        }
+        out.push(PreeditSegment {
+            text: syllable.to_string(),
+            kind: PreeditKind::Syllable,
+        });
+    }
+    Some(out)
+}
+
 /// The spaced code of `a` followed by `b`, when both are words of the pieces
 /// just committed (the only place their codes are known).
 fn pieces_code_for(pieces: &[FixedPiece], a: &str, b: &str) -> Option<String> {
@@ -1003,4 +1036,44 @@ fn pieces_code_for(pieces: &[FixedPiece], a: &str, b: &str) -> Option<String> {
         return Some(format!("{} {}", words[n - 2].1, words[n - 1].1));
     }
     None
+}
+
+#[cfg(test)]
+mod reading_tests {
+    use super::*;
+
+    fn candidate(words: &[(&str, &str)], consumed: usize) -> Candidate {
+        Candidate {
+            text: words.iter().map(|(t, _)| *t).collect(),
+            score: 0.0,
+            source: CandidateSource::Dict,
+            words: words.iter().map(|(t, c)| (t.to_string(), c.to_string())).collect(),
+            consumed,
+        }
+    }
+
+    fn text(segments: Vec<PreeditSegment>) -> String {
+        segments.into_iter().map(|s| s.text).collect()
+    }
+
+    fn query(keys: &str) -> Query {
+        Query {
+            keys: keys.into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_candidate_covering_every_key_is_read_out_syllable_by_syllable() {
+        let q = query("12345");
+        let words = [("飞", "fei"), ("翔", "xiang")];
+        assert_eq!(text(reading(&q, &candidate(&words, 5)).unwrap()), "fei xiang");
+    }
+
+    /// A word for a prefix says nothing about the keys after it.
+    #[test]
+    fn a_word_for_a_prefix_leaves_the_labels() {
+        let q = query("12345");
+        assert!(reading(&q, &candidate(&[("飞", "fei")], 3)).is_none());
+    }
 }

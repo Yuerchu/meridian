@@ -80,13 +80,15 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
     clipboard = ClipboardHistory(File(dataDir, "ime/clipboard.json"))
     clipboardManager.addPrimaryClipChangedListener(onClipChanged)
     val saved = prefs().getString(PREF_LETTERS, null)?.let { runCatching { Layer.valueOf(it) }.getOrNull() }
-    keyboard.lettersLayer = saved ?: Layer.GRID
+    keyboard.chineseLayout = saved ?: Layer.GRID
+    keyboard.lettersLayer = keyboard.chineseLayout
     keyboard.layer = keyboard.lettersLayer
     engine.gridTokens { tokens ->
       if (tokens != null) {
         keyboard.tokens = tokens.associateBy { it.name }
       } else if (keyboard.lettersLayer == Layer.GRID) {
         // No engine, no grid: the grid's keys mean nothing without it.
+        keyboard.chineseLayout = Layer.QWERTY
         keyboard.lettersLayer = Layer.QWERTY
         keyboard.layer = Layer.QWERTY
       }
@@ -150,6 +152,7 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
     // Written by the app the first time it runs, possibly after the keyboard started.
     if (keyboard.font == null) keyboard.font = keyboardFont(dataDir)
     keyboard.shifted = false
+    keyboard.capsLock = false
     keyboard.panel = null
     keyboard.selecting = false
     engine.setScheme(schemeOf(keyboard.lettersLayer))
@@ -273,7 +276,7 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
     when (action) {
       is KeyAction.Token -> keyboard.tokens[action.name]?.let { send(EngineKey(0, it.key.codePointAt(0), 0)) }
       is KeyAction.Letter -> {
-        val capital = keyboard.shifted
+        val capital = keyboard.shifted || keyboard.capsLock
         keyboard.shifted = false
         send(
           if (capital) EngineKey.char(action.ch.uppercaseChar().code, Vk.MOD_SHIFT)
@@ -285,9 +288,17 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
       KeyAction.Backspace -> send(EngineKey.function(Vk.BACK))
       KeyAction.Space -> send(EngineKey.char(' '.code))
       KeyAction.Enter -> send(EngineKey.function(Vk.RETURN))
-      KeyAction.Shift -> keyboard.shifted = !keyboard.shifted
+      KeyAction.Shift -> {
+        val now = SystemClock.uptimeMillis()
+        val next = shiftAfterTap(ShiftState(keyboard.shifted, keyboard.capsLock), now - lastShiftAt)
+        keyboard.shifted = next.shifted
+        keyboard.capsLock = next.capsLock
+        lastShiftAt = now
+      }
+      // The engine switches; render() moves to the layer the new mode is typed on.
       KeyAction.ToggleMode -> send(EngineKey.function(Vk.SHIFT))
-      KeyAction.Globe -> switchLetters(if (keyboard.lettersLayer == Layer.GRID) Layer.QWERTY else Layer.GRID)
+      is KeyAction.ChineseLayout -> chooseChineseLayout(action.layer)
+      KeyAction.Globe -> onPicker()
       is KeyAction.ToLayer -> keyboard.layer = action.layer
       KeyAction.BackToLetters -> keyboard.layer = keyboard.lettersLayer
       KeyAction.Spacer -> Unit
@@ -507,9 +518,35 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
     keyboard.lettersLayer = layer
     keyboard.layer = layer
     keyboard.shifted = false
-    prefs().edit().putString(PREF_LETTERS, layer.name).apply()
+    keyboard.capsLock = false
     engine.setScheme(schemeOf(layer))
-    if (layer == Layer.GRID && keyboard.mode == InputMode.ENGLISH) send(EngineKey.function(Vk.SHIFT))
+  }
+
+  /** When the previous Shift tap was, for the double tap that locks capitals. */
+  private var lastShiftAt = 0L
+
+  /**
+   * Chinese is typed on `layer` from now on. Choosing it is asking for
+   * Chinese, so from English the mode switches too, and render() then brings
+   * the layer.
+   */
+  private fun chooseChineseLayout(layer: Layer) {
+    keyboard.chineseLayout = layer
+    prefs().edit().putString(PREF_LETTERS, layer.name).apply()
+    if (keyboard.mode == InputMode.ENGLISH) send(EngineKey.function(Vk.SHIFT)) else switchLetters(layer)
+  }
+
+  /**
+   * The letters on screen follow the mode: English is typed on QWERTY,
+   * Chinese on the layout chosen for it. The mode is the engine's, and 中/英,
+   * Shift on a hardware keyboard or a field can each change it; following it
+   * here means one switch whatever changed it. Not while a hardware keyboard
+   * types, whose scheme is pinyin whatever the touch layer.
+   */
+  private fun followMode() {
+    if (!isInputViewShown) return
+    val target = if (keyboard.mode == InputMode.ENGLISH) Layer.QWERTY else keyboard.chineseLayout
+    if (keyboard.lettersLayer != target) switchLetters(target)
   }
 
   private fun schemeOf(layer: Layer): String = if (layer == Layer.GRID) "grid" else "pinyin"
@@ -536,7 +573,10 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
   }
 
   private fun render(frame: Frame?) {
-    frame?.let { keyboard.mode = it.mode }
+    if (frame != null && frame.mode != keyboard.mode) {
+      keyboard.mode = frame.mode
+      followMode()
+    }
     predicting = frame?.predicting == true
     if (!predicting) predictionAt = NOWHERE
     val visible = frame != null && !frame.isEmpty
@@ -550,6 +590,7 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
 
   private companion object {
     const val PREFS = "ime"
+    /** The layer Chinese is typed on; English is always QWERTY. */
     const val PREF_LETTERS = "letters_layer"
     const val PREF_INCOGNITO = "incognito"
     const val PREF_RECORDING = "clipboard_recording"

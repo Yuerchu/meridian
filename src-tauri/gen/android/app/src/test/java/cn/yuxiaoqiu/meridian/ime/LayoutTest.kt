@@ -33,6 +33,16 @@ class LayoutTest {
     assertEquals(List(4) { 10.0 }, widths(Layer.QWERTY))
   }
 
+  /** One tap to English from either Chinese layout, and the choice between them on its long press. */
+  @Test
+  fun bothLetterLayersSwitchLanguageInOneKey() {
+    for (layer in listOf(Layer.GRID, Layer.QWERTY)) {
+      val toggle = bottomRow(layer).single { it.action == KeyAction.ToggleMode }
+      assertEquals(CHINESE_LAYOUTS, toggle.menu)
+    }
+    assertTrue(bottomRow(Layer.NUMBER).none { it.action == KeyAction.ToggleMode })
+  }
+
   @Test
   fun theDialPadIsComplete() {
     val digits = NUMBER_ROWS.flatten().mapNotNull { (it.action as? KeyAction.Text)?.text }.filter { it.single().isDigit() }

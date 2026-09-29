@@ -93,6 +93,22 @@ fun copiedAt(stamp: Long, sinceBoot: Long, now: Long): Long? = when {
   else -> null
 }
 
+/** Two Shift taps closer than this lock the capitals. */
+const val DOUBLE_TAP_MS = 350L
+
+/** Shift's two states after a tap, `sinceLast` ms after the previous one. */
+data class ShiftState(val shifted: Boolean, val capsLock: Boolean)
+
+/**
+ * A tap turns the next letter's capital on or off; a second tap soon after
+ * the first locks it; any tap while locked lets go of both.
+ */
+fun shiftAfterTap(state: ShiftState, sinceLast: Long): ShiftState = when {
+  state.capsLock -> ShiftState(shifted = false, capsLock = false)
+  state.shifted && sinceLast < DOUBLE_TAP_MS -> ShiftState(shifted = false, capsLock = true)
+  else -> ShiftState(shifted = !state.shifted, capsLock = false)
+}
+
 /** Words a message carrying a one-time code says it with. */
 private val CODE_WORDS = listOf("验证码", "校验码", "动态码", "确认码", "认证码", "安全码", "code", "otp")
 private val CODE_DIGITS = Regex("(?<![0-9])[0-9]{4,8}(?![0-9])")

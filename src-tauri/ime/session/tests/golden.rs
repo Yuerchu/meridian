@@ -435,7 +435,8 @@ fn has_private_use(s: &str) -> bool {
 fn grid_tokens_compose_and_space_commits() {
     let mut r = Rig::new(InputScheme::Grid);
     let (_, out) = r.run("ny<t3>h<ao><t3>");
-    assert_eq!(out.frame.preedit_text(), "nyˇ haoˇ");
+    // The highlighted candidate's reading, not the keys' labels (nyˇ haoˇ).
+    assert_eq!(out.frame.preedit_text(), "ni hao");
     assert_eq!(r.candidates(&out)[0], "你好");
     let (committed, out) = r.run("<space>");
     assert_eq!(committed, "你好");
@@ -447,7 +448,7 @@ fn grid_tokens_compose_and_space_commits() {
 fn grid_tones_are_optional() {
     let mut r = Rig::new(InputScheme::Grid);
     let (_, out) = r.run("nyh<ao>");
-    assert_eq!(out.frame.preedit_text(), "ny hao");
+    assert_eq!(out.frame.preedit_text(), "ni hao");
     assert_eq!(r.candidates(&out)[0], "你好");
 }
 
@@ -514,8 +515,12 @@ fn grid_enter_commits_highlighted() {
 #[test]
 fn grid_backspace_removes_one_key() {
     let mut r = Rig::new(InputScheme::Grid);
-    let (_, out) = r.run("nyh<ao><bs>");
-    assert_eq!(out.frame.preedit_text(), "ny h", "one private-use key, one backspace");
+    r.run("nyh<ao><bs>");
+    assert_eq!(
+        r.session.buffer_keys(),
+        meridian_ime_engine::grid_keys("n y h"),
+        "one private-use key, one backspace"
+    );
 }
 
 #[test]
@@ -676,7 +681,11 @@ fn grid_precise_keys_from_a_long_press() {
         cands.contains(&"中".to_string()) && !cands.contains(&"总".to_string()),
         "{cands:?}"
     );
-    assert_eq!(out.frame.preedit_text(), "zhwng");
+    assert_eq!(
+        out.frame.preedit_text(),
+        "zhong",
+        "the precise key reads as what it picked"
+    );
     r.run("<esc>");
     // 扔 may still appear as a word for the prefix `r` alone (the 简拼 edge);
     // what covers all three keys is 人 only.

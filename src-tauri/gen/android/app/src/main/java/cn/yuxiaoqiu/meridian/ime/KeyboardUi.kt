@@ -77,7 +77,14 @@ class KeyboardState {
   /** The letter layer the number layer returns to. */
   var lettersLayer by mutableStateOf(Layer.GRID)
   var mode by mutableStateOf(InputMode.CHINESE)
+  /** Which layer Chinese is typed on (GRID or QWERTY); English is QWERTY. */
+  var chineseLayout by mutableStateOf(Layer.GRID)
+  /** The next letter is a capital. */
   var shifted by mutableStateOf(false)
+  /** Every letter is a capital, until Shift is pressed again. */
+  var capsLock by mutableStateOf(false)
+  /** The key under the finger, drawn enlarged above it. */
+  var preview by mutableStateOf<KeyPreview?>(null)
   var tokens by mutableStateOf<Map<String, GridToken>>(emptyMap())
   var enterAction by mutableStateOf<Int?>(null)
   var menu by mutableStateOf<OpenMenu?>(null)
@@ -104,6 +111,9 @@ class KeyboardState {
   var inline by mutableStateOf<List<View>>(emptyList())
 }
 
+/** A pressed key's label and where the key is, in the keyboard's coordinates. */
+data class KeyPreview(val label: String, val left: Float, val right: Float, val top: Float)
+
 /** A long-press menu on screen, with the item the finger is over. */
 data class OpenMenu(val items: List<KeyAction>, val geometry: MenuGeometry, val highlight: Int)
 
@@ -112,7 +122,7 @@ interface KeyboardActions {
   fun onChoose(index: Int)
   fun onPage(forward: Boolean)
   fun onHide()
-  /** Globe held: the system's list of keyboards. */
+  /** The globe key: the system's list of keyboards. */
   fun onPicker()
   fun onPanel(panel: Panel?)
   fun onEdit(action: EditAction)
@@ -150,7 +160,7 @@ fun ImeTheme(content: @Composable () -> Unit) {
 /** The label a key or a menu item shows. */
 fun labelOf(action: KeyAction, state: KeyboardState): String = when (action) {
   is KeyAction.Token -> state.tokens[action.name]?.label ?: action.name
-  is KeyAction.Letter -> if (state.shifted) action.ch.uppercase() else action.ch.toString()
+  is KeyAction.Letter -> if (state.shifted || state.capsLock) action.ch.uppercase() else action.ch.toString()
   is KeyAction.Text -> action.text
   is KeyAction.Punct -> when {
     state.mode == InputMode.ENGLISH -> action.ch.toString()
@@ -162,6 +172,7 @@ fun labelOf(action: KeyAction, state: KeyboardState): String = when (action) {
   KeyAction.Enter -> enterLabel(state.enterAction)
   KeyAction.Shift -> "⇧"
   KeyAction.ToggleMode -> if (state.mode == InputMode.CHINESE) "中" else "英"
+  is KeyAction.ChineseLayout -> if (action.layer == Layer.GRID) "九宫格" else "拼音"
   KeyAction.Globe -> "🌐"
   is KeyAction.ToLayer -> "123"
   KeyAction.BackToLetters -> "ABC"
@@ -176,7 +187,7 @@ fun labelOf(action: KeyAction, state: KeyboardState): String = when (action) {
  */
 private fun iconOf(action: KeyAction, state: KeyboardState): Int? = when (action) {
   KeyAction.Backspace -> R.drawable.ime_backspace
-  KeyAction.Shift -> R.drawable.ime_shift
+  KeyAction.Shift -> if (state.capsLock) R.drawable.ime_shift_lock else R.drawable.ime_shift
   KeyAction.Globe -> R.drawable.ime_globe
   KeyAction.Enter -> if (state.enterAction == null) R.drawable.ime_enter else null
   else -> null
@@ -207,7 +218,7 @@ private fun roleOf(spec: KeySpec, state: KeyboardState): Role = when (val a = sp
   KeyAction.Enter -> Role.ACTION
   is KeyAction.Token -> if (state.tokens[a.name]?.role == GridRole.TONE) Role.TONE else Role.CHARACTER
   is KeyAction.Letter, is KeyAction.Text, is KeyAction.Punct, KeyAction.Space -> Role.CHARACTER
-  KeyAction.Shift -> if (state.shifted) Role.ACTION else Role.FUNCTION
+  KeyAction.Shift -> if (state.shifted || state.capsLock) Role.ACTION else Role.FUNCTION
   else -> Role.FUNCTION
 }
 
@@ -249,6 +260,7 @@ fun KeyboardScreen(state: KeyboardState, actions: KeyboardActions) {
         }
       }
     }
+    state.preview?.let { PreviewOverlay(it) }
     state.menu?.let { MenuOverlay(it, state) }
   }
   }
@@ -380,6 +392,8 @@ private fun RowScope.Key(spec: KeySpec, state: KeyboardState, actions: KeyboardA
           pressed = true
           tap(view)
           val current = latestSpec
+          val shown = previewOf(current, state, bounds)
+          state.preview = shown
           try {
             if (current.action == KeyAction.Backspace) {
               repeatWhileHeld(down.id) { actions.onKey(KeyAction.Backspace) }
@@ -401,6 +415,7 @@ private fun RowScope.Key(spec: KeySpec, state: KeyboardState, actions: KeyboardA
               if (awaitRelease(down.id) == Release.UP) actions.onKey(current.action)
               return@awaitEachGesture
             }
+            if (state.preview === shown) state.preview = null
             val geometry = MenuGeometry.of(
               items.size, bounds.left, bounds.right, bounds.top, itemWidth, itemHeight, latestWidth,
             )
@@ -424,6 +439,7 @@ private fun RowScope.Key(spec: KeySpec, state: KeyboardState, actions: KeyboardA
             }
           } finally {
             state.menu = null
+            if (state.preview === shown) state.preview = null
             pressed = false
           }
         }
@@ -457,6 +473,40 @@ private fun RowScope.Key(spec: KeySpec, state: KeyboardState, actions: KeyboardA
           )
         }
       }
+    }
+  }
+}
+
+/**
+ * What a press shows above the key: only for keys that type, whose label a
+ * finger covers. A function key, a space and an icon say nothing a preview
+ * would add.
+ */
+private fun previewOf(spec: KeySpec, state: KeyboardState, bounds: Rect): KeyPreview? {
+  val role = roleOf(spec, state)
+  if (role != Role.CHARACTER && role != Role.TONE) return null
+  if (spec.action == KeyAction.Space || iconOf(spec.action, state) != null) return null
+  val label = spec.label ?: labelOf(spec.action, state)
+  if (label.isEmpty()) return null
+  return KeyPreview(label, bounds.left, bounds.right, bounds.top)
+}
+
+@Composable
+private fun PreviewOverlay(preview: KeyPreview) {
+  val density = LocalDensity.current
+  val width = with(density) { (preview.right - preview.left).toDp() } + 12.dp
+  val height = 64.dp
+  val left = preview.left - with(density) { 6.dp.toPx() }
+  // Resting on the key's upper half, so it reads as the key lifted.
+  val top = preview.top - with(density) { (height - 20.dp).toPx() }
+  Surface(
+    Modifier.offset { IntOffset(left.toInt(), top.toInt()) }.size(width, height),
+    shape = RoundedCornerShape(12.dp),
+    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+    shadowElevation = 6.dp,
+  ) {
+    Box(Modifier.padding(bottom = 18.dp), contentAlignment = Alignment.Center) {
+      Text(preview.label, fontSize = if (preview.label.length > 2) 20.sp else 28.sp)
     }
   }
 }

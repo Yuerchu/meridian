@@ -80,6 +80,17 @@ class ToolsTest {
   }
 
   @Test
+  fun aDoubleTapOnShiftLocksCapitalsAndAnyTapReleasesThem() {
+    val off = ShiftState(shifted = false, capsLock = false)
+    val once = shiftAfterTap(off, sinceLast = 5_000)
+    assertEquals(ShiftState(shifted = true, capsLock = false), once)
+    val locked = shiftAfterTap(once, sinceLast = DOUBLE_TAP_MS - 1)
+    assertEquals(ShiftState(shifted = false, capsLock = true), locked)
+    assertEquals(off, shiftAfterTap(locked, sinceLast = 10))
+    assertEquals("slow second tap only turns it off", off, shiftAfterTap(once, sinceLast = DOUBLE_TAP_MS + 1))
+  }
+
+  @Test
   fun aClipOnTheToolbarIsOneLine() {
     assertEquals("a b c", oneLine("  a\n\tb   c \n"))
   }
