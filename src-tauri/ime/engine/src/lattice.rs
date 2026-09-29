@@ -28,10 +28,12 @@ use crate::scheme::{SyllableDag, SyllableEdge};
 pub const MAX_SPAN_SYLLABLES: usize = 8;
 /// Most syllables in a span once any edge is incomplete.
 pub const MAX_INCOMPLETE_SPAN_SYLLABLES: usize = 4;
-/// Hits kept per span when every edge is complete.
+/// Hits of a span the beam search tries when every edge is complete. The
+/// search's bound only: the span keeps every hit, because the list is built
+/// from the same spans.
 pub const MAX_HITS_PER_SPAN: usize = 6;
-/// Hits kept per span with an incomplete edge, where the pattern is broad and
-/// the right word is more often further down.
+/// Hits of a span the beam search tries with an incomplete edge, where the
+/// pattern is broad and the right word is more often further down.
 pub const MAX_HITS_PER_INCOMPLETE_SPAN: usize = 20;
 /// Entries the cache holds before it is emptied.
 pub const CACHE_CAPACITY: usize = 8192;
@@ -44,7 +46,10 @@ pub struct Span {
     /// Key index the last edge ends at.
     pub end: usize,
     pub syllables: Vec<SyllableEdge>,
-    /// Best first, at most [`MAX_HITS_PER_SPAN`] / [`MAX_HITS_PER_INCOMPLETE_SPAN`].
+    /// Best first, as many as the dictionaries answered
+    /// ([`LookupLimits::max_hits`]). Not cut to what the beam search tries:
+    /// the candidate list reads these too, and cut here a single syllable
+    /// offered six characters and no more — 翔 under xiang, 狐 under hu.
     pub hits: Arc<Vec<Hit>>,
 }
 
@@ -127,14 +132,7 @@ impl SpanCache {
                 complete: e.complete,
             })
             .collect();
-        let incomplete = pattern.iter().any(|e| !e.complete);
-        let mut hits = dicts.lookup_pattern(&slots, limits);
-        hits.truncate(if incomplete {
-            MAX_HITS_PER_INCOMPLETE_SPAN
-        } else {
-            MAX_HITS_PER_SPAN
-        });
-        let hits = Arc::new(hits);
+        let hits = Arc::new(dicts.lookup_pattern(&slots, limits));
         if self.entries.len() >= CACHE_CAPACITY {
             self.entries.clear();
         }
@@ -426,7 +424,7 @@ mod tests {
             .max();
         assert_eq!(longest_incomplete, Some(MAX_INCOMPLETE_SPAN_SYLLABLES));
         for span in l.spans.iter().flatten() {
-            assert!(span.hits.len() <= MAX_HITS_PER_INCOMPLETE_SPAN);
+            assert!(span.hits.len() <= LookupLimits::default().max_hits);
         }
     }
 }

@@ -375,6 +375,29 @@ mod tests {
         assert_eq!(q.preedit.iter().map(|s| s.text.as_str()).collect::<String>(), "ni hao");
     }
 
+    /// Found on the device: the span cache cut every span to the beam's six,
+    /// and the list is built from the same spans, so 翔 — tenth under xiang
+    /// in rime-ice — could only be typed as 飞翔 with 飞 deleted.
+    #[test]
+    fn every_character_of_a_syllable_is_offered_not_only_the_beams_few() {
+        let chars = ["想", "向", "相", "像", "象", "响", "香", "乡", "享", "翔"];
+        let rows: Vec<(&str, &str, u32)> = chars
+            .iter()
+            .enumerate()
+            .map(|(i, c)| ("xiang", *c, 1000 - i as u32 * 10))
+            .collect();
+        let (_dir, engine) = engine(&rows);
+        let q = ask(&engine, "xiang", &MemoryLearner::new());
+        let offered = texts(&q);
+        for c in chars {
+            assert!(offered.contains(&c), "{c} missing from {offered:?}");
+        }
+        assert!(
+            chars.len() > MAX_HITS_PER_SPAN,
+            "the case has to go past the beam's bound"
+        );
+    }
+
     /// Mutation note: with `WORD_COUNT_PENALTY = 0` the three-character
     /// reading wins on raw frequency, so the second half of this test is the
     /// mutant's failure — the same search with the penalty removed.
