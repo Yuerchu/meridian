@@ -18,7 +18,10 @@ icon.png
 *.log
 .DS_Store
 tsconfig.tsbuildinfo
-.claude/
+# .claude/ is per machine (skills, local settings, worktrees) except the rules,
+# which are the design record split out of CLAUDE.md
+.claude/*
+!.claude/rules/
 .codex/
 .mcp.json
 temp/
