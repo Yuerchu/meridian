@@ -1,6 +1,7 @@
 package cn.yuxiaoqiu.meridian.ime
 
 import android.view.KeyEvent
+import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -124,6 +125,14 @@ class ToolsTest {
     assertEquals(Layer.QWERTY, lettersAfterToggle(InputMode.CHINESE, Layer.GRID))
     assertEquals(Layer.GRID, lettersAfterToggle(InputMode.ENGLISH, Layer.GRID))
     assertEquals(Layer.QWERTY, lettersAfterToggle(InputMode.ENGLISH, Layer.QWERTY))
+  }
+
+  /** Found in review: a seventh tool left a 360 dp bar 46 dp for a copied code. */
+  @Test
+  fun aChipHasItsRoomAndOneToolAlwaysShows() {
+    assertEquals("a common phone gives the chip all it may take", CHIP_MAX_WIDTH, chipRoom(360.dp))
+    assertEquals("settings, hide and one tool stay on a narrow bar", TOOL_WIDTH * 3, 280.dp - chipRoom(280.dp))
+    assertEquals(0.dp, chipRoom(100.dp))
   }
 
   @Test

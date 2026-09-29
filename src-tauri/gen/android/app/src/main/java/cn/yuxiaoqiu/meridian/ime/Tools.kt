@@ -1,12 +1,15 @@
 package cn.yuxiaoqiu.meridian.ime
 
 import android.view.KeyEvent
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 /** What takes the place of the keys, opened from the toolbar or the candidate bar. */
 enum class Panel {
   EDIT,
   CLIPBOARD,
   SYMBOLS,
+  EMOJI,
   /** Every candidate as a grid, over the keys; closes once nothing is left to choose. */
   CANDIDATES,
 }
@@ -140,6 +143,19 @@ fun schemeForKey(physical: Boolean, lettersLayer: Layer): String =
 /** Where 中/英 takes the letters: English is QWERTY, Chinese the chosen layout. */
 fun lettersAfterToggle(mode: InputMode, chineseLayout: Layer): Layer =
   if (mode == InputMode.CHINESE) Layer.QWERTY else chineseLayout
+
+/** A toolbar button's width, and the most a paste or code chip takes. */
+val TOOL_WIDTH = 44.dp
+val CHIP_MAX_WIDTH = 180.dp
+
+/**
+ * How wide a paste or code chip may be on a toolbar `bar` wide. The chip is
+ * why the bar is worth looking at, so it is measured before the tools, which
+ * scroll in whatever it leaves; but it never takes the last tool's room, or
+ * the tools would be a scroll area with nothing showing that it is one.
+ * Settings and hide keep their places at the end.
+ */
+fun chipRoom(bar: Dp): Dp = minOf(CHIP_MAX_WIDTH, bar - TOOL_WIDTH * 3).coerceAtLeast(0.dp)
 
 /** Two Shift taps closer than this lock the capitals. */
 const val DOUBLE_TAP_MS = 350L
