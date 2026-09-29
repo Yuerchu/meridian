@@ -135,7 +135,9 @@ export const TurnItem = React.memo(function TurnItem({
   const regenerateTurn = useCallback(() => {
     if (onRegenerate && regenerateRootId) onRegenerate(regenerateRootId)
   }, [onRegenerate, regenerateRootId])
-  const onRegenerateTurn = onRegenerate && regenerateRootId ? regenerateTurn : undefined
+  // Not for a turn nobody asked for: its first answer hangs off the turn
+  // before it, so regenerating it would regenerate that one.
+  const onRegenerateTurn = onRegenerate && regenerateRootId && !turn.wokenBy ? regenerateTurn : undefined
 
   // Two independent pagers. Regenerating forks below the question, so that
   // pager belongs to the answer; editing the question forks beside it, so that
@@ -266,6 +268,13 @@ export const TurnItem = React.memo(function TurnItem({
       )}
       {question}
       {questionPager}
+      {turn.wokenBy && (
+        <Marker data-slot="turn-woken" data-trigger={turn.wokenBy} className="pl-10 text-caption-1-regular">
+          <MarkerContent>
+            {t(turn.wokenBy === 'task_completion' ? 'chat.turn.wokenByTask' : 'chat.turn.wokenByAgent')}
+          </MarkerContent>
+        </Marker>
+      )}
       {/* The answer has its own anchor so the scroller can put the reader back
           at the start of it when the stream ends. The runs inside it sit at a
           message's internal rhythm, closer than the six-unit gap the turn keeps

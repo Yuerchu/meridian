@@ -97,6 +97,42 @@ describe('markQueued', () => {
   })
 })
 
+describe('buildTurns — turns nobody asked for', () => {
+  // A background task finished and the model was woken: its rows hang off the
+  // last turn's answer with no question of their own. Folded into that turn,
+  // they took over its cost, its failure and its conclusion, and "regenerate"
+  // on the result would have regenerated the turn before it.
+  it('starts a turn of its own for a run woken by a background task', () => {
+    const q = msg('user', { content: 'build it', turn_id: 't1' })
+    const a1 = msg('assistant', { content: 'started in the background', turn_id: 't1' })
+    const w1 = msg('assistant', { content: 'build finished', turn_id: 't2' })
+    const w2 = msg('assistant', { content: 'all green', turn_id: 't2' })
+
+    const turns = buildTurns([q, a1, w1, w2], { unpromptedTurns: new Map([['t2', 'task_completion']]) })
+
+    expect(turns).toHaveLength(2)
+    expect(turns[0].assistantMessages.map((m) => m.id)).toEqual([a1.id])
+    expect(turns[0].wokenBy).toBeNull()
+    expect(turns[1].userMessage).toBeNull()
+    expect(turns[1].assistantMessages.map((m) => m.id)).toEqual([w1.id, w2.id])
+    expect(turns[1].wokenBy).toBe('task_completion')
+    expect(turns[1].turnId).toBe('t2')
+  })
+
+  // A plan continuation has no row of its own either, but the question it
+  // carries on answering is the one above it — it stays in that turn.
+  it('keeps a run nobody marked as unprompted in the turn before it', () => {
+    const q = msg('user', { content: 'plan it', turn_id: 't1' })
+    const a1 = msg('assistant', { content: 'here is the plan', turn_id: 't1' })
+    const c1 = msg('assistant', { content: 'implementing', turn_id: 't2' })
+
+    const turns = buildTurns([q, a1, c1], { unpromptedTurns: new Map() })
+
+    expect(turns).toHaveLength(1)
+    expect(turns[0].assistantMessages.map((m) => m.id)).toEqual([a1.id, c1.id])
+  })
+})
+
 describe('buildTurns — grouping', () => {
   it('returns nothing for an empty conversation', () => {
     expect(buildTurns([])).toEqual([])

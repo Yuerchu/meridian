@@ -358,6 +358,7 @@ struct TurnGuard<'a> {
     conversation_id: &'a str,
     turn_id: String,
     origin: TurnOrigin,
+    trigger: meridian_core::turn::TurnTrigger,
     /// The row being written. Absent until the first iteration creates one —
     /// the early returns before that still owe a terminal stop, they just have
     /// no message to attach it to, and the front end would otherwise sit on the
@@ -380,7 +381,16 @@ impl TurnGuard<'_> {
     /// `Err` means the id is already on record, and the caller must not go on
     /// to close that turn out.
     async fn open_record(&self, pool: &DbPool) -> Result<(), String> {
-        turn_record::begin(pool, &self.turn_id, self.conversation_id, self.origin, None).await
+        turn_record::begin_triggered(
+            pool,
+            &self.turn_id,
+            self.conversation_id,
+            self.origin,
+            None,
+            self.trigger,
+            None,
+        )
+        .await
     }
 
     /// Hand the conversation back. Called just before the turn's own stop event
@@ -919,11 +929,19 @@ async fn chat_inner(
     let cancel = lease.cancel_token().clone();
     // From here on every exit goes through this: the lease, the approvals and
     // the terminal stop event are all released by its `Drop`.
+    // An approved plan carrying on is the one turn here with no question of
+    // its own: nothing typed, nothing replaced, started by the review.
+    let trigger = if origin == TurnOrigin::PlanReview && message.is_none() && replaces.is_none() {
+        meridian_core::turn::TurnTrigger::PlanContinuation
+    } else {
+        meridian_core::turn::TurnTrigger::User
+    };
     let mut stop_guard = TurnGuard {
         services: &services,
         conversation_id: &conversation_id,
         turn_id: turn_id.clone(),
         origin,
+        trigger,
         message_id: None,
         armed: true,
         lease: Some(lease),
@@ -1887,6 +1905,7 @@ async fn chat_inner(
             redaction_mappings: &services.redaction_mappings,
         },
         engine::TurnSetup {
+            trigger,
             provider: &*provider,
             // Cloned because the title request below reuses the model, and it
             // runs after the turn rather than inside it.

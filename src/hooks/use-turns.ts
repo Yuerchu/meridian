@@ -1,6 +1,7 @@
 import { useLayoutEffect, useMemo, useRef } from 'react'
 import { buildTurns, type Turn } from '@/lib/turns'
-import type { MessageViewModel, TurnInfoResponse } from '@/types'
+import { isUnprompted } from '@/lib/turn-trigger'
+import type { MessageViewModel, TurnInfoResponse, TurnTrigger } from '@/types'
 
 /** The turns the backend says never reached an ending.
  *
@@ -23,6 +24,22 @@ function failureByTurnId(turns: TurnInfoResponse[]): ReadonlyMap<string, string>
   )
 }
 
+/** Runs nobody asked for, and what woke each, from the record and from what
+ *  is streaming now. */
+function unpromptedTurns(
+  turns: TurnInfoResponse[],
+  live: Readonly<Record<string, TurnTrigger>>,
+): ReadonlyMap<string, TurnTrigger> {
+  const woken = new Map<string, TurnTrigger>()
+  for (const [id, trigger] of Object.entries(live)) {
+    if (isUnprompted(trigger)) woken.set(id, trigger)
+  }
+  for (const t of turns) {
+    if (isUnprompted(t.trigger)) woken.set(t.id, t.trigger)
+  }
+  return woken
+}
+
 function usageByTurnId(turns: TurnInfoResponse[]) {
   return new Map(turns.flatMap((turn) => (turn.usage ? [[turn.id, turn.usage] as const] : [])))
 }
@@ -30,6 +47,7 @@ function usageByTurnId(turns: TurnInfoResponse[]) {
 /** One shared empty array, because a default parameter would mint a new one on
  *  every render and take the whole memo chain below it with it. */
 const NO_TURNS: TurnInfoResponse[] = []
+const NO_TRIGGERS: Readonly<Record<string, TurnTrigger>> = {}
 
 /**
  * Groups messages into turns while keeping object identity across renders.
@@ -44,13 +62,22 @@ export function useTurns(
   messages: MessageViewModel[],
   streaming: boolean,
   turns: TurnInfoResponse[] = NO_TURNS,
+  liveTriggers: Readonly<Record<string, TurnTrigger>> = NO_TRIGGERS,
 ): Turn[] {
   const crashed = useMemo(() => crashedIds(turns), [turns])
+  const unprompted = useMemo(() => unpromptedTurns(turns, liveTriggers), [turns, liveTriggers])
   const usage = useMemo(() => usageByTurnId(turns), [turns])
   const failures = useMemo(() => failureByTurnId(turns), [turns])
   const built = useMemo(
-    () => buildTurns(messages, { streaming, crashedTurnIds: crashed, usageByTurnId: usage, failureByTurnId: failures }),
-    [messages, streaming, crashed, usage, failures],
+    () =>
+      buildTurns(messages, {
+        streaming,
+        crashedTurnIds: crashed,
+        usageByTurnId: usage,
+        failureByTurnId: failures,
+        unpromptedTurns: unprompted,
+      }),
+    [messages, streaming, crashed, usage, failures, unprompted],
   )
   const prevRef = useRef<Turn[]>(built)
   const stable = reconcileTurns(prevRef.current, built)
@@ -67,6 +94,7 @@ function sameInputs(a: Turn, b: Turn): boolean {
   if (a.status !== b.status) return false
   if (a.usage !== b.usage) return false
   if (a.failure !== b.failure) return false
+  if (a.wokenBy !== b.wokenBy) return false
   if (a.assistantMessages.length !== b.assistantMessages.length) return false
   for (let i = 0; i < a.assistantMessages.length; i++) {
     if (a.assistantMessages[i] !== b.assistantMessages[i]) return false
