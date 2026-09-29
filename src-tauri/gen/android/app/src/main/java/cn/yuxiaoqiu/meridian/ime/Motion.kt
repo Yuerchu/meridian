@@ -26,6 +26,13 @@ import androidx.compose.ui.unit.dp
 // thing is, overshoot and settle; effects springs, for colour and opacity, do
 // not. Nothing here stands between a key and what it types — a press shows at
 // once and candidates are never faded in — only what follows is animated.
+//
+// And what says what a release or a tap will do — a menu's highlight, an item
+// a finger is aimed at — is never moved or recoloured on a delay: animate its
+// size or opacity in place, never its position. Both times this was broken
+// (a long-press menu that grew in, a highlight that sprang between items)
+// the item that looked chosen was not the one typed, and both were found in
+// review rather than on the device.
 
 @Composable
 internal fun <T> fastSpatial(): FiniteAnimationSpec<T> = MaterialTheme.motionScheme.fastSpatialSpec()

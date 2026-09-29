@@ -9,8 +9,6 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.animateOffsetAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -63,7 +61,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -625,15 +622,12 @@ private fun MenuOverlay(menu: OpenMenu, state: KeyboardState) {
   // there from the first frame — scaled in, the item under the finger for
   // the first few frames was not the one a release would type.
   val appear = rememberAppear(Unit)
-  // One highlight, springing from item to item under the finger rather than
-  // jumping; it fades when the finger backs out below the key.
+  // The highlight is the only sign of what a release types: the finger is on
+  // the key below the menu and picks the nearest item sideways. So it is on
+  // the chosen item from the frame the choice changes — it once sprang there
+  // and a quick release typed an item it had not reached — and only its size
+  // moves, a small pop in place.
   val highlighted = menu.highlight
-  val pill by animateOffsetAsState(
-    Offset(g.itemLeft(highlighted.coerceAtLeast(0)) - g.left, g.itemTop(highlighted.coerceAtLeast(0)) - top),
-    fastSpatial(),
-    label = "menu highlight",
-  )
-  val pillAlpha by animateFloatAsState(if (highlighted >= 0) 1f else 0f, fastEffects(), label = "menu highlight alpha")
   Surface(
     Modifier
       .offset { IntOffset(g.left.toInt(), top.toInt()) }
@@ -644,22 +638,27 @@ private fun MenuOverlay(menu: OpenMenu, state: KeyboardState) {
     shadowElevation = 6.dp,
   ) {
     Box {
-      Box(
-        Modifier
-          .offset { IntOffset(pill.x.toInt(), pill.y.toInt()) }
-          .then(itemSize)
-          .padding(3.dp)
-          .graphicsLayer { alpha = pillAlpha }
-          .background(colors.primary, RoundedCornerShape(10.dp)),
-      )
+      if (highlighted >= 0) {
+        key(highlighted) {
+          val pop = rememberAppear(highlighted)
+          Box(
+            Modifier
+              .offset { IntOffset((g.itemLeft(highlighted) - g.left).toInt(), (g.itemTop(highlighted) - top).toInt()) }
+              .then(itemSize)
+              .padding(3.dp)
+              .graphicsLayer {
+                val scale = 0.9f + 0.1f * pop.value
+                scaleX = scale
+                scaleY = scale
+              }
+              .background(colors.primary, RoundedCornerShape(10.dp)),
+          )
+        }
+      }
       menu.items.forEachIndexed { index, item ->
         val x = g.itemLeft(index) - g.left
         val y = g.itemTop(index) - top
-        val ink by animateColorAsState(
-          if (index == highlighted) colors.onPrimary else colors.onSurface,
-          fastEffects(),
-          label = "menu item",
-        )
+        val ink = if (index == highlighted) colors.onPrimary else colors.onSurface
         Box(
           Modifier.offset { IntOffset(x.toInt(), y.toInt()) }.then(itemSize),
           contentAlignment = Alignment.Center,
