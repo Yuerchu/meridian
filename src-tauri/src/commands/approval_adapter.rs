@@ -106,6 +106,17 @@ impl DesktopApprovals {
                 },
             );
         }
+        // Every register logs its ids, so an answer naming an unknown one can
+        // be traced to where it came from. Ids only: arguments can be a whole
+        // command line.
+        tracing::info!(
+            approval_id = %approval_id,
+            call_id = %tc.id,
+            message_id,
+            conversation_id = %self.conversation_id,
+            tool = %tc.name,
+            "tool approval asked"
+        );
         // Routed to whoever is watching. For a delegated run that is the parent:
         // the sub-agent's conversation may not even be open, and a question
         // nobody sees is a turn that stalls until it is cancelled.

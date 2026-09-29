@@ -1180,7 +1180,7 @@ const integrations: Record<string, DemoHandler> = {
     if (row) row.enabled = req.enabled
     return state.imeDictionaries
   },
-  acp_get_config: () => ({ command: 'npx', args: ['-y', '@agentclientprotocol/claude-agent-acp'] }),
+  acp_get_config: () => ({ command: 'npx', args: ['-y', '@agentclientprotocol/claude-agent-acp@0.84.0'] }),
 }
 
 const emoji: Record<string, DemoHandler> = {
