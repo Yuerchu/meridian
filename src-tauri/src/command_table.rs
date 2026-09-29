@@ -335,6 +335,7 @@ macro_rules! with_all_commands {
 
             sync platform => get_platform(),
             local platform => get_window_insets(),
+            local platform => take_launch_request(),
             local platform => get_manage_storage_status(),
             local platform => request_manage_storage(),
             local platform => pick_saf_directory(),

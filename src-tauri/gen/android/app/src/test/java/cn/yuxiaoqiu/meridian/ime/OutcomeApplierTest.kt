@@ -8,31 +8,21 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OutcomeApplierTest {
-  /** Records every edit, and models the composing region well enough to read back. */
+  /** Records every edit. */
   private class FakeField : TextTarget {
     val calls = mutableListOf<String>()
     var text = ""
-    var region = ""
     var selection = false
     var deleteWorks = true
 
-    val shown: String get() = text + region
+    /** What changed the field, leaving out the batch brackets. */
+    val edits: List<String> get() = calls.filter { it != "begin" && it != "end" }
 
     override fun beginBatch() { calls += "begin" }
     override fun endBatch() { calls += "end" }
     override fun commit(text: String) {
       calls += "commit($text)"
       this.text += text
-      region = ""
-    }
-    override fun setComposing(text: String) {
-      calls += "compose($text)"
-      region = text
-    }
-    override fun finishComposing() {
-      calls += "finish"
-      text += region
-      region = ""
     }
     override fun hasSelection() = selection
     override fun deleteBefore(): Boolean {
@@ -63,29 +53,32 @@ class OutcomeApplierTest {
   private val backspace = EngineKey.function(Vk.BACK)
   private val enter = EngineKey.function(Vk.RETURN)
 
+  /**
+   * The letters never reach the field: its editor would record them, and its
+   * undo turned 我不知道 back into `wo bu zhi dao` on the device.
+   */
   @Test
-  fun typingComposesAndACommitReplacesTheRegion() {
+  fun theFieldIsGivenTheCommitAndNeverTheLetters() {
     val field = FakeField()
     val a = OutcomeApplier(field)
     a.apply(n, eaten("n"), null)
     a.apply(i, eaten("ni"), null)
-    assertEquals("ni", field.region)
     assertTrue(a.composing)
+    assertEquals(emptyList<String>(), field.edits)
     a.apply(EngineKey.char(' '.code), eaten("", commit = "你"), null)
-    assertEquals("你", field.shown)
+    assertEquals(listOf("commit(你)"), field.edits)
     assertFalse(a.composing)
   }
 
-  /** The Windows text service left the last letter behind; this one may not. */
   @Test
-  fun deletingTheLastLetterClearsTheRegion() {
-    val field = FakeField()
+  fun deletingTheLastLetterEndsTheCompositionWithoutTouchingTheField() {
+    val field = FakeField().apply { text = "早" }
     val a = OutcomeApplier(field)
     a.apply(n, eaten("n"), null)
     a.apply(backspace, eaten(""), null)
-    assertEquals("", field.shown)
     assertFalse(a.composing)
-    assertEquals(listOf("begin", "compose(n)", "end", "begin", "compose()", "finish", "end"), field.calls)
+    assertEquals("早", field.text)
+    assertEquals(emptyList<String>(), field.edits)
   }
 
   @Test
@@ -94,8 +87,7 @@ class OutcomeApplierTest {
     val a = OutcomeApplier(field)
     a.apply(n, eaten("nihao"), null)
     a.apply(null, eaten("hao", commit = "你"), null)
-    assertEquals("你", field.text)
-    assertEquals("hao", field.region)
+    assertEquals(listOf("commit(你)"), field.edits)
     assertTrue(a.composing)
   }
 
@@ -147,18 +139,17 @@ class OutcomeApplierTest {
   }
 
   @Test
-  fun aResetFrameClearsARegionAndForgettingDoesNot() {
+  fun aResetFrameOrForgettingEndsTheCompositionAndEditsNothing() {
     val field = FakeField()
     val a = OutcomeApplier(field)
     a.apply(n, eaten("n"), null)
     a.apply(frame())
-    assertEquals("", field.shown)
+    assertFalse(a.composing)
 
-    val gone = FakeField()
-    val b = OutcomeApplier(gone)
+    val b = OutcomeApplier(field)
     b.apply(n, eaten("n"), null)
     b.forget()
-    b.apply(frame())
-    assertFalse("finish" in gone.calls)
+    assertFalse(b.composing)
+    assertEquals(emptyList<String>(), field.edits)
   }
 }

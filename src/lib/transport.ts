@@ -38,6 +38,8 @@ export interface Transport {
 const LOCAL_COMMANDS = new Set([
   'get_platform',
   'get_window_insets',
+  // What this device was launched to show.
+  'take_launch_request',
   'get_manage_storage_status',
   'request_manage_storage',
   'pick_saf_directory',
@@ -54,7 +56,7 @@ const LOCAL_COMMANDS = new Set([
 ])
 
 /** Channels emitted by this device rather than by whatever it is connected to. */
-const LOCAL_CHANNELS = new Set(['insets-changed', 'system-notice'])
+const LOCAL_CHANNELS = new Set(['insets-changed', 'launch-request', 'system-notice'])
 
 /** Every channel the current desktop protocol can put on the remote socket. */
 const REMOTE_CHANNELS = new Set([

@@ -550,6 +550,7 @@ mod tests {
             // Android's own surface: the device asking is the device that has
             // the storage grant, so these are answered locally on the client.
             "get_window_insets",
+            "take_launch_request",
             "get_manage_storage_status",
             "request_manage_storage",
             "pick_saf_directory",

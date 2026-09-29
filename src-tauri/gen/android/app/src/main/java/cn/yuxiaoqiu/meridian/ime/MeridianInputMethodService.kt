@@ -1,15 +1,20 @@
 package cn.yuxiaoqiu.meridian.ime
 
+import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
 import android.inputmethodservice.InputMethodService
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import androidx.compose.ui.platform.ComposeView
+import cn.yuxiaoqiu.meridian.EXTRA_OPEN_SETTINGS
 import java.io.File
 
 /**
@@ -33,6 +38,11 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
 
   private var enterAction: Int? = null
   private var privateField = false
+  private var fieldPackage: String? = null
+  private lateinit var clipboard: ClipboardHistory
+  private val clipboardManager by lazy { getSystemService(CLIPBOARD_SERVICE) as ClipboardManager }
+  private val onClipChanged = ClipboardManager.OnPrimaryClipChangedListener { captureClip(live = true) }
+  private val refreshChip = Runnable { showClips() }
   /**
    * Set when a letter is sent while not yet composing, until its answer
    * arrives: a Backspace typed in that gap belongs to the composition, not to
@@ -56,6 +66,10 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
     super.onCreate()
     lifecycle.create()
     engine = Engine(File(dataDir, "ime"))
+    keyboard.incognito = prefs().getBoolean(PREF_INCOGNITO, false)
+    keyboard.recording = prefs().getBoolean(PREF_RECORDING, true)
+    clipboard = ClipboardHistory(File(dataDir, "ime/clipboard.json"))
+    clipboardManager.addPrimaryClipChangedListener(onClipChanged)
     val saved = prefs().getString(PREF_LETTERS, null)?.let { runCatching { Layer.valueOf(it) }.getOrNull() }
     keyboard.lettersLayer = saved ?: Layer.GRID
     keyboard.layer = keyboard.lettersLayer
@@ -71,7 +85,9 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
   }
 
   override fun onDestroy() {
+    clipboardManager.removePrimaryClipChangedListener(onClipChanged)
     main.removeCallbacks(readSurrounding)
+    main.removeCallbacks(refreshChip)
     engine.close()
     lifecycle.destroy()
     super.onDestroy()
@@ -102,6 +118,7 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
   override fun onStartInput(attribute: EditorInfo, restarting: Boolean) {
     super.onStartInput(attribute, restarting)
     privateField = isPrivateField(attribute.inputType, attribute.imeOptions)
+    fieldPackage = attribute.packageName
     enterAction = enterActionFor(attribute.imeOptions)
     keyboard.enterAction = enterAction
     applier.forget()
@@ -112,8 +129,11 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
     // produce the grid's keys.
     val hardware = resources.configuration.keyboard == Configuration.KEYBOARD_QWERTY
     engine.setScheme(if (hardware) "pinyin" else schemeOf(keyboard.lettersLayer))
-    engine.startInput(attribute.packageName, privateField) { frame -> frame?.let(::render) }
+    engine.startInput(attribute.packageName, learningOff) { frame -> frame?.let(::render) }
   }
+
+  /** Nothing typed here is learned, read around or remembered. */
+  private val learningOff get() = privateField || keyboard.incognito
 
   override fun onStartInputView(info: EditorInfo, restarting: Boolean) {
     super.onStartInputView(info, restarting)
@@ -121,7 +141,13 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
     // Written by the app the first time it runs, possibly after the keyboard started.
     if (keyboard.font == null) keyboard.font = keyboardFont(dataDir)
     keyboard.shifted = false
+    keyboard.panel = null
+    keyboard.selecting = false
     engine.setScheme(schemeOf(keyboard.lettersLayer))
+    // Copied while this process was not running — a vendor that kills
+    // keyboards in the background (MIUI) makes that the ordinary case.
+    captureClip(live = false)
+    showClips()
   }
 
   override fun onFinishInputView(finishingInput: Boolean) {
@@ -170,16 +196,9 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
     candidatesEnd: Int,
   ) {
     super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
-    if (applier.composing) {
-      // The cursor left the composition (a tap elsewhere): drop it rather
-      // than keep typing into a region the person has moved away from.
-      if (candidatesStart < 0 || newSelStart != newSelEnd || newSelEnd != candidatesEnd) {
-        currentInputConnection?.finishComposingText()
-        applier.forget()
-        engine.reset { frame -> frame?.let(::render) }
-      }
-      return
-    }
+    // A composition lives in the keyboard, not in the field (OutcomeApplier),
+    // so a caret moved mid-word only moves where the word will land.
+    if (applier.composing) return
     if (predicting) {
       // A list offered here means nothing anywhere else: 人 after 中国 is
       // not something to insert where the person has just tapped.
@@ -188,7 +207,7 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
         newSelStart != predictionAt || newSelEnd != predictionAt -> dismissPrediction()
       }
     }
-    if (!privateField) {
+    if (!learningOff) {
       main.removeCallbacks(readSurrounding)
       main.postDelayed(readSurrounding, SURROUNDING_DELAY_MS)
     }
@@ -196,7 +215,7 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
 
   /** What is around the cursor, for the scorer; never read in a private field. */
   private fun reportSurrounding() {
-    if (privateField || applier.composing) return
+    if (learningOff || applier.composing) return
     val ic = currentInputConnection ?: return
     val left = ic.getTextBeforeCursor(LEFT_CHARS, 0)?.toString() ?: return
     val right = ic.getTextAfterCursor(RIGHT_CHARS, 0)?.toString() ?: ""
@@ -279,6 +298,127 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
     (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker()
   }
 
+  // ── the toolbar ───────────────────────────────────────────────────────
+
+  override fun onPanel(panel: Panel?) {
+    keyboard.selecting = false
+    keyboard.panel = panel
+    if (panel == Panel.CLIPBOARD) showClips()
+  }
+
+  override fun onEdit(action: EditAction) {
+    val ic = currentInputConnection ?: return
+    when (val command = commandFor(action, keyboard.selecting)) {
+      is EditCommand.Key -> {
+        val now = SystemClock.uptimeMillis()
+        ic.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, command.keyCode, 0, command.meta))
+        ic.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, command.keyCode, 0, command.meta))
+      }
+      is EditCommand.Menu -> ic.performContextMenuAction(command.id)
+      null -> Unit
+    }
+    keyboard.selecting = selectingAfter(action, keyboard.selecting)
+  }
+
+  /**
+   * Into the field as if typed. The engine is reset so the pasted text is not
+   * taken for the next word of whatever was committed before it.
+   */
+  override fun onPasteClip(clip: Clip) {
+    val ic = currentInputConnection ?: return
+    ic.commitText(clip.text, 1)
+    engine.reset { frame -> frame?.let(::render) }
+    chipTaken = clip.at
+    keyboard.panel = null
+    showClips()
+  }
+
+  override fun onPinClip(clip: Clip, pinned: Boolean) {
+    clipboard.pin(clip.text, pinned)
+    showClips()
+  }
+
+  override fun onRemoveClip(clip: Clip) {
+    clipboard.remove(clip.text)
+    showClips()
+  }
+
+  override fun onClearClips() {
+    clipboard.clearUnpinned()
+    showClips()
+  }
+
+  override fun onRecording(on: Boolean) {
+    keyboard.recording = on
+    prefs().edit().putBoolean(PREF_RECORDING, on).apply()
+  }
+
+  /**
+   * Kept on disk: a process a vendor killed and restarted must not come back
+   * learning when the person left it incognito. The field is started again so
+   * the engine's session is muted (or not) from the next key.
+   */
+  override fun onIncognito() {
+    keyboard.incognito = !keyboard.incognito
+    prefs().edit().putBoolean(PREF_INCOGNITO, keyboard.incognito).apply()
+    engine.startInput(fieldPackage, learningOff) { frame -> frame?.let(::render) }
+  }
+
+  /** Meridian's own settings page for the keyboard, over whatever was open. */
+  override fun onOpenSettings() {
+    val intent = packageManager.getLaunchIntentForPackage(packageName) ?: return
+    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    intent.putExtra(EXTRA_OPEN_SETTINGS, "ime")
+    requestHideSelf(0)
+    startActivity(intent)
+  }
+
+  /** When the chip was last used: the same copy is not offered again. */
+  private var chipTaken = 0L
+
+  /**
+   * Reads what is on the clipboard now and remembers it, unless it may not be
+   * ([mayRemember]) or it has been seen before — a clip deleted from the
+   * history would otherwise come back the next time the keyboard opens. Text
+   * only: a copied image or link intent is not something to type.
+   *
+   * `live` is the listener: the copy is happening now, whatever the stamp
+   * says. Otherwise this is the catch-up when the keyboard shows, and the
+   * copy is dated from the stamp ([copiedAt]); one it cannot date is kept
+   * but not offered on the toolbar, since it may be hours old.
+   */
+  private fun captureClip(live: Boolean) {
+    val clip = try {
+      clipboardManager.primaryClip
+    } catch (_: SecurityException) {
+      null
+    } ?: return
+    if (clip.itemCount == 0) return
+    val text = clip.getItemAt(0).text?.toString() ?: return
+    val description = clip.description
+    val stamp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) description.timestamp else 0L
+    // Which copy this is, in whatever base the stamp is in: compared, never converted.
+    val identity = if (stamp > 0) stamp else text.hashCode().toLong()
+    if (identity == prefs().getLong(PREF_CLIP_SEEN, Long.MIN_VALUE)) return
+    prefs().edit().putLong(PREF_CLIP_SEEN, identity).apply()
+    val sensitive = description.extras?.getBoolean(EXTRA_IS_SENSITIVE, false) == true
+    if (!mayRemember(sensitive, privateField, keyboard.incognito, keyboard.recording)) return
+    val now = System.currentTimeMillis()
+    val at = if (live) now else copiedAt(stamp, SystemClock.elapsedRealtime(), now)
+    if (at == null) chipTaken = maxOf(chipTaken, now)
+    if (clipboard.add(text, at ?: now)) showClips()
+  }
+
+  /** Puts the history and the paste chip on screen, and schedules the chip's end. */
+  private fun showClips() {
+    clipboard.expire()
+    keyboard.clips = clipboard.clips
+    val fresh = clipboard.fresh(CHIP_MS)?.takeIf { it.at > chipTaken }
+    keyboard.chip = fresh
+    main.removeCallbacks(refreshChip)
+    if (fresh != null) main.postDelayed(refreshChip, CHIP_MS - (System.currentTimeMillis() - fresh.at) + 50)
+  }
+
   /**
    * Grid and QWERTY type different schemes, and changing the scheme drops
    * whatever is being composed; the composing region goes with it rather than
@@ -335,6 +475,14 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
   private companion object {
     const val PREFS = "ime"
     const val PREF_LETTERS = "letters_layer"
+    const val PREF_INCOGNITO = "incognito"
+    const val PREF_RECORDING = "clipboard_recording"
+    /** The stamp (or, without one, the text hash) of the last system clip looked at. */
+    const val PREF_CLIP_SEEN = "clipboard_seen_stamp"
+    /** `ClipDescription.EXTRA_IS_SENSITIVE`, API 33; apps set it on older versions too. */
+    const val EXTRA_IS_SENSITIVE = "android.content.extra.IS_SENSITIVE"
+    /** How long a copy is offered on the toolbar. */
+    const val CHIP_MS = 60_000L
     const val SURROUNDING_DELAY_MS = 150L
     const val LEFT_CHARS = 64
     const val RIGHT_CHARS = 32

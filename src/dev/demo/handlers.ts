@@ -1177,6 +1177,8 @@ const integrations: Record<string, DemoHandler> = {
   list_ime_dictionaries: (_args, { state }) => state.imeDictionaries,
   // The demo machine did nothing on its own, so the inbox has no system tab.
   list_system_notices: () => [],
+  // A browser is launched by nobody's keyboard.
+  take_launch_request: () => null,
   dismiss_system_notice: () => null,
   set_ime_dictionary_enabled: (args, { state }) => {
     const req = request<{ file: string; enabled: boolean }>(args)

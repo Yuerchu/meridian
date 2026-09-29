@@ -12,11 +12,8 @@ import android.view.inputmethod.EditorInfo
 interface TextTarget {
   fun beginBatch()
   fun endBatch()
-  /** Replaces the composing region (if any) with `text` and ends it. */
+  /** Inserts `text` at the cursor, over any selection. */
   fun commit(text: String)
-  /** Shows `text` as the composing region, underlined, cursor after it. */
-  fun setComposing(text: String)
-  fun finishComposing()
   fun hasSelection(): Boolean
   /** Deletes one code point before the cursor; false if the field refused. */
   fun deleteBefore(): Boolean
@@ -26,11 +23,14 @@ interface TextTarget {
 }
 
 /**
- * Applies what the engine answered to the field. `composing` is the keyboard's
- * view of whether a composing region is on screen, which is what lets the
- * last letter of a composition be taken off again: a preedit that goes empty
- * without a commit has to clear the region itself, or the letter stays in the
- * document as typed text (the Windows text service shipped with exactly that).
+ * Applies what the engine answered to the field, which is given commits and
+ * nothing else. What is being typed is drawn in the keyboard's candidate bar,
+ * never in the field as a composing region: the field's own editor records
+ * every change to such a region, so its undo turned 我不知道 back into
+ * `wo bu zhi dao` (found on the device), a search box searched for the
+ * letters as they were typed, and a chat app could save them as a draft.
+ * `composing` is the keyboard's own record that a preedit exists, which is
+ * what decides whether a hardware key belongs to it.
  */
 class OutcomeApplier(private val target: TextTarget) {
   var composing: Boolean = false
@@ -51,32 +51,19 @@ class OutcomeApplier(private val target: TextTarget) {
     }
   }
 
-  /** A frame with nothing to commit: a reset, a new field. */
+  /** A frame with nothing to commit: a reset, a new field. The field is not touched. */
   fun apply(frame: Frame) {
-    target.beginBatch()
-    try {
-      showFrame(null, frame)
-    } finally {
-      target.endBatch()
-    }
+    composing = frame.preeditText.isNotEmpty()
   }
 
-  /** The field went away or moved on; there is no region to clear. */
+  /** The field went away or moved on. */
   fun forget() {
     composing = false
   }
 
   private fun showFrame(commit: String?, frame: Frame) {
     commit?.let { target.commit(it) }
-    val preedit = frame.preeditText
-    when {
-      preedit.isNotEmpty() -> target.setComposing(preedit)
-      composing && commit == null -> {
-        target.setComposing("")
-        target.finishComposing()
-      }
-    }
-    composing = preedit.isNotEmpty()
+    composing = frame.preeditText.isNotEmpty()
   }
 
   /** What the application would have got had there been no keyboard. */

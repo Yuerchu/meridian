@@ -234,6 +234,7 @@ import type {
   WorkspaceTreeEntryListResponse,
   WorkspaceTreeRequest,
   WindowInsetsInfoResponse,
+  LaunchRequestInfoResponse,
 } from './types'
 
 export const api = {
@@ -680,6 +681,7 @@ export const api = {
   getPlatform: () => invoke<PlatformInfoResponse>('get_platform'),
 
   getWindowInsets: () => invoke<WindowInsetsInfoResponse>('get_window_insets'),
+  takeLaunchRequest: () => invoke<LaunchRequestInfoResponse | null>('take_launch_request'),
 
   getManageStorageStatus: () => invoke<boolean>('get_manage_storage_status'),
 

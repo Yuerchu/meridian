@@ -12,6 +12,7 @@ import { clearSettingsTabDirty, useSettingsTabDirty } from '@/components/setting
 import { useConfirm } from '@/hooks/use-confirm'
 import { useBackGesture, useHistoryLevel } from '@/hooks/use-history-level'
 import { useHotkey } from '@/hooks/use-hotkey'
+import { useLaunchRequest } from '@/hooks/use-launch-request'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSidebarResize } from '@/hooks/use-sidebar-resize'
 import { usePlatform } from '@/hooks/use-platform'
@@ -165,6 +166,15 @@ export function AppShell(props: ShellProps) {
   )
 
   useBackGesture()
+  // The keyboard toolbar's settings button launches the app asking for this page.
+  useLaunchRequest((tab) => {
+    void leavePlanReview().then((left) => {
+      if (!left) return
+      void changeSettingsTab(tab).then((changed) => {
+        if (changed) onOpenSettings()
+      })
+    })
+  })
   // Settings was a screen in the stack, and the back key left it. It is a page
   // now, so it has to claim its own level to keep doing that.
   useHistoryLevel(page === 'settings' && settingsHistoryClaimed, () => {

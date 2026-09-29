@@ -4,6 +4,7 @@ import {
   parseAppEventPayload,
   parseCompactDoneEvent,
   parseCompactStartEvent,
+  parseLaunchRequestEvent,
   parseConversationUpdatedEvent,
   parseQueueUpdatedEvent,
   parsePlanReviewEvent,
@@ -168,6 +169,10 @@ describe('closed first-party event contracts', () => {
     expect(() => parseWindowInsetsEvent({ ...insets, imeBottom: -1 })).toThrow('finite number')
     expect(parseRemoteResyncEvent({})).toEqual({})
     expect(() => parseRemoteResyncEvent({ replayed: false })).toThrow('must contain exactly')
+    // The request itself is taken by command; the event only says one is waiting.
+    expect(parseLaunchRequestEvent({})).toEqual({})
+    expect(parseAppEventPayload('launch-request', {})).toEqual({})
+    expect(() => parseLaunchRequestEvent({ settings_tab: 'ime' })).toThrow('must contain exactly')
   })
 
   it('reads a system notice exactly, and only on its own channel', () => {

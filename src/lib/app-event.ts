@@ -49,6 +49,8 @@ export type VoiceModelDownloadDoneEvent =
 export type WindowInsetsEvent = WindowInsetsInfoResponse
 
 export type RemoteResyncEvent = Record<string, never>
+/** A launch request is waiting; `take_launch_request` says what it is. */
+export type LaunchRequestEvent = Record<string, never>
 
 export type SystemNoticeEvent = { type: 'upsert'; notice: SystemNoticeInfoResponse } | { type: 'dismiss'; id: string }
 
@@ -74,6 +76,7 @@ export interface AppEventPayloadMap {
   'voice-model-download-done': VoiceModelDownloadDoneEvent
   'insets-changed': WindowInsetsEvent
   'remote-resync': RemoteResyncEvent
+  'launch-request': LaunchRequestEvent
   'system-notice': SystemNoticeEvent
   'plan-review-requested': PlanReviewEvent
   'plan-review-updated': PlanReviewEvent
@@ -357,6 +360,11 @@ export function parseSystemNoticeEvent(value: unknown): SystemNoticeEvent {
   return { type, id: stringValue(event.id, 'system-notice dismiss payload.id') }
 }
 
+export function parseLaunchRequestEvent(value: unknown): LaunchRequestEvent {
+  exactObject(value, [], 'launch-request payload')
+  return {}
+}
+
 export function parseRemoteResyncEvent(value: unknown): RemoteResyncEvent {
   exactObject(value, [], 'remote-resync payload')
   return {}
@@ -429,6 +437,8 @@ export function parseAppEventPayload(channel: string, value: unknown): unknown {
       return parseWindowInsetsEvent(value)
     case 'remote-resync':
       return parseRemoteResyncEvent(value)
+    case 'launch-request':
+      return parseLaunchRequestEvent(value)
     case 'system-notice':
       return parseSystemNoticeEvent(value)
     case 'plan-review-requested':

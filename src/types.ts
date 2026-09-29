@@ -2143,6 +2143,13 @@ export interface WindowInsetsInfoResponse {
 
 export type PlatformInfoResponse = 'android' | 'windows' | 'macos' | 'linux' | 'ios'
 
+/** A settings page something outside the window asked for: the keyboard's toolbar. */
+export type LaunchSettingsTab = 'ime'
+
+export interface LaunchRequestInfoResponse {
+  settings_tab: LaunchSettingsTab
+}
+
 /** The local hook endpoint configuration returned by the host. */
 export interface HookConfigInfoResponse {
   enabled: boolean

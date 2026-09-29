@@ -63,6 +63,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -82,6 +83,17 @@ class KeyboardState {
   var menu by mutableStateOf<OpenMenu?>(null)
   /** MiSans once the app has written it out; null is the system font. */
   var font by mutableStateOf<androidx.compose.ui.text.font.FontFamily?>(null)
+  /** What the toolbar opened in place of the keys; null is the keys. */
+  var panel by mutableStateOf<Panel?>(null)
+  /** The editing panel's arrows extend the selection. */
+  var selecting by mutableStateOf(false)
+  /** Nothing is learned or remembered, whatever the field says. */
+  var incognito by mutableStateOf(false)
+  var clips by mutableStateOf<List<Clip>>(emptyList())
+  /** Just copied, offered on the toolbar until it is pasted or goes stale. */
+  var chip by mutableStateOf<Clip?>(null)
+  /** Whether copies are being remembered at all. */
+  var recording by mutableStateOf(true)
 }
 
 /** A long-press menu on screen, with the item the finger is over. */
@@ -94,9 +106,21 @@ interface KeyboardActions {
   fun onHide()
   /** Globe held: the system's list of keyboards. */
   fun onPicker()
+  fun onPanel(panel: Panel?)
+  fun onEdit(action: EditAction)
+  fun onPasteClip(clip: Clip)
+  fun onPinClip(clip: Clip, pinned: Boolean)
+  fun onRemoveClip(clip: Clip)
+  fun onClearClips()
+  fun onRecording(on: Boolean)
+  fun onIncognito()
+  fun onOpenSettings()
 }
 
 private const val FULL_ROWS = 5
+
+/** The candidate bar, and the bar over an open panel, which must match it. */
+internal val BAR_HEIGHT = 56.dp
 private const val LONG_PRESS_MS = 300L
 private const val REPEAT_DELAY_MS = 400L
 private const val REPEAT_EVERY_MS = 50L
@@ -126,7 +150,7 @@ fun labelOf(action: KeyAction, state: KeyboardState): String = when (action) {
     else -> "。"
   }
   KeyAction.Backspace -> "⌫"
-  KeyAction.Space -> "空格"
+  KeyAction.Space -> if (state.incognito) "无痕" else "空格"
   KeyAction.Enter -> enterLabel(state.enterAction)
   KeyAction.Shift -> "⇧"
   KeyAction.ToggleMode -> if (state.mode == InputMode.CHINESE) "中" else "英"
@@ -198,10 +222,22 @@ fun KeyboardScreen(state: KeyboardState, actions: KeyboardActions) {
       .navigationBarsPadding(),
   ) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 3.dp, vertical = 2.dp)) {
-      CandidateBar(state, actions)
-      for (row in layerRows) {
-        Row(Modifier.fillMaxWidth().height(rowHeight)) {
-          for (spec in row) Key(spec, state, actions, viewWidth)
+      val panel = state.panel
+      if (panel != null) {
+        PanelBar(panel, state, actions)
+        // As tall as the keys it replaces, so opening it moves nothing above.
+        Box(Modifier.fillMaxWidth().height(rowHeight * layerRows.size)) {
+          when (panel) {
+            Panel.EDIT -> EditPanel(state, actions)
+            Panel.CLIPBOARD -> ClipboardPanel(state, actions)
+          }
+        }
+      } else {
+        CandidateBar(state, actions)
+        for (row in layerRows) {
+          Row(Modifier.fillMaxWidth().height(rowHeight)) {
+            for (spec in row) Key(spec, state, actions, viewWidth)
+          }
         }
       }
     }
@@ -213,47 +249,64 @@ fun KeyboardScreen(state: KeyboardState, actions: KeyboardActions) {
 @Composable
 private fun CandidateBar(state: KeyboardState, actions: KeyboardActions) {
   val frame = state.frame
-  Row(
-    Modifier.fillMaxWidth().height(44.dp),
-    verticalAlignment = Alignment.CenterVertically,
-  ) {
-    when {
-      frame != null && frame.notice != null -> Text(
-        frame.notice,
-        Modifier.weight(1f).padding(horizontal = 12.dp),
-        fontSize = 14.sp,
+  val preedit = frame?.preeditText.orEmpty()
+  Column(Modifier.fillMaxWidth().height(BAR_HEIGHT)) {
+    // What is being typed is drawn here and never put in the field
+    // (OutcomeApplier says why). The line is there whenever candidates are, so
+    // they sit at one height whether a word is being typed or predicted.
+    if (preedit.isNotEmpty() || frame?.candidates?.isNotEmpty() == true) {
+      Text(
+        preedit,
+        // Its own height, not a fixed one: MiSans sits tall in its line, and the
+        // text scales with the system font size while a dp box would not.
+        Modifier.fillMaxWidth().padding(start = 14.dp, top = 4.dp),
+        fontSize = 13.sp,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
       )
-      frame != null && frame.candidates.isNotEmpty() -> {
-        LazyRow(Modifier.weight(1f).fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {
-          itemsIndexed(frame.candidates) { index, candidate ->
-            val highlighted = index == frame.highlight
-            Box(
-              Modifier.fillMaxHeight().clickable { actions.onChoose(index) }.padding(horizontal = 14.dp),
-              contentAlignment = Alignment.Center,
-            ) {
-              Text(
-                candidate.text,
-                fontSize = 20.sp,
-                fontWeight = if (highlighted) FontWeight.SemiBold else FontWeight.Medium,
-                color = if (highlighted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-              )
-            }
-          }
-        }
-        if (frame.page > 0) BarButton("‹") { actions.onPage(forward = false) }
-        if (frame.page + 1 < frame.pageCount) BarButton("›") { actions.onPage(forward = true) }
-      }
-      else -> {
-        Spacer(Modifier.weight(1f))
-        BarButton(R.drawable.ime_hide, "收起键盘") { actions.onHide() }
+    }
+    Row(Modifier.fillMaxWidth().weight(1f), verticalAlignment = Alignment.CenterVertically) {
+      when {
+        frame != null && frame.notice != null -> Text(
+          frame.notice,
+          Modifier.weight(1f).padding(horizontal = 12.dp),
+          fontSize = 14.sp,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        frame != null && frame.candidates.isNotEmpty() -> Candidates(frame, actions)
+        // Letters with nothing to offer yet: no tools in the middle of a word.
+        preedit.isNotEmpty() -> Spacer(Modifier.weight(1f))
+        else -> Toolbar(state, actions)
       }
     }
   }
 }
 
 @Composable
-private fun BarButton(label: String, onClick: () -> Unit) {
+private fun RowScope.Candidates(frame: Frame, actions: KeyboardActions) {
+  LazyRow(Modifier.weight(1f).fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {
+    itemsIndexed(frame.candidates) { index, candidate ->
+      val highlighted = index == frame.highlight
+      Box(
+        Modifier.fillMaxHeight().clickable { actions.onChoose(index) }.padding(horizontal = 14.dp),
+        contentAlignment = Alignment.Center,
+      ) {
+        Text(
+          candidate.text,
+          fontSize = 20.sp,
+          fontWeight = if (highlighted) FontWeight.SemiBold else FontWeight.Medium,
+          color = if (highlighted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+        )
+      }
+    }
+  }
+  if (frame.page > 0) BarButton("‹") { actions.onPage(forward = false) }
+  if (frame.page + 1 < frame.pageCount) BarButton("›") { actions.onPage(forward = true) }
+}
+
+@Composable
+internal fun BarButton(label: String, onClick: () -> Unit) {
   Box(
     Modifier.size(44.dp).clickable(onClick = onClick),
     contentAlignment = Alignment.Center,
@@ -262,13 +315,25 @@ private fun BarButton(label: String, onClick: () -> Unit) {
   }
 }
 
+/** `active` draws it in the accent colour: a switch that is on. */
 @Composable
-private fun BarButton(icon: Int, description: String, onClick: () -> Unit) {
+internal fun BarButton(icon: Int, description: String, active: Boolean = false, onClick: () -> Unit) {
+  val colors = MaterialTheme.colorScheme
   Box(
     Modifier.size(44.dp).clickable(onClick = onClick),
     contentAlignment = Alignment.Center,
   ) {
-    Icon(painterResource(icon), contentDescription = description, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    Box(
+      Modifier.size(36.dp).background(if (active) colors.primaryContainer else Color.Transparent, RoundedCornerShape(18.dp)),
+      contentAlignment = Alignment.Center,
+    ) {
+      Icon(
+        painterResource(icon),
+        contentDescription = description,
+        Modifier.size(22.dp),
+        tint = if (active) colors.onPrimaryContainer else colors.onSurfaceVariant,
+      )
+    }
   }
 }
 
@@ -427,21 +492,21 @@ private fun MenuOverlay(menu: OpenMenu, state: KeyboardState) {
   }
 }
 
-private fun lerpColor(a: Color, b: Color, t: Float) = Color(
+internal fun lerpColor(a: Color, b: Color, t: Float) = Color(
   red = a.red + (b.red - a.red) * t,
   green = a.green + (b.green - a.green) * t,
   blue = a.blue + (b.blue - a.blue) * t,
   alpha = a.alpha,
 )
 
-private fun tap(view: View) {
+internal fun tap(view: View) {
   view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
 }
 
-private enum class Release { UP, GONE }
+internal enum class Release { UP, GONE }
 
 /** Waits for this pointer to lift, or to vanish (cancelled, another gesture took it). */
-private suspend fun AwaitPointerEventScope.awaitRelease(id: PointerId): Release {
+internal suspend fun AwaitPointerEventScope.awaitRelease(id: PointerId): Release {
   while (true) {
     val event = awaitPointerEvent()
     val change = event.changes.firstOrNull { it.id == id } ?: return Release.GONE
@@ -450,7 +515,7 @@ private suspend fun AwaitPointerEventScope.awaitRelease(id: PointerId): Release 
 }
 
 /** Runs `action` now, again after a pause, then steadily until the finger lifts. */
-private suspend fun AwaitPointerEventScope.repeatWhileHeld(id: PointerId, action: () -> Unit) {
+internal suspend fun AwaitPointerEventScope.repeatWhileHeld(id: PointerId, action: () -> Unit) {
   action()
   var wait = REPEAT_DELAY_MS
   while (true) {

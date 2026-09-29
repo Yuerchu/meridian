@@ -341,6 +341,7 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
   },
   list_ime_dictionaries: {},
   list_system_notices: {},
+  take_launch_request: {},
   dismiss_system_notice: { args: { request: { id: 'none' } } },
   set_ime_dictionary_enabled: { args: { request: { file: 'tech.dict', enabled: true } } },
   get_ime_lm_status: {},

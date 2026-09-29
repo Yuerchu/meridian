@@ -54,6 +54,7 @@ class MainActivity : TauriActivity() {
   external fun nativeOnGalleryResult(reqId: Int, uri: String?)
   private external fun nativeOnInsetsChanged(
     top: Float, right: Float, bottom: Float, left: Float, imeBottom: Float)
+  private external fun nativeOnOpenSettings(tab: String)
 
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
@@ -134,6 +135,21 @@ class MainActivity : TauriActivity() {
     }
 
     setupInsetsListener()
+    // Not on a recreation: the intent that asked for settings was answered then.
+    if (savedInstanceState == null) forwardOpenSettings(intent)
+  }
+
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    forwardOpenSettings(intent)
+  }
+
+  /** The keyboard asked for a settings page ([EXTRA_OPEN_SETTINGS]); the front end opens it. */
+  private fun forwardOpenSettings(intent: Intent?) {
+    val tab = intent?.getStringExtra(EXTRA_OPEN_SETTINGS) ?: return
+    intent.removeExtra(EXTRA_OPEN_SETTINGS)
+    nativeOnOpenSettings(tab)
   }
 
   override fun onSaveInstanceState(outState: Bundle) {
