@@ -93,5 +93,23 @@ fun copiedAt(stamp: Long, sinceBoot: Long, now: Long): Long? = when {
   else -> null
 }
 
+/** Words a message carrying a one-time code says it with. */
+private val CODE_WORDS = listOf("验证码", "校验码", "动态码", "确认码", "认证码", "安全码", "code", "otp")
+private val CODE_DIGITS = Regex("(?<![0-9])[0-9]{4,8}(?![0-9])")
+
+/**
+ * The one-time code in a clip, if it is one: the clip is the code (what an
+ * SMS notification's "copy code" button puts there), or a short message
+ * that says it carries one and has exactly one run of four to eight digits.
+ * A code is offered on the toolbar and never kept in the history — it is
+ * spent in a minute, and a list of them is a list of accounts.
+ */
+fun codeIn(text: String): String? {
+  val t = text.trim()
+  if (t.length in 4..8 && t.all { it in '0'..'9' }) return t
+  if (t.length > 300 || CODE_WORDS.none { t.contains(it, ignoreCase = true) }) return null
+  return CODE_DIGITS.findAll(t).map { it.value }.distinct().singleOrNull()
+}
+
 /** A clip on one line: newlines and runs of blank space read as one space. */
 internal fun oneLine(text: String): String = text.trim().replace(Regex("\\s+"), " ")

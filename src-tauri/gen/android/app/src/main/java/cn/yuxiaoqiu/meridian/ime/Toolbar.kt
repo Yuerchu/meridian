@@ -1,9 +1,12 @@
 package cn.yuxiaoqiu.meridian.ime
 
+import android.view.View
+import android.view.ViewGroup
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -26,6 +30,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -40,6 +45,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import cn.yuxiaoqiu.meridian.R
 
 /**
@@ -49,31 +55,68 @@ import cn.yuxiaoqiu.meridian.R
  */
 @Composable
 internal fun RowScope.Toolbar(state: KeyboardState, actions: KeyboardActions) {
+  // An autofill service offering an account or a code for this field takes
+  // the whole bar: it is what the field is for, and the tools can wait.
+  if (state.inline.isNotEmpty()) {
+    InlineSuggestions(state.inline)
+    BarButton(R.drawable.ime_hide, "收起键盘") { actions.onHide() }
+    return
+  }
   BarButton(R.drawable.ime_edit, "编辑") { actions.onPanel(Panel.EDIT) }
   BarButton(R.drawable.ime_clipboard, "剪贴板") { actions.onPanel(Panel.CLIPBOARD) }
   BarButton(R.drawable.ime_incognito, if (state.incognito) "关闭无痕" else "无痕", active = state.incognito) {
     actions.onIncognito()
   }
+  val code = state.code
   val chip = state.chip
   Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
-    if (chip != null) PasteChip(chip) { actions.onPasteClip(chip) }
+    when {
+      code != null -> PasteChip(code, label = "验证码", accent = true) { actions.onPasteClip(code) }
+      chip != null -> PasteChip(chip, label = "粘贴", accent = false) { actions.onPasteClip(chip) }
+    }
   }
   BarButton(R.drawable.ime_settings, "输入法设置") { actions.onOpenSettings() }
   BarButton(R.drawable.ime_hide, "收起键盘") { actions.onHide() }
 }
 
+/** `accent` for a code: the one thing on the bar the field is waiting for. */
 @Composable
-private fun PasteChip(clip: Clip, onPaste: () -> Unit) {
+private fun PasteChip(clip: Clip, label: String, accent: Boolean, onPaste: () -> Unit) {
   val colors = MaterialTheme.colorScheme
+  val fill = if (accent) colors.primaryContainer else colors.secondaryContainer
+  val ink = if (accent) colors.onPrimaryContainer else colors.onSecondaryContainer
   Surface(
     Modifier.padding(horizontal = 4.dp).height(32.dp).clickable(onClick = onPaste),
     shape = RoundedCornerShape(16.dp),
-    color = colors.secondaryContainer,
-    contentColor = colors.onSecondaryContainer,
+    color = fill,
+    contentColor = ink,
   ) {
     Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-      Text("粘贴  ", fontSize = 13.sp, color = colors.onSecondaryContainer.copy(alpha = 0.7f))
+      Text("$label  ", fontSize = 13.sp, color = ink.copy(alpha = 0.7f))
       Text(oneLine(clip.text), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+  }
+}
+
+/**
+ * The autofill service's own views, side by side. They are laid out, not
+ * drawn: each is a surface the service renders into, and moving one to
+ * another parent is how Compose re-hosts it when the list changes.
+ */
+@Composable
+private fun RowScope.InlineSuggestions(views: List<View>) {
+  Row(
+    Modifier.weight(1f).fillMaxHeight().horizontalScroll(rememberScrollState()).padding(start = 6.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(6.dp),
+  ) {
+    for (view in views) {
+      key(view) {
+        AndroidView(factory = {
+          (view.parent as? ViewGroup)?.removeView(view)
+          view
+        })
+      }
     }
   }
 }

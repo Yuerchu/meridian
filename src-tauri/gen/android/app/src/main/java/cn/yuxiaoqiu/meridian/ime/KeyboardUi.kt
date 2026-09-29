@@ -94,6 +94,14 @@ class KeyboardState {
   var chip by mutableStateOf<Clip?>(null)
   /** Whether copies are being remembered at all. */
   var recording by mutableStateOf(true)
+  /** A one-time code just copied ([codeIn]); offered before [chip], never kept. */
+  var code by mutableStateOf<Clip?>(null)
+  /**
+   * An autofill service's suggestions for this field, as the views it drew
+   * (`InlineContentView`, Android 11+). Opaque on purpose: a tap fills the
+   * field through the system and the keyboard never reads the value.
+   */
+  var inline by mutableStateOf<List<View>>(emptyList())
 }
 
 /** A long-press menu on screen, with the item the finger is over. */

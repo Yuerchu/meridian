@@ -63,6 +63,23 @@ class ToolsTest {
   }
 
   @Test
+  fun aOneTimeCodeIsFoundInWhatAMessageOrItsCopyButtonLeaves() {
+    assertEquals("482913", codeIn(" 482913\n"))
+    assertEquals("4829", codeIn("4829"))
+    assertEquals("582041", codeIn("【某银行】您的验证码为582041，5分钟内有效，请勿泄露。"))
+    assertEquals("773310", codeIn("Your verification code is 773310."))
+  }
+
+  @Test
+  fun digitsAloneOrTwoCandidatesAreNotACode() {
+    assertNull("a phone number", codeIn("13800138000"))
+    assertNull("three digits", codeIn("123"))
+    assertNull("no word saying so", codeIn("订单 58213 已发货"))
+    assertNull("two numbers, which one?", codeIn("验证码 1234，订单号 99887766"))
+    assertNull("prose that happens to hold one", codeIn("明天 2026 年会议"))
+  }
+
+  @Test
   fun aClipOnTheToolbarIsOneLine() {
     assertEquals("a b c", oneLine("  a\n\tb   c \n"))
   }

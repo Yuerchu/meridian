@@ -6,13 +6,22 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.inputmethodservice.InputMethodService
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Size
 import android.view.KeyEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InlineSuggestionsRequest
+import android.view.inputmethod.InlineSuggestionsResponse
 import android.view.inputmethod.InputMethodManager
+import android.widget.inline.InlinePresentationSpec
+import androidx.annotation.RequiresApi
+import androidx.autofill.inline.UiVersions
+import androidx.autofill.inline.v1.InlineSuggestionUi
 import androidx.compose.ui.platform.ComposeView
 import cn.yuxiaoqiu.meridian.EXTRA_OPEN_SETTINGS
 import java.io.File
@@ -157,6 +166,9 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
   }
 
   override fun onFinishInput() {
+    // What an autofill service offered was for that field.
+    inlineGeneration += 1
+    keyboard.inline = emptyList()
     main.removeCallbacks(readSurrounding)
     engine.reset()
     applier.forget()
@@ -401,28 +413,92 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
     val identity = if (stamp > 0) stamp else text.hashCode().toLong()
     if (identity == prefs().getLong(PREF_CLIP_SEEN, Long.MIN_VALUE)) return
     prefs().edit().putLong(PREF_CLIP_SEEN, identity).apply()
-    val sensitive = description.extras?.getBoolean(EXTRA_IS_SENSITIVE, false) == true
-    if (!mayRemember(sensitive, privateField, keyboard.incognito, keyboard.recording)) return
     val now = System.currentTimeMillis()
     val at = if (live) now else copiedAt(stamp, SystemClock.elapsedRealtime(), now)
+    // A one-time code is offered, never remembered — so none of what forbids
+    // remembering applies, and a private field is where one is typed. One
+    // whose copy cannot be dated is not offered: it may be long spent.
+    codeIn(text)?.let { found ->
+      if (at != null) {
+        code = Clip(found, at)
+        showClips()
+      }
+      return
+    }
+    val sensitive = description.extras?.getBoolean(EXTRA_IS_SENSITIVE, false) == true
+    if (!mayRemember(sensitive, privateField, keyboard.incognito, keyboard.recording)) return
     if (at == null) chipTaken = maxOf(chipTaken, now)
     if (clipboard.add(text, at ?: now)) showClips()
   }
+
+  /** The last one-time code copied, in memory only, until it goes stale. */
+  private var code: Clip? = null
 
   /** Puts the history and the paste chip on screen, and schedules the chip's end. */
   private fun showClips() {
     clipboard.expire()
     keyboard.clips = clipboard.clips
-    val fresh = clipboard.fresh(CHIP_MS)?.takeIf { it.at > chipTaken }
+    val now = System.currentTimeMillis()
+    code = code?.takeIf { now - it.at in 0..CHIP_MS && it.at > chipTaken }
+    keyboard.code = code
+    // A code the field is waiting for outranks whatever else was copied.
+    val fresh = if (code != null) null else clipboard.fresh(CHIP_MS)?.takeIf { it.at > chipTaken }
     keyboard.chip = fresh
     main.removeCallbacks(refreshChip)
-    if (fresh != null) main.postDelayed(refreshChip, CHIP_MS - (System.currentTimeMillis() - fresh.at) + 50)
+    (code ?: fresh)?.let { main.postDelayed(refreshChip, CHIP_MS - (now - it.at) + 50) }
+  }
+
+  // ── autofill's inline suggestions (Android 11+) ─────────────────────────
+
+  /** Which response the views being inflated belong to; a later one wins. */
+  private var inlineGeneration = 0
+
+  /**
+   * Asked by the system when an autofill service may have something for the
+   * field: one chip shape, as tall as the toolbar's chips. The service draws
+   * them in the platform's default style.
+   */
+  @RequiresApi(Build.VERSION_CODES.R)
+  override fun onCreateInlineSuggestionsRequest(uiExtras: Bundle): InlineSuggestionsRequest {
+    val density = resources.displayMetrics.density
+    val height = (INLINE_HEIGHT_DP * density).toInt()
+    val styles = UiVersions.newStylesBuilder().addStyle(InlineSuggestionUi.newStyleBuilder().build()).build()
+    val spec = InlinePresentationSpec
+      .Builder(Size((INLINE_MIN_WIDTH_DP * density).toInt(), height), Size((INLINE_MAX_WIDTH_DP * density).toInt(), height))
+      .setStyle(styles)
+      .build()
+    return InlineSuggestionsRequest.Builder(listOf(spec)).setMaxSuggestionCount(MAX_INLINE).build()
+  }
+
+  /**
+   * The service's answer, inflated into its own views; the keyboard lays
+   * them out and never reads them. An empty answer takes them away.
+   */
+  @RequiresApi(Build.VERSION_CODES.R)
+  override fun onInlineSuggestionsResponse(response: InlineSuggestionsResponse): Boolean {
+    val generation = ++inlineGeneration
+    val suggestions = response.inlineSuggestions
+    if (suggestions.isEmpty()) {
+      keyboard.inline = emptyList()
+      return true
+    }
+    val views = arrayOfNulls<View>(suggestions.size)
+    var pending = suggestions.size
+    val wrap = Size(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+    suggestions.forEachIndexed { i, suggestion ->
+      suggestion.inflate(this, wrap, mainExecutor) { view ->
+        views[i] = view
+        pending -= 1
+        if (pending == 0 && generation == inlineGeneration) keyboard.inline = views.filterNotNull()
+      }
+    }
+    return true
   }
 
   /**
    * Grid and QWERTY type different schemes, and changing the scheme drops
-   * whatever is being composed; the composing region goes with it rather than
-   * staying in the field as typed letters. The grid only types Chinese, so
+   * whatever is being composed, which was only ever in the keyboard. The grid
+   * only types Chinese, so
    * arriving on it in English mode switches back.
    */
   private fun switchLetters(layer: Layer) {
@@ -483,6 +559,10 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
     const val EXTRA_IS_SENSITIVE = "android.content.extra.IS_SENSITIVE"
     /** How long a copy is offered on the toolbar. */
     const val CHIP_MS = 60_000L
+    const val MAX_INLINE = 6
+    const val INLINE_HEIGHT_DP = 36
+    const val INLINE_MIN_WIDTH_DP = 48
+    const val INLINE_MAX_WIDTH_DP = 320
     const val SURROUNDING_DELAY_MS = 150L
     const val LEFT_CHARS = 64
     const val RIGHT_CHARS = 32
