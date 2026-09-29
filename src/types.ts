@@ -1278,7 +1278,12 @@ export interface TurnInfoResponse {
   ended_at: number | null
   /** Aggregated from the immutable audit rows for this run. */
   usage: TurnUsageInfoResponse | null
+  /** What set the turn going. `task_completion` and `agent_autonomous`
+   *  have no question above them and start a group of their own. */
+  trigger: TurnTrigger
 }
+
+export type TurnTrigger = 'user' | 'plan_continuation' | 'task_completion' | 'agent_autonomous'
 
 export type TurnStatus = 'running' | 'waiting_review' | 'done' | 'cancelled' | 'failed' | 'interrupted'
 export type TurnPhase = 'streaming' | 'awaiting_approval' | 'running_tool' | 'compacting'
@@ -2829,7 +2834,7 @@ export type ChatStopReason =
 export type ChatStreamEvent =
   | { type: 'text'; content: string; message_id: string; conversation_id: string }
   | { type: 'reasoning'; content: string; message_id: string; conversation_id: string }
-  | { type: 'message_start'; message_id: string; turn_id: string; conversation_id: string }
+  | { type: 'message_start'; message_id: string; turn_id: string; conversation_id: string; trigger: TurnTrigger }
   | { type: 'user_message'; content: string; message_id: string; conversation_id: string }
   | {
       type: 'retry'

@@ -1,4 +1,11 @@
-import type { ContentBlock, MessageRating, MessageViewModel, ToolCallDisplay, TurnUsageInfoResponse } from '@/types'
+import type {
+  ContentBlock,
+  MessageRating,
+  MessageViewModel,
+  ToolCallDisplay,
+  TurnTrigger,
+  TurnUsageInfoResponse,
+} from '@/types'
 import type { BubblePosition } from '@/lib/message-groups'
 
 /**
@@ -90,6 +97,9 @@ export interface Turn {
   turnId: string | null
   lastMessageId: string
   firstSortOrder: number
+  /** What woke this turn, when nobody asked for it. Such a turn has no
+   *  question, and regenerating it would regenerate the turn before it. */
+  wokenBy: TurnTrigger | null
 }
 
 /**
@@ -156,6 +166,11 @@ export interface BuildTurnsContext {
   usageByTurnId?: ReadonlyMap<string, TurnUsageInfoResponse>
   /** The recorded error of every run that failed, keyed by run id. */
   failureByTurnId?: ReadonlyMap<string, string>
+  /** Runs nobody asked for — a background task finished, a hosted agent went
+   *  round again. Each begins a turn of its own with no question above it;
+   *  without this its rows joined the turn before and took over its cost,
+   *  its failure and its conclusion. */
+  unpromptedTurns?: ReadonlyMap<string, TurnTrigger>
 }
 
 /** Tools that block the turn while they wait for a response. `update_todos` is
@@ -271,11 +286,18 @@ export function buildTurns(messages: MessageViewModel[], ctx: BuildTurnsContext 
   const groups: OpenTurn[] = []
   let current: OpenTurn | null = null
 
+  const unprompted = ctx.unpromptedTurns
   for (const m of messages) {
     if (m.role === 'user') {
       current = { userMessage: m, assistantMessages: [] }
       groups.push(current)
     } else if (m.role === 'assistant') {
+      // The first row of a run nobody asked for starts its own turn. Its later
+      // rows name the same run and stay with it.
+      if (current && m.turn_id && unprompted?.has(m.turn_id) && openTurnId(current) !== m.turn_id) {
+        current = { userMessage: null, assistantMessages: [] }
+        groups.push(current)
+      }
       if (!current) {
         // A conversation can open with an assistant row (a greeting, or history
         // whose user rows were compacted away).
@@ -298,8 +320,18 @@ export function buildTurns(messages: MessageViewModel[], ctx: BuildTurnsContext 
       turnId === null ? null : (usage?.get(turnId) ?? null),
       turnId,
       turnId === null ? null : (failures?.get(turnId) ?? null),
+      g.userMessage === null && turnId !== null ? (unprompted?.get(turnId) ?? null) : null,
     )
   })
+}
+
+/** The run a group being built currently belongs to: its latest named row. */
+function openTurnId(group: OpenTurn): string | null {
+  for (let i = group.assistantMessages.length - 1; i >= 0; i--) {
+    const id = group.assistantMessages[i].turn_id
+    if (id) return id
+  }
+  return group.userMessage?.turn_id ?? null
 }
 
 /** Which run of the agent loop produced the answer currently on this path.
@@ -329,6 +361,7 @@ function finalize(
   usage: TurnUsageInfoResponse | null,
   turnId: string | null,
   failure: string | null,
+  wokenBy: TurnTrigger | null,
 ): Turn {
   const { userMessage, assistantMessages } = group
 
@@ -384,6 +417,7 @@ function finalize(
     turnId,
     lastMessageId: last?.id ?? '',
     firstSortOrder: userMessage?.sort_order ?? assistantMessages[0]?.sort_order ?? 0,
+    wokenBy,
   }
 }
 

@@ -295,7 +295,7 @@ function ChatViewInner({
     () => messages.filter((m) => (m.role === 'user' || m.role === 'assistant') && !m.is_compact_summary),
     [messages],
   )
-  const allTurns = useTurns(visibleMessages, streaming, session?.turns)
+  const allTurns = useTurns(visibleMessages, streaming, session?.turns, session?.liveTriggers)
   useTranscriptHotkeys(conversationId, allTurns)
   // A run that failed says so under itself, from its record, once the reload
   // after it lands. The request that started it was rejected with the same

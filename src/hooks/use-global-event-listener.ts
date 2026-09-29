@@ -125,7 +125,7 @@ export function useGlobalEventListener() {
         if (!streamStartTimes.has(streamKey)) {
           streamStartTimes.set(streamKey, Date.now())
         }
-        store.handleMessageStart(convId, p.message_id, p.turn_id)
+        store.handleMessageStart(convId, p.message_id, p.turn_id, p.trigger)
         return
       }
 

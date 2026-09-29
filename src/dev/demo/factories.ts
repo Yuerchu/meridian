@@ -119,6 +119,7 @@ export function turn(over: Partial<TurnInfoResponse> & Pick<TurnInfoResponse, 'i
     error: null,
     ended_at: over.started_at + 14_000,
     usage: usage(1840, 412, 1536, '0.0078'),
+    trigger: 'user',
     ...over,
   }
 }

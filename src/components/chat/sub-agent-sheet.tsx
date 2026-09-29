@@ -61,7 +61,7 @@ function SubAgentSheet({ request, onClose }: { request: SubAgentSheetRequest; on
 
   const messages = session?.messages ?? NO_MESSAGES
   const streaming = session?.streaming ?? false
-  const turns = useTurns(messages, streaming, session?.turns)
+  const turns = useTurns(messages, streaming, session?.turns, session?.liveTriggers)
   // The first load has nothing to draw until it lands; a live run whose
   // session already holds rows is drawn at once and reconciled under itself.
   // A failed load with rows already in hand is the one case that draws anyway:

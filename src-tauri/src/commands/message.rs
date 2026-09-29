@@ -1126,6 +1126,9 @@ pub struct TurnInfoResponse {
     /// row carried this turn id; pricing status inside distinguishes an exact
     /// local zero from subscription/external/unavailable cost.
     pub usage: Option<TurnUsageInfoResponse>,
+    /// What set the turn going. A turn nobody asked for has no question above
+    /// it, and the transcript starts a group of its own for it.
+    pub trigger: meridian_core::turn::TurnTrigger,
 }
 
 /// A delegated run as the card on the parent's turn needs it.
@@ -1391,7 +1394,11 @@ fn read_snapshot(conn: &mut db::PooledConn, conversation_id: &str, live: &OwnedL
                 let phase = t
                     .phase()
                     .map_err(|error| diesel::result::Error::QueryBuilderError(error.into()))?;
+                let trigger = t
+                    .trigger()
+                    .map_err(|error| diesel::result::Error::QueryBuilderError(error.into()))?;
                 Ok(TurnInfoResponse {
+                    trigger,
                     status: status.into(),
                     usage: usage_by_turn.remove(&t.id).map(Into::into),
                     id: t.id,

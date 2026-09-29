@@ -946,6 +946,8 @@
   "chat.turn.retrying": "Retrying ({{attempt}} of {{max}})…",
   "chat.turn.interrupted": "Stopped",
   "chat.turn.crashed": "Cut off before it finished",
+  "chat.turn.wokenByTask": "Continued on its own when a background task finished",
+  "chat.turn.wokenByAgent": "Claude Code continued on its own",
   "chat.turn.branchPrev": "Previous version",
   "chat.turn.branchNext": "Next version",
   "chat.turn.working.thinking": "Thinking…",
