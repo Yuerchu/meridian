@@ -14,7 +14,7 @@ import { useSettingsDirtyRegistration } from './dirty-guard'
  */
 const DEFAULTS: AcpConfigInfoResponse = {
   command: 'npx',
-  args: ['-y', '@agentclientprotocol/claude-agent-acp'],
+  args: ['-y', '@agentclientprotocol/claude-agent-acp@0.84.0'],
 }
 
 /**

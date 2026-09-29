@@ -465,6 +465,36 @@ describe('hydrateBlocks', () => {
     expect(callBlocks(out, 'a')[0]).toMatchObject({ status: 'pending', approval_id: 'appr-1' })
   })
 
+  // A hosted round writes its calls only when it closes, so after a reload the
+  // round being worked on is a row with none. A question still waiting on it
+  // has to be drawn from the question, or nobody can answer it.
+  it('draws a card for a question whose call no stored row holds', () => {
+    const out = hydrateBlocks(
+      [msg('a')],
+      [
+        {
+          approval_id: 'appr-1',
+          conversation_id: 'c',
+          assistant_message_id: 'a',
+          provider_call_id: 'c9',
+          tool_name: 'Bash',
+          arguments: '{"command":"ls"}',
+          retry: null,
+          asked_at: ASKED_AT,
+          bubbled: false,
+          parent_call_id: null,
+          sub_conversation_id: null,
+        },
+      ],
+    )
+    expect(callBlocks(out, 'a')[0]).toMatchObject({
+      call_id: 'c9',
+      tool_name: 'Bash',
+      status: 'pending',
+      approval_id: 'appr-1',
+    })
+  })
+
   // The whole point of the three-way split: this used to be reported as
   // completed, which erased the buttons and stranded the turn.
   it('reads an unanswered call nobody is waiting on as orphaned', () => {
@@ -745,6 +775,41 @@ describe('live approval events', () => {
 
     store().handleToolApproval(CONV, 'a1', 'appr-2', '0', 'read_file', '{}', ASKED_AT)
     expect(cards().map((c) => c.approval_id)).toEqual(['appr-1', 'appr-2'])
+  })
+
+  // The question names a row the call's card is not on. Left there, the card
+  // keeps a dead id: pressing it fails, and nothing on screen says so — the
+  // "flashes and stays as it was" card, with the agent waiting until stopped.
+  it('moves a question to its call on another row when that card holds no live id', () => {
+    store().handleToolCall(CONV, 'a1', 'c1', 'Bash', '{}')
+    store().handleMessageStart(CONV, 'a2')
+
+    store().handleToolApproval(CONV, 'a2', 'appr-1', 'c1', 'Bash', '{}', ASKED_AT)
+
+    expect(cards()[0]).toMatchObject({ status: 'pending', approval_id: 'appr-1' })
+    expect(store().sessions[CONV]!.pendingApprovals['appr-1']!.messageId).toBe('a1')
+  })
+
+  it('draws a card from the question when its call has none anywhere', () => {
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c9', 'Bash', '{"command":"ls"}', ASKED_AT)
+    expect(cards()).toEqual([expect.objectContaining({ call_id: 'c9', status: 'pending', approval_id: 'appr-1' })])
+  })
+
+  // A failed answer on a card whose id no ledger holds used to change nothing:
+  // the button came back as if it had never been pressed.
+  it('says why an answer failed even when no ledger knows the id', () => {
+    store().handleToolCall(CONV, 'a1', 'c1', 'Bash', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'Bash', '{}', ASKED_AT)
+    const session = store().sessions[CONV]!
+    useConversationStore.setState({ sessions: { [CONV]: { ...session, pendingApprovals: {} } } })
+
+    store().markApprovalOrphaned('appr-1', 'that request is no longer waiting for an answer')
+
+    expect(cards()[0]).toMatchObject({
+      status: 'orphaned',
+      answer_error: 'that request is no longer waiting for an answer',
+    })
+    expect(cards()[0]!.approval_id).toBeUndefined()
   })
 
   it('completes one card at a time when a row reuses a call id', () => {

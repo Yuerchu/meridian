@@ -593,8 +593,38 @@ export function hydrateBlocks(
         }
       }
     }
+    // A question still waiting on this row for a call the row does not hold.
+    // A hosted round writes its calls only when it closes, so after a reload
+    // the round being worked on is stored without them — and a question with
+    // no card is one the reader cannot answer from the transcript at all,
+    // while the agent waits until the turn is stopped. Drawn from what the
+    // question itself carries.
+    for (const bucket of waiting.get(m.id)?.values() ?? []) {
+      for (const p of bucket.splice(0)) blocks.push(approvalCard(p))
+    }
     return { ...m, _blocks: blocks.length > 0 ? blocks : undefined }
   })
+}
+
+/** A card drawn from a question alone, for a call no stored row holds. */
+function approvalCard(p: {
+  provider_call_id: string
+  tool_name: string
+  arguments: string
+  approval_id: string
+  retry: ApprovalRetry | null
+}): Extract<ContentBlock, { type: 'tool_call' }> {
+  return {
+    type: 'tool_call',
+    data: {
+      call_id: p.provider_call_id,
+      tool_name: p.tool_name,
+      arguments: p.arguments,
+      status: 'pending',
+      approval_id: p.approval_id,
+      retry: escalationOf(p.retry),
+    },
+  }
 }
 
 function stickerBlockFrom(
@@ -2019,6 +2049,48 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           card.data.status = 'pending'
           card.data.approval_id = approvalId
           card.data.retry = escalation
+          return
+        }
+        // **Nothing matched, and a question with no card is one nobody can
+        // answer** while the agent waits until the turn is stopped. Two ways
+        // out, in order. The call's own card on another row, if the id it
+        // holds is dead — a question can name a row the card is not on, and a
+        // card left holding an answered id offers buttons that answer
+        // nothing, which read as a card that flashes when pressed and stays
+        // as it was. Only a dead id is replaced: a live one is another
+        // question, which keeps its card. Failing that, a card drawn from the
+        // question itself, on the row it names.
+        const live = (id: string | undefined) =>
+          id !== undefined && (id in session.pendingApprovals || id in session.pendingAsks)
+        for (let i = session.messages.length - 1; i >= 0; i--) {
+          const row = session.messages[i]
+          const stray = (row._blocks ?? []).find(
+            (b) =>
+              b.type === 'tool_call' &&
+              b.data.call_id === callId &&
+              !ANSWERED.has(b.data.status) &&
+              !live(b.data.approval_id),
+          )
+          if (stray?.type === 'tool_call') {
+            stray.data.status = 'pending'
+            stray.data.approval_id = approvalId
+            stray.data.retry = escalation
+            const slot = session.pendingApprovals[approvalId] ?? session.pendingAsks[approvalId]
+            if (slot) slot.messageId = row.id
+            return
+          }
+        }
+        if (target) {
+          target._blocks = [
+            ...(target._blocks ?? []),
+            approvalCard({
+              provider_call_id: callId,
+              tool_name: toolName,
+              arguments: args,
+              approval_id: approvalId,
+              retry: retry ?? null,
+            }),
+          ]
         }
       }),
     )
@@ -2242,6 +2314,26 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         // Unconditional, and before the loop: the loop can only reach sessions,
         // and the queue holds questions from conversations that have none.
         retireAttention(state, approvalId)
+        // A card holding an id no ledger knows — the very card whose answer
+        // just failed. Found by the id itself, so the failure is on screen
+        // rather than the button quietly coming back as if nothing happened.
+        const known = Object.values(state.sessions).some(
+          (session) => approvalId in session.pendingApprovals || approvalId in session.pendingAsks,
+        )
+        if (!known) {
+          for (const session of Object.values(state.sessions)) {
+            for (const message of session.messages) {
+              for (const block of message._blocks ?? []) {
+                if (block.type === 'tool_call' && block.data.approval_id === approvalId) {
+                  block.data.status = 'orphaned'
+                  block.data.approval_id = undefined
+                  if (reason !== undefined) block.data.answer_error = reason
+                }
+              }
+            }
+          }
+          return
+        }
         for (const session of Object.values(state.sessions)) {
           const entry = session.pendingApprovals[approvalId] ?? session.pendingAsks[approvalId]
           if (!entry) continue

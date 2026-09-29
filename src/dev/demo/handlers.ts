@@ -1192,7 +1192,7 @@ const integrations: Record<string, DemoHandler> = {
   },
   get_ime_lm_status: () => IME_LM_STATUS,
   refresh_ime_memory_hints: () => ({ count: 12, path: `${IME_STATUS.data_dir}\\context\\memory-hints.json` }),
-  acp_get_config: () => ({ command: 'npx', args: ['-y', '@agentclientprotocol/claude-agent-acp'] }),
+  acp_get_config: () => ({ command: 'npx', args: ['-y', '@agentclientprotocol/claude-agent-acp@0.84.0'] }),
 }
 
 const emoji: Record<string, DemoHandler> = {

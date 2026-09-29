@@ -1125,8 +1125,8 @@ and shell would be two routes to one effect with only one of them going through 
 app's approvals. The endpoint is a port the OS picked, a path nobody can guess and a
 bearer token, all three travelling together in `mcpServers` and none of them written to
 disk. `tests/mcp_bridge_probe.rs` is where the protocol facts below were measured; it is
-`#[ignore]`d, spends quota, and should be re-run before any of them is trusted again,
-since the adapter is deliberately unpinned.
+`#[ignore]`d, spends quota, and should be re-run before the pinned adapter version
+(`ADAPTER_PACKAGE` in `acp/mod.rs`) is moved.
 
 - **The server may be as small as the spec permits, and that is measured rather than
   assumed.** POST only, one route, pure JSON: no SSE, no `Mcp-Session-Id`, no GET stream,
