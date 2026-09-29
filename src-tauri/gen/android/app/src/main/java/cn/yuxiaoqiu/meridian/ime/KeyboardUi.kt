@@ -23,6 +23,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -286,10 +287,12 @@ fun KeyboardScreen(state: KeyboardState, actions: KeyboardActions) {
         } else {
           CandidateBar(state, actions)
           // A new layer fades in over nothing: the old keys go at once, so a
-          // key tapped straight after the switch is always one of the new.
+          // key tapped straight after the switch is always one of the new. It
+          // does not grow in: each key records where it is (boundsInRoot) for
+          // its preview and its menu, and must not record a scaled position.
           val layerIn = rememberAppear(state.layer)
           key(state.layer) {
-            Column(Modifier.fillMaxWidth().popIn(layerIn, TransformOrigin.Center, from = 0.97f)) {
+            Column(Modifier.fillMaxWidth().popIn(layerIn, TransformOrigin.Center, from = 1f)) {
               for (row in layerRows) {
                 Row(Modifier.fillMaxWidth().height(rowHeight)) {
                   for (spec in row) Key(spec, state, actions, viewWidth)
@@ -354,7 +357,10 @@ private fun CandidateBar(state: KeyboardState, actions: KeyboardActions) {
           )
           BarMode.CANDIDATES -> if (frame != null) Candidates(frame, actions)
           BarMode.TYPING -> Spacer(Modifier.weight(1f))
-          BarMode.TOOLS -> Toolbar(state, actions)
+          BarMode.TOOLS -> BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
+            val width = maxWidth
+            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) { Toolbar(state, actions, width) }
+          }
         }
       }
     }
@@ -614,9 +620,11 @@ private fun MenuOverlay(menu: OpenMenu, state: KeyboardState) {
   val colors = MaterialTheme.colorScheme
   val top = g.bottom - g.rows * g.itemHeight
   val itemSize = Modifier.size(with(density) { g.itemWidth.toDp() }, with(density) { g.itemHeight.toDp() })
-  // Opens out of the first item, which sits over the key being held.
+  // Fades in without growing: which item the finger picks is decided against
+  // where the items finally sit (MenuGeometry.indexAt), so they are drawn
+  // there from the first frame — scaled in, the item under the finger for
+  // the first few frames was not the one a release would type.
   val appear = rememberAppear(Unit)
-  val origin = TransformOrigin((g.itemLeft(0) - g.left + g.itemWidth / 2) / (g.columns * g.itemWidth), 1f)
   // One highlight, springing from item to item under the finger rather than
   // jumping; it fades when the finger backs out below the key.
   val highlighted = menu.highlight
@@ -630,7 +638,7 @@ private fun MenuOverlay(menu: OpenMenu, state: KeyboardState) {
     Modifier
       .offset { IntOffset(g.left.toInt(), top.toInt()) }
       .size(with(density) { (g.columns * g.itemWidth).toDp() }, with(density) { (g.rows * g.itemHeight).toDp() })
-      .popIn(appear, origin),
+      .popIn(appear, TransformOrigin.Center, from = 1f),
     shape = RoundedCornerShape(14.dp),
     color = colors.surfaceContainerHighest,
     shadowElevation = 6.dp,

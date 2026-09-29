@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -56,6 +57,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -64,11 +66,12 @@ import cn.yuxiaoqiu.meridian.R
 
 /**
  * What the candidate bar shows when there is nothing to choose: the tools on
- * the left, what was just copied in the middle, settings and hide on the
- * right. Anything typed replaces it with candidates, so it costs no room.
+ * the left, what was just copied after them, settings and hide on the right.
+ * Anything typed replaces it with candidates, so it costs no room. `width` is
+ * the bar's, from which the chip's room is decided ([chipRoom]).
  */
 @Composable
-internal fun RowScope.Toolbar(state: KeyboardState, actions: KeyboardActions) {
+internal fun RowScope.Toolbar(state: KeyboardState, actions: KeyboardActions, width: Dp) {
   // An autofill service offering an account or a code for this field takes
   // the whole bar: it is what the field is for, and the tools can wait.
   if (state.inline.isNotEmpty()) {
@@ -76,16 +79,23 @@ internal fun RowScope.Toolbar(state: KeyboardState, actions: KeyboardActions) {
     BarButton(R.drawable.ime_hide, "收起键盘") { actions.onHide() }
     return
   }
-  BarButton(R.drawable.ime_edit, "编辑") { actions.onPanel(Panel.EDIT) }
-  BarButton(R.drawable.ime_clipboard, "剪贴板") { actions.onPanel(Panel.CLIPBOARD) }
-  BarButton(R.drawable.ime_emoji, "表情") { actions.onPanel(Panel.EMOJI) }
-  BarButton(R.drawable.ime_symbols, "符号") { actions.onPanel(Panel.SYMBOLS) }
-  BarButton(R.drawable.ime_incognito, if (state.incognito) "关闭无痕" else "无痕", active = state.incognito) {
-    actions.onIncognito()
+  // The tools take what the chip leaves and scroll in it; with no chip they
+  // all fit, and the row reads as it always has.
+  Row(
+    Modifier.weight(1f).fillMaxHeight().horizontalScroll(rememberScrollState()),
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    BarButton(R.drawable.ime_edit, "编辑") { actions.onPanel(Panel.EDIT) }
+    BarButton(R.drawable.ime_clipboard, "剪贴板") { actions.onPanel(Panel.CLIPBOARD) }
+    BarButton(R.drawable.ime_emoji, "表情") { actions.onPanel(Panel.EMOJI) }
+    BarButton(R.drawable.ime_symbols, "符号") { actions.onPanel(Panel.SYMBOLS) }
+    BarButton(R.drawable.ime_incognito, if (state.incognito) "关闭无痕" else "无痕", active = state.incognito) {
+      actions.onIncognito()
+    }
   }
   val code = state.code
   val chip = state.chip
-  Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+  Box(Modifier.widthIn(max = chipRoom(width)).fillMaxHeight(), contentAlignment = Alignment.Center) {
     // A clip just copied pops in; the same one shown again does not.
     val offered = code ?: chip
     if (offered != null) {
