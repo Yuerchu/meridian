@@ -4,6 +4,19 @@ import android.content.res.Configuration
 import android.os.Build
 import android.view.HapticFeedbackConstants
 import android.view.View
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateOffsetAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -41,6 +54,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -48,7 +62,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
@@ -67,6 +84,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.emoji2.emojipicker.RecentEmojiProvider
 import cn.yuxiaoqiu.meridian.R
 
 /** What the keyboard draws; written by the service, read by Compose. */
@@ -133,6 +151,8 @@ interface KeyboardActions {
   fun onRecording(on: Boolean)
   fun onIncognito()
   fun onOpenSettings()
+  /** The emoji panel's recently used row, recorded only where learning is on. */
+  val emojiRecents: RecentEmojiProvider
 }
 
 private const val FULL_ROWS = 5
@@ -240,24 +260,42 @@ fun KeyboardScreen(state: KeyboardState, actions: KeyboardActions) {
       .onGloballyPositioned { viewWidth = it.size.width.toFloat() }
       .navigationBarsPadding(),
   ) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 3.dp, vertical = 2.dp)) {
-      val panel = state.panel
-      if (panel != null) {
-        PanelBar(panel, state, actions)
-        // As tall as the keys it replaces, so opening it moves nothing above.
-        Box(Modifier.fillMaxWidth().height(rowHeight * layerRows.size)) {
-          when (panel) {
-            Panel.EDIT -> EditPanel(state, actions)
-            Panel.CLIPBOARD -> ClipboardPanel(state, actions)
-            Panel.SYMBOLS -> SymbolsPanel(actions)
-            Panel.CANDIDATES -> CandidateGrid(state, actions)
+    // A panel and the keys cross-fade, the one arriving growing in slightly.
+    // Both are the same height, so nothing above moves while they do.
+    val panelIn = fadeIn(defaultEffects()) + scaleIn(defaultSpatial(), initialScale = 0.94f)
+    val panelOut = fadeOut(fastEffects())
+    AnimatedContent(
+      state.panel,
+      Modifier.fillMaxWidth().padding(horizontal = 3.dp, vertical = 2.dp),
+      transitionSpec = { panelIn togetherWith panelOut },
+      label = "panel",
+    ) { panel ->
+      Column(Modifier.fillMaxWidth()) {
+        if (panel != null) {
+          PanelBar(panel, state, actions)
+          // As tall as the keys it replaces, so opening it moves nothing above.
+          Box(Modifier.fillMaxWidth().height(rowHeight * layerRows.size)) {
+            when (panel) {
+              Panel.EDIT -> EditPanel(state, actions)
+              Panel.CLIPBOARD -> ClipboardPanel(state, actions)
+              Panel.SYMBOLS -> SymbolsPanel(actions)
+              Panel.EMOJI -> EmojiPanel(actions.emojiRecents) { actions.onKey(KeyAction.Text(it)) }
+              Panel.CANDIDATES -> CandidateGrid(state, actions)
+            }
           }
-        }
-      } else {
-        CandidateBar(state, actions)
-        for (row in layerRows) {
-          Row(Modifier.fillMaxWidth().height(rowHeight)) {
-            for (spec in row) Key(spec, state, actions, viewWidth)
+        } else {
+          CandidateBar(state, actions)
+          // A new layer fades in over nothing: the old keys go at once, so a
+          // key tapped straight after the switch is always one of the new.
+          val layerIn = rememberAppear(state.layer)
+          key(state.layer) {
+            Column(Modifier.fillMaxWidth().popIn(layerIn, TransformOrigin.Center, from = 0.97f)) {
+              for (row in layerRows) {
+                Row(Modifier.fillMaxWidth().height(rowHeight)) {
+                  for (spec in row) Key(spec, state, actions, viewWidth)
+                }
+              }
+            }
           }
         }
       }
@@ -288,22 +326,42 @@ private fun CandidateBar(state: KeyboardState, actions: KeyboardActions) {
         overflow = TextOverflow.Ellipsis,
       )
     }
-    Row(Modifier.fillMaxWidth().weight(1f), verticalAlignment = Alignment.CenterVertically) {
-      when {
-        frame != null && frame.notice != null -> Text(
-          frame.notice,
-          Modifier.weight(1f).padding(horizontal = 12.dp),
-          fontSize = 14.sp,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        frame != null && frame.candidates.isNotEmpty() -> Candidates(frame, actions)
-        // Letters with nothing to offer yet: no tools in the middle of a word.
-        preedit.isNotEmpty() -> Spacer(Modifier.weight(1f))
-        else -> Toolbar(state, actions)
+    val mode = when {
+      frame != null && frame.notice != null -> BarMode.NOTICE
+      frame != null && frame.candidates.isNotEmpty() -> BarMode.CANDIDATES
+      // Letters with nothing to offer yet: no tools in the middle of a word.
+      preedit.isNotEmpty() -> BarMode.TYPING
+      else -> BarMode.TOOLS
+    }
+    // The tools rise back in once a word is done; candidates, and anything
+    // else a key produces, are there at once. What leaves goes at once too.
+    val toolsIn = fadeIn(defaultEffects()) + slideInVertically(defaultSpatial()) { it / 3 }
+    AnimatedContent(
+      mode,
+      Modifier.fillMaxWidth().weight(1f),
+      transitionSpec = {
+        (if (targetState == BarMode.TOOLS) toolsIn else EnterTransition.None) togetherWith fadeOut(snap())
+      },
+      label = "bar",
+    ) { shown ->
+      Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+        when (shown) {
+          BarMode.NOTICE -> Text(
+            frame?.notice.orEmpty(),
+            Modifier.weight(1f).padding(horizontal = 12.dp),
+            fontSize = 14.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+          BarMode.CANDIDATES -> if (frame != null) Candidates(frame, actions)
+          BarMode.TYPING -> Spacer(Modifier.weight(1f))
+          BarMode.TOOLS -> Toolbar(state, actions)
+        }
       }
     }
   }
 }
+
+private enum class BarMode { NOTICE, CANDIDATES, TYPING, TOOLS }
 
 @Composable
 private fun RowScope.Candidates(frame: Frame, actions: KeyboardActions) {
@@ -344,19 +402,32 @@ internal fun BarButton(label: String, onClick: () -> Unit) {
 @Composable
 internal fun BarButton(icon: Int, description: String, active: Boolean = false, onClick: () -> Unit) {
   val colors = MaterialTheme.colorScheme
+  // Turning on fills it and morphs the circle into a rounded square, the
+  // Expressive toggle; the fill fades from its own colour, not from black.
+  val fill by animateColorAsState(
+    if (active) colors.primaryContainer else colors.primaryContainer.copy(alpha = 0f),
+    defaultEffects(),
+    label = "toggle fill",
+  )
+  val tint by animateColorAsState(
+    if (active) colors.onPrimaryContainer else colors.onSurfaceVariant,
+    defaultEffects(),
+    label = "toggle ink",
+  )
+  val corner by animateDpAsState(if (active) 12.dp else 18.dp, defaultSpatial(), label = "toggle corner")
   Box(
     Modifier.size(44.dp).clickable(onClick = onClick),
     contentAlignment = Alignment.Center,
   ) {
     Box(
-      Modifier.size(36.dp).background(if (active) colors.primaryContainer else Color.Transparent, RoundedCornerShape(18.dp)),
+      Modifier.size(36.dp).background(fill, RoundedCornerShape(corner)),
       contentAlignment = Alignment.Center,
     ) {
       Icon(
         painterResource(icon),
         contentDescription = description,
         Modifier.size(22.dp),
-        tint = if (active) colors.onPrimaryContainer else colors.onSurfaceVariant,
+        tint = tint,
       )
     }
   }
@@ -450,24 +521,33 @@ private fun RowScope.Key(spec: KeySpec, state: KeyboardState, actions: KeyboardA
         }
       },
   ) {
+    val (color, corner) = keyLook(pressed, fill, ink)
     Surface(
       Modifier.fillMaxSize(),
-      shape = RoundedCornerShape(10.dp),
-      color = if (pressed) lerpColor(fill, ink, 0.18f) else fill,
+      shape = RoundedCornerShape(corner),
+      color = color,
       contentColor = ink,
       shadowElevation = if (role == Role.CHARACTER) 1.dp else 0.dp,
     ) {
       Box(contentAlignment = Alignment.Center) {
+        // What a key says can change under it (Shift, caps lock, 中/英, 无痕):
+        // the old face fades into the new one.
         val icon = iconOf(spec.action, state)
-        if (icon != null) {
-          Icon(painterResource(icon), contentDescription = labelOf(spec.action, state), Modifier.size(24.dp), tint = ink)
-        } else {
-          val label = spec.label ?: labelOf(spec.action, state)
-          Text(
-            label,
-            fontSize = if (label.length > 2) 15.sp else if (label.length == 2) 19.sp else 22.sp,
-            textAlign = TextAlign.Center,
-          )
+        val face = if (icon != null) KeyFace.Icon(icon) else KeyFace.Label(spec.label ?: labelOf(spec.action, state))
+        Crossfade(face, animationSpec = fastEffects(), label = "key face") { shown ->
+          when (shown) {
+            is KeyFace.Icon -> Icon(
+              painterResource(shown.id),
+              contentDescription = labelOf(spec.action, state),
+              Modifier.size(24.dp),
+              tint = ink,
+            )
+            is KeyFace.Label -> Text(
+              shown.text,
+              fontSize = if (shown.text.length > 2) 15.sp else if (shown.text.length == 2) 19.sp else 22.sp,
+              textAlign = TextAlign.Center,
+            )
+          }
         }
         hintOf(spec, state)?.let { hint ->
           Text(
@@ -480,6 +560,11 @@ private fun RowScope.Key(spec: KeySpec, state: KeyboardState, actions: KeyboardA
       }
     }
   }
+}
+
+private sealed interface KeyFace {
+  data class Icon(val id: Int) : KeyFace
+  data class Label(val text: String) : KeyFace
 }
 
 /**
@@ -504,8 +589,14 @@ private fun PreviewOverlay(preview: KeyPreview) {
   val left = preview.left - with(density) { 6.dp.toPx() }
   // Resting on the key's upper half, so it reads as the key lifted.
   val top = preview.top - with(density) { (height - 20.dp).toPx() }
+  // Lifts out of the key: grows up from where the key is. It goes at once on
+  // release — a fading preview trails behind fast typing.
+  val appear = rememberAppear(preview)
   Surface(
-    Modifier.offset { IntOffset(left.toInt(), top.toInt()) }.size(width, height),
+    Modifier
+      .offset { IntOffset(left.toInt(), top.toInt()) }
+      .size(width, height)
+      .popIn(appear, TransformOrigin(0.5f, 1f), from = 0.7f),
     shape = RoundedCornerShape(12.dp),
     color = MaterialTheme.colorScheme.surfaceContainerHighest,
     shadowElevation = 6.dp,
@@ -522,33 +613,51 @@ private fun MenuOverlay(menu: OpenMenu, state: KeyboardState) {
   val g = menu.geometry
   val colors = MaterialTheme.colorScheme
   val top = g.bottom - g.rows * g.itemHeight
+  val itemSize = Modifier.size(with(density) { g.itemWidth.toDp() }, with(density) { g.itemHeight.toDp() })
+  // Opens out of the first item, which sits over the key being held.
+  val appear = rememberAppear(Unit)
+  val origin = TransformOrigin((g.itemLeft(0) - g.left + g.itemWidth / 2) / (g.columns * g.itemWidth), 1f)
+  // One highlight, springing from item to item under the finger rather than
+  // jumping; it fades when the finger backs out below the key.
+  val highlighted = menu.highlight
+  val pill by animateOffsetAsState(
+    Offset(g.itemLeft(highlighted.coerceAtLeast(0)) - g.left, g.itemTop(highlighted.coerceAtLeast(0)) - top),
+    fastSpatial(),
+    label = "menu highlight",
+  )
+  val pillAlpha by animateFloatAsState(if (highlighted >= 0) 1f else 0f, fastEffects(), label = "menu highlight alpha")
   Surface(
     Modifier
       .offset { IntOffset(g.left.toInt(), top.toInt()) }
-      .size(with(density) { (g.columns * g.itemWidth).toDp() }, with(density) { (g.rows * g.itemHeight).toDp() }),
+      .size(with(density) { (g.columns * g.itemWidth).toDp() }, with(density) { (g.rows * g.itemHeight).toDp() })
+      .popIn(appear, origin),
     shape = RoundedCornerShape(14.dp),
     color = colors.surfaceContainerHighest,
     shadowElevation = 6.dp,
   ) {
     Box {
+      Box(
+        Modifier
+          .offset { IntOffset(pill.x.toInt(), pill.y.toInt()) }
+          .then(itemSize)
+          .padding(3.dp)
+          .graphicsLayer { alpha = pillAlpha }
+          .background(colors.primary, RoundedCornerShape(10.dp)),
+      )
       menu.items.forEachIndexed { index, item ->
         val x = g.itemLeft(index) - g.left
         val y = g.itemTop(index) - top
-        val highlighted = index == menu.highlight
+        val ink by animateColorAsState(
+          if (index == highlighted) colors.onPrimary else colors.onSurface,
+          fastEffects(),
+          label = "menu item",
+        )
         Box(
-          Modifier
-            .offset { IntOffset(x.toInt(), y.toInt()) }
-            .size(with(density) { g.itemWidth.toDp() }, with(density) { g.itemHeight.toDp() })
-            .padding(3.dp)
-            .background(if (highlighted) colors.primary else Color.Transparent, RoundedCornerShape(10.dp)),
+          Modifier.offset { IntOffset(x.toInt(), y.toInt()) }.then(itemSize),
           contentAlignment = Alignment.Center,
         ) {
           val label = labelOf(item, state)
-          Text(
-            label,
-            fontSize = if (label.length > 2) 13.sp else 18.sp,
-            color = if (highlighted) colors.onPrimary else colors.onSurface,
-          )
+          Text(label, fontSize = if (label.length > 2) 13.sp else 18.sp, color = ink)
         }
       }
     }

@@ -2,6 +2,12 @@ package cn.yuxiaoqiu.meridian.ime
 
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -43,12 +49,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -70,6 +78,7 @@ internal fun RowScope.Toolbar(state: KeyboardState, actions: KeyboardActions) {
   }
   BarButton(R.drawable.ime_edit, "编辑") { actions.onPanel(Panel.EDIT) }
   BarButton(R.drawable.ime_clipboard, "剪贴板") { actions.onPanel(Panel.CLIPBOARD) }
+  BarButton(R.drawable.ime_emoji, "表情") { actions.onPanel(Panel.EMOJI) }
   BarButton(R.drawable.ime_symbols, "符号") { actions.onPanel(Panel.SYMBOLS) }
   BarButton(R.drawable.ime_incognito, if (state.incognito) "关闭无痕" else "无痕", active = state.incognito) {
     actions.onIncognito()
@@ -77,9 +86,19 @@ internal fun RowScope.Toolbar(state: KeyboardState, actions: KeyboardActions) {
   val code = state.code
   val chip = state.chip
   Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
-    when {
-      code != null -> PasteChip(code, label = "验证码", accent = true) { actions.onPasteClip(code) }
-      chip != null -> PasteChip(chip, label = "粘贴", accent = false) { actions.onPasteClip(chip) }
+    // A clip just copied pops in; the same one shown again does not.
+    val offered = code ?: chip
+    if (offered != null) {
+      key(offered) {
+        val appear = rememberAppear(offered)
+        Box(Modifier.popIn(appear, TransformOrigin.Center, from = 0.8f)) {
+          if (offered === code) {
+            PasteChip(offered, label = "验证码", accent = true) { actions.onPasteClip(offered) }
+          } else {
+            PasteChip(offered, label = "粘贴", accent = false) { actions.onPasteClip(offered) }
+          }
+        }
+      }
     }
   }
   BarButton(R.drawable.ime_settings, "输入法设置") { actions.onOpenSettings() }
@@ -141,6 +160,7 @@ internal fun PanelBar(panel: Panel, state: KeyboardState, actions: KeyboardActio
       when (panel) {
         Panel.EDIT -> "编辑"
         Panel.CLIPBOARD -> "剪贴板"
+        Panel.EMOJI -> "表情"
         else -> "符号"
       },
       Modifier.weight(1f).padding(horizontal = 4.dp),
@@ -158,11 +178,21 @@ internal fun PanelBar(panel: Panel, state: KeyboardState, actions: KeyboardActio
 @Composable
 private fun RecordingToggle(on: Boolean, onToggle: () -> Unit) {
   val colors = MaterialTheme.colorScheme
+  val fill by animateColorAsState(
+    if (on) colors.primaryContainer else colors.surfaceContainerHighest,
+    defaultEffects(),
+    label = "recording fill",
+  )
+  val ink by animateColorAsState(
+    if (on) colors.onPrimaryContainer else colors.onSurfaceVariant,
+    defaultEffects(),
+    label = "recording ink",
+  )
   Surface(
     Modifier.height(32.dp).clickable(onClick = onToggle),
     shape = RoundedCornerShape(16.dp),
-    color = if (on) colors.primaryContainer else colors.surfaceContainerHighest,
-    contentColor = if (on) colors.onPrimaryContainer else colors.onSurfaceVariant,
+    color = fill,
+    contentColor = ink,
   ) {
     Box(Modifier.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
       Text(if (on) "记录中" else "已暂停", fontSize = 13.sp)
@@ -230,11 +260,13 @@ private fun PanelKey(
   val colors = MaterialTheme.colorScheme
   var pressed by remember { mutableStateOf(false) }
   val latest by rememberUpdatedState(onPress)
-  val (fill, ink) = when {
+  val (restFill, restInk) = when {
     action -> colors.primary to colors.onPrimary
     active -> colors.primaryContainer to colors.onPrimaryContainer
     else -> colors.secondaryContainer to colors.onSecondaryContainer
   }
+  val fill by animateColorAsState(restFill, defaultEffects(), label = "panel key fill")
+  val ink by animateColorAsState(restInk, defaultEffects(), label = "panel key ink")
   Box(
     modifier
       .fillMaxHeight()
@@ -253,10 +285,11 @@ private fun PanelKey(
         }
       },
   ) {
+    val (color, corner) = keyLook(pressed, fill, ink)
     Surface(
       Modifier.fillMaxSize(),
-      shape = RoundedCornerShape(10.dp),
-      color = if (pressed) lerpColor(fill, ink, 0.18f) else fill,
+      shape = RoundedCornerShape(corner),
+      color = color,
       contentColor = ink,
     ) {
       Box(contentAlignment = Alignment.Center) {
@@ -304,7 +337,10 @@ internal fun ClipboardPanel(state: KeyboardState, actions: KeyboardActions) {
   ) {
     items(state.clips, key = { it.text }) { clip ->
       Surface(
-        Modifier.fillMaxWidth().clickable { actions.onPasteClip(clip) },
+        Modifier
+          .animateItem(fadeInSpec = defaultEffects(), placementSpec = defaultSpatial(), fadeOutSpec = fastEffects())
+          .fillMaxWidth()
+          .clickable { actions.onPasteClip(clip) },
         shape = RoundedCornerShape(12.dp),
         color = colors.surfaceBright,
         contentColor = colors.onSurface,
@@ -396,16 +432,25 @@ internal fun CandidateGrid(state: KeyboardState, actions: KeyboardActions) {
 internal fun SymbolsPanel(actions: KeyboardActions) {
   var page by remember { mutableStateOf(0) }
   val colors = MaterialTheme.colorScheme
-  val current = SYMBOL_PAGES[page]
   Column(Modifier.fillMaxSize()) {
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 4.dp)) {
       SYMBOL_PAGES.forEachIndexed { i, p ->
         val selected = i == page
+        val fill by animateColorAsState(
+          if (selected) colors.primaryContainer else colors.primaryContainer.copy(alpha = 0f),
+          defaultEffects(),
+          label = "tab fill",
+        )
+        val ink by animateColorAsState(
+          if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant,
+          defaultEffects(),
+          label = "tab ink",
+        )
         Surface(
           Modifier.padding(end = 6.dp).height(32.dp).clickable { page = i },
           shape = RoundedCornerShape(16.dp),
-          color = if (selected) colors.primaryContainer else Color.Transparent,
-          contentColor = if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant,
+          color = fill,
+          contentColor = ink,
         ) {
           Box(Modifier.padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
             Text(p.name, fontSize = 14.sp)
@@ -413,16 +458,31 @@ internal fun SymbolsPanel(actions: KeyboardActions) {
         }
       }
     }
-    LazyVerticalGrid(
-      if (current.wide) GridCells.Adaptive(112.dp) else GridCells.Adaptive(48.dp),
-      Modifier.fillMaxWidth().weight(1f).padding(horizontal = 3.dp),
-    ) {
-      items(current.items) { symbol ->
-        Box(
-          Modifier.height(48.dp).clickable { actions.onKey(KeyAction.Text(symbol)) },
-          contentAlignment = Alignment.Center,
-        ) {
-          Text(symbol, fontSize = if (current.wide) 15.sp else 20.sp, maxLines = 1, color = colors.onSurface)
+    // A page slides in from the side its tab is on.
+    val pageIn = defaultSpatial<IntOffset>()
+    val fadeInSpec = defaultEffects<Float>()
+    val fadeOutSpec = fastEffects<Float>()
+    AnimatedContent(
+      page,
+      Modifier.fillMaxWidth().weight(1f),
+      transitionSpec = {
+        val from = if (targetState > initialState) 1 else -1
+        (slideInHorizontally(pageIn) { from * it / 5 } + fadeIn(fadeInSpec)) togetherWith fadeOut(fadeOutSpec)
+      },
+      label = "symbol page",
+    ) { shown ->
+      val symbols = SYMBOL_PAGES[shown]
+      LazyVerticalGrid(
+        if (symbols.wide) GridCells.Adaptive(112.dp) else GridCells.Adaptive(48.dp),
+        Modifier.fillMaxSize().padding(horizontal = 3.dp),
+      ) {
+        items(symbols.items) { symbol ->
+          Box(
+            Modifier.height(48.dp).clickable { actions.onKey(KeyAction.Text(symbol)) },
+            contentAlignment = Alignment.Center,
+          ) {
+            Text(symbol, fontSize = if (symbols.wide) 15.sp else 20.sp, maxLines = 1, color = colors.onSurface)
+          }
         }
       }
     }

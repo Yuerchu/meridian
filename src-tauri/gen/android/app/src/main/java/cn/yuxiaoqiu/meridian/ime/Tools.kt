@@ -7,6 +7,7 @@ enum class Panel {
   EDIT,
   CLIPBOARD,
   SYMBOLS,
+  EMOJI,
   /** Every candidate as a grid, over the keys; closes once nothing is left to choose. */
   CANDIDATES,
 }

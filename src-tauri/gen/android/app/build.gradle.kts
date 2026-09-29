@@ -135,6 +135,9 @@ dependencies {
     implementation("androidx.autofill:autofill:1.1.0")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
+    // The keyboard's emoji panel: categories, skin tones, recents, and only the
+    // emoji the device's font can draw.
+    implementation("androidx.emoji2:emoji2-emojipicker:1.7.0")
     // The input method's keyboard (Compose, Material 3 Expressive). Two pins, both
     // measured: Compose 1.12 (BOM 2026.08+) needs compileSdk 37 and AGP 9.1, so the
     // BOM stays on 1.11; and material3 1.4.0 keeps the Expressive API internal, so

@@ -23,6 +23,7 @@ import androidx.annotation.RequiresApi
 import androidx.autofill.inline.UiVersions
 import androidx.autofill.inline.v1.InlineSuggestionUi
 import androidx.compose.ui.platform.ComposeView
+import androidx.emoji2.emojipicker.RecentEmojiProvider
 import cn.yuxiaoqiu.meridian.EXTRA_OPEN_SETTINGS
 import java.io.File
 
@@ -440,6 +441,10 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
   }
 
   /** Meridian's own settings page for the keyboard, over whatever was open. */
+  override val emojiRecents: RecentEmojiProvider by lazy {
+    GatedRecents(KeptRecents(prefs())) { !learningOff }
+  }
+
   override fun onOpenSettings() {
     val intent = packageManager.getLaunchIntentForPackage(packageName) ?: return
     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

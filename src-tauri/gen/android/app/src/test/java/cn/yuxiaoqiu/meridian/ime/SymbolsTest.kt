@@ -15,6 +15,16 @@ class SymbolsTest {
     }
   }
 
+  /** The pages built from code point spans reach no unassigned code point. */
+  @Test
+  fun everySymbolIsAnAssignedCharacter() {
+    for (page in SYMBOL_PAGES) {
+      for (item in page.items) {
+        assertTrue("${page.name}: U+%04X".format(item.codePointAt(0)), item.codePoints().allMatch(Character::isDefined))
+      }
+    }
+  }
+
   /** A mark of two characters stays one item: …… is inserted whole. */
   @Test
   fun theChinesePageKeepsItsDoubledMarksWhole() {
