@@ -3063,6 +3063,10 @@ export interface ImeDictionaryStagedInfoResponse {
   roots: ImeDictionaryRootInfoResponse[]
 }
 
+export interface ImeDictionaryStagedCancelRequest {
+  staging_id: string
+}
+
 export interface ImeDictionaryStagedImportRequest {
   staging_id: string
   roots: string[]

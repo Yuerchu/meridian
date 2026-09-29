@@ -80,6 +80,7 @@ import type {
   ImeConfigUpdateRequest,
   ImeDictionaryImportReportResponse,
   ImeDictionaryStageRequest,
+  ImeDictionaryStagedCancelRequest,
   ImeDictionaryStagedImportRequest,
   ImeDictionaryStagedInfoResponse,
   ImeDictionaryListResponse,
@@ -830,6 +831,8 @@ export const api = {
   stageImeDictionary: (request: ImeDictionaryStageRequest) =>
     invoke<ImeDictionaryStagedInfoResponse>('stage_ime_dictionary', { request }),
 
+  cancelStagedImeDictionaries: (request: ImeDictionaryStagedCancelRequest) =>
+    invoke<null>('cancel_staged_ime_dictionaries', { request }),
   importStagedImeDictionaries: (request: ImeDictionaryStagedImportRequest) =>
     invoke<ImeDictionaryImportReportResponse[]>('import_staged_ime_dictionaries', { request }),
 

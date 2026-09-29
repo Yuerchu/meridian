@@ -58,7 +58,10 @@ pub fn open_learner(dirs: &ImeDirs) -> Box<dyn Learner> {
 /// Carries out Meridian's requests to forget (`meridian_ime_config::forget`)
 /// on the tables this process holds, writes them at once, and only then
 /// removes the requests: a crash in between carries a request out twice,
-/// which forgets nothing more. A request that does not parse is set aside
+/// which forgets nothing more. A write that failed keeps them all — without
+/// that, a restart reads the old tables back and nothing is left to say the
+/// words were asked to go; the next poll erases again (a no-op) and retries
+/// the write. A request that does not parse is set aside
 /// under `.rejected` rather than removed, since removing it would quietly
 /// keep what somebody asked to be rid of. Returns how many were carried out;
 /// cheap to call every second when there are none. A learner that only
@@ -94,6 +97,13 @@ pub fn apply_forgets(dirs: &ImeDirs, learner: &mut dyn Learner) -> usize {
         return 0;
     }
     learner.flush();
+    if learner.unsaved() {
+        tracing::warn!(
+            requests = done.len(),
+            "forgot in memory but could not write the tables; the requests are kept"
+        );
+        return done.len();
+    }
     for path in &done {
         if let Err(e) = std::fs::remove_file(path) {
             tracing::warn!(error = %e, path = %path.display(), "carried out a request to forget and could not remove it");
@@ -390,5 +400,29 @@ mod tests {
         assert_eq!(apply_forgets(&dirs, learner.as_mut()), 0);
         assert!(dirs.forget().join("1-1.json.rejected").exists());
         assert!(pending_forgets(&dirs).unwrap().is_empty());
+    }
+
+    /// Found in review: a failed write used to remove the requests anyway,
+    /// and a restart read the forgotten word back with nothing left to retry.
+    #[test]
+    fn a_request_is_kept_until_the_tables_are_written() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = ImeDirs::new(tmp.path());
+        let mut learner = open_learner(&dirs);
+        learner.record("香港");
+        learner.flush();
+        meridian_ime_config::request_forget(&dirs, &ForgetRequest::Word { text: "香港".into() }).unwrap();
+        // A directory where the table's file goes makes the rename fail.
+        let table = dirs.learn().join("user.tsv");
+        std::fs::remove_file(&table).unwrap();
+        std::fs::create_dir(&table).unwrap();
+
+        apply_forgets(&dirs, learner.as_mut());
+        assert_eq!(pending_forgets(&dirs).unwrap().len(), 1, "kept while unwritten");
+
+        std::fs::remove_dir(&table).unwrap();
+        apply_forgets(&dirs, learner.as_mut());
+        assert!(pending_forgets(&dirs).unwrap().is_empty(), "removed once written");
+        assert_eq!(FileLearner::open(&dirs.learn()).unwrap().weight("香港"), 0);
     }
 }

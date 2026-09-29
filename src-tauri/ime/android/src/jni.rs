@@ -150,6 +150,22 @@ pub extern "system" fn Java_cn_yuxiaoqiu_meridian_ime_EngineBridge_nativeStartIn
     })
 }
 
+/// The field's privacy as the session decided it, `private_apps` included.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_cn_yuxiaoqiu_meridian_ime_EngineBridge_nativeIsPrivate(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) -> jboolean {
+    guard(&mut env, JNI_FALSE, |_| {
+        Ok(if host(handle)?.is_private() {
+            JNI_TRUE
+        } else {
+            JNI_FALSE
+        })
+    })
+}
+
 /// `"pinyin"`, `"zhuyin"`, `"grid"`, or null for `host.json`'s.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_cn_yuxiaoqiu_meridian_ime_EngineBridge_nativeSetScheme(

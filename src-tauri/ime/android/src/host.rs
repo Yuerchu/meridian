@@ -188,6 +188,14 @@ impl ImeHost {
         self.session.is_composing()
     }
 
+    /// Whether this field is private as the session decided it: the field's own
+    /// word *and* `private_apps` keyed on its package, which only this side
+    /// reads. What the keyboard keeps itself (the clipboard history, the text
+    /// around the cursor) has to follow this, not the field's word alone.
+    pub fn is_private(&self) -> bool {
+        self.session.is_private()
+    }
+
     /// Picks up whatever Meridian changed on disk since the last call —
     /// settings, dictionaries, a model, memory hints — and flushes learning
     /// once [`FLUSH_INTERVAL`] has passed. The keyboard calls it when a field
@@ -330,6 +338,26 @@ mod tests {
             last = Some(host.handle_key(printable(ch)));
         }
         last.expect("at least one key")
+    }
+
+    /// Found in review: the keyboard's clipboard history followed the field's
+    /// own word only, so an app in `private_apps` still had its copies kept.
+    #[test]
+    fn a_private_app_is_private_even_in_an_ordinary_field() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut host = open(tmp.path());
+        let config = meridian_ime_config::HostConfig {
+            private_apps: vec!["com.example.bank".into()],
+            ..Default::default()
+        };
+        meridian_ime_config::save(tmp.path(), &config).unwrap();
+        host.refresh(Instant::now());
+        host.start_input(Some("com.example.bank"), false);
+        assert!(host.is_private());
+        host.start_input(Some("com.example.notes"), false);
+        assert!(!host.is_private());
+        host.start_input(Some("com.example.notes"), true);
+        assert!(host.is_private(), "the field's own word still counts");
     }
 
     /// The keyboard picks up Meridian's request when it next comes up.

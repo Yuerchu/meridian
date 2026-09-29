@@ -99,6 +99,48 @@ fun copiedAt(stamp: Long, sinceBoot: Long, now: Long): Long? = when {
   else -> null
 }
 
+/**
+ * Which field an engine answer belongs to. The engine answers on its own
+ * thread, later; by then focus may have moved and `currentInputConnection`
+ * be another field's, and an answer applied there puts one field's commit
+ * (or, after an engine error, the typed character) into another. Every
+ * lifecycle change moves the generation on, and an answer asked for under an
+ * older one is dropped.
+ */
+class InputGeneration {
+  var current = 0L
+    private set
+
+  fun advance() {
+    current += 1
+  }
+
+  /** `block`, run only if nothing has moved on since this call. */
+  fun <T> guard(block: (T) -> Unit): (T) -> Unit {
+    val asked = current
+    return { value -> if (asked == current) block(value) }
+  }
+}
+
+/**
+ * Whether a clip read from the clipboard is one already handled. Only the
+ * catch-up read asks: the listener firing is itself proof of a new copy, and
+ * before Android 8 the identity is the text's hash, so the same text copied
+ * again would look like the old copy.
+ */
+fun isRepeatedClip(live: Boolean, identity: Long, lastSeen: Long): Boolean = !live && identity == lastSeen
+
+/**
+ * The scheme a key is read in. A physical key is pinyin whatever the touch
+ * layer (it cannot produce the grid's keys); a tap is the touch layer's.
+ */
+fun schemeForKey(physical: Boolean, lettersLayer: Layer): String =
+  if (physical || lettersLayer != Layer.GRID) "pinyin" else "grid"
+
+/** Where 中/英 takes the letters: English is QWERTY, Chinese the chosen layout. */
+fun lettersAfterToggle(mode: InputMode, chineseLayout: Layer): Layer =
+  if (mode == InputMode.CHINESE) Layer.QWERTY else chineseLayout
+
 /** Two Shift taps closer than this lock the capitals. */
 const val DOUBLE_TAP_MS = 350L
 

@@ -173,6 +173,28 @@ pub fn import(dirs: &ImeDirs, source: &Path) -> Result<String, String> {
 
 /// Removes a bundle directory. The manifest goes first, so the host lets go
 /// of the model before the rest is deleted.
+/// Removes what installs cut off by a crash left in `models/`: the
+/// `.name.tmp-<pid>` directories `install` renames into place when it
+/// finishes. Only at start, before this process installs anything, so none
+/// of them can be one in progress. Returns how many went.
+pub fn sweep_unfinished_installs(dirs: &ImeDirs) -> usize {
+    let Ok(entries) = std::fs::read_dir(dirs.models()) else {
+        return 0;
+    };
+    let mut swept = 0;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if name.starts_with('.') && name.contains(".tmp-") && entry.path().is_dir() {
+            match remove_dir_retrying(&entry.path()) {
+                Ok(()) => swept += 1,
+                Err(e) => tracing::warn!(error = %e, dir = name, "cannot remove an unfinished model install"),
+            }
+        }
+    }
+    swept
+}
+
 pub fn remove(dirs: &ImeDirs, dir_name: &str) -> Result<(), String> {
     if dir_name.is_empty() || dir_name.contains(['/', '\\']) || dir_name.starts_with('.') {
         return Err(format!("{dir_name:?} is not a bundle directory"));
@@ -275,5 +297,23 @@ mod tests {
         std::fs::write(dirs.models().join("m").join("vocab.json"), b"{ }").unwrap();
         let s = status(&dirs);
         assert!(s.bundles[0].error.as_deref().is_some_and(|e| e.contains("vocab.json")));
+    }
+
+    /// Found in review: an install cut off before its rename left a complete
+    /// manifest the host could pick up, invisible to this page.
+    #[test]
+    fn unfinished_installs_are_swept_at_start_and_bundles_are_not() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = ImeDirs::new(tmp.path());
+        std::fs::create_dir_all(dirs.models().join(".next.tmp-4242")).unwrap();
+        std::fs::create_dir_all(dirs.models().join("public-lm")).unwrap();
+        std::fs::create_dir_all(dirs.models().join(".keep")).unwrap();
+        assert_eq!(sweep_unfinished_installs(&dirs), 1);
+        assert!(!dirs.models().join(".next.tmp-4242").exists());
+        assert!(dirs.models().join("public-lm").exists(), "a bundle stays");
+        assert!(
+            dirs.models().join(".keep").exists(),
+            "only the install's own pattern goes"
+        );
     }
 }

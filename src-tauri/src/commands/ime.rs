@@ -155,6 +155,12 @@ pub struct ImeDictionaryToggleRequest {
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct ImeDictionaryStagedCancelRequest {
+    pub staging_id: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ImeDictionaryRemoveRequest {
     pub file: String,
 }
@@ -434,7 +440,7 @@ fn report_into(report: meridian_ime_dict::rime::ImportReport) -> ImeDictionaryIm
 /// Where picks are copied and archives unpacked, under the input method's
 /// own directory so nothing of it lands in the app's shared cache.
 fn scratch_root(dirs: &meridian_ime_config::ImeDirs) -> std::path::PathBuf {
-    dirs.root.join("import-staging")
+    archive::scratch_root(dirs)
 }
 
 /// The picked file as a path this process can open, and a directory of ours
@@ -511,6 +517,25 @@ pub async fn stage_ime_dictionary(
         old.cleanup();
     }
     Ok(response)
+}
+
+/// The person closed the chooser without importing, or left the page:
+/// the unpacked copy goes now rather than at the next start. A staging that is
+/// no longer the current one (already imported, or replaced by a later pick,
+/// which cleaned it) is nothing to do.
+#[tauri::command]
+pub async fn cancel_staged_ime_dictionaries(
+    app: tauri::AppHandle,
+    request: ImeDictionaryStagedCancelRequest,
+) -> Result<(), String> {
+    let ime = app.state::<AppIme>();
+    let staged = archive::take_staged(&mut *ime.staged.lock().await, &request.staging_id);
+    if let Some(staged) = staged {
+        tokio::task::spawn_blocking(move || staged.cleanup())
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 /// Imports the chosen roots of the last pick, each into its own `.mdict`,

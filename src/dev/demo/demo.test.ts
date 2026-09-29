@@ -345,6 +345,7 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
   forget_ime_learned_word: { args: { request: { text: '你好' } } },
   forget_all_ime_learning: {},
   take_launch_request: {},
+  cancel_staged_ime_dictionaries: { args: { request: { staging_id: 'none' } } },
   dismiss_system_notice: { args: { request: { id: 'none' } } },
   set_ime_dictionary_enabled: { args: { request: { file: 'tech.dict', enabled: true } } },
   get_ime_lm_status: {},

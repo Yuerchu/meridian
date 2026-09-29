@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
 import {
@@ -248,6 +248,26 @@ export function ImeSettings() {
     } finally {
       setImporting(false)
     }
+  }
+
+  // What is staged lives in the backend, unpacked on disk; closing the chooser
+  // or leaving the page hands it back rather than leaving it for the next
+  // start's sweep. A failure is left to that sweep.
+  const stagedId = useRef<string | null>(null)
+  useEffect(() => {
+    stagedId.current = staged?.staging_id ?? null
+  }, [staged])
+  useEffect(
+    () => () => {
+      if (stagedId.current)
+        void api.cancelStagedImeDictionaries({ staging_id: stagedId.current }).catch(() => undefined)
+    },
+    [],
+  )
+  const handleCancelStaged = () => {
+    if (!staged) return
+    setStaged(null)
+    void api.cancelStagedImeDictionaries({ staging_id: staged.staging_id }).catch(() => undefined)
   }
 
   const handleImportChosen = async () => {
@@ -688,7 +708,7 @@ export function ImeSettings() {
                 >
                   {t('settings.ime.importChosen')}
                 </Button>
-                <Button size="small" variant="secondary" onPress={() => setStaged(null)} isDisabled={importing}>
+                <Button size="small" variant="secondary" onPress={handleCancelStaged} isDisabled={importing}>
                   {t('common.cancel')}
                 </Button>
               </div>

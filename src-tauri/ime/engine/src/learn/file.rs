@@ -238,6 +238,9 @@ impl Learner for FileLearner {
     fn persists(&self) -> bool {
         true
     }
+    fn unsaved(&self) -> bool {
+        self.inner.dirty().any()
+    }
     fn flush(&mut self) {
         self.write_dirty();
         self.last_flush = Instant::now();

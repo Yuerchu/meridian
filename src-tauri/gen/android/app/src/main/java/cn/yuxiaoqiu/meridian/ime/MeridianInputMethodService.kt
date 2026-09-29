@@ -47,6 +47,16 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
 
   private var enterAction: Int? = null
   private var privateField = false
+  /**
+   * The session's word on privacy for this field, `private_apps` included,
+   * which only the engine reads. True until it answers, so nothing is kept in
+   * between.
+   */
+  private var sessionPrivate = true
+  /** Which field an engine answer is for; see [InputGeneration]. */
+  private val generation = InputGeneration()
+  /** The scheme last given to the engine, so it is set only when it changes. */
+  private var activeScheme: String? = null
   private var fieldPackage: String? = null
   private lateinit var clipboard: ClipboardHistory
   private val clipboardManager by lazy { getSystemService(CLIPBOARD_SERVICE) as ClipboardManager }
@@ -128,6 +138,8 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
    */
   override fun onStartInput(attribute: EditorInfo, restarting: Boolean) {
     super.onStartInput(attribute, restarting)
+    generation.advance()
+    sessionPrivate = true
     privateField = isPrivateField(attribute.inputType, attribute.imeOptions)
     fieldPackage = attribute.packageName
     enterAction = enterActionFor(attribute.imeOptions)
@@ -138,13 +150,42 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
     engine.refresh()
     // A physical keyboard types pinyin whatever the touch layer: it cannot
     // produce the grid's keys.
-    val hardware = resources.configuration.keyboard == Configuration.KEYBOARD_QWERTY
-    engine.setScheme(if (hardware) "pinyin" else schemeOf(keyboard.lettersLayer))
-    engine.startInput(attribute.packageName, learningOff) { frame -> frame?.let(::render) }
+    useScheme(schemeForKey(hasHardwareKeyboard, keyboard.lettersLayer))
+    startSession(attribute.packageName)
   }
 
+  private val hasHardwareKeyboard get() = resources.configuration.keyboard == Configuration.KEYBOARD_QWERTY
+
+  /**
+   * What the keyboard asks the engine to treat as private: the field's own
+   * word, or incognito. The engine adds `private_apps` and answers with the
+   * whole ([sessionPrivate]); that answer is never sent back, or a field once
+   * private would stay so.
+   */
+  private val askedPrivate get() = privateField || keyboard.incognito
+
   /** Nothing typed here is learned, read around or remembered. */
-  private val learningOff get() = privateField || keyboard.incognito
+  private val learningOff get() = askedPrivate || sessionPrivate
+
+  private fun startSession(packageName: String?) {
+    val started = generation.guard<Pair<Frame?, Boolean?>> { (frame, private) ->
+      sessionPrivate = private ?: askedPrivate
+      frame?.let(::render)
+    }
+    engine.startInput(packageName, askedPrivate) { frame, private -> started(frame to private) }
+  }
+
+  /**
+   * The keys the engine reads next are this scheme's. A hardware keyboard
+   * types pinyin whatever the touch layer (it cannot produce the grid's
+   * keys), and with both at hand each key sets its own: the touch layer's
+   * scheme would read a physical Latin key as a grid token.
+   */
+  private fun useScheme(scheme: String) {
+    if (scheme == activeScheme) return
+    activeScheme = scheme
+    engine.setScheme(scheme)
+  }
 
   override fun onStartInputView(info: EditorInfo, restarting: Boolean) {
     super.onStartInputView(info, restarting)
@@ -155,7 +196,7 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
     keyboard.capsLock = false
     keyboard.panel = null
     keyboard.selecting = false
-    engine.setScheme(schemeOf(keyboard.lettersLayer))
+    useScheme(schemeForKey(hasHardwareKeyboard, keyboard.lettersLayer))
     // Copied while this process was not running — a vendor that kills
     // keyboards in the background (MIUI) makes that the ordinary case.
     captureClip(live = false)
@@ -169,6 +210,7 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
   }
 
   override fun onFinishInput() {
+    generation.advance()
     // What an autofill service offered was for that field.
     inlineGeneration += 1
     keyboard.inline = emptyList()
@@ -253,6 +295,7 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
       return super.onKeyDown(keyCode, event)
     }
     eaten.add(keyCode)
+    useScheme(schemeForKey(physical = true, keyboard.lettersLayer))
     if (keyboard.mode == InputMode.CHINESE && key.ch in 'a'.code..'z'.code) composingPredicted = true
     send(key, event.isCapsLockOn)
     return true
@@ -273,6 +316,8 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
 
   override fun onKey(action: KeyAction) {
     if (currentInputConnection == null) return
+    // With a hardware keyboard at hand too, a tap says the touch layer is typing.
+    useScheme(schemeForKey(physical = false, keyboard.lettersLayer))
     when (action) {
       is KeyAction.Token -> keyboard.tokens[action.name]?.let { send(EngineKey(0, it.key.codePointAt(0), 0)) }
       is KeyAction.Letter -> {
@@ -283,7 +328,7 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
           else EngineKey.char(action.ch.code),
         )
       }
-      is KeyAction.Text -> engine.insert(action.text) { show(null, it) }
+      is KeyAction.Text -> engine.insert(action.text, generation.guard { show(null, it) })
       is KeyAction.Punct -> send(EngineKey.char(action.ch.code))
       KeyAction.Backspace -> send(EngineKey.function(Vk.BACK))
       KeyAction.Space -> send(EngineKey.char(' '.code))
@@ -295,8 +340,15 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
         keyboard.capsLock = next.capsLock
         lastShiftAt = now
       }
-      // The engine switches; render() moves to the layer the new mode is typed on.
-      KeyAction.ToggleMode -> send(EngineKey.function(Vk.SHIFT))
+      // The engine switches the mode; the letters switch now, not when it
+      // answers: a key tapped in between would otherwise be read on the layer
+      // going away — a grid key in English is a private-use character in the
+      // document. Sent first, so the toggle handles any composition before the
+      // scheme change drops it; render() then finds the layer already right.
+      KeyAction.ToggleMode -> {
+        send(EngineKey.function(Vk.SHIFT))
+        switchLetters(lettersAfterToggle(keyboard.mode, keyboard.chineseLayout))
+      }
       is KeyAction.ChineseLayout -> chooseChineseLayout(action.layer)
       KeyAction.Globe -> onPicker()
       is KeyAction.ToLayer -> keyboard.layer = action.layer
@@ -306,7 +358,7 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
   }
 
   override fun onChoose(index: Int) {
-    engine.choose(index) { show(null, it) }
+    engine.choose(index, generation.guard { show(null, it) })
   }
 
   override fun onPage(forward: Boolean) {
@@ -350,7 +402,7 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
   override fun onPasteClip(clip: Clip) {
     val ic = currentInputConnection ?: return
     ic.commitText(clip.text, 1)
-    engine.reset { frame -> frame?.let(::render) }
+    engine.reset(generation.guard { frame -> frame?.let(::render) })
     chipTaken = clip.at
     keyboard.panel = null
     showClips()
@@ -384,7 +436,7 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
   override fun onIncognito() {
     keyboard.incognito = !keyboard.incognito
     prefs().edit().putBoolean(PREF_INCOGNITO, keyboard.incognito).apply()
-    engine.startInput(fieldPackage, learningOff) { frame -> frame?.let(::render) }
+    startSession(fieldPackage)
   }
 
   /** Meridian's own settings page for the keyboard, over whatever was open. */
@@ -422,7 +474,10 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
     val stamp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) description.timestamp else 0L
     // Which copy this is, in whatever base the stamp is in: compared, never converted.
     val identity = if (stamp > 0) stamp else text.hashCode().toLong()
-    if (identity == prefs().getLong(PREF_CLIP_SEEN, Long.MIN_VALUE)) return
+    // Seen before only suppresses the catch-up read: the listener firing is
+    // itself proof of a new copy, even of the same text with no stamp to tell
+    // them apart (before Android 8 the identity is the text's hash).
+    if (isRepeatedClip(live, identity, prefs().getLong(PREF_CLIP_SEEN, Long.MIN_VALUE))) return
     prefs().edit().putLong(PREF_CLIP_SEEN, identity).apply()
     val now = System.currentTimeMillis()
     val at = if (live) now else copiedAt(stamp, SystemClock.elapsedRealtime(), now)
@@ -437,7 +492,7 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
       return
     }
     val sensitive = description.extras?.getBoolean(EXTRA_IS_SENSITIVE, false) == true
-    if (!mayRemember(sensitive, privateField, keyboard.incognito, keyboard.recording)) return
+    if (!mayRemember(sensitive, privateField || sessionPrivate, keyboard.incognito, keyboard.recording)) return
     if (at == null) chipTaken = maxOf(chipTaken, now)
     if (clipboard.add(text, at ?: now)) showClips()
   }
@@ -519,7 +574,7 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
     keyboard.layer = layer
     keyboard.shifted = false
     keyboard.capsLock = false
-    engine.setScheme(schemeOf(layer))
+    useScheme(schemeOf(layer))
   }
 
   /** When the previous Shift tap was, for the double tap that locks capitals. */
@@ -552,7 +607,7 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
   private fun schemeOf(layer: Layer): String = if (layer == Layer.GRID) "grid" else "pinyin"
 
   private fun send(key: EngineKey, capsLock: Boolean = false) {
-    engine.key(key, capsLock) { show(key, it) }
+    engine.key(key, capsLock, generation.guard { show(key, it) })
   }
 
   /**
@@ -569,7 +624,7 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
   private fun dismissPrediction() {
     predicting = false
     predictionAt = NOWHERE
-    engine.dismiss { frame -> frame?.let(::render) }
+    engine.dismiss(generation.guard { frame -> frame?.let(::render) })
   }
 
   private fun render(frame: Frame?) {

@@ -1183,6 +1183,7 @@ const integrations: Record<string, DemoHandler> = {
   forget_all_ime_learning: () => ({ words: [], transitions: 0, pending: 0 }),
   // A browser is launched by nobody's keyboard.
   take_launch_request: () => null,
+  cancel_staged_ime_dictionaries: () => null,
   dismiss_system_notice: () => null,
   set_ime_dictionary_enabled: (args, { state }) => {
     const req = request<{ file: string; enabled: boolean }>(args)

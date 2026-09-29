@@ -68,6 +68,9 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     "assign_emoji_pack": {
       "kind": "null"
     },
+    "cancel_staged_ime_dictionaries": {
+      "kind": "null"
+    },
     "chat": {
       "kind": "null"
     },
@@ -10585,4 +10588,4 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
   }
 }
 
-export const INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT = 243
+export const INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT = 244

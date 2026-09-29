@@ -120,6 +120,11 @@ pub enum FileSkip {
     MissingImport,
     /// Already visited on this import — a self-import or a loop.
     Cycle,
+    /// Named in `import_tables` as a path that leaves the dictionary's own
+    /// directory (`../`, an absolute path, a link pointing out). The header is
+    /// the file's own say, and an archive's contents are not trusted to reach
+    /// past what was unpacked.
+    OutsideRoot,
     Io(String),
 }
 
@@ -129,6 +134,7 @@ impl std::fmt::Display for FileSkip {
             FileSkip::NoCodeColumn => f.write_str("no code column"),
             FileSkip::MissingImport => f.write_str("missing import"),
             FileSkip::Cycle => f.write_str("import cycle"),
+            FileSkip::OutsideRoot => f.write_str("outside the dictionary's directory"),
             FileSkip::Io(e) => write!(f, "io: {e}"),
         }
     }

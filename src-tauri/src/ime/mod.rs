@@ -159,6 +159,12 @@ pub(crate) async fn maybe_start(services: Services, app: tauri::AppHandle) -> Ap
     {
         tracing::warn!(error = %e, "cannot write the default host.json");
     }
+    // Left behind by a run that ended mid-way; nothing of this run is there yet.
+    archive::sweep_scratch(&bridge.dirs);
+    let swept = models::sweep_unfinished_installs(&bridge.dirs);
+    if swept > 0 {
+        tracing::info!(swept, "removed unfinished model installs");
+    }
     let dict_writes = Arc::new(std::sync::Mutex::new(()));
     let progress = Arc::new(upgrade::UpgradeProgress::default());
     {

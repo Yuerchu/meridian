@@ -103,8 +103,9 @@ pub fn open_bundle(
 ) -> Result<LmScorer, LmError> {
     let bundle = Bundle::open(dir, table)?;
     let runtime = options.runtime.clone().ok_or(LmError::NoRuntime)?;
-    let vocab = vocab::Vocab::load(&bundle.path(bundle::VOCAB_FILE)).map_err(LmError::Load)?;
+    let mut vocab = vocab::Vocab::load(&bundle.path(bundle::VOCAB_FILE)).map_err(LmError::Load)?;
     let m = &bundle.manifest;
+    vocab.only(&m.schemes);
     let budget = options.budget.unwrap_or(Duration::from_millis(match options.platform {
         Platform::Desktop => m.budget_ms.desktop,
         Platform::Mobile => m.budget_ms.mobile,

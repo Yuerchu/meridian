@@ -530,6 +530,9 @@ macro_rules! with_all_commands {
                 request: $crate::commands::ime::ImeDictionaryStagedImportRequest,
             ),
             #[cfg(any(windows, target_os = "android"))]
+            local commands::ime => cancel_staged_ime_dictionaries(
+                request: $crate::commands::ime::ImeDictionaryStagedCancelRequest,
+            ),
             local commands::ime => download_ime_rime_ice(),
             #[cfg(any(windows, target_os = "android"))]
             local commands::ime => set_ime_dictionary_enabled(

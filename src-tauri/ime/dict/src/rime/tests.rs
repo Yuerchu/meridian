@@ -321,3 +321,32 @@ fn name_comes_from_option_then_header_then_stem() {
     let d = DictFile::open(&r.output).unwrap();
     assert_eq!(d.meta().version, "");
 }
+
+/// Found in review: `import_tables` is the file's own say, and `join` keeps
+/// `..` and lets an absolute name replace the base, so an archive's header
+/// could read files outside what was unpacked.
+#[test]
+fn import_tables_cannot_leave_the_dictionary_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let outside = write(dir.path(), "secret.dict.yaml", &(header("secret", &[]) + "秘\tmi\t9\n"));
+    let absolute = outside.with_extension("").with_extension("");
+    let absolute = absolute.to_string_lossy().replace('\\', "/");
+    let root = write(
+        &dir.path().join("root"),
+        "root.dict.yaml",
+        &(header("root", &["../secret", &absolute, "cn_dicts/b"]) + "你\tni\t1\n"),
+    );
+    write(
+        &dir.path().join("root"),
+        "cn_dicts/b.dict.yaml",
+        &(header("b", &[]) + "好\thao\t1\n"),
+    );
+    let r = run(&root, &dir.path().join("out")).unwrap();
+    let outside_skips = r
+        .files
+        .iter()
+        .filter(|f| f.reason == Some(FileSkip::OutsideRoot))
+        .count();
+    assert_eq!(outside_skips, 2, "{:#?}", r.files);
+    assert_eq!(r.accepted, 2, "你 and 好, never 秘");
+}

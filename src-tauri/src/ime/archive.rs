@@ -64,6 +64,33 @@ impl Staged {
     }
 }
 
+/// The staging in `slot` if it is the one called `id`; anything else — a
+/// later pick replaced it, an import already took it — stays where it is.
+pub fn take_staged(slot: &mut Option<Staged>, id: &str) -> Option<Staged> {
+    if slot.as_ref().is_some_and(|s| s.id == id) {
+        slot.take()
+    } else {
+        None
+    }
+}
+
+/// Where a picked dictionary is unpacked while the person chooses its roots.
+pub fn scratch_root(dirs: &meridian_ime_config::ImeDirs) -> PathBuf {
+    dirs.root.join("import-staging")
+}
+
+/// Empties the scratch space. At start, when nothing can be staged yet: a
+/// pick left staged when the app closed (a chooser cancelled, the window
+/// shut) is otherwise nobody's to delete, at up to a gigabyte each.
+pub fn sweep_scratch(dirs: &meridian_ime_config::ImeDirs) {
+    let root = scratch_root(dirs);
+    if root.exists()
+        && let Err(e) = std::fs::remove_dir_all(&root)
+    {
+        tracing::warn!(error = %e, dir = %root.display(), "cannot clear the dictionary staging area");
+    }
+}
+
 /// `true` when `path` starts like a zip archive, whatever it is called: a
 /// `content://` copy has no name to go by.
 pub fn is_zip(path: &Path) -> std::io::Result<bool> {
@@ -372,5 +399,36 @@ mod tests {
         let plain = tmp.path().join("notes.txt");
         std::fs::write(&plain, "just text").unwrap();
         assert!(stage(&plain, &tmp.path().join("scratch"), "f".into()).is_err());
+    }
+
+    /// Found in review: a pick cancelled, and the app closed, left its unpacked
+    /// copy with nothing to delete it.
+    #[test]
+    fn the_staging_area_is_emptied_at_start() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = meridian_ime_config::ImeDirs::new(tmp.path());
+        let left = scratch_root(&dirs).join("stage-1");
+        std::fs::create_dir_all(&left).unwrap();
+        std::fs::write(left.join("rime_ice.dict.yaml"), "---").unwrap();
+        sweep_scratch(&dirs);
+        assert!(!scratch_root(&dirs).exists());
+        sweep_scratch(&dirs);
+    }
+
+    /// Cancelling names the staging it means: a late cancel for a pick that a
+    /// newer one replaced must not throw the newer one away.
+    #[test]
+    fn only_the_staging_named_is_taken() {
+        let staged = |id: &str| Staged {
+            id: id.into(),
+            base: PathBuf::new(),
+            scratch: None,
+            roots: Vec::new(),
+        };
+        let mut slot = Some(staged("b"));
+        assert!(take_staged(&mut slot, "a").is_none());
+        assert!(slot.is_some(), "the newer pick is still there");
+        assert_eq!(take_staged(&mut slot, "b").map(|s| s.id), Some("b".to_string()));
+        assert!(slot.is_none());
     }
 }

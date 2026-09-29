@@ -21,6 +21,7 @@ internal object EngineBridge {
   @JvmStatic external fun nativeCreate(dataDir: String): Long
   @JvmStatic external fun nativeDestroy(handle: Long)
   @JvmStatic external fun nativeStartInput(handle: Long, packageName: String?, private: Boolean): String
+  @JvmStatic external fun nativeIsPrivate(handle: Long): Boolean
   @JvmStatic external fun nativeSetScheme(handle: Long, scheme: String?)
   @JvmStatic external fun nativeSetSurrounding(handle: Long, left: String, right: String)
   @JvmStatic external fun nativeHandleKey(handle: Long, vk: Int, ch: Int, mods: Int, capsLock: Boolean): String
@@ -76,8 +77,15 @@ class Engine(dataDir: File) {
   private fun frame(json: String?): Frame? =
     json?.let { attempt("decode") { EngineJson.decodeFromString(Frame.serializer(), it) } }
 
-  fun startInput(packageName: String?, private: Boolean, done: (Frame?) -> Unit) =
-    ask<String>("startInput", { done(frame(it)) }) { EngineBridge.nativeStartInput(it, packageName, private) }
+  /**
+   * `done` gets the frame and whether the session made the field private —
+   * the field's own word or `private_apps`, which only the engine reads;
+   * null when there is no engine to say.
+   */
+  fun startInput(packageName: String?, private: Boolean, done: (Frame?, Boolean?) -> Unit) =
+    ask<Pair<String, Boolean>>("startInput", { done(frame(it?.first), it?.second) }) {
+      EngineBridge.nativeStartInput(it, packageName, private) to EngineBridge.nativeIsPrivate(it)
+    }
 
   /** `"pinyin"`, `"zhuyin"`, `"grid"`, or null for the configured scheme. */
   fun setScheme(scheme: String?) = ask<Unit>("setScheme", null) { EngineBridge.nativeSetScheme(it, scheme) }

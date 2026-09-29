@@ -222,13 +222,17 @@ fn check_file(dir: &Path, name: &str, entry: &FileEntry) -> Result<(), BundleErr
 
 /// The bundle to load from `models_dir`: a personal one if any, else the
 /// public one with the highest version. Only the manifests are read; `None`
-/// when there is nothing that looks like a bundle.
+/// when there is nothing that looks like a bundle. A dot-named directory is
+/// an install in progress (`.name.tmp-<pid>`), whose manifest is already
+/// complete before the rename that makes it a bundle — the settings page
+/// never lists one, and neither may this.
 pub fn choose(models_dir: &Path) -> Option<PathBuf> {
     let entries = std::fs::read_dir(models_dir).ok()?;
     let mut found: Vec<(bool, String, PathBuf)> = Vec::new();
     for entry in entries.flatten() {
         let dir = entry.path();
-        if !dir.is_dir() {
+        let hidden = entry.file_name().to_str().is_none_or(|n| n.starts_with('.'));
+        if !dir.is_dir() || hidden {
             continue;
         }
         match read_manifest(&dir) {
@@ -360,6 +364,16 @@ mod tests {
             choose(models.path()),
             Some(models.path().join("mine")),
             "a stray directory is skipped"
+        );
+        // Found in review: an install cut off before its rename.
+        write_bundle(&models.path().join(".next.tmp-42"), FILES, |m| {
+            m["personal"] = true.into();
+            m["version"] = "2099.01.0".into();
+        });
+        assert_eq!(
+            choose(models.path()),
+            Some(models.path().join("mine")),
+            "an install in progress is not a bundle"
         );
     }
 }

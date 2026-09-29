@@ -217,7 +217,9 @@ fn context_hash(req: &ScoreRequest<'_>) -> u64 {
 
 impl SentenceScorer for LmScorer {
     fn score(&self, req: &ScoreRequest<'_>) -> Vec<f64> {
-        if req.texts.is_empty() {
+        // A scheme the model was not trained on would reach it as unknown
+        // keys and come back as scores that mean nothing: no opinion instead.
+        if req.texts.is_empty() || !self.vocab.knows(req.scheme) {
             return Vec::new();
         }
         let now = Instant::now();
@@ -350,6 +352,31 @@ mod tests {
             hints: &[],
             texts,
         }
+    }
+
+    /// Found in review: a scheme the model has no key table for was encoded as
+    /// unknown keys and its scores mixed in anyway.
+    #[test]
+    fn a_scheme_the_model_was_not_trained_on_gets_no_opinion() {
+        let r = rig(Duration::ZERO, Duration::from_secs(5), false);
+        let texts = ["你好"];
+        let zhuyin = ScoreRequest {
+            scheme: InputScheme::Zhuyin,
+            ..ask(&texts, "")
+        };
+        assert!(r.scorer.score(&zhuyin).is_empty());
+        assert_eq!(r.runs.load(Ordering::SeqCst), 0, "the model was not even asked");
+        assert!(
+            !r.scorer.score(&ask(&texts, "")).is_empty(),
+            "pinyin, which it knows, still is"
+        );
+
+        let mut vocab = Vocab::parse(VOCAB_JSON).unwrap();
+        vocab.only(&["grid".to_string()]);
+        assert!(
+            vocab.knows(InputScheme::Grid) && !vocab.knows(InputScheme::Pinyin),
+            "the manifest's claim wins"
+        );
     }
 
     #[test]

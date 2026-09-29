@@ -90,6 +90,42 @@ class ToolsTest {
     assertEquals("slow second tap only turns it off", off, shiftAfterTap(once, sinceLast = DOUBLE_TAP_MS + 1))
   }
 
+  /** Found in review: an answer for the last field landed in the next one. */
+  @Test
+  fun anAnswerAskedForUnderAnEarlierFieldIsDropped() {
+    val generation = InputGeneration()
+    val applied = mutableListOf<String>()
+    val forTheOldField = generation.guard<String> { applied += it }
+    generation.advance()
+    val forTheNewField = generation.guard<String> { applied += it }
+    forTheOldField("你好")
+    forTheNewField("好的")
+    assertEquals(listOf("好的"), applied)
+  }
+
+  /** Found in review: before Android 8 the same text copied again was lost. */
+  @Test
+  fun onlyTheCatchUpReadSkipsAClipItHasSeen() {
+    assertTrue(isRepeatedClip(live = false, identity = 7, lastSeen = 7))
+    assertFalse("the listener firing is a new copy", isRepeatedClip(live = true, identity = 7, lastSeen = 7))
+    assertFalse(isRepeatedClip(live = false, identity = 8, lastSeen = 7))
+  }
+
+  /** Found in review: with a physical keyboard, the grid layer read its Latin keys as grid tokens. */
+  @Test
+  fun aPhysicalKeyIsPinyinWhateverTheTouchLayer() {
+    assertEquals("pinyin", schemeForKey(physical = true, Layer.GRID))
+    assertEquals("grid", schemeForKey(physical = false, Layer.GRID))
+    assertEquals("pinyin", schemeForKey(physical = false, Layer.QWERTY))
+  }
+
+  @Test
+  fun chineseAndEnglishSwitchInOneTapFromEitherLayout() {
+    assertEquals(Layer.QWERTY, lettersAfterToggle(InputMode.CHINESE, Layer.GRID))
+    assertEquals(Layer.GRID, lettersAfterToggle(InputMode.ENGLISH, Layer.GRID))
+    assertEquals(Layer.QWERTY, lettersAfterToggle(InputMode.ENGLISH, Layer.QWERTY))
+  }
+
   @Test
   fun aClipOnTheToolbarIsOneLine() {
     assertEquals("a b c", oneLine("  a\n\tb   c \n"))

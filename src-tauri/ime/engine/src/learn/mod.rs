@@ -126,6 +126,14 @@ pub trait Learner: Send {
         false
     }
 
+    /// Whether a table is still waiting to be written — a flush failed (a full
+    /// disk, a permission gone) and left it dirty for the next one. `flush`
+    /// never reports its errors, so this is how a caller learns that what it
+    /// changed is not yet on disk.
+    fn unsaved(&self) -> bool {
+        false
+    }
+
     /// Writes out whatever changed. Errors are logged, never returned: a
     /// learner that cannot write keeps learning in memory.
     fn flush(&mut self);
@@ -213,6 +221,9 @@ impl Learner for Muted<'_> {
     }
     fn persists(&self) -> bool {
         self.inner.persists()
+    }
+    fn unsaved(&self) -> bool {
+        self.inner.unsaved()
     }
     fn flush(&mut self) {
         self.inner.flush()

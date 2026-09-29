@@ -114,6 +114,13 @@ impl Vocab {
         self.keys.contains_key(scheme_name(scheme))
     }
 
+    /// Keeps the key tables of the schemes `manifest.schemes` names and drops
+    /// the rest: a vocabulary may carry a table the bundle does not claim to
+    /// have been trained on, and the manifest is the claim.
+    pub fn only(&mut self, schemes: &[String]) {
+        self.keys.retain(|name, _| schemes.iter().any(|s| s == name));
+    }
+
     fn char_id(&self, c: char) -> i64 {
         self.chars.get(&c).copied().unwrap_or(self.unk)
     }
