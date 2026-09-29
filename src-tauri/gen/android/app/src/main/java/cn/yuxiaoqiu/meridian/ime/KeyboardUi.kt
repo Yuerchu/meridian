@@ -249,6 +249,8 @@ fun KeyboardScreen(state: KeyboardState, actions: KeyboardActions) {
           when (panel) {
             Panel.EDIT -> EditPanel(state, actions)
             Panel.CLIPBOARD -> ClipboardPanel(state, actions)
+            Panel.SYMBOLS -> SymbolsPanel(actions)
+            Panel.CANDIDATES -> CandidateGrid(state, actions)
           }
         }
       } else {
@@ -323,6 +325,9 @@ private fun RowScope.Candidates(frame: Frame, actions: KeyboardActions) {
   }
   if (frame.page > 0) BarButton("‹") { actions.onPage(forward = false) }
   if (frame.page + 1 < frame.pageCount) BarButton("›") { actions.onPage(forward = true) }
+  // The row scrolls; this opens the lot as a grid, which is where a word
+  // twelfth in line is found without swiping for it.
+  if (frame.candidates.size > 1) BarButton(R.drawable.ime_expand, "展开候选") { actions.onPanel(Panel.CANDIDATES) }
 }
 
 @Composable

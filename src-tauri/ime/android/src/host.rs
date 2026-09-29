@@ -52,6 +52,10 @@ pub struct ImeHost {
     last_flush: Instant,
 }
 
+/// Candidates in one frame on Android: the whole list in practice (a
+/// query keeps at most 200, a single syllable has well under a hundred).
+pub const TOUCH_PAGE_SIZE: usize = 100;
+
 impl ImeHost {
     /// Opens the data directory `root` (the app's `dataDir/ime`), creating
     /// it if needed. Only failing to create the directory is an error; every
@@ -84,10 +88,15 @@ impl ImeHost {
         Ok(host)
     }
 
+    /// `host.json`'s `page_size` is how many candidates a Windows candidate
+    /// window shows at once, numbered for the digit keys. The touch keyboard
+    /// has no such page: it scrolls one row and opens a grid of the lot, so its
+    /// frames carry the whole list and paging is left for the rare list longer
+    /// than [`TOUCH_PAGE_SIZE`].
     fn session_config(&self) -> SessionConfig {
         SessionConfig {
             scheme: self.scheme_override.unwrap_or(input_scheme(self.config.scheme)),
-            page_size: self.config.page_size as usize,
+            page_size: TOUCH_PAGE_SIZE,
             full_width_punctuation: matches!(self.config.punctuation, Punctuation::FullWidth),
             learning: self.config.learning,
             prediction: self.config.prediction,
@@ -314,6 +323,25 @@ mod tests {
             last = Some(host.handle_key(printable(ch)));
         }
         last.expect("at least one key")
+    }
+
+    /// `host.json`'s page is Windows' five; the touch keyboard scrolls one
+    /// row and opens a grid, and both need the whole list in the frame.
+    #[test]
+    fn the_touch_keyboard_is_given_the_whole_list_not_a_page() {
+        let tmp = tempfile::tempdir().unwrap();
+        let chars = ["你", "呢", "尼", "泥", "妮", "拟", "逆", "倪", "腻", "匿", "溺", "霓"];
+        let rows: Vec<(&str, &str, u32)> = chars
+            .iter()
+            .enumerate()
+            .map(|(i, c)| ("ni", *c, 1000 - i as u32))
+            .collect();
+        write_dictionary(&ImeDirs::new(tmp.path()), &rows);
+        let mut host = ImeHost::open(tmp.path()).unwrap();
+        host.start_input(None, false);
+        let out = typed(&mut host, "ni");
+        assert_eq!(out.frame.page_count, 1);
+        assert_eq!(out.frame.candidates.len(), chars.len());
     }
 
     fn write_hints(dir: &Path, hints: &[&str]) {

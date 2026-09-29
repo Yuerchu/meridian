@@ -581,6 +581,11 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
     if (!predicting) predictionAt = NOWHERE
     val visible = frame != null && !frame.isEmpty
     keyboard.frame = if (visible) frame else null
+    // The grid is for choosing among what is being typed: once that is all
+    // chosen (or it turned into a prediction list), the keys come back.
+    if (keyboard.panel == Panel.CANDIDATES && (frame == null || frame.candidates.isEmpty() || frame.predicting)) {
+      keyboard.panel = null
+    }
     // The touch keyboard has its own candidate bar; the system's candidates
     // area is for a hardware keyboard, which shows no input view.
     val stripVisible = visible && !isInputViewShown

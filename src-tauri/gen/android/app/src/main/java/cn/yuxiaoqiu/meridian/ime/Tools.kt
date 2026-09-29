@@ -2,8 +2,14 @@ package cn.yuxiaoqiu.meridian.ime
 
 import android.view.KeyEvent
 
-/** What takes the place of the keys when the toolbar opens something. */
-enum class Panel { EDIT, CLIPBOARD }
+/** What takes the place of the keys, opened from the toolbar or the candidate bar. */
+enum class Panel {
+  EDIT,
+  CLIPBOARD,
+  SYMBOLS,
+  /** Every candidate as a grid, over the keys; closes once nothing is left to choose. */
+  CANDIDATES,
+}
 
 /** A key of the editing panel. */
 enum class EditAction {
