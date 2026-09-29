@@ -481,6 +481,20 @@ const RAW_TABLES: RawTable[] = [
         'NULL',
         '哪个 bot 账号应答的。桌面回合恒 NULL——这是<b>陈述</b>而不是缺口（迁移 30）',
       ],
+      [
+        'trigger',
+        'TEXT',
+        ['NN'],
+        "'user'",
+        '<code>user</code> | <code>plan_continuation</code> | <code>task_completion</code> | <code>agent_autonomous</code>，CHECK 约束。<b>和 <code>origin</code> 是两个维度</b>：origin 说是哪个 runner 在写（审计计费、打断报告、journal 都按它分支），trigger 说是谁让它开始的。后两种没有问题行，转录因此给它单独成组（迁移 65）',
+      ],
+      [
+        'trigger_ref',
+        'TEXT',
+        ['NULL'],
+        'NULL',
+        '唤醒它的是什么：后台任务 id，或代理自己的任务 id。人发起的回合恒 NULL（迁移 65）',
+      ],
     ],
     rels: [
       '<code>messages.turn_id</code> 指向它，但<b>没有外键</b>：删会话时 turns 和 messages 在同一次级联里、顺序不保证。',

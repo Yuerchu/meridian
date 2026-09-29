@@ -5,7 +5,7 @@ import { parseChatStreamEvent } from './chat-stream-event'
 const validEvents: ChatStreamEvent[] = [
   { type: 'text', content: 'hello', message_id: 'm1', conversation_id: 'c1' },
   { type: 'reasoning', content: 'thinking', message_id: 'm1', conversation_id: 'c1' },
-  { type: 'message_start', message_id: 'm1', turn_id: 't1', conversation_id: 'c1' },
+  { type: 'message_start', message_id: 'm1', turn_id: 't1', conversation_id: 'c1', trigger: 'user' },
   { type: 'user_message', content: 'steer', message_id: 'm2', conversation_id: 'c1' },
   { type: 'retry', attempt: 1, max_attempts: 3, delay_ms: 500, message_id: 'm1', conversation_id: 'c1' },
   { type: 'reset', message_id: 'm1', conversation_id: 'c1' },
@@ -330,6 +330,18 @@ describe('parseChatStreamEvent', () => {
         ],
       }),
     ).toThrow('acp_config event.config_options[0] is missing required field: description')
+  })
+})
+
+describe('message_start', () => {
+  // What set the turn going decides whether the transcript gives it a group of
+  // its own, so a start that does not say, or says something else, is refused
+  // rather than read as a turn somebody asked for.
+  it('requires a known trigger', () => {
+    const start = { type: 'message_start', message_id: 'm1', turn_id: 't1', conversation_id: 'c1' }
+    expect(parseChatStreamEvent({ ...start, trigger: 'task_completion' })).toMatchObject({ trigger: 'task_completion' })
+    expect(() => parseChatStreamEvent(start)).toThrow()
+    expect(() => parseChatStreamEvent({ ...start, trigger: 'whenever' })).toThrow()
   })
 })
 

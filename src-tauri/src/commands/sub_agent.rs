@@ -551,6 +551,7 @@ impl DesktopSubAgents {
                 redaction_mappings: &self.services.redaction_mappings,
             },
             engine::TurnSetup {
+                trigger: meridian_core::turn::TurnTrigger::User,
                 provider: &*provider.0,
                 params,
                 chat_messages,

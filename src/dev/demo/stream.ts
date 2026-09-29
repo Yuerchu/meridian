@@ -1,4 +1,4 @@
-import type { ChatStreamEvent, MessageInfoResponse, ToolOutcome } from '@/types'
+import type { ChatStreamEvent, MessageInfoResponse, ToolOutcome, TurnTrigger } from '@/types'
 import { call, message, turn, usage } from './factories'
 import type { DemoBackend } from './index'
 import type { DemoState } from './state'
@@ -63,6 +63,9 @@ export function startReplay(
   turnId: string,
   parentId: string | null,
   userContent: string | null,
+  // What set the replayed turn going; `task_completion` stands in for a
+  // background task waking the model.
+  trigger: TurnTrigger = 'user',
 ) {
   const { state } = backend
   const thread = state.threads[conversationId]
@@ -72,7 +75,7 @@ export function startReplay(
   const now = Date.now()
 
   thread.turns.push(
-    turn({ id: turnId, started_at: now, status: 'running', phase: 'streaming', ended_at: null, usage: null }),
+    turn({ id: turnId, started_at: now, status: 'running', phase: 'streaming', ended_at: null, usage: null, trigger }),
   )
   const record = () => thread.turns.find((t) => t.id === turnId)!
 
@@ -118,7 +121,13 @@ export function startReplay(
   /** Streams one assistant round; returns its row, or null if stopped. */
   const round = async (reasoning: string | null, text: string): Promise<MessageInfoResponse | null> => {
     const row = write({ role: 'assistant', content: '' })
-    emit(backend, { type: 'message_start', message_id: row.id, turn_id: turnId, conversation_id: conversationId })
+    emit(backend, {
+      type: 'message_start',
+      message_id: row.id,
+      turn_id: turnId,
+      conversation_id: conversationId,
+      trigger,
+    })
     if (reasoning) {
       for (const piece of chunks(reasoning, 6)) {
         if (!(await wait(backend, replay, TICK_MS))) return null

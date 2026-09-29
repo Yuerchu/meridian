@@ -60,6 +60,7 @@ function turnRecord(id: string, status: TurnStatus): TurnInfoResponse {
     started_at: 0,
     ended_at: null,
     usage: null,
+    trigger: 'user',
   }
 }
 
@@ -1411,6 +1412,16 @@ describe('stops are scoped to a turn', () => {
     expect(session().activeTurnId).toBe('turn-foreign')
     // The refusal is still reported — the user's message did not go anywhere.
     expect(session().error).toBe('This conversation is already answering.')
+  })
+
+  /// A turn nobody asked for streams in with no question above it. Its rows
+  /// name it, and what woke it is remembered, so the transcript can give it a
+  /// group of its own before any snapshot has heard of it.
+  it('remembers what set a streaming turn going and names its rows', () => {
+    store().handleMessageStart(CONV, 'a1', 'turn-woken', 'task_completion')
+
+    expect(session().liveTriggers['turn-woken']).toBe('task_completion')
+    expect(session().messages.find((m) => m.id === 'a1')?.turn_id).toBe('turn-woken')
   })
 
   /// The same handover when the local turn dies before writing anything, which

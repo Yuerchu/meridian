@@ -1,5 +1,6 @@
 import { requireKnownKeys, requireRecord } from '@/lib/strict-json'
 import type { ChatStreamEvent } from '@/types'
+import { TURN_TRIGGERS } from '@/lib/turn-trigger'
 
 const U32_MAX = 4_294_967_295
 const I32_MIN = -2_147_483_648
@@ -252,8 +253,14 @@ export function parseChatStreamEvent(value: unknown): ChatStreamEvent {
       break
     }
     case 'message_start': {
-      const event = requireShape(value, ['type', 'message_id', 'turn_id', 'conversation_id'], [], 'message_start event')
+      const event = requireShape(
+        value,
+        ['type', 'message_id', 'turn_id', 'conversation_id', 'trigger'],
+        [],
+        'message_start event',
+      )
       requireStringFields(event, ['type', 'message_id', 'turn_id', 'conversation_id'], 'message_start event')
+      requireClosedString(event.trigger, TURN_TRIGGERS, 'message_start event.trigger')
       break
     }
     case 'retry': {

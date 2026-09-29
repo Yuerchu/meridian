@@ -25,9 +25,11 @@ import type {
   TodoInfoResponse,
   ToolCallDisplay,
   TurnInfoResponse,
+  TurnTrigger,
 } from '@/types'
 import { requireAcpSessionNotice, requireToolCallDiffs } from '@/lib/chat-stream-event'
 import { mergeAcpNotice } from '@/lib/acp-notices'
+import { TURN_TRIGGERS } from '@/lib/turn-trigger'
 import { usePlanReviewStore, type PlanReviewEventInfo } from '@/stores/plan-review-store'
 
 /**
@@ -411,6 +413,9 @@ function validateSnapshotContracts(
   for (const turn of turns) {
     if (!TURN_STATUSES.has(turn.status)) throw new Error(`unknown turn status: ${turn.status}`)
     if (turn.phase !== null && !TURN_PHASES.has(turn.phase)) throw new Error(`unknown turn phase: ${turn.phase}`)
+    if (!(TURN_TRIGGERS as readonly string[]).includes(turn.trigger)) {
+      throw new Error(`unknown turn trigger: ${turn.trigger}`)
+    }
   }
   for (const run of runs) {
     if (run.status !== null && !TURN_STATUSES.has(run.status))
@@ -925,6 +930,11 @@ export interface ConversationSession {
    *  backend's live register of what is running can say which. Empty until the
    *  first snapshot lands, which reads as "no opinion" everywhere. */
   turns: TurnInfoResponse[]
+  /** What set each turn going, as its `message_start` said, for turns the
+   *  last snapshot does not know yet. A turn nobody asked for has to be told
+   *  apart from the one before it while it is still streaming, not only once
+   *  it has been reloaded. */
+  liveTriggers: Record<string, TurnTrigger>
 }
 
 function defaultSession(): ConversationSession {
@@ -952,6 +962,7 @@ function defaultSession(): ConversationSession {
     branches: {},
     switchingBranch: false,
     turns: [],
+    liveTriggers: {},
   }
 }
 
@@ -1254,7 +1265,7 @@ export interface ConversationStore {
   beginShellCommand: (convId: string, turnId: string) => void
   abortShellCommand: (convId: string, turnId: string, error?: string) => void
   finishShellCommand: (result: UserCommandResultResponse) => void
-  handleMessageStart: (convId: string, messageId: string, turnId?: string) => void
+  handleMessageStart: (convId: string, messageId: string, turnId?: string, trigger?: TurnTrigger) => void
   handleUserMessage: (convId: string, messageId: string, content: string) => void
   handleText: (convId: string, messageId: string, content: string) => void
   handleReasoning: (convId: string, messageId: string, content: string) => void
@@ -1731,7 +1742,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     )
   },
 
-  handleMessageStart: (convId, messageId, turnId) => {
+  handleMessageStart: (convId, messageId, turnId, trigger) => {
     set(
       produce((state: ConversationStore) => {
         // One iteration of a delegated run. Only runs that announced themselves
@@ -1744,6 +1755,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           state.sessions[convId] = defaultSession()
         }
         const session = state.sessions[convId]
+        if (turnId && trigger) session.liveTriggers[turnId] = trigger
         // A message_start naming a turn this session is not showing does not get
         // to take the session: the id on screen may belong to a turn that is
         // still streaming, and letting this one in would hand the stop that
@@ -1794,7 +1806,9 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           parent_id: null,
           compact_anchor_id: null,
           source: null,
-          turn_id: null,
+          // Named, so the transcript can find where a turn nobody asked for
+          // begins while it is still being written.
+          turn_id: turnId ?? null,
           tool_outcome: null,
           auto_review: null,
           tool_diffs: null,
