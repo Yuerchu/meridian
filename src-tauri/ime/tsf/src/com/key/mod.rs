@@ -71,13 +71,24 @@ pub fn event_from(wparam: WPARAM, lparam: LPARAM) -> KeyEvent {
 /// English mode passes everything; a letter is always ours in Chinese mode;
 /// while composing every editing key and every printable key is ours;
 /// when not composing a printable non-letter is ours only when the host may
-/// turn it into full-width punctuation.
-pub fn eats_key(ev: &KeyEvent, composing: bool, chinese_mode: bool, full_width_punctuation: bool) -> bool {
+/// turn it into full-width punctuation. A prediction list on screen adds
+/// exactly four bare keys — Up, Down, Tab, Esc — and nothing else, which is
+/// what leaves letters and digits alone while it is there.
+pub fn eats_key(
+    ev: &KeyEvent,
+    composing: bool,
+    predicting: bool,
+    chinese_mode: bool,
+    full_width_punctuation: bool,
+) -> bool {
     if ev.mods.ctrl || ev.mods.alt || ev.mods.win {
         return false;
     }
     if !chinese_mode || ev.caps_lock {
         return false;
+    }
+    if predicting && !composing && !ev.mods.shift && matches!(ev.vk, VK_UP | VK_DOWN | VK_TAB | VK_ESCAPE) {
+        return true;
     }
     if let Some(ch) = ev.ch
         && ch.is_ascii_alphabetic()
@@ -137,29 +148,68 @@ mod tests {
 
     #[test]
     fn decision_table() {
-        assert!(eats_key(&key(Some('a'), 0x41), false, true, true));
-        assert!(!eats_key(&key(Some('a'), 0x41), false, false, true), "english mode");
+        assert!(eats_key(&key(Some('a'), 0x41), false, false, true, true));
+        assert!(
+            !eats_key(&key(Some('a'), 0x41), false, false, false, true),
+            "english mode"
+        );
         let mut caps = key(Some('A'), 0x41);
         caps.caps_lock = true;
-        assert!(!eats_key(&caps, false, true, true));
+        assert!(!eats_key(&caps, false, false, true, true));
         let mut ctrl = key(Some('c'), 0x43);
         ctrl.mods.ctrl = true;
-        assert!(!eats_key(&ctrl, true, true, true));
+        assert!(!eats_key(&ctrl, true, false, true, true));
         assert!(
-            !eats_key(&key(Some('1'), 0x31), false, true, true),
+            !eats_key(&key(Some('1'), 0x31), false, false, true, true),
             "digit outside composition"
         );
         assert!(
-            eats_key(&key(Some('1'), 0x31), true, true, true),
+            eats_key(&key(Some('1'), 0x31), true, false, true, true),
             "digit selects while composing"
         );
-        assert!(eats_key(&key(None, VK_BACK), true, true, true));
-        assert!(!eats_key(&key(None, VK_BACK), false, true, true));
+        assert!(eats_key(&key(None, VK_BACK), true, false, true, true));
+        assert!(!eats_key(&key(None, VK_BACK), false, false, true, true));
         assert!(
-            eats_key(&key(Some(','), 0xBC), false, true, true),
+            eats_key(&key(Some(','), 0xBC), false, false, true, true),
             "punctuation may become full-width"
         );
-        assert!(!eats_key(&key(Some(','), 0xBC), false, true, false));
-        assert!(!eats_key(&key(Some('3'), 0x33), false, true, true));
+        assert!(!eats_key(&key(Some(','), 0xBC), false, false, true, false));
+        assert!(!eats_key(&key(Some('3'), 0x33), false, false, true, true));
+    }
+
+    #[test]
+    fn a_prediction_list_takes_four_keys_and_no_others() {
+        for vk in [VK_UP, VK_DOWN, VK_TAB, VK_ESCAPE] {
+            assert!(
+                eats_key(&key(None, vk), false, true, true, true),
+                "{vk:#x} while predicting"
+            );
+            assert!(
+                !eats_key(&key(None, vk), false, false, true, true),
+                "{vk:#x} with no list"
+            );
+        }
+        for (ch, vk) in [
+            (Some('3'), 0x33),
+            (None, VK_BACK),
+            (None, VK_RETURN),
+            (None, VK_LEFT),
+            (None, VK_HOME),
+        ] {
+            assert!(
+                !eats_key(&key(ch, vk), false, true, true, true),
+                "{vk:#x} goes to the application"
+            );
+        }
+        let mut shift_tab = key(None, VK_TAB);
+        shift_tab.mods.shift = true;
+        assert!(
+            !eats_key(&shift_tab, false, true, true, true),
+            "Shift+Tab is the application's"
+        );
+        assert!(
+            !eats_key(&key(None, VK_TAB), false, true, false, true),
+            "English mode has no list"
+        );
     }
 }

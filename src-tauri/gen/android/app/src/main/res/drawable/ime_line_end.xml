@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- keyline-icons two-tone ArrowRightToLine (MIT), paths unchanged. Tinted by the key. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path android:pathData="M2 12L17.0587 12M11.1229 5L17.8261 11.5875C18.058 11.8153 18.058 12.1847 17.8261 12.4125L11.1229 19M22 5L22 19" android:strokeColor="@android:color/white" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

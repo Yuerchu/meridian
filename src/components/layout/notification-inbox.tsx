@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 
 import { Button } from '@/components/base'
 
@@ -8,9 +9,12 @@ import {
   type NotificationCenterItem,
   type NotificationCenterTabDefinition,
 } from '@/components/application/notification-center/notification-center'
+import type { SettingsTab } from '@/components/settings/tabs'
 import { useRelativeTime } from '@/hooks/use-relative-time'
 import { requestPendingReveal } from '@/lib/pending-reveal'
 import { useConversationStore } from '@/stores/conversation-store'
+import { useSystemNoticeStore } from '@/stores/system-notice-store'
+import type { SystemNoticeInfoResponse } from '@/types'
 import { AttentionSummary } from './approval-notifications'
 import {
   ACTION_VARIANT,
@@ -41,14 +45,23 @@ import {
  * cannot see them, so the inbox says how many there are and offers to go to
  * the card — a line above the list rather than rows in it, because rows would
  * be a second place to answer the same question.
+ *
+ * **Below the questions, what this machine did on its own** — a dictionary
+ * upgrade after an update — under a "system" group and tab. Those never reach
+ * the floating stack, which carries questions and nothing else, and the tab
+ * appears only while there is something in it, so an inbox with no notices is
+ * exactly the inbox of questions it always was.
  */
 export function NotificationInbox({
   onSelect,
+  onOpenSettingsTab,
   transcriptInert,
   isOpen: openProp,
   onOpenChange,
 }: {
   onSelect: (conversationId: string) => Promise<boolean>
+  /** Where a failed system notice sends the reader to fix it. */
+  onOpenSettingsTab: (tab: SettingsTab) => void
   transcriptInert: boolean
   /** Controlled by the shell, which hides the floating stack while this is open. */
   isOpen?: boolean
@@ -66,6 +79,8 @@ export function NotificationInbox({
   const conversations = useConversationStore((s) => s.conversations)
   const act = useAttentionActions(onSelect)
   const relativeTime = useRelativeTime()
+  const notices = useSystemNoticeStore((s) => s.notices)
+  const dismissNotice = useSystemNoticeStore((s) => s.dismiss)
 
   const byId = useMemo(() => new Map(listed.map((item) => [item.approvalId, item])), [listed])
 
@@ -94,20 +109,26 @@ export function NotificationInbox({
     [listed, conversations, relativeTime, t],
   )
 
+  const systemItems = useMemo<NotificationCenterItem[]>(
+    () => notices.map((notice) => systemItem(notice, t, relativeTime)),
+    [notices, relativeTime, t],
+  )
+
   const tabs = useMemo<NotificationCenterTabDefinition[]>(
     () => [
       { id: 'all', label: t('notifications.inbox.tabAll') },
       { id: 'approvals', label: t('notifications.inbox.tabApprovals') },
       { id: 'questions', label: t('notifications.inbox.tabQuestions') },
+      ...(systemItems.length > 0 ? [{ id: SYSTEM_CATEGORY, label: t('notifications.inbox.tabSystem') }] : []),
     ],
-    [t],
+    [systemItems.length, t],
   )
 
   return (
     <NotificationBell
       isOpen={isOpen}
       onOpenChange={setIsOpen}
-      notifications={notifications}
+      notifications={[...notifications, ...systemItems]}
       triggerLabel={t('notifications.inbox.bell', { count: listed.length })}
       dialogLabel={t('notifications.inbox.title')}
       // The popover does not follow the viewport by itself: React Aria writes
@@ -164,6 +185,17 @@ export function NotificationInbox({
           category: t('notifications.inbox.category'),
         },
         onAction: (id, actionId) => {
+          if (id.startsWith(SYSTEM_ID_PREFIX)) {
+            const noticeId = id.slice(SYSTEM_ID_PREFIX.length)
+            if (actionId === 'settings') {
+              setIsOpen(false)
+              onOpenSettingsTab('ime')
+            }
+            if (actionId === 'dismiss' || actionId === 'settings') {
+              void dismissNotice(noticeId).catch((err) => console.error('notice not dismissed', err))
+            }
+            return
+          }
           const item = byId.get(id)
           if (!item || !isAttentionActionId(actionId)) return
           // Leaving for the card closes the inbox; everything else is
@@ -174,4 +206,50 @@ export function NotificationInbox({
       }}
     />
   )
+}
+
+const SYSTEM_CATEGORY = 'system'
+/** Keeps a notice's row id apart from an approval id in the one list. */
+const SYSTEM_ID_PREFIX = 'system:'
+
+/**
+ * One notice as a row. Unread while it is running or failed — those are the
+ * two worth the badge — and read once it succeeded, when it only reports.
+ */
+function systemItem(
+  notice: SystemNoticeInfoResponse,
+  t: TFunction,
+  relativeTime: (ms: number) => string,
+): NotificationCenterItem {
+  const { detail } = notice
+  const names = detail.dictionaries.join('、')
+  const running = detail.state === 'running'
+  const failed = detail.state === 'failed'
+  return {
+    id: SYSTEM_ID_PREFIX + notice.id,
+    category: SYSTEM_CATEGORY,
+    group: t('notifications.system.group'),
+    title: t(`notifications.system.imeUpgrade.${detail.state}.title`),
+    description: failed ? (
+      <span className="whitespace-pre-line">
+        {[
+          t('notifications.system.imeUpgrade.failed.description', { count: detail.upgraded }),
+          ...detail.failures.map((f) => t('notifications.system.imeUpgrade.failure', { name: f.name, error: f.error })),
+        ].join('\n')}
+      </span>
+    ) : (
+      t(`notifications.system.imeUpgrade.${detail.state}.description`, { names })
+    ),
+    timestamp: relativeTime(notice.finished_at ?? notice.started_at),
+    status: running ? 'information' : failed ? 'error' : 'success',
+    unread: running || failed,
+    actions: running
+      ? []
+      : [
+          ...(failed
+            ? [{ id: 'settings', label: t('notifications.system.openSettings'), variant: 'secondary' as const }]
+            : []),
+          { id: 'dismiss', label: t('notifications.system.dismiss'), variant: 'neutral' as const },
+        ],
+  }
 }

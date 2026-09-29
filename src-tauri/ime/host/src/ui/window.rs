@@ -45,6 +45,8 @@ const MARK_GAP: f32 = 6.0;
 const NUM_COL_WIDTH: f32 = 28.0;
 const LINE_HEIGHT: f32 = FONT_SIZE_DIP * 1.4;
 const MIN_WIDTH: f32 = 120.0;
+/// Under a prediction list, which has no numbers: the only keys it answers.
+const PREDICTION_FOOTER: &str = "Tab 选择 · Esc 关闭";
 /// Gap between the caret rectangle and the window.
 const CARET_GAP: f32 = 4.0;
 
@@ -339,9 +341,26 @@ impl Window {
         self.frame.preedit.iter().map(|s| s.text.as_str()).collect()
     }
 
+    /// The number drawn beside candidate `i`, which is the digit that
+    /// selects it — and so none for a prediction, where digits are typed.
+    fn label(&self, i: usize) -> Option<String> {
+        (!self.frame.predicting).then(|| format!("{}.", i + 1))
+    }
+
+    /// Width of the label column: the numbers', or nothing at all.
+    fn label_column(&self, i: usize) -> f32 {
+        match self.label(i) {
+            Some(label) => self.measure(&label).max(NUM_COL_WIDTH),
+            None => 0.0,
+        }
+    }
+
     fn footer_text(&self) -> Option<String> {
         if let Some(n) = &self.frame.notice {
             return Some(n.clone());
+        }
+        if self.frame.predicting {
+            return Some(PREDICTION_FOOTER.to_string());
         }
         if self.frame.page_count > 1 {
             return Some(format!("‹ {}/{} ›", self.frame.page + 1, self.frame.page_count));
@@ -361,10 +380,9 @@ impl Window {
             h += SPACING;
         }
         for (i, c) in self.frame.candidates.iter().enumerate() {
-            let label_w = self.measure(&format!("{}.", i + 1));
+            let label_w = self.label_column(i);
             let text_w = self.measure(&c.text);
-            let row_w =
-                HILITE_PADDING_X + MARK_WIDTH + MARK_GAP + label_w.max(NUM_COL_WIDTH) + text_w + HILITE_PADDING_X;
+            let row_w = HILITE_PADDING_X + MARK_WIDTH + MARK_GAP + label_w + text_w + HILITE_PADDING_X;
             content_w = content_w.max(row_w);
             if i > 0 {
                 h += CANDIDATE_SPACING;
@@ -467,24 +485,27 @@ impl Window {
                 }
                 let text_y = row_top + HILITE_PADDING_Y;
                 let label_x = MARGIN_X + HILITE_PADDING_X + MARK_WIDTH + MARK_GAP;
-                let label: Vec<u16> = format!("{}.", i + 1).encode_utf16().collect();
-                let label_rect = D2D_RECT_F {
-                    left: label_x,
-                    top: text_y,
-                    right: label_x + NUM_COL_WIDTH,
-                    bottom: text_y + LINE_HEIGHT,
-                };
-                rt.DrawText(
-                    &label,
-                    &self.text_format,
-                    &label_rect,
-                    &dim_brush,
-                    D2D1_DRAW_TEXT_OPTIONS_NONE,
-                    DWRITE_MEASURING_MODE_NATURAL,
-                );
+                let label_w = self.label_column(i);
+                if let Some(label) = self.label(i) {
+                    let label: Vec<u16> = label.encode_utf16().collect();
+                    let label_rect = D2D_RECT_F {
+                        left: label_x,
+                        top: text_y,
+                        right: label_x + label_w,
+                        bottom: text_y + LINE_HEIGHT,
+                    };
+                    rt.DrawText(
+                        &label,
+                        &self.text_format,
+                        &label_rect,
+                        &dim_brush,
+                        D2D1_DRAW_TEXT_OPTIONS_NONE,
+                        DWRITE_MEASURING_MODE_NATURAL,
+                    );
+                }
                 let text: Vec<u16> = cand.text.encode_utf16().collect();
                 let text_rect = D2D_RECT_F {
-                    left: label_x + NUM_COL_WIDTH,
+                    left: label_x + label_w,
                     top: text_y,
                     right: w - MARGIN_X - HILITE_PADDING_X,
                     bottom: text_y + LINE_HEIGHT,

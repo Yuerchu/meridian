@@ -36,6 +36,32 @@ impl From<WindowInsetsInfoResponse> for WindowInsetsEvent {
     }
 }
 
+/// A settings page something outside the window asked Meridian to open —
+/// today only the keyboard's toolbar, which runs in another process and can
+/// reach the app only by launching it. Closed on purpose: an unknown page is
+/// refused where the request arrives rather than guessed at here.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+// Built only by the Android bridge; the desktop's command always answers None.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub enum LaunchSettingsTab {
+    Ime,
+}
+
+/// What the launch asked for, taken once by the front end.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct LaunchRequestInfoResponse {
+    pub settings_tab: LaunchSettingsTab,
+}
+
+/// A launch request arrived while the window was up; the front end takes it
+/// with [`take_launch_request`]. Carries nothing so that the command stays
+/// the one place a request is read, and a window that was still loading —
+/// and missed this — still finds it.
+#[cfg(target_os = "android")]
+#[derive(Clone, Copy, serde::Serialize)]
+pub struct LaunchRequestEvent {}
+
 #[cfg(any(target_os = "android", test))]
 use meridian_core::agent::file_access::SafRootEntry;
 
@@ -209,6 +235,19 @@ pub fn get_window_insets() -> WindowInsetsInfoResponse {
     }
 }
 
+/// The settings page a launch asked for, if one is waiting; taking it clears it.
+#[tauri::command]
+pub fn take_launch_request() -> Option<LaunchRequestInfoResponse> {
+    #[cfg(target_os = "android")]
+    {
+        crate::android_bridge::take_launch_request()
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        None
+    }
+}
+
 /// Whether MANAGE_EXTERNAL_STORAGE ("All files access") is currently granted by the system.
 #[tauri::command]
 pub fn get_manage_storage_status() -> Result<bool, String> {
@@ -361,5 +400,28 @@ pub async fn remove_saf_root(app: tauri::AppHandle, uri: String) -> Result<SafRo
     {
         let (_, _) = (app, uri);
         Err("only available on Android".to_string())
+    }
+}
+
+#[cfg(test)]
+mod launch_request_tests {
+    use super::*;
+
+    /// The front end reads `settings_tab` as a closed union of page names.
+    #[test]
+    fn a_launch_request_names_its_settings_page() {
+        let request = LaunchRequestInfoResponse {
+            settings_tab: LaunchSettingsTab::Ime,
+        };
+        assert_eq!(
+            serde_json::to_value(request).unwrap(),
+            serde_json::json!({ "settings_tab": "ime" })
+        );
+    }
+
+    #[cfg(not(target_os = "android"))]
+    #[test]
+    fn nothing_launches_the_desktop_onto_a_page() {
+        assert_eq!(take_launch_request(), None);
     }
 }

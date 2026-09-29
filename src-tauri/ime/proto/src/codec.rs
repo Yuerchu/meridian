@@ -79,6 +79,7 @@ mod tests {
                     mods: Modifiers::default(),
                     caps_lock: false,
                 },
+                surrounding: None,
             },
         )
         .unwrap();

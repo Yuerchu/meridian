@@ -2148,6 +2148,13 @@ export interface WindowInsetsInfoResponse {
 
 export type PlatformInfoResponse = 'android' | 'windows' | 'macos' | 'linux' | 'ios'
 
+/** A settings page something outside the window asked for: the keyboard's toolbar. */
+export type LaunchSettingsTab = 'ime'
+
+export interface LaunchRequestInfoResponse {
+  settings_tab: LaunchSettingsTab
+}
+
 /** The local hook endpoint configuration returned by the host. */
 export interface HookConfigInfoResponse {
   enabled: boolean
@@ -2951,7 +2958,7 @@ export interface ImeStatusInfoResponse {
   registered_dll_path: string | null
 }
 
-export type ImeScheme = 'pinyin' | 'zhuyin'
+export type ImeScheme = 'pinyin' | 'zhuyin' | 'grid'
 export type ImePunctuation = 'full_width' | 'half_width'
 
 export interface ImeConfigInfoResponse {
@@ -2961,6 +2968,9 @@ export interface ImeConfigInfoResponse {
   learning: boolean
   private_apps: string[]
   debug_log: boolean
+  context_apps: string[]
+  /** Offer what may follow a commit. */
+  prediction: boolean
 }
 
 export interface ImeConfigUpdateRequest {
@@ -2970,6 +2980,9 @@ export interface ImeConfigUpdateRequest {
   learning: boolean
   private_apps: string[]
   debug_log: boolean
+  context_apps: string[]
+  /** Offer what may follow a commit. */
+  prediction: boolean
 }
 
 export interface ImeDictionaryInfoResponse {
@@ -2981,14 +2994,90 @@ export interface ImeDictionaryInfoResponse {
   enabled: boolean
   license: string
   source: string
+  state: ImeDictionaryState
 }
+
+/** Whether the keyboard can use a dictionary, and if not, why. */
+export type ImeDictionaryState =
+  | { kind: 'ready' }
+  /** Being rebuilt in this build's format right now. */
+  | { kind: 'upgrading' }
+  /** Written by an older build; the next start upgrades it again. */
+  | { kind: 'needs_upgrade'; version: number }
+  /** Written by a newer build that said this one cannot read it. */
+  | { kind: 'too_new'; version: number }
+  /** Damaged or not a dictionary. */
+  | { kind: 'unreadable'; error: string }
 
 export type ImeDictionaryListResponse = ImeDictionaryInfoResponse[]
 
-export interface ImeDictionaryImportRequest {
+/**
+ * Something this machine did on its own, for the inbox's system tab. Never a
+ * question: nothing waits on it.
+ */
+export interface SystemNoticeInfoResponse {
+  id: string
+  /** Milliseconds since the epoch. */
+  started_at: number
+  /** Null while it is still going. */
+  finished_at: number | null
+  detail: SystemNoticeDetail
+}
+
+export type SystemNoticeListResponse = SystemNoticeInfoResponse[]
+
+export type SystemNoticeDetail = {
+  kind: 'ime_dictionary_upgrade'
+  state: ImeDictionaryUpgradeState
+  /** The dictionaries being upgraded, in catalog order. */
+  dictionaries: string[]
+  upgraded: number
+  failures: ImeDictionaryUpgradeFailureInfoResponse[]
+}
+
+export type ImeDictionaryUpgradeState = 'running' | 'succeeded' | 'failed'
+
+export interface ImeDictionaryUpgradeFailureInfoResponse {
+  name: string
+  error: string
+}
+
+export interface SystemNoticeDismissRequest {
+  id: string
+}
+
+/** A `.dict.yaml` or a zip of them; on Android a `content://` URI. */
+export interface ImeDictionaryStageRequest {
   path: string
-  license: string | null
+}
+
+/** A dictionary in what was picked that nothing else there imports. */
+export interface ImeDictionaryRootInfoResponse {
+  path: string
   name: string | null
+  imports: number
+}
+
+export interface ImeDictionaryStagedInfoResponse {
+  staging_id: string
+  roots: ImeDictionaryRootInfoResponse[]
+}
+
+export interface ImeDictionaryStagedCancelRequest {
+  staging_id: string
+}
+
+export interface ImeDictionaryStagedImportRequest {
+  staging_id: string
+  roots: string[]
+  license: string | null
+}
+
+/** The Android keyboard as the system sees it. */
+export interface AndroidImeStatusInfoResponse {
+  enabled: boolean
+  current: boolean
+  data_dir: string
 }
 
 export interface ImeDictionaryImportReportResponse {
@@ -3002,9 +3091,59 @@ export interface ImeDictionaryImportReportResponse {
   notes: string[]
 }
 
+export interface ImeLmBundleInfoResponse {
+  /** The directory under `models`, which is what removing names. */
+  dir_name: string
+  id: string | null
+  version: string | null
+  personal: boolean
+  license: string | null
+  /** Why the host would refuse it; null when it checks out. */
+  error: string | null
+}
+
+export interface ImeLmStatusInfoResponse {
+  dir: string
+  /** The bundle the host uses, by directory name. */
+  active: string | null
+  runtime_found: boolean
+  bundles: ImeLmBundleInfoResponse[]
+}
+
+export interface ImeLmImportRequest {
+  path: string
+}
+
+export interface ImeLmRemoveRequest {
+  dir_name: string
+}
+
+export interface ImeMemoryHintsInfoResponse {
+  count: number
+  path: string
+}
+
 export interface ImeDictionaryToggleRequest {
   file: string
   enabled: boolean
+}
+
+/** One word the input method learned from the person's typing. */
+export interface ImeLearnedWordInfoResponse {
+  text: string
+  count: number
+  user_word: boolean
+}
+
+export interface ImeLearningInfoResponse {
+  words: ImeLearnedWordInfoResponse[]
+  transitions: number
+  /** Requests to forget the keyboard has not carried out yet. */
+  pending: number
+}
+
+export interface ImeLearnedWordForgetRequest {
+  text: string
 }
 
 export interface ImeDictionaryRemoveRequest {

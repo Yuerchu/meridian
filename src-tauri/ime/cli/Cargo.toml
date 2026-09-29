@@ -2,7 +2,7 @@
 name = "meridian-ime-cli"
 version = "0.1.0"
 edition = "2024"
-license = "LicenseRef-Proprietary-Yuerchu"
+license = "AGPL-3.0-or-later"
 authors = ["于小丘 Yuerchu <admin@yuxiaoqiu.cn>"]
 description = "Meridian 输入法的命令行测试台：导入词库、查询、回放按键脚本"
 
@@ -13,6 +13,7 @@ path = "src/main.rs"
 [dependencies]
 meridian-ime-dict = { path = "../dict" }
 meridian-ime-engine = { path = "../engine" }
+meridian-ime-lm = { path = "../lm" }
 meridian-ime-proto = { path = "../proto" }
 meridian-ime-session = { path = "../session" }
 meridian-ime-config = { path = "../config" }

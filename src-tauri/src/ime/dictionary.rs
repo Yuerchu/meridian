@@ -9,7 +9,9 @@ use std::path::Path;
 use meridian_ime_config::ImeDirs;
 use meridian_ime_dict::catalog::{Catalog, CatalogEntry};
 use meridian_ime_dict::rime::{ImportOptions, ImportReport};
-use meridian_ime_dict::{DictFile, SyllableTable};
+use meridian_ime_dict::{DictError, DictFile, SyllableTable};
+
+use super::upgrade::UpgradeProgress;
 
 /// One catalog row plus what the file says about itself.
 #[derive(Debug, Clone)]
@@ -24,9 +26,30 @@ pub struct DictionarySummary {
     pub enabled: bool,
     pub license: String,
     pub source: String,
+    /// Whether the keyboard can use it, and if not, why. The engine skips a
+    /// file it cannot open, so the page must say which of these it is.
+    pub state: DictionaryState,
 }
 
-pub fn list(dirs: &ImeDirs) -> Result<Vec<DictionarySummary>, String> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DictionaryState {
+    Ready,
+    /// The startup upgrade is rebuilding it now.
+    Upgrading,
+    /// Written by an older build and not upgraded (yet, or the upgrade
+    /// failed); the next start tries again.
+    NeedsUpgrade {
+        version: u16,
+    },
+    /// Written by a newer build that said this one cannot read it.
+    TooNew {
+        version: u16,
+    },
+    /// Damaged, or not a dictionary at all.
+    Unreadable(String),
+}
+
+pub fn list(dirs: &ImeDirs, progress: &UpgradeProgress) -> Result<Vec<DictionarySummary>, String> {
     let dicts = dirs.dicts();
     let catalog = Catalog::load(&dicts).map_err(|e| e.to_string())?;
     Ok(catalog
@@ -35,9 +58,28 @@ pub fn list(dirs: &ImeDirs) -> Result<Vec<DictionarySummary>, String> {
         .map(|e| {
             let path = dicts.join(&e.file);
             let size_bytes = std::fs::metadata(&path).map(|m| m.len()).ok();
-            let source = DictFile::open(&path)
-                .map(|d| d.meta().source.clone())
-                .unwrap_or_default();
+            // Not even opened while it is being rebuilt: opening maps the
+            // file, and on Windows a mapped file cannot be renamed over.
+            let opened = if progress.is_upgrading(&e.file) {
+                None
+            } else {
+                Some(DictFile::open(&path))
+            };
+            let (source, state) = match opened {
+                None => (String::new(), DictionaryState::Upgrading),
+                Some(Ok(d)) => (d.meta().source.clone(), DictionaryState::Ready),
+                Some(Err(err)) => {
+                    // The source is still worth showing for a file this build
+                    // will not open; its header says where it came from.
+                    let source = DictFile::metadata_of(&path).map(|(_, m)| m.source).unwrap_or_default();
+                    let state = match err {
+                        DictError::NeedsUpgrade(version) => DictionaryState::NeedsUpgrade { version },
+                        DictError::TooNew { version, .. } => DictionaryState::TooNew { version },
+                        other => DictionaryState::Unreadable(other.to_string()),
+                    };
+                    (source, state)
+                }
+            };
             DictionarySummary {
                 file: e.file.clone(),
                 name: e.name.clone(),
@@ -46,6 +88,7 @@ pub fn list(dirs: &ImeDirs) -> Result<Vec<DictionarySummary>, String> {
                 enabled: e.enabled,
                 license: e.license.clone(),
                 source,
+                state,
             }
         })
         .collect())
@@ -80,7 +123,7 @@ pub fn import(
     }
     catalog.upsert(entry);
     catalog.save(&dicts).map_err(|e| e.to_string())?;
-    super::probe::reload_dictionaries();
+    super::nudge_host();
     Ok(report)
 }
 
@@ -91,7 +134,7 @@ pub fn set_enabled(dirs: &ImeDirs, file: &str, enabled: bool) -> Result<(), Stri
         return Err(format!("no dictionary named {file}"));
     }
     catalog.save(&dicts).map_err(|e| e.to_string())?;
-    super::probe::reload_dictionaries();
+    super::nudge_host();
     Ok(())
 }
 
@@ -105,7 +148,7 @@ pub fn remove(dirs: &ImeDirs, file: &str) -> Result<(), String> {
     catalog.save(&dicts).map_err(|e| e.to_string())?;
     // The host may still have it mapped; a delete of a mapped file fails on
     // Windows, so tell the host first and retry briefly.
-    super::probe::reload_dictionaries();
+    super::nudge_host();
     let path = dicts.join(file);
     let mut last = Ok(());
     for _ in 0..10 {

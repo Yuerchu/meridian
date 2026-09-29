@@ -6,16 +6,18 @@ import i18n from '@/i18n'
 import { onPendingReveal } from '@/lib/pending-reveal'
 import { useConversationStore, type AttentionItem } from '@/stores/conversation-store'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
-import type { ConversationInfoResponse } from '@/types'
+import { useSystemNoticeStore } from '@/stores/system-notice-store'
+import type { ConversationInfoResponse, SystemNoticeInfoResponse } from '@/types'
 import { NotificationInbox } from './notification-inbox'
 
 const mocks = vi.hoisted(() => ({
   approve: vi.fn<(id: string) => Promise<void>>(),
   deny: vi.fn<(req: { approvalId: string; reason: string | null }) => Promise<void>>(),
+  dismissNotice: vi.fn<(req: { id: string }) => Promise<void>>(),
 }))
 
 vi.mock('@/api', () => ({
-  api: { approveToolCall: mocks.approve, denyToolCall: mocks.deny },
+  api: { approveToolCall: mocks.approve, denyToolCall: mocks.deny, dismissSystemNotice: mocks.dismissNotice },
 }))
 
 function call(
@@ -70,8 +72,29 @@ beforeEach(async () => {
   await i18n.changeLanguage('en')
   mocks.approve.mockReset().mockResolvedValue(undefined)
   mocks.deny.mockReset().mockResolvedValue(undefined)
+  mocks.dismissNotice.mockReset().mockResolvedValue(undefined)
   usePlanReviewStore.setState({ activeReviewId: null })
+  useSystemNoticeStore.setState({ notices: [] })
 })
+
+function upgrade(
+  id: string,
+  state: 'running' | 'succeeded' | 'failed',
+  failures: { name: string; error: string }[] = [],
+): SystemNoticeInfoResponse {
+  return {
+    id,
+    started_at: Date.now(),
+    finished_at: state === 'running' ? null : Date.now(),
+    detail: {
+      kind: 'ime_dictionary_upgrade',
+      state,
+      dictionaries: ['rime_ice', 'moegirl'],
+      upgraded: state === 'failed' ? 1 : state === 'succeeded' ? 2 : 0,
+      failures,
+    },
+  }
+}
 
 describe('the bell', () => {
   it('names the count and draws it on the glyph', () => {
@@ -283,5 +306,62 @@ describe('the inbox', () => {
     expect(rows(dialog)[0].querySelector('[data-slot="approval-notification-scope-arg"]')?.textContent).toBe(
       'path C:/work',
     )
+  })
+})
+
+describe('system notices', () => {
+  const tabNames = (dialog: HTMLElement) =>
+    within(dialog)
+      .getAllByRole('radio')
+      .map((tab) => tab.textContent)
+
+  it('adds no system tab while there is nothing to say', async () => {
+    seed([call('a', 'c1')])
+    render(<NotificationInbox onSelect={async () => true} onOpenSettingsTab={() => {}} transcriptInert={false} />)
+    const dialog = await open()
+    expect(tabNames(dialog)).toEqual([
+      `${i18n.t('notifications.inbox.tabAll')}1`,
+      `${i18n.t('notifications.inbox.tabApprovals')}1`,
+      `${i18n.t('notifications.inbox.tabQuestions')}0`,
+    ])
+  })
+
+  it('lists a notice under the system tab, after the questions', async () => {
+    seed([call('a', 'c1')])
+    useSystemNoticeStore.setState({ notices: [upgrade('n1', 'running')] })
+    render(<NotificationInbox onSelect={async () => true} onOpenSettingsTab={() => {}} transcriptInert={false} />)
+    const dialog = await open()
+    expect(tabNames(dialog)).toContain(`${i18n.t('notifications.inbox.tabSystem')}1`)
+    const last = rows(dialog).at(-1)!
+    expect(last).toHaveTextContent(i18n.t('notifications.system.imeUpgrade.running.title'))
+    expect(last).toHaveTextContent('rime_ice、moegirl')
+    expect(within(last).queryByRole('button')).toBeNull()
+  })
+
+  it('names what failed and offers the settings page and dismissal', async () => {
+    const onOpenSettingsTab = vi.fn()
+    seed([])
+    useSystemNoticeStore.setState({
+      notices: [upgrade('n1', 'failed', [{ name: 'moegirl', error: 'damaged' }])],
+    })
+    render(
+      <NotificationInbox onSelect={async () => true} onOpenSettingsTab={onOpenSettingsTab} transcriptInert={false} />,
+    )
+    const dialog = await open()
+    const row = rows(dialog)[0]
+    expect(row).toHaveTextContent('moegirl: damaged')
+    await userEvent.click(within(row).getByRole('button', { name: i18n.t('notifications.system.openSettings') }))
+    expect(onOpenSettingsTab).toHaveBeenCalledWith('ime')
+    expect(mocks.dismissNotice).toHaveBeenCalledWith({ id: 'n1' })
+  })
+
+  it('takes a finished notice away when dismissed', async () => {
+    seed([])
+    useSystemNoticeStore.setState({ notices: [upgrade('n1', 'succeeded')] })
+    render(<NotificationInbox onSelect={async () => true} onOpenSettingsTab={() => {}} transcriptInert={false} />)
+    const dialog = await open()
+    await userEvent.click(within(rows(dialog)[0]).getByRole('button', { name: i18n.t('notifications.system.dismiss') }))
+    expect(mocks.dismissNotice).toHaveBeenCalledWith({ id: 'n1' })
+    await waitFor(() => expect(useSystemNoticeStore.getState().notices).toEqual([]))
   })
 })

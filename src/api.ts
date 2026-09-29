@@ -75,13 +75,25 @@ import type {
   JournalVersionContentResponse,
   JournalVersionListResponse,
   ListenStatusResponse,
+  AndroidImeStatusInfoResponse,
   ImeConfigInfoResponse,
   ImeConfigUpdateRequest,
   ImeDictionaryImportReportResponse,
-  ImeDictionaryImportRequest,
+  ImeDictionaryStageRequest,
+  ImeDictionaryStagedCancelRequest,
+  ImeDictionaryStagedImportRequest,
+  ImeDictionaryStagedInfoResponse,
   ImeDictionaryListResponse,
   ImeDictionaryRemoveRequest,
+  ImeLearnedWordForgetRequest,
+  ImeLearningInfoResponse,
   ImeDictionaryToggleRequest,
+  SystemNoticeDismissRequest,
+  SystemNoticeListResponse,
+  ImeLmImportRequest,
+  ImeLmRemoveRequest,
+  ImeLmStatusInfoResponse,
+  ImeMemoryHintsInfoResponse,
   ImeProfileUpdateRequest,
   ImeStatusInfoResponse,
   LogFileListResponse,
@@ -225,6 +237,7 @@ import type {
   WorkspaceTreeEntryListResponse,
   WorkspaceTreeRequest,
   WindowInsetsInfoResponse,
+  LaunchRequestInfoResponse,
 } from './types'
 
 export const api = {
@@ -671,6 +684,7 @@ export const api = {
   getPlatform: () => invoke<PlatformInfoResponse>('get_platform'),
 
   getWindowInsets: () => invoke<WindowInsetsInfoResponse>('get_window_insets'),
+  takeLaunchRequest: () => invoke<LaunchRequestInfoResponse | null>('take_launch_request'),
 
   getManageStorageStatus: () => invoke<boolean>('get_manage_storage_status'),
 
@@ -812,14 +826,41 @@ export const api = {
 
   listImeDictionaries: () => invoke<ImeDictionaryListResponse>('list_ime_dictionaries'),
 
-  importImeDictionary: (request: ImeDictionaryImportRequest) =>
-    invoke<ImeDictionaryImportReportResponse>('import_ime_dictionary', { request }),
+  // Importing is two steps: look at what was picked (a file, or a zip whose
+  // root dictionaries the person chooses among), then import the chosen roots.
+  stageImeDictionary: (request: ImeDictionaryStageRequest) =>
+    invoke<ImeDictionaryStagedInfoResponse>('stage_ime_dictionary', { request }),
+
+  cancelStagedImeDictionaries: (request: ImeDictionaryStagedCancelRequest) =>
+    invoke<null>('cancel_staged_ime_dictionaries', { request }),
+  importStagedImeDictionaries: (request: ImeDictionaryStagedImportRequest) =>
+    invoke<ImeDictionaryImportReportResponse[]>('import_staged_ime_dictionaries', { request }),
+
+  // Fetches rime-ice from GitHub and imports its Chinese root.
+  downloadImeRimeIce: () => invoke<ImeDictionaryImportReportResponse>('download_ime_rime_ice'),
+
+  // The Android keyboard's standing with the system, and the two system
+  // screens that change it.
+  getAndroidImeStatus: () => invoke<AndroidImeStatusInfoResponse>('get_android_ime_status'),
+
+  openAndroidImeSettings: () => invoke<void>('open_android_ime_settings'),
+
+  showAndroidImePicker: () => invoke<void>('show_android_ime_picker'),
 
   setImeDictionaryEnabled: (request: ImeDictionaryToggleRequest) =>
     invoke<ImeDictionaryListResponse>('set_ime_dictionary_enabled', { request }),
 
+  getImeLearning: () => invoke<ImeLearningInfoResponse>('get_ime_learning'),
+  forgetImeLearnedWord: (request: ImeLearnedWordForgetRequest) =>
+    invoke<ImeLearningInfoResponse>('forget_ime_learned_word', { request }),
+  forgetAllImeLearning: () => invoke<ImeLearningInfoResponse>('forget_all_ime_learning'),
   removeImeDictionary: (request: ImeDictionaryRemoveRequest) =>
     invoke<ImeDictionaryListResponse>('remove_ime_dictionary', { request }),
+
+  // What this machine did on its own; the inbox's system tab. Local only.
+  listSystemNotices: () => invoke<SystemNoticeListResponse>('list_system_notices'),
+
+  dismissSystemNotice: (request: SystemNoticeDismissRequest) => invoke<void>('dismiss_system_notice', { request }),
 
   startImeHost: () => invoke<ImeStatusInfoResponse>('start_ime_host'),
 
@@ -830,6 +871,15 @@ export const api = {
 
   // One UAC prompt: `regsvr32` on the DLL.
   registerIme: () => invoke<ImeStatusInfoResponse>('register_ime'),
+
+  getImeLmStatus: () => invoke<ImeLmStatusInfoResponse>('get_ime_lm_status'),
+
+  importImeLm: (request: ImeLmImportRequest) => invoke<ImeLmStatusInfoResponse>('import_ime_lm', { request }),
+
+  removeImeLm: (request: ImeLmRemoveRequest) => invoke<ImeLmStatusInfoResponse>('remove_ime_lm', { request }),
+
+  // Writes the memory hints now rather than at the next minute.
+  refreshImeMemoryHints: () => invoke<ImeMemoryHintsInfoResponse>('refresh_ime_memory_hints'),
 
   // Prompt Templates
   listTemplateVariables: () => invoke<TemplateVariableListResponse>('list_template_variables'),

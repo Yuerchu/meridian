@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => {
       conversations: [{ id: 'conversation-1', title: 'Plan conversation' }],
       sessions: {},
     },
+    notices: { load: vi.fn(() => Promise.resolve()), receive: vi.fn() },
   }
 })
 
@@ -32,6 +33,10 @@ vi.mock('@/lib/transport', () => ({
 
 vi.mock('@/stores/conversation-store', () => ({
   useConversationStore: { getState: () => mocks.store },
+}))
+
+vi.mock('@/stores/system-notice-store', () => ({
+  useSystemNoticeStore: { getState: () => mocks.notices },
 }))
 
 vi.mock('@tauri-apps/plugin-notification', () => ({
@@ -90,6 +95,14 @@ describe('global user-command events', () => {
     expect(mocks.store.finishShellCommand).toHaveBeenCalledWith(result)
     expect(mocks.store.loadMessages).toHaveBeenLastCalledWith('conversation-1')
     expect(mocks.store.loadMessages).toHaveBeenCalledTimes(2)
+  })
+
+  it('loads the notices of this machine on mount and hands each event to their store', () => {
+    renderHook(() => useGlobalEventListener())
+    expect(mocks.notices.load).toHaveBeenCalledTimes(1)
+    const event = { type: 'dismiss', id: 'n-1' }
+    act(() => mocks.listeners.get('system-notice')?.({ payload: event }))
+    expect(mocks.notices.receive).toHaveBeenCalledWith(event)
   })
 
   it('parses chat-stream payloads before dispatching them to the store', () => {

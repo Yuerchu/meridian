@@ -6,12 +6,15 @@
 //! bytes and [`Metadata`] for the provenance that travels with them.
 
 pub mod layout;
+pub mod legacy;
 mod metadata;
 mod reader;
+pub mod upgrade;
 mod writer;
 
 pub use metadata::Metadata;
 pub use reader::{DictFile, Entry};
+pub use upgrade::{Upgrade, upgrade_in_place};
 pub use writer::{DictWriter, WriterStats};
 
 use std::sync::Arc;
@@ -23,8 +26,15 @@ pub enum DictError {
     Io(#[from] std::io::Error),
     #[error("not a Meridian dictionary (bad magic)")]
     BadMagic,
-    #[error("unsupported dictionary format version {0} (this build reads {expected})", expected = layout::FORMAT_VERSION)]
-    UnsupportedVersion(u16),
+    /// Written by an older build; [`upgrade_in_place`] rebuilds it.
+    #[error("dictionary format version {0} is older than this build's {current} and has to be upgraded", current = layout::FORMAT_VERSION)]
+    NeedsUpgrade(u16),
+    /// Written by a newer build that said this one cannot read it.
+    #[error("dictionary format version {version} needs a reader of version {min_reader}; this build is {current}", current = layout::FORMAT_VERSION)]
+    TooNew { version: u16, min_reader: u16 },
+    /// An upgrade wrote a file that did not read back as what went in.
+    #[error("upgrade check failed: {0}")]
+    UpgradeCheck(String),
     #[error("unsupported container kind {0}")]
     UnsupportedKind(u16),
     #[error("section {0} is missing")]

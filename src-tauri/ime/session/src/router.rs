@@ -15,7 +15,7 @@ use meridian_ime_proto::{
     ClientKind, ClientMessage, ErrorCode, Frame, InputSettings, PROTOCOL_VERSION, Profile, Rect, Scheme, ServerMessage,
 };
 
-use crate::session::{Session, SessionConfig};
+use crate::session::{DictionaryNotice, Session, SessionConfig};
 
 /// Learning is flushed this often while the host is idle.
 pub const FLUSH_INTERVAL: Duration = Duration::from_secs(60);
@@ -37,8 +37,12 @@ pub struct RouterConfig {
     pub page_size: usize,
     pub full_width_punctuation: bool,
     pub learning: bool,
+    pub prediction: bool,
     /// Lower-cased executable names whose sessions are always private.
     pub private_apps: Vec<String>,
+    /// Lower-cased executable names, besides Meridian's own, that may be
+    /// shown the person's memory hints.
+    pub context_apps: Vec<String>,
 }
 
 impl Default for RouterConfig {
@@ -48,7 +52,9 @@ impl Default for RouterConfig {
             page_size: 5,
             full_width_punctuation: true,
             learning: true,
+            prediction: true,
             private_apps: Vec::new(),
+            context_apps: Vec::new(),
         }
     }
 }
@@ -66,6 +72,7 @@ impl RouterConfig {
             page_size: self.page_size,
             full_width_punctuation: self.full_width_punctuation,
             learning: self.learning,
+            prediction: self.prediction,
         }
     }
 
@@ -75,6 +82,7 @@ impl RouterConfig {
             scheme: match cfg.scheme {
                 InputScheme::Pinyin => Scheme::Pinyin,
                 InputScheme::Zhuyin => Scheme::Zhuyin,
+                InputScheme::Grid => Scheme::Grid,
             },
             page_size: cfg.page_size as u8,
             full_width_punctuation: cfg.full_width_punctuation,
@@ -101,6 +109,8 @@ pub struct Router {
     last_flush: Instant,
     user_words_generation: u64,
     user_words_dirty: bool,
+    /// Memory hints, handed only to sessions in an allowed application.
+    hints: Arc<[String]>,
     version: String,
     data_dir: String,
     dictionaries: Vec<String>,
@@ -119,6 +129,7 @@ impl Router {
             last_flush: Instant::now(),
             user_words_generation,
             user_words_dirty: false,
+            hints: Arc::from(Vec::new()),
             version: env!("CARGO_PKG_VERSION").to_string(),
             data_dir: String::new(),
             dictionaries: Vec::new(),
@@ -142,6 +153,18 @@ impl Router {
             e.session.set_config(self.config.session_config(e.profile));
             e.private_by_app = is_private_app(&self.config, e.app_name.as_deref());
             e.session.set_private(e.private_by_app || e.session.is_private());
+            e.session
+                .set_hints(hints_for(&self.config, e.app_name.as_deref(), &self.hints));
+        }
+    }
+
+    /// New memory hints, from Meridian. Each session gets them or none,
+    /// depending on which application it is in.
+    pub fn set_hints(&mut self, hints: Vec<String>) {
+        self.hints = Arc::from(hints);
+        for e in self.sessions.values_mut() {
+            e.session
+                .set_hints(hints_for(&self.config, e.app_name.as_deref(), &self.hints));
         }
     }
 
@@ -177,7 +200,7 @@ impl Router {
     pub fn focused_frame(&self) -> Option<(Frame, Option<Rect>)> {
         let key = self.focused?;
         let e = self.sessions.get(&key)?;
-        Some((e.session.frame(self.engine.is_empty()), e.last_rect))
+        Some((e.session.frame(DictionaryNotice::of(&self.engine)), e.last_rect))
     }
 
     /// One message in, one reply out.
@@ -204,6 +227,7 @@ impl Router {
                     let private_by_app = is_private_app(&self.config, app_name.as_deref());
                     let mut session = Session::new(self.config.session_config(profile));
                     session.set_private(private_by_app);
+                    session.set_hints(hints_for(&self.config, app_name.as_deref(), &self.hints));
                     self.sessions.insert(
                         key,
                         Entry {
@@ -220,7 +244,11 @@ impl Router {
                     settings: self.config.input_settings(profile),
                 }
             }
-            ClientMessage::Key { session_id, event } => {
+            ClientMessage::Key {
+                session_id,
+                event,
+                surrounding,
+            } => {
                 let key = SessionKey { conn, session_id };
                 if !self.sessions.contains_key(&key) {
                     return self.unknown_session(session_id);
@@ -229,6 +257,9 @@ impl Router {
                 self.refresh_user_words();
                 let engine = self.engine.clone();
                 let e = self.sessions.get_mut(&key).expect("checked above");
+                if let Some(s) = surrounding {
+                    e.session.set_surrounding(&s.left, &s.right);
+                }
                 let outcome = e.session.handle_key(&engine, self.learner.as_mut(), event);
                 ServerMessage::KeyResult {
                     session_id,
@@ -243,7 +274,7 @@ impl Router {
                     return self.unknown_session(session_id);
                 };
                 e.session.set_private(private || e.private_by_app);
-                if e.session.is_composing() {
+                if e.session.is_composing() || e.session.is_predicting() {
                     e.session.reset();
                 }
                 self.focus(key);
@@ -264,6 +295,19 @@ impl Router {
                 };
                 e.session.reset();
                 ServerMessage::Ack
+            }
+            ClientMessage::Dismiss { session_id } => {
+                let key = SessionKey { conn, session_id };
+                let Some(e) = self.sessions.get_mut(&key) else {
+                    return self.unknown_session(session_id);
+                };
+                let frame = e.session.dismiss();
+                ServerMessage::KeyResult {
+                    session_id,
+                    consumed: false,
+                    commit: None,
+                    frame,
+                }
             }
             ClientMessage::ReloadDictionaries => ServerMessage::Ack,
             ClientMessage::Shutdown => {
@@ -373,4 +417,22 @@ fn is_private_app(config: &RouterConfig, app_name: Option<&str>) -> bool {
     let Some(name) = app_name else { return false };
     let name = name.trim().to_ascii_lowercase();
     config.private_apps.contains(&name)
+}
+
+/// Meridian's own window, whose memory these are.
+pub const MERIDIAN_EXE: &str = "meridian.exe";
+
+/// The hints a session in `app_name` may be given: all of them in Meridian
+/// or an app the person opted in, none anywhere else — including a session
+/// that did not say which application it is in.
+fn hints_for(config: &RouterConfig, app_name: Option<&str>, hints: &Arc<[String]>) -> Arc<[String]> {
+    let allowed = app_name.is_some_and(|name| {
+        let name = name.trim().to_ascii_lowercase();
+        name == MERIDIAN_EXE || config.context_apps.contains(&name)
+    });
+    if allowed {
+        Arc::clone(hints)
+    } else {
+        Arc::from(Vec::new())
+    }
 }

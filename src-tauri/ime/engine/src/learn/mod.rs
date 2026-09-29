@@ -111,6 +111,29 @@ pub trait Learner: Send {
     /// The personal n-gram the sentence scorer reads.
     fn ngram(&self) -> &UserNgram;
 
+    /// Every trace of `text`, because the person asked for it to be
+    /// forgotten: its weight, the choices of it, it as a user word, and every
+    /// transition it is in. No inverse — this is the one write that is not a
+    /// lesson.
+    fn erase(&mut self, text: &str);
+    /// Everything learned.
+    fn erase_all(&mut self);
+
+    /// Whether what this learner forgets is forgotten on disk too. Only then
+    /// may a request to forget be taken as done; a learner in memory would
+    /// consume it and leave the files as they were.
+    fn persists(&self) -> bool {
+        false
+    }
+
+    /// Whether a table is still waiting to be written — a flush failed (a full
+    /// disk, a permission gone) and left it dirty for the next one. `flush`
+    /// never reports its errors, so this is how a caller learns that what it
+    /// changed is not yet on disk.
+    fn unsaved(&self) -> bool {
+        false
+    }
+
     /// Writes out whatever changed. Errors are logged, never returned: a
     /// learner that cannot write keeps learning in memory.
     fn flush(&mut self);
@@ -187,6 +210,20 @@ impl Learner for Muted<'_> {
     }
     fn ngram(&self) -> &UserNgram {
         self.inner.ngram()
+    }
+    // Not muted: a private session keeps learning out, and forgetting is the
+    // person taking something out, which a private field has no reason to stop.
+    fn erase(&mut self, text: &str) {
+        self.inner.erase(text)
+    }
+    fn erase_all(&mut self) {
+        self.inner.erase_all()
+    }
+    fn persists(&self) -> bool {
+        self.inner.persists()
+    }
+    fn unsaved(&self) -> bool {
+        self.inner.unsaved()
     }
     fn flush(&mut self) {
         self.inner.flush()

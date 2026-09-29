@@ -25,3 +25,7 @@
 -keep class cn.yuxiaoqiu.meridian.FileBridge {
   public static <methods>;
 }
+# ImeBridge is called only over JNI (src-tauri/src/ime/android.rs), like FileBridge.
+-keep class cn.yuxiaoqiu.meridian.ImeBridge {
+  public static <methods>;
+}

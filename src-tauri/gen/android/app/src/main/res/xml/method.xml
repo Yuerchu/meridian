@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What the system lists for the keyboard. One subtype for now; the grid,
+     zhuyin and English layers become subtypes when the touch keyboard lands.
+     The settings entry opens Meridian on the input method's page through
+     ImeSettingsActivity: the system adds no extras, and naming MainActivity
+     here opened the app wherever it was. supportsInlineSuggestions lets an
+     autofill service (a password manager, the system's SMS code filler) put
+     its suggestions on the toolbar, drawn by the service: the keyboard never
+     sees what they hold. -->
+<input-method xmlns:android="http://schemas.android.com/apk/res/android"
+    android:settingsActivity="cn.yuxiaoqiu.meridian.ImeSettingsActivity"
+    android:supportsSwitchingToNextInputMethod="true"
+    android:supportsInlineSuggestions="true">
+    <subtype
+        android:label="@string/ime_subtype_pinyin"
+        android:imeSubtypeLocale="zh_CN"
+        android:languageTag="zh-CN"
+        android:imeSubtypeMode="keyboard"
+        android:imeSubtypeExtraValue="scheme=pinyin" />
+</input-method>

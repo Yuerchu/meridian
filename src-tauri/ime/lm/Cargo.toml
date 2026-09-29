@@ -1,0 +1,30 @@
+[package]
+name = "meridian-ime-lm"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+authors = ["于小丘 Yuerchu <admin@yuxiaoqiu.cn>"]
+description = "Meridian 输入法的本地语言模型打分器：ONNX Runtime 动态加载，超时即退回词典"
+
+[dependencies]
+meridian-ime-dict = { path = "../dict" }
+meridian-ime-engine = { path = "../engine" }
+# load-dynamic: nothing is linked at build time; the runtime is opened by path
+# at startup, so the host and the Android library build and run without one.
+# api-17: the oldest ONNX Runtime API this asks for (1.17), which is what lets
+# it use whichever copy sherpa-onnx already ships (1.27.1 as of 2026-09).
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "load-dynamic", "api-17"], optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+tracing = "0.1"
+
+[features]
+# The ONNX Runtime backend and `open`. Off for a caller that only reads and
+# checks bundles (the settings page), which then builds without `ort`.
+default = ["runtime"]
+runtime = ["dep:ort"]
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,4 +1,4 @@
-//! Byte layout of the `.mdict` container, version 1.
+//! Byte layout of the `.mdict` container, version 2.
 //!
 //! The file is mapped whole and read in place: every record is a fixed-width
 //! little-endian struct addressed by offset, and nothing is deserialised into
@@ -6,7 +6,7 @@
 //! opening a 700k-entry dictionary a matter of milliseconds.
 //!
 //! ```text
-//! Header       32 B   magic "MERIDIME" | version u16 | kind u16 | section_count u32 | reserved [u8; 16]
+//! Header       32 B   magic "MERIDIME" | version u16 | kind u16 | section_count u32 | min_reader u16 | reserved [u8; 14]
 //! SectionEntry 24 B   tag [u8; 4] | reserved u32 | offset u64 | length u64      × section_count
 //! sections …          each 8-byte aligned
 //! ```
@@ -21,9 +21,41 @@
 //! | `ABBR` | `fst::Map`: abbreviation key (`"n h"`) → abbreviation id |
 //! | `ABPO` | [`AbbrRec`] per abbreviation id: a slice of `ABID` |
 //! | `ABID` | `u32` entry ids, frequency descending, at most [`ABBR_CAP`] per key |
+//! | `PRFX` | `fst::Map`: word text → continuation id |
+//! | `PRPO` | [`AbbrRec`] per continuation id: a slice of `PRID` |
+//! | `PRID` | `u32` entry ids of the longer words starting with that text, frequency descending, at most [`CONTINUATION_CAP`] |
+//!
+//! Version 2 added the last three, which is what prediction reads: after 中国
+//! is committed, the words that start with 中国 say what may come next. They
+//! are keyed by a text that is itself a word of the dictionary, since what is
+//! looked up is what was just committed, and a prefix nobody can commit is
+//! never asked about. A version 1 file is refused rather than read without
+//! them: a dictionary that silently never predicts looks like a broken
+//! keyboard. It is not imported again either — `upgrade_in_place` rebuilds
+//! it from its own entries, which are all there is to a dictionary.
+//!
+//! ## Two versions in the header
+//!
+//! `version` is what wrote the file; `min_reader` is the oldest reader that
+//! can still read it, and is what lets an older build open a newer file. A
+//! reader finds sections by tag and skips the ones it does not know, so a
+//! change that only *adds* sections — as version 2 did — leaves a file an
+//! older reader could use, minus the new feature. Such a change raises
+//! `version` and leaves `min_reader` alone. A change to an existing
+//! section's layout, or a new `META` field (`Metadata` refuses unknown
+//! keys), raises both.
+//!
+//! The field sits in bytes that were reserved and zero, so `0` means "the
+//! same as `version`": a version 1 file, and the first version 2 files
+//! written before the field existed. Builds that shipped reading only
+//! `version == 1` never look at it and refuse anything newer — the
+//! guarantee starts with the builds that do.
 
 pub const MAGIC: &[u8; 8] = b"MERIDIME";
-pub const FORMAT_VERSION: u16 = 1;
+pub const FORMAT_VERSION: u16 = 2;
+/// Written into every file as its `min_reader`: version 2 is the first
+/// reader that checks the field, so nothing older can be named.
+pub const MIN_READER_VERSION: u16 = 2;
 /// `kind` distinguishes future containers (a language model, say) sharing the
 /// header; a dictionary is 1.
 pub const KIND_DICTIONARY: u16 = 1;
@@ -43,6 +75,18 @@ pub const TAG_ABID: &[u8; 4] = b"ABID";
 /// How many entries an abbreviation key keeps. `"n h"` matches thousands of
 /// two-syllable words; a typist abbreviating wants the common ones.
 pub const ABBR_CAP: usize = 200;
+
+pub const TAG_PRFX: &[u8; 4] = b"PRFX";
+pub const TAG_PRPO: &[u8; 4] = b"PRPO";
+pub const TAG_PRID: &[u8; 4] = b"PRID";
+
+/// How many longer words a word keeps as its continuations. A prediction
+/// shows a handful; the rest only cost space.
+pub const CONTINUATION_CAP: usize = 16;
+/// Longest word, in characters, that gets continuations. 中华人民共和 is a
+/// prefix worth indexing; a nine-character one is a phrase nobody commits
+/// on its own.
+pub const CONTINUATION_MAX_PREFIX_CHARS: usize = 6;
 
 /// One code's entries. `entry_count` is 32 bits wide on purpose: the sunime
 /// prototype packed a 16-bit count into the FST value and overflowed it.

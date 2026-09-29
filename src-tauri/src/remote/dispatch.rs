@@ -550,6 +550,7 @@ mod tests {
             // Android's own surface: the device asking is the device that has
             // the storage grant, so these are answered locally on the client.
             "get_window_insets",
+            "take_launch_request",
             "get_manage_storage_status",
             "request_manage_storage",
             "pick_saf_directory",
@@ -568,16 +569,33 @@ mod tests {
             // for.
             "open_in_editor",
             // The input method: this machine's keyboard. Importing reads a path
-            // here, registering asks for elevation here, and the host is a
-            // process here. Filtered out by `COMMAND_NAMES` off Windows.
+            // here, downloading writes here, registering asks for elevation
+            // here, and the host is a process here. Filtered out by
+            // `COMMAND_NAMES` where a platform has no such command.
             "save_ime_config",
-            "import_ime_dictionary",
+            "stage_ime_dictionary",
+            "import_staged_ime_dictionaries",
+            "download_ime_rime_ice",
+            "cancel_staged_ime_dictionaries",
+            // What this machine did on its own (a dictionary upgrade): shown
+            // in this window's inbox, and not a remote client's business.
+            "list_system_notices",
+            "dismiss_system_notice",
             "set_ime_dictionary_enabled",
             "remove_ime_dictionary",
+            "get_ime_learning",
+            "forget_ime_learned_word",
+            "forget_all_ime_learning",
             "start_ime_host",
             "stop_ime_host",
             "set_ime_profile_enabled",
             "register_ime",
+            "import_ime_lm",
+            "remove_ime_lm",
+            "refresh_ime_memory_hints",
+            "get_android_ime_status",
+            "open_android_ime_settings",
+            "show_android_ime_picker",
         ];
         expected.sort_unstable();
         expected.retain(|name| COMMAND_NAMES.contains(name));

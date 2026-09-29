@@ -1,12 +1,21 @@
 //! Setting up the input method from the settings page.
 //!
 //! Every command here is `local`: what they configure is this machine's
-//! keyboard, and half of them run a process or ask for elevation on it.
+//! keyboard, and on Windows half of them run a process or ask for elevation
+//! on it. The configuration, dictionaries, models and memory hints are the
+//! same files on both platforms; the rest is each platform's own — the TSF
+//! registration and host on Windows, the keyboard's system state on Android.
 
 use tauri::Manager;
 
-use crate::ime::{AppIme, dictionary, host_process, probe, registry};
+use crate::ServicesExt;
+#[cfg(target_os = "android")]
+use crate::ime::android;
+use crate::ime::{AppIme, archive, dictionary, hints, learning, models};
+#[cfg(windows)]
+use crate::ime::{host_process, probe, registry};
 
+#[cfg(windows)]
 #[derive(Debug, serde::Serialize)]
 pub struct ImeStatusInfoResponse {
     /// The DLL and the host were found beside the app.
@@ -35,6 +44,10 @@ pub struct ImeConfigInfoResponse {
     pub learning: bool,
     pub private_apps: Vec<String>,
     pub debug_log: bool,
+    /// Apps besides Meridian that may be shown memory hints.
+    pub context_apps: Vec<String>,
+    /// Offer what may follow a commit.
+    pub prediction: bool,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -46,6 +59,10 @@ pub struct ImeConfigUpdateRequest {
     pub learning: bool,
     pub private_apps: Vec<String>,
     pub debug_log: bool,
+    /// Apps besides Meridian that may be shown memory hints.
+    pub context_apps: Vec<String>,
+    /// Offer what may follow a commit.
+    pub prediction: bool,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -57,16 +74,64 @@ pub struct ImeDictionaryInfoResponse {
     pub enabled: bool,
     pub license: String,
     pub source: String,
+    pub state: ImeDictionaryState,
+}
+
+/// Whether the keyboard can use a dictionary, and if not, why.
+#[derive(Debug, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ImeDictionaryState {
+    Ready,
+    /// Being rebuilt in this build's format right now.
+    Upgrading,
+    /// Written by an older build; the next start upgrades it again.
+    NeedsUpgrade {
+        version: u16,
+    },
+    /// Written by a newer build that said this one cannot read it.
+    TooNew {
+        version: u16,
+    },
+    /// Damaged or not a dictionary; the error says what the reader found.
+    Unreadable {
+        error: String,
+    },
 }
 
 pub type ImeDictionaryListResponse = Vec<ImeDictionaryInfoResponse>;
 
+/// What the person picked: a `.dict.yaml` or a zip of them. On Android a
+/// `content://` URI, copied in before it is looked at.
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ImeDictionaryImportRequest {
+pub struct ImeDictionaryStageRequest {
     pub path: String,
-    pub license: Option<String>,
+}
+
+/// A dictionary in what was picked that nothing else there imports.
+#[derive(Debug, serde::Serialize)]
+pub struct ImeDictionaryRootInfoResponse {
+    /// Relative to what was picked; what importing names.
+    pub path: String,
+    /// The header's own name, if it has one.
     pub name: Option<String>,
+    pub imports: u32,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct ImeDictionaryStagedInfoResponse {
+    pub staging_id: String,
+    pub roots: Vec<ImeDictionaryRootInfoResponse>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImeDictionaryStagedImportRequest {
+    pub staging_id: String,
+    /// Paths from `roots`; anything else is refused.
+    pub roots: Vec<String>,
+    /// SPDX identifier for all of them; `UNKNOWN` when null.
+    pub license: Option<String>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -90,20 +155,109 @@ pub struct ImeDictionaryToggleRequest {
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct ImeDictionaryStagedCancelRequest {
+    pub staging_id: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ImeDictionaryRemoveRequest {
     pub file: String,
 }
 
+/// One word the input method learned.
+#[derive(Debug, serde::Serialize)]
+pub struct ImeLearnedWordInfoResponse {
+    pub text: String,
+    /// Times committed.
+    pub count: u32,
+    /// Also in the person's own dictionary, composed from pieces.
+    pub user_word: bool,
+}
+
+/// What the input method has learned, as far as the settings page shows it.
+#[derive(Debug, serde::Serialize)]
+pub struct ImeLearningInfoResponse {
+    /// Most committed first.
+    pub words: Vec<ImeLearnedWordInfoResponse>,
+    /// Which-word-followed-which rows.
+    pub transitions: u64,
+    /// Requests to forget the keyboard has not carried out yet: done when it
+    /// next comes up (Android) or within a second (Windows, while running).
+    pub pending: u64,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImeLearnedWordForgetRequest {
+    pub text: String,
+}
+
+/// The Android keyboard as the system sees it.
+#[cfg(target_os = "android")]
+#[derive(Debug, serde::Serialize)]
+pub struct AndroidImeStatusInfoResponse {
+    /// On the system's list of enabled keyboards.
+    pub enabled: bool,
+    /// The keyboard text fields get now.
+    pub current: bool,
+    pub data_dir: String,
+}
+
+#[cfg(windows)]
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ImeProfileUpdateRequest {
     pub enabled: bool,
 }
 
+#[derive(Debug, serde::Serialize)]
+pub struct ImeLmBundleInfoResponse {
+    /// The directory under `models`, which is what removing names.
+    pub dir_name: String,
+    pub id: Option<String>,
+    pub version: Option<String>,
+    pub personal: bool,
+    pub license: Option<String>,
+    /// Why the host would refuse it; `None` when it checks out.
+    pub error: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct ImeLmStatusInfoResponse {
+    pub dir: String,
+    /// The bundle the host uses, by directory name.
+    pub active: Option<String>,
+    /// ONNX Runtime is where the host looks for it.
+    pub runtime_found: bool,
+    pub bundles: Vec<ImeLmBundleInfoResponse>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImeLmImportRequest {
+    /// A directory holding a bundle.
+    pub path: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImeLmRemoveRequest {
+    pub dir_name: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct ImeMemoryHintsInfoResponse {
+    /// Phrases written.
+    pub count: u32,
+    pub path: String,
+}
+
 fn scheme_str(s: meridian_ime_config::Scheme) -> &'static str {
     match s {
         meridian_ime_config::Scheme::Pinyin => "pinyin",
         meridian_ime_config::Scheme::Zhuyin => "zhuyin",
+        meridian_ime_config::Scheme::Grid => "grid",
     }
 }
 
@@ -123,6 +277,8 @@ impl From<meridian_ime_config::HostConfig> for ImeConfigInfoResponse {
             learning: c.learning,
             private_apps: c.private_apps,
             debug_log: c.debug_log,
+            context_apps: c.context_apps,
+            prediction: c.prediction,
         }
     }
 }
@@ -134,6 +290,7 @@ impl TryFrom<ImeConfigUpdateRequest> for meridian_ime_config::HostConfig {
         let scheme = match r.scheme.as_str() {
             "pinyin" => meridian_ime_config::Scheme::Pinyin,
             "zhuyin" => meridian_ime_config::Scheme::Zhuyin,
+            "grid" => meridian_ime_config::Scheme::Grid,
             other => return Err(format!("unknown scheme {other:?}")),
         };
         let punctuation = match r.punctuation.as_str() {
@@ -156,15 +313,18 @@ impl TryFrom<ImeConfigUpdateRequest> for meridian_ime_config::HostConfig {
             learning: r.learning,
             private_apps: r.private_apps,
             debug_log: r.debug_log,
+            context_apps: r.context_apps,
+            prediction: r.prediction,
         }
         .normalized())
     }
 }
 
 async fn bridge(app: &tauri::AppHandle) -> crate::ime::ImeBridge {
-    app.state::<AppIme>().0.lock().await.clone()
+    app.state::<AppIme>().bridge.lock().await.clone()
 }
 
+#[cfg(windows)]
 async fn status_of(bridge: crate::ime::ImeBridge) -> ImeStatusInfoResponse {
     tokio::task::spawn_blocking(move || {
         let host = probe::status();
@@ -189,6 +349,7 @@ async fn status_of(bridge: crate::ime::ImeBridge) -> ImeStatusInfoResponse {
     .expect("status task")
 }
 
+#[cfg(windows)]
 #[tauri::command]
 pub async fn get_ime_status(app: tauri::AppHandle) -> Result<ImeStatusInfoResponse, String> {
     Ok(status_of(bridge(&app).await).await)
@@ -217,7 +378,8 @@ pub async fn save_ime_config(
 #[tauri::command]
 pub async fn list_ime_dictionaries(app: tauri::AppHandle) -> Result<ImeDictionaryListResponse, String> {
     let bridge = bridge(&app).await;
-    let list = tokio::task::spawn_blocking(move || dictionary::list(&bridge.dirs))
+    let progress = app.state::<AppIme>().upgrade.clone();
+    let list = tokio::task::spawn_blocking(move || dictionary::list(&bridge.dirs, &progress))
         .await
         .expect("list task")?;
     Ok(list.into_iter().map(summary_into).collect())
@@ -232,20 +394,17 @@ fn summary_into(s: dictionary::DictionarySummary) -> ImeDictionaryInfoResponse {
         enabled: s.enabled,
         license: s.license,
         source: s.source,
+        state: match s.state {
+            dictionary::DictionaryState::Ready => ImeDictionaryState::Ready,
+            dictionary::DictionaryState::Upgrading => ImeDictionaryState::Upgrading,
+            dictionary::DictionaryState::NeedsUpgrade { version } => ImeDictionaryState::NeedsUpgrade { version },
+            dictionary::DictionaryState::TooNew { version } => ImeDictionaryState::TooNew { version },
+            dictionary::DictionaryState::Unreadable(error) => ImeDictionaryState::Unreadable { error },
+        },
     }
 }
 
-#[tauri::command]
-pub async fn import_ime_dictionary(
-    app: tauri::AppHandle,
-    request: ImeDictionaryImportRequest,
-) -> Result<ImeDictionaryImportReportResponse, String> {
-    let bridge = bridge(&app).await;
-    let path = std::path::PathBuf::from(request.path);
-    let report =
-        tokio::task::spawn_blocking(move || dictionary::import(&bridge.dirs, &path, request.license, request.name))
-            .await
-            .expect("import task")?;
+fn report_into(report: meridian_ime_dict::rime::ImportReport) -> ImeDictionaryImportReportResponse {
     let mut notes = Vec::new();
     for f in &report.files {
         let name = f
@@ -263,7 +422,7 @@ pub async fn import_ime_dictionary(
             None => {}
         }
     }
-    Ok(ImeDictionaryImportReportResponse {
+    ImeDictionaryImportReportResponse {
         file: report
             .output
             .file_name()
@@ -275,7 +434,174 @@ pub async fn import_ime_dictionary(
         skipped: report.skipped.total(),
         cache_hit: report.cache_hit,
         notes,
+    }
+}
+
+/// Where picks are copied and archives unpacked, under the input method's
+/// own directory so nothing of it lands in the app's shared cache.
+fn scratch_root(dirs: &meridian_ime_config::ImeDirs) -> std::path::PathBuf {
+    archive::scratch_root(dirs)
+}
+
+/// The picked file as a path this process can open, and a directory of ours
+/// holding it when it had to be copied (Android's `content://`).
+async fn local_copy(
+    path: &str,
+    scratch: &std::path::Path,
+    id: &str,
+) -> Result<(std::path::PathBuf, Option<std::path::PathBuf>), String> {
+    #[cfg(target_os = "android")]
+    if path.starts_with("content://") {
+        let dir = scratch.join(format!("{id}-picked"));
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        // Named as a dictionary so a single file keeps a sensible stem; a zip
+        // is recognised by its first bytes, not its name.
+        let dest = dir.join("picked.dict.yaml");
+        meridian_core::android_bridge::content_copy(path, &dest.to_string_lossy()).await?;
+        return Ok((dest, Some(dir)));
+    }
+    let _ = (scratch, id);
+    Ok((std::path::PathBuf::from(path), None))
+}
+
+/// Looks at what was picked and lists the dictionaries in it that can be
+/// imported. Replaces whatever the previous pick staged.
+#[tauri::command]
+pub async fn stage_ime_dictionary(
+    app: tauri::AppHandle,
+    request: ImeDictionaryStageRequest,
+) -> Result<ImeDictionaryStagedInfoResponse, String> {
+    let dirs = bridge(&app).await.dirs;
+    let scratch = scratch_root(&dirs);
+    let id = uuid::Uuid::new_v4().to_string();
+    let (picked, copy_dir) = local_copy(&request.path, &scratch, &id).await?;
+    let staged = {
+        let (picked, scratch, id) = (picked.clone(), scratch.clone(), id.clone());
+        tokio::task::spawn_blocking(move || archive::stage(&picked, &scratch, id))
+            .await
+            .map_err(|e| e.to_string())?
+    };
+    let staged = match (staged, copy_dir) {
+        // A zip was unpacked into a directory of its own; the copy can go.
+        (Ok(staged), Some(copy)) if staged.scratch.is_some() => {
+            let _ = std::fs::remove_dir_all(copy);
+            staged
+        }
+        // A single file copied in is imported from the copy, which goes with it.
+        (Ok(mut staged), Some(copy)) => {
+            staged.scratch = Some(copy);
+            staged
+        }
+        (Ok(staged), None) => staged,
+        (Err(e), copy) => {
+            if let Some(copy) = copy {
+                let _ = std::fs::remove_dir_all(copy);
+            }
+            return Err(e);
+        }
+    };
+    let response = ImeDictionaryStagedInfoResponse {
+        staging_id: staged.id.clone(),
+        roots: staged
+            .roots
+            .iter()
+            .map(|r| ImeDictionaryRootInfoResponse {
+                path: r.path.clone(),
+                name: r.name.clone(),
+                imports: r.imports as u32,
+            })
+            .collect(),
+    };
+    let ime = app.state::<AppIme>();
+    if let Some(old) = ime.staged.lock().await.replace(staged) {
+        old.cleanup();
+    }
+    Ok(response)
+}
+
+/// The person closed the chooser without importing, or left the page:
+/// the unpacked copy goes now rather than at the next start. A staging that is
+/// no longer the current one (already imported, or replaced by a later pick,
+/// which cleaned it) is nothing to do.
+#[tauri::command]
+pub async fn cancel_staged_ime_dictionaries(
+    app: tauri::AppHandle,
+    request: ImeDictionaryStagedCancelRequest,
+) -> Result<(), String> {
+    let ime = app.state::<AppIme>();
+    let staged = archive::take_staged(&mut *ime.staged.lock().await, &request.staging_id);
+    if let Some(staged) = staged {
+        tokio::task::spawn_blocking(move || staged.cleanup())
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Imports the chosen roots of the last pick, each into its own `.mdict`,
+/// and clears the staging.
+#[tauri::command]
+pub async fn import_staged_ime_dictionaries(
+    app: tauri::AppHandle,
+    request: ImeDictionaryStagedImportRequest,
+) -> Result<Vec<ImeDictionaryImportReportResponse>, String> {
+    if request.roots.is_empty() {
+        return Err("choose at least one dictionary".into());
+    }
+    let dirs = bridge(&app).await.dirs;
+    let ime = app.state::<AppIme>();
+    let writes = ime.dict_writes.clone();
+    let staged = {
+        let mut slot = ime.staged.lock().await;
+        match slot.as_ref() {
+            Some(s) if s.id == request.staging_id => slot.take().expect("checked above"),
+            _ => return Err("that pick is no longer staged; pick the file again".into()),
+        }
+    };
+    tokio::task::spawn_blocking(move || {
+        let _guard = writes.lock().unwrap_or_else(|p| p.into_inner());
+        let result = request
+            .roots
+            .iter()
+            .map(|root| {
+                let path = archive::root_path(&staged, root)?;
+                dictionary::import(&dirs, &path, request.license.clone(), None).map(report_into)
+            })
+            .collect::<Result<Vec<_>, String>>();
+        staged.cleanup();
+        result
     })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Downloads rime-ice from GitHub and imports its Chinese root, on the
+/// person's request: dictionaries are imported, never shipped.
+#[tauri::command]
+pub async fn download_ime_rime_ice(app: tauri::AppHandle) -> Result<ImeDictionaryImportReportResponse, String> {
+    let dirs = bridge(&app).await.dirs;
+    let writes = app.state::<AppIme>().dict_writes.clone();
+    let scratch = scratch_root(&dirs);
+    std::fs::create_dir_all(&scratch).map_err(|e| e.to_string())?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let zip = scratch.join(format!("{id}.zip"));
+    if let Err(e) = archive::download(archive::RIME_ICE_URL, &zip).await {
+        let _ = std::fs::remove_file(&zip);
+        return Err(e);
+    }
+    tokio::task::spawn_blocking(move || {
+        let staged = archive::stage(&zip, &scratch, id);
+        let _ = std::fs::remove_file(&zip);
+        let staged = staged?;
+        let _guard = writes.lock().unwrap_or_else(|p| p.into_inner());
+        let result = archive::root_path(&staged, archive::RIME_ICE_ROOT).and_then(|path| {
+            dictionary::import(&dirs, &path, Some(archive::RIME_ICE_LICENSE.into()), None).map(report_into)
+        });
+        staged.cleanup();
+        result
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -284,9 +610,12 @@ pub async fn set_ime_dictionary_enabled(
     request: ImeDictionaryToggleRequest,
 ) -> Result<ImeDictionaryListResponse, String> {
     let bridge = bridge(&app).await;
+    let ime = app.state::<AppIme>();
+    let (writes, progress) = (ime.dict_writes.clone(), ime.upgrade.clone());
     let list = tokio::task::spawn_blocking(move || {
+        let _guard = writes.lock().unwrap_or_else(|p| p.into_inner());
         dictionary::set_enabled(&bridge.dirs, &request.file, request.enabled)?;
-        dictionary::list(&bridge.dirs)
+        dictionary::list(&bridge.dirs, &progress)
     })
     .await
     .expect("toggle task")?;
@@ -299,15 +628,73 @@ pub async fn remove_ime_dictionary(
     request: ImeDictionaryRemoveRequest,
 ) -> Result<ImeDictionaryListResponse, String> {
     let bridge = bridge(&app).await;
+    let ime = app.state::<AppIme>();
+    let (writes, progress) = (ime.dict_writes.clone(), ime.upgrade.clone());
     let list = tokio::task::spawn_blocking(move || {
+        let _guard = writes.lock().unwrap_or_else(|p| p.into_inner());
         dictionary::remove(&bridge.dirs, &request.file)?;
-        dictionary::list(&bridge.dirs)
+        dictionary::list(&bridge.dirs, &progress)
     })
     .await
     .expect("remove task")?;
     Ok(list.into_iter().map(summary_into).collect())
 }
 
+#[tauri::command]
+pub async fn get_ime_learning(app: tauri::AppHandle) -> Result<ImeLearningInfoResponse, String> {
+    let bridge = bridge(&app).await;
+    let learned = tokio::task::spawn_blocking(move || learning::list(&bridge.dirs))
+        .await
+        .expect("learning task")?;
+    Ok(learning_into(learned))
+}
+
+/// Files the request and answers with the list as it will be once the
+/// keyboard has carried it out.
+#[tauri::command]
+pub async fn forget_ime_learned_word(
+    app: tauri::AppHandle,
+    request: ImeLearnedWordForgetRequest,
+) -> Result<ImeLearningInfoResponse, String> {
+    let bridge = bridge(&app).await;
+    let learned = tokio::task::spawn_blocking(move || {
+        learning::forget(&bridge.dirs, &request.text)?;
+        learning::list(&bridge.dirs)
+    })
+    .await
+    .expect("forget task")?;
+    Ok(learning_into(learned))
+}
+
+#[tauri::command]
+pub async fn forget_all_ime_learning(app: tauri::AppHandle) -> Result<ImeLearningInfoResponse, String> {
+    let bridge = bridge(&app).await;
+    let learned = tokio::task::spawn_blocking(move || {
+        learning::forget_all(&bridge.dirs)?;
+        learning::list(&bridge.dirs)
+    })
+    .await
+    .expect("forget task")?;
+    Ok(learning_into(learned))
+}
+
+fn learning_into(l: learning::Learned) -> ImeLearningInfoResponse {
+    ImeLearningInfoResponse {
+        words: l
+            .words
+            .into_iter()
+            .map(|w| ImeLearnedWordInfoResponse {
+                text: w.text,
+                count: w.count,
+                user_word: w.user_word,
+            })
+            .collect(),
+        transitions: l.transitions as u64,
+        pending: l.pending as u64,
+    }
+}
+
+#[cfg(windows)]
 #[tauri::command]
 pub async fn start_ime_host(app: tauri::AppHandle) -> Result<ImeStatusInfoResponse, String> {
     let bridge = bridge(&app).await;
@@ -325,6 +712,7 @@ pub async fn start_ime_host(app: tauri::AppHandle) -> Result<ImeStatusInfoRespon
     Ok(status_of(bridge).await)
 }
 
+#[cfg(windows)]
 #[tauri::command]
 pub async fn stop_ime_host(app: tauri::AppHandle) -> Result<ImeStatusInfoResponse, String> {
     let bridge = bridge(&app).await;
@@ -334,6 +722,7 @@ pub async fn stop_ime_host(app: tauri::AppHandle) -> Result<ImeStatusInfoRespons
 }
 
 /// Per-user enable/disable of the profiles; no elevation.
+#[cfg(windows)]
 #[tauri::command]
 pub async fn set_ime_profile_enabled(
     app: tauri::AppHandle,
@@ -347,6 +736,7 @@ pub async fn set_ime_profile_enabled(
 }
 
 /// `regsvr32` elevated: one UAC prompt, then the status again.
+#[cfg(windows)]
 #[tauri::command]
 pub async fn register_ime(app: tauri::AppHandle) -> Result<ImeStatusInfoResponse, String> {
     let bridge = bridge(&app).await;
@@ -365,6 +755,129 @@ pub async fn register_ime(app: tauri::AppHandle) -> Result<ImeStatusInfoResponse
     Ok(status_of(bridge).await)
 }
 
+/// Where ONNX Runtime is: beside the host on Windows; on Android it is the
+/// `libonnxruntime.so` sherpa-onnx puts in the APK, loaded by name.
+#[cfg(windows)]
+fn runtime_found(bridge: &crate::ime::ImeBridge) -> bool {
+    models::runtime_found(bridge.host_exe.as_deref())
+}
+
+#[cfg(target_os = "android")]
+fn runtime_found(_bridge: &crate::ime::ImeBridge) -> bool {
+    true
+}
+
+fn lm_status_of(bridge: &crate::ime::ImeBridge) -> ImeLmStatusInfoResponse {
+    let s = models::status(&bridge.dirs);
+    ImeLmStatusInfoResponse {
+        dir: s.dir.to_string_lossy().into_owned(),
+        active: s.active,
+        runtime_found: runtime_found(bridge),
+        bundles: s
+            .bundles
+            .into_iter()
+            .map(|b| ImeLmBundleInfoResponse {
+                dir_name: b.dir_name,
+                id: b.id,
+                version: b.version,
+                personal: b.personal,
+                license: b.license,
+                error: b.error,
+            })
+            .collect(),
+    }
+}
+
+/// Installed language model bundles and which one the host uses.
+#[tauri::command]
+pub async fn get_ime_lm_status(app: tauri::AppHandle) -> Result<ImeLmStatusInfoResponse, String> {
+    let bridge = bridge(&app).await;
+    tokio::task::spawn_blocking(move || Ok(lm_status_of(&bridge)))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Installs the bundle in a directory; the host picks it up by itself.
+#[tauri::command]
+pub async fn import_ime_lm(
+    app: tauri::AppHandle,
+    request: ImeLmImportRequest,
+) -> Result<ImeLmStatusInfoResponse, String> {
+    let bridge = bridge(&app).await;
+    tokio::task::spawn_blocking(move || {
+        models::import(&bridge.dirs, std::path::Path::new(&request.path))?;
+        Ok(lm_status_of(&bridge))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn remove_ime_lm(
+    app: tauri::AppHandle,
+    request: ImeLmRemoveRequest,
+) -> Result<ImeLmStatusInfoResponse, String> {
+    let bridge = bridge(&app).await;
+    tokio::task::spawn_blocking(move || {
+        models::remove(&bridge.dirs, &request.dir_name)?;
+        Ok(lm_status_of(&bridge))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Recomputes and writes the memory hints now, rather than at the next
+/// minute. The file is written even when nothing changed.
+#[tauri::command]
+pub async fn refresh_ime_memory_hints(app: tauri::AppHandle) -> Result<ImeMemoryHintsInfoResponse, String> {
+    let bridge = bridge(&app).await;
+    let services = app.services();
+    tokio::task::spawn_blocking(move || {
+        let found = hints::compute(&services)?;
+        let count = found.len() as u32;
+        hints::write_if_changed(&bridge.dirs, found, &mut None)?;
+        Ok(ImeMemoryHintsInfoResponse {
+            count,
+            path: bridge.dirs.hints_file().to_string_lossy().into_owned(),
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub async fn get_android_ime_status(app: tauri::AppHandle) -> Result<AndroidImeStatusInfoResponse, String> {
+    let data_dir = bridge(&app).await.dirs.root.to_string_lossy().into_owned();
+    tokio::task::spawn_blocking(move || {
+        Ok(AndroidImeStatusInfoResponse {
+            enabled: android::is_enabled()?,
+            current: android::is_current()?,
+            data_dir,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// The system's keyboard settings, where the keyboard is switched on.
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub async fn open_android_ime_settings() -> Result<(), String> {
+    tokio::task::spawn_blocking(android::open_settings)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// The system's keyboard picker, where it is chosen.
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub async fn show_android_ime_picker() -> Result<(), String> {
+    tokio::task::spawn_blocking(android::show_picker)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -374,11 +887,21 @@ mod tests {
     fn config_request_is_a_closed_object_with_checked_values() {
         let good = json!({
             "scheme": "pinyin", "page_size": 5, "punctuation": "full_width",
-            "learning": true, "private_apps": ["KeePass.exe"], "debug_log": false
+            "learning": true, "private_apps": ["KeePass.exe"], "debug_log": false,
+            "context_apps": [" Notepad.exe "], "prediction": false
         });
         let r: ImeConfigUpdateRequest = serde_json::from_value(good.clone()).unwrap();
         let cfg = meridian_ime_config::HostConfig::try_from(r).unwrap();
         assert_eq!(cfg.private_apps, vec!["keepass.exe"]);
+        assert_eq!(cfg.context_apps, vec!["notepad.exe"]);
+        assert!(!cfg.prediction);
+
+        let mut missing = good.clone();
+        missing.as_object_mut().unwrap().remove("context_apps");
+        assert!(
+            serde_json::from_value::<ImeConfigUpdateRequest>(missing).is_err(),
+            "omitting a field is not a way to say empty"
+        );
 
         let mut unknown = good.clone();
         unknown["extra"] = json!(1);

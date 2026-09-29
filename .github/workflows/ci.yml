@@ -214,6 +214,9 @@ jobs:
           export AR_aarch64_linux_android=$TOOLCHAIN/llvm-ar
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/aarch64-linux-android34-clang
           cargo check --target aarch64-linux-android
+          # The keyboard engine is a separate library the root package does not
+          # depend on, so the line above never compiles its JNI entry points.
+          cargo clippy --target aarch64-linux-android -p meridian-ime-android -- -D warnings
 
   # The web bundle a release ships, built and inspected on its own: nothing in
   # `test` runs `vite build`, and the one guard keeping the dev fixture backend

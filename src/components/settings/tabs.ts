@@ -192,18 +192,22 @@ const DESKTOP_ONLY: SettingsTab[] = ['onebot', 'hooks', 'acp', 'remote']
 const ANDROID_ONLY_HIDDEN: SettingsTab[] = ['voiceCorpus']
 
 /**
- * The input method is a Windows text service; there is nothing to show for it
- * anywhere else, and a remote client is looking at a desktop whose keyboard is
- * not the one in its hand. `platform` is null for the first frame and that
- * frame shows the row, for the reason given above.
+ * The input method exists on Windows (a text service) and Android (the
+ * keyboard in this APK); there is nothing to show for it anywhere else, and a
+ * remote client is looking at a desktop whose keyboard is not the one in its
+ * hand. `platform` is null for the first frame and that frame shows the row,
+ * for the reason given above.
  */
-const WINDOWS_ONLY: SettingsTab[] = ['ime']
+const INPUT_METHOD: SettingsTab[] = ['ime']
+const INPUT_METHOD_PLATFORMS = ['windows', 'android']
 
 function hiddenTabs(platform: string | null): Set<SettingsTab> {
   const hidden = new Set<SettingsTab>()
   if (platform === 'android' || !can.manageServers) DESKTOP_ONLY.forEach((id) => hidden.add(id))
   if (platform === 'android' && !isRemote) ANDROID_ONLY_HIDDEN.forEach((id) => hidden.add(id))
-  if ((platform !== null && platform !== 'windows') || !can.manageServers) WINDOWS_ONLY.forEach((id) => hidden.add(id))
+  if ((platform !== null && !INPUT_METHOD_PLATFORMS.includes(platform)) || !can.manageServers) {
+    INPUT_METHOD.forEach((id) => hidden.add(id))
+  }
   return hidden
 }
 

@@ -1,0 +1,316 @@
+[
+  {
+    "key": "b",
+    "label": "b",
+    "name": "b",
+    "role": "initial",
+    "variants": []
+  },
+  {
+    "key": "p",
+    "label": "p",
+    "name": "p",
+    "role": "initial",
+    "variants": []
+  },
+  {
+    "key": "m",
+    "label": "m",
+    "name": "m",
+    "role": "initial",
+    "variants": []
+  },
+  {
+    "key": "f",
+    "label": "f",
+    "name": "f",
+    "role": "initial",
+    "variants": []
+  },
+  {
+    "key": "d",
+    "label": "d",
+    "name": "d",
+    "role": "initial",
+    "variants": []
+  },
+  {
+    "key": "t",
+    "label": "t",
+    "name": "t",
+    "role": "initial",
+    "variants": []
+  },
+  {
+    "key": "n",
+    "label": "n",
+    "name": "n",
+    "role": "initial",
+    "variants": []
+  },
+  {
+    "key": "l",
+    "label": "l",
+    "name": "l",
+    "role": "initial",
+    "variants": []
+  },
+  {
+    "key": "g",
+    "label": "g",
+    "name": "g",
+    "role": "initial",
+    "variants": []
+  },
+  {
+    "key": "k",
+    "label": "k",
+    "name": "k",
+    "role": "initial",
+    "variants": []
+  },
+  {
+    "key": "h",
+    "label": "h",
+    "name": "h",
+    "role": "initial",
+    "variants": []
+  },
+  {
+    "key": "j",
+    "label": "j",
+    "name": "j",
+    "role": "initial",
+    "variants": []
+  },
+  {
+    "key": "q",
+    "label": "q",
+    "name": "q",
+    "role": "initial",
+    "variants": []
+  },
+  {
+    "key": "x",
+    "label": "x",
+    "name": "x",
+    "role": "initial",
+    "variants": []
+  },
+  {
+    "key": "z",
+    "label": "z",
+    "name": "z",
+    "role": "initial",
+    "variants": [
+      "z_",
+      "zh"
+    ]
+  },
+  {
+    "key": "c",
+    "label": "c",
+    "name": "c",
+    "role": "initial",
+    "variants": [
+      "c_",
+      "ch"
+    ]
+  },
+  {
+    "key": "s",
+    "label": "s",
+    "name": "s",
+    "role": "initial",
+    "variants": [
+      "s_",
+      "sh"
+    ]
+  },
+  {
+    "key": "r",
+    "label": "r",
+    "name": "r",
+    "role": "initial",
+    "variants": []
+  },
+  {
+    "key": "y",
+    "label": "y",
+    "name": "y",
+    "role": "medial",
+    "variants": []
+  },
+  {
+    "key": "w",
+    "label": "w",
+    "name": "w",
+    "role": "medial",
+    "variants": []
+  },
+  {
+    "key": "v",
+    "label": "v",
+    "name": "v",
+    "role": "medial",
+    "variants": []
+  },
+  {
+    "key": "a",
+    "label": "a",
+    "name": "a",
+    "role": "final",
+    "variants": []
+  },
+  {
+    "key": "o",
+    "label": "o",
+    "name": "o",
+    "role": "final",
+    "variants": []
+  },
+  {
+    "key": "e",
+    "label": "e",
+    "name": "e",
+    "role": "final",
+    "variants": []
+  },
+  {
+    "key": "",
+    "label": "ai",
+    "name": "ai",
+    "role": "final",
+    "variants": []
+  },
+  {
+    "key": "",
+    "label": "ao",
+    "name": "ao",
+    "role": "final",
+    "variants": []
+  },
+  {
+    "key": "",
+    "label": "ei",
+    "name": "ei",
+    "role": "final",
+    "variants": []
+  },
+  {
+    "key": "",
+    "label": "ou",
+    "name": "ou",
+    "role": "final",
+    "variants": []
+  },
+  {
+    "key": "",
+    "label": "er",
+    "name": "er",
+    "role": "final",
+    "variants": []
+  },
+  {
+    "key": "",
+    "label": "ng",
+    "name": "ng",
+    "role": "nasal",
+    "variants": [
+      "er",
+      "-n",
+      "-ng"
+    ]
+  },
+  {
+    "key": "",
+    "label": "zh",
+    "name": "zh",
+    "role": "initial",
+    "variants": []
+  },
+  {
+    "key": "",
+    "label": "ch",
+    "name": "ch",
+    "role": "initial",
+    "variants": []
+  },
+  {
+    "key": "",
+    "label": "sh",
+    "name": "sh",
+    "role": "initial",
+    "variants": []
+  },
+  {
+    "key": "",
+    "label": "z",
+    "name": "z_",
+    "role": "initial",
+    "variants": []
+  },
+  {
+    "key": "",
+    "label": "c",
+    "name": "c_",
+    "role": "initial",
+    "variants": []
+  },
+  {
+    "key": "",
+    "label": "s",
+    "name": "s_",
+    "role": "initial",
+    "variants": []
+  },
+  {
+    "key": "",
+    "label": "n",
+    "name": "-n",
+    "role": "nasal",
+    "variants": []
+  },
+  {
+    "key": "",
+    "label": "ng",
+    "name": "-ng",
+    "role": "nasal",
+    "variants": []
+  },
+  {
+    "key": "ˉ",
+    "label": "ˉ",
+    "name": "t1",
+    "role": "tone",
+    "variants": []
+  },
+  {
+    "key": "ˊ",
+    "label": "ˊ",
+    "name": "t2",
+    "role": "tone",
+    "variants": []
+  },
+  {
+    "key": "ˇ",
+    "label": "ˇ",
+    "name": "t3",
+    "role": "tone",
+    "variants": []
+  },
+  {
+    "key": "ˋ",
+    "label": "ˋ",
+    "name": "t4",
+    "role": "tone",
+    "variants": []
+  },
+  {
+    "key": "˙",
+    "label": "˙",
+    "name": "t5",
+    "role": "tone",
+    "variants": []
+  }
+]

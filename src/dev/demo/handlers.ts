@@ -24,6 +24,7 @@ import type { DemoArgs, DemoBackend, DemoHandler } from './index'
 import {
   APP_INFO,
   CAPABILITIES,
+  IME_LM_STATUS,
   IME_STATUS,
   STICKER_IMAGES,
   SKILL_BODY,
@@ -1174,12 +1175,24 @@ const integrations: Record<string, DemoHandler> = {
     return state.ime
   },
   list_ime_dictionaries: (_args, { state }) => state.imeDictionaries,
+  // The demo machine did nothing on its own, so the inbox has no system tab.
+  list_system_notices: () => [],
+  // A browser has typed nothing into the demo's keyboard.
+  get_ime_learning: () => ({ words: [], transitions: 0, pending: 0 }),
+  forget_ime_learned_word: () => ({ words: [], transitions: 0, pending: 0 }),
+  forget_all_ime_learning: () => ({ words: [], transitions: 0, pending: 0 }),
+  // A browser is launched by nobody's keyboard.
+  take_launch_request: () => null,
+  cancel_staged_ime_dictionaries: () => null,
+  dismiss_system_notice: () => null,
   set_ime_dictionary_enabled: (args, { state }) => {
     const req = request<{ file: string; enabled: boolean }>(args)
     const row = state.imeDictionaries.find((d) => d.file === req.file)
     if (row) row.enabled = req.enabled
     return state.imeDictionaries
   },
+  get_ime_lm_status: () => IME_LM_STATUS,
+  refresh_ime_memory_hints: () => ({ count: 12, path: `${IME_STATUS.data_dir}\\context\\memory-hints.json` }),
   acp_get_config: () => ({ command: 'npx', args: ['-y', '@agentclientprotocol/claude-agent-acp@0.84.0'] }),
 }
 

@@ -110,6 +110,15 @@ impl CommitChain {
         self.words.drain(..keep);
     }
 
+    /// The latest word grew: a prediction added 人 to 中国, and what the
+    /// person wrote is the word 中国人. Without a latest word it is one.
+    pub fn replace_last(&mut self, word: &str) {
+        match self.words.last_mut() {
+            Some(last) => *last = word.to_string(),
+            None => self.words.push(word.to_string()),
+        }
+    }
+
     /// The pair `(previous, latest)` if there are two, for auto word creation.
     pub fn last_pair(&self) -> Option<(&str, &str)> {
         match self.words.as_slice() {

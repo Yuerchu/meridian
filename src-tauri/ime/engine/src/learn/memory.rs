@@ -203,5 +203,37 @@ impl Learner for MemoryLearner {
         &self.ngram
     }
 
+    fn erase(&mut self, text: &str) {
+        if self.weights.remove(text).is_some() {
+            self.dirty.weights = true;
+        }
+        let choices = self.choices.len();
+        self.choices.retain(|(_, chosen), _| chosen != text);
+        self.dirty.choices |= self.choices.len() != choices;
+        let words = self.words.len();
+        self.words.retain(|(word, _), _| word != text);
+        if self.words.len() != words {
+            self.generation += 1;
+            self.dirty.words = true;
+        }
+        if self.ngram.erase(text) {
+            self.dirty.ngram = true;
+        }
+    }
+
+    fn erase_all(&mut self) {
+        self.weights.clear();
+        self.choices.clear();
+        self.words.clear();
+        self.ngram = UserNgram::new();
+        self.generation += 1;
+        self.mark_dirty(DirtyFlags {
+            weights: true,
+            choices: true,
+            ngram: true,
+            words: true,
+        });
+    }
+
     fn flush(&mut self) {}
 }

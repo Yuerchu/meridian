@@ -12,7 +12,7 @@ pub mod set;
 pub mod syllable;
 
 pub use catalog::{Catalog, CatalogEntry, CatalogError, DictId};
-pub use format::{DictError, DictFile, DictWriter, Entry, Metadata, WriterStats};
+pub use format::{DictError, DictFile, DictWriter, Entry, Metadata, Upgrade, WriterStats, upgrade_in_place};
 pub use rime::{FileReport, FileSkip, ImportError, ImportOptions, ImportReport, SkipCounts};
 pub use set::{DictSet, Hit, LookupLimits, SourceId, SyllablePattern, UserWord};
 pub use syllable::{SyllableTable, normalize_code, normalize_syllable};

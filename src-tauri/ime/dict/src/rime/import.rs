@@ -194,6 +194,11 @@ fn walk(
             return Ok(());
         }
     };
+    // A name that looked contained can still leave through a link.
+    if !is_root && !canon.starts_with(std::fs::canonicalize(root_dir).unwrap_or_else(|_| root_dir.to_path_buf())) {
+        nodes.push(skip(FileSkip::OutsideRoot));
+        return Ok(());
+    }
     if !visited.insert(canon) {
         nodes.push(skip(FileSkip::Cycle));
         return Ok(());
@@ -221,10 +226,30 @@ fn walk(
     }));
     for name in imports {
         let rel = format!("{name}.dict.yaml");
+        // `join` keeps `..` and lets an absolute name replace the base, so a
+        // name is checked before the file system is asked anything about it.
+        if !stays_inside(&rel) {
+            nodes.push(Node::Skipped(FileReport {
+                path: PathBuf::from(&rel),
+                rows: 0,
+                accepted: 0,
+                skipped: SkipCounts::default(),
+                reason: Some(FileSkip::OutsideRoot),
+            }));
+            continue;
+        }
         let child = root_dir.join(&rel);
         walk(&child, rel, root_dir, visited, nodes, false)?;
     }
     Ok(())
+}
+
+/// Whether `rel` names something under the directory it is joined to: only
+/// plain names and `.`, no `..`, no root, no drive.
+fn stays_inside(rel: &str) -> bool {
+    Path::new(rel)
+        .components()
+        .all(|c| matches!(c, std::path::Component::Normal(_) | std::path::Component::CurDir))
 }
 
 fn parse_file(file: &Loaded, table: &SyllableTable, writer: &mut DictWriter) -> FileReport {

@@ -54,6 +54,40 @@ pub extern "system" fn Java_cn_yuxiaoqiu_meridian_MainActivity_nativeOnInsetsCha
     }
 }
 
+// ---- A settings page asked for at launch ----
+
+static PENDING_LAUNCH: Mutex<Option<crate::platform::LaunchRequestInfoResponse>> = Mutex::new(None);
+
+pub fn take_launch_request() -> Option<crate::platform::LaunchRequestInfoResponse> {
+    PENDING_LAUNCH.lock().unwrap().take()
+}
+
+/// `MainActivity` saw the keyboard's `EXTRA_OPEN_SETTINGS`. Kept until the
+/// front end takes it, since at a cold start the window is not listening yet.
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_cn_yuxiaoqiu_meridian_MainActivity_nativeOnOpenSettings(
+    mut env: JNIEnv,
+    _this: JObject,
+    tab: JString,
+) {
+    let Ok(tab) = env.get_string(&tab).map(String::from) else {
+        return;
+    };
+    let settings_tab = match tab.as_str() {
+        "ime" => crate::platform::LaunchSettingsTab::Ime,
+        other => {
+            tracing::warn!(tab = other, "launch asked for a settings page that does not exist");
+            return;
+        }
+    };
+    *PENDING_LAUNCH.lock().unwrap() = Some(crate::platform::LaunchRequestInfoResponse { settings_tab });
+    if let Some(app) = crate::APP_HANDLE.get() {
+        use tauri::Emitter;
+        let _ = app.emit("launch-request", crate::platform::LaunchRequestEvent {});
+    }
+}
+
 // ---- Media picker (camera / gallery) ----
 
 #[allow(non_snake_case)]

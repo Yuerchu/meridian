@@ -1,9 +1,10 @@
-//! The sinks that are not about keys: focus, the compartment, the profile.
+//! The sinks that are not about keys: focus, the compartment, the profile,
+//! and the caret.
 
 use meridian_ime_proto::ClientMessage;
 use windows::Win32::UI::TextServices::{
     GUID_COMPARTMENT_KEYBOARD_OPENCLOSE, ITfActiveLanguageProfileNotifySink_Impl, ITfCompartmentEventSink_Impl,
-    ITfContext, ITfDocumentMgr, ITfThreadMgrEventSink_Impl,
+    ITfContext, ITfDocumentMgr, ITfEditRecord, ITfTextEditSink_Impl, ITfThreadMgrEventSink_Impl,
 };
 use windows_core::{BOOL, GUID, Interface, Ref, Result};
 
@@ -27,18 +28,19 @@ impl ITfThreadMgrEventSink_Impl for TextService_Impl {
                 self.shared.finish_as_is();
             }
             self.shift_tap.set(false);
+            self.shared.set_predicting(false);
             let session_id = self.client.borrow().session_id();
             if self.client.borrow().is_connected() {
                 let _ = self.client.borrow_mut().request(&ClientMessage::Reset { session_id });
             }
+            // SAFETY: COM call on a live document manager.
+            let top = pdim_focus.as_ref().and_then(|dim| unsafe { dim.GetTop() }.ok());
+            self.watch_edits(top.as_ref());
             if self.secure.get() {
                 return;
             }
-            if let Some(dim) = pdim_focus.as_ref() {
-                // SAFETY: COM call on a live document manager.
-                if let Ok(ctx) = unsafe { dim.GetTop() } {
-                    super::privacy::read_and_report(&ctx, self.client.clone(), self.client_id.get());
-                }
+            if let Some(ctx) = &top {
+                super::privacy::read_and_report(ctx, self.client.clone(), self.client_id.get());
             }
         });
         Ok(())
@@ -49,6 +51,29 @@ impl ITfThreadMgrEventSink_Impl for TextService_Impl {
     }
 
     fn OnPopContext(&self, _pic: Ref<'_, ITfContext>) -> Result<()> {
+        Ok(())
+    }
+}
+
+/// A prediction list belongs where the caret was when it was offered. The
+/// keys that move the caret already close it on their way to the
+/// application; this catches the mouse, and anything else that moves the
+/// selection without a key. Our own commits move it too, and are skipped.
+impl ITfTextEditSink_Impl for TextService_Impl {
+    fn OnEndEdit(&self, _pic: Ref<'_, ITfContext>, _ec: u32, record: Ref<'_, ITfEditRecord>) -> Result<()> {
+        guarded("TextEdit::OnEndEdit", (), || {
+            if self.shared.take_own_edit() || !self.shared.is_predicting() {
+                return;
+            }
+            // SAFETY: COM call on the record TSF handed us for this call.
+            let moved = record
+                .as_ref()
+                .and_then(|r| unsafe { r.GetSelectionStatus() }.ok())
+                .is_some_and(|b| b.as_bool());
+            if moved {
+                self.dismiss();
+            }
+        });
         Ok(())
     }
 }

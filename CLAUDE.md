@@ -41,8 +41,10 @@ src-tauri/
     dict/ engine/ session/  # platform-free: .mdict format + Rime import, keys→candidates, the key state machine
     proto/ config/          # the pipe protocol; host.json and the data directory
     tsf/                    # meridian_ime_tsf.dll: the TSF text service (no engine inside)
-    host/                   # meridian-ime-host.exe: engine, pipe server, candidate window
-    cli/                    # meridian-ime: import / lookup / type, with no OS in the loop
+    host/                   # data dir → engine (lib, both hosts); meridian-ime-host.exe: pipe server, candidate window
+    lm/                     # the language model scorer: bundles, ONNX Runtime loaded at run time
+    cli/                    # meridian-ime: import / lookup / type / keys / bench, with no OS in the loop
+    android/                # libmeridian_ime.so: the Android keyboard's engine and its JNI surface
 ```
 
 **`src-tauri/crates` is another repository.** Everything below the Tauri line is
@@ -152,7 +154,7 @@ the core on its own, kept in step by hand.
 
   So `attention` / `attentionOrder` sit beside `sessions` rather than inside one, and every path that retires an approval — result, stop, orphan, nested resolve — clears the queue *before* its `if (!session) return`. `ConversationIndicator` reads the queue, not the session. It has two exits: `approval-notifications.tsx` draws the front of it as a stack of BoardUI notifications, and the header's bell (`notification-inbox.tsx`, the registry's `NotificationBell` over its `NotificationCenter`) lists all of it. `commands::approval::all_pending_approvals` rebuilds it after a reload or a remote connect, since the announcing event is never replayed.
 
-  **Order is ours, and both exits are derived from it rather than synchronised to it.** `pending()` in `layout/approval-queue.ts` is the one derivation: `attentionOrder` minus the review page being read, split into `listed` and `here` — `here` being what the conversation being read is waiting on (unless settings or a review has made its transcript inert). `ApprovalNotifications` renders the front `MAX_VISIBLE` of `listed` straight into the one `NotificationViewport` as children keyed by `approvalId`; the inbox renders all of `listed`, grouped into approvals (tool calls) and questions (`ask_user`, ACP elicitation, plan review), and says of `here` only how many there are, with a button that asks the transcript (`lib/pending-reveal.ts`) to scroll to the turn holding `targetApproval`'s question. Rows for `here` would be a second place to answer a card already in front of the reader. There is no second queue: the React Aria `ToastQueue` this replaced only offered `add` (which unshifts) and `close`, so it had to be cleared and rebuilt back-to-front on every change of the *sequence*, and a set diff there made "defer" silently do nothing. Now deferring is one store write and the same render reorders the stack, with the viewport's layout spring moving the rows that stayed. Every visible row is a full card with its own buttons; the rest of the queue is not drawn there but is in the inbox. The inbox has no read state (`readable={false}`): a question is never "read", only answered, and an answered one leaves both lists by the same store write. A question's time is `askedAt`, stamped once by the backend when the question is registered (`PendingApproval::asked_at`) and carried on both the announcing event and `all_pending_approvals`, so one rebuilt after a reload or a remote connect keeps the time it was asked; the client never stamps its own, which would call an hour-old question "just now". A plan review rebuilt from a snapshot still has `null`, because its register does not say. There is no general-purpose notice store — the viewport carries questions and nothing else.
+  **Order is ours, and both exits are derived from it rather than synchronised to it.** `pending()` in `layout/approval-queue.ts` is the one derivation: `attentionOrder` minus the review page being read, split into `listed` and `here` — `here` being what the conversation being read is waiting on (unless settings or a review has made its transcript inert). `ApprovalNotifications` renders the front `MAX_VISIBLE` of `listed` straight into the one `NotificationViewport` as children keyed by `approvalId`; the inbox renders all of `listed`, grouped into approvals (tool calls) and questions (`ask_user`, ACP elicitation, plan review), and says of `here` only how many there are, with a button that asks the transcript (`lib/pending-reveal.ts`) to scroll to the turn holding `targetApproval`'s question. Rows for `here` would be a second place to answer a card already in front of the reader. There is no second queue: the React Aria `ToastQueue` this replaced only offered `add` (which unshifts) and `close`, so it had to be cleared and rebuilt back-to-front on every change of the *sequence*, and a set diff there made "defer" silently do nothing. Now deferring is one store write and the same render reorders the stack, with the viewport's layout spring moving the rows that stayed. Every visible row is a full card with its own buttons; the rest of the queue is not drawn there but is in the inbox. The inbox has no read state (`readable={false}`): a question is never "read", only answered, and an answered one leaves both lists by the same store write. A question's time is `askedAt`, stamped once by the backend when the question is registered (`PendingApproval::asked_at`) and carried on both the announcing event and `all_pending_approvals`, so one rebuilt after a reload or a remote connect keeps the time it was asked; the client never stamps its own, which would call an hour-old question "just now". A plan review rebuilt from a snapshot still has `null`, because its register does not say. There is no general-purpose notice store — the viewport carries questions and nothing else. What this machine did on its own (a dictionary upgrade) goes to the inbox alone, under a "system" tab that appears only while there is something in it (`stores/system-notice-store.ts`, `src-tauri/src/system_notice.rs`); it is never a row in the floating stack. Its channel is device-local and its commands `local`: a remote client has no business with this machine's keyboard.
 
   **A row may offer Allow/Deny only for a call that only reads, and only if it shows everything that call will do** (`attentionShape`, shared by both exits through `attentionActionIds`). Risk decides, not how many arguments there are: a short `run_command` fits a row and is still the call most worth reading in context. So the decision is offered only for a tool on `READ_ONLY_TOOLS` — `read_file`, `list_directory`, `search_files`, `glob`, and Claude Code's `Read`, `Glob`, `Grep` — and everything else offers only Later and View with a line saying why: running a command (`run_command`, `Bash`, `SlashCommand`), writing, editing, moving or deleting a file, `apply_patch`, network requests, MCP and custom tools, QQ writes, anything unrecognised, and any call asking to leave the sandbox (an escalation retry, or `dangerouslyDisableSandbox`). A read is decidable when the row draws all of it: the identifying argument, the description, and the arguments its `READ_ONLY_TOOLS` entry names — the ones that only narrow what is read, such as `search_files`'s required `path`, `Read`'s `offset`/`limit` and `Grep`'s filters, drawn under the call. Any other argument, a non-scalar under one of those names, arguments that do not parse, or a summary past `INLINE_DECISION_LIMIT` withholds the decision too. The inbox groups its rows under their conversation (`showGroups`), each group where its first question stands in `attentionOrder` and its rows in that order.
 
@@ -1317,10 +1319,11 @@ work they did.
 
 ## The input method
 
-`src-tauri/ime/` is a Windows input method — pinyin and zhuyin — that installs
-with Meridian and does not need it running. It is in the shell workspace and
-not in core because a headless server and `meridiand` must not carry one, and
-it is eight crates rather than one because the boundaries are the design.
+`src-tauri/ime/` is a Windows input method — pinyin and zhuyin, plus the grid
+layout the phone keyboard types — that installs with Meridian and does not
+need it running. It is in the shell workspace and not in core because a
+headless server and `meridiand` must not carry one, and it is ten crates
+rather than one because the boundaries are the design.
 
 - **The DLL holds no engine, reads no file and computes no path.** A text
   service is loaded into every process with a text field, including store
@@ -1369,10 +1372,14 @@ it is eight crates rather than one because the boundaries are the design.
   the prototype, assuming `text code weight`, filed half its dictionary under
   the code `100`. Codes are validated against the syllable table; an ASCII-only
   text (`A A`, the capital-letter rows) is refused rather than filed under `a`.
+  An `import_tables` name is the file's own say and is kept inside the
+  dictionary's directory — no `..`, no absolute path, and the canonical path
+  checked again for a link pointing out — because an archive's header would
+  otherwise reach past what was unpacked (`FileSkip::OutsideRoot`).
   `POST.entry_count` is 32 bits because the prototype packed 16 into the FST
   value and overflowed it, and the test that writes seventy thousand entries
   under one code is what keeps it that way.
-- **Two schemes, one lattice.** Pinyin and zhuyin are two `SchemeParser`s that
+- **Three schemes, one lattice.** Pinyin, zhuyin and grid are `SchemeParser`s that
   turn keys into the same syllable DAG — an edge is a canonical pinyin
   syllable, `complete` or the start of one — so the dictionary, the lattice,
   the beam search and the learner never know which keyboard was used. A bare
@@ -1381,6 +1388,129 @@ it is eight crates rather than one because the boundaries are the design.
   keys are boundaries and the tone value is ignored, since the dictionaries are
   toneless; digits are bopomofo keys there, so candidates are chosen with
   Up/Down and Enter, and Space after a toneless syllable is the first tone.
+- **The grid is fuzzy by design, and its fuzziness is data.** Nine columns of
+  pinyin-lettered keys with zhuyin's structure: `z` `c` `s` each stand for
+  both the dental and the retroflex initial, `ng` is the only nasal key, and
+  tones are optional keys (ˉ ˊ ˇ ˋ ˙) that close a syllable when typed. A
+  syllable's keys come from its bopomofo spelling through two tables,
+  `grid_initials.txt` and `grid_rimes.txt`, and every syllable a key sequence
+  can mean is its own edge from the same start to the same end — so `z w ng`
+  is zhong, zong, zhun and zun at once, with no change to the dictionary.
+  `shared_spellings_are_only_the_designed_merges` is the gate on those tables:
+  syllables may share a spelling only if they are equal once retroflex folds
+  to dental, ㄤ to ㄢ and ㄥ to ㄣ, so an edit that merges more fails. One key
+  is one `char` — the multi-letter keys are private-use code points, the tone
+  keys are the tone marks — so the key string, `Candidate::consumed` and
+  Backspace keep counting characters, and the preedit shows labels, never a
+  private-use character. Space only commits (the first tone has its own key)
+  and digits select. **A long press is the precise key**: `z` offers `z_`/`zh`,
+  `c` and `s` likewise, `ng` offers `er`/`-n`/`-ng`, each spelling exactly one
+  of what the tap covers (which also separates dun/dong and jun/jiong, merged
+  as a side effect of the single nasal key). `GridToken::variants` is the
+  menu, so the keyboard reads it rather than keeping its own list. A precise
+  key is only precise if its *unfinished* edges are too: they are looked up
+  by prefix, and `z` as a prefix is also every `zh…`, so `cover` splits a
+  prefix by its next letter until it reaches nothing the keys exclude.
+  **Both spelling habits are accepted at once.** A pinyin typist drops the
+  `e` of ㄣ/ㄥ after a medial (dun `d w ng`), a zhuyin typist keeps it
+  (ㄉㄨㄣ `d w e ng`); the zhuyin spelling is an alternative marked
+  `zhuyin:` in `grid_rimes.txt`, so there is no setting, and `SpellingHabit`
+  only picks which one `keys_for_habit` / `bench --habit` types. In the
+  zhuyin habit jun and jiong share `j v e ng` on a tap, accepted because
+  jiong's characters are rare; a long press on the nasal separates them. `Scheme::Grid` on the wire is why `PROTOCOL_VERSION` is
+  2: the wire enum has no catch-all, so an older DLL fails the `Welcome`
+  rather than silently typing pinyin. `grid_table_sha256()` is what a model
+  trained on the layout is checked against.
+- **`keys_for` turns toned pinyin into any scheme's keys.** The evaluation set
+  stores what a sentence says (`ni3 hao3`), not what was typed, so one set
+  scores every scheme and every tone habit (`TonePolicy`). `meridian-ime keys`
+  prints the same strings for the training repository to compare byte for
+  byte; `bench --eval` reports top-1, keystrokes per character and cache
+  misses per keystroke. Measured on rime-ice, 2026-09, toneless: pinyin 3.27
+  KPC, zhuyin 2.48, grid 2.74 (2.87 in the zhuyin habit); grid's worst
+  keystroke 6–8 ms against a 30 ms budget, which is why pruning dead lattice
+  paths is not built.
+- **The language model scores candidates; it never chooses them.**
+  `meridian-ime-lm` implements `SentenceScorer` over ONNX Runtime opened at
+  run time (`load-dynamic`, API 17): the host finds the copy sherpa-onnx
+  already installs in `$INSTDIR`, `MERIDIAN_ORT_LIB` overrides. It is asked
+  once per query about the beam's readings *and* the best whole-input words
+  — without the second, 你/尼/泥 for one syllable could never be reordered —
+  with the text around the cursor (`ScoreRequest.left/right`, from the app or
+  from what the session committed) and, where allowed, memory hints. Three
+  things keep it from costing a keystroke: a budget from the manifest after
+  which the run is terminated and the answer is "no opinion", a breaker that
+  stops asking for two seconds after five misses, and a cache per context.
+  The score is mixed in as `RERANK_MIX · (lm − static)` after the manifest's
+  `scale` puts it on the dictionary's footing. A scheme the bundle does not
+  list in `manifest.schemes` (and have a key table for) gets no opinion: its
+  keys would reach the model as unknowns and come back as scores that mean
+  nothing. A private session tells it
+  nothing — no left, no right, no hints — and keeps no context to tell later.
+- **A model bundle is refused, not tolerated.** `<ime>/models/<id>/` holds
+  `score.onnx`, `vocab.json` and a `manifest.json` with `deny_unknown_fields`
+  whose file hashes, grid table hash and syllable table hash must all match
+  this build; the graph's contract is in `lm/src/backend.rs`. A personal
+  bundle (`personal: true`, trained on the person's own exported typing) is
+  preferred and never published; the public one is static. The host reloads
+  when a manifest appears or changes; the settings page installs from a
+  directory and removes manifest-first so the host lets go before the files
+  go. An install is copied into `.name.tmp-<pid>` and renamed into place, so a
+  dot-named directory is never a bundle to `choose`, and Meridian sweeps
+  those a crash left at start. The tests generate a contract graph as protobuf by hand, so they need
+  neither a checked-in binary nor Python, and run against the real runtime
+  when `resources/onnxruntime.dll` or `MERIDIAN_ORT_LIB` is there.
+- **Memory hints flow from Meridian to the input method, never back.**
+  `src/ime/hints.rs` writes `<ime>/context/memory-hints.json` every minute
+  when it would change: client-global memories only, cut into 2–32 character
+  mostly-Chinese phrases, a memory any redaction rule touches dropped whole,
+  no id, scope, person or time. It is recomputed rather than hooked because
+  the agent saves memories inside core where the shell never sees it. The
+  host hands them only to sessions in `meridian.exe` or an app listed in
+  `context_apps`, never to a private one; without a model they still lift a
+  whole-input word of two or more characters that a hint contains
+  (`CONTEXT_BONUS`).
+- **Prediction is a list on the side, not a mode.** After a commit of
+  Chinese words the session offers what may follow (`Engine::predict`, then
+  ，and 。): first what the personal n-gram has seen after the last word
+  (`UserNgram::followers`, at least `MIN_PERSONAL_COUNT`), then the rest of
+  the dictionary words it begins — after 中国, 人 and 队 from 中国人 and 中国队 —
+  which `.mdict` format 2 indexes for this (`PRFX`/`PRPO`/`PRID`, keyed by a
+  text that is itself a word, capped at `CONTINUATION_CAP`). The list answers
+  four bare keys and nothing else: Up and Down move, Tab takes, Esc closes;
+  every other key closes it and then means what it always means, which is
+  what leaves letters and digits alone. On Windows a key the DLL does not eat
+  never reaches the host, so the DLL sends `Dismiss` for it, and for a caret
+  moved by the mouse (`ITfTextEditSink`, skipping the echo of its own edit
+  sessions) — `PROTOCOL_VERSION` 3, since an older DLL would neither eat the
+  four keys nor ever close the list. Android sends `nativeDismiss` from
+  `onUpdateSelection` once the commit's own echo has been seen. A dismissal
+  from outside also ends the commit chain (the next word is not written
+  after the last one); Esc and typing on do not. A private session is offered
+  the dictionary alone, without the person's n-gram or user words, because
+  the list is drawn on screen.
+- **A dictionary from an older build is upgraded in place, not imported
+  again.** A `.mdict` holds every (code, text, frequency) it was built from
+  and everything else in it is derived, so `upgrade_in_place` is the old
+  format's reader (`format/legacy.rs`, one module per version, carrying its
+  own copy of that version's record layout rather than borrowing `layout`'s)
+  handing its rows to the current writer — written beside the file, read
+  back and counted, then renamed over it, same name and metadata. There is
+  no source to import from on Android anyway: downloads and archives are
+  unpacked into scratch space. Meridian runs it at start
+  (`src/ime/upgrade.rs`), under the dictionary write lock every import and
+  removal also takes, and reports it in the inbox's system tab; the
+  keyboard, until then, says the dictionaries need upgrading rather than
+  that none were imported (`DictionaryNotice`). Not in the keyboard's
+  process: rebuilding rime-ice takes a few hundred megabytes for a few
+  seconds (891k entries in 5.4 s, measured). **The header carries two
+  versions**: `version` wrote it, `min_reader` is the oldest reader that can
+  read it (0 means "same as version"), so a change that only adds sections
+  leaves a newer file readable by an older build. Adding a `META` field or
+  changing a section raises both. Builds that shipped checking `version == 1`
+  cannot benefit — the guarantee starts with the ones that read the field.
+  The fixture `ime/dict/tests/fixtures/v1.mdict` is real version 1 bytes,
+  written by that writer from the `.dict.yaml` beside it.
 - **Frequencies are normalised against the total of every file together.**
   Against its own total, a two-hundred-word domain table makes each of its
   words commoner than 你好 and the composer prefers them everywhere. A user's
@@ -1396,21 +1526,91 @@ it is eight crates rather than one because the boundaries are the design.
   repetitions becomes a user word. Files are written atomically and flushed
   every minute and at exit; a store that cannot be opened degrades to learning
   in memory, never to writing an empty table over the user's.
+  **Forgetting is a request, not an edit.** The tables belong to whichever
+  process types and are written from its memory every minute, so the
+  settings page editing the files would be undone by the next write; it
+  files one request per file under `learn/forget/`
+  (`meridian_ime_config::forget`) and the owner carries them out
+  (`data::apply_forgets`): the Windows host every second, the Android
+  keyboard when it comes up, either one on opening the store — erase, write,
+  and only then remove the request; a write that failed (`Learner::unsaved`)
+  keeps every request, or a restart would read the word back with nothing
+  left to retry. A learner that only holds memory
+  (`Learner::persists`) takes none, since forgetting there would leave the
+  files as they were. The page lists what was learned through
+  `FileLearner::read`, which never writes (`open` marks a table with a bad
+  line dirty and a `FileLearner` flushes when dropped — a second writer),
+  with the requests still waiting applied to what it read, so a word just
+  forgotten is not listed again. `erase` removes a word from all four
+  tables; the n-gram is rebuilt from the rows that do not mention it, as
+  halving does, so no total is left out.
 - **`host.json` is the one source of truth and the host polls it.** Meridian's
   settings page writes it, the host reloads it within a second, and nothing is
   mirrored into the preferences table where it could disagree. Dictionaries
   live in `catalog.toml` beside the files for the same reason.
+- **On Android the engine is in the keyboard's own process, so there is no
+  host to talk to.** `meridian-ime-android` is `ImeHost`: one `Session`,
+  called directly over JNI from the keyboard service in `:ime`. One keyboard
+  types into one field at a time, so there is no `Router` either. What it
+  reads from disk it reads through `meridian_ime_host::data` — the same
+  loaders, the same watch, the same fail-soft rules as the Windows host — so
+  the two cannot disagree about what a file means; that module is why
+  `meridian-ime-host` is a library as well as the Windows binary. The field
+  decides privacy (`start_input(package, private)`: a password field, or
+  `IME_FLAG_NO_PERSONALIZED_LEARNING`) together with `private_apps` keyed on
+  the package; memory hints go to Meridian's own package and to
+  `context_apps` only, and a private session withholds them itself. The
+  layer on screen picks the scheme (`set_scheme`), not `host.json`. A key
+  crosses JNI as four integers (`bridge.rs`, tested on the desktop); what
+  comes back is the session's own JSON. Every `Java_*` function is under
+  `catch_unwind`: a panic is an `IllegalStateException`, not a dead
+  keyboard in somebody's chat.
+- **The settings page is one page on both platforms, and importing is two steps.**
+  `src-tauri/src/ime` compiles on Windows and Android: `host.json`, the
+  dictionaries, the model bundles and the memory hints are the same files on
+  both; the status block is each platform's own (TSF registration and the host
+  on Windows; on Android whether the keyboard is enabled and selected, asked of
+  `ImeBridge.kt` over JNI, with the two system screens as the only actions,
+  since Android lets no app enable or select a keyboard itself). A Rime
+  dictionary is several files resolved relative to its root, and Android's
+  picker hands over one `content://` document and nothing beside it, so a
+  dictionary arrives there as a zip. `stage_ime_dictionary` copies a
+  `content://` pick in, unpacks a zip (only `.dict.yaml` entries, contained
+  paths, a size cap) and lists its *root* dictionaries — the ones nothing else
+  imports — and `import_staged_ime_dictionaries` imports the ones the person
+  chose, refusing any path that was not listed. The unpacked copy is handed
+  back when the chooser is cancelled or the page left
+  (`cancel_staged_ime_dictionaries`), and the staging area is emptied at
+  every start, since a pick left staged when the app closed is otherwise
+  nobody's to delete. Choosing matters: rime-ice's
+  archive holds an English and a radical table beside the Chinese root.
+  `download_ime_rime_ice` fetches the rime-ice repository archive on request
+  and imports its Chinese root; dictionaries are still imported, never shipped.
 - **`meridian-ime` is the harness.** `type "nihao<space>"` replays a key
   script through the same `Session` the host runs, `lookup` ranks candidates
   against the imported dictionaries and says how long it took, `bench` scores
   the composer against expected sentences (28/30 top-1 on rime-ice at ~2 ms a
   query). The golden tests in `session/tests/golden.rs` are the same scripts.
 
-Measured but not built: a language-model reranker (the `SentenceScorer` hook
-is where it plugs in; LiteRT-LM exposes no logprobs, so it would be generative),
-a language-bar button, traditional output, `ITfTextLayoutSink` for the cases
-where `GetTextExt` answers `TF_E_NOLAYOUT`, and `uiAccess` so the candidate
-window can sit over the Start menu's search box.
+Measured but not built: downloading a model bundle (nothing is published
+yet), the tone filter the bundle's `readings.tsv` is for, the TSF DLL
+reporting the text around the cursor (`surrounding` exists on the wire; the
+DLL sends `None`), a language-bar button, traditional output,
+`ITfTextLayoutSink` for the cases where `GetTextExt` answers
+`TF_E_NOLAYOUT`, and `uiAccess` so the candidate window can sit over the
+Start menu's search box.
+
+Not built, and decided against for now (2026-09): taking a one-time code
+without it being copied. vivo's own autofill service offers third-party
+keyboards no inline suggestion for an SMS code, so on that device the code
+reaches the toolbar only through the clipboard. The two ways round it both
+want a permission a keyboard should not take lightly — `RECEIVE_SMS`, which
+MIUI's and vivo's code protection may block anyway, or notification access,
+which sees every app's notifications — and both would be opt-in switches
+requested from the settings page, since the keyboard's process cannot show a
+permission dialog. Telling a real code from an advert dressed as one, and
+reading codes that are not only digits, is for the local assistant rather
+than for more rules in `codeIn`.
 
 ## Remote access
 
@@ -2074,11 +2274,43 @@ not exist on the previous build — cargo treats a missing
 `rerun-if-changed` path as always changed, so the artifacts themselves are
 only watched once they exist.
 
+### The Android keyboard
+
+**`libmeridian_ime.so` is a third cargo invocation, and Gradle makes it.**
+`scripts/build-ime-android.mjs` builds `meridian-ime-android` for
+`aarch64-linux-android` and copies the library into
+`src/main/jniLibs/arm64-v8a/`, beside what Tauri and sherpa-onnx put
+there; `buildImeRust{Debug,Release}` in `app/build.gradle.kts` runs it
+before every JNI merge, so `pnpm tauri android build` cannot produce an APK
+without the keyboard. It takes the NDK from the environment the release
+workflow already exports, and otherwise finds the newest one. It is Node,
+not bash, because Gradle on Windows can resolve `bash` to WSL's. arm64 only.
+
+**The library must be 16 KB aligned, and the script refuses it otherwise.**
+A 16 KB-page device will not load anything less, and the symptom is a
+keyboard that never appears. NDK r28 aligns to 16 KB by default; the check
+(`llvm-readelf -lW`, every LOAD segment) is what keeps that true, and
+linking with `max-page-size=4096` was used to see it fail. It links no ONNX
+Runtime: the scorer opens sherpa-onnx's `libonnxruntime.so` by name at run
+time.
+
+**Three version ceilings, all measured on 2026-09-25.** Kotlin is 2.2.21
+because Tauri's own Android projects (built from the cargo registry, so not
+ours to edit) still write `kotlinOptions { jvmTarget }`, which 2.3 made an
+error — Tauri's dev branch has moved to `compilerOptions`, so this lifts
+with the next release. Compose stays on 1.11 (BOM 2026.06.01) because 1.12
+needs compileSdk 37 and AGP 9.1, and AGP 9's built-in Kotlin conflicts with
+those same projects applying `kotlin-android`. And material3 is
+1.5.0-alpha18, because 1.4.0 keeps the Expressive API internal and alpha18 is
+the last 1.5 built on Compose 1.11. The comments beside each pin say the same.
+
 ## Android
 
 - **File access model**: tools resolve paths through `ToolContext::resolve_and_validate` (`src-tauri/src/tools/mod.rs`). Desktop = `FileAccess::Unrestricted` (legacy working_directory check). Android = `FileAccess::Roots` whitelist built in `build_file_access` (lib.rs) from preferences `android.manage_storage_enabled` / `android.saf_roots` + the system grant. SAF I/O goes through `src/android_bridge.rs` (JNI) → `FileBridge.kt`.
 - **run_command is compiled out on Android** (`#[cfg(not(target_os = "android"))]` in tools/mod.rs).
-- **Hand-maintained files inside `src-tauri/gen/android/`** (tracked in git; if `tauri android init` is ever re-run, merge these back manually): `app/src/main/AndroidManifest.xml` (storage permissions), `app/src/main/java/cn/yuxiaoqiu/meridian/MainActivity.kt` (SAF picker + `nativeOnSafResult`, window insets, and `handleBackNavigation`), `FileBridge.kt` (ContentResolver ops), `app/build.gradle.kts` (androidx.documentfile dependency).
+- **Hand-maintained files inside `src-tauri/gen/android/`** (tracked in git; if `tauri android init` is ever re-run, merge these back manually): `app/src/main/AndroidManifest.xml` (storage permissions), `app/src/main/java/cn/yuxiaoqiu/meridian/MainActivity.kt` (SAF picker + `nativeOnSafResult`, window insets, and `handleBackNavigation`), `FileBridge.kt` (ContentResolver ops), `Launch.kt` (the one extra the keyboard may send the app), `ImeSettingsActivity.kt` (what the system's keyboard settings open: the same launch with that extra, since the system adds none), `app/build.gradle.kts` (androidx.documentfile dependency, Compose, `compilerOptions`, `buildImeRust*`), `build.gradle.kts` (the Kotlin, Compose compiler and serialization plugin versions; see "The Android keyboard" under Packaging), and the keyboard: `java/cn/yuxiaoqiu/meridian/ime/**`, its tests under `app/src/test/`, the `<service>` in the manifest, `res/xml/method.xml`, `res/drawable/ime_*.xml` and the `ime_*` strings.
+- **The keyboard is a separate process and must stay one.** `MeridianInputMethodService` runs in `:ime` and loads `libmeridian_ime.so` alone; it must never touch `MainActivity`, `meridian_lib` or the WebView, and the app never loads the engine. They share only `dataDir/ime` (which is what Tauri's `app_data_dir` resolves to on Android). The engine runs on one `ime-engine` thread; a hardware `onKeyDown` decides what to eat before the engine answers (`shouldEat`) and inserts itself a character the engine then declines. `OutcomeApplier` is where an answer becomes edits, behind a `TextTarget` so its rules are JUnit tests. **The field is given commits and nothing else**: the letters being typed are drawn on a line of the candidate bar, never set as a composing region. The field's editor records every change to such a region, so its undo turned 我不知道 back into `wo bu zhi dao` (found on the device), a search box searched for the letters as they were typed, and a chat app could keep them as a draft; Windows keeps the in-document composition, where TSF applications handle it. A caret moved mid-word therefore only moves where the word will land. **Disk changes are picked up in `onWindowShown`, not only in `onStartInput`**: hiding the keyboard and bringing it back on the same field calls `onStartInputView` and `onWindowShown` and never `onStartInput` (measured on a vivo, Android 14). With the refresh in `onStartInput` alone, a private app added in settings kept being learned from until focus moved to another field — found on the device, with a control word to rule out an unflushed learner. `onStartInput(restarting = true)` is handled like a fresh start: the field's attributes may have changed. **The touch keyboard is data plus one gesture loop.** `Layout.kt` holds the three layers — the grid exactly as the prototype drew it (with Backspace one column and `ˉ` beside it), QWERTY for pinyin and English, and the number layer with the dial pad in the right three columns and 0 under 8 — and `LayoutTest` checks every grid token is placed once or reachable by a long press, rows fill their columns and Backspace keeps its place. A grid key is placed by token *name*; its character, label and long-press variants come from the engine's table. Every layer is as tall as the five-row grid, so switching layers does not move the app. **中/英 is the only language switch, on both letter layers**: English is always QWERTY, Chinese is typed on the layout chosen from that key's long press (grid or QWERTY pinyin, kept in the keyboard's preferences), and the globe is the system's keyboard picker. The letters follow the engine's mode rather than the key (`followMode`), so a mode changed by anything lands on the right layer. On the grid the preedit line reads out the highlighted candidate (`reading` in the session) when it covers every key, because a grid key's label spells nothing (`xyang´` is xiang). A long press opens one menu: a grid key's precise keys then its digit; the comma's menu holds the other width first, then what goes inside a sentence and the opening marks, the full stop's the other width, what ends one and the closing marks, mirrored so each pair sits at the same place (`MenuGeometry` decides where the menu goes and which item the finger is over, and is unit-tested). Menu items and number-layer keys go through `insert`, never as keys: as a key the engine would widen a half-width comma the person picked and a digit would select a candidate. Compose needs a lifecycle, view-model store and saved-state owner the service does not provide; `ImeLifecycle` is those, attached to the window's root and the view. **It draws with the app's MiSans at 500, handed over rather than shipped twice.** The font is 20 MB, its licence forbids subsetting, and the app already carries it inside `libmeridian_lib.so`, where the keyboard's process cannot read it; so the app writes it to `dataDir/ime/fonts/` on start with a version stamp (`src/keyboard_font.rs`), and the keyboard uses it once it is there and loads (`KeyboardFont.kt`), the system font until then. The function keys are keyline two-tone icons, the app's set, converted path for path into `res/drawable/ime_*.xml`; text glyphs such as ⌫ and an emoji globe came out in whatever font the device had. The JSON and key codes crossing JNI are pinned from both sides: the Rust tests compare against `ime/android/fixtures/*.json`, the Kotlin tests decode the same files and read `keys.rs`/`bridge.rs` for the numbers. Run them with `./gradlew :app:testArm64DebugUnitTest` in `src-tauri/gen/android`.
+- **The keyboard's toolbar is the candidate bar with nothing to choose** (`Toolbar.kt`): editing, clipboard, symbols, incognito, settings, hide, and a paste chip for a copy under a minute old. While typing, the bar is one scrolling row of every candidate and a button opening them as a grid over the keys: Android frames carry the whole list (`TOUCH_PAGE_SIZE` in the Android host) rather than `host.json`'s page, which is Windows' numbered candidate window. A panel takes the keys' place at their height, so opening one moves nothing above it. Three decisions in it are not the obvious ones. **The clipboard history is on disk** (`ClipboardHistory`, `dataDir/ime/clipboard.json`): kept only in memory it would rest on the `:ime` process staying alive, and vendors (MIUI among them) kill keyboards in the background; the bound is time instead — an unpinned clip lasts an hour, at most twenty of them, pinning is the only way to keep one — and on each show the current system clip is read once, to catch what was copied while the process was dead. What is never written is decided before `add` (`mayRemember`): a clip its source marked `IS_SENSITIVE`, one copied while the field was private, the keyboard incognito or recording off; `clipboard_seen_at` stops a deleted clip coming back on the next show, and a file that fails to parse is left alone rather than written over, the learner's rule. **Incognito is persisted**, because a killed-and-restarted process that came back learning would be a silent failure of the only thing the switch promises; it restarts the field muted, exactly as a private field is, and the space key says 无痕 while it is on. **What the keyboard keeps itself follows the session's word on privacy, not the field's** (`nativeIsPrivate`): `private_apps` is keyed on the package and only the engine reads it, so a field that is ordinary by its own attributes can still be one whose copies must not be kept. **Every engine answer is checked against the field it was asked for** (`InputGeneration`): the engine answers later on its own thread, and an answer applied after focus moved puts one field's commit into another. **The scheme follows the key's source**: a physical key is pinyin whatever the touch layer and a tap is the layer's (`schemeForKey`), and 中/英 switches the letters with the tap rather than with the engine's answer, so a key tapped in between is not read on the layer going away. **Settings is reached by launching the app**, the only way `:ime` may reach it: the launch intent carries `EXTRA_OPEN_SETTINGS`, `MainActivity` hands it to `nativeOnOpenSettings`, which keeps it until `take_launch_request` (a `local` command) takes it — a cold start's window is not listening yet — and emits `launch-request`, with no payload, so the command stays the only reader (`useLaunchRequest`). **What the field is for comes before the tools.** An autofill service's inline suggestions (`supportsInlineSuggestions`, Android 11+: a password manager's accounts, the system's SMS code filler) take the whole bar; they arrive as views the service drew, and a tap fills the field through the system, so the keyboard never holds a password. A copied one-time code (`codeIn`: the clip is 4–8 digits, or a message that says it carries a code and has exactly one such run) is offered as an accent chip for a minute and never written to the history — whatever forbids remembering does not apply to it, because a private field is where a code is typed.
 - **The keyboard is a padding, and every `svh` between it and the composer defeats it.** The WebView is not resized when the soft keyboard opens — `MainActivity` measures it and reports `imeBottom`, and `app-shell.tsx` shrinks the frame with `pb-[var(--ime-bottom)]`. That only reaches the composer if nothing in between insists on a viewport height. HeroUI Pro's sidebar did (`.sidebar__main` was `min-height: 100svh`); the base sidebar that replaced it sets none, and `Sidebar.Main` keeps `min-h-0` so that a height floor reintroduced there cannot quietly leave the pane a full screen tall while the frame around it shrinks. Nothing catches this: it is correct on every desktop, and `tsc`/`eslint`/`vitest` have no layout between them. The bottom insets are also exclusive, never summed — while the keyboard is up it covers the navigation bar, so `MainActivity` reports `bottom: 0` and the whole gap as `imeBottom`.
 - **The back key is the web history.** `WryActivity` routes it through `WebView.canGoBack()`, the generated `TauriActivity` disables that, and `MainActivity` turns it back on. So something is undone by the back gesture exactly when it pushed a `history` entry for itself — `useHistoryLevel` is the only way to do that, and `lib/history-bridge.ts` the only writer of history. Never call `history.back()` anywhere else: the store is updated from `popstate` alone, which is what keeps it from drifting. There are no screens to go back to any more, only levels inside one — a drawer, a detail pane, a non-empty selection. `useBackGesture`, called once by the shell, decides whether the gesture is ours at all; everything below it is inert on a desktop.
 - **History is reconciled, not commanded.** A level changes the store and calls `syncHistory`, which brings `window.history` to `levels.length` on the next microtask. It is deferred because a hand-over — the drawer closing as a page opens, which is every row in the mobile sheet — changes the store twice in one commit, and the two eager operations that used to produce do not commute: `history.go(-n)` resolves its target against the entry current when it is *called*, so a `pushState` landing in between is skipped and the traversal overshoots. Settings opened and was closed again by the popstate its own drawer had queued, which read as the page flashing and bouncing back. Coalesced, a hand-over costs no history operation at all. Nothing else may call `pushState` or `go`, and a level's effect must not assume its entry exists yet — it does not until the microtask runs, which is why the tests need an awaited `act` around anything that opens a level.

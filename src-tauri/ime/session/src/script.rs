@@ -5,7 +5,11 @@
 //! `<shift>` (a bare Shift tap), `<up>`, `<down>`, `<left>`, `<right>`,
 //! `<home>`, `<end>`, `<pgup>`, `<pgdn>`, `<del>`. `<caps>` toggles the Caps
 //! Lock state carried by the following keys. A literal `<` is `<lt>`.
+//!
+//! Grid keys go by their names: `<ai>` `<ao>` `<ei>` `<ou>` `<er>` `<ng>`, and the
+//! tone keys `<t1>`…`<t5>` (ˉ ˊ ˇ ˋ ˙). `ny<t3>h<ao><t3>` is 你好 in the grid.
 
+use meridian_ime_engine::grid_token_by_name;
 use meridian_ime_proto::KeyEvent;
 
 use crate::keys::*;
@@ -51,7 +55,12 @@ pub fn parse_script(script: &str) -> Result<Vec<KeyEvent>, String> {
                 caps = !caps;
                 continue;
             }
-            other => return Err(format!("unknown key token <{other}>")),
+            // Grid keys by name: `<ai>`, `<ng>`, `<t3>`. The multi-letter keys
+            // are private-use characters, which nobody should have to type.
+            other => match grid_token_by_name(other) {
+                Some(t) => printable(t.key),
+                None => return Err(format!("unknown key token <{other}>")),
+            },
         };
         let mut ev = ev;
         ev.caps_lock = caps;

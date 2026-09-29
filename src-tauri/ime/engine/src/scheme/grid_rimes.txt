@@ -1,0 +1,62 @@
+# The grid layout's spelling of every bopomofo rime (medial + final).
+#
+#   <bopomofo rime>  <tokens>[ | <alternative tokens>]
+#
+# One line per whole rime rather than per symbol, because the interesting
+# decisions are about combinations: `ng` is the only nasal key, so ㄢ/ㄤ both
+# read `a ng` and ㄣ/ㄥ both read `e ng`, and after a medial the `e` is dropped
+# the way pinyin drops it (ㄧㄣ `in`, ㄧㄥ `ing` → `y ng`). A consequence of the
+# single nasal key is that ㄨㄣ and ㄨㄥ (dun/dong) and ㄩㄣ and ㄩㄥ (jun/jiong)
+# share a spelling too.
+#
+# An alternative after `|` is another way to type the same rime. One marked
+# `zhuyin:` is how a zhuyin typist spells it, keeping the ㄣ/ㄥ as `e` plus
+# the nasal after a medial (ㄨㄣ `w e ng`) where pinyin drops the e (`un`);
+# both habits are accepted at once, and `keys_for` picks one per habit.
+#
+# An alternative adds edges and removes none: `w ng` still reads both dun
+# and dong, `o ng` reads only dong. Alternatives are not offered on a
+# syllable with no initial when they would make it start with a bare final
+# (weng as `o ng`), since that would read as the syllable `o`.
+#
+# Changing a line changes what the layout means. The evaluation set (`bench
+# --scheme grid`) is what decides between variants, and the engine's
+# collision test is what keeps an edit from merging syllables by accident.
+ㄚ	a
+ㄛ	o
+ㄜ	e
+ㄝ	e
+ㄞ	ai
+ㄟ	ei
+ㄠ	ao
+ㄡ	ou
+ㄢ	a ng
+ㄣ	e ng
+ㄤ	a ng
+ㄥ	e ng
+ㄦ	er
+ㄧ	y
+ㄧㄚ	y a
+ㄧㄛ	y o
+ㄧㄝ	y e
+ㄧㄞ	y ai
+ㄧㄠ	y ao
+ㄧㄡ	y ou
+ㄧㄢ	y a ng
+ㄧㄣ	y ng | zhuyin: y e ng
+ㄧㄤ	y a ng
+ㄧㄥ	y ng | zhuyin: y e ng
+ㄨ	w
+ㄨㄚ	w a
+ㄨㄛ	w o
+ㄨㄞ	w ai
+ㄨㄟ	w ei
+ㄨㄢ	w a ng
+ㄨㄣ	w ng | zhuyin: w e ng
+ㄨㄤ	w a ng
+ㄨㄥ	w ng | o ng | zhuyin: w e ng
+ㄩ	v
+ㄩㄝ	v e
+ㄩㄢ	v a ng
+ㄩㄣ	v ng | zhuyin: v e ng
+ㄩㄥ	v ng | y o ng | zhuyin: v e ng

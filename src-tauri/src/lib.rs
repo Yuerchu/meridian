@@ -4,9 +4,13 @@ mod command_table;
 #[cfg(target_os = "android")]
 mod android_bridge;
 mod commands;
-/// Meridian's side of the input method (the DLL and host are separate binaries).
-#[cfg(windows)]
+/// Meridian's side of the input method: the settings for the Windows text
+/// service and host, and for the Android keyboard (all separate binaries).
+#[cfg(any(windows, target_os = "android"))]
 mod ime;
+/// The keyboard's font, written out for the input method's process.
+#[cfg(any(test, target_os = "android"))]
+mod keyboard_font;
 mod platform;
 /// Serving another device. Desktop only: Android is the client here, never the
 /// host.
@@ -14,6 +18,7 @@ mod platform;
 mod remote;
 /// When the launch screen goes away, and why it always does.
 mod splash;
+mod system_notice;
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -108,6 +113,23 @@ pub fn run() {
             }
             let data_dir = app.path().app_data_dir().expect("failed to resolve app data dir");
 
+            // The keyboard (process `:ime`) draws with the app's font, which only
+            // this process can read; see keyboard_font. `ime` is the input
+            // method's data directory, as meridian-ime-config names it.
+            #[cfg(target_os = "android")]
+            {
+                let resolver = app.asset_resolver();
+                let ime_dir = data_dir.join("ime");
+                std::thread::spawn(move || {
+                    let asset = |path: &str| resolver.get(path.to_string()).map(|a| a.bytes);
+                    match keyboard_font::install(asset, &ime_dir, env!("CARGO_PKG_VERSION")) {
+                        Ok(true) => tracing::info!("keyboard font written"),
+                        Ok(false) => {}
+                        Err(error) => tracing::warn!(%error, "keyboard font not written; the keyboard keeps the system font"),
+                    }
+                });
+            }
+
             // Registered before anything can emit, and critical: the desktop's
             // events are its answer, so a turn whose progress never reached the
             // window fails rather than carrying on talking to nobody.
@@ -135,6 +157,9 @@ pub fn run() {
                 .turn_starter
                 .set(Arc::new(commands::chat::DesktopTurns(services.clone())));
             app.manage(services.clone());
+            // Before anything that may have something to say, which is the
+            // input method's start below.
+            app.manage(system_notice::SystemNotices::to_window(app.handle().clone()));
 
             {
                 let services = services.clone();
@@ -175,10 +200,11 @@ pub fn run() {
                 });
             }
 
-            // The input method's host belongs to the login session, not to this
-            // window: it is started here if the DLL is registered and nothing is
+            // The input method's data directory, its memory hints and, on
+            // Windows, its host — which belongs to the login session, not to
+            // this window: started here if the DLL is registered and nothing is
             // serving the pipe yet, and never stopped on exit.
-            #[cfg(windows)]
+            #[cfg(any(windows, target_os = "android"))]
             {
                 let services = services.clone();
                 let handle = app.handle().clone();
