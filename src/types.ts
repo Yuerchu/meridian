@@ -3119,6 +3119,24 @@ export interface ImeDictionaryToggleRequest {
   enabled: boolean
 }
 
+/** One word the input method learned from the person's typing. */
+export interface ImeLearnedWordInfoResponse {
+  text: string
+  count: number
+  user_word: boolean
+}
+
+export interface ImeLearningInfoResponse {
+  words: ImeLearnedWordInfoResponse[]
+  transitions: number
+  /** Requests to forget the keyboard has not carried out yet. */
+  pending: number
+}
+
+export interface ImeLearnedWordForgetRequest {
+  text: string
+}
+
 export interface ImeDictionaryRemoveRequest {
   file: string
 }

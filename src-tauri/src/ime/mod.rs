@@ -24,6 +24,7 @@ pub(crate) mod dictionary;
 pub(crate) mod hints;
 #[cfg(windows)]
 pub(crate) mod host_process;
+pub(crate) mod learning;
 pub(crate) mod models;
 #[cfg(windows)]
 pub(crate) mod probe;

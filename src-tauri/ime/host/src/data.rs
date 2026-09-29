@@ -12,7 +12,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use meridian_ime_config::{HostConfig, ImeDirs, Scheme};
+use meridian_ime_config::{ForgetRequest, HostConfig, ImeDirs, Scheme, pending_forgets};
 use meridian_ime_dict::{Catalog, DictSet};
 use meridian_ime_engine::{Engine, FileLearner, InputScheme, Learner, MemoryLearner, SentenceScorer};
 
@@ -40,14 +40,67 @@ pub fn input_scheme(scheme: Scheme) -> InputScheme {
 
 /// The learning store under `learn/`, or one in memory when it cannot be
 /// opened — never an empty table written over the person's.
+///
+/// What Meridian asked to be forgotten while nothing held the store is
+/// carried out here, before anything is typed with it.
 pub fn open_learner(dirs: &ImeDirs) -> Box<dyn Learner> {
-    match FileLearner::open(&dirs.learn()) {
+    let mut learner: Box<dyn Learner> = match FileLearner::open(&dirs.learn()) {
         Ok(l) => Box::new(l),
         Err(e) => {
             tracing::warn!(error = %e, dir = %dirs.learn().display(), "learning store unusable; learning in memory only");
             Box::new(MemoryLearner::new())
         }
+    };
+    apply_forgets(dirs, learner.as_mut());
+    learner
+}
+
+/// Carries out Meridian's requests to forget (`meridian_ime_config::forget`)
+/// on the tables this process holds, writes them at once, and only then
+/// removes the requests: a crash in between carries a request out twice,
+/// which forgets nothing more. A request that does not parse is set aside
+/// under `.rejected` rather than removed, since removing it would quietly
+/// keep what somebody asked to be rid of. Returns how many were carried out;
+/// cheap to call every second when there are none. A learner that only
+/// holds memory (the store could not be opened) leaves them all waiting for
+/// one that writes.
+pub fn apply_forgets(dirs: &ImeDirs, learner: &mut dyn Learner) -> usize {
+    if !learner.persists() {
+        return 0;
     }
+    let pending = match pending_forgets(dirs) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!(error = %e, "requests to forget unreadable");
+            return 0;
+        }
+    };
+    let mut done = Vec::new();
+    for p in pending {
+        match p.request {
+            Ok(ForgetRequest::Word { text }) => learner.erase(&text),
+            Ok(ForgetRequest::Everything) => learner.erase_all(),
+            Err(e) => {
+                tracing::warn!(error = %e, path = %p.path.display(), "request to forget does not parse; set aside");
+                let mut rejected = p.path.clone().into_os_string();
+                rejected.push(meridian_ime_config::forget::REJECTED_SUFFIX);
+                let _ = std::fs::rename(&p.path, rejected);
+                continue;
+            }
+        }
+        done.push(p.path);
+    }
+    if done.is_empty() {
+        return 0;
+    }
+    learner.flush();
+    for path in &done {
+        if let Err(e) = std::fs::remove_file(path) {
+            tracing::warn!(error = %e, path = %path.display(), "carried out a request to forget and could not remove it");
+        }
+    }
+    tracing::info!(requests = done.len(), "forgot what was asked");
+    done.len()
 }
 
 /// An engine over the enabled dictionaries plus the learner's user words,
@@ -274,5 +327,68 @@ mod tests {
         let (engine, _) = build_engine(&dirs, &MemoryLearner::new(), None);
         assert!(!engine.is_empty());
         assert_eq!(engine.outdated_dictionaries(), 0);
+    }
+
+    /// The owner of the tables carries a request out, writes it, and only
+    /// then removes it; the next owner to open them finds the word gone.
+    #[test]
+    fn a_request_to_forget_is_carried_out_on_disk_and_then_removed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = ImeDirs::new(tmp.path());
+        let mut learner = open_learner(&dirs);
+        learner.record("香港");
+        learner.record("你好");
+        learner.flush();
+        meridian_ime_config::request_forget(&dirs, &ForgetRequest::Word { text: "香港".into() }).unwrap();
+
+        assert_eq!(apply_forgets(&dirs, learner.as_mut()), 1);
+        assert_eq!(learner.weight("香港"), 0);
+        assert!(pending_forgets(&dirs).unwrap().is_empty(), "removed once done");
+        let reopened = FileLearner::open(&dirs.learn()).unwrap();
+        assert_eq!(reopened.weight("香港"), 0, "written, not only forgotten in memory");
+        assert_eq!(reopened.weight("你好"), 1);
+        assert_eq!(
+            apply_forgets(&dirs, learner.as_mut()),
+            0,
+            "nothing waiting is nothing done"
+        );
+    }
+
+    /// Asked while no keyboard held the tables: done before anything is typed.
+    #[test]
+    fn a_request_made_while_nothing_held_the_store_is_carried_out_on_opening() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = ImeDirs::new(tmp.path());
+        {
+            let mut learner = open_learner(&dirs);
+            learner.record("香港");
+            learner.flush();
+        }
+        meridian_ime_config::request_forget(&dirs, &ForgetRequest::Everything).unwrap();
+        let learner = open_learner(&dirs);
+        assert_eq!(learner.weight("香港"), 0);
+        assert!(pending_forgets(&dirs).unwrap().is_empty());
+    }
+
+    /// A learner in memory cannot forget what is on disk, so it takes nothing.
+    #[test]
+    fn a_learner_that_does_not_write_leaves_requests_waiting() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = ImeDirs::new(tmp.path());
+        meridian_ime_config::request_forget(&dirs, &ForgetRequest::Everything).unwrap();
+        assert_eq!(apply_forgets(&dirs, &mut MemoryLearner::new()), 0);
+        assert_eq!(pending_forgets(&dirs).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_request_that_does_not_parse_is_set_aside_not_dropped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = ImeDirs::new(tmp.path());
+        std::fs::create_dir_all(dirs.forget()).unwrap();
+        std::fs::write(dirs.forget().join("1-1.json"), "{").unwrap();
+        let mut learner = open_learner(&dirs);
+        assert_eq!(apply_forgets(&dirs, learner.as_mut()), 0);
+        assert!(dirs.forget().join("1-1.json.rejected").exists());
+        assert!(pending_forgets(&dirs).unwrap().is_empty());
     }
 }

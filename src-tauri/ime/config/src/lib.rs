@@ -11,6 +11,9 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+pub mod forget;
+pub use forget::{ForgetRequest, PendingForget, pending_forgets, request_forget};
+
 /// Must equal `identifier` in `src-tauri/tauri.conf.json`: Tauri resolves
 /// `app_data_dir` as the platform data directory joined with it.
 pub const APP_IDENTIFIER: &str = "cn.yuxiaoqiu.meridian";
@@ -170,6 +173,11 @@ impl ImeDirs {
 
     pub fn learn(&self) -> PathBuf {
         self.root.join(LEARN_DIR_NAME)
+    }
+
+    /// Requests to forget what was learned; see [`forget`].
+    pub fn forget(&self) -> PathBuf {
+        self.learn().join(forget::FORGET_DIR_NAME)
     }
 
     pub fn models(&self) -> PathBuf {

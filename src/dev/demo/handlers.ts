@@ -1177,6 +1177,10 @@ const integrations: Record<string, DemoHandler> = {
   list_ime_dictionaries: (_args, { state }) => state.imeDictionaries,
   // The demo machine did nothing on its own, so the inbox has no system tab.
   list_system_notices: () => [],
+  // A browser has typed nothing into the demo's keyboard.
+  get_ime_learning: () => ({ words: [], transitions: 0, pending: 0 }),
+  forget_ime_learned_word: () => ({ words: [], transitions: 0, pending: 0 }),
+  forget_all_ime_learning: () => ({ words: [], transitions: 0, pending: 0 }),
   // A browser is launched by nobody's keyboard.
   take_launch_request: () => null,
   dismiss_system_notice: () => null,

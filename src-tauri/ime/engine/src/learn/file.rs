@@ -129,6 +129,17 @@ impl FileLearner {
     }
 
     /// Flushes when at least `interval` has passed since the last flush.
+    /// The tables under `dir`, for a reader that only looks — Meridian's
+    /// settings page, while a keyboard holds the same files. Never writes:
+    /// `open` marks a table with an unusable line dirty, and a `FileLearner`
+    /// flushes when dropped, which from here would be a second process writing
+    /// a table the owner is holding. The tables are moved out, so what is
+    /// dropped is empty and clean.
+    pub fn read(dir: &Path) -> io::Result<MemoryLearner> {
+        let mut opened = Self::open(dir)?;
+        Ok(std::mem::take(&mut opened.inner))
+    }
+
     pub fn flush_if_due(&mut self, interval: Duration) {
         if self.last_flush.elapsed() >= interval {
             Learner::flush(self);
@@ -217,6 +228,15 @@ impl Learner for FileLearner {
     }
     fn ngram(&self) -> &UserNgram {
         self.inner.ngram()
+    }
+    fn erase(&mut self, text: &str) {
+        self.inner.erase(text)
+    }
+    fn erase_all(&mut self) {
+        self.inner.erase_all()
+    }
+    fn persists(&self) -> bool {
+        true
     }
     fn flush(&mut self) {
         self.write_dirty();

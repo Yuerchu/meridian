@@ -208,6 +208,29 @@ impl UserNgram {
             .map(|((p2, p, w), c)| (p2.as_str(), p.as_str(), w.as_str(), *c))
     }
 
+    /// Drops every row `text` is in, in any position, and keeps the rest as
+    /// they were. Rebuilt rather than patched, like [`Self::halve`]: the
+    /// totals, the trigram contexts and the followers all derive from the
+    /// rows, and recomputing them cannot leave one out. True when a row went.
+    pub fn erase(&mut self, text: &str) -> bool {
+        let before = self.len();
+        let mut fresh = UserNgram::default();
+        for ((p, w), c) in &self.bigram {
+            if p != text && w != text {
+                fresh.record(Context::after(p), w, *c);
+            }
+        }
+        for ((p2, p, w), c) in &self.trigram {
+            if p2 != text && p != text && w != text {
+                // As in halve: the trigram re-adds its bigram share.
+                fresh.record(Context::of(Some(p2), p), w, *c);
+                fresh.unrecord_bigram_only(p, w, *c);
+            }
+        }
+        *self = fresh;
+        self.len() != before
+    }
+
     fn halve(&mut self) {
         let mut fresh = UserNgram::default();
         for ((p, w), c) in &self.bigram {

@@ -536,6 +536,12 @@ macro_rules! with_all_commands {
                 request: $crate::commands::ime::ImeDictionaryToggleRequest,
             ),
             #[cfg(any(windows, target_os = "android"))]
+            // What was typed on this machine: never answered to a remote client.
+            local commands::ime => get_ime_learning(),
+            local commands::ime => forget_ime_learned_word(
+                request: $crate::commands::ime::ImeLearnedWordForgetRequest,
+            ),
+            local commands::ime => forget_all_ime_learning(),
             local commands::ime => remove_ime_dictionary(
                 request: $crate::commands::ime::ImeDictionaryRemoveRequest,
             ),

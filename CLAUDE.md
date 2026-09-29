@@ -1517,6 +1517,22 @@ rather than one because the boundaries are the design.
   repetitions becomes a user word. Files are written atomically and flushed
   every minute and at exit; a store that cannot be opened degrades to learning
   in memory, never to writing an empty table over the user's.
+  **Forgetting is a request, not an edit.** The tables belong to whichever
+  process types and are written from its memory every minute, so the
+  settings page editing the files would be undone by the next write; it
+  files one request per file under `learn/forget/`
+  (`meridian_ime_config::forget`) and the owner carries them out
+  (`data::apply_forgets`): the Windows host every second, the Android
+  keyboard when it comes up, either one on opening the store — erase, write,
+  and only then remove the request. A learner that only holds memory
+  (`Learner::persists`) takes none, since forgetting there would leave the
+  files as they were. The page lists what was learned through
+  `FileLearner::read`, which never writes (`open` marks a table with a bad
+  line dirty and a `FileLearner` flushes when dropped — a second writer),
+  with the requests still waiting applied to what it read, so a word just
+  forgotten is not listed again. `erase` removes a word from all four
+  tables; the n-gram is rebuilt from the rows that do not mention it, as
+  halving does, so no total is left out.
 - **`host.json` is the one source of truth and the host polls it.** Meridian's
   settings page writes it, the host reloads it within a second, and nothing is
   mirrored into the preferences table where it could disagree. Dictionaries

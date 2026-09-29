@@ -39,6 +39,7 @@ import type {
 } from '@/types'
 import { SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
 import { useSettingsDirtyRegistration } from './dirty-guard'
+import { ImeLearningSection } from './ime-learning-section'
 import { ImeLmSection } from './ime-lm-section'
 import { useSystemNoticeStore } from '@/stores/system-notice-store'
 
@@ -481,7 +482,7 @@ export function ImeSettings() {
 
       <div
         data-slot="ime-config"
-        className={cx('grid grid-cols-1 gap-3', android ? '@sm/pane:grid-cols-2' : '@sm/pane:grid-cols-3')}
+        className={cx('grid grid-cols-1 gap-3', android ? '@sm/pane:grid-cols-1' : '@sm/pane:grid-cols-3')}
       >
         {!android && (
           <SettingsSelect<ImeScheme>
@@ -499,12 +500,16 @@ export function ImeSettings() {
             ]}
           />
         )}
-        <SettingsSelect<(typeof PAGE_SIZES)[number]>
-          label={t('settings.ime.pageSize')}
-          value={String(config.page_size) as (typeof PAGE_SIZES)[number]}
-          onChange={(v) => setConfig({ ...config, page_size: Number(v) })}
-          options={PAGE_SIZES.map((v) => ({ value: v, label: v }))}
-        />
+        {/* The Windows candidate window's numbered page. The touch keyboard
+            has none: it scrolls one row and opens a grid of the lot. */}
+        {!android && (
+          <SettingsSelect<(typeof PAGE_SIZES)[number]>
+            label={t('settings.ime.pageSize')}
+            value={String(config.page_size) as (typeof PAGE_SIZES)[number]}
+            onChange={(v) => setConfig({ ...config, page_size: Number(v) })}
+            options={PAGE_SIZES.map((v) => ({ value: v, label: v }))}
+          />
+        )}
         <SettingsSelect<ImePunctuation>
           label={t('settings.ime.punctuation')}
           value={config.punctuation}
@@ -535,6 +540,8 @@ export function ImeSettings() {
           {t('settings.ime.learningHint')}
         </p>
       </div>
+
+      <ImeLearningSection />
 
       <div data-slot="ime-prediction" className="space-y-1.5">
         <CellSwitch

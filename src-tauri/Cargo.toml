@@ -105,20 +105,26 @@ tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "test-ut
 tempfile = "3"
 
 [target.'cfg(windows)'.dev-dependencies]
-# Building a model bundle in the settings-side tests.
-meridian-ime-engine = { path = "ime/engine" }
+# Building a model bundle in the settings-side tests (the engine is a
+# dependency on both input-method platforms, below).
 sha2 = "0.10"
 
 # The input method: Meridian's side of it is a settings page, an importer and,
 # on Windows, a control client for the host process. The engine, the DLL, the
 # host and the Android keyboard's library are workspace members of their own
-# (`ime/`), built and shipped separately; the shell only depends on the
-# contract crates, on the two platforms that have an input method.
+# (`ime/`), built and shipped separately; the shell depends on the contract
+# crates, and on the engine only to read the learned tables, on the two
+# platforms that have an input method.
 [target.'cfg(any(windows, target_os = "android"))'.dependencies]
 meridian-ime-config = { path = "ime/config" }
 meridian-ime-dict = { path = "ime/dict" }
 # Bundle checking only: `runtime` (ONNX Runtime) belongs to the host.
 meridian-ime-lm = { path = "ime/lm", default-features = false }
+# Reading what was learned, for the settings page to list: the keyboard's own
+# table reader (`FileLearner::read`), since a second parser would be a second
+# opinion on what the files mean. It never writes them; forgetting is a request
+# the keyboard carries out (`ime/config/src/forget.rs`).
+meridian-ime-engine = { path = "ime/engine" }
 # Dictionary archives (a Rime dictionary is several files) and downloading
 # one. Same versions and features the tree already has.
 zip = { version = "2", default-features = false, features = ["deflate"] }

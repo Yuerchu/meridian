@@ -299,3 +299,92 @@ fn choice_cap_halves() {
     );
     assert_eq!(m.choice_weight("k0", "x"), 0, "a count of one reaches zero and goes");
 }
+
+/// Forgetting a word takes it out of all four tables and leaves what does
+/// not mention it exactly as it was.
+#[test]
+fn erase_takes_a_word_out_of_every_table_and_nothing_else() {
+    let mut m = MemoryLearner::new();
+    m.record("香港");
+    m.record("你好");
+    m.record_choice("xg", "香港");
+    m.record_choice("nh", "你好");
+    m.learn_word("香港", "xiang gang");
+    m.learn_word("你好", "ni hao");
+    m.record_transition(Context::after("去"), "香港", 2);
+    m.record_transition(Context::of(Some("香港"), "的"), "天气", 1);
+    m.record_transition(Context::of(Some("我"), "说"), "你好", 3);
+    let before_words = m.user_words_generation();
+
+    m.erase("香港");
+
+    assert_eq!(m.weight("香港"), 0);
+    assert_eq!(m.choice_weight("xg", "香港"), 0);
+    assert!(m.user_words().iter().all(|w| w.text != "香港"));
+    assert_eq!(m.ngram().bigram_count("去", "香港"), 0);
+    assert_eq!(m.ngram().trigram_count("香港", "的", "天气"), 0);
+    assert!(
+        m.user_words_generation() > before_words,
+        "the engine reloads its user words"
+    );
+    // What never mentioned it is untouched, the trigram's bigram share included.
+    assert_eq!(m.weight("你好"), 1);
+    assert_eq!(m.choice_weight("nh", "你好"), 1);
+    assert_eq!(m.ngram().bigram_count("说", "你好"), 3);
+    assert_eq!(m.ngram().trigram_count("我", "说", "你好"), 3);
+    assert_eq!(m.ngram().bigram_count("的", "天气"), 1, "its bigram is still a fact");
+}
+
+#[test]
+fn erase_reaches_the_files_and_erase_all_empties_them() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let mut f = FileLearner::open(dir.path()).unwrap();
+        f.record("香港");
+        f.record("你好");
+        f.record_transition(Context::after("去"), "香港", 1);
+        f.flush();
+        f.erase("香港");
+        f.flush();
+    }
+    let f = FileLearner::open(dir.path()).unwrap();
+    assert_eq!(f.weight("香港"), 0);
+    assert_eq!(f.weight("你好"), 1);
+    assert_eq!(f.ngram().bigram_count("去", "香港"), 0);
+
+    let mut f = FileLearner::open(dir.path()).unwrap();
+    f.erase_all();
+    f.flush();
+    let read = FileLearner::read(dir.path()).unwrap();
+    assert!(read.weights().is_empty() && read.ngram().is_empty());
+}
+
+/// A private session keeps learning out; it has no reason to keep a
+/// forgetting out.
+#[test]
+fn muted_still_forgets() {
+    let mut m = MemoryLearner::new();
+    m.record("香港");
+    let mut muted = Muted::new(&mut m, true);
+    muted.erase("香港");
+    assert_eq!(m.weight("香港"), 0);
+}
+
+/// A reader must not write, even when opening marked a table dirty: the
+/// keyboard is holding the same file.
+#[test]
+fn reading_the_tables_never_writes_them() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("user.tsv"),
+        "好	3
+not a row
+",
+    )
+    .unwrap();
+    let before = std::fs::read_to_string(dir.path().join("user.tsv")).unwrap();
+    let read = FileLearner::read(dir.path()).unwrap();
+    assert_eq!(read.weight("好"), 3);
+    drop(read);
+    assert_eq!(std::fs::read_to_string(dir.path().join("user.tsv")).unwrap(), before);
+}

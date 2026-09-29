@@ -11,7 +11,7 @@ use tauri::Manager;
 use crate::ServicesExt;
 #[cfg(target_os = "android")]
 use crate::ime::android;
-use crate::ime::{AppIme, archive, dictionary, hints, models};
+use crate::ime::{AppIme, archive, dictionary, hints, learning, models};
 #[cfg(windows)]
 use crate::ime::{host_process, probe, registry};
 
@@ -157,6 +157,34 @@ pub struct ImeDictionaryToggleRequest {
 #[serde(deny_unknown_fields)]
 pub struct ImeDictionaryRemoveRequest {
     pub file: String,
+}
+
+/// One word the input method learned.
+#[derive(Debug, serde::Serialize)]
+pub struct ImeLearnedWordInfoResponse {
+    pub text: String,
+    /// Times committed.
+    pub count: u32,
+    /// Also in the person's own dictionary, composed from pieces.
+    pub user_word: bool,
+}
+
+/// What the input method has learned, as far as the settings page shows it.
+#[derive(Debug, serde::Serialize)]
+pub struct ImeLearningInfoResponse {
+    /// Most committed first.
+    pub words: Vec<ImeLearnedWordInfoResponse>,
+    /// Which-word-followed-which rows.
+    pub transitions: u64,
+    /// Requests to forget the keyboard has not carried out yet: done when it
+    /// next comes up (Android) or within a second (Windows, while running).
+    pub pending: u64,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImeLearnedWordForgetRequest {
+    pub text: String,
 }
 
 /// The Android keyboard as the system sees it.
@@ -585,6 +613,60 @@ pub async fn remove_ime_dictionary(
     .await
     .expect("remove task")?;
     Ok(list.into_iter().map(summary_into).collect())
+}
+
+#[tauri::command]
+pub async fn get_ime_learning(app: tauri::AppHandle) -> Result<ImeLearningInfoResponse, String> {
+    let bridge = bridge(&app).await;
+    let learned = tokio::task::spawn_blocking(move || learning::list(&bridge.dirs))
+        .await
+        .expect("learning task")?;
+    Ok(learning_into(learned))
+}
+
+/// Files the request and answers with the list as it will be once the
+/// keyboard has carried it out.
+#[tauri::command]
+pub async fn forget_ime_learned_word(
+    app: tauri::AppHandle,
+    request: ImeLearnedWordForgetRequest,
+) -> Result<ImeLearningInfoResponse, String> {
+    let bridge = bridge(&app).await;
+    let learned = tokio::task::spawn_blocking(move || {
+        learning::forget(&bridge.dirs, &request.text)?;
+        learning::list(&bridge.dirs)
+    })
+    .await
+    .expect("forget task")?;
+    Ok(learning_into(learned))
+}
+
+#[tauri::command]
+pub async fn forget_all_ime_learning(app: tauri::AppHandle) -> Result<ImeLearningInfoResponse, String> {
+    let bridge = bridge(&app).await;
+    let learned = tokio::task::spawn_blocking(move || {
+        learning::forget_all(&bridge.dirs)?;
+        learning::list(&bridge.dirs)
+    })
+    .await
+    .expect("forget task")?;
+    Ok(learning_into(learned))
+}
+
+fn learning_into(l: learning::Learned) -> ImeLearningInfoResponse {
+    ImeLearningInfoResponse {
+        words: l
+            .words
+            .into_iter()
+            .map(|w| ImeLearnedWordInfoResponse {
+                text: w.text,
+                count: w.count,
+                user_word: w.user_word,
+            })
+            .collect(),
+        transitions: l.transitions as u64,
+        pending: l.pending as u64,
+    }
 }
 
 #[cfg(windows)]

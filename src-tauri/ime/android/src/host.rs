@@ -7,7 +7,8 @@ use std::time::Instant;
 use meridian_ime_config::{APP_IDENTIFIER, HostConfig, ImeDirs, Punctuation};
 use meridian_ime_engine::{Engine, InputScheme, Learner};
 use meridian_ime_host::data::{
-    Change, SharedScorer, Watch, build_engine, input_scheme, load_config, load_hints, load_scorer, open_learner,
+    Change, SharedScorer, Watch, apply_forgets, build_engine, input_scheme, load_config, load_hints, load_scorer,
+    open_learner,
 };
 use meridian_ime_proto::{Frame, KeyEvent};
 use meridian_ime_session::{DictionaryNotice, FLUSH_INTERVAL, KeyOutcome, Session, SessionConfig};
@@ -216,6 +217,12 @@ impl ImeHost {
             }
             changed = true;
         }
+        // Meridian asked for something to be forgotten (its settings page).
+        if apply_forgets(&self.dirs, self.learner.as_mut()) > 0 {
+            self.refresh_user_words();
+            self.session.invalidate_cache();
+            changed = true;
+        }
         if now.duration_since(self.last_flush) >= FLUSH_INTERVAL {
             self.flush();
         }
@@ -323,6 +330,24 @@ mod tests {
             last = Some(host.handle_key(printable(ch)));
         }
         last.expect("at least one key")
+    }
+
+    /// The keyboard picks up Meridian's request when it next comes up.
+    #[test]
+    fn a_request_to_forget_is_carried_out_on_refresh() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut host = open(tmp.path());
+        host.start_input(None, false);
+        typed(&mut host, "nihao");
+        host.handle_key(printable(' '));
+        assert_eq!(host.learner.weight("你好"), 1);
+        meridian_ime_config::request_forget(
+            &ImeDirs::new(tmp.path()),
+            &meridian_ime_config::ForgetRequest::Word { text: "你好".into() },
+        )
+        .unwrap();
+        assert!(host.refresh(Instant::now()));
+        assert_eq!(host.learner.weight("你好"), 0);
     }
 
     /// `host.json`'s page is Windows' five; the touch keyboard scrolls one

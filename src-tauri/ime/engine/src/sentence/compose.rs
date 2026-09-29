@@ -489,6 +489,12 @@ mod tests {
         fn ngram(&self) -> &UserNgram {
             self.inner.ngram()
         }
+        fn erase(&mut self, text: &str) {
+            self.inner.erase(text)
+        }
+        fn erase_all(&mut self) {
+            self.inner.erase_all()
+        }
         fn flush(&mut self) {
             self.inner.flush()
         }
