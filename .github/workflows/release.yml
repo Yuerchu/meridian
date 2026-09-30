@@ -388,4 +388,9 @@ jobs:
         run: |
           APK=$(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' -type f | head -1)
           VERSION=${{ inputs.tag || github.ref_name }}
-          gh release upload "$VERSION" "$APK#Meridian_${VERSION#v}_aarch64.apk" --clobber
+          # Copied under its published name: `file#name` sets only the label
+          # the release page shows, and the download kept gradle's
+          # `app-universal-release.apk` (v0.4.0, renamed by hand).
+          NAMED="$RUNNER_TEMP/Meridian_${VERSION#v}_aarch64.apk"
+          cp "$APK" "$NAMED"
+          gh release upload "$VERSION" "$NAMED" --clobber
