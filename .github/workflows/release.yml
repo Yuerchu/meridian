@@ -284,10 +284,15 @@ jobs:
     # uploads into; running in parallel raced against its creation. `always()`
     # keeps that ordering without inheriting the skip when there is no desktop
     # build to wait for — the release already exists in that case.
+    #
+    # A tag push has no `inputs`, and `inputs.android != false` was false
+    # there: the expression language coerces null and false both to 0, so
+    # every tag push skipped this job (v0.3.0 and v0.4.0 were finished by
+    # hand). Only a dispatch has the input to ask.
     needs: [plan, test, build]
     if: |
       always()
-      && inputs.android != false
+      && (github.event_name != 'workflow_dispatch' || inputs.android)
       && needs.test.result != 'failure'
       && needs.build.result != 'failure'
     runs-on: ubuntu-latest
@@ -383,4 +388,9 @@ jobs:
         run: |
           APK=$(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' -type f | head -1)
           VERSION=${{ inputs.tag || github.ref_name }}
-          gh release upload "$VERSION" "$APK#Meridian_${VERSION#v}_aarch64.apk" --clobber
+          # Copied under its published name: `file#name` sets only the label
+          # the release page shows, and the download kept gradle's
+          # `app-universal-release.apk` (v0.4.0, renamed by hand).
+          NAMED="$RUNNER_TEMP/Meridian_${VERSION#v}_aarch64.apk"
+          cp "$APK" "$NAMED"
+          gh release upload "$VERSION" "$NAMED" --clobber
