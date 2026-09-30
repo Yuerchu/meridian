@@ -16,6 +16,8 @@ pub struct SystemNotices {
     publish: Publish,
 }
 
+// Retain the register's write API and its tests where no IME produces notices.
+#[cfg_attr(not(any(windows, target_os = "android")), allow(dead_code))]
 impl SystemNotices {
     /// `publish` is how a change reaches the window; the app passes an
     /// `AppHandle::emit`, a test a recorder.
@@ -100,6 +102,8 @@ impl SystemNotices {
     }
 }
 
+// Only the write API, currently driven by Windows/Android IME upgrades, uses it.
+#[cfg_attr(not(any(windows, target_os = "android")), allow(dead_code))]
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

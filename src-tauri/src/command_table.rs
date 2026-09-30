@@ -533,6 +533,7 @@ macro_rules! with_all_commands {
             local commands::ime => cancel_staged_ime_dictionaries(
                 request: $crate::commands::ime::ImeDictionaryStagedCancelRequest,
             ),
+            #[cfg(any(windows, target_os = "android"))]
             local commands::ime => download_ime_rime_ice(),
             #[cfg(any(windows, target_os = "android"))]
             local commands::ime => set_ime_dictionary_enabled(
@@ -541,10 +542,13 @@ macro_rules! with_all_commands {
             #[cfg(any(windows, target_os = "android"))]
             // What was typed on this machine: never answered to a remote client.
             local commands::ime => get_ime_learning(),
+            #[cfg(any(windows, target_os = "android"))]
             local commands::ime => forget_ime_learned_word(
                 request: $crate::commands::ime::ImeLearnedWordForgetRequest,
             ),
+            #[cfg(any(windows, target_os = "android"))]
             local commands::ime => forget_all_ime_learning(),
+            #[cfg(any(windows, target_os = "android"))]
             local commands::ime => remove_ime_dictionary(
                 request: $crate::commands::ime::ImeDictionaryRemoveRequest,
             ),
