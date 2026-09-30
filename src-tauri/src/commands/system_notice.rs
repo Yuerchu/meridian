@@ -38,6 +38,8 @@ pub type SystemNoticeListResponse = Vec<SystemNoticeInfoResponse>;
 pub enum SystemNoticeDetail {
     /// Dictionaries written by an older build being rebuilt in this one's
     /// format (`meridian_ime_dict::upgrade_in_place`).
+    // Keep the IPC contract on every platform; only Windows/Android produce it.
+    #[cfg_attr(not(any(windows, target_os = "android")), allow(dead_code))]
     ImeDictionaryUpgrade {
         state: ImeDictionaryUpgradeState,
         /// Names of the dictionaries being upgraded, in catalog order.
@@ -49,6 +51,8 @@ pub enum SystemNoticeDetail {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
+// The shared response schema includes these states even without a local IME.
+#[cfg_attr(not(any(windows, target_os = "android")), allow(dead_code))]
 pub enum ImeDictionaryUpgradeState {
     Running,
     Succeeded,
@@ -66,6 +70,8 @@ pub struct ImeDictionaryUpgradeFailureInfoResponse {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SystemNoticeEvent {
     /// A notice appeared or changed; replaces any with the same id.
+    // IME upgrades are currently the only producer, on Windows and Android.
+    #[cfg_attr(not(any(windows, target_os = "android")), allow(dead_code))]
     Upsert {
         notice: SystemNoticeInfoResponse,
     },
