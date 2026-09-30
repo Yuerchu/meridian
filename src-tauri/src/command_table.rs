@@ -727,6 +727,62 @@ macro_rules! with_all_commands {
 mod tests {
     use serde::de::DeserializeOwned;
 
+    /// The modules `commands/mod.rs` compiles only on some platforms, by name.
+    fn gated_modules(modules: &str) -> Vec<&str> {
+        let lines: Vec<&str> = modules.lines().map(str::trim).collect();
+        lines
+            .windows(2)
+            .filter(|pair| pair[0].starts_with("#[cfg("))
+            .filter_map(|pair| pair[1].strip_prefix("pub mod ")?.strip_suffix(';'))
+            .collect()
+    }
+
+    /// Rows naming one of `gated` with no `#[cfg]` of their own. An attribute
+    /// covers the row straight after it (comments between are allowed), so a
+    /// row inserted between an attribute and the row it was written for
+    /// takes it, and the row left bare names a module that does not exist on
+    /// the other platforms.
+    fn bare_rows<'a>(table: &'a str, gated: &[&str]) -> Vec<&'a str> {
+        let lines: Vec<&str> = table.lines().map(str::trim).collect();
+        let mut bare = Vec::new();
+        for (i, line) in lines.iter().enumerate() {
+            let Some(module) = ["async ", "sync ", "local "]
+                .iter()
+                .find_map(|kind| line.strip_prefix(kind)?.strip_prefix("commands::"))
+                .and_then(|rest| rest.split_whitespace().next())
+            else {
+                continue;
+            };
+            if !gated.contains(&module) {
+                continue;
+            }
+            let above = lines[..i].iter().rev().find(|l| !l.starts_with("//"));
+            if !above.is_some_and(|l| l.starts_with("#[cfg(")) {
+                bare.push(*line);
+            }
+        }
+        bare
+    }
+
+    /// Found by the Linux CI after #72 merged: four `commands::ime` rows had
+    /// lost their `#[cfg]` to rows inserted above them, and built on Windows
+    /// and Android, where the module exists, and nowhere else. This reads the
+    /// source, so it fails on whichever platform runs it.
+    #[test]
+    fn every_row_of_a_platform_module_carries_its_own_cfg() {
+        let gated = gated_modules(include_str!("commands/mod.rs"));
+        assert!(gated.contains(&"ime") && gated.contains(&"acp"), "{gated:?}");
+        let bare = bare_rows(include_str!("command_table.rs"), &gated);
+        assert!(bare.is_empty(), "rows without a #[cfg] of their own: {bare:#?}");
+    }
+
+    #[test]
+    fn a_row_that_took_the_attribute_above_it_leaves_the_next_one_bare() {
+        let table = "#[cfg(windows)]\nlocal commands::ime => a(),\nlocal commands::ime => b(),\n\
+                     #[cfg(windows)]\n// a note\nlocal commands::ime => c(),\nsync commands::chat => d(),";
+        assert_eq!(bare_rows(table, &["ime"]), ["local commands::ime => b(),"]);
+    }
+
     fn rejects_unknown<T: DeserializeOwned>(value: serde_json::Value) {
         assert!(serde_json::from_value::<T>(value).is_err());
     }
