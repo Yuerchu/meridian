@@ -42,7 +42,9 @@ describe('stickers in assistant markdown', () => {
     getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
       drawImage: vi.fn(),
     } as unknown as CanvasRenderingContext2D)
-    decode = vi.fn(() => Promise.resolve())
+    // A decode takes a while, as a real one does: resolved at once, it raced
+    // the first `playing` render and the scroll tests passed or failed on it.
+    decode = vi.fn(() => new Promise<void>((resolve) => setTimeout(resolve, 20)))
     Object.defineProperty(HTMLImageElement.prototype, 'decode', { configurable: true, value: decode })
     await i18n.changeLanguage('en')
   })
@@ -72,6 +74,9 @@ describe('stickers in assistant markdown', () => {
     const { container } = render(<MarkdownContent content="Hello [emoji:wave]" emojiMap={emojiMap} />)
     const [sticker] = stickers(container)
     await waitFor(() => expect(stateOf(sticker)).toBe('playing'))
+    // Playing says nothing about the still frame under it; freezing shows
+    // that frame, so it has to have been drawn first.
+    await waitFor(() => expect(sticker.querySelector('[data-slot="sticker-thumb-still"]')).not.toHaveClass('invisible'))
 
     vi.useFakeTimers()
     try {

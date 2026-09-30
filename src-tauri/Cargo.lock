@@ -3259,7 +3259,7 @@ dependencies = [
 
 [[package]]
 name = "meridian"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "android-keyring",
  "async-trait",

@@ -89,7 +89,9 @@ describe('StickerImage', () => {
     } as unknown as CanvasRenderingContext2D)
     Object.defineProperty(HTMLImageElement.prototype, 'decode', {
       configurable: true,
-      value: () => Promise.resolve(),
+      // A decode takes a while, as a real one does: resolved at once, it raced
+      // the first `playing` render and the scroll test passed or failed on it.
+      value: () => new Promise<void>((resolve) => setTimeout(resolve, 20)),
     })
     await i18n.changeLanguage('en')
   })
@@ -151,6 +153,11 @@ describe('StickerImage', () => {
     const { container } = render(<StickerImage stickerId="emoji-1" name="Wave" />)
     const thumb = () => container.querySelector('[data-slot="sticker-thumb"]')
     await waitFor(() => expect(thumb()).toHaveAttribute('data-state', 'playing'))
+    // Playing says nothing about the still frame under it; freezing shows
+    // that frame, so it has to have been drawn first.
+    await waitFor(() =>
+      expect(container.querySelector('[data-slot="sticker-thumb-still"]')).not.toHaveClass('invisible'),
+    )
 
     vi.useFakeTimers()
     try {

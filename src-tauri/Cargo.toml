@@ -34,7 +34,7 @@ exclude = ["crates"]
 
 [package]
 name = "meridian"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 license = "AGPL-3.0-or-later"
 authors = ["于小丘 Yuerchu <admin@yuxiaoqiu.cn>"]
