@@ -3,7 +3,7 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：164
+- 事务根（非测试）：168
 - Diesel ops 调用点（db/ops 之外）：660
 - Diesel API 引用：1049
 
@@ -15,7 +15,7 @@
 
 ## ops 模块的事务连通分量
 
-- 23 个：acp_session acp_session_notice assistant audit cached_model composer_draft conversation emoji emoji_pack memory message message_context_item model_config model_profile plan plan_review project provider queue queued_prompt_context_item todo turn usage
+- 24 个：acp_session acp_session_notice assistant audit background_task cached_model composer_draft conversation emoji emoji_pack memory message message_context_item model_config model_profile plan plan_review project provider queue queued_prompt_context_item todo turn usage
 - 2 个：preference skill_binding
 - 1 个：custom_tool
 - 1 个：journal
@@ -41,9 +41,13 @@
 | `src-tauri/crates/core/src/agent/queue/native.rs` › `take_one` | diesel-immediate | audit, conversation, message, model_config, queue |
 | `src-tauri/crates/core/src/agent/skills.rs` › `seed_builtin_bindings` | sea-write | preference, skill_binding |
 | `src-tauri/crates/core/src/agent/skills.rs` › `sync_index` | sea-write | skill |
+| `src-tauri/crates/core/src/background.rs` › `claim` | sea-write | background_task, conversation, message |
+| `src-tauri/crates/core/src/background.rs` › `run` | sea-write | background_task |
+| `src-tauri/crates/core/src/background.rs` › `start` | sea-write | background_task |
 | `src-tauri/crates/core/src/bootstrap.rs` › `seed_tool_catalog` | sea-write | tool_category |
 | `src-tauri/crates/core/src/bootstrap.rs` › `seed_tool_catalog` | sea-write | tool_preset |
 | `src-tauri/crates/core/src/bootstrap.rs` › `seed_tool_catalog` | sea-write | tool_preset |
+| `src-tauri/crates/core/src/bootstrap.rs` › `startup_recovery` | sea-write | background_task |
 | `src-tauri/crates/core/src/bootstrap.rs` › `startup_recovery` | sea-write | memory |
 | `src-tauri/crates/core/src/bootstrap.rs` › `startup_recovery` | sea-write | memory |
 | `src-tauri/crates/core/src/bootstrap.rs` › `startup_recovery` | sea-write | memory |

@@ -136,6 +136,8 @@ fn reference_tool_context(
         sea: None,
         #[cfg(not(target_os = "android"))]
         sandbox_policy: meridian_core::sandbox::CommandSandbox::UNCONFINED,
+        #[cfg(not(target_os = "android"))]
+        background: None,
         tool_secrets: Default::default(),
         cancel,
         journal: None,
@@ -370,6 +372,8 @@ struct TurnGuard<'a> {
     turn_id: String,
     origin: TurnOrigin,
     trigger: meridian_core::turn::TurnTrigger,
+    /// What did the waking, for a turn nobody asked for: a background task's id.
+    trigger_ref: Option<String>,
     /// The row being written. Absent until the first iteration creates one —
     /// the early returns before that still owe a terminal stop, they just have
     /// no message to attach it to, and the front end would otherwise sit on the
@@ -399,7 +403,7 @@ impl TurnGuard<'_> {
             self.origin,
             None,
             self.trigger,
-            None,
+            self.trigger_ref.as_deref(),
         )
         .await
     }
@@ -612,6 +616,34 @@ impl meridian_core::services::StartTurn for DesktopTurns {
             Some(queued.id.clone()),
             None,
             TurnOrigin::Desktop,
+            false,
+        )
+        .await
+    }
+
+    async fn start_unprompted(&self, conversation_id: &str) -> Result<(), String> {
+        run_turn(
+            self.0.clone(),
+            conversation_id.to_string(),
+            None,
+            uuid::Uuid::new_v4().to_string(),
+            None,
+            // The conversation's own configuration, for the reason `start`
+            // gives: nobody is choosing anything for this turn.
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            TurnOrigin::Desktop,
+            true,
         )
         .await
     }
@@ -721,6 +753,7 @@ pub async fn chat(app: tauri::AppHandle, request: ChatRequest) -> Result<(), Str
         None,
         None,
         TurnOrigin::Desktop,
+        false,
     )
     .await
 }
@@ -754,6 +787,9 @@ pub async fn run_turn(
     queued: Option<String>,
     accept_edits_override: Option<bool>,
     origin: TurnOrigin,
+    // A turn with nothing typed, started to tell the model a background task
+    // ended. See `StartTurn::start_unprompted`.
+    wake: bool,
 ) -> Result<(), String> {
     let pool = services.db.clone();
 
@@ -810,6 +846,7 @@ pub async fn run_turn(
         queued,
         accept_edits_override,
         origin,
+        wake,
     )
     .await
     .inspect_err(|e| tracing::error!(error = %e, "turn failed"));
@@ -863,6 +900,7 @@ pub async fn run_plan_review_continuation(
         None,
         Some(runtime.accept_edits),
         TurnOrigin::PlanReview,
+        false,
     )
     .await
 }
@@ -926,6 +964,7 @@ async fn chat_inner(
     queued: Option<String>,
     accept_edits_override: Option<bool>,
     origin: TurnOrigin,
+    wake: bool,
 ) -> Result<(), String> {
     let secrets = &services.secrets;
     let pool = services.db.clone();
@@ -942,7 +981,9 @@ async fn chat_inner(
     // the terminal stop event are all released by its `Drop`.
     // An approved plan carrying on is the one turn here with no question of
     // its own: nothing typed, nothing replaced, started by the review.
-    let trigger = if origin == TurnOrigin::PlanReview && message.is_none() && replaces.is_none() {
+    let trigger = if wake {
+        meridian_core::turn::TurnTrigger::TaskCompletion
+    } else if origin == TurnOrigin::PlanReview && message.is_none() && replaces.is_none() {
         meridian_core::turn::TurnTrigger::PlanContinuation
     } else {
         meridian_core::turn::TurnTrigger::User
@@ -953,10 +994,20 @@ async fn chat_inner(
         turn_id: turn_id.clone(),
         origin,
         trigger,
+        trigger_ref: None,
         message_id: None,
         armed: true,
         lease: Some(lease),
     };
+
+    // Which task a wake is answering, so the record can name it. Read here,
+    // with the guard up, because nothing may be awaited between taking the
+    // lease and handing it to the guard. Only a label: the claim below decides
+    // which notices this turn actually pays.
+    #[cfg(not(target_os = "android"))]
+    if wake {
+        stop_guard.trigger_ref = meridian_core::background::first_wake(&services.sea, &conversation_id).await;
+    }
 
     // Only now, with the guard up. From here the row says `running`; every exit
     // that reaches an ending overwrites that, and every exit that does not — a
@@ -969,6 +1020,25 @@ async fn chat_inner(
     // names and file this turn's messages under it.
     stop_guard.open_record(&pool).await?;
     recorded.store(true, Ordering::Relaxed);
+
+    // Whatever background tasks ended since the model last heard, told before
+    // it answers anything — and before the history is read, so the notices are
+    // in it. Not for a regeneration, which answers from a point before the
+    // head that the notices would hang off, nor for a plan continuation, which
+    // resumes from its own tool result.
+    //
+    // A wake with nothing left to tell is over before it starts: a turn that
+    // was running took the notices at a round boundary between the pump
+    // looking and this turn getting the conversation.
+    #[cfg(not(target_os = "android"))]
+    if origin == TurnOrigin::Desktop && replaces.is_none() {
+        let told = meridian_core::background::claim(&services.sea, &conversation_id, &turn_id).await?;
+        if wake && told.is_empty() {
+            turn_record::finish(&pool, &turn_id, TurnStatus::Done, None).await;
+            stop_guard.disarm();
+            return Ok(());
+        }
+    }
 
     // Load conversation + assistant + active path + project path
     let (assistant, ctx, conv_title, project_path, project_id, conv_prefs, branch_parent) = {
@@ -1806,6 +1876,8 @@ async fn chat_inner(
         sea: Some(services.sea.clone()),
         #[cfg(not(target_os = "android"))]
         sandbox_policy,
+        #[cfg(not(target_os = "android"))]
+        background: Some(meridian_core::background::Launcher::new(services.clone())),
         tool_secrets,
         cancel: cancel.clone(),
         journal,
@@ -1901,6 +1973,15 @@ async fn chat_inner(
         services.events.clone(),
         meridian_core::agent::queue::Interjections::new(pool.clone(), conversation_id.clone(), turn_id.clone()),
     );
+    // And a background task that ends while this turn runs is told at the
+    // next round, after whatever was typed in the same interval.
+    #[cfg(not(target_os = "android"))]
+    let notices =
+        meridian_core::background::TaskNotices::new(services.sea.clone(), conversation_id.clone(), turn_id.clone());
+    #[cfg(not(target_os = "android"))]
+    let steering = engine::Chain(vec![&interjections, &notices]);
+    #[cfg(target_os = "android")]
+    let steering = engine::Chain(vec![&interjections]);
     let outcome = engine::run_turn(
         &engine::TurnServices {
             pool: &pool,
@@ -1962,7 +2043,7 @@ async fn chat_inner(
             // Not an inbox: the desktop's is a table, so a message queued for
             // this turn survives the app being killed and is still there when
             // it comes back. Draining is what spends it.
-            steering: Some(&interjections),
+            steering: Some(&steering),
             transitions: Some(&transitions),
             sub_agents: Some(&sub_agents),
         },

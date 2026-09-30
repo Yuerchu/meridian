@@ -23,18 +23,21 @@ import type { ProjectBranch } from '@/hooks/use-project-branch'
 export function ComposerStatusTab({
   branch,
   progress,
+  tasks,
   usage,
   pending,
 }: {
   /** The project's branch (`ProjectBranchChip`). */
   branch?: ReactNode
   progress?: ReactNode
+  /** Commands left running in the background (`BackgroundTasksChip`). */
+  tasks?: ReactNode
   usage?: ReactNode
   /** Something is about to be shown: hold the space for it. */
   pending?: boolean
 }) {
   const { t } = useTranslation()
-  if (!branch && !progress && !usage && !pending) return null
+  if (!branch && !progress && !tasks && !usage && !pending) return null
   return (
     <div
       role="group"
@@ -45,6 +48,7 @@ export function ComposerStatusTab({
       <div data-slot="composer-status-start" className="flex min-w-0 items-center gap-3">
         {branch}
         {progress}
+        {tasks}
       </div>
       <div data-slot="composer-status-end" className="flex shrink-0 items-center">
         {usage}

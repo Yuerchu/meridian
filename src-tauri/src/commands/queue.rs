@@ -184,6 +184,8 @@ pub async fn queue_enqueue(
             sea: Some(services.sea.clone()),
             #[cfg(not(target_os = "android"))]
             sandbox_policy: meridian_core::sandbox::CommandSandbox::UNCONFINED,
+            #[cfg(not(target_os = "android"))]
+            background: None,
             tool_secrets: Default::default(),
             cancel: tokio_util::sync::CancellationToken::new(),
             journal: None,

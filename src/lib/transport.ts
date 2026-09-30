@@ -60,6 +60,7 @@ const LOCAL_CHANNELS = new Set(['insets-changed', 'launch-request', 'system-noti
 
 /** Every channel the current desktop protocol can put on the remote socket. */
 const REMOTE_CHANNELS = new Set([
+  'background-tasks-updated',
   'chat-stream',
   'compact-done',
   'compact-start',

@@ -1,4 +1,5 @@
 import type {
+  BackgroundTaskInfoResponse,
   AssistantInfoResponse,
   ComposerDraftInfoResponse,
   ConversationInfoResponse,
@@ -70,6 +71,9 @@ export interface DemoState {
   conversations: ConversationInfoResponse[]
   threads: Record<string, DemoThread>
   queues: Record<string, QueuedPromptInfoResponse[]>
+  /** Background commands by conversation, and each one's log by task id. */
+  backgroundTasks: Record<string, BackgroundTaskInfoResponse[]>
+  backgroundOutput: Record<string, string>
   /** Keyed by conversation id, `''` for the welcome composer. */
   drafts: Record<string, ComposerDraftInfoResponse>
   providers: ProviderInfoResponse[]
@@ -200,6 +204,30 @@ export function createDemoState(options: DemoOptions = {}, now = Date.now()): De
     conversations: buildConversations(now, threads),
     threads,
     queues: {},
+    // One that has already finished: the bar draws only running ones, so the
+    // screenshots stay as they were, while the commands behind it have a row
+    // to answer with.
+    backgroundTasks: {
+      [CONV.rich]: [
+        {
+          id: 'b1a2c3d4',
+          conversation_id: CONV.rich,
+          runner: 'native',
+          kind: 'command',
+          command: 'pnpm build',
+          description: '构建前端',
+          state: 'completed',
+          exit_code: 0,
+          ended_reason: null,
+          output_bytes: 58,
+          output_truncated: false,
+          started_at: ago(30, now),
+          ended_at: ago(29, now),
+          notified: true,
+        },
+      ],
+    },
+    backgroundOutput: { b1a2c3d4: 'vite v7.1.4 building for production...\n✓ built in 41.2s\n' },
     drafts: {},
     providers: buildProviders(now),
     providerKeys: new Set(['demo-provider-anthropic', 'demo-provider-deepseek']),

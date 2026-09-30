@@ -35,6 +35,7 @@ import { EmojiPicker } from './emoji-picker'
 import { ContextGauge, hasContextReading } from './context-gauge'
 import { ComposerStatusTab, ProjectBranchChip } from './composer-status-tab'
 import { TodoProgressChip } from './todo-progress-chip'
+import { BackgroundTasksChip } from './background-tasks-chip'
 import type { TodoArgs } from './todo-list'
 import type { ContextInfo } from '@/hooks/use-context-info'
 import type { ProjectBranch } from '@/hooks/use-project-branch'
@@ -43,6 +44,7 @@ import { currentValueName, isEffortKnob, isModeKnob, isModelKnob } from '@/lib/a
 import { HostedModeChip, ModeChip } from './mode-chip'
 import type {
   AssistantInfoResponse,
+  BackgroundTaskInfoResponse,
   ChatMode,
   EmojiInfoResponse,
   ProviderInfoResponse,
@@ -108,6 +110,9 @@ interface InputBarProps {
   queue?: React.ReactNode
   /** The running checklist, for the status tab's progress chip. */
   todos?: TodoArgs | null
+  /** Commands this conversation left running, for the status tab's chip. */
+  backgroundTasks?: BackgroundTaskInfoResponse[]
+  onStopBackgroundTask?: (id: string) => void
   attachedFiles?: AttachedFile[]
   onAttachFiles?: (files: AttachedFile[]) => void
   onRemoveFile?: (index: number) => void
@@ -198,6 +203,8 @@ export function InputBar({
   queueing,
   queue,
   todos,
+  backgroundTasks,
+  onStopBackgroundTask,
   assistants,
   providers,
   currentAssistantId,
@@ -930,6 +937,15 @@ export function InputBar({
                   ) : null
                 }
                 progress={todos && todos.todos.length > 0 ? <TodoProgressChip todos={todos} /> : null}
+                tasks={
+                  conversationId && backgroundTasks && backgroundTasks.length > 0 && onStopBackgroundTask ? (
+                    <BackgroundTasksChip
+                      conversationId={conversationId}
+                      tasks={backgroundTasks}
+                      onStop={onStopBackgroundTask}
+                    />
+                  ) : null
+                }
                 usage={
                   hasContextReading({ context: contextInfo, hosted: !!isHosted, agentUsage: acp.usage }) ? (
                     <ContextGauge

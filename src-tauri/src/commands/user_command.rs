@@ -443,6 +443,8 @@ pub async fn run_user_command(
         db_pool: Some(services.db.clone()),
         sea: Some(services.sea.clone()),
         sandbox_policy: policy,
+        #[cfg(not(target_os = "android"))]
+        background: None,
         tool_secrets: Default::default(),
         cancel: lease.cancel_token().clone(),
         // `run_command` can change arbitrary files and has no path-level

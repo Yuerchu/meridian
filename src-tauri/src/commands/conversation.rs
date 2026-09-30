@@ -527,10 +527,17 @@ pub async fn delete_conversation(app: tauri::AppHandle, id: String) -> Result<()
         .map_err(|busy| busy.to_string())?;
 
     let services = app.services();
-    let attachment_dirs: Vec<std::path::PathBuf> = std::iter::once(&id)
+    #[allow(unused_mut)]
+    let mut attachment_dirs: Vec<std::path::PathBuf> = std::iter::once(&id)
         .chain(doomed.iter())
         .map(|c| meridian_core::files::conversation_files_dir(&services.paths.data_dir, c))
         .collect();
+    #[cfg(not(target_os = "android"))]
+    attachment_dirs.extend(
+        std::iter::once(&id)
+            .chain(doomed.iter())
+            .map(|c| meridian_core::background::log_dir(&services.paths.data_dir, c)),
+    );
 
     // Before the rows go, and after the leases above make the set final. A
     // hosted session is a child process keyed by conversation id: delete the
@@ -548,6 +555,12 @@ pub async fn delete_conversation(app: tauri::AppHandle, id: String) -> Result<()
         // reconcile noticing its conversation is gone.
         for c in &all {
             services.containers.close(c).await;
+        }
+        // Background commands too: a task keeps running into a project whose
+        // conversation — the only place anybody could see or stop it — is
+        // about to be gone. Its log directory goes with the rest below.
+        for c in &all {
+            services.background_tasks.stop_conversation(c);
         }
     }
 

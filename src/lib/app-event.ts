@@ -19,6 +19,12 @@ export interface QueueUpdatedEvent {
   delivered: boolean
 }
 
+/** A conversation's background tasks changed. Only an invalidation key: the
+ *  list is read back with `listBackgroundTasks`. */
+export interface BackgroundTasksUpdatedEvent {
+  conversation_id: string
+}
+
 export type CompactTrigger = 'manual' | 'threshold' | 'api_error'
 export type CompactOutcome = 'completed' | 'fallback' | 'failed'
 
@@ -69,6 +75,7 @@ export interface AppEventPayloadMap {
   'chat-stream': ChatStreamEvent
   'conversation-updated': ConversationUpdatedEvent
   'queue-updated': QueueUpdatedEvent
+  'background-tasks-updated': BackgroundTasksUpdatedEvent
   'compact-start': CompactStartEvent
   'compact-done': CompactDoneEvent
   'user-command': UserCommandEvent
@@ -147,6 +154,11 @@ export function parseQueueUpdatedEvent(value: unknown): QueueUpdatedEvent {
     conversation_id: stringValue(event.conversation_id, 'queue-updated payload.conversation_id'),
     delivered: booleanValue(event.delivered, 'queue-updated payload.delivered'),
   }
+}
+
+export function parseBackgroundTasksUpdatedEvent(value: unknown): BackgroundTasksUpdatedEvent {
+  const event = exactObject(value, ['conversation_id'], 'background-tasks-updated payload')
+  return { conversation_id: stringValue(event.conversation_id, 'background-tasks-updated payload.conversation_id') }
 }
 
 export function parseCompactStartEvent(value: unknown): CompactStartEvent {
@@ -423,6 +435,8 @@ export function parseAppEventPayload(channel: string, value: unknown): unknown {
       return parseConversationUpdatedEvent(value)
     case 'queue-updated':
       return parseQueueUpdatedEvent(value)
+    case 'background-tasks-updated':
+      return parseBackgroundTasksUpdatedEvent(value)
     case 'compact-start':
       return parseCompactStartEvent(value)
     case 'compact-done':
