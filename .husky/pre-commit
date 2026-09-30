@@ -41,3 +41,18 @@ fi
 if git diff --cached --name-only | grep -qE '^(package\.json|pnpm-lock\.yaml|src-tauri/Cargo\.(toml|lock))$'; then
   node scripts/check-tauri-versions.mjs
 fi
+
+# GitHub Actions 的 workflow 在推上去之前没有任何东西会执行它，写错了要等到
+# 触发那一刻才知道——发版流程一年跑几次，错一次就是一次发版。actionlint 检查
+# 语法、表达式和上下文属性；读的是暂存区的版本，和上面几项一样。
+# 它查不出语义上的坑：`inputs.android != false` 在 tag push 时 inputs 为空，
+# null 与 false 都被转成 0，结果为假，Android 构建因此被跳过了两个版本。
+if git diff --cached --name-only | grep -qE '^\.github/workflows/.*\.ya?ml$'; then
+  if ! command -v actionlint >/dev/null 2>&1; then
+    echo "actionlint 未安装:winget install rhysd.actionlint(其他平台见 https://github.com/rhysd/actionlint)" >&2
+    exit 1
+  fi
+  for f in $(git diff --cached --name-only --diff-filter=ACMR | grep -E '^\.github/workflows/.*\.ya?ml$'); do
+    git show ":$f" | actionlint -stdin-filename "$f" - || exit 1
+  done
+fi
