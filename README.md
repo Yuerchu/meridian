@@ -17,7 +17,9 @@
   <a href="https://github.com/Yuerchu/meridian-core">
     <img src="https://img.shields.io/badge/core-Apache--2.0-green" alt="Core License">
   </a>
-  <img src="https://img.shields.io/badge/version-0.3.0-orange" alt="Version">
+  <a href="https://github.com/Yuerchu/meridian/releases/latest">
+    <img src="https://img.shields.io/github/v/release/Yuerchu/meridian?label=version&color=orange" alt="Version">
+  </a>
 </p>
 
 ---
