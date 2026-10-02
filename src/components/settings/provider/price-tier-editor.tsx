@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Input, Label, TextField, Tooltip, TooltipTrigger } from '@/components/base'
 import { Bin, Plus } from '@keyline-icons/react/two-tone'
@@ -24,6 +25,25 @@ export function PriceTierEditor({
   const patch = (index: number, field: keyof TierDraft, value: string) =>
     onChange(tiers.map((tier, i) => (i === index ? { ...tier, [field]: value } : tier)))
 
+  // A key per tier that survives the tiers before it being removed. The index
+  // was the key, so deleting a tier gave its card's element to the next one —
+  // focus stayed on the delete button, which now deleted a different tier.
+  // Not the tier object: every keystroke makes a new one, and a key that moved
+  // with it would remount the field being typed in. So the keys follow the
+  // adds and removes made here, and start over when the list is replaced from
+  // outside (a reload, a reset) with a different length.
+  const keys = useRef<number[]>([])
+  const lastKey = useRef(0)
+  if (keys.current.length !== tiers.length) keys.current = tiers.map(() => ++lastKey.current)
+  const remove = (index: number) => {
+    keys.current = keys.current.filter((_, i) => i !== index)
+    onChange(tiers.filter((_, i) => i !== index))
+  }
+  const add = () => {
+    keys.current = [...keys.current, ++lastKey.current]
+    onChange([...tiers, { ...BLANK_TIER }])
+  }
+
   return (
     <div data-slot="price-tiers" className="space-y-2">
       <p data-slot="price-tiers-hint" className="text-caption-1-regular text-text-secondary">
@@ -31,7 +51,7 @@ export function PriceTierEditor({
       </p>
       {tiers.map((tier, index) => (
         <div
-          key={index}
+          key={keys.current[index]}
           data-slot="price-tier"
           className="rounded-lg border border-border-button-default p-2 space-y-2"
         >
@@ -55,7 +75,7 @@ export function PriceTierEditor({
                 variant="neutral"
                 aria-label={t('settings.model.removeTier')}
                 className="touch-hitbox hover:text-status-danger"
-                onPress={() => onChange(tiers.filter((_, i) => i !== index))}
+                onPress={() => remove(index)}
               />
               <Tooltip>{t('settings.model.removeTier')}</Tooltip>
             </TooltipTrigger>
@@ -111,7 +131,7 @@ export function PriceTierEditor({
         size="small"
         variant="secondary"
         className="h-7 pointer-coarse:h-10 rounded-md text-caption-1-regular"
-        onPress={() => onChange([...tiers, { ...BLANK_TIER }])}
+        onPress={add}
       >
         {t('settings.model.addTier')}
       </Button>
