@@ -138,6 +138,21 @@ describe('composer cut', () => {
     expect(onChange).not.toHaveBeenCalled()
   })
 
+  // The refusal used to share the composer's error slot, which only the
+  // dismiss button cleared: after a retry worked it still said the cut failed.
+  it('takes the refusal away once a retry succeeds', async () => {
+    const user = userEvent.setup()
+    stubClipboard(vi.fn().mockRejectedValueOnce(new Error('Document is not focused.')).mockResolvedValue(undefined))
+    renderBar({ value: 'hello world', onChange: vi.fn() })
+
+    await cutWorld(user)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Document is not focused.')
+
+    vi.restoreAllMocks()
+    await cutWorld(user)
+    await vi.waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+  })
+
   it('removes the text once the clipboard has it', async () => {
     const user = userEvent.setup()
     const writeText = vi.fn().mockResolvedValue(undefined)
