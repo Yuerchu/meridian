@@ -26,6 +26,7 @@ import {
 import { cx } from '@/utils/cx'
 import { useFilePreview, type FilePreviewContextValue } from './file-preview-context'
 import { ShikiCode } from './shiki-code'
+import { MermaidFence } from './mermaid-fence'
 import { InlineSticker, type EmojiMap } from './emoji-renderer'
 
 const MarkdownStreamingContext = React.createContext(false)
@@ -207,6 +208,8 @@ const CodeBlock: Components['code'] = ({ className, children, node, ...props }) 
   const language = fenceLanguage(className)
   const code = String(children ?? '').replace(/\n$/, '')
   const icon = languageIconUrl(language)
+
+  if (language === 'mermaid' && !isStreaming) return <MermaidFence code={code} icon={icon} />
 
   return (
     // The old library's classes without its components: importing `CodeBlock`
