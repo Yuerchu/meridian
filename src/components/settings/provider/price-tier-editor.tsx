@@ -1,8 +1,7 @@
-import { useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Input, Label, TextField, Tooltip, TooltipTrigger } from '@/components/base'
 import { Bin, Plus } from '@keyline-icons/react/two-tone'
-import { BLANK_TIER, type TierDraft } from './pricing'
+import { blankTier, type TierDraft } from './pricing'
 
 /**
  * The rates that take over above a prompt size.
@@ -22,27 +21,14 @@ export function PriceTierEditor({
   namePrefix?: string
 }) {
   const { t } = useTranslation()
-  const patch = (index: number, field: keyof TierDraft, value: string) =>
+  const patch = (index: number, field: Exclude<keyof TierDraft, 'id'>, value: string) =>
     onChange(tiers.map((tier, i) => (i === index ? { ...tier, [field]: value } : tier)))
 
-  // A key per tier that survives the tiers before it being removed. The index
-  // was the key, so deleting a tier gave its card's element to the next one —
-  // focus stayed on the delete button, which now deleted a different tier.
-  // Not the tier object: every keystroke makes a new one, and a key that moved
-  // with it would remount the field being typed in. So the keys follow the
-  // adds and removes made here, and start over when the list is replaced from
-  // outside (a reload, a reset) with a different length.
-  const keys = useRef<number[]>([])
-  const lastKey = useRef(0)
-  if (keys.current.length !== tiers.length) keys.current = tiers.map(() => ++lastKey.current)
-  const remove = (index: number) => {
-    keys.current = keys.current.filter((_, i) => i !== index)
-    onChange(tiers.filter((_, i) => i !== index))
-  }
-  const add = () => {
-    keys.current = [...keys.current, ++lastKey.current]
-    onChange([...tiers, { ...BLANK_TIER }])
-  }
+  // Keyed by the tier's own id: by index, deleting a tier gave its card's
+  // element to the next one, with focus still on the delete button — which
+  // then deleted the tier that had been second.
+  const remove = (index: number) => onChange(tiers.filter((_, i) => i !== index))
+  const add = () => onChange([...tiers, blankTier()])
 
   return (
     <div data-slot="price-tiers" className="space-y-2">
@@ -51,7 +37,7 @@ export function PriceTierEditor({
       </p>
       {tiers.map((tier, index) => (
         <div
-          key={keys.current[index]}
+          key={tier.id}
           data-slot="price-tier"
           className="rounded-lg border border-border-button-default p-2 space-y-2"
         >

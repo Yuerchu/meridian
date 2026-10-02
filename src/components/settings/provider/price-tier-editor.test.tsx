@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 
 import i18n from '@/i18n'
 import { PriceTierEditor } from './price-tier-editor'
-import { BLANK_TIER, type TierDraft } from './pricing'
+import { blankTier, type TierDraft } from './pricing'
 
 function Editor({ initial }: { initial: TierDraft[] }) {
   const [tiers, setTiers] = useState(initial)
@@ -29,8 +29,8 @@ describe('PriceTierEditor', () => {
     render(
       <Editor
         initial={[
-          { ...BLANK_TIER, threshold: '100' },
-          { ...BLANK_TIER, threshold: '200' },
+          { ...blankTier(), threshold: '100' },
+          { ...blankTier(), threshold: '200' },
         ]}
       />,
     )
@@ -45,7 +45,7 @@ describe('PriceTierEditor', () => {
 
   it('keeps the field being typed in', async () => {
     const user = userEvent.setup()
-    render(<Editor initial={[{ ...BLANK_TIER, threshold: '1' }]} />)
+    render(<Editor initial={[{ ...blankTier(), threshold: '1' }]} />)
 
     await user.click(screen.getByDisplayValue('1'))
     await user.keyboard('23')
