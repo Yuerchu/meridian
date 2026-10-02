@@ -23,6 +23,7 @@ import { FileInput, type FileInputHandle } from '@/components/ui/file-input'
 import { VoiceButton } from '@/components/ui/voice-button'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import { errorMessage } from '@/lib/error-message'
+import { objectKey } from '@/lib/object-key'
 import { Composer } from './composer'
 import { ComposerSuggestions, type ComposerSuggestion } from './composer-suggestions'
 import { VoiceOverlay } from './voice-overlay'
@@ -418,22 +419,7 @@ export function InputBar({
   // Filled by Composer once the field exists: PromptInput.TextArea spreads
   // incoming props after its own ref, so one passed down would displace theirs.
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
-  // A key per attachment, by identity. The index was the key, so removing one
-  // handed every chip after it the previous chip's element: each thumbnail was
-  // torn down and fetched again, and focus on a remove button moved to a
-  // different file. Nothing about an attachment is unique — the same file can
-  // be attached twice — but the object is, for as long as the list holds it.
-  const attachmentKeys = useRef(new WeakMap<AttachedFile, number>())
   const attachmentRow = useHorizontalWheel<HTMLDivElement>()
-  const nextAttachmentKey = useRef(0)
-  const attachmentKey = (file: AttachedFile) => {
-    let key = attachmentKeys.current.get(file)
-    if (key === undefined) {
-      key = ++nextAttachmentKey.current
-      attachmentKeys.current.set(file, key)
-    }
-    return key
-  }
   const suggestionsId = useId()
   const [selectedText, setSelectedText] = useState('')
 
@@ -905,7 +891,7 @@ export function InputBar({
                         // there is nothing addressable to point an `<img>` at —
                         // the icon the extension implies is the honest answer.
                         <ChatAttachment
-                          key={attachmentKey(f)}
+                          key={objectKey(f)}
                           name={f.name}
                           src={f.path && !f.missing ? localPreviewSrc(f.path, f.name) : undefined}
                         >
