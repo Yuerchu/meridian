@@ -44,6 +44,7 @@ import type {
   QueueDelivery,
   ThinkingLevel,
 } from '@/types'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * One file the composer is holding, named either by a path on the machine that
@@ -235,7 +236,7 @@ function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAc
           isDisabled={busy}
           className="h-8 max-w-56 gap-1 rounded-lg px-2 text-body-regular"
         >
-          <span data-slot="agent-options-summary" className="truncate">
+          <span data-slot="agent-options-summary" onPointerEnter={titleIfTruncated} className="truncate">
             {summary.length > 0 ? summary.join(' · ') : t('chat.agentOptions')}
           </span>
         </Button>
@@ -273,7 +274,11 @@ function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAc
               >
                 {option.options.map((v) => (
                   <ListBox.Item key={v.value} id={v.value} textValue={knobValueName(t, option, v)}>
-                    <span data-slot="agent-knob-value" className="min-w-0 flex-1 truncate text-body-regular">
+                    <span
+                      data-slot="agent-knob-value"
+                      onPointerEnter={titleIfTruncated}
+                      className="min-w-0 flex-1 truncate text-body-regular"
+                    >
                       {knobValueName(t, option, v)}
                     </span>
                     <ListBox.ItemIndicator />
@@ -903,6 +908,7 @@ export function InputBar({
                             <ChatAttachment.Info>
                               <span
                                 data-slot="chat-attachment-name"
+                                onPointerEnter={titleIfTruncated}
                                 className="block truncate text-body-2-medium text-text-primary"
                               >
                                 {f.name}

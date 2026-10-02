@@ -6,6 +6,7 @@ import { Button, Checkbox, Disclosure, TextArea, Tooltip, TooltipTrigger } from 
 import type { MemoryInfoResponse } from '@/types'
 import { SettingsTag } from '../primitives'
 import { memoryOriginLabel, memoryScopeLabel, memoryTypeLabel } from './labels'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * `--info` is a project extension: Chip has no `info` colour, so the property
@@ -101,7 +102,11 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
                 <span data-slot="memory-row-scope">
                   {memoryScopeLabel(t, memory.scope_type)} · {memoryOriginLabel(t, memory.origin)}
                 </span>
-                <span data-slot="memory-row-key" className="min-w-0 truncate font-mono text-text-secondary">
+                <span
+                  data-slot="memory-row-key"
+                  onPointerEnter={titleIfTruncated}
+                  className="min-w-0 truncate font-mono text-text-secondary"
+                >
                   {memory.key}
                 </span>
               </span>
@@ -148,6 +153,7 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
             {memory.source_session_id && (
               <span
                 data-slot="memory-row-source"
+                onPointerEnter={titleIfTruncated}
                 className="min-w-0 truncate text-caption-1-regular text-text-secondary"
               >
                 {t('settings.memory.sourceChat')}:{' '}

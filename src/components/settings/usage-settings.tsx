@@ -27,6 +27,7 @@ import { cx } from '@/utils/cx'
 import { Hint } from '@/components/ui/hint'
 import { SettingsHeader, SettingsPane } from './primitives'
 import type { UsageBucketInfoResponse, UsageDimension, UsageReportRequest } from '@/types'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * What the assistant has cost, out of the audit log.
@@ -1042,7 +1043,11 @@ function BucketTable({
         cell: (row) =>
           row.conversationCount > 1 ? (
             <span data-slot="usage-row-label-group" className="block min-w-0">
-              <span data-slot="usage-row-label" className="block truncate text-body-regular">
+              <span
+                data-slot="usage-row-label"
+                onPointerEnter={titleIfTruncated}
+                className="block truncate text-body-regular"
+              >
                 {row.displayLabel}
               </span>
               <span

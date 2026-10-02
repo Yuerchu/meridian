@@ -5,6 +5,7 @@ import { fileIconUrl } from '@/lib/file-icon'
 import { COMPOSER_COMMANDS } from '@/lib/composer-commands'
 import { cx } from '@/utils/cx'
 import { suggestionOptionId } from '@/hooks/use-composer-typeahead'
+import { titleIfTruncated } from '@/lib/truncation'
 
 const COMMAND_LABEL_WIDTH = Math.max(...COMPOSER_COMMANDS.map((command) => command.name.length + 1))
 const COMMAND_ROW_STYLE = {
@@ -112,6 +113,7 @@ export function ComposerSuggestions({
                 )}
                 <span
                   data-slot="composer-suggestion-label"
+                  onPointerEnter={titleIfTruncated}
                   className={cx('min-w-0 truncate text-left text-body-medium', item.kind !== 'command' && 'flex-1')}
                 >
                   {item.label}
@@ -119,6 +121,7 @@ export function ComposerSuggestions({
                 {item.detail && (
                   <span
                     data-slot="composer-suggestion-detail"
+                    onPointerEnter={titleIfTruncated}
                     className={cx(
                       'min-w-0 truncate text-left text-caption-1-regular text-text-secondary',
                       item.kind !== 'command' && 'max-w-1/2',

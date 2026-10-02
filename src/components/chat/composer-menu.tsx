@@ -47,6 +47,7 @@ import type {
   ThinkingEffort,
   ThinkingLevel,
 } from '@/types'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * Everything the composer can configure, behind one `+`.
@@ -135,12 +136,17 @@ function RowContent({
   return (
     <>
       <Icon aria-hidden className={cx('size-4 shrink-0', tone && tone !== 'muted' ? toneText(tone) : undefined)} />
-      <span data-slot="composer-menu-item-label" className="min-w-0 flex-1 truncate text-body-medium">
+      <span
+        data-slot="composer-menu-item-label"
+        onPointerEnter={titleIfTruncated}
+        className="min-w-0 flex-1 truncate text-body-medium"
+      >
         {label}
       </span>
       {value && (
         <span
           data-slot="composer-menu-item-value"
+          onPointerEnter={titleIfTruncated}
           className={cx('max-w-24 truncate text-caption-1-regular', toneText(tone))}
         >
           {value}
@@ -198,12 +204,17 @@ function ValueSubmenu({
           </span>
         )}
         <span data-slot="composer-menu-detail-text" className="min-w-0 flex-1">
-          <span data-slot="composer-menu-detail-label" className="block truncate text-body-medium">
+          <span
+            data-slot="composer-menu-detail-label"
+            onPointerEnter={titleIfTruncated}
+            className="block truncate text-body-medium"
+          >
             {option.label}
           </span>
           {option.description && (
             <span
               data-slot="composer-menu-detail-description"
+              onPointerEnter={titleIfTruncated}
               className="block truncate text-caption-1-regular text-text-secondary"
             >
               {option.description}

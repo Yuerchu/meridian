@@ -21,6 +21,7 @@ import type { VoiceCorpusDeleteResponse, VoiceCorpusSessionInfoResponse } from '
 import { can } from '@/lib/capabilities'
 import { SettingsHeader, SettingsPane } from './primitives'
 import { useConfirm } from '@/hooks/use-confirm'
+import { titleIfTruncated } from '@/lib/truncation'
 
 function formatSize(bytes: number, number: Intl.NumberFormat): string {
   if (bytes < 1024 * 1024) return `${number.format(bytes / 1024)} KB`
@@ -159,7 +160,7 @@ export function VoiceCorpusSettings() {
               {index > 0 && <Separator />}
               <ItemCard>
                 <ItemCard.Content className="min-w-0">
-                  <ItemCard.Title className="w-full truncate font-mono">
+                  <ItemCard.Title className="w-full truncate font-mono" onPointerEnter={titleIfTruncated}>
                     {t(`settings.voiceCorpus.kind.${session.kind}`)} · {session.handle}
                   </ItemCard.Title>
                   <ItemCard.Description className="w-full whitespace-normal">

@@ -8,6 +8,7 @@ import { useTurns } from '@/hooks/use-turns'
 import { ChatTranscript } from './chat-transcript'
 import { SubAgentSheetContext, type SubAgentSheetRequest } from './sub-agent-sheet-context'
 import type { MessageViewModel } from '@/types'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * A delegated run's own conversation, beside the transcript that started it.
@@ -76,7 +77,9 @@ function SubAgentSheet({ request, onClose }: { request: SubAgentSheetRequest; on
         <Sheet.Content className="w-full sm:max-w-2xl">
           <Sheet.Dialog className="flex h-full min-h-0 flex-col">
             <Sheet.Header className="pe-14">
-              <Sheet.Heading className="truncate">{request.title}</Sheet.Heading>
+              <Sheet.Heading className="truncate" onPointerEnter={titleIfTruncated}>
+                {request.title}
+              </Sheet.Heading>
               <p data-slot="sub-agent-sheet-kind" className="mt-1 text-caption-1-regular text-text-secondary">
                 {t(`chat.subAgent.${request.kind}`)}
               </p>

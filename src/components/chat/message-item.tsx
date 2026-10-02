@@ -57,6 +57,7 @@ import type { SenderNames } from '@/hooks/use-sender-names'
 import type { EmojiMap } from './emoji-renderer'
 import { TurnInfo } from './turn-info'
 import { ShellCommandBubble } from './shell-command-bubble'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * Who is speaking: the assistant's own picture when it has one, otherwise the
@@ -150,7 +151,11 @@ function QuotedMessageBlock({ sender, content }: { sender: string; content: stri
       <span data-slot="quoted-message-sender" className="text-caption-1-medium">
         {sender}
       </span>
-      <p data-slot="quoted-message-content" className="mt-0.5 line-clamp-3 whitespace-pre-wrap">
+      <p
+        data-slot="quoted-message-content"
+        onPointerEnter={titleIfTruncated}
+        className="mt-0.5 line-clamp-3 whitespace-pre-wrap"
+      >
         {content}
       </p>
     </div>

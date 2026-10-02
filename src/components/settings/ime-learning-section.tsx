@@ -17,6 +17,7 @@ import { Bin } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import type { ImeLearnedWordInfoResponse, ImeLearningInfoResponse } from '@/types'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /** Rows drawn at once; the search narrows the rest. */
 const SHOWN = 100
@@ -138,7 +139,7 @@ export function ImeLearningSection() {
                   <ItemCard>
                     <ItemCard.Content className="min-w-0">
                       <ItemCard.Title className="flex w-full items-center gap-2">
-                        <span data-slot="ime-learned-word" className="truncate">
+                        <span data-slot="ime-learned-word" onPointerEnter={titleIfTruncated} className="truncate">
                           {word.text}
                         </span>
                         {word.user_word && (

@@ -14,6 +14,7 @@ import { cx } from '@/utils/cx'
 import { AskUserBlock, PendingApproval, identifyingArg, toolLabel } from './tool-call-block'
 import { useSubAgentSheet } from './sub-agent-sheet-context'
 import type { MessageViewModel, ToolCallDisplay } from '@/types'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * The delegations a bubble made, as one group: a row per run.
@@ -402,7 +403,11 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
                   {t(`chat.subAgent.${row.delegation.kind}`)}
                 </span>
                 <span data-slot="sub-agent-row-body" className="min-w-0">
-                  <span data-slot="sub-agent-row-title" className="block truncate text-body-regular text-text-primary">
+                  <span
+                    data-slot="sub-agent-row-title"
+                    onPointerEnter={titleIfTruncated}
+                    className="block truncate text-body-regular text-text-primary"
+                  >
                     {row.delegation.description}
                   </span>
                   <SubAgentRowLine row={row} state={state} />

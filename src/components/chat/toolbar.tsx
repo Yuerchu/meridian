@@ -36,6 +36,7 @@ import type {
   ThinkingEffort,
   ThinkingLevel,
 } from '@/types'
+import { titleIfTruncated } from '@/lib/truncation'
 
 interface ToolbarProps {
   assistants: AssistantInfoResponse[]
@@ -271,7 +272,11 @@ export function MobileOptionsMenu({
                         mode === 'work' ? 'text-text-secondary' : 'text-status-info-soft-foreground',
                       )}
                     />
-                    <span data-slot="mobile-options-mode-label" className="min-w-0 flex-1 truncate">
+                    <span
+                      data-slot="mobile-options-mode-label"
+                      onPointerEnter={titleIfTruncated}
+                      className="min-w-0 flex-1 truncate"
+                    >
                       {t('toolbar.mode')}: {t(activeMode.labelKey)}
                     </span>
                     <ChevronRight aria-hidden className="size-4 shrink-0 text-text-secondary" />
@@ -282,7 +287,11 @@ export function MobileOptionsMenu({
                     onAction={() => setPanel('assistant')}
                   >
                     <Bot aria-hidden className="size-4 shrink-0 text-text-secondary" />
-                    <span data-slot="mobile-options-assistant-name" className="min-w-0 flex-1 truncate">
+                    <span
+                      data-slot="mobile-options-assistant-name"
+                      onPointerEnter={titleIfTruncated}
+                      className="min-w-0 flex-1 truncate"
+                    >
                       {currentAssistant?.name ?? t('toolbar.noAssistant')}
                     </span>
                     <ChevronRight aria-hidden className="size-4 shrink-0 text-text-secondary" />
@@ -297,7 +306,11 @@ export function MobileOptionsMenu({
                     ) : (
                       <Cpu aria-hidden className="size-4 shrink-0 text-text-secondary" />
                     )}
-                    <span data-slot="mobile-options-model-name" className="min-w-0 flex-1 truncate">
+                    <span
+                      data-slot="mobile-options-model-name"
+                      onPointerEnter={titleIfTruncated}
+                      className="min-w-0 flex-1 truncate"
+                    >
                       {currentModelId ?? t('toolbar.selectModel')}
                     </span>
                     <ChevronRight aria-hidden className="size-4 shrink-0 text-text-secondary" />
@@ -425,7 +438,11 @@ export function MobileOptionsMenu({
                             className="size-3.5 shrink-0 text-amber-500"
                           />
                         )}
-                        <span data-slot="toolbar-assistant-name" className="min-w-0 flex-1 truncate">
+                        <span
+                          data-slot="toolbar-assistant-name"
+                          onPointerEnter={titleIfTruncated}
+                          className="min-w-0 flex-1 truncate"
+                        >
                           {a.name}
                         </span>
                         {a.id === currentAssistantId && (
@@ -534,7 +551,11 @@ export function MobileOptionsMenu({
                               }}
                             >
                               <ModelIcon model={m.id} size={16} className="shrink-0" />
-                              <span data-slot="toolbar-model-name" className="min-w-0 flex-1 truncate">
+                              <span
+                                data-slot="toolbar-model-name"
+                                onPointerEnter={titleIfTruncated}
+                                className="min-w-0 flex-1 truncate"
+                              >
                                 {m.name}
                               </span>
                               {m.id === currentModelId && g.provider.id === currentProviderId && (

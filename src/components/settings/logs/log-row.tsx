@@ -6,6 +6,7 @@ import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { cx } from '@/utils/cx'
 import type { LogEntryInfoResponse } from '@/types'
 import { LogLevelBadge } from './log-level-badge'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /** Renders a field value without the quotes JSON would add around a string. */
 function renderValue(value: unknown): string {
@@ -77,7 +78,11 @@ function LogRowImpl({ entry }: { entry: LogEntryInfoResponse }) {
       <div data-slot="log-row-body" className="min-w-0 space-y-1">
         <div data-slot="log-row-meta" className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <LogLevelBadge level={entry.level} />
-          <span data-slot="log-row-target" className="truncate font-mono text-caption-1-regular text-text-secondary">
+          <span
+            data-slot="log-row-target"
+            onPointerEnter={titleIfTruncated}
+            className="truncate font-mono text-caption-1-regular text-text-secondary"
+          >
             {entry.target}
           </span>
         </div>

@@ -85,6 +85,7 @@ import { useConversationStore } from '@/stores/conversation-store'
 import { planReviewStatusOfTool } from '@/lib/plan-review-status'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
 import type { ApprovalEscalation, ApprovalRetryKind, AutoReviewVerdictInfoResponse, ToolCallDisplay } from '@/types'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * A field inside a card or a bubble block. A card is `background-primary`,
@@ -974,7 +975,11 @@ function DirectoryResult({ result }: { result: string }) {
           ) : (
             <FileIcon path={entry.name} />
           )}
-          <span data-slot="directory-entry-name" className="min-w-0 flex-1 truncate font-mono text-text-primary">
+          <span
+            data-slot="directory-entry-name"
+            onPointerEnter={titleIfTruncated}
+            className="min-w-0 flex-1 truncate font-mono text-text-primary"
+          >
             {entry.name}
           </span>
           {entry.size !== null && (
@@ -1182,7 +1187,11 @@ function ArgsMeta({ entries }: { entries: [string, unknown][] }) {
           <span data-slot="tool-args-meta-label" className="shrink-0">
             {fieldLabel(t, key)}
           </span>
-          <span data-slot="tool-args-meta-value" className="min-w-0 truncate font-mono text-text-primary/80">
+          <span
+            data-slot="tool-args-meta-value"
+            onPointerEnter={titleIfTruncated}
+            className="min-w-0 truncate font-mono text-text-primary/80"
+          >
             {typeof value === 'string' ? value : <ToolValue value={value} />}
           </span>
         </span>
@@ -1546,7 +1555,11 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
             {t('chat.tool.name.web_search')}
           </span>
           {query && (
-            <span data-slot="web-search-query" className="text-text-secondary truncate">
+            <span
+              data-slot="web-search-query"
+              onPointerEnter={titleIfTruncated}
+              className="text-text-secondary truncate"
+            >
               {query}
             </span>
           )}
@@ -1581,7 +1594,11 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
             {t('chat.tool.name.web_search')}
           </span>
           {query && (
-            <span data-slot="web-search-query" className="text-text-secondary truncate">
+            <span
+              data-slot="web-search-query"
+              onPointerEnter={titleIfTruncated}
+              className="text-text-secondary truncate"
+            >
               {query}
             </span>
           )}
@@ -1602,7 +1619,11 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
         <Spinner size="sm" color="current" />
         <span data-slot="web-search-searching-text">{t('chat.tool.webSearch.searching')}</span>
         {query && (
-          <span data-slot="web-search-query" className="text-text-primary truncate max-w-60">
+          <span
+            data-slot="web-search-query"
+            onPointerEnter={titleIfTruncated}
+            className="text-text-primary truncate max-w-60"
+          >
             {query}
           </span>
         )}
@@ -1645,7 +1666,7 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
         <Globe className="w-3.5 h-3.5" />
         <span data-slot="web-search-empty-text">{t('chat.tool.webSearch.noResults')}</span>
         {query && (
-          <span data-slot="web-search-query" className="truncate max-w-60">
+          <span data-slot="web-search-query" onPointerEnter={titleIfTruncated} className="truncate max-w-60">
             {query}
           </span>
         )}
@@ -2050,7 +2071,11 @@ function TodoListBlock({ data, title, todos }: { data: ToolCallDisplay; title: s
         }
       >
         <ListCheck aria-hidden className="size-3.5 shrink-0 text-text-secondary" />
-        <span data-slot="todo-title" className="truncate text-caption-1-medium text-text-primary">
+        <span
+          data-slot="todo-title"
+          onPointerEnter={titleIfTruncated}
+          className="truncate text-caption-1-medium text-text-primary"
+        >
           {title}
         </span>
       </ChatToolTrigger>

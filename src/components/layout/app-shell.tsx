@@ -25,6 +25,7 @@ import { CommandPalette } from './command-palette'
 import { NotificationInbox } from './notification-inbox'
 import { RemoteStatus } from './remote-status'
 import type { ShellProps } from './shell-props'
+import { titleIfTruncated } from '@/lib/truncation'
 
 const SettingsPage = lazy(() => import('@/components/settings'))
 const PlanReviewPage = lazy(() =>
@@ -290,6 +291,7 @@ export function AppShell(props: ShellProps) {
             </TooltipTrigger>
             <h1
               data-slot="app-title"
+              onPointerEnter={titleIfTruncated}
               ref={pageHeadingRef}
               tabIndex={-1}
               className="truncate rounded-sm text-body-medium outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring/50"

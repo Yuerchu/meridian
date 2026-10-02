@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { cx } from '@/utils/cx'
 import { fieldLabel, isInlineValue, parseStructured } from '@/lib/tool-value'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * A value of a shape nobody told us about, drawn as something to look at.
@@ -254,7 +255,11 @@ function McpContent({ parts }: { parts: McpPart[] }) {
         return (
           <div key={i} data-slot="tool-value-resource" className="flex min-w-0 flex-col gap-1">
             {part.resource.uri && (
-              <span data-slot="tool-value-resource-uri" className="truncate font-mono text-text-secondary">
+              <span
+                data-slot="tool-value-resource-uri"
+                onPointerEnter={titleIfTruncated}
+                className="truncate font-mono text-text-secondary"
+              >
                 {part.resource.uri}
               </span>
             )}

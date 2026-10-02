@@ -35,6 +35,7 @@ import type {
 } from '@/types'
 import { SettingsDrilldown } from './settings-drilldown'
 import { useSettingsDirtyRegistration } from './dirty-guard'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /** An assistant's window override as the field shows it: `0` is "none", so the
  *  field is blank and the model's own window applies — not the digit zero. */
@@ -359,7 +360,7 @@ function AssistantEditor({
                     setSelectedTools(next)
                   }}
                 >
-                  <span data-slot="tool-name" className="truncate font-mono">
+                  <span data-slot="tool-name" onPointerEnter={titleIfTruncated} className="truncate font-mono">
                     {tool.name}
                   </span>
                   {tool.source === 'mcp' && (
@@ -401,7 +402,7 @@ function AssistantEditor({
                   }
                 }}
               >
-                <span data-slot="emoji-pack-name" className="truncate">
+                <span data-slot="emoji-pack-name" onPointerEnter={titleIfTruncated} className="truncate">
                   {pack.name}
                 </span>
               </Checkbox>
@@ -448,7 +449,7 @@ function AssistantEditor({
                     }
                   }}
                 >
-                  <span data-slot="skill-name" className="truncate">
+                  <span data-slot="skill-name" onPointerEnter={titleIfTruncated} className="truncate">
                     {skill.display_name}
                   </span>
                 </Checkbox>
@@ -633,7 +634,11 @@ export function AssistantSettings() {
                     which only means something inside a flex container.
                     `text-start` undoes the button element's centred UA default. */}
                 <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-body-regular transition-colors outline-none hover:bg-background-primary-hover/30 focus-visible:bg-background-secondary-default/30">
-                  <span data-slot="assistant-row-name" className="min-w-0 flex-1 truncate">
+                  <span
+                    data-slot="assistant-row-name"
+                    onPointerEnter={titleIfTruncated}
+                    className="min-w-0 flex-1 truncate"
+                  >
                     {a.name}
                   </span>
                   {isDefault && (
@@ -653,6 +658,7 @@ export function AssistantSettings() {
                   {providerName && (
                     <span
                       data-slot="assistant-row-provider"
+                      onPointerEnter={titleIfTruncated}
                       className="min-w-0 truncate text-caption-1-regular text-text-secondary"
                     >
                       {providerName}
@@ -661,6 +667,7 @@ export function AssistantSettings() {
                   {a.model_id && (
                     <span
                       data-slot="assistant-row-model"
+                      onPointerEnter={titleIfTruncated}
                       className="min-w-0 truncate text-caption-1-regular text-text-secondary"
                     >
                       {a.model_id}

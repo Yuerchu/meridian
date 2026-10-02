@@ -12,6 +12,7 @@ import { SettingsPage } from '../settings-page'
 import { useSettingsDraft, type SettingsStack } from '../settings-stack'
 import { KeyValueEditor } from './key-value-editor'
 import { KeyValueError, pairsFromRecord, pairsSignature, recordFromPairs, type KeyValuePair } from './key-value'
+import { titleIfTruncated } from '@/lib/truncation'
 
 type ConfirmFn = SettingsStack<unknown>['confirm']
 
@@ -468,11 +469,19 @@ function McpServerEditor({
               data-slot="mcp-tool-row"
               className="flex w-full flex-col border-b border-separator-border py-2.5 pr-2.5 last:border-b-0"
             >
-              <p data-slot="mcp-tool-name" className="truncate font-mono text-body-medium text-text-primary">
+              <p
+                data-slot="mcp-tool-name"
+                onPointerEnter={titleIfTruncated}
+                className="truncate font-mono text-body-medium text-text-primary"
+              >
                 {tool.name}
               </p>
               {tool.description && (
-                <p data-slot="mcp-tool-description" className="line-clamp-2 text-body-2-regular text-text-secondary">
+                <p
+                  data-slot="mcp-tool-description"
+                  onPointerEnter={titleIfTruncated}
+                  className="line-clamp-2 text-body-2-regular text-text-secondary"
+                >
                   {tool.description}
                 </p>
               )}

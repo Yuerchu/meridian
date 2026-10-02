@@ -5,6 +5,7 @@ import { Message } from '@keyline-icons/react/two-tone'
 import type { ProjectInfoResponse } from '@/types'
 import { useHistoryLevel } from '@/hooks/use-history-level'
 import { ProjectIcon } from './project-icon'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * Where a conversation should live: a project, or none.
@@ -51,7 +52,7 @@ export function MoveDialog({
   const destination = (id: string | null, icon: React.ReactNode, label: string) => (
     <ListBox.Item key={id ?? NONE} id={id ?? NONE} textValue={label} className="gap-2 rounded-2lg p-2">
       {icon}
-      <span data-slot="move-dialog-destination-label" className="truncate">
+      <span data-slot="move-dialog-destination-label" onPointerEnter={titleIfTruncated} className="truncate">
         {label}
       </span>
       {id === currentProjectId && (

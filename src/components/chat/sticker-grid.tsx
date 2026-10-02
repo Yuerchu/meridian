@@ -4,6 +4,7 @@ import { ListBox, Skeleton } from '@/components/base'
 import { useStickerUrl } from '@/lib/sticker-urls'
 import { useStickerPlayback } from './sticker-playback'
 import { StickerPlaybackProvider, StickerThumb } from './sticker-thumb'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * Stickers are pictures, not glyphs: three to a row, four once the popover is
@@ -29,6 +30,7 @@ function StickerName({ name }: { name: string }) {
   return (
     <span
       data-slot="emoji-picker-name"
+      onPointerEnter={titleIfTruncated}
       className="line-clamp-2 text-center text-caption-1-regular leading-tight text-text-secondary"
     >
       {name}

@@ -6,6 +6,7 @@ import { CellSwitch } from '@/components/base'
 import { EmptyState } from '@/components/base'
 import { api } from '@/api'
 import type { SafRootListResponse } from '@/types'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * Android-only settings block: SAF directory grants + the
@@ -129,11 +130,16 @@ export function AndroidFileAccess() {
                 className="flex items-center justify-between rounded-md border px-2 py-1.5 text-caption-1-regular"
               >
                 <div data-slot="file-access-saf-root-text" className="min-w-0">
-                  <div data-slot="file-access-saf-root-name" className="truncate text-caption-1-medium">
+                  <div
+                    data-slot="file-access-saf-root-name"
+                    onPointerEnter={titleIfTruncated}
+                    className="truncate text-caption-1-medium"
+                  >
                     {root.display_name}
                   </div>
                   <div
                     data-slot="file-access-saf-root-prefix"
+                    onPointerEnter={titleIfTruncated}
                     className="truncate text-caption-1-regular text-text-secondary"
                   >
                     {root.virtual_prefix}
