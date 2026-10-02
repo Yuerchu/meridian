@@ -1081,21 +1081,30 @@ describe('TurnItem — what copy copies', () => {
 
   // The menu closes on the press, so it cannot show a refusal itself; one used
   // to go nowhere at all, as an unhandled rejection.
-  it('reports a copy the clipboard refused to the conversation, with the reason', async () => {
+  // Its own slot: `error` may hold a failed send, and a copy written over it
+  // took the more important reason off the screen.
+  it('reports a refused copy beside the conversation’s error, not over it, until a copy succeeds', async () => {
     const user = userEvent.setup()
     Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText: vi.fn().mockRejectedValue(new Error('Document is not focused.')) },
+      value: {
+        writeText: vi.fn().mockRejectedValueOnce(new Error('Document is not focused.')).mockResolvedValue(undefined),
+      },
       configurable: true,
     })
     useConversationStore.setState({ activeId: CONV })
+    useConversationStore.getState().setError(CONV, '401 Unauthorized')
     render(<TurnItem turn={steppedTurn()} conversationId={CONV} onDelete={vi.fn()} />)
+    const session = () => useConversationStore.getState().sessions[CONV]
 
     await user.pointer({ keys: '[MouseRight]', target: screen.getByText('清完了。') })
     await user.click(await screen.findByRole('menuitem', { name: 'Copy' }))
+    await waitFor(() => expect(session()?.clipboardError).toBe('Copy failed: Document is not focused.'))
+    expect(session()?.error).toBe('401 Unauthorized')
 
-    await waitFor(() =>
-      expect(useConversationStore.getState().sessions[CONV]?.error).toBe('Copy failed: Document is not focused.'),
-    )
+    await user.pointer({ keys: '[MouseRight]', target: screen.getByText('清完了。') })
+    await user.click(await screen.findByRole('menuitem', { name: 'Copy' }))
+    await waitFor(() => expect(session()?.clipboardError).toBeNull())
+    expect(session()?.error).toBe('401 Unauthorized')
   })
 
   it('gives the footer’s copy button the conclusion, not the whole run', async () => {

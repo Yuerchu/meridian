@@ -423,6 +423,10 @@ export function InputBar({
   // What went wrong in the composer itself — recording, a picker, the hosted
   // agent's knobs — kept until the reader dismisses it.
   const [composerError, setComposerError] = useState<string | null>(null)
+  // A refused cut, copy or paste. Its own slot so that the next one that
+  // succeeds can clear it without taking an unrelated composer error with it;
+  // in `composerError` a refusal stayed on screen after a retry had worked.
+  const [clipboardError, setClipboardError] = useState<string | null>(null)
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const showHint = useCallback((text: string) => {
     setVoiceNotice(text)
@@ -591,9 +595,10 @@ export function InputBar({
     try {
       await writeClipboard(before.slice(start, end))
     } catch (reason) {
-      setComposerError(t('common.cutFailed', { error: errorMessage(reason) }))
+      setClipboardError(t('common.cutFailed', { error: errorMessage(reason) }))
       return
     }
+    setClipboardError(null)
     if (el.value !== before) return
     onChange(before.slice(0, start) + before.slice(end))
     requestAnimationFrame(() => {
@@ -607,8 +612,9 @@ export function InputBar({
     if (!el) return
     const text = el.value.slice(el.selectionStart, el.selectionEnd)
     if (!text) return
-    writeClipboard(text).catch((reason: unknown) =>
-      setComposerError(t('common.copyFailed', { error: errorMessage(reason) })),
+    writeClipboard(text).then(
+      () => setClipboardError(null),
+      (reason: unknown) => setClipboardError(t('common.copyFailed', { error: errorMessage(reason) })),
     )
   }, [t])
 
@@ -619,9 +625,10 @@ export function InputBar({
     try {
       clip = await readClipboard()
     } catch (reason) {
-      setComposerError(t('common.pasteFailed', { error: errorMessage(reason) }))
+      setClipboardError(t('common.pasteFailed', { error: errorMessage(reason) }))
       return
     }
+    setClipboardError(null)
     const start = el.selectionStart
     const end = el.selectionEnd
     onChange(el.value.slice(0, start) + clip + el.value.slice(end))
@@ -844,7 +851,7 @@ export function InputBar({
             // Offline takes the line over: a disabled field with nothing to
             // say about why reads as the app having broken.
             notice={
-              offline || composerError || acp.error || voiceNotice ? (
+              offline || composerError || clipboardError || acp.error || voiceNotice ? (
                 <>
                   {offline && (
                     <p
@@ -861,6 +868,14 @@ export function InputBar({
                       className="mx-1 mb-1.5"
                       message={composerError}
                       onDismiss={() => setComposerError(null)}
+                    />
+                  )}
+                  {clipboardError && (
+                    <ErrorAlert
+                      data-slot="composer-clipboard-error"
+                      className="mx-1 mb-1.5"
+                      message={clipboardError}
+                      onDismiss={() => setClipboardError(null)}
                     />
                   )}
                   {acp.error && (

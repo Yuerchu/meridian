@@ -79,6 +79,7 @@ function ChatViewInner({
   const storeLoadMessages = useConversationStore((s) => s.loadMessages)
   const storeLoadActiveTodos = useConversationStore((s) => s.loadActiveTodos)
   const storeSetError = useConversationStore((s) => s.setError)
+  const storeSetClipboardError = useConversationStore((s) => s.setClipboardError)
   const storeSetCompacting = useConversationStore((s) => s.setCompacting)
   const storeBeginShellCommand = useConversationStore((s) => s.beginShellCommand)
   const storeAbortShellCommand = useConversationStore((s) => s.abortShellCommand)
@@ -962,6 +963,8 @@ function ChatViewInner({
                 compacting={compacting}
                 error={transcriptError}
                 onDismissError={() => storeSetError(conversationId, null)}
+                clipboardError={session?.clipboardError ?? null}
+                onDismissClipboardError={() => storeSetClipboardError(conversationId, null)}
                 loadError={loadError}
                 onRetryLoad={() => void storeLoadMessages(conversationId)}
                 todosError={todosError}

@@ -202,23 +202,25 @@ export interface UserMessageProps {
  */
 /**
  * Copy from a context menu, which closes on the press and so has nowhere to
- * say the copy was refused. The failure goes to the window's conversation —
- * the transcript status row under its last turn, where every other refused
- * action in the transcript is reported. Not the transcript's own: the
- * sub-agent sheet draws a delegated run's conversation, and that one has no
- * status row to show it in.
+ * say the copy was refused. The failure goes to the window's conversation, to
+ * a status row of its own under the last turn — not `error`, which may be
+ * holding a failed send that matters more — and the next copy that succeeds
+ * takes it away. The window's conversation rather than the transcript's own:
+ * the sub-agent sheet draws a delegated run's, which has no status row.
  */
 function useMenuCopy() {
   const { t } = useTranslation()
   const activeId = useConversationStore((s) => s.activeId)
-  const setError = useConversationStore((s) => s.setError)
+  const setClipboardError = useConversationStore((s) => s.setClipboardError)
   return useCallback(
     (text: string) => {
-      writeClipboard(text).catch((reason: unknown) => {
-        if (activeId) setError(activeId, t('common.copyFailed', { error: errorMessage(reason) }))
-      })
+      writeClipboard(text).then(
+        () => activeId && setClipboardError(activeId, null),
+        (reason: unknown) =>
+          activeId && setClipboardError(activeId, t('common.copyFailed', { error: errorMessage(reason) })),
+      )
     },
-    [activeId, setError, t],
+    [activeId, setClipboardError, t],
   )
 }
 
