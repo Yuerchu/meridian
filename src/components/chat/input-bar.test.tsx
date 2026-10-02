@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import i18n from '@/i18n'
 import type { VoiceNotice } from '@/hooks/use-voice-recorder'
+import type { ComponentProps } from 'react'
 import { InputBar } from './input-bar'
 
 const mocks = vi.hoisted(() => ({
@@ -33,7 +34,7 @@ vi.mock('@/hooks/use-android-voice-recorder', () => ({
 vi.mock('./emoji-picker', () => ({ EmojiPicker: () => null }))
 vi.mock('./composer-menu', () => ({ ComposerMenu: () => null }))
 
-function renderBar() {
+function renderBar(props: Partial<ComponentProps<typeof InputBar>> = {}) {
   return render(
     <InputBar
       conversationId={null}
@@ -55,6 +56,7 @@ function renderBar() {
       onSelectMode={vi.fn()}
       acceptEdits={false}
       onToggleAcceptEdits={vi.fn()}
+      {...props}
     />,
   )
 }
@@ -93,5 +95,49 @@ describe('composer notices', () => {
       vi.advanceTimersByTime(3_500)
     })
     expect(screen.queryByText(i18n.t('chat.voice.too_short'))).toBeNull()
+  })
+})
+
+/**
+ * Chips were keyed by index: removing the first gave the second the first's
+ * element, so its thumbnail reloaded and a focused remove button now belonged
+ * to another file.
+ */
+describe('composer attachments', () => {
+  it('keeps the element of every chip that stays when one before it is removed', () => {
+    const first = { name: 'first.txt' }
+    const second = { name: 'second.txt' }
+    const { rerender } = renderBar({ attachedFiles: [first, second], onRemoveFile: vi.fn() })
+    const chip = (name: string) => screen.getByText(name).closest('[data-slot="chat-attachment"]')
+    const before = chip('second.txt')
+
+    rerender(
+      <InputBar
+        conversationId={null}
+        value=""
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+        assistants={[]}
+        providers={[]}
+        currentAssistantId={null}
+        currentModelId={null}
+        currentProviderId={null}
+        onSelectAssistant={vi.fn()}
+        onSelectModel={vi.fn()}
+        thinkingLevel="default"
+        onSelectThinkingLevel={vi.fn()}
+        fastMode={false}
+        onToggleFast={vi.fn()}
+        mode="work"
+        onSelectMode={vi.fn()}
+        acceptEdits={false}
+        onToggleAcceptEdits={vi.fn()}
+        attachedFiles={[second]}
+        onRemoveFile={vi.fn()}
+      />,
+    )
+
+    expect(before).not.toBeNull()
+    expect(chip('second.txt')).toBe(before)
   })
 })

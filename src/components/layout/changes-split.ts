@@ -19,3 +19,16 @@ export const CHANGES_PANEL_SIZE = {
   minSize: '240px',
   maxSize: '50%',
 } as const satisfies Record<string, PanelSize>
+
+/**
+ * How near the divider a press has to land to grab it, in px either way of its
+ * 1px line combined.
+ *
+ * The library hit-tests geometrically: it takes the separator's bounding box
+ * and widens it to this when narrower. A pseudo-element or a CSS variable on
+ * the handle widens nothing — the shell set one for a long time and the
+ * divider kept the library's 10px. This panel mounts only above 768px, which
+ * is where touch laptops and tablets in landscape are, so the fine target is
+ * wider than a mouse needs too.
+ */
+export const CHANGES_HANDLE_TARGET = { fine: 16, coarse: 24 } as const
