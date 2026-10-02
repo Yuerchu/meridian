@@ -141,3 +141,23 @@ describe('composer attachments', () => {
     expect(chip('second.txt')).toBe(before)
   })
 })
+
+/**
+ * Wrapped, ten files on a phone stacked two to a row and pushed the composer
+ * several hundred pixels into the transcript. jsdom has no layout, so this
+ * pins the classes; measured in Chromium at 390px, ten chips keep one 42px row
+ * and scroll 1588px of content inside 326px — and without the wrapper's
+ * `w-full min-w-0` the wrapper grows to the row's full 1174px and spills out.
+ */
+describe('composer attachment row', () => {
+  it('keeps the attachments in one row that scrolls sideways', () => {
+    const files = Array.from({ length: 10 }, (_, i) => ({ name: `file-${i}.png` }))
+    const { container } = renderBar({ attachedFiles: files, onRemoveFile: vi.fn() })
+
+    const wrapper = container.querySelector('[data-slot="composer-attachments"]')
+    const group = container.querySelector('[data-slot="chat-attachment-group"]')
+    expect(wrapper?.className.split(' ')).toEqual(expect.arrayContaining(['w-full', 'min-w-0']))
+    expect(group?.className.split(' ')).toEqual(expect.arrayContaining(['flex-nowrap', 'overflow-x-auto', 'min-w-0']))
+    expect(group?.className.split(' ')).not.toContain('flex-wrap')
+  })
+})

@@ -17,6 +17,7 @@ import { useIsOffline } from '@/hooks/use-connection-state'
 import { useVoiceRecorder, type VoiceNotice } from '@/hooks/use-voice-recorder'
 import { useAndroidVoiceRecorder } from '@/hooks/use-android-voice-recorder'
 import { useHistoryLevel } from '@/hooks/use-history-level'
+import { useHorizontalWheel } from '@/hooks/use-horizontal-wheel'
 import { suggestionOptionId, useComposerTypeahead } from '@/hooks/use-composer-typeahead'
 import { FileInput, type FileInputHandle } from '@/components/ui/file-input'
 import { VoiceButton } from '@/components/ui/voice-button'
@@ -423,6 +424,7 @@ export function InputBar({
   // different file. Nothing about an attachment is unique — the same file can
   // be attached twice — but the object is, for as long as the list holds it.
   const attachmentKeys = useRef(new WeakMap<AttachedFile, number>())
+  const attachmentRow = useHorizontalWheel<HTMLDivElement>()
   const nextAttachmentKey = useRef(0)
   const attachmentKey = (file: AttachedFile) => {
     let key = attachmentKeys.current.get(file)
@@ -885,9 +887,15 @@ export function InputBar({
             }
             attachments={
               (attachedFiles.length > 0 || pendingSticker) && (
-                <div data-slot="composer-attachments" className="flex items-end gap-2 px-1 pb-1">
+                <div data-slot="composer-attachments" className="flex w-full min-w-0 items-end gap-2 px-1 pb-1">
                   {attachedFiles.length > 0 && (
-                    <ChatAttachmentGroup>
+                    // One row that scrolls sideways rather than wrapping: wrapped,
+                    // ten files on a phone stacked two to a row and pushed the
+                    // composer several hundred pixels up into the transcript.
+                    <ChatAttachmentGroup
+                      ref={attachmentRow}
+                      className="min-w-0 flex-nowrap overflow-x-auto [&>*]:shrink-0"
+                    >
                       {attachedFiles.map((f, i) => (
                         // An image gets a thumbnail rather than the paperclip everything
                         // used to get: the path is already on disk, so this costs one
