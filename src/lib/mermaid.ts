@@ -79,7 +79,7 @@ export function renderMermaid(code: string, theme: MermaidTheme, signal?: AbortS
       // Thrown in the frame's realm, where `instanceof Error` against this
       // one's is false: carry the message across, not the object.
       const message = (reason as { message?: unknown } | null)?.message
-      throw new Error(typeof message === 'string' ? message : String(reason), { cause: reason })
+      throw Object.assign(new Error(typeof message === 'string' ? message : String(reason)), { cause: reason })
     }
     return svgToImage(svg)
   })
