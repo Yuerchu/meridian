@@ -36,7 +36,11 @@ describe('a mermaid fence', () => {
 
     const diagram = await screen.findByRole('img', { name: 'Mermaid diagram' })
     expect(diagram).toHaveAttribute('src', IMAGE.src)
-    expect(renderMermaid).toHaveBeenCalledWith('flowchart LR\n  A --> B', expect.stringMatching(/^(light|dark)$/))
+    expect(renderMermaid).toHaveBeenCalledWith(
+      'flowchart LR\n  A --> B',
+      expect.stringMatching(/^(light|dark)$/),
+      expect.any(AbortSignal),
+    )
 
     await user.click(screen.getByRole('radio', { name: 'Source' }))
     expect(screen.queryByRole('img', { name: 'Mermaid diagram' })).toBeNull()

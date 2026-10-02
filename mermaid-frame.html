@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Where Mermaid lays out the model's diagrams (src/lib/mermaid.ts). It
+         runs in this page's own window, so its global `document` is this one,
+         and this page may fetch nothing but its own scripts: a diagram that
+         names a remote image, or a stylesheet that imports one, is refused
+         here rather than requested. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src data:"
+    />
+    <title>Mermaid</title>
+  </head>
+  <body>
+    <script type="module" src="/src/mermaid-frame.ts"></script>
+  </body>
+</html>

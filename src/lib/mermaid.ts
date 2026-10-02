@@ -1,25 +1,32 @@
+import { frameRenderer } from './mermaid-frame-host'
+import type { MermaidTheme } from './mermaid-render'
+
 /**
  * A ```mermaid fence, drawn as a picture.
  *
- * Mermaid is loaded on first use (`import()`), so the 3 MB library is its own
- * chunk and an app that is never shown a diagram never fetches it.
- *
  * The diagram is the model's output, which makes it untrusted input, and an
- * XSS in this WebView reaches every Tauri command. So two walls, either of
- * which would do alone: `securityLevel: 'strict'` (Mermaid's own sanitising,
- * no click handlers), and the SVG is shown as an `<img>` from a `data:` URL
- * rather than placed in the page — an SVG used as an image runs no script
- * and loads nothing, by specification, whatever is inside it. Mermaid has
- * shipped XSS fixes before; the second wall is there for the next one.
+ * XSS in this WebView reaches every Tauri command. There are two stages and
+ * each has its wall.
  *
- * What the image costs is the page's fonts: it cannot load them. Mermaid
- * measures each label in the page and sizes its box to fit, so a label drawn
- * in a different font than it was measured in overflows its box. Both sides
- * therefore use `system-ui`, which resolves to the same installed face in the
- * page and in the image.
+ * **Laying out** needs a live document — Mermaid measures every label — and a
+ * live document fetches what is in it: run in the app, a node written
+ * `A@{ img: "https://…" }` requested its URL while the diagram was being
+ * measured, a beacon any answer could plant, and `url()` in a style or an
+ * `%%{init}%%` theme is another way to the same place. So Mermaid does not run
+ * in the app at all. It runs in `mermaid-frame.html`, a same-origin page whose
+ * CSP lets it fetch its own scripts and nothing else; this module hands it the
+ * code and gets back a string (`mermaid-frame-host.ts`, `mermaid-render.ts`).
+ * Rendering into a container in another document was tried first and does not
+ * work: the flowchart renderer looks its SVG up with `select('#id')`, which
+ * searches the global document.
+ *
+ * **Showing** is an `<img>` from a `data:` URL rather than SVG placed in the
+ * page: an SVG used as an image runs no script and loads nothing, by
+ * specification, whatever is inside it.
+ *
+ * The frame is its own build entry, so Mermaid (3 MB) is fetched only when a
+ * diagram is first drawn.
  */
-
-const FONT = 'system-ui, sans-serif'
 
 export interface MermaidImage {
   src: string
@@ -27,9 +34,8 @@ export interface MermaidImage {
   height: number
 }
 
-let sequence = 0
-// Mermaid keeps its configuration, and the element it measures in, globally:
-// two renders at once can each draw with the other's theme. One at a time.
+// Mermaid keeps its configuration globally: two renders at once can each draw
+// with the other's theme. One at a time.
 let queue: Promise<unknown> = Promise.resolve()
 
 /**
@@ -56,25 +62,26 @@ export function svgToImage(svg: string): MermaidImage {
   return { src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`, width, height }
 }
 
-export function renderMermaid(code: string, theme: 'light' | 'dark'): Promise<MermaidImage> {
+/**
+ * Draws one fence. `signal` withdraws a render still waiting its turn — one
+ * whose fence was scrolled away, re-themed or rewritten before the renders
+ * ahead of it finished — so it never reaches Mermaid.
+ */
+export function renderMermaid(code: string, theme: MermaidTheme, signal?: AbortSignal): Promise<MermaidImage> {
   const job = queue.then(async () => {
-    const { default: mermaid } = await import('mermaid')
-    mermaid.initialize({
-      startOnLoad: false,
-      securityLevel: 'strict',
-      theme: theme === 'dark' ? 'dark' : 'default',
-      fontFamily: FONT,
-      themeVariables: { fontFamily: FONT },
-    })
-    const id = `meridian-mermaid-${++sequence}`
+    signal?.throwIfAborted()
+    const render = await frameRenderer()
+    signal?.throwIfAborted()
+    let svg: string
     try {
-      const { svg } = await mermaid.render(id, code)
-      return svgToImage(svg)
-    } finally {
-      // A failed render can leave its scratch element in the body.
-      document.getElementById(`d${id}`)?.remove()
-      document.getElementById(id)?.remove()
+      svg = await render(code, theme)
+    } catch (reason) {
+      // Thrown in the frame's realm, where `instanceof Error` against this
+      // one's is false: carry the message across, not the object.
+      const message = (reason as { message?: unknown } | null)?.message
+      throw new Error(typeof message === 'string' ? message : String(reason), { cause: reason })
     }
+    return svgToImage(svg)
   })
   queue = job.catch(() => undefined)
   return job

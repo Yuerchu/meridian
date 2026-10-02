@@ -27,15 +27,15 @@ export function MermaidFence({ code, icon }: { code: string; icon: string | unde
   useEffect(() => {
     // Drawn in the theme's colours, so not before the theme is known.
     if (resolvedTheme === undefined) return
-    let current = true
+    // Aborting both drops this render's answer and, if it is still queued
+    // behind other diagrams, keeps it from being drawn at all.
+    const controller = new AbortController()
     setDrawing({ status: 'drawing' })
-    renderMermaid(code, resolvedTheme).then(
-      (image) => current && setDrawing({ status: 'drawn', image }),
-      (reason: unknown) => current && setDrawing({ status: 'failed', reason: errorMessage(reason) }),
+    renderMermaid(code, resolvedTheme, controller.signal).then(
+      (image) => !controller.signal.aborted && setDrawing({ status: 'drawn', image }),
+      (reason: unknown) => !controller.signal.aborted && setDrawing({ status: 'failed', reason: errorMessage(reason) }),
     )
-    return () => {
-      current = false
-    }
+    return () => controller.abort()
   }, [code, resolvedTheme])
 
   const showSource = view === 'source' || drawing.status === 'failed'
