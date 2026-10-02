@@ -11,7 +11,8 @@ import type { WorkspaceFileContentResponse } from '@/types'
 import { usePlatform } from '@/hooks/use-platform'
 import { useReferenceProbe } from '@/hooks/use-reference-probe'
 import { useShikiLanguage } from '@/hooks/use-shiki-language'
-import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
+import { useCopy } from '@/hooks/use-copy'
+import { CopyAnnouncement } from '@/components/ui/copy-button'
 import { fileIconUrl } from '@/lib/file-icon'
 import { filePreviewLanguage, richFilePreview, sandboxHtmlDocument } from '@/lib/file-preview'
 import { highlightInline } from '@/lib/shiki'
@@ -167,7 +168,7 @@ function PreviewSheet({
 }) {
   const { t } = useTranslation()
   const platform = usePlatform()
-  const [copied, markCopied] = useTemporaryFlag()
+  const { copied, failure: copyFailure, copy } = useCopy()
   const [editorError, setEditorError] = React.useState<string | null>(null)
   const [mode, setMode] = React.useState<PreviewMode>('code')
   const canOpenEditor = platform !== null && platform !== 'android' && platform !== 'ios' && !isRemote
@@ -179,12 +180,7 @@ function PreviewSheet({
     setMode('code')
   }, [reference.endLine, reference.line, reference.path])
 
-  const copyPath = React.useCallback(() => {
-    void navigator.clipboard
-      .writeText(reference.path)
-      .then(markCopied)
-      .catch(() => {})
-  }, [reference, markCopied])
+  const copyPath = React.useCallback(() => void copy(reference.path), [reference, copy])
 
   const openInEditor = React.useCallback(async () => {
     setEditorError(null)
@@ -293,6 +289,15 @@ function PreviewSheet({
                     {state.file.truncated && ` · ${t('chat.filePreview.truncated')}`}
                   </>
                 )}
+                {copyFailure !== null && (
+                  <p
+                    data-slot="file-preview-copy-error"
+                    role="alert"
+                    className="mt-1 text-status-danger wrap-break-word"
+                  >
+                    {t('common.copyFailed', { error: copyFailure })}
+                  </p>
+                )}
                 {editorError && (
                   <p
                     data-slot="file-preview-editor-error"
@@ -310,6 +315,7 @@ function PreviewSheet({
                   {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
                   {t(copied ? 'chat.filePreview.pathCopied' : 'chat.filePreview.copyPath')}
                 </Button>
+                <CopyAnnouncement copied={copied} failure={null} />
                 {canOpenEditor && state.status === 'loaded' && state.kind === 'project_file' && (
                   <Button leadingIcon={SquareArrowUpRight} variant="secondary" onPress={openInEditor}>
                     {t('chat.filePreview.openInEditor')}

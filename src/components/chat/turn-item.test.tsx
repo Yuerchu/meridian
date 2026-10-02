@@ -1079,6 +1079,25 @@ describe('TurnItem — what copy copies', () => {
     expect(screen.queryByRole('menuitem', { name: 'Copy' })).toBeNull()
   })
 
+  // The menu closes on the press, so it cannot show a refusal itself; one used
+  // to go nowhere at all, as an unhandled rejection.
+  it('reports a copy the clipboard refused to the conversation, with the reason', async () => {
+    const user = userEvent.setup()
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockRejectedValue(new Error('Document is not focused.')) },
+      configurable: true,
+    })
+    useConversationStore.setState({ activeId: CONV })
+    render(<TurnItem turn={steppedTurn()} conversationId={CONV} onDelete={vi.fn()} />)
+
+    await user.pointer({ keys: '[MouseRight]', target: screen.getByText('清完了。') })
+    await user.click(await screen.findByRole('menuitem', { name: 'Copy' }))
+
+    await waitFor(() =>
+      expect(useConversationStore.getState().sessions[CONV]?.error).toBe('Copy failed: Document is not focused.'),
+    )
+  })
+
   it('gives the footer’s copy button the conclusion, not the whole run', async () => {
     const user = userEvent.setup()
     const { container } = render(<TurnItem turn={steppedTurn()} conversationId={CONV} />)

@@ -1,4 +1,4 @@
-import React, { useCallback, useId, useMemo } from 'react'
+import React, { useId, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { marked } from 'marked'
 import ReactMarkdown, { defaultUrlTransform, type UrlTransform } from 'react-markdown'
@@ -6,14 +6,12 @@ import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
 import { Focusable } from 'react-aria-components'
 import { openExternalUrl } from '@/lib/external-link'
-import { Check, Copy } from '@keyline-icons/react/two-tone'
 import { LinkButton, Skeleton, Tooltip, TooltipTrigger } from '@/components/base'
 import type { Components } from 'react-markdown'
 
 import { markdownVariants } from '@/components/base'
 
-import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
-import { ActionButton } from '@/components/ui/action-button'
+import { CopyButton } from '@/components/ui/copy-button'
 import { Hint } from '@/components/ui/hint'
 import { fileIconUrl, languageIconUrl } from '@/lib/file-icon'
 import {
@@ -170,17 +168,6 @@ function CandidateFileReference({
     return <FileReferenceButton reference={reference} />
   }
   return <>{children}</>
-}
-
-export function CopyButton({ text, className }: { text: string; className?: string }) {
-  const { t } = useTranslation()
-  const [copied, markCopied] = useTemporaryFlag()
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(text)
-    markCopied()
-  }, [text, markCopied])
-
-  return <ActionButton label={t('chat.copy')} onClick={handleCopy} className={className} icon={copied ? Check : Copy} />
 }
 
 function fenceLanguage(className: string | undefined): string {

@@ -1,5 +1,8 @@
 import { useTranslation } from 'react-i18next'
+import { Check } from '@keyline-icons/react/two-tone'
 import { Button, Modal } from '@/components/base'
+import { CopyAnnouncement } from '@/components/ui/copy-button'
+import { useCopy } from '@/hooks/use-copy'
 
 /**
  * Somewhere to select part of a message with a finger.
@@ -25,6 +28,7 @@ export function SelectTextModal({
   onOpenChange: (open: boolean) => void
 }) {
   const { t } = useTranslation()
+  const { copied, failure, copy } = useCopy()
 
   return (
     <Modal.Backdrop isOpen={isOpen} onOpenChange={onOpenChange}>
@@ -53,12 +57,24 @@ export function SelectTextModal({
             >
               {text}
             </p>
+            {failure !== null && (
+              <p
+                data-slot="select-text-copy-error"
+                role="alert"
+                className="mt-3 text-body-regular text-status-danger wrap-break-word"
+              >
+                {t('common.copyFailed', { error: failure })}
+              </p>
+            )}
           </Modal.Body>
           <Modal.Footer>
             <Button slot="close" variant="secondary">
               {t('common.cancel')}
             </Button>
-            <Button onPress={() => navigator.clipboard.writeText(text)}>{t('contextMenu.copyAll')}</Button>
+            <Button leadingIcon={copied ? Check : undefined} onPress={() => void copy(text)}>
+              {t(copied ? 'common.copied' : 'contextMenu.copyAll')}
+            </Button>
+            <CopyAnnouncement copied={copied} failure={null} />
           </Modal.Footer>
         </Modal.Dialog>
       </Modal.Container>

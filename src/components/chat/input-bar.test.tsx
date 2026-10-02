@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import i18n from '@/i18n'
 import type { VoiceNotice } from '@/hooks/use-voice-recorder'
+import type { ComponentProps } from 'react'
 import { InputBar } from './input-bar'
 
 const mocks = vi.hoisted(() => ({
@@ -33,7 +34,7 @@ vi.mock('@/hooks/use-android-voice-recorder', () => ({
 vi.mock('./emoji-picker', () => ({ EmojiPicker: () => null }))
 vi.mock('./composer-menu', () => ({ ComposerMenu: () => null }))
 
-function renderBar() {
+function renderBar(props: Partial<ComponentProps<typeof InputBar>> = {}) {
   return render(
     <InputBar
       conversationId={null}
@@ -55,6 +56,7 @@ function renderBar() {
       onSelectMode={vi.fn()}
       acceptEdits={false}
       onToggleAcceptEdits={vi.fn()}
+      {...props}
     />,
   )
 }
@@ -93,5 +95,59 @@ describe('composer notices', () => {
       vi.advanceTimersByTime(3_500)
     })
     expect(screen.queryByText(i18n.t('chat.voice.too_short'))).toBeNull()
+  })
+})
+
+/**
+ * Cut used to delete the selection and write it to the clipboard in the same
+ * breath, without waiting for the write: a refused write lost the text from
+ * both places.
+ */
+describe('composer cut', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  function stubClipboard(writeText: ReturnType<typeof vi.fn>) {
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+  }
+
+  async function cutWorld(user: ReturnType<typeof userEvent.setup>) {
+    const field = document.querySelector('textarea') as HTMLTextAreaElement
+    // The menu offers Cut only over a selection, which it reads off the window
+    // as the WebView reports it; jsdom reports none for a textarea.
+    const real = window.getSelection.bind(window)
+    vi.spyOn(window, 'getSelection').mockImplementation(() => {
+      const selection = real()
+      if (selection) selection.toString = () => 'world'
+      return selection
+    })
+    await user.pointer({ keys: '[MouseRight]', target: field })
+    // Selected after the press, which puts the caret where it landed.
+    field.setSelectionRange(6, 11)
+    await user.click(await screen.findByRole('menuitem', { name: new RegExp(`^${i18n.t('contextMenu.cut')}`) }))
+  }
+
+  it('keeps the text when the clipboard refuses it, and says why', async () => {
+    const user = userEvent.setup()
+    stubClipboard(vi.fn().mockRejectedValue(new Error('Document is not focused.')))
+    const onChange = vi.fn()
+    renderBar({ value: 'hello world', onChange })
+
+    await cutWorld(user)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Document is not focused.')
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('removes the text once the clipboard has it', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    stubClipboard(writeText)
+    const onChange = vi.fn()
+    renderBar({ value: 'hello world', onChange })
+
+    await cutWorld(user)
+
+    expect(writeText).toHaveBeenCalledWith('world')
+    await vi.waitFor(() => expect(onChange).toHaveBeenCalledWith('hello '))
   })
 })
