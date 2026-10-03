@@ -123,13 +123,17 @@ export function functions(text) {
     if (text[k] !== '{') continue
     const bodyClose = matching(text, k)
     if (bodyClose < 0) continue
+    // 函数自己的属性：上一个 `;`、`{`、`}` 之后到 `fn` 之间的那一段。
+    const lead = text.slice(Math.max(0, m.index - 400), m.index)
+    const attrs = lead.slice(Math.max(lead.lastIndexOf(';'), lead.lastIndexOf('{'), lead.lastIndexOf('}')) + 1)
+    const gated = /#\[\s*(?:cfg\s*\(\s*test\s*\)|test|tokio::test\b[^\]]*)\s*\]/.test(attrs)
     found.push({
       name: m[1],
       at: m.index,
       params: text.slice(paramsOpen + 1, paramsClose),
       signature: text.slice(m.index, k),
       body: [k, bodyClose],
-      test: tests.some(([a, b]) => m.index > a && m.index < b),
+      test: gated || tests.some(([a, b]) => m.index > a && m.index < b),
     })
   }
   return found
@@ -143,19 +147,55 @@ export function useAliases(text) {
   const aliases = new Map()
   const re = /\buse\s+([^;]+);/g
   let m
-  // 空白只在 `::`、花括号和逗号两侧去掉；`as` 两侧的空格要留着，那是它作为
-  // 关键字的唯一标志——全删掉的话 `ops::assistant` 里的 "as" 会被当成别名。
-  while ((m = re.exec(text))) {
-    expandUse(
-      m[1]
-        .replace(/\s+/g, ' ')
-        .replace(/\s*(::|\{|\}|,)\s*/g, '$1')
-        .trim(),
-      '',
-      aliases,
-    )
-  }
+  while ((m = re.exec(text))) expandUse(normalizeUse(m[1]), '', aliases)
   return aliases
+}
+
+/**
+ * 按作用域查 `use` 别名：一条 `use` 只在包住它的那对花括号里生效（模块、函数、
+ * 块都是），文件顶层的对整个文件生效。同名时取离调用点最近的那一层——
+ * `#[cfg(test)] mod tests { use x as ops; }` 不会改写生产代码里的 `ops`。
+ */
+export function aliasScopes(text) {
+  const blocks = []
+  const stack = []
+  for (let k = 0; k < text.length; k++) {
+    if (text[k] === '{') stack.push(k)
+    else if (text[k] === '}' && stack.length) blocks.push([stack.pop(), k])
+  }
+  const enclosing = (at) => {
+    let best = [0, text.length]
+    for (const b of blocks) if (b[0] < at && at < b[1] && b[0] >= best[0]) best = b
+    return best
+  }
+  const entries = []
+  const re = /\buse\s+([^;]+);/g
+  let m
+  while ((m = re.exec(text))) {
+    const local = new Map()
+    expandUse(normalizeUse(m[1]), '', local)
+    const scope = enclosing(m.index)
+    for (const [name, path] of local) entries.push({ name, path, scope })
+  }
+  return {
+    get(name, at) {
+      let best = null
+      for (const e of entries) {
+        if (e.name !== name || at < e.scope[0] || at > e.scope[1]) continue
+        if (!best || e.scope[0] >= best.scope[0]) best = e
+      }
+      return best ? best.path : undefined
+    },
+  }
+}
+
+/** 空白只在 `::`、花括号和逗号两侧去掉；`as` 两侧的空格要留着，那是它作为
+ * 关键字的唯一标志——全删掉的话 `ops::assistant` 里的 "as" 会被当成别名。 */
+function normalizeUse(tree) {
+  return tree
+    .replace(/\s+/g, ' ')
+    .replace(/\s*(::|\{|\}|,)\s*/g, '$1')
+    .trim()
 }
 
 function expandUse(tree, prefix, aliases) {
@@ -215,8 +255,13 @@ export function transactionRoots(text) {
     const args = text.slice(open + 1, close)
     const sea = method === 'write' || method === 'read' || method === 'nested'
     // `.write(`/`.read(` 只在实参是 async 闭包时算（排除 io::Write、RwLock::read 等）。
+    // 这也意味着 `db.write(op)` 这种具名闭包看不见——见脚本头注释的盲区清单。
     if (sea && !/^\s*async\s*(move\s*)?\|/.test(args)) continue
-    if (!sea && !/\|/.test(args)) continue
+    // Diesel 的事务方法总要一个闭包；空实参是别的同名方法。实参不是闭包字面量
+    // （`let op = |c| …; conn.transaction(op)`、传函数项）时跟不进去，标成 opaque，
+    // 由 R0 拒绝，而不是当它不存在。
+    if (!sea && !args.trim()) continue
+    const opaque = !sea && !/^\s*(?:move\s+)?\|/.test(args)
     const closure = /^\s*(?:async\s+)?(?:move\s+)?\|([^|]*)\|/.exec(args)
     roots.push({
       kind: sea ? `sea-${method}` : method === 'immediate_transaction' ? 'diesel-immediate' : 'diesel-deferred',
@@ -230,6 +275,7 @@ export function transactionRoots(text) {
           )
         : [],
       at: m.index + m[0].indexOf(method),
+      opaque,
       region: [open + 1, close],
       body: [open + 1 + (closure ? closure.index + closure[0].length : 0), close],
     })

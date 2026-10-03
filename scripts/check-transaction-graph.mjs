@@ -13,6 +13,17 @@
  *   R3 Diesel 根里不能传递调用到另一个 `immediate_transaction`——Diesel 不能嵌套
  *      `BEGIN IMMEDIATE`，运行时报 `AlreadyInTransaction`（2026-10-03 queue_enqueue
  *      就是这样在 main 上坏了一个月）。
+ *   R0 Diesel 事务的实参必须是闭包字面量。具名闭包和函数项跟不进去，与其当它不存在，
+ *      不如拒绝这种写法。
+ *
+ * 它是近似解析（正则 + 括号匹配），不是 Rust 解析器。看不见的东西，按设计：
+ *   - 方法调用和 trait 分派（`.save(conn)`、`store.write(..)`）——要类型信息；
+ *   - SeaORM 的 `db.write(op)` 这种具名闭包——`.write(` 与 io::Write 同名，非 async
+ *     闭包字面量的实参无法确认是事务，所以不能像 R0 那样一律拒绝；
+ *   - 接收者是调用结果的 SeaORM 根（`get_db().write(..)`）——R2 查不了，列在生成的
+ *     文档里并告警；
+ *   - 宏展开出来的代码。
+ * 能力类型（写只能经 WriteTx）和运行时守卫是另外两层防线，这里是第三层。
  *
  * 另外统计两个迁移计数（Diesel ops 调用点、Diesel API 引用）。计数只有在
  * docs/migration-counters.json 存在时才强制"只减不增"：基线在 Phase 2 合入时写入。
@@ -26,7 +37,7 @@ import { join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { stagedSnapshot } from './staged-snapshot.mjs'
-import { blank, callsIn, functions, lineOf, matching, transactionRoots, useAliases } from './transaction-graph-lib.mjs'
+import { aliasScopes, blank, callsIn, functions, lineOf, matching, transactionRoots } from './transaction-graph-lib.mjs'
 
 const CRATES = [
   { name: 'core', dir: 'src-tauri/crates/core/src', selfNames: ['meridian_core'] },
@@ -42,7 +53,8 @@ const EXPECTED_EDGES = [
 
 const DIESEL_SIGNATURE = /\bSqliteConnection\b|\bDbPool\b|\bPooledConn\b/
 const DIESEL_BODY = /\bdiesel::|\bschema::/
-const SEA_SIGNATURE = /\bWriteTx\b|\bReadTx\b|\bimpl\s+Read\b|&\s*Db\b/
+// `impl Read` 不在这里：`std::io::Read` 同名，要看导入的是哪一个（见 isSeaReadBound）。
+const SEA_SIGNATURE = /\bWriteTx\b|\bReadTx\b|\bimpl\s+(?:[\w:]*::)?cap::Read\b|&\s*Db\b/
 const SEA_BODY = /\bsea_orm::/
 /** 闭包文本里直接出现的另一种 ORM。 */
 const DIESEL_REGION = /\bdiesel::|\bschema::|\bSqliteConnection\b|\bDbPool\b|\bPooledConn\b/
@@ -83,11 +95,11 @@ export function analyze(files) {
   const key = (crate, module, name) => `${crate}|${module.join('::')}|${name}`
   for (const file of files) {
     file.fns = functions(file.text).map((fn) => ({ ...fn, file, test: fn.test || file.wholeTest }))
-    file.aliases = useAliases(file.text)
+    file.aliases = aliasScopes(file.text)
     for (const fn of file.fns) {
       const body = file.text.slice(fn.body[0], fn.body[1])
       fn.diesel = DIESEL_SIGNATURE.test(fn.signature) || DIESEL_BODY.test(body)
-      fn.sea = SEA_SIGNATURE.test(fn.signature) || SEA_BODY.test(body)
+      fn.sea = SEA_SIGNATURE.test(fn.signature) || isSeaReadBound(file, fn) || SEA_BODY.test(body)
       fn.immediate = /\.\s*immediate_transaction\s*\(/.test(body)
       fn.opsModule =
         file.crate.name === 'core' && file.module[0] === 'db' && file.module[1] === 'ops' ? file.module[2] : null
@@ -103,14 +115,15 @@ export function analyze(files) {
     if (depth > 4) return []
     const segs = call.path ? call.path.split('::') : []
     const lookup = (crate, module, name) => index.get(key(crate, module, name)) ?? []
+    const aliasOf = (name) => file.aliases.get(name, call.at)
     if (segs.length === 0) {
       const local = lookup(file.crate.name, file.module, call.name)
       if (local.length) return local
-      const alias = file.aliases.get(call.name)
+      const alias = aliasOf(call.name)
       if (alias) return resolveAbsolute(file, alias.split('::'), depth)
       return []
     }
-    const alias = file.aliases.get(segs[0])
+    const alias = aliasOf(segs[0])
     if (!['crate', 'super', 'self', ...CRATES.flatMap((c) => c.selfNames)].includes(segs[0]) && alias) {
       return resolveAbsolute(file, [...alias.split('::'), ...segs.slice(1), call.name], depth)
     }
@@ -138,8 +151,8 @@ export function analyze(files) {
           module.pop()
           rest.shift()
         }
-      } else if (from.aliases.has(rest[0]) && d < 4 && rest.length > 1) {
-        return resolveAbsolute(from, [...from.aliases.get(rest[0]).split('::'), ...rest.slice(1)], d + 1)
+      } else if (aliasOf(rest[0]) && d < 4 && rest.length > 1) {
+        return resolveAbsolute(from, [...aliasOf(rest[0]).split('::'), ...rest.slice(1)], d + 1)
       } else {
         const name = rest.pop()
         return lookup(crate, [...module, ...rest], name).length
@@ -189,6 +202,7 @@ export function analyze(files) {
       const owner = innermostFn(file, root.at)
       const seeds = callsIn(file.text, root.region).flatMap((call) => resolve(file, call))
       const via = []
+      const direct = directOrm(file, root.body)
       // 泛型回调：根里调用了外层函数的某个参数（`f(conn)`），把每个调用点传进来的
       // 那个实参里的调用也算进这个根。
       if (owner) {
@@ -210,6 +224,10 @@ export function analyze(files) {
             if (!arg) continue
             via.push(`${site.file.path}:${lineOf(site.file.text, site.call.at)}`)
             seeds.push(...callsIn(site.file.text, arg).flatMap((c) => resolve(site.file, c)))
+            // 实参里直接写的 ORM 调用解析不到索引，和闭包本身一样按文本和导入看。
+            const fromArg = directOrm(site.file, arg)
+            direct.diesel ||= fromArg.diesel
+            direct.sea ||= fromArg.sea
           }
         }
       }
@@ -221,6 +239,7 @@ export function analyze(files) {
         test: owner ? owner.test : file.wholeTest,
         reached,
         via,
+        direct,
         modules: [...new Set(reached.map((fn) => fn.opsModule).filter(Boolean))].sort(),
         nestedImmediate:
           /\.\s*immediate_transaction\s*\(/.test(file.text.slice(root.region[0], root.region[1])) ||
@@ -230,6 +249,30 @@ export function analyze(files) {
   }
 
   return { files, roots, callSites, resolve }
+}
+
+/**
+ * 一段代码里直接用到的 ORM：文本里的 `diesel::`/`sea_orm::` 等标记，加上经 `use`
+ * 导入后裸调用的外部函数（`use diesel::insert_into; insert_into(…)`）。
+ */
+function directOrm(file, [from, to]) {
+  const text = file.text.slice(from, to)
+  const found = { diesel: DIESEL_REGION.test(text), sea: SEA_REGION.test(text) }
+  for (const call of callsIn(file.text, [from, to])) {
+    const segs = call.path ? call.path.split('::') : [call.name]
+    const alias = file.aliases.get(segs[0], call.at)
+    const full = alias ? [alias, ...segs.slice(1)].join('::') : segs.join('::')
+    if (/^(?:::)?diesel::/.test(full) || /^(?:::)?diesel$/.test(full)) found.diesel = true
+    if (/^(?:::)?sea_orm::/.test(full) || /^(?:::)?sea_orm$/.test(full)) found.sea = true
+  }
+  return found
+}
+
+/** `impl Read` 是不是能力类型那个 `Read`：看这个函数所在位置导入的 `Read` 来自哪里。 */
+function isSeaReadBound(file, fn) {
+  if (!/\bimpl\s+Read\b/.test(fn.signature)) return false
+  const path = file.aliases.get('Read', fn.at)
+  return Boolean(path && /(?:^|::)cap::Read$/.test(path))
 }
 
 function splitArgs(text) {
@@ -258,16 +301,20 @@ export function violations({ roots }) {
   const where = (root) => `${root.file.path}:${lineOf(root.file.text, root.at)}`
   for (const root of roots) {
     if (root.test) continue
+    if (root.opaque) {
+      problems.push(`R0 ${where(root)}: 事务的实参不是闭包字面量（具名闭包或函数项），检查器跟不进去；改成内联闭包`)
+      continue
+    }
     const sea = root.kind.startsWith('sea-')
     const diesel = root.reached.filter((fn) => fn.diesel && !fn.test)
     const seaFns = root.reached.filter((fn) => fn.sea && !fn.test)
-    // 闭包里直接写的另一种 ORM 调用（`sea_orm::…`、`diesel::insert_into`）是外部
-    // crate 的函数，解析不到索引里，只能看闭包本身的文本。
+    // 闭包（和回调实参）里直接用的另一种 ORM 是外部 crate 的函数，解析不到索引里，
+    // 由 directOrm 按文本和导入另看。
     const body = root.file.text.slice(root.body[0], root.body[1])
-    if (sea && (diesel.length || DIESEL_REGION.test(body))) {
+    if (sea && (diesel.length || root.direct.diesel)) {
       problems.push(`R1 ${where(root)}: SeaORM 事务里用到了 Diesel：${names(diesel) || '闭包内直接调用'}`)
     }
-    if (!sea && (seaFns.length || SEA_REGION.test(body))) {
+    if (!sea && (seaFns.length || root.direct.sea)) {
       problems.push(`R1 ${where(root)}: Diesel 事务里用到了 SeaORM：${names(seaFns) || '闭包内直接调用'}`)
     }
     // 闭包参数和接收者同名（`tx.nested(async |tx| …)`）时，里面出现的都是参数。
@@ -312,6 +359,22 @@ export function counters({ files, callSites }) {
   let dieselApiRefs = 0
   for (const file of files) dieselApiRefs += (file.text.match(DIESEL_API) ?? []).length
   return { dieselOpsCalls, dieselApiRefs }
+}
+
+/**
+ * 计数必须等于提交的基线：涨了是倒退；降了也要把基线跟下去，否则 100 → 80
+ * 之后再涨回 99 也能通过，"只减不增"就只剩一个天花板。
+ */
+export function baselineProblems(counts, baseline, baselinePath) {
+  const problems = []
+  for (const [name, value] of Object.entries(counts)) {
+    if (!(name in baseline)) problems.push(`${baselinePath} 缺少计数 ${name}`)
+    else if (value > baseline[name]) problems.push(`计数 ${name} 从 ${baseline[name]} 涨到 ${value}：只减不增`)
+    else if (value < baseline[name]) {
+      problems.push(`计数 ${name} 从 ${baseline[name]} 降到 ${value}：把 ${baselinePath} 里的基线更新为 ${value}`)
+    }
+  }
+  return problems
 }
 
 export function expectedEdgeProblems({ roots }) {
@@ -410,13 +473,7 @@ function main() {
 
   const baselinePath = 'docs/migration-counters.json'
   const baselineRaw = read(baselinePath)
-  if (baselineRaw != null) {
-    const baseline = JSON.parse(baselineRaw)
-    for (const [name, value] of Object.entries(counts)) {
-      if (!(name in baseline)) problems.push(`${baselinePath} 缺少计数 ${name}`)
-      else if (value > baseline[name]) problems.push(`计数 ${name} 从 ${baseline[name]} 涨到 ${value}：只减不增`)
-    }
-  }
+  if (baselineRaw != null) problems.push(...baselineProblems(counts, JSON.parse(baselineRaw), baselinePath))
 
   const docPath = 'docs/transaction-graph.md'
   const doc = render(graph, counts)
