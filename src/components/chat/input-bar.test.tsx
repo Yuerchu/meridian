@@ -99,6 +99,104 @@ describe('composer notices', () => {
 })
 
 /**
+ * Cut used to delete the selection and write it to the clipboard in the same
+ * breath, without waiting for the write: a refused write lost the text from
+ * both places.
+ */
+describe('composer cut', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  function stubClipboard(writeText: ReturnType<typeof vi.fn>) {
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+  }
+
+  async function cutWorld(user: ReturnType<typeof userEvent.setup>) {
+    const field = document.querySelector('textarea') as HTMLTextAreaElement
+    // The menu offers Cut only over a selection, which it reads off the window
+    // as the WebView reports it; jsdom reports none for a textarea.
+    const real = window.getSelection.bind(window)
+    vi.spyOn(window, 'getSelection').mockImplementation(() => {
+      const selection = real()
+      if (selection) selection.toString = () => 'world'
+      return selection
+    })
+    await user.pointer({ keys: '[MouseRight]', target: field })
+    // Selected after the press, which puts the caret where it landed.
+    field.setSelectionRange(6, 11)
+    await user.click(await screen.findByRole('menuitem', { name: new RegExp(`^${i18n.t('contextMenu.cut')}`) }))
+  }
+
+  it('keeps the text when the clipboard refuses it, and says why', async () => {
+    const user = userEvent.setup()
+    stubClipboard(vi.fn().mockRejectedValue(new Error('Document is not focused.')))
+    const onChange = vi.fn()
+    renderBar({ value: 'hello world', onChange })
+
+    await cutWorld(user)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Document is not focused.')
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  // The refusal used to share the composer's error slot, which only the
+  // dismiss button cleared: after a retry worked it still said the cut failed.
+  it('takes the refusal away once a retry succeeds', async () => {
+    const user = userEvent.setup()
+    stubClipboard(vi.fn().mockRejectedValueOnce(new Error('Document is not focused.')).mockResolvedValue(undefined))
+    renderBar({ value: 'hello world', onChange: vi.fn() })
+
+    await cutWorld(user)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Document is not focused.')
+
+    vi.restoreAllMocks()
+    await cutWorld(user)
+    await vi.waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+  })
+
+  // A slow refusal from an earlier copy must not come back over a later one
+  // that worked.
+  it('lets only the latest copy say how it went', async () => {
+    const user = userEvent.setup()
+    let refuseFirst!: (reason: Error) => void
+    stubClipboard(
+      vi
+        .fn()
+        .mockImplementationOnce(() => new Promise((_, reject) => (refuseFirst = reject)))
+        .mockResolvedValue(undefined),
+    )
+    renderBar({ value: 'hello world', onChange: vi.fn() })
+    const field = document.querySelector('textarea') as HTMLTextAreaElement
+    const copy = async () => {
+      vi.spyOn(window, 'getSelection').mockImplementation(() => ({ toString: () => 'world' }) as Selection)
+      await user.pointer({ keys: '[MouseRight]', target: field })
+      field.setSelectionRange(6, 11)
+      await user.click(await screen.findByRole('menuitem', { name: new RegExp(`^${i18n.t('chat.copy')}`) }))
+      vi.restoreAllMocks()
+    }
+
+    await copy()
+    await copy()
+    refuseFirst(new Error('Document is not focused.'))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('removes the text once the clipboard has it', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    stubClipboard(writeText)
+    const onChange = vi.fn()
+    renderBar({ value: 'hello world', onChange })
+
+    await cutWorld(user)
+
+    expect(writeText).toHaveBeenCalledWith('world')
+    await vi.waitFor(() => expect(onChange).toHaveBeenCalledWith('hello '))
+  })
+})
+
+/**
  * Chips were keyed by index: removing the first gave the second the first's
  * element, so its thumbnail reloaded and a focused remove button now belonged
  * to another file.

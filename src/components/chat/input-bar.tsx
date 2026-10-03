@@ -23,6 +23,7 @@ import { VoiceButton } from '@/components/ui/voice-button'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import { errorMessage } from '@/lib/error-message'
 import { objectKey } from '@/lib/object-key'
+import { readClipboard, writeClipboard } from '@/lib/clipboard'
 import { Composer } from './composer'
 import { ComposerSuggestions, type ComposerSuggestion } from './composer-suggestions'
 import { VoiceOverlay } from './voice-overlay'
@@ -428,6 +429,13 @@ export function InputBar({
   // What went wrong in the composer itself — recording, a picker, the hosted
   // agent's knobs — kept until the reader dismisses it.
   const [composerError, setComposerError] = useState<string | null>(null)
+  // A refused cut, copy or paste. Its own slot so that the next one that
+  // succeeds can clear it without taking an unrelated composer error with it;
+  // in `composerError` a refusal stayed on screen after a retry had worked.
+  const [clipboardError, setClipboardError] = useState<string | null>(null)
+  // Only the newest cut, copy or paste may set or clear it: a slow refusal
+  // from an earlier one must not come back over a later success.
+  const latestClipboardAttempt = useRef(0)
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const showHint = useCallback((text: string) => {
     setVoiceNotice(text)
@@ -582,31 +590,63 @@ export function InputBar({
     }
   }, [])
 
-  const handleCut = useCallback(() => {
+  // A cut removes the text only once the clipboard has it: removed first, a
+  // refused write lost it from both places. And only from the value it was cut
+  // out of — the write is asynchronous, and anything typed meanwhile moved the
+  // offsets, so a changed value keeps its text and the copy stands alone.
+  const handleCut = useCallback(async () => {
     const el = textareaRef.current
     if (!el) return
     const start = el.selectionStart
     const end = el.selectionEnd
     if (start === end) return
-    navigator.clipboard.writeText(el.value.slice(start, end))
-    onChange(el.value.slice(0, start) + el.value.slice(end))
+    const before = el.value
+    const attempt = ++latestClipboardAttempt.current
+    try {
+      await writeClipboard(before.slice(start, end))
+    } catch (reason) {
+      if (attempt === latestClipboardAttempt.current) {
+        setClipboardError(t('common.cutFailed', { error: errorMessage(reason) }))
+      }
+      return
+    }
+    if (attempt === latestClipboardAttempt.current) setClipboardError(null)
+    if (el.value !== before) return
+    onChange(before.slice(0, start) + before.slice(end))
     requestAnimationFrame(() => {
       el.selectionStart = start
       el.selectionEnd = start
     })
-  }, [onChange])
+  }, [onChange, t])
 
   const handleCopy = useCallback(() => {
     const el = textareaRef.current
     if (!el) return
     const text = el.value.slice(el.selectionStart, el.selectionEnd)
-    if (text) navigator.clipboard.writeText(text)
-  }, [])
+    if (!text) return
+    const attempt = ++latestClipboardAttempt.current
+    writeClipboard(text).then(
+      () => attempt === latestClipboardAttempt.current && setClipboardError(null),
+      (reason: unknown) =>
+        attempt === latestClipboardAttempt.current &&
+        setClipboardError(t('common.copyFailed', { error: errorMessage(reason) })),
+    )
+  }, [t])
 
   const handlePaste = useCallback(async () => {
     const el = textareaRef.current
     if (!el) return
-    const clip = await navigator.clipboard.readText()
+    let clip: string
+    const attempt = ++latestClipboardAttempt.current
+    try {
+      clip = await readClipboard()
+    } catch (reason) {
+      if (attempt === latestClipboardAttempt.current) {
+        setClipboardError(t('common.pasteFailed', { error: errorMessage(reason) }))
+      }
+      return
+    }
+    if (attempt === latestClipboardAttempt.current) setClipboardError(null)
     const start = el.selectionStart
     const end = el.selectionEnd
     onChange(el.value.slice(0, start) + clip + el.value.slice(end))
@@ -615,7 +655,7 @@ export function InputBar({
       el.selectionStart = pos
       el.selectionEnd = pos
     })
-  }, [onChange])
+  }, [onChange, t])
 
   const handleSelectAll = useCallback(() => {
     const el = textareaRef.current
@@ -713,7 +753,7 @@ export function InputBar({
     <>
       {selectedText && (
         <>
-          <ContextMenu.Item id="cut" textValue={t('contextMenu.cut')} onAction={handleCut}>
+          <ContextMenu.Item id="cut" textValue={t('contextMenu.cut')} onAction={() => void handleCut()}>
             <Scissors className="size-4 text-text-secondary" />
             <Label>{t('contextMenu.cut')}</Label>
             <Shortcut keys="Ctrl+X" />
@@ -829,7 +869,7 @@ export function InputBar({
             // Offline takes the line over: a disabled field with nothing to
             // say about why reads as the app having broken.
             notice={
-              offline || composerError || acp.error || voiceNotice ? (
+              offline || composerError || clipboardError || acp.error || voiceNotice ? (
                 <>
                   {offline && (
                     <p
@@ -846,6 +886,14 @@ export function InputBar({
                       className="mx-1 mb-1.5"
                       message={composerError}
                       onDismiss={() => setComposerError(null)}
+                    />
+                  )}
+                  {clipboardError && (
+                    <ErrorAlert
+                      data-slot="composer-clipboard-error"
+                      className="mx-1 mb-1.5"
+                      message={clipboardError}
+                      onDismiss={() => setClipboardError(null)}
                     />
                   )}
                   {acp.error && (

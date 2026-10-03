@@ -1,4 +1,4 @@
-import React, { useCallback, useId, useMemo } from 'react'
+import React, { useId, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { marked } from 'marked'
 import ReactMarkdown, { defaultUrlTransform, type UrlTransform } from 'react-markdown'
@@ -6,14 +6,12 @@ import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
 import { Focusable } from 'react-aria-components'
 import { openExternalUrl } from '@/lib/external-link'
-import { Check, Copy } from '@keyline-icons/react/two-tone'
 import { LinkButton, Skeleton, Tooltip, TooltipTrigger } from '@/components/base'
 import type { Components } from 'react-markdown'
 
 import { markdownVariants } from '@/components/base'
 
-import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
-import { ActionButton } from '@/components/ui/action-button'
+import { CopyButton } from '@/components/ui/copy-button'
 import { Hint } from '@/components/ui/hint'
 import { fileIconUrl, languageIconUrl } from '@/lib/file-icon'
 import {
@@ -28,6 +26,7 @@ import {
 import { cx } from '@/utils/cx'
 import { useFilePreview, type FilePreviewContextValue } from './file-preview-context'
 import { ShikiCode } from './shiki-code'
+import { MermaidFence } from './mermaid-fence'
 import { InlineSticker, type EmojiMap } from './emoji-renderer'
 
 const MarkdownStreamingContext = React.createContext(false)
@@ -172,17 +171,6 @@ function CandidateFileReference({
   return <>{children}</>
 }
 
-export function CopyButton({ text, className }: { text: string; className?: string }) {
-  const { t } = useTranslation()
-  const [copied, markCopied] = useTemporaryFlag()
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(text)
-    markCopied()
-  }, [text, markCopied])
-
-  return <ActionButton label={t('chat.copy')} onClick={handleCopy} className={className} icon={copied ? Check : Copy} />
-}
-
 function fenceLanguage(className: string | undefined): string {
   return /language-(\w+)/.exec(className ?? '')?.[1] ?? 'plaintext'
 }
@@ -220,6 +208,8 @@ const CodeBlock: Components['code'] = ({ className, children, node, ...props }) 
   const language = fenceLanguage(className)
   const code = String(children ?? '').replace(/\n$/, '')
   const icon = languageIconUrl(language)
+
+  if (language === 'mermaid' && !isStreaming) return <MermaidFence code={code} icon={icon} />
 
   return (
     // The old library's classes without its components: importing `CodeBlock`
