@@ -1,8 +1,9 @@
 import { memo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, Copy } from '@keyline-icons/react/two-tone'
+import { Check, Copy, TriangleAlert } from '@keyline-icons/react/two-tone'
 import { Button, Tooltip, TooltipTrigger } from '@/components/base'
-import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
+import { useCopy } from '@/hooks/use-copy'
+import { CopyAnnouncement } from '@/components/ui/copy-button'
 import { cx } from '@/utils/cx'
 import type { LogEntryInfoResponse } from '@/types'
 import { LogLevelBadge } from './log-level-badge'
@@ -45,12 +46,9 @@ function formatLocalTime(tsMs: number, locale: string): string {
 
 function LogRowImpl({ entry }: { entry: LogEntryInfoResponse }) {
   const { t, i18n } = useTranslation()
-  const [copied, markCopied] = useTemporaryFlag()
+  const { copied, failure, copy } = useCopy()
 
-  const onCopy = useCallback(() => {
-    navigator.clipboard.writeText(JSON.stringify(entry, null, 2))
-    markCopied()
-  }, [entry, markCopied])
+  const onCopy = useCallback(() => void copy(JSON.stringify(entry, null, 2)), [entry, copy])
 
   // Span fields first: they say which conversation or request this belongs to,
   // which is what a reader is usually scanning for.
@@ -106,7 +104,7 @@ function LogRowImpl({ entry }: { entry: LogEntryInfoResponse }) {
       <TooltipTrigger delay={0}>
         <Button
           iconOnly
-          leadingIcon={copied ? Check : Copy}
+          leadingIcon={failure !== null ? TriangleAlert : copied ? Check : Copy}
           data-slot="log-row-copy"
           variant="neutral"
           size="small"
@@ -115,10 +113,18 @@ function LogRowImpl({ entry }: { entry: LogEntryInfoResponse }) {
           // Focus-visible alone does not rescue this on a touch screen, where a
           // tap grants no focus ring — the only action on the row would be
           // permanently invisible.
-          className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
+          // A refused copy stays in view: its warning is the only place the
+          // reason is.
+          className={cx(
+            'opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100',
+            failure !== null && 'opacity-100',
+          )}
         />
-        <Tooltip>{t('settings.about.logs.copyRecord')}</Tooltip>
+        <Tooltip>
+          {failure !== null ? t('common.copyFailed', { error: failure }) : t('settings.about.logs.copyRecord')}
+        </Tooltip>
       </TooltipTrigger>
+      <CopyAnnouncement copied={copied} failure={failure} />
     </div>
   )
 }

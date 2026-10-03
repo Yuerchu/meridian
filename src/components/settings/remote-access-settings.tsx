@@ -20,6 +20,7 @@ import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { cx } from '@/utils/cx'
+import { writeClipboard } from '@/lib/clipboard'
 import type { ListenConfigInfoResponse, ListenStatusResponse } from '@/types'
 import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
 
@@ -198,7 +199,7 @@ export function RemoteAccessSettings() {
   const copyText = async (text: string, key: string) => {
     setError(null)
     try {
-      await navigator.clipboard.writeText(text)
+      await writeClipboard(text)
     } catch (reason) {
       setError(t('settings.remote.copyFailed', { error: String(reason) }))
       return

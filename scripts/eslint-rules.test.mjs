@@ -522,3 +522,34 @@ tester.run('no-invented-domain-default', plugin.rules['no-invented-domain-defaul
     { code: `const { maxTokens = 4096 } = params`, errors: [{ messageId: 'invented' }] },
   ],
 })
+
+// The clipboard gate is a config entry, so it is tested through the config: a
+// direct `navigator.clipboard` anywhere in app code is refused, and the one
+// module allowed to touch it is not.
+describe('clipboard goes through lib/clipboard', () => {
+  const eslint = new ESLint()
+  const messages = async (code, filePath) =>
+    (await eslint.lintText(code, { filePath }))[0].messages.filter((m) => m.ruleId === 'no-restricted-properties')
+
+  it('refuses a direct write, a read and a destructured clipboard in app code', async () => {
+    for (const code of [
+      `export function f(t: string) { void navigator.clipboard.writeText(t) }`,
+      `export async function f() { return window.navigator.clipboard.readText() }`,
+      `export function f() { const { clipboard } = navigator; return clipboard }`,
+    ]) {
+      const found = await messages(code, 'src/components/chat/x.tsx')
+      assert.equal(found.length, 1, code)
+      assert.match(found[0].message, /@\/lib\/clipboard/)
+    }
+  })
+  it('lets lib/clipboard.ts, tests and the dev playground reach it', async () => {
+    const code = `export async function f(t: string) { await navigator.clipboard.writeText(t) }`
+    for (const file of ['src/lib/clipboard.ts', 'src/components/chat/x.test.tsx', 'src/dev/webview-lab.tsx']) {
+      assert.deepEqual(await messages(code, file), [], file)
+    }
+  })
+  it('leaves a paste event alone', async () => {
+    const code = `export function f(e: ClipboardEvent) { return e.clipboardData?.getData('text') }`
+    assert.deepEqual(await messages(code, 'src/components/chat/x.tsx'), [])
+  })
+})

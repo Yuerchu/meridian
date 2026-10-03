@@ -298,6 +298,25 @@ export default tseslint.config(
       'meridian-ui/no-invented-domain-default': 'error',
     },
   },
+  // The clipboard is reached through `lib/clipboard.ts` (and `useCopy` above
+  // it), never directly. Twelve sites called `navigator.clipboard` themselves
+  // and one awaited the answer: a refused write drew the "copied" tick, a cut
+  // deleted text the clipboard had not taken, and the rejection went unhandled
+  // (2026-10). Tests stub it and the dev playground probes it; both are exempt.
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/lib/clipboard.ts', 'src/**/*.test.{ts,tsx}', 'src/test/**', 'src/dev/**'],
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        {
+          property: 'clipboard',
+          message:
+            'Use writeClipboard/readClipboard from @/lib/clipboard, or useCopy for a copy button: the write can be refused, and the caller has to wait for it and say so.',
+        },
+      ],
+    },
+  },
   // Accessible names are in the app's language. App code outside the dev
   // playground; vendored registry files keep their English prop defaults (the
   // block after this one), and their callers are what has to pass the prop.

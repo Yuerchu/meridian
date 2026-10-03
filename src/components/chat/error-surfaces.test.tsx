@@ -30,6 +30,27 @@ describe('transcript status', () => {
     expect(onDismissError).toHaveBeenCalledTimes(1)
   })
 
+  it('draws a refused copy as a row of its own beside the action error, each dismissed alone', async () => {
+    const onDismissError = vi.fn()
+    const onDismissClipboardError = vi.fn()
+    render(
+      <TranscriptStatus
+        compacting={false}
+        error="provider rejected the API key"
+        onDismissError={onDismissError}
+        clipboardError="Copy failed: Document is not focused."
+        onDismissClipboardError={onDismissClipboardError}
+        redactionNotice={null}
+      />,
+    )
+    const [action, clipboard] = screen.getAllByRole('alert')
+    expect(action).toHaveTextContent('provider rejected the API key')
+    expect(clipboard).toHaveTextContent('Copy failed: Document is not focused.')
+    await userEvent.click(within(clipboard).getByRole('button', { name: i18n.t('common.dismiss') }))
+    expect(onDismissClipboardError).toHaveBeenCalledTimes(1)
+    expect(onDismissError).not.toHaveBeenCalled()
+  })
+
   it('draws a failed read with its reason and a retry', async () => {
     const onRetryLoad = vi.fn()
     render(

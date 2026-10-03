@@ -13,7 +13,7 @@ import { usePanelExpansion } from '@/hooks/use-panel-expansion'
 import { useConversationStore } from '@/stores/conversation-store'
 import type { BubblePosition } from '@/lib/message-groups'
 import type { MessageViewModel, UserCommandResultResponse } from '@/types'
-import { CopyButton } from './markdown-content'
+import { CopyButton } from '@/components/ui/copy-button'
 
 type LoadState =
   | { status: 'loading' }

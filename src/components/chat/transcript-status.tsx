@@ -19,6 +19,8 @@ export function TranscriptStatus({
   compacting,
   error,
   onDismissError,
+  clipboardError = null,
+  onDismissClipboardError,
   loadError = null,
   onRetryLoad,
   todosError = null,
@@ -32,6 +34,10 @@ export function TranscriptStatus({
    *  the next turn. */
   error: string | null
   onDismissError?: () => void
+  /** A copy from a message's menu that the clipboard refused; its own row so
+   *  it never takes `error`'s place. */
+  clipboardError?: string | null
+  onDismissClipboardError?: () => void
   /** The transcript could not be read; retried by reading it again. */
   loadError?: string | null
   onRetryLoad?: () => void
@@ -101,6 +107,15 @@ export function TranscriptStatus({
       {error && (
         <MessageScrollerItem messageId="__error">
           <ErrorAlert data-slot="transcript-error" message={error} onDismiss={onDismissError} />
+        </MessageScrollerItem>
+      )}
+      {clipboardError && (
+        <MessageScrollerItem messageId="__clipboard_error">
+          <ErrorAlert
+            data-slot="transcript-clipboard-error"
+            message={clipboardError}
+            onDismiss={onDismissClipboardError}
+          />
         </MessageScrollerItem>
       )}
     </>
