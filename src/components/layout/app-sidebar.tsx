@@ -74,6 +74,8 @@ import type { Page } from './shell-props'
 import { visibleSettingsTabGroups, type SettingsTab } from '@/components/settings/tabs'
 import { usePlatform } from '@/hooks/use-platform'
 import { useConfirm } from '@/hooks/use-confirm'
+import { useConversationStore } from '@/stores/conversation-store'
+import { useUndoStore } from '@/stores/undo-store'
 import { isCoarsePointer } from '@/hooks/use-coarse-pointer'
 import { ConversationIndicator } from './conversation-indicator'
 import { MoveDialog } from './move-dialog'
@@ -833,6 +835,10 @@ export function AppSidebar({
   // Every row action that writes answers here when it fails. They used to be
   // fired with nothing listening, so a refused delete or rename was a click
   // that seemed not to register — and an unhandled rejection in the console.
+  const isBusy = (id: string) => {
+    const session = useConversationStore.getState().sessions[id]
+    return !!session && (session.streaming || session.activeShellTurnId !== null)
+  }
   const reportFailure = useCallback(
     (messageKey: string, task: Promise<void>) => {
       setActionError(null)
@@ -844,6 +850,7 @@ export function AppSidebar({
   const archivedLoaded = useRef(false)
   const [expandedArchivedGroups, setExpandedArchivedGroups] = useState<Set<string | null>>(new Set())
   const { confirm, confirmDialog } = useConfirm()
+  const hiddenConversations = useUndoStore((s) => s.hidden)
 
   const loadArchived = useCallback(async () => {
     const archived = await api.listConversations(true)
@@ -861,13 +868,14 @@ export function AppSidebar({
   const archivedByProject = useMemo(() => {
     const map = new Map<string | null, ConversationInfoResponse[]>()
     for (const conv of archivedConversations) {
+      if (hiddenConversations.has(conv.id)) continue
       const key = conv.project_id ?? null
       const list = map.get(key)
       if (list) list.push(conv)
       else map.set(key, [conv])
     }
     return map
-  }, [archivedConversations])
+  }, [archivedConversations, hiddenConversations])
 
   const toggleArchivedGroup = useCallback(
     (groupKey: string | null) => {
@@ -1048,8 +1056,43 @@ export function AppSidebar({
     },
     onExportError: (error) => setActionError(t('sidebar.exportFailed', { error: String(error) })),
     onRequestDelete: async (id) => {
-      if (await confirm({ body: t('confirm.deleteConversation'), confirmLabel: t('common.delete') }))
-        reportFailure('sidebar.deleteFailed', onDelete(id))
+      // A busy conversation is still asked about: a turn running has to be
+      // stopped first, which cannot wait for an offer to run out, and a `!`
+      // command holds the lease a delete needs. Everything else goes at once,
+      // with an undo offer (`stores/undo-store.ts`).
+      if (isBusy(id)) {
+        if (await confirm({ body: t('confirm.deleteConversation'), confirmLabel: t('common.delete') }))
+          reportFailure('sidebar.deleteFailed', onDelete(id))
+        return
+      }
+      const conversation = conversations.find((c) => c.id === id) ?? archivedConversations.find((c) => c.id === id)
+      const store = useConversationStore.getState()
+      const wasOpen = store.activeId === id
+      if (wasOpen) store.setActiveId(null)
+      useUndoStore.getState().offer({
+        conversationId: id,
+        title: conversation?.title ?? null,
+        commit: async () => {
+          // Asked again when the delete is actually sent: something else — a
+          // queued prompt, OneBot, another client — may have started a turn
+          // while the offer stood, and the delete would stop it unasked. The
+          // conversation comes back instead, with the reason.
+          if (isBusy(id)) {
+            setActionError(t('sidebar.deleteCancelledBusy'))
+            return
+          }
+          const task = onDelete(id)
+          reportFailure('sidebar.deleteFailed', task)
+          await task
+          // The archived list is this component's own copy; the delete only
+          // refreshed the main one, and the row would otherwise come back the
+          // moment the store stopped hiding it.
+          setArchivedConversations((current) => current.filter((c) => c.id !== id))
+        },
+        restore: () => {
+          if (wasOpen) useConversationStore.getState().setActiveId(id)
+        },
+      })
     },
     // Only where there is an agent session to point at, and only where a
     // session can exist at all — Android has no child processes, so the

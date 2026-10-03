@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Notification, NotificationViewport, type NotificationAction } from '@/components/base'
+import { useUndoStore } from '@/stores/undo-store'
+import { UndoNotification } from './undo-notification'
 import { ArrowRight, Check, Clock, X } from '@keyline-icons/react/two-tone'
 
 import { ToolArgsSummary, escalationPromptKey, toolLabel } from '@/components/chat/tool-call-block'
@@ -82,6 +84,7 @@ export function ApprovalNotifications({
     [listed, ignored],
   )
   const underModal = useMadeInertByModal(VIEWPORT_SLOT)
+  const undo = useUndoStore((s) => s.pending)
 
   return (
     <NotificationViewport
@@ -98,6 +101,11 @@ export function ApprovalNotifications({
         (underModal || inboxOpen) && 'hidden',
       )}
     >
+      {/* Rendered only while there is one: the viewport wraps every child in a
+          row of its own, and an empty one would still take a gap. */}
+      {undo && (
+        <UndoNotification key={`undo:${undo.conversationId}`} deletion={undo} hidden={underModal || inboxOpen} />
+      )}
       {approvals.map((item) => (
         <ApprovalNotification key={item.approvalId} item={item} onSelect={onSelect} />
       ))}

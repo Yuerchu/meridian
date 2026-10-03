@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 
 import App from './App'
 import { useConversationStore } from '@/stores/conversation-store'
+import { useUndoStore } from '@/stores/undo-store'
 import type { InitialTurnDraft } from '@/components/chat/conversation-draft'
 import type { ShellProps } from '@/components/layout/shell-props'
 import type { ProjectInfoResponse } from '@/types'
@@ -217,5 +218,46 @@ describe('creating a conversation from the welcome composer', () => {
   it('keeps the document title in sync with the shell title', async () => {
     await renderApp()
     expect(document.title).toBe('app.name')
+  })
+})
+
+describe('deleting a conversation', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    shellCapture.props = null
+    useConversationStore.setState(useConversationStore.getInitialState(), true)
+    useUndoStore.setState({ pending: null, hidden: new Set() })
+    apiMocks.listConversations.mockResolvedValue([])
+    apiMocks.listProjects.mockResolvedValue([])
+    apiMocks.deleteConversation.mockResolvedValue(undefined)
+  })
+
+  // An undo offer sends the delete seconds after it was asked for, through the
+  // `onDelete` of that moment; by then the reader may have opened another one.
+  it('leaves a conversation opened since the delete was asked for', async () => {
+    await renderApp()
+    act(() => useConversationStore.getState().setActiveId('conversation-a'))
+    const askedWhileOpen = shellCapture.props!.onDelete
+    act(() => useConversationStore.getState().setActiveId('conversation-b'))
+
+    await act(async () => askedWhileOpen('conversation-a'))
+
+    expect(apiMocks.deleteConversation).toHaveBeenCalledWith('conversation-a')
+    expect(useConversationStore.getState().activeId).toBe('conversation-b')
+  })
+
+  it('draws no list with a conversation an undo offer is holding', async () => {
+    apiMocks.listConversations.mockResolvedValue([{ id: 'conversation-a' }, { id: 'conversation-b' }])
+    await renderApp()
+    await waitFor(() => expect(shellCapture.props!.conversations).toHaveLength(2))
+    act(() =>
+      useUndoStore.getState().offer({
+        conversationId: 'conversation-a',
+        title: null,
+        commit: () => Promise.resolve(),
+        restore: () => {},
+      }),
+    )
+    expect(shellCapture.props!.conversations.map((c) => c.id)).toEqual(['conversation-b'])
   })
 })
