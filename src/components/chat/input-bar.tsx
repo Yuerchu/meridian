@@ -25,7 +25,8 @@ import { VoiceButton } from '@/components/ui/voice-button'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import { errorMessage } from '@/lib/error-message'
 import { objectKey } from '@/lib/object-key'
-import { readClipboard, writeClipboard } from '@/lib/clipboard'
+import { readClipboardContent, writeClipboard, type ClipboardContent } from '@/lib/clipboard'
+import { pickPasted } from '@/lib/paste-files'
 import { Composer } from './composer'
 import { ComposerSuggestions, type ComposerSuggestion } from './composer-suggestions'
 import { VoiceOverlay } from './voice-overlay'
@@ -649,13 +650,39 @@ export function InputBar({
     )
   }, [t])
 
+  // Straight to the `file` form of an attachment: an HTML5 drop or a paste has
+  // no path to resolve, and `uploadAttachment` already knows what to do with
+  // bytes on both transports.
+  const handleDropFiles = useCallback(
+    (files: File[]) => {
+      onAttachFiles?.(files.map((file) => ({ name: file.name, file })))
+    },
+    [onAttachFiles],
+  )
+
+  // Withheld from a hosted session, as the attach menu is: an attachment
+  // reaches a hosted agent as the JSON that carries it.
+  const canAttachFiles = !isHosted && !!onAttachFiles && can.dropFiles
+
+  // A pasted file is a clipboard operation that worked, like a pasted line of
+  // text: it clears a failure the menu reported earlier, and takes a turn so
+  // that an older menu request answering late cannot report it again.
+  const handlePastedFiles = useCallback(
+    (files: File[]) => {
+      latestClipboardAttempt.current += 1
+      setClipboardError(null)
+      handleDropFiles(files)
+    },
+    [handleDropFiles],
+  )
+
   const handlePaste = useCallback(async () => {
     const el = textareaRef.current
     if (!el) return
-    let clip: string
+    let content: ClipboardContent
     const attempt = ++latestClipboardAttempt.current
     try {
-      clip = await readClipboard()
+      content = await readClipboardContent()
     } catch (reason) {
       if (attempt === latestClipboardAttempt.current) {
         setClipboardError(t('common.pasteFailed', { error: errorMessage(reason) }))
@@ -663,6 +690,14 @@ export function InputBar({
       return
     }
     if (attempt === latestClipboardAttempt.current) setClipboardError(null)
+    // The same rule as Ctrl+V (`pickPasted`), so the menu and the key agree
+    // on what a clipboard holding both text and a picture means.
+    const files = canAttachFiles ? pickPasted(content.text, content.files) : null
+    if (files) {
+      handleDropFiles(files)
+      return
+    }
+    const clip = content.text
     const start = el.selectionStart
     const end = el.selectionEnd
     onChange(el.value.slice(0, start) + clip + el.value.slice(end))
@@ -671,7 +706,7 @@ export function InputBar({
       el.selectionStart = pos
       el.selectionEnd = pos
     })
-  }, [onChange, t])
+  }, [canAttachFiles, handleDropFiles, onChange, t])
 
   const handleSelectAll = useCallback(() => {
     const el = textareaRef.current
@@ -754,16 +789,6 @@ export function InputBar({
     const paths = await open({ multiple: true }).catch(() => null)
     if (paths) await attachPaths(Array.isArray(paths) ? paths : [paths])
   }, [attachPaths])
-
-  // Straight to the `file` form of an attachment: an HTML5 drop or a paste has
-  // no path to resolve, and `uploadAttachment` already knows what to do with
-  // bytes on both transports.
-  const handleDropFiles = useCallback(
-    (files: File[]) => {
-      onAttachFiles?.(files.map((file) => ({ name: file.name, file })))
-    },
-    [onAttachFiles],
-  )
 
   const menuItems = (
     <>
@@ -884,7 +909,7 @@ export function InputBar({
             onDropFiles={!isHosted && onAttachFiles && can.dropFiles ? handleDropFiles : undefined}
             // A pasted screenshot is a dropped file by another route, held
             // back from a hosted session for the same reason.
-            onPasteFiles={!isHosted && onAttachFiles && can.dropFiles ? handleDropFiles : undefined}
+            onPasteFiles={canAttachFiles ? handlePastedFiles : undefined}
             // Offline takes the line over: a disabled field with nothing to
             // say about why reads as the app having broken.
             notice={

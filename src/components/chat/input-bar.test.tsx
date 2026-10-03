@@ -356,3 +356,69 @@ describe('InputBar paste', () => {
     expect(onAttachFiles).not.toHaveBeenCalled()
   })
 })
+
+describe('InputBar paste from its own menu', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  const png = () => new Blob([new Uint8Array(4)], { type: 'image/png' })
+  function stubRead(items: Array<Record<string, Blob>>, readText?: () => Promise<string>) {
+    const read = vi
+      .fn()
+      .mockResolvedValue(
+        items.map((parts) => ({ types: Object.keys(parts), getType: (type: string) => Promise.resolve(parts[type]) })),
+      )
+    Object.defineProperty(navigator, 'clipboard', { value: { read, readText }, configurable: true })
+    return read
+  }
+  async function pasteFromMenu(user: ReturnType<typeof userEvent.setup>) {
+    await user.pointer({ keys: '[MouseRight]', target: document.querySelector('textarea')! })
+    await user.click(await screen.findByRole('menuitem', { name: new RegExp(`^${i18n.t('contextMenu.paste')}`) }))
+  }
+
+  it('attaches a screenshot the menu pastes, as Ctrl+V does', async () => {
+    const user = userEvent.setup()
+    stubRead([{ 'image/png': png() }])
+    const onAttachFiles = vi.fn()
+    const onChange = vi.fn()
+    renderBar({ onAttachFiles, onChange })
+
+    await pasteFromMenu(user)
+
+    await vi.waitFor(() => expect(onAttachFiles).toHaveBeenCalledTimes(1))
+    expect(onAttachFiles.mock.calls[0][0][0].file.type).toBe('image/png')
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('pastes text when the clipboard has text beside the picture', async () => {
+    const user = userEvent.setup()
+    stubRead([{ 'text/plain': new Blob(['a\tb']), 'image/png': png() }])
+    const onAttachFiles = vi.fn()
+    const onChange = vi.fn()
+    renderBar({ onAttachFiles, onChange })
+
+    await pasteFromMenu(user)
+
+    await vi.waitFor(() => expect(onChange).toHaveBeenCalledWith('a\tb'))
+    expect(onAttachFiles).not.toHaveBeenCalled()
+  })
+
+  it('clears a failed menu paste once a pasted file goes through', async () => {
+    const user = userEvent.setup()
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { read: vi.fn().mockRejectedValue(new Error('Read permission denied.')) },
+      configurable: true,
+    })
+    renderBar({ onAttachFiles: vi.fn() })
+    await pasteFromMenu(user)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Read permission denied.')
+
+    const file = new File([new Uint8Array(4)], 'image.png', { type: 'image/png' })
+    fireEvent.paste(document.querySelector('textarea')!, {
+      clipboardData: {
+        getData: () => '',
+        items: [{ kind: 'file', type: file.type, getAsFile: () => file }],
+      } as unknown as DataTransfer,
+    })
+    await vi.waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+  })
+})
