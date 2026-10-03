@@ -132,6 +132,32 @@ describe('Sheet', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
+  it('leaves at the speed it was thrown, not from rest', () => {
+    const onOpenChange = vi.fn()
+    render(<Panel onOpenChange={onOpenChange} />)
+    drag(100, 160, { steps: 3, gap: 4 })
+    const panel = document.querySelector<HTMLElement>('[data-slot="sheet-content"]')!
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(panel.style.animationTimingFunction).toBe('linear')
+    expect(panel.style.animationDuration).toBe('100ms')
+  })
+
+  it('keeps the exit as written after a slow release, and after a refused throw', () => {
+    const onOpenChange = vi.fn()
+    const { unmount } = render(<Panel onOpenChange={onOpenChange} />)
+    drag(100, 300, { gap: 400 })
+    const panel = () => document.querySelector<HTMLElement>('[data-slot="sheet-content"]')!
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(panel().style.animationTimingFunction).toBe('')
+    unmount()
+
+    render(<Panel isDirty onOpenChange={onOpenChange} />)
+    drag(100, 160, { steps: 3, gap: 4 })
+    expect(discard()).not.toBeNull()
+    expect(panel().style.animationDuration).toBe('')
+    expect(panel().style.animationTimingFunction).toBe('')
+  })
+
   it('asks before a drag loses unsaved work, and springs back meanwhile', () => {
     const onOpenChange = vi.fn()
     render(<Panel isDirty onOpenChange={onOpenChange} />)
