@@ -347,16 +347,17 @@ function PromptInputSend({
   const { onSubmit, onStop, status } = ctx
   const running = isRunning(status)
   const mode = sendModeOf(ctx)
-  // Armed only by Send turning into Stop: a run that was already going when
-  // this mounted, or a Stop that follows a wait, has no press to swallow.
-  const previousMode = useRef(mode)
-  const stopArmedAt = useRef(Number.NEGATIVE_INFINITY)
-  useLayoutEffect(() => {
-    if (previousMode.current === 'send' && mode === 'stop') stopArmedAt.current = performance.now()
-    previousMode.current = mode
-  }, [mode])
+  // Armed by a press on this button that sent, and by nothing else. Enter in
+  // the field, a turn started from elsewhere, or a run already going when this
+  // mounted put no second press of a double-click over the Stop — a press on
+  // it then was meant, and swallowing it would ignore a visibly enabled button.
+  const sentAt = useRef(Number.NEGATIVE_INFINITY)
+  const send = () => {
+    sentAt.current = performance.now()
+    onSubmit()
+  }
   const stop = () => {
-    if (performance.now() - stopArmedAt.current >= STOP_AFTER_SEND_MS) onStop?.()
+    if (performance.now() - sentAt.current >= STOP_AFTER_SEND_MS) onStop?.()
   }
   // Send is the primary pill; Stop is the registry agent-composer's grey one
   // (`bg-background-secondary-default text-foreground-icon-secondary`, which is
@@ -372,7 +373,7 @@ function PromptInputSend({
       // unless there is a steer to send, which does not wait for it.
       isPending={mode !== 'send' && status === 'submitted'}
       isDisabled={disabled || mode === 'wait'}
-      onPress={mode === 'send' ? onSubmit : stop}
+      onPress={mode === 'send' ? send : stop}
       className={cx('rounded-full', className)}
       // A wait is still the send button, only not yet pressable.
       aria-label={mode === 'stop' ? stopLabel : sendLabel}

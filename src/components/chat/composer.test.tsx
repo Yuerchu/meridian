@@ -157,6 +157,15 @@ describe('Composer when Send turns into Stop under the pointer', () => {
     expect(onStop).not.toHaveBeenCalled()
   })
 
+  it('stops at once when the turn was sent with Enter', async () => {
+    const user = userEvent.setup()
+    const onStop = vi.fn()
+    const { container } = render(<Harness onStop={onStop} />)
+    await user.type(container.querySelector('textarea')!, '{Enter}')
+    await user.click(container.querySelector<HTMLElement>('[data-slot="prompt-input-send"]')!)
+    expect(onStop).toHaveBeenCalledTimes(1)
+  })
+
   it('stops once the press can no longer be the same double-click', async () => {
     const user = userEvent.setup()
     const onStop = vi.fn()
