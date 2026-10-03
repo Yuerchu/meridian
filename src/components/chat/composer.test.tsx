@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import i18n from '@/i18n'
@@ -111,6 +112,61 @@ describe('Composer while a steerable run streams', () => {
     expect(stops).toHaveLength(1)
     expect(screen.queryByRole('button', { name: i18n.t('chat.send') })).toBeNull()
     await user.click(stops[0])
+    expect(onStop).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('Composer when Send turns into Stop under the pointer', () => {
+  /** Sending clears the field and starts the turn in the same event, as the
+   *  store's `beginTurn` does, so the button under the pointer is Stop before
+   *  a double-click's second press lands. */
+  function Harness({ onStop }: { onStop: () => void }) {
+    const [value, setValue] = useState('hello')
+    const [streaming, setStreaming] = useState(false)
+    return (
+      <Composer
+        value={value}
+        onChange={setValue}
+        onSubmit={() => {
+          setValue('')
+          setStreaming(true)
+        }}
+        onStop={onStop}
+        streaming={streaming}
+        ariaLabel="Message"
+      />
+    )
+  }
+
+  let now = 0
+  beforeEach(() => {
+    now = 1_000
+    vi.spyOn(performance, 'now').mockImplementation(() => now)
+  })
+  afterEach(() => vi.restoreAllMocks())
+
+  it('does not stop the turn a double-click has just sent', async () => {
+    const user = userEvent.setup()
+    const onStop = vi.fn()
+    const { container } = render(<Harness onStop={onStop} />)
+    const button = container.querySelector<HTMLElement>('[data-slot="prompt-input-send"]')!
+
+    await user.dblClick(button)
+
+    expect(button).toHaveAccessibleName(i18n.t('chat.stop'))
+    expect(onStop).not.toHaveBeenCalled()
+  })
+
+  it('stops once the press can no longer be the same double-click', async () => {
+    const user = userEvent.setup()
+    const onStop = vi.fn()
+    const { container } = render(<Harness onStop={onStop} />)
+    const button = container.querySelector<HTMLElement>('[data-slot="prompt-input-send"]')!
+
+    await user.click(button)
+    now += 600
+    await user.click(button)
+
     expect(onStop).toHaveBeenCalledTimes(1)
   })
 })

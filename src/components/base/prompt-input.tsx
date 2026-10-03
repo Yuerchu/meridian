@@ -78,6 +78,15 @@ const isRunning = (status: PromptInputStatus) => status === 'submitted' || statu
  */
 type SendMode = 'send' | 'stop' | 'wait'
 
+/**
+ * How long a Stop that has just replaced Send ignores presses. Sending starts
+ * the turn in the same event (the store's `beginTurn`) and empties the field,
+ * so the button under the pointer is Stop before a double-click's second press
+ * lands, and that press stopped the turn it had just sent. Windows' default
+ * double-click interval: anything later was meant.
+ */
+const STOP_AFTER_SEND_MS = 500
+
 function sendModeOf(ctx: PromptInputContextValue): SendMode {
   if (!isRunning(ctx.status)) return 'send'
   if (ctx.allowSubmitWhileRunning && ctx.value.trim() !== '') return 'send'
@@ -338,6 +347,17 @@ function PromptInputSend({
   const { onSubmit, onStop, status } = ctx
   const running = isRunning(status)
   const mode = sendModeOf(ctx)
+  // Armed only by Send turning into Stop: a run that was already going when
+  // this mounted, or a Stop that follows a wait, has no press to swallow.
+  const previousMode = useRef(mode)
+  const stopArmedAt = useRef(Number.NEGATIVE_INFINITY)
+  useLayoutEffect(() => {
+    if (previousMode.current === 'send' && mode === 'stop') stopArmedAt.current = performance.now()
+    previousMode.current = mode
+  }, [mode])
+  const stop = () => {
+    if (performance.now() - stopArmedAt.current >= STOP_AFTER_SEND_MS) onStop?.()
+  }
   // Send is the primary pill; Stop is the registry agent-composer's grey one
   // (`bg-background-secondary-default text-foreground-icon-secondary`, which is
   // the `neutral` variant). Both 36px round, as upstream.
@@ -352,7 +372,7 @@ function PromptInputSend({
       // unless there is a steer to send, which does not wait for it.
       isPending={mode !== 'send' && status === 'submitted'}
       isDisabled={disabled || mode === 'wait'}
-      onPress={mode === 'send' ? onSubmit : onStop}
+      onPress={mode === 'send' ? onSubmit : stop}
       className={cx('rounded-full', className)}
       // A wait is still the send button, only not yet pressable.
       aria-label={mode === 'stop' ? stopLabel : sendLabel}
