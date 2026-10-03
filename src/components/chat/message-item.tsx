@@ -22,6 +22,7 @@ import { ActionButton } from '@/components/ui/action-button'
 import { useConfirm } from '@/hooks/use-confirm'
 import { ConversationRefChips } from './conversation-ref-chips'
 import { MarkdownContent } from './markdown-content'
+import { useRevealedText } from '@/hooks/use-revealed-text'
 import { CopyButton } from '@/components/ui/copy-button'
 import { Avatar, Label, TextArea } from '@/components/base'
 import { AgentThinking } from '@/components/application/agent-thinking/agent-thinking'
@@ -765,6 +766,12 @@ function AssistantBubble({
   const { t } = useTranslation()
   const folded = 'folded' in bubble ? bubble.folded : NO_FOLDS
   const { isOpen, toggle } = useFoldExpansion(folded)
+  // Paced only for prose: reasoning and tool calls appear as they arrive, so a
+  // thought or a call never waits behind text still being drawn.
+  const revealed = useRevealedText(
+    bubble.kind === 'text' ? bubble.text : '',
+    bubble.kind === 'text' && bubble.isStreaming,
+  )
 
   if (bubble.kind === 'sticker') {
     return (
@@ -864,8 +871,8 @@ function AssistantBubble({
           <ThinkingRow text={bubble.thinking.join('\n\n')} panelKey={`${bubble.key}:thinking`} />
         )}
         <MarkdownContent
-          content={bubble.text}
-          isStreaming={bubble.isStreaming}
+          content={revealed.text}
+          isStreaming={bubble.isStreaming || revealed.revealing}
           oneBot={isOneBot}
           emojiMap={emojiMap}
           blockId={bubble.key}
@@ -879,7 +886,7 @@ function AssistantBubble({
             isOpen={isOpen}
             toggle={toggle}
             at={bubble.createdAt}
-            isStreaming={bubble.isStreaming}
+            isStreaming={bubble.isStreaming || revealed.revealing}
           />
         )}
       </BubbleContent>
