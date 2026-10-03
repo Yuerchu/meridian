@@ -8,7 +8,10 @@ import { useUndoStore } from '@/stores/undo-store'
 import i18n from '@/i18n'
 import type { ConversationInfoResponse, ProjectInfoResponse } from '@/types'
 
-const apiMocks = vi.hoisted(() => ({ exportConversation: vi.fn() }))
+const apiMocks = vi.hoisted(() => ({
+  exportConversation: vi.fn(),
+  listConversations: vi.fn((): Promise<ConversationInfoResponse[]> => Promise.resolve([])),
+}))
 const dialogMocks = vi.hoisted(() => ({ open: vi.fn(), save: vi.fn() }))
 
 vi.mock('@/api', () => ({
@@ -16,7 +19,7 @@ vi.mock('@/api', () => ({
     getPlatform: () => Promise.resolve('windows'),
     exportConversation: apiMocks.exportConversation,
     // The archived rows of each group, loaded by the sidebar itself.
-    listConversations: () => Promise.resolve([]),
+    listConversations: () => apiMocks.listConversations(),
   },
 }))
 vi.mock('@tauri-apps/plugin-dialog', () => dialogMocks)
@@ -353,12 +356,79 @@ describe('AppSidebar project groups', () => {
       expect(useUndoStore.getState().hidden.has('c-1')).toBe(false)
     })
 
+    it('asks rather than offering undo while a ! command holds the conversation', async () => {
+      const user = userEvent.setup()
+      useConversationStore.setState((state) => ({
+        // Only `streaming` and `activeShellTurnId` are read on this path.
+        sessions: {
+          ...state.sessions,
+          'c-1': { streaming: false, activeShellTurnId: 'shell-1' } as ConversationSession,
+        },
+      }))
+      try {
+        renderSidebar()
+        await user.click(within(await openRowMenu(user)).getByText(i18n.t('chat.delete')))
+        expect(await screen.findByRole('alertdialog')).toBeInTheDocument()
+        expect(useUndoStore.getState().pending).toBeNull()
+      } finally {
+        useConversationStore.setState((state) => {
+          const sessions = { ...state.sessions }
+          delete sessions['c-1']
+          return { sessions }
+        })
+      }
+    })
+
+    it('cancels an offer whose conversation started a turn while it stood', async () => {
+      const user = userEvent.setup()
+      const onDelete = vi.fn().mockResolvedValue(undefined)
+      renderSidebar({ onDelete })
+      await user.click(within(await openRowMenu(user)).getByText(i18n.t('chat.delete')))
+      useConversationStore.setState((state) => ({
+        sessions: { ...state.sessions, 'c-1': { streaming: true, activeShellTurnId: null } as ConversationSession },
+      }))
+      try {
+        act(() => useUndoStore.getState().commit())
+        expect(await screen.findByRole('alert')).toHaveTextContent(i18n.t('sidebar.deleteCancelledBusy'))
+        expect(onDelete).not.toHaveBeenCalled()
+        await vi.waitFor(() => expect(useUndoStore.getState().hidden.has('c-1')).toBe(false))
+      } finally {
+        useConversationStore.setState((state) => {
+          const sessions = { ...state.sessions }
+          delete sessions['c-1']
+          return { sessions }
+        })
+      }
+    })
+
+    it('keeps a deleted archived conversation gone once its delete is done', async () => {
+      const user = userEvent.setup()
+      // The archived list is the sidebar's own copy, and it still has the row:
+      // nothing refreshes it in this test, as nothing did after a delete.
+      apiMocks.listConversations.mockResolvedValue([
+        { ...conversation('c-old', '旧对话', 'p-code'), is_archived: true },
+      ])
+      try {
+        renderSidebar()
+        await user.click((await screen.findAllByText(i18n.t('sidebar.archivedCount', { count: 1 })))[0])
+        await user.pointer({ keys: '[MouseRight]', target: (await screen.findAllByRole('row', { name: /旧对话/ }))[0] })
+        await user.click(within(await screen.findByRole('menu')).getByText(i18n.t('chat.delete')))
+        expect(screen.queryAllByRole('row', { name: /旧对话/ })).toHaveLength(0)
+
+        act(() => useUndoStore.getState().commit())
+        await vi.waitFor(() => expect(useUndoStore.getState().hidden.has('c-old')).toBe(false))
+        expect(screen.queryAllByRole('row', { name: /旧对话/ })).toHaveLength(0)
+      } finally {
+        apiMocks.listConversations.mockResolvedValue([])
+      }
+    })
+
     it('still asks before deleting a conversation with a turn running', async () => {
       const user = userEvent.setup()
       const onDelete = vi.fn().mockResolvedValue(undefined)
       useConversationStore.setState((state) => ({
         // Only `streaming` is read on this path.
-        sessions: { ...state.sessions, 'c-1': { streaming: true } as ConversationSession },
+        sessions: { ...state.sessions, 'c-1': { streaming: true, activeShellTurnId: null } as ConversationSession },
       }))
       try {
         renderSidebar({ onDelete })

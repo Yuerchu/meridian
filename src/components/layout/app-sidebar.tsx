@@ -835,6 +835,10 @@ export function AppSidebar({
   // Every row action that writes answers here when it fails. They used to be
   // fired with nothing listening, so a refused delete or rename was a click
   // that seemed not to register — and an unhandled rejection in the console.
+  const isBusy = (id: string) => {
+    const session = useConversationStore.getState().sessions[id]
+    return !!session && (session.streaming || session.activeShellTurnId !== null)
+  }
   const reportFailure = useCallback(
     (messageKey: string, task: Promise<void>) => {
       setActionError(null)
@@ -1052,10 +1056,11 @@ export function AppSidebar({
     },
     onExportError: (error) => setActionError(t('sidebar.exportFailed', { error: String(error) })),
     onRequestDelete: async (id) => {
-      // A conversation with a turn running is still asked about: deleting it
-      // stops the turn first, and that cannot wait for an offer to run out.
-      // Everything else goes at once, with an undo offer (`stores/undo-store.ts`).
-      if (useConversationStore.getState().sessions[id]?.streaming) {
+      // A busy conversation is still asked about: a turn running has to be
+      // stopped first, which cannot wait for an offer to run out, and a `!`
+      // command holds the lease a delete needs. Everything else goes at once,
+      // with an undo offer (`stores/undo-store.ts`).
+      if (isBusy(id)) {
         if (await confirm({ body: t('confirm.deleteConversation'), confirmLabel: t('common.delete') }))
           reportFailure('sidebar.deleteFailed', onDelete(id))
         return
@@ -1067,10 +1072,22 @@ export function AppSidebar({
       useUndoStore.getState().offer({
         conversationId: id,
         title: conversation?.title ?? null,
-        commit: () => {
+        commit: async () => {
+          // Asked again when the delete is actually sent: something else — a
+          // queued prompt, OneBot, another client — may have started a turn
+          // while the offer stood, and the delete would stop it unasked. The
+          // conversation comes back instead, with the reason.
+          if (isBusy(id)) {
+            setActionError(t('sidebar.deleteCancelledBusy'))
+            return
+          }
           const task = onDelete(id)
           reportFailure('sidebar.deleteFailed', task)
-          return task
+          await task
+          // The archived list is this component's own copy; the delete only
+          // refreshed the main one, and the row would otherwise come back the
+          // moment the store stopped hiding it.
+          setArchivedConversations((current) => current.filter((c) => c.id !== id))
         },
         restore: () => {
           if (wasOpen) useConversationStore.getState().setActiveId(id)

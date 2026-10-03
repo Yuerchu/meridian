@@ -56,4 +56,18 @@ describe('undo store', () => {
     expect(state().pending).toBe(second)
     expect([...state().hidden].sort()).toEqual(['a', 'b'])
   })
+
+  it('sends one delete at a time, so their list refreshes cannot cross', async () => {
+    let finishFirst!: () => void
+    const first = deletion('a', () => new Promise<void>((resolve) => (finishFirst = resolve)))
+    const second = deletion('b')
+    state().offer(first)
+    state().offer(second)
+    state().commit()
+    expect(first.commit).toHaveBeenCalledTimes(1)
+    await Promise.resolve()
+    expect(second.commit).not.toHaveBeenCalled()
+    finishFirst()
+    await vi.waitFor(() => expect(second.commit).toHaveBeenCalledTimes(1))
+  })
 })

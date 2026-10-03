@@ -192,11 +192,14 @@ function App() {
         await api.deleteConversation(id)
       }
       await refreshConversations()
-      if (activeId === id) {
+      // The open conversation now, not when the delete was asked for: an undo
+      // offer sends this seconds later, by when the reader may have opened
+      // something else.
+      if (useConversationStore.getState().activeId === id) {
         storeSetActiveId(null)
       }
     },
-    [activeId, refreshConversations, storeSetActiveId],
+    [refreshConversations, storeSetActiveId],
   )
 
   const handleSelect = useCallback(

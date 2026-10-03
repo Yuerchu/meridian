@@ -366,6 +366,7 @@
   "sidebar.pinFailed": "无法置顶或取消置顶对话：{{error}}",
   "sidebar.renameFailed": "无法重命名对话：{{error}}",
   "sidebar.deleteFailed": "无法删除对话：{{error}}",
+  "sidebar.deleteCancelledBusy": "对话开始了新的回合，删除已取消。",
   "sidebar.status.waiting": "等待你的响应",
   "sidebar.status.streaming": "正在生成回复",
   "sidebar.status.unseen": "有新回复",

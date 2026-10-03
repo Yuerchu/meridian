@@ -61,4 +61,18 @@ describe('UndoNotification', () => {
     act(() => vi.advanceTimersByTime(UNDO_MS * 2))
     expect(commit).not.toHaveBeenCalled()
   })
+
+  it('stands still while the window is hidden', () => {
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    const { commit } = offer()
+    visibility.mockReturnValue('hidden')
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    act(() => vi.advanceTimersByTime(UNDO_MS * 2))
+    expect(commit).not.toHaveBeenCalled()
+    visibility.mockReturnValue('visible')
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    act(() => vi.advanceTimersByTime(UNDO_MS + 200))
+    expect(commit).toHaveBeenCalledTimes(1)
+    visibility.mockRestore()
+  })
 })

@@ -26,8 +26,8 @@ function CountdownGlyph({ className }: { className?: string }) {
  *
  * Paused while the pointer is over the offer or focus is inside it — WCAG
  * 2.2.1: whoever is reaching for Undo must not lose it mid-reach — and while
- * the stack is hidden under a modal or behind the open inbox, where nobody can
- * reach it at all.
+ * nobody can reach it at all: the stack hidden under a modal or behind the
+ * open inbox, or the window itself hidden.
  */
 function useCountdown(total: number, paused: boolean): number {
   const [left, setLeft] = useState(total)
@@ -48,6 +48,21 @@ function useCountdown(total: number, paused: boolean): number {
 }
 
 /**
+ * Whether the window is hidden — minimised, or closed to the tray, which hides
+ * the native window and leaves the page running. Timers carry on there, so an
+ * offer would run out where nobody could reach it.
+ */
+function useWindowHidden(): boolean {
+  const [hidden, setHidden] = useState(() => document.visibilityState === 'hidden')
+  useEffect(() => {
+    const update = () => setHidden(document.visibilityState === 'hidden')
+    document.addEventListener('visibilitychange', update)
+    return () => document.removeEventListener('visibilitychange', update)
+  }, [])
+  return hidden
+}
+
+/**
  * The undo offer for a conversation just deleted (`stores/undo-store.ts`), at
  * the head of the notification stack. Closing it deletes now; letting it run
  * out deletes then; Undo puts the conversation back.
@@ -56,7 +71,8 @@ export function UndoNotification({ deletion, hidden }: { deletion: UndoableDelet
   const { t } = useTranslation()
   const [hovered, setHovered] = useState(false)
   const [focused, setFocused] = useState(false)
-  const left = useCountdown(UNDO_MS, hidden || hovered || focused)
+  const windowHidden = useWindowHidden()
+  const left = useCountdown(UNDO_MS, hidden || windowHidden || hovered || focused)
 
   useEffect(() => {
     if (left === 0) useUndoStore.getState().commit()

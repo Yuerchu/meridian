@@ -35,6 +35,13 @@ interface UndoState {
 }
 
 export const useUndoStore = create<UndoState>((set, get) => {
+  // One delete at a time. Each ends by refreshing the conversation list, and
+  // the refresh is not versioned: two in flight could resolve out of order,
+  // and a list read before the second delete would write its conversation
+  // back — visible, since its hidden marker is released when its own delete
+  // settles.
+  // Sent at once when nothing is in flight, so a lone delete is not a tick late.
+  let tail: Promise<void> | null = null
   const send = (deletion: UndoableDeletion) => {
     const release = () =>
       set((state) => {
@@ -44,7 +51,12 @@ export const useUndoStore = create<UndoState>((set, get) => {
       })
     // The caller's commit reports its own failure; here it only decides when
     // the row may be shown again.
-    deletion.commit().then(release, release)
+    const run = () => deletion.commit().then(release, release)
+    const settled = tail ? tail.then(run) : run()
+    tail = settled
+    void settled.then(() => {
+      if (tail === settled) tail = null
+    })
   }
 
   return {

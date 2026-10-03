@@ -376,6 +376,7 @@
   "sidebar.pinFailed": "Could not pin or unpin the conversation: {{error}}",
   "sidebar.renameFailed": "Could not rename the conversation: {{error}}",
   "sidebar.deleteFailed": "Could not delete the conversation: {{error}}",
+  "sidebar.deleteCancelledBusy": "The conversation started a new turn, so it was not deleted.",
   "sidebar.status.waiting": "Waiting for your response",
   "sidebar.status.streaming": "Response in progress",
   "sidebar.status.unseen": "New response",
