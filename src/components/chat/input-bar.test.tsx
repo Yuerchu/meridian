@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -313,5 +313,46 @@ describe('composer attachment row, adding and removing', () => {
     rerender(<InputBar {...base} attachedFiles={files.slice(1)} />)
 
     expect(row.scrollLeft).toBe(200)
+  })
+})
+
+describe('InputBar paste', () => {
+  const shot = () => new File([new Uint8Array(4)], 'image.png', { type: 'image/png' })
+  const clipboard = (text: string, files: File[]) =>
+    ({
+      getData: (type: string) => (type === 'text/plain' ? text : ''),
+      items: files.map((file) => ({ kind: 'file', type: file.type, getAsFile: () => file })),
+    }) as unknown as DataTransfer
+  // The field's role is combobox (it owns the typeahead), so found by tag.
+  const field = () => document.querySelector('textarea')!
+
+  it('attaches a pasted screenshot instead of pasting nothing', () => {
+    const onAttachFiles = vi.fn()
+    renderBar({ onAttachFiles })
+    const file = shot()
+
+    const kept = fireEvent.paste(field(), { clipboardData: clipboard('', [file]) })
+
+    expect(onAttachFiles).toHaveBeenCalledWith([{ name: 'image.png', file }])
+    expect(kept).toBe(false)
+  })
+
+  it('pastes copied cells as text, not as the picture Office puts beside them', () => {
+    const onAttachFiles = vi.fn()
+    renderBar({ onAttachFiles })
+
+    const kept = fireEvent.paste(field(), { clipboardData: clipboard('a\tb', [shot()]) })
+
+    expect(onAttachFiles).not.toHaveBeenCalled()
+    expect(kept).toBe(true)
+  })
+
+  it('attaches nothing to a hosted session', () => {
+    const onAttachFiles = vi.fn()
+    renderBar({ onAttachFiles, isHosted: true })
+
+    fireEvent.paste(field(), { clipboardData: clipboard('', [shot()]) })
+
+    expect(onAttachFiles).not.toHaveBeenCalled()
   })
 })

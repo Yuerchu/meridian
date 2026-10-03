@@ -755,9 +755,9 @@ export function InputBar({
     if (paths) await attachPaths(Array.isArray(paths) ? paths : [paths])
   }, [attachPaths])
 
-  // Straight to the `file` form of an attachment: an HTML5 drop has no path
-  // to resolve, and `uploadAttachment` already knows what to do with bytes on
-  // both transports.
+  // Straight to the `file` form of an attachment: an HTML5 drop or a paste has
+  // no path to resolve, and `uploadAttachment` already knows what to do with
+  // bytes on both transports.
   const handleDropFiles = useCallback(
     (files: File[]) => {
       onAttachFiles?.(files.map((file) => ({ name: file.name, file })))
@@ -882,6 +882,9 @@ export function InputBar({
             // block. Closing the menus and leaving the whole window droppable
             // would be the same failure with a better hiding place.
             onDropFiles={!isHosted && onAttachFiles && can.dropFiles ? handleDropFiles : undefined}
+            // A pasted screenshot is a dropped file by another route, held
+            // back from a hosted session for the same reason.
+            onPasteFiles={!isHosted && onAttachFiles && can.dropFiles ? handleDropFiles : undefined}
             // Offline takes the line over: a disabled field with nothing to
             // say about why reads as the app having broken.
             notice={
