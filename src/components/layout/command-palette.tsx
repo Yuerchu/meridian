@@ -9,6 +9,7 @@ import { visibleSettingsTabs, type SettingsTab } from '@/components/settings/tab
 import { useHistoryLevel } from '@/hooks/use-history-level'
 import { usePlatform } from '@/hooks/use-platform'
 import { ProjectIcon } from './project-icon'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * How many conversations to list before anything has been typed.
@@ -166,11 +167,12 @@ export function CommandPalette({
                     >
                       <AlignLeft className="size-4" />
                       <div data-slot="palette-hit" className="flex min-w-0 flex-col">
-                        <span data-slot="palette-hit-title" className="truncate">
+                        <span data-slot="palette-hit-title" onPointerEnter={titleIfTruncated} className="truncate">
                           {hit.title ?? t('sidebar.newChat')}
                         </span>
                         <span
                           data-slot="palette-hit-snippet"
+                          onPointerEnter={titleIfTruncated}
                           className="truncate text-caption-1-regular text-text-secondary"
                         >
                           {hit.snippet}

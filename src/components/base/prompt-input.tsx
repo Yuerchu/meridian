@@ -24,6 +24,7 @@ import { cx } from '@/utils/cx'
 import { Button, type ButtonProps } from './buttons/button'
 import { Spinner } from './spinner'
 import { Tooltip, TooltipTrigger } from './tooltip/tooltip'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * The chat composer's shell, until boardui Pro's `composer` replaces it: a
@@ -528,6 +529,7 @@ function QueueItemContent({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div
       data-slot="prompt-input-queue-item-content"
+      onPointerEnter={titleIfTruncated}
       {...props}
       className={cx('min-w-0 flex-1 truncate text-body-2-regular text-text-primary', className)}
     />

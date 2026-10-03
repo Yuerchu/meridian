@@ -40,6 +40,11 @@ function ResizablePanel({ className, ...props }: PanelProps) {
  * here. Its state is `data-separator="inactive|hover|focus|active|disabled"`
  * in v4; the v3 `data-resize-handle-active` it used to be styled from is never
  * written.
+ *
+ * Nothing here decides how wide a target it is. The library hit-tests on the
+ * document, from this element's bounding box widened to the group's
+ * `resizeTargetMinimumSize` (10px for a mouse, 20px for a finger by default);
+ * a pseudo-element is not in that box. Widen it on the `Resizable`.
  */
 function ResizableHandle({ className, ...props }: HandleProps) {
   return (
@@ -47,7 +52,7 @@ function ResizableHandle({ className, ...props }: HandleProps) {
       data-slot="resizable-handle"
       {...props}
       className={cx(
-        'relative flex w-px items-center justify-center bg-separator-border after:absolute after:inset-y-0 after:-left-1 after:-right-1 after:content-[""]',
+        'relative flex w-px items-center justify-center bg-separator-border',
         'data-[separator=hover]:bg-border-button-hover data-[separator=active]:bg-accent-500',
         'outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-border-focus-ring',
         className,

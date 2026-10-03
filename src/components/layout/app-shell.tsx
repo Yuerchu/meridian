@@ -20,11 +20,12 @@ import { usePlanReviewStore } from '@/stores/plan-review-store'
 import { usePlanReviewNavigation } from '@/components/plan-review/navigation'
 import { ApprovalNotifications } from './approval-notifications'
 import { AppSidebar } from './app-sidebar'
-import { CHANGES_PANEL_SIZE, CHAT_PANEL_SIZE } from './changes-split'
+import { CHANGES_HANDLE_TARGET, CHANGES_PANEL_SIZE, CHAT_PANEL_SIZE } from './changes-split'
 import { CommandPalette } from './command-palette'
 import { NotificationInbox } from './notification-inbox'
 import { RemoteStatus } from './remote-status'
 import type { ShellProps } from './shell-props'
+import { titleIfTruncated } from '@/lib/truncation'
 
 const SettingsPage = lazy(() => import('@/components/settings'))
 const PlanReviewPage = lazy(() =>
@@ -290,6 +291,7 @@ export function AppShell(props: ShellProps) {
             </TooltipTrigger>
             <h1
               data-slot="app-title"
+              onPointerEnter={titleIfTruncated}
               ref={pageHeadingRef}
               tabIndex={-1}
               className="truncate rounded-sm text-body-medium outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring/50"
@@ -404,7 +406,11 @@ export function AppShell(props: ShellProps) {
                 is the positioned box the settings layer covers, and a group
                 that enclosed both would have the settings page inside a panel
                 it has no business being in. */}
-              <Resizable orientation="horizontal" className="h-full min-h-0">
+              <Resizable
+                orientation="horizontal"
+                resizeTargetMinimumSize={CHANGES_HANDLE_TARGET}
+                className="h-full min-h-0"
+              >
                 <Resizable.Panel id="chat" {...CHAT_PANEL_SIZE}>
                   {/* `min-w-0` or a flex child refuses to shrink, and the
                     transcript's `max-w-4xl mx-auto` overflows instead of
@@ -443,16 +449,9 @@ export function AppShell(props: ShellProps) {
                   nobody can get back. */}
                 {showChanges && activeId && (
                   <>
-                    {/* The handle is a 1px line with an 8px hit area, which is a
-                      pointer's measurement. This panel only mounts above 768px,
-                      and a touch laptop or a tablet in landscape is squarely in
-                      that range — the divider was there and could not be
-                      dragged. The line itself is unchanged; only what catches
-                      the finger grows. */}
-                    <Resizable.Handle
-                      aria-label={t('chat.changes.title')}
-                      className="[--resizable-handle-hit-area:16px] pointer-coarse:[--resizable-handle-hit-area:24px]"
-                    />
+                    {/* A 1px line; what catches the pointer is the group's
+                      `resizeTargetMinimumSize` (CHANGES_HANDLE_TARGET). */}
+                    <Resizable.Handle aria-label={t('chat.changes.title')} />
                     <Resizable.Panel id="changes" {...CHANGES_PANEL_SIZE}>
                       <ChangesPanel conversationId={activeId} onClose={() => setChangesOpen(false)} />
                     </Resizable.Panel>

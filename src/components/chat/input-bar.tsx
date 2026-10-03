@@ -22,6 +22,7 @@ import { FileInput, type FileInputHandle } from '@/components/ui/file-input'
 import { VoiceButton } from '@/components/ui/voice-button'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import { errorMessage } from '@/lib/error-message'
+import { objectKey } from '@/lib/object-key'
 import { readClipboard, writeClipboard } from '@/lib/clipboard'
 import { Composer } from './composer'
 import { ComposerSuggestions, type ComposerSuggestion } from './composer-suggestions'
@@ -45,6 +46,7 @@ import type {
   QueueDelivery,
   ThinkingLevel,
 } from '@/types'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * One file the composer is holding, named either by a path on the machine that
@@ -236,7 +238,7 @@ function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAc
           isDisabled={busy}
           className="h-8 max-w-56 gap-1 rounded-lg px-2 text-body-regular"
         >
-          <span data-slot="agent-options-summary" className="truncate">
+          <span data-slot="agent-options-summary" onPointerEnter={titleIfTruncated} className="truncate">
             {summary.length > 0 ? summary.join(' · ') : t('chat.agentOptions')}
           </span>
         </Button>
@@ -274,7 +276,11 @@ function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAc
               >
                 {option.options.map((v) => (
                   <ListBox.Item key={v.value} id={v.value} textValue={knobValueName(t, option, v)}>
-                    <span data-slot="agent-knob-value" className="min-w-0 flex-1 truncate text-body-regular">
+                    <span
+                      data-slot="agent-knob-value"
+                      onPointerEnter={titleIfTruncated}
+                      className="min-w-0 flex-1 truncate text-body-regular"
+                    >
                       {knobValueName(t, option, v)}
                     </span>
                     <ListBox.ItemIndicator />
@@ -925,7 +931,7 @@ export function InputBar({
                         // there is nothing addressable to point an `<img>` at —
                         // the icon the extension implies is the honest answer.
                         <ChatAttachment
-                          key={i}
+                          key={objectKey(f)}
                           name={f.name}
                           src={f.path && !f.missing ? localPreviewSrc(f.path, f.name) : undefined}
                         >
@@ -936,6 +942,7 @@ export function InputBar({
                             <ChatAttachment.Info>
                               <span
                                 data-slot="chat-attachment-name"
+                                onPointerEnter={titleIfTruncated}
                                 className="block truncate text-body-2-medium text-text-primary"
                               >
                                 {f.name}

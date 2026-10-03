@@ -1,7 +1,7 @@
-import { render } from '@testing-library/react'
+import { fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Resizable } from '@/components/base'
-import { CHANGES_PANEL_SIZE, CHAT_PANEL_SIZE } from './changes-split'
+import { CHANGES_HANDLE_TARGET, CHANGES_PANEL_SIZE, CHAT_PANEL_SIZE } from './changes-split'
 
 /**
  * The split rendered through the real react-resizable-panels, which measures
@@ -74,5 +74,58 @@ describe('chat / changes split', () => {
     const handle = getByRole('separator', { name: 'changes' })
     expect(handle.tabIndex).toBe(0)
     expect(handle.className).toContain('focus-visible:ring-2')
+  })
+})
+
+/**
+ * The shell asked for a wider target with a CSS variable nothing read, and the
+ * divider kept the library's 10px. The library hit-tests from the separator's
+ * box, so this lays the split out by hand — chat 0–500, a 1px line at 500,
+ * changes after it — and presses 6.5px right of the line: outside 10px, inside
+ * 16px.
+ */
+describe('chat / changes divider target', () => {
+  const originalRect = HTMLElement.prototype.getBoundingClientRect
+
+  beforeEach(() => {
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      if (this.id === 'chat') return new DOMRect(0, 0, 500, 400)
+      if (this.hasAttribute('data-separator')) return new DOMRect(500, 0, 1, 400)
+      if (this.id === 'changes') return new DOMRect(501, 0, 499, 400)
+      return new DOMRect(0, 0, 1000, 400)
+    }
+  })
+
+  afterEach(() => {
+    HTMLElement.prototype.getBoundingClientRect = originalRect
+  })
+
+  function grabs(target?: { fine: number; coarse: number }): boolean {
+    paneWidth = 1000
+    const { container, unmount } = render(
+      <Resizable orientation="horizontal" resizeTargetMinimumSize={target}>
+        <Resizable.Panel id="chat" {...CHAT_PANEL_SIZE}>
+          chat
+        </Resizable.Panel>
+        <Resizable.Handle aria-label="changes" />
+        <Resizable.Panel id="changes" {...CHANGES_PANEL_SIZE}>
+          changes
+        </Resizable.Panel>
+      </Resizable>,
+    )
+    const changes = container.querySelector('#changes') as HTMLElement
+    // The library cancels a press that lands on a divider; one that misses goes on.
+    const missed = fireEvent.pointerDown(changes, { clientX: 507, clientY: 200, pointerType: 'mouse', button: 0 })
+    fireEvent.pointerUp(changes, { clientX: 507, clientY: 200, pointerType: 'mouse', button: 0 })
+    unmount()
+    return !missed
+  }
+
+  it("misses with the library's default target", () => {
+    expect(grabs()).toBe(false)
+  })
+
+  it('catches a press 6.5px beside the line with the shell’s target', () => {
+    expect(grabs(CHANGES_HANDLE_TARGET)).toBe(true)
   })
 })

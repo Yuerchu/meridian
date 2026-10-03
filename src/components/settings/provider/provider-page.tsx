@@ -53,6 +53,7 @@ import type {
   ProviderBalanceInfoResponse,
   ProviderApiFormat,
 } from '@/types'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /** Only the Responses adapter reads the column; a ChatGPT login is that shape already. */
 function offersCodexRequestShapeFor(apiFormat: ProviderApiFormat, provider: ProviderInfoResponse): boolean {
@@ -628,11 +629,19 @@ function ProviderEditor({
         header: t('settings.provider.modelColumn'),
         cell: (row) => (
           <span data-slot="model-row-name" className="flex min-w-0 flex-col">
-            <span data-slot="model-row-label" className="truncate text-body-regular text-text-primary">
+            <span
+              data-slot="model-row-label"
+              onPointerEnter={titleIfTruncated}
+              className="truncate text-body-regular text-text-primary"
+            >
               {row.name}
             </span>
             {row.name !== row.id && (
-              <span data-slot="model-row-id" className="truncate text-caption-1-regular text-text-secondary">
+              <span
+                data-slot="model-row-id"
+                onPointerEnter={titleIfTruncated}
+                className="truncate text-caption-1-regular text-text-secondary"
+              >
                 {row.id}
               </span>
             )}

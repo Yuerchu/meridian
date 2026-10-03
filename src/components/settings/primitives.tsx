@@ -5,6 +5,7 @@ import { Select, SelectItem, Skeleton } from '@/components/base'
 import { Check, ChevronRight, Plus } from '@keyline-icons/react/two-tone'
 
 import { cx } from '@/utils/cx'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * The three shapes every settings panel was already drawing by hand.
@@ -303,6 +304,7 @@ export function SettingsNavRow({
       {value && (
         <span
           data-slot="settings-nav-row-value"
+          onPointerEnter={titleIfTruncated}
           id={valueId}
           className="shrink-0 truncate text-caption-1-regular text-text-secondary"
         >
@@ -376,6 +378,7 @@ export function SettingsLinkRow({
           <span
             id={labelId}
             data-slot="settings-link-row-label"
+            onPointerEnter={titleIfTruncated}
             className="truncate text-body-medium text-text-primary"
           >
             {label}
@@ -390,6 +393,7 @@ export function SettingsLinkRow({
           <span
             id={descriptionId}
             data-slot="settings-link-row-description"
+            onPointerEnter={titleIfTruncated}
             className="truncate text-body-2-regular text-text-secondary"
           >
             {description}
@@ -400,6 +404,7 @@ export function SettingsLinkRow({
         <span
           id={valueId}
           data-slot="settings-link-row-value"
+          onPointerEnter={titleIfTruncated}
           className="max-w-[40%] shrink-0 truncate text-body-2-regular text-text-secondary"
         >
           {value}
@@ -459,13 +464,19 @@ export function SettingsAddRow({
         {icon}
       </span>
       <span data-slot="settings-add-row-text" className="flex min-w-0 flex-col">
-        <span id={labelId} data-slot="settings-add-row-label" className="truncate text-body-medium text-text-primary">
+        <span
+          id={labelId}
+          data-slot="settings-add-row-label"
+          onPointerEnter={titleIfTruncated}
+          className="truncate text-body-medium text-text-primary"
+        >
           {label}
         </span>
         {description && (
           <span
             id={descriptionId}
             data-slot="settings-add-row-description"
+            onPointerEnter={titleIfTruncated}
             className="truncate text-body-2-regular text-text-secondary"
           >
             {description}

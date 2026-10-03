@@ -2,6 +2,7 @@ import { createContext, useContext, type ComponentProps, type ReactNode } from '
 import { File } from '@keyline-icons/react/two-tone'
 import { cx } from '@/utils/cx'
 import { CloseButton } from './buttons/close-button'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * A file or image on a message or in the composer: a thumbnail (or a file
@@ -73,7 +74,11 @@ function ChatAttachmentInfo({ className, children, ...props }: ComponentProps<'d
   return (
     <div data-slot="chat-attachment-info" {...props} className={cx('min-w-0 flex-1', className)}>
       {children ?? (
-        <span data-slot="chat-attachment-name" className="block truncate text-body-2-medium text-text-primary">
+        <span
+          data-slot="chat-attachment-name"
+          onPointerEnter={titleIfTruncated}
+          className="block truncate text-body-2-medium text-text-primary"
+        >
           {name}
         </span>
       )}

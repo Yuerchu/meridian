@@ -22,6 +22,7 @@ import { usePlatform } from '@/hooks/use-platform'
 import type { VoiceFilterLevel, VoiceModelStatusInfoResponse } from '@/types'
 import { SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
 import { useConfirm } from '@/hooks/use-confirm'
+import { titleIfTruncated } from '@/lib/truncation'
 
 const FILTER_LEVELS = ['off', 'standard', 'aggressive'] as const
 
@@ -180,7 +181,7 @@ export function VoiceSettings() {
             <div data-slot="voice-model-installed" className="flex items-center justify-between gap-2">
               <Card.Header className="min-w-0">
                 <Card.Title>{t('settings.voice.modelInstalled')}</Card.Title>
-                <Card.Description className="truncate">
+                <Card.Description className="truncate" onPointerEnter={titleIfTruncated}>
                   {formatSize(status.size_bytes, sizeNumber)} · {status.path}
                 </Card.Description>
               </Card.Header>

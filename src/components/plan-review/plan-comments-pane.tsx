@@ -5,6 +5,7 @@ import { Bin, Message } from '@keyline-icons/react/two-tone'
 import { Button, Chip, Label, Link, TextArea, TextField, Tooltip, TooltipTrigger } from '@/components/base'
 
 import type { PlanCommentInfoResponse } from '@/types'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /** A request to put the cursor in one comment's box. A fresh object per
  *  request, so asking for the same comment twice is two requests. */
@@ -84,6 +85,7 @@ export function PlanCommentsPane({
               {comment.state === 'orphaned' ? (
                 <q
                   data-slot="plan-comment-quote"
+                  onPointerEnter={titleIfTruncated}
                   className="line-clamp-3 min-w-0 flex-1 break-words text-caption-1-regular text-text-secondary"
                 >
                   {comment.anchor.quote || t('planReview.comments.emptyQuote')}

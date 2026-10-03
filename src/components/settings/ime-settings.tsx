@@ -42,6 +42,7 @@ import { useSettingsDirtyRegistration } from './dirty-guard'
 import { ImeLearningSection } from './ime-learning-section'
 import { ImeLmSection } from './ime-lm-section'
 import { useSystemNoticeStore } from '@/stores/system-notice-store'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /** Mirrors `HostConfig::default()`; only used until the first load lands. */
 const DEFAULTS: ImeConfigInfoResponse = {
@@ -751,7 +752,9 @@ export function ImeSettings() {
                 {index > 0 && <Separator />}
                 <ItemCard>
                   <ItemCard.Content className="min-w-0">
-                    <ItemCard.Title className="w-full truncate">{dict.name}</ItemCard.Title>
+                    <ItemCard.Title className="w-full truncate" onPointerEnter={titleIfTruncated}>
+                      {dict.name}
+                    </ItemCard.Title>
                     <ItemCard.Description className="w-full whitespace-normal">
                       {t('settings.ime.dictionaryDetail', {
                         count: dict.entries,

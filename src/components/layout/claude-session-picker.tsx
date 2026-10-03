@@ -9,6 +9,7 @@ import { can } from '@/lib/capabilities'
 import { HostedAgentGlyph } from '@/components/ui/agent-icon'
 import { useRelativeTime } from '@/hooks/use-relative-time'
 import type { AcpDiscoveredSessionInfoResponse } from '@/types'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * How many rows are drawn at once.
@@ -272,7 +273,11 @@ export function ClaudeSessionPicker({
               )}
             </div>
             {folder && (
-              <p data-slot="session-picker-folder" className="truncate text-caption-1-regular text-text-secondary">
+              <p
+                data-slot="session-picker-folder"
+                onPointerEnter={titleIfTruncated}
+                className="truncate text-caption-1-regular text-text-secondary"
+              >
                 {folder}
               </p>
             )}
@@ -417,10 +422,18 @@ function SessionRow({
             An empty title is the same as none: the adapter sanitises whatever
             the SDK summarised, and a row with a blank first line is one nobody
             can tell from its neighbour. */}
-        <p data-slot="session-title" className="truncate text-body-regular text-text-primary">
+        <p
+          data-slot="session-title"
+          onPointerEnter={titleIfTruncated}
+          className="truncate text-body-regular text-text-primary"
+        >
           {session.title?.trim() || leafOf(session.cwd)}
         </p>
-        <p data-slot="session-row-path" className="truncate text-caption-1-regular text-text-secondary">
+        <p
+          data-slot="session-row-path"
+          onPointerEnter={titleIfTruncated}
+          className="truncate text-caption-1-regular text-text-secondary"
+        >
           {session.cwd}
           {when && ` · ${when}`}
         </p>

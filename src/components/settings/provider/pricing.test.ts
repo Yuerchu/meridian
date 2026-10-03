@@ -39,7 +39,9 @@ describe('tiersFrom', () => {
 
   it('round-trips a stored tier into the form and back', () => {
     const drafts = tiersFrom([tier({ cache_read_price: decimal('1') })])
-    expect(drafts).toEqual([{ threshold: '200000', input: '4', output: '12', cacheRead: '1', cacheWrite: '' }])
+    expect(drafts).toEqual([
+      { id: expect.any(String), threshold: '200000', input: '4', output: '12', cacheRead: '1', cacheWrite: '' },
+    ])
     expect(tiersTo(drafts)).toEqual([tier({ cache_read_price: decimal('1') })])
   })
 

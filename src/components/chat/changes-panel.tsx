@@ -9,6 +9,7 @@ import { useConversationStore } from '@/stores/conversation-store'
 import { fileIconUrl } from '@/lib/file-icon'
 import { buildFileTree, touchedFiles, type FileNode, type TouchedFile, type TouchedOp } from '@/lib/touched-files'
 import { cx } from '@/utils/cx'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /** Every directory in the tree, so a new one arrives already open. */
 function branchIds(nodes: FileNode[], out: string[] = []): string[] {
@@ -148,7 +149,7 @@ function renderNode(node: FileNode, t: TFunction) {
       }
       title={
         <span data-slot="changes-node-title" className="flex min-w-0 flex-1 items-center gap-2">
-          <span data-slot="changes-node-name" className="min-w-0 flex-1 truncate">
+          <span data-slot="changes-node-name" onPointerEnter={titleIfTruncated} className="min-w-0 flex-1 truncate">
             {node.name}
           </span>
           {node.file && node.file.count > 1 && (

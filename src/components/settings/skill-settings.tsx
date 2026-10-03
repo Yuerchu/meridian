@@ -23,6 +23,7 @@ import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import { SavedHint, SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
 import type { SkillInfoResponse } from '@/types'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /** The directory name doubles as the LLM-facing skill name, so it has to be a
  *  slug. Mirrors the backend's own validation. */
@@ -377,10 +378,14 @@ export function SkillSettings() {
                         chevron sit at the right edge without a separate
                         spacer pushing them there. */}
                     <div data-slot="skill-item-label-row" className="flex min-w-0 flex-1 items-center gap-2">
-                      <span data-slot="skill-item-name" className="truncate">
+                      <span data-slot="skill-item-name" onPointerEnter={titleIfTruncated} className="truncate">
                         {skill.display_name}
                       </span>
-                      <span data-slot="skill-item-slug" className="font-mono text-text-secondary truncate">
+                      <span
+                        data-slot="skill-item-slug"
+                        onPointerEnter={titleIfTruncated}
+                        className="font-mono text-text-secondary truncate"
+                      >
                         {skill.llm_name}
                       </span>
                     </div>

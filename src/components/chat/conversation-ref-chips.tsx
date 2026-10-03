@@ -4,6 +4,7 @@ import { Messages } from '@keyline-icons/react/two-tone'
 
 import { cx } from '@/utils/cx'
 import type { MessageContextInfoResponse } from '@/types'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * The conversations a message carried as frozen context, drawn from the
@@ -27,7 +28,7 @@ export function ConversationRefChips({
       {refs.map((ref) => (
         <Chip key={ref.id} size="sm" variant="soft" aria-label={t('chat.convRef.chip', { name: ref.display_path })}>
           <Messages className="size-3" aria-hidden />
-          <span data-slot="conversation-ref-chip-label" className="max-w-48 truncate">
+          <span data-slot="conversation-ref-chip-label" onPointerEnter={titleIfTruncated} className="max-w-48 truncate">
             {ref.display_path}
           </span>
         </Chip>

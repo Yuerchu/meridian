@@ -8,6 +8,7 @@ import { useConnectionState } from '@/hooks/use-connection-state'
 import { cx } from '@/utils/cx'
 import { isRemote, probeRemote, readRemoteConfig, writeRemoteConfig, type ProbeResult } from '@/lib/transport'
 import { useSettingsDirtyRegistration } from './dirty-guard'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * Where *this* device gets its Meridian from.
@@ -105,7 +106,7 @@ export function RemoteClientSettings() {
               />
               {t(`settings.client.state.${state}`)}
             </ItemCard.Title>
-            <ItemCard.Description className="w-full truncate font-mono">
+            <ItemCard.Description className="w-full truncate font-mono" onPointerEnter={titleIfTruncated}>
               {config ? `${config.host}:${config.port}` : t('settings.client.unknownHost')}
             </ItemCard.Description>
           </ItemCard.Content>

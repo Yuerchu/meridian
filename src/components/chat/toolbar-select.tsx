@@ -3,6 +3,7 @@ import { ListBox } from '@/components/base'
 import { InlineSelect } from '@/components/base'
 
 import { cx } from '@/utils/cx'
+import { titleIfTruncated } from '@/lib/truncation'
 
 export interface ToolbarChoice {
   value: string
@@ -75,7 +76,11 @@ export function ToolbarSelect({
         <InlineSelect.Value className="min-w-0 flex-1 overflow-hidden">
           <span data-slot="toolbar-select-current" className="flex min-w-0 items-center gap-1.5">
             {current?.icon}
-            <span data-slot="toolbar-select-label" className={cx('truncate', !current && 'text-text-secondary')}>
+            <span
+              data-slot="toolbar-select-label"
+              onPointerEnter={titleIfTruncated}
+              className={cx('truncate', !current && 'text-text-secondary')}
+            >
               {current?.label ?? placeholder}
             </span>
           </span>
@@ -93,12 +98,17 @@ export function ToolbarSelect({
             <ListBox.Item key={choice.value} id={choice.value} textValue={`${choice.label} ${choice.hint ?? ''}`}>
               <span data-slot="toolbar-select-option" className="flex min-w-0 flex-1 items-center gap-2">
                 {choice.icon}
-                <span data-slot="toolbar-select-option-label" className="truncate text-body-regular">
+                <span
+                  data-slot="toolbar-select-option-label"
+                  onPointerEnter={titleIfTruncated}
+                  className="truncate text-body-regular"
+                >
                   {choice.label}
                 </span>
                 {choice.hint && (
                   <span
                     data-slot="toolbar-select-option-hint"
+                    onPointerEnter={titleIfTruncated}
                     className="truncate text-caption-1-regular text-text-secondary"
                   >
                     {choice.hint}

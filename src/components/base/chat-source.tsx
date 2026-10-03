@@ -1,6 +1,7 @@
 import { createContext, useContext, useId, useState, type ComponentProps } from 'react'
 import { cx } from '@/utils/cx'
 import { HoverCard } from './hover-card'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * A page an answer cites: favicon, site name, and — when a `description` is
@@ -44,7 +45,12 @@ function ChatSourceRoot({ className, href, title, description, faviconUrl, child
             <div data-slot="chat-source-preview" className="flex flex-col gap-1.5">
               <div className="flex items-center gap-2">
                 <ChatSourceIcon />
-                <span className="min-w-0 truncate text-caption-1-medium text-text-secondary">{title}</span>
+                <span
+                  className="min-w-0 truncate text-caption-1-medium text-text-secondary"
+                  onPointerEnter={titleIfTruncated}
+                >
+                  {title}
+                </span>
               </div>
               <p data-slot="chat-source-preview-title" className="text-body-medium text-text-primary">
                 {description}
@@ -52,6 +58,7 @@ function ChatSourceRoot({ className, href, title, description, faviconUrl, child
               {href && (
                 <span
                   data-slot="chat-source-preview-url"
+                  onPointerEnter={titleIfTruncated}
                   className="truncate text-caption-1-medium text-text-secondary"
                 >
                   {href}

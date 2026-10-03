@@ -47,6 +47,7 @@ import type {
 } from '@/types'
 import { StarterPrompts } from './empty-state'
 import type { InitialTurnDraft } from './conversation-draft'
+import { titleIfTruncated } from '@/lib/truncation'
 
 // Stable identity for the empty case: `?? []` would hand useTurns a new array on
 // every render of a conversation whose session has not been created yet.
@@ -1021,6 +1022,7 @@ function ChatViewInner({
                   <Messages className="size-3.5" aria-hidden />
                   <span
                     data-slot="conversation-ref-title"
+                    onPointerEnter={titleIfTruncated}
                     data-missing={ref.missing ? '' : undefined}
                     className="max-w-48 truncate data-[missing]:text-status-danger"
                   >

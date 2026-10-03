@@ -23,6 +23,7 @@ import type { CustomToolInfoResponse, McpToolInfoResponse, ToolPermission, ToolP
 import { SavedHint, SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
 import { SettingsDrilldown } from './settings-drilldown'
 import { useSettingsDirtyRegistration } from './dirty-guard'
+import { titleIfTruncated } from '@/lib/truncation'
 
 function CustomToolEditor({
   tool,
@@ -296,7 +297,11 @@ export function ToolMarketplace() {
                 <span data-slot="builtin-tool-name" className="font-mono flex-1">
                   {tool.name}
                 </span>
-                <span data-slot="builtin-tool-description" className="text-text-secondary truncate max-w-48">
+                <span
+                  data-slot="builtin-tool-description"
+                  onPointerEnter={titleIfTruncated}
+                  className="text-text-secondary truncate max-w-48"
+                >
                   {tool.description}
                 </span>
               </div>
@@ -390,10 +395,18 @@ export function ToolMarketplace() {
                       centred UA default. */}
                   <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2 text-start text-caption-1-regular transition-colors outline-none hover:bg-background-primary-hover/30 focus-visible:bg-background-secondary-default/30">
                     <Terminal className="w-3.5 h-3.5 shrink-0 text-text-secondary" />
-                    <span data-slot="custom-tool-name" className="font-mono min-w-0 flex-1 truncate">
+                    <span
+                      data-slot="custom-tool-name"
+                      onPointerEnter={titleIfTruncated}
+                      className="font-mono min-w-0 flex-1 truncate"
+                    >
                       {ct.name}
                     </span>
-                    <span data-slot="custom-tool-command" className="text-text-secondary truncate">
+                    <span
+                      data-slot="custom-tool-command"
+                      onPointerEnter={titleIfTruncated}
+                      className="text-text-secondary truncate"
+                    >
                       {ct.command}
                     </span>
                     {!ct.is_enabled && (

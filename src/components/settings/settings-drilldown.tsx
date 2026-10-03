@@ -6,6 +6,7 @@ import { ArrowLeft } from '@keyline-icons/react/two-tone'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useHistoryLevel } from '@/hooks/use-history-level'
 import { SettingsNavRow } from './primitives'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * A block of settings that is a section on a desktop and a screen on a phone.
@@ -76,7 +77,9 @@ export function SettingsDrilldown({
                 >
                   {t('common.back')}
                 </Button>
-                <Modal.Heading className="min-w-0 flex-1 truncate text-body-medium">{title}</Modal.Heading>
+                <Modal.Heading className="min-w-0 flex-1 truncate text-body-medium" onPointerEnter={titleIfTruncated}>
+                  {title}
+                </Modal.Heading>
               </div>
               <div
                 data-slot="settings-drilldown-body"

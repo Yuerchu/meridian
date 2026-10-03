@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { Button, Input, Label, TextField, Tooltip, TooltipTrigger } from '@/components/base'
 import { Bin, Plus } from '@keyline-icons/react/two-tone'
-import { BLANK_TIER, type TierDraft } from './pricing'
+import { blankTier, type TierDraft } from './pricing'
 
 /**
  * The rates that take over above a prompt size.
@@ -21,8 +21,14 @@ export function PriceTierEditor({
   namePrefix?: string
 }) {
   const { t } = useTranslation()
-  const patch = (index: number, field: keyof TierDraft, value: string) =>
+  const patch = (index: number, field: Exclude<keyof TierDraft, 'id'>, value: string) =>
     onChange(tiers.map((tier, i) => (i === index ? { ...tier, [field]: value } : tier)))
+
+  // Keyed by the tier's own id: by index, deleting a tier gave its card's
+  // element to the next one, with focus still on the delete button — which
+  // then deleted the tier that had been second.
+  const remove = (index: number) => onChange(tiers.filter((_, i) => i !== index))
+  const add = () => onChange([...tiers, blankTier()])
 
   return (
     <div data-slot="price-tiers" className="space-y-2">
@@ -31,7 +37,7 @@ export function PriceTierEditor({
       </p>
       {tiers.map((tier, index) => (
         <div
-          key={index}
+          key={tier.id}
           data-slot="price-tier"
           className="rounded-lg border border-border-button-default p-2 space-y-2"
         >
@@ -55,7 +61,7 @@ export function PriceTierEditor({
                 variant="neutral"
                 aria-label={t('settings.model.removeTier')}
                 className="touch-hitbox hover:text-status-danger"
-                onPress={() => onChange(tiers.filter((_, i) => i !== index))}
+                onPress={() => remove(index)}
               />
               <Tooltip>{t('settings.model.removeTier')}</Tooltip>
             </TooltipTrigger>
@@ -111,7 +117,7 @@ export function PriceTierEditor({
         size="small"
         variant="secondary"
         className="h-7 pointer-coarse:h-10 rounded-md text-caption-1-regular"
-        onPress={() => onChange([...tiers, { ...BLANK_TIER }])}
+        onPress={add}
       >
         {t('settings.model.addTier')}
       </Button>

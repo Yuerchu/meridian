@@ -18,7 +18,21 @@ import type { DecimalString, PriceTier } from '@/types'
  * a number — parsing on each keystroke makes "4." unrepresentable and the field
  * impossible to type a decimal into.
  */
-export type TierDraft = { threshold: string; input: string; output: string; cacheRead: string; cacheWrite: string }
+export type TierDraft = {
+  /** Which card this is, for React's key only; never sent. A tier has nothing
+   *  else unique about it, and its index changes when one before it goes. */
+  id: string
+  threshold: string
+  input: string
+  output: string
+  cacheRead: string
+  cacheWrite: string
+}
+
+let lastTierId = 0
+function tierId(): string {
+  return `tier-${++lastTierId}`
+}
 
 /**
  * Every price box on the model page, named so a refusal can point at one.
@@ -38,7 +52,9 @@ export type PriceField =
   | 'overrideCache'
   | 'overrideCacheWrite'
 
-export const BLANK_TIER: TierDraft = { threshold: '', input: '', output: '', cacheRead: '', cacheWrite: '' }
+export function blankTier(): TierDraft {
+  return { id: tierId(), threshold: '', input: '', output: '', cacheRead: '', cacheWrite: '' }
+}
 
 export const ZERO_DECIMAL = decimal('0')
 
@@ -82,6 +98,7 @@ export function tiersFrom(raw: PriceTier[]): TierDraft[] {
     )
     if (unknownKey) throw new TypeError(`Price tier ${index + 1} has unknown field ${unknownKey}`)
     return {
+      id: tierId(),
       threshold: tierThreshold(tier.min_prompt_tokens).toString(),
       input: tierRate(tier.input_price, 'input_price'),
       output: tierRate(tier.output_price, 'output_price'),

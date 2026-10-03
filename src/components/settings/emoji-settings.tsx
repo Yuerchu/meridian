@@ -17,6 +17,7 @@ import { useConfirm } from '@/hooks/use-confirm'
 import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import type { EmojiInfoResponse, EmojiPackInfoResponse } from '@/types'
+import { titleIfTruncated } from '@/lib/truncation'
 
 interface PackDetail {
   pack: EmojiPackInfoResponse
@@ -492,7 +493,7 @@ function PackCard({
                 `text-start` undoes the button element's centred UA default. */}
             <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-body-regular transition-colors outline-none hover:bg-background-primary-hover/30 focus-visible:bg-background-secondary-default/30">
               <StickyNote className="w-3.5 h-3.5 shrink-0 text-text-secondary" />
-              <span data-slot="pack-name" className="flex-1 truncate">
+              <span data-slot="pack-name" onPointerEnter={titleIfTruncated} className="flex-1 truncate">
                 {detail.pack.name}
               </span>
               <span data-slot="pack-count" className="text-caption-1-regular text-text-secondary">

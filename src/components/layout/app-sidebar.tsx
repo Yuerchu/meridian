@@ -82,6 +82,7 @@ import { RenameDialog } from './rename-dialog'
 import { RowActionDropdownItems, RowActionsMenu } from './row-actions-menu'
 import { ConversationTimeSection, ConversationTimeSlot } from './conversation-time'
 import { useConversationActions, useProjectActions, type RowAction } from './row-actions'
+import { titleIfTruncated } from '@/lib/truncation'
 
 interface AppSidebarProps {
   conversations: ConversationInfoResponse[]
@@ -257,7 +258,11 @@ function NewProjectForm({
           isDisabled={saving}
           className="w-full justify-start text-caption-1-regular"
         >
-          <span data-slot="project-form-path" className={path ? 'text-text-primary truncate' : 'text-text-secondary'}>
+          <span
+            data-slot="project-form-path"
+            onPointerEnter={titleIfTruncated}
+            className={path ? 'text-text-primary truncate' : 'text-text-secondary'}
+          >
             {path || t('sidebar.browsePath')}
           </span>
         </Button>
@@ -371,6 +376,7 @@ function NewHostedSessionForm({
         >
           <span
             data-slot="hosted-session-form-path"
+            onPointerEnter={titleIfTruncated}
             className={path ? 'text-text-primary truncate' : 'text-text-secondary'}
           >
             {path || t('sidebar.hostedSessionFolder')}
@@ -685,13 +691,14 @@ function ConversationGroup({
                 // group ("Recent") in body-2 medium, tertiary ink.
                 className="h-6 min-w-0 flex-1 justify-start rounded-sm px-1 text-body-2-medium text-text-secondary"
               >
-                <span data-slot="sidebar-group-title" className="truncate">
+                <span data-slot="sidebar-group-title" onPointerEnter={titleIfTruncated} className="truncate">
                   {title}
                 </span>
               </ToggleButton>
             ) : (
               <span
                 data-slot="sidebar-group-title"
+                onPointerEnter={titleIfTruncated}
                 className="min-w-0 flex-1 truncate px-1 text-body-2-medium text-text-secondary"
               >
                 {title}

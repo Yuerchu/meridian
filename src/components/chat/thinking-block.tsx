@@ -5,6 +5,7 @@ import { BubbleFoldBadge } from '@/components/ui/bubble-block'
 import { usePanelExpansion } from '@/hooks/use-panel-expansion'
 import { cx } from '@/utils/cx'
 import { MarkdownContent } from './markdown-content'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * A reasoning summary arrives as parts — each a bold title over a paragraph —
@@ -98,11 +99,19 @@ function ThinkingTitles({ titles, isStreaming }: { titles: string[]; isStreaming
               <span data-slot="bubble-thinking-title-indent" aria-hidden className="size-3 shrink-0" />
             )}
             {live ? (
-              <span data-slot="bubble-thinking-title-text" className="min-w-0 truncate">
+              <span
+                data-slot="bubble-thinking-title-text"
+                onPointerEnter={titleIfTruncated}
+                className="min-w-0 truncate"
+              >
                 <ShimmerText>{title}</ShimmerText>
               </span>
             ) : (
-              <span data-slot="bubble-thinking-title-text" className="min-w-0 truncate">
+              <span
+                data-slot="bubble-thinking-title-text"
+                onPointerEnter={titleIfTruncated}
+                className="min-w-0 truncate"
+              >
                 {title}
               </span>
             )}

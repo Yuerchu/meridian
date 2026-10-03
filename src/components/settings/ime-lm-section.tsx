@@ -18,6 +18,7 @@ import { api } from '@/api'
 import { can } from '@/lib/capabilities'
 import { useConfirm } from '@/hooks/use-confirm'
 import type { ImeLmBundleInfoResponse, ImeLmStatusInfoResponse } from '@/types'
+import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * The input method's local language model and the memory hints it may read.
@@ -123,7 +124,7 @@ export function ImeLmSection({ canImport }: { canImport: boolean }) {
                   <ItemCard>
                     <ItemCard.Content className="min-w-0">
                       <ItemCard.Title className="flex w-full items-center gap-2">
-                        <span data-slot="ime-lm-name" className="truncate">
+                        <span data-slot="ime-lm-name" onPointerEnter={titleIfTruncated} className="truncate">
                           {name}
                         </span>
                         {status.active === bundle.dir_name && (
