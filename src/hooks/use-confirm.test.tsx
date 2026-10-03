@@ -16,7 +16,7 @@ type Ask = (body?: string) => Promise<boolean>
 
 function Harness({ onAnswer, askRef }: { onAnswer: (ok: boolean) => void; askRef?: { current: Ask | null } }) {
   const { confirm, confirmDialog } = useConfirm()
-  const ask: Ask = (body = 'Sure?') => confirm({ body })
+  const ask: Ask = (body = 'Sure?') => confirm({ body, confirmLabel: 'Do it' })
   if (askRef) askRef.current = ask
   return (
     <>
@@ -59,7 +59,9 @@ describe('useConfirm', () => {
       const { confirm, confirmDialog } = useConfirm()
       return (
         <>
-          <button onClick={() => void confirm({ body: 'Sure?', presentation: 'center' })}>ask</button>
+          <button onClick={() => void confirm({ body: 'Sure?', confirmLabel: 'Do it', presentation: 'center' })}>
+            ask
+          </button>
           {confirmDialog}
         </>
       )
@@ -82,7 +84,7 @@ describe('useConfirm', () => {
     render(<Harness onAnswer={answer} />)
 
     await click('ask')
-    await click(i18n.t('common.confirm'))
+    await click('Do it')
     expect(answer).toHaveBeenCalledWith(true)
 
     answer.mockClear()
@@ -112,7 +114,7 @@ describe('useConfirm', () => {
     expect(second).not.toHaveBeenCalled()
     expect(screen.getByText('second')).toBeInTheDocument()
 
-    await click(i18n.t('common.confirm'))
+    await click('Do it')
     expect(second).toHaveBeenCalledWith(true)
   })
 

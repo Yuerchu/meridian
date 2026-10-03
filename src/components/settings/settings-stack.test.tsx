@@ -114,7 +114,7 @@ describe('SettingsStack', () => {
     expect(visible()?.dataset.index).toBe('1')
 
     await click(i18n.t('common.back'))
-    await click(i18n.t('common.confirm'))
+    await click(i18n.t('common.discardChanges'))
     expect(visible()?.dataset.index).toBe('0')
   })
 
@@ -143,7 +143,7 @@ describe('SettingsStack', () => {
     expect(isSettingsTabDirty('provider')).toBe(true)
 
     await click(i18n.t('common.back'))
-    await click(i18n.t('common.confirm'))
+    await click(i18n.t('common.discardChanges'))
     expect(isSettingsTabDirty('provider')).toBe(false)
   })
 

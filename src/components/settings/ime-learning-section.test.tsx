@@ -79,7 +79,7 @@ describe('ImeLearningSection', () => {
     const dialog = await screen.findByRole('alertdialog')
     expect(within(dialog).getByText(i18n.t('settings.ime.learned.forgetAllConfirm'))).toBeInTheDocument()
     expect(mockApi.forgetAllImeLearning).not.toHaveBeenCalled()
-    await user.click(within(dialog).getByRole('button', { name: i18n.t('common.confirm') }))
+    await user.click(within(dialog).getByRole('button', { name: i18n.t('settings.ime.learned.forgetAll') }))
     await waitFor(() => expect(mockApi.forgetAllImeLearning).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(screen.queryByText('你好')).toBeNull())
   })

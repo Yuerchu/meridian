@@ -1048,7 +1048,8 @@ export function AppSidebar({
     },
     onExportError: (error) => setActionError(t('sidebar.exportFailed', { error: String(error) })),
     onRequestDelete: async (id) => {
-      if (await confirm({ body: t('confirm.deleteConversation') })) reportFailure('sidebar.deleteFailed', onDelete(id))
+      if (await confirm({ body: t('confirm.deleteConversation'), confirmLabel: t('common.delete') }))
+        reportFailure('sidebar.deleteFailed', onDelete(id))
     },
     // Only where there is an agent session to point at, and only where a
     // session can exist at all — Android has no child processes, so the
@@ -1065,7 +1066,7 @@ export function AppSidebar({
   const projectActions = useProjectActions({
     onRequestRename: (id) => setRenameTarget({ type: 'project', id }),
     onRequestDelete: async (id) => {
-      if (await confirm({ body: t('confirm.deleteProject') }))
+      if (await confirm({ body: t('confirm.deleteProject'), confirmLabel: t('common.delete') }))
         reportFailure('sidebar.deleteProjectFailed', onDeleteProject(id))
     },
   })

@@ -471,7 +471,9 @@ describe('ProviderSettings list/detail navigation', () => {
     // What the list will answer with once the delete has happened.
     mockApi.listProviders.mockResolvedValue([makeProvider('p2', 'Provider Two')])
     await user.click(screen.getByRole('button', { name: i18n.t('common.delete') }))
-    await user.click(await screen.findByRole('button', { name: i18n.t('common.confirm') }))
+    await user.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', { name: i18n.t('common.delete') }),
+    )
 
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Provider One' })).not.toBeInTheDocument())
     expect(screen.getByRole('button', { name: 'Provider Two' })).toBeInTheDocument()
@@ -825,7 +827,7 @@ describe('ProviderSettings list/detail navigation', () => {
 
     await user.click(screen.getByRole('button', { name: i18n.t('common.back') }))
     await user.click(
-      within(await screen.findByRole('alertdialog')).getByRole('button', { name: i18n.t('common.confirm') }),
+      within(await screen.findByRole('alertdialog')).getByRole('button', { name: i18n.t('common.discardChanges') }),
     )
     expect(await screen.findByRole('heading', { name: 'Provider One' })).toBeInTheDocument()
   })
@@ -1183,7 +1185,7 @@ describe('ProviderPage failure paths and cached models', () => {
 
     await user.click(await screen.findByRole('button', { name: i18n.t('common.delete') }))
     await user.click(
-      within(await screen.findByRole('alertdialog')).getByRole('button', { name: i18n.t('common.confirm') }),
+      within(await screen.findByRole('alertdialog')).getByRole('button', { name: i18n.t('common.delete') }),
     )
     expect(await screen.findByRole('alert')).toHaveTextContent('in use')
     expect(screen.getByRole('heading', { name: 'Provider One' })).toBeInTheDocument()

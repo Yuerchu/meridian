@@ -301,7 +301,7 @@ export const UserMessage = React.memo(function UserMessage({
 
   const { confirm, confirmDialog } = useConfirm()
   const requestDelete = useCallback(async () => {
-    if (await confirm({ body: t('confirm.deleteMessage') })) onDelete?.(message.id)
+    if (await confirm({ body: t('confirm.deleteMessage'), confirmLabel: t('common.delete') })) onDelete?.(message.id)
   }, [confirm, t, onDelete, message.id])
 
   const handleContextMenuOpenChange = useCallback((open: boolean) => {
@@ -339,15 +339,24 @@ export const UserMessage = React.memo(function UserMessage({
     setEditing(false)
   }, [editText, message.content, message.id, onEdit])
 
-  const handleCancelEdit = useCallback(() => {
+  // Asks only when there is something to lose, measured as saving measures it:
+  // an edit that only added whitespace would save nothing either. Escape is
+  // one stray key away from a rewritten paragraph.
+  const handleCancelEdit = useCallback(async () => {
+    if (
+      editText.trim() !== message.content.trim() &&
+      !(await confirm({ body: t('chat.discardEdit'), confirmLabel: t('common.discardChanges'), status: 'warning' }))
+    ) {
+      return
+    }
     restoreEditFocus.current = true
     setEditing(false)
-  }, [])
+  }, [confirm, editText, message.content, t])
 
   const handleEditKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === 'Escape') {
-        handleCancelEdit()
+        void handleCancelEdit()
       } else if (isSubmitKey(e)) {
         e.preventDefault()
         handleSaveEdit()
@@ -967,7 +976,7 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
 
   const { confirm, confirmDialog } = useConfirm()
   const requestDelete = useCallback(async () => {
-    if (await confirm({ body: t('confirm.deleteMessage') })) onDelete?.()
+    if (await confirm({ body: t('confirm.deleteMessage'), confirmLabel: t('common.delete') })) onDelete?.()
   }, [confirm, t, onDelete])
 
   const isStreaming = turn.status === 'streaming'

@@ -334,7 +334,7 @@ describe('AppSidebar project groups', () => {
       renderSidebar({ onDelete })
       await user.click(within(await openRowMenu(user)).getByText(i18n.t('chat.delete')))
       await user.click(
-        within(await screen.findByRole('alertdialog')).getByRole('button', { name: i18n.t('common.confirm') }),
+        within(await screen.findByRole('alertdialog')).getByRole('button', { name: i18n.t('common.delete') }),
       )
 
       expect(onDelete).toHaveBeenCalledWith('c-1')

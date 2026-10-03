@@ -145,6 +145,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                             onPress={async () => {
                               const accepted = await confirm({
                                 body: t('settings.memory.trash.purgeConfirm', { key: m.key }),
+                                confirmLabel: t('settings.memory.trash.purge'),
                               })
                               if (!accepted) return
                               await api.purgeMemories([m.id])
