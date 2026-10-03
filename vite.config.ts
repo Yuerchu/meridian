@@ -57,10 +57,6 @@ export default defineConfig({
       input: {
         main: path.resolve(rootDir, 'index.html'),
         splash: path.resolve(rootDir, 'splash.html'),
-        // Where Mermaid lays out the model's diagrams, cut off from the network
-        // by its own CSP (src/lib/mermaid.ts). An entry of its own for the same
-        // reason as the splash: it must not share the app's bundle or realm.
-        mermaid: path.resolve(rootDir, 'mermaid-frame.html'),
       },
     },
   },

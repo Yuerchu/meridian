@@ -1,11 +1,10 @@
-import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { errorMessage } from './error-message'
 import { renderMermaid, svgToImage } from './mermaid'
 
-const frameRenderer = vi.hoisted(() => vi.fn())
-vi.mock('./mermaid-frame-host', () => ({ frameRenderer }))
+const sandboxRenderer = vi.hoisted(() => vi.fn())
+vi.mock('./mermaid-sandbox', () => ({ sandboxRenderer }))
 
 /** What Mermaid writes: a fluid width, a max-width style, and the laid-out size in the view box. */
 const SVG =
@@ -34,12 +33,12 @@ describe('svgToImage', () => {
 
 describe('renderMermaid', () => {
   beforeEach(() => {
-    frameRenderer.mockReset()
+    sandboxRenderer.mockReset()
   })
 
   it('hands the code to the frame and shows what comes back as an image', async () => {
     const render = vi.fn().mockResolvedValue(SVG)
-    frameRenderer.mockResolvedValue(render)
+    sandboxRenderer.mockResolvedValue(render)
 
     const image = await renderMermaid('flowchart LR\n  A --> B', 'dark')
 
@@ -47,12 +46,9 @@ describe('renderMermaid', () => {
     expect(image.src.startsWith('data:image/svg+xml')).toBe(true)
   })
 
-  // An error thrown in the frame is from another realm: `instanceof Error` is
-  // false here, and String() would prefix "Error: " to the reason.
-  it('carries the reason of a failure in the frame across as plain text', async () => {
-    frameRenderer.mockResolvedValue(vi.fn().mockRejectedValue({ message: 'Parse error on line 2' }))
+  it('fails with the reason the sandbox gave', async () => {
+    sandboxRenderer.mockResolvedValue(vi.fn().mockRejectedValue(new Error('Parse error on line 2')))
     const error = await renderMermaid('flowchart LR\n  A -->', 'light').catch((e: unknown) => e)
-    expect(error).toBeInstanceOf(Error)
     expect(errorMessage(error)).toBe('Parse error on line 2')
   })
 
@@ -62,7 +58,7 @@ describe('renderMermaid', () => {
       .fn()
       .mockImplementationOnce(() => new Promise<string>((resolve) => (finishFirst = resolve)))
       .mockResolvedValue(SVG)
-    frameRenderer.mockResolvedValue(render)
+    sandboxRenderer.mockResolvedValue(render)
 
     const first = renderMermaid('flowchart LR\n  A --> B', 'light')
     const controller = new AbortController()
@@ -74,31 +70,5 @@ describe('renderMermaid', () => {
     await expect(first).resolves.toMatchObject({ width: 721.375 })
     await expect(second).rejects.toThrow()
     expect(render).toHaveBeenCalledTimes(1)
-  })
-})
-
-/**
- * The frame's CSP is the wall between a diagram and the network: laid out in
- * the app, `A@{ img: "https://…" }` fetched its URL. Measured in Chromium with
- * the policy below, an image node, an `<img>` label and a `url()` in an
- * `%%{init}%%` theme each failed with `csp` and none reached the network.
- */
-describe('mermaid-frame.html', () => {
-  const html = readFileSync('mermaid-frame.html', 'utf8')
-  const policy = /http-equiv="Content-Security-Policy"\s+content="([^"]+)"/.exec(html)?.[1] ?? ''
-
-  it('fetches nothing but its own scripts', () => {
-    const directives = Object.fromEntries(
-      policy
-        .split(';')
-        .map((d) => d.trim().split(/\s+/))
-        .filter((d) => d[0])
-        .map(([name, ...sources]) => [name, sources]),
-    )
-    expect(directives['default-src']).toEqual(["'none'"])
-    expect(directives['script-src']).toEqual(["'self'"])
-    expect(directives['img-src']).toEqual(['data:'])
-    expect(directives['style-src']).toEqual(["'unsafe-inline'"])
-    expect(Object.keys(directives).sort()).toEqual(['default-src', 'img-src', 'script-src', 'style-src'])
   })
 })

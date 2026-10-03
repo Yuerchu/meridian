@@ -1,31 +1,28 @@
-import { frameRenderer } from './mermaid-frame-host'
-import type { MermaidTheme } from './mermaid-render'
+import { sandboxRenderer, type MermaidTheme } from './mermaid-sandbox'
 
 /**
  * A ```mermaid fence, drawn as a picture.
  *
- * The diagram is the model's output, which makes it untrusted input, and an
- * XSS in this WebView reaches every Tauri command. There are two stages and
- * each has its wall.
+ * The diagram is the model's output, and the model's output is whatever the
+ * vendor in between chose to send: a relay can rewrite any answer and aim it
+ * at a renderer's known holes. So Mermaid is treated as code that may be
+ * subverted, and is given nothing worth having when it is.
  *
- * **Laying out** needs a live document — Mermaid measures every label — and a
- * live document fetches what is in it: run in the app, a node written
- * `A@{ img: "https://…" }` requested its URL while the diagram was being
- * measured, a beacon any answer could plant, and `url()` in a style or an
- * `%%{init}%%` theme is another way to the same place. So Mermaid does not run
- * in the app at all. It runs in `mermaid-frame.html`, a same-origin page whose
- * CSP lets it fetch its own scripts and nothing else; this module hands it the
- * code and gets back a string (`mermaid-frame-host.ts`, `mermaid-render.ts`).
- * Rendering into a container in another document was tried first and does not
- * work: the flowchart renderer looks its SVG up with `select('#id')`, which
- * searches the global document.
+ * **It runs in a sandbox** (`mermaid-sandbox.ts`): an iframe with
+ * `sandbox="allow-scripts"` and no `allow-same-origin`, so an opaque origin
+ * that cannot read this window or reach a Tauri command; a CSP that admits its
+ * two scripts by hash and nothing else — no network, no injected `onerror=`;
+ * and one message shape each way. Two earlier versions were not enough. Laid
+ * out in the app, `A@{ img: "https://…" }` made the WebView fetch the URL.
+ * In a same-origin frame with a network CSP, code that got running there could
+ * still walk to `window.parent`.
  *
- * **Showing** is an `<img>` from a `data:` URL rather than SVG placed in the
- * page: an SVG used as an image runs no script and loads nothing, by
- * specification, whatever is inside it.
+ * **It is shown as an `<img>`** from a `data:` URL rather than SVG placed in
+ * the page: an SVG used as an image runs no script and loads nothing, by
+ * specification, whatever the sandbox sent back.
  *
- * The frame is its own build entry, so Mermaid (3 MB) is fetched only when a
- * diagram is first drawn.
+ * Mermaid's single-file build is a lazy chunk, fetched only when a diagram is
+ * first drawn.
  */
 
 export interface MermaidImage {
@@ -70,18 +67,9 @@ export function svgToImage(svg: string): MermaidImage {
 export function renderMermaid(code: string, theme: MermaidTheme, signal?: AbortSignal): Promise<MermaidImage> {
   const job = queue.then(async () => {
     signal?.throwIfAborted()
-    const render = await frameRenderer()
+    const render = await sandboxRenderer()
     signal?.throwIfAborted()
-    let svg: string
-    try {
-      svg = await render(code, theme)
-    } catch (reason) {
-      // Thrown in the frame's realm, where `instanceof Error` against this
-      // one's is false: carry the message across, not the object.
-      const message = (reason as { message?: unknown } | null)?.message
-      throw Object.assign(new Error(typeof message === 'string' ? message : String(reason)), { cause: reason })
-    }
-    return svgToImage(svg)
+    return svgToImage(await render(code, theme))
   })
   queue = job.catch(() => undefined)
   return job
