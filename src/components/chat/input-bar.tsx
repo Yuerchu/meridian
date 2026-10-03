@@ -1,4 +1,5 @@
-import { useState, useRef, useCallback, useEffect, useId } from 'react'
+import { useState, useRef, useCallback, useEffect, useId, useLayoutEffect, useMemo } from 'react'
+import { mergeRefs } from '@react-aria/utils'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
 import { ArrowInDownDashedPanel, ChevronDown, Copy, CursorText, Scissors, X } from '@keyline-icons/react/two-tone'
@@ -420,7 +421,20 @@ export function InputBar({
   // Filled by Composer once the field exists: PromptInput.TextArea spreads
   // incoming props after its own ref, so one passed down would displace theirs.
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
-  const attachmentRow = useHorizontalWheel<HTMLDivElement>()
+  const attachmentWheel = useHorizontalWheel<HTMLDivElement>()
+  const attachmentRowElement = useRef<HTMLDivElement | null>(null)
+  const attachmentRow = useMemo(() => mergeRefs(attachmentWheel, attachmentRowElement), [attachmentWheel])
+  // Files just added are shown, wherever the row was scrolled: in a row that
+  // scrolls, they land past its right edge, and nothing said they had been
+  // attached — which reads as the picker having failed, and invites a second
+  // pick. Only on growth; a removal leaves the reader where they were.
+  const attachedCount = attachedFiles.length
+  const shownAttachments = useRef(attachedCount)
+  useLayoutEffect(() => {
+    const row = attachmentRowElement.current
+    if (row && attachedCount > shownAttachments.current) row.scrollLeft = row.scrollWidth
+    shownAttachments.current = attachedCount
+  }, [attachedCount])
   const suggestionsId = useId()
   const [selectedText, setSelectedText] = useState('')
 

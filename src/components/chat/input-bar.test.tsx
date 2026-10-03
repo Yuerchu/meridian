@@ -259,3 +259,59 @@ describe('composer attachment row', () => {
     expect(group?.className.split(' ')).not.toContain('flex-wrap')
   })
 })
+
+/**
+ * In a row that scrolls, files added to a full strip landed past its right
+ * edge with nothing to say they had been attached.
+ */
+describe('composer attachment row, adding and removing', () => {
+  const base = {
+    conversationId: null,
+    value: '',
+    onChange: vi.fn(),
+    onSubmit: vi.fn(),
+    assistants: [],
+    providers: [],
+    currentAssistantId: null,
+    currentModelId: null,
+    currentProviderId: null,
+    onSelectAssistant: vi.fn(),
+    onSelectModel: vi.fn(),
+    thinkingLevel: 'default',
+    onSelectThinkingLevel: vi.fn(),
+    fastMode: false,
+    onToggleFast: vi.fn(),
+    mode: 'work',
+    onSelectMode: vi.fn(),
+    acceptEdits: false,
+    onToggleAcceptEdits: vi.fn(),
+    onRemoveFile: vi.fn(),
+  } satisfies Omit<ComponentProps<typeof InputBar>, 'attachedFiles'>
+  const files = Array.from({ length: 4 }, (_, i) => ({ name: `file-${i}.png` }))
+
+  function laidOutRow(container: HTMLElement) {
+    const row = container.querySelector('[data-slot="chat-attachment-group"]') as HTMLElement
+    Object.defineProperty(row, 'scrollWidth', { value: 1000, configurable: true })
+    return row
+  }
+
+  it('shows the files just added, wherever the row was scrolled', () => {
+    const { container, rerender } = render(<InputBar {...base} attachedFiles={files.slice(0, 2)} />)
+    const row = laidOutRow(container)
+    row.scrollLeft = 0
+
+    rerender(<InputBar {...base} attachedFiles={files.slice(0, 3)} />)
+
+    expect(row.scrollLeft).toBe(1000)
+  })
+
+  it('leaves the reader where they were when one is removed', () => {
+    const { container, rerender } = render(<InputBar {...base} attachedFiles={files} />)
+    const row = laidOutRow(container)
+    row.scrollLeft = 200
+
+    rerender(<InputBar {...base} attachedFiles={files.slice(1)} />)
+
+    expect(row.scrollLeft).toBe(200)
+  })
+})
