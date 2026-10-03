@@ -427,6 +427,9 @@ export function InputBar({
   // succeeds can clear it without taking an unrelated composer error with it;
   // in `composerError` a refusal stayed on screen after a retry had worked.
   const [clipboardError, setClipboardError] = useState<string | null>(null)
+  // Only the newest cut, copy or paste may set or clear it: a slow refusal
+  // from an earlier one must not come back over a later success.
+  const latestClipboardAttempt = useRef(0)
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const showHint = useCallback((text: string) => {
     setVoiceNotice(text)
@@ -592,13 +595,16 @@ export function InputBar({
     const end = el.selectionEnd
     if (start === end) return
     const before = el.value
+    const attempt = ++latestClipboardAttempt.current
     try {
       await writeClipboard(before.slice(start, end))
     } catch (reason) {
-      setClipboardError(t('common.cutFailed', { error: errorMessage(reason) }))
+      if (attempt === latestClipboardAttempt.current) {
+        setClipboardError(t('common.cutFailed', { error: errorMessage(reason) }))
+      }
       return
     }
-    setClipboardError(null)
+    if (attempt === latestClipboardAttempt.current) setClipboardError(null)
     if (el.value !== before) return
     onChange(before.slice(0, start) + before.slice(end))
     requestAnimationFrame(() => {
@@ -612,9 +618,12 @@ export function InputBar({
     if (!el) return
     const text = el.value.slice(el.selectionStart, el.selectionEnd)
     if (!text) return
+    const attempt = ++latestClipboardAttempt.current
     writeClipboard(text).then(
-      () => setClipboardError(null),
-      (reason: unknown) => setClipboardError(t('common.copyFailed', { error: errorMessage(reason) })),
+      () => attempt === latestClipboardAttempt.current && setClipboardError(null),
+      (reason: unknown) =>
+        attempt === latestClipboardAttempt.current &&
+        setClipboardError(t('common.copyFailed', { error: errorMessage(reason) })),
     )
   }, [t])
 
@@ -622,13 +631,16 @@ export function InputBar({
     const el = textareaRef.current
     if (!el) return
     let clip: string
+    const attempt = ++latestClipboardAttempt.current
     try {
       clip = await readClipboard()
     } catch (reason) {
-      setClipboardError(t('common.pasteFailed', { error: errorMessage(reason) }))
+      if (attempt === latestClipboardAttempt.current) {
+        setClipboardError(t('common.pasteFailed', { error: errorMessage(reason) }))
+      }
       return
     }
-    setClipboardError(null)
+    if (attempt === latestClipboardAttempt.current) setClipboardError(null)
     const start = el.selectionStart
     const end = el.selectionEnd
     onChange(el.value.slice(0, start) + clip + el.value.slice(end))

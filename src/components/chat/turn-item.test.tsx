@@ -1107,6 +1107,31 @@ describe('TurnItem — what copy copies', () => {
     expect(session()?.error).toBe('401 Unauthorized')
   })
 
+  it('lets only the latest menu copy say how it went', async () => {
+    const user = userEvent.setup()
+    let refuseFirst!: (reason: Error) => void
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        writeText: vi
+          .fn()
+          .mockImplementationOnce(() => new Promise((_, reject) => (refuseFirst = reject)))
+          .mockResolvedValue(undefined),
+      },
+      configurable: true,
+    })
+    useConversationStore.setState({ activeId: CONV })
+    render(<TurnItem turn={steppedTurn()} conversationId={CONV} onDelete={vi.fn()} />)
+
+    for (let i = 0; i < 2; i++) {
+      await user.pointer({ keys: '[MouseRight]', target: screen.getByText('清完了。') })
+      await user.click(await screen.findByRole('menuitem', { name: 'Copy' }))
+    }
+    refuseFirst(new Error('Document is not focused.'))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    expect(useConversationStore.getState().sessions[CONV]?.clipboardError ?? null).toBeNull()
+  })
+
   it('gives the footer’s copy button the conclusion, not the whole run', async () => {
     const user = userEvent.setup()
     const { container } = render(<TurnItem turn={steppedTurn()} conversationId={CONV} />)

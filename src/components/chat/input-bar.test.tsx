@@ -153,6 +153,35 @@ describe('composer cut', () => {
     await vi.waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
   })
 
+  // A slow refusal from an earlier copy must not come back over a later one
+  // that worked.
+  it('lets only the latest copy say how it went', async () => {
+    const user = userEvent.setup()
+    let refuseFirst!: (reason: Error) => void
+    stubClipboard(
+      vi
+        .fn()
+        .mockImplementationOnce(() => new Promise((_, reject) => (refuseFirst = reject)))
+        .mockResolvedValue(undefined),
+    )
+    renderBar({ value: 'hello world', onChange: vi.fn() })
+    const field = document.querySelector('textarea') as HTMLTextAreaElement
+    const copy = async () => {
+      vi.spyOn(window, 'getSelection').mockImplementation(() => ({ toString: () => 'world' }) as Selection)
+      await user.pointer({ keys: '[MouseRight]', target: field })
+      field.setSelectionRange(6, 11)
+      await user.click(await screen.findByRole('menuitem', { name: new RegExp(`^${i18n.t('chat.copy')}`) }))
+      vi.restoreAllMocks()
+    }
+
+    await copy()
+    await copy()
+    refuseFirst(new Error('Document is not focused.'))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
   it('removes the text once the clipboard has it', async () => {
     const user = userEvent.setup()
     const writeText = vi.fn().mockResolvedValue(undefined)

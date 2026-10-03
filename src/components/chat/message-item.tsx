@@ -208,16 +208,24 @@ export interface UserMessageProps {
  * takes it away. The window's conversation rather than the transcript's own:
  * the sub-agent sheet draws a delegated run's, which has no status row.
  */
+// Every message's menu writes the one slot, so the latest copy is counted
+// across all of them: a slow refusal from an earlier copy must not come back
+// over the success of a later one.
+let latestMenuCopy = 0
+
 function useMenuCopy() {
   const { t } = useTranslation()
   const activeId = useConversationStore((s) => s.activeId)
   const setClipboardError = useConversationStore((s) => s.setClipboardError)
   return useCallback(
     (text: string) => {
+      const attempt = ++latestMenuCopy
       writeClipboard(text).then(
-        () => activeId && setClipboardError(activeId, null),
+        () => attempt === latestMenuCopy && activeId && setClipboardError(activeId, null),
         (reason: unknown) =>
-          activeId && setClipboardError(activeId, t('common.copyFailed', { error: errorMessage(reason) })),
+          attempt === latestMenuCopy &&
+          activeId &&
+          setClipboardError(activeId, t('common.copyFailed', { error: errorMessage(reason) })),
       )
     },
     [activeId, setClipboardError, t],
