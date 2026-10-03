@@ -129,6 +129,13 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: node scripts/check-rust-invented-default.mjs src-tauri/crates/core/src
 
+      # A transaction must stay on one pool while Diesel and SeaORM coexist, and
+      # a Diesel transaction must not reach another `immediate_transaction`.
+      # Pre-commit runs the same check; this is the one `--no-verify` skips.
+      - name: Transaction graph
+        if: matrix.os == 'ubuntu-latest'
+        run: pnpm txgraph:check
+
       # The shell and the core are two workspaces — `src-tauri/crates` is the
       # meridian-core submodule, excluded from the shell's workspace — so every
       # cargo gate runs twice. The core's runs share `src-tauri/target` through
