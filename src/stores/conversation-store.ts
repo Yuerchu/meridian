@@ -890,6 +890,11 @@ export interface ConversationSession {
    *  not clear it, because a reload is exactly what follows a failure, and
    *  clearing it there is how an error was shown for one frame and lost. */
   error: string | null
+  /** A copy from a message's menu that the clipboard refused. Not `error`:
+   *  that slot holds a failed send or stop until the next turn, and a copy
+   *  written over it took the more important reason off the screen. The next
+   *  copy that succeeds clears it. */
+  clipboardError: string | null
   /** The transcript could not be read. Separate from `error` because it has
    *  the opposite lifetime: the next successful read is the state genuinely
    *  changing, so that — and only that — clears it. */
@@ -949,6 +954,7 @@ function defaultSession(): ConversationSession {
     retry: null,
     compacting: false,
     error: null,
+    clipboardError: null,
     loadError: null,
     todosError: null,
     fulfilledUnseen: false,
@@ -1395,6 +1401,7 @@ export interface ConversationStore {
   setStreaming: (convId: string, value: boolean) => void
   setCompacting: (convId: string, value: boolean) => void
   setError: (convId: string, error: string | null) => void
+  setClipboardError: (convId: string, error: string | null) => void
   /** The transcript read failed (a string) or succeeded (null). */
   setLoadError: (convId: string, error: string | null) => void
   setActiveTodos: (convId: string, todos: TodoArgs | null) => void
@@ -2772,6 +2779,18 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   // Both create the session rather than dropping the message when there is
   // none: a failure reported before `ensureSession` ran would otherwise be lost
   // without a trace, which is the whole thing these exist to prevent.
+  setClipboardError: (convId, error) => {
+    set(
+      produce((state: ConversationStore) => {
+        if (!state.sessions[convId]) {
+          if (error === null) return
+          state.sessions[convId] = defaultSession()
+        }
+        state.sessions[convId].clipboardError = error
+      }),
+    )
+  },
+
   setError: (convId, error) => {
     set(
       produce((state: ConversationStore) => {

@@ -21,7 +21,8 @@ import { cx } from '@/utils/cx'
 import { ActionButton } from '@/components/ui/action-button'
 import { useConfirm } from '@/hooks/use-confirm'
 import { ConversationRefChips } from './conversation-ref-chips'
-import { CopyButton, MarkdownContent } from './markdown-content'
+import { MarkdownContent } from './markdown-content'
+import { CopyButton } from '@/components/ui/copy-button'
 import { Avatar, Label, TextArea } from '@/components/base'
 import { AgentThinking } from '@/components/application/agent-thinking/agent-thinking'
 import { ContextMenu } from '@/components/base'
@@ -42,6 +43,8 @@ import { ChatAttachment, ChatAttachmentGroup } from '@/components/base'
 import { ErrorBoundary } from '@/components/error-boundary'
 
 import { assetSrc } from '@/lib/asset-src'
+import { writeClipboard } from '@/lib/clipboard'
+import { errorMessage } from '@/lib/error-message'
 import { isCoarsePointer, isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { useClockTime } from '@/hooks/use-clock-time'
 import { SelectTextModal } from './select-text-modal'
@@ -197,6 +200,38 @@ export interface UserMessageProps {
  * outside the bubble, as the model's do. `position` is the run treatment
  * `questionPositionOf` decided; the bubble reads nothing off its siblings.
  */
+/**
+ * Copy from a context menu, which closes on the press and so has nowhere to
+ * say the copy was refused. The failure goes to the window's conversation, to
+ * a status row of its own under the last turn — not `error`, which may be
+ * holding a failed send that matters more — and the next copy that succeeds
+ * takes it away. The window's conversation rather than the transcript's own:
+ * the sub-agent sheet draws a delegated run's, which has no status row.
+ */
+// Every message's menu writes the one slot, so the latest copy is counted
+// across all of them: a slow refusal from an earlier copy must not come back
+// over the success of a later one.
+let latestMenuCopy = 0
+
+function useMenuCopy() {
+  const { t } = useTranslation()
+  const activeId = useConversationStore((s) => s.activeId)
+  const setClipboardError = useConversationStore((s) => s.setClipboardError)
+  return useCallback(
+    (text: string) => {
+      const attempt = ++latestMenuCopy
+      writeClipboard(text).then(
+        () => attempt === latestMenuCopy && activeId && setClipboardError(activeId, null),
+        (reason: unknown) =>
+          attempt === latestMenuCopy &&
+          activeId &&
+          setClipboardError(activeId, t('common.copyFailed', { error: errorMessage(reason) })),
+      )
+    },
+    [activeId, setClipboardError, t],
+  )
+}
+
 export const UserMessage = React.memo(function UserMessage({
   message,
   onDelete,
@@ -207,6 +242,7 @@ export const UserMessage = React.memo(function UserMessage({
   position = 'single',
 }: UserMessageProps) {
   const { t } = useTranslation()
+  const menuCopy = useMenuCopy()
 
   // User messages with attachments are stored as a JSON array of parts. Only
   // treat the content as multimodal when every element actually looks like a
@@ -471,7 +507,7 @@ export const UserMessage = React.memo(function UserMessage({
               <ContextMenu.Item
                 id="copy-selection"
                 textValue={t('contextMenu.copySelection')}
-                onAction={() => void navigator.clipboard.writeText(selectedText)}
+                onAction={() => menuCopy(selectedText)}
               >
                 <Copy className="size-4 text-text-secondary" />
                 <Label>{t('contextMenu.copySelection')}</Label>
@@ -485,11 +521,7 @@ export const UserMessage = React.memo(function UserMessage({
               <Label>{t('chat.edit')}</Label>
             </ContextMenu.Item>
           )}
-          <ContextMenu.Item
-            id="copy"
-            textValue={t('chat.copy')}
-            onAction={() => void navigator.clipboard.writeText(copyText)}
-          >
+          <ContextMenu.Item id="copy" textValue={t('chat.copy')} onAction={() => menuCopy(copyText)}>
             <Copy className="size-4 text-text-secondary" />
             <Label>{t('chat.copy')}</Label>
           </ContextMenu.Item>
@@ -915,6 +947,7 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
   assistantAvatar,
 }: AssistantGroupViewProps) {
   const { t } = useTranslation()
+  const menuCopy = useMenuCopy()
   const [selectedText, setSelectedText] = useState('')
   // What the open menu is aimed at: the prose of the bubble it was opened on,
   // or null when that bubble has none (a keyboard, a summary, the avatar).
@@ -998,18 +1031,14 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
               <ContextMenu.Item
                 id="copy-selection"
                 textValue={t('contextMenu.copySelection')}
-                onAction={() => void navigator.clipboard.writeText(selectedText)}
+                onAction={() => menuCopy(selectedText)}
               >
                 <Copy className="size-4 text-text-secondary" />
                 <Label>{t('contextMenu.copySelection')}</Label>
               </ContextMenu.Item>
             )}
             {targetText !== null && (
-              <ContextMenu.Item
-                id="copy"
-                textValue={t('chat.copy')}
-                onAction={() => void navigator.clipboard.writeText(targetText)}
-              >
+              <ContextMenu.Item id="copy" textValue={t('chat.copy')} onAction={() => menuCopy(targetText)}>
                 <Copy className="size-4 text-text-secondary" />
                 <Label>{t('chat.copy')}</Label>
               </ContextMenu.Item>

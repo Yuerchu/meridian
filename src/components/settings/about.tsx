@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
-import { Check, ChevronRight, Copy, FileText } from '@keyline-icons/react/two-tone'
+import { Check, ChevronRight, Copy, FileText, TriangleAlert } from '@keyline-icons/react/two-tone'
 import { Button, Chip, Link, Separator, Skeleton, Tooltip, TooltipTrigger } from '@/components/base'
+import { CopyAnnouncement } from '@/components/ui/copy-button'
 import { Hint } from '@/components/ui/hint'
 import { ItemCard } from '@/components/base'
 import { ItemCardGroup } from '@/components/base'
@@ -9,7 +10,7 @@ import { api } from '@/api'
 import { openExternalUrl } from '@/lib/external-link'
 import { MeridianMark } from '@/components/ui/meridian-mark'
 import { useHistoryLevel } from '@/hooks/use-history-level'
-import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
+import { useCopy } from '@/hooks/use-copy'
 import type { AppInfoResponse } from '@/types'
 import { LogViewer } from './logs/log-viewer'
 import { SettingsHeader, SettingsPane } from './primitives'
@@ -103,8 +104,8 @@ export function About() {
   const { t } = useTranslation()
   const [info, setInfo] = useState<AppInfoResponse | null>(null)
   const [showLogs, setShowLogs] = useState(false)
-  const [copied, markCopied] = useTemporaryFlag()
-  const [pathCopied, markPathCopied] = useTemporaryFlag()
+  const infoCopy = useCopy()
+  const pathCopy = useCopy()
 
   useEffect(() => {
     // Silent on failure: this panel is where someone lands *because* something
@@ -208,7 +209,13 @@ export function About() {
             <ItemCard.Content className="min-w-0">
               <ItemCard.Title className={ROW_TITLE}>{t('settings.about.copyInfo.title')}</ItemCard.Title>
               <ItemCard.Description className={ROW_DESCRIPTION}>
-                {t('settings.about.copyInfo.subtitle')}
+                {infoCopy.failure !== null ? (
+                  <span role="alert" className="text-status-danger wrap-break-word">
+                    {t('common.copyFailed', { error: infoCopy.failure })}
+                  </span>
+                ) : (
+                  t('settings.about.copyInfo.subtitle')
+                )}
               </ItemCard.Description>
             </ItemCard.Content>
             <ItemCard.Action>
@@ -217,14 +224,12 @@ export function About() {
                 variant="secondary"
                 aria-label={t('settings.about.copyInfo.action')}
                 isDisabled={!info}
-                onPress={() => {
-                  navigator.clipboard.writeText(diagnostics)
-                  markCopied()
-                }}
+                onPress={() => void infoCopy.copy(diagnostics)}
               >
-                {copied && <Check aria-hidden="true" className="size-4" />}
+                {infoCopy.copied && <Check aria-hidden="true" className="size-4" />}
                 {t('settings.about.copyInfo.action')}
               </Button>
+              <CopyAnnouncement copied={infoCopy.copied} failure={null} />
             </ItemCard.Action>
           </ItemCard>
         </ItemCardGroup>
@@ -250,20 +255,24 @@ export function About() {
             value={info?.dataDir}
             action={
               info && (
-                <TooltipTrigger delay={0}>
-                  <Button
-                    iconOnly
-                    leadingIcon={pathCopied ? Check : Copy}
-                    size="small"
-                    variant="neutral"
-                    aria-label={t('settings.about.system.copyDataDir')}
-                    onPress={() => {
-                      navigator.clipboard.writeText(info.dataDir)
-                      markPathCopied()
-                    }}
-                  />
-                  <Tooltip>{t('settings.about.system.copyDataDir')}</Tooltip>
-                </TooltipTrigger>
+                <>
+                  <TooltipTrigger delay={0}>
+                    <Button
+                      iconOnly
+                      leadingIcon={pathCopy.failure !== null ? TriangleAlert : pathCopy.copied ? Check : Copy}
+                      size="small"
+                      variant="neutral"
+                      aria-label={t('settings.about.system.copyDataDir')}
+                      onPress={() => void pathCopy.copy(info.dataDir)}
+                    />
+                    <Tooltip>
+                      {pathCopy.failure !== null
+                        ? t('common.copyFailed', { error: pathCopy.failure })
+                        : t('settings.about.system.copyDataDir')}
+                    </Tooltip>
+                  </TooltipTrigger>
+                  <CopyAnnouncement copied={pathCopy.copied} failure={pathCopy.failure} />
+                </>
               )
             }
           />
