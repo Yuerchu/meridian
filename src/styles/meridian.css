@@ -157,6 +157,32 @@
     filter: blur(3px);
   }
 }
+/* The question of a turn a jump landed on (`lib/arrival-flash.ts`): held,
+   then faded back to the bubble's own fill. A wash of the bubble's ink over
+   its fill, as anything drawn on a bubble is — never the accent, which is not
+   a highlight. Reduced motion takes the animation away, as every keyframe's
+   guard does (motion.md), and keeps the mark as a plain fill for as long as
+   the attribute is there: the reader still needs to see where they landed. */
+[data-arrival] [data-slot='message-group'][data-align='end'] [data-bubble-block] {
+  --arrival-wash: color-mix(
+    in oklch,
+    var(--bubble-fill, var(--bubble-assistant)),
+    var(--bubble-ink, var(--bubble-assistant-foreground)) 14%
+  );
+  animation: meridian-arrival 1400ms ease-out;
+}
+@keyframes meridian-arrival {
+  0%,
+  45% {
+    background-color: var(--arrival-wash);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-arrival] [data-slot='message-group'][data-align='end'] [data-bubble-block] {
+    animation: none;
+    background-color: var(--arrival-wash);
+  }
+}
 
 /* ---------------------------------------------------------------- app-level */
 
