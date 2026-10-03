@@ -1,15 +1,14 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ComponentType } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { Button, Tooltip, TooltipTrigger } from '@/components/base'
-import { FileTree } from '@/components/base'
-import { File, Folder, FolderOpen, X } from '@keyline-icons/react/two-tone'
+import { TreeView, TreeViewItem } from '@/components/base'
+import { X } from '@keyline-icons/react/two-tone'
 
 import { useConversationStore } from '@/stores/conversation-store'
 import { fileIconUrl } from '@/lib/file-icon'
 import { buildFileTree, touchedFiles, type FileNode, type TouchedFile, type TouchedOp } from '@/lib/touched-files'
 import { cx } from '@/utils/cx'
-import { titleIfTruncated } from '@/lib/truncation'
 
 /** Every directory in the tree, so a new one arrives already open. */
 function branchIds(nodes: FileNode[], out: string[] = []): string[] {
@@ -95,20 +94,24 @@ export function ChangesPanelView({ files, onClose }: { files: TouchedFile[]; onC
         </TooltipTrigger>
       </header>
 
-      <FileTree
-        aria-label={t('chat.changes.title')}
-        size="sm"
-        selectionMode="none"
-        expandedKeys={expandedKeys}
-        onExpandedChange={(keys) => {
-          const open = new Set([...keys].map(String))
-          setCollapsed(new Set(branches.filter((id) => !open.has(id))))
-        }}
-        renderEmptyState={() => t('chat.changes.empty')}
-        className="min-h-0 flex-1"
-      >
-        {tree.map((node) => renderNode(node, t))}
-      </FileTree>
+      {/* The registry tree grows with its content and leaves scrolling to its
+          container; it is a card on its own, and here it is the panel's body. */}
+      <div data-slot="changes-panel-body" className="min-h-0 flex-1 overflow-y-auto">
+        <TreeView
+          aria-label={t('chat.changes.title')}
+          size="sm"
+          selectionMode="none"
+          expandedKeys={expandedKeys}
+          onExpandedChange={(keys) => {
+            const open = new Set([...keys].map(String))
+            setCollapsed(new Set(branches.filter((id) => !open.has(id))))
+          }}
+          renderEmptyState={() => t('chat.changes.empty')}
+          className="rounded-none border-0 bg-transparent"
+        >
+          {tree.map((node) => renderNode(node, t))}
+        </TreeView>
+      </div>
 
       {/* Not a disclaimer for its own sake: a list of edited files that silently
           omits everything a command wrote is the kind of wrong that reads as
@@ -123,56 +126,54 @@ export function ChangesPanelView({ files, onClose }: { files: TouchedFile[]; onC
   )
 }
 
-/** The language icon where there is one, a plain sheet where there is not —
- *  `fileIconUrl` returns nothing for an extension it does not know. */
-function FileGlyph({ name }: { name: string }) {
+type Glyph = ComponentType<{ className?: string }>
+
+const glyphs = new Map<string, Glyph>()
+
+/** The language icon where there is one; `undefined` leaves the tree its plain
+ *  file icon, since `fileIconUrl` returns nothing for an extension it does not
+ *  know. One component per icon, so a re-render does not remount every image. */
+function fileGlyph(name: string): Glyph | undefined {
   const url = fileIconUrl(name)
-  if (!url) return <File className="size-4" />
-  return <img data-slot="changes-file-glyph" src={url} alt="" className="size-4 shrink-0" />
+  if (!url) return undefined
+  let glyph = glyphs.get(url)
+  if (!glyph) {
+    glyph = ({ className }) => <img data-slot="changes-file-glyph" src={url} alt="" className={className} />
+    glyphs.set(url, glyph)
+  }
+  return glyph
 }
 
 function renderNode(node: FileNode, t: TFunction) {
   const op = node.file?.op
+  const count = node.file?.count ?? 0
   const accessibleName = op ? `${node.name}, ${t(OP_LABEL[op])}` : node.name
   return (
-    <FileTree.Item
+    <TreeViewItem
       key={node.id}
       id={node.id}
+      label={node.name}
       aria-label={accessibleName}
       textValue={accessibleName}
-      icon={
-        node.children ? (
-          ({ isExpanded }) => (isExpanded ? <FolderOpen className="size-4" /> : <Folder className="size-4" />)
-        ) : (
-          <FileGlyph name={node.name} />
-        )
-      }
-      title={
-        <span data-slot="changes-node-title" className="flex min-w-0 flex-1 items-center gap-2">
-          <span data-slot="changes-node-name" onPointerEnter={titleIfTruncated} className="min-w-0 flex-1 truncate">
-            {node.name}
+      icon={node.children ? undefined : fileGlyph(node.name)}
+      trailingContent={
+        count > 1 || op ? (
+          <span data-slot="changes-node-meta" className="flex items-center gap-2">
+            {count > 1 && (
+              <span data-slot="changes-node-count" className="tabular-nums">
+                ×{count}
+              </span>
+            )}
+            {op && (
+              <span data-slot="changes-node-op" aria-hidden="true" className={cx('font-mono', OP_CLASS[op])}>
+                {OP_LETTER[op]}
+              </span>
+            )}
           </span>
-          {node.file && node.file.count > 1 && (
-            <span
-              data-slot="changes-node-count"
-              className="shrink-0 text-caption-1-regular tabular-nums text-text-secondary"
-            >
-              ×{node.file.count}
-            </span>
-          )}
-          {op && (
-            <span
-              data-slot="changes-node-op"
-              aria-hidden="true"
-              className={cx('shrink-0 font-mono text-caption-1-regular', OP_CLASS[op])}
-            >
-              {OP_LETTER[op]}
-            </span>
-          )}
-        </span>
+        ) : undefined
       }
     >
       {node.children?.map((child) => renderNode(child, t))}
-    </FileTree.Item>
+    </TreeViewItem>
   )
 }

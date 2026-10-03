@@ -1,5 +1,7 @@
 'use client'
 
+import { useTemplateCopy } from '@/components/foundations/template-copy/template-copy'
+
 import { useEffect, useState } from 'react'
 import { ArrowLeft, ArrowRight } from '@keyline-icons/react/two-tone'
 import { Button as AriaButton } from 'react-aria-components'
@@ -24,9 +26,9 @@ import { cx } from '@/utils/cx'
  *
  * Meridian (boardui.json patches): the page cells are React Aria `Button`s and
  * Previous/Next are wired with `onPress`/`isDisabled` (the base Button is RAC
- * here); the visible and accessible strings are props, so a caller can
- * translate them; and the width observer attaches whenever the nav mounts,
- * not only if it existed on the first render.
+ * here); a page cell's accessible name is a prop, so a caller can translate
+ * it; and the width observer attaches whenever the nav mounts, not only if it
+ * existed on the first render.
  */
 
 export interface PaginationProps {
@@ -36,10 +38,10 @@ export interface PaginationProps {
   /** Page numbers shown on each side of the current page. Default 1. */
   siblingCount?: number
   className?: string
-  /** The nav's accessible name. Default "Pagination". */
-  'aria-label'?: string
+  /** Visible and accessible navigation labels for the application's locale. */
   previousLabel?: string
   nextLabel?: string
+  'aria-label'?: string
   /** A page cell's accessible name. Default "Go to page N". */
   pageLabel?: (page: number) => string
 }
@@ -103,16 +105,17 @@ export function Pagination({
   onChange,
   siblingCount = 1,
   className,
-  'aria-label': ariaLabel = 'Pagination',
   previousLabel = 'Previous',
   nextLabel = 'Next',
+  'aria-label': ariaLabel = 'Pagination',
   pageLabel = (item) => `Go to page ${item}`,
 }: PaginationProps) {
+  const localize = useTemplateCopy()
   const [navRef, isCompact] = useIsCompact()
   if (totalPages <= 1) return null
   const pages = paginationRange(page, totalPages, isCompact ? 0 : siblingCount)
 
-  return (
+  return localize(
     <nav
       ref={navRef}
       aria-label={ariaLabel}
@@ -169,6 +172,6 @@ export function Pagination({
       >
         {isCompact ? undefined : nextLabel}
       </Button>
-    </nav>
+    </nav>,
   )
 }
