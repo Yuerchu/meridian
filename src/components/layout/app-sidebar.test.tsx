@@ -1,8 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Sidebar } from '@/components/base'
 
 import { AppSidebar } from './app-sidebar'
+import { useConversationStore, type ConversationSession } from '@/stores/conversation-store'
+import { useUndoStore } from '@/stores/undo-store'
 import i18n from '@/i18n'
 import type { ConversationInfoResponse, ProjectInfoResponse } from '@/types'
 
@@ -112,6 +114,8 @@ function group(name: string) {
 }
 
 describe('AppSidebar project groups', () => {
+  beforeEach(() => useUndoStore.setState({ pending: null, hidden: new Set() }))
+
   beforeAll(async () => {
     await i18n.changeLanguage('zh-CN')
   })
@@ -328,19 +332,49 @@ describe('AppSidebar project groups', () => {
       )
     })
 
-    it('surfaces a failed delete', async () => {
+    it('takes a conversation away at once with an undo offer, and reports a delete that then fails', async () => {
       const user = userEvent.setup()
       const onDelete = vi.fn().mockRejectedValue(new Error('still running'))
       renderSidebar({ onDelete })
       await user.click(within(await openRowMenu(user)).getByText(i18n.t('chat.delete')))
-      await user.click(
-        within(await screen.findByRole('alertdialog')).getByRole('button', { name: i18n.t('common.confirm') }),
-      )
 
+      // No question: the offer is the way back.
+      expect(screen.queryByRole('alertdialog')).toBeNull()
+      expect(useUndoStore.getState().pending?.conversationId).toBe('c-1')
+      expect(useUndoStore.getState().hidden.has('c-1')).toBe(true)
+      expect(onDelete).not.toHaveBeenCalled()
+
+      act(() => useUndoStore.getState().commit())
       expect(onDelete).toHaveBeenCalledWith('c-1')
       expect(await screen.findByRole('alert')).toHaveTextContent(
         i18n.t('sidebar.deleteFailed', { error: 'Error: still running' }),
       )
+      // Failed, so it is shown again.
+      expect(useUndoStore.getState().hidden.has('c-1')).toBe(false)
+    })
+
+    it('still asks before deleting a conversation with a turn running', async () => {
+      const user = userEvent.setup()
+      const onDelete = vi.fn().mockResolvedValue(undefined)
+      useConversationStore.setState((state) => ({
+        // Only `streaming` is read on this path.
+        sessions: { ...state.sessions, 'c-1': { streaming: true } as ConversationSession },
+      }))
+      try {
+        renderSidebar({ onDelete })
+        await user.click(within(await openRowMenu(user)).getByText(i18n.t('chat.delete')))
+        await user.click(
+          within(await screen.findByRole('alertdialog')).getByRole('button', { name: i18n.t('common.delete') }),
+        )
+        expect(onDelete).toHaveBeenCalledWith('c-1')
+        expect(useUndoStore.getState().pending).toBeNull()
+      } finally {
+        useConversationStore.setState((state) => {
+          const sessions = { ...state.sessions }
+          delete sessions['c-1']
+          return { sessions }
+        })
+      }
     })
 
     it('surfaces a failed rename', async () => {

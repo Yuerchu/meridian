@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AppShell } from '@/components/layout/app-shell'
 import type { Page, ShellProps } from '@/components/layout/shell-props'
@@ -9,6 +9,7 @@ import { useAndroidInsets } from '@/hooks/use-android-insets'
 import { usePlatform } from '@/hooks/use-platform'
 import { useGlobalEventListener } from '@/hooks/use-global-event-listener'
 import { useConversationStore } from '@/stores/conversation-store'
+import { useUndoStore } from '@/stores/undo-store'
 import type { InitialTurnDraft } from '@/components/chat/conversation-draft'
 import type { ConversationInfoResponse } from '@/types'
 
@@ -56,7 +57,18 @@ function App() {
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('provider')
   const [pendingTurn, setPendingTurn] = useState<{ conversationId: string; draft: InitialTurnDraft } | null>(null)
 
-  const conversations = useConversationStore((s) => s.conversations)
+  const allConversations = useConversationStore((s) => s.conversations)
+  // A conversation deleted with an undo offer standing is gone from every list
+  // the shell draws — the sidebar, the palette, the header — before it is gone
+  // from the store (`stores/undo-store.ts`).
+  const hiddenConversations = useUndoStore((s) => s.hidden)
+  const conversations = useMemo(
+    () =>
+      hiddenConversations.size === 0
+        ? allConversations
+        : allConversations.filter((c) => !hiddenConversations.has(c.id)),
+    [allConversations, hiddenConversations],
+  )
   const activeId = useConversationStore((s) => s.activeId)
   const projects = useConversationStore((s) => s.projects)
   const activeProjectId = useConversationStore((s) => s.activeProjectId)

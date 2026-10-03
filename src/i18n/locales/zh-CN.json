@@ -110,6 +110,8 @@
   "chat.approvalNotification.contentHidden": "这里没有显示这次调用将要做的全部内容。请到对话中查看完整内容后再决定。",
   "chat.approvalNotification.reviewRequired": "这项操作有风险。请到对话中结合上下文查看后再决定。",
   "notifications.region": "通知",
+  "notifications.undo.deleted": "已删除「{{title}}」",
+  "notifications.undo.deleteNow": "立即删除",
   "notifications.inbox.title": "待处理",
   "notifications.inbox.bell_other": "待处理：{{count}} 项",
   "notifications.inbox.pendingCount_other": "{{count}} 项待处理",

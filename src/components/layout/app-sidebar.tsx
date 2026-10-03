@@ -74,6 +74,8 @@ import type { Page } from './shell-props'
 import { visibleSettingsTabGroups, type SettingsTab } from '@/components/settings/tabs'
 import { usePlatform } from '@/hooks/use-platform'
 import { useConfirm } from '@/hooks/use-confirm'
+import { useConversationStore } from '@/stores/conversation-store'
+import { useUndoStore } from '@/stores/undo-store'
 import { isCoarsePointer } from '@/hooks/use-coarse-pointer'
 import { ConversationIndicator } from './conversation-indicator'
 import { MoveDialog } from './move-dialog'
@@ -844,6 +846,7 @@ export function AppSidebar({
   const archivedLoaded = useRef(false)
   const [expandedArchivedGroups, setExpandedArchivedGroups] = useState<Set<string | null>>(new Set())
   const { confirm, confirmDialog } = useConfirm()
+  const hiddenConversations = useUndoStore((s) => s.hidden)
 
   const loadArchived = useCallback(async () => {
     const archived = await api.listConversations(true)
@@ -861,13 +864,14 @@ export function AppSidebar({
   const archivedByProject = useMemo(() => {
     const map = new Map<string | null, ConversationInfoResponse[]>()
     for (const conv of archivedConversations) {
+      if (hiddenConversations.has(conv.id)) continue
       const key = conv.project_id ?? null
       const list = map.get(key)
       if (list) list.push(conv)
       else map.set(key, [conv])
     }
     return map
-  }, [archivedConversations])
+  }, [archivedConversations, hiddenConversations])
 
   const toggleArchivedGroup = useCallback(
     (groupKey: string | null) => {
@@ -1048,7 +1052,30 @@ export function AppSidebar({
     },
     onExportError: (error) => setActionError(t('sidebar.exportFailed', { error: String(error) })),
     onRequestDelete: async (id) => {
-      if (await confirm({ body: t('confirm.deleteConversation') })) reportFailure('sidebar.deleteFailed', onDelete(id))
+      // A conversation with a turn running is still asked about: deleting it
+      // stops the turn first, and that cannot wait for an offer to run out.
+      // Everything else goes at once, with an undo offer (`stores/undo-store.ts`).
+      if (useConversationStore.getState().sessions[id]?.streaming) {
+        if (await confirm({ body: t('confirm.deleteConversation'), confirmLabel: t('common.delete') }))
+          reportFailure('sidebar.deleteFailed', onDelete(id))
+        return
+      }
+      const conversation = conversations.find((c) => c.id === id) ?? archivedConversations.find((c) => c.id === id)
+      const store = useConversationStore.getState()
+      const wasOpen = store.activeId === id
+      if (wasOpen) store.setActiveId(null)
+      useUndoStore.getState().offer({
+        conversationId: id,
+        title: conversation?.title ?? null,
+        commit: () => {
+          const task = onDelete(id)
+          reportFailure('sidebar.deleteFailed', task)
+          return task
+        },
+        restore: () => {
+          if (wasOpen) useConversationStore.getState().setActiveId(id)
+        },
+      })
     },
     // Only where there is an agent session to point at, and only where a
     // session can exist at all — Android has no child processes, so the

@@ -110,6 +110,8 @@
   "chat.approvalNotification.contentHidden": "Part of what this will do is not shown here. Open the conversation to see all of it before deciding.",
   "chat.approvalNotification.reviewRequired": "This can change things. Open the conversation to see it in context before deciding.",
   "notifications.region": "Notifications",
+  "notifications.undo.deleted": "Deleted “{{title}}”",
+  "notifications.undo.deleteNow": "Delete now",
   "notifications.inbox.title": "Waiting on you",
   "notifications.inbox.bell_one": "Waiting on you: {{count}} request",
   "notifications.inbox.bell_other": "Waiting on you: {{count}} requests",
