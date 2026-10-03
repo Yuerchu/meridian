@@ -210,6 +210,7 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
               const ok = await confirm({
                 title: t('settings.memory.person.forgetConfirmTitle'),
                 body: t('settings.memory.person.forgetConfirmBody'),
+                confirmLabel: t('settings.memory.person.forget'),
               })
               if (!ok) return
               await api.forgetMemorySubject(selectedPerson.scope_id)

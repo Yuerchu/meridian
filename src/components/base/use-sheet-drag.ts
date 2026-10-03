@@ -23,6 +23,24 @@ const DISMISS_VELOCITY_PX_PER_MS = 0.6
 const FLICK_MIN_DISTANCE_PX = 24
 /** Pulling *up* barely moves it: there is nowhere for the sheet to go. */
 const UPWARD_RESISTANCE = 0.15
+/**
+ * A release faster than this carries its speed into the exit. The exit
+ * keyframe is 200ms `ease-in`, which starts from rest: after a throw the
+ * panel visibly braked under the finger and then sped up again. Thrown, it
+ * leaves linearly at the finger's speed — the keyframe moves the panel by its
+ * whole height, whatever the drag offset on the layer inside it, so that is
+ * the distance — within `THROWN_EXIT_MS`. Slower releases keep the keyframe
+ * as written.
+ */
+const CARRY_VELOCITY_PX_PER_MS = 0.3
+const THROWN_EXIT_MS = { min: 100, max: 200 }
+/**
+ * A finger held still sends no moves, so the last sampled speed would stand
+ * for ever: move fast, stop, lift, and the release read as a throw — a flick
+ * dismissal, too, short of the distance. Released this long after the last
+ * move, it is a release from rest.
+ */
+const STILL_AFTER_MS = 100
 
 interface SheetDragOptions {
   enabled: boolean
@@ -103,8 +121,22 @@ export function useSheetDrag({ enabled, requestClose }: SheetDragOptions): Sheet
       // touch a dismissal, so the absolute rule stands alone there.
       const threshold =
         current.height > 0 ? Math.min(DISMISS_DISTANCE_PX, current.height * DISMISS_FRACTION) : DISMISS_DISTANCE_PX
-      const flicked = travelled >= FLICK_MIN_DISTANCE_PX && current.velocity >= DISMISS_VELOCITY_PX_PER_MS
+      const velocity = event.timeStamp - current.lastAt > STILL_AFTER_MS ? 0 : current.velocity
+      const flicked = travelled >= FLICK_MIN_DISTANCE_PX && velocity >= DISMISS_VELOCITY_PX_PER_MS
+      // Set before asking, because the answer starts the exit; taken back if
+      // the answer was no.
+      const panel = layerRef.current?.closest<HTMLElement>('[data-slot="sheet-content"]') ?? null
+      const thrown = !cancelled && panel !== null && velocity >= CARRY_VELOCITY_PX_PER_MS
+      if (thrown) {
+        const left = current.height / velocity
+        panel.style.animationDuration = `${Math.round(Math.min(THROWN_EXIT_MS.max, Math.max(THROWN_EXIT_MS.min, left)))}ms`
+        panel.style.animationTimingFunction = 'linear'
+      }
       const dismissed = !cancelled && (travelled >= threshold || flicked) && requestClose()
+      if (thrown && !dismissed) {
+        panel.style.animationDuration = ''
+        panel.style.animationTimingFunction = ''
+      }
 
       // A short drag and a refused close both spring back. A real close keeps
       // the offset, so the exit keyframe carries on from where the finger left

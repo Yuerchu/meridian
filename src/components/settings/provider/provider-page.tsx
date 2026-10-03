@@ -242,7 +242,7 @@ function ProviderEditor({
   // delete looks like a click that did not register, and a second click races
   // the first.
   const handleDelete = useCallback(async () => {
-    if (!(await confirm({ body: t('settings.confirmDelete.provider') }))) return
+    if (!(await confirm({ body: t('settings.confirmDelete.provider'), confirmLabel: t('common.delete') }))) return
     setDeleting(true)
     setDeleteError(null)
     try {

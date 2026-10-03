@@ -122,7 +122,14 @@ export function GeneralSettings() {
 
   const handleSearchProviderChange = async (value: SearchProvider) => {
     if (value === searchProvider) return
-    if (searchApiKey.trim() && !(await confirm({ body: t('settings.unsavedChanges'), status: 'warning' }))) {
+    if (
+      searchApiKey.trim() &&
+      !(await confirm({
+        body: t('settings.unsavedChanges'),
+        status: 'warning',
+        confirmLabel: t('common.discardChanges'),
+      }))
+    ) {
       return
     }
     searchProviderTouched.current = true

@@ -22,6 +22,7 @@ import { ActionButton } from '@/components/ui/action-button'
 import { useConfirm } from '@/hooks/use-confirm'
 import { ConversationRefChips } from './conversation-ref-chips'
 import { MarkdownContent } from './markdown-content'
+import { useRevealedText } from '@/hooks/use-revealed-text'
 import { CopyButton } from '@/components/ui/copy-button'
 import { Avatar, Label, TextArea } from '@/components/base'
 import { AgentThinking } from '@/components/application/agent-thinking/agent-thinking'
@@ -301,7 +302,7 @@ export const UserMessage = React.memo(function UserMessage({
 
   const { confirm, confirmDialog } = useConfirm()
   const requestDelete = useCallback(async () => {
-    if (await confirm({ body: t('confirm.deleteMessage') })) onDelete?.(message.id)
+    if (await confirm({ body: t('confirm.deleteMessage'), confirmLabel: t('common.delete') })) onDelete?.(message.id)
   }, [confirm, t, onDelete, message.id])
 
   const handleContextMenuOpenChange = useCallback((open: boolean) => {
@@ -339,15 +340,24 @@ export const UserMessage = React.memo(function UserMessage({
     setEditing(false)
   }, [editText, message.content, message.id, onEdit])
 
-  const handleCancelEdit = useCallback(() => {
+  // Asks only when there is something to lose, measured as saving measures it:
+  // an edit that only added whitespace would save nothing either. Escape is
+  // one stray key away from a rewritten paragraph.
+  const handleCancelEdit = useCallback(async () => {
+    if (
+      editText.trim() !== message.content.trim() &&
+      !(await confirm({ body: t('chat.discardEdit'), confirmLabel: t('common.discardChanges'), status: 'warning' }))
+    ) {
+      return
+    }
     restoreEditFocus.current = true
     setEditing(false)
-  }, [])
+  }, [confirm, editText, message.content, t])
 
   const handleEditKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === 'Escape') {
-        handleCancelEdit()
+        void handleCancelEdit()
       } else if (isSubmitKey(e)) {
         e.preventDefault()
         handleSaveEdit()
@@ -765,6 +775,13 @@ function AssistantBubble({
   const { t } = useTranslation()
   const folded = 'folded' in bubble ? bubble.folded : NO_FOLDS
   const { isOpen, toggle } = useFoldExpansion(folded)
+  // Paced only for prose: reasoning and tool calls appear as they arrive, so a
+  // thought or a call never waits behind text still being drawn.
+  const revealed = useRevealedText(
+    bubble.key,
+    bubble.kind === 'text' ? bubble.text : '',
+    bubble.kind === 'text' && bubble.isStreaming,
+  )
 
   if (bubble.kind === 'sticker') {
     return (
@@ -864,8 +881,8 @@ function AssistantBubble({
           <ThinkingRow text={bubble.thinking.join('\n\n')} panelKey={`${bubble.key}:thinking`} />
         )}
         <MarkdownContent
-          content={bubble.text}
-          isStreaming={bubble.isStreaming}
+          content={revealed.text}
+          isStreaming={bubble.isStreaming || revealed.revealing}
           oneBot={isOneBot}
           emojiMap={emojiMap}
           blockId={bubble.key}
@@ -879,7 +896,7 @@ function AssistantBubble({
             isOpen={isOpen}
             toggle={toggle}
             at={bubble.createdAt}
-            isStreaming={bubble.isStreaming}
+            isStreaming={bubble.isStreaming || revealed.revealing}
           />
         )}
       </BubbleContent>
@@ -967,7 +984,7 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
 
   const { confirm, confirmDialog } = useConfirm()
   const requestDelete = useCallback(async () => {
-    if (await confirm({ body: t('confirm.deleteMessage') })) onDelete?.()
+    if (await confirm({ body: t('confirm.deleteMessage'), confirmLabel: t('common.delete') })) onDelete?.()
   }, [confirm, t, onDelete])
 
   const isStreaming = turn.status === 'streaming'

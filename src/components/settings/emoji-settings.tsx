@@ -618,7 +618,7 @@ export function EmojiSettings() {
 
   const handleDelete = useCallback(
     async (id: string) => {
-      if (!(await confirm({ body: t('settings.confirmDelete.emojiPack') }))) return
+      if (!(await confirm({ body: t('settings.confirmDelete.emojiPack'), confirmLabel: t('common.delete') }))) return
       await api.deleteEmojiPack(id)
       setSelection(null)
       await refresh()
@@ -644,7 +644,7 @@ export function EmojiSettings() {
 
   const handleDeleteEmoji = useCallback(
     async (id: string) => {
-      if (!(await confirm({ body: t('settings.confirmDelete.emoji') }))) return
+      if (!(await confirm({ body: t('settings.confirmDelete.emoji'), confirmLabel: t('common.delete') }))) return
       await api.deleteEmoji(id)
       forgetStickerUrl(id)
       await refresh()
@@ -654,7 +654,13 @@ export function EmojiSettings() {
 
   const handleDeleteSelected = useCallback(async () => {
     if (selectedIds.length === 0) return
-    if (!(await confirm({ body: t('settings.confirmDelete.emojis', { count: selectedIds.length }) }))) return
+    if (
+      !(await confirm({
+        body: t('settings.confirmDelete.emojis', { count: selectedIds.length }),
+        confirmLabel: t('common.delete'),
+      }))
+    )
+      return
     // One at a time: each delete unlinks a file as well as a row, and the
     // backend takes a pooled connection per call.
     for (const id of selectedIds) {

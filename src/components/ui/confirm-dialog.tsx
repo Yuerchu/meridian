@@ -8,8 +8,13 @@ export interface ConfirmOptions {
   /** Defaults to `confirm.title`. */
   title?: ReactNode
   body: ReactNode
-  /** Defaults to `common.confirm`. */
-  confirmLabel?: ReactNode
+  /**
+   * The verb the button performs — "Delete", "Discard changes" — never a
+   * generic "OK". Required so a caller cannot leave it out: every question
+   * once fell back to "Confirm", and a red "Confirm" under "delete this
+   * conversation?" makes the reader parse the body to learn what it does.
+   */
+  confirmLabel: ReactNode
   /** Destructive unless said otherwise: everything that asks here is a delete. */
   status?: 'danger' | 'warning' | 'accent'
   /**
@@ -78,7 +83,7 @@ export function ConfirmDialog({
           onOpenChange(false)
         }}
       >
-        {confirmLabel ?? t('common.confirm')}
+        {confirmLabel}
       </Button>
     </>
   )

@@ -1109,7 +1109,7 @@ export function AppSidebar({
   const projectActions = useProjectActions({
     onRequestRename: (id) => setRenameTarget({ type: 'project', id }),
     onRequestDelete: async (id) => {
-      if (await confirm({ body: t('confirm.deleteProject') }))
+      if (await confirm({ body: t('confirm.deleteProject'), confirmLabel: t('common.delete') }))
         reportFailure('sidebar.deleteProjectFailed', onDeleteProject(id))
     },
   })

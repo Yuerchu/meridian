@@ -267,7 +267,7 @@ function McpServerEditor({
   )
 
   const handleDelete = useCallback(async () => {
-    if (!(await confirm({ body: t('settings.confirmDelete.mcpServer') }))) return
+    if (!(await confirm({ body: t('settings.confirmDelete.mcpServer'), confirmLabel: t('common.delete') }))) return
     setDeleting(true)
     try {
       await api.deleteMcpServer(server.id)

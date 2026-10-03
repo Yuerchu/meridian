@@ -431,7 +431,13 @@ export function ToolMarketplace() {
                         tool={ct}
                         onSave={refresh}
                         onDelete={async () => {
-                          if (!(await confirm({ body: t('settings.confirmDelete.customTool') }))) return
+                          if (
+                            !(await confirm({
+                              body: t('settings.confirmDelete.customTool'),
+                              confirmLabel: t('common.delete'),
+                            }))
+                          )
+                            return
                           await api.deleteCustomTool(ct.id)
                           setExpandedToolId(null)
                           refresh()

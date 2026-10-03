@@ -174,7 +174,14 @@ export function RemoteAccessSettings() {
   }
 
   const handleRegenerate = async () => {
-    if (!(await confirm({ body: t('settings.remote.regenerateConfirm'), status: 'warning' }))) return
+    if (
+      !(await confirm({
+        body: t('settings.remote.regenerateConfirm'),
+        status: 'warning',
+        confirmLabel: t('settings.remote.regenerate'),
+      }))
+    )
+      return
     setError(null)
     try {
       const next = await api.regenerateListenToken()

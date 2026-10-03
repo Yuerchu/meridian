@@ -8,7 +8,7 @@ import { ConfirmDialog, type ConfirmOptions } from '@/components/ui/confirm-dial
  * ```tsx
  * const { confirm, confirmDialog } = useConfirm()
  * ...
- * if (!await confirm({ body: t('...') })) return
+ * if (!await confirm({ body: t('...'), confirmLabel: t('common.delete') })) return
  * await api.deleteThing(id)
  * ...
  * {confirmDialog}

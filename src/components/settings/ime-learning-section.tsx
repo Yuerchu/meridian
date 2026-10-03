@@ -69,7 +69,14 @@ export function ImeLearningSection() {
   }
 
   const handleForgetAll = async () => {
-    if (!(await confirm({ body: t('settings.ime.learned.forgetAllConfirm'), status: 'danger' }))) return
+    if (
+      !(await confirm({
+        body: t('settings.ime.learned.forgetAllConfirm'),
+        status: 'danger',
+        confirmLabel: t('settings.ime.learned.forgetAll'),
+      }))
+    )
+      return
     setError(null)
     setBusy(true)
     try {

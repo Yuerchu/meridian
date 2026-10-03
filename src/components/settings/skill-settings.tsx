@@ -436,7 +436,13 @@ export function SkillSettings() {
                           isBuiltin
                             ? undefined
                             : async () => {
-                                if (!(await confirm({ body: t('settings.confirmDelete.skill') }))) return
+                                if (
+                                  !(await confirm({
+                                    body: t('settings.confirmDelete.skill'),
+                                    confirmLabel: t('common.delete'),
+                                  }))
+                                )
+                                  return
                                 setError(null)
                                 try {
                                   await api.deleteSkill(skill.dir_name)

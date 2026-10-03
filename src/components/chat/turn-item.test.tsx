@@ -236,7 +236,7 @@ describe('TurnItem', () => {
     // question: the backend removes the whole subtree beneath whatever it is given.
     const buttons = Array.from(container.querySelectorAll('[data-slot="action-button"]'))
     await userEvent.click(buttons[buttons.length - 1])
-    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
 
     expect(onDelete).toHaveBeenCalledWith(u.id)
   })
@@ -1166,5 +1166,39 @@ describe('a failed turn says why, under itself', () => {
   it('draws nothing for a turn that did not fail', () => {
     const { container } = render(<TurnItem turn={toolTurn()} conversationId={CONV} />)
     expect(container.querySelector('[data-slot="turn-failure"]')).toBeNull()
+  })
+})
+
+describe('editing a sent question', () => {
+  async function startEditing(content: string) {
+    const u = msg('user', { content })
+    const turn = buildTurns([u, msg('assistant', { _blocks: [text('a')], content: 'a' })])[0]
+    const onEdit = vi.fn()
+    render(<TurnItem turn={turn} conversationId={CONV} onEdit={onEdit} />)
+    await userEvent.click(screen.getAllByRole('button', { name: i18n.t('chat.edit') })[0])
+    return { field: screen.getByRole('textbox', { name: i18n.t('chat.editMessage') }), onEdit }
+  }
+
+  it('leaves at once on Escape when nothing was changed', async () => {
+    const { field } = await startEditing('hello')
+    await userEvent.type(field, '  {Escape}')
+    expect(screen.queryByRole('textbox', { name: i18n.t('chat.editMessage') })).toBeNull()
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+  })
+
+  it('asks before Escape throws a rewrite away, and keeps it when told no', async () => {
+    const { field } = await startEditing('hello')
+    await userEvent.type(field, ' world{Escape}')
+
+    const dialog = await screen.findByRole('alertdialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: i18n.t('common.cancel') }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(screen.getByRole('textbox', { name: i18n.t('chat.editMessage') })).toHaveValue('hello world')
+
+    await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.cancelEdit') }))
+    await userEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', { name: i18n.t('common.discardChanges') }),
+    )
+    await waitFor(() => expect(screen.queryByRole('textbox', { name: i18n.t('chat.editMessage') })).toBeNull())
   })
 })

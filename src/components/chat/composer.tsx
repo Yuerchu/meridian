@@ -7,6 +7,7 @@ import { LOADER_PAUSED, useLoaderSettledIdle } from './composer-loader-idle'
 
 import { isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { useFileDrop } from '@/hooks/use-file-drop'
+import { filesFromPaste } from '@/lib/paste-files'
 import { cx } from '@/utils/cx'
 
 export type ComposerFieldProps = Pick<
@@ -73,6 +74,8 @@ interface ComposerProps {
   queue?: ReactNode
   /** Files dropped on the window, as the `File` objects an HTML5 drop carries. */
   onDropFiles?: (files: File[]) => void
+  /** Files pasted into the field. Absent, a paste is only ever text. */
+  onPasteFiles?: (files: File[]) => void
   /**
    * The field element, once there is one.
    *
@@ -118,6 +121,7 @@ export function Composer({
   inputMode = 'prompt',
   queue,
   onDropFiles,
+  onPasteFiles,
   onFieldReady,
 }: ComposerProps) {
   const { t } = useTranslation()
@@ -204,6 +208,12 @@ export function Composer({
                 placeholder={placeholder}
                 autoFocus={autoFocus}
                 onKeyDownCapture={guardEnter}
+                onPaste={(event) => {
+                  const files = onPasteFiles && filesFromPaste(event.clipboardData)
+                  if (!files) return
+                  event.preventDefault()
+                  onPasteFiles(files)
+                }}
                 onSelect={(event) => onCaretChange?.(event.currentTarget.selectionStart)}
                 onKeyUp={(event) => onCaretChange?.(event.currentTarget.selectionStart)}
                 onClick={(event) => onCaretChange?.(event.currentTarget.selectionStart)}

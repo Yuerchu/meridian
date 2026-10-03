@@ -132,7 +132,9 @@ describe('McpSettings pages', () => {
 
     mockApi.listMcpServers.mockResolvedValue([makeServer('http-server', 'Remote tools', 'streamablehttp')])
     await user.click(await screen.findByRole('button', { name: i18n.t('settings.mcp.delete') }))
-    await user.click(await screen.findByRole('button', { name: i18n.t('common.confirm') }))
+    await user.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', { name: i18n.t('common.delete') }),
+    )
 
     await waitFor(() => expect(mockApi.deleteMcpServer).toHaveBeenCalledWith('stdio-server'))
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Local tools' })).not.toBeInTheDocument())
