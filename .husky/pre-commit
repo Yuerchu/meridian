@@ -35,6 +35,13 @@ if git diff --cached --name-only | grep -qE '^src/.*\.(ts|tsx)$|^src-tauri/crate
   node scripts/check-model-contracts.mjs --staged
 fi
 
+# 事务调用图：Diesel 与 SeaORM 共存期间，一个事务必须整个落在一个连接池上；
+# Diesel 事务里不能再碰到另一个 immediate_transaction。docs/transaction-graph.md
+# 是它生成的分期依据，过期也算失败（node scripts/check-transaction-graph.mjs --write）。
+if git diff --cached --name-only | grep -qE '^src-tauri/.*\.rs$|^src-tauri/crates$|^scripts/(check-transaction-graph|transaction-graph-lib|staged-snapshot)\.mjs$|^docs/(transaction-graph\.md|migration-counters\.json)$'; then
+  node scripts/check-transaction-graph.mjs --staged
+fi
+
 # Tauri CLI 要求 npm 包和对应 Rust crate 的主/次版本一致，否则 `tauri dev` /
 # `tauri build` 直接拒绝；CI 里没有任何一步跑 Tauri CLI，所以只能靠这里和
 # frontend-build 里的同一个脚本。只读两份 lock，不需要安装或编译。
