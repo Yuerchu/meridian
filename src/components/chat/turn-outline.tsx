@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FloatingToc } from '@/components/base'
+import { markArrival } from '@/lib/arrival-flash'
 
 import { useMessageScroller, useMessageScrollerVisibility } from '@/components/ui/message-scroller'
 import type { Turn } from '@/lib/turns'
@@ -135,7 +136,9 @@ export function TurnOutline({ turns }: { turns: Turn[] }) {
               // `nowrap` with no width of its own: without a bound, one long
               // question stretches the popover across the transcript.
               className="max-w-72 overflow-hidden text-ellipsis"
-              onPress={() => scrollToMessage(entry.id, { align: 'start' })}
+              onPress={() => {
+                if (scrollToMessage(entry.id, { align: 'start' })) markArrival(entry.id)
+              }}
             >
               {entry.text || t('chat.outline.untitled')}
             </FloatingToc.Item>

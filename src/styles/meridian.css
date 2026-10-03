@@ -157,6 +157,29 @@
     filter: blur(3px);
   }
 }
+/* The question of a turn a jump landed on (`lib/arrival-flash.ts`): held,
+   then faded back to the bubble's own fill. A wash of the bubble's ink over
+   its fill, as anything drawn on a bubble is — never the accent, which is not
+   a highlight. Colour only, so reduced motion keeps the mark and loses the
+   fade: on for the same time, then off. */
+@keyframes meridian-arrival {
+  0%,
+  45% {
+    background-color: color-mix(
+      in oklch,
+      var(--bubble-fill, var(--bubble-assistant)),
+      var(--bubble-ink, var(--bubble-assistant-foreground)) 14%
+    );
+  }
+}
+[data-arrival] [data-slot='message-group'][data-align='end'] [data-bubble-block] {
+  animation: meridian-arrival 1400ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-arrival] [data-slot='message-group'][data-align='end'] [data-bubble-block] {
+    animation-timing-function: step-end;
+  }
+}
 
 /* ---------------------------------------------------------------- app-level */
 
