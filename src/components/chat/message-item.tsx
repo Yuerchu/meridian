@@ -769,6 +769,7 @@ function AssistantBubble({
   // Paced only for prose: reasoning and tool calls appear as they arrive, so a
   // thought or a call never waits behind text still being drawn.
   const revealed = useRevealedText(
+    bubble.key,
     bubble.kind === 'text' ? bubble.text : '',
     bubble.kind === 'text' && bubble.isStreaming,
   )

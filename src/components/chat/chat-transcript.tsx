@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { TranscriptConversationProvider } from '@/hooks/use-transcript-conversation'
+import { RevealHostContext } from '@/hooks/use-revealed-text'
 import { useTranslation } from 'react-i18next'
 import { LazyMotion, domAnimation } from 'motion/react'
 import * as m from 'motion/react-m'
@@ -363,6 +364,32 @@ export function ChatTranscript({
   scrollToBottomLabel,
 }: ChatTranscriptProps) {
   const lastTurn = turns[turns.length - 1]
+
+  // The paced reveal's view of this transcript (`useRevealedText`). Dated
+  // from the first render that had turns, not from mount: a conversation that
+  // opens empty and hydrates a moment later would otherwise take every bubble
+  // in it for one that arrived live, and replay text already written.
+  const [hydratedAt, setHydratedAt] = useState<number | null>(null)
+  const hasTurns = turns.length > 0
+  useLayoutEffect(() => {
+    if (hasTurns) setHydratedAt((at) => at ?? performance.now())
+  }, [hasTurns])
+  const [revealingKeys, setRevealingKeys] = useState<ReadonlySet<string>>(() => new Set())
+  const report = useCallback((key: string, on: boolean) => {
+    setRevealingKeys((current) => {
+      if (current.has(key) === on) return current
+      const next = new Set(current)
+      if (on) next.add(key)
+      else next.delete(key)
+      return next
+    })
+  }, [])
+  const revealHost = useMemo(
+    () => ({ mountedAt: hydratedAt ?? Number.POSITIVE_INFINITY, report }),
+    [hydratedAt, report],
+  )
+  const revealing = revealingKeys.size > 0
+
   const [windowState, setWindowState] = useState<{ conversationId: string; firstVisibleId: string | null }>(() => ({
     conversationId,
     firstVisibleId: null,
@@ -390,66 +417,71 @@ export function ChatTranscript({
     // question. They used to read `activeId`, which is the conversation the
     // *window* is on and the wrong answer inside the sub-agent sheet.
     <TranscriptConversationProvider value={conversationId}>
-      <FilePreviewProvider conversationId={conversationId}>
-        <LazyMotion features={domAnimation}>
-          <MessageScrollerProvider
-            autoScroll
-            defaultScrollPosition="last-anchor"
-            // Count changes identify a genuinely new live turn, including queued
-            // turns, while surviving the optimistic row's persisted-id re-key.
-            // A non-streaming branch/history update must not re-arm follow.
-            followKey={streaming ? turns.length : null}
-            scrollPreviousItemPeek={48}
-          >
-            <ImeScrollSync />
-            <AnswerSettle streaming={streaming} anchorId={lastTurn ? answerAnchorId(lastTurn.id) : null} />
-            <PendingReveal conversationId={conversationId} turns={turns} />
-            <MessageScroller className="flex-1 min-h-0">
-              <MessageScrollerViewport>
-                <MessageScrollerContent className="max-w-4xl mx-auto px-4 py-6 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]">
-                  {leading}
-                  {visibleStart > 0 && (
-                    <LoadEarlierTurns
-                      remaining={visibleStart}
-                      oldFirstId={turns[visibleStart]?.id}
-                      onLoad={() => {
-                        const nextStart = Math.max(0, visibleStart - TRANSCRIPT_WINDOW_TURNS)
-                        setWindowState({ conversationId, firstVisibleId: turns[nextStart]?.id ?? null })
-                      }}
+      <RevealHostContext value={revealHost}>
+        <FilePreviewProvider conversationId={conversationId}>
+          <LazyMotion features={domAnimation}>
+            <MessageScrollerProvider
+              autoScroll
+              defaultScrollPosition="last-anchor"
+              // Count changes identify a genuinely new live turn, including queued
+              // turns, while surviving the optimistic row's persisted-id re-key.
+              // A non-streaming branch/history update must not re-arm follow.
+              followKey={streaming ? turns.length : null}
+              scrollPreviousItemPeek={48}
+            >
+              <ImeScrollSync />
+              <AnswerSettle
+                streaming={streaming || revealing}
+                anchorId={lastTurn ? answerAnchorId(lastTurn.id) : null}
+              />
+              <PendingReveal conversationId={conversationId} turns={turns} />
+              <MessageScroller className="flex-1 min-h-0">
+                <MessageScrollerViewport>
+                  <MessageScrollerContent className="max-w-4xl mx-auto px-4 py-6 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]">
+                    {leading}
+                    {visibleStart > 0 && (
+                      <LoadEarlierTurns
+                        remaining={visibleStart}
+                        oldFirstId={turns[visibleStart]?.id}
+                        onLoad={() => {
+                          const nextStart = Math.max(0, visibleStart - TRANSCRIPT_WINDOW_TURNS)
+                          setWindowState({ conversationId, firstVisibleId: turns[nextStart]?.id ?? null })
+                        }}
+                      />
+                    )}
+                    <TranscriptTurns
+                      turns={turns}
+                      visibleStart={visibleStart}
+                      conversationId={conversationId}
+                      streaming={streaming}
+                      onDelete={onDelete}
+                      onRegenerate={onRegenerate}
+                      onEdit={onEdit}
+                      onRate={onRate}
+                      isOneBot={isOneBot}
+                      isHosted={isHosted}
+                      emojiMap={emojiMap}
+                      senderNames={senderNames}
+                      assistantAvatar={assistantAvatar}
+                      noticesByTurn={noticesByTurn}
                     />
-                  )}
-                  <TranscriptTurns
-                    turns={turns}
-                    visibleStart={visibleStart}
-                    conversationId={conversationId}
-                    streaming={streaming}
-                    onDelete={onDelete}
-                    onRegenerate={onRegenerate}
-                    onEdit={onEdit}
-                    onRate={onRate}
-                    isOneBot={isOneBot}
-                    isHosted={isHosted}
-                    emojiMap={emojiMap}
-                    senderNames={senderNames}
-                    assistantAvatar={assistantAvatar}
-                    noticesByTurn={noticesByTurn}
-                  />
-                  {trailing}
-                  {emptyState}
-                </MessageScrollerContent>
-              </MessageScrollerViewport>
-              <TooltipTrigger delay={0}>
-                <MessageScrollerButton aria-label={scrollToBottomLabel} />
-                <Tooltip>{scrollToBottomLabel}</Tooltip>
-              </TooltipTrigger>
-              {/* Inside the scroller, not beside it: it reads the reading line off
+                    {trailing}
+                    {emptyState}
+                  </MessageScrollerContent>
+                </MessageScrollerViewport>
+                <TooltipTrigger delay={0}>
+                  <MessageScrollerButton aria-label={scrollToBottomLabel} />
+                  <Tooltip>{scrollToBottomLabel}</Tooltip>
+                </TooltipTrigger>
+                {/* Inside the scroller, not beside it: it reads the reading line off
                 the same context, and the root is already the positioned
                 ancestor. */}
-              <TurnOutline turns={visibleTurns} />
-            </MessageScroller>
-          </MessageScrollerProvider>
-        </LazyMotion>
-      </FilePreviewProvider>
+                <TurnOutline turns={visibleTurns} />
+              </MessageScroller>
+            </MessageScrollerProvider>
+          </LazyMotion>
+        </FilePreviewProvider>
+      </RevealHostContext>
     </TranscriptConversationProvider>
   )
 }
