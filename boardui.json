@@ -4,7 +4,7 @@
     "theme": {
       "files": ["src/styles/theme.css"],
       "upstream": {
-        "src/styles/theme.css": "c6e9e53959bb87dc09c85d90c3f4fa400912644b04ba6a4897143971d7908a5b"
+        "src/styles/theme.css": "3c7fcc7710b0f44be0d86bc8e822e88f737d0269d207e9e2f4d2e73fd6da8f34"
       },
       "patches": [
         "button-press-motion: the scale(0.98) :active transform (and its transition/disabled/reduced-motion resets) is removed, color transitions kept. references/motion.md: \"Press feedback is a color step, not a scale … BoardUI buttons never shrink on press\" — where the doc and the code disagree the doc wins."
@@ -137,7 +137,7 @@
     "select": {
       "files": ["src/components/base/dropdown/menu-styles.ts", "src/components/base/select/select.tsx"],
       "upstream": {
-        "src/components/base/dropdown/menu-styles.ts": "95c1dd4c81cb48560ba206012314b2ca9a3742bee2d6c38b26548b6b893219b1",
+        "src/components/base/dropdown/menu-styles.ts": "98673114fe832b05991f61a84728873a5d3985fd382e66523958321572ab63db",
         "src/components/base/select/select.tsx": "c56abf0ad7b554a363a6e2b46045489b6a94c18718324cbf06e64edf0540b116"
       },
       "patches": [
@@ -149,7 +149,7 @@
       "files": ["src/components/base/dropdown/dropdown.tsx", "src/components/base/dropdown/menu-styles.ts"],
       "upstream": {
         "src/components/base/dropdown/dropdown.tsx": "b57a21bb7075d5bc8a63676e9116c6a918a5d9941d7bacda1b55b64af660cdf6",
-        "src/components/base/dropdown/menu-styles.ts": "95c1dd4c81cb48560ba206012314b2ca9a3742bee2d6c38b26548b6b893219b1"
+        "src/components/base/dropdown/menu-styles.ts": "98673114fe832b05991f61a84728873a5d3985fd382e66523958321572ab63db"
       },
       "patches": [
         "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): the registry panel is DialogTrigger + native <button> rows (no role=menu, arrow keys, typeahead or selection). Here: Dropdown = MenuTrigger, DropdownPopover = Popover + Menu (menu props pass through: selectionMode, selectedKeys, onAction…), DropdownGroup = MenuSection + Header, DropdownItem = MenuItem (onAction instead of onSelect, selection from the menu instead of `selected`), DropdownDivider = Separator. MenuTrigger owns dismissal, so the isNonModal + useDismissOnOutsidePress bridge is not used. Surface and row classes unchanged.",
@@ -167,7 +167,7 @@
     "segmented-control": {
       "files": ["src/components/base/segmented-control/segmented-control.tsx"],
       "upstream": {
-        "src/components/base/segmented-control/segmented-control.tsx": "9f12eaf790a646a1fe422b35a1a26492146563d031cd5627ca00cbabac4cdb3f"
+        "src/components/base/segmented-control/segmented-control.tsx": "629b165aadfb42fcd2ed7a77e338f1b1aeb2e906533fcd78be5f11e729447878"
       },
       "patches": [
         "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): SegmentedControlItem (RAC ToggleButton) hover:/focus-visible: → data-[hovered]/data-[focus-visible]."
@@ -176,20 +176,20 @@
     "pagination": {
       "files": ["src/components/base/pagination/pagination.tsx"],
       "upstream": {
-        "src/components/base/pagination/pagination.tsx": "8ba2526b2a308dcc36446e27434bcd5b8f4df46a56ebf61c8ff08ec98809ed56"
+        "src/components/base/pagination/pagination.tsx": "944b90dbb2bd2b16c1438fc4382c8c0643b1cfb954c984b96a169407f3f52644"
       },
       "patches": [
         "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): the page cells are react-aria-components Button instead of native <button onClick>; hover:/focus-visible: → data-[hovered]/data-[focus-visible]; Previous/Next are wired with onPress/isDisabled (the base Button is RAC here).",
         "Icons: keyline two-tone ArrowLeft/ArrowRight replace @remixicon/react RiArrowLeftLine/RiArrowRightLine (project icon decision 2026-09-23).",
-        "API addition: aria-label / previousLabel / nextLabel / pageLabel props (defaults are the registry's English strings) so callers can translate them — settings/emoji-settings.tsx.",
+        "API addition: pageLabel prop (default the registry's \"Go to page N\") so callers can translate a page cell's accessible name — settings/emoji-settings.tsx. The registry now carries aria-label / previousLabel / nextLabel itself.",
         "useIsCompact takes a callback ref: the registry's mount-once effect never observed the nav when the first render had one page (returned null) and a second page appeared later."
       ]
     },
     "tabs": {
       "files": ["src/components/base/tabs/pill-tab.tsx", "src/components/base/tabs/tabs.tsx"],
       "upstream": {
-        "src/components/base/tabs/pill-tab.tsx": "59d973a6fb97f0382d892b7978db62bb19406ab7f5d039a944162cc40d12ab38",
-        "src/components/base/tabs/tabs.tsx": "4b6e1c407ba833ad1ce6b85fa5cf199dabc77f09da46c73183a1646278107f90"
+        "src/components/base/tabs/pill-tab.tsx": "0b35654d05f8daa7ea899c9e7a098f694a630842ec0e9b1a40b41dcc7a1e5f70",
+        "src/components/base/tabs/tabs.tsx": "b456f9fafa5434b379b97958fc61e27d342ff475421d6bc0a52bb5236659245d"
       },
       "patches": [
         "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): Tab/TabPanel focus-visible: → data-[focus-visible]; PillTab is a react-aria-components Button (onPress, group-data-[hovered]) instead of a native <button onClick>."
@@ -266,10 +266,11 @@
     "agent-thinking": {
       "files": ["src/components/application/agent-thinking/agent-thinking.tsx"],
       "upstream": {
-        "src/components/application/agent-thinking/agent-thinking.tsx": "95cfe65a888ba5d42690496ce522fd0f6a58dcf6b4a8f19e9460a12668a4f62e"
+        "src/components/application/agent-thinking/agent-thinking.tsx": "3f5fd82e603d49a8d3f9862dacd12fda874aa43fb958f3784425aa52b62f7d90"
       },
       "patches": [
-        "Readable text: the elapsed-seconds timer text-tertiary → text-secondary (dark text-tertiary is neutral-600, ~1.9–2.3:1 on the primary/secondary surfaces; owner decision 2026-09-24, CLAUDE.md UI Conventions). Disabled states keep tertiary. The `subtle` tone (var(--color-text-tertiary), used by the stars variant) is unchanged pending an owner ruling."
+        "Readable text: the elapsed-seconds timer text-tertiary → text-secondary (dark text-tertiary is neutral-600, ~1.9–2.3:1 on the primary/secondary surfaces; owner decision 2026-09-24, CLAUDE.md UI Conventions). Disabled states keep tertiary. The `subtle` tone (var(--color-text-tertiary), used by the stars variant) is unchanged pending an owner ruling.",
+        "Live region: the elapsed timer is aria-hidden. It sits inside the loader's role=\"status\", which is implicitly aria-atomic, so each 100ms tick asked a screen reader to read the whole status again. The label is still announced. Pinned by agent-thinking.test.tsx."
       ]
     },
     "composer-loader": {
@@ -285,6 +286,32 @@
         "src/components/application/agent-log/agent-log.tsx": "481bc2c9fe76c598b9a6f07bddbd1706904f5c187893814396540016f346684c"
       },
       "patches": []
+    },
+    "direction": {
+      "files": ["src/components/foundations/direction/direction.tsx"],
+      "upstream": {
+        "src/components/foundations/direction/direction.tsx": "7bfab075a6d5fe3a2b3f3b810ba2ab4e870f50029a41d8c4b0bee9bfd4a43756"
+      },
+      "patches": []
+    },
+    "template-copy": {
+      "files": ["src/components/foundations/template-copy/template-copy.tsx"],
+      "upstream": {
+        "src/components/foundations/template-copy/template-copy.tsx": "1db60e15c1a5d6a710a08d249e05e3853521f604e8dcf5757c1ad4a75bad011f"
+      },
+      "patches": []
+    },
+    "tree-view": {
+      "files": ["src/components/base/tree-view/tree-view.tsx", "src/components/base/dropdown/menu-styles.ts"],
+      "upstream": {
+        "src/components/base/tree-view/tree-view.tsx": "56de13008fe9543f9518a2a4bf9c78790098caa49e2c467f1da98c1ffe5c8989",
+        "src/components/base/dropdown/menu-styles.ts": "98673114fe832b05991f61a84728873a5d3985fd382e66523958321572ab63db"
+      },
+      "patches": [
+        "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): the chevron (RAC Button) hover: → data-[hovered]; menu-styles MENU_ITEM_INTERACTIVE as recorded under select and dropdown, the same file.",
+        "Icons: keyline two-tone ChevronRight / Folder / FolderOpen / File replace @remixicon/react RiArrowRightSLine / RiFolder3Line / RiFolderOpenLine / RiFileLine (project icon decision 2026-09-23).",
+        "Readable text: the empty state and trailingContent text-tertiary → text-secondary (owner decision 2026-09-24, CLAUDE.md UI Conventions). Disabled rows keep text-placeholder."
+      ]
     }
   }
 }
