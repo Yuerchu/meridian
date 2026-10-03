@@ -142,6 +142,32 @@ describe('Sheet', () => {
     expect(panel.style.animationDuration).toBe('100ms')
   })
 
+  it('times a thrown exit over the whole panel height, at the speed of the finger', () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ height: 600 } as DOMRect)
+    try {
+      render(<Panel onOpenChange={vi.fn()} />)
+      // 16px every 4ms: 4px/ms, 48px travelled. 600 / 4 = 150ms.
+      drag(100, 148, { steps: 3, gap: 4 })
+      expect(document.querySelector<HTMLElement>('[data-slot="sheet-content"]')!.style.animationDuration).toBe('150ms')
+    } finally {
+      vi.restoreAllMocks()
+    }
+  })
+
+  it('reads a release after holding still as a release from rest', () => {
+    const onOpenChange = vi.fn()
+    render(<Panel onOpenChange={onOpenChange} />)
+    // A fast 60px, then the finger rests 300ms before lifting.
+    const target = handle()
+    pointer('pointerdown', target, 1000, { clientY: 100, pointerId: 1, pointerType: 'touch', button: 0 })
+    pointer('pointermove', target, 1004, { clientY: 130, pointerId: 1 })
+    pointer('pointermove', target, 1008, { clientY: 160, pointerId: 1 })
+    pointer('pointerup', target, 1308, { clientY: 160, pointerId: 1 })
+    // Short of the distance, and not a flick any more.
+    expect(onOpenChange).not.toHaveBeenCalled()
+    expect(document.querySelector<HTMLElement>('[data-slot="sheet-content"]')!.style.animationTimingFunction).toBe('')
+  })
+
   it('keeps the exit as written after a slow release, and after a refused throw', () => {
     const onOpenChange = vi.fn()
     const { unmount } = render(<Panel onOpenChange={onOpenChange} />)
