@@ -68,7 +68,7 @@ fn enqueue_unless_plan_barrier(
         if plan_review_barrier(conn, conversation_id)? {
             return Ok(None);
         }
-        ops::enqueue_with_context(conn, id, conversation_id, content, delivery, context, now).map(Some)
+        ops::enqueue_with_context_in_transaction(conn, id, conversation_id, content, delivery, context, now).map(Some)
     })
 }
 
@@ -380,6 +380,93 @@ mod tests {
             &native_plan_runtime(),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn enqueue_without_plan_barrier_accepts_both_delivery_modes_in_order() {
+        let pool = meridian_core::db::test_db();
+        let mut conn = pool.get().unwrap();
+        meridian_core::db::ops::conversation::create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+
+        for (position, delivery) in [Delivery::FollowUp, Delivery::Interject].into_iter().enumerate() {
+            let id = format!("q{position}");
+            let item = enqueue_unless_plan_barrier(&mut conn, &id, "c1", "continue", delivery, &[], 2)
+                .unwrap()
+                .expect("a conversation without a plan barrier accepts queued messages");
+            assert_eq!(item.id, id);
+            assert_eq!(item.delivery().unwrap(), delivery);
+            assert_eq!(item.position, position as i32);
+            assert_eq!(item.state(), meridian_core::db::models::queue::QueueState::Queued);
+        }
+
+        assert_eq!(ops::list(&mut conn, "c1").unwrap().len(), 2);
+        ops::hold_all(&mut conn, "c1", 3).unwrap();
+        assert_eq!(release_unless_plan_barrier(&mut conn, "c1").unwrap(), Some(2));
+        assert!(
+            ops::list(&mut conn, "c1")
+                .unwrap()
+                .iter()
+                .all(|item| item.held_at.is_none())
+        );
+    }
+
+    #[test]
+    fn enqueue_without_plan_barrier_commits_context_and_rolls_back_failed_snapshots() {
+        use meridian_core::db::ops::queued_prompt_context_item::list_prepared;
+        use meridian_core::workspace::reference::{MessageContextKind, PreparedContextItem};
+
+        let pool = meridian_core::db::test_db();
+        let mut conn = pool.get().unwrap();
+        meridian_core::db::ops::conversation::create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        let context = [PreparedContextItem {
+            id: "ctx1".into(),
+            kind: MessageContextKind::ProjectFile,
+            content: "frozen bytes".into(),
+            display_path: Some("src/lib.rs".into()),
+            line_start: None,
+            line_end: None,
+            content_hash: "hash".into(),
+            byte_count: 12,
+            line_count: 1,
+            token_count: 2,
+            truncated: 0,
+            metadata: None,
+        }];
+
+        enqueue_unless_plan_barrier(
+            &mut conn,
+            "q1",
+            "c1",
+            "read @src/lib.rs",
+            Delivery::FollowUp,
+            &context,
+            2,
+        )
+        .unwrap()
+        .unwrap();
+        let frozen = list_prepared(&mut conn, "q1").unwrap();
+        assert_eq!(frozen.len(), 1);
+        assert_eq!(frozen[0].content, "frozen bytes");
+
+        // The duplicate context id fails after the prompt row was inserted.
+        let error = enqueue_unless_plan_barrier(
+            &mut conn,
+            "q2",
+            "c1",
+            "another reference",
+            Delivery::FollowUp,
+            &context,
+            3,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            diesel::result::Error::DatabaseError(diesel::result::DatabaseErrorKind::UniqueViolation, _)
+        ));
+        let rows = ops::list(&mut conn, "c1").unwrap();
+        assert_eq!(rows.len(), 1, "a failed snapshot must roll back its prompt");
+        assert_eq!(rows[0].id, "q1");
+        assert!(list_prepared(&mut conn, "q2").unwrap().is_empty());
     }
 
     #[test]
