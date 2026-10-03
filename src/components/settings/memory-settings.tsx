@@ -302,6 +302,7 @@ export function MemorySettings() {
                     const ok = await confirm({
                       title: t('settings.memory.deleteConfirmTitle'),
                       body: t('settings.memory.deleteConfirmBody'),
+                      confirmLabel: t('common.delete'),
                     })
                     if (!ok) return
                     setActionError(null)

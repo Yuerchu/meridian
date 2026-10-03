@@ -92,7 +92,13 @@ export function VoiceCorpusSettings() {
       : t(`settings.voiceCorpus.${key}`, { clips: report.clips })
 
   const deleteSession = async (session: VoiceCorpusSessionInfoResponse) => {
-    if (!(await confirm({ body: t('settings.voiceCorpus.deleteSessionConfirm', { handle: session.handle }) }))) return
+    if (
+      !(await confirm({
+        body: t('settings.voiceCorpus.deleteSessionConfirm', { handle: session.handle }),
+        confirmLabel: t('common.delete'),
+      }))
+    )
+      return
     await run(async () =>
       deleteMessage(await api.deleteVoiceCorpus({ selector: { kind: 'session', handle: session.handle } }), 'deleted'),
     )
@@ -100,7 +106,14 @@ export function VoiceCorpusSettings() {
 
   const forgetSender = async () => {
     const id = senderInput.trim()
-    if (!id || !(await confirm({ body: t('settings.voiceCorpus.forgetSenderConfirm', { sender: id }) }))) return
+    if (
+      !id ||
+      !(await confirm({
+        body: t('settings.voiceCorpus.forgetSenderConfirm', { sender: id }),
+        confirmLabel: t('settings.voiceCorpus.forget'),
+      }))
+    )
+      return
     await run(async () => {
       // One call. Deleting history and refusing the future are two actions, and
       // this button means both — but sent as two calls the barrier comes down

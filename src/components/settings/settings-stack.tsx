@@ -121,7 +121,11 @@ export function useSettingsStack<L>(): SettingsStack<L> {
         if (index > target && sources.size > 0) dirty = true
       }
       if (!dirty) return true
-      return confirm({ body: t('settings.unsavedChanges'), status: 'warning' })
+      return confirm({
+        body: t('settings.unsavedChanges'),
+        status: 'warning',
+        confirmLabel: t('common.discardChanges'),
+      })
     },
     [confirm, t],
   )

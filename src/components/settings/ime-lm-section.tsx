@@ -63,7 +63,14 @@ export function ImeLmSection({ canImport }: { canImport: boolean }) {
 
   const handleRemove = async (bundle: ImeLmBundleInfoResponse) => {
     const name = bundle.id ?? bundle.dir_name
-    if (!(await confirm({ body: t('settings.ime.lm.removeConfirm', { name }), status: 'danger' }))) return
+    if (
+      !(await confirm({
+        body: t('settings.ime.lm.removeConfirm', { name }),
+        status: 'danger',
+        confirmLabel: t('common.delete'),
+      }))
+    )
+      return
     setError(null)
     try {
       setStatus(await api.removeImeLm({ dir_name: bundle.dir_name }))

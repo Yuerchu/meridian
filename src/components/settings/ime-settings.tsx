@@ -309,7 +309,14 @@ export function ImeSettings() {
   }
 
   const handleRemoveDictionary = async (dict: ImeDictionaryInfoResponse) => {
-    if (!(await confirm({ body: t('settings.ime.removeConfirm', { name: dict.name }), status: 'danger' }))) return
+    if (
+      !(await confirm({
+        body: t('settings.ime.removeConfirm', { name: dict.name }),
+        status: 'danger',
+        confirmLabel: t('common.delete'),
+      }))
+    )
+      return
     setError(null)
     try {
       setDictionaries(await api.removeImeDictionary({ file: dict.file }))
