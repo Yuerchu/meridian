@@ -239,3 +239,79 @@ describe('composer attachments', () => {
     expect(chip('second.txt')).toBe(before)
   })
 })
+
+/**
+ * Wrapped, ten files on a phone stacked two to a row and pushed the composer
+ * several hundred pixels into the transcript. jsdom has no layout, so this
+ * pins the classes; measured in Chromium at 390px, ten chips keep one 42px row
+ * and scroll 1588px of content inside 326px — and without the wrapper's
+ * `w-full min-w-0` the wrapper grows to the row's full 1174px and spills out.
+ */
+describe('composer attachment row', () => {
+  it('keeps the attachments in one row that scrolls sideways', () => {
+    const files = Array.from({ length: 10 }, (_, i) => ({ name: `file-${i}.png` }))
+    const { container } = renderBar({ attachedFiles: files, onRemoveFile: vi.fn() })
+
+    const wrapper = container.querySelector('[data-slot="composer-attachments"]')
+    const group = container.querySelector('[data-slot="chat-attachment-group"]')
+    expect(wrapper?.className.split(' ')).toEqual(expect.arrayContaining(['w-full', 'min-w-0']))
+    expect(group?.className.split(' ')).toEqual(expect.arrayContaining(['flex-nowrap', 'overflow-x-auto', 'min-w-0']))
+    expect(group?.className.split(' ')).not.toContain('flex-wrap')
+  })
+})
+
+/**
+ * In a row that scrolls, files added to a full strip landed past its right
+ * edge with nothing to say they had been attached.
+ */
+describe('composer attachment row, adding and removing', () => {
+  const base = {
+    conversationId: null,
+    value: '',
+    onChange: vi.fn(),
+    onSubmit: vi.fn(),
+    assistants: [],
+    providers: [],
+    currentAssistantId: null,
+    currentModelId: null,
+    currentProviderId: null,
+    onSelectAssistant: vi.fn(),
+    onSelectModel: vi.fn(),
+    thinkingLevel: 'default',
+    onSelectThinkingLevel: vi.fn(),
+    fastMode: false,
+    onToggleFast: vi.fn(),
+    mode: 'work',
+    onSelectMode: vi.fn(),
+    acceptEdits: false,
+    onToggleAcceptEdits: vi.fn(),
+    onRemoveFile: vi.fn(),
+  } satisfies Omit<ComponentProps<typeof InputBar>, 'attachedFiles'>
+  const files = Array.from({ length: 4 }, (_, i) => ({ name: `file-${i}.png` }))
+
+  function laidOutRow(container: HTMLElement) {
+    const row = container.querySelector('[data-slot="chat-attachment-group"]') as HTMLElement
+    Object.defineProperty(row, 'scrollWidth', { value: 1000, configurable: true })
+    return row
+  }
+
+  it('shows the files just added, wherever the row was scrolled', () => {
+    const { container, rerender } = render(<InputBar {...base} attachedFiles={files.slice(0, 2)} />)
+    const row = laidOutRow(container)
+    row.scrollLeft = 0
+
+    rerender(<InputBar {...base} attachedFiles={files.slice(0, 3)} />)
+
+    expect(row.scrollLeft).toBe(1000)
+  })
+
+  it('leaves the reader where they were when one is removed', () => {
+    const { container, rerender } = render(<InputBar {...base} attachedFiles={files} />)
+    const row = laidOutRow(container)
+    row.scrollLeft = 200
+
+    rerender(<InputBar {...base} attachedFiles={files.slice(1)} />)
+
+    expect(row.scrollLeft).toBe(200)
+  })
+})
