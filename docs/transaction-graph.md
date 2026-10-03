@@ -7,6 +7,12 @@
 - Diesel ops 调用点（db/ops 之外）：1024
 - Diesel API 引用：1558
 
+## R2 无法检查的 SeaORM 事务根
+
+接收者是一次调用的结果（`get_db().write(…)`），静态上认不出闭包里哪个句柄是同一个池。
+
+- 无
+
 ## ops 模块的事务连通分量
 
 - 21 个：acp_session acp_session_notice assistant audit cached_model conversation emoji memory message message_context_item model_config model_profile plan plan_review project provider queue queued_prompt_context_item todo turn usage

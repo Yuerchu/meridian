@@ -2,8 +2,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { analyze, loadSources, violations } from './check-transaction-graph.mjs'
-import { blank, callsIn, transactionRoots, useAliases } from './transaction-graph-lib.mjs'
+import { analyze, loadSources, uncheckedReceivers, violations } from './check-transaction-graph.mjs'
+import {
+  blank,
+  callsIn,
+  normalizeReceiver,
+  receiverBefore,
+  transactionRoots,
+  useAliases,
+} from './transaction-graph-lib.mjs'
 
 const CORE = 'src-tauri/crates/core/src'
 const SHELL = 'src-tauri/src'
@@ -23,11 +30,15 @@ const BASE = {
     pub async fn sea_read(reader: &impl Read) -> Result<(), DbErr> { Ok(()) }`,
 }
 
-function problemsFor(extra) {
+function graphFor(extra) {
   const files = { ...BASE, ...extra }
   const read = (p) => files[p] ?? null
   const list = (dir) => Object.keys(files).filter((p) => p.startsWith(`${dir}/`))
-  return violations(analyze(loadSources(read, list)))
+  return analyze(loadSources(read, list))
+}
+
+function problemsFor(extra) {
+  return violations(graphFor(extra))
 }
 
 test('a Diesel transaction calling a SeaORM op is R1', () => {
@@ -39,7 +50,7 @@ test('a Diesel transaction calling a SeaORM op is R1', () => {
       }`,
   })
   assert.equal(problems.length, 1)
-  assert.match(problems[0], /^R1 .*SeaORM 函数 .*sea_op/)
+  assert.match(problems[0], /^R1 .*SeaORM：.*sea_op/)
 })
 
 test('a SeaORM transaction calling a Diesel op is R1', () => {
@@ -50,7 +61,7 @@ test('a SeaORM transaction calling a Diesel op is R1', () => {
       }`,
   })
   assert.equal(problems.length, 1)
-  assert.match(problems[0], /^R1 .*Diesel 函数 .*enqueue_in_transaction/)
+  assert.match(problems[0], /^R1 .*Diesel：.*enqueue_in_transaction/)
 })
 
 test('going back to the Db a transaction came from is R2', () => {
@@ -177,4 +188,127 @@ test('io writes and lock reads are not transaction roots', () => {
     transactionRoots(text).map((r) => r.kind),
     ['sea-write'],
   )
+})
+
+// ── Codex review on #87 ──────────────────────────────────────────────────────
+
+test('the other ORM written directly inside a closure is R1', () => {
+  const inDiesel = problemsFor({
+    [`${SHELL}/commands/x.rs`]: `
+      fn f(conn: &mut SqliteConnection) -> QueryResult<()> {
+          conn.immediate_transaction(|conn| { sea_orm::EntityTrait::find(); Ok(()) })
+      }`,
+  })
+  assert.equal(inDiesel.length, 1)
+  assert.match(inDiesel[0], /^R1 .*SeaORM/)
+
+  const inSea = problemsFor({
+    [`${SHELL}/commands/x.rs`]: `
+      async fn f(db: &Db, conn: &mut SqliteConnection) -> Result<(), DbErr> {
+          db.write(async |tx| { diesel::insert_into(t::table).execute(conn); Ok(()) }).await
+      }`,
+  })
+  assert.equal(inSea.length, 1)
+  assert.match(inSea[0], /^R1 .*Diesel/)
+})
+
+test('a name containing "as" is an import, not an alias', () => {
+  const aliases = useAliases(
+    blank('use crate::db::ops::assistant; use crate::tasks::{last, base as basis}; use a::b::classify as cast;'),
+  )
+  assert.equal(aliases.get('assistant'), 'crate::db::ops::assistant')
+  assert.equal(aliases.get('last'), 'crate::tasks::last')
+  assert.equal(aliases.get('basis'), 'crate::tasks::base')
+  assert.equal(aliases.get('cast'), 'a::b::classify')
+  assert.equal(aliases.has('sistant'), false)
+})
+
+test('an import whose name contains "as" still leads to its ops module', () => {
+  const graph = graphFor({
+    [`${CORE}/db/ops/assistant.rs`]: `
+      pub fn rename_in_transaction(conn: &mut SqliteConnection) -> QueryResult<()> {
+          diesel::update(assistants::table).execute(conn).map(|_| ())
+      }`,
+    [`${SHELL}/commands/assistant.rs`]: `
+      use meridian_core::db::ops::assistant;
+      fn rename(conn: &mut SqliteConnection) -> QueryResult<()> {
+          conn.immediate_transaction(|conn| assistant::rename_in_transaction(conn))
+      }`,
+  })
+  assert.deepEqual(graph.roots.find((r) => r.file.path.endsWith('commands/assistant.rs')).modules, ['assistant'])
+})
+
+test('a receiver written another way is still the same handle', () => {
+  for (const [expr, handle] of [
+    ['db.clone()', 'db'],
+    ['(&db)', 'db'],
+    ['&self.db', 'self.db'],
+    ['app.services().sea', 'app.services().sea'],
+  ]) {
+    const text = blank(`let r = ${expr}.write(async |tx| op(tx).await);`)
+    assert.equal(normalizeReceiver(receiverBefore(text, text.indexOf('.write'))), handle, expr)
+  }
+  const problems = problemsFor({
+    [`${SHELL}/commands/x.rs`]: `
+      use meridian_core::db::sea::ops::sea_read;
+      async fn f(db: &Db) -> Result<(), DbErr> {
+          db.clone().write(async |tx| { sea_read(&db).await }).await
+      }`,
+  })
+  assert.equal(problems.length, 1)
+  assert.match(problems[0], /^R2 /)
+})
+
+test('a receiver that is a call cannot be checked, and says so', () => {
+  const graph = graphFor({
+    [`${SHELL}/commands/x.rs`]: `
+      use meridian_core::db::sea::ops::sea_read;
+      async fn f() -> Result<(), DbErr> {
+          get_db().write(async |tx| { sea_read(tx).await }).await
+      }`,
+  })
+  assert.deepEqual(violations(graph), [])
+  assert.deepEqual(uncheckedReceivers(graph), ['src-tauri/src/commands/x.rs:4'])
+})
+
+test('a closure parameter named like the receiver is the parameter', () => {
+  const shadowed = problemsFor({
+    [`${SHELL}/commands/x.rs`]: `
+      use meridian_core::db::sea::ops::sea_op;
+      async fn f(tx: &WriteTx) -> Result<(), DbErr> {
+          tx.nested(async |tx| { sea_op(tx).await }).await
+      }`,
+  })
+  assert.deepEqual(shadowed, [])
+
+  const outer = problemsFor({
+    [`${SHELL}/commands/x.rs`]: `
+      use meridian_core::db::sea::ops::sea_op;
+      async fn f(tx: &WriteTx) -> Result<(), DbErr> {
+          tx.nested(async |inner| { sea_op(tx).await }).await
+      }`,
+  })
+  assert.equal(outer.length, 1)
+  assert.match(outer[0], /^R2 /)
+})
+
+test('a test-only caller of a transaction helper does not taint the production root', () => {
+  const problems = problemsFor({
+    [`${SHELL}/commands/conversation.rs`]: `
+      pub fn mutation<F>(conn: &mut SqliteConnection, f: F) -> QueryResult<()>
+      where
+          F: FnOnce(&mut SqliteConnection) -> QueryResult<()>,
+      {
+          conn.immediate_transaction(|conn| f(conn))
+      }
+
+      #[cfg(test)]
+      mod tests {
+          use super::mutation;
+          fn t(conn: &mut SqliteConnection) {
+              mutation(conn, |c| meridian_core::db::ops::queue::enqueue(c)).unwrap();
+          }
+      }`,
+  })
+  assert.deepEqual(problems, [])
 })

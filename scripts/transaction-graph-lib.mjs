@@ -143,14 +143,25 @@ export function useAliases(text) {
   const aliases = new Map()
   const re = /\buse\s+([^;]+);/g
   let m
-  while ((m = re.exec(text))) expandUse(m[1].replace(/\s+/g, ''), '', aliases)
+  // 空白只在 `::`、花括号和逗号两侧去掉；`as` 两侧的空格要留着，那是它作为
+  // 关键字的唯一标志——全删掉的话 `ops::assistant` 里的 "as" 会被当成别名。
+  while ((m = re.exec(text))) {
+    expandUse(
+      m[1]
+        .replace(/\s+/g, ' ')
+        .replace(/\s*(::|\{|\}|,)\s*/g, '$1')
+        .trim(),
+      '',
+      aliases,
+    )
+  }
   return aliases
 }
 
 function expandUse(tree, prefix, aliases) {
   const brace = tree.indexOf('{')
   if (brace < 0) {
-    const [path, alias] = tree.split('as')
+    const [path, alias] = tree.trim().split(/\s+as\s+/)
     const full = joinPath(prefix, path)
     if (full.endsWith('*')) return
     if (full.endsWith('::self')) {
@@ -194,10 +205,10 @@ function splitTop(s) {
  */
 export function transactionRoots(text) {
   const roots = []
-  const re = /([\w.]*?)\s*\.\s*(immediate_transaction|transaction|write|read|nested)\s*(?:::<[^>]*>)?\s*\(/g
+  const re = /\.\s*(immediate_transaction|transaction|write|read|nested)\s*(?:::<[^>]*>)?\s*\(/g
   let m
   while ((m = re.exec(text))) {
-    const method = m[2]
+    const method = m[1]
     const open = m.index + m[0].length - 1
     const close = matching(text, open)
     if (close < 0) continue
@@ -206,14 +217,74 @@ export function transactionRoots(text) {
     // `.write(`/`.read(` 只在实参是 async 闭包时算（排除 io::Write、RwLock::read 等）。
     if (sea && !/^\s*async\s*(move\s*)?\|/.test(args)) continue
     if (!sea && !/\|/.test(args)) continue
+    const closure = /^\s*(?:async\s+)?(?:move\s+)?\|([^|]*)\|/.exec(args)
     roots.push({
       kind: sea ? `sea-${method}` : method === 'immediate_transaction' ? 'diesel-immediate' : 'diesel-deferred',
-      receiver: m[1].replace(/^\.+/, ''),
+      receiver: normalizeReceiver(receiverBefore(text, m.index)),
+      params: closure
+        ? closure[1].split(',').map((p) =>
+            p
+              .split(':')[0]
+              .trim()
+              .replace(/^mut\s+/, ''),
+          )
+        : [],
       at: m.index + m[0].indexOf(method),
       region: [open + 1, close],
+      body: [open + 1 + (closure ? closure.index + closure[0].length : 0), close],
     })
   }
   return roots
+}
+
+/** `.method(` 前面的整个接收者表达式：标识符、`.`/`::` 路径、成对括号、前缀 `&`。 */
+export function receiverBefore(text, dot) {
+  let k = dot - 1
+  while (k >= 0 && /\s/.test(text[k])) k--
+  const end = k + 1
+  for (;;) {
+    if (text[k] === ')') {
+      let depth = 0
+      for (; k >= 0; k--) {
+        if (text[k] === ')') depth++
+        else if (text[k] === '(' && --depth === 0) break
+      }
+      k--
+    }
+    while (k >= 0 && /\w/.test(text[k])) k--
+    if (text[k] === '.') k--
+    else if (text[k] === ':' && text[k - 1] === ':') k -= 2
+    else break
+  }
+  while (k >= 0 && text[k] === '&') k--
+  return text.slice(k + 1, end).trim()
+}
+
+/**
+ * 同一个句柄的不同写法归一：`(&db)`、`&db`、`db.clone()` 都是 `db`。
+ * 以调用结尾（`get_db()`、`self.db()`）的接收者每次求值可能是另一个值，静态上
+ * 认不出是哪个池，返回 null，由调用方报"R2 无法检查"。
+ */
+export function normalizeReceiver(expr) {
+  let e = expr
+  for (let changed = true; changed;) {
+    const before = e
+    e = e.replace(/^&\s*(?:mut\s+)?/, '').trim()
+    if (e.startsWith('(') && matchingParen(e) === e.length - 1) e = e.slice(1, -1).trim()
+    e = e.replace(/\.\s*clone\s*\(\s*\)$/, '').trim()
+    changed = e !== before
+  }
+  if (!e || e.endsWith(')')) return null
+  return e
+}
+
+function matchingParen(e) {
+  let depth = 0
+  for (let k = 0; k < e.length; k++) {
+    if (e[k] === '(') depth++
+    else if (e[k] === ')' && --depth === 0) return k
+  }
+  return -1
 }
 
 /**

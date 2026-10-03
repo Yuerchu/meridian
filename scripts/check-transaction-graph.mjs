@@ -44,6 +44,9 @@ const DIESEL_SIGNATURE = /\bSqliteConnection\b|\bDbPool\b|\bPooledConn\b/
 const DIESEL_BODY = /\bdiesel::|\bschema::/
 const SEA_SIGNATURE = /\bWriteTx\b|\bReadTx\b|\bimpl\s+Read\b|&\s*Db\b/
 const SEA_BODY = /\bsea_orm::/
+/** 闭包文本里直接出现的另一种 ORM。 */
+const DIESEL_REGION = /\bdiesel::|\bschema::|\bSqliteConnection\b|\bDbPool\b|\bPooledConn\b/
+const SEA_REGION = /\bsea_orm::|\bWriteTx\b|\bReadTx\b/
 const DIESEL_API = /\bdiesel::|\bSqliteConnection\b|\bDbPool\b|\bPooledConn\b/g
 
 function modulePath(crateDir, file) {
@@ -198,7 +201,8 @@ export function analyze(files) {
         for (const call of callsIn(file.text, root.region)) {
           const idx = call.path ? -1 : params.indexOf(call.name)
           if (idx < 0) continue
-          for (const site of callSites.filter((s) => s.targets.includes(owner))) {
+          // 测试代码里的调用点不进生产根：它传进来的闭包在生产里不会跑。
+          for (const site of callSites.filter((s) => s.targets.includes(owner) && !s.fn.test)) {
             const open = site.file.text.indexOf('(', site.call.at)
             const close = matching(site.file.text, open)
             const args = splitArgsWithOffsets(site.file.text, open + 1, close)
@@ -257,17 +261,20 @@ export function violations({ roots }) {
     const sea = root.kind.startsWith('sea-')
     const diesel = root.reached.filter((fn) => fn.diesel && !fn.test)
     const seaFns = root.reached.filter((fn) => fn.sea && !fn.test)
-    if (sea && diesel.length) {
-      problems.push(`R1 ${where(root)}: SeaORM 事务里调用了 Diesel 函数 ${names(diesel)}`)
+    // 闭包里直接写的另一种 ORM 调用（`sea_orm::…`、`diesel::insert_into`）是外部
+    // crate 的函数，解析不到索引里，只能看闭包本身的文本。
+    const body = root.file.text.slice(root.body[0], root.body[1])
+    if (sea && (diesel.length || DIESEL_REGION.test(body))) {
+      problems.push(`R1 ${where(root)}: SeaORM 事务里用到了 Diesel：${names(diesel) || '闭包内直接调用'}`)
     }
-    if (!sea && seaFns.length) {
-      problems.push(`R1 ${where(root)}: Diesel 事务里调用了 SeaORM 函数 ${names(seaFns)}`)
+    if (!sea && (seaFns.length || SEA_REGION.test(body))) {
+      problems.push(`R1 ${where(root)}: Diesel 事务里用到了 SeaORM：${names(seaFns) || '闭包内直接调用'}`)
     }
-    if (sea && root.receiver) {
-      const inside = root.file.text.slice(root.region[0], root.region[1])
+    // 闭包参数和接收者同名（`tx.nested(async |tx| …)`）时，里面出现的都是参数。
+    if (sea && root.receiver && !root.params.includes(root.receiver)) {
       // 路径段（`crate::db::ops`）里的同名标识符不是那个句柄。
       const handle = new RegExp(String.raw`(?<![\w.:])` + escapeRegExp(root.receiver) + String.raw`(?![\w:])`)
-      if (handle.test(inside)) {
+      if (handle.test(body)) {
         problems.push(`R2 ${where(root)}: 事务闭包里又引用了开启它的 \`${root.receiver}\`，应该用事务本身`)
       }
     }
@@ -281,6 +288,13 @@ export function violations({ roots }) {
     }
   }
   return problems
+}
+
+/** R2 查不了的根：接收者是一次调用的结果，静态上认不出是哪个池。不算失败，但要看得见。 */
+export function uncheckedReceivers({ roots }) {
+  return roots
+    .filter((r) => !r.test && r.kind.startsWith('sea-') && r.receiver === null)
+    .map((r) => `${r.file.path}:${lineOf(r.file.text, r.at)}`)
 }
 
 function escapeRegExp(text) {
@@ -329,6 +343,10 @@ export function render({ roots }, counts) {
       return `| \`${r.file.path}\` › \`${owner}\` | ${r.kind} | ${r.modules.join(', ') || '—'}${via} |`
     })
     .sort()
+  const unchecked = live
+    .filter((r) => r.kind.startsWith('sea-') && r.receiver === null)
+    .map((r) => `\`${r.file.path}\` › \`${r.owner ? r.owner.name : '(顶层)'}\``)
+    .sort()
 
   return [
     '# 事务调用图',
@@ -339,6 +357,12 @@ export function render({ roots }, counts) {
     `- 事务根（非测试）：${live.length}`,
     `- Diesel ops 调用点（db/ops 之外）：${counts.dieselOpsCalls}`,
     `- Diesel API 引用：${counts.dieselApiRefs}`,
+    '',
+    '## R2 无法检查的 SeaORM 事务根',
+    '',
+    '接收者是一次调用的结果（`get_db().write(…)`），静态上认不出闭包里哪个句柄是同一个池。',
+    '',
+    ...(unchecked.length ? unchecked.map((u) => `- ${u}`) : ['- 无']),
     '',
     '## ops 模块的事务连通分量',
     '',
@@ -380,6 +404,9 @@ function main() {
   const graph = analyze(loadSources(read, list))
   const counts = counters(graph)
   const problems = [...violations(graph), ...expectedEdgeProblems(graph)]
+  for (const where of uncheckedReceivers(graph)) {
+    console.warn(`⚠ R2 无法检查 ${where}：接收者是一次调用的结果，认不出是哪个池`)
+  }
 
   const baselinePath = 'docs/migration-counters.json'
   const baselineRaw = read(baselinePath)
