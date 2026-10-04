@@ -42,6 +42,13 @@ if git diff --cached --name-only | grep -qE '^src-tauri/.*\.rs$|^src-tauri/crate
   node scripts/check-transaction-graph.mjs --staged
 fi
 
+# 壳层引用了 core 在 Android 上编译掉的东西、自己却没有 cfg：桌面编译永远编不到
+# 那一行，本地全绿，只有 CI 的 Android 检查会红——sandbox、onebot、services.acp
+# 三次都是这样。只读文本，几秒；本机跑 Android 编译太重，这是能前移的那一半。
+if git diff --cached --name-only | grep -qE '^src-tauri/src/.*\.rs$|^src-tauri/crates$|^scripts/(check-android-cfg|android-cfg-lib|staged-snapshot)\.mjs$'; then
+  node scripts/check-android-cfg.mjs --staged
+fi
+
 # Tauri CLI 要求 npm 包和对应 Rust crate 的主/次版本一致，否则 `tauri dev` /
 # `tauri build` 直接拒绝；CI 里没有任何一步跑 Tauri CLI，所以只能靠这里和
 # frontend-build 里的同一个脚本。只读两份 lock，不需要安装或编译。
