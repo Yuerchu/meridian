@@ -169,6 +169,7 @@
   --color-text-disabled-danger: var(--color-red-300);
   --color-text-placeholder: var(--color-neutral-400);
   --color-text-error-primary: var(--color-red-500);
+  --color-text-destructive: color-mix(in srgb, var(--color-red-700) 80%, var(--color-neutral-600));
   --color-input-disabled-text: var(--color-neutral-300);
   --color-text-white: var(--color-white);
 
@@ -430,6 +431,7 @@
   --color-text-tertiary: var(--color-neutral-600);
   --color-text-disabled: var(--color-neutral-800);
   --color-text-error-primary: var(--color-red-400);
+  --color-text-destructive: color-mix(in srgb, var(--color-red-500) 80%, var(--color-neutral-500));
   --color-input-disabled-text: color-mix(in srgb, var(--color-neutral-500) 40%, transparent);
 
   /* Background */
@@ -640,6 +642,7 @@
   --color-text-disabled-danger: var(--color-text-disabled-danger);
   --color-text-placeholder: var(--color-text-placeholder);
   --color-text-error-primary: var(--color-text-error-primary);
+  --color-text-destructive: var(--color-text-destructive);
   --color-input-disabled-text: var(--color-input-disabled-text);
   --color-text-white: var(--color-text-white);
 
