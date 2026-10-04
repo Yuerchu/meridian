@@ -176,7 +176,7 @@ export function Composer({
         // Stop.
         lockInputOnRun={false}
         allowSubmitWhileRunning={steerable}
-        maxHeight={200}
+        maxLines={8}
       >
         {queue}
         {/* boardui's composer-loader, as the registry's agent-composer wires it:
@@ -206,6 +206,10 @@ export function Composer({
                 {...fieldProps}
                 aria-label={ariaLabel}
                 placeholder={placeholder}
+                // Eight lines (`maxLines`), unless that is more than two fifths of
+                // what the keyboard leaves of the screen — on a phone with it
+                // open, eight lines would push the transcript off the top.
+                className="max-h-[calc((100svh_-_var(--ime-bottom,0px))_*_0.4)]"
                 autoFocus={autoFocus}
                 onKeyDownCapture={guardEnter}
                 onPaste={(event) => {
