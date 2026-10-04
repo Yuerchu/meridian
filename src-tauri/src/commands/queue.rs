@@ -154,6 +154,8 @@ pub async fn queue_enqueue(
     // not left to turn up later as a held queue. A queued item usually means a
     // turn is running, so the session is live; a dormant one is asked again
     // at delivery, which is where it will be reopened anyway.
+    // Desktop only, like `services.acp` itself: Android hosts no sessions.
+    #[cfg(not(target_os = "android"))]
     if let Some(session) = services.acp.get(&conversation_id).filter(|session| session.is_alive()) {
         session.check_attachments(&services, &content).await?;
     }
