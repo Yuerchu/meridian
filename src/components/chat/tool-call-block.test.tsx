@@ -766,6 +766,31 @@ describe('a hosted agent asks with the same cards', () => {
     })
   })
 
+  it('picks a single-choice option by its number key while focus is in the group', async () => {
+    waiting('appr-1', {
+      questions: [{ id: 'scope', question: 'Which one?', options: [{ label: 'A' }, { label: 'B' }] }],
+    })
+    render(<ToolCallBlock data={toolCall('AskUserQuestion', { questions: [] })} />)
+
+    screen.getByRole('radio', { name: 'A' }).focus()
+    await userEvent.keyboard('2')
+    expect(screen.getByRole('radio', { name: 'B' })).toBeChecked()
+
+    await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.tool.askUserSubmit') }))
+    expect(api.respondToAsk).toHaveBeenCalledWith({ approvalId: 'appr-1', response: JSON.stringify({ scope: 'B' }) })
+  })
+
+  it('leaves a digit typed into the notes as a digit', async () => {
+    waiting('appr-1', {
+      questions: [{ id: 'scope', question: 'Which one?', options: [{ label: 'A' }, { label: 'B' }] }],
+    })
+    render(<ToolCallBlock data={toolCall('AskUserQuestion', { questions: [] })} />)
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Which one?' }), '1')
+    expect(screen.getByRole('textbox', { name: 'Which one?' })).toHaveValue('1')
+    expect(screen.getByRole('radio', { name: 'A' })).not.toBeChecked()
+  })
+
   it('keeps the submit name and exposes a busy state while an answer is sending', async () => {
     let finish!: () => void
     vi.mocked(api.respondToAsk).mockReturnValueOnce(

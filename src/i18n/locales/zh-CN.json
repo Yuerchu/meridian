@@ -189,6 +189,7 @@
   "chat.tool.skipQuestion": "跳过此题",
   "chat.tool.undo": "撤销",
   "chat.tool.notesPlaceholder": "补充说明（可选）…",
+  "chat.tool.other": "补充",
   "chat.tool.name.read_file": "读取文件",
   "chat.tool.name.write_file": "写入文件",
   "chat.tool.name.edit_file": "编辑文件",

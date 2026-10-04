@@ -199,6 +199,7 @@
   "chat.tool.skipQuestion": "Skip",
   "chat.tool.undo": "Undo",
   "chat.tool.notesPlaceholder": "Additional notes (optional)...",
+  "chat.tool.other": "Notes",
   "chat.tool.name.read_file": "Read File",
   "chat.tool.name.write_file": "Write File",
   "chat.tool.name.edit_file": "Edit File",

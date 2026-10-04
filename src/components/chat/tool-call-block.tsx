@@ -254,6 +254,43 @@ function formatAnswer(a: QuestionAnswer | undefined, skipped: boolean): string {
   return '(no answer)'
 }
 
+/**
+ * An option as BoardUI Pro's questionnaire draws one: a bordered row, filled
+ * when hovered or chosen, its edge a step darker when chosen or pressed. Kept
+ * a step smaller than Pro's (13px over 12px) because it sits in a bubble, not
+ * on a page.
+ */
+function optionRow(state: { isSelected: boolean; isHovered: boolean; isPressed: boolean; isFocusVisible: boolean }) {
+  return cx(
+    'w-full items-center gap-3 rounded-2xl border px-3 py-2 whitespace-normal transition-colors duration-150 ease',
+    // The label wrapper the base control draws around its children: the body
+    // takes the row, and a key badge sits at its end.
+    '[&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:flex-1 [&>span:last-child]:items-center [&>span:last-child]:gap-3',
+    state.isSelected || state.isPressed ? 'border-border-button-hover' : 'border-border-button-default',
+    state.isPressed
+      ? 'bg-background-primary-active'
+      : state.isSelected || state.isHovered
+        ? 'bg-background-primary-hover'
+        : 'bg-background-primary-default',
+    state.isFocusVisible && 'ring-2 ring-border-focus-ring',
+  )
+}
+
+function OptionBody({ label, description }: { label: string; description?: string | null }) {
+  return (
+    <span data-slot="question-option-body" className="min-w-0 flex-1 text-left">
+      <span data-slot="question-option-label" className="block text-body-2-medium text-text-primary">
+        {label}
+      </span>
+      {description && (
+        <span data-slot="question-option-description" className="block text-caption-1-regular text-text-secondary">
+          {description}
+        </span>
+      )}
+    </span>
+  )
+}
+
 function QuestionBlock({
   q,
   value,
@@ -299,7 +336,7 @@ function QuestionBlock({
   }
 
   return (
-    <div ref={(element) => registerField(q.id, element)} data-slot="question" className="space-y-1.5">
+    <div ref={(element) => registerField(q.id, element)} data-slot="question" className="space-y-2">
       <div data-slot="question-header" className="flex items-start justify-between gap-2">
         <div id={questionId} data-slot="question-text" className="text-body-medium text-text-primary">
           {q.question}
@@ -338,63 +375,66 @@ function QuestionBlock({
             name={q.id}
             value={Array.isArray(value.selected) ? value.selected : []}
             onChange={(selected) => onChange(q.id, { ...value, selected })}
-            className="gap-1"
+            className="gap-2"
           >
             {q.options!.map((opt) => (
-              <Checkbox
-                key={opt.label}
-                value={opt.label}
-                className="w-full items-start gap-2 rounded-lg px-2.5 py-1.5 whitespace-normal hover:bg-background-secondary-default/50 data-[selected]:bg-background-secondary-default/80"
-              >
-                <span data-slot="question-option-body" className="min-w-0 flex-1 text-left">
-                  <span data-slot="question-option-label" className="text-caption-1-medium text-text-primary">
-                    {opt.label}
-                  </span>
-                  {opt.description && (
-                    <span
-                      data-slot="question-option-description"
-                      className="block text-caption-1-regular text-text-secondary"
-                    >
-                      {opt.description}
-                    </span>
-                  )}
-                </span>
+              <Checkbox key={opt.label} value={opt.label} className={optionRow}>
+                <OptionBody label={opt.label} description={opt.description} />
               </Checkbox>
             ))}
           </CheckboxGroup>
         ) : (
-          <RadioGroup
-            data-slot="question-answer"
-            aria-labelledby={questionId}
-            aria-describedby={invalid ? errorId : undefined}
-            isInvalid={invalid}
-            name={q.id}
-            value={typeof value.selected === 'string' ? value.selected : ''}
-            onChange={(selected) => onChange(q.id, { ...value, selected })}
-            className="gap-1"
+          // Number keys pick an option while focus is in the group — Pro's
+          // questionnaire does the same, and so do most chat clients' polls.
+          // The listener wraps the radios and nothing else: the notes box is a
+          // sibling of this element, so a digit typed there stays a digit. Not
+          // with a modifier either (those are the app's shortcuts). No
+          // advancing to the next question: every question is on screen at
+          // once, and a note may still be coming for this one.
+          <div
+            data-slot="question-keys"
+            onKeyDown={(event) => {
+              if (event.altKey || event.ctrlKey || event.metaKey) return
+              const digit = Number(event.key)
+              const option = Number.isInteger(digit) && digit >= 1 ? q.options![digit - 1] : undefined
+              if (!option) return
+              event.preventDefault()
+              onChange(q.id, { ...value, selected: option.label })
+            }}
           >
-            {q.options!.map((opt) => (
-              <Radio
-                key={opt.label}
-                value={opt.label}
-                className="w-full items-start gap-2 rounded-lg px-2.5 py-1.5 whitespace-normal hover:bg-background-secondary-default/50 data-[selected]:bg-background-secondary-default/80"
-              >
-                <span data-slot="question-option-body" className="min-w-0 flex-1 text-left">
-                  <span data-slot="question-option-label" className="text-caption-1-medium text-text-primary">
-                    {opt.label}
-                  </span>
-                  {opt.description && (
-                    <span
-                      data-slot="question-option-description"
-                      className="block text-caption-1-regular text-text-secondary"
+            <RadioGroup
+              data-slot="question-answer"
+              aria-labelledby={questionId}
+              aria-describedby={invalid ? errorId : undefined}
+              isInvalid={invalid}
+              name={q.id}
+              value={typeof value.selected === 'string' ? value.selected : ''}
+              onChange={(selected) => onChange(q.id, { ...value, selected })}
+              className="gap-2"
+            >
+              {q.options!.map((opt, index) => (
+                <Radio
+                  key={opt.label}
+                  value={opt.label}
+                  // The base radio's dot is its one `aria-hidden` child (the first
+                  // is React Aria's visually hidden input); the row's fill and
+                  // edge say which is chosen, as in Pro's questionnaire.
+                  className={(state) => cx(optionRow(state), '[&>span[aria-hidden=true]]:hidden')}
+                >
+                  <OptionBody label={opt.label} description={opt.description} />
+                  {index < 9 && (
+                    <Kbd
+                      aria-hidden
+                      data-slot="question-option-key"
+                      className="shrink-0 rounded-sm px-1.5 text-text-secondary"
                     >
-                      {opt.description}
-                    </span>
+                      {index + 1}
+                    </Kbd>
                   )}
-                </span>
-              </Radio>
-            ))}
-          </RadioGroup>
+                </Radio>
+              ))}
+            </RadioGroup>
+          </div>
         ))}
 
       {/* Withheld where nothing could carry what was typed. A box that discards
@@ -402,20 +442,36 @@ function QuestionBlock({
           answer with it: `formatAnswer` folds a note into the selection, so a
           note beside a valid choice is what makes the pair unplaceable. */}
       {acceptsText(q) && (
-        <Input
-          data-slot="question-answer"
-          type="text"
-          name={`${q.id}-notes`}
-          autoComplete="off"
-          aria-labelledby={questionId}
-          aria-describedby={invalid ? errorId : undefined}
-          aria-invalid={invalid || undefined}
-          value={value.notes}
-          onChange={(e) => onChange(q.id, { ...value, notes: e.target.value })}
-          placeholder={hasOptions ? t('chat.tool.notesPlaceholder') : t('chat.tool.askUserPlaceholder')}
-          className="text-caption-1-regular"
-          fieldClassName={FIELD_ON_CARD}
-        />
+        // A row like the options, where Pro has its "Other" row. Only the look
+        // is borrowed: a note here is added to the choice, not a choice of its
+        // own, which is what `formatAnswer` sends.
+        <div
+          data-slot="question-notes"
+          className={cx(
+            'rounded-2xl border border-border-button-default bg-background-primary-default px-3 py-2',
+            hasOptions && 'space-y-1',
+          )}
+        >
+          {hasOptions && (
+            <span data-slot="question-notes-label" className="block text-caption-1-medium text-text-secondary">
+              {t('chat.tool.other')}
+            </span>
+          )}
+          <Input
+            data-slot="question-answer"
+            type="text"
+            name={`${q.id}-notes`}
+            autoComplete="off"
+            aria-labelledby={questionId}
+            aria-describedby={invalid ? errorId : undefined}
+            aria-invalid={invalid || undefined}
+            value={value.notes}
+            onChange={(e) => onChange(q.id, { ...value, notes: e.target.value })}
+            placeholder={hasOptions ? t('chat.tool.notesPlaceholder') : t('chat.tool.askUserPlaceholder')}
+            className="text-body-2-regular"
+            fieldClassName={FIELD_ON_CARD}
+          />
+        </div>
       )}
       {invalid && (
         <p id={errorId} role="alert" data-slot="question-error" className="text-caption-1-regular text-status-danger">
