@@ -1,11 +1,12 @@
 import { useTranslation } from 'react-i18next'
 
-import { Check, CircleQuestion, Clock, TriangleAlert } from '@keyline-icons/react/two-tone'
+import { Check, CircleQuestion, Clock, Paperclip, TriangleAlert } from '@keyline-icons/react/two-tone'
 import { Button, Spinner } from '@/components/base'
 import { PromptInput } from '@/components/base'
 
 import { isCoarsePointer } from '@/hooks/use-coarse-pointer'
 import { queueState } from '@/hooks/use-prompt-queue'
+import { attachedParts, parseUserContent, type UserContentPart } from '@/lib/message-content'
 import type { QueueDelivery, QueuedPromptInfoResponse } from '@/types'
 import { TodoCurrentRow } from './todo-bar'
 import type { TodoArgs } from './todo-list'
@@ -36,6 +37,13 @@ function SteerMark() {
       ↳
     </span>
   )
+}
+
+/** What one attachment is called on a queued row. */
+function attachmentName(part: UserContentPart, image: string): string {
+  if (part.type === 'file') return part.file?.name ?? ''
+  if (part.type === 'sticker') return part.name ?? ''
+  return image
 }
 
 /**
@@ -139,6 +147,12 @@ export function PromptQueue({
           // only outcome is the row springing back.
           const pinned = settled || state === 'held'
           const interject = item.delivery === 'interject'
+          // The stored envelope, read back as what was written plus what was
+          // attached — never the JSON, which carries local file paths. An
+          // attachment-only message has no text, so its names stand in.
+          const { parts, text } = parseUserContent(item.content)
+          const attached = attachedParts(parts)
+          const label = text || attached.map((part) => attachmentName(part, t('chat.queue.image'))).join(', ')
           return (
             <PromptInput.Queue.Item key={item.id} value={item}>
               {/* No handle on a row that must not move. A settled row's
@@ -167,7 +181,19 @@ export function PromptQueue({
                     <Clock className="size-3.5" />
                   )}
                 </PromptInput.Queue.Item.Icon>
-                <PromptInput.Queue.Item.Content>{item.content}</PromptInput.Queue.Item.Content>
+                <PromptInput.Queue.Item.Content>{label}</PromptInput.Queue.Item.Content>
+                {/* Why there is no Steer on this row as well as what it carries:
+                    an interjection is text, and the backend refuses the switch
+                    (`db::ops::queue::set_delivery`). */}
+                {attached.length > 0 && !settled && (
+                  <PromptInput.Queue.Item.Description
+                    data-slot="queue-attachments"
+                    className="inline-flex items-center gap-1"
+                  >
+                    <Paperclip aria-hidden className="size-3.5" />
+                    {t('chat.queue.attachments', { count: attached.length })}
+                  </PromptInput.Queue.Item.Description>
+                )}
                 {doubtful && (
                   <PromptInput.Queue.Item.Description className="text-status-warning">
                     {t('chat.queue.inDoubt')}
@@ -211,7 +237,7 @@ export function PromptQueue({
                     <PromptInput.Queue.Item.Action onPress={() => onSetDelivery(item.id, 'follow_up')}>
                       {t('chat.queue.followUp')}
                     </PromptInput.Queue.Item.Action>
-                  ) : (
+                  ) : attached.length > 0 ? null : (
                     <PromptInput.Queue.Item.Steer onPress={() => onSetDelivery(item.id, 'interject')}>
                       <SteerMark />
                       {t('chat.queue.interject')}

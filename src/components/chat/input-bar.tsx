@@ -261,8 +261,9 @@ export function InputBar({
   // hangs from that button once the menu has gone.
   const plusRef = useRef<HTMLButtonElement>(null)
   const [stickersOpen, setStickersOpen] = useState(false)
-  // A sticker travels the way an attachment does — as a part in a JSON array —
-  // and would reach a hosted agent as that JSON. See `onPickFile` below.
+  // Not on a hosted session: core has no content block to turn a sticker into
+  // for an ACP agent and refuses one (`acp::attachments`), so the picker is not
+  // offered rather than offered and refused. Files are; see `canAttachFiles`.
   const offersStickers = !isHosted && !!currentAssistantId && !!onSelectSticker
   // A hosted session's knobs, by where each is drawn: the model and the
   // effort in the model panel, the permission mode as the mode chip, anything
@@ -554,9 +555,14 @@ export function InputBar({
     [onAttachFiles],
   )
 
-  // Withheld from a hosted session, as the attach menu is: an attachment
-  // reaches a hosted agent as the JSON that carries it.
-  const canAttachFiles = !isHosted && !!onAttachFiles && can.dropFiles
+  // A hosted session takes attachments too: core sends each as an ACP content
+  // block (an image, embedded text, or a link the agent reads), and refuses at
+  // send time what the agent did not say it accepts. So the native model's
+  // `supports_images` says nothing about a hosted turn and is not asked —
+  // before the first send after a restart the session has not shaken hands
+  // yet, and guessing its answer would be inventing one.
+  const acceptsImages = isHosted || capabilities?.supports_images !== false
+  const canAttachFiles = !!onAttachFiles && can.dropFiles
 
   // A pasted file is a clipboard operation that worked, like a pasted line of
   // text: it clears a failure the menu reported earlier, and takes a turn so
@@ -795,14 +801,8 @@ export function InputBar({
                 />
               ) : null
             }
-            // `!isHosted` for the same reason the attach menu and the sticker
-            // picker are withheld: an attachment reaches a hosted agent as the
-            // JSON that carries it, because an ACP prompt is a single text
-            // block. Closing the menus and leaving the whole window droppable
-            // would be the same failure with a better hiding place.
-            onDropFiles={!isHosted && onAttachFiles && can.dropFiles ? handleDropFiles : undefined}
-            // A pasted screenshot is a dropped file by another route, held
-            // back from a hosted session for the same reason.
+            onDropFiles={canAttachFiles ? handleDropFiles : undefined}
+            // A pasted screenshot is a dropped file by another route.
             onPasteFiles={canAttachFiles ? handlePastedFiles : undefined}
             // Offline takes the line over: a disabled field with nothing to
             // say about why reads as the app having broken.
@@ -939,35 +939,24 @@ export function InputBar({
               // describes one — what to attach, which mode — applies.
               steerable && streaming ? null : (
                 <>
-                  {isAndroid && !isHosted ? (
+                  {isAndroid && !(isHosted && otherKnobs.length > 0) ? (
                     // The phone's `+` is a sheet a thumb reaches. A hosted
-                    // session has nothing to attach, so it gets the agent's
-                    // knob menu below instead.
+                    // session whose agent offers settings beyond the toolbar's
+                    // gets the menu below instead, which carries those and the
+                    // file picker; the sheet has no place for them.
                     <AttachSheet
                       triggerRef={plusRef}
                       onOpenStickers={offersStickers ? () => setStickersOpen(true) : undefined}
                       onTakePhoto={handleTakePhoto}
                       onPickGallery={handlePickGallery}
                       onPickFile={handlePickFile}
-                      supportsImages={capabilities?.supports_images !== false}
+                      supportsImages={acceptsImages}
                     />
                   ) : (
                     <ComposerMenu
                       triggerRef={plusRef}
                       onOpenStickers={offersStickers ? () => setStickersOpen(true) : undefined}
-                      // **Not on a hosted session.** An attachment is carried by
-                      // packing the message into a JSON array of parts, and the
-                      // ACP path sends whatever it is handed as a *single text
-                      // block* — so the agent receives the JSON itself while the
-                      // composer shows an attachment going out. Real support
-                      // means mapping parts onto ACP content blocks and asking
-                      // `promptCapabilities` first; until then the honest thing
-                      // is not to offer it.
-                      onPickFile={
-                        !isHosted && onAttachFiles && capabilities?.supports_images !== false
-                          ? handlePickFile
-                          : undefined
-                      }
+                      onPickFile={onAttachFiles && acceptsImages ? handlePickFile : undefined}
                       knobs={otherKnobs}
                       onSetKnob={setKnob}
                       knobsBusy={acp.busy}

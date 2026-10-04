@@ -14,6 +14,9 @@ const mocks = vi.hoisted(() => {
   const stopChat = vi.fn()
   const confirm = vi.fn(() => Promise.resolve(false))
   const enqueue = vi.fn(() => Promise.resolve({}))
+  const uploadAttachment = vi.fn((_conversationId: string, file: { name: string }) =>
+    Promise.resolve({ type: 'image_url', image_url: { url: `file:///data/files/conversation-1/${file.name}` } }),
+  )
   // The workspace decides which `@` tokens are references. Held paths are the
   // ones a test declares; everything else answers the way a decorator does.
   const held = new Set<string>()
@@ -70,6 +73,7 @@ const mocks = vi.hoisted(() => {
     stopChat,
     confirm,
     enqueue,
+    uploadAttachment,
     held,
     workspaceProbeRef,
     sessions,
@@ -154,6 +158,7 @@ vi.mock('@/hooks/use-prompt-queue', () => ({
   }),
 }))
 vi.mock('@/hooks/use-sender-names', () => ({ useSenderNames: () => ({}) }))
+vi.mock('@/lib/upload', () => ({ uploadAttachment: mocks.uploadAttachment }))
 vi.mock('./emoji-renderer', () => ({ useEmojiMap: () => ({}) }))
 
 vi.mock('./chat-transcript', () => ({
@@ -191,6 +196,8 @@ interface CapturedInputBarProps {
   onSubmit: () => void
   disabled: boolean
   streaming: boolean
+  attachedFiles: { name: string; path?: string }[]
+  onAttachFiles: (files: { name: string; path?: string }[]) => void
 }
 
 interface CapturedStarterProps {
@@ -494,6 +501,51 @@ describe('ChatView composer dispatch', () => {
 
     await waitFor(() => expect(mocks.enqueue).toHaveBeenCalledWith('改成 @field_validator 的写法', 'follow_up', [], []))
     expect(mocks.setError).not.toHaveBeenCalledWith('conversation-1', expect.stringContaining('reference'))
+  })
+
+  // A message queued while a turn runs takes its attachments with it. They
+  // used to stay in the composer and ride along with whatever was sent next.
+  it('queues the attachments with the message and clears them once queued', async () => {
+    mocks.sessions['conversation-1'].streaming = true
+    render(<ChatView conversationId="conversation-1" />)
+    await waitFor(() => expect(mocks.inputBarProps).toHaveBeenCalled())
+
+    act(() => latestInputBar().onAttachFiles([{ name: 'a.png', path: 'C:/shots/a.png' }]))
+    act(() => latestInputBar().onChange('look at this'))
+    await waitFor(() => expect(latestInputBar().attachedFiles).toHaveLength(1))
+    await act(async () => latestInputBar().onSubmit())
+
+    await waitFor(() =>
+      expect(mocks.enqueue).toHaveBeenCalledWith(
+        JSON.stringify([
+          { type: 'text', text: 'look at this' },
+          { type: 'image_url', image_url: { url: 'file:///data/files/conversation-1/a.png' } },
+        ]),
+        'follow_up',
+        [],
+        [],
+      ),
+    )
+    await waitFor(() => expect(latestInputBar().attachedFiles).toEqual([]))
+    expect(latestInputBar().value).toBe('')
+  })
+
+  it('keeps the attachments in the composer when the queue refuses them', async () => {
+    mocks.sessions['conversation-1'].streaming = true
+    mocks.enqueue.mockRejectedValueOnce(new Error('Attachment 1 needs the agent to accept image'))
+    render(<ChatView conversationId="conversation-1" />)
+    await waitFor(() => expect(mocks.inputBarProps).toHaveBeenCalled())
+
+    act(() => latestInputBar().onAttachFiles([{ name: 'a.png', path: 'C:/shots/a.png' }]))
+    act(() => latestInputBar().onChange('look at this'))
+    await waitFor(() => expect(latestInputBar().attachedFiles).toHaveLength(1))
+    await act(async () => latestInputBar().onSubmit())
+
+    await waitFor(() =>
+      expect(mocks.setError).toHaveBeenCalledWith('conversation-1', expect.stringContaining('needs the agent')),
+    )
+    expect(latestInputBar().attachedFiles).toHaveLength(1)
+    expect(latestInputBar().value).toBe('look at this')
   })
 
   it('guards an awaited slash command and preserves a newer draft', async () => {

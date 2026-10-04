@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import { api } from '@/api'
 import i18n from '@/i18n'
 import { useConversationStore } from '@/stores/conversation-store'
-import { uploadAttachment } from '@/lib/upload'
+import { buildMessageContent } from '@/lib/message-content'
 import type { AttachedFile } from '@/components/chat/input-bar'
 import type { ChatMode, StickerContentPart, ThinkingLevel } from '@/types'
 import type { WorkspaceReferenceRequest } from '@/types'
@@ -155,14 +155,7 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
       let messageContent = text
       if (text !== null && ((files && files.length > 0) || sticker)) {
         try {
-          const parts: unknown[] = []
-          if (text.trim()) parts.push({ type: 'text', text })
-          // Not `api.uploadFile` directly: an attachment picked on a device
-          // that is not the one holding the file has bytes rather than a path,
-          // and only `uploadAttachment` knows which of the two it is.
-          if (files) parts.push(...(await Promise.all(files.map((f) => uploadAttachment(conversationId, f)))))
-          if (sticker) parts.push(sticker)
-          messageContent = JSON.stringify(parts)
+          messageContent = await buildMessageContent(conversationId, text, files, sticker)
         } catch (err) {
           storeAbortTurn(conversationId, turnId, String(err))
           submittingRef.current = false

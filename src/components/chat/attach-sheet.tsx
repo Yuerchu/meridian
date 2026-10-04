@@ -9,13 +9,7 @@ import { cx } from '@/utils/cx'
 export interface AttachSheetProps {
   onTakePhoto: () => void
   onPickGallery: () => void
-  /**
-   * Absent hides the entry, the way `ComposerMenu` already treats it.
-   *
-   * `supportsImages` covers the camera and the gallery but not this one, so
-   * without its own switch there was no way to withhold attachments — which a
-   * hosted session needs, its prompt being a single text block.
-   */
+  /** Absent hides the entry, the way `ComposerMenu` already treats it. */
   onPickFile?: () => void
   supportsImages: boolean
   /** Opens the sticker picker, which anchors itself to `triggerRef`. Absent hides the row. */
@@ -34,8 +28,7 @@ export interface AttachSheetProps {
  * shape for what is left: four actions a thumb reaches, rather than a popover
  * from a 36px button.
  *
- * With nothing to add (a hosted session, whose prompt is one text block) there
- * is no sheet — the caller draws the agent's own `+` menu instead.
+ * With nothing to add there is no sheet.
  */
 export function AttachSheet({
   onTakePhoto,

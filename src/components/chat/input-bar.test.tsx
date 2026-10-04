@@ -32,7 +32,13 @@ vi.mock('@/hooks/use-android-voice-recorder', () => ({
   useAndroidVoiceRecorder: () => ({ attachField: vi.fn(), isActive: false, cancel: vi.fn() }),
 }))
 vi.mock('./emoji-picker', () => ({ EmojiPicker: () => null }))
-vi.mock('./composer-menu', () => ({ ComposerMenu: () => null }))
+const composerMenu = vi.hoisted(() => ({ props: vi.fn() }))
+vi.mock('./composer-menu', () => ({
+  ComposerMenu: (props: unknown) => {
+    composerMenu.props(props)
+    return null
+  },
+}))
 
 function renderBar(props: Partial<ComponentProps<typeof InputBar>> = {}) {
   return render(
@@ -347,13 +353,29 @@ describe('InputBar paste', () => {
     expect(kept).toBe(true)
   })
 
-  it('attaches nothing to a hosted session', () => {
+  // Core sends a hosted session's attachments as ACP content blocks and refuses
+  // at send time what the agent does not accept, so the composer takes them.
+  it('attaches to a hosted session too', () => {
     const onAttachFiles = vi.fn()
+    const file = shot()
     renderBar({ onAttachFiles, isHosted: true })
 
-    fireEvent.paste(field(), { clipboardData: clipboard('', [shot()]) })
+    fireEvent.paste(field(), { clipboardData: clipboard('', [file]) })
 
-    expect(onAttachFiles).not.toHaveBeenCalled()
+    expect(onAttachFiles).toHaveBeenCalledWith([{ name: 'image.png', file }])
+  })
+
+  // The `+` offers the file picker on a hosted session whatever the native
+  // model's capabilities say: those describe a different model.
+  it("offers the file picker on a hosted session regardless of the native model's capabilities", () => {
+    renderBar({
+      onAttachFiles: vi.fn(),
+      isHosted: true,
+      capabilities: { supports_images: false } as ComponentProps<typeof InputBar>['capabilities'],
+    })
+
+    const props = composerMenu.props.mock.calls.at(-1)?.[0] as { onPickFile?: () => void }
+    expect(props.onPickFile).toBeTypeOf('function')
   })
 })
 

@@ -399,6 +399,35 @@ the machines that want this already have node and a signed-in `claude`.
   They get the notice instead of silently pretending. `session/list` is how they could be
   attached to a session found on disk, and that is the same call the sidebar of
   terminal-started sessions needs — see the roadmap.
+- **An attachment goes as what it is, behind a numbered label, or not at all.**
+  The transcript row keeps the parts envelope as it came; what the agent gets is
+  built by `acp::attachments::prepare` — the text as one leading block (owed
+  notices, message and `@` context in the order they always had), then per
+  attachment `[Attachment N: name]` and one block. Which block is decided by
+  what `claude-agent-acp` does with each: a jpeg/png/gif/webp up to 5 MiB is an
+  `image` (bare base64); anything up to 256 KiB that is UTF-8 without a NUL is a
+  `resource` with its text — decided by the bytes, because the MIME type comes
+  from the extension and `.ts` is `video/mp2t` to `mime_guess`; everything else
+  is a `resource_link` the agent opens with its own `Read`. That last is forced,
+  not chosen: the adapter drops a blob `resource` without a word, so there is no
+  way to hand it a PDF's bytes, and its `Read` outside the working directory
+  raises an ordinary `_once` card. The label exists because the adapter ignores a
+  link's `name` — the model would see only the stored `<uuid>.<ext>` — and
+  because "the second file" needs something to point at.
+
+  **What the agent did not advertise is refused, never degraded.** `image` and
+  `resource` need `promptCapabilities.image` / `.embeddedContext` from the
+  greeting (`AcpSession::prompt_capabilities`); an attachment that needs one the
+  agent did not give is refused with its ordinal and the capability, before any
+  row or turn exists, rather than sent as a link that means something different.
+  So are a sticker (no block to turn one into), a file outside `<data_dir>/files`
+  (content is model-influenced), and — behind a container launcher — a link
+  whose path no mount covers; inline blocks carry their bytes and cross as they
+  are. The composer offers files on a hosted session without asking first: the
+  capabilities are unknown until the session shakes hands, which after a restart
+  is the first send, and gating on a guess would be inventing a default. An
+  import still loses images (`ContentBlock::as_text`), and a link replays as
+  `[@uuid.ext](file:///…)` text.
 - **`fs` and `terminal` capabilities are declared unsupported.** The agent does its own IO
   and we only hear about it in `tool_call` notifications. Turning `fs` on means answering
   `fs/read_text_file` and `fs/write_text_file`, after which every file it touches goes

@@ -32,6 +32,7 @@ import { useConversationStore } from '@/stores/conversation-store'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
 import { parseComposerIntent, selectExistingReferences } from '@/lib/composer-intent'
 import { findComposerCommand } from '@/lib/composer-commands'
+import { buildMessageContent } from '@/lib/message-content'
 import { allowedEfforts } from '@/lib/thinking'
 import { visibleSettingsTabs, type SettingsTab } from '@/components/settings/tabs'
 import { isRemote } from '@/lib/transport'
@@ -771,15 +772,27 @@ function ChatViewInner({
       // cleared only once the row exists, so a refusal is not the user paying
       // for it by retyping.
       if (queueing) {
-        if (!text) return
+        // The attachments and the sticker go with the text, uploaded now so the
+        // queued copy is the one the person saw. They used to stay behind in
+        // the composer and ride along with whatever was sent next.
+        const files = [...attachedFiles]
+        const queuedSticker = pendingSticker
+        const sticker = queuedSticker
+          ? { type: 'sticker' as const, sticker_id: queuedSticker.emoji.id, name: queuedSticker.emoji.name }
+          : undefined
+        if (!text && !sticker && files.length === 0) return
         // Always a follow-up: an interjection cuts into work already going,
         // which is not a thing to do by accident, so it is chosen on the row
         // afterwards (`PromptQueue`'s steer action).
-        void queue
-          .enqueue(text, 'follow_up', references, refIds)
+        void buildMessageContent(conversationId, text, files, sticker)
+          .then((content) => queue.enqueue(content, 'follow_up', references, refIds))
           .then(() => {
             setInput('')
             setConversationRefs([])
+            // Only what was queued: anything attached while the upload ran
+            // belongs to the next message.
+            setAttachedFiles((prev) => prev.filter((file) => !files.includes(file)))
+            setPendingSticker((prev) => (prev === queuedSticker ? null : prev))
           })
           .catch((error) => storeSetError(conversationId, String(error)))
         return
@@ -793,6 +806,12 @@ function ChatViewInner({
         if (!text) return
         if (hasWorkspaceReferences) {
           storeSetError(conversationId, t('chat.referenceFollowUpOnly'))
+          return
+        }
+        // A steer is text; refused rather than sent without them, which used
+        // to leave them in the composer to ride along with the next message.
+        if (attachedFiles.length > 0 || pendingSticker) {
+          storeSetError(conversationId, t('chat.attachmentFollowUpOnly'))
           return
         }
         void steerMessage(text).then((sent) => {
