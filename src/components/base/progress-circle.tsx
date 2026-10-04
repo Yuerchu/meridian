@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { ProgressBar as AriaProgressBar, type ProgressBarProps } from 'react-aria-components'
 import { cx } from '@/utils/cx'
 
@@ -81,13 +81,12 @@ function ProgressCircleRoot({ size = 'md', color = 'accent', className, children
   )
 }
 
-/** Kept for call-site compatibility: the ring is drawn by the root. */
-function ProgressCirclePart(_props: ComponentProps<'span'>) {
-  return null
-}
-
-export const ProgressCircle = Object.assign(ProgressCircleRoot, {
-  Track: ProgressCirclePart,
-  TrackCircle: ProgressCirclePart,
-  FillCircle: ProgressCirclePart,
-})
+/**
+ * The ring is drawn by the root alone. There used to be `Track`,
+ * `TrackCircle` and `FillCircle` parts "kept for call-site compatibility",
+ * which rendered nothing and took a `className` they dropped — so a size
+ * written on `Track` (the todo ring's 14px, the lab's 18px) never applied and
+ * every such ring was the default 24px. Gone, so that writing one is a type
+ * error rather than a size that quietly does not happen.
+ */
+export const ProgressCircle = ProgressCircleRoot

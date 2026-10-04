@@ -10,6 +10,7 @@ import {
   type SearchFieldProps as AriaSearchFieldProps,
   type TextAreaProps as AriaTextAreaProps,
 } from 'react-aria-components'
+import { Search, X } from '@keyline-icons/react/two-tone'
 import { cx } from '@/utils/cx'
 import { InputBase, TextField, type InputBaseProps, type TextFieldProps } from './input/input'
 import { TextareaBase, type TextareaBaseProps } from './textarea/textarea'
@@ -100,14 +101,22 @@ function SearchFieldInput({ className, ...props }: Omit<AriaInputProps, 'classNa
   )
 }
 
-function SearchFieldSearchIcon({ className, ...props }: ComponentProps<'span'>) {
+/**
+ * The magnifier at the field's start. Drawn by the part itself: it was an empty
+ * slot that expected a glyph as its child, and every one of the four search
+ * fields in the app wrote `<SearchField.SearchIcon />` and got nothing. A child
+ * still replaces it.
+ */
+function SearchFieldSearchIcon({ className, children, ...props }: ComponentProps<'span'>) {
   return (
     <span
       data-slot="search-field-search-icon"
       aria-hidden
       {...props}
       className={cx('flex shrink-0 [&_svg]:size-4', className)}
-    />
+    >
+      {children ?? <Search />}
+    </span>
   )
 }
 
@@ -116,8 +125,11 @@ interface SearchFieldClearButtonProps extends Omit<AriaButtonProps, 'className' 
   children?: ReactNode
 }
 
-/** Clears the field. Hidden by RAC while the field is empty. */
-function SearchFieldClearButton({ className, ...props }: SearchFieldClearButtonProps) {
+/**
+ * Clears the field. Hidden by RAC while the field is empty. Draws its own ×,
+ * for the reason the search icon does; React Aria's SearchField names it.
+ */
+function SearchFieldClearButton({ className, children, ...props }: SearchFieldClearButtonProps) {
   return (
     <AriaButton
       data-slot="search-field-clear"
@@ -128,7 +140,9 @@ function SearchFieldClearButton({ className, ...props }: SearchFieldClearButtonP
         'group-data-[empty]/search:hidden [&_svg]:size-4',
         className,
       )}
-    />
+    >
+      {children ?? <X aria-hidden />}
+    </AriaButton>
   )
 }
 

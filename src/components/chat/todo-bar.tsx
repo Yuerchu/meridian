@@ -28,13 +28,8 @@ export function TodoRing({ todos, className }: { todos: TodoArgs; className?: st
         aria-label={t('chat.todo.progress', { done, total })}
         value={done}
         maxValue={total}
-        className="[--progress-circle-stroke:var(--color-status-info)]"
-      >
-        <ProgressCircle.Track className={cx('size-3.5', className)}>
-          <ProgressCircle.TrackCircle />
-          <ProgressCircle.FillCircle />
-        </ProgressCircle.Track>
-      </ProgressCircle>
+        className={cx('size-3.5 [--progress-circle-stroke:var(--color-status-info)]', className)}
+      />
     </span>
   )
 }

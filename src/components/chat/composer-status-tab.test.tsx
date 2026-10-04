@@ -58,3 +58,12 @@ describe('TodoProgressChip', () => {
     expect(screen.getByText(i18n.t('chat.todo.idle'))).toBeInTheDocument()
   })
 })
+
+describe('the progress ring', () => {
+  it('is drawn at 16px in the chip, not the ring default of 24px', () => {
+    render(<TodoProgressChip todos={TODOS} />)
+    const ring = document.querySelector('[data-slot="todo-progress-chip"] [role="progressbar"]')!
+    expect(ring.className).toMatch(/\bsize-4\b/)
+    expect(ring.className).not.toMatch(/\bsize-6\b/)
+  })
+})
