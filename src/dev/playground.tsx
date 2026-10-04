@@ -25,6 +25,7 @@ import { ComposerStatusTab } from '@/components/chat/composer-status-tab'
 import { TodoProgressChip } from '@/components/chat/todo-progress-chip'
 import { AttachmentTiles } from '@/components/chat/attachment-tiles'
 import { ModeChip } from '@/components/chat/mode-chip'
+import { ModelPanel } from '@/components/chat/model-panel'
 import TodoBoard from '@/components/chat/todo-board'
 import type { TodoDraft } from '@/components/chat/todo-list'
 import { PromptQueue } from '@/components/chat/prompt-queue'
@@ -311,7 +312,10 @@ function ComposerMenuCase({
         data-slot="composer-menu-case-frame"
         className="flex items-center rounded-lg border border-border-button-default px-2 py-1"
       >
-        <ComposerMenu
+        <ComposerMenu onPickFile={() => {}} onOpenStickers={() => {}} />
+        <ModeChip mode={mode} acceptEdits={acceptEdits} onSelectMode={setMode} onToggleAcceptEdits={setAcceptEdits} />
+        <span className="ms-auto" />
+        <ModelPanel
           assistants={[]}
           providers={[]}
           currentAssistantId={null}
@@ -323,14 +327,11 @@ function ComposerMenuCase({
           onSelectThinkingLevel={setThinking}
           fastMode={fast}
           onToggleFast={setFast}
-          capabilities={caps()}
-          onPickFile={() => {}}
-          onOpenStickers={() => {}}
+          capabilities={caps({ supports_fast: true })}
         />
-        <ModeChip mode={mode} acceptEdits={acceptEdits} onSelectMode={setMode} onToggleAcceptEdits={setAcceptEdits} />
       </div>
       <span data-slot="composer-menu-case-state" className="text-caption-1-regular text-text-secondary">
-        {mode} · {acceptEdits ? 'accept-edits' : 'ask'}
+        {mode} · {acceptEdits ? 'accept-edits' : 'ask'} · {thinking} · {fast ? 'fast' : 'normal'}
       </span>
     </div>
   )

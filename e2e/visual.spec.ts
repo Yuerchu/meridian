@@ -100,6 +100,32 @@ const scenes: Scene[] = [
     },
   },
   {
+    name: 'composer-mode-menu',
+    arrange: async (page) => {
+      await page.getByRole('button', { name: /^模式/ }).click()
+      await expect(page.getByRole('menu', { name: /^模式/ })).toBeVisible()
+    },
+  },
+  {
+    // The provider rail, the search and the selected model's effort chip.
+    name: 'composer-model-panel',
+    narrow: true,
+    arrange: async (page) => {
+      await page.getByRole('button', { name: /^模型与思维链/ }).click()
+      const panel = page.getByRole('dialog', { name: '模型与思维链' })
+      await expect(panel.getByRole('row').first()).toBeVisible()
+    },
+  },
+  {
+    name: 'composer-effort',
+    arrange: async (page) => {
+      await page.getByRole('button', { name: /^模型与思维链/ }).click()
+      const panel = page.getByRole('dialog', { name: '模型与思维链' })
+      await panel.getByRole('button', { name: /^思维链/ }).click()
+      await expect(page.getByRole('listbox', { name: '思维链' })).toBeVisible()
+    },
+  },
+  {
     name: 'command-palette',
     arrange: async (page) => {
       await page.getByRole('button', { name: '搜索与跳转' }).click()
