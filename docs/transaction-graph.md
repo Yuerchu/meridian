@@ -3,7 +3,7 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：69
+- 事务根（非测试）：70
 - Diesel ops 调用点（db/ops 之外）：1024
 - Diesel API 引用：1558
 
@@ -65,6 +65,7 @@
 | `src-tauri/crates/core/src/db/ops/project.rs` › `delete_project` | diesel-deferred | memory |
 | `src-tauri/crates/core/src/db/ops/queue.rs` › `enqueue_with_context` | diesel-immediate | queue, queued_prompt_context_item |
 | `src-tauri/crates/core/src/db/ops/queue.rs` › `reorder` | diesel-deferred | queue |
+| `src-tauri/crates/core/src/db/ops/queue.rs` › `set_delivery` | diesel-immediate | queue, queued_prompt_context_item |
 | `src-tauri/crates/core/src/db/ops/queue.rs` › `take_next` | diesel-deferred | audit, message, model_config, queue |
 | `src-tauri/crates/core/src/db/ops/todo.rs` › `replace_active_list_with_plan_completion` | diesel-deferred | plan, todo |
 | `src-tauri/crates/core/src/db/ops/turn.rs` › `reconcile_interrupted` | diesel-deferred | queue |

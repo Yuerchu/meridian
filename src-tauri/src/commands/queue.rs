@@ -55,6 +55,16 @@ fn plan_review_barrier(
         .map_err(|error| diesel::result::Error::QueryBuilderError(Box::new(error)))
 }
 
+/// An interjection is text: neither runner has anywhere mid-turn to put an
+/// image or a file. `ops::set_delivery` refuses the same for the steer button,
+/// which does not come through here.
+fn refuse_attached_interjection(delivery: Delivery, content: &str) -> Result<(), String> {
+    if delivery == Delivery::Interject && ops::carries_attachments(content).map_err(|e| e.to_string())? {
+        return Err("attachments can only be queued as follow-up messages".into());
+    }
+    Ok(())
+}
+
 fn enqueue_unless_plan_barrier(
     conn: &mut diesel::sqlite::SqliteConnection,
     id: &str,
@@ -137,6 +147,15 @@ pub async fn queue_enqueue(
     // to.
     if !conv_refs.is_empty() && delivery == Delivery::Interject {
         return Err("conversation references can only be queued as follow-up messages".into());
+    }
+    refuse_attached_interjection(delivery, &content)?;
+    // Whether a hosted agent can take them is a fact about its session, so it
+    // is asked here, where the person who attached them is still looking, and
+    // not left to turn up later as a held queue. A queued item usually means a
+    // turn is running, so the session is live; a dormant one is asked again
+    // at delivery, which is where it will be reopened anyway.
+    if let Some(session) = services.acp.get(&conversation_id).filter(|session| session.is_alive()) {
+        session.check_attachments(&services, &content).await?;
     }
     let prepared = if references.is_empty() {
         Vec::new()
@@ -285,8 +304,15 @@ pub async fn queue_set_delivery(
     })
     .await?;
 
-    if changed == 0 {
-        return Err("this message has already been sent".into());
+    match changed {
+        ops::DeliveryChange::Changed => {}
+        ops::DeliveryChange::NotWaiting => return Err("this message has already been sent".into()),
+        ops::DeliveryChange::CarriesAttachments => {
+            return Err("a message with attachments can only be sent as a follow-up".into());
+        }
+        ops::DeliveryChange::CarriesContext => {
+            return Err("a message with references can only be sent as a follow-up".into());
+        }
     }
     runner::announce(&services, &conversation_id);
     runner::pump_later(&services, &conversation_id);
@@ -499,6 +525,22 @@ mod tests {
             meridian_core::db::models::queue::QueueState::Held,
             "the refused release leaves the queue held"
         );
+    }
+
+    /// Attachments queue as a follow-up and are refused as an interjection;
+    /// text-only parts are text either way, and damaged parts are an error.
+    #[test]
+    fn an_interjection_may_not_carry_attachments() {
+        let attached =
+            r#"[{"type":"text","text":"and this"},{"type":"image_url","image_url":{"url":"file:///x.png"}}]"#;
+        assert!(refuse_attached_interjection(Delivery::FollowUp, attached).is_ok());
+        assert_eq!(
+            refuse_attached_interjection(Delivery::Interject, attached),
+            Err("attachments can only be queued as follow-up messages".into())
+        );
+        assert!(refuse_attached_interjection(Delivery::Interject, "plain words").is_ok());
+        assert!(refuse_attached_interjection(Delivery::Interject, r#"[{"type":"text","text":"only words"}]"#).is_ok());
+        assert!(refuse_attached_interjection(Delivery::Interject, r#"[{"type":"mystery"}]"#).is_err());
     }
 
     #[test]
