@@ -530,6 +530,45 @@ describe('ChatView composer dispatch', () => {
     expect(latestInputBar().value).toBe('')
   })
 
+  it('sends a message that is only an attachment', async () => {
+    render(<ChatView conversationId="conversation-1" />)
+    await waitFor(() => expect(mocks.inputBarProps).toHaveBeenCalled())
+
+    act(() => latestInputBar().onAttachFiles([{ name: 'a.png', path: 'C:/shots/a.png' }]))
+    await waitFor(() => expect(latestInputBar().attachedFiles).toHaveLength(1))
+    await act(async () => latestInputBar().onSubmit())
+
+    expect(mocks.sendMessage).toHaveBeenCalledWith(
+      '',
+      true,
+      [{ name: 'a.png', path: 'C:/shots/a.png' }],
+      undefined,
+      undefined,
+      undefined,
+      [],
+      [],
+    )
+  })
+
+  it('queues a message that is only an attachment, with no empty text part', async () => {
+    mocks.sessions['conversation-1'].streaming = true
+    render(<ChatView conversationId="conversation-1" />)
+    await waitFor(() => expect(mocks.inputBarProps).toHaveBeenCalled())
+
+    act(() => latestInputBar().onAttachFiles([{ name: 'a.png', path: 'C:/shots/a.png' }]))
+    await waitFor(() => expect(latestInputBar().attachedFiles).toHaveLength(1))
+    await act(async () => latestInputBar().onSubmit())
+
+    await waitFor(() =>
+      expect(mocks.enqueue).toHaveBeenCalledWith(
+        JSON.stringify([{ type: 'image_url', image_url: { url: 'file:///data/files/conversation-1/a.png' } }]),
+        'follow_up',
+        [],
+        [],
+      ),
+    )
+  })
+
   it('keeps the attachments in the composer when the queue refuses them', async () => {
     mocks.sessions['conversation-1'].streaming = true
     mocks.enqueue.mockRejectedValueOnce(new Error('Attachment 1 needs the agent to accept image'))

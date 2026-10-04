@@ -803,15 +803,16 @@ function ChatViewInner({
       // once the run has taken the text: a refusal means it was written down
       // nowhere, and retyping it would be the user paying for that.
       if (steering) {
+        // A steer is text; refused rather than sent without them, which used
+        // to leave them in the composer to ride along with the next message.
+        // Ahead of the empty check, so a file on its own says why too.
+        if (attachedFiles.length > 0 || pendingSticker) {
+          storeSetError(conversationId, t('chat.attachmentFollowUpOnly'))
+          return
+        }
         if (!text) return
         if (hasWorkspaceReferences) {
           storeSetError(conversationId, t('chat.referenceFollowUpOnly'))
-          return
-        }
-        // A steer is text; refused rather than sent without them, which used
-        // to leave them in the composer to ride along with the next message.
-        if (attachedFiles.length > 0 || pendingSticker) {
-          storeSetError(conversationId, t('chat.attachmentFollowUpOnly'))
           return
         }
         void steerMessage(text).then((sent) => {
@@ -861,7 +862,7 @@ function ChatViewInner({
     const intent = parseComposerIntent(input)
     const text = intent.kind === 'prompt' ? intent.text.trim() : input.trim()
     const refIds = conversationRefs.map((ref) => ref.id)
-    if (!text && !pendingSticker) return
+    if (!text && !pendingSticker && attachedFiles.length === 0) return
     // A restored draft can point at a file or a conversation that has since
     // gone. They are shown as such; sending them would fail halfway.
     if (attachedFiles.some((file) => file.missing) || conversationRefs.some((ref) => ref.missing)) {

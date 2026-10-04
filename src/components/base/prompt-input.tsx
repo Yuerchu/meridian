@@ -55,6 +55,7 @@ interface PromptInputContextValue {
   disabled?: boolean
   lockInputOnRun: boolean
   allowSubmitWhileRunning: boolean
+  hasPayload: boolean
   maxHeight?: number
   maxLines?: number
 }
@@ -66,6 +67,7 @@ const PromptInputCtx = createContext<PromptInputContextValue>({
   status: 'ready',
   lockInputOnRun: true,
   allowSubmitWhileRunning: false,
+  hasPayload: false,
 })
 
 const isRunning = (status: PromptInputStatus) => status === 'submitted' || status === 'streaming'
@@ -74,8 +76,10 @@ const isRunning = (status: PromptInputStatus) => status === 'submitted' || statu
  * What the send button does right now, and the one place that decides it.
  *
  * Idle it sends. While a turn runs it stops the turn — unless submitting while
- * running is allowed *and* there is text, which is a steer or a queued message,
- * and then it sends. The button used to read only the status, so a steer typed
+ * running is allowed *and* there is something to send, which is a steer or a
+ * queued message, and then it sends. Something includes a payload with no text
+ * (an attachment, a sticker): reading the text alone made Send a Stop under a
+ * message that was only a file. The button used to read only the status, so a steer typed
  * mid-run was answered by stopping the run it was meant to steer, while the
  * composer, reading the full rule, drew a second Stop beside it. `wait` is a
  * run nobody can stop from here.
@@ -93,7 +97,7 @@ const STOP_AFTER_SEND_MS = 500
 
 function sendModeOf(ctx: PromptInputContextValue): SendMode {
   if (!isRunning(ctx.status)) return 'send'
-  if (ctx.allowSubmitWhileRunning && ctx.value.trim() !== '') return 'send'
+  if (ctx.allowSubmitWhileRunning && (ctx.value.trim() !== '' || ctx.hasPayload)) return 'send'
   return ctx.onStop ? 'stop' : 'wait'
 }
 
@@ -106,6 +110,8 @@ interface PromptInputProps extends Omit<ComponentProps<'div'>, 'onSubmit'> {
   disabled?: boolean
   lockInputOnRun?: boolean
   allowSubmitWhileRunning?: boolean
+  /** Something to send besides the text — an attachment, a sticker. */
+  hasPayload?: boolean
   /** Pixel ceiling for the field. With `maxLines` too, the lower of the two applies. */
   maxHeight?: number
   /**
@@ -126,6 +132,7 @@ function PromptInputRoot({
   disabled,
   lockInputOnRun = true,
   allowSubmitWhileRunning = false,
+  hasPayload = false,
   maxHeight,
   maxLines,
   ...props
@@ -141,6 +148,7 @@ function PromptInputRoot({
         disabled,
         lockInputOnRun,
         allowSubmitWhileRunning,
+        hasPayload,
         maxHeight,
         maxLines,
       }}
@@ -243,6 +251,14 @@ function PromptInputTextArea({ className, onKeyDown, placeholder, ...props }: Pr
   // A CSS `max-height` on the field counts as a ceiling too, so a caller can
   // tie it to the viewport (Android, where the keyboard takes half of it);
   // measured again on resize, because that is when a viewport ceiling moves.
+  //
+  // **And again when the box itself changes size**, because the Android
+  // keyboard is not a resize: the WebView keeps its height and only the
+  // native inset (`--ime-bottom`) moves, so the CSS ceiling drops under a
+  // height written for the old one — and with `overflow-y: hidden` still set,
+  // the lines past the new ceiling could not be scrolled to. The observer sees
+  // the box clamped and refits; the refit is a frame later, because writing the
+  // height inside the callback is a resize of the box being observed.
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
@@ -255,7 +271,17 @@ function PromptInputTextArea({ className, onKeyDown, placeholder, ...props }: Pr
     }
     fit()
     window.addEventListener('resize', fit)
-    return () => window.removeEventListener('resize', fit)
+    let frame = 0
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(fit)
+    })
+    observer.observe(el)
+    return () => {
+      window.removeEventListener('resize', fit)
+      observer.disconnect()
+      cancelAnimationFrame(frame)
+    }
   }, [value, maxHeight, maxLines])
 
   const handleKeyDown = useCallback(

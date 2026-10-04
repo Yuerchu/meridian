@@ -507,3 +507,29 @@ describe('composer status tab', () => {
     expect(container.querySelector('[data-slot="toolbar-select"]')).toBeNull()
   })
 })
+
+// A file on its own is a message: dropping a screenshot and pressing Enter
+// used to do nothing, and mid-turn Send was a Stop because it read only text.
+describe('InputBar with only attachments', () => {
+  const files = [{ name: 'report.pdf', path: 'C:/docs/report.pdf' }]
+
+  it('submits a message that is only an attachment', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    renderBar({ attachedFiles: files, onSubmit })
+    // Reached the way the other cases in this file reach it.
+    await user.click(document.querySelector('textarea')!)
+    await user.keyboard('{Enter}')
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+  })
+
+  it('offers Send, not Stop, for an attachment queued while a turn runs', () => {
+    renderBar({ attachedFiles: files, streaming: true, queueing: true, onStop: vi.fn() })
+    expect(screen.getByRole('button', { name: i18n.t('chat.send') })).toBeInTheDocument()
+  })
+
+  it('still offers Stop mid-turn with nothing to send', () => {
+    renderBar({ streaming: true, queueing: true, onStop: vi.fn() })
+    expect(screen.queryByRole('button', { name: i18n.t('chat.send') })).toBeNull()
+  })
+})

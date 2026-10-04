@@ -1,6 +1,7 @@
 import { act, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PromptInput } from './prompt-input'
+import { setContainerWidth } from '@/test/resize'
 
 type Status = 'ready' | 'submitted' | 'streaming'
 
@@ -73,6 +74,23 @@ describe('PromptInput.TextArea ceiling', () => {
     expect(field().style.overflowY).toBe('auto')
     rerender(<Field maxLines={8} />)
     expect(field().style.height).toBe('160px')
+  })
+
+  // The Android keyboard moves only `--ime-bottom`, not the window: the CSS
+  // ceiling drops with no resize event and no new value. The box being
+  // clamped is what is seen, and the field refits — otherwise the lines past
+  // the new ceiling sit under `overflow-y: hidden`, out of reach.
+  it('refits when its own box is clamped by a lower CSS ceiling', async () => {
+    render(<Field maxLines={8} style={{ maxHeight: '400px' }} />)
+    expect(field().style.height).toBe('160px')
+    expect(field().style.overflowY).toBe('auto')
+
+    field().style.maxHeight = '50px'
+    setContainerWidth(field(), 0) // the stub's way of saying "this box resized"
+    await act(() => new Promise((done) => requestAnimationFrame(() => done(undefined))))
+
+    expect(field().style.height).toBe('50px')
+    expect(field().style.overflowY).toBe('auto')
   })
 
   it('takes the lowest ceiling, a CSS max-height included', () => {

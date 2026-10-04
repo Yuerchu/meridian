@@ -133,7 +133,8 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
       conversationRefs: string[] = [],
     ) => {
       // A null message means "regenerate", which needs no text of its own.
-      if ((text === null ? !replaces : !text.trim() && !sticker) || streaming || submittingRef.current) return
+      const nothing = text !== null && !text.trim() && !sticker && !files?.length
+      if ((text === null ? !replaces : nothing) || streaming || submittingRef.current) return
       // Regenerating and editing rewrite history and ask again from a point in
       // it. A hosted session's history lives in the adapter's process, not
       // here, so re-asking would send the question to an agent that still

@@ -158,6 +158,48 @@ describe('ModelPanel', () => {
     expect(onSelectThinkingLevel.mock.calls[0][0]).not.toBe('default')
   })
 
+  // The capabilities can land after the popover opened. The level remembered
+  // against the longer fallback list must not point past the real one — the
+  // switch would write `default` back and do nothing.
+  it('keeps where the switch lands in range when the levels shrink after opening', async () => {
+    const user = userEvent.setup()
+    const onSelectThinkingLevel = vi.fn()
+    const { rerender } = render(<ModelPanel {...props({ thinkingLevel: 'default', onSelectThinkingLevel })} />)
+    const effort = await openEffort(user, 'Thinking: Default')
+    rerender(
+      <ModelPanel
+        {...props({
+          thinkingLevel: 'default',
+          onSelectThinkingLevel,
+          capabilities: { supports_thinking_off: false, supported_efforts: ['low', 'high'] } as never,
+        })}
+      />,
+    )
+    const slider = within(effort).getByRole('slider', { name: 'Thinking' })
+    expect(slider).toHaveAttribute('max', '1')
+    expect(Number((slider as HTMLInputElement).value)).toBeLessThanOrEqual(1)
+
+    await user.click(within(effort).getByRole('switch', { name: 'Follow assistant' }))
+    expect(onSelectThinkingLevel).toHaveBeenCalledTimes(1)
+    expect(['low', 'high']).toContain(onSelectThinkingLevel.mock.calls[0][0])
+  })
+
+  it('offers the maximum level to a model that advertises it', async () => {
+    const user = userEvent.setup()
+    render(
+      <ModelPanel
+        {...props({
+          thinkingLevel: 'max',
+          capabilities: { supports_thinking_off: false, supported_efforts: ['high', 'max'] } as never,
+        })}
+      />,
+    )
+    const effort = await openEffort(user, 'Thinking: Max')
+    const slider = within(effort).getByRole('slider', { name: 'Thinking' })
+    expect(slider).toHaveAttribute('max', '1')
+    expect(slider).toHaveValue('1')
+  })
+
   it('turns the switch on to follow the assistant again', async () => {
     const user = userEvent.setup()
     const onSelectThinkingLevel = vi.fn()
@@ -275,6 +317,21 @@ describe('HostedModelPanel', () => {
   it('is not drawn when the agent offers neither knob', () => {
     const { container } = render(<HostedModelPanel onSet={() => {}} />)
     expect(container).toBeEmptyDOMElement()
+  })
+
+  // A popover already open when a write starts: the chip's own disabling does
+  // not reach inside it, so the slider and the switch have to wait too.
+  it('holds the effort popover still while the agent applies a change', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<HostedModelPanel model={model} effort={effort} onSet={() => {}} />)
+    await user.click(screen.getByRole('button', { name: /Opus/ }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(within(dialog).getByRole('row', { name: 'Opus' })).getByRole('button'))
+    const switchControl = await screen.findByRole('switch', { name: 'Use default' })
+    expect(switchControl).toBeEnabled()
+
+    rerender(<HostedModelPanel model={model} effort={effort} busy onSet={() => {}} />)
+    expect(screen.getByRole('switch', { name: 'Use default' })).toBeDisabled()
   })
 
   it('waits while the agent is applying a change', () => {

@@ -408,9 +408,9 @@ export function InputBar({
   // submit made during a run, which is precisely when a steer or a queued
   // message is submitted.
   const handleSubmit = useCallback(() => {
-    if ((disabled && !streaming) || (!value.trim() && !pendingSticker)) return
+    if ((disabled && !streaming) || (!value.trim() && !pendingSticker && attachedFiles.length === 0)) return
     onSubmit()
-  }, [disabled, streaming, value, pendingSticker, onSubmit])
+  }, [disabled, streaming, value, pendingSticker, attachedFiles.length, onSubmit])
 
   // `expected` is the value the caret position was computed against. The move
   // lands a frame later, and a key typed in that frame — a fast typist, key
@@ -933,7 +933,7 @@ export function InputBar({
                 }
               />
             }
-            hasPayload={!!pendingSticker}
+            hasPayload={!!pendingSticker || attachedFiles.length > 0}
             toolbarStart={
               // Steering a delegated run starts no turn, so nothing that
               // describes one — what to attach, which mode — applies.

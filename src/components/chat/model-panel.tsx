@@ -25,7 +25,7 @@ import { ModelIcon } from '@/components/ui/model-icon'
 import { ProviderMark } from '@/components/ui/provider-icon'
 import { useProviderModels } from '@/hooks/use-provider-models'
 import { currentValueName, knobName, knobValueName } from '@/lib/acp-knob-names'
-import { allowedEfforts } from '@/lib/thinking'
+import { EFFORT_LADDER, allowedEfforts } from '@/lib/thinking'
 import { cx } from '@/utils/cx'
 import type {
   AcpConfigOptionInfoResponse,
@@ -51,7 +51,9 @@ import type {
  * faster-to-smarter axis, so the chip opens a list rather than a slider.
  */
 
-const THINKING_LEVELS: ThinkingLevel[] = ['default', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh']
+// From the canonical ladder rather than restated: a copy here once left out
+// `max`, so a model advertising it could not be given it from the panel.
+const THINKING_LEVELS: ThinkingLevel[] = ['default', 'off', ...EFFORT_LADDER]
 
 interface EffortChoice {
   id: string
@@ -138,8 +140,14 @@ function EffortSlider({
   const selectedStep = steps.findIndex((c) => c.id === selected)
   // Where the thumb sits while the default is followed, and where switching
   // the default off lands: the last level chosen here, else the middle.
-  const [restingStep, setRestingStep] = useState(selectedStep >= 0 ? selectedStep : middleStep(steps.length))
-  if (selectedStep >= 0 && selectedStep !== restingStep) setRestingStep(selectedStep)
+  // Remembered by id, not by position — the levels arrive with the model's
+  // capabilities, possibly after the popover opened, and a remembered index
+  // into the longer fallback list would point past the shorter real one (the
+  // slider out of range, the switch writing `default` back).
+  const [restingId, setRestingId] = useState<string | null>(selectedStep >= 0 ? selected : null)
+  if (selectedStep >= 0 && restingId !== selected) setRestingId(selected)
+  const remembered = restingId === null ? -1 : steps.findIndex((c) => c.id === restingId)
+  const restingStep = remembered >= 0 ? remembered : middleStep(steps.length)
   const [dragging, setDragging] = useState<number | null>(null)
   const index = dragging ?? (selectedStep >= 0 ? selectedStep : restingStep)
   const current = following ? choices.find((c) => c.id === 'default') : steps[index]
@@ -234,6 +242,9 @@ function EffortChip({
             choices={choices}
             selected={selected}
             onSelect={onSelect}
+            // Already open when a write starts: the chip's own disabling does
+            // not reach in here, and a second change would race the first.
+            isDisabled={isDisabled}
           />
         </Popover.Dialog>
       </Popover.Content>

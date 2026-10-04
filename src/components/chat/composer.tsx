@@ -183,6 +183,7 @@ export function Composer({
         // Stop.
         lockInputOnRun={false}
         allowSubmitWhileRunning={steerable}
+        hasPayload={hasPayload}
         maxLines={8}
       >
         {queue}
