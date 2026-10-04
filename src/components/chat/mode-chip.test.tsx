@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import i18n from '@/i18n'
 import type { AcpConfigOptionInfoResponse, ChatMode } from '@/types'
@@ -112,5 +112,47 @@ describe('HostedModeChip', () => {
   it('is disabled while the agent is changing a setting', () => {
     render(<HostedModeChip option={option} busy onSelect={() => {}} />)
     expect(screen.getByRole('button', { name: /^Permission mode/ })).toBeDisabled()
+  })
+})
+
+describe('ModeChip, when one of its two writes is refused', () => {
+  function chip(mode: ChatMode, acceptEdits: boolean, answers: { mode?: boolean; accept?: boolean }) {
+    const onSelectMode = vi.fn(() => Promise.resolve(answers.mode ?? true))
+    const onToggleAcceptEdits = vi.fn(() => Promise.resolve(answers.accept ?? true))
+    render(
+      <ModeChip
+        mode={mode}
+        acceptEdits={acceptEdits}
+        onSelectMode={onSelectMode}
+        onToggleAcceptEdits={onToggleAcceptEdits}
+      />,
+    )
+    return { onSelectMode, onToggleAcceptEdits }
+  }
+
+  it('turns the standing yes on only once the mode has moved', async () => {
+    const user = userEvent.setup()
+    const { onSelectMode, onToggleAcceptEdits } = chip('plan', false, {})
+    await choose(user, /^Mode/, /^Accept edits/)
+    await waitFor(() => expect(onToggleAcceptEdits).toHaveBeenCalledWith(true))
+    expect(onSelectMode.mock.invocationCallOrder[0]).toBeLessThan(onToggleAcceptEdits.mock.invocationCallOrder[0])
+  })
+
+  it('leaves edits asking when the mode change from plan is refused', async () => {
+    const user = userEvent.setup()
+    const { onSelectMode, onToggleAcceptEdits } = chip('plan', false, { mode: false })
+    await choose(user, /^Mode/, /^Accept edits/)
+    await waitFor(() => expect(onSelectMode).toHaveBeenCalledWith('work'))
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(onToggleAcceptEdits).not.toHaveBeenCalled()
+  })
+
+  it('turns the standing yes off before moving the mode, and stays put if that is refused', async () => {
+    const user = userEvent.setup()
+    const { onSelectMode, onToggleAcceptEdits } = chip('plan', true, { accept: false })
+    await choose(user, /^Mode/, /^Manual/)
+    await waitFor(() => expect(onToggleAcceptEdits).toHaveBeenCalledWith(false))
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(onSelectMode).not.toHaveBeenCalled()
   })
 })

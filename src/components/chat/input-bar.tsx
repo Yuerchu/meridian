@@ -127,9 +127,9 @@ interface InputBarProps {
   fastMode: boolean
   onToggleFast: (next: boolean) => void
   mode: ChatMode
-  onSelectMode: (mode: ChatMode) => void
+  onSelectMode: (mode: ChatMode) => void | Promise<boolean>
   acceptEdits: boolean
-  onToggleAcceptEdits: (next: boolean) => void
+  onToggleAcceptEdits: (next: boolean) => void | Promise<boolean>
   capabilities?: ProviderCapabilitiesInfoResponse | null
   contextInfo?: ContextInfo
   compacting?: boolean

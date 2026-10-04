@@ -117,6 +117,14 @@ function ModeMenu({
  * that are never asked. Choosing a row writes only what has to change; a
  * refused write rolls back in `useTurnSettings`, and the chip follows what is
  * actually stored.
+ *
+ * The two writes are separate requests, so one can be refused after the other
+ * was stored. They go in the order that makes that harmless: turning the
+ * standing yes **on** waits for the mode to hold first, and turning it **off**
+ * goes first, before the mode moves. Either way a half-finished change is never
+ * more permissive than both the state it left and the one it was going to —
+ * Plan → Accept edits refused at the mode does not leave edits pre-approved
+ * for whenever the plan is approved.
  */
 export function ModeChip({
   mode,
@@ -126,8 +134,9 @@ export function ModeChip({
 }: {
   mode: ChatMode
   acceptEdits: boolean
-  onSelectMode: (mode: ChatMode) => void
-  onToggleAcceptEdits: (next: boolean) => void
+  /** Whether the change was stored, when the caller can say; no answer counts as yes. */
+  onSelectMode: (mode: ChatMode) => void | Promise<boolean>
+  onToggleAcceptEdits: (next: boolean) => void | Promise<boolean>
 }) {
   const { t } = useTranslation()
   const rows: ModeRow[] = [
@@ -148,16 +157,20 @@ export function ModeChip({
     { id: 'plan', icon: Compass, label: t('toolbar.mode.plan'), description: t('toolbar.mode.planDesc'), tone: 'info' },
   ]
   const selected = mode === 'plan' ? 'plan' : acceptEdits ? 'auto' : 'manual'
-  const choose = (id: string) => {
-    if (id === 'plan') {
-      if (mode !== 'plan') onSelectMode('plan')
+  const stored = (answer: void | boolean) => answer !== false
+  const choose = async (id: string) => {
+    const nextMode: ChatMode = id === 'plan' ? 'plan' : 'work'
+    // Plan leaves the standing yes as it was; it has no edits to pre-approve.
+    const nextAccept = id === 'plan' ? acceptEdits : id === 'auto'
+    if (nextAccept && !acceptEdits) {
+      if (nextMode !== mode && !stored(await onSelectMode(nextMode))) return
+      await onToggleAcceptEdits(true)
       return
     }
-    if (mode !== 'work') onSelectMode('work')
-    const wantsAuto = id === 'auto'
-    if (acceptEdits !== wantsAuto) onToggleAcceptEdits(wantsAuto)
+    if (nextAccept !== acceptEdits && !stored(await onToggleAcceptEdits(nextAccept))) return
+    if (nextMode !== mode) await onSelectMode(nextMode)
   }
-  return <ModeMenu rows={rows} selected={selected} label={t('toolbar.mode')} onSelect={choose} />
+  return <ModeMenu rows={rows} selected={selected} label={t('toolbar.mode')} onSelect={(id) => void choose(id)} />
 }
 
 /** The icon and tone for a value of a hosted agent's `mode` knob. */

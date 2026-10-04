@@ -212,6 +212,36 @@ describe('HostedModelPanel', () => {
     expect(onSet).toHaveBeenCalledWith('model', 'sonnet')
   })
 
+  it('lists the effort itself when the agent offers no model to hang it on', async () => {
+    const user = userEvent.setup()
+    const onSet = vi.fn()
+    render(<HostedModelPanel effort={effort} onSet={onSet} />)
+    await user.click(screen.getByRole('button'))
+    const levels = await screen.findByRole('listbox', { name: i18n.t('chat.acp.knob.effort') })
+    await user.click(
+      within(levels).getByRole('option', { name: new RegExp(`^${i18n.t('chat.acp.value.effort.high')}`) }),
+    )
+    expect(onSet).toHaveBeenCalledWith('effort', 'high')
+  })
+
+  it('lists the effort itself when the current model is not one the agent lists', async () => {
+    const user = userEvent.setup()
+    render(<HostedModelPanel model={{ ...model, currentValue: 'unlisted' }} effort={effort} onSet={() => {}} />)
+    await user.click(screen.getByRole('button'))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('listbox')).toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: new RegExp(`^${i18n.t('chat.acp.knob.effort')}`) })).toBeNull()
+  })
+
+  it('keeps the effort on the selected row when there is one', async () => {
+    const user = userEvent.setup()
+    render(<HostedModelPanel model={model} effort={effort} onSet={() => {}} />)
+    await user.click(screen.getByRole('button', { name: /Opus/ }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).queryByRole('listbox')).toBeNull()
+    expect(within(within(dialog).getByRole('row', { name: 'Opus' })).getByRole('button')).toBeInTheDocument()
+  })
+
   it('is not drawn when the agent offers neither knob', () => {
     const { container } = render(<HostedModelPanel onSet={() => {}} />)
     expect(container).toBeEmptyDOMElement()
@@ -233,5 +263,41 @@ describe('the panel reopened', () => {
     await user.keyboard('{Escape}')
     await openPanel(user)
     await waitFor(() => expect(mockApi.fetchProviderModels).toHaveBeenCalledTimes(2))
+  })
+})
+
+describe('providers that arrive after the panel opened', () => {
+  it('fetches them instead of going on saying there are no models', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<ModelPanel {...props({ providers: [] })} />)
+    const dialog = await openPanel(user)
+    expect(await within(dialog).findByText(i18n.t('toolbar.noModels'))).toBeInTheDocument()
+    expect(mockApi.fetchProviderModels).not.toHaveBeenCalled()
+
+    rerender(<ModelPanel {...props({ providers: [ONE] })} />)
+    expect(await within(dialog).findByText('Alpha')).toBeInTheDocument()
+    expect(mockApi.fetchProviderModels).toHaveBeenCalledTimes(1)
+  })
+
+  it('drops an answer for a provider list that has since changed', async () => {
+    const user = userEvent.setup()
+    let answerOne!: (models: { id: string; name: string }[]) => void
+    mockApi.fetchProviderModels.mockImplementation(({ providerId }) =>
+      providerId === 'p1'
+        ? new Promise((resolve) => {
+            answerOne = resolve
+          })
+        : Promise.resolve([{ id: 'gamma', name: 'Gamma' }]),
+    )
+    const { rerender } = render(<ModelPanel {...props({ providers: [ONE], currentProviderId: 'p2' })} />)
+    const dialog = await openPanel(user)
+    rerender(<ModelPanel {...props({ providers: [TWO], currentProviderId: 'p2' })} />)
+    expect(await within(dialog).findByText('Gamma')).toBeInTheDocument()
+
+    // The first list's answer lands late and must not replace the second's.
+    answerOne([{ id: 'alpha', name: 'Alpha' }])
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(within(dialog).getByText('Gamma')).toBeInTheDocument()
+    expect(within(dialog).queryByText('Alpha')).toBeNull()
   })
 })

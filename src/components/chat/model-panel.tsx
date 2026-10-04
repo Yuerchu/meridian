@@ -97,6 +97,47 @@ function PanelTrigger({
   )
 }
 
+/** The levels to choose from, the current one ticked. */
+function EffortChoices({
+  label,
+  choices,
+  selected,
+  onSelect,
+  isDisabled,
+}: {
+  label: string
+  choices: EffortChoice[]
+  selected: string
+  onSelect: (id: string) => void
+  isDisabled?: boolean
+}) {
+  return (
+    <ListBox
+      aria-label={label}
+      selectionMode="single"
+      disallowEmptySelection
+      disabledKeys={isDisabled ? choices.map((choice) => choice.id) : undefined}
+      selectedKeys={[selected]}
+      onSelectionChange={(keys) => {
+        const next = [...(keys as Set<Key>)][0]
+        if (next !== undefined && String(next) !== selected) onSelect(String(next))
+      }}
+    >
+      {choices.map((choice) => (
+        <ListBox.Item key={choice.id} id={choice.id} textValue={choice.label}>
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate text-body-medium">{choice.label}</span>
+            {choice.description && (
+              <span className="truncate text-caption-1-regular text-text-secondary">{choice.description}</span>
+            )}
+          </span>
+          <ListBox.ItemIndicator />
+        </ListBox.Item>
+      ))}
+    </ListBox>
+  )
+}
+
 /** The selected row's effort, as a chip opening the list of levels. */
 function EffortChip({
   label,
@@ -130,28 +171,7 @@ function EffortChip({
       <Popover.Content placement="bottom end" className="w-[266px] p-1">
         <Popover.Dialog aria-label={label}>
           <p className="px-2 pb-1 pt-1.5 text-body-2-medium text-text-secondary">{label}</p>
-          <ListBox
-            aria-label={label}
-            selectionMode="single"
-            disallowEmptySelection
-            selectedKeys={[selected]}
-            onSelectionChange={(keys) => {
-              const next = [...(keys as Set<Key>)][0]
-              if (next !== undefined && String(next) !== selected) onSelect(String(next))
-            }}
-          >
-            {choices.map((choice) => (
-              <ListBox.Item key={choice.id} id={choice.id} textValue={choice.label}>
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate text-body-medium">{choice.label}</span>
-                  {choice.description && (
-                    <span className="truncate text-caption-1-regular text-text-secondary">{choice.description}</span>
-                  )}
-                </span>
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-            ))}
-          </ListBox>
+          <EffortChoices label={label} choices={choices} selected={selected} onSelect={onSelect} />
         </Popover.Dialog>
       </Popover.Content>
     </Popover>
@@ -487,6 +507,19 @@ export function HostedModelPanel({
     name: knobValueName(t, model!, v),
   }))
   const label = model ? knobName(t, model) : t('composer.modelPanel')
+  const selectedKey = typeof model?.currentValue === 'string' ? model.currentValue : null
+  const effortLabel = effort ? knobName(t, effort) : ''
+  const effortChoices: EffortChoice[] = (effort?.options ?? []).map((v) => ({
+    id: v.value,
+    label: knobValueName(t, effort!, v),
+    description: v.description ?? undefined,
+  }))
+  const effortSelected = typeof effort?.currentValue === 'string' ? effort.currentValue : ''
+  // The effort rides on the selected model's row. With no such row — an agent
+  // offering the effort and no model, or a current model it does not list —
+  // that chip is never drawn, so the levels are listed here instead, or a
+  // setting the trigger shows could not be changed at all.
+  const effortOnRow = rows.some((row) => row.key === selectedKey)
   return (
     <Popover>
       <PanelTrigger
@@ -497,28 +530,41 @@ export function HostedModelPanel({
       />
       <Popover.Content placement="top end" className="w-[341px] p-1.5">
         <Popover.Dialog aria-label={label} className="flex max-h-[min(18rem,calc(100dvh-6rem))] flex-col">
-          <ModelList
-            label={label}
-            rows={rows}
-            selectedKey={typeof model?.currentValue === 'string' ? model.currentValue : null}
-            onSelect={(value) => model && value !== model.currentValue && onSet(model.id, value)}
-            empty={null}
-            extra={
-              effort ? (
-                <EffortChip
-                  label={knobName(t, effort)}
-                  choices={effort.options.map((v) => ({
-                    id: v.value,
-                    label: knobValueName(t, effort, v),
-                    description: v.description ?? undefined,
-                  }))}
-                  selected={typeof effort.currentValue === 'string' ? effort.currentValue : ''}
-                  onSelect={(value) => onSet(effort.id, value)}
-                  isDisabled={busy}
-                />
-              ) : null
-            }
-          />
+          {rows.length > 0 && (
+            <ModelList
+              label={label}
+              rows={rows}
+              selectedKey={selectedKey}
+              onSelect={(value) => model && value !== model.currentValue && onSet(model.id, value)}
+              empty={null}
+              extra={
+                effort ? (
+                  <EffortChip
+                    label={effortLabel}
+                    choices={effortChoices}
+                    selected={effortSelected}
+                    onSelect={(value) => onSet(effort.id, value)}
+                    isDisabled={busy}
+                  />
+                ) : null
+              }
+            />
+          )}
+          {effort && !effortOnRow && (
+            <div
+              data-slot="model-panel-effort"
+              className={cx(rows.length > 0 && 'border-t border-separator-border pt-1.5')}
+            >
+              <p className="px-2 pb-1 pt-1 text-body-2-medium text-text-secondary">{effortLabel}</p>
+              <EffortChoices
+                label={effortLabel}
+                choices={effortChoices}
+                selected={effortSelected}
+                onSelect={(value) => onSet(effort.id, value)}
+                isDisabled={busy}
+              />
+            </div>
+          )}
         </Popover.Dialog>
       </Popover.Content>
     </Popover>
