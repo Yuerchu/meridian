@@ -206,7 +206,7 @@ describe('composer attachments', () => {
     const first = { name: 'first.txt' }
     const second = { name: 'second.txt' }
     const { rerender } = renderBar({ attachedFiles: [first, second], onRemoveFile: vi.fn() })
-    const chip = (name: string) => screen.getByText(name).closest('[data-slot="chat-attachment"]')
+    const chip = (name: string) => screen.getByText(name).closest('[data-slot="attachment-tile"]')
     const before = chip('second.txt')
 
     rerender(
@@ -253,7 +253,7 @@ describe('composer attachment row', () => {
     const { container } = renderBar({ attachedFiles: files, onRemoveFile: vi.fn() })
 
     const wrapper = container.querySelector('[data-slot="composer-attachments"]')
-    const group = container.querySelector('[data-slot="chat-attachment-group"]')
+    const group = container.querySelector('[data-slot="attachment-tiles"]')
     expect(wrapper?.className.split(' ')).toEqual(expect.arrayContaining(['w-full', 'min-w-0']))
     expect(group?.className.split(' ')).toEqual(expect.arrayContaining(['flex-nowrap', 'overflow-x-auto', 'min-w-0']))
     expect(group?.className.split(' ')).not.toContain('flex-wrap')
@@ -290,7 +290,7 @@ describe('composer attachment row, adding and removing', () => {
   const files = Array.from({ length: 4 }, (_, i) => ({ name: `file-${i}.png` }))
 
   function laidOutRow(container: HTMLElement) {
-    const row = container.querySelector('[data-slot="chat-attachment-group"]') as HTMLElement
+    const row = container.querySelector('[data-slot="attachment-tiles"]') as HTMLElement
     Object.defineProperty(row, 'scrollWidth', { value: 1000, configurable: true })
     return row
   }

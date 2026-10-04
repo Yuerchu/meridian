@@ -7,9 +7,7 @@ import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
 import { Button, Kbd, Label, ListBox, Popover, Tooltip, TooltipTrigger } from '@/components/base'
 import { ContextMenu } from '@/components/base'
-import { ChatAttachment, ChatAttachmentGroup } from '@/components/base'
 
-import { localPreviewSrc } from '@/lib/asset-src'
 import { can } from '@/lib/capabilities'
 import { isRemote } from '@/lib/transport'
 import type { Attachment } from '@/lib/upload'
@@ -24,10 +22,10 @@ import { FileInput, type FileInputHandle } from '@/components/ui/file-input'
 import { VoiceButton } from '@/components/ui/voice-button'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import { errorMessage } from '@/lib/error-message'
-import { objectKey } from '@/lib/object-key'
 import { readClipboardContent, writeClipboard, type ClipboardContent } from '@/lib/clipboard'
 import { pickPasted } from '@/lib/paste-files'
 import { Composer } from './composer'
+import { AttachmentTiles } from './attachment-tiles'
 import { ComposerSuggestions, type ComposerSuggestion } from './composer-suggestions'
 import { VoiceOverlay } from './voice-overlay'
 import { MobileOptionsMenu } from './toolbar'
@@ -113,6 +111,8 @@ interface InputBarProps {
   attachedFiles?: AttachedFile[]
   onAttachFiles?: (files: AttachedFile[]) => void
   onRemoveFile?: (index: number) => void
+  /** The files in their new order, after a tile was moved. Absent, they stay put. */
+  onReorderFiles?: (next: AttachedFile[]) => void
   pendingSticker?: PendingSticker | null
   onSelectSticker?: (sticker: PendingSticker) => void
   onRemoveSticker?: () => void
@@ -369,6 +369,7 @@ export function InputBar({
   attachedFiles = [],
   onAttachFiles,
   onRemoveFile,
+  onReorderFiles,
   pendingSticker,
   onSelectSticker,
   onRemoveSticker,
@@ -965,68 +966,25 @@ export function InputBar({
               (attachedFiles.length > 0 || pendingSticker) && (
                 <div data-slot="composer-attachments" className="flex w-full min-w-0 items-end gap-2 px-1 pb-1">
                   {attachedFiles.length > 0 && (
-                    // One row that scrolls sideways rather than wrapping: wrapped,
-                    // ten files on a phone stacked two to a row and pushed the
-                    // composer several hundred pixels up into the transcript.
-                    <ChatAttachmentGroup
+                    <AttachmentTiles
                       ref={attachmentRow}
-                      className="min-w-0 flex-nowrap overflow-x-auto [&>*]:shrink-0"
-                    >
-                      {attachedFiles.map((f, i) => (
-                        // An image gets a thumbnail rather than the paperclip everything
-                        // used to get: the path is already on disk, so this costs one
-                        // asset-protocol URL. Anything else falls back to the icon the
-                        // extension implies.
-                        // No path means the bytes are being carried instead, and
-                        // there is nothing addressable to point an `<img>` at —
-                        // the icon the extension implies is the honest answer.
-                        <ChatAttachment
-                          key={objectKey(f)}
-                          name={f.name}
-                          src={f.path && !f.missing ? localPreviewSrc(f.path, f.name) : undefined}
-                        >
-                          <ChatAttachment.Preview />
-                          {f.missing ? (
-                            // Restored from a saved draft; the file has gone
-                            // since. Kept visible so it can be removed.
-                            <ChatAttachment.Info>
-                              <span
-                                data-slot="chat-attachment-name"
-                                onPointerEnter={titleIfTruncated}
-                                className="block truncate text-body-2-medium text-text-primary"
-                              >
-                                {f.name}
-                              </span>
-                              <span
-                                data-slot="chat-attachment-missing"
-                                className="block truncate text-caption-1-regular text-status-danger"
-                              >
-                                {t('chat.draft.fileMissing')}
-                              </span>
-                            </ChatAttachment.Info>
-                          ) : (
-                            <ChatAttachment.Info />
-                          )}
-                          {onRemoveFile && (
-                            <ChatAttachment.Remove
-                              aria-label={t('chat.removeAttachment', { name: f.name })}
-                              onPress={() => onRemoveFile(i)}
-                            />
-                          )}
-                        </ChatAttachment>
-                      ))}
-                    </ChatAttachmentGroup>
+                      files={attachedFiles}
+                      onRemove={onRemoveFile}
+                      onReorder={onReorderFiles}
+                    />
                   )}
                   {pendingSticker && (
                     <div
-                      className="relative shrink-0 rounded-xl bg-background-secondary-default/40 p-2"
+                      className="relative shrink-0 rounded-xl bg-background-secondary-default/40 p-1"
                       data-slot="pending-sticker"
                     >
                       <img
                         data-slot="pending-sticker-image"
                         src={pendingSticker.url}
                         alt={pendingSticker.emoji.name}
-                        className="size-20 object-contain"
+                        // The tiles' 56px with this box's padding, so the row
+                        // is one height whatever it holds.
+                        className="size-12 object-contain"
                       />
                       {onRemoveSticker && (
                         // The corner placement is on a wrapper, not the button.

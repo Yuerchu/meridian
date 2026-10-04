@@ -1120,6 +1120,7 @@ function ChatViewInner({
           attachedFiles={attachedFiles}
           onAttachFiles={(files) => setAttachedFiles((prev) => [...prev, ...files])}
           onRemoveFile={(idx) => setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))}
+          onReorderFiles={setAttachedFiles}
           pendingSticker={pendingSticker}
           onSelectSticker={setPendingSticker}
           onRemoveSticker={() => setPendingSticker(null)}

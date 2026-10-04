@@ -23,6 +23,7 @@ import { parsePartialObject } from '@/lib/partial-json'
 import { TurnItem } from '@/components/chat/turn-item'
 import { ComposerStatusTab } from '@/components/chat/composer-status-tab'
 import { TodoProgressChip } from '@/components/chat/todo-progress-chip'
+import { AttachmentTiles } from '@/components/chat/attachment-tiles'
 import TodoBoard from '@/components/chat/todo-board'
 import type { TodoDraft } from '@/components/chat/todo-list'
 import { PromptQueue } from '@/components/chat/prompt-queue'
@@ -423,6 +424,34 @@ const todoStep = (content: string, activeForm: string, status: string) => ({
   active_form: activeForm,
   status,
 })
+
+/**
+ * Attachment tiles that can be reordered and removed, so a drag — by pointer,
+ * or from a number with the keyboard — can be tried and its order read off
+ * the list underneath.
+ */
+function AttachmentTilesCase() {
+  const [files, setFiles] = useState(() => [
+    { name: 'design-notes.md' },
+    { name: 'report-final-final.pdf' },
+    { name: 'schema.sql' },
+    { name: 'missing-since-draft.txt', missing: true },
+  ])
+  return (
+    <div className="flex max-w-md flex-col gap-2">
+      <div className="rounded-3xl border border-border-button-default bg-background-primary-default px-2 pt-2">
+        <AttachmentTiles
+          files={files}
+          onReorder={setFiles}
+          onRemove={(index) => setFiles((current) => current.filter((_, i) => i !== index))}
+        />
+      </div>
+      <p data-slot="gallery-attachment-order" className="text-caption-1-regular text-text-secondary">
+        {files.map((file) => file.name).join(' → ')}
+      </p>
+    </div>
+  )
+}
 
 function queued(id: string, delivery: QueuedPromptInfoResponse['delivery'], content: string): QueuedPromptInfoResponse {
   return {
@@ -1390,6 +1419,12 @@ function Gallery() {
                 <StickerGrid items={PG_STICKERS} loading={false} empty={null} onAction={noop} />
               </div>
             ))}
+          </div>
+        </Section>
+
+        <Section title="AttachmentTiles / 附件方块">
+          <div data-slot="gallery-attachment-tiles">
+            <AttachmentTilesCase />
           </div>
         </Section>
 
