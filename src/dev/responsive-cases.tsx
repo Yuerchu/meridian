@@ -8,6 +8,7 @@ import { useState } from 'react'
 
 import { Composer } from '@/components/chat/composer'
 import { ComposerMenu } from '@/components/chat/composer-menu'
+import { ModeChip } from '@/components/chat/mode-chip'
 import { MarkdownContent } from '@/components/chat/markdown-content'
 import { VoiceOverlay } from '@/components/chat/voice-overlay'
 import { MasterDetail } from '@/components/settings/master-detail'
@@ -63,23 +64,22 @@ function ComposerCase() {
         ariaLabel="Message"
         placeholder="Send a message..."
         toolbarStart={
-          <ComposerMenu
-            assistants={[]}
-            providers={[]}
-            currentAssistantId={null}
-            currentModelId="claude-sonnet-4-5-20250929"
-            currentProviderId={null}
-            onSelectAssistant={noop}
-            onSelectModel={noop}
-            thinkingLevel="default"
-            onSelectThinkingLevel={noop}
-            fastMode={false}
-            onToggleFast={noop}
-            mode="work"
-            onSelectMode={noop}
-            acceptEdits={false}
-            onToggleAcceptEdits={noop}
-          />
+          <>
+            <ComposerMenu
+              assistants={[]}
+              providers={[]}
+              currentAssistantId={null}
+              currentModelId="claude-sonnet-4-5-20250929"
+              currentProviderId={null}
+              onSelectAssistant={noop}
+              onSelectModel={noop}
+              thinkingLevel="default"
+              onSelectThinkingLevel={noop}
+              fastMode={false}
+              onToggleFast={noop}
+            />
+            <ModeChip mode="work" acceptEdits={false} onSelectMode={noop} onToggleAcceptEdits={noop} />
+          </>
         }
       />
       <p data-slot="responsive-case-note" className="mt-2 text-caption-1-regular text-text-secondary">

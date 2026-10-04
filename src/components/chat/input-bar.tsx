@@ -37,10 +37,9 @@ import { TodoProgressChip } from './todo-progress-chip'
 import type { TodoArgs } from './todo-list'
 import type { ContextInfo } from '@/hooks/use-context-info'
 import { isSelect, useAcpConfig } from '@/hooks/use-acp-config'
-import type { TFunction } from 'i18next'
+import { currentValueName, isEffortKnob, isModeKnob, isModelKnob, knobName, knobValueName } from '@/lib/acp-knob-names'
+import { HostedModeChip, ModeChip } from './mode-chip'
 import type {
-  AcpConfigOptionInfoResponse,
-  AcpConfigOptionValueInfoResponse,
   AssistantInfoResponse,
   ChatMode,
   EmojiInfoResponse,
@@ -149,43 +148,6 @@ interface InputBarProps {
  * add clipboard history and translation to it, so let the WebView have it.
  */
 /**
- * What to call a knob, and what to call the value it is set to.
- *
- * The agent's own strings are English and always will be: `name` is composed in
- * the adapter, so in a Chinese window a row of them reads `Mode / Effort / Fast
- * mode` with nothing translated. The ids it uses for the knobs it defines are a
- * short documented set (`mode`, `model`, `effort`, `fast`, `agent`), so those
- * get translations here and everything else falls back to what the agent said —
- * which is the only right answer for a knob some other agent invented.
- *
- * Keyed on `id` rather than `category`, and that is not interchangeable: the
- * reasoning knob is `id: "effort"` under `category: "thought_level"`, and Fast
- * mode is `id: "fast"` under `category: "model_config"` — a category naming a
- * *class* of setting rather than the setting. Only the id names the thing.
- */
-function knobName(t: TFunction, option: AcpConfigOptionInfoResponse): string {
-  const fallback = option.name || option.id
-  return t(`chat.acp.knob.${option.id.toLowerCase()}`, { defaultValue: fallback })
-}
-
-function knobValueName(
-  t: TFunction,
-  option: AcpConfigOptionInfoResponse,
-  value: AcpConfigOptionValueInfoResponse,
-): string {
-  const fallback = value.name || value.value
-  // Scoped per knob, because `default` means a different thing on each of them
-  // and a model id must never find a translation at all.
-  return t(`chat.acp.value.${option.id.toLowerCase()}.${value.value.toLowerCase()}`, { defaultValue: fallback })
-}
-
-function currentValueName(t: TFunction, option: AcpConfigOptionInfoResponse): string | null {
-  if (typeof option.currentValue !== 'string') return null
-  const value = option.options.find((v) => v.value === option.currentValue)
-  return value ? knobValueName(t, option, value) : option.currentValue
-}
-
-/**
  * Everything a hosted Claude Code session lets you set, in one control.
  *
  * Renders nothing at all for an ordinary conversation, and nothing for a hosted
@@ -210,14 +172,12 @@ function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAc
   const { t } = useTranslation()
   // A select with nothing in it is not offered: the agent has told us a knob
   // exists without saying what it accepts, and an empty menu reads as a bug.
-  const pickers = options.filter((o) => isSelect(o) && o.options.length > 0)
+  // The permission mode is not one of them: it is the mode chip beside the `+`.
+  const pickers = options.filter((o) => isSelect(o) && o.options.length > 0 && !isModeKnob(o))
   if (pickers.length === 0) return null
 
-  // Category as well as id, so an agent that names one and omits the other is
-  // still understood. `thought_level` is the category the adapter files effort
-  // under; `effort` is its id.
-  const model = pickers.find((o) => o.id === 'model' || o.category === 'model')
-  const effort = pickers.find((o) => o.id === 'effort' || o.category === 'thought_level')
+  const model = pickers.find(isModelKnob)
+  const effort = pickers.find(isEffortKnob)
   const summary = [
     model && currentValueName(t, model),
     // Left off when it is on its default: a permanent "· 默认" is noise, and the
@@ -409,6 +369,40 @@ export function InputBar({
   // typing. This is the one connection state the composer has to care about.
   const offline = useIsOffline()
   const fileInputRef = useRef<FileInputHandle>(null)
+  // The sticker picker opens from the `+` menu (or the phone's sheet) and
+  // hangs from that button once the menu has gone.
+  const plusRef = useRef<HTMLButtonElement>(null)
+  const [stickersOpen, setStickersOpen] = useState(false)
+  // A sticker travels the way an attachment does — as a part in a JSON array —
+  // and would reach a hosted agent as that JSON. See `onPickFile` below.
+  const offersStickers = !isHosted && !!currentAssistantId && !!onSelectSticker
+  const modeKnob = acp.options.find((o) => isSelect(o) && o.options.length > 0 && isModeKnob(o))
+  const modeChip = isHosted ? (
+    modeKnob ? (
+      <HostedModeChip
+        option={modeKnob}
+        busy={acp.busy}
+        // A refusal is drawn above the composer by `useAcpConfig`.
+        onSelect={(value) => void acp.set(modeKnob.id, value).catch(() => undefined)}
+      />
+    ) : null
+  ) : (
+    <ModeChip
+      mode={mode}
+      acceptEdits={acceptEdits}
+      onSelectMode={onSelectMode}
+      onToggleAcceptEdits={onToggleAcceptEdits}
+    />
+  )
+  const stickerPicker = offersStickers ? (
+    <EmojiPicker
+      assistantId={currentAssistantId}
+      anchorRef={plusRef}
+      isOpen={stickersOpen}
+      onOpenChange={setStickersOpen}
+      onSelect={(sticker) => onSelectSticker?.(sticker)}
+    />
+  ) : null
   /**
    * Voice is not offered at all when it cannot work, rather than offered and
    * refused.
@@ -1059,11 +1053,9 @@ export function InputBar({
                     onSelectThinkingLevel={onSelectThinkingLevel}
                     fastMode={fastMode}
                     onToggleFast={onToggleFast}
-                    mode={mode}
-                    onSelectMode={onSelectMode}
-                    acceptEdits={acceptEdits}
-                    onToggleAcceptEdits={onToggleAcceptEdits}
                     capabilities={capabilities}
+                    triggerRef={plusRef}
+                    onOpenStickers={offersStickers ? () => setStickersOpen(true) : undefined}
                     // Same reason as the desktop branch below: a hosted prompt is
                     // one text block, so a picture picked here would reach the
                     // agent as JSON. Reachable from a phone in remote mode, where
@@ -1078,7 +1070,9 @@ export function InputBar({
                       branch, a phone attached to a hosted session — which is how
                       remote mode reaches one — had no way to change its model,
                       permission mode or effort at all. */}
+                  {modeChip}
                   <HostedSessionKnobs options={acp.options} set={acp.set} busy={acp.busy} />
+                  {stickerPicker}
                 </>
               ) : (
                 <>
@@ -1094,11 +1088,9 @@ export function InputBar({
                     onSelectThinkingLevel={onSelectThinkingLevel}
                     fastMode={fastMode}
                     onToggleFast={onToggleFast}
-                    mode={mode}
-                    onSelectMode={onSelectMode}
-                    acceptEdits={acceptEdits}
-                    onToggleAcceptEdits={onToggleAcceptEdits}
                     capabilities={capabilities}
+                    triggerRef={plusRef}
+                    onOpenStickers={offersStickers ? () => setStickersOpen(true) : undefined}
                     // **Not on a hosted session.** An attachment is carried by
                     // packing the message into a JSON array of parts, and the
                     // ACP path sends whatever it is handed as a *single text
@@ -1116,18 +1108,14 @@ export function InputBar({
                       working, and it is worth seeing without opening
                       anything. A hosted session's knobs are the agent's and
                       arrive over ACP; everything else stays in the menu. */}
+                  {modeChip}
                   <HostedSessionKnobs options={acp.options} set={acp.set} busy={acp.busy} />
+                  {stickerPicker}
                 </>
               )
             }
             toolbarEnd={
               <>
-                {/* A sticker travels the same way an attachment does — as a
-                    part in a JSON array — and reaches a hosted agent as that
-                    JSON rather than as anything it can see. See `onPickFile`. */}
-                {!isHosted && (
-                  <EmojiPicker assistantId={currentAssistantId} onSelect={(sticker) => onSelectSticker?.(sticker)} />
-                )}
                 {!isAndroid && onVoiceSend && (
                   <TooltipTrigger delay={0}>
                     {/* The button is the trigger — TooltipTrigger picks it up

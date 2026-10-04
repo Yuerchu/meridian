@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FaceSmile, Search } from '@keyline-icons/react/two-tone'
 import { PromptInput, ScrollShadow, SearchField, Tooltip, TooltipTrigger } from '@/components/base'
@@ -23,15 +23,37 @@ interface StickerItem {
   packName: string
 }
 
+/**
+ * The assistant's sticker packs, searchable, as a popover.
+ *
+ * With `anchorRef` it draws no button of its own and opens from that element
+ * instead, under the caller's control: the composer reaches it from the `+`
+ * menu, and the panel then hangs from the `+` the way it used to hang from its
+ * own button. Without it, it is the round toolbar control it always was.
+ */
 export function EmojiPicker({
   assistantId,
   onSelect,
+  anchorRef,
+  isOpen,
+  onOpenChange,
 }: {
   assistantId: string | null
   onSelect: (sticker: { emoji: EmojiInfoResponse; url: string }) => void
+  anchorRef?: RefObject<HTMLElement | null>
+  isOpen?: boolean
+  onOpenChange?: (open: boolean) => void
 }) {
   const { t } = useTranslation()
-  const [open, setOpen] = useState(false)
+  const [ownOpen, setOwnOpen] = useState(false)
+  const open = isOpen ?? ownOpen
+  const setOpen = useCallback(
+    (next: boolean) => {
+      setOwnOpen(next)
+      onOpenChange?.(next)
+    },
+    [onOpenChange],
+  )
   const [loading, setLoading] = useState(false)
   const [packs, setPacks] = useState<PackWithEmojis[]>([])
   const [activePackId, setActivePackId] = useState<string | null>(null)
@@ -161,13 +183,16 @@ export function EmojiPicker({
         },
       )
     },
-    [allItems, assistantId, onSelect],
+    [allItems, assistantId, onSelect, setOpen],
   )
 
-  const handleOpenChange = useCallback((next: boolean) => {
-    setOpen(next)
-    if (!next) setSearch('')
-  }, [])
+  const handleOpenChange = useCallback(
+    (next: boolean) => {
+      setOpen(next)
+      if (!next) setSearch('')
+    },
+    [setOpen],
+  )
 
   if (!assistantId) return null
 
@@ -180,28 +205,36 @@ export function EmojiPicker({
       onOpenChange={handleOpenChange}
       onSelectionChange={handleSelect}
     >
-      <TooltipTrigger delay={0}>
-        {/* The composer's round control rather than the picker's own neutral
-            trigger: this picker only ever sits in the composer toolbar, beside
-            the `+` and the microphone, and the three are one control family
-            (the registry agent-composer's `ai-chat-composer-add-*` button). */}
-        <PromptInput.Control
-          data-slot="emoji-picker-trigger"
-          aria-label={t('chat.emoji')}
-          className="touch-hitbox"
-          onPress={() => {
-            // RAC Select normally declines to open an empty collection. This
-            // picker still has useful content in that state: the assigned-pack
-            // explanation and search shell.
-            if (!open) setOpen(true)
-          }}
-          leadingIcon={FaceSmile}
-        />
-        <Tooltip>{t('chat.emoji')}</Tooltip>
-      </TooltipTrigger>
+      {!anchorRef && (
+        <TooltipTrigger delay={0}>
+          {/* The composer's round control rather than the picker's own neutral
+              trigger: this picker only ever sits in the composer toolbar, beside
+              the `+` and the microphone, and the three are one control family
+              (the registry agent-composer's `ai-chat-composer-add-*` button). */}
+          <PromptInput.Control
+            data-slot="emoji-picker-trigger"
+            aria-label={t('chat.emoji')}
+            className="touch-hitbox"
+            onPress={() => {
+              // RAC Select normally declines to open an empty collection. This
+              // picker still has useful content in that state: the assigned-pack
+              // explanation and search shell.
+              if (!open) setOpen(true)
+            }}
+            leadingIcon={FaceSmile}
+          />
+          <Tooltip>{t('chat.emoji')}</Tooltip>
+        </TooltipTrigger>
+      )}
       {/* 24rem holds four ~88px cells; the calc keeps it inside a phone's
           viewport, where the container query drops the grid to three. */}
-      <ProEmojiPicker.Popover placement="top end" className="w-[24rem] max-w-[calc(100vw-2rem)]">
+      <ProEmojiPicker.Popover
+        // From the `+` it opens rightwards over the field; from its own button,
+        // at the toolbar's right end, it opens leftwards.
+        placement={anchorRef ? 'top start' : 'top end'}
+        triggerRef={anchorRef}
+        className="w-[24rem] max-w-[calc(100vw-2rem)]"
+      >
         <ProEmojiPicker.Content className="@container/stickers">
           <SearchField aria-label={t('chat.emojiSearch')} value={search} onChange={setSearch}>
             {/* The popover is `background-primary`, which in dark is the search

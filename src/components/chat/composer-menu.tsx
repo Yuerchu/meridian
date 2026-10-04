@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode, type Ref } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Menu as AriaMenu,
@@ -11,10 +11,8 @@ import {
   Bot,
   Check,
   ChevronRight,
-  ChevronsRight,
-  Compass,
   Cpu,
-  Hammer,
+  FaceSmile,
   Lightbulb,
   Paperclip,
   Plus,
@@ -40,7 +38,6 @@ import { describeRejections } from '@/lib/error-message'
 import { allowedEfforts } from '@/lib/thinking'
 import type {
   AssistantInfoResponse,
-  ChatMode,
   ProviderInfoResponse,
   ProviderCapabilitiesInfoResponse,
   ProviderModelInfoResponse,
@@ -50,7 +47,10 @@ import type {
 import { titleIfTruncated } from '@/lib/truncation'
 
 /**
- * Everything the composer can configure, behind one `+`.
+ * What can be added to the message, and the turn's model settings, behind
+ * one `+`. The permission mode is not here any more: it is a chip of its own
+ * beside this button (`mode-chip.tsx`), so whether approvals are being
+ * skipped is on screen rather than one menu deep.
  *
  * The toolbar used to lay all of this out in a row, and each control that had
  * something to say said it in words — the mode, the assistant, the model, and
@@ -91,18 +91,13 @@ export interface ComposerMenuProps {
   onSelectThinkingLevel: (level: ThinkingLevel) => void
   fastMode: boolean
   onToggleFast: (next: boolean) => void
-  mode: ChatMode
-  onSelectMode: (mode: ChatMode) => void
-  acceptEdits: boolean
-  onToggleAcceptEdits: (next: boolean) => void
   capabilities?: ProviderCapabilitiesInfoResponse | null
   onPickFile?: () => void
+  /** Opens the sticker picker, which anchors itself to `triggerRef`. Absent hides the row. */
+  onOpenStickers?: () => void
+  /** The `+` itself, for what is drawn beside it once the menu has closed. */
+  triggerRef?: Ref<HTMLButtonElement>
 }
-
-const CHAT_MODES: Array<{ id: ChatMode; icon: typeof Hammer; labelKey: string; descKey: string }> = [
-  { id: 'work', icon: Hammer, labelKey: 'toolbar.mode.work', descKey: 'toolbar.mode.workDesc' },
-  { id: 'plan', icon: Compass, labelKey: 'toolbar.mode.plan', descKey: 'toolbar.mode.planDesc' },
-]
 
 const THINKING_LEVELS: ThinkingLevel[] = ['default', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh']
 
@@ -127,7 +122,7 @@ function RowContent({
   tone,
   trailing,
 }: {
-  icon: typeof Hammer
+  icon: typeof Bot
   label: string
   value?: string
   tone?: Tone
@@ -174,7 +169,7 @@ function ValueSubmenu({
   onOpenIntent,
 }: {
   id: string
-  icon: typeof Hammer
+  icon: typeof Bot
   label: string
   value: string
   tone?: Tone
@@ -295,7 +290,6 @@ export function ComposerMenu(props: ComposerMenuProps) {
   const [modelsFailure, setModelsFailure] = useState<string | null>(null)
 
   const currentAssistant = props.assistants.find((a) => a.id === props.currentAssistantId)
-  const activeMode = CHAT_MODES.find((m) => m.id === props.mode) ?? CHAT_MODES[0]
   const efforts = useMemo(() => allowedEfforts(props.capabilities ?? null), [props.capabilities])
 
   // Fetched when the model row is first reached rather than when the menu is
@@ -338,14 +332,8 @@ export function ComposerMenu(props: ComposerMenuProps) {
     }
   }
 
-  // Plan mode removes every editing tool, so the switch would be promising to
-  // skip approvals that are never going to be requested.
-  const offersAcceptEdits = props.mode !== 'plan'
   const offersFast = props.capabilities?.supports_fast === true
-  const toggledKeys = [
-    ...(offersAcceptEdits && props.acceptEdits ? ['accept-edits'] : []),
-    ...(offersFast && props.fastMode ? ['fast'] : []),
-  ]
+  const toggledKeys = offersFast && props.fastMode ? ['fast'] : []
 
   const thinkingOptions: SubOption[] = THINKING_LEVELS.filter(
     (l) =>
@@ -362,21 +350,14 @@ export function ComposerMenu(props: ComposerMenuProps) {
   const currentModelKey =
     props.currentModelId && props.currentProviderId ? `${props.currentProviderId}:${props.currentModelId}` : null
 
-  // Anything not at its default is worth seeing before the menu is opened —
-  // otherwise folding the toolbar away would also fold away the fact that
-  // approvals are currently being skipped.
-  const alert = props.acceptEdits ? 'warning' : props.mode !== 'work' ? 'info' : null
-
   return (
     <Dropdown isOpen={open} onOpenChange={handleOpenChange}>
       <TooltipTrigger delay={0}>
-        {/* The alert dot sits beside the button: the control draws its
-            `leadingIcon` and nothing else. Both triggers reach the RAC button
-            through context, so the wrapper is inert to them. */}
         <span data-slot="composer-menu-trigger-wrap" className="relative inline-flex">
           {/* The composer's round control (the registry agent-composer's
               add button, `ai-chat-composer-add-*`). */}
           <PromptInput.Control
+            ref={props.triggerRef}
             leadingIcon={Plus}
             aria-label={t('composer.menu')}
             data-slot="composer-menu-trigger"
@@ -387,15 +368,6 @@ export function ComposerMenu(props: ComposerMenuProps) {
               open && '[&_svg]:rotate-45',
             )}
           />
-          {alert && (
-            <span
-              data-slot="composer-menu-alert"
-              className={cx(
-                'pointer-events-none absolute right-1 top-1 size-1.5 rounded-full',
-                alert === 'warning' ? 'bg-status-warning' : 'bg-status-info',
-              )}
-            />
-          )}
         </span>
         <Tooltip placement="top">{t('composer.menu')}</Tooltip>
       </TooltipTrigger>
@@ -406,41 +378,16 @@ export function ComposerMenu(props: ComposerMenuProps) {
             <RowContent icon={Paperclip} label={t('chat.attachFile')} />
           </DropdownItem>
         ) : null}
+        {props.onOpenStickers ? (
+          <DropdownItem id="stickers" textValue={t('chat.emoji')} onAction={props.onOpenStickers}>
+            <RowContent icon={FaceSmile} label={t('chat.emoji')} />
+          </DropdownItem>
+        ) : null}
 
-        <ValueSubmenu
-          id="mode"
-          icon={activeMode.icon}
-          label={t('toolbar.mode')}
-          value={t(activeMode.labelKey)}
-          tone={props.mode === 'work' ? 'muted' : 'info'}
-          selectedKey={props.mode}
-          options={CHAT_MODES.map((m) => ({
-            value: m.id,
-            label: t(m.labelKey),
-            description: t(m.descKey),
-            icon: <m.icon aria-hidden className="size-4" />,
-            onSelect: () => props.onSelectMode(m.id),
-          }))}
-        />
-
-        {offersAcceptEdits || offersFast ? (
+        {offersFast ? (
           // Booleans: `menuitemcheckbox` rows, which a pointer or Space
           // toggles without closing the menu.
           <AriaMenuSection selectionMode="multiple" selectedKeys={toggledKeys} className="flex w-full flex-col gap-1">
-            {offersAcceptEdits ? (
-              <DropdownItem
-                id="accept-edits"
-                textValue={t('toolbar.acceptEdits')}
-                onAction={() => props.onToggleAcceptEdits(!props.acceptEdits)}
-              >
-                <RowContent
-                  icon={ChevronsRight}
-                  label={t('toolbar.acceptEdits')}
-                  value={props.acceptEdits ? t('toolbar.acceptEdits.on') : t('toolbar.acceptEdits.off')}
-                  tone={props.acceptEdits ? 'warning' : 'muted'}
-                />
-              </DropdownItem>
-            ) : null}
             {offersFast ? (
               <DropdownItem
                 id="fast"

@@ -195,7 +195,10 @@ export function Composer({
         <ComposerLoader active={loaderActive} radius={24} className={cx(loaderIdle && LOADER_PAUSED)}>
           {/* PromptInput styles this state — dotted accent border and a soft fill — but
             sets it for nobody; it is left for whoever owns the drag. */}
-          <PromptInput.Shell data-dragging={dropping ? 'true' : undefined}>
+          {/* `@container/composer`: the toolbar drops labels by the width it
+              actually has (the mode chip), not by the window's. Nothing inside
+              is `position: fixed`, which a container would capture. */}
+          <PromptInput.Shell data-dragging={dropping ? 'true' : undefined} className="@container/composer">
             <PromptInput.Content>
               {attachments && <PromptInput.Attachments>{attachments}</PromptInput.Attachments>}
               {inputMode === 'shell' && (

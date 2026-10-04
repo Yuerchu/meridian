@@ -24,6 +24,7 @@ import { TurnItem } from '@/components/chat/turn-item'
 import { ComposerStatusTab } from '@/components/chat/composer-status-tab'
 import { TodoProgressChip } from '@/components/chat/todo-progress-chip'
 import { AttachmentTiles } from '@/components/chat/attachment-tiles'
+import { ModeChip } from '@/components/chat/mode-chip'
 import TodoBoard from '@/components/chat/todo-board'
 import type { TodoDraft } from '@/components/chat/todo-list'
 import { PromptQueue } from '@/components/chat/prompt-queue'
@@ -283,9 +284,10 @@ const PG_STICKERS = Array.from({ length: 30 }, (_, i) => pgSticker(i))
 function noop() {}
 
 /**
- * The composer menu with nothing behind it: `providers` is empty, so the model
- * row opens an empty column instead of fetching. That is the state worth
- * previewing anyway — the two-column layout has to hold before anything loads.
+ * The `+` menu and the mode chip beside it, with nothing behind them:
+ * `providers` is empty, so the model row opens an empty column instead of
+ * fetching. The line underneath is what the two settings the chip writes are
+ * now, so a choice can be checked against what got stored.
  */
 function ComposerMenuCase({
   label,
@@ -321,13 +323,11 @@ function ComposerMenuCase({
           onSelectThinkingLevel={setThinking}
           fastMode={fast}
           onToggleFast={setFast}
-          mode={mode}
-          onSelectMode={setMode}
-          acceptEdits={acceptEdits}
-          onToggleAcceptEdits={setAcceptEdits}
           capabilities={caps()}
           onPickFile={() => {}}
+          onOpenStickers={() => {}}
         />
+        <ModeChip mode={mode} acceptEdits={acceptEdits} onSelectMode={setMode} onToggleAcceptEdits={setAcceptEdits} />
       </div>
       <span data-slot="composer-menu-case-state" className="text-caption-1-regular text-text-secondary">
         {mode} · {acceptEdits ? 'accept-edits' : 'ask'}
@@ -1083,8 +1083,8 @@ function Gallery() {
         <Section title="ComposerMenu / 输入框选项菜单">
           <div data-slot="gallery-composer-menus" className="flex flex-wrap items-center gap-4">
             <ComposerMenuCase label="默认" mode="work" acceptEdits={false} />
-            <ComposerMenuCase label="改动免批（触发器带警示点）" mode="work" acceptEdits />
-            <ComposerMenuCase label="谋定模式（不提供免批项）" mode="plan" acceptEdits={false} />
+            <ComposerMenuCase label="自动接受编辑" mode="work" acceptEdits />
+            <ComposerMenuCase label="谋定" mode="plan" acceptEdits={false} />
           </div>
         </Section>
 

@@ -23,10 +23,6 @@ function props(over: Partial<ComposerMenuProps> = {}): ComposerMenuProps {
     onSelectThinkingLevel: vi.fn(),
     fastMode: false,
     onToggleFast: vi.fn(),
-    mode: 'work',
-    onSelectMode: vi.fn(),
-    acceptEdits: false,
-    onToggleAcceptEdits: vi.fn(),
     capabilities: null,
     ...over,
   }
@@ -73,44 +69,53 @@ describe('ComposerMenu', () => {
 
   it('reaches the submenu and back with the arrow keys', async () => {
     const user = userEvent.setup()
-    render(<ComposerMenu {...props({ mode: 'plan' })} />)
+    render(<ComposerMenu {...props({ thinkingLevel: 'high' })} />)
     await openMenu(user)
 
-    const modeRow = screen.getByRole('menuitem', { name: /^Mode(?!ls)/ })
-    modeRow.focus()
+    const row = screen.getByRole('menuitem', { name: /Thinking/ })
+    row.focus()
     await user.keyboard('{ArrowRight}')
     const submenu = await findSubmenu()
     await waitFor(() => expect(submenu.contains(document.activeElement)).toBe(true))
-    expect(within(submenu).getByRole('menuitemradio', { name: /Plan/ })).toHaveAttribute('aria-checked', 'true')
+    expect(within(submenu).getByRole('menuitemradio', { name: /^High/ })).toHaveAttribute('aria-checked', 'true')
 
     await user.keyboard('{ArrowLeft}')
     await waitFor(() => expect(screen.getAllByRole('menu')).toHaveLength(1))
-    expect(document.activeElement).toBe(modeRow)
+    expect(document.activeElement).toBe(row)
   })
 
-  it('draws the booleans as checkbox rows that toggle', async () => {
+  it('draws fast mode as a checkbox row that toggles', async () => {
     const user = userEvent.setup()
-    const onToggleAcceptEdits = vi.fn()
-    render(
-      <ComposerMenu
-        {...props({ acceptEdits: true, onToggleAcceptEdits, capabilities: { supports_fast: true } as never })}
-      />,
-    )
+    const onToggleFast = vi.fn()
+    render(<ComposerMenu {...props({ onToggleFast, capabilities: { supports_fast: true } as never })} />)
     await openMenu(user)
 
-    const accept = screen.getByRole('menuitemcheckbox', { name: /Accept edits/ })
-    expect(accept).toHaveAttribute('aria-checked', 'true')
-    expect(screen.getByRole('menuitemcheckbox', { name: /Fast/ })).toHaveAttribute('aria-checked', 'false')
-
-    await user.click(accept)
-    expect(onToggleAcceptEdits).toHaveBeenCalledWith(false)
+    const fast = screen.getByRole('menuitemcheckbox', { name: /Fast/ })
+    expect(fast).toHaveAttribute('aria-checked', 'false')
+    await user.click(fast)
+    expect(onToggleFast).toHaveBeenCalledWith(true)
   })
 
-  it('does not offer accept-edits in plan mode', async () => {
+  it('no longer carries the permission mode, which is a chip of its own', async () => {
     const user = userEvent.setup()
-    render(<ComposerMenu {...props({ mode: 'plan' })} />)
+    render(<ComposerMenu {...props()} />)
     await openMenu(user)
-    expect(screen.queryByRole('menuitemcheckbox', { name: /Accept edits/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: /^Mode(?!l)/ })).toBeNull()
+    expect(screen.queryByRole('menuitemcheckbox', { name: /Accept edits/ })).toBeNull()
+  })
+
+  it('offers stickers only when given a way to open them', async () => {
+    const user = userEvent.setup()
+    const onOpenStickers = vi.fn()
+    const { unmount } = render(<ComposerMenu {...props()} />)
+    await openMenu(user)
+    expect(screen.queryByRole('menuitem', { name: 'Emoji' })).toBeNull()
+    unmount()
+
+    render(<ComposerMenu {...props({ onOpenStickers })} />)
+    await openMenu(user)
+    await user.click(screen.getByRole('menuitem', { name: 'Emoji' }))
+    expect(onOpenStickers).toHaveBeenCalled()
   })
 
   describe('the model submenu', () => {

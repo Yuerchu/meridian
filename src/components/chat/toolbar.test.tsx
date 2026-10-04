@@ -20,10 +20,6 @@ function props(over: Partial<MobileOptionsMenuProps> = {}): MobileOptionsMenuPro
     onSelectThinkingLevel: vi.fn(),
     fastMode: false,
     onToggleFast: vi.fn(),
-    mode: 'work',
-    onSelectMode: vi.fn(),
-    acceptEdits: false,
-    onToggleAcceptEdits: vi.fn(),
     capabilities: null,
     onTakePhoto: vi.fn(),
     onPickGallery: vi.fn(),
@@ -39,16 +35,27 @@ describe('MobileOptionsMenu', () => {
 
   it('lists its rows as a menu, the booleans as checkbox rows', async () => {
     const user = userEvent.setup()
-    const onToggleAcceptEdits = vi.fn()
-    render(<MobileOptionsMenu {...props({ acceptEdits: true, onToggleAcceptEdits })} />)
+    const onToggleFast = vi.fn()
+    render(<MobileOptionsMenu {...props({ onToggleFast, capabilities: { supports_fast: true } as never })} />)
     await user.click(screen.getByRole('button', { name: 'Options and attachments' }))
 
     const menu = await screen.findByRole('menu', { name: 'Options and attachments' })
     expect(within(menu).getByRole('menuitem', { name: /Take Photo|Camera/i })).toBeInTheDocument()
-    const accept = within(menu).getByRole('menuitemcheckbox', { name: /Accept edits/ })
-    expect(accept).toHaveAttribute('aria-checked', 'true')
-    await user.click(accept)
-    expect(onToggleAcceptEdits).toHaveBeenCalledWith(false)
+    // The permission mode is a chip on the toolbar now, not a row here.
+    expect(within(menu).queryByRole('menuitem', { name: /^Mode/ })).toBeNull()
+    expect(within(menu).queryByRole('menuitemcheckbox', { name: /Accept edits/ })).toBeNull()
+    const fast = within(menu).getByRole('menuitemcheckbox', { name: /Fast/ })
+    await user.click(fast)
+    expect(onToggleFast).toHaveBeenCalledWith(true)
+  })
+
+  it('opens stickers from a row of its own', async () => {
+    const user = userEvent.setup()
+    const onOpenStickers = vi.fn()
+    render(<MobileOptionsMenu {...props({ onOpenStickers })} />)
+    await user.click(screen.getByRole('button', { name: 'Options and attachments' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Emoji' }))
+    expect(onOpenStickers).toHaveBeenCalled()
   })
 
   it('opens a panel whose choices are radio rows with the current one checked', async () => {

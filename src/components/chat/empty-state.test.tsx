@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import i18n from '@/i18n'
@@ -139,7 +139,6 @@ describe('EmptyState welcome composer', () => {
 
     expect(screen.getByRole('combobox', { name: 'Send a message...' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Options and attachments' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Emoji' })).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: 'Hold to talk, release to send; click to toggle instead' }),
     ).toBeInTheDocument()
@@ -147,13 +146,16 @@ describe('EmptyState welcome composer', () => {
     await user.click(screen.getByRole('button', { name: 'Options and attachments' }))
     expect(await screen.findByRole('menu', { name: 'Options and attachments' })).toBeVisible()
     expect(await screen.findByRole('menuitem', { name: 'Attach File' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Emoji' })).toBeInTheDocument()
+    await user.keyboard('{Escape}')
 
-    const mode = screen.getByRole('menuitem', { name: /Mode.*Plan/i })
-    expect(mode).toHaveAttribute('aria-haspopup', 'menu')
-    expect(mode).toHaveAttribute('aria-expanded', 'false')
+    // The permission mode is its own chip beside the `+`, showing its value.
+    const mode = screen.getByRole('button', { name: 'Mode: Plan' })
     await user.click(mode)
     expect(mode).toHaveAttribute('aria-expanded', 'true')
-    expect(await screen.findByRole('menuitemradio', { name: /^Plan/ })).toHaveAttribute('aria-checked', 'true')
+    // Named by its trigger, as React Aria names a menu it opens.
+    const modes = await screen.findByRole('menu', { name: /^Mode/ })
+    expect(within(modes).getByRole('menuitemradio', { name: /^Plan/ })).toHaveAttribute('aria-checked', 'true')
   })
 
   it('fills the real composer from a suggestion without creating a conversation', async () => {
@@ -243,7 +245,8 @@ describe('EmptyState welcome composer', () => {
     renderWelcome({ onSubmit })
 
     await waitFor(() => expect(mocks.listEmojis).toHaveBeenCalled())
-    await user.click(screen.getByRole('button', { name: 'Emoji' }))
+    await user.click(screen.getByRole('button', { name: 'Options and attachments' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Emoji' }))
     // The picker's items are buttons named by their `textValue` (emoji name,
     // tags, pack) since it stopped being a Select with a hidden native one.
     await user.click(await screen.findByRole('option', { name: /^Wave\b/ }))
@@ -272,7 +275,8 @@ describe('EmptyState welcome composer', () => {
 
     await waitFor(() => expect(mocks.listEmojis).toHaveBeenCalled())
     await user.type(screen.getByRole('combobox', { name: 'Send a message...' }), 'Typed remainder')
-    await user.click(screen.getByRole('button', { name: 'Emoji' }))
+    await user.click(screen.getByRole('button', { name: 'Options and attachments' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Emoji' }))
     // The picker's items are buttons named by their `textValue` (emoji name,
     // tags, pack) since it stopped being a Select with a hidden native one.
     await user.click(await screen.findByRole('option', { name: /^Wave\b/ }))

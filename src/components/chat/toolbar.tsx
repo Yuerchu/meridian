@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, type Ref } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Menu as AriaMenu, MenuSection as AriaMenuSection } from 'react-aria-components'
 import {
@@ -7,10 +7,8 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  ChevronsRight,
-  Compass,
   Cpu,
-  Hammer,
+  FaceSmile,
   Image,
   Lightbulb,
   Paperclip,
@@ -29,7 +27,6 @@ import { ErrorAlert } from '@/components/ui/error-alert'
 import { allowedEfforts } from '@/lib/thinking'
 import type {
   AssistantInfoResponse,
-  ChatMode,
   ProviderInfoResponse,
   ProviderCapabilitiesInfoResponse,
   ProviderModelInfoResponse,
@@ -50,17 +47,8 @@ interface ToolbarProps {
   onSelectThinkingLevel: (level: ThinkingLevel) => void
   fastMode: boolean
   onToggleFast: (next: boolean) => void
-  mode: ChatMode
-  onSelectMode: (mode: ChatMode) => void
-  acceptEdits: boolean
-  onToggleAcceptEdits: (next: boolean) => void
   capabilities?: ProviderCapabilitiesInfoResponse | null
 }
-
-const CHAT_MODES: Array<{ id: ChatMode; icon: typeof Hammer; labelKey: string; descKey: string }> = [
-  { id: 'work', icon: Hammer, labelKey: 'toolbar.mode.work', descKey: 'toolbar.mode.workDesc' },
-  { id: 'plan', icon: Compass, labelKey: 'toolbar.mode.plan', descKey: 'toolbar.mode.planDesc' },
-]
 
 interface GroupedModels {
   provider: ProviderInfoResponse
@@ -107,9 +95,13 @@ export interface MobileOptionsMenuProps extends ToolbarProps {
    */
   onPickFile?: () => void
   supportsImages: boolean
+  /** Opens the sticker picker, which anchors itself to `triggerRef`. Absent hides the row. */
+  onOpenStickers?: () => void
+  /** The sheet's `+`, for what has to be drawn beside it once the sheet is gone. */
+  triggerRef?: Ref<HTMLButtonElement>
 }
 
-type MobilePanel = 'main' | 'assistant' | 'model' | 'thinking' | 'mode'
+type MobilePanel = 'main' | 'assistant' | 'model' | 'thinking'
 
 export function MobileOptionsMenu({
   assistants,
@@ -123,15 +115,13 @@ export function MobileOptionsMenu({
   onSelectThinkingLevel,
   fastMode,
   onToggleFast,
-  mode,
-  onSelectMode,
-  acceptEdits,
-  onToggleAcceptEdits,
   capabilities,
   onTakePhoto,
   onPickGallery,
   onPickFile,
   supportsImages,
+  onOpenStickers,
+  triggerRef,
 }: MobileOptionsMenuProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -147,8 +137,6 @@ export function MobileOptionsMenu({
   const supportsThinking = capabilities?.supports_thinking !== false
   const supportsFast = capabilities?.supports_fast === true
   const levels = levelsFor(capabilities)
-  const activeMode = CHAT_MODES.find((m) => m.id === mode) ?? CHAT_MODES[0]
-  const ActiveModeIcon = activeMode.icon
   const thinkingLabel =
     thinkingLevel === 'default' ? t('toolbar.thinking.default') : t(`toolbar.thinking.${thinkingLevel}`)
 
@@ -210,6 +198,7 @@ export function MobileOptionsMenu({
     >
       <TooltipTrigger delay={0}>
         <Button
+          ref={triggerRef}
           variant="neutral"
           iconOnly
           leadingIcon={Plus}
@@ -259,28 +248,17 @@ export function MobileOptionsMenu({
                       <span data-slot="mobile-options-label">{t('chat.attachFile')}</span>
                     </DropdownItem>
                   ) : null}
-                  {supportsImages || onPickFile ? <DropdownDivider /> : null}
-                  <DropdownItem
-                    id="mode"
-                    textValue={`${t('toolbar.mode')}: ${t(activeMode.labelKey)}`}
-                    onAction={() => setPanel('mode')}
-                  >
-                    <ActiveModeIcon
-                      aria-hidden
-                      className={cx(
-                        'size-4 shrink-0',
-                        mode === 'work' ? 'text-text-secondary' : 'text-status-info-soft-foreground',
-                      )}
-                    />
-                    <span
-                      data-slot="mobile-options-mode-label"
-                      onPointerEnter={titleIfTruncated}
-                      className="min-w-0 flex-1 truncate"
+                  {onOpenStickers ? (
+                    <DropdownItem
+                      id="stickers"
+                      textValue={t('chat.emoji')}
+                      onAction={() => handleAction(onOpenStickers)}
                     >
-                      {t('toolbar.mode')}: {t(activeMode.labelKey)}
-                    </span>
-                    <ChevronRight aria-hidden className="size-4 shrink-0 text-text-secondary" />
-                  </DropdownItem>
+                      <FaceSmile aria-hidden className="size-4 shrink-0 text-text-secondary" />
+                      <span data-slot="mobile-options-label">{t('chat.emoji')}</span>
+                    </DropdownItem>
+                  ) : null}
+                  {supportsImages || onPickFile || onOpenStickers ? <DropdownDivider /> : null}
                   <DropdownItem
                     id="assistant"
                     textValue={currentAssistant?.name ?? t('toolbar.noAssistant')}
@@ -336,40 +314,13 @@ export function MobileOptionsMenu({
                       <ChevronRight aria-hidden className="size-4 shrink-0 text-text-secondary" />
                     </DropdownItem>
                   ) : null}
-                  {mode !== 'plan' || supportsFast ? (
+                  {supportsFast ? (
                     // Booleans: `menuitemcheckbox` rows, toggled in place.
                     <AriaMenuSection
                       selectionMode="multiple"
-                      selectedKeys={[
-                        ...(mode !== 'plan' && acceptEdits ? ['accept-edits'] : []),
-                        ...(supportsFast && fastMode ? ['fast'] : []),
-                      ]}
+                      selectedKeys={fastMode ? ['fast'] : []}
                       className="flex w-full flex-col gap-1"
                     >
-                      {mode !== 'plan' ? (
-                        <DropdownItem
-                          id="accept-edits"
-                          textValue={t('toolbar.acceptEdits')}
-                          onAction={() => onToggleAcceptEdits(!acceptEdits)}
-                        >
-                          <ChevronsRight
-                            aria-hidden
-                            className={cx(
-                              'size-4 shrink-0',
-                              acceptEdits ? 'text-status-warning-soft-foreground' : 'text-text-secondary',
-                            )}
-                          />
-                          <span data-slot="mobile-accept-edits-label" className="min-w-0 flex-1 truncate">
-                            {t('toolbar.acceptEdits')}
-                          </span>
-                          <span
-                            data-slot="mobile-accept-edits-state"
-                            className="text-caption-1-regular text-text-secondary"
-                          >
-                            {acceptEdits ? t('toolbar.acceptEdits.on') : t('toolbar.acceptEdits.off')}
-                          </span>
-                        </DropdownItem>
-                      ) : null}
                       {supportsFast ? (
                         <DropdownItem id="fast" textValue={t('toolbar.fast')} onAction={() => onToggleFast(!fastMode)}>
                           <Zap
@@ -566,64 +517,6 @@ export function MobileOptionsMenu({
                         })}
                       </DropdownGroup>
                     ))}
-                  </AriaMenu>
-                </div>
-              )}
-
-              {panel === 'mode' && (
-                <div data-slot="mobile-options-mode-panel" className="flex flex-col">
-                  <div
-                    data-slot="mobile-options-mode-header"
-                    className="flex items-center gap-2 px-4 py-2.5 border-b border-border-button-default"
-                  >
-                    <TooltipTrigger delay={0}>
-                      <Button
-                        iconOnly
-                        leadingIcon={ChevronLeft}
-                        size="small"
-                        aria-label={t('common.back')}
-                        variant="neutral"
-                        onPress={() => setPanel('main')}
-                      />
-                      <Tooltip>{t('common.back')}</Tooltip>
-                    </TooltipTrigger>
-                    <span data-slot="mobile-options-mode-title" className="text-body-medium">
-                      {t('toolbar.mode')}
-                    </span>
-                  </div>
-                  <AriaMenu
-                    data-slot="mobile-options-mode-list"
-                    aria-label={t('toolbar.mode')}
-                    selectionMode="single"
-                    disallowEmptySelection
-                    selectedKeys={[mode]}
-                    className={panelListCls}
-                  >
-                    {CHAT_MODES.map((m) => {
-                      const Icon = m.icon
-                      return (
-                        <DropdownItem
-                          key={m.id}
-                          id={m.id}
-                          textValue={t(m.labelKey)}
-                          onAction={() => {
-                            onSelectMode(m.id)
-                            close()
-                          }}
-                        >
-                          <Icon aria-hidden className="size-4 shrink-0 text-text-secondary" />
-                          <span data-slot="mobile-options-mode-choice-label" className="min-w-0 flex-1 truncate">
-                            {t(m.labelKey)}
-                          </span>
-                          <span
-                            data-slot="mobile-options-mode-choice-desc"
-                            className="text-caption-1-regular text-text-secondary"
-                          >
-                            {t(m.descKey)}
-                          </span>
-                        </DropdownItem>
-                      )
-                    })}
                   </AriaMenu>
                 </div>
               )}
