@@ -33,8 +33,10 @@ import { VoiceOverlay } from './voice-overlay'
 import { MobileOptionsMenu } from './toolbar'
 import { ComposerMenu } from './composer-menu'
 import { EmojiPicker } from './emoji-picker'
-import { ToolbarSelect } from './toolbar-select'
-import { ContextGauge } from './context-gauge'
+import { ContextGauge, hasContextReading } from './context-gauge'
+import { ComposerStatusTab } from './composer-status-tab'
+import { TodoProgressChip } from './todo-progress-chip'
+import type { TodoArgs } from './todo-list'
 import type { ContextInfo } from '@/hooks/use-context-info'
 import { isSelect, useAcpConfig } from '@/hooks/use-acp-config'
 import type { TFunction } from 'i18next'
@@ -46,7 +48,6 @@ import type {
   EmojiInfoResponse,
   ProviderInfoResponse,
   ProviderCapabilitiesInfoResponse,
-  QueueDelivery,
   ThinkingLevel,
 } from '@/types'
 import { titleIfTruncated } from '@/lib/truncation'
@@ -97,18 +98,18 @@ interface InputBarProps {
   /**
    * Enter stacks the message up instead of sending it.
    *
-   * A hosted session with a turn running. Like `steerable` in that the field
-   * stays live and a Stop of its own appears, and unlike it in what happens
-   * next: steering goes straight into the run, while this is written down and
-   * delivered when the queue says so. The toolbar stays, because which of the
-   * two modes the next message goes in is a decision made *here*.
+   * A turn is running in a conversation that is not a delegated run. Like
+   * `steerable` in that the field stays live and a Stop of its own appears,
+   * and unlike it in what happens next: steering goes straight into the run,
+   * while this is written down and delivered once the turn ends. A queued
+   * message always waits; turning one into an interjection is done on its row
+   * in the queue, after it exists, rather than decided here beforehand.
    */
   queueing?: boolean
-  /** What the next queued message will be. */
-  queueDelivery?: QueueDelivery
-  onSelectQueueDelivery?: (delivery: QueueDelivery) => void
   /** The rows themselves, above the shell. */
   queue?: React.ReactNode
+  /** The running checklist, for the status tab's progress chip. */
+  todos?: TodoArgs | null
   attachedFiles?: AttachedFile[]
   onAttachFiles?: (files: AttachedFile[]) => void
   onRemoveFile?: (index: number) => void
@@ -344,9 +345,8 @@ export function InputBar({
   streaming,
   steerable,
   queueing,
-  queueDelivery = 'follow_up',
-  onSelectQueueDelivery,
   queue,
+  todos,
   assistants,
   providers,
   currentAssistantId,
@@ -1059,6 +1059,29 @@ export function InputBar({
                 </div>
               )
             }
+            status={
+              <ComposerStatusTab
+                // The first reading of a conversation's own window is a fetch
+                // away when it opens; a hosted session's arrives whenever the
+                // agent says so, and holding the tab for it could be for ever.
+                pending={!isHosted && contextInfo?.status === 'loading'}
+                progress={todos && todos.todos.length > 0 ? <TodoProgressChip todos={todos} /> : null}
+                usage={
+                  hasContextReading({ context: contextInfo, hosted: !!isHosted, agentUsage: acp.usage }) ? (
+                    <ContextGauge
+                      showPercent
+                      context={contextInfo}
+                      hosted={!!isHosted}
+                      agentUsage={acp.usage}
+                      agentModel={hostedModel}
+                      compacting={compacting}
+                      streaming={streaming}
+                      onCompact={onCompact}
+                    />
+                  ) : null
+                }
+              />
+            }
             hasPayload={!!pendingSticker}
             toolbarStart={
               steerable && streaming ? null : isAndroid ? (
@@ -1092,27 +1115,12 @@ export function InputBar({
                     onPickFile={isHosted ? undefined : handlePickFile}
                     supportsImages={!isHosted && capabilities?.supports_images !== false}
                   />
-                  {/* These two are the agent's knobs and the queue's, not the
-                      sheet's, so they sit beside it here exactly as they do on a
-                      desktop. Left out of this branch, a phone attached to a
-                      hosted session — which is how remote mode reaches one — had
-                      no way to change its model, permission mode or effort at
-                      all, and no way to choose a delivery before sending. Both
-                      are already compact triggers rather than rows, so there is
-                      nothing to fold into the sheet. */}
+                  {/* The agent's knobs, not the sheet's, so they sit beside it
+                      here exactly as they do on a desktop. Left out of this
+                      branch, a phone attached to a hosted session — which is how
+                      remote mode reaches one — had no way to change its model,
+                      permission mode or effort at all. */}
                   <HostedSessionKnobs options={acp.options} set={acp.set} busy={acp.busy} />
-                  {queueing && onSelectQueueDelivery && (
-                    <ToolbarSelect
-                      aria-label={t('chat.queue.mode')}
-                      placeholder={t('chat.queue.followUp')}
-                      value={queueDelivery}
-                      choices={[
-                        { value: 'follow_up', label: t('chat.queue.followUp'), hint: t('chat.queue.followUpHint') },
-                        { value: 'interject', label: t('chat.queue.interject'), hint: t('chat.queue.interjectHint') },
-                      ]}
-                      onSelect={(value) => onSelectQueueDelivery(value as QueueDelivery)}
-                    />
-                  )}
                 </>
               ) : (
                 <>
@@ -1151,23 +1159,6 @@ export function InputBar({
                       anything. A hosted session's knobs are the agent's and
                       arrive over ACP; everything else stays in the menu. */}
                   <HostedSessionKnobs options={acp.options} set={acp.set} busy={acp.busy} />
-                  {/* Only while the next Enter would queue. The two are not
-                      urgency levels, so the control names what will happen
-                      rather than how urgent it is — and it is here rather than
-                      on the row because it is a decision about the message
-                      being typed, made before it exists. */}
-                  {queueing && onSelectQueueDelivery && (
-                    <ToolbarSelect
-                      aria-label={t('chat.queue.mode')}
-                      placeholder={t('chat.queue.followUp')}
-                      value={queueDelivery}
-                      choices={[
-                        { value: 'follow_up', label: t('chat.queue.followUp'), hint: t('chat.queue.followUpHint') },
-                        { value: 'interject', label: t('chat.queue.interject'), hint: t('chat.queue.interjectHint') },
-                      ]}
-                      onSelect={(value) => onSelectQueueDelivery(value as QueueDelivery)}
-                    />
-                  )}
                 </>
               )
             }
@@ -1200,15 +1191,6 @@ export function InputBar({
                     </Tooltip>
                   </TooltipTrigger>
                 )}
-                <ContextGauge
-                  context={contextInfo}
-                  hosted={!!isHosted}
-                  agentUsage={acp.usage}
-                  agentModel={hostedModel}
-                  compacting={compacting}
-                  streaming={streaming}
-                  onCompact={onCompact}
-                />
               </>
             }
           />

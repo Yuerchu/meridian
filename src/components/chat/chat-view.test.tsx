@@ -178,7 +178,6 @@ vi.mock('./input-bar', () => ({
   },
 }))
 vi.mock('./prompt-queue', () => ({ PromptQueue: () => <div /> }))
-vi.mock('./todo-bar', () => ({ TodoBar: () => <div /> }))
 vi.mock('./empty-state', () => ({
   StarterPrompts: (props: unknown) => {
     mocks.starterProps(props)

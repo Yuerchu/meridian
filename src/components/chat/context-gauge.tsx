@@ -3,6 +3,7 @@ import { TriangleAlert } from '@keyline-icons/react/two-tone'
 
 import { Link, Popover, ProgressCircle, Tooltip, TooltipTrigger } from '@/components/base'
 import { ErrorAlert } from '@/components/ui/error-alert'
+import { cx } from '@/utils/cx'
 
 import type { AcpUsage } from '@/hooks/use-acp-config'
 import type { ContextInfo } from '@/hooks/use-context-info'
@@ -20,6 +21,31 @@ interface ContextGaugeProps {
   compacting?: boolean
   streaming?: boolean
   onCompact?: () => void
+  /** The percentage beside the ring, as the composer's status tab draws it. */
+  showPercent?: boolean
+}
+
+/**
+ * Whether the gauge draws anything for these inputs — a reading, or the
+ * failure that stands in for one. The status tab asks, so that a conversation
+ * with nothing measured yet has no tab rather than an empty one.
+ */
+export function hasContextReading({
+  context,
+  hosted,
+  agentUsage,
+}: Pick<ContextGaugeProps, 'context' | 'hosted' | 'agentUsage'>): boolean {
+  if (!hosted && context?.status === 'unavailable') return true
+  return readingOf({ context, hosted, agentUsage }) !== null
+}
+
+function readingOf({ context, hosted, agentUsage }: Pick<ContextGaugeProps, 'context' | 'hosted' | 'agentUsage'>) {
+  const reading = context?.status === 'ready' ? context.reading : undefined
+  const used = hosted ? agentUsage?.used : reading?.estimatedTokens
+  const limit = hosted ? agentUsage?.size : reading?.contextLimit
+  if (used === undefined || !limit) return null
+  if (!hosted && (!reading || reading.messageCount === 0)) return null
+  return { reading, used, limit }
 }
 
 /**
@@ -45,6 +71,7 @@ export function ContextGauge({
   compacting,
   streaming,
   onCompact,
+  showPercent,
 }: ContextGaugeProps) {
   const { t } = useTranslation()
 
@@ -78,11 +105,9 @@ export function ContextGauge({
     )
   }
 
-  const reading = context?.status === 'ready' ? context.reading : undefined
-  const used = hosted ? agentUsage?.used : reading?.estimatedTokens
-  const limit = hosted ? agentUsage?.size : reading?.contextLimit
-  if (used === undefined || !limit) return null
-  if (!hosted && (!reading || reading.messageCount === 0)) return null
+  const measured = readingOf({ context, hosted, agentUsage })
+  if (!measured) return null
+  const { reading, used, limit } = measured
 
   const ratio = used / limit
   // Below the warning threshold the ring is ambient, not a reading — quieter
@@ -124,7 +149,11 @@ export function ContextGauge({
       <TooltipTrigger delay={0}>
         <Popover.Trigger
           aria-label={figures}
-          className="touch-hitbox inline-flex items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
+          className={cx(
+            'touch-hitbox inline-flex items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent-500',
+            showPercent &&
+              'h-7 gap-1 ps-1.5 pe-2 transition-colors duration-150 data-[hovered]:bg-background-primary-hover',
+          )}
         >
           <ProgressCircle
             aria-hidden
@@ -132,8 +161,13 @@ export function ContextGauge({
             maxValue={limit}
             isIndeterminate={compacting}
             color={color && !compacting ? color : 'neutral'}
-            className="size-4.5"
+            className={showPercent ? 'size-4' : 'size-4.5'}
           />
+          {showPercent && (
+            <span data-slot="context-gauge-percent" className="text-body-2-medium tabular-nums text-text-secondary">
+              {Math.round(ratio * 100)}%
+            </span>
+          )}
         </Popover.Trigger>
         <Tooltip>{figures}</Tooltip>
       </TooltipTrigger>

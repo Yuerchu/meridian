@@ -422,3 +422,66 @@ describe('InputBar paste from its own menu', () => {
     await vi.waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
   })
 })
+
+describe('composer status tab', () => {
+  const todos = {
+    title: 'Ship it',
+    todos: [
+      { content: 'Build', active_form: 'Building', status: 'completed' as const },
+      { content: 'Test', active_form: 'Testing', status: 'in_progress' as const },
+    ],
+  }
+  const ready = {
+    status: 'ready' as const,
+    retry: () => {},
+    reading: {
+      messageCount: 3,
+      estimatedTokens: 41_000,
+      contextLimit: 100_000,
+      autoCompactEnabled: false,
+      autoCompactThreshold: 0,
+      compactBreaker: 'closed' as const,
+      model: 'm1',
+      agentKind: null,
+    },
+  }
+  const tab = () => screen.queryByRole('group', { name: i18n.t('composer.status') })
+
+  beforeEach(async () => {
+    await i18n.changeLanguage('en')
+  })
+
+  it('is absent with no checklist and no reading', () => {
+    renderBar()
+    expect(tab()).toBeNull()
+  })
+
+  it('carries the checklist chip and the context reading', () => {
+    renderBar({ todos, contextInfo: ready })
+    const group = tab()!
+    expect(within(group).getByRole('button', { name: /Ship it, 1\/2, Testing/ })).toBeInTheDocument()
+    expect(within(group).getByText('41%')).toBeInTheDocument()
+  })
+
+  it('keeps the tab while the first reading is on its way, so it does not push the transcript up later', () => {
+    renderBar({ contextInfo: { status: 'loading', retry: () => {} } })
+    expect(tab()).not.toBeNull()
+  })
+
+  it('does not wait on a hosted agent, which reports whenever it likes', () => {
+    renderBar({ isHosted: true, contextInfo: { status: 'loading', retry: () => {} } })
+    expect(tab()).toBeNull()
+  })
+
+  it('takes the reading out of the toolbar', () => {
+    const { container } = renderBar({ contextInfo: ready })
+    const toolbar = container.querySelector('[data-slot="prompt-input-toolbar"]')!
+    expect(within(toolbar as HTMLElement).queryByText('41%')).toBeNull()
+    expect(toolbar.querySelector('[role="progressbar"]')).toBeNull()
+  })
+
+  it('offers no choice of delivery while a turn runs: a queued message waits', () => {
+    const { container } = renderBar({ streaming: true, queueing: true })
+    expect(container.querySelector('[data-slot="toolbar-select"]')).toBeNull()
+  })
+})

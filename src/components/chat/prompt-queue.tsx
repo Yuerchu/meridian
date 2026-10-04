@@ -7,7 +7,7 @@ import { PromptInput } from '@/components/base'
 import { isCoarsePointer } from '@/hooks/use-coarse-pointer'
 import { queueState } from '@/hooks/use-prompt-queue'
 import type { QueueDelivery, QueuedPromptInfoResponse } from '@/types'
-import { TodoBarView } from './todo-bar'
+import { TodoCurrentRow } from './todo-bar'
 import type { TodoArgs } from './todo-list'
 
 interface PromptQueueProps {
@@ -73,7 +73,7 @@ export function PromptQueue({
 
   const current = currentTodos ? (
     <div data-slot="queue-current" className="border-b border-separator-border">
-      <TodoBarView todos={currentTodos} framed={false} />
+      <TodoCurrentRow todos={currentTodos} />
     </div>
   ) : streaming ? (
     <div

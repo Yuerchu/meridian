@@ -18,7 +18,6 @@ import { useTurns } from '@/hooks/use-turns'
 import { useTranscriptHotkeys } from '@/hooks/use-transcript-hotkeys'
 import { InputBar, type AttachedFile, type PendingSticker } from './input-bar'
 import { PromptQueue } from './prompt-queue'
-import { TodoBar } from './todo-bar'
 import { usePromptQueue } from '@/hooks/use-prompt-queue'
 import { useEmojiMap } from './emoji-renderer'
 import { useSenderNames } from '@/hooks/use-sender-names'
@@ -41,7 +40,6 @@ import type {
   ChatMode,
   MessageRating,
   MessageViewModel,
-  QueueDelivery,
   ThinkingLevel,
   WorkspaceReferenceRequest,
 } from '@/types'
@@ -150,10 +148,6 @@ function ChatViewInner({
     { text: input, attachedFiles, pendingSticker, conversationRefs },
     restoreDraft,
   )
-  // What the *next* queued message will be, not a property of any row. Defaults
-  // to the mode that waits: an interjection cuts into work that is already
-  // going, which is not a thing to do by accident.
-  const [queueDelivery, setQueueDelivery] = useState<QueueDelivery>('follow_up')
   const settings = useTurnSettings(conversationId, initialDraft?.settings)
   const probeReference = useReferenceProbe(conversationId)
   const platform = usePlatform()
@@ -778,12 +772,11 @@ function ChatViewInner({
       // for it by retyping.
       if (queueing) {
         if (!text) return
-        if (hasWorkspaceReferences && queueDelivery === 'interject') {
-          storeSetError(conversationId, t('chat.referenceFollowUpOnly'))
-          return
-        }
+        // Always a follow-up: an interjection cuts into work already going,
+        // which is not a thing to do by accident, so it is chosen on the row
+        // afterwards (`PromptQueue`'s steer action).
         void queue
-          .enqueue(text, queueDelivery, references, refIds)
+          .enqueue(text, 'follow_up', references, refIds)
           .then(() => {
             setInput('')
             setConversationRefs([])
@@ -828,7 +821,6 @@ function ChatViewInner({
       steerMessage,
       queueing,
       queue,
-      queueDelivery,
       t,
     ],
   )
@@ -998,12 +990,6 @@ function ChatViewInner({
           />
         </AcpNoticeActionsContext.Provider>
 
-        {/* Folded into the queue card when something is stacked: the queue is
-          current-plus-rows, and a TodoBar sitting above it made every
-          queued message look nested under the checklist — interject and
-          follow-up alike. Alone, the bar keeps its own card. */}
-        {queue.items.length === 0 && <TodoBar conversationId={conversationId} />}
-
         {/* Pending conversation references, above the composer the way queued
           rows are: they belong to the next message, not to the one being
           typed. Pressing a chip removes it. */}
@@ -1099,8 +1085,7 @@ function ChatViewInner({
           streaming={streaming || !!shellTurnId}
           steerable={shellTurnId ? false : steerable}
           queueing={queueing}
-          queueDelivery={queueDelivery}
-          onSelectQueueDelivery={setQueueDelivery}
+          todos={activeTodos}
           queue={
             <PromptQueue
               items={queue.items}

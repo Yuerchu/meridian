@@ -21,7 +21,8 @@ import { ToolCallBlock } from '@/components/chat/tool-call-block'
 import { ToolFields } from '@/components/ui/tool-value'
 import { parsePartialObject } from '@/lib/partial-json'
 import { TurnItem } from '@/components/chat/turn-item'
-import { TodoBarView } from '@/components/chat/todo-bar'
+import { ComposerStatusTab } from '@/components/chat/composer-status-tab'
+import { TodoProgressChip } from '@/components/chat/todo-progress-chip'
 import TodoBoard from '@/components/chat/todo-board'
 import type { TodoDraft } from '@/components/chat/todo-list'
 import { PromptQueue } from '@/components/chat/prompt-queue'
@@ -1392,11 +1393,23 @@ function Gallery() {
           </div>
         </Section>
 
-        <Section title="TodoBar / 常驻进度条">
-          <div data-slot="gallery-todo-bars" className="space-y-2 -mx-4">
-            <TodoBarView todos={JSON.parse(TODO_RUNNING)} />
-            <TodoBarView todos={JSON.parse(TODO_SINGLE)} />
-            <TodoBarView todos={JSON.parse(TODO_NO_CURRENT)} />
+        <Section title="ComposerStatusTab / 输入框状态页签">
+          {/* The tab over a composer card: a checklist under way, one with a
+              single step, one with nothing in progress. The chip opens the
+              whole list. The usage reading needs a live conversation and is
+              photographed in the demo transcript instead. */}
+          <div data-slot="gallery-status-tabs" className="flex max-w-2xl flex-col gap-4">
+            {[TODO_RUNNING, TODO_SINGLE, TODO_NO_CURRENT].map((todos) => (
+              <Composer
+                key={todos}
+                value=""
+                onChange={() => {}}
+                onSubmit={() => {}}
+                ariaLabel="status tab probe"
+                placeholder="发送消息…"
+                status={<ComposerStatusTab progress={<TodoProgressChip todos={JSON.parse(todos)} />} />}
+              />
+            ))}
           </div>
         </Section>
 

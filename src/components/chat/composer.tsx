@@ -72,6 +72,12 @@ interface ComposerProps {
    * have already been written, not about the one being typed.
    */
   queue?: ReactNode
+  /**
+   * The status tab hanging from the card's top edge (`ComposerStatusTab`).
+   * Between the queue and the card, and outside the loader: its light runs
+   * inside the shell, and a tab under it would be lit as if it were the field.
+   */
+  status?: ReactNode
   /** Files dropped on the window, as the `File` objects an HTML5 drop carries. */
   onDropFiles?: (files: File[]) => void
   /** Files pasted into the field. Absent, a paste is only ever text. */
@@ -120,6 +126,7 @@ export function Composer({
   onCaretChange,
   inputMode = 'prompt',
   queue,
+  status,
   onDropFiles,
   onPasteFiles,
   onFieldReady,
@@ -179,6 +186,7 @@ export function Composer({
         maxLines={8}
       >
         {queue}
+        {status}
         {/* boardui's composer-loader, as the registry's agent-composer wires it:
             around the whole shell, lit while a turn runs, and painting the
             surface itself — the shell goes transparent while it is lit (see

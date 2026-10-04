@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { ContextGauge } from './context-gauge'
+import { ContextGauge, hasContextReading } from './context-gauge'
 import i18n from '@/i18n'
 import type { ContextUsageView } from '@/hooks/use-context-info'
 
@@ -65,5 +65,45 @@ describe('ContextGauge', () => {
       />,
     )
     expect(container).toBeEmptyDOMElement()
+  })
+})
+
+describe('ContextGauge in the status tab', () => {
+  beforeAll(async () => {
+    await i18n.changeLanguage('en')
+  })
+
+  it('writes the percentage beside the ring', () => {
+    render(<ContextGauge showPercent context={{ status: 'ready', reading: reading(), retry: () => {} }} />)
+    expect(screen.getByText('25%')).toBeInTheDocument()
+  })
+
+  it('has no percentage where it is not asked for', () => {
+    render(<ContextGauge context={{ status: 'ready', reading: reading(), retry: () => {} }} />)
+    expect(screen.queryByText('25%')).toBeNull()
+  })
+})
+
+describe('hasContextReading', () => {
+  const ready = (over: Partial<ContextUsageView> = {}) => ({
+    status: 'ready' as const,
+    reading: reading(over),
+    retry: () => {},
+  })
+
+  it('agrees with what the gauge draws', () => {
+    const cases = [
+      { context: ready() },
+      { context: ready({ messageCount: 0 }) },
+      { context: { status: 'loading' as const, retry: () => {} } },
+      { context: { status: 'unavailable' as const, reason: 'x', retry: () => {} } },
+      { hosted: true, agentUsage: null, context: { status: 'unavailable' as const, reason: 'x', retry: () => {} } },
+      { hosted: true, agentUsage: { used: 10, size: 100 } },
+    ]
+    for (const props of cases) {
+      const { container, unmount } = render(<ContextGauge {...props} />)
+      expect(hasContextReading(props), JSON.stringify(props)).toBe(!(container as HTMLElement).matches(':empty'))
+      unmount()
+    }
   })
 })
